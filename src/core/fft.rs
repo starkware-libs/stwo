@@ -1,9 +1,13 @@
+#[cfg(test)]
+use crate::core::curve::CIRCLE_GEN;
+
 use super::{
     curve::{CanonicCoset, CirclePoint},
     field::Field,
 };
 
 /// Evaluation on a canonic coset and its conjugate.
+#[derive(Clone)]
 pub struct Evaluation {
     pub coset: CanonicCoset,
     pub values: Vec<Field>,
@@ -16,6 +20,7 @@ impl Evaluation {
     }
 }
 
+#[derive(Debug)]
 pub struct Polynomial {
     pub coset: CanonicCoset,
     /// Coefficients of th polynomial basis.
@@ -152,4 +157,45 @@ impl FFTree {
 
         Evaluation::new(self.coset, data)
     }
+}
+
+#[cfg(test)]
+fn get_trace() -> Evaluation {
+    let trace_coset = CanonicCoset::new(10);
+    let trace = (0..(trace_coset.size() as u32))
+        .map(Field::from_u32_unchecked)
+        .collect::<Vec<_>>();
+    Evaluation::new(trace_coset, trace)
+}
+
+#[test]
+fn test_ifft_eval() {
+    let eval = get_trace();
+    let fftree = FFTree::preprocess(eval.coset);
+    let poly = fftree.ifft(eval.clone());
+    for (point, val) in eval.coset.iter().zip(eval.values.iter()) {
+        assert_eq!(poly.eval(point), *val);
+    }
+}
+
+#[test]
+fn test_ifft_fft() {
+    let eval = get_trace();
+    let fftree = FFTree::preprocess(eval.coset);
+    let poly = fftree.ifft(eval.clone());
+    let eval2 = fftree.fft(poly);
+    for (val0, val1) in eval.values.iter().zip(eval2.values) {
+        assert_eq!(*val0, val1);
+    }
+}
+
+#[test]
+fn test_extend() {
+    let eval = get_trace();
+    let fftree = FFTree::preprocess(eval.coset);
+    let poly = fftree.ifft(eval.clone());
+    let coset2 = CanonicCoset::new(poly.coset.n_bits + 2);
+    let poly2 = poly.extend(coset2);
+
+    assert_eq!(poly.eval(CIRCLE_GEN), poly2.eval(CIRCLE_GEN));
 }
