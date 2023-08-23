@@ -107,18 +107,7 @@ impl FFTree {
         assert!(eval.coset == self.coset);
         let mut data = eval.values;
 
-        // First layer.
-        let len = self.coset.size();
-        data[len / 2..].reverse();
-        for i in 0..(len / 2) {
-            let v0 = data[i];
-            let v1 = data[len / 2 + i];
-            data[i] = v0 + v1;
-            data[len / 2 + i] = (v0 - v1) * self.itwiddle[0][i];
-        }
-
-        // Bottom layers.
-        for layer in self.itwiddle.iter().skip(1) {
+        for layer in self.itwiddle.iter() {
             let len = layer.len() * 2;
             for chunk in data.chunks_mut(len) {
                 chunk[len / 2..].reverse();
@@ -148,7 +137,7 @@ impl FFTree {
         let mut data = poly.coeffs;
 
         // Bottom layers.
-        for layer in self.twiddle.iter().skip(1).rev() {
+        for layer in self.twiddle.iter().rev() {
             let len = layer.len() * 2;
             for chunk in data.chunks_mut(len) {
                 for i in 0..(len / 2) {
@@ -160,16 +149,6 @@ impl FFTree {
                 chunk[len / 2..].reverse();
             }
         }
-
-        // First layer.
-        let len = self.coset.size();
-        for i in 0..(len / 2) {
-            let v0 = data[i];
-            let v1 = data[len / 2 + i] * self.twiddle[0][i];
-            data[i] = v0 + v1;
-            data[len / 2 + i] = v0 - v1;
-        }
-        data[len / 2..].reverse();
 
         Evaluation::new(self.coset, data)
     }
