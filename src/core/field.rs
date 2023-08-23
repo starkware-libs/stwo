@@ -54,8 +54,8 @@ impl M31 {
         Self(0)
     }
 
-    pub const fn from_u32_unchecked(arg: i32) -> M31 {
-        Self(arg as u32)
+    pub const fn from_u32_unchecked(arg: u32) -> M31 {
+        Self(arg)
     }
 
     pub fn inverse(&self) -> M31 {
@@ -66,7 +66,7 @@ impl M31 {
 
 impl Display for M31 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0 as i32)
+        write!(f, "{}", self.0)
     }
 }
 
