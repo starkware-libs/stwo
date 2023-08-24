@@ -82,6 +82,9 @@ pub const CIRCLE_ORDER_BITS: usize = 31;
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CircleIndex(pub usize);
 impl CircleIndex {
+    pub fn zero() -> Self {
+        Self(0)
+    }
     pub fn generator() -> Self {
         Self(1)
     }

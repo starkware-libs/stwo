@@ -1,5 +1,5 @@
 use super::{
-    circle::{CirclePoint, Coset},
+    circle::{CircleIndex, CirclePoint, Coset},
     field::Field,
     poly::circle::{CircleDomain, CircleEvaluation, CirclePoly},
 };
@@ -31,23 +31,20 @@ pub fn point_excluder(point: CirclePoint, excluded: CirclePoint) -> Field {
 // Utils for computing constraints.
 // Oracle to a polynomial constrained to a coset.
 pub trait PolyOracle: Copy {
-    fn domain(&self) -> Coset;
-    fn get_at(&self, i: usize) -> Field;
-    fn point(&self) -> CirclePoint {
-        self.domain().initial
-    }
+    fn get_at(&self, i: CircleIndex) -> Field;
+    fn point(&self) -> CirclePoint;
 }
 #[derive(Copy, Clone)]
 pub struct EvalByPoly<'a> {
-    pub domain: Coset,
+    pub point: CirclePoint,
     pub poly: &'a CirclePoly,
 }
 impl<'a> PolyOracle for EvalByPoly<'a> {
-    fn domain(&self) -> Coset {
-        self.domain
+    fn point(&self) -> CirclePoint {
+        self.point
     }
-    fn get_at(&self, i: usize) -> Field {
-        self.poly.eval_at_point(self.domain.at(i))
+    fn get_at(&self, i: CircleIndex) -> Field {
+        self.poly.eval_at_point(self.point + i.to_point())
     }
 }
 
@@ -58,10 +55,12 @@ pub struct EvalByEvaluation<'a> {
     pub eval: &'a CircleEvaluation,
 }
 impl<'a> PolyOracle for EvalByEvaluation<'a> {
-    fn domain(&self) -> Coset {
-        self.domain
+    fn point(&self) -> CirclePoint {
+        self.domain.at(self.offset)
     }
-    fn get_at(&self, i: usize) -> Field {
-        self.eval.values[(self.offset + i) & (self.eval.values.len() - 1)]
+    fn get_at(&self, i: CircleIndex) -> Field {
+        assert_eq!(i.0 % self.domain.step_size.0, 0);
+        let rel = self.offset + i.0 / self.domain.step_size.0;
+        self.eval.values[rel % self.eval.values.len()]
     }
 }

@@ -15,7 +15,6 @@ impl FFTree {
 
         let mut cur_domain = domain;
         while cur_domain.len() > 1 {
-            print!("{} ", cur_domain.len());
             let half_len = cur_domain.len() / 2;
             let mut layer = Vec::with_capacity(half_len);
             let mut ilayer = Vec::with_capacity(half_len);
