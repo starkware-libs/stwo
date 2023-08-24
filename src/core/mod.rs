@@ -1,4 +1,5 @@
+pub mod circle;
 pub mod constraints;
-pub mod curve;
 pub mod fft;
 pub mod field;
+pub mod poly;
