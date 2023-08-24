@@ -91,21 +91,16 @@ impl LinePoly {
             point = point.square().double() - Field::one();
         }
         mults.reverse();
-        let multi_inverse = mults.iter().map(|x| x.inverse()).collect::<Vec<_>>();
 
         let mut sum = Field::zero();
-        let mut cur_mult = Field::one();
         for (i, val) in self.coeffs.iter().enumerate() {
-            sum += *val * cur_mult;
-            // Update cur_mult according to the flipped bits from i to i+1.
-            let mut j = i;
-            let mut bit_i = 0;
-            while j & 1 == 1 {
-                cur_mult *= multi_inverse[bit_i];
-                j >>= 1;
-                bit_i += 1;
+            let mut cur_mult = Field::one();
+            for (j, mult) in mults.iter().enumerate() {
+                if i & (1 << j) != 0 {
+                    cur_mult *= *mult;
+                }
             }
-            cur_mult *= mults[bit_i];
+            sum += *val * cur_mult;
         }
         sum
     }
@@ -140,4 +135,25 @@ fn test_associated_coset() {
     let coset = domain.associated_coset();
     assert_eq!(coset.n_bits, 4);
     assert_eq!(coset.initial_index, CircleIndex::root(5));
+}
+
+#[test]
+fn test_extend() {
+    let domain = LineDomain::canonic(3);
+    let poly = LinePoly::new(3, (1..9).map(Field::from_u32_unchecked).collect::<Vec<_>>());
+    let extended = poly.extend(domain);
+    assert_eq!(
+        poly.eval_at_point(Field::from_u32_unchecked(123)),
+        extended.eval_at_point(Field::from_u32_unchecked(123))
+    );
+}
+
+#[test]
+fn test_interpolate() {
+    let domain = LineDomain::canonic(3);
+    let poly = LinePoly::new(3, (1..9).map(Field::from_u32_unchecked).collect::<Vec<_>>());
+    let tree = FFTree::preprocess(domain);
+    let evaluation = poly.clone().evaluate(&tree);
+    let interpolated = evaluation.interpolate(&tree);
+    assert_eq!(interpolated.coeffs, poly.coeffs);
 }

@@ -183,7 +183,6 @@ impl Coset {
         Self {
             initial_index,
             initial: initial_index.to_point(),
-            step_size: self.step_size - shift_size,
             ..*self
         }
     }

@@ -76,11 +76,16 @@ impl CircleEvaluation {
         let mut poly0_values = Vec::with_capacity(line_domain.len());
         let mut poly1_values = Vec::with_capacity(line_domain.len());
 
-        for (i, point) in shifted_coset.iter().take(line_domain.len()).enumerate() {
+        for (i, point) in line_domain
+            .associated_coset()
+            .iter()
+            .take(line_domain.len())
+            .enumerate()
+        {
             let v0 = self.values[i];
             let v1 = self.values[self.domain.len() - 1 - i];
-            let r0 = v0 + v1;
-            let r1 = (v0 - v1) * point.y.inverse();
+            let r0 = (v0 + v1) / Field::from_u32_unchecked(2);
+            let r1 = (v0 - v1) * point.y.inverse() / Field::from_u32_unchecked(2);
             poly0_values.push(r0);
             poly1_values.push(r1);
         }
@@ -113,11 +118,18 @@ impl CircleSemiEval {
         }
     }
     pub fn evaluate(self) -> CircleEvaluation {
-        let mut values = Vec::with_capacity(self.domain.len());
-        for (i, point) in self.domain.iter().enumerate() {
+        let mut values = vec![Field::zero(); self.domain.len()];
+        let line_domain = self.domain.projected_line_domain;
+        for (i, point) in line_domain
+            .associated_coset()
+            .iter()
+            .take(line_domain.len())
+            .enumerate()
+        {
             let v0 = self.poly0_eval.values[i];
             let v1 = self.poly1_eval.values[i];
-            values.push(v0 + v1 * point.y);
+            values[i] = v0 + v1 * point.y;
+            values[self.domain.len() - 1 - i] = v0 - v1 * point.y;
         }
         CircleEvaluation::new(self.domain, values)
     }
@@ -163,5 +175,51 @@ impl CirclePoly {
     }
     pub fn evaluate(self, tree: &FFTree) -> CircleEvaluation {
         self.semi_evaluate(tree).evaluate()
+    }
+}
+
+#[test]
+fn test_interpolate_and_eval() {
+    let domain = CircleDomain::canonic_evaluation(3);
+    assert_eq!(domain.n_bits(), 3);
+    let evaluation = CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
+    let poly = evaluation
+        .clone()
+        .interpolate(&FFTree::preprocess(domain.projected_line_domain));
+    let evaluation2 = poly.evaluate(&FFTree::preprocess(domain.projected_line_domain));
+    assert_eq!(evaluation.values, evaluation2.values);
+}
+
+#[test]
+fn test_interpolate() {
+    let domain = CircleDomain::canonic_evaluation(3);
+    assert_eq!(domain.n_bits(), 3);
+    let evaluation = CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
+    let poly = evaluation.interpolate(&FFTree::preprocess(domain.projected_line_domain));
+    for (i, point) in domain.iter().enumerate() {
+        assert_eq!(
+            poly.eval_at_point(point),
+            Field::from_u32_unchecked(i as u32)
+        );
+    }
+}
+
+#[test]
+fn test_domain_deduction() {
+    let extended_domain = CircleDomain::canonic_evaluation(5);
+    let domain = CircleDomain::deduce_from_extension_domain(extended_domain, 3);
+    assert_eq!(domain.n_bits(), 3);
+    let evaluation = CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
+    let poly = evaluation.interpolate(&FFTree::preprocess(domain.projected_line_domain));
+    let extended_poly = poly.extend(extended_domain);
+    for (i, point) in domain.iter().enumerate() {
+        assert_eq!(
+            poly.eval_at_point(point),
+            extended_poly.eval_at_point(point)
+        );
+        assert_eq!(
+            poly.eval_at_point(point),
+            Field::from_u32_unchecked(i as u32)
+        );
     }
 }
