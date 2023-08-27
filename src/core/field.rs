@@ -62,6 +62,10 @@ impl M31 {
         assert!(*self != Self::zero(), "division by zero");
         self.pow(P - 2)
     }
+
+    pub fn to_bytes(self) -> [u8; 4] {
+        self.0.to_le_bytes()
+    }
 }
 
 impl Display for M31 {

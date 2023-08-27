@@ -39,12 +39,11 @@ impl FFTree {
         for layer in self.itwiddle.iter() {
             let len = layer.len() * 2;
             for chunk in data.chunks_mut(len) {
-                chunk[len / 2..].reverse();
-                for i in 0..(len / 2) {
+                for i in 0..(layer.len()) {
                     let v0 = chunk[i];
-                    let v1 = chunk[len / 2 + i];
+                    let v1 = chunk[layer.len() + i];
                     chunk[i] = v0 + v1;
-                    chunk[len / 2 + i] = (v0 - v1) * layer[i];
+                    chunk[layer.len() + i] = (v0 - v1) * layer[i];
                 }
             }
         }
@@ -55,23 +54,22 @@ impl FFTree {
             *val *= inv;
         }
 
-        LinePoly::new(self.domain.n_bits(), data)
+        LinePoly::new(self.domain, data)
     }
     pub fn fft(&self, poly: LinePoly) -> LineEvaluation {
-        assert!(poly.bound_bits == self.domain.n_bits());
+        assert!(poly.domain == self.domain);
         let mut data = poly.coeffs;
 
         // Bottom layers.
         for layer in self.twiddle.iter().rev() {
             let len = layer.len() * 2;
             for chunk in data.chunks_mut(len) {
-                for i in 0..(len / 2) {
+                for i in 0..(layer.len()) {
                     let v0 = chunk[i];
-                    let v1 = chunk[len / 2 + i] * layer[i];
+                    let v1 = chunk[layer.len() + i] * layer[i];
                     chunk[i] = v0 + v1;
-                    chunk[len / 2 + i] = v0 - v1;
+                    chunk[layer.len() + i] = v0 - v1;
                 }
-                chunk[len / 2..].reverse();
             }
         }
 
@@ -114,7 +112,7 @@ fn test_extend() {
     let eval = get_trace();
     let fftree = FFTree::preprocess(eval.domain);
     let poly = fftree.ifft(eval);
-    let poly2 = poly.extend(LineDomain::canonic(poly.bound_bits + 2));
+    let poly2 = poly.extend(LineDomain::canonic(poly.domain.n_bits() + 2));
 
     assert_eq!(
         poly.eval_at_point(Field::one()),

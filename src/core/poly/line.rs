@@ -6,39 +6,52 @@ use crate::core::{
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct LineDomain {
-    pub n_bits: usize,
+    pub coset_up: Coset,
 }
 impl LineDomain {
+    pub fn new(coset_up: Coset) -> Self {
+        assert!(
+            (coset_up.initial_index * 2).0 % (coset_up.step_size.0) != 0,
+            "Coset is not disjoint to its minus."
+        );
+        Self { coset_up }
+    }
     pub fn canonic(n_bits: usize) -> Self {
         assert!(n_bits > 0);
-        Self { n_bits }
+        Self::new(Coset::new(CircleIndex::root(n_bits + 2), n_bits))
     }
     pub fn iter(&self) -> LineDomainIterator {
         LineDomainIterator {
-            cur: self.initial_index().to_point(),
-            step: CircleIndex::root(self.n_bits + 1).to_point(),
-            remaining: 1 << self.n_bits,
+            cur: self.coset_up.initial,
+            step: self.coset_up.step,
+            remaining: self.coset_up.len(),
         }
     }
     pub fn len(&self) -> usize {
-        1 << self.n_bits
+        self.coset_up.len()
     }
     pub fn is_empty(&self) -> bool {
         false
     }
     pub fn n_bits(&self) -> usize {
-        self.n_bits
+        self.coset_up.n_bits
     }
     pub fn double(&self) -> Self {
         Self {
-            n_bits: self.n_bits - 1,
+            coset_up: self.coset_up.double(),
         }
     }
-    pub fn initial_index(&self) -> CircleIndex {
-        CircleIndex::root(self.n_bits + 2)
+    pub fn repeated_double(&self, n_times: usize) -> Self {
+        if n_times == 0 {
+            return *self;
+        }
+        self.double().repeated_double(n_times - 1)
     }
-    pub fn associated_coset(&self) -> Coset {
-        Coset::new(self.initial_index(), self.n_bits + 1)
+    pub fn initial_index(&self) -> CircleIndex {
+        self.coset_up.initial_index
+    }
+    pub fn at(&self, index: usize) -> Field {
+        self.coset_up.at(index).x
     }
 }
 pub struct LineDomainIterator {
@@ -72,21 +85,26 @@ impl LineEvaluation {
     pub fn interpolate(self, tree: &FFTree) -> LinePoly {
         tree.ifft(self)
     }
+
+    pub fn subeval(&self, _blowup_bit: usize) -> Self {
+        todo!()
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct LinePoly {
-    pub bound_bits: usize,
+    // This affects the isogenies, and thus, the monom structure.
+    pub domain: LineDomain,
     pub coeffs: Vec<Field>,
 }
 impl LinePoly {
-    pub fn new(bound_bits: usize, coeffs: Vec<Field>) -> Self {
-        assert!(coeffs.len() == (1 << bound_bits));
-        Self { bound_bits, coeffs }
+    pub fn new(domain: LineDomain, coeffs: Vec<Field>) -> Self {
+        assert!(domain.len() == coeffs.len());
+        Self { domain, coeffs }
     }
     pub fn eval_at_point(&self, mut point: Field) -> Field {
         let mut mults = vec![Field::one()];
-        for _ in 0..self.bound_bits {
+        for _ in 0..self.domain.n_bits() {
             mults.push(point);
             point = point.square().double() - Field::one();
         }
@@ -104,15 +122,17 @@ impl LinePoly {
         }
         sum
     }
-    pub fn extend(&self, line_domain: LineDomain) -> Self {
-        let bound_bits = line_domain.n_bits();
-        assert!(bound_bits >= self.bound_bits);
-        let mut coeffs = vec![Field::zero(); 1 << bound_bits];
-        let jump_bits = bound_bits - self.bound_bits;
+    pub fn extend(&self, extended_domain: LineDomain) -> Self {
+        let jump_bits = extended_domain.n_bits() - self.domain.n_bits();
+        assert_eq!(extended_domain.repeated_double(jump_bits), self.domain);
+        let mut coeffs = vec![Field::zero(); extended_domain.len()];
         for (i, val) in self.coeffs.iter().enumerate() {
             coeffs[i << jump_bits] = *val;
         }
-        Self { bound_bits, coeffs }
+        Self {
+            domain: extended_domain,
+            coeffs,
+        }
     }
     pub fn evaluate(self, tree: &FFTree) -> LineEvaluation {
         tree.fft(self)
@@ -126,21 +146,16 @@ fn test_canonic_domain() {
     assert_eq!(domain.n_bits(), 3);
     let xs = domain.iter().collect::<Vec<_>>();
     assert_eq!(xs[0], CircleIndex::root(5).to_point().x);
-    assert_eq!(xs[1], CircleIndex::root(5).to_point().mul(3).x);
-}
-
-#[test]
-fn test_associated_coset() {
-    let domain = LineDomain::canonic(3);
-    let coset = domain.associated_coset();
-    assert_eq!(coset.n_bits, 4);
-    assert_eq!(coset.initial_index, CircleIndex::root(5));
+    assert_eq!(xs[1], CircleIndex::root(5).to_point().mul(5).x);
 }
 
 #[test]
 fn test_extend() {
     let domain = LineDomain::canonic(3);
-    let poly = LinePoly::new(3, (1..9).map(Field::from_u32_unchecked).collect::<Vec<_>>());
+    let poly = LinePoly::new(
+        domain,
+        (1..9).map(Field::from_u32_unchecked).collect::<Vec<_>>(),
+    );
     let extended = poly.extend(domain);
     assert_eq!(
         poly.eval_at_point(Field::from_u32_unchecked(123)),
@@ -151,7 +166,10 @@ fn test_extend() {
 #[test]
 fn test_interpolate() {
     let domain = LineDomain::canonic(3);
-    let poly = LinePoly::new(3, (1..9).map(Field::from_u32_unchecked).collect::<Vec<_>>());
+    let poly = LinePoly::new(
+        domain,
+        (1..9).map(Field::from_u32_unchecked).collect::<Vec<_>>(),
+    );
     let tree = FFTree::preprocess(domain);
     let evaluation = poly.clone().evaluate(&tree);
     let interpolated = evaluation.interpolate(&tree);

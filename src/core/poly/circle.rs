@@ -25,15 +25,15 @@ impl CircleDomain {
     }
     pub fn canonic_evaluation(n_bits: usize) -> Self {
         assert!(n_bits > 0);
-        Self::new(Coset::new(CircleIndex::generator(), n_bits))
+        Self::new(Coset::new(CircleIndex::zero(), n_bits))
     }
     pub fn deduce_from_extension_domain(extension_domain: CircleDomain, n_bits: usize) -> Self {
         assert!(extension_domain.n_bits() >= n_bits);
-        let extension_line_domain = LineDomain::canonic(extension_domain.n_bits() - 1);
-        let line_domain = LineDomain::canonic(n_bits - 1);
+        let extension_projected_coset = Coset::symmetric(extension_domain.n_bits());
+        let projected_coset = Coset::symmetric(n_bits);
         let shift_size =
-            extension_line_domain.initial_index() - extension_domain.coset.initial_index;
-        Self::new(line_domain.associated_coset().shift(-shift_size))
+            extension_projected_coset.initial_index - extension_domain.coset.initial_index;
+        Self::new(projected_coset.shift(-shift_size))
     }
 
     pub fn iter(&self) -> CosetIterator {
@@ -54,6 +54,9 @@ impl CircleDomain {
     pub fn at(&self, index: usize) -> CirclePoint {
         self.coset.at(index)
     }
+    pub fn skipped(&self, n_bits: usize) -> CircleDomain {
+        Self::new(self.coset.skipped(n_bits))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -70,20 +73,15 @@ impl CircleEvaluation {
         assert!(self.domain.n_bits() > 0);
         let line_domain = LineDomain::canonic(self.domain.n_bits() - 1);
         let shift_size = self.domain.projection_shift;
-        let shifted_coset = self.domain.coset.shift(shift_size);
-        assert!(shifted_coset == line_domain.associated_coset());
+        let shifted_skipped_coset = self.domain.coset.shift(shift_size).skipped(1);
+        assert!(shifted_skipped_coset == line_domain.coset_up);
 
         let mut poly0_values = Vec::with_capacity(line_domain.len());
         let mut poly1_values = Vec::with_capacity(line_domain.len());
 
-        for (i, point) in line_domain
-            .associated_coset()
-            .iter()
-            .take(line_domain.len())
-            .enumerate()
-        {
-            let v0 = self.values[i];
-            let v1 = self.values[self.domain.len() - 1 - i];
+        for (i, point) in shifted_skipped_coset.iter().enumerate() {
+            let v0 = self.values[2 * i];
+            let v1 = self.values[self.domain.len() - 1 - 2 * i];
             let r0 = (v0 + v1) / Field::from_u32_unchecked(2);
             let r1 = (v0 - v1) * point.y.inverse() / Field::from_u32_unchecked(2);
             poly0_values.push(r0);
@@ -98,6 +96,16 @@ impl CircleEvaluation {
     }
     pub fn interpolate(self, tree: &FFTree) -> CirclePoly {
         self.semi_interpolate().interpolate(tree)
+    }
+
+    pub fn skipped(&self, n_bits: usize) -> Self {
+        assert!(n_bits <= self.domain.n_bits());
+        let step = self.domain.n_bits() - n_bits;
+        let values = self.values.iter().step_by(1 << step).cloned().collect();
+        Self {
+            domain: self.domain.skipped(n_bits),
+            values,
+        }
     }
 }
 
@@ -119,17 +127,13 @@ impl CircleSemiEval {
     }
     pub fn evaluate(self) -> CircleEvaluation {
         let mut values = vec![Field::zero(); self.domain.len()];
-        let line_domain = self.domain.projected_line_domain;
-        for (i, point) in line_domain
-            .associated_coset()
-            .iter()
-            .take(line_domain.len())
-            .enumerate()
-        {
+        let shift_size = self.domain.projection_shift;
+        let shifted_skipped_coset = self.domain.coset.shift(shift_size).skipped(1);
+        for (i, point) in shifted_skipped_coset.iter().enumerate() {
             let v0 = self.poly0_eval.values[i];
             let v1 = self.poly1_eval.values[i];
-            values[i] = v0 + v1 * point.y;
-            values[self.domain.len() - 1 - i] = v0 - v1 * point.y;
+            values[2 * i] = v0 + v1 * point.y;
+            values[self.domain.len() - 1 - 2 * i] = v0 - v1 * point.y;
         }
         CircleEvaluation::new(self.domain, values)
     }

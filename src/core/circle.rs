@@ -149,6 +149,12 @@ impl Coset {
             n_bits,
         }
     }
+    pub fn symmetric(n_bits: usize) -> Self {
+        Self::new(CircleIndex::root(n_bits + 1), n_bits)
+    }
+    pub fn skipped(&self, n_skipped_bits: usize) -> Self {
+        Self::new(self.initial_index, self.n_bits - n_skipped_bits)
+    }
     pub fn len(&self) -> usize {
         1 << self.n_bits
     }
