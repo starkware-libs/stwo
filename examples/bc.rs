@@ -1,10 +1,10 @@
-#![feature(extract_if)]
 #![feature(sync_unsafe_cell)]
 #![feature(portable_simd)]
 #![feature(stdsimd)]
 #![feature(iter_array_chunks)]
 
-pub mod core;
-pub mod fibonacci;
+use prover_research::benches::commitment::run_standalone;
 
-pub mod benches;
+fn main() {
+    run_standalone();
+}
