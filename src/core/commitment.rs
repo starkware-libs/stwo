@@ -24,7 +24,8 @@ impl TableCommitmentProver {
         loop {
             let mut new_layer = Vec::with_capacity(1 << n_bits);
             let layer_evals: Vec<_> = evals
-                .drain_filter(|x| x.1.len().ilog2() == n_bits)
+                .drain(..)
+                .filter(|x| x.1.len().ilog2() == n_bits)
                 .collect();
             for i in 0..(1 << n_bits) {
                 let mut hasher = Hasher::new();

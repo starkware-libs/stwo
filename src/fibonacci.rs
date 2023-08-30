@@ -37,8 +37,7 @@ impl TraceInfo {
         // Trace.
         let trace_n_bits = self.values_domain.n_bits();
         let n = 1 << trace_n_bits;
-        let mut trace = vec![];
-        trace.reserve(n);
+        let mut trace = Vec::with_capacity(n);
 
         // Fill trace with fibonacci squared.
         let mut a = Field::one();
