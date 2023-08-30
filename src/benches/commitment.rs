@@ -57,6 +57,8 @@ unsafe fn fft_outer(values: *mut i32, twiddles: &[Vec<[Alignedi32s; 4]>], i_thr:
     }
 }
 
+// Consider doing a butterfly on vectorized values (4bit).
+
 // Index: |TTTTTTTTTT|HHHHHH|AAA|LLLLLLLLLL|VVVVVVVVV|
 //         N_THR_BITS          3   I_OFF    N_VEC_BITS
 unsafe fn fft3<const I_OFF: usize>(
@@ -64,7 +66,7 @@ unsafe fn fft3<const I_OFF: usize>(
     twiddles: &[[Alignedi32s; 4]],
     c_offset: usize,
 ) {
-    let twiddle_mask = twiddles.len() - 1;
+    let twid_mask = twiddles.len() - 1;
     let a_shift = N_VEC_BITS + I_OFF;
     let mask = _mm512_set1_epi64((1 << 31) - 1);
     let mask1 = _mm512_set1_epi64((1 << 32) - 1);
@@ -72,7 +74,7 @@ unsafe fn fft3<const I_OFF: usize>(
     let one = _mm512_set1_epi64(1);
     for i_l in 0..(1 << I_OFF) {
         let index = c_offset | (i_l << (N_VEC_BITS));
-        let twids = twiddles.get_unchecked(i_l & twiddle_mask);
+        let twids = twiddles.get_unchecked((c_offset >> (3 + I_OFF + N_VEC_BITS)) & twid_mask);
 
         // load
         let val0 = _mm512_load_epi32(values.add(index | (0 << a_shift)).cast_const());
@@ -205,6 +207,28 @@ unsafe fn butterfly(
     (r0, r1)
 }
 
+unsafe fn transpose<const W_BITS: usize, const N_BITS: usize, const M_BITS: usize>(
+    values: *mut i32,
+    i_thr: usize,
+) {
+    let thr_offset = i_thr << (N_BITS - W_BITS - N_THR_BITS);
+    for i in 0..(1 << (N_BITS - W_BITS - N_THR_BITS)) {
+        for j in 0..(1 << (M_BITS - W_BITS)) {
+            // TODO: take care of middle.
+            for wi in 0..(1 << W_BITS) {
+                let i_ind = ((thr_offset | i) << W_BITS) | wi;
+                for wj in 0..(1 << W_BITS) {
+                    let j_ind = (j << W_BITS) | wj;
+                    let val0 = _mm512_load_epi32(values.add(i_ind << N_VEC_BITS).cast_const());
+                    let val1 = _mm512_load_epi32(values.add(j_ind << N_VEC_BITS).cast_const());
+                    _mm512_store_epi32(values.add(i_ind << N_VEC_BITS), val1);
+                    _mm512_store_epi32(values.add(j_ind << N_VEC_BITS), val0);
+                }
+            }
+        }
+    }
+}
+
 #[repr(C, align(64))]
 pub struct Alignedi32s(pub [i32; 16]);
 
@@ -228,7 +252,7 @@ pub fn prepare() -> (SyncUnsafeCell<Vec<Alignedi32s>>, Vec<Vec<[Alignedi32s; 4]>
     let mut twiddles = vec![];
     for i in 0..4 {
         twiddles.push(
-            (0..(4 * (1 << (N_TOTAL_BITS - 3 * i - 1))))
+            (0..(1 << (N_TOTAL_BITS - 3 * i - 1)))
                 .array_chunks::<16>()
                 .map(Alignedi32s)
                 .array_chunks::<4>()
@@ -244,6 +268,16 @@ pub fn fft_bench(
     unsafe_values: &SyncUnsafeCell<Vec<Alignedi32s>>,
     twiddles: &[Vec<[Alignedi32s; 4]>],
 ) {
+    (0..N_THR).into_par_iter().for_each(|i_thr| {
+        // convert pointer back to a mutable slice.
+        let values_slice = unsafe { unsafe_values.get().as_mut().unwrap() };
+        unsafe { fft_outer(values_slice[..].as_mut_ptr() as *mut i32, twiddles, i_thr) };
+    });
+    (0..N_THR).into_par_iter().for_each(|i_thr| {
+        // convert pointer back to a mutable slice.
+        let values_slice = unsafe { unsafe_values.get().as_mut().unwrap() };
+        unsafe { transpose::<4, 12, 12>(values_slice[..].as_mut_ptr() as *mut i32, i_thr) };
+    });
     (0..N_THR).into_par_iter().for_each(|i_thr| {
         // convert pointer back to a mutable slice.
         let values_slice = unsafe { unsafe_values.get().as_mut().unwrap() };
