@@ -15,7 +15,7 @@ const N_VEC_BITS: usize = 4;
 const N_THR_BITS: usize = 3;
 const N_THR: usize = 1 << N_THR_BITS;
 pub const N_TOTAL_BITS: usize = 28;
-const N_C_BITS: usize = N_TOTAL_BITS - N_THR_BITS - N_VEC_BITS - 3;
+const N_C_BITS: usize = N_TOTAL_BITS - N_THR_BITS - N_VEC_BITS;
 // TODO: Make sure this is evenly divisible.
 const N_TRANSPOSE_BITS: usize = (N_TOTAL_BITS - N_VEC_BITS) / 2;
 
@@ -44,43 +44,39 @@ unsafe fn fft_outer<const VECWISE_BUTTERFLIES: bool, const FULL_REDUCE: bool>(
     i_thr: usize,
 ) {
     let cn = Consts::new();
-    let thr_offset = i_thr << (N_C_BITS + N_VEC_BITS + 3);
-    for i_h in 0..(1 << N_C_BITS) {
+    for c_h in 0..(1 << (N_C_BITS - 3)) {
         fft3::<0, VECWISE_BUTTERFLIES, false>(
             cn,
             values,
             &twiddles.get_unchecked(0)[..],
-            thr_offset | (i_h << (N_VEC_BITS + 3)),
+            (i_thr << (N_C_BITS - 3)) | c_h,
         );
-        if i_h & ((1 << 3) - 1) != ((1 << 3) - 1) {
+        if c_h & ((1 << 3) - 1) != ((1 << 3) - 1) {
             continue;
         }
-        let i_h = i_h & (!((1 << 3) - 1));
         fft3::<3, false, false>(
             cn,
             values,
             &twiddles.get_unchecked(1)[..],
-            thr_offset | (i_h << (N_VEC_BITS + 3)),
+            (i_thr << (N_C_BITS - 6)) | (c_h >> 3),
         );
-        if i_h & ((1 << 6) - 1) != ((1 << 6) - 1) {
+        if c_h & ((1 << 6) - 1) != ((1 << 6) - 1) {
             continue;
         }
-        let i_h = i_h & (!((1 << 6) - 1));
         fft3::<6, false, false>(
             cn,
             values,
             &twiddles.get_unchecked(2)[..],
-            thr_offset | (i_h << (N_VEC_BITS + 3)),
+            (i_thr << (N_C_BITS - 9)) | (c_h >> 6),
         );
-        if i_h & ((1 << 9) - 1) != ((1 << 9) - 1) {
+        if c_h & ((1 << 9) - 1) != ((1 << 9) - 1) {
             continue;
         }
-        let i_h = i_h & (!((1 << 9) - 1));
         fft3::<9, false, FULL_REDUCE>(
             cn,
             values,
             &twiddles.get_unchecked(3)[..],
-            thr_offset | (i_h << (N_VEC_BITS + 3)),
+            (i_thr << (N_C_BITS - 12)) | (c_h >> 9),
         );
     }
 }
@@ -89,17 +85,19 @@ unsafe fn fft_outer<const VECWISE_BUTTERFLIES: bool, const FULL_REDUCE: bool>(
 
 // Index: |TTTTTTTTTT|HHHHHH|AAA|LLLLLLLLLL|VVVVVVVVV|
 //         N_THR_BITS          3   I_OFF    N_VEC_BITS
-unsafe fn fft3<const I_OFF: usize, const VECWISE_BUTTERFLIES: bool, const FULL_REDUCE: bool>(
+unsafe fn fft3<const L_BITS: usize, const VECWISE_BUTTERFLIES: bool, const FULL_REDUCE: bool>(
     cn: Consts,
     values: *mut i32,
     twiddles: &[[Alignedi32s; 4]],
-    c_offset: usize,
+    c_h: usize,
 ) {
     let twid_mask = twiddles.len() - 1;
-    let a_shift = N_VEC_BITS + I_OFF;
-    for i_l in 0..(1 << I_OFF) {
-        let index = c_offset | (i_l << (N_VEC_BITS));
-        let twids = twiddles.get_unchecked((c_offset >> (3 + I_OFF + N_VEC_BITS)) & twid_mask);
+    let a_shift = N_VEC_BITS + L_BITS;
+    for c_l in 0..(1 << L_BITS) {
+        // let twiddle_index = (c_h << L_BITS) | c_l;
+        // let twids = twiddles.get_unchecked(twiddle_index & twid_mask);
+        let twids = twiddles.get_unchecked(c_h & twid_mask);
+        let index = ((c_h << (L_BITS + 3)) | c_l) << N_VEC_BITS;
 
         // load
         let val0 = _mm512_load_epi32(values.add(index | (0 << a_shift)).cast_const());

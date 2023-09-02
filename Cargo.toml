@@ -16,7 +16,7 @@ criterion = { version = "0.5.1", features = ["html_reports"] }
 
 [profile.release]
 opt-level = 2
-rustflags = ["-C", "target-cpu=skylake-avx512", "-C", "target-feature=+avx512f"]
+rustflags = ["-C", "target-cpu=native", "-C", "target-feature=+avx512f"]
 debug = 2
 
 [[bench]]
