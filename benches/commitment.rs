@@ -19,7 +19,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
 criterion_group!(
     name=benches;
-    config = Criterion::default().significance_level(0.1).sample_size(30);
+    config = Criterion::default().sample_size(100);
     targets=criterion_benchmark
 );
 criterion_main!(benches);

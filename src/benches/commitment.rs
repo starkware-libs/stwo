@@ -44,48 +44,66 @@ unsafe fn fft_outer<const VECWISE_BUTTERFLIES: bool, const FULL_REDUCE: bool>(
     i_thr: usize,
 ) {
     let cn = Consts::new();
-    for c_h in 0..(1 << (N_C_BITS - 3)) {
-        fft3::<0, VECWISE_BUTTERFLIES, false>(
-            cn,
-            values,
-            &twiddles.get_unchecked(0)[..],
-            (i_thr << (N_C_BITS - 3)) | c_h,
-        );
-        if c_h & ((1 << 3) - 1) != ((1 << 3) - 1) {
-            continue;
+
+    let twiddles0 = [
+        _mm512_set1_epi64(1),
+        _mm512_set1_epi64(2),
+        _mm512_set1_epi64(3),
+        _mm512_set1_epi64(4),
+    ];
+    // 16KB would fit in a cache. That's 2^8 * 64B.
+    // 2^6 mm512s fit inside the cache,
+    for c_h in 0..(1 << (N_C_BITS - 6)) {
+        if VECWISE_BUTTERFLIES {
+            for c_l in 0..(1 << 6) {
+                fft_vecwise(
+                    cn,
+                    values,
+                    &twiddles0,
+                    (i_thr << N_C_BITS) | (c_h << 6) | c_l,
+                );
+            }
         }
-        fft3::<3, false, false>(
+        for c_l in 0..(1 << 3) {
+            fft3::<0, false>(
+                cn,
+                values,
+                &twiddles.get_unchecked(0)[..],
+                (i_thr << (N_C_BITS - 3)) | (c_h << 3) | c_l,
+            );
+        }
+        fft3::<3, false>(
             cn,
             values,
             &twiddles.get_unchecked(1)[..],
-            (i_thr << (N_C_BITS - 6)) | (c_h >> 3),
+            (i_thr << (N_C_BITS - 6)) | c_h,
         );
-        if c_h & ((1 << 6) - 1) != ((1 << 6) - 1) {
+        if c_h & ((1 << 3) - 1) != (1 << 3) - 1 {
             continue;
         }
-        fft3::<6, false, false>(
+        fft3::<6, false>(
             cn,
             values,
             &twiddles.get_unchecked(2)[..],
-            (i_thr << (N_C_BITS - 9)) | (c_h >> 6),
+            (i_thr << (N_C_BITS - 9)) | (c_h >> 3),
         );
-        if c_h & ((1 << 9) - 1) != ((1 << 9) - 1) {
+        if c_h & ((1 << 6) - 1) != (1 << 6) - 1 {
             continue;
         }
-        fft3::<9, false, FULL_REDUCE>(
+        fft3::<9, FULL_REDUCE>(
             cn,
             values,
             &twiddles.get_unchecked(3)[..],
-            (i_thr << (N_C_BITS - 12)) | (c_h >> 9),
+            (i_thr << (N_C_BITS - 12)) | (c_h >> 6),
         );
     }
 }
 
 // Consider doing a butterfly on vectorized values (4bit).
 
-// Index: |TTTTTTTTTT|HHHHHH|AAA|LLLLLLLLLL|VVVVVVVVV|
-//         N_THR_BITS          3   I_OFF    N_VEC_BITS
-unsafe fn fft3<const L_BITS: usize, const VECWISE_BUTTERFLIES: bool, const FULL_REDUCE: bool>(
+// Index: |HHHHHHHHHHHHHHH|AAA|LLLLLLLLLL|VVVVVVVVV|
+//               c_h        3   L_BITS    N_VEC_BITS
+unsafe fn fft3<const L_BITS: usize, const FULL_REDUCE: bool>(
     cn: Consts,
     values: *mut i32,
     twiddles: &[[Alignedi32s; 4]],
@@ -94,46 +112,34 @@ unsafe fn fft3<const L_BITS: usize, const VECWISE_BUTTERFLIES: bool, const FULL_
     let twid_mask = twiddles.len() - 1;
     let a_shift = N_VEC_BITS + L_BITS;
     for c_l in 0..(1 << L_BITS) {
-        // let twiddle_index = (c_h << L_BITS) | c_l;
-        // let twids = twiddles.get_unchecked(twiddle_index & twid_mask);
-        let twids = twiddles.get_unchecked(c_h & twid_mask);
-        let index = ((c_h << (L_BITS + 3)) | c_l) << N_VEC_BITS;
+        let twiddle_index = (c_h << L_BITS) | c_l;
+        let twids = twiddles.get_unchecked(twiddle_index & twid_mask);
+        let index = (c_h << (L_BITS + 3)) | c_l;
+        let offset = index << N_VEC_BITS;
 
         // load
-        let val0 = _mm512_load_epi32(values.add(index | (0 << a_shift)).cast_const());
-        let val1 = _mm512_load_epi32(values.add(index | (1 << a_shift)).cast_const());
-        let val2 = _mm512_load_epi32(values.add(index | (2 << a_shift)).cast_const());
-        let val3 = _mm512_load_epi32(values.add(index | (3 << a_shift)).cast_const());
-        let val4 = _mm512_load_epi32(values.add(index | (4 << a_shift)).cast_const());
-        let val5 = _mm512_load_epi32(values.add(index | (5 << a_shift)).cast_const());
-        let val6 = _mm512_load_epi32(values.add(index | (6 << a_shift)).cast_const());
-        let val7 = _mm512_load_epi32(values.add(index | (7 << a_shift)).cast_const());
+        let val0 = _mm512_load_epi32(values.add(offset | (0 << a_shift)).cast_const());
+        let val1 = _mm512_load_epi32(values.add(offset | (1 << a_shift)).cast_const());
+        let val2 = _mm512_load_epi32(values.add(offset | (2 << a_shift)).cast_const());
+        let val3 = _mm512_load_epi32(values.add(offset | (3 << a_shift)).cast_const());
+        let val4 = _mm512_load_epi32(values.add(offset | (4 << a_shift)).cast_const());
+        let val5 = _mm512_load_epi32(values.add(offset | (5 << a_shift)).cast_const());
+        let val6 = _mm512_load_epi32(values.add(offset | (6 << a_shift)).cast_const());
+        let val7 = _mm512_load_epi32(values.add(offset | (7 << a_shift)).cast_const());
 
-        let (mut val0l, mut val0h) = split(val0);
-        let (mut val1l, mut val1h) = split(val1);
-        let (mut val2l, mut val2h) = split(val2);
-        let (mut val3l, mut val3h) = split(val3);
-        let (mut val4l, mut val4h) = split(val4);
-        let (mut val5l, mut val5h) = split(val5);
-        let (mut val6l, mut val6h) = split(val6);
-        let (mut val7l, mut val7h) = split(val7);
+        let (val0l, val0h) = split(val0);
+        let (val1l, val1h) = split(val1);
+        let (val2l, val2h) = split(val2);
+        let (val3l, val3h) = split(val3);
+        let (val4l, val4h) = split(val4);
+        let (val5l, val5h) = split(val5);
+        let (val6l, val6h) = split(val6);
+        let (val7l, val7h) = split(val7);
 
         let (t0l, t0h) = split(_mm512_load_epi32(twids[0].0.as_ptr()));
         let (t1l, t1h) = split(_mm512_load_epi32(twids[1].0.as_ptr()));
         let (t2l, t2h) = split(_mm512_load_epi32(twids[2].0.as_ptr()));
         let (t3l, t3h) = split(_mm512_load_epi32(twids[3].0.as_ptr()));
-
-        if VECWISE_BUTTERFLIES {
-            // TODO: twiddles.
-            (val0l, val0h) = vecwise_fft4(cn, val0l, val0h, t0l);
-            (val1l, val1h) = vecwise_fft4(cn, val1l, val1h, t1l);
-            (val2l, val2h) = vecwise_fft4(cn, val2l, val2h, t2l);
-            (val3l, val3h) = vecwise_fft4(cn, val3l, val3h, t3l);
-            (val4l, val4h) = vecwise_fft4(cn, val4l, val4h, t0h);
-            (val5l, val5h) = vecwise_fft4(cn, val5l, val5h, t1h);
-            (val6l, val6h) = vecwise_fft4(cn, val6l, val6h, t2h);
-            (val7l, val7h) = vecwise_fft4(cn, val7l, val7h, t3h);
-        }
 
         // low
         let t4l = psi(cn, t0l);
@@ -176,14 +182,14 @@ unsafe fn fft3<const L_BITS: usize, const VECWISE_BUTTERFLIES: bool, const FULL_
         let (val6h, val7h) = butterfly::<FULL_REDUCE>(cn, val6h, val7h, t3h);
 
         // store
-        _mm512_store_epi32(values.add(index | (0 << a_shift)), combine(val0l, val0h));
-        _mm512_store_epi32(values.add(index | (1 << a_shift)), combine(val1l, val1h));
-        _mm512_store_epi32(values.add(index | (2 << a_shift)), combine(val2l, val2h));
-        _mm512_store_epi32(values.add(index | (3 << a_shift)), combine(val3l, val3h));
-        _mm512_store_epi32(values.add(index | (4 << a_shift)), combine(val4l, val4h));
-        _mm512_store_epi32(values.add(index | (5 << a_shift)), combine(val5l, val5h));
-        _mm512_store_epi32(values.add(index | (6 << a_shift)), combine(val6l, val6h));
-        _mm512_store_epi32(values.add(index | (7 << a_shift)), combine(val7l, val7h));
+        _mm512_store_epi32(values.add(offset | (0 << a_shift)), combine(val0l, val0h));
+        _mm512_store_epi32(values.add(offset | (1 << a_shift)), combine(val1l, val1h));
+        _mm512_store_epi32(values.add(offset | (2 << a_shift)), combine(val2l, val2h));
+        _mm512_store_epi32(values.add(offset | (3 << a_shift)), combine(val3l, val3h));
+        _mm512_store_epi32(values.add(offset | (4 << a_shift)), combine(val4l, val4h));
+        _mm512_store_epi32(values.add(offset | (5 << a_shift)), combine(val5l, val5h));
+        _mm512_store_epi32(values.add(offset | (6 << a_shift)), combine(val6l, val6h));
+        _mm512_store_epi32(values.add(offset | (7 << a_shift)), combine(val7l, val7h));
     }
 }
 
@@ -222,19 +228,18 @@ unsafe fn reduce<const FULL_REDUCE: bool>(cn: Consts, x: __m512i) -> __m512i {
     }
 }
 
-unsafe fn vecwise_fft4(
-    cn: Consts,
-    al: __m512i,
-    ah: __m512i,
-    twiddle: __m512i,
-) -> (__m512i, __m512i) {
-    // TODO: correct twiddle.
+// Index: |IIIIIIIIIIIIIII|VVVVVVVVV|
+//               index     N_VEC_BITS
+unsafe fn fft_vecwise(cn: Consts, values: *mut i32, twiddles: &[__m512i], index: usize) {
+    let val = _mm512_load_epi32(values.add(index << N_VEC_BITS).cast_const());
+    let (al, ah) = split(val);
+
     // rep low to high.
     // a:  0123456789abcdef
 
     // al: 0.2.4.6.8.a.c.e.
     // ah: 1.3.5.7.9.b.d.f.
-    let (al, ah) = butterfly::<false>(cn, al, ah, twiddle);
+    let (al, ah) = butterfly::<false>(cn, al, ah, *twiddles.get_unchecked(0));
 
     let (al, ah) = (
         _mm512_mask_shuffle_epi32(al, 0b0100_0100_0100_0100, ah, 0b00_00_00_00),
@@ -242,7 +247,7 @@ unsafe fn vecwise_fft4(
     );
     // al: 0.1.4.5.8.9.c.d.
     // ah: 2.3.6.7.a.b.e.f.
-    let (al, ah) = butterfly::<false>(cn, al, ah, twiddle);
+    let (al, ah) = butterfly::<false>(cn, al, ah, *twiddles.get_unchecked(1));
 
     let (al, ah) = (
         _mm512_shuffle_i32x4(al, ah, 0b10_00_10_00),
@@ -250,7 +255,7 @@ unsafe fn vecwise_fft4(
     );
     // al: 0.1.8.9.2.3.a.b.
     // ah: 4.5.c.d.6.7.e.f.
-    let (al, ah) = butterfly::<false>(cn, al, ah, twiddle);
+    let (al, ah) = butterfly::<false>(cn, al, ah, *twiddles.get_unchecked(2));
 
     let (al, ah) = (
         _mm512_shuffle_i32x4(al, ah, 0b10_00_10_00),
@@ -258,10 +263,10 @@ unsafe fn vecwise_fft4(
     );
     // al: 0.1.2.3.4.5.6.7.
     // ah: 8.9.a.b.c.d.e.f.
-    let (al, ah) = butterfly::<false>(cn, al, ah, twiddle);
+    let (al, ah) = butterfly::<false>(cn, al, ah, *twiddles.get_unchecked(3));
 
     // Note: The bit ordering has changed. IFFT needs to shuffle this back.
-    (al, ah)
+    _mm512_store_epi32(values.add(index << N_VEC_BITS), combine(al, ah));
 }
 // 9 cc
 unsafe fn butterfly<const FULL_REDUCE: bool>(
