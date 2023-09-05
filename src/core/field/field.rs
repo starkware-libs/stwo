@@ -43,6 +43,7 @@ impl M31 {
         }
         res
     }
+
     pub fn reduce(val: u64) -> Self {
         Self((((((val >> 31) + val + 1) >> 31) + val) & (P as u64)) as u32)
     }
