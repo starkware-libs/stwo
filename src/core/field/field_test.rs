@@ -27,12 +27,15 @@ fn test_ops() {
         let y: u32 = rng.gen::<u32>() % P;
         assert_eq!(
             M31::from_u32_unchecked(add_p(x, y)),
-            M31::from_u32_unchecked(x) + M31::from_u32_unchecked(y));
+            M31::from_u32_unchecked(x) + M31::from_u32_unchecked(y)
+        );
         assert_eq!(
             M31::from_u32_unchecked(mul_p(x, y)),
-            M31::from_u32_unchecked(x) * M31::from_u32_unchecked(y));
+            M31::from_u32_unchecked(x) * M31::from_u32_unchecked(y)
+        );
         assert_eq!(
             M31::from_u32_unchecked(sub_p(x, y)),
-            M31::from_u32_unchecked(x) - M31::from_u32_unchecked(y));
+            M31::from_u32_unchecked(x) - M31::from_u32_unchecked(y)
+        );
     }
 }
