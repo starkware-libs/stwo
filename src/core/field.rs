@@ -1,3 +1,4 @@
+use super::mont_field::MontgomeryField;
 use std::fmt::Display;
 use std::ops::Add;
 use std::ops::AddAssign;
@@ -8,7 +9,6 @@ use std::ops::MulAssign;
 use std::ops::Neg;
 use std::ops::Sub;
 use std::ops::SubAssign;
-use super::mont_field::MontgomeryField;
 
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
 
@@ -132,7 +132,6 @@ impl DivAssign for M31 {
         *self = *self / rhs;
     }
 }
-
 
 // Implement montgomery multiplication for M31 with R=2^31.
 // In M31 field, multiplying by R equals identity.
