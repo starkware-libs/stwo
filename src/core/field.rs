@@ -1,4 +1,3 @@
-use super::mont_field::MontgomeryField;
 use std::fmt::Display;
 use std::ops::Add;
 use std::ops::AddAssign;
@@ -130,32 +129,5 @@ impl Div for M31 {
 impl DivAssign for M31 {
     fn div_assign(&mut self, rhs: Self) {
         *self = *self / rhs;
-    }
-}
-
-// Implement montgomery multiplication for M31 with R=2^31.
-// In M31 field, multiplying by R equals identity.
-impl MontgomeryField for M31 {
-    fn to_montgomery(&self) -> Self {
-        *self
-    }
-
-    fn from_montgomery(&self) -> Self {
-        *self
-    }
-
-    fn montgomery_mul(&self, rhs: &Self) -> Self {
-        let ret: u32 = self.unreduced_montgomery_mul(rhs);
-        M31::from_u32_unchecked(if ret >= P { ret - P } else { ret })
-    }
-
-    // Returns the unreduced product such that result in [0, 2P).
-    // Assumes that the input is in [0, P), as otherwise the result would be >= 2P,
-    // which is not representable for u32.
-    fn unreduced_montgomery_mul(&self, rhs: &Self) -> u32 {
-        let mut prod: u64 = self.0 as u64 * rhs.0 as u64;
-        let prod_low: u32 = (prod & (P as u64)) as u32;
-        prod += (prod_low as u64) * (P as u64);
-        (prod >> 31) as u32
     }
 }
