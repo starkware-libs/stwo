@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - main-v[0-9].**
+    tags:
+      - v[0-9].**
+
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - auto_merge_enabled
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          components: rustfmt
+          toolchain: nightly-2023-07-05
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/rust_fmt.sh --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/clippy.sh
+
+  run-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test
+
+  udeps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        name: "Rust Toolchain Setup"
+        with:
+          toolchain: nightly-2023-07-05
+      - uses: Swatinem/rust-cache@v2
+        id: "cache-cargo"
+      - if: ${{ steps.cache-cargo.outputs.cache-hit != 'true' }}
+        name: "Download and run cargo-udeps"
+        run: |
+          wget -O - -c https://github.com/est31/cargo-udeps/releases/download/v0.1.35/cargo-udeps-v0.1.35-x86_64-unknown-linux-gnu.tar.gz | tar -xz
+          cargo-udeps-*/cargo-udeps udeps
+        env:
+          RUSTUP_TOOLCHAIN: nightly-2023-07-05
