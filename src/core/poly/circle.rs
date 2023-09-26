@@ -1,7 +1,7 @@
 use crate::core::{
     circle::{CircleIndex, CirclePoint, Coset, CosetIterator},
     fft::FFTree,
-    field::Field,
+    field::m31::Field,
 };
 
 use super::line::{LineDomain, LineEvaluation, LinePoly};

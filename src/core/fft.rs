@@ -1,5 +1,5 @@
 use super::{
-    field::Field,
+    field::m31::Field,
     poly::line::{LineDomain, LineEvaluation, LinePoly},
 };
 
