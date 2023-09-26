@@ -1,4 +1,4 @@
-use super::field::M31;
+use super::field::field::M31;
 use std::ops::{Add, Mul, Neg, Sub};
 
 /// A point on the complex circle.
