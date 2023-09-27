@@ -8,4 +8,9 @@ edition = "2021"
 [dependencies]
 
 [dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
 rand = "0.8.3"
+
+[[bench]]
+name = "field"
+harness = false
