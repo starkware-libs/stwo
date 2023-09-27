@@ -46,6 +46,7 @@ impl M31 {
         }
         res
     }
+
     pub fn reduce(val: u64) -> Self {
         Self((((((val >> K_BITS) + val + 1) >> K_BITS) + val) & (P as u64)) as u32)
     }
@@ -95,6 +96,7 @@ impl Sub for M31 {
         Self::reduce((self.0 as u64) + (P as u64) - (rhs.0 as u64))
     }
 }
+
 impl SubAssign for M31 {
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
