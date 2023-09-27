@@ -39,7 +39,6 @@ impl FFTree {
         for layer in self.itwiddle.iter() {
             let len = layer.len() * 2;
             for chunk in data.chunks_mut(len) {
-                chunk[len / 2..].reverse();
                 for i in 0..(len / 2) {
                     let v0 = chunk[i];
                     let v1 = chunk[len / 2 + i];
@@ -71,7 +70,6 @@ impl FFTree {
                     chunk[i] = v0 + v1;
                     chunk[len / 2 + i] = v0 - v1;
                 }
-                chunk[len / 2..].reverse();
             }
         }
 
