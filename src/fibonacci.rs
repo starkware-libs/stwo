@@ -1,7 +1,7 @@
 use crate::core::{
     circle::CircleIndex,
     constraints::{domain_poly_eval, point_excluder, PolyOracle},
-    field::Field,
+    field::m31::Field,
     poly::circle::{CircleDomain, CircleEvaluation},
 };
 
