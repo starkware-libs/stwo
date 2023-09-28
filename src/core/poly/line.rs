@@ -16,8 +16,8 @@ impl LineDomain {
     pub fn iter(&self) -> LineDomainIterator {
         LineDomainIterator {
             cur: self.initial_index().to_point(),
-            step: CircleIndex::root(self.n_bits + 1).to_point(),
-            remaining: 1 << self.n_bits,
+            step: CircleIndex::root(self.n_bits).to_point(),
+            remaining: self.len(),
         }
     }
     pub fn len(&self) -> usize {
@@ -37,7 +37,10 @@ impl LineDomain {
     pub fn initial_index(&self) -> CircleIndex {
         CircleIndex::root(self.n_bits + 2)
     }
-    pub fn associated_coset(&self) -> Coset {
+    pub fn half_coset(&self) -> Coset {
+        Coset::new(self.initial_index(), self.n_bits)
+    }
+    pub fn interleaved_coset(&self) -> Coset {
         Coset::new(self.initial_index(), self.n_bits + 1)
     }
 }
@@ -126,13 +129,13 @@ fn test_canonic_domain() {
     assert_eq!(domain.n_bits(), 3);
     let xs = domain.iter().collect::<Vec<_>>();
     assert_eq!(xs[0], CircleIndex::root(5).to_point().x);
-    assert_eq!(xs[1], CircleIndex::root(5).to_point().mul(3).x);
+    assert_eq!(xs[1], CircleIndex::root(5).to_point().mul(5).x);
 }
 
 #[test]
 fn test_associated_coset() {
     let domain = LineDomain::canonic(3);
-    let coset = domain.associated_coset();
+    let coset = domain.interleaved_coset();
     assert_eq!(coset.n_bits, 4);
     assert_eq!(coset.initial_index, CircleIndex::root(5));
 }

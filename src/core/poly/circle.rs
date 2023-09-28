@@ -33,7 +33,7 @@ impl CircleDomain {
         let line_domain = LineDomain::canonic(n_bits - 1);
         let shift_size =
             extension_line_domain.initial_index() - extension_domain.coset.initial_index;
-        Self::new(line_domain.associated_coset().shift(-shift_size))
+        Self::new(line_domain.interleaved_coset().shift(-shift_size))
     }
 
     pub fn iter(&self) -> CosetIterator {
@@ -71,19 +71,14 @@ impl CircleEvaluation {
         let line_domain = LineDomain::canonic(self.domain.n_bits() - 1);
         let shift_size = self.domain.projection_shift;
         let shifted_coset = self.domain.coset.shift(shift_size);
-        assert!(shifted_coset == line_domain.associated_coset());
+        assert!(shifted_coset == line_domain.interleaved_coset());
 
         let mut poly0_values = Vec::with_capacity(line_domain.len());
         let mut poly1_values = Vec::with_capacity(line_domain.len());
 
-        for (i, point) in line_domain
-            .associated_coset()
-            .iter()
-            .take(line_domain.len())
-            .enumerate()
-        {
-            let v0 = self.values[i];
-            let v1 = self.values[self.domain.len() - 1 - i];
+        for (i, point) in line_domain.half_coset().iter().enumerate() {
+            let v0 = self.values[2 * i];
+            let v1 = self.values[self.domain.len() - 1 - 2 * i];
             let r0 = (v0 + v1) / Field::from_u32_unchecked(2);
             let r1 = (v0 - v1) * point.y.inverse() / Field::from_u32_unchecked(2);
             poly0_values.push(r0);
@@ -120,16 +115,11 @@ impl CircleSemiEval {
     pub fn evaluate(self) -> CircleEvaluation {
         let mut values = vec![Field::zero(); self.domain.len()];
         let line_domain = self.domain.projected_line_domain;
-        for (i, point) in line_domain
-            .associated_coset()
-            .iter()
-            .take(line_domain.len())
-            .enumerate()
-        {
+        for (i, point) in line_domain.half_coset().iter().enumerate() {
             let v0 = self.poly0_eval.values[i];
             let v1 = self.poly1_eval.values[i];
-            values[i] = v0 + v1 * point.y;
-            values[self.domain.len() - 1 - i] = v0 - v1 * point.y;
+            values[2 * i] = v0 + v1 * point.y;
+            values[self.domain.len() - 1 - 2 * i] = v0 - v1 * point.y;
         }
         CircleEvaluation::new(self.domain, values)
     }
