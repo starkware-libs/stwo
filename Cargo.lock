@@ -456,6 +456,7 @@ dependencies = [
  "criterion",
  "hex",
  "num-traits",
+ "once_cell",
  "rand",
 ]
 
