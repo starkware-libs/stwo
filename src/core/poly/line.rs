@@ -1,7 +1,7 @@
 use crate::core::{
     circle::{CircleIndex, CirclePoint, Coset},
     fft::FFTree,
-    field::m31::Field,
+    fields::m31::Field,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

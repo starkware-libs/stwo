@@ -1,6 +1,6 @@
 use super::{
     circle::{CircleIndex, CirclePoint, Coset},
-    field::m31::Field,
+    fields::m31::Field,
     poly::circle::{CircleDomain, CircleEvaluation, CirclePoly},
 };
 
