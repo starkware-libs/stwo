@@ -14,3 +14,12 @@ rand = "0.8.3"
 [[bench]]
 name = "field"
 harness = false
+hex = "0.4.3"
+blake2 = "0.10.6"
+rand = "0.8.5"
+blake3 = "1.5.0"
+
+
+[[bench]]
+name = "merkle_bench"
+harness = false
