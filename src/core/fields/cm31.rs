@@ -4,7 +4,7 @@ use std::ops::Mul;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Complex extension field of M31.
-/// Equivalent to M31[x] over (x^2 + 1) as the irreducible polynomial.
+/// Equivalent to M31\[x\] over (x^2 + 1) as the irreducible polynomial.
 /// Represented as (a, b) of a + bi.
 pub struct CM31(M31, M31);
 

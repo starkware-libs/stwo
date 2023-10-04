@@ -79,7 +79,9 @@ impl FFTree {
 
 #[cfg(test)]
 fn get_trace() -> LineEvaluation {
-    let domain = LineDomain::canonic(10);
+    use super::circle::Coset;
+
+    let domain = LineDomain::new(Coset::half_odds(9));
     let trace = (0..(domain.len() as u32))
         .map(Field::from_u32_unchecked)
         .collect::<Vec<_>>();
@@ -109,10 +111,11 @@ fn test_ifft_fft() {
 
 #[test]
 fn test_extend() {
+    use super::circle::Coset;
     let eval = get_trace();
     let fftree = FFTree::preprocess(eval.domain);
     let poly = fftree.ifft(eval);
-    let poly2 = poly.extend(LineDomain::canonic(poly.bound_bits + 2));
+    let poly2 = poly.extend(LineDomain::new(Coset::half_odds(poly.bound_bits + 1)));
 
     assert_eq!(
         poly.eval_at_point(Field::one()),
