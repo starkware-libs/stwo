@@ -4,13 +4,17 @@ use super::{
     poly::circle::{CircleDomain, CircleEvaluation, CirclePoly},
 };
 
-pub fn domain_poly_eval(domain: CircleDomain, mut p: CirclePoint) -> Field {
-    p = p + domain.projection_shift.to_point();
-    let mut x = p.x;
-    for _ in 0..domain.n_bits() - 1 {
+pub fn coset_vanishing(coset: Coset, mut p: CirclePoint) -> Field {
+    p = p - coset.initial;
+    let mut x = p.y;
+    for _ in 0..(coset.n_bits - 1) {
         x = x.square().double() - Field::one();
     }
     x
+}
+
+pub fn circle_domain_vanishing(domain: CircleDomain, p: CirclePoint) -> Field {
+    coset_vanishing(domain.half_coset, p) * coset_vanishing(domain.half_coset.conjugate(), p)
 }
 
 pub fn point_excluder(point: CirclePoint, excluded: CirclePoint) -> Field {
@@ -48,19 +52,33 @@ impl<'a> PolyOracle for EvalByPoly<'a> {
     }
 }
 
+// TODO: make an iterator instead, so we do all computations beforehand.
 #[derive(Copy, Clone)]
 pub struct EvalByEvaluation<'a> {
-    pub domain: Coset,
-    pub offset: usize,
+    pub domain: CircleDomain,
+    pub offset: CircleIndex,
     pub eval: &'a CircleEvaluation,
 }
 impl<'a> PolyOracle for EvalByEvaluation<'a> {
     fn point(&self) -> CirclePoint {
-        self.domain.at(self.offset)
+        self.offset.to_point()
     }
-    fn get_at(&self, i: CircleIndex) -> Field {
-        assert_eq!(i.0 % self.domain.step_size.0, 0);
-        let rel = self.offset + i.0 / self.domain.step_size.0;
-        self.eval.values[rel % self.eval.values.len()]
+    fn get_at(&self, mut i: CircleIndex) -> Field {
+        i = i + self.offset;
+
+        // Check if it is in the first half.
+        if let Some(d) =
+            (i - self.domain.half_coset.initial_index).try_div(self.domain.half_coset.step_size)
+        {
+            let res = self.eval.values[d];
+            return res;
+        }
+        if let Some(d) =
+            (i + self.domain.half_coset.initial_index).try_div(-self.domain.half_coset.step_size)
+        {
+            let res = self.eval.values[self.domain.half_coset.len() + d];
+            return res;
+        }
+        panic!("Not on domain!")
     }
 }
