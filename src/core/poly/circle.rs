@@ -22,7 +22,7 @@ impl CircleDomain {
         Self { half_coset }
     }
     /// Constructs a domain for constraint evaluation.
-    pub fn canonic_evaluation(n_bits: usize) -> Self {
+    pub fn constraint_domain(n_bits: usize) -> Self {
         assert!(n_bits > 0);
         Self {
             half_coset: Coset::new(CirclePointIndex::generator(), n_bits - 1),
@@ -97,14 +97,33 @@ impl CanonicCoset {
             coset: Coset::odds(n_bits),
         }
     }
+    /// Gets the full coset represented G_{2n} + <G_n>.
     pub fn coset(&self) -> Coset {
         self.coset
     }
+    /// Gets half of the coset (its conjugate complements to the whole coset), G_{2n} + <G_{n/2}>
     pub fn half_coset(&self) -> Coset {
         Coset::half_odds(self.n_bits - 1)
     }
+    /// Gets the [CircleDomain] representing the same point set (in another order).
     pub fn circle_domain(&self) -> CircleDomain {
         CircleDomain::new(Coset::half_odds(self.coset.n_bits - 1))
+    }
+    /// Gets the [LineDomain] of the x coordinates of the coset.
+    pub fn line_domain(&self) -> LineDomain {
+        LineDomain::new(self.half_coset())
+    }
+    /// Gets a good [CircleDomain] for extension of a poly defined on this coset.
+    /// The reason the domain looks like this is a bit more intricate, and not covered here.
+    pub fn eval_domain(&self, eval_n_bits: usize) -> CircleDomain {
+        assert!(eval_n_bits > self.coset.n_bits);
+        if eval_n_bits == self.coset.n_bits + 1 {
+            return CircleDomain::new(Coset::new(
+                CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(eval_n_bits),
+                eval_n_bits - 1,
+            ));
+        }
+        CircleDomain::new(Coset::new(CirclePointIndex::generator(), eval_n_bits - 1))
     }
     pub fn n_bits(&self) -> usize {
         self.coset.n_bits
@@ -250,7 +269,7 @@ impl CirclePoly {
 
 #[test]
 fn test_circle_domain_iterator() {
-    let domain = CircleDomain::canonic_evaluation(3);
+    let domain = CircleDomain::constraint_domain(3);
     for (i, point) in domain.iter().enumerate() {
         if i < 4 {
             assert_eq!(
@@ -269,7 +288,7 @@ fn test_circle_domain_iterator() {
 
 #[test]
 fn test_interpolate_and_eval() {
-    let domain = CircleDomain::canonic_evaluation(3);
+    let domain = CircleDomain::constraint_domain(3);
     assert_eq!(domain.n_bits(), 3);
     let evaluation = CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
     let poly = evaluation
@@ -281,7 +300,7 @@ fn test_interpolate_and_eval() {
 
 #[test]
 fn test_interpolate_canonic_eval() {
-    let domain = CircleDomain::canonic_evaluation(3);
+    let domain = CircleDomain::constraint_domain(3);
     assert_eq!(domain.n_bits(), 3);
     let evaluation = CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
     let poly = evaluation.interpolate(&FFTree::preprocess(domain.line_domain()));
@@ -308,4 +327,65 @@ fn test_interpolate_canonic() {
             Field::from_u32_unchecked(i as u32)
         );
     }
+}
+
+#[test]
+fn test_mixed_degree_example() {
+    use crate::core::constraints::EvalByEvaluation;
+    use crate::core::constraints::PolyOracle;
+    use crate::core::fft::FFTree;
+    use crate::core::poly::circle::CanonicCoset;
+
+    let n_bits = 4;
+
+    // Compute domains.
+    let domain0 = CanonicCoset::new(n_bits);
+    let eval_domain0 = domain0.eval_domain(n_bits + 4);
+    let domain1 = CanonicCoset::new(n_bits + 2);
+    let eval_domain1 = domain1.eval_domain(n_bits + 3);
+    let constraint_domain = CircleDomain::constraint_domain(n_bits + 1);
+
+    // Compute values.
+    let values1: Vec<_> = (0..(domain1.len() as u32))
+        .map(Field::from_u32_unchecked)
+        .collect();
+    let values0: Vec<_> = values1[1..].iter().step_by(4).map(|x| *x * *x).collect();
+
+    // Extend.
+    let trace_eval0 = CircleEvaluation::new_canonical_ordered(domain0, values0);
+    let trace_line_domain0 = trace_eval0.domain.line_domain();
+    let eval0 = trace_eval0
+        .interpolate(&FFTree::preprocess(trace_line_domain0))
+        .extend(eval_domain0)
+        .evaluate(&FFTree::preprocess(eval_domain0.line_domain()));
+    let trace_eval1 = CircleEvaluation::new_canonical_ordered(domain1, values1);
+    let trace_line_domain1 = trace_eval1.domain.line_domain();
+    let eval1 = trace_eval1
+        .interpolate(&FFTree::preprocess(trace_line_domain1))
+        .extend(eval_domain1)
+        .evaluate(&FFTree::preprocess(eval_domain1.line_domain()));
+
+    // Compute constraint.
+    let constraint_eval = CircleEvaluation::new(
+        constraint_domain,
+        constraint_domain
+            .iter_indices()
+            .map(|ind| {
+                // The constraint is poly0(x+off0)^2 = poly1(x+off1).
+                EvalByEvaluation {
+                    offset: domain0.initial_index,
+                    eval: &eval0,
+                }
+                .get_at(ind)
+                .square()
+                    - EvalByEvaluation {
+                        offset: domain1.index_at(1),
+                        eval: &eval1,
+                    }
+                    .get_at(ind)
+                    .square()
+            })
+            .collect(),
+    );
+    println!("{:?}", constraint_eval);
 }
