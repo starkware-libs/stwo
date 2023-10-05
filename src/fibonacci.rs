@@ -11,7 +11,7 @@ pub struct TraceInfo {
 }
 impl TraceInfo {
     pub fn new(n_bits: usize) -> Self {
-        let evaluation_domain = CircleDomain::canonic_evaluation(n_bits + 1);
+        let evaluation_domain = CircleDomain::constraint_domain(n_bits + 1);
         let trace_domain = CanonicCoset::new(n_bits);
         Self {
             trace_domain,
@@ -61,7 +61,6 @@ fn test_constraint_on_trace() {
 
     for p_ind in trace_domain.iter_indices().take(6) {
         let res = trace_info.eval_constraint(EvalByEvaluation {
-            domain: trace.domain,
             offset: p_ind,
             eval: &trace,
         });
@@ -81,9 +80,7 @@ fn test_quotient_is_low_degree() {
     let evaluation_domain = trace_info.evaluation_domain;
 
     let trace = trace_info.get_trace();
-    let trace_poly = trace.interpolate(&FFTree::preprocess(
-        CircleDomain::canonic(trace_domain).line_domain(),
-    ));
+    let trace_poly = trace.interpolate(&FFTree::preprocess(trace_domain.line_domain()));
 
     let extended_evaluation = trace_poly
         .extend(evaluation_domain)
@@ -93,7 +90,6 @@ fn test_quotient_is_low_degree() {
     let mut quotient_values = Vec::with_capacity(evaluation_domain.len());
     for p_ind in evaluation_domain.iter_indices() {
         quotient_values.push(trace_info.eval_quotient(EvalByEvaluation {
-            domain: evaluation_domain,
             offset: p_ind,
             eval: &extended_evaluation,
         }));

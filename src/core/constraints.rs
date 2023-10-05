@@ -55,7 +55,6 @@ impl<'a> PolyOracle for EvalByPoly<'a> {
 // TODO: make an iterator instead, so we do all computations beforehand.
 #[derive(Copy, Clone)]
 pub struct EvalByEvaluation<'a> {
-    pub domain: CircleDomain,
     pub offset: CircleIndex,
     pub eval: &'a CircleEvaluation,
 }
@@ -65,18 +64,17 @@ impl<'a> PolyOracle for EvalByEvaluation<'a> {
     }
     fn get_at(&self, mut i: CircleIndex) -> Field {
         i = i + self.offset;
+        let domain = self.eval.domain;
 
         // Check if it is in the first half.
-        if let Some(d) =
-            (i - self.domain.half_coset.initial_index).try_div(self.domain.half_coset.step_size)
+        if let Some(d) = (i - domain.half_coset.initial_index).try_div(domain.half_coset.step_size)
         {
             let res = self.eval.values[d];
             return res;
         }
-        if let Some(d) =
-            (i + self.domain.half_coset.initial_index).try_div(-self.domain.half_coset.step_size)
+        if let Some(d) = (i + domain.half_coset.initial_index).try_div(-domain.half_coset.step_size)
         {
-            let res = self.eval.values[self.domain.half_coset.len() + d];
+            let res = self.eval.values[domain.half_coset.len() + d];
             return res;
         }
         panic!("Not on domain!")
