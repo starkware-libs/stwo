@@ -58,7 +58,6 @@ impl<'a> PolyOracle for EvalByPoly<'a> {
 // TODO(spapini): make an iterator instead, so we do all computations beforehand.
 #[derive(Copy, Clone)]
 pub struct EvalByEvaluation<'a> {
-    pub domain: CircleDomain,
     pub offset: CirclePointIndex,
     pub eval: &'a CircleEvaluation,
 }
@@ -70,7 +69,7 @@ impl<'a> PolyOracle for EvalByEvaluation<'a> {
         i = i + self.offset;
 
         // Check if it is in the first half.
-        let d = self.domain.find(i).expect("Not in domain");
+        let d = self.eval.domain.find(i).expect("Not in domain");
         self.eval.values[d]
     }
 }
