@@ -182,13 +182,16 @@ impl Coset {
             n_bits,
         }
     }
-    // 4j+1.
-    pub fn twisted(n_bits: usize) -> Self {
-        Self::new(CircleIndex::root(n_bits + 2), n_bits)
+    pub fn subgroup(n_bits: usize) -> Self {
+        Self::new(CircleIndex::zero(), n_bits)
     }
     // 2j+1.
     pub fn odds(n_bits: usize) -> Self {
         Self::new(CircleIndex::root(n_bits + 1), n_bits)
+    }
+    // 4j+1.
+    pub fn twisted(n_bits: usize) -> Self {
+        Self::new(CircleIndex::root(n_bits + 2), n_bits)
     }
     pub fn len(&self) -> usize {
         1 << self.n_bits
