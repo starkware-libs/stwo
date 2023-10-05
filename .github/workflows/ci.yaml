@@ -31,9 +31,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
           components: clippy
+          toolchain: nightly-2023-07-05
       - uses: Swatinem/rust-cache@v2
       - run: scripts/clippy.sh
 
@@ -41,12 +42,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
           profile: minimal
-          toolchain: stable
+          toolchain: nightly-2023-07-05
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test
+      - run: cargo +nightly-2023-07-05 test
 
   udeps:
     runs-on: ubuntu-latest
