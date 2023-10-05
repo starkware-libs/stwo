@@ -1,3 +1,5 @@
+cargo-features = ["profile-rustflags"]
+
 [package]
 name = "prover_research"
 version = "0.1.1"
@@ -10,6 +12,11 @@ edition = "2021"
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
 rand = "0.8.3"
+
+[profile.release]
+opt-level = 2
+rustflags = ["-C", "target-cpu=native", "-C", "target-feature=+avx512f"]
+debug = 2
 
 [[bench]]
 name = "field"
