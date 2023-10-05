@@ -187,16 +187,21 @@ impl Coset {
             n_bits,
         }
     }
-    /// Creates a coset of the form G_4n + <G_n>.
-    /// For example, for n=8, we get the point indices [1,5].
-    /// Its conjugate will be [7, 3].
-    pub fn twisted(n_bits: usize) -> Self {
-        Self::new(CirclePointIndex::subgroup_gen(n_bits + 2), n_bits)
+    /// Creates a coset of the form <G_n>.
+    /// For example, for n=8, we get the point indices [0,1,2,3,4,5,6,7].
+    pub fn subgroup(n_bits: usize) -> Self {
+        Self::new(CirclePointIndex::zero(), n_bits)
     }
     /// Creates a coset of the form G_2n + <G_n>.
     /// For example, for n=8, we get the point indices [1,3,5,7].
     pub fn odds(n_bits: usize) -> Self {
         Self::new(CirclePointIndex::subgroup_gen(n_bits + 1), n_bits)
+    }
+    /// Creates a coset of the form G_4n + <G_n>.
+    /// For example, for n=8, we get the point indices [1,5].
+    /// Its conjugate will be [7, 3].
+    pub fn twisted(n_bits: usize) -> Self {
+        Self::new(CirclePointIndex::subgroup_gen(n_bits + 2), n_bits)
     }
     pub fn len(&self) -> usize {
         1 << self.n_bits
