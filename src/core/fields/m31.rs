@@ -10,6 +10,7 @@ use std::ops::Sub;
 use std::ops::SubAssign;
 
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
+pub const K_BITS: u32 = 31;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct M31(u32);
@@ -43,7 +44,7 @@ impl M31 {
         res
     }
     pub fn reduce(val: u64) -> Self {
-        Self((((((val >> 31) + val + 1) >> 31) + val) & (P as u64)) as u32)
+        Self((((((val >> K_BITS) + val + 1) >> K_BITS) + val) & (P as u64)) as u32)
     }
 
     pub fn one() -> M31 {
