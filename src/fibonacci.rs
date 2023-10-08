@@ -78,16 +78,13 @@ fn test_quotient_is_low_degree() {
     use crate::core::circle::CIRCLE_GEN;
     use crate::core::constraints::EvalByEvaluation;
     use crate::core::constraints::EvalByPoly;
-    use crate::core::fft::FFTree;
 
     let fib = Fibonacci::new(5);
 
     let trace = fib.get_trace();
-    let trace_poly = trace.interpolate(&FFTree::preprocess(fib.trace_coset.line_domain()));
+    let trace_poly = trace.interpolate();
 
-    let extended_evaluation = trace_poly
-        .extend(fib.eval_domain)
-        .evaluate(&FFTree::preprocess(fib.eval_domain.line_domain()));
+    let extended_evaluation = trace_poly.clone().evaluate(fib.eval_domain);
 
     // Compute quotient on other cosets.
     let mut quotient_values = Vec::with_capacity(fib.constraint_eval_domain.len());
@@ -98,9 +95,7 @@ fn test_quotient_is_low_degree() {
         }));
     }
     let quotient_eval = CircleEvaluation::new(fib.constraint_eval_domain, quotient_values);
-    let quotient_poly = quotient_eval.interpolate(&FFTree::preprocess(
-        fib.constraint_eval_domain.line_domain(),
-    ));
+    let quotient_poly = quotient_eval.interpolate();
     assert_eq!(
         quotient_poly.eval_at_point(-CIRCLE_GEN),
         fib.eval_quotient(EvalByPoly {
