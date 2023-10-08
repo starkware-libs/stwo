@@ -189,7 +189,7 @@ impl Coset {
         }
     }
     /// Creates a coset of the form <G_n>.
-    /// For example, for n=8, we get the point indices [0,1,2,3,4,5,6,7].
+    /// For example, for n=8, we get the point indices \[0,1,2,3,4,5,6,7\].
     pub fn subgroup(n_bits: usize) -> Self {
         Self::new(CirclePointIndex::zero(), n_bits)
     }
@@ -200,7 +200,7 @@ impl Coset {
     }
     /// Creates a coset of the form G_4n + <G_n>.
     /// For example, for n=8, we get the point indices \[1,5,9,13,17,21,25,29\].
-    /// Its conjugate will be [3,7,11,15,19,23,27,31].
+    /// Its conjugate will be \[3,7,11,15,19,23,27,31\].
     pub fn half_odds(n_bits: usize) -> Self {
         Self::new(CirclePointIndex::subgroup_gen(n_bits + 2), n_bits)
     }

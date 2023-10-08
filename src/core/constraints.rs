@@ -1,5 +1,6 @@
 use super::{
     circle::{CirclePoint, CirclePointIndex, Coset},
+    fft::psi_x,
     fields::m31::Field,
     poly::circle::{CircleDomain, CircleEvaluation, CirclePoly},
 };
@@ -20,9 +21,9 @@ pub fn coset_vanishing(coset: Coset, mut p: CirclePoint) -> Field {
     p = p - coset.initial + coset.step_size.half().to_point();
     let mut x = p.x;
 
-    // The formula for the x coordinate of the double of a point is 2x^2-1.
+    // The formula for the x coordinate of the double of a point.
     for _ in 0..(coset.n_bits - 1) {
-        x = x.square().double() - Field::one();
+        x = psi_x(x);
     }
     x
 }
