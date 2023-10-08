@@ -2,11 +2,9 @@ use std::{iter::Chain, ops::Deref};
 
 use crate::core::{
     circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator},
-    fft::FFTree,
+    fft::{butterfly, ibutterfly},
     fields::m31::Field,
 };
-
-use super::line::{LineDomain, LineEvaluation, LinePoly};
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.
@@ -27,10 +25,6 @@ impl CircleDomain {
         Self {
             half_coset: Coset::new(CirclePointIndex::generator(), n_bits - 1),
         }
-    }
-    /// Returns the [LineDomain] of all x coordinates of this domain.
-    pub fn line_domain(&self) -> LineDomain {
-        LineDomain::new(self.half_coset)
     }
     pub fn iter(&self) -> Chain<CosetIterator<CirclePoint>, CosetIterator<CirclePoint>> {
         self.half_coset
@@ -109,10 +103,6 @@ impl CanonicCoset {
     pub fn circle_domain(&self) -> CircleDomain {
         CircleDomain::new(Coset::twisted(self.coset.n_bits - 1))
     }
-    /// Gets the [LineDomain] of the x coordinates of the coset.
-    pub fn line_domain(&self) -> LineDomain {
-        LineDomain::new(self.half_coset())
-    }
     /// Gets a good [CircleDomain] for extension of a poly defined on this coset.
     /// The reason the domain looks like this is a bit more intricate, and not covered here.
     pub fn eval_domain(&self, eval_n_bits: usize) -> CircleDomain {
@@ -170,100 +160,98 @@ impl CircleEvaluation {
             values: new_values,
         }
     }
-    pub fn semi_interpolate(self) -> CircleSemiEval {
-        assert!(self.domain.n_bits() > 0);
-        let line_domain = self.domain.line_domain();
-
-        let mut poly0_values = Vec::with_capacity(line_domain.len());
-        let mut poly1_values = Vec::with_capacity(line_domain.len());
-
-        for (i, point) in line_domain.coset().iter().enumerate() {
-            let v0 = self.values[i];
-            let v1 = self.values[i + line_domain.len()];
-            let r0 = (v0 + v1) / Field::from_u32_unchecked(2);
-            let r1 = (v0 - v1) * point.y.inverse() / Field::from_u32_unchecked(2);
-            poly0_values.push(r0);
-            poly1_values.push(r1);
+    pub fn interpolate(self) -> CirclePoly {
+        let mut coset = self.domain.half_coset;
+        let mut values = self.values;
+        let (l, r) = values.split_at_mut(coset.len());
+        for (i, p) in coset.iter().enumerate() {
+            ibutterfly(&mut l[i], &mut r[i], p.y.inverse());
+        }
+        while coset.len() > 1 {
+            for chunk in values.chunks_exact_mut(coset.len()) {
+                let (l, r) = chunk.split_at_mut(coset.len() / 2);
+                for (i, p) in coset.iter().take(coset.len() / 2).enumerate() {
+                    ibutterfly(&mut l[i], &mut r[i], p.x.inverse());
+                }
+            }
+            coset = coset.double();
         }
 
-        CircleSemiEval {
-            domain: self.domain,
-            poly0_eval: LineEvaluation::new(line_domain, poly0_values),
-            poly1_eval: LineEvaluation::new(line_domain, poly1_values),
+        // Divide all values by 2^n_bits.
+        let inv = Field::from_u32_unchecked(self.domain.len() as u32).inverse();
+        for val in &mut values {
+            *val *= inv;
         }
-    }
-    pub fn interpolate(self, tree: &FFTree) -> CirclePoly {
-        self.semi_interpolate().interpolate(tree)
-    }
-}
 
-// TODO(spapini): Try to get rid of this.
-/// An evaluation of 2 univariate polyomials defined on the x coordinates of a circle polynomial.
-#[derive(Clone, Debug)]
-pub struct CircleSemiEval {
-    pub domain: CircleDomain,
-    pub poly0_eval: LineEvaluation,
-    pub poly1_eval: LineEvaluation,
-}
-impl CircleSemiEval {
-    pub fn interpolate(self, tree: &FFTree) -> CirclePoly {
-        let poly0 = self.poly0_eval.interpolate(tree);
-        let poly1 = self.poly1_eval.interpolate(tree);
         CirclePoly {
-            domain: self.domain,
-            poly0,
-            poly1,
+            bound_bits: self.domain.n_bits(),
+            coeffs: values,
         }
-    }
-    pub fn evaluate(self) -> CircleEvaluation {
-        let mut values = vec![Field::zero(); self.domain.len()];
-        let line_domain = self.domain.line_domain();
-        for (i, point) in line_domain.coset().iter().enumerate() {
-            let v0 = self.poly0_eval.values[i];
-            let v1 = self.poly1_eval.values[i];
-            values[i] = v0 + v1 * point.y;
-            values[i + line_domain.len()] = v0 - v1 * point.y;
-        }
-        CircleEvaluation::new(self.domain, values)
     }
 }
 
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
 pub struct CirclePoly {
-    pub domain: CircleDomain,
-    pub poly0: LinePoly,
-    pub poly1: LinePoly,
+    pub bound_bits: usize,
+    pub coeffs: Vec<Field>,
 }
 impl CirclePoly {
+    pub fn new(bound_bits: usize, coeffs: Vec<Field>) -> Self {
+        assert!(coeffs.len() == (1 << bound_bits));
+        Self { bound_bits, coeffs }
+    }
     pub fn eval_at_point(&self, point: CirclePoint) -> Field {
-        let v0 = self.poly0.eval_at_point(point.x);
-        let v1 = self.poly1.eval_at_point(point.x);
-        v0 + v1 * point.y
-    }
-    pub fn extend(&self, extended_domain: CircleDomain) -> CirclePoly {
-        assert!(extended_domain.n_bits() >= self.domain.n_bits());
+        let mut mults = vec![Field::one(), point.y];
+        let mut x = point.x;
+        for _ in 0..(self.bound_bits - 1) {
+            mults.push(x);
+            x = x.square().double() - Field::one();
+        }
+        mults.reverse();
 
-        let extended_line_domain = extended_domain.line_domain();
-        let poly0 = self.poly0.extend(extended_line_domain);
-        let poly1 = self.poly1.extend(extended_line_domain);
-        CirclePoly {
-            domain: extended_domain,
-            poly0,
-            poly1,
+        let mut sum = Field::zero();
+        for (i, val) in self.coeffs.iter().enumerate() {
+            let mut cur_mult = Field::one();
+            for (j, mult) in mults.iter().enumerate() {
+                if i & (1 << j) != 0 {
+                    cur_mult *= *mult;
+                }
+            }
+            sum += *val * cur_mult;
         }
+        sum
     }
-    pub fn semi_evaluate(self, tree: &FFTree) -> CircleSemiEval {
-        let pol0_eval = self.poly0.evaluate(tree);
-        let pol1_eval = self.poly1.evaluate(tree);
-        CircleSemiEval {
-            domain: self.domain,
-            poly0_eval: pol0_eval,
-            poly1_eval: pol1_eval,
+    pub fn evaluate(self, domain: CircleDomain) -> CircleEvaluation {
+        let mut coset = domain.half_coset;
+        let mut cosets = vec![];
+
+        // TODO(spapini): extend better.
+        assert!(domain.n_bits() >= self.bound_bits);
+        let mut values = vec![Field::zero(); domain.len()];
+        let jump_bits = domain.n_bits() - self.bound_bits;
+        for (i, val) in self.coeffs.iter().enumerate() {
+            values[i << jump_bits] = *val;
         }
-    }
-    pub fn evaluate(self, tree: &FFTree) -> CircleEvaluation {
-        self.semi_evaluate(tree).evaluate()
+
+        while coset.len() > 1 {
+            cosets.push(coset);
+            coset = coset.double();
+        }
+        for coset in cosets.iter().rev() {
+            for chunk in values.chunks_exact_mut(coset.len()) {
+                let (l, r) = chunk.split_at_mut(coset.len() / 2);
+                for (i, p) in coset.iter().take(coset.len() / 2).enumerate() {
+                    butterfly(&mut l[i], &mut r[i], p.x);
+                }
+            }
+        }
+        let coset = domain.half_coset;
+        let (l, r) = values.split_at_mut(coset.len());
+        for (i, p) in coset.iter().enumerate() {
+            butterfly(&mut l[i], &mut r[i], p.y);
+        }
+        CircleEvaluation { domain, values }
     }
 }
 
@@ -291,10 +279,8 @@ fn test_interpolate_and_eval() {
     let domain = CircleDomain::constraint_domain(3);
     assert_eq!(domain.n_bits(), 3);
     let evaluation = CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
-    let poly = evaluation
-        .clone()
-        .interpolate(&FFTree::preprocess(domain.line_domain()));
-    let evaluation2 = poly.evaluate(&FFTree::preprocess(domain.line_domain()));
+    let poly = evaluation.clone().interpolate();
+    let evaluation2 = poly.evaluate(domain);
     assert_eq!(evaluation.values, evaluation2.values);
 }
 
@@ -303,7 +289,7 @@ fn test_interpolate_canonic_eval() {
     let domain = CircleDomain::constraint_domain(3);
     assert_eq!(domain.n_bits(), 3);
     let evaluation = CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
-    let poly = evaluation.interpolate(&FFTree::preprocess(domain.line_domain()));
+    let poly = evaluation.interpolate();
     for (i, point) in domain.iter().enumerate() {
         assert_eq!(
             poly.eval_at_point(point),
@@ -319,8 +305,7 @@ fn test_interpolate_canonic() {
         coset,
         (0..8).map(Field::from_u32_unchecked).collect(),
     );
-    let domain = evaluation.domain.line_domain();
-    let poly = evaluation.interpolate(&FFTree::preprocess(domain));
+    let poly = evaluation.interpolate();
     for (i, point) in Coset::odds(3).iter().enumerate() {
         assert_eq!(
             poly.eval_at_point(point),
@@ -333,7 +318,6 @@ fn test_interpolate_canonic() {
 fn test_mixed_degree_example() {
     use crate::core::constraints::EvalByEvaluation;
     use crate::core::constraints::PolyOracle;
-    use crate::core::fft::FFTree;
     use crate::core::poly::circle::CanonicCoset;
 
     let n_bits = 4;
@@ -353,17 +337,9 @@ fn test_mixed_degree_example() {
 
     // Extend.
     let trace_eval0 = CircleEvaluation::new_canonical_ordered(domain0, values0);
-    let trace_line_domain0 = trace_eval0.domain.line_domain();
-    let eval0 = trace_eval0
-        .interpolate(&FFTree::preprocess(trace_line_domain0))
-        .extend(eval_domain0)
-        .evaluate(&FFTree::preprocess(eval_domain0.line_domain()));
+    let eval0 = trace_eval0.interpolate().evaluate(eval_domain0);
     let trace_eval1 = CircleEvaluation::new_canonical_ordered(domain1, values1);
-    let trace_line_domain1 = trace_eval1.domain.line_domain();
-    let eval1 = trace_eval1
-        .interpolate(&FFTree::preprocess(trace_line_domain1))
-        .extend(eval_domain1)
-        .evaluate(&FFTree::preprocess(eval_domain1.line_domain()));
+    let eval1 = trace_eval1.interpolate().evaluate(eval_domain1);
 
     // Compute constraint.
     let constraint_eval = CircleEvaluation::new(
