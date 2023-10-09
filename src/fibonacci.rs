@@ -16,7 +16,7 @@ impl Fibonacci {
         let trace_coset = CanonicCoset::new(n_bits);
         let eval_domain = trace_coset.eval_domain(n_bits + 1);
         let constraint_coset = Coset::subgroup(n_bits);
-        let constraint_eval_domain = CircleDomain::constraint_domain(n_bits + 1);
+        let constraint_eval_domain = CircleDomain::constraint_eval_domain(n_bits + 1);
         Self {
             trace_coset,
             eval_domain,

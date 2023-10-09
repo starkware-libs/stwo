@@ -20,7 +20,7 @@ impl CircleDomain {
         Self { half_coset }
     }
     /// Constructs a domain for constraint evaluation.
-    pub fn constraint_domain(n_bits: usize) -> Self {
+    pub fn constraint_eval_domain(n_bits: usize) -> Self {
         assert!(n_bits > 0);
         Self {
             half_coset: Coset::new(CirclePointIndex::generator(), n_bits - 1),
@@ -268,7 +268,7 @@ impl CirclePoly {
 
 #[test]
 fn test_circle_domain_iterator() {
-    let domain = CircleDomain::constraint_domain(3);
+    let domain = CircleDomain::constraint_eval_domain(3);
     for (i, point) in domain.iter().enumerate() {
         if i < 4 {
             assert_eq!(
@@ -287,7 +287,7 @@ fn test_circle_domain_iterator() {
 
 #[test]
 fn test_interpolate_and_eval() {
-    let domain = CircleDomain::constraint_domain(3);
+    let domain = CircleDomain::constraint_eval_domain(3);
     assert_eq!(domain.n_bits(), 3);
     let evaluation = CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
     let poly = evaluation.clone().interpolate();
@@ -297,7 +297,7 @@ fn test_interpolate_and_eval() {
 
 #[test]
 fn test_interpolate_canonic_eval() {
-    let domain = CircleDomain::constraint_domain(3);
+    let domain = CircleDomain::constraint_eval_domain(3);
     assert_eq!(domain.n_bits(), 3);
     let evaluation = CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
     let poly = evaluation.interpolate();
@@ -338,7 +338,8 @@ fn test_mixed_degree_example() {
     let eval_domain0 = domain0.eval_domain(n_bits + 4);
     let domain1 = CanonicCoset::new(n_bits + 2);
     let eval_domain1 = domain1.eval_domain(n_bits + 3);
-    let constraint_domain = CircleDomain::constraint_domain(n_bits + 1);
+    let constraint_domain = Coset::subgroup(n_bits);
+    let constraint_eval_domain = CircleDomain::constraint_eval_domain(n_bits + 3);
 
     // Compute values.
     let values1: Vec<_> = (0..(domain1.len() as u32))
@@ -354,17 +355,16 @@ fn test_mixed_degree_example() {
 
     // Compute constraint.
     let constraint_eval = CircleEvaluation::new(
-        constraint_domain,
-        constraint_domain
+        constraint_eval_domain,
+        constraint_eval_domain
             .iter_indices()
             .map(|ind| {
-                // The constraint is poly0(x+off0)^2 = poly1(x+off1).
+                // The constraint is poly0(x+off0) = poly1(x+off1)^2.
                 EvalByEvaluation {
                     offset: domain0.initial_index,
                     eval: &eval0,
                 }
                 .get_at(ind)
-                .square()
                     - EvalByEvaluation {
                         offset: domain1.index_at(1),
                         eval: &eval1,
@@ -374,6 +374,16 @@ fn test_mixed_degree_example() {
             })
             .collect(),
     );
-    // TODO(spapini): Check low degree.
-    println!("{:?}", constraint_eval);
+    let constraint_poly = constraint_eval.interpolate();
+
+    // The polynomial should be constant on the constraint domain.
+    // The reason it is not zero is that cfft is not completely closed under shifts.
+    // We have a degree of freedom of the form c+NP, where NP is constant on a coset.
+    // Usually, this degree of freedom is eliminated when doing a quotient, but we didn't.
+
+    let mut value = None;
+    for x in constraint_domain.iter() {
+        let current = constraint_poly.eval_at_point(x);
+        assert_eq!(*value.get_or_insert(current), current);
+    }
 }
