@@ -28,6 +28,10 @@ impl Default for Consts {
 pub struct M31AVX512(__m512i);
 
 impl M31AVX512 {
+    pub fn one() -> Self {
+        Self(unsafe { _mm512_set1_epi64(1) })
+    }
+
     #[inline(always)]
     pub fn add(self, cn: Consts, rhs: Self) -> Self {
         unsafe {
