@@ -17,6 +17,8 @@ impl M31AVX512 {
     /// Given x1,...,x\[K_BLOCK_SIZE\] values, each in [0, 2*\[P\]), packed in x,
     /// returns packed xi % \[P\].
     /// If xi == 2*\[P\], then it reduces to \[P\].
+    /// Note that this function can be used for both reduced and unreduced representations.
+    /// [0, 2*\[P\]) -> [0, \[P\]), [\[P\], 2*\[P\]] -> [0, \[P\]].
     fn partial_reduce(x: __m512i) -> Self {
         unsafe {
             let shifted_x = _mm512_srli_epi64(x, K_BITS);
@@ -28,6 +30,8 @@ impl M31AVX512 {
     /// Given x1,...,x\[K_BLOCK_SIZE\] values, each in [0, \[P\]^2), packed in x,
     /// returns packed xi % \[P\].
     /// If xi == \[P\]^2, then it reduces to \[P\].
+    /// Note that this function can be used for both reduced and unreduced representations.
+    /// [0, \[P\]^2) -> [0, \[P\]), [\[P\], \[P\]^2] -> [0, \[P\]].
     fn reduce(x: __m512i) -> Self {
         unsafe {
             let x_plus_one: __m512i = _mm512_add_epi64(x, M512ONE);
@@ -48,6 +52,10 @@ impl M31AVX512 {
                 v.as_ptr() as *const __m256i
             )))
         }
+    }
+
+    pub fn from_m512_unchecked(x: __m512i) -> Self {
+        Self(x)
     }
 
     pub fn to_vec(self) -> Vec<M31> {
