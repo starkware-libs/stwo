@@ -50,6 +50,10 @@ impl M31AVX512 {
         }
     }
 
+    pub fn from_m512_unchecked(x: __m512i) -> Self {
+        Self(x)
+    }
+
     pub fn to_vec(self) -> Vec<M31> {
         unsafe {
             let mut v = Vec::with_capacity(K_BLOCK_SIZE);
