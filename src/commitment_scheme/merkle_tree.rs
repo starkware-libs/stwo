@@ -1,4 +1,5 @@
 use super::hasher::Hasher;
+use crate::math;
 use byteorder;
 use byteorder::{BigEndian, ByteOrder};
 
@@ -14,10 +15,8 @@ impl<T: Hasher> MerkleTree<T> {
     // TODO(Ohad): deal with mixed degree, taking columns instead of a stream.
     pub fn commit(elems: &[u32]) -> Self {
         let elems_in_block = T::BLOCK_SIZE_IN_BYTES / NUM_BYTES_FELT;
-        let bottom_layer_length = (elems.len() + elems_in_block - 1) / elems_in_block; // Ceil (a/b).
-        let tree_height = std::mem::size_of_val(&bottom_layer_length) * 8
-            - (bottom_layer_length - 1).leading_zeros() as usize
-            + 1; // uInt Log2Ceil + 1.
+        let bottom_layer_length = math::usize_div_ceil(elems.len(), elems_in_block);
+        let tree_height = math::log2_ceil(bottom_layer_length) + 1;
         let mut data: Vec<Vec<T::Hash>> = Vec::with_capacity(tree_height);
 
         // Concatenate elements to T::BLOCK_SIZE byte blocks and hash.
@@ -60,5 +59,25 @@ impl<T: Hasher> MerkleTree<T> {
             res.push(T::concat_and_hash(&layer[i * 2], &layer[i * 2 + 1]));
         }
         res
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MerkleTree;
+    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
+    #[test]
+    fn merkle_tree_building() {
+        let leaves = [0; 64];
+        let mut tree: MerkleTree<Blake3Hasher> = MerkleTree::commit(&leaves[..]);
+        assert_eq!(tree.height, 3);
+        assert_eq!(
+            tree.data[0][0].to_string(),
+            "4d006976636a8696d909a630a4081aad4d7c50f81afdee04020bf05086ab6a55"
+        );
+        assert_eq!(
+            tree.root_hex(),
+            "06253c52ed8536e4b07757d679c547fdb2051181a9cbd1e3516bfc71742936f7"
+        )
     }
 }

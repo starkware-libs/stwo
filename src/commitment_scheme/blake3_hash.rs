@@ -1,6 +1,6 @@
-use std::fmt;
-
 use super::hasher::Name;
+use blake3;
+use std::fmt;
 
 // Wrapper for the blake3 hash type.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -14,7 +14,11 @@ impl From<Blake3Hash> for Vec<u8> {
 
 impl From<Vec<u8>> for Blake3Hash {
     fn from(value: Vec<u8>) -> Self {
-        Self(*blake3::hash(&value[..]).as_bytes())
+        Self(
+            value
+                .try_into()
+                .expect("Failed converting Vec<u8> to Blake3Hash Type!"),
+        )
     }
 }
 
@@ -45,5 +49,34 @@ impl super::hasher::Hasher for Blake3Hasher {
         hasher.update(&v2.0);
 
         Blake3Hash(*hasher.finalize().as_bytes())
+    }
+
+    // TODO(Ohad): Implement SIMD parallelised hashing.
+    fn hash_many(inputs: &[Vec<u8>]) -> Vec<Self::Hash> {
+        inputs.iter().map(|b| Self::hash(b)).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::commitment_scheme::hasher::Hasher;
+
+    #[test]
+    fn test_build_vec_from_blake() {
+        let hash_a = super::Blake3Hasher::hash(b"a");
+        let vec_a: Vec<u8> = hash_a.into();
+        assert_eq!(
+            hex::encode(&vec_a[..]),
+            String::from("17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f")
+        );
+    }
+
+    #[test]
+    fn single_hash() {
+        let hash_a = super::Blake3Hasher::hash(b"a");
+        assert_eq!(
+            hash_a.to_string(),
+            "17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f"
+        );
     }
 }

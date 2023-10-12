@@ -4,8 +4,9 @@ pub trait Name {
     const NAME: Cow<'static, str>;
 }
 pub trait Hasher {
-    type Hash: Copy + Display + self::Name + Into<Vec<u8>> + TryFrom<Vec<u8>>;
+    type Hash: Copy + Display + self::Name + From<Vec<u8>> + Into<Vec<u8>> + TryFrom<Vec<u8>>;
     const BLOCK_SIZE_IN_BYTES: usize;
     fn concat_and_hash(v1: &Self::Hash, v2: &Self::Hash) -> Self::Hash;
     fn hash(data: &[u8]) -> Self::Hash;
+    fn hash_many(inputs: &[Vec<u8>]) -> Vec<Self::Hash>;
 }

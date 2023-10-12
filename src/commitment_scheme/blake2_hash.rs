@@ -1,6 +1,5 @@
-use std::fmt;
-
 use blake2::{Blake2s256, Digest};
+use std::fmt;
 
 // Wrapper for the blake2s hash type.
 #[derive(Clone, Copy, PartialEq)]
@@ -52,5 +51,33 @@ impl super::hasher::Hasher for Blake2sHasher {
         hasher.update(v2.0);
 
         Blake2sHash(hasher.finalize().into())
+    }
+
+    fn hash_many(inputs: &[Vec<u8>]) -> Vec<Self::Hash> {
+        inputs.iter().map(|b| Self::hash(b)).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::commitment_scheme::hasher::Hasher;
+
+    #[test]
+    fn test_build_vec_from_blake() {
+        let hash_a = super::Blake2sHasher::hash(b"a");
+        let vec_a: Vec<u8> = hash_a.into();
+        assert_eq!(
+            hex::encode(&vec_a[..]),
+            String::from("4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e90")
+        );
+    }
+
+    #[test]
+    fn single_hash() {
+        let hash_a = super::Blake2sHasher::hash(b"a");
+        assert_eq!(
+            hash_a.to_string(),
+            "4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e90"
+        );
     }
 }
