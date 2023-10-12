@@ -54,6 +54,10 @@ impl M31AVX512 {
         }
     }
 
+    pub fn from_m512_unchecked(x: __m512i) -> Self {
+        Self(x)
+    }
+
     pub fn to_vec(self) -> Vec<M31> {
         unsafe {
             let mut v = Vec::with_capacity(K_BLOCK_SIZE);
@@ -70,12 +74,14 @@ impl M31AVX512 {
 impl Add for M31AVX512 {
     type Output = Self;
 
+    #[inline(always)]
     fn add(self, rhs: Self) -> Self::Output {
         unsafe { Self::partial_reduce(_mm512_add_epi64(self.0, rhs.0)) }
     }
 }
 
 impl AddAssign for M31AVX512 {
+    #[inline(always)]
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
@@ -84,12 +90,14 @@ impl AddAssign for M31AVX512 {
 impl Mul for M31AVX512 {
     type Output = Self;
 
+    #[inline(always)]
     fn mul(self, rhs: Self) -> Self::Output {
         unsafe { Self::reduce(_mm512_mul_epu32(self.0, rhs.0)) }
     }
 }
 
 impl MulAssign for M31AVX512 {
+    #[inline(always)]
     fn mul_assign(&mut self, rhs: Self) {
         *self = *self * rhs;
     }
