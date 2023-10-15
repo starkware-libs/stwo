@@ -47,6 +47,10 @@ impl M31 {
         Self((((((val >> K_BITS) + val + 1) >> K_BITS) + val) & (P as u64)) as u32)
     }
 
+    pub fn partial_reduce(val: u64) -> Self {
+        Self((((val >> K_BITS) + val) & (P as u64)) as u32)
+    }
+
     pub fn one() -> M31 {
         Self(1)
     }

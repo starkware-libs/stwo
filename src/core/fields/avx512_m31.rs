@@ -1,8 +1,12 @@
 use core::arch::x86_64::*;
+use std::fmt::Display;
 use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Mul;
 use std::ops::MulAssign;
+use std::ops::Neg;
+use std::ops::Sub;
+use std::ops::SubAssign;
 
 use super::m31::{K_BITS, M31, P};
 pub const K_BLOCK_SIZE: usize = 8;
@@ -16,9 +20,11 @@ impl M31AVX512 {
     #[inline(always)]
     /// Given x1,...,x\[K_BLOCK_SIZE\] values, each in [0, 2*\[P\]), packed in x,
     /// returns packed xi % \[P\].
-    /// If xi == 2*\[P\], then it reduces to \[P\].
+    /// If xi == \[P\] or 2*\[P\], then it reduces to \[P\].
     /// Note that this function can be used for both reduced and unreduced representations.
     /// [0, 2*\[P\]) -> [0, \[P\]), [0, 2*\[P\]] -> [0, \[P\]].
+    // TODO(ShaharS, 01/12/2023): Remove allow dead code.
+    #[allow(dead_code)]
     fn partial_reduce(x: __m512i) -> Self {
         unsafe {
             let shifted_x = _mm512_srli_epi64(x, K_BITS);
@@ -71,12 +77,22 @@ impl M31AVX512 {
     }
 }
 
+impl Display for M31AVX512 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let v = self.to_vec();
+        for elem in v.iter() {
+            write!(f, "{} ", elem)?;
+        }
+        Ok(())
+    }
+}
+
 impl Add for M31AVX512 {
     type Output = Self;
 
     #[inline(always)]
     fn add(self, rhs: Self) -> Self::Output {
-        unsafe { Self::partial_reduce(_mm512_add_epi64(self.0, rhs.0)) }
+        unsafe { Self::reduce(_mm512_add_epi64(self.0, rhs.0)) }
     }
 }
 
@@ -103,18 +119,41 @@ impl MulAssign for M31AVX512 {
     }
 }
 
+impl Neg for M31AVX512 {
+    type Output = Self;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        unsafe { Self::reduce(_mm512_sub_epi64(M512P, self.0)) }
+    }
+}
+
+impl Sub for M31AVX512 {
+    type Output = Self;
+
+    #[inline(always)]
+    fn sub(self, rhs: Self) -> Self::Output {
+        unsafe { Self::reduce(_mm512_add_epi64(self.0, (-rhs).0)) }
+    }
+}
+
+impl SubAssign for M31AVX512 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
+    }
+}
+
 #[test]
-fn test_avx512_mul() {
+/// Tests field operations where field elements are in reduced form.
+fn test_avx512_ops() {
     if !crate::platform::avx512_detected() {
         return;
     }
 
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-
-    let values = (0..K_BLOCK_SIZE)
-        .map(|_x| M31::from_u32_unchecked(rng.gen::<u32>() % P))
-        .collect::<Vec<M31>>();
+    let values = [0, 1, 2, 10, (P - 1) / 2, (P + 1) / 2, P - 2, P - 1]
+        .map(M31::from_u32_unchecked)
+        .to_vec();
     let avx_values = M31AVX512::from_vec(&values);
 
     assert_eq!(
@@ -124,5 +163,56 @@ fn test_avx512_mul() {
     assert_eq!(
         (avx_values * avx_values).to_vec(),
         values.iter().map(|x| x.square()).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        (-avx_values).to_vec(),
+        values.iter().map(|x| -*x).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+/// Tests that reduce functions are correct.
+fn test_reduce() {
+    if !crate::platform::avx512_detected() {
+        return;
+    }
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+
+    let const_values = [0, 1, (P + 1) / 2, P - 1, P, P + 1, 2 * P - 1, 2 * P];
+    let avx_const_values = M31AVX512::from_vec(&const_values.map(M31::from_u32_unchecked).to_vec());
+
+    // Tests partial reduce.
+    assert_eq!(
+        M31AVX512::partial_reduce(avx_const_values.0).to_vec(),
+        const_values
+            .iter()
+            .map(|x| M31::from_u32_unchecked(if *x == P || *x == 2 * P { P } else { x % P }))
+            .collect::<Vec<_>>()
+    );
+
+    // Generate random values in [0, P^2).
+    let rand_values = (0..K_BLOCK_SIZE)
+        .map(|_x| rng.gen::<u64>() % (P as u64).pow(2))
+        .collect::<Vec<u64>>();
+    let avx_rand_values = M31AVX512::from_m512_unchecked(unsafe {
+        _mm512_loadu_epi64(rand_values.as_ptr() as *const i64)
+    });
+
+    // Tests reduce.
+    assert_eq!(
+        M31AVX512::reduce(avx_const_values.0).to_vec(),
+        const_values
+            .iter()
+            .map(|x| M31::from_u32_unchecked(x % P))
+            .collect::<Vec<_>>()
+    );
+
+    assert_eq!(
+        M31AVX512::reduce(avx_rand_values.0).to_vec(),
+        rand_values
+            .iter()
+            .map(|x| M31::from_u32_unchecked((x % P as u64) as u32))
+            .collect::<Vec<_>>()
     );
 }
