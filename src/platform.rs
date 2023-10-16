@@ -7,10 +7,7 @@ pub fn avx512_detected() -> bool {
     {
         return true;
     }
+
     // Dynamic check, if std is enabled.
-    #[cfg(feature = "std")]
-    {
-        return is_x86_feature_detected!("avx512f");
-    }
-    false
+    is_x86_feature_detected!("avx512f")
 }
