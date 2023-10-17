@@ -14,7 +14,11 @@ impl From<Blake3Hash> for Vec<u8> {
 
 impl From<Vec<u8>> for Blake3Hash {
     fn from(value: Vec<u8>) -> Self {
-        Self(*blake3::hash(&value[..]).as_bytes())
+        Self(
+            value
+                .try_into()
+                .expect("Failed converting Vec<u8> to Blake3Hash Type!"),
+        )
     }
 }
 
