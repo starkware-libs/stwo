@@ -69,6 +69,36 @@ impl M31AVX512 {
             v
         }
     }
+
+    pub fn one() -> M31AVX512 {
+        Self(M512ONE)
+    }
+
+    pub fn double(&self) -> M31AVX512 {
+        unsafe { Self::partial_reduce(_mm512_add_epi64(self.0, self.0)) }
+    }
+
+    pub fn square(&self) -> M31AVX512 {
+        *self * *self
+    }
+
+    pub fn pow(&self, exp: u32) -> M31AVX512 {
+        let mut res = M31AVX512::one();
+        let mut base = *self;
+        let mut exp = exp;
+        while exp > 0 {
+            if exp & 1 == 1 {
+                res *= base;
+            }
+            base = base.square();
+            exp >>= 1;
+        }
+        res
+    }
+
+    pub fn inverse(&self) -> M31AVX512 {
+        self.pow(P - 2)
+    }
 }
 
 impl Add for M31AVX512 {
@@ -119,10 +149,37 @@ fn test_avx512_mul() {
 
     assert_eq!(
         (avx_values + avx_values).to_vec(),
-        values.iter().map(|x| x.double()).collect::<Vec<_>>()
+        values.iter().map(|x| x.double()).collect::<Vec<_>>(),
     );
     assert_eq!(
         (avx_values * avx_values).to_vec(),
         values.iter().map(|x| x.square()).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_avx512_complex_ops() {
+    if !crate::platform::avx512_detected() {
+        return;
+    }
+
+    let values = M31AVX512::from_vec(
+        &([0, 1, 2, 10, (P - 1) / 2, (P + 1) / 2, P - 2, P - 1]
+            .map(M31::from_u32_unchecked)
+            .to_vec()),
+    );
+    assert_eq!(values.double().to_vec(), (values + values).to_vec(),);
+
+    assert_eq!(
+        (values.square().square() * values).to_vec(),
+        (values.pow(5)).to_vec(),
+    );
+
+    assert_eq!(
+        (values * values.inverse()).to_vec(),
+        vec![M31::zero(); 1]
+            .into_iter()
+            .chain(std::iter::repeat(M31::one()).take(K_BLOCK_SIZE - 1))
+            .collect::<Vec<_>>(),
     );
 }
