@@ -155,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn test_basic_operations() {
+    fn test_basic_ops() {
         let mut rng = rand::thread_rng();
         for _ in 0..10000 {
             let x: u32 = rng.gen::<u32>() % P;
