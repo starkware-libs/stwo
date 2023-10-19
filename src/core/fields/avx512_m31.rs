@@ -1,8 +1,12 @@
 use core::arch::x86_64::*;
+use std::fmt::Display;
 use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Mul;
 use std::ops::MulAssign;
+use std::ops::Neg;
+use std::ops::Sub;
+use std::ops::SubAssign;
 
 use super::m31::{K_BITS, M31, P};
 pub const K_BLOCK_SIZE: usize = 8;
@@ -71,6 +75,16 @@ impl M31AVX512 {
     }
 }
 
+impl Display for M31AVX512 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let v = self.to_vec();
+        for elem in v.iter() {
+            write!(f, "{} ", elem)?;
+        }
+        Ok(())
+    }
+}
+
 impl Add for M31AVX512 {
     type Output = Self;
 
@@ -103,6 +117,38 @@ impl MulAssign for M31AVX512 {
     }
 }
 
+impl Neg for M31AVX512 {
+    type Output = Self;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        unsafe { Self::partial_reduce(_mm512_sub_epi64(M512P, self.0)) }
+    }
+}
+
+impl Sub for M31AVX512 {
+    type Output = Self;
+
+
+    #[inline(always)]
+    fn sub(self, rhs: Self) -> Self::Output {
+        unsafe {
+            let a_minus_b = _mm512_sub_epi32(self.0, rhs.0);
+            Self(_mm512_min_epu32(
+                a_minus_b,
+                _mm512_add_epi32(a_minus_b, M512P),
+            ))
+        }
+    }
+}
+
+impl SubAssign for M31AVX512 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs;
+    }
+}
+
 #[test]
 /// Tests field operations where field elements are in reduced form.
 fn test_avx512_basic_ops() {
@@ -122,6 +168,10 @@ fn test_avx512_basic_ops() {
     assert_eq!(
         (avx_values * avx_values).to_vec(),
         values.iter().map(|x| x.square()).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        (-avx_values).to_vec(),
+        values.iter().map(|x| -*x).collect::<Vec<_>>()
     );
 }
 

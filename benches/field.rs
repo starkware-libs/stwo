@@ -86,6 +86,18 @@ pub fn avx512_field_operations_bench(c: &mut criterion::Criterion) {
             }
         })
     });
+
+    c.bench_function("sub_avx512", |b| {
+        b.iter(|| {
+            for elem in elements.iter() {
+                for _ in 0..128 {
+                    for state in states.iter_mut() {
+                        *state -= *elem;
+                    }
+                }
+            }
+        })
+    });
 }
 
 criterion::criterion_group!(
