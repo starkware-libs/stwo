@@ -39,7 +39,7 @@ jobs:
       - run: scripts/clippy.sh
 
   run-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-m
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@master
@@ -47,7 +47,7 @@ jobs:
           profile: minimal
           toolchain: nightly-2023-07-05
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2023-07-05 test
+      - run: cargo +nightly-2023-07-05 test --features avx512
 
   udeps:
     runs-on: ubuntu-latest

@@ -3,8 +3,7 @@
 #[allow(unreachable_code)]
 pub fn avx512_detected() -> bool {
     // Static check, e.g. for building with target-cpu=native.
-    #[cfg(target_feature = "avx512f")]
-    {
+    if cfg!(feature = "avx512") {
         return true;
     }
 
