@@ -39,7 +39,7 @@ jobs:
       - run: scripts/clippy.sh
 
   run-tests:
-    runs-on: ubuntu-latest-m
+    runs-on: avx
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@master
