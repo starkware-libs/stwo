@@ -17,6 +17,9 @@ hex = "0.4.3"
 criterion = { version = "0.5.1", features = ["html_reports"] }
 rand = "0.8.3"
 
+[features]
+avx512 = []
+
 [profile.release]
 opt-level = 2
 rustflags = ["-C", "target-cpu=native"]
