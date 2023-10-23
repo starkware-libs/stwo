@@ -58,6 +58,10 @@ impl M31 {
         assert!(*self != Self::zero(), "division by zero");
         self.pow(P - 2)
     }
+
+    pub fn to_u32(&self) -> u32 {
+        self.0
+    }
 }
 
 impl Display for M31 {
