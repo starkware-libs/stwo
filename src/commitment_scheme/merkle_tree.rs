@@ -1,10 +1,9 @@
 use crate::math;
 
-use super::hasher::Hasher;
+use super::{hasher::Hasher, NUM_BYTES_FELT};
 use byteorder;
 use byteorder::{BigEndian, ByteOrder};
 
-pub const NUM_BYTES_FELT: usize = 4;
 pub struct MerkleTree<T: Hasher> {
     pub data: Vec<Vec<T::Hash>>,
     pub height: usize,
