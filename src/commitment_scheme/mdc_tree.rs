@@ -1,4 +1,4 @@
-use super::hasher::Hasher;
+use super::{hasher::Hasher, NUM_BYTES_FELT};
 use std::collections::BTreeMap;
 
 type ColumnArray = Vec<Vec<u32>>;
@@ -38,9 +38,80 @@ pub fn sort_columns_and_extract_remainder(
     (columns_length_map, remainder_columns)
 }
 
+/// Given columns of the same length, transforms to bytes and concatenates corresponding column elements.
+/// Assumes columns are of the same length.
+pub fn prepare_pre_hash_no_inject(eq_length_cols: &ColumnArray) -> Vec<Vec<u8>> {
+    let column_length = eq_length_cols[0].len();
+    let n_collumns = eq_length_cols.len();
+    let mut pre_hash: Vec<Vec<u8>> = Vec::with_capacity(column_length);
+    for i in 0..column_length {
+        let mut row: Vec<u8> = Vec::with_capacity(n_collumns * NUM_BYTES_FELT);
+        let mut row_ptr = row.as_mut_ptr();
+        unsafe {
+            for c in eq_length_cols {
+                std::ptr::copy_nonoverlapping(
+                    c.as_ptr().add(i) as *mut u8,
+                    row_ptr,
+                    NUM_BYTES_FELT,
+                );
+                row_ptr = row_ptr.add(NUM_BYTES_FELT);
+            }
+            row.set_len(n_collumns * NUM_BYTES_FELT);
+        }
+        pre_hash.push(row);
+    }
+    pre_hash
+}
+
+/// Take previous results and concatenate with corresponding "for injection" columns.
+// There is a reallocation as the previous layer is a continous array.
+// TODO(Ohad): Re-write the hashing module so that the above stated realloc-copy is redundent and can be optimized.
+pub fn inject<T: Hasher>(
+    prev_layer_hash: &Vec<T::Hash>,
+    cols_to_inject: &[Vec<u32>],
+) -> Vec<Vec<u8>> {
+    // Assumes columns are of the same length.
+    // TODO(Ohad): Consider asserting the above statement.
+    let column_length = cols_to_inject[0].len();
+    let new_layer_len = prev_layer_hash.len() / 2;
+    assert_eq!(new_layer_len, column_length);
+
+    let mut prev_layer_hash_injected: Vec<Vec<u8>> = Vec::with_capacity(new_layer_len);
+    let n_collumns = cols_to_inject.len();
+
+    // Allocate more space, copy values over, inject.
+    let prev_layer_as_byte_ptr = prev_layer_hash.as_ptr() as *const u8;
+    for i in 0..new_layer_len {
+        let mut vec_to_fill: Vec<u8> =
+            Vec::with_capacity(T::OUTPUT_SIZE_IN_BYTES * 2 + n_collumns * NUM_BYTES_FELT);
+        let mut vec_to_fill_ptr = vec_to_fill.as_mut_ptr();
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                prev_layer_as_byte_ptr.add(i * T::OUTPUT_SIZE_IN_BYTES * 2),
+                vec_to_fill_ptr,
+                T::OUTPUT_SIZE_IN_BYTES * 2,
+            );
+            vec_to_fill_ptr = vec_to_fill_ptr.add(T::OUTPUT_SIZE_IN_BYTES * 2);
+            for c in cols_to_inject {
+                std::ptr::copy_nonoverlapping(c.as_ptr().add(i) as *mut u8, vec_to_fill_ptr, 4);
+                vec_to_fill_ptr = vec_to_fill_ptr.add(4);
+            }
+            vec_to_fill.set_len(T::OUTPUT_SIZE_IN_BYTES * 2 + n_collumns * NUM_BYTES_FELT);
+        }
+        prev_layer_hash_injected.push(vec_to_fill);
+    }
+
+    prev_layer_hash_injected
+}
+
 #[cfg(test)]
 mod tests {
     use super::{sort_columns_and_extract_remainder, ColumnArray, MAX_SUBTREE_BOTTOM_LAYER_LENGTH};
+    use crate::commitment_scheme::{
+        blake3_hash::Blake3Hasher,
+        hasher::Hasher,
+        mdc_tree::{inject, prepare_pre_hash_no_inject},
+    };
 
     fn init_test_trace() -> Vec<Vec<u32>> {
         let col0 = std::iter::repeat(0)
@@ -69,5 +140,32 @@ mod tests {
 
         //Test remainder
         assert_eq!(remainder_columns, vec![cols[0].clone()]);
+    }
+
+    #[test]
+    fn pre_hash_no_inject_test() {
+        let cols = init_test_trace();
+        let mut map = sort_columns_and_extract_remainder(cols, MAX_SUBTREE_BOTTOM_LAYER_LENGTH).0;
+        let layer_0_pre_hash = prepare_pre_hash_no_inject(&map.pop_last().expect("Empty map!").1);
+        assert_eq!(
+            format!("{:?}", layer_0_pre_hash),
+            "[[1, 0, 0, 0], [2, 0, 0, 0], [3, 0, 0, 0], [4, 0, 0, 0]]"
+        );
+    }
+
+    #[test]
+    fn inject_test() {
+        let hash_a = Blake3Hasher::hash(b"a");
+        let prev_layer = vec![hash_a, hash_a, hash_a, hash_a];
+        let col1 = vec![1, 2];
+        let col2 = vec![3, 4];
+        let cols = vec![col1, col2];
+
+        let injected_hash = inject::<Blake3Hasher>(&prev_layer, &cols);
+
+        assert_eq!(hex::encode(&injected_hash[0]),
+            "17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f0100000003000000");
+        assert_eq!(hex::encode(&injected_hash[1]),
+            "17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f0200000004000000");
     }
 }
