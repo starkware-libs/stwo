@@ -1,13 +1,8 @@
-use super::hasher::Hasher;
+use super::{hasher::Hasher, NUM_BYTES_FELT};
 use std::collections::BTreeMap;
 
 type ColumnArray = Vec<Vec<u32>>;
 type ColumnLengthMap = BTreeMap<usize, Vec<Vec<u32>>>;
-
-//TODO(Ohad): TODO(Ohad): Remove #[allow(dead_code)].
-#[allow(dead_code)]
-const MAX_SUBTREE_BOTTOM_LAYER_LENGTH: usize = 64;
-
 /// Merkle Tree interface. Namely: Commit & Decommit.
 // TODO(Ohad): Decommitment, Multi-Treading.
 // TODO(Ohad): Remove #[allow(dead_code)].
@@ -21,7 +16,7 @@ pub struct MixedDegreeTree<T: Hasher> {
 
 /// Takes columns that should be commited on, sorts and maps by length.
 /// Extracts columns that are too long for handling by subtrees.
-pub fn sort_columns_and_extract_remainder(
+pub fn map_columns_sorted(
     cols: ColumnArray,
     max_layer_length_to_keep: usize,
 ) -> (ColumnLengthMap, ColumnArray) {
@@ -38,11 +33,54 @@ pub fn sort_columns_and_extract_remainder(
     (columns_length_map, remainder_columns)
 }
 
+/// Given columns of the same length, transforms to bytes and concatenates corresponding column elements.
+/// Assumes columns are of the same length.
+/// # Safety
+/// Pointers in 'dst' should point to pre-allocated memory with enough space to store column_array.len() amount of u32 elements.
+// TODO(Ohad): Think about endianess.
+pub unsafe fn transpose_to_bytes(column_array: &ColumnArray, dst: &[*mut u8]) {
+    let column_length = column_array[0].len();
+    assert_eq!(column_length, dst.len());
+
+    for (i, ptr) in dst.iter().enumerate().take(column_length) {
+        unsafe {
+            let mut dst_ptr = *ptr;
+            for c in column_array {
+                std::ptr::copy_nonoverlapping(
+                    c.as_ptr().add(i) as *mut u8,
+                    dst_ptr,
+                    NUM_BYTES_FELT,
+                );
+                dst_ptr = dst_ptr.add(NUM_BYTES_FELT);
+            }
+        }
+    }
+}
+
+/// Inject columns to pre-allocated arrays.
+/// # Safety
+/// Pointers in 'dst' should point to pre-allocated memory with enough space to store column_array.len() amount of u32 elements + 2*OUTPUT_SIZE of bytes.
+pub unsafe fn inject<const OUTPUT_SIZE_BYTES: usize>(column_array: &ColumnArray, dst: &mut [u8]) {
+    let offset = column_array.len() * NUM_BYTES_FELT + 2 * OUTPUT_SIZE_BYTES;
+    let offseted_pointers: Vec<*mut u8> = (2 * OUTPUT_SIZE_BYTES..dst.len())
+        .step_by(offset)
+        .map(|i| unsafe { dst.as_mut_ptr().add(i) })
+        .collect();
+    transpose_to_bytes(column_array, &offseted_pointers);
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{sort_columns_and_extract_remainder, ColumnArray, MAX_SUBTREE_BOTTOM_LAYER_LENGTH};
+    use super::{map_columns_sorted, ColumnArray};
+    use crate::commitment_scheme::{
+        blake3_hash::Blake3Hasher,
+        hasher::Hasher,
+        mdc_tree::{inject, transpose_to_bytes},
+    };
 
-    fn init_test_trace() -> Vec<Vec<u32>> {
+    const MAX_SUBTREE_BOTTOM_LAYER_LENGTH: usize = 64;
+
+    fn init_test_trace() -> ColumnArray {
         let col0 = std::iter::repeat(0)
             .take(2 * MAX_SUBTREE_BOTTOM_LAYER_LENGTH)
             .collect();
@@ -54,11 +92,20 @@ mod tests {
         cols
     }
 
+    fn init_transpose_test_trace() -> ColumnArray {
+        let col1 = vec![1, 2, 3, 4];
+        let col2 = vec![5, 6, 7, 8];
+        let col3 = vec![9, 10];
+        let col4 = vec![11];
+        let cols: ColumnArray = vec![col1, col2, col3, col4];
+        cols
+    }
+
     #[test]
     fn sort_columns_and_extract_remainder_test() {
         let cols = init_test_trace();
         let (mut col_length_map, remainder_columns) =
-            sort_columns_and_extract_remainder(cols.clone(), MAX_SUBTREE_BOTTOM_LAYER_LENGTH);
+            map_columns_sorted(cols.clone(), MAX_SUBTREE_BOTTOM_LAYER_LENGTH);
 
         // Test map
         assert_eq!(col_length_map.get(&4).expect("no such key: 4").len(), 1);
@@ -69,5 +116,46 @@ mod tests {
 
         //Test remainder
         assert_eq!(remainder_columns, vec![cols[0].clone()]);
+    }
+
+    #[test]
+    fn transpose_test() {
+        let cols = init_transpose_test_trace();
+        let mut map = map_columns_sorted(cols, MAX_SUBTREE_BOTTOM_LAYER_LENGTH).0;
+        let columns_to_transpose = map.pop_last().expect("msg").1;
+
+        let mut out1 = [0_u8; 8];
+        let mut out2 = [0_u8; 8];
+        let mut out3 = [0_u8; 8];
+        let mut out4 = [0_u8; 8];
+
+        let ptrs = [
+            out1.as_mut_ptr(),
+            out2.as_mut_ptr(),
+            out3.as_mut_ptr(),
+            out4.as_mut_ptr(),
+        ];
+        unsafe {
+            transpose_to_bytes(&columns_to_transpose, &ptrs);
+        }
+
+        let outs = [out1, out2, out3, out4];
+        assert_eq!(
+            format!("{:?}", outs),
+            "[[1, 0, 0, 0, 5, 0, 0, 0], [2, 0, 0, 0, 6, 0, 0, 0], [3, 0, 0, 0, 7, 0, 0, 0], [4, 0, 0, 0, 8, 0, 0, 0]]"
+        );
+    }
+
+    // TODO(Ohad): generelize over a hash function and use hash-in-place functions to initialize output arrays instead of zeros.
+    #[test]
+    fn inject_test() {
+        let cols = init_transpose_test_trace();
+        let mut map = map_columns_sorted(cols, MAX_SUBTREE_BOTTOM_LAYER_LENGTH).0;
+        let columns_to_transpose = map.pop_last().expect("msg").1;
+        let mut out = [0_u8; 288];
+        unsafe {
+            inject::<{ Blake3Hasher::OUTPUT_SIZE_IN_BYTES }>(&columns_to_transpose, &mut out[..]);
+        }
+        assert_eq!(hex::encode(out), "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000005000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000008000000");
     }
 }
