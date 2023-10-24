@@ -39,6 +39,7 @@ pub struct Blake2sHasher {}
 impl super::hasher::Hasher for Blake2sHasher {
     type Hash = Blake2sHash;
     const BLOCK_SIZE_IN_BYTES: usize = 64;
+    const OUTPUT_SIZE_IN_BYTES: usize = 32;
 
     fn hash(val: &[u8]) -> Self::Hash {
         let mut hasher = Blake2s256::new();
