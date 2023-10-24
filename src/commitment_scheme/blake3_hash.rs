@@ -39,6 +39,7 @@ pub struct Blake3Hasher {}
 impl super::hasher::Hasher for Blake3Hasher {
     type Hash = Blake3Hash;
     const BLOCK_SIZE_IN_BYTES: usize = 64;
+    const OUTPUT_SIZE_IN_BYTES: usize = 32;
     fn hash(val: &[u8]) -> Blake3Hash {
         Blake3Hash(*blake3::hash(val).as_bytes())
     }
