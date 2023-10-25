@@ -51,4 +51,35 @@ impl super::hasher::Hasher for Blake3Hasher {
 
         Blake3Hash(*hasher.finalize().as_bytes())
     }
+
+    fn hash_many(data: &[Vec<u8>]) -> Vec<Self::Hash> {
+        data.iter().map(|x| Self::hash(x)).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::commitment_scheme::{blake3_hash, hasher::Hasher};
+
+    #[test]
+    fn single_hash_test() {
+        let hash_a = blake3_hash::Blake3Hasher::hash(b"a");
+        assert_eq!(
+            hash_a.to_string(),
+            "17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f"
+        );
+    }
+
+    #[test]
+    fn hash_many_test() {
+        let input: Vec<Vec<u8>> = std::iter::repeat(b"a".to_vec()).take(3).collect();
+        let hash_result = blake3_hash::Blake3Hasher::hash_many(&input);
+
+        for h in hash_result {
+            assert_eq!(
+                h.to_string(),
+                "17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f"
+            );
+        }
+    }
 }
