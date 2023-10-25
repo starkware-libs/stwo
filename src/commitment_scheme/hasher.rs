@@ -4,7 +4,7 @@ pub trait Name {
     const NAME: Cow<'static, str>;
 }
 pub trait Hasher {
-    type Hash: Copy + Display + self::Name + Into<Vec<u8>> + TryFrom<Vec<u8>>;
+    type Hash: Copy + Display + self::Name + Into<Vec<u8>> + From<Vec<u8>>;
 
     // Input size of the compression function.
     // TODO(Ohad): Consider packing hash paramaters in a dedicated struct.
