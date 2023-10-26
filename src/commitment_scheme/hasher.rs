@@ -12,5 +12,15 @@ pub trait Hasher {
     const OUTPUT_SIZE_IN_BYTES: usize;
     fn concat_and_hash(v1: &Self::Hash, v2: &Self::Hash) -> Self::Hash;
     fn hash(data: &[u8]) -> Self::Hash;
+    fn hash_one_in_place(data: &[u8], dst: &mut [u8]);
     fn hash_many(data: &[Vec<u8>]) -> Vec<Self::Hash>;
+
+    /// Hash many inputs of the same length to specified locations in memory.
+    /// # Safety
+    /// Inputs must be of the same size. output locations must all point to valid, allocated and distinct locations in memory.
+    unsafe fn hash_many_in_place(
+        data: &[*const u8],
+        single_input_length_bytes: usize,
+        dst: &[*mut u8],
+    );
 }
