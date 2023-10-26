@@ -455,6 +455,7 @@ dependencies = [
  "byteorder",
  "criterion",
  "hex",
+ "num-traits",
  "rand",
 ]
 

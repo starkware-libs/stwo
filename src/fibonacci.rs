@@ -4,6 +4,7 @@ use crate::core::{
     fields::m31::Field,
     poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation},
 };
+use num_traits::One;
 
 pub struct Fibonacci {
     pub trace_coset: CanonicCoset,
@@ -60,6 +61,7 @@ impl Fibonacci {
 #[test]
 fn test_constraint_on_trace() {
     use crate::core::constraints::EvalByEvaluation;
+    use num_traits::Zero;
 
     let fib = Fibonacci::new(3);
     let trace = fib.get_trace();
