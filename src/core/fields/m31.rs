@@ -1,13 +1,8 @@
+use num_traits::{Num, One, Zero};
 use std::fmt::Display;
-use std::ops::Add;
-use std::ops::AddAssign;
-use std::ops::Div;
-use std::ops::DivAssign;
-use std::ops::Mul;
-use std::ops::MulAssign;
-use std::ops::Neg;
-use std::ops::Sub;
-use std::ops::SubAssign;
+use std::ops::{
+    Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
+};
 
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
 pub const K_BITS: u32 = 31;
@@ -15,6 +10,14 @@ pub const K_BITS: u32 = 31;
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct M31(u32);
 pub type Field = M31;
+
+impl Num for M31 {
+    type FromStrRadixErr = Box<dyn std::error::Error>;
+
+    fn from_str_radix(_str: &str, _radix: u32) -> Result<Self, Self::FromStrRadixErr> {
+        unimplemented!("Num::from_str_radix is not implemented for M31");
+    }
+}
 
 impl M31 {
     pub fn square(&self) -> Self {
@@ -45,14 +48,6 @@ impl M31 {
     }
     pub fn reduce(val: u64) -> Self {
         Self((((((val >> K_BITS) + val + 1) >> K_BITS) + val) & (P as u64)) as u32)
-    }
-
-    pub fn one() -> M31 {
-        Self(1)
-    }
-
-    pub fn zero() -> M31 {
-        Self(0)
     }
 
     pub const fn from_u32_unchecked(arg: u32) -> M31 {
@@ -130,6 +125,35 @@ impl Div for M31 {
 impl DivAssign for M31 {
     fn div_assign(&mut self, rhs: Self) {
         *self = *self / rhs;
+    }
+}
+
+impl Rem for M31 {
+    type Output = Self;
+    fn rem(self, _rhs: Self) -> Self::Output {
+        unimplemented!("Rem is not implemented for M31");
+    }
+}
+
+impl RemAssign for M31 {
+    fn rem_assign(&mut self, _rhs: Self) {
+        unimplemented!("RemAssign is not implemented for M31");
+    }
+}
+
+impl One for M31 {
+    fn one() -> Self {
+        Self(1)
+    }
+}
+
+impl Zero for M31 {
+    fn zero() -> Self {
+        Self(0)
+    }
+
+    fn is_zero(&self) -> bool {
+        *self == Self::zero()
     }
 }
 

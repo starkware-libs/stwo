@@ -4,6 +4,7 @@ use super::{
     fields::m31::Field,
     poly::circle::{CircleDomain, CircleEvaluation, CirclePoly},
 };
+use num_traits::One;
 
 // Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing(coset: Coset, mut p: CirclePoint) -> Field {
@@ -77,6 +78,7 @@ impl<'a> PolyOracle for EvalByEvaluation<'a> {
 
 #[test]
 fn test_vanishing() {
+    use num_traits::Zero;
     let cosets = [
         Coset::half_odds(5),
         Coset::odds(5),
