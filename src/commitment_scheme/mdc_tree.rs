@@ -1,17 +1,61 @@
+use crate::math::log2_ceil;
+
 use super::hasher::Hasher;
 use std::collections::BTreeMap;
 
 type ColumnArray = Vec<Vec<u32>>;
 type ColumnLengthMap = BTreeMap<usize, Vec<Vec<u32>>>;
+type TreeLayer = Box<[u8]>;
+type TreeData = Box<[TreeLayer]>;
+
 /// Merkle Tree interface. Namely: Commit & Decommit.
 // TODO(Ohad): Decommitment, Multi-Treading.
 // TODO(Ohad): Remove #[allow(dead_code)].
 #[allow(dead_code)]
 pub struct MixedDegreeTree<T: Hasher> {
-    pub data: Vec<Vec<T::Hash>>,
+    pub data: TreeData,
     pub height: usize,
     columns_size_map: ColumnLengthMap,
-    partial_trees: Vec<MixedDegreeTree<T>>,
+    _marker: std::marker::PhantomData<T>,
+}
+
+/// Decides the correct amount of space to allocate per layer.
+/// Returns uninitilized memory
+pub fn allocate_tree_data(
+    column_length_map: &ColumnLengthMap,
+    element_size_bytes: usize,
+    hash_digest_size_bytes: usize,
+) -> TreeData {
+    // Allocates first layer.
+    let (longest_layer_len, longest_layers) =
+        column_length_map.last_key_value().expect("Empty Map!");
+    let bottom_layer =
+        allocate_layer(*longest_layer_len * longest_layers.len() * element_size_bytes);
+
+    let tree_height = log2_ceil(*longest_layer_len);
+
+    // Safe because we are initializing the whole array.
+    let mut data = unsafe { Box::<[TreeLayer]>::new_uninit_slice(tree_height + 1).assume_init() };
+    data[tree_height] = bottom_layer;
+
+    // Allocates rest of the tree.
+    (0..tree_height).rev().for_each(|i| {
+        let n_nodes = 2u32.pow(i as u32) as usize;
+        let n_columns_for_injection = match column_length_map.get(&n_nodes) {
+            Some(columns) => columns.len(),
+            None => 0,
+        };
+        data[i] = allocate_layer(
+            n_nodes * (2 * hash_digest_size_bytes + n_columns_for_injection * element_size_bytes),
+        );
+    });
+
+    data
+}
+
+pub fn allocate_layer(n_bytes: usize) -> TreeLayer {
+    // Safe bacuase 0 is a valid u8 value.
+    unsafe { Box::<[u8]>::new_zeroed_slice(n_bytes).assume_init() }
 }
 
 /// Takes columns that should be commited on, sorts and maps by length.
@@ -81,7 +125,8 @@ mod tests {
     use crate::commitment_scheme::{
         blake3_hash::Blake3Hasher,
         hasher::Hasher,
-        mdc_tree::{inject, transpose_to_bytes},
+        mdc_tree::{allocate_layer, allocate_tree_data, inject, transpose_to_bytes},
+        N_BYTES_FELT,
     };
 
     const MAX_SUBTREE_BOTTOM_LAYER_LENGTH: usize = 64;
@@ -166,5 +211,32 @@ mod tests {
             );
         }
         assert_eq!(hex::encode(out), "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000005000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000008000000");
+    }
+
+    #[test]
+    fn allocate_layer_test() {
+        let layer = allocate_layer(10);
+        assert_eq!(layer.len(), 10);
+    }
+
+    #[test]
+    fn allocate_tree_test() {
+        let test_trace = init_test_trace();
+        let column_length_map = map_columns_sorted(test_trace, MAX_SUBTREE_BOTTOM_LAYER_LENGTH).0;
+        let tree_data = allocate_tree_data(
+            &column_length_map,
+            N_BYTES_FELT,
+            Blake3Hasher::OUTPUT_SIZE_IN_BYTES,
+        );
+        assert_eq!(tree_data.len(), 3);
+        assert_eq!(
+            tree_data[0].len(),
+            2 * Blake3Hasher::OUTPUT_SIZE_IN_BYTES + N_BYTES_FELT
+        );
+        assert_eq!(
+            tree_data[1].len(),
+            2 * (2 * Blake3Hasher::OUTPUT_SIZE_IN_BYTES + 2 * N_BYTES_FELT)
+        );
+        assert_eq!(tree_data[2].len(), 4 * (N_BYTES_FELT));
     }
 }
