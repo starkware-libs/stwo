@@ -1,6 +1,6 @@
 use crate::math;
 
-use super::{hasher::Hasher, NUM_BYTES_FELT};
+use super::{hasher::Hasher, N_BYTES_FELT};
 use byteorder;
 use byteorder::{BigEndian, ByteOrder};
 
@@ -14,7 +14,7 @@ impl<T: Hasher> MerkleTree<T> {
     /// Hashes recursively.
     // TODO(Ohad): deal with mixed degree, taking columns instead of a stream.
     pub fn commit(elems: &[u32]) -> Self {
-        let elems_in_block = T::BLOCK_SIZE_IN_BYTES / NUM_BYTES_FELT;
+        let elems_in_block = T::BLOCK_SIZE_IN_BYTES / N_BYTES_FELT;
         let bottom_layer_length = math::usize_div_ceil(elems.len(), elems_in_block);
         let tree_height = math::log2_ceil(bottom_layer_length) + 1;
 
