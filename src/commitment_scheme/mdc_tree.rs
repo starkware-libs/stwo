@@ -1,17 +1,23 @@
-use super::hasher::Hasher;
 use std::collections::BTreeMap;
 
 type ColumnArray = Vec<Vec<u32>>;
 type ColumnLengthMap = BTreeMap<usize, Vec<Vec<u32>>>;
+type TreeLayer = Box<[u8]>;
+type TreeData = Box<[TreeLayer]>;
+
 /// Merkle Tree interface. Namely: Commit & Decommit.
 // TODO(Ohad): Decommitment, Multi-Treading.
 // TODO(Ohad): Remove #[allow(dead_code)].
 #[allow(dead_code)]
-pub struct MixedDegreeTree<T: Hasher> {
-    pub data: Vec<Vec<T::Hash>>,
+pub struct MixedDegreeTree {
+    pub data: TreeData,
     pub height: usize,
     columns_size_map: ColumnLengthMap,
-    partial_trees: Vec<MixedDegreeTree<T>>,
+}
+
+pub fn allocate_layer(n_bytes: usize) -> TreeLayer {
+    // Safe bacuase 0 is a valid u8 value.
+    unsafe { Box::<[u8]>::new_zeroed_slice(n_bytes).assume_init() }
 }
 
 /// Takes columns that should be commited on, sorts and maps by length.
@@ -81,7 +87,7 @@ mod tests {
     use crate::commitment_scheme::{
         blake3_hash::Blake3Hasher,
         hasher::Hasher,
-        mdc_tree::{inject, transpose_to_bytes},
+        mdc_tree::{allocate_layer, inject, transpose_to_bytes},
     };
 
     const MAX_SUBTREE_BOTTOM_LAYER_LENGTH: usize = 64;
@@ -166,5 +172,17 @@ mod tests {
             );
         }
         assert_eq!(hex::encode(out), "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000005000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400000008000000");
+    }
+
+    #[test]
+    fn allocate_layer_test() {
+        let layer = allocate_layer(10);
+        assert_eq!(layer.len(), 10);
+    }
+
+    #[test]
+    fn allocate_empty_layer_test() {
+        let layer = allocate_layer(0);
+        assert_eq!(layer.len(), 0);
     }
 }
