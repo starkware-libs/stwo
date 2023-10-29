@@ -47,6 +47,12 @@ impl<T: NumAssign + Copy> AddAssign<T> for Frac<T> {
     }
 }
 
+impl<T: Num + Copy> PartialEq for Frac<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.numer * other.denom == self.denom * other.numer
+    }
+}
+
 #[test]
 fn test_frac() {
     use super::m31::{M31, P};
@@ -55,11 +61,10 @@ fn test_frac() {
     let a = Frac::new(M31::one(), M31::from_u32_unchecked(P - 1));
     let b = Frac::new(M31::one(), M31::from_u32_unchecked(2));
     let mut c = a + b;
-    assert_eq!(c.numer * M31::from_u32_unchecked(P - 2), c.denom);
+
+    let res = Frac::new(M31::from_u32_unchecked(1), M31::from_u32_unchecked(P - 2));
+    assert_eq!(c, res);
 
     c += c;
-    assert_eq!(
-        c.numer * M31::from_u32_unchecked(P - 2),
-        c.denom * M31::from_u32_unchecked(2)
-    );
+    assert_eq!(c, res + res);
 }
