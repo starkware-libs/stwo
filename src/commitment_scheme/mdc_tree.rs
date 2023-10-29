@@ -58,6 +58,31 @@ pub fn allocate_layer(n_bytes: usize) -> TreeLayer {
     unsafe { Box::<[u8]>::new_zeroed_slice(n_bytes).assume_init() }
 }
 
+pub fn hash_layer_offseted<T: Hasher>(
+    layer: &[u8],
+    node_size: usize,
+    dst: &mut [u8],
+    offset: usize,
+) {
+    assert!(layer.len().is_power_of_two());
+    let n_nodes_in_layer = layer.len() / node_size;
+    assert!(n_nodes_in_layer.is_power_of_two());
+    assert!(n_nodes_in_layer <= dst.len() * 2 / (2 * T::OUTPUT_SIZE_IN_BYTES + offset));
+
+    let src_ptrs: Vec<*const u8> = (0..n_nodes_in_layer)
+        .map(|i| unsafe { layer.as_ptr().add(node_size * i) })
+        .collect();
+    let dst_ptrs: Vec<*mut u8> = (0..n_nodes_in_layer)
+        .map(|i| unsafe {
+            dst.as_mut_ptr()
+                .add((T::OUTPUT_SIZE_IN_BYTES + offset * (i + 1) % 2) * i)
+        })
+        .collect();
+    unsafe {
+        T::hash_many_xof(&src_ptrs, node_size, &dst_ptrs);
+    }
+}
+
 /// Takes columns that should be commited on, sorts and maps by length.
 /// Extracts columns that are too long for handling by subtrees.
 pub fn map_columns_sorted(
@@ -121,11 +146,12 @@ pub unsafe fn inject<const OUTPUT_SIZE_BYTES: usize, const ELEMENT_SIZE_BYTES: u
 
 #[cfg(test)]
 mod tests {
+    use super::{allocate_layer, allocate_tree_data, hash_layer_offseted};
     use super::{map_columns_sorted, ColumnArray};
     use crate::commitment_scheme::{
         blake3_hash::Blake3Hasher,
         hasher::Hasher,
-        mdc_tree::{allocate_layer, allocate_tree_data, inject, transpose_to_bytes},
+        mdc_tree::{inject, transpose_to_bytes},
         N_BYTES_FELT,
     };
 
@@ -238,5 +264,16 @@ mod tests {
             2 * (2 * Blake3Hasher::OUTPUT_SIZE_IN_BYTES + 2 * N_BYTES_FELT)
         );
         assert_eq!(tree_data[2].len(), 4 * (N_BYTES_FELT));
+    }
+
+    #[test]
+    fn hash_layer_test() {
+        let layer = allocate_layer(16);
+        let mut res_layer = allocate_layer(64);
+        hash_layer_offseted::<Blake3Hasher>(&layer, 8, &mut res_layer, 0);
+        assert_eq!(
+            hex::encode(&res_layer[..Blake3Hasher::OUTPUT_SIZE_IN_BYTES]),
+            Blake3Hasher::hash(&0u64.to_le_bytes()).to_string()
+        );
     }
 }
