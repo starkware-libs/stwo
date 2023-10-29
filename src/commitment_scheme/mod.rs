@@ -4,4 +4,4 @@ pub mod hasher;
 pub mod mdc_tree;
 pub mod merkle_tree;
 
-pub const NUM_BYTES_FELT: usize = 4;
+pub const N_BYTES_FELT: usize = 4;

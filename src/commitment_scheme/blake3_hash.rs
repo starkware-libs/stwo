@@ -52,15 +52,14 @@ impl super::hasher::Hasher for Blake3Hasher {
     }
 
     fn hash_one_xof(data: &[u8], dst: &mut [u8]) {
-        assert_eq!(
-            dst.len(),
-            Self::OUTPUT_SIZE_IN_BYTES,
-            "Attempt to Generate blake3 hash of size different than 32 bytes!"
+        assert!(
+            dst.len() >= Self::OUTPUT_SIZE_IN_BYTES,
+            "Attempt to Generate blake3 hash of size different smaller than 32 bytes!"
         );
         let mut hasher = blake3::Hasher::new();
         hasher.update(data);
         let mut output_reader = hasher.finalize_xof();
-        output_reader.fill(dst)
+        output_reader.fill(&mut dst[..Self::OUTPUT_SIZE_IN_BYTES])
     }
 
     fn hash_many(data: &[Vec<u8>]) -> Vec<Self::Hash> {
