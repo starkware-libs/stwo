@@ -54,4 +54,35 @@ impl super::hasher::Hasher for Blake2sHasher {
 
         Blake2sHash(hasher.finalize().into())
     }
+
+    fn hash_many(data: &[Vec<u8>]) -> Vec<Self::Hash> {
+        data.iter().map(|x| Self::hash(x)).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::commitment_scheme::{blake2_hash, hasher::Hasher};
+
+    #[test]
+    fn single_hash_test() {
+        let hash_a = blake2_hash::Blake2sHasher::hash(b"a");
+        assert_eq!(
+            hash_a.to_string(),
+            "4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e90"
+        );
+    }
+
+    #[test]
+    fn hash_many_test() {
+        let input: Vec<Vec<u8>> = std::iter::repeat(b"a".to_vec()).take(3).collect();
+        let hash_result = blake2_hash::Blake2sHasher::hash_many(&input);
+
+        for h in hash_result {
+            assert_eq!(
+                h.to_string(),
+                "4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e90"
+            );
+        }
+    }
 }
