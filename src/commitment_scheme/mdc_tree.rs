@@ -1,4 +1,4 @@
-use super::{hasher::Hasher, NUM_BYTES_FELT};
+use super::hasher::Hasher;
 use std::collections::BTreeMap;
 
 type ColumnArray = Vec<Vec<u32>>;
@@ -52,7 +52,7 @@ pub unsafe fn transpose_to_bytes<const ELEMENT_SIZE_BYTES: usize>(
                 std::ptr::copy_nonoverlapping(
                     c.as_ptr().add(i) as *mut u8,
                     dst_ptr,
-                    NUM_BYTES_FELT,
+                    ELEMENT_SIZE_BYTES,
                 );
                 dst_ptr = dst_ptr.add(ELEMENT_SIZE_BYTES);
             }
