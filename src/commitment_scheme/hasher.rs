@@ -12,4 +12,5 @@ pub trait Hasher {
     const OUTPUT_SIZE_IN_BYTES: usize;
     fn concat_and_hash(v1: &Self::Hash, v2: &Self::Hash) -> Self::Hash;
     fn hash(data: &[u8]) -> Self::Hash;
+    fn hash_many(data: &[Vec<u8>]) -> Vec<Self::Hash>;
 }
