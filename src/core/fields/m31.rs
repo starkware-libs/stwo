@@ -55,7 +55,7 @@ impl M31 {
     }
 
     pub fn inverse(&self) -> M31 {
-        assert!(*self != Self::zero(), "division by zero");
+        assert!(*self != Self::zero(), "0 has no inverse");
         self.pow(P - 2)
     }
 }
