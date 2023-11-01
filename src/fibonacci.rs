@@ -51,8 +51,8 @@ impl Fibonacci {
         let excluded0 = self.constraint_coset.at(self.constraint_coset.len() - 2);
         let excluded1 = self.constraint_coset.at(self.constraint_coset.len() - 1);
         let num = self.eval_constraint(trace)
-            * point_excluder(trace.point(), excluded0)
-            * point_excluder(trace.point(), excluded1);
+            * point_excluder(excluded0, trace.point())
+            * point_excluder(excluded1, trace.point());
         let denom = coset_vanishing(self.constraint_coset, trace.point());
         num / denom
     }
