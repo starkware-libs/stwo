@@ -1,4 +1,5 @@
 use super::fields::m31::M31;
+use num_traits::{One, Zero};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
 /// A point on the complex circle. Treaed as an additive group.

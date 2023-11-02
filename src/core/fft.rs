@@ -1,4 +1,5 @@
 use super::fields::m31::Field;
+use num_traits::One;
 
 pub fn butterfly(v0: &mut Field, v1: &mut Field, twid: Field) {
     let tmp = *v1 * twid;
