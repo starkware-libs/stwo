@@ -33,8 +33,10 @@ pub fn circle_domain_vanishing(domain: CircleDomain, p: CirclePoint) -> Field {
     coset_vanishing(domain.half_coset, p) * coset_vanishing(domain.half_coset.conjugate(), p)
 }
 
-pub fn point_excluder(point: CirclePoint, excluded: CirclePoint) -> Field {
-    (point - excluded).x - Field::one()
+// Evaluates the polynmial that is used to exclude the excluded point at point p.
+// Note that this polynomial has a zero of multiplicity 2 at the excluded point.
+pub fn point_excluder(excluded: CirclePoint, p: CirclePoint) -> Field {
+    (p - excluded).x - Field::one()
 }
 
 // Utils for computing constraints.
@@ -96,4 +98,15 @@ fn test_vanishing() {
             }
         }
     }
+}
+
+#[test]
+fn test_point_excluder() {
+    let excluded = Coset::half_odds(5).at(10);
+    let point = (CirclePointIndex::generator() * 4).to_point();
+
+    let num = point_excluder(excluded, point) * point_excluder(excluded.conjugate(), point);
+    let denom = (point.x - excluded.x).pow(2);
+
+    assert_eq!(num, denom);
 }
