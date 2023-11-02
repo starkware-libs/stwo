@@ -52,6 +52,13 @@ impl CirclePoint {
             y: -self.y,
         }
     }
+
+    pub fn antipode(&self) -> CirclePoint {
+        Self {
+            x: -self.x,
+            y: -self.y,
+        }
+    }
 }
 impl Add for CirclePoint {
     type Output = Self;
@@ -66,10 +73,7 @@ impl Neg for CirclePoint {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Self {
-            x: self.x,
-            y: -self.y,
-        }
+        self.conjugate()
     }
 }
 impl Sub for CirclePoint {
