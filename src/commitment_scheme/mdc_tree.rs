@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use super::hasher::Hasher;
+
 type ColumnArray = Vec<Vec<u32>>;
 type ColumnLengthMap = BTreeMap<usize, Vec<Vec<u32>>>;
 type TreeLayer = Box<[u8]>;
@@ -18,6 +20,26 @@ pub struct MixedDegreeTree {
 pub fn allocate_layer(n_bytes: usize) -> TreeLayer {
     // Safe bacuase 0 is a valid u8 value.
     unsafe { Box::<[u8]>::new_zeroed_slice(n_bytes).assume_init() }
+}
+
+/// Performes a 2-to-1 hash on a layer of a merkle tree.
+pub fn hash_layer<T: Hasher>(layer: &[u8], node_size: usize, dst: &mut [u8]) {
+    assert!(layer.len().is_power_of_two());
+    let n_nodes_in_layer = crate::math::usize_div_ceil(layer.len(), node_size);
+    assert!(n_nodes_in_layer.is_power_of_two());
+    assert!(n_nodes_in_layer / 2 <= dst.len() / T::OUTPUT_SIZE_IN_BYTES);
+
+    let src_ptrs: Vec<*const u8> = (0..n_nodes_in_layer)
+        .map(|i| unsafe { layer.as_ptr().add(node_size * i) })
+        .collect();
+    let dst_ptrs: Vec<*mut u8> = (0..n_nodes_in_layer)
+        .map(|i| unsafe { dst.as_mut_ptr().add(T::OUTPUT_SIZE_IN_BYTES * i) })
+        .collect();
+
+    // Safe because pointers are valid and distinct.
+    unsafe {
+        T::hash_many_in_place(&src_ptrs, node_size, &dst_ptrs);
+    }
 }
 
 /// Takes columns that should be commited on, sorts and maps by length.
@@ -87,7 +109,7 @@ mod tests {
     use crate::commitment_scheme::{
         blake3_hash::Blake3Hasher,
         hasher::Hasher,
-        mdc_tree::{allocate_layer, inject, transpose_to_bytes},
+        mdc_tree::{allocate_layer, hash_layer, inject, transpose_to_bytes},
     };
 
     const MAX_SUBTREE_BOTTOM_LAYER_LENGTH: usize = 64;
@@ -184,5 +206,16 @@ mod tests {
     fn allocate_empty_layer_test() {
         let layer = allocate_layer(0);
         assert_eq!(layer.len(), 0);
+    }
+
+    #[test]
+    fn hash_layer_test() {
+        let layer = allocate_layer(16);
+        let mut res_layer = allocate_layer(64);
+        hash_layer::<Blake3Hasher>(&layer, 8, &mut res_layer);
+        assert_eq!(
+            hex::encode(&res_layer[..Blake3Hasher::OUTPUT_SIZE_IN_BYTES]),
+            Blake3Hasher::hash(&0u64.to_le_bytes()).to_string()
+        );
     }
 }
