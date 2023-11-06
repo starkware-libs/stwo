@@ -1,6 +1,6 @@
 use crate::core::{
     circle::Coset,
-    constraints::{coset_vanishing, point_excluder, PolyOracle},
+    constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle},
     fields::m31::Field,
     poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation},
 };
@@ -62,6 +62,25 @@ impl Fibonacci {
 
     pub fn eval_boundary_constraint(&self, trace: impl PolyOracle, value: Field) -> Field {
         trace.get_at(self.trace_coset.index_at(0)) - value
+    }
+
+    pub fn eval_boundary_quotient(
+        &self,
+        trace: impl PolyOracle,
+        point_index: usize,
+        value: Field,
+    ) -> Field {
+        let num = self.eval_boundary_constraint(trace, value);
+        let denom = point_vanishing(self.constraint_coset.at(point_index), trace.point());
+        num / denom
+    }
+
+    pub fn eval_quotient(&self, random_coeff: Field, trace: impl PolyOracle) -> Field {
+        let mut quotient = random_coeff.pow(0) * self.eval_step_quotient(trace);
+        quotient += random_coeff.pow(1) * self.eval_boundary_quotient(trace, 0, Field::one());
+        quotient += random_coeff.pow(2)
+            * self.eval_boundary_quotient(trace, self.constraint_coset.len() - 1, self.claim);
+        quotient
     }
 }
 
@@ -125,13 +144,19 @@ fn test_quotient_is_low_degree() {
 
     let extended_evaluation = trace_poly.clone().evaluate(fib.eval_domain);
 
+    // TODO(ShaharS), Change to a channel implementation to retrieve the random coefficients from extension field.
+    let random_coeff = Field::from_u32_unchecked(2213980);
+
     // Compute quotient on the evaluation domain.
     let mut quotient_values = Vec::with_capacity(fib.constraint_eval_domain.len());
     for p_ind in fib.constraint_eval_domain.iter_indices() {
-        quotient_values.push(fib.eval_step_quotient(EvalByEvaluation {
-            offset: p_ind,
-            eval: &extended_evaluation,
-        }));
+        quotient_values.push(fib.eval_quotient(
+            random_coeff,
+            EvalByEvaluation {
+                offset: p_ind,
+                eval: &extended_evaluation,
+            },
+        ));
     }
     let quotient_eval = CircleEvaluation::new(fib.constraint_eval_domain, quotient_values);
     // Interpolate the poly. The the poly is indeed of degree lower than the size of eval_domain,
@@ -142,11 +167,16 @@ fn test_quotient_is_low_degree() {
     let point_index = CirclePointIndex::generator() * 2;
     assert!(fib.constraint_eval_domain.find(point_index).is_none());
     let point = point_index.to_point();
+
+    // Quotient is low degree if it evaluates the same as a low degree interpolation of the trace.
     assert_eq!(
         quotient_poly.eval_at_point(point),
-        fib.eval_step_quotient(EvalByPoly {
-            point,
-            poly: &trace_poly
-        })
+        fib.eval_quotient(
+            random_coeff,
+            EvalByPoly {
+                point,
+                poly: &trace_poly
+            }
+        )
     );
 }
