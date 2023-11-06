@@ -3,11 +3,12 @@ use crate::core::{
     constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle},
     fields::m31::Field,
     poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation},
+    protocols::oods::{Column, Mask, MaskItem},
 };
 use num_traits::One;
 
 pub struct Fibonacci {
-    pub trace_coset: CanonicCoset,
+    pub trace: Column,
     pub eval_domain: CircleDomain,
     pub constraint_coset: Coset,
     pub constraint_eval_domain: CircleDomain,
@@ -20,7 +21,10 @@ impl Fibonacci {
         let constraint_coset = Coset::subgroup(n_bits);
         let constraint_eval_domain = CircleDomain::constraint_domain(n_bits + 1);
         Self {
-            trace_coset,
+            trace: Column {
+                name: "Fib".to_string(),
+                coset: trace_coset,
+            },
             eval_domain,
             constraint_coset,
             constraint_eval_domain,
@@ -29,12 +33,12 @@ impl Fibonacci {
     }
     pub fn get_trace(&self) -> CircleEvaluation {
         // Trace.
-        let mut trace = Vec::with_capacity(self.trace_coset.len());
+        let mut trace = Vec::with_capacity(self.trace.coset.len());
 
         // Fill trace with fibonacci squared.
         let mut a = Field::one();
         let mut b = Field::one();
-        for _ in 0..self.trace_coset.len() {
+        for _ in 0..self.trace.coset.len() {
             trace.push(a);
             let tmp = a.square() + b.square();
             a = b;
@@ -42,12 +46,12 @@ impl Fibonacci {
         }
 
         // Returns as a CircleEvaluation.
-        CircleEvaluation::new_canonical_ordered(self.trace_coset, trace)
+        CircleEvaluation::new_canonical_ordered(self.trace.coset, trace)
     }
     pub fn eval_step_constraint(&self, trace: impl PolyOracle) -> Field {
-        trace.get_at(self.trace_coset.index_at(0)).square()
-            + trace.get_at(self.trace_coset.index_at(1)).square()
-            - trace.get_at(self.trace_coset.index_at(2))
+        trace.get_at(self.trace.coset.index_at(0)).square()
+            + trace.get_at(self.trace.coset.index_at(1)).square()
+            - trace.get_at(self.trace.coset.index_at(2))
     }
 
     pub fn eval_step_quotient(&self, trace: impl PolyOracle) -> Field {
@@ -61,7 +65,7 @@ impl Fibonacci {
     }
 
     pub fn eval_boundary_constraint(&self, trace: impl PolyOracle, value: Field) -> Field {
-        trace.get_at(self.trace_coset.index_at(0)) - value
+        trace.get_at(self.trace.coset.index_at(0)) - value
     }
 
     pub fn eval_boundary_quotient(
@@ -81,6 +85,25 @@ impl Fibonacci {
         quotient += random_coeff.pow(2)
             * self.eval_boundary_quotient(trace, self.constraint_coset.len() - 1, self.claim);
         quotient
+    }
+
+    pub fn get_mask_items(&self) -> Mask {
+        Mask {
+            items: vec![
+                MaskItem {
+                    column_index: 0,
+                    index: self.trace.coset.index_at(0),
+                },
+                MaskItem {
+                    column_index: 0,
+                    index: self.trace.coset.index_at(1),
+                },
+                MaskItem {
+                    column_index: 0,
+                    index: self.trace.coset.index_at(2),
+                },
+            ],
+        }
     }
 }
 
@@ -135,8 +158,7 @@ fn test_constraint_on_trace() {
 #[test]
 fn test_quotient_is_low_degree() {
     use crate::core::circle::CirclePointIndex;
-    use crate::core::constraints::EvalByEvaluation;
-    use crate::core::constraints::EvalByPoly;
+    use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
 
     let fib = Fibonacci::new(5, Field::from_u32_unchecked(443693538));
     let trace = fib.get_trace();
@@ -178,5 +200,41 @@ fn test_quotient_is_low_degree() {
                 poly: &trace_poly
             }
         )
+    );
+}
+
+#[test]
+fn test_mask_items() {
+    use crate::core::circle::CirclePointIndex;
+    use crate::core::constraints::EvalByPoly;
+    use crate::core::protocols::oods::eval_mask_at_point;
+
+    let fib = Fibonacci::new(5, Field::from_u32_unchecked(443693538));
+    let trace = fib.get_trace();
+    let trace_poly = trace.interpolate();
+
+    let z = (CirclePointIndex::generator() * 17).to_point();
+
+    let mask = fib.get_mask_items();
+    let mask_eval = eval_mask_at_point(
+        vec![&EvalByPoly {
+            point: z,
+            poly: &trace_poly,
+        }],
+        &mask,
+    );
+
+    assert_eq!(mask.items[0].column_index, 0);
+    assert_eq!(
+        mask_eval[0],
+        trace_poly.eval_at_point(z + fib.trace.coset.at(0))
+    );
+    assert_eq!(
+        mask_eval[1],
+        trace_poly.eval_at_point(z + fib.trace.coset.at(1))
+    );
+    assert_eq!(
+        mask_eval[2],
+        trace_poly.eval_at_point(z + fib.trace.coset.at(2))
     );
 }
