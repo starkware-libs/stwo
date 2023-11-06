@@ -39,6 +39,13 @@ pub fn point_excluder(excluded: CirclePoint, p: CirclePoint) -> Field {
     (p - excluded).x - Field::one()
 }
 
+// Evaluates a vanishing polynomial of the vanish_point at a point.
+// Note that this function has a pole on the antipode of the vanish_point.
+pub fn point_vanishing(vanish_point: CirclePoint, p: CirclePoint) -> Field {
+    let h = p - vanish_point;
+    h.y / (Field::one() + h.x)
+}
+
 // Utils for computing constraints.
 // Oracle to a polynomial constrained to a coset.
 pub trait PolyOracle: Copy {
@@ -79,7 +86,7 @@ impl<'a> PolyOracle for EvalByEvaluation<'a> {
 }
 
 #[test]
-fn test_vanishing() {
+fn test_coset_vanishing() {
     use num_traits::Zero;
     let cosets = [
         Coset::half_odds(5),
@@ -109,4 +116,29 @@ fn test_point_excluder() {
     let denom = (point.x - excluded.x).pow(2);
 
     assert_eq!(num, denom);
+}
+
+#[test]
+fn test_point_vanishing_success() {
+    use num_traits::Zero;
+    let coset = Coset::odds(5);
+    let vanish_point = coset.at(2);
+    for el in coset.iter() {
+        if el == vanish_point {
+            assert_eq!(point_vanishing(vanish_point, el), Field::zero());
+            continue;
+        }
+        if el == vanish_point.antipode() {
+            continue;
+        }
+        assert_ne!(point_vanishing(vanish_point, el), Field::zero());
+    }
+}
+
+#[test]
+#[should_panic(expected = "0 has no inverse")]
+fn test_point_vanishing_failure() {
+    let coset = Coset::half_odds(6);
+    let point = coset.at(4);
+    point_vanishing(point, point.antipode());
 }
