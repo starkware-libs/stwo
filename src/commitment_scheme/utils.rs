@@ -34,13 +34,13 @@ pub fn allocate_balanced_tree(
 }
 
 /// Performes a 2-to-1 hash on a layer of a merkle tree.
-pub fn hash_layer<T: Hasher>(layer: &[u8], node_size: usize, dst: &mut [u8]) {
-    let n_nodes_in_layer = crate::math::usize_safe_div(layer.len(), node_size);
+pub fn hash_layer<T: Hasher>(layer: &[u8], node_size_bytes: usize, dst: &mut [u8]) {
+    let n_nodes_in_layer = crate::math::usize_safe_div(layer.len(), node_size_bytes);
     assert!(n_nodes_in_layer.is_power_of_two());
     assert!(n_nodes_in_layer / 2 <= dst.len() / T::OUTPUT_SIZE_IN_BYTES);
 
     let src_ptrs: Vec<*const u8> = (0..n_nodes_in_layer)
-        .map(|i| unsafe { layer.as_ptr().add(node_size * i) })
+        .map(|i| unsafe { layer.as_ptr().add(node_size_bytes * i) })
         .collect();
     let dst_ptrs: Vec<*mut u8> = (0..n_nodes_in_layer)
         .map(|i| unsafe { dst.as_mut_ptr().add(T::OUTPUT_SIZE_IN_BYTES * i) })
@@ -48,8 +48,34 @@ pub fn hash_layer<T: Hasher>(layer: &[u8], node_size: usize, dst: &mut [u8]) {
 
     // Safe because pointers are valid and distinct.
     unsafe {
-        T::hash_many_in_place(&src_ptrs, node_size, &dst_ptrs);
+        T::hash_many_in_place(&src_ptrs, node_size_bytes, &dst_ptrs);
     }
+}
+
+// Given a data of a tree, hashes the entire tree.
+pub fn hash_merkle_tree<H: Hasher>(data: &mut [&mut [u8]]) {
+    (0..data.len() - 1).for_each(|i| {
+        let (src, dst) = data.split_at_mut(i + 1);
+        let src = src.get(i).unwrap();
+        let dst = dst.get_mut(0).unwrap();
+        hash_layer::<H>(src, H::BLOCK_SIZE_IN_BYTES, dst)
+    })
+}
+
+/// Given a data of a tree, and a bottom layer of 'bottom_layer_node_size_bytes' sized nodes, hashes
+/// the entire tree. Nodes are hashed individually at the bottom layer.
+pub fn hash_merkle_tree_from_bottom_layer<H: Hasher>(
+    bottom_layer_data: &[u8],
+    bottom_layer_node_size_bytes: usize,
+    data: &mut [&mut [u8]],
+) {
+    // Hash bottom layer.
+    let dst_slice = data.get_mut(0).expect("Empty tree!");
+
+    hash_layer::<H>(bottom_layer_data, bottom_layer_node_size_bytes, dst_slice);
+
+    // Rest of the sub-tree
+    hash_merkle_tree::<H>(data);
 }
 
 /// Maps columns by length.
@@ -89,6 +115,10 @@ pub unsafe fn transpose_to_bytes<T: Sized>(column_array: &ColumnArray<T>, dst: &
     }
 }
 
+pub fn tree_data_as_mut_ref(tree_data: &mut TreeData) -> Vec<&mut [u8]> {
+    tree_data.iter_mut().map(|layer| &mut layer[..]).collect()
+}
+
 /// Inject columns to pre-allocated arrays.
 ///
 /// # Arguments
@@ -115,10 +145,16 @@ pub unsafe fn inject<T: Sized>(
 
 #[cfg(test)]
 mod tests {
+    use num_traits::One;
+
     use super::{allocate_balanced_tree, map_columns_sorted, ColumnArray};
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
-    use crate::commitment_scheme::utils::{allocate_layer, hash_layer, inject, transpose_to_bytes};
+    use crate::commitment_scheme::utils::{
+        allocate_layer, hash_layer, hash_merkle_tree, hash_merkle_tree_from_bottom_layer, inject,
+        transpose_to_bytes, tree_data_as_mut_ref,
+    };
+    use crate::core::fields::m31::M31;
     use crate::math;
 
     fn init_test_trace() -> ColumnArray<u32> {
@@ -246,5 +282,50 @@ mod tests {
             hex::encode(&res_layer[..Blake3Hasher::OUTPUT_SIZE_IN_BYTES]),
             Blake3Hasher::hash(&0u64.to_le_bytes()).to_string()
         );
+    }
+
+    #[test]
+    fn hash_tree_test() {
+        let mut tree_data = allocate_balanced_tree(
+            16,
+            Blake3Hasher::BLOCK_SIZE_IN_BYTES,
+            Blake3Hasher::OUTPUT_SIZE_IN_BYTES,
+        );
+
+        hash_merkle_tree::<Blake3Hasher>(&mut tree_data_as_mut_ref(&mut tree_data)[..]);
+
+        assert_eq!(
+            hex::encode(tree_data.last().unwrap()),
+            "31b471b27b22b57b1ac82c9ed537231d53faf017fbe0c903c9668f47dc4151e1"
+        )
+    }
+
+    #[test]
+    fn hash_tree_from_bottom_layer_test() {
+        const TEST_SIZE: usize = 512;
+
+        let bottom_layer = [M31::one(); TEST_SIZE];
+        let bottom_layer_as_bytes = unsafe {
+            std::slice::from_raw_parts(
+                bottom_layer.as_ptr() as *const u8,
+                bottom_layer.len() * std::mem::size_of::<M31>(),
+            )
+        };
+        let mut tree_data = allocate_balanced_tree(
+            TEST_SIZE * std::mem::size_of::<M31>() / Blake3Hasher::BLOCK_SIZE_IN_BYTES,
+            Blake3Hasher::BLOCK_SIZE_IN_BYTES,
+            Blake3Hasher::OUTPUT_SIZE_IN_BYTES,
+        );
+
+        hash_merkle_tree_from_bottom_layer::<Blake3Hasher>(
+            bottom_layer_as_bytes,
+            Blake3Hasher::BLOCK_SIZE_IN_BYTES,
+            &mut tree_data_as_mut_ref(&mut tree_data)[..],
+        );
+
+        assert_eq!(
+            hex::encode(tree_data.last().unwrap()),
+            "234d7011f24adb0fec6604ff1fdfe4745340886418b6e2cd0633f6ad1c7e52d9"
+        )
     }
 }
