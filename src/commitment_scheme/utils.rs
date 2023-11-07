@@ -12,6 +12,27 @@ pub fn allocate_layer(n_bytes: usize) -> TreeLayer {
     unsafe { Box::<[u8]>::new_zeroed_slice(n_bytes).assume_init() }
 }
 
+pub fn allocate_balanced_tree(
+    bottom_layer_length: usize,
+    size_of_node_bytes: usize,
+    output_size_bytes: usize,
+) -> TreeData {
+    assert!(output_size_bytes.is_power_of_two());
+    let tree_height =
+        crate::math::log2_ceil(bottom_layer_length * size_of_node_bytes / output_size_bytes);
+
+    // Safe because pointers are initialized later.
+    let mut data: TreeData = unsafe { TreeData::new_zeroed_slice(tree_height).assume_init() };
+    for i in 0..tree_height {
+        let layer = allocate_layer(
+            2_usize.pow((tree_height - i - 1).try_into().expect("Failed cast!"))
+                * output_size_bytes,
+        );
+        data[i] = layer;
+    }
+    data
+}
+
 /// Performes a 2-to-1 hash on a layer of a merkle tree.
 pub fn hash_layer<T: Hasher>(layer: &[u8], node_size: usize, dst: &mut [u8]) {
     let n_nodes_in_layer = crate::math::usize_div_ceil(layer.len(), node_size);
@@ -94,11 +115,14 @@ pub unsafe fn inject<const OUTPUT_SIZE_BYTES: usize, const ELEMENT_SIZE_BYTES: u
 
 #[cfg(test)]
 mod tests {
-    use super::{map_columns_sorted, ColumnArray};
-    use crate::commitment_scheme::{
-        blake3_hash::Blake3Hasher,
-        hasher::Hasher,
-        utils::{allocate_layer, hash_layer, inject, transpose_to_bytes},
+    use super::{allocate_balanced_tree, map_columns_sorted, ColumnArray};
+    use crate::{
+        commitment_scheme::{
+            blake3_hash::Blake3Hasher,
+            hasher::Hasher,
+            utils::{allocate_layer, hash_layer, inject, transpose_to_bytes},
+        },
+        math,
     };
 
     const MAX_SUBTREE_BOTTOM_LAYER_LENGTH: usize = 64;
@@ -195,6 +219,20 @@ mod tests {
     fn allocate_empty_layer_test() {
         let layer = allocate_layer(0);
         assert_eq!(layer.len(), 0);
+    }
+
+    #[test]
+    fn allocate_balanced_tree_test() {
+        let n_nodes = 8;
+        let node_size = Blake3Hasher::BLOCK_SIZE_IN_BYTES;
+        let output_size = Blake3Hasher::OUTPUT_SIZE_IN_BYTES;
+        let tree = allocate_balanced_tree(n_nodes, node_size, output_size);
+
+        assert_eq!(tree.len(), math::log2_ceil(n_nodes) + 1);
+        assert_eq!(tree[0].len(), n_nodes * output_size);
+        assert_eq!(tree[1].len(), 4 * output_size);
+        assert_eq!(tree[2].len(), 2 * output_size);
+        assert_eq!(tree[3].len(), output_size);
     }
 
     #[test]
