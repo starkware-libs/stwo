@@ -3,6 +3,7 @@ use crate::core::{
     constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle},
     fields::m31::Field,
     poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation},
+    protocols::oods::{Column, Mask, MaskItem},
 };
 use num_traits::One;
 
@@ -81,6 +82,29 @@ impl Fibonacci {
         quotient += random_coeff.pow(2)
             * self.eval_boundary_quotient(trace, self.constraint_coset.len() - 1, self.claim);
         quotient
+    }
+
+    pub fn get_mask_items(&self) -> Mask {
+        let col = Column {
+            name: "fib".to_string(),
+            n_bits: self.trace_coset.n_bits,
+        };
+        Mask {
+            items: vec![
+                MaskItem {
+                    col: col.clone(),
+                    index: self.trace_coset.index_at(0),
+                },
+                MaskItem {
+                    col: col.clone(),
+                    index: self.trace_coset.index_at(1),
+                },
+                MaskItem {
+                    col: col.clone(),
+                    index: self.trace_coset.index_at(2),
+                },
+            ],
+        }
     }
 }
 
@@ -178,5 +202,41 @@ fn test_quotient_is_low_degree() {
                 poly: &trace_poly
             }
         )
+    );
+}
+
+#[test]
+fn test_mask_items() {
+    use crate::core::circle::CirclePointIndex;
+    use crate::core::protocols::oods::eval_mask_at_point;
+    use crate::core::constraints::EvalByPoly;
+
+    let fib = Fibonacci::new(5, Field::from_u32_unchecked(443693538));
+    let trace = fib.get_trace();
+    let trace_poly = trace.interpolate();
+
+    let z = (CirclePointIndex::generator() * 17).to_point();
+
+    let mask = fib.get_mask_items();
+    let mask_eval = eval_mask_at_point(
+        EvalByPoly {
+            point: z,
+            poly: &trace_poly,
+        },
+        &mask,
+    );
+
+    assert_eq!(mask.items[0].col.name, "fib");
+    assert_eq!(
+        mask_eval[0],
+        trace_poly.eval_at_point(z + fib.trace_coset.at(0))
+    );
+    assert_eq!(
+        mask_eval[1],
+        trace_poly.eval_at_point(z + fib.trace_coset.at(1))
+    );
+    assert_eq!(
+        mask_eval[2],
+        trace_poly.eval_at_point(z + fib.trace_coset.at(2))
     );
 }
