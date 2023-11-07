@@ -52,6 +52,36 @@ pub fn hash_layer<T: Hasher>(layer: &[u8], node_size: usize, dst: &mut [u8]) {
     }
 }
 
+// Given a data of a tree, hashes the entire tree.
+pub fn hash_sub_tree_from_data<H: Hasher>(data: &mut [Box<[u8]>]) {
+    (0..data.len() - 1).for_each(|i| {
+        let (src, dst) = data.split_at_mut(i + 1);
+        let src = src.get(i).unwrap();
+        let dst = dst.get_mut(0).unwrap();
+        hash_layer::<H>(src, H::BLOCK_SIZE_IN_BYTES, dst)
+    })
+}
+
+/// Given a data of a tree, and a bottom layer of <T> elements, hashes the entire tree.
+/// Packs a node-size amount of <T> elements into a single hash at the bottom layer.
+pub fn hash_sub_tree_from_bottom_layer_data<T: Sized, H: Hasher>(
+    bottom_layer_data: &[u8],
+    bottom_layer_node_size: usize,
+    data: &mut [Box<[u8]>],
+) {
+    // First layer.
+    let dst_slice = data.get_mut(0).expect("Empty tree!");
+
+    hash_layer::<H>(
+        bottom_layer_data,
+        bottom_layer_node_size * std::mem::size_of::<T>(),
+        dst_slice,
+    );
+
+    // Rest of the sub-tree
+    hash_sub_tree_from_data::<H>(data);
+}
+
 /// Maps columns by length.
 /// Mappings are sorted by length. i.e the first entry is a matrix of the shortest columns.
 pub fn map_columns_sorted<T: Sized>(cols: ColumnArray<T>) -> ColumnLengthMap<T> {
@@ -111,13 +141,19 @@ pub unsafe fn inject<T: Sized>(
 
 #[cfg(test)]
 mod tests {
-    use super::{allocate_balanced_tree, map_columns_sorted, ColumnArray};
+    use num_traits::One;
+
+    use super::{allocate_balanced_tree, hash_sub_tree_from_data, map_columns_sorted, ColumnArray};
     use crate::{
         commitment_scheme::{
             blake3_hash::Blake3Hasher,
             hasher::Hasher,
-            utils::{allocate_layer, hash_layer, inject, transpose_to_bytes},
+            utils::{
+                allocate_layer, hash_layer, hash_sub_tree_from_bottom_layer_data, inject,
+                transpose_to_bytes,
+            },
         },
+        core::fields::m31::M31,
         math,
     };
 
@@ -245,5 +281,48 @@ mod tests {
             hex::encode(&res_layer[..Blake3Hasher::OUTPUT_SIZE_IN_BYTES]),
             Blake3Hasher::hash(&0u64.to_le_bytes()).to_string()
         );
+    }
+
+    #[test]
+    fn hash_sub_tree_test() {
+        let mut tree_data = allocate_balanced_tree(
+            16,
+            Blake3Hasher::BLOCK_SIZE_IN_BYTES,
+            Blake3Hasher::OUTPUT_SIZE_IN_BYTES,
+        );
+
+        hash_sub_tree_from_data::<Blake3Hasher>(tree_data.as_mut());
+
+        assert_eq!(
+            hex::encode(tree_data.last().unwrap()),
+            "31b471b27b22b57b1ac82c9ed537231d53faf017fbe0c903c9668f47dc4151e1"
+        )
+    }
+
+    #[test]
+    fn hash_sub_tree_from_bottom_layer_test() {
+        let bottom_layer = [M31::one(); 512];
+        let bottom_layer_as_bytes = unsafe {
+            std::slice::from_raw_parts(
+                bottom_layer.as_ptr() as *const u8,
+                bottom_layer.len() * std::mem::size_of::<M31>(),
+            )
+        };
+        let mut tree_data = allocate_balanced_tree(
+            8,
+            Blake3Hasher::BLOCK_SIZE_IN_BYTES,
+            Blake3Hasher::OUTPUT_SIZE_IN_BYTES,
+        );
+
+        hash_sub_tree_from_bottom_layer_data::<M31, Blake3Hasher>(
+            bottom_layer_as_bytes,
+            Blake3Hasher::BLOCK_SIZE_IN_BYTES,
+            tree_data.as_mut(),
+        );
+
+        assert_eq!(
+            hex::encode(tree_data.last().unwrap()),
+            "0cf3e167739ac846c418d8561b16a353b039c3558beb10bce629b583449e53a5"
+        )
     }
 }
