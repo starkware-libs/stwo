@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use super::hasher::Hasher;
 
-pub type ColumnArray = Vec<Vec<u32>>;
-pub type ColumnLengthMap = BTreeMap<usize, Vec<Vec<u32>>>;
+pub type ColumnArray<T> = Vec<Vec<T>>;
+pub type ColumnLengthMap<T> = BTreeMap<usize, ColumnArray<T>>;
 pub type TreeLayer = Box<[u8]>;
 pub type TreeData = Box<[TreeLayer]>;
 
@@ -54,12 +54,12 @@ pub fn hash_layer<T: Hasher>(layer: &[u8], node_size: usize, dst: &mut [u8]) {
 
 /// Takes columns that should be commited on, sorts and maps by length.
 /// Extracts columns that are too long for handling by subtrees.
-pub fn map_columns_sorted(
-    cols: ColumnArray,
+pub fn map_columns_sorted<T: Sized>(
+    cols: ColumnArray<T>,
     max_layer_length_to_keep: usize,
-) -> (ColumnLengthMap, ColumnArray) {
-    let mut columns_length_map: ColumnLengthMap = BTreeMap::new();
-    let mut remainder_columns: ColumnArray = Vec::new();
+) -> (ColumnLengthMap<T>, ColumnArray<T>) {
+    let mut columns_length_map: ColumnLengthMap<T> = BTreeMap::new();
+    let mut remainder_columns: ColumnArray<T> = Vec::new();
     for c in cols {
         if c.len() <= (max_layer_length_to_keep) {
             let length_index_entry = columns_length_map.entry(c.len()).or_default();
@@ -76,10 +76,7 @@ pub fn map_columns_sorted(
 /// # Safety
 /// Pointers in 'dst' should point to pre-allocated memory with enough space to store column_array.len() amount of u32 elements.
 // TODO(Ohad): Think about endianess.
-pub unsafe fn transpose_to_bytes<const ELEMENT_SIZE_BYTES: usize>(
-    column_array: &ColumnArray,
-    dst: &[*mut u8],
-) {
+pub unsafe fn transpose_to_bytes<T: Sized>(column_array: &ColumnArray<T>, dst: &[*mut u8]) {
     let column_length = column_array[0].len();
     assert_eq!(column_length, dst.len());
 
@@ -90,9 +87,9 @@ pub unsafe fn transpose_to_bytes<const ELEMENT_SIZE_BYTES: usize>(
                 std::ptr::copy_nonoverlapping(
                     c.as_ptr().add(i) as *mut u8,
                     dst_ptr,
-                    ELEMENT_SIZE_BYTES,
+                    std::mem::size_of::<T>(),
                 );
-                dst_ptr = dst_ptr.add(ELEMENT_SIZE_BYTES);
+                dst_ptr = dst_ptr.add(std::mem::size_of::<T>());
             }
         }
     }
@@ -101,16 +98,16 @@ pub unsafe fn transpose_to_bytes<const ELEMENT_SIZE_BYTES: usize>(
 /// Inject columns to pre-allocated arrays.
 /// # Safety
 /// Pointers in 'dst' should point to pre-allocated memory with enough space to store column_array.len() amount of u32 elements + 2*OUTPUT_SIZE of bytes.
-pub unsafe fn inject<const OUTPUT_SIZE_BYTES: usize, const ELEMENT_SIZE_BYTES: usize>(
-    column_array: &ColumnArray,
+pub unsafe fn inject<const OUTPUT_SIZE_BYTES: usize, T: Sized>(
+    column_array: &ColumnArray<T>,
     dst: &mut [u8],
 ) {
-    let offset = column_array.len() * ELEMENT_SIZE_BYTES + 2 * OUTPUT_SIZE_BYTES;
+    let offset = column_array.len() * std::mem::size_of::<T>() + 2 * OUTPUT_SIZE_BYTES;
     let offseted_pointers: Vec<*mut u8> = (2 * OUTPUT_SIZE_BYTES..dst.len())
         .step_by(offset)
         .map(|i| unsafe { dst.as_mut_ptr().add(i) })
         .collect();
-    transpose_to_bytes::<ELEMENT_SIZE_BYTES>(column_array, &offseted_pointers);
+    transpose_to_bytes::<T>(column_array, &offseted_pointers);
 }
 
 #[cfg(test)]
@@ -127,7 +124,7 @@ mod tests {
 
     const MAX_SUBTREE_BOTTOM_LAYER_LENGTH: usize = 64;
 
-    fn init_test_trace() -> ColumnArray {
+    fn init_test_trace() -> ColumnArray<u32> {
         let col0 = std::iter::repeat(0)
             .take(2 * MAX_SUBTREE_BOTTOM_LAYER_LENGTH)
             .collect();
@@ -135,16 +132,16 @@ mod tests {
         let col2 = vec![5, 6];
         let col3 = vec![7, 8];
         let col4 = vec![9];
-        let cols: ColumnArray = vec![col0, col1, col2, col3, col4];
+        let cols: ColumnArray<u32> = vec![col0, col1, col2, col3, col4];
         cols
     }
 
-    fn init_transpose_test_trace() -> ColumnArray {
+    fn init_transpose_test_trace() -> ColumnArray<u32> {
         let col1 = vec![1, 2, 3, 4];
         let col2 = vec![5, 6, 7, 8];
         let col3 = vec![9, 10];
         let col4 = vec![11];
-        let cols: ColumnArray = vec![col1, col2, col3, col4];
+        let cols: ColumnArray<u32> = vec![col1, col2, col3, col4];
         cols
     }
 
@@ -183,7 +180,7 @@ mod tests {
             out4.as_mut_ptr(),
         ];
         unsafe {
-            transpose_to_bytes::<4>(&columns_to_transpose, &ptrs);
+            transpose_to_bytes(&columns_to_transpose, &ptrs);
         }
 
         let outs = [out1, out2, out3, out4];
@@ -201,7 +198,7 @@ mod tests {
         let columns_to_transpose = map.pop_last().expect("msg").1;
         let mut out = [0_u8; 288];
         unsafe {
-            inject::<{ Blake3Hasher::OUTPUT_SIZE_IN_BYTES }, 4>(
+            inject::<{ Blake3Hasher::OUTPUT_SIZE_IN_BYTES }, u32>(
                 &columns_to_transpose,
                 &mut out[..],
             );
