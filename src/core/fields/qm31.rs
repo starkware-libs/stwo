@@ -1,7 +1,7 @@
 use num_traits::{Num, One, Zero};
 
 use crate::core::fields::cm31::CM31;
-use crate::impl_field;
+use crate::{impl_extension_field, impl_field};
 use std::fmt::Display;
 use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
@@ -17,6 +17,7 @@ pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
 pub struct QM31(CM31, CM31);
 
 impl_field!(QM31, u128, P4);
+impl_extension_field!(QM31, CM31);
 
 impl QM31 {
     pub const fn from_u32_unchecked(a: u32, b: u32, c: u32, d: u32) -> Self {
@@ -33,30 +34,6 @@ impl Display for QM31 {
     }
 }
 
-impl Add for QM31 {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self(self.0 + rhs.0, self.1 + rhs.1)
-    }
-}
-
-impl Neg for QM31 {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        Self(-self.0, -self.1)
-    }
-}
-
-impl Sub for QM31 {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self(self.0 - rhs.0, self.1 - rhs.1)
-    }
-}
-
 impl Mul for QM31 {
     type Output = Self;
 
@@ -66,22 +43,6 @@ impl Mul for QM31 {
             self.0 * rhs.0 + R * self.1 * rhs.1,
             self.0 * rhs.1 + self.1 * rhs.0,
         )
-    }
-}
-
-impl One for QM31 {
-    fn one() -> Self {
-        Self(CM31::one(), CM31::zero())
-    }
-}
-
-impl Zero for QM31 {
-    fn zero() -> Self {
-        Self(CM31::zero(), CM31::zero())
-    }
-
-    fn is_zero(&self) -> bool {
-        *self == Self::zero()
     }
 }
 

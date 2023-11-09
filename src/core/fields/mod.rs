@@ -96,3 +96,54 @@ macro_rules! impl_field {
         }
     };
 }
+
+#[macro_export]
+macro_rules! impl_extension_field {
+    ($field_name: ty, $extended_field_name: ty) => {
+        impl Add for $field_name {
+            type Output = Self;
+
+            fn add(self, rhs: Self) -> Self::Output {
+                Self(self.0 + rhs.0, self.1 + rhs.1)
+            }
+        }
+
+        impl Neg for $field_name {
+            type Output = Self;
+
+            fn neg(self) -> Self::Output {
+                Self(-self.0, -self.1)
+            }
+        }
+
+        impl Sub for $field_name {
+            type Output = Self;
+
+            fn sub(self, rhs: Self) -> Self::Output {
+                Self(self.0 - rhs.0, self.1 - rhs.1)
+            }
+        }
+
+        impl One for $field_name {
+            fn one() -> Self {
+                Self(
+                    <$extended_field_name>::one(),
+                    <$extended_field_name>::zero(),
+                )
+            }
+        }
+
+        impl Zero for $field_name {
+            fn zero() -> Self {
+                Self(
+                    <$extended_field_name>::zero(),
+                    <$extended_field_name>::zero(),
+                )
+            }
+
+            fn is_zero(&self) -> bool {
+                *self == Self::zero()
+            }
+        }
+    };
+}
