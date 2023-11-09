@@ -27,12 +27,8 @@ rustflags = ["-C", "target-cpu=native"]
 debug = 2
 
 [[bench]]
-blake2 = "0.10.6"
-blake3 = "1.5.0"
 harness = false
-hex = "0.4.3"
 name = "field"
-rand = "0.8.5"
 
 
 [[bench]]
