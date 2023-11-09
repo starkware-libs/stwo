@@ -8,7 +8,7 @@ use crate::core::{
 use num_traits::One;
 
 pub struct Fibonacci {
-    pub trace: Column,
+    pub trace: Vec<Column>,
     pub eval_domain: CircleDomain,
     pub constraint_coset: Coset,
     pub constraint_eval_domain: CircleDomain,
@@ -21,10 +21,10 @@ impl Fibonacci {
         let constraint_coset = Coset::subgroup(n_bits);
         let constraint_eval_domain = CircleDomain::constraint_domain(n_bits + 1);
         Self {
-            trace: Column {
-                name: "Fib".to_string(),
+            trace: vec![Column {
+                name: "Fibonacci sequence".to_string(),
                 coset: trace_coset,
-            },
+            }],
             eval_domain,
             constraint_coset,
             constraint_eval_domain,
@@ -33,12 +33,12 @@ impl Fibonacci {
     }
     pub fn get_trace(&self) -> CircleEvaluation {
         // Trace.
-        let mut trace = Vec::with_capacity(self.trace.coset.len());
+        let mut trace = Vec::with_capacity(self.trace[0].coset.len());
 
         // Fill trace with fibonacci squared.
         let mut a = Field::one();
         let mut b = Field::one();
-        for _ in 0..self.trace.coset.len() {
+        for _ in 0..self.trace[0].coset.len() {
             trace.push(a);
             let tmp = a.square() + b.square();
             a = b;
@@ -46,12 +46,12 @@ impl Fibonacci {
         }
 
         // Returns as a CircleEvaluation.
-        CircleEvaluation::new_canonical_ordered(self.trace.coset, trace)
+        CircleEvaluation::new_canonical_ordered(self.trace[0].coset, trace)
     }
     pub fn eval_step_constraint(&self, trace: impl PolyOracle) -> Field {
-        trace.get_at(self.trace.coset.index_at(0)).square()
-            + trace.get_at(self.trace.coset.index_at(1)).square()
-            - trace.get_at(self.trace.coset.index_at(2))
+        trace.get_at(self.trace[0].coset.index_at(0)).square()
+            + trace.get_at(self.trace[0].coset.index_at(1)).square()
+            - trace.get_at(self.trace[0].coset.index_at(2))
     }
 
     pub fn eval_step_quotient(&self, trace: impl PolyOracle) -> Field {
@@ -65,7 +65,7 @@ impl Fibonacci {
     }
 
     pub fn eval_boundary_constraint(&self, trace: impl PolyOracle, value: Field) -> Field {
-        trace.get_at(self.trace.coset.index_at(0)) - value
+        trace.get_at(self.trace[0].coset.index_at(0)) - value
     }
 
     pub fn eval_boundary_quotient(
@@ -89,20 +89,12 @@ impl Fibonacci {
 
     pub fn get_mask_items(&self) -> Mask {
         Mask {
-            items: vec![
-                MaskItem {
+            items: (0..3)
+                .map(|offset| MaskItem {
                     column_index: 0,
-                    index: self.trace.coset.index_at(0),
-                },
-                MaskItem {
-                    column_index: 0,
-                    index: self.trace.coset.index_at(1),
-                },
-                MaskItem {
-                    column_index: 0,
-                    index: self.trace.coset.index_at(2),
-                },
-            ],
+                    offset,
+                })
+                .collect(),
         }
     }
 }
@@ -221,20 +213,21 @@ fn test_mask_items() {
             point: z,
             poly: &trace_poly,
         }],
+        &fib.trace,
         &mask,
     );
 
     assert_eq!(mask.items[0].column_index, 0);
     assert_eq!(
         mask_eval[0],
-        trace_poly.eval_at_point(z + fib.trace.coset.at(0))
+        trace_poly.eval_at_point(z + fib.trace[0].coset.at(0))
     );
     assert_eq!(
         mask_eval[1],
-        trace_poly.eval_at_point(z + fib.trace.coset.at(1))
+        trace_poly.eval_at_point(z + fib.trace[0].coset.at(1))
     );
     assert_eq!(
         mask_eval[2],
-        trace_poly.eval_at_point(z + fib.trace.coset.at(2))
+        trace_poly.eval_at_point(z + fib.trace[0].coset.at(2))
     );
 }
