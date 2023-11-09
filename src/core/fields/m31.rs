@@ -1,3 +1,4 @@
+use crate::impl_field;
 use num_traits::{Num, One, Zero};
 use std::fmt::Display;
 use std::ops::{
@@ -11,53 +12,20 @@ pub const K_BITS: u32 = 31;
 pub struct M31(u32);
 pub type Field = M31;
 
-impl Num for M31 {
-    type FromStrRadixErr = Box<dyn std::error::Error>;
-
-    fn from_str_radix(_str: &str, _radix: u32) -> Result<Self, Self::FromStrRadixErr> {
-        unimplemented!("Num::from_str_radix is not implemented for M31");
-    }
-}
+impl_field!(M31, P);
 
 impl M31 {
-    pub fn square(&self) -> Self {
-        (*self) * (*self)
-    }
-
-    pub fn double(&self) -> M31 {
-        (*self) + (*self)
-    }
-
-    pub fn sqrt(&self) -> Option<M31> {
-        let result = self.pow((1 << 29) as u32);
+    pub fn sqrt(&self) -> Option<Self> {
+        let result = self.pow(1 << 29);
         (result.square() == *self).then_some(result)
-    }
-
-    pub fn pow(&self, exp: u32) -> Self {
-        let mut res = Self::one();
-        let mut base = *self;
-        let mut exp = exp;
-        while exp > 0 {
-            if exp & 1 == 1 {
-                res *= base;
-            }
-            base = base.square();
-            exp >>= 1;
-        }
-        res
     }
 
     pub fn reduce(val: u64) -> Self {
         Self((((((val >> K_BITS) + val + 1) >> K_BITS) + val) & (P as u64)) as u32)
     }
 
-    pub const fn from_u32_unchecked(arg: u32) -> M31 {
+    pub const fn from_u32_unchecked(arg: u32) -> Self {
         Self(arg)
-    }
-
-    pub fn inverse(&self) -> M31 {
-        assert!(*self != Self::zero(), "0 has no inverse");
-        self.pow(P - 2)
     }
 }
 
@@ -72,12 +40,6 @@ impl Add for M31 {
 
     fn add(self, rhs: Self) -> Self::Output {
         Self::reduce((self.0 as u64) + (rhs.0 as u64))
-    }
-}
-
-impl AddAssign for M31 {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
     }
 }
 
@@ -97,51 +59,11 @@ impl Sub for M31 {
     }
 }
 
-impl SubAssign for M31 {
-    fn sub_assign(&mut self, rhs: Self) {
-        *self = *self - rhs;
-    }
-}
-
 impl Mul for M31 {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
         Self::reduce((self.0 as u64) * (rhs.0 as u64))
-    }
-}
-
-impl MulAssign for M31 {
-    fn mul_assign(&mut self, rhs: Self) {
-        *self = *self * rhs;
-    }
-}
-
-impl Div for M31 {
-    type Output = Self;
-
-    #[allow(clippy::suspicious_arithmetic_impl)]
-    fn div(self, rhs: Self) -> Self::Output {
-        self * rhs.inverse()
-    }
-}
-
-impl DivAssign for M31 {
-    fn div_assign(&mut self, rhs: Self) {
-        *self = *self / rhs;
-    }
-}
-
-impl Rem for M31 {
-    type Output = Self;
-    fn rem(self, _rhs: Self) -> Self::Output {
-        unimplemented!("Rem is not implemented for M31");
-    }
-}
-
-impl RemAssign for M31 {
-    fn rem_assign(&mut self, _rhs: Self) {
-        unimplemented!("RemAssign is not implemented for M31");
     }
 }
 
