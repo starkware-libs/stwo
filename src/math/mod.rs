@@ -32,12 +32,23 @@ pub fn usize_div_ceil(a: usize, b: usize) -> usize {
     (a + b - 1) / b
 }
 
+
 #[inline]
 pub fn usize_safe_div(a: usize, b: usize) -> usize {
     assert_ne!(b, 0, "Attempt division by 0!");
     let quotient = a / b;
     assert_eq!(a, quotient * b, "Attempt division with remainder!");
     quotient
+}
+
+/// Returns s, t, g such that g = gcd(x,y),  sx + ty = g
+pub fn egcd(x: isize, y: isize) -> (isize, isize, isize) {
+    if x == 0 {
+        return (0, 1, y);
+    }
+    let k = y / x;
+    let (s, t, g) = egcd(y % x, x);
+    (t - s * k, s, g)
 }
 
 #[cfg(test)]
@@ -47,6 +58,7 @@ mod tests {
     use crate::math::next_pow_two;
     use crate::math::prev_pow_two;
     use crate::math::usize_div_ceil;
+    use crate::math::{egcd, log2_ceil, usize_div_ceil};
 
     #[test]
     fn log2_ceil_test() {
@@ -88,5 +100,15 @@ mod tests {
     #[should_panic(expected = "Attempt division by 0!")]
     fn div_ceil_by_zero_test() {
         usize_div_ceil(6, 0);
+    }
+
+    #[test]
+    fn test_egcd() {
+        let pairs = [(17, 5, 1), (6, 4, 2), (7, 7, 7)];
+        for (x, y, res) in pairs.iter() {
+            let (a, b, gcd) = egcd(*x, *y);
+            assert_eq!(gcd, *res);
+            assert_eq!(a * x + b * y, gcd);
+        }
     }
 }
