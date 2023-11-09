@@ -1,4 +1,5 @@
 use super::fields::m31::M31;
+use crate::math::egcd;
 use num_traits::{One, Zero};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
@@ -115,12 +116,12 @@ impl CirclePointIndex {
     }
     pub fn try_div(&self, rhs: CirclePointIndex) -> Option<usize> {
         // Find x s.t. x * rhs.0 = self.0 (mod CIRCLE_ORDER).
-        let (s, _t, g) = egcd(rhs.0 as i64, 1 << CIRCLE_ORDER_BITS);
-        if (self.0 as i64) % g != 0 {
+        let (s, _t, g) = egcd(rhs.0, 1 << CIRCLE_ORDER_BITS);
+        if self.0 % g != 0 {
             return None;
         }
-        let res = s * (self.0 as i64) / g;
-        let cap = (1 << CIRCLE_ORDER_BITS) / g;
+        let res = s * self.0 as isize / g as isize;
+        let cap = (1 << CIRCLE_ORDER_BITS) / g as isize;
         let res = ((res % cap) + cap) % cap;
         Some(res as usize)
     }
@@ -147,16 +148,6 @@ impl Mul<usize> for CirclePointIndex {
     }
 }
 
-// TODO(spapini): Move somewhere else.
-/// Returns s, t, g such that g = gcd(x,y),  sx + ty = g
-fn egcd(x: i64, y: i64) -> (i64, i64, i64) {
-    if x == 0 {
-        return (0, 1, y);
-    }
-    let k = y / x;
-    let (s, t, g) = egcd(y % x, x);
-    (t - s * k, s, g)
-}
 impl Div for CirclePointIndex {
     type Output = usize;
 
