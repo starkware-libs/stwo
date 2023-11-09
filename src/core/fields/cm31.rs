@@ -1,7 +1,9 @@
 use crate::core::fields::m31::M31;
-use num_traits::{One, Zero};
+use num_traits::{Num, One, Zero};
 use std::fmt::Display;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::ops::{
+    Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
+};
 
 pub const P2: u64 = 4611686014132420609; // (2 ** 31 - 1) ** 2
 
@@ -10,6 +12,14 @@ pub const P2: u64 = 4611686014132420609; // (2 ** 31 - 1) ** 2
 /// Equivalent to M31\[x\] over (x^2 + 1) as the irreducible polynomial.
 /// Represented as (a, b) of a + bi.
 pub struct CM31(M31, M31);
+
+impl Num for CM31 {
+    type FromStrRadixErr = Box<dyn std::error::Error>;
+
+    fn from_str_radix(_str: &str, _radix: u32) -> Result<Self, Self::FromStrRadixErr> {
+        unimplemented!("Num::from_str_radix is not implemented for CM31");
+    }
+}
 
 impl CM31 {
     pub fn square(&self) -> Self {
@@ -34,20 +44,12 @@ impl CM31 {
         res
     }
 
-    pub fn one() -> CM31 {
-        Self(M31::one(), M31::zero())
-    }
-
-    pub fn zero() -> CM31 {
-        Self(M31::zero(), M31::zero())
-    }
-
     pub const fn from_u32_unchecked(a: u32, b: u32) -> CM31 {
         Self(M31::from_u32_unchecked(a), M31::from_u32_unchecked(b))
     }
 
     pub fn inverse(&self) -> CM31 {
-        assert!(*self != Self::zero(), "division by zero");
+        assert!(*self != Self::zero(), "0 has no inverse");
         self.pow(P2 - 2)
     }
 }
@@ -124,6 +126,35 @@ impl Div for CM31 {
 impl DivAssign for CM31 {
     fn div_assign(&mut self, rhs: Self) {
         *self = *self / rhs;
+    }
+}
+
+impl Rem for CM31 {
+    type Output = Self;
+    fn rem(self, _rhs: Self) -> Self::Output {
+        unimplemented!("Rem is not implemented for CM31");
+    }
+}
+
+impl RemAssign for CM31 {
+    fn rem_assign(&mut self, _rhs: Self) {
+        unimplemented!("RemAssign is not implemented for CM31");
+    }
+}
+
+impl One for CM31 {
+    fn one() -> Self {
+        Self(M31::one(), M31::zero())
+    }
+}
+
+impl Zero for CM31 {
+    fn zero() -> Self {
+        Self(M31::zero(), M31::zero())
+    }
+
+    fn is_zero(&self) -> bool {
+        *self == Self::zero()
     }
 }
 

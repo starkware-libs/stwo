@@ -1,6 +1,10 @@
+use num_traits::{One, Zero};
+
 use crate::core::fields::cm31::CM31;
 use std::fmt::Display;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::ops::{
+    Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
+};
 
 pub const P4: u128 = 21267647892944572736998860269687930881; // (2 ** 31 - 1) ** 4
 pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
@@ -34,14 +38,6 @@ impl QM31 {
         res
     }
 
-    pub fn one() -> Self {
-        Self(CM31::one(), CM31::zero())
-    }
-
-    pub fn zero() -> Self {
-        Self(CM31::zero(), CM31::zero())
-    }
-
     pub const fn from_u32_unchecked(a: u32, b: u32, c: u32, d: u32) -> Self {
         Self(
             CM31::from_u32_unchecked(a, b),
@@ -50,7 +46,7 @@ impl QM31 {
     }
 
     pub fn inverse(&self) -> Self {
-        assert!(*self != Self::zero(), "division by zero");
+        assert!(*self != Self::zero(), "0 has no inverse");
         self.pow(P4 - 2)
     }
 }
@@ -127,6 +123,35 @@ impl Div for QM31 {
 impl DivAssign for QM31 {
     fn div_assign(&mut self, rhs: Self) {
         *self = *self / rhs;
+    }
+}
+
+impl Rem for QM31 {
+    type Output = Self;
+    fn rem(self, _rhs: Self) -> Self::Output {
+        unimplemented!("Rem is not implemented for QM31");
+    }
+}
+
+impl RemAssign for QM31 {
+    fn rem_assign(&mut self, _rhs: Self) {
+        unimplemented!("RemAssign is not implemented for QM31");
+    }
+}
+
+impl One for QM31 {
+    fn one() -> Self {
+        Self(CM31::one(), CM31::zero())
+    }
+}
+
+impl Zero for QM31 {
+    fn zero() -> Self {
+        Self(CM31::zero(), CM31::zero())
+    }
+
+    fn is_zero(&self) -> bool {
+        *self == Self::zero()
     }
 }
 
