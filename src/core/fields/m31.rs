@@ -73,6 +73,7 @@ impl Add for M31 {
         Self::reduce((self.0 as u64) + (rhs.0 as u64))
     }
 }
+
 impl AddAssign for M31 {
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
@@ -122,6 +123,7 @@ impl Div for M31 {
         self * rhs.inverse()
     }
 }
+
 impl DivAssign for M31 {
     fn div_assign(&mut self, rhs: Self) {
         *self = *self / rhs;
