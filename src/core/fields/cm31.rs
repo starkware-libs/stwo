@@ -1,5 +1,5 @@
 use crate::core::fields::m31::M31;
-use crate::impl_field;
+use crate::{impl_extension_field, impl_field};
 use num_traits::{Num, One, Zero};
 use std::fmt::Display;
 use std::ops::{
@@ -15,6 +15,7 @@ pub const P2: u64 = 4611686014132420609; // (2 ** 31 - 1) ** 2
 pub struct CM31(M31, M31);
 
 impl_field!(CM31, P2);
+impl_extension_field!(CM31, M31);
 
 impl CM31 {
     pub const fn from_u32_unchecked(a: u32, b: u32) -> CM31 {
@@ -28,30 +29,6 @@ impl Display for CM31 {
     }
 }
 
-impl Add for CM31 {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self(self.0 + rhs.0, self.1 + rhs.1)
-    }
-}
-
-impl Neg for CM31 {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        Self(-self.0, -self.1)
-    }
-}
-
-impl Sub for CM31 {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self(self.0 - rhs.0, self.1 - rhs.1)
-    }
-}
-
 impl Mul for CM31 {
     type Output = Self;
 
@@ -61,38 +38,6 @@ impl Mul for CM31 {
             self.0 * rhs.0 - self.1 * rhs.1,
             self.0 * rhs.1 + self.1 * rhs.0,
         )
-    }
-}
-
-impl One for CM31 {
-    fn one() -> Self {
-        Self(M31::one(), M31::zero())
-    }
-}
-
-impl Add<M31> for CM31 {
-    type Output = Self;
-
-    fn add(self, rhs: M31) -> Self::Output {
-        Self(self.0 + rhs, self.1)
-    }
-}
-
-impl Mul<M31> for CM31 {
-    type Output = Self;
-
-    fn mul(self, rhs: M31) -> Self::Output {
-        Self(self.0 * rhs, self.1 * rhs)
-    }
-}
-
-impl Zero for CM31 {
-    fn zero() -> Self {
-        Self(M31::zero(), M31::zero())
-    }
-
-    fn is_zero(&self) -> bool {
-        *self == Self::zero()
     }
 }
 
