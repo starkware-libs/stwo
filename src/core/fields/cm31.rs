@@ -1,22 +1,13 @@
 use crate::core::fields::m31::M31;
-use num_traits::One;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use std::fmt::Display;
-use std::ops::Add;
-use std::ops::AddAssign;
-use std::ops::Div;
-use std::ops::DivAssign;
-use std::ops::Mul;
-use std::ops::MulAssign;
-use std::ops::Neg;
-use std::ops::Sub;
-use std::ops::SubAssign;
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 pub const P2: u64 = 4611686014132420609; // (2 ** 31 - 1) ** 2
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Complex extension field of M31.
-/// Equivalent to M31[x] over (x^2 + 1) as the irreducible polynomial.
+/// Equivalent to M31\[x\] over (x^2 + 1) as the irreducible polynomial.
 /// Represented as (a, b) of a + bi.
 pub struct CM31(M31, M31);
 
