@@ -316,14 +316,19 @@ fn test_iterator() {
 
 #[test]
 fn test_coset_is_half_coset_with_conjugate() {
+    // TODO(andrew): make test module and move out imports
     use crate::core::poly::circle::CanonicCoset;
     use std::collections::BTreeSet;
     let canonic_coset = CanonicCoset::new(8);
-    let coset = BTreeSet::from_iter(canonic_coset.coset().iter());
+    let coset_points = BTreeSet::from_iter(canonic_coset.coset().iter());
 
-    let half_coset = BTreeSet::from_iter(canonic_coset.half_coset().iter());
-    let half_coset_conjugate = BTreeSet::from_iter(canonic_coset.half_coset().conjugate().iter());
+    let half_coset_points = BTreeSet::from_iter(canonic_coset.half_coset().iter());
+    let half_coset_conjugate_points =
+        BTreeSet::from_iter(canonic_coset.half_coset().conjugate().iter());
 
-    assert!((&half_coset & &half_coset_conjugate).is_empty());
-    assert_eq!(coset, &half_coset | &half_coset_conjugate)
+    assert!((&half_coset_points & &half_coset_conjugate_points).is_empty());
+    assert_eq!(
+        coset_points,
+        &half_coset_points | &half_coset_conjugate_points
+    )
 }
