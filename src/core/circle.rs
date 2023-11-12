@@ -319,6 +319,7 @@ fn test_coset_is_half_coset_with_conjugate() {
     // TODO(andrew): make test module and move out imports
     use crate::core::poly::circle::CanonicCoset;
     use std::collections::BTreeSet;
+
     let canonic_coset = CanonicCoset::new(8);
     let coset_points = BTreeSet::from_iter(canonic_coset.coset().iter());
 
