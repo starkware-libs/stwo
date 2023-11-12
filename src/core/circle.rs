@@ -313,3 +313,17 @@ fn test_iterator() {
     let expected_points: Vec<_> = expected_indices.iter().map(|i| i.to_point()).collect();
     assert_eq!(actual_points, expected_points);
 }
+
+#[test]
+fn test_coset_is_half_coset_with_conjugate() {
+    use crate::core::poly::circle::CanonicCoset;
+    use std::collections::BTreeSet;
+    let canonic_coset = CanonicCoset::new(8);
+    let coset = BTreeSet::from_iter(canonic_coset.coset().iter());
+
+    let half_coset = BTreeSet::from_iter(canonic_coset.half_coset().iter());
+    let half_coset_conjugate = BTreeSet::from_iter(canonic_coset.half_coset().conjugate().iter());
+
+    assert!((&half_coset & &half_coset_conjugate).is_empty());
+    assert_eq!(coset, &half_coset | &half_coset_conjugate)
+}
