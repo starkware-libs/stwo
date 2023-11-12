@@ -42,6 +42,7 @@ pub fn field_operations_bench(c: &mut criterion::Criterion) {
     });
 }
 
+#[cfg(target_arch = "x86_64")]
 pub fn avx512_field_operations_bench(c: &mut criterion::Criterion) {
     use prover_research::platform;
     if !platform::avx512_detected() {
@@ -100,9 +101,12 @@ pub fn avx512_field_operations_bench(c: &mut criterion::Criterion) {
     });
 }
 
+#[cfg(target_arch = "x86_64")]
 criterion::criterion_group!(
     benches,
     field_operations_bench,
     avx512_field_operations_bench
 );
+#[cfg(not(target_arch = "x86_64"))]
+criterion::criterion_group!(benches, field_operations_bench);
 criterion::criterion_main!(benches);
