@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, iter::Chain, ops::Deref};
+use std::{iter::Chain, ops::Deref};
 
 use crate::core::{
     circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator},
@@ -381,6 +381,7 @@ fn test_mixed_degree_example() {
 
 #[test]
 fn test_coset_is_half_coset_with_conjugate() {
+    use std::collections::BTreeSet;
     let canonic_coset = CanonicCoset::new(8);
     let coset = BTreeSet::from_iter(canonic_coset.coset().iter());
 
