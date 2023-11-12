@@ -83,9 +83,9 @@ impl super::hasher::Hasher for Blake2sHasher {
 
 #[cfg(test)]
 mod tests {
-    use crate::commitment_scheme::{blake2_hash, hasher::Hasher};
-
     use super::Blake2sHasher;
+    use crate::commitment_scheme::blake2_hash;
+    use crate::commitment_scheme::hasher::Hasher;
 
     #[test]
     fn single_hash_test() {

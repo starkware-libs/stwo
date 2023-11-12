@@ -1,19 +1,20 @@
-use num_traits::{Num, One, Zero};
-
-use crate::core::fields::cm31::CM31;
-use crate::impl_field;
 use std::fmt::Display;
 use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use num_traits::{Num, One, Zero};
+
+use crate::core::fields::cm31::CM31;
+use crate::impl_field;
+
 pub const P4: u128 = 21267647892944572736998860269687930881; // (2 ** 31 - 1) ** 4
 pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Extension field of CM31.
 /// Equivalent to CM31\[x\] over (x^2 - 1 - 2i) as the irreducible polynomial.
 /// Represented as ((a, b), (c, d)) of (a + bi) + (c + di)u.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct QM31(CM31, CM31);
 
 impl_field!(QM31, P4);

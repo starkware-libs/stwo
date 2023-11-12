@@ -1,24 +1,23 @@
-use super::{
-    circle::{CirclePoint, CirclePointIndex, Coset},
-    fft::psi_x,
-    fields::m31::Field,
-    poly::circle::{CircleDomain, CircleEvaluation, CirclePoly},
-};
 use num_traits::One;
+
+use super::circle::{CirclePoint, CirclePointIndex, Coset};
+use super::fft::psi_x;
+use super::fields::m31::Field;
+use super::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
 
 // Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing(coset: Coset, mut p: CirclePoint) -> Field {
-    // Doubling a point `n_bits / 2` times and taking the x coordinate is essentially evaluating
-    // a polynomial in x of degree `2**(n_bits-1)`. If the entire `2**n_bits` points of the coset
-    // are roots (i.e. yield 0), then this is a vanishing polynomial of these points.
+    // Doubling a point `n_bits / 2` times and taking the x coordinate is
+    // essentially evaluating a polynomial in x of degree `2**(n_bits-1)`. If
+    // the entire `2**n_bits` points of the coset are roots (i.e. yield 0), then
+    // this is a vanishing polynomial of these points.
 
     // Rotating the coset -coset.initial + step / 2 yields a canonic coset:
     // `step/2 + <step>.`
     // Doubling this coset n_bits - 1 times yields the coset +-G_4.
     // th polynomial x vanishes on these points.
     //   X
-    // .   .
-    //   X
+    // . . X
     p = p - coset.initial + coset.step_size.half().to_point();
     let mut x = p.x;
 
@@ -33,8 +32,9 @@ pub fn circle_domain_vanishing(domain: CircleDomain, p: CirclePoint) -> Field {
     coset_vanishing(domain.half_coset, p) * coset_vanishing(domain.half_coset.conjugate(), p)
 }
 
-// Evaluates the polynmial that is used to exclude the excluded point at point p.
-// Note that this polynomial has a zero of multiplicity 2 at the excluded point.
+// Evaluates the polynmial that is used to exclude the excluded point at point
+// p. Note that this polynomial has a zero of multiplicity 2 at the excluded
+// point.
 pub fn point_excluder(excluded: CirclePoint, p: CirclePoint) -> Field {
     (p - excluded).x - Field::one()
 }
@@ -52,30 +52,36 @@ pub trait PolyOracle: Copy {
     fn get_at(&self, i: CirclePointIndex) -> Field;
     fn point(&self) -> CirclePoint;
 }
+
 #[derive(Copy, Clone)]
 pub struct EvalByPoly<'a> {
     pub point: CirclePoint,
     pub poly: &'a CirclePoly,
 }
+
 impl<'a> PolyOracle for EvalByPoly<'a> {
     fn point(&self) -> CirclePoint {
         self.point
     }
+
     fn get_at(&self, i: CirclePointIndex) -> Field {
         self.poly.eval_at_point(self.point + i.to_point())
     }
 }
 
-// TODO(spapini): make an iterator instead, so we do all computations beforehand.
+// TODO(spapini): make an iterator instead, so we do all computations
+// beforehand.
 #[derive(Copy, Clone)]
 pub struct EvalByEvaluation<'a> {
     pub offset: CirclePointIndex,
     pub eval: &'a CircleEvaluation,
 }
+
 impl<'a> PolyOracle for EvalByEvaluation<'a> {
     fn point(&self) -> CirclePoint {
         self.offset.to_point()
     }
+
     fn get_at(&self, mut i: CirclePointIndex) -> Field {
         i = i + self.offset;
 

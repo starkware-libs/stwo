@@ -1,7 +1,9 @@
+use std::ops::{Add, Div, Mul, Neg, Sub};
+
+use num_traits::{One, Zero};
+
 use super::fields::m31::M31;
 use crate::math::egcd;
-use num_traits::{One, Zero};
-use std::ops::{Add, Div, Mul, Neg, Sub};
 
 /// A point on the complex circle. Treaed as an additive group.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -9,6 +11,7 @@ pub struct CirclePoint {
     pub x: M31,
     pub y: M31,
 }
+
 impl CirclePoint {
     pub fn zero() -> Self {
         Self {
@@ -16,9 +19,11 @@ impl CirclePoint {
             y: M31::zero(),
         }
     }
+
     pub fn double(&self) -> Self {
         *self + *self
     }
+
     pub fn order_bits(&self) -> usize {
         let mut res = 0;
         let mut cur = *self;
@@ -28,6 +33,7 @@ impl CirclePoint {
         }
         res
     }
+
     pub fn mul(&self, mut scalar: u64) -> CirclePoint {
         let mut res = Self::zero();
         let mut cur = *self;
@@ -40,6 +46,7 @@ impl CirclePoint {
         }
         res
     }
+
     pub fn repeated_double(&self, n: usize) -> Self {
         let mut res = *self;
         for _ in 0..n {
@@ -62,6 +69,7 @@ impl CirclePoint {
         }
     }
 }
+
 impl Add for CirclePoint {
     type Output = Self;
 
@@ -71,6 +79,7 @@ impl Add for CirclePoint {
         Self { x, y }
     }
 }
+
 impl Neg for CirclePoint {
     type Output = Self;
 
@@ -78,6 +87,7 @@ impl Neg for CirclePoint {
         self.conjugate()
     }
 }
+
 impl Sub for CirclePoint {
     type Output = Self;
 
@@ -90,30 +100,37 @@ pub const CIRCLE_GEN: CirclePoint = CirclePoint {
     x: M31::from_u32_unchecked(2),
     y: M31::from_u32_unchecked(1268011823),
 };
+
 pub const CIRCLE_ORDER_BITS: usize = 31;
 
-/// Integer i that represent the circle point i * CIRCLE_GEN. Treated as an additive ring
-/// modulo 1 << CURVE_ORDER_BITS.
+/// Integer i that represent the circle point i * CIRCLE_GEN. Treated as an
+/// additive ring modulo 1 << CURVE_ORDER_BITS.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CirclePointIndex(pub usize);
+
 impl CirclePointIndex {
     pub fn zero() -> Self {
         Self(0)
     }
+
     pub fn generator() -> Self {
         Self(1)
     }
+
     pub fn subgroup_gen(n_bits: usize) -> Self {
         assert!(n_bits <= CIRCLE_ORDER_BITS);
         Self(1 << (CIRCLE_ORDER_BITS - n_bits))
     }
+
     pub fn to_point(self) -> CirclePoint {
         CIRCLE_GEN.mul(self.0 as u64)
     }
+
     pub fn half(self) -> Self {
         assert!(self.0 & 1 == 0);
         Self(self.0 >> 1)
     }
+
     pub fn try_div(&self, rhs: CirclePointIndex) -> Option<usize> {
         // Find x s.t. x * rhs.0 = self.0 (mod CIRCLE_ORDER).
         let (s, _t, g) = egcd(rhs.0 as isize, 1 << CIRCLE_ORDER_BITS);
@@ -126,6 +143,7 @@ impl CirclePointIndex {
         Some(res as usize)
     }
 }
+
 impl Add for CirclePointIndex {
     type Output = Self;
 
@@ -133,6 +151,7 @@ impl Add for CirclePointIndex {
         Self((self.0 + rhs.0) & ((1 << CIRCLE_ORDER_BITS) - 1))
     }
 }
+
 impl Sub for CirclePointIndex {
     type Output = Self;
 
@@ -140,6 +159,7 @@ impl Sub for CirclePointIndex {
         Self((self.0 + (1 << CIRCLE_ORDER_BITS) - rhs.0) & ((1 << CIRCLE_ORDER_BITS) - 1))
     }
 }
+
 impl Mul<usize> for CirclePointIndex {
     type Output = Self;
 
@@ -155,6 +175,7 @@ impl Div for CirclePointIndex {
         self.try_div(rhs).unwrap()
     }
 }
+
 impl Neg for CirclePointIndex {
     type Output = Self;
 
@@ -172,6 +193,7 @@ pub struct Coset {
     pub step: CirclePoint,
     pub n_bits: usize,
 }
+
 impl Coset {
     pub fn new(initial_index: CirclePointIndex, n_bits: usize) -> Self {
         assert!(n_bits <= CIRCLE_ORDER_BITS);
@@ -184,28 +206,34 @@ impl Coset {
             n_bits,
         }
     }
+
     /// Creates a coset of the form <G_n>.
     /// For example, for n=8, we get the point indices \[0,1,2,3,4,5,6,7\].
     pub fn subgroup(n_bits: usize) -> Self {
         Self::new(CirclePointIndex::zero(), n_bits)
     }
+
     /// Creates a coset of the form G_2n + \<G_n\>.
     /// For example, for n=8, we get the point indices \[1,3,5,7,9,11,13,15\].
     pub fn odds(n_bits: usize) -> Self {
         Self::new(CirclePointIndex::subgroup_gen(n_bits + 1), n_bits)
     }
+
     /// Creates a coset of the form G_4n + <G_n>.
     /// For example, for n=8, we get the point indices \[1,5,9,13,17,21,25,29\].
     /// Its conjugate will be \[3,7,11,15,19,23,27,31\].
     pub fn half_odds(n_bits: usize) -> Self {
         Self::new(CirclePointIndex::subgroup_gen(n_bits + 2), n_bits)
     }
+
     pub fn len(&self) -> usize {
         1 << self.n_bits
     }
+
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
     pub fn iter(&self) -> CosetIterator<CirclePoint> {
         CosetIterator {
             cur: self.initial,
@@ -213,6 +241,7 @@ impl Coset {
             remaining: self.len(),
         }
     }
+
     pub fn iter_indices(&self) -> CosetIterator<CirclePointIndex> {
         CosetIterator {
             cur: self.initial_index,
@@ -220,6 +249,7 @@ impl Coset {
             remaining: self.len(),
         }
     }
+
     pub fn double(&self) -> Self {
         assert!(self.n_bits > 0);
         Self {
@@ -230,15 +260,19 @@ impl Coset {
             n_bits: self.n_bits - 1,
         }
     }
+
     pub fn initial(&self) -> CirclePoint {
         CIRCLE_GEN.repeated_double(CIRCLE_ORDER_BITS - self.n_bits - 1)
     }
+
     pub fn index_at(&self, index: usize) -> CirclePointIndex {
         self.initial_index + self.step_size.mul(index)
     }
+
     pub fn at(&self, index: usize) -> CirclePoint {
         self.index_at(index).to_point()
     }
+
     pub fn shift(&self, shift_size: CirclePointIndex) -> Self {
         let initial_index = self.initial_index + shift_size;
         Self {
@@ -247,6 +281,7 @@ impl Coset {
             ..*self
         }
     }
+
     /// Creates the conjugate coset: -initial -\<step\>.
     pub fn conjugate(&self) -> Self {
         let initial_index = -self.initial_index;
@@ -259,6 +294,7 @@ impl Coset {
             n_bits: self.n_bits,
         }
     }
+
     pub fn find(&self, i: CirclePointIndex) -> Option<usize> {
         (i - self.initial_index).try_div(self.step_size)
     }
@@ -270,6 +306,7 @@ pub struct CosetIterator<T: Add> {
     pub step: T,
     pub remaining: usize,
 }
+
 impl<T: Add<Output = T> + Copy> Iterator for CosetIterator<T> {
     type Item = T;
 
@@ -308,8 +345,9 @@ fn test_iterator() {
 #[test]
 fn test_coset_is_half_coset_with_conjugate() {
     // TODO(andrew): make test module and move out imports
-    use crate::core::poly::circle::CanonicCoset;
     use std::collections::BTreeSet;
+
+    use crate::core::poly::circle::CanonicCoset;
 
     let canonic_coset = CanonicCoset::new(8);
     let coset_points = BTreeSet::from_iter(canonic_coset.coset().iter());

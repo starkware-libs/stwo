@@ -1,5 +1,7 @@
 use prover_research::core::fields::m31::{M31, P};
-use rand::{rngs::ThreadRng, Rng};
+use rand::rngs::ThreadRng;
+use rand::Rng;
+
 pub const N_ELEMENTS: usize = 1 << 16;
 pub const N_STATE_ELEMENTS: usize = 8;
 

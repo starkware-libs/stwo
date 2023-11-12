@@ -1,12 +1,6 @@
 use core::arch::x86_64::*;
 use std::fmt::Display;
-use std::ops::Add;
-use std::ops::AddAssign;
-use std::ops::Mul;
-use std::ops::MulAssign;
-use std::ops::Neg;
-use std::ops::Sub;
-use std::ops::SubAssign;
+use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use super::m31::{K_BITS, M31, P};
 pub const K_BLOCK_SIZE: usize = 8;
@@ -17,12 +11,13 @@ pub const M512ONE: __m512i = unsafe { core::mem::transmute([1u64; K_BLOCK_SIZE])
 pub struct M31AVX512(__m512i);
 
 impl M31AVX512 {
-    #[inline(always)]
-    /// Given x1,...,x\[K_BLOCK_SIZE\] values, each in [0, 2*\[P\]), packed in x,
-    /// returns packed xi % \[P\].
+    /// Given x1,...,x\[K_BLOCK_SIZE\] values, each in [0, 2*\[P\]), packed in
+    /// x, returns packed xi % \[P\].
     /// If xi == 2*\[P\], then it reduces to \[P\].
-    /// Note that this function can be used for both reduced and unreduced representations.
-    /// [0, 2*\[P\]) -> [0, \[P\]), [0, 2*\[P\]] -> [0, \[P\]].
+    /// Note that this function can be used for both reduced and unreduced
+    /// representations. [0, 2*\[P\]) -> [0, \[P\]), [0, 2*\[P\]] -> [0,
+    /// \[P\]].
+    #[inline(always)]
     fn partial_reduce(x: __m512i) -> Self {
         unsafe {
             let x_minus_p = _mm512_sub_epi32(x, M512P);
@@ -30,12 +25,13 @@ impl M31AVX512 {
         }
     }
 
-    #[inline(always)]
-    /// Given x1,...,x\[K_BLOCK_SIZE\] values, each in [0, \[P\]^2), packed in x,
-    /// returns packed xi % \[P\].
+    /// Given x1,...,x\[K_BLOCK_SIZE\] values, each in [0, \[P\]^2), packed in
+    /// x, returns packed xi % \[P\].
     /// If xi == \[P\]^2, then it reduces to \[P\].
-    /// Note that this function can be used for both reduced and unreduced representations.
-    /// [0, \[P\]^2) -> [0, \[P\]), [0, \[P\]^2] -> [0, \[P\]].
+    /// Note that this function can be used for both reduced and unreduced
+    /// representations. [0, \[P\]^2) -> [0, \[P\]), [0, \[P\]^2] -> [0,
+    /// \[P\]].
+    #[inline(always)]
     fn reduce(x: __m512i) -> Self {
         unsafe {
             let x_plus_one: __m512i = _mm512_add_epi64(x, M512ONE);
@@ -148,8 +144,8 @@ impl SubAssign for M31AVX512 {
     }
 }
 
-#[test]
 /// Tests field operations where field elements are in reduced form.
+#[test]
 fn test_avx512_basic_ops() {
     if !crate::platform::avx512_detected() {
         return;
@@ -174,8 +170,8 @@ fn test_avx512_basic_ops() {
     );
 }
 
-#[test]
 /// Tests that reduce functions are correct.
+#[test]
 fn test_reduce() {
     if !crate::platform::avx512_detected() {
         return;

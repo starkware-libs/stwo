@@ -53,7 +53,8 @@ pub fn hash_layer<T: Hasher>(layer: &[u8], node_size: usize, dst: &mut [u8]) {
 }
 
 /// Maps columns by length.
-/// Mappings are sorted by length. i.e the first entry is a matrix of the shortest columns.
+/// Mappings are sorted by length. i.e the first entry is a matrix of the
+/// shortest columns.
 pub fn map_columns_sorted<T: Sized>(cols: ColumnArray<T>) -> ColumnLengthMap<T> {
     let mut columns_length_map: ColumnLengthMap<T> = BTreeMap::new();
     for c in cols {
@@ -63,10 +64,11 @@ pub fn map_columns_sorted<T: Sized>(cols: ColumnArray<T>) -> ColumnLengthMap<T> 
     columns_length_map
 }
 
-/// Given columns of the same length, transforms to bytes and concatenates corresponding column elements.
-/// Assumes columns are of the same length.
+/// Given columns of the same length, transforms to bytes and concatenates
+/// corresponding column elements. Assumes columns are of the same length.
 /// # Safety
-/// Pointers in 'dst' should point to pre-allocated memory with enough space to store column_array.len() amount of u32 elements.
+/// Pointers in 'dst' should point to pre-allocated memory with enough space to
+/// store column_array.len() amount of u32 elements.
 // TODO(Ohad): Think about endianess.
 pub unsafe fn transpose_to_bytes<T: Sized>(column_array: &ColumnArray<T>, dst: &[*mut u8]) {
     let column_length = column_array[0].len();
@@ -90,11 +92,13 @@ pub unsafe fn transpose_to_bytes<T: Sized>(column_array: &ColumnArray<T>, dst: &
 ///
 /// # Arguments
 ///
-/// * 'gap_offset' - The offset in bytes between end of target to the beginning of the next.
+/// * 'gap_offset' - The offset in bytes between end of target to the beginning
+///   of the next.
 ///
 /// # Safety
 ///
-/// dst should point to pre-allocated memory with enough space to store the entire column array + offset*(n_rows/n_rows_in_node) amount of T elements.
+/// dst should point to pre-allocated memory with enough space to store the
+/// entire column array + offset*(n_rows/n_rows_in_node) amount of T elements.
 pub unsafe fn inject<T: Sized>(
     column_array: &ColumnArray<T>,
     dst: &mut [u8],
@@ -112,14 +116,10 @@ pub unsafe fn inject<T: Sized>(
 #[cfg(test)]
 mod tests {
     use super::{allocate_balanced_tree, map_columns_sorted, ColumnArray};
-    use crate::{
-        commitment_scheme::{
-            blake3_hash::Blake3Hasher,
-            hasher::Hasher,
-            utils::{allocate_layer, hash_layer, inject, transpose_to_bytes},
-        },
-        math,
-    };
+    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
+    use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::utils::{allocate_layer, hash_layer, inject, transpose_to_bytes};
+    use crate::math;
 
     fn init_test_trace() -> ColumnArray<u32> {
         let col0 = std::iter::repeat(0).take(8).collect();
@@ -181,7 +181,8 @@ mod tests {
         );
     }
 
-    // TODO(Ohad): generelize over a hash function and use hash-in-place functions to initialize output arrays instead of zeros.
+    // TODO(Ohad): generelize over a hash function and use hash-in-place functions
+    // to initialize output arrays instead of zeros.
     #[test]
     fn inject_test() {
         let cols = init_transpose_test_trace();

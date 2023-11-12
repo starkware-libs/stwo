@@ -1,11 +1,11 @@
-use std::{iter::Chain, ops::Deref};
+use std::iter::Chain;
+use std::ops::Deref;
 
-use crate::core::{
-    circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator},
-    fft::{butterfly, ibutterfly, psi_x},
-    fields::m31::Field,
-};
 use num_traits::{One, Zero};
+
+use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
+use crate::core::fft::{butterfly, ibutterfly, psi_x};
+use crate::core::fields::m31::Field;
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.
@@ -14,12 +14,14 @@ use num_traits::{One, Zero};
 pub struct CircleDomain {
     pub half_coset: Coset,
 }
+
 impl CircleDomain {
-    /// Given a coset C + <G_n>, constructs the circle domain +-C + <G_n> (i.e., this coset and
-    /// its conjugate).
+    /// Given a coset C + <G_n>, constructs the circle domain +-C + <G_n> (i.e.,
+    /// this coset and its conjugate).
     pub fn new(half_coset: Coset) -> Self {
         Self { half_coset }
     }
+
     /// Constructs a domain for constraint evaluation.
     pub fn constraint_domain(n_bits: usize) -> Self {
         assert!(n_bits > 0);
@@ -27,11 +29,13 @@ impl CircleDomain {
             half_coset: Coset::new(CirclePointIndex::generator(), n_bits - 1),
         }
     }
+
     pub fn iter(&self) -> Chain<CosetIterator<CirclePoint>, CosetIterator<CirclePoint>> {
         self.half_coset
             .iter()
             .chain(self.half_coset.conjugate().iter())
     }
+
     pub fn iter_indices(
         &self,
     ) -> Chain<CosetIterator<CirclePointIndex>, CosetIterator<CirclePointIndex>> {
@@ -39,15 +43,19 @@ impl CircleDomain {
             .iter_indices()
             .chain(self.half_coset.conjugate().iter_indices())
     }
+
     pub fn len(&self) -> usize {
         self.half_coset.len() * 2
     }
+
     pub fn is_empty(&self) -> bool {
         false
     }
+
     pub fn n_bits(&self) -> usize {
         self.half_coset.n_bits + 1
     }
+
     pub fn at(&self, index: usize) -> CirclePoint {
         if index < self.half_coset.len() {
             self.half_coset.at(index)
@@ -57,6 +65,7 @@ impl CircleDomain {
                 .conjugate()
         }
     }
+
     pub fn find(&self, i: CirclePointIndex) -> Option<usize> {
         if let Some(d) = self.half_coset.find(i) {
             return Some(d);
@@ -68,11 +77,11 @@ impl CircleDomain {
     }
 }
 
-/// A coset of the form G_{2n} + <G_n>, where G_n is the generator of the subgroup of order n.
-/// The ordering on this coset is G_2n + i * G_n.
+/// A coset of the form G_{2n} + <G_n>, where G_n is the generator of the
+/// subgroup of order n. The ordering on this coset is G_2n + i * G_n.
 /// These cosets can be used as a [CircleDomain], and be interpolated on.
-/// Not that this changes the ordering on the coset to be like [CircleDomain], which is
-/// G_2n + i * G_2n and then -G_2n -i * G_2n.
+/// Not that this changes the ordering on the coset to be like [CircleDomain],
+/// which is G_2n + i * G_2n and then -G_2n -i * G_2n.
 /// For example, the Xs below are a canonic coset with n_bits=3.
 ///    X O X
 ///  O       O
@@ -85,6 +94,7 @@ impl CircleDomain {
 pub struct CanonicCoset {
     pub coset: Coset,
 }
+
 impl CanonicCoset {
     pub fn new(n_bits: usize) -> Self {
         assert!(n_bits > 0);
@@ -92,20 +102,27 @@ impl CanonicCoset {
             coset: Coset::odds(n_bits),
         }
     }
+
     /// Gets the full coset represented G_{2n} + <G_n>.
     pub fn coset(&self) -> Coset {
         self.coset
     }
-    /// Gets half of the coset (its conjugate complements to the whole coset), G_{2n} + <G_{n/2}>
+
+    /// Gets half of the coset (its conjugate complements to the whole coset),
+    /// G_{2n} + <G_{n/2}>
     pub fn half_coset(&self) -> Coset {
         Coset::half_odds(self.n_bits - 1)
     }
-    /// Gets the [CircleDomain] representing the same point set (in another order).
+
+    /// Gets the [CircleDomain] representing the same point set (in another
+    /// order).
     pub fn circle_domain(&self) -> CircleDomain {
         CircleDomain::new(Coset::half_odds(self.coset.n_bits - 1))
     }
-    /// Gets a good [CircleDomain] for extension of a poly defined on this coset.
-    /// The reason the domain looks like this is a bit more intricate, and not covered here.
+
+    /// Gets a good [CircleDomain] for extension of a poly defined on this
+    /// coset. The reason the domain looks like this is a bit more
+    /// intricate, and not covered here.
     pub fn eval_domain(&self, eval_n_bits: usize) -> CircleDomain {
         assert!(eval_n_bits > self.coset.n_bits);
         // TODO(spapini): Document why this is like this.
@@ -117,6 +134,7 @@ impl CanonicCoset {
         }
         CircleDomain::new(Coset::new(CirclePointIndex::generator(), eval_n_bits - 1))
     }
+
     pub fn n_bits(&self) -> usize {
         self.coset.n_bits
     }
@@ -136,13 +154,15 @@ pub struct CircleEvaluation {
     pub domain: CircleDomain,
     pub values: Vec<Field>,
 }
+
 impl CircleEvaluation {
     pub fn new(domain: CircleDomain, values: Vec<Field>) -> Self {
         assert_eq!(domain.len(), values.len());
         Self { domain, values }
     }
-    /// Creates a [CircleEvaluation] from values ordered according to [CanonicCoset].
-    /// For example, the canonic coset might look like this:
+
+    /// Creates a [CircleEvaluation] from values ordered according to
+    /// [CanonicCoset]. For example, the canonic coset might look like this:
     ///   G_8, G_8 + G_4, G_8 + 2G_4, G_8 + 3G_4.
     /// The circle domain will be ordered like this:
     ///   G_8, G_8 + 2G_4, -G_8, -G_8 - 2G_4.
@@ -162,7 +182,9 @@ impl CircleEvaluation {
             values: new_values,
         }
     }
-    /// Computes a minimal [CirclePoly] that evalutes to the same values as this evaluation.
+
+    /// Computes a minimal [CirclePoly] that evalutes to the same values as this
+    /// evaluation.
     pub fn interpolate(self) -> CirclePoly {
         // Use CFFT to interpolate.
         let mut coset = self.domain.half_coset;
@@ -200,17 +222,19 @@ pub struct CirclePoly {
     /// log size of the number of coefficients.
     bound_bits: usize,
     /// Coefficients of the polynomial in the FFT basis.
-    /// Note: These are not the coefficients of the polynomial in the standard monomial basis.
-    /// The FFT basis is a tensor product of the twiddles:
+    /// Note: These are not the coefficients of the polynomial in the standard
+    /// monomial basis. The FFT basis is a tensor product of the twiddles:
     /// y, x, psi_x(x), psi_x^2(x), ..., psi_x^{bound_bits-2}(x).
     /// psi_x(x) := 2x^2 - 1.
     coeffs: Vec<Field>,
 }
+
 impl CirclePoly {
     pub fn new(bound_bits: usize, coeffs: Vec<Field>) -> Self {
         assert!(coeffs.len() == (1 << bound_bits));
         Self { bound_bits, coeffs }
     }
+
     pub fn eval_at_point(&self, point: CirclePoint) -> Field {
         let mut mults = vec![Field::one(), point.y];
         let mut x = point.x;
@@ -232,6 +256,7 @@ impl CirclePoly {
         }
         sum
     }
+
     /// Evaluates the polynomial at all points in the domain.
     pub fn evaluate(self, domain: CircleDomain) -> CircleEvaluation {
         // Use CFFT to evaluate.
@@ -328,8 +353,7 @@ fn test_interpolate_canonic() {
 
 #[test]
 fn test_mixed_degree_example() {
-    use crate::core::constraints::EvalByEvaluation;
-    use crate::core::constraints::PolyOracle;
+    use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::poly::circle::CanonicCoset;
 
     let n_bits = 4;

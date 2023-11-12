@@ -1,10 +1,9 @@
-use crate::core::{
-    circle::Coset,
-    constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle},
-    fields::m31::Field,
-    poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation},
-};
 use num_traits::One;
+
+use crate::core::circle::Coset;
+use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle};
+use crate::core::fields::m31::Field;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 
 pub struct Fibonacci {
     pub trace_coset: CanonicCoset,
@@ -86,8 +85,9 @@ impl Fibonacci {
 
 #[test]
 fn test_constraint_on_trace() {
-    use crate::core::constraints::EvalByEvaluation;
     use num_traits::Zero;
+
+    use crate::core::constraints::EvalByEvaluation;
 
     let fib = Fibonacci::new(3, Field::from_u32_unchecked(1056169651));
     let trace = fib.get_trace();
@@ -135,8 +135,7 @@ fn test_constraint_on_trace() {
 #[test]
 fn test_quotient_is_low_degree() {
     use crate::core::circle::CirclePointIndex;
-    use crate::core::constraints::EvalByEvaluation;
-    use crate::core::constraints::EvalByPoly;
+    use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
 
     let fib = Fibonacci::new(5, Field::from_u32_unchecked(443693538));
     let trace = fib.get_trace();
@@ -144,7 +143,8 @@ fn test_quotient_is_low_degree() {
 
     let extended_evaluation = trace_poly.clone().evaluate(fib.eval_domain);
 
-    // TODO(ShaharS), Change to a channel implementation to retrieve the random coefficients from extension field.
+    // TODO(ShaharS), Change to a channel implementation to retrieve the random
+    // coefficients from extension field.
     let random_coeff = Field::from_u32_unchecked(2213980);
 
     // Compute quotient on the evaluation domain.
@@ -159,16 +159,18 @@ fn test_quotient_is_low_degree() {
         ));
     }
     let quotient_eval = CircleEvaluation::new(fib.constraint_eval_domain, quotient_values);
-    // Interpolate the poly. The the poly is indeed of degree lower than the size of eval_domain,
-    // then it should interpolate correctly.
+    // Interpolate the poly. The the poly is indeed of degree lower than the size of
+    // eval_domain, then it should interpolate correctly.
     let quotient_poly = quotient_eval.interpolate();
 
-    // Evaluate this polynomial at another point, out of eval_domain and compare to what we expect.
+    // Evaluate this polynomial at another point, out of eval_domain and compare to
+    // what we expect.
     let point_index = CirclePointIndex::generator() * 2;
     assert!(fib.constraint_eval_domain.find(point_index).is_none());
     let point = point_index.to_point();
 
-    // Quotient is low degree if it evaluates the same as a low degree interpolation of the trace.
+    // Quotient is low degree if it evaluates the same as a low degree interpolation
+    // of the trace.
     assert_eq!(
         quotient_poly.eval_at_point(point),
         fib.eval_quotient(
