@@ -1,6 +1,7 @@
-use num_traits::{One, Zero};
+use num_traits::{Num, One, Zero};
 
 use crate::core::fields::cm31::CM31;
+use crate::impl_field;
 use std::fmt::Display;
 use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
@@ -15,39 +16,14 @@ pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
 /// Represented as ((a, b), (c, d)) of (a + bi) + (c + di)u.
 pub struct QM31(CM31, CM31);
 
+impl_field!(QM31, P4);
+
 impl QM31 {
-    pub fn square(&self) -> Self {
-        (*self) * (*self)
-    }
-
-    pub fn double(&self) -> Self {
-        (*self) + (*self)
-    }
-
-    pub fn pow(&self, exp: u128) -> Self {
-        let mut res = Self::one();
-        let mut base = *self;
-        let mut exp = exp;
-        while exp > 0 {
-            if exp & 1 == 1 {
-                res *= base;
-            }
-            base = base.square();
-            exp >>= 1;
-        }
-        res
-    }
-
     pub const fn from_u32_unchecked(a: u32, b: u32, c: u32, d: u32) -> Self {
         Self(
             CM31::from_u32_unchecked(a, b),
             CM31::from_u32_unchecked(c, d),
         )
-    }
-
-    pub fn inverse(&self) -> Self {
-        assert!(*self != Self::zero(), "0 has no inverse");
-        self.pow(P4 - 2)
     }
 }
 
@@ -62,12 +38,6 @@ impl Add for QM31 {
 
     fn add(self, rhs: Self) -> Self::Output {
         Self(self.0 + rhs.0, self.1 + rhs.1)
-    }
-}
-
-impl AddAssign for QM31 {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
     }
 }
 
@@ -87,12 +57,6 @@ impl Sub for QM31 {
     }
 }
 
-impl SubAssign for QM31 {
-    fn sub_assign(&mut self, rhs: Self) {
-        *self = *self - rhs;
-    }
-}
-
 impl Mul for QM31 {
     type Output = Self;
 
@@ -102,40 +66,6 @@ impl Mul for QM31 {
             self.0 * rhs.0 + R * self.1 * rhs.1,
             self.0 * rhs.1 + self.1 * rhs.0,
         )
-    }
-}
-
-impl MulAssign for QM31 {
-    fn mul_assign(&mut self, rhs: Self) {
-        *self = *self * rhs;
-    }
-}
-
-impl Div for QM31 {
-    type Output = Self;
-
-    #[allow(clippy::suspicious_arithmetic_impl)]
-    fn div(self, rhs: Self) -> Self::Output {
-        self * rhs.inverse()
-    }
-}
-
-impl DivAssign for QM31 {
-    fn div_assign(&mut self, rhs: Self) {
-        *self = *self / rhs;
-    }
-}
-
-impl Rem for QM31 {
-    type Output = Self;
-    fn rem(self, _rhs: Self) -> Self::Output {
-        unimplemented!("Rem is not implemented for QM31");
-    }
-}
-
-impl RemAssign for QM31 {
-    fn rem_assign(&mut self, _rhs: Self) {
-        unimplemented!("RemAssign is not implemented for QM31");
     }
 }
 
