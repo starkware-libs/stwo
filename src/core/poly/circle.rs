@@ -1,4 +1,4 @@
-use std::{iter::Chain, ops::Deref};
+use std::{collections::BTreeSet, iter::Chain, ops::Deref};
 
 use crate::core::{
     circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator},
@@ -377,4 +377,16 @@ fn test_mixed_degree_example() {
     );
     // TODO(spapini): Check low degree.
     println!("{:?}", constraint_eval);
+}
+
+#[test]
+fn test_coset_is_half_coset_with_conjugate() {
+    let canonic_coset = CanonicCoset::new(8);
+    let coset = BTreeSet::from_iter(canonic_coset.coset().iter());
+
+    let half_coset = BTreeSet::from_iter(canonic_coset.half_coset().iter());
+    let half_coset_conjugate = BTreeSet::from_iter(canonic_coset.half_coset().conjugate().iter());
+
+    assert!((&half_coset & &half_coset_conjugate).is_empty());
+    assert_eq!(coset, &half_coset | &half_coset_conjugate)
 }
