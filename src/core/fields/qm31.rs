@@ -1,3 +1,4 @@
+use crate::core::fields::m31::M31;
 use num_traits::{Num, One, Zero};
 
 use crate::core::fields::cm31::CM31;
@@ -85,6 +86,25 @@ impl Zero for QM31 {
     }
 }
 
+impl Add<M31> for QM31 {
+    type Output = Self;
+
+    fn add(self, rhs: M31) -> Self::Output {
+        Self(CM31(self.0 .0 + rhs, self.0 .1), self.1)
+    }
+}
+
+impl Mul<M31> for QM31 {
+    type Output = Self;
+
+    fn mul(self, rhs: M31) -> Self::Output {
+        Self(
+            CM31(self.0 .0 * rhs, self.0 .1 * rhs),
+            CM31(self.1 .0 * rhs, self.1 .1 * rhs),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,14 +114,20 @@ mod tests {
     fn test_addition() {
         let x = QM31::from_u32_unchecked(1, 2, 3, 4);
         let y = QM31::from_u32_unchecked(4, 5, 6, 7);
+        let m = M31::from_u32_unchecked(8);
+        let q = QM31::from_u32_unchecked(8, 0, 0, 0);
         assert_eq!(x + y, QM31::from_u32_unchecked(5, 7, 9, 11));
+        assert_eq!(y + m, y + q);
     }
 
     #[test]
     fn test_multiplication() {
         let x = QM31::from_u32_unchecked(1, 2, 3, 4);
         let y = QM31::from_u32_unchecked(4, 5, 6, 7);
+        let m = M31::from_u32_unchecked(8);
+        let q = QM31::from_u32_unchecked(8, 0, 0, 0);
         assert_eq!(x * y, QM31::from_u32_unchecked(P - 106, 38, P - 16, 50));
+        assert_eq!(y * m, y * q);
     }
 
     #[test]
