@@ -82,13 +82,19 @@ mod tests {
     fn test_subtraction() {
         let x = QM31::from_u32_unchecked(1, 2, 3, 4);
         let y = QM31::from_u32_unchecked(4, 5, 6, 7);
+        let m = M31::from_u32_unchecked(8);
+        let q = QM31::from_u32_unchecked(8, 0, 0, 0);
         assert_eq!(x - y, QM31::from_u32_unchecked(P - 3, P - 3, P - 3, P - 3));
+        assert_eq!(y - m, y - q);
     }
 
     #[test]
     fn test_division() {
         let x = QM31::from_u32_unchecked(P - 106, 38, P - 16, 50);
         let y = QM31::from_u32_unchecked(4, 5, 6, 7);
+        let m = M31::from_u32_unchecked(8);
+        let q = QM31::from_u32_unchecked(8, 0, 0, 0);
         assert_eq!(x / y, QM31::from_u32_unchecked(1, 2, 3, 4));
+        assert_eq!(y / m, y / q);
     }
 }
