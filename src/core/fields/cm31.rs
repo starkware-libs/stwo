@@ -105,14 +105,20 @@ mod tests {
     fn test_addition() {
         let x = CM31::from_u32_unchecked(1, 2);
         let y = CM31::from_u32_unchecked(4, 5);
+        let m = M31::from_u32_unchecked(8);
+        let c = CM31::from_u32_unchecked(8, 0);
         assert_eq!(x + y, CM31::from_u32_unchecked(5, 7));
+        assert_eq!(y + m, y + c);
     }
 
     #[test]
     fn test_multiplication() {
         let x = CM31::from_u32_unchecked(1, 2);
         let y = CM31::from_u32_unchecked(4, 5);
+        let m = M31::from_u32_unchecked(8);
+        let c = CM31::from_u32_unchecked(8, 0);
         assert_eq!(x * y, CM31::from_u32_unchecked(P - 6, 13));
+        assert_eq!(y * m, y * c);
     }
 
     #[test]
