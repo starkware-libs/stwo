@@ -1,8 +1,7 @@
 use core::arch::x86_64::{
     __m256i, __m512i, _mm256_loadu_si256, _mm256_storeu_si256, _mm512_add_epi32, _mm512_add_epi64,
-    _mm512_add_epi64, _mm512_add_epi64, _mm512_and_epi64, _mm512_cvtepi64_epi32,
-    _mm512_cvtepu32_epi64, _mm512_loadu_epi64, _mm512_min_epu32, _mm512_mul_epu32,
-    _mm512_srli_epi64, _mm512_srli_epi64, _mm512_sub_epi32, _mm512_sub_epi64,
+    _mm512_and_epi64, _mm512_cvtepi64_epi32, _mm512_cvtepu32_epi64, _mm512_min_epu32,
+    _mm512_mul_epu32, _mm512_srli_epi64, _mm512_sub_epi32, _mm512_sub_epi64,
 };
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
