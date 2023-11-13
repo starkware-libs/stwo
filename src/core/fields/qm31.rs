@@ -88,7 +88,7 @@ impl Zero for QM31 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::QM31;
     use crate::core::fields::m31::P;
 
     #[test]

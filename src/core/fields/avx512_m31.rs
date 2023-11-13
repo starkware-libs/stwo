@@ -1,4 +1,9 @@
-use core::arch::x86_64::*;
+use core::arch::x86_64::{
+    __m256i, __m512i, _mm256_loadu_si256, _mm256_storeu_si256, _mm512_add_epi32, _mm512_add_epi64,
+    _mm512_add_epi64, _mm512_add_epi64, _mm512_and_epi64, _mm512_cvtepi64_epi32,
+    _mm512_cvtepu32_epi64, _mm512_loadu_epi64, _mm512_min_epu32, _mm512_mul_epu32,
+    _mm512_srli_epi64, _mm512_srli_epi64, _mm512_sub_epi32, _mm512_sub_epi64,
+};
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -144,75 +149,85 @@ impl SubAssign for M31AVX512 {
     }
 }
 
-/// Tests field operations where field elements are in reduced form.
-#[test]
-fn test_avx512_basic_ops() {
-    if !crate::platform::avx512_detected() {
-        return;
-    }
+#[cfg(test)]
+mod tests {
+    use core::arch::x86_64::_mm512_loadu_epi64;
 
-    let values = [0, 1, 2, 10, (P - 1) / 2, (P + 1) / 2, P - 2, P - 1]
-        .map(M31::from_u32_unchecked)
-        .to_vec();
-    let avx_values = M31AVX512::from_vec(&values);
-
-    assert_eq!(
-        (avx_values + avx_values).to_vec(),
-        values.iter().map(|x| x.double()).collect::<Vec<_>>()
-    );
-    assert_eq!(
-        (avx_values * avx_values).to_vec(),
-        values.iter().map(|x| x.square()).collect::<Vec<_>>()
-    );
-    assert_eq!(
-        (-avx_values).to_vec(),
-        values.iter().map(|x| -*x).collect::<Vec<_>>()
-    );
-}
-
-/// Tests that reduce functions are correct.
-#[test]
-fn test_reduce() {
-    if !crate::platform::avx512_detected() {
-        return;
-    }
     use rand::Rng;
-    let mut rng = rand::thread_rng();
 
-    let const_values = [0, 1, (P + 1) / 2, P - 1, P, P + 1, 2 * P - 1, 2 * P];
-    let avx_const_values = M31AVX512::from_vec(&const_values.map(M31::from_u32_unchecked).to_vec());
+    use super::{K_BLOCK_SIZE, M31AVX512};
+    use crate::core::fields::m31::{M31, P};
 
-    // Tests partial reduce.
-    assert_eq!(
-        M31AVX512::partial_reduce(avx_const_values.0).to_vec(),
-        const_values
-            .iter()
-            .map(|x| M31::from_u32_unchecked(if *x == 2 * P { P } else { x % P }))
-            .collect::<Vec<_>>()
-    );
+    /// Tests field operations where field elements are in reduced form.
+    #[test]
+    fn test_avx512_basic_ops() {
+        if !crate::platform::avx512_detected() {
+            return;
+        }
 
-    // Generate random values in [0, P^2).
-    let rand_values = (0..K_BLOCK_SIZE)
-        .map(|_x| rng.gen::<u64>() % (P as u64).pow(2))
-        .collect::<Vec<u64>>();
-    let avx_rand_values = M31AVX512::from_m512_unchecked(unsafe {
-        _mm512_loadu_epi64(rand_values.as_ptr() as *const i64)
-    });
+        let values = [0, 1, 2, 10, (P - 1) / 2, (P + 1) / 2, P - 2, P - 1]
+            .map(M31::from_u32_unchecked)
+            .to_vec();
+        let avx_values = M31AVX512::from_vec(&values);
 
-    // Tests reduce.
-    assert_eq!(
-        M31AVX512::reduce(avx_const_values.0).to_vec(),
-        const_values
-            .iter()
-            .map(|x| M31::from_u32_unchecked(x % P))
-            .collect::<Vec<_>>()
-    );
+        assert_eq!(
+            (avx_values + avx_values).to_vec(),
+            values.iter().map(|x| x.double()).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            (avx_values * avx_values).to_vec(),
+            values.iter().map(|x| x.square()).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            (-avx_values).to_vec(),
+            values.iter().map(|x| -*x).collect::<Vec<_>>()
+        );
+    }
 
-    assert_eq!(
-        M31AVX512::reduce(avx_rand_values.0).to_vec(),
-        rand_values
-            .iter()
-            .map(|x| M31::from_u32_unchecked((x % P as u64) as u32))
-            .collect::<Vec<_>>()
-    );
+    /// Tests that reduce functions are correct.
+    #[test]
+    fn test_reduce() {
+        if !crate::platform::avx512_detected() {
+            return;
+        }
+        let mut rng = rand::thread_rng();
+
+        let const_values = [0, 1, (P + 1) / 2, P - 1, P, P + 1, 2 * P - 1, 2 * P];
+        let avx_const_values =
+            M31AVX512::from_vec(&const_values.map(M31::from_u32_unchecked).to_vec());
+
+        // Tests partial reduce.
+        assert_eq!(
+            M31AVX512::partial_reduce(avx_const_values.0).to_vec(),
+            const_values
+                .iter()
+                .map(|x| M31::from_u32_unchecked(if *x == 2 * P { P } else { x % P }))
+                .collect::<Vec<_>>()
+        );
+
+        // Generate random values in [0, P^2).
+        let rand_values = (0..K_BLOCK_SIZE)
+            .map(|_x| rng.gen::<u64>() % (P as u64).pow(2))
+            .collect::<Vec<u64>>();
+        let avx_rand_values = M31AVX512::from_m512_unchecked(unsafe {
+            _mm512_loadu_epi64(rand_values.as_ptr() as *const i64)
+        });
+
+        // Tests reduce.
+        assert_eq!(
+            M31AVX512::reduce(avx_const_values.0).to_vec(),
+            const_values
+                .iter()
+                .map(|x| M31::from_u32_unchecked(x % P))
+                .collect::<Vec<_>>()
+        );
+
+        assert_eq!(
+            M31AVX512::reduce(avx_rand_values.0).to_vec(),
+            rand_values
+                .iter()
+                .map(|x| M31::from_u32_unchecked((x % P as u64) as u32))
+                .collect::<Vec<_>>()
+        );
+    }
 }

@@ -321,44 +321,47 @@ impl<T: Add<Output = T> + Copy> Iterator for CosetIterator<T> {
     }
 }
 
-#[test]
-fn test_iterator() {
-    let coset = Coset::new(CirclePointIndex(1), 3);
-    let actual_indices: Vec<_> = coset.iter_indices().collect();
-    let expected_indices = vec![
-        CirclePointIndex(1),
-        CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 1,
-        CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 2,
-        CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 3,
-        CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 4,
-        CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 5,
-        CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 6,
-        CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 7,
-    ];
-    assert_eq!(actual_indices, expected_indices);
-
-    let actual_points = coset.iter().collect::<Vec<_>>();
-    let expected_points: Vec<_> = expected_indices.iter().map(|i| i.to_point()).collect();
-    assert_eq!(actual_points, expected_points);
-}
-
-#[test]
-fn test_coset_is_half_coset_with_conjugate() {
-    // TODO(andrew): make test module and move out imports
+#[cfg(test)]
+mod tests {
     use std::collections::BTreeSet;
 
+    use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::poly::circle::CanonicCoset;
 
-    let canonic_coset = CanonicCoset::new(8);
-    let coset_points = BTreeSet::from_iter(canonic_coset.coset().iter());
+    #[test]
+    fn test_iterator() {
+        let coset = Coset::new(CirclePointIndex(1), 3);
+        let actual_indices: Vec<_> = coset.iter_indices().collect();
+        let expected_indices = vec![
+            CirclePointIndex(1),
+            CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 1,
+            CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 2,
+            CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 3,
+            CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 4,
+            CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 5,
+            CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 6,
+            CirclePointIndex(1) + CirclePointIndex::subgroup_gen(3) * 7,
+        ];
+        assert_eq!(actual_indices, expected_indices);
 
-    let half_coset_points = BTreeSet::from_iter(canonic_coset.half_coset().iter());
-    let half_coset_conjugate_points =
-        BTreeSet::from_iter(canonic_coset.half_coset().conjugate().iter());
+        let actual_points = coset.iter().collect::<Vec<_>>();
+        let expected_points: Vec<_> = expected_indices.iter().map(|i| i.to_point()).collect();
+        assert_eq!(actual_points, expected_points);
+    }
 
-    assert!((&half_coset_points & &half_coset_conjugate_points).is_empty());
-    assert_eq!(
-        coset_points,
-        &half_coset_points | &half_coset_conjugate_points
-    )
+    #[test]
+    fn test_coset_is_half_coset_with_conjugate() {
+        let canonic_coset = CanonicCoset::new(8);
+        let coset_points = BTreeSet::from_iter(canonic_coset.coset().iter());
+
+        let half_coset_points = BTreeSet::from_iter(canonic_coset.half_coset().iter());
+        let half_coset_conjugate_points =
+            BTreeSet::from_iter(canonic_coset.half_coset().conjugate().iter());
+
+        assert!((&half_coset_points & &half_coset_conjugate_points).is_empty());
+        assert_eq!(
+            coset_points,
+            &half_coset_points | &half_coset_conjugate_points
+        )
+    }
 }
