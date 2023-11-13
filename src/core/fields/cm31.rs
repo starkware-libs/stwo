@@ -70,6 +70,22 @@ impl One for CM31 {
     }
 }
 
+impl Add<M31> for CM31 {
+    type Output = Self;
+
+    fn add(self, rhs: M31) -> Self::Output {
+        Self(self.0 + rhs, self.1)
+    }
+}
+
+impl Mul<M31> for CM31 {
+    type Output = Self;
+
+    fn mul(self, rhs: M31) -> Self::Output {
+        Self(self.0 * rhs, self.1 * rhs)
+    }
+}
+
 impl Zero for CM31 {
     fn zero() -> Self {
         Self(M31::zero(), M31::zero())
