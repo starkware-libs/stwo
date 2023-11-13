@@ -447,7 +447,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "prover_research"
+name = "prover-research"
 version = "0.1.1"
 dependencies = [
  "blake2",
