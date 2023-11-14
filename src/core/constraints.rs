@@ -48,40 +48,21 @@ pub fn point_vanishing(vanish_point: CirclePoint, p: CirclePoint) -> Field {
 
 // Utils for computing constraints.
 // Oracle to a polynomial constrained to a coset.
-pub trait PolyOracle: Copy {
-    fn get_at(&self, i: CirclePointIndex) -> Field;
-    fn point(&self) -> CirclePoint;
+pub trait PolyOracle {
+    fn get_at(&self, i: CirclePointIndex, point_index: CirclePointIndex) -> Field;
 }
-#[derive(Copy, Clone)]
-pub struct EvalByPoly<'a> {
-    pub point: CirclePoint,
-    pub poly: &'a CirclePoly,
-}
-impl<'a> PolyOracle for EvalByPoly<'a> {
-    fn point(&self) -> CirclePoint {
-        self.point
-    }
-    fn get_at(&self, i: CirclePointIndex) -> Field {
-        self.poly.eval_at_point(self.point + i.to_point())
+
+impl PolyOracle for CirclePoly {
+    fn get_at(&self, i: CirclePointIndex, point_index: CirclePointIndex) -> Field {
+        self.eval_at_point((point_index + i).to_point())
     }
 }
 
 // TODO(spapini): make an iterator instead, so we do all computations beforehand.
-#[derive(Copy, Clone)]
-pub struct EvalByEvaluation<'a> {
-    pub offset: CirclePointIndex,
-    pub eval: &'a CircleEvaluation,
-}
-impl<'a> PolyOracle for EvalByEvaluation<'a> {
-    fn point(&self) -> CirclePoint {
-        self.offset.to_point()
-    }
-    fn get_at(&self, mut i: CirclePointIndex) -> Field {
-        i = i + self.offset;
-
-        // Check if it is in the first half.
-        let d = self.eval.domain.find(i).expect("Not in domain");
-        self.eval.values[d]
+impl PolyOracle for CircleEvaluation {
+    fn get_at(&self, i: CirclePointIndex, point_index: CirclePointIndex) -> Field {
+        let d = self.domain.find(i + point_index).expect("Not in domain");
+        self.values[d]
     }
 }
 

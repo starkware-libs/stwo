@@ -1,5 +1,5 @@
 use crate::core::{
-    circle::Coset,
+    circle::{Coset, CirclePointIndex},
     constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle},
     fields::m31::Field,
     poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation},
@@ -44,49 +44,69 @@ impl Fibonacci {
         // Returns as a CircleEvaluation.
         CircleEvaluation::new_canonical_ordered(self.trace_coset, trace)
     }
-    pub fn eval_step_constraint(&self, trace: impl PolyOracle) -> Field {
-        trace.get_at(self.trace_coset.index_at(0)).square()
-            + trace.get_at(self.trace_coset.index_at(1)).square()
-            - trace.get_at(self.trace_coset.index_at(2))
+    pub fn eval_step_constraint(&self, trace: &impl PolyOracle, eval_point_index: CirclePointIndex) -> Field {
+        trace
+            .get_at(self.trace_coset.index_at(0), eval_point_index)
+            .square()
+            + trace
+                .get_at(self.trace_coset.index_at(1), eval_point_index)
+                .square()
+            - trace.get_at(self.trace_coset.index_at(2), eval_point_index)
     }
 
-    pub fn eval_step_quotient(&self, trace: impl PolyOracle) -> Field {
+    pub fn eval_step_quotient(&self, trace: &impl PolyOracle, eval_point_index: CirclePointIndex) -> Field {
         let excluded0 = self.constraint_coset.at(self.constraint_coset.len() - 2);
         let excluded1 = self.constraint_coset.at(self.constraint_coset.len() - 1);
-        let num = self.eval_step_constraint(trace)
-            * point_excluder(excluded0, trace.point())
-            * point_excluder(excluded1, trace.point());
-        let denom = coset_vanishing(self.constraint_coset, trace.point());
+        let num = self.eval_step_constraint(trace, eval_point_index)
+            * point_excluder(excluded0, eval_point_index.to_point())
+            * point_excluder(excluded1, eval_point_index.to_point());
+        let denom = coset_vanishing(self.constraint_coset, eval_point_index.to_point());
         num / denom
     }
 
-    pub fn eval_boundary_constraint(&self, trace: impl PolyOracle, value: Field) -> Field {
-        trace.get_at(self.trace_coset.index_at(0)) - value
+    pub fn eval_boundary_constraint(
+        &self,
+        trace: &impl PolyOracle,
+        eval_point_index: CirclePointIndex,
+        value: Field,
+    ) -> Field {
+        trace.get_at(self.trace_coset.index_at(0), eval_point_index) - value
     }
 
     pub fn eval_boundary_quotient(
         &self,
-        trace: impl PolyOracle,
+        trace: &impl PolyOracle,
+        eval_point_index: CirclePointIndex,
         point_index: usize,
         value: Field,
     ) -> Field {
-        let num = self.eval_boundary_constraint(trace, value);
-        let denom = point_vanishing(self.constraint_coset.at(point_index), trace.point());
+        let num = self.eval_boundary_constraint(trace, eval_point_index, value);
+        let denom = point_vanishing(self.constraint_coset.at(point_index), eval_point_index.to_point());
         num / denom
     }
 
-    pub fn eval_quotient(&self, random_coeff: Field, trace: impl PolyOracle) -> Field {
-        let mut quotient = random_coeff.pow(0) * self.eval_step_quotient(trace);
-        quotient += random_coeff.pow(1) * self.eval_boundary_quotient(trace, 0, Field::one());
+    pub fn eval_quotient(
+        &self,
+        random_coeff: Field,
+        trace: &impl PolyOracle,
+        eval_point_index: CirclePointIndex,
+    ) -> Field {
+        let mut quotient = random_coeff.pow(0) * self.eval_step_quotient(trace, eval_point_index);
+        quotient +=
+            random_coeff.pow(1) * self.eval_boundary_quotient(trace, eval_point_index, 0, Field::one());
         quotient += random_coeff.pow(2)
-            * self.eval_boundary_quotient(trace, self.constraint_coset.len() - 1, self.claim);
+            * self.eval_boundary_quotient(
+                trace,
+                eval_point_index,
+                self.constraint_coset.len() - 1,
+                self.claim,
+            );
         quotient
     }
 }
 
 #[test]
 fn test_constraint_on_trace() {
-    use crate::core::constraints::EvalByEvaluation;
     use num_traits::Zero;
 
     let fib = Fibonacci::new(3, Field::from_u32_unchecked(1056169651));
@@ -98,34 +118,21 @@ fn test_constraint_on_trace() {
         .iter_indices()
         .take(fib.constraint_coset.len() - 2)
     {
-        let res = fib.eval_step_constraint(EvalByEvaluation {
-            offset: p_ind,
-            eval: &trace,
-        });
+        let res = fib.eval_step_constraint(&trace, p_ind);
         assert_eq!(res, Field::zero());
     }
 
     // Assert that the first trace value is 1.
     assert_eq!(
-        fib.eval_boundary_constraint(
-            EvalByEvaluation {
-                offset: fib.constraint_coset.index_at(0),
-                eval: &trace,
-            },
-            Field::one()
-        ),
+        fib.eval_boundary_constraint(&trace, fib.constraint_coset.index_at(0), Field::one()),
         Field::zero()
     );
 
     // Assert that the last trace value is the fibonacci claim.
     assert_eq!(
         fib.eval_boundary_constraint(
-            EvalByEvaluation {
-                offset: fib
-                    .constraint_coset
-                    .index_at(fib.constraint_coset.len() - 1),
-                eval: &trace,
-            },
+            &trace,
+            fib.constraint_coset.index_at(fib.constraint_coset.len() - 1),
             fib.claim
         ),
         Field::zero()
@@ -135,8 +142,6 @@ fn test_constraint_on_trace() {
 #[test]
 fn test_quotient_is_low_degree() {
     use crate::core::circle::CirclePointIndex;
-    use crate::core::constraints::EvalByEvaluation;
-    use crate::core::constraints::EvalByPoly;
 
     let fib = Fibonacci::new(5, Field::from_u32_unchecked(443693538));
     let trace = fib.get_trace();
@@ -152,10 +157,8 @@ fn test_quotient_is_low_degree() {
     for p_ind in fib.constraint_eval_domain.iter_indices() {
         quotient_values.push(fib.eval_quotient(
             random_coeff,
-            EvalByEvaluation {
-                offset: p_ind,
-                eval: &extended_evaluation,
-            },
+            &extended_evaluation,
+            p_ind,
         ));
     }
     let quotient_eval = CircleEvaluation::new(fib.constraint_eval_domain, quotient_values);
@@ -173,10 +176,8 @@ fn test_quotient_is_low_degree() {
         quotient_poly.eval_at_point(point),
         fib.eval_quotient(
             random_coeff,
-            EvalByPoly {
-                point,
-                poly: &trace_poly
-            }
+            &trace_poly,
+            point_index
         )
     );
 }
