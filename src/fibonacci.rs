@@ -149,6 +149,7 @@ fn test_quotient_is_low_degree() {
     use crate::core::circle::CirclePointIndex;
     use crate::core::constraints::EvalByEvaluation;
     use crate::core::constraints::EvalByPoly;
+    use crate::core::poly::circle::PointSetEvaluation;
 
     let fib = Fibonacci::new(5, Field::from_u32_unchecked(443693538));
     let trace = fib.get_trace();
@@ -176,20 +177,35 @@ fn test_quotient_is_low_degree() {
     let quotient_poly = quotient_eval.interpolate();
 
     // Evaluate this polynomial at another point, out of eval_domain and compare to what we expect.
-    let point_index = CirclePointIndex::generator() * 2;
-    assert!(fib.constraint_eval_domain.find(point_index).is_none());
-    let point = point_index.to_point();
+    let oods_point_index = CirclePointIndex::generator() * 2;
+    assert!(fib.constraint_eval_domain.find(oods_point_index).is_none());
+    let oods_point = oods_point_index.to_point();
 
-    // Quotient is low degree if it evaluates the same as a low degree interpolation of the trace.
+    let mask = fib.get_mask();
+    let oods_values = mask.eval(
+        &[fib.trace_coset],
+        &[EvalByPoly {
+            point: oods_point,
+            poly: &trace_poly,
+        }],
+    );
+    let point_domain = mask
+        .get_point_indices(&[fib.trace_coset])
+        .iter()
+        .map(|p| (*p + oods_point_index).to_point())
+        .collect();
+
+    let oods_evaluation = EvalByEvaluation {
+        offset: oods_point_index,
+        eval: &PointSetEvaluation {
+            domain: point_domain,
+            values: oods_values,
+        },
+    };
+
     assert_eq!(
-        quotient_poly.eval_at_point(point),
-        fib.eval_quotient(
-            random_coeff,
-            EvalByPoly {
-                point,
-                poly: &trace_poly
-            }
-        )
+        quotient_poly.eval_at_point(oods_point),
+        fib.eval_quotient(random_coeff, oods_evaluation)
     );
 }
 

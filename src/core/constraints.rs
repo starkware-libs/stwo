@@ -2,7 +2,7 @@ use super::{
     circle::{CirclePoint, CirclePointIndex, Coset},
     fft::psi_x,
     fields::m31::Field,
-    poly::circle::{CircleDomain, CircleEvaluation, CirclePoly},
+    poly::circle::{CircleDomain, CirclePoly, Evaluation},
 };
 use num_traits::One;
 
@@ -52,27 +52,31 @@ pub trait PolyOracle: Copy {
     fn get_at(&self, i: CirclePointIndex) -> Field;
     fn point(&self) -> CirclePoint;
 }
+
 #[derive(Copy, Clone)]
 pub struct EvalByPoly<'a> {
     pub point: CirclePoint,
     pub poly: &'a CirclePoly,
 }
+
 impl<'a> PolyOracle for EvalByPoly<'a> {
     fn point(&self) -> CirclePoint {
         self.point
     }
+
     fn get_at(&self, i: CirclePointIndex) -> Field {
         self.poly.eval_at_point(self.point + i.to_point())
     }
 }
 
 // TODO(spapini): make an iterator instead, so we do all computations beforehand.
-#[derive(Copy, Clone)]
-pub struct EvalByEvaluation<'a> {
+#[derive(Clone)]
+pub struct EvalByEvaluation<'a, T: Evaluation> {
     pub offset: CirclePointIndex,
-    pub eval: &'a CircleEvaluation,
+    pub eval: &'a T,
 }
-impl<'a> PolyOracle for EvalByEvaluation<'a> {
+
+impl<'a, T: Evaluation> PolyOracle for EvalByEvaluation<'a, T> {
     fn point(&self) -> CirclePoint {
         self.offset.to_point()
     }
@@ -80,10 +84,11 @@ impl<'a> PolyOracle for EvalByEvaluation<'a> {
         i = i + self.offset;
 
         // Check if it is in the first half.
-        let d = self.eval.domain.find(i).expect("Not in domain");
-        self.eval.values[d]
+        self.eval.get_at(i)
     }
 }
+
+impl<'a, T: Evaluation> Copy for EvalByEvaluation<'a, T> {}
 
 #[test]
 fn test_coset_vanishing() {
@@ -94,6 +99,7 @@ fn test_coset_vanishing() {
         Coset::new(CirclePointIndex::zero(), 5),
         Coset::half_odds(5).conjugate(),
     ];
+
     for c0 in cosets.iter() {
         for el in c0.iter() {
             assert_eq!(coset_vanishing(*c0, el), Field::zero());

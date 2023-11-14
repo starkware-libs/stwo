@@ -1,4 +1,4 @@
-use std::{iter::Chain, ops::Deref};
+use std::{fmt::Debug, iter::Chain, ops::Deref};
 
 use crate::core::{
     circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator},
@@ -126,6 +126,29 @@ impl Deref for CanonicCoset {
 
     fn deref(&self) -> &Self::Target {
         &self.coset
+    }
+}
+
+pub trait Evaluation: Clone + Debug {
+    fn get_at(&self, point_index: CirclePointIndex) -> Field;
+}
+
+#[derive(Clone, Debug)]
+pub struct PointSetEvaluation {
+    pub domain: Vec<CirclePoint>,
+    pub values: Vec<Field>,
+}
+
+impl Evaluation for PointSetEvaluation {
+    fn get_at(&self, point_index: CirclePointIndex) -> Field {
+        let point = point_index.to_point();
+        for (i, p) in self.domain.iter().enumerate() {
+            if *p == point {
+                return self.values[i];
+            }
+        }
+        // self.values[self.domain.find(point).expect("Point not found in evaluation")]
+        panic!("Point not found in evaluation for {:?}", point_index);
     }
 }
 
@@ -264,6 +287,12 @@ impl CirclePoly {
             butterfly(&mut l[i], &mut r[i], p.y);
         }
         CircleEvaluation { domain, values }
+    }
+}
+
+impl Evaluation for CircleEvaluation {
+    fn get_at(&self, point_index: CirclePointIndex) -> Field {
+        self.values[self.domain.find(point_index).unwrap()]
     }
 }
 
