@@ -1,4 +1,5 @@
 use crate::core::{
+    air::{Mask, MaskItem},
     circle::Coset,
     constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle},
     fields::m31::Field,
@@ -81,6 +82,17 @@ impl Fibonacci {
         quotient += random_coeff.pow(2)
             * self.eval_boundary_quotient(trace, self.constraint_coset.len() - 1, self.claim);
         quotient
+    }
+
+    pub fn get_mask(&self) -> Mask {
+        Mask::new(
+            (0..3)
+                .map(|offset| MaskItem {
+                    column_index: 0,
+                    offset,
+                })
+                .collect(),
+        )
     }
 }
 
@@ -178,5 +190,39 @@ fn test_quotient_is_low_degree() {
                 poly: &trace_poly
             }
         )
+    );
+}
+
+#[test]
+fn test_mask() {
+    use crate::core::circle::CirclePointIndex;
+    use crate::core::constraints::EvalByPoly;
+
+    let fib = Fibonacci::new(5, Field::from_u32_unchecked(443693538));
+    let trace = fib.get_trace();
+    let trace_poly = trace.interpolate();
+    let z = (CirclePointIndex::generator() * 17).to_point();
+
+    let mask = fib.get_mask();
+    let mask_eval = mask.eval(
+        &[fib.trace_coset],
+        &[EvalByPoly {
+            point: z,
+            poly: &trace_poly,
+        }],
+    );
+
+    assert_eq!(mask.items[0].column_index, 0);
+    assert_eq!(
+        mask_eval[0],
+        trace_poly.eval_at_point(z + fib.trace_coset.coset.at(0))
+    );
+    assert_eq!(
+        mask_eval[1],
+        trace_poly.eval_at_point(z + fib.trace_coset.coset.at(1))
+    );
+    assert_eq!(
+        mask_eval[2],
+        trace_poly.eval_at_point(z + fib.trace_coset.coset.at(2))
     );
 }
