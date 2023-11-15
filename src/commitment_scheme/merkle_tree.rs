@@ -1,87 +1,162 @@
-use byteorder;
-use byteorder::{BigEndian, ByteOrder};
-
 use super::hasher::Hasher;
-use super::N_BYTES_FELT;
-use crate::math;
+use crate::commitment_scheme::utils::*;
 
-pub struct MerkleTree<T: Hasher> {
-    pub data: Vec<Vec<T::Hash>>,
+pub struct MerkleTree<T: Sized> {
+    pub bottom_layer: Vec<T>,
+    pub bottom_layer_node_size: usize,
+    pub bottom_layer_n_rows_in_node: usize,
+    pub data: TreeData,
     pub height: usize,
 }
 
-impl<T: Hasher> MerkleTree<T> {
-    /// Constructs a new merkle tree.
-    /// Hashes recursively.
-    // TODO(Ohad): deal with mixed degree, taking columns instead of a stream.
-    pub fn commit(elems: &[u32]) -> Self {
-        let elems_in_block = T::BLOCK_SIZE_IN_BYTES / N_BYTES_FELT;
-        let bottom_layer_length = math::usize_div_ceil(elems.len(), elems_in_block);
-        let tree_height = math::log2_ceil(bottom_layer_length) + 1;
+impl<T: Sized + Sync> MerkleTree<T> {
+    /// Commits after data was loaded into bottom layer.
+    pub fn commit<H: Hasher>(&mut self) {
+        let bottom_layer_as_byte_slice = to_byte_slice(&self.bottom_layer);
 
-        let mut data: Vec<Vec<T::Hash>> = Vec::with_capacity(tree_height);
+        // Hash.
+        hash_merkle_tree_from_bottom_layer::<H>(
+            bottom_layer_as_byte_slice,
+            self.bottom_layer_node_size * std::mem::size_of::<T>(),
+            &mut tree_data_as_mut_ref(&mut self.data)[..],
+        );
+    }
 
-        // Concatenate elements to T::BLOCK_SIZE byte blocks and hash.
-        let mut bottom_layer: Vec<T::Hash> = Vec::with_capacity(bottom_layer_length);
+    /// Builds the base layer of the tree from the given matrix.
+    /// Allocates the rest of the tree.
+    /// Does not commit(hash).
+    // TODO(Ohad): add support for columns of different lengths.
+    pub fn init_from_column_array<H: Hasher>(columns: &ColumnArray<T>) -> Self {
+        // Check input is not empty, column length is a power two and all columns are of the same
+        // length.
+        assert!(!columns.is_empty());
+        assert!(columns[0].len().is_power_of_two());
+        columns.iter().for_each(|column| {
+            assert_eq!(column.len(), columns[0].len());
+        });
 
-        for i in (0..elems.len()).step_by(elems_in_block) {
-            let slice_size = std::cmp::min(elems_in_block, elems.len() - i);
-            let mut block: [u8; 64] = [0; 64];
+        // Allocate bottom layer.
+        let mut bottom_layer: Vec<T> = Vec::with_capacity(columns[0].len() * columns.len());
 
-            // elems.len() might not be a multiple of elems_in_block
-            BigEndian::write_u32_into(&elems[i..i + slice_size], &mut block[..(slice_size * 4)]);
-            bottom_layer.push(T::hash(&block));
+        // Decide bottom_layer node size.
+        let n_rows_in_node = std::cmp::min(
+            crate::math::prev_pow_two(
+                H::BLOCK_SIZE_IN_BYTES / (columns.len() * std::mem::size_of::<T>()),
+            ),
+            columns[0].len(),
+        );
+        let bottom_layer_node_size = n_rows_in_node * columns.len();
+
+        // Inject(transpose).
+        // Safe because enough memory is allocated.
+        unsafe {
+            bottom_layer.set_len(columns[0].len() * columns.len());
+            let bottom_layer_byte_slice = to_byte_slice_mut(&mut bottom_layer);
+            inject(columns, bottom_layer_byte_slice, 1, 0);
         }
-        data.push(bottom_layer);
 
-        // Build rest of the tree, every layer is composed of the 2-to-1 result of a
-        // pair of neighbors from the previous layer.
-        for i in 1..tree_height {
-            let new_layer = Self::hash_layer(&data[i - 1]);
-            data.push(new_layer);
-        }
+        // Allocate rest of the tree.
+        let bottom_layer_length_nodes =
+            crate::math::usize_div_ceil(bottom_layer.len(), bottom_layer_node_size);
+        let tree_data = allocate_balanced_tree(
+            bottom_layer_length_nodes,
+            H::BLOCK_SIZE_IN_BYTES,
+            H::OUTPUT_SIZE_IN_BYTES,
+        );
 
         Self {
-            data,
-            height: tree_height,
+            bottom_layer,
+            bottom_layer_node_size,
+            bottom_layer_n_rows_in_node: n_rows_in_node,
+            height: tree_data.len() + 1,
+            data: tree_data,
         }
     }
 
-    pub fn root_hex(&mut self) -> String {
-        format!(
-            "{}",
-            self.data
-                .last()
-                .expect("Attempted access to uncomitted tree")[0]
-        )
+    /// Builds the base layer of the tree from the given column.
+    /// Allocates the rest of the tree.
+    /// Does not commit(hash).
+    /// Does not transpose, the column is already the base layer of the tree.
+    pub fn init_from_single_column<H: Hasher>(column: Vec<T>) -> Self {
+        assert!(column.len().is_power_of_two());
+
+        // Decide bottom_layer node size.
+        let bottom_layer_node_size = usize::min(
+            H::BLOCK_SIZE_IN_BYTES / std::mem::size_of::<T>(),
+            column.len(),
+        );
+        let bottom_layer_length_nodes = column.len() / bottom_layer_node_size;
+
+        // Allocate rest of the tree.
+        let tree_data = allocate_balanced_tree(
+            bottom_layer_length_nodes,
+            bottom_layer_node_size * std::mem::size_of::<T>(),
+            H::OUTPUT_SIZE_IN_BYTES,
+        );
+        Self {
+            bottom_layer: column,
+            bottom_layer_node_size,
+            bottom_layer_n_rows_in_node: bottom_layer_node_size,
+            height: tree_data.len() + 1,
+            data: tree_data,
+        }
     }
 
-    fn hash_layer(layer: &[T::Hash]) -> Vec<T::Hash> {
-        let mut res = Vec::with_capacity(layer.len() >> 1);
-        for i in 0..(layer.len() >> 1) {
-            res.push(T::concat_and_hash(&layer[i * 2], &layer[i * 2 + 1]));
-        }
-        res
+    pub fn root(&self) -> Vec<u8> {
+        self.data.last().unwrap().to_vec()
     }
 }
-
 #[cfg(test)]
 mod tests {
-    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
-    use crate::commitment_scheme::merkle_tree::MerkleTree;
+    use crate::commitment_scheme::blake3_hash::*;
+    use crate::core::fields::m31::M31;
+
+    fn init_m31_test_trace(len: usize) -> Vec<M31> {
+        assert!(len.is_power_of_two());
+        (0..len as u32).map(M31::from_u32_unchecked).collect()
+    }
 
     #[test]
-    fn merkle_tree_building() {
-        let leaves = [0; 64];
-        let mut tree: MerkleTree<Blake3Hasher> = MerkleTree::commit(&leaves[..]);
+    pub fn from_matrix_test() {
+        let trace = init_m31_test_trace(16);
+        let matrix = vec![trace.clone(), trace.clone()];
+
+        let tree = super::MerkleTree::<M31>::init_from_column_array::<Blake3Hasher>(&matrix);
+
+        assert_eq!(tree.bottom_layer.len(), 32);
         assert_eq!(tree.height, 3);
+    }
+
+    #[test]
+    pub fn from_column_test() {
+        let trace = init_m31_test_trace(16);
+
+        let tree = super::MerkleTree::<M31>::init_from_single_column::<Blake3Hasher>(trace.clone());
+
+        assert_eq!(tree.bottom_layer.len(), 16);
+        assert_eq!(tree.bottom_layer, trace);
+        assert_eq!(tree.height, 2);
+    }
+
+    #[test]
+    pub fn commit_test() {
+        let trace = init_m31_test_trace(64);
+        let matrix = vec![trace.clone(), trace.clone(), trace.clone(), trace.clone()];
+
+        let mut tree_from_matrix =
+            super::MerkleTree::<M31>::init_from_column_array::<Blake3Hasher>(&matrix);
+        let mut tree_from_column =
+            super::MerkleTree::<M31>::init_from_single_column::<Blake3Hasher>(trace);
+        tree_from_matrix.commit::<Blake3Hasher>();
+        tree_from_column.commit::<Blake3Hasher>();
+
         assert_eq!(
-            tree.data[0][0].to_string(),
-            "4d006976636a8696d909a630a4081aad4d7c50f81afdee04020bf05086ab6a55"
+            hex::encode(tree_from_matrix.root()),
+            "c07e98e8a5d745ea99c3c3eac4c43b9df5ceb9e78973a785d90b3ffe4d5fcf5e"
         );
         assert_eq!(
-            tree.root_hex(),
-            "06253c52ed8536e4b07757d679c547fdb2051181a9cbd1e3516bfc71742936f7"
-        )
+            hex::encode(tree_from_column.root()),
+            "945efd1734d66bc05878c801750cb76136a06da978d7d3353eafde8580e02aec"
+        );
     }
 }

@@ -16,15 +16,21 @@ fn prepare_element_vector(size: usize) -> Vec<u32> {
 
 fn merkle_bench<T: Hasher>(group: &mut BenchmarkGroup<'_, WallTime>, elems: &[u32]) {
     let size = elems.len();
+    let elems = elems.to_vec();
     group.sample_size(10);
     group.throughput(Throughput::Bytes((size * N_BYTES_U32) as u64));
     group.bench_with_input(
         BenchmarkId::new(T::Hash::NAME, size),
         &size,
         |b: &mut criterion::Bencher<'_>, &_size| {
-            b.iter(|| {
-                MerkleTree::<T>::commit(elems);
-            })
+            b.iter_batched(
+                || -> Vec<u32> { elems.clone() },
+                |elems| {
+                    let mut tree = MerkleTree::init_from_single_column::<Blake3Hasher>(elems);
+                    tree.commit::<Blake3Hasher>();
+                },
+                BatchSize::LargeInput,
+            )
         },
     );
 }

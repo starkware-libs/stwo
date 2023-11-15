@@ -37,7 +37,7 @@ pub fn allocate_balanced_tree(
 pub fn hash_layer<T: Hasher>(layer: &[u8], node_size_bytes: usize, dst: &mut [u8]) {
     let n_nodes_in_layer = crate::math::usize_safe_div(layer.len(), node_size_bytes);
     assert!(n_nodes_in_layer.is_power_of_two());
-    assert!(n_nodes_in_layer / 2 <= dst.len() / T::OUTPUT_SIZE_IN_BYTES);
+    assert!(n_nodes_in_layer <= dst.len() / T::OUTPUT_SIZE_IN_BYTES);
 
     let src_ptrs: Vec<*const u8> = (0..n_nodes_in_layer)
         .map(|i| unsafe { layer.as_ptr().add(node_size_bytes * i) })
@@ -141,6 +141,26 @@ pub unsafe fn inject<T: Sized>(
         .map(|i| unsafe { dst.as_mut_ptr().add(i) })
         .collect();
     transpose_to_bytes::<T>(column_array, &offseted_pointers);
+}
+
+#[allow(clippy::manual_slice_size_calculation)]
+pub fn to_byte_slice<T: Sized>(slice: &[T]) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            slice.as_ptr() as *const u8,
+            slice.len() * std::mem::size_of::<T>(),
+        )
+    }
+}
+
+#[allow(clippy::manual_slice_size_calculation)]
+pub fn to_byte_slice_mut<T: Sized>(slice: &mut [T]) -> &mut [u8] {
+    unsafe {
+        std::slice::from_raw_parts_mut(
+            slice.as_mut_ptr() as *mut u8,
+            slice.len() * std::mem::size_of::<T>(),
+        )
+    }
 }
 
 #[cfg(test)]
