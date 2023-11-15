@@ -6,7 +6,13 @@ pub trait Name {
 }
 
 pub trait Hasher {
-    type Hash: Copy + Display + self::Name + Into<Vec<u8>> + TryFrom<Vec<u8>>;
+    type Hash: Copy
+        + Display
+        + self::Name
+        + Into<Vec<u8>>
+        + TryFrom<Vec<u8>>
+        + AsRef<[u8]>
+        + for<'a> From<&'a [u8]>;
 
     // Input size of the compression function.
     // TODO(Ohad): Consider packing hash paramaters in a dedicated struct.
