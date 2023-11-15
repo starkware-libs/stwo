@@ -1,87 +1,115 @@
-use byteorder;
-use byteorder::{BigEndian, ByteOrder};
-
 use super::hasher::Hasher;
-use super::N_BYTES_FELT;
-use crate::math;
+use crate::commitment_scheme::utils::{
+    allocate_balanced_tree, column_to_row_major, hash_merkle_tree_from_bottom_layer, to_byte_slice,
+    tree_data_as_mut_ref, ColumnArray, TreeData,
+};
 
-pub struct MerkleTree<T: Hasher> {
-    pub data: Vec<Vec<T::Hash>>,
+pub struct MerkleTree<T: Sized, H: Hasher> {
+    pub bottom_layer: Vec<T>,
+    pub bottom_layer_node_size: usize,
+    pub bottom_layer_n_rows_in_node: usize,
+    pub data: TreeData,
     pub height: usize,
+    phantom: std::marker::PhantomData<H>,
 }
 
-impl<T: Hasher> MerkleTree<T> {
-    /// Constructs a new merkle tree.
-    /// Hashes recursively.
-    // TODO(Ohad): deal with mixed degree, taking columns instead of a stream.
-    pub fn commit(elems: &[u32]) -> Self {
-        let elems_in_block = T::BLOCK_SIZE_IN_BYTES / N_BYTES_FELT;
-        let bottom_layer_length = math::usize_div_ceil(elems.len(), elems_in_block);
-        let tree_height = math::log2_ceil(bottom_layer_length) + 1;
+impl<T: Sized, H: Hasher> MerkleTree<T, H> {
+    /// Commits on a given trace(matrix).
+    pub fn commit(trace: ColumnArray<T>) -> Self {
+        let mut tree = Self::init_from_column_array(trace);
 
-        let mut data: Vec<Vec<T::Hash>> = Vec::with_capacity(tree_height);
+        let bottom_layer_as_byte_slice = to_byte_slice(&tree.bottom_layer);
+        hash_merkle_tree_from_bottom_layer::<H>(
+            bottom_layer_as_byte_slice,
+            tree.bottom_layer_node_size * std::mem::size_of::<T>(),
+            &mut tree_data_as_mut_ref(&mut tree.data)[..],
+        );
 
-        // Concatenate elements to T::BLOCK_SIZE byte blocks and hash.
-        let mut bottom_layer: Vec<T::Hash> = Vec::with_capacity(bottom_layer_length);
+        tree
+    }
 
-        for i in (0..elems.len()).step_by(elems_in_block) {
-            let slice_size = std::cmp::min(elems_in_block, elems.len() - i);
-            let mut block: [u8; 64] = [0; 64];
+    /// Builds the base layer of the tree from the given trace.
+    /// Allocates the rest of the tree.
+    // TODO(Ohad): add support for columns of different lengths.
+    fn init_from_column_array(trace: ColumnArray<T>) -> Self {
+        assert!(!trace.is_empty());
+        assert!(trace[0].len().is_power_of_two());
+        trace.iter().for_each(|column| {
+            assert_eq!(column.len(), trace[0].len());
+        });
 
-            // elems.len() might not be a multiple of elems_in_block
-            BigEndian::write_u32_into(&elems[i..i + slice_size], &mut block[..(slice_size * 4)]);
-            bottom_layer.push(T::hash(&block));
-        }
-        data.push(bottom_layer);
+        let n_rows_in_node = std::cmp::min(
+            crate::math::prev_pow_two(
+                H::BLOCK_SIZE_IN_BYTES / (trace.len() * std::mem::size_of::<T>()),
+            ),
+            trace[0].len(),
+        );
 
-        // Build rest of the tree, every layer is composed of the 2-to-1 result of a
-        // pair of neighbors from the previous layer.
-        for i in 1..tree_height {
-            let new_layer = Self::hash_layer(&data[i - 1]);
-            data.push(new_layer);
-        }
+        let bottom_layer_node_size = n_rows_in_node * trace.len();
+        let bottom_layer = column_to_row_major(trace);
+
+        // Allocate rest of the tree.
+        let bottom_layer_length_nodes =
+            crate::math::usize_div_ceil(bottom_layer.len(), bottom_layer_node_size);
+        let tree_data = allocate_balanced_tree(
+            bottom_layer_length_nodes,
+            H::BLOCK_SIZE_IN_BYTES,
+            H::OUTPUT_SIZE_IN_BYTES,
+        );
 
         Self {
-            data,
-            height: tree_height,
+            bottom_layer,
+            bottom_layer_node_size,
+            bottom_layer_n_rows_in_node: n_rows_in_node,
+            height: tree_data.len() + 1, // +1 for the bottom layer.
+            data: tree_data,
+            phantom: std::marker::PhantomData,
         }
     }
 
-    pub fn root_hex(&mut self) -> String {
-        format!(
-            "{}",
-            self.data
-                .last()
-                .expect("Attempted access to uncomitted tree")[0]
-        )
-    }
-
-    fn hash_layer(layer: &[T::Hash]) -> Vec<T::Hash> {
-        let mut res = Vec::with_capacity(layer.len() >> 1);
-        for i in 0..(layer.len() >> 1) {
-            res.push(T::concat_and_hash(&layer[i * 2], &layer[i * 2 + 1]));
-        }
-        res
+    pub fn root(&self) -> H::Hash {
+        (&self.data.last().unwrap()[..]).into()
     }
 }
-
 #[cfg(test)]
 mod tests {
-    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
-    use crate::commitment_scheme::merkle_tree::MerkleTree;
+    use crate::commitment_scheme::blake3_hash::*;
+    use crate::core::fields::m31::M31;
+
+    fn init_m31_test_trace(len: usize) -> Vec<M31> {
+        assert!(len.is_power_of_two());
+        (0..len as u32).map(M31::from_u32_unchecked).collect()
+    }
 
     #[test]
-    fn merkle_tree_building() {
-        let leaves = [0; 64];
-        let mut tree: MerkleTree<Blake3Hasher> = MerkleTree::commit(&leaves[..]);
+    pub fn from_matrix_test() {
+        const TRACE_LEN: usize = 16;
+        let trace = init_m31_test_trace(TRACE_LEN);
+        let matrix = vec![trace; 2];
+
+        let tree = super::MerkleTree::<M31, Blake3Hasher>::init_from_column_array(matrix);
+
+        assert_eq!(tree.bottom_layer.len(), 32);
         assert_eq!(tree.height, 3);
+        (0..TRACE_LEN).for_each(|i| {
+            assert_eq!(tree.bottom_layer[i * 2], M31::from_u32_unchecked(i as u32));
+            assert_eq!(
+                tree.bottom_layer[i * 2 + 1],
+                M31::from_u32_unchecked(i as u32)
+            );
+        });
+    }
+
+    #[test]
+    pub fn commit_test() {
+        let trace = init_m31_test_trace(64);
+        let matrix = vec![trace.clone(), trace.clone(), trace.clone(), trace.clone()];
+
+        let tree_from_matrix = super::MerkleTree::<M31, Blake3Hasher>::commit(matrix);
+
         assert_eq!(
-            tree.data[0][0].to_string(),
-            "4d006976636a8696d909a630a4081aad4d7c50f81afdee04020bf05086ab6a55"
+            hex::encode(tree_from_matrix.root()),
+            "c07e98e8a5d745ea99c3c3eac4c43b9df5ceb9e78973a785d90b3ffe4d5fcf5e"
         );
-        assert_eq!(
-            tree.root_hex(),
-            "06253c52ed8536e4b07757d679c547fdb2051181a9cbd1e3516bfc71742936f7"
-        )
     }
 }

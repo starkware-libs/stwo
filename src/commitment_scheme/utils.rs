@@ -37,7 +37,7 @@ pub fn allocate_balanced_tree(
 pub fn hash_layer<T: Hasher>(layer: &[u8], node_size_bytes: usize, dst: &mut [u8]) {
     let n_nodes_in_layer = crate::math::usize_safe_div(layer.len(), node_size_bytes);
     assert!(n_nodes_in_layer.is_power_of_two());
-    assert!(n_nodes_in_layer / 2 <= dst.len() / T::OUTPUT_SIZE_IN_BYTES);
+    assert!(n_nodes_in_layer <= dst.len() / T::OUTPUT_SIZE_IN_BYTES);
 
     let src_ptrs: Vec<*const u8> = (0..n_nodes_in_layer)
         .map(|i| unsafe { layer.as_ptr().add(node_size_bytes * i) })
@@ -141,6 +141,41 @@ pub unsafe fn inject<T: Sized>(
         .map(|i| unsafe { dst.as_mut_ptr().add(i) })
         .collect();
     transpose_to_bytes::<T>(column_array, &offseted_pointers);
+}
+
+/// Given a matrix, returns a vector of the matrix elements in row-major order.
+/// Assumes all columns are of the same length and non-zero.
+pub fn column_to_row_major<T>(mut mat: ColumnArray<T>) -> Vec<T> {
+    if mat.len() == 1 {
+        return mat.remove(0);
+    };
+
+    // Flattening the matrix into a single vector.
+    let vec_length = mat.len() * mat[0].len();
+    let mut row_major_matrix_vec: Vec<T> = Vec::with_capacity(vec_length);
+
+    // Inject(transpose).
+    // Safe because enough memory is allocated.
+    unsafe {
+        let row_major_matrix_byte_slice = std::slice::from_raw_parts_mut(
+            row_major_matrix_vec.as_mut_ptr() as *mut u8,
+            vec_length * std::mem::size_of::<T>(),
+        );
+        inject(&mat, row_major_matrix_byte_slice, 1, 0);
+        row_major_matrix_vec.set_len(vec_length);
+    }
+    row_major_matrix_vec
+}
+
+// TODO(Ohad): Address platform endianess.
+#[allow(clippy::manual_slice_size_calculation)]
+pub fn to_byte_slice<T: Sized>(slice: &[T]) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(
+            slice.as_ptr() as *const u8,
+            slice.len() * std::mem::size_of::<T>(),
+        )
+    }
 }
 
 #[cfg(test)]

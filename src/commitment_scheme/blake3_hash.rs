@@ -22,6 +22,22 @@ impl From<Vec<u8>> for Blake3Hash {
     }
 }
 
+impl From<&[u8]> for Blake3Hash {
+    fn from(value: &[u8]) -> Self {
+        Self(
+            value
+                .try_into()
+                .expect("Failed converting &[u8] to Blake3Hash Type!"),
+        )
+    }
+}
+
+impl AsRef<[u8]> for Blake3Hash {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 impl fmt::Display for Blake3Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&hex::encode(self.0))
