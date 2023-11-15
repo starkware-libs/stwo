@@ -83,6 +83,7 @@ impl CircleDomain {
 /// Not that this changes the ordering on the coset to be like [CircleDomain],
 /// which is G_2n + i * G_2n and then -G_2n -i * G_2n.
 /// For example, the Xs below are a canonic coset with n_bits=3.
+/// ```text
 ///    X O X
 ///  O       O
 /// X         X
@@ -90,6 +91,7 @@ impl CircleDomain {
 /// X         X
 ///  O       O
 ///    X O X
+/// ```
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CanonicCoset {
     pub coset: Coset,
@@ -108,21 +110,18 @@ impl CanonicCoset {
         self.coset
     }
 
-    /// Gets half of the coset (its conjugate complements to the whole coset),
-    /// G_{2n} + <G_{n/2}>
+    /// Gets half of the coset (its conjugate complements to the whole coset), G_{2n} + <G_{n/2}>
     pub fn half_coset(&self) -> Coset {
         Coset::half_odds(self.n_bits - 1)
     }
 
-    /// Gets the [CircleDomain] representing the same point set (in another
-    /// order).
+    /// Gets the [CircleDomain] representing the same point set (in another order).
     pub fn circle_domain(&self) -> CircleDomain {
         CircleDomain::new(Coset::half_odds(self.coset.n_bits - 1))
     }
 
-    /// Gets a good [CircleDomain] for extension of a poly defined on this
-    /// coset. The reason the domain looks like this is a bit more
-    /// intricate, and not covered here.
+    /// Gets a good [CircleDomain] for extension of a poly defined on this coset. The reason the
+    /// domain looks like this is a bit more intricate, and not covered here.
     pub fn eval_domain(&self, eval_n_bits: usize) -> CircleDomain {
         assert!(eval_n_bits > self.coset.n_bits);
         // TODO(spapini): Document why this is like this.
@@ -183,8 +182,7 @@ impl CircleEvaluation {
         }
     }
 
-    /// Computes a minimal [CirclePoly] that evalutes to the same values as this
-    /// evaluation.
+    /// Computes a minimal [CirclePoly] that evalutes to the same values as this evaluation.
     pub fn interpolate(self) -> CirclePoly {
         // Use CFFT to interpolate.
         let mut coset = self.domain.half_coset;

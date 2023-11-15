@@ -14,8 +14,7 @@ pub fn ibutterfly(v0: &mut Field, v1: &mut Field, itwid: Field) {
     *v1 = (tmp - *v1) * itwid;
 }
 
-/// Maps from the x coordinate of a point on the circle to the x coordinate of
-/// its double.
+/// Maps from the x coordinate of a point on the circle to the x coordinate of its double.
 pub fn psi_x(x: Field) -> Field {
     x.square().double() - Field::one()
 }

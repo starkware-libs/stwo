@@ -30,7 +30,6 @@ debug = 2
 harness = false
 name = "field"
 
-
 [[bench]]
 name = "merkle_bench"
 harness = false

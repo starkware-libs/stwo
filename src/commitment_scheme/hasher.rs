@@ -23,9 +23,11 @@ pub trait Hasher {
 
     /// Hash many inputs of the same length.
     /// Writes output directly to corresponding pointers in dst.
+    ///
     /// # Safety
-    /// Inputs must be of the same size. output locations must all point to
-    /// valid, allocated and distinct locations in memory.
+    ///
+    /// Inputs must be of the same size. output locations must all point to valid, allocated and
+    /// distinct locations in memory.
     unsafe fn hash_many_in_place(
         data: &[*const u8],
         single_input_length_bytes: usize,
