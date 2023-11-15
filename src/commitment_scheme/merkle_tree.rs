@@ -57,6 +57,15 @@ impl<T: Sized, H: Hasher> MerkleTree<T, H> {
             H::OUTPUT_SIZE_IN_BYTES,
         );
 
+        // Allocate rest of the tree.
+        let bottom_layer_length_nodes =
+            crate::math::usize_div_ceil(bottom_layer.len(), bottom_layer_node_size);
+        let tree_data = allocate_balanced_tree(
+            bottom_layer_length_nodes,
+            H::BLOCK_SIZE_IN_BYTES,
+            H::OUTPUT_SIZE_IN_BYTES,
+        );
+
         Self {
             bottom_layer,
             bottom_layer_node_size,
