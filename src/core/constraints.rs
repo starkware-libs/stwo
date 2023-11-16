@@ -49,7 +49,7 @@ pub fn point_vanishing(vanish_point: CirclePoint, p: CirclePoint) -> Field {
 // Utils for computing constraints.
 // Oracle to a polynomial constrained to a coset.
 pub trait PolyOracle: Copy {
-    fn get_at(&self, i: CirclePointIndex) -> Field;
+    fn get_at(&self, index: CirclePointIndex) -> Field;
     fn point(&self) -> CirclePoint;
 }
 
@@ -62,8 +62,8 @@ impl<'a> PolyOracle for EvalByPoly<'a> {
     fn point(&self) -> CirclePoint {
         self.point
     }
-    fn get_at(&self, i: CirclePointIndex) -> Field {
-        self.poly.eval_at_point(self.point + i.to_point())
+    fn get_at(&self, index: CirclePointIndex) -> Field {
+        self.poly.eval_at_point(self.point + index.to_point())
     }
 }
 
@@ -78,11 +78,8 @@ impl<'a, T: Evaluation> PolyOracle for EvalByEvaluation<'a, T> {
     fn point(&self) -> CirclePoint {
         self.offset.to_point()
     }
-    fn get_at(&self, mut i: CirclePointIndex) -> Field {
-        i = i + self.offset;
-
-        // Check if it is in the first half.
-        self.eval.get_at(i)
+    fn get_at(&self, index: CirclePointIndex) -> Field {
+        self.eval.get_at(index + self.offset)
     }
 }
 
