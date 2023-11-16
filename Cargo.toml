@@ -10,21 +10,15 @@ blake2 = "0.10.6"
 blake3 = "1.5.0"
 hex = "0.4.3"
 num-traits = "0.2.17"
+rayon = "1.8.0"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
 rand = "0.8.3"
 
-[features]
-avx512 = []
-
 [profile.bench]
 codegen-units = 1
 lto = true
-
-[[bench]]
-harness = false
-name = "field"
 
 [[bench]]
 name = "merkle_bench"

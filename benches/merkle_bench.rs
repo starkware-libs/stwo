@@ -7,6 +7,8 @@ use prover_research::commitment_scheme::blake2_hash::Blake2sHasher;
 use prover_research::commitment_scheme::blake3_hash::Blake3Hasher;
 use prover_research::commitment_scheme::hasher::{Hasher, Name};
 use prover_research::commitment_scheme::merkle_tree::MerkleTree;
+use prover_research::commitment_scheme::utils::ColumnArray;
+use prover_research::core::fields::m31::M31;
 
 static N_BYTES_U32: usize = 4;
 
@@ -27,6 +29,43 @@ fn merkle_bench<T: Hasher>(group: &mut BenchmarkGroup<'_, WallTime>, elems: &[u3
                 || -> Vec<u32> { elems.clone() },
                 |elems| {
                     MerkleTree::<u32, Blake3Hasher>::commit(vec![elems]);
+                },
+                BatchSize::LargeInput,
+            )
+        },
+    );
+}
+
+fn merkle_mt_bench(c: &mut Criterion) {
+    let mut group = c.benchmark_group("Multithreading comparison");
+    let size = 2usize.pow(24) as u32;
+    group.sample_size(10);
+    group.throughput(Throughput::Bytes((size * N_BYTES_U32 as u32) as u64));
+    group.bench_with_input(
+        BenchmarkId::new("multithreaded", size),
+        &size,
+        |b: &mut criterion::Bencher<'_>, &_size| {
+            b.iter_batched(
+                || -> ColumnArray<M31> {
+                    vec![(0u32..size).map(M31::from_u32_unchecked).collect()]
+                },
+                |trace| {
+                    MerkleTree::<M31, Blake2sHasher>::commit_mt(trace);
+                },
+                BatchSize::LargeInput,
+            )
+        },
+    );
+    group.bench_with_input(
+        BenchmarkId::new("non-multithreaded", size),
+        &size,
+        |b: &mut criterion::Bencher<'_>, &_size| {
+            b.iter_batched(
+                || -> ColumnArray<M31> {
+                    vec![(0u32..size).map(M31::from_u32_unchecked).collect()]
+                },
+                |trace| {
+                    MerkleTree::<M31, Blake2sHasher>::commit(trace);
                 },
                 BatchSize::LargeInput,
             )
@@ -99,7 +138,7 @@ criterion_group!(
     merkle_blake3_benchmark,
 );
 
-criterion_group!(comparisons, compare_blakes,);
+criterion_group!(comparisons, merkle_mt_bench,);
 
 criterion_group!(
     single_hash,

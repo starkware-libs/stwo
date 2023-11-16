@@ -6,6 +6,7 @@ pub type ColumnArray<T> = Vec<Vec<T>>;
 pub type ColumnLengthMap<T> = BTreeMap<usize, ColumnArray<T>>;
 pub type TreeLayer = Box<[u8]>;
 pub type TreeData = Box<[TreeLayer]>;
+// pub type SplitDataRef<'a> = (&'a[u8], &'a[u8], Vec<&'a mut [u8]>, Vec<&'a mut [u8]>);
 
 pub fn allocate_layer(n_bytes: usize) -> TreeLayer {
     // Safe bacuase 0 is a valid u8 value.
@@ -76,6 +77,61 @@ pub fn hash_merkle_tree_from_bottom_layer<H: Hasher>(
 
     // Rest of the sub-tree
     hash_merkle_tree::<H>(data);
+}
+
+/// Given a data of a tree, and a bottom layer of <T> elements, hashes the entire tree.
+/// Packs a node-size amount of <T> elements into a single hash at the bottom layer.
+pub fn hash_merkle_tree_from_bottom_layer_mt<H: Hasher>(
+    bottom_layer_data: &[u8],
+    bottom_layer_node_size_bytes: usize,
+    data: &mut [&mut [u8]],
+    cpu_count_left: usize,
+) {
+    assert_ne!(cpu_count_left, 0);
+    if cpu_count_left == 1 {
+        let dst_slice = data.get_mut(0).expect("Empty tree!");
+        hash_layer::<H>(bottom_layer_data, bottom_layer_node_size_bytes, dst_slice);
+        hash_merkle_tree::<H>(data);
+    }
+
+    else {
+        // Split the data.
+        let mut left: Vec<&mut [u8]> = Vec::with_capacity(data.len());
+        let mut right: Vec<&mut [u8]> = Vec::with_capacity(data.len());
+        data.iter_mut().for_each(|layer| {
+            if layer.len() >= H::BLOCK_SIZE_IN_BYTES {
+                let (l, r) = layer.split_at_mut(layer.len() / 2);
+                left.push(l);
+                right.push(r);
+            }
+        });
+        let (b_left, b_right) = bottom_layer_data.split_at(bottom_layer_data.len() / 2);
+
+        // Recursivly hash sub trees.
+        // Invokes work on no more than 'cpu_count_left' cores.
+        rayon::join(
+            || {
+                hash_merkle_tree_from_bottom_layer_mt::<H>(
+                    b_left,
+                    bottom_layer_node_size_bytes,
+                    left.as_mut_slice(),
+                    cpu_count_left / 2,
+                )
+            },
+            || {
+                hash_merkle_tree_from_bottom_layer_mt::<H>(
+                    b_right,
+                    bottom_layer_node_size_bytes,
+                    right.as_mut_slice(),
+                    cpu_count_left / 2,
+                )
+            },
+        );
+
+        // Hash remaining layer
+        let (src, dst) = data.split_at_mut(data.len() - 1);
+        hash_layer::<H>(src.last().unwrap(), H::BLOCK_SIZE_IN_BYTES, dst[0]);
+    } 
 }
 
 /// Maps columns by length.

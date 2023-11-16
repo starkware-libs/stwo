@@ -1,4 +1,5 @@
 use super::hasher::Hasher;
+use super::utils::hash_merkle_tree_from_bottom_layer_mt;
 use crate::commitment_scheme::utils::{
     allocate_balanced_tree, column_to_row_major, hash_merkle_tree_from_bottom_layer, to_byte_slice,
     tree_data_as_mut_ref, ColumnArray, TreeData,
@@ -28,7 +29,21 @@ impl<T: Sized, H: Hasher> MerkleTree<T, H> {
         tree
     }
 
-    /// Builds the base layer of the tree from the given trace.
+    pub fn commit_mt(trace: ColumnArray<T>) -> Self {
+        let mut tree = Self::init_from_column_array(trace);
+
+        let bottom_layer_as_byte_slice = to_byte_slice(&tree.bottom_layer);
+        hash_merkle_tree_from_bottom_layer_mt::<H>(
+            bottom_layer_as_byte_slice,
+            tree.bottom_layer_node_size * std::mem::size_of::<T>(),
+            &mut tree_data_as_mut_ref(&mut tree.data)[..],
+            2,
+        );
+
+        tree
+    }
+
+    /// Builds the base layer of the tree from the given matrix.
     /// Allocates the rest of the tree.
     // TODO(Ohad): add support for columns of different lengths.
     fn init_from_column_array(trace: ColumnArray<T>) -> Self {
@@ -47,15 +62,6 @@ impl<T: Sized, H: Hasher> MerkleTree<T, H> {
 
         let bottom_layer_node_size = n_rows_in_node * trace.len();
         let bottom_layer = column_to_row_major(trace);
-
-        // Allocate rest of the tree.
-        let bottom_layer_length_nodes =
-            crate::math::usize_div_ceil(bottom_layer.len(), bottom_layer_node_size);
-        let tree_data = allocate_balanced_tree(
-            bottom_layer_length_nodes,
-            H::BLOCK_SIZE_IN_BYTES,
-            H::OUTPUT_SIZE_IN_BYTES,
-        );
 
         // Allocate rest of the tree.
         let bottom_layer_length_nodes =
@@ -103,11 +109,25 @@ mod tests {
 
     #[test]
     pub fn commit_test() {
-        let trace = init_m31_test_trace(64);
-        let matrix = vec![trace.clone(), trace.clone(), trace.clone(), trace.clone()];
+        let trace = init_m31_test_trace(1 << 30);
+        let matrix = vec![trace];
 
         let tree_from_matrix = super::MerkleTree::<M31, Blake3Hasher>::commit(matrix);
 
+        // assert_eq!(
+        //     hex::encode(tree_from_matrix.root()),
+        //     "c07e98e8a5d745ea99c3c3eac4c43b9df5ceb9e78973a785d90b3ffe4d5fcf5e"
+        // );
+    }
+
+    #[test]
+    pub fn commit_mt_test() {
+        let trace = init_m31_test_trace(1 << 30);
+        let matrix = vec![trace];
+
+
+        println!("start");
+        let tree_from_matrix = super::MerkleTree::<M31, Blake3Hasher>::commit_mt(matrix);
         assert_eq!(
             hex::encode(tree_from_matrix.root()),
             "c07e98e8a5d745ea99c3c3eac4c43b9df5ceb9e78973a785d90b3ffe4d5fcf5e"
