@@ -295,6 +295,24 @@ impl CirclePoly {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct PointSetEvaluation {
+    pub domain: Vec<CirclePoint>,
+    pub values: Vec<Field>,
+}
+
+impl Evaluation for PointSetEvaluation {
+    fn get_at(&self, point_index: CirclePointIndex) -> Field {
+        let point = point_index.to_point();
+        for (i, p) in self.domain.iter().enumerate() {
+            if *p == point {
+                return self.values[i];
+            }
+        }
+        panic!("Point not found in evaluation for {:?}", point_index);
+    }
+}
+
 #[test]
 fn test_circle_domain_iterator() {
     let domain = CircleDomain::constraint_domain(3);
