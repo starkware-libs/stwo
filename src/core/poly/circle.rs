@@ -1,4 +1,4 @@
-use std::{iter::Chain, ops::Deref};
+use std::{collections::BTreeMap, iter::Chain, ops::Deref};
 
 use crate::core::{
     circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator},
@@ -292,6 +292,20 @@ impl CirclePoly {
             butterfly(&mut l[i], &mut r[i], p.y);
         }
         CircleEvaluation { domain, values }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PointSetEvaluation(pub BTreeMap<CirclePointIndex, Field>);
+
+impl Evaluation for PointSetEvaluation {
+    fn get_at(&self, point_index: CirclePointIndex) -> Field {
+        for (domain_point_index, value) in self.0.iter() {
+            if *domain_point_index == point_index {
+                return *value;
+            }
+        }
+        panic!("Point not found in evaluation for {:?}", point_index);
     }
 }
 
