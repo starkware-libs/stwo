@@ -2,7 +2,7 @@ use super::{
     circle::{CirclePoint, CirclePointIndex, Coset},
     fft::psi_x,
     fields::m31::Field,
-    poly::circle::{CircleDomain, CircleEvaluation, CirclePoly},
+    poly::circle::{CircleDomain, CirclePoly, Evaluation},
 };
 use num_traits::One;
 
@@ -52,6 +52,7 @@ pub trait PolyOracle: Copy {
     fn get_at(&self, i: CirclePointIndex) -> Field;
     fn point(&self) -> CirclePoint;
 }
+
 #[derive(Copy, Clone)]
 pub struct EvalByPoly<'a> {
     pub point: CirclePoint,
@@ -67,12 +68,13 @@ impl<'a> PolyOracle for EvalByPoly<'a> {
 }
 
 // TODO(spapini): make an iterator instead, so we do all computations beforehand.
-#[derive(Copy, Clone)]
-pub struct EvalByEvaluation<'a> {
+#[derive(Clone)]
+pub struct EvalByEvaluation<'a, T: Evaluation> {
     pub offset: CirclePointIndex,
-    pub eval: &'a CircleEvaluation,
+    pub eval: &'a T,
 }
-impl<'a> PolyOracle for EvalByEvaluation<'a> {
+
+impl<'a, T: Evaluation> PolyOracle for EvalByEvaluation<'a, T> {
     fn point(&self) -> CirclePoint {
         self.offset.to_point()
     }
@@ -80,10 +82,11 @@ impl<'a> PolyOracle for EvalByEvaluation<'a> {
         i = i + self.offset;
 
         // Check if it is in the first half.
-        let d = self.eval.domain.find(i).expect("Not in domain");
-        self.eval.values[d]
+        self.eval.get_at(i)
     }
 }
+
+impl<'a, T: Evaluation> Copy for EvalByEvaluation<'a, T> {}
 
 #[test]
 fn test_coset_vanishing() {

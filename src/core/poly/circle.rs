@@ -20,6 +20,7 @@ impl CircleDomain {
     pub fn new(half_coset: Coset) -> Self {
         Self { half_coset }
     }
+
     /// Constructs a domain for constraint evaluation.
     pub fn constraint_domain(n_bits: usize) -> Self {
         assert!(n_bits > 0);
@@ -27,11 +28,13 @@ impl CircleDomain {
             half_coset: Coset::new(CirclePointIndex::generator(), n_bits - 1),
         }
     }
+
     pub fn iter(&self) -> Chain<CosetIterator<CirclePoint>, CosetIterator<CirclePoint>> {
         self.half_coset
             .iter()
             .chain(self.half_coset.conjugate().iter())
     }
+
     pub fn iter_indices(
         &self,
     ) -> Chain<CosetIterator<CirclePointIndex>, CosetIterator<CirclePointIndex>> {
@@ -39,15 +42,18 @@ impl CircleDomain {
             .iter_indices()
             .chain(self.half_coset.conjugate().iter_indices())
     }
+
     pub fn len(&self) -> usize {
         self.half_coset.len() * 2
     }
+
     pub fn is_empty(&self) -> bool {
         false
     }
     pub fn n_bits(&self) -> usize {
         self.half_coset.n_bits + 1
     }
+
     pub fn at(&self, index: usize) -> CirclePoint {
         if index < self.half_coset.len() {
             self.half_coset.at(index)
@@ -57,6 +63,7 @@ impl CircleDomain {
                 .conjugate()
         }
     }
+
     pub fn find(&self, i: CirclePointIndex) -> Option<usize> {
         if let Some(d) = self.half_coset.find(i) {
             return Some(d);
@@ -85,6 +92,7 @@ impl CircleDomain {
 pub struct CanonicCoset {
     pub coset: Coset,
 }
+
 impl CanonicCoset {
     pub fn new(n_bits: usize) -> Self {
         assert!(n_bits > 0);
@@ -92,18 +100,22 @@ impl CanonicCoset {
             coset: Coset::odds(n_bits),
         }
     }
+
     /// Gets the full coset represented G_{2n} + <G_n>.
     pub fn coset(&self) -> Coset {
         self.coset
     }
+
     /// Gets half of the coset (its conjugate complements to the whole coset), G_{2n} + <G_{n/2}>
     pub fn half_coset(&self) -> Coset {
         Coset::half_odds(self.n_bits - 1)
     }
+
     /// Gets the [CircleDomain] representing the same point set (in another order).
     pub fn circle_domain(&self) -> CircleDomain {
         CircleDomain::new(Coset::half_odds(self.coset.n_bits - 1))
     }
+
     /// Gets a good [CircleDomain] for extension of a poly defined on this coset.
     /// The reason the domain looks like this is a bit more intricate, and not covered here.
     pub fn eval_domain(&self, eval_n_bits: usize) -> CircleDomain {
@@ -117,16 +129,22 @@ impl CanonicCoset {
         }
         CircleDomain::new(Coset::new(CirclePointIndex::generator(), eval_n_bits - 1))
     }
+
     pub fn n_bits(&self) -> usize {
         self.coset.n_bits
     }
 }
+
 impl Deref for CanonicCoset {
     type Target = Coset;
 
     fn deref(&self) -> &Self::Target {
         &self.coset
     }
+}
+
+pub trait Evaluation: Clone {
+    fn get_at(&self, point_index: CirclePointIndex) -> Field;
 }
 
 /// An evaluation defined on a [CircleDomain].
@@ -136,6 +154,7 @@ pub struct CircleEvaluation {
     pub domain: CircleDomain,
     pub values: Vec<Field>,
 }
+
 impl CircleEvaluation {
     pub fn new(domain: CircleDomain, values: Vec<Field>) -> Self {
         assert_eq!(domain.len(), values.len());
@@ -162,6 +181,7 @@ impl CircleEvaluation {
             values: new_values,
         }
     }
+
     /// Computes a minimal [CirclePoly] that evalutes to the same values as this evaluation.
     pub fn interpolate(self) -> CirclePoly {
         // Use CFFT to interpolate.
@@ -194,6 +214,12 @@ impl CircleEvaluation {
     }
 }
 
+impl Evaluation for CircleEvaluation {
+    fn get_at(&self, point_index: CirclePointIndex) -> Field {
+        self.values[self.domain.find(point_index).expect("Not in domain")]
+    }
+}
+
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
 pub struct CirclePoly {
@@ -206,6 +232,7 @@ pub struct CirclePoly {
     /// psi_x(x) := 2x^2 - 1.
     coeffs: Vec<Field>,
 }
+
 impl CirclePoly {
     pub fn new(bound_bits: usize, coeffs: Vec<Field>) -> Self {
         assert!(coeffs.len() == (1 << bound_bits));
@@ -232,6 +259,7 @@ impl CirclePoly {
         }
         sum
     }
+
     /// Evaluates the polynomial at all points in the domain.
     pub fn evaluate(self, domain: CircleDomain) -> CircleEvaluation {
         // Use CFFT to evaluate.
