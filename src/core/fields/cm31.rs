@@ -49,48 +49,21 @@ mod tests {
     use crate::core::fields::m31::P;
 
     #[test]
-    fn test_addition() {
+    fn test_ops() {
         let x = CM31::from_u32_unchecked(1, 2);
         let y = CM31::from_u32_unchecked(4, 5);
         let m = M31::from_u32_unchecked(8);
         let c = CM31::from(m);
+        let n = CM31::from_u32_unchecked(P - 6, 13);
+
         assert_eq!(x + y, CM31::from_u32_unchecked(5, 7));
         assert_eq!(y + m, y + c);
-    }
-
-    #[test]
-    fn test_multiplication() {
-        let x = CM31::from_u32_unchecked(1, 2);
-        let y = CM31::from_u32_unchecked(4, 5);
-        let m = M31::from_u32_unchecked(8);
-        let c = CM31::from(m);
         assert_eq!(x * y, CM31::from_u32_unchecked(P - 6, 13));
         assert_eq!(y * m, y * c);
-    }
-
-    #[test]
-    fn test_negation() {
-        let x = CM31::from_u32_unchecked(1, 2);
         assert_eq!(-x, CM31::from_u32_unchecked(P - 1, P - 2));
-    }
-
-    #[test]
-    fn test_subtraction() {
-        let x = CM31::from_u32_unchecked(1, 2);
-        let y = CM31::from_u32_unchecked(4, 5);
-        let m = M31::from_u32_unchecked(8);
-        let c = CM31::from(m);
         assert_eq!(x - y, CM31::from_u32_unchecked(P - 3, P - 3));
         assert_eq!(y - m, y - c);
-    }
-
-    #[test]
-    fn test_division() {
-        let x = CM31::from_u32_unchecked(P - 6, 13);
-        let y = CM31::from_u32_unchecked(4, 5);
-        let m = M31::from_u32_unchecked(8);
-        let c = CM31::from(m);
-        assert_eq!(x / y, CM31::from_u32_unchecked(1, 2));
+        assert_eq!(n / y, CM31::from_u32_unchecked(1, 2));
         assert_eq!(y / m, y / c);
     }
 }
