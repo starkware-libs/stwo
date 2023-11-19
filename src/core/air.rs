@@ -1,6 +1,6 @@
 use super::circle::CirclePointIndex;
 use crate::core::constraints::PolyOracle;
-use crate::core::fields::m31::Field;
+use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::CanonicCoset;
 
 pub struct MaskItem {
@@ -22,7 +22,7 @@ impl Mask {
         &self,
         points: &[CirclePointIndex],
         poly_oracles: &[impl PolyOracle],
-    ) -> Vec<Field> {
+    ) -> Vec<BaseField> {
         let mut res = Vec::with_capacity(self.items.len());
         for (mask_item, point_index) in self.items.iter().zip(points) {
             res.push(poly_oracles[mask_item.column_index].get_at(*point_index));
