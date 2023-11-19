@@ -1,5 +1,6 @@
 use num_traits::One;
 
+use crate::core::air::{Mask, MaskItem};
 use crate::core::circle::Coset;
 use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle};
 use crate::core::fields::m31::Field;
@@ -12,6 +13,7 @@ pub struct Fibonacci {
     pub constraint_eval_domain: CircleDomain,
     pub claim: Field,
 }
+
 impl Fibonacci {
     pub fn new(n_bits: usize, claim: Field) -> Self {
         let trace_coset = CanonicCoset::new(n_bits);
@@ -26,6 +28,7 @@ impl Fibonacci {
             claim,
         }
     }
+
     pub fn get_trace(&self) -> CircleEvaluation {
         // Trace.
         let mut trace = Vec::with_capacity(self.trace_coset.len());
@@ -43,6 +46,7 @@ impl Fibonacci {
         // Returns as a CircleEvaluation.
         CircleEvaluation::new_canonical_ordered(self.trace_coset, trace)
     }
+
     pub fn eval_step_constraint(&self, trace: impl PolyOracle) -> Field {
         trace.get_at(self.trace_coset.index_at(0)).square()
             + trace.get_at(self.trace_coset.index_at(1)).square()
@@ -80,6 +84,17 @@ impl Fibonacci {
         quotient += random_coeff.pow(2)
             * self.eval_boundary_quotient(trace, self.constraint_coset.len() - 1, self.claim);
         quotient
+    }
+
+    pub fn get_mask(&self) -> Mask {
+        Mask::new(
+            (0..3)
+                .map(|offset| MaskItem {
+                    column_index: 0,
+                    offset,
+                })
+                .collect(),
+        )
     }
 }
 
@@ -136,6 +151,7 @@ fn test_constraint_on_trace() {
 fn test_quotient_is_low_degree() {
     use crate::core::circle::CirclePointIndex;
     use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
+    use crate::core::poly::circle::PointSetEvaluation;
 
     let fib = Fibonacci::new(5, Field::from_u32_unchecked(443693538));
     let trace = fib.get_trace();
@@ -163,22 +179,60 @@ fn test_quotient_is_low_degree() {
     // eval_domain, then it should interpolate correctly.
     let quotient_poly = quotient_eval.interpolate();
 
-    // Evaluate this polynomial at another point, out of eval_domain and compare to
-    // what we expect.
-    let point_index = CirclePointIndex::generator() * 2;
-    assert!(fib.constraint_eval_domain.find(point_index).is_none());
-    let point = point_index.to_point();
+    // Evaluate this polynomial at another point, out of eval_domain and compare to what we expect.
+    let oods_point_index = CirclePointIndex::generator() * 2;
+    assert!(fib.constraint_eval_domain.find(oods_point_index).is_none());
+    let oods_point = oods_point_index.to_point();
 
-    // Quotient is low degree if it evaluates the same as a low degree interpolation
-    // of the trace.
-    assert_eq!(
-        quotient_poly.eval_at_point(point),
-        fib.eval_quotient(
-            random_coeff,
-            EvalByPoly {
-                point,
-                poly: &trace_poly
-            }
-        )
+    let mask = fib.get_mask();
+    let oods_values = mask.eval(
+        &[fib.trace_coset],
+        &[EvalByPoly {
+            point: oods_point,
+            poly: &trace_poly,
+        }],
     );
+    let point_domain: Vec<CirclePointIndex> = mask
+        .get_point_indices(&[fib.trace_coset])
+        .iter()
+        .map(|p| *p + oods_point_index)
+        .collect();
+
+    let oods_evaluation = EvalByEvaluation {
+        offset: oods_point_index,
+        eval: &PointSetEvaluation::new(point_domain.into_iter().zip(oods_values).collect()),
+    };
+
+    assert_eq!(
+        quotient_poly.eval_at_point(oods_point),
+        fib.eval_quotient(random_coeff, oods_evaluation)
+    );
+}
+
+#[test]
+fn test_mask() {
+    use crate::core::circle::CirclePointIndex;
+    use crate::core::constraints::EvalByPoly;
+
+    let fib = Fibonacci::new(5, Field::from_u32_unchecked(443693538));
+    let trace = fib.get_trace();
+    let trace_poly = trace.interpolate();
+    let z = (CirclePointIndex::generator() * 17).to_point();
+
+    let mask = fib.get_mask();
+    let mask_domain = mask.get_point_indices(&[fib.trace_coset]);
+    let mask_values = mask.eval(
+        &[fib.trace_coset],
+        &[EvalByPoly {
+            point: z,
+            poly: &trace_poly,
+        }],
+    );
+
+    assert_eq!(mask.items[0].column_index, 0);
+    assert_eq!(mask_domain.len(), mask_values.len());
+    for (i, (point_index, value)) in mask_domain.iter().zip(mask_values.iter()).enumerate() {
+        assert_eq!(point_index, &fib.trace_coset.index_at(i));
+        assert_eq!(*value, trace_poly.eval_at_point(z + point_index.to_point()));
+    }
 }

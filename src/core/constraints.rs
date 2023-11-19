@@ -3,7 +3,7 @@ use num_traits::One;
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fft::psi_x;
 use super::fields::m31::Field;
-use super::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
+use super::poly::circle::{CircleDomain, Evaluation, CirclePoly};
 
 // Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing(coset: Coset, mut p: CirclePoint) -> Field {
@@ -49,7 +49,7 @@ pub fn point_vanishing(vanish_point: CirclePoint, p: CirclePoint) -> Field {
 // Utils for computing constraints.
 // Oracle to a polynomial constrained to a coset.
 pub trait PolyOracle: Copy {
-    fn get_at(&self, i: CirclePointIndex) -> Field;
+    fn get_at(&self, index: CirclePointIndex) -> Field;
     fn point(&self) -> CirclePoint;
 }
 
@@ -64,32 +64,29 @@ impl<'a> PolyOracle for EvalByPoly<'a> {
         self.point
     }
 
-    fn get_at(&self, i: CirclePointIndex) -> Field {
-        self.poly.eval_at_point(self.point + i.to_point())
+    fn get_at(&self, index: CirclePointIndex) -> Field {
+        self.poly.eval_at_point(self.point + index.to_point())
     }
 }
 
-// TODO(spapini): make an iterator instead, so we do all computations
-// beforehand.
-#[derive(Copy, Clone)]
-pub struct EvalByEvaluation<'a> {
+// TODO(spapini): make an iterator instead, so we do all computations beforehand.
+#[derive(Clone)]
+pub struct EvalByEvaluation<'a, T: Evaluation> {
     pub offset: CirclePointIndex,
-    pub eval: &'a CircleEvaluation,
+    pub eval: &'a T,
 }
 
-impl<'a> PolyOracle for EvalByEvaluation<'a> {
+impl<'a, T: Evaluation> PolyOracle for EvalByEvaluation<'a, T> {
     fn point(&self) -> CirclePoint {
         self.offset.to_point()
     }
 
-    fn get_at(&self, mut i: CirclePointIndex) -> Field {
-        i = i + self.offset;
-
-        // Check if it is in the first half.
-        let d = self.eval.domain.find(i).expect("Not in domain");
-        self.eval.values[d]
+    fn get_at(&self, index: CirclePointIndex) -> Field {
+        self.eval.get_at(index + self.offset)
     }
 }
+
+impl<'a, T: Evaluation> Copy for EvalByEvaluation<'a, T> {}
 
 #[test]
 fn test_coset_vanishing() {

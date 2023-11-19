@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::iter::Chain;
 use std::ops::Deref;
 
@@ -120,8 +121,8 @@ impl CanonicCoset {
         CircleDomain::new(Coset::half_odds(self.coset.n_bits - 1))
     }
 
-    /// Gets a good [CircleDomain] for extension of a poly defined on this coset. The reason the
-    /// domain looks like this is a bit more intricate, and not covered here.
+    /// Gets a good [CircleDomain] for extension of a poly defined on this coset.
+    /// The reason the domain looks like this is a bit more intricate, and not covered here.
     pub fn eval_domain(&self, eval_n_bits: usize) -> CircleDomain {
         assert!(eval_n_bits > self.coset.n_bits);
         // TODO(spapini): Document why this is like this.
@@ -138,12 +139,17 @@ impl CanonicCoset {
         self.coset.n_bits
     }
 }
+
 impl Deref for CanonicCoset {
     type Target = Coset;
 
     fn deref(&self) -> &Self::Target {
         &self.coset
     }
+}
+
+pub trait Evaluation: Clone {
+    fn get_at(&self, point_index: CirclePointIndex) -> Field;
 }
 
 /// An evaluation defined on a [CircleDomain].
@@ -211,6 +217,12 @@ impl CircleEvaluation {
             bound_bits: self.domain.n_bits(),
             coeffs: values,
         }
+    }
+}
+
+impl Evaluation for CircleEvaluation {
+    fn get_at(&self, point_index: CirclePointIndex) -> Field {
+        self.values[self.domain.find(point_index).expect("Not in domain")]
     }
 }
 
@@ -287,6 +299,24 @@ impl CirclePoly {
             butterfly(&mut l[i], &mut r[i], p.y);
         }
         CircleEvaluation { domain, values }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PointSetEvaluation(BTreeMap<CirclePointIndex, Field>);
+
+impl PointSetEvaluation {
+    pub fn new(evaluations: BTreeMap<CirclePointIndex, Field>) -> Self {
+        Self(evaluations)
+    }
+}
+
+impl Evaluation for PointSetEvaluation {
+    fn get_at(&self, point_index: CirclePointIndex) -> Field {
+        *self
+            .0
+            .get(&point_index)
+            .unwrap_or_else(|| panic!("Point not found in evaluation for {:?}", point_index))
     }
 }
 

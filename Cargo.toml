@@ -1,7 +1,5 @@
-cargo-features = ["profile-rustflags"]
-
 [package]
-name = "prover_research"
+name = "prover-research"
 version = "0.1.1"
 edition = "2021"
 
@@ -21,10 +19,9 @@ rand = "0.8.3"
 [features]
 avx512 = []
 
-[profile.release]
-opt-level = 2
-rustflags = ["-C", "target-cpu=native"]
-debug = 2
+[profile.bench]
+codegen-units = 1
+lto = true
 
 [[bench]]
 harness = false

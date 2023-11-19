@@ -5,8 +5,9 @@ use std::ops::{
 
 use num_traits::{Num, One, Zero};
 
+use crate::core::fields::m31::M31;
 use crate::core::fields::cm31::CM31;
-use crate::impl_field;
+use crate::{impl_extension_field, impl_field};
 
 pub const P4: u128 = 21267647892944572736998860269687930881; // (2 ** 31 - 1) ** 4
 pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
@@ -18,6 +19,7 @@ pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
 pub struct QM31(CM31, CM31);
 
 impl_field!(QM31, P4);
+impl_extension_field!(QM31, CM31);
 
 impl QM31 {
     pub const fn from_u32_unchecked(a: u32, b: u32, c: u32, d: u32) -> Self {
@@ -34,30 +36,6 @@ impl Display for QM31 {
     }
 }
 
-impl Add for QM31 {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self(self.0 + rhs.0, self.1 + rhs.1)
-    }
-}
-
-impl Neg for QM31 {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        Self(-self.0, -self.1)
-    }
-}
-
-impl Sub for QM31 {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self(self.0 - rhs.0, self.1 - rhs.1)
-    }
-}
-
 impl Mul for QM31 {
     type Output = Self;
 
@@ -70,22 +48,6 @@ impl Mul for QM31 {
     }
 }
 
-impl One for QM31 {
-    fn one() -> Self {
-        Self(CM31::one(), CM31::zero())
-    }
-}
-
-impl Zero for QM31 {
-    fn zero() -> Self {
-        Self(CM31::zero(), CM31::zero())
-    }
-
-    fn is_zero(&self) -> bool {
-        *self == Self::zero()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,14 +57,20 @@ mod tests {
     fn test_addition() {
         let x = QM31::from_u32_unchecked(1, 2, 3, 4);
         let y = QM31::from_u32_unchecked(4, 5, 6, 7);
+        let m = M31::from_u32_unchecked(8);
+        let q = QM31::from_u32_unchecked(8, 0, 0, 0);
         assert_eq!(x + y, QM31::from_u32_unchecked(5, 7, 9, 11));
+        assert_eq!(y + m, y + q);
     }
 
     #[test]
     fn test_multiplication() {
         let x = QM31::from_u32_unchecked(1, 2, 3, 4);
         let y = QM31::from_u32_unchecked(4, 5, 6, 7);
+        let m = M31::from_u32_unchecked(8);
+        let q = QM31::from_u32_unchecked(8, 0, 0, 0);
         assert_eq!(x * y, QM31::from_u32_unchecked(P - 106, 38, P - 16, 50));
+        assert_eq!(y * m, y * q);
     }
 
     #[test]
