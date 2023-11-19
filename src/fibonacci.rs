@@ -149,7 +149,7 @@ fn test_constraint_on_trace() {
 
 #[test]
 fn test_quotient_is_low_degree() {
-    use crate::core::circle::CirclePointIndex;
+    use crate::core::circle::{CirclePoint, CirclePointIndex};
     use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
     use crate::core::poly::circle::PointSetEvaluation;
 
@@ -185,19 +185,19 @@ fn test_quotient_is_low_degree() {
     let oods_point = oods_point_index.to_point();
 
     let mask = fib.get_mask();
-    let oods_values = mask.eval(
-        &[fib.trace_coset],
-        &[EvalByPoly {
-            point: oods_point,
-            poly: &trace_poly,
-        }],
-    );
     let point_domain: Vec<CirclePointIndex> = mask
         .get_point_indices(&[fib.trace_coset])
         .iter()
         .map(|p| *p + oods_point_index)
         .collect();
 
+    let oods_values = mask.eval(
+        &point_domain,
+        &[EvalByPoly {
+            point: CirclePoint::zero(),
+            poly: &trace_poly,
+        }],
+    );
     let oods_evaluation = EvalByEvaluation {
         offset: oods_point_index,
         eval: &PointSetEvaluation::new(point_domain.into_iter().zip(oods_values).collect()),
@@ -222,7 +222,7 @@ fn test_mask() {
     let mask = fib.get_mask();
     let mask_domain = mask.get_point_indices(&[fib.trace_coset]);
     let mask_values = mask.eval(
-        &[fib.trace_coset],
+        &mask_domain,
         &[EvalByPoly {
             point: z,
             poly: &trace_poly,
