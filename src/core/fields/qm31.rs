@@ -54,48 +54,24 @@ mod tests {
     use crate::core::fields::m31::P;
 
     #[test]
-    fn test_addition() {
-        let x = QM31::from_u32_unchecked(1, 2, 3, 4);
-        let y = QM31::from_u32_unchecked(4, 5, 6, 7);
+    fn test_ops() {
+        let qm0 = QM31::from_u32_unchecked(1, 2, 3, 4);
+        let qm1 = QM31::from_u32_unchecked(4, 5, 6, 7);
         let m = M31::from_u32_unchecked(8);
-        let q = QM31::from(m);
-        assert_eq!(x + y, QM31::from_u32_unchecked(5, 7, 9, 11));
-        assert_eq!(y + m, y + q);
-    }
+        let qm = QM31::from(m);
+        let qm0_x_qm1 = QM31::from_u32_unchecked(P - 106, 38, P - 16, 50);
 
-    #[test]
-    fn test_multiplication() {
-        let x = QM31::from_u32_unchecked(1, 2, 3, 4);
-        let y = QM31::from_u32_unchecked(4, 5, 6, 7);
-        let m = M31::from_u32_unchecked(8);
-        let q = QM31::from(m);
-        assert_eq!(x * y, QM31::from_u32_unchecked(P - 106, 38, P - 16, 50));
-        assert_eq!(y * m, y * q);
-    }
-
-    #[test]
-    fn test_negation() {
-        let x = QM31::from_u32_unchecked(1, 2, 3, 4);
-        assert_eq!(-x, QM31::from_u32_unchecked(P - 1, P - 2, P - 3, P - 4));
-    }
-
-    #[test]
-    fn test_subtraction() {
-        let x = QM31::from_u32_unchecked(1, 2, 3, 4);
-        let y = QM31::from_u32_unchecked(4, 5, 6, 7);
-        let m = M31::from_u32_unchecked(8);
-        let q = QM31::from(m);
-        assert_eq!(x - y, QM31::from_u32_unchecked(P - 3, P - 3, P - 3, P - 3));
-        assert_eq!(y - m, y - q);
-    }
-
-    #[test]
-    fn test_division() {
-        let x = QM31::from_u32_unchecked(P - 106, 38, P - 16, 50);
-        let y = QM31::from_u32_unchecked(4, 5, 6, 7);
-        let m = M31::from_u32_unchecked(8);
-        let q = QM31::from(m);
-        assert_eq!(x / y, QM31::from_u32_unchecked(1, 2, 3, 4));
-        assert_eq!(y / m, y / q);
+        assert_eq!(qm0 + qm1, QM31::from_u32_unchecked(5, 7, 9, 11));
+        assert_eq!(qm1 + m, qm1 + qm);
+        assert_eq!(qm0 * qm1, qm0_x_qm1);
+        assert_eq!(qm1 * m, qm1 * qm);
+        assert_eq!(-qm0, QM31::from_u32_unchecked(P - 1, P - 2, P - 3, P - 4));
+        assert_eq!(
+            qm0 - qm1,
+            QM31::from_u32_unchecked(P - 3, P - 3, P - 3, P - 3)
+        );
+        assert_eq!(qm1 - m, qm1 - qm);
+        assert_eq!(qm0_x_qm1 / qm1, QM31::from_u32_unchecked(1, 2, 3, 4));
+        assert_eq!(qm1 / m, qm1 / qm);
     }
 }
