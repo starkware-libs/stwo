@@ -25,7 +25,7 @@ impl<const NODE_SIZE: usize> MerklePath<NODE_SIZE> {
 impl<const NODE_SIZE: usize> std::ops::Index<usize> for MerklePath<NODE_SIZE> {
     type Output = [u8; NODE_SIZE];
 
-    //TODO(Ohad): Consider using get instead of index, returning Result instead of panicing.
+    // TODO(Ohad): Consider using get instead of index, returning Result instead of panicing.
     fn index(&self, index: usize) -> &Self::Output {
         assert!(
             index < self.0.len(),
@@ -54,9 +54,9 @@ impl<const NODE_SIZE: usize> fmt::Debug for MerklePath<NODE_SIZE> {
 
 #[cfg(test)]
 mod tests {
-    use crate::commitment_scheme::{blake3_hash::Blake3Hasher, hasher::Hasher};
-
     use super::MerklePath;
+    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
+    use crate::commitment_scheme::hasher::Hasher;
 
     #[test]
     pub fn merkle_path_struct_test() {

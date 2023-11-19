@@ -1,9 +1,11 @@
-use crate::impl_field;
-use num_traits::{Num, One, Zero};
 use std::fmt::Display;
 use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
+
+use num_traits::{Num, One, Zero};
+
+use crate::impl_field;
 
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
 pub const K_BITS: u32 = 31;
@@ -85,8 +87,9 @@ impl Zero for M31 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rand::Rng;
+
+    use super::*;
 
     fn mul_p(a: u32, b: u32) -> u32 {
         ((a as u64 * b as u64) % P as u64) as u32

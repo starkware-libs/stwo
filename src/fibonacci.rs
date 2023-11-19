@@ -1,11 +1,10 @@
-use crate::core::{
-    air::{Mask, MaskItem},
-    circle::Coset,
-    constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle},
-    fields::m31::Field,
-    poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation},
-};
 use num_traits::One;
+
+use crate::core::air::{Mask, MaskItem};
+use crate::core::circle::Coset;
+use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle};
+use crate::core::fields::m31::Field;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 
 pub struct Fibonacci {
     pub trace_coset: CanonicCoset,
@@ -14,6 +13,7 @@ pub struct Fibonacci {
     pub constraint_eval_domain: CircleDomain,
     pub claim: Field,
 }
+
 impl Fibonacci {
     pub fn new(n_bits: usize, claim: Field) -> Self {
         let trace_coset = CanonicCoset::new(n_bits);
@@ -28,6 +28,7 @@ impl Fibonacci {
             claim,
         }
     }
+
     pub fn get_trace(&self) -> CircleEvaluation {
         // Trace.
         let mut trace = Vec::with_capacity(self.trace_coset.len());
@@ -45,6 +46,7 @@ impl Fibonacci {
         // Returns as a CircleEvaluation.
         CircleEvaluation::new_canonical_ordered(self.trace_coset, trace)
     }
+
     pub fn eval_step_constraint(&self, trace: impl PolyOracle) -> Field {
         trace.get_at(self.trace_coset.index_at(0)).square()
             + trace.get_at(self.trace_coset.index_at(1)).square()
@@ -98,8 +100,9 @@ impl Fibonacci {
 
 #[test]
 fn test_constraint_on_trace() {
-    use crate::core::constraints::EvalByEvaluation;
     use num_traits::Zero;
+
+    use crate::core::constraints::EvalByEvaluation;
 
     let fib = Fibonacci::new(3, Field::from_u32_unchecked(1056169651));
     let trace = fib.get_trace();
@@ -156,7 +159,8 @@ fn test_quotient_is_low_degree() {
 
     let extended_evaluation = trace_poly.clone().evaluate(fib.eval_domain);
 
-    // TODO(ShaharS), Change to a channel implementation to retrieve the random coefficients from extension field.
+    // TODO(ShaharS), Change to a channel implementation to retrieve the random
+    // coefficients from extension field.
     let random_coeff = Field::from_u32_unchecked(2213980);
 
     // Compute quotient on the evaluation domain.
@@ -171,8 +175,8 @@ fn test_quotient_is_low_degree() {
         ));
     }
     let quotient_eval = CircleEvaluation::new(fib.constraint_eval_domain, quotient_values);
-    // Interpolate the poly. The the poly is indeed of degree lower than the size of eval_domain,
-    // then it should interpolate correctly.
+    // Interpolate the poly. The the poly is indeed of degree lower than the size of
+    // eval_domain, then it should interpolate correctly.
     let quotient_poly = quotient_eval.interpolate();
 
     // Evaluate this polynomial at another point, out of eval_domain and compare to what we expect.

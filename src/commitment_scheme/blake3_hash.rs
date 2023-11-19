@@ -1,5 +1,6 @@
-use super::hasher::Name;
 use std::fmt;
+
+use super::hasher::Name;
 
 // Wrapper for the blake3 hash type.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -39,6 +40,7 @@ impl super::hasher::Hasher for Blake3Hasher {
     type Hash = Blake3Hash;
     const BLOCK_SIZE_IN_BYTES: usize = 64;
     const OUTPUT_SIZE_IN_BYTES: usize = 32;
+
     fn hash(val: &[u8]) -> Blake3Hash {
         Blake3Hash(*blake3::hash(val).as_bytes())
     }
@@ -67,7 +69,7 @@ impl super::hasher::Hasher for Blake3Hasher {
         data.iter().map(|x| Self::hash(x)).collect()
     }
 
-    //TODO(Ohad): Implement better blake3 module (SIMD & Memory optimizations)
+    // TODO(Ohad): Implement better blake3 module (SIMD & Memory optimizations)
     unsafe fn hash_many_in_place(
         data: &[*const u8],
         single_input_length_bytes: usize,
@@ -85,10 +87,8 @@ impl super::hasher::Hasher for Blake3Hasher {
 
 #[cfg(test)]
 mod tests {
-    use crate::commitment_scheme::{
-        blake3_hash::{self, Blake3Hasher},
-        hasher::Hasher,
-    };
+    use crate::commitment_scheme::blake3_hash::{self, Blake3Hasher};
+    use crate::commitment_scheme::hasher::Hasher;
 
     #[test]
     fn single_hash_test() {

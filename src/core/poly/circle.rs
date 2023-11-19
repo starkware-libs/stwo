@@ -1,11 +1,12 @@
-use std::{collections::BTreeMap, iter::Chain, ops::Deref};
+use std::collections::BTreeMap;
+use std::iter::Chain;
+use std::ops::Deref;
 
-use crate::core::{
-    circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator},
-    fft::{butterfly, ibutterfly, psi_x},
-    fields::m31::Field,
-};
 use num_traits::{One, Zero};
+
+use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
+use crate::core::fft::{butterfly, ibutterfly, psi_x};
+use crate::core::fields::m31::Field;
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.
@@ -14,9 +15,10 @@ use num_traits::{One, Zero};
 pub struct CircleDomain {
     pub half_coset: Coset,
 }
+
 impl CircleDomain {
-    /// Given a coset C + <G_n>, constructs the circle domain +-C + <G_n> (i.e., this coset and
-    /// its conjugate).
+    /// Given a coset C + <G_n>, constructs the circle domain +-C + <G_n> (i.e.,
+    /// this coset and its conjugate).
     pub fn new(half_coset: Coset) -> Self {
         Self { half_coset }
     }
@@ -50,6 +52,7 @@ impl CircleDomain {
     pub fn is_empty(&self) -> bool {
         false
     }
+
     pub fn n_bits(&self) -> usize {
         self.half_coset.n_bits + 1
     }
@@ -75,12 +78,13 @@ impl CircleDomain {
     }
 }
 
-/// A coset of the form G_{2n} + <G_n>, where G_n is the generator of the subgroup of order n.
-/// The ordering on this coset is G_2n + i * G_n.
+/// A coset of the form G_{2n} + <G_n>, where G_n is the generator of the
+/// subgroup of order n. The ordering on this coset is G_2n + i * G_n.
 /// These cosets can be used as a [CircleDomain], and be interpolated on.
-/// Not that this changes the ordering on the coset to be like [CircleDomain], which is
-/// G_2n + i * G_2n and then -G_2n -i * G_2n.
+/// Not that this changes the ordering on the coset to be like [CircleDomain],
+/// which is G_2n + i * G_2n and then -G_2n -i * G_2n.
 /// For example, the Xs below are a canonic coset with n_bits=3.
+/// ```text
 ///    X O X
 ///  O       O
 /// X         X
@@ -88,6 +92,7 @@ impl CircleDomain {
 /// X         X
 ///  O       O
 ///    X O X
+/// ```
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CanonicCoset {
     pub coset: Coset,
@@ -160,8 +165,9 @@ impl CircleEvaluation {
         assert_eq!(domain.len(), values.len());
         Self { domain, values }
     }
-    /// Creates a [CircleEvaluation] from values ordered according to [CanonicCoset].
-    /// For example, the canonic coset might look like this:
+
+    /// Creates a [CircleEvaluation] from values ordered according to
+    /// [CanonicCoset]. For example, the canonic coset might look like this:
     ///   G_8, G_8 + G_4, G_8 + 2G_4, G_8 + 3G_4.
     /// The circle domain will be ordered like this:
     ///   G_8, G_8 + 2G_4, -G_8, -G_8 - 2G_4.
@@ -226,8 +232,8 @@ pub struct CirclePoly {
     /// log size of the number of coefficients.
     bound_bits: usize,
     /// Coefficients of the polynomial in the FFT basis.
-    /// Note: These are not the coefficients of the polynomial in the standard monomial basis.
-    /// The FFT basis is a tensor product of the twiddles:
+    /// Note: These are not the coefficients of the polynomial in the standard
+    /// monomial basis. The FFT basis is a tensor product of the twiddles:
     /// y, x, psi_x(x), psi_x^2(x), ..., psi_x^{bound_bits-2}(x).
     /// psi_x(x) := 2x^2 - 1.
     coeffs: Vec<Field>,
@@ -238,6 +244,7 @@ impl CirclePoly {
         assert!(coeffs.len() == (1 << bound_bits));
         Self { bound_bits, coeffs }
     }
+
     pub fn eval_at_point(&self, point: CirclePoint) -> Field {
         let mut mults = vec![Field::one(), point.y];
         let mut x = point.x;
@@ -374,8 +381,7 @@ fn test_interpolate_canonic() {
 
 #[test]
 fn test_mixed_degree_example() {
-    use crate::core::constraints::EvalByEvaluation;
-    use crate::core::constraints::PolyOracle;
+    use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::poly::circle::CanonicCoset;
 
     let n_bits = 4;

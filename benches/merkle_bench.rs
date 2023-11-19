@@ -3,12 +3,10 @@ use criterion::measurement::WallTime;
 use criterion::{
     criterion_group, criterion_main, BatchSize, BenchmarkGroup, BenchmarkId, Criterion, Throughput,
 };
-use prover_research::commitment_scheme::{
-    blake2_hash::Blake2sHasher,
-    blake3_hash::Blake3Hasher,
-    hasher::{Hasher, Name},
-    merkle_tree::MerkleTree,
-};
+use prover_research::commitment_scheme::blake2_hash::Blake2sHasher;
+use prover_research::commitment_scheme::blake3_hash::Blake3Hasher;
+use prover_research::commitment_scheme::hasher::{Hasher, Name};
+use prover_research::commitment_scheme::merkle_tree::MerkleTree;
 
 static N_BYTES_U32: usize = 4;
 

@@ -1,8 +1,9 @@
-use crate::math;
-
-use super::{hasher::Hasher, N_BYTES_FELT};
 use byteorder;
 use byteorder::{BigEndian, ByteOrder};
+
+use super::hasher::Hasher;
+use super::N_BYTES_FELT;
+use crate::math;
 
 pub struct MerkleTree<T: Hasher> {
     pub data: Vec<Vec<T::Hash>>,
@@ -33,7 +34,8 @@ impl<T: Hasher> MerkleTree<T> {
         }
         data.push(bottom_layer);
 
-        // Build rest of the tree, every layer is composed of the 2-to-1 result of a pair of neighbors from the previous layer.
+        // Build rest of the tree, every layer is composed of the 2-to-1 result of a
+        // pair of neighbors from the previous layer.
         for i in 1..tree_height {
             let new_layer = Self::hash_layer(&data[i - 1]);
             data.push(new_layer);
@@ -65,7 +67,8 @@ impl<T: Hasher> MerkleTree<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::commitment_scheme::{blake3_hash::Blake3Hasher, merkle_tree::MerkleTree};
+    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
+    use crate::commitment_scheme::merkle_tree::MerkleTree;
 
     #[test]
     fn merkle_tree_building() {
