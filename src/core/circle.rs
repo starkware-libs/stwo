@@ -94,7 +94,7 @@ pub const CIRCLE_ORDER_BITS: usize = 31;
 
 /// Integer i that represent the circle point i * CIRCLE_GEN. Treated as an additive ring
 /// modulo 1 << CURVE_ORDER_BITS.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct CirclePointIndex(pub usize);
 impl CirclePointIndex {
     pub fn zero() -> Self {
