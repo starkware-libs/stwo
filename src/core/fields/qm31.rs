@@ -5,8 +5,8 @@ use std::ops::{
 
 use num_traits::{Num, One, Zero};
 
-use crate::core::fields::m31::M31;
 use crate::core::fields::cm31::CM31;
+use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
 
 pub const P4: u128 = 21267647892944572736998860269687930881; // (2 ** 31 - 1) ** 4

@@ -1,5 +1,7 @@
 use super::circle::CirclePointIndex;
-use crate::core::{constraints::PolyOracle, fields::m31::Field, poly::circle::CanonicCoset};
+use crate::core::constraints::PolyOracle;
+use crate::core::fields::m31::Field;
+use crate::core::poly::circle::CanonicCoset;
 
 pub struct MaskItem {
     pub column_index: usize,

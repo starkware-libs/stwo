@@ -3,7 +3,7 @@ use num_traits::One;
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fft::psi_x;
 use super::fields::m31::Field;
-use super::poly::circle::{CircleDomain, Evaluation, CirclePoly};
+use super::poly::circle::{CircleDomain, CirclePoly, Evaluation};
 
 // Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing(coset: Coset, mut p: CirclePoint) -> Field {
