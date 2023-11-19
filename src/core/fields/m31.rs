@@ -5,6 +5,7 @@ use std::ops::{
 
 use num_traits::{Num, One, Zero};
 
+use crate::core::fields::Field;
 use crate::impl_field;
 
 pub const P: u32 = 2147483647; // 2 ** 31 - 1

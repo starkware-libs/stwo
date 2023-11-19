@@ -7,6 +7,7 @@ use num_traits::{Num, One, Zero};
 
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
+use crate::core::fields::Field;
 use crate::{impl_extension_field, impl_field};
 
 pub const P4: u128 = 21267647892944572736998860269687930881; // (2 ** 31 - 1) ** 4
@@ -17,6 +18,7 @@ pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
 /// Represented as ((a, b), (c, d)) of (a + bi) + (c + di)u.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct QM31(CM31, CM31);
+pub type ExtensionField = QM31;
 
 impl_field!(QM31, P4);
 impl_extension_field!(QM31, CM31);

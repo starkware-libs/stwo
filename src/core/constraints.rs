@@ -112,6 +112,7 @@ fn test_coset_vanishing() {
 
 #[test]
 fn test_point_excluder() {
+    use crate::core::fields::Field;
     let excluded = Coset::half_odds(5).at(10);
     let point = (CirclePointIndex::generator() * 4).to_point();
 

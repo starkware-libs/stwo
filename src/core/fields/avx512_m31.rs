@@ -147,6 +147,7 @@ impl SubAssign for M31AVX512 {
 /// Tests field operations where field elements are in reduced form.
 #[test]
 fn test_avx512_basic_ops() {
+    use crate::core::fields::Field;
     if !crate::platform::avx512_detected() {
         return;
     }
