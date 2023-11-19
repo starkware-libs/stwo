@@ -1,6 +1,6 @@
 use super::circle::CirclePointIndex;
 use crate::core::constraints::PolyOracle;
-use crate::core::fields::m31::Field;
+use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::CanonicCoset;
 
 pub struct MaskItem {
@@ -18,7 +18,11 @@ impl Mask {
     }
 
     // TODO (ShaharS), Consider moving this functions to somewhere else and change the API.
-    pub fn eval(&self, cosets: &[CanonicCoset], poly_oracles: &[impl PolyOracle]) -> Vec<Field> {
+    pub fn eval(
+        &self,
+        cosets: &[CanonicCoset],
+        poly_oracles: &[impl PolyOracle],
+    ) -> Vec<BaseField> {
         let mut res = Vec::with_capacity(self.items.len());
         for item in &self.items {
             let point_index = cosets[item.column_index].index_at(item.offset);
