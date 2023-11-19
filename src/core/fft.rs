@@ -1,6 +1,7 @@
 use num_traits::One;
 
 use super::fields::m31::BaseField;
+use crate::core::fields::Field;
 
 pub fn butterfly(v0: &mut BaseField, v1: &mut BaseField, twid: BaseField) {
     let tmp = *v1 * twid;

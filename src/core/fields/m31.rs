@@ -3,8 +3,6 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
-use num_traits::{Num, One, Zero};
-
 use crate::impl_field;
 
 pub const P: u32 = 2147483647; // 2 ** 31 - 1

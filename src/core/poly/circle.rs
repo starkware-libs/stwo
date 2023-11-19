@@ -7,6 +7,7 @@ use num_traits::{One, Zero};
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly, psi_x};
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::Field;
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.
@@ -326,6 +327,7 @@ mod tests {
     use crate::core::circle::CirclePointIndex;
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::BaseField;
+    use crate::core::fields::Field;
 
     #[test]
     fn test_circle_domain_iterator() {
