@@ -156,6 +156,7 @@ mod tests {
 
     use super::{K_BLOCK_SIZE, M31AVX512};
     use crate::core::fields::m31::{M31, P};
+    use crate::core::fields::Field;
 
     /// Tests field operations where field elements are in reduced form.
     #[test]

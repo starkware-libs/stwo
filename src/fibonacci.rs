@@ -4,6 +4,7 @@ use crate::core::air::{Mask, MaskItem};
 use crate::core::circle::Coset;
 use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle};
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::Field;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 
 pub struct Fibonacci {

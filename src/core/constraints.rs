@@ -95,6 +95,7 @@ mod tests {
     use super::{coset_vanishing, point_excluder, point_vanishing};
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
+    use crate::core::fields::Field;
 
     #[test]
     fn test_coset_vanishing() {
