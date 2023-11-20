@@ -89,7 +89,7 @@ impl Zero for M31 {
 mod tests {
     use rand::Rng;
 
-    use super::*;
+    use super::{M31, P};
 
     fn mul_p(a: u32, b: u32) -> u32 {
         ((a as u64 * b as u64) % P as u64) as u32
