@@ -98,7 +98,7 @@ macro_rules! impl_field {
     };
 }
 
-/// Used to extend a field (whose primitive base field is M31) by 2.
+/// Used to extend a field (with characteristic M31) by 2.
 #[macro_export]
 macro_rules! impl_extension_field {
     ($field_name: ty, $extended_field_name: ty) => {
@@ -156,11 +156,33 @@ macro_rules! impl_extension_field {
             }
         }
 
+        impl Sub<M31> for $field_name {
+            type Output = Self;
+
+            fn sub(self, rhs: M31) -> Self::Output {
+                Self(self.0 - rhs, self.1)
+            }
+        }
+
         impl Mul<M31> for $field_name {
             type Output = Self;
 
             fn mul(self, rhs: M31) -> Self::Output {
                 Self(self.0 * rhs, self.1 * rhs)
+            }
+        }
+
+        impl Div<M31> for $field_name {
+            type Output = Self;
+
+            fn div(self, rhs: M31) -> Self::Output {
+                Self(self.0 / rhs, self.1 / rhs)
+            }
+        }
+
+        impl From<M31> for $field_name {
+            fn from(x: M31) -> Self {
+                Self(x.into(), <$extended_field_name>::zero())
             }
         }
     };
