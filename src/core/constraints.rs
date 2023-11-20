@@ -88,60 +88,67 @@ impl<'a, T: Evaluation> PolyOracle for EvalByEvaluation<'a, T> {
 
 impl<'a, T: Evaluation> Copy for EvalByEvaluation<'a, T> {}
 
-#[test]
-fn test_coset_vanishing() {
+#[cfg(test)]
+mod tests {
     use num_traits::Zero;
-    let cosets = [
-        Coset::half_odds(5),
-        Coset::odds(5),
-        Coset::new(CirclePointIndex::zero(), 5),
-        Coset::half_odds(5).conjugate(),
-    ];
-    for c0 in cosets.iter() {
-        for el in c0.iter() {
-            assert_eq!(coset_vanishing(*c0, el), Field::zero());
-            for c1 in cosets.iter() {
-                if c0 == c1 {
-                    continue;
+
+    use super::{coset_vanishing, point_excluder, point_vanishing};
+    use crate::core::circle::{CirclePointIndex, Coset};
+    use crate::core::fields::m31::Field;
+
+    #[test]
+    fn test_coset_vanishing() {
+        let cosets = [
+            Coset::half_odds(5),
+            Coset::odds(5),
+            Coset::new(CirclePointIndex::zero(), 5),
+            Coset::half_odds(5).conjugate(),
+        ];
+        for c0 in cosets.iter() {
+            for el in c0.iter() {
+                assert_eq!(coset_vanishing(*c0, el), Field::zero());
+                for c1 in cosets.iter() {
+                    if c0 == c1 {
+                        continue;
+                    }
+                    assert_ne!(coset_vanishing(*c1, el), Field::zero());
                 }
-                assert_ne!(coset_vanishing(*c1, el), Field::zero());
             }
         }
     }
-}
 
-#[test]
-fn test_point_excluder() {
-    let excluded = Coset::half_odds(5).at(10);
-    let point = (CirclePointIndex::generator() * 4).to_point();
+    #[test]
+    fn test_point_excluder() {
+        let excluded = Coset::half_odds(5).at(10);
+        let point = (CirclePointIndex::generator() * 4).to_point();
 
-    let num = point_excluder(excluded, point) * point_excluder(excluded.conjugate(), point);
-    let denom = (point.x - excluded.x).pow(2);
+        let num = point_excluder(excluded, point) * point_excluder(excluded.conjugate(), point);
+        let denom = (point.x - excluded.x).pow(2);
 
-    assert_eq!(num, denom);
-}
-
-#[test]
-fn test_point_vanishing_success() {
-    use num_traits::Zero;
-    let coset = Coset::odds(5);
-    let vanish_point = coset.at(2);
-    for el in coset.iter() {
-        if el == vanish_point {
-            assert_eq!(point_vanishing(vanish_point, el), Field::zero());
-            continue;
-        }
-        if el == vanish_point.antipode() {
-            continue;
-        }
-        assert_ne!(point_vanishing(vanish_point, el), Field::zero());
+        assert_eq!(num, denom);
     }
-}
 
-#[test]
-#[should_panic(expected = "0 has no inverse")]
-fn test_point_vanishing_failure() {
-    let coset = Coset::half_odds(6);
-    let point = coset.at(4);
-    point_vanishing(point, point.antipode());
+    #[test]
+    fn test_point_vanishing_success() {
+        let coset = Coset::odds(5);
+        let vanish_point = coset.at(2);
+        for el in coset.iter() {
+            if el == vanish_point {
+                assert_eq!(point_vanishing(vanish_point, el), Field::zero());
+                continue;
+            }
+            if el == vanish_point.antipode() {
+                continue;
+            }
+            assert_ne!(point_vanishing(vanish_point, el), Field::zero());
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "0 has no inverse")]
+    fn test_point_vanishing_failure() {
+        let coset = Coset::half_odds(6);
+        let point = coset.at(4);
+        point_vanishing(point, point.antipode());
+    }
 }

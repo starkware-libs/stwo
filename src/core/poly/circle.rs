@@ -320,113 +320,121 @@ impl Evaluation for PointSetEvaluation {
     }
 }
 
-#[test]
-fn test_circle_domain_iterator() {
-    let domain = CircleDomain::constraint_domain(3);
-    for (i, point) in domain.iter().enumerate() {
-        if i < 4 {
+#[cfg(test)]
+mod tests {
+    use super::{CanonicCoset, CircleDomain, CircleEvaluation, Coset};
+    use crate::core::circle::CirclePointIndex;
+    use crate::core::constraints::{EvalByEvaluation, PolyOracle};
+    use crate::core::fields::m31::Field;
+
+    #[test]
+    fn test_circle_domain_iterator() {
+        let domain = CircleDomain::constraint_domain(3);
+        for (i, point) in domain.iter().enumerate() {
+            if i < 4 {
+                assert_eq!(
+                    point,
+                    (CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(2) * i)
+                        .to_point()
+                );
+            } else {
+                assert_eq!(
+                    point,
+                    (-(CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(2) * i))
+                        .to_point()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_interpolate_and_eval() {
+        let domain = CircleDomain::constraint_domain(3);
+        assert_eq!(domain.n_bits(), 3);
+        let evaluation =
+            CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
+        let poly = evaluation.clone().interpolate();
+        let evaluation2 = poly.evaluate(domain);
+        assert_eq!(evaluation.values, evaluation2.values);
+    }
+
+    #[test]
+    fn test_interpolate_canonic_eval() {
+        let domain = CircleDomain::constraint_domain(3);
+        assert_eq!(domain.n_bits(), 3);
+        let evaluation =
+            CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
+        let poly = evaluation.interpolate();
+        for (i, point) in domain.iter().enumerate() {
             assert_eq!(
-                point,
-                (CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(2) * i).to_point()
-            );
-        } else {
-            assert_eq!(
-                point,
-                (-(CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(2) * i))
-                    .to_point()
+                poly.eval_at_point(point),
+                Field::from_u32_unchecked(i as u32)
             );
         }
     }
-}
 
-#[test]
-fn test_interpolate_and_eval() {
-    let domain = CircleDomain::constraint_domain(3);
-    assert_eq!(domain.n_bits(), 3);
-    let evaluation = CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
-    let poly = evaluation.clone().interpolate();
-    let evaluation2 = poly.evaluate(domain);
-    assert_eq!(evaluation.values, evaluation2.values);
-}
-
-#[test]
-fn test_interpolate_canonic_eval() {
-    let domain = CircleDomain::constraint_domain(3);
-    assert_eq!(domain.n_bits(), 3);
-    let evaluation = CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
-    let poly = evaluation.interpolate();
-    for (i, point) in domain.iter().enumerate() {
-        assert_eq!(
-            poly.eval_at_point(point),
-            Field::from_u32_unchecked(i as u32)
+    #[test]
+    fn test_interpolate_canonic() {
+        let coset = CanonicCoset::new(3);
+        let evaluation = CircleEvaluation::new_canonical_ordered(
+            coset,
+            (0..8).map(Field::from_u32_unchecked).collect(),
         );
+        let poly = evaluation.interpolate();
+        for (i, point) in Coset::odds(3).iter().enumerate() {
+            assert_eq!(
+                poly.eval_at_point(point),
+                Field::from_u32_unchecked(i as u32)
+            );
+        }
     }
-}
 
-#[test]
-fn test_interpolate_canonic() {
-    let coset = CanonicCoset::new(3);
-    let evaluation = CircleEvaluation::new_canonical_ordered(
-        coset,
-        (0..8).map(Field::from_u32_unchecked).collect(),
-    );
-    let poly = evaluation.interpolate();
-    for (i, point) in Coset::odds(3).iter().enumerate() {
-        assert_eq!(
-            poly.eval_at_point(point),
-            Field::from_u32_unchecked(i as u32)
-        );
-    }
-}
+    #[test]
+    fn test_mixed_degree_example() {
+        let n_bits = 4;
 
-#[test]
-fn test_mixed_degree_example() {
-    use crate::core::constraints::{EvalByEvaluation, PolyOracle};
-    use crate::core::poly::circle::CanonicCoset;
+        // Compute domains.
+        let domain0 = CanonicCoset::new(n_bits);
+        let eval_domain0 = domain0.eval_domain(n_bits + 4);
+        let domain1 = CanonicCoset::new(n_bits + 2);
+        let eval_domain1 = domain1.eval_domain(n_bits + 3);
+        let constraint_domain = CircleDomain::constraint_domain(n_bits + 1);
 
-    let n_bits = 4;
+        // Compute values.
+        let values1: Vec<_> = (0..(domain1.len() as u32))
+            .map(Field::from_u32_unchecked)
+            .collect();
+        let values0: Vec<_> = values1[1..].iter().step_by(4).map(|x| *x * *x).collect();
 
-    // Compute domains.
-    let domain0 = CanonicCoset::new(n_bits);
-    let eval_domain0 = domain0.eval_domain(n_bits + 4);
-    let domain1 = CanonicCoset::new(n_bits + 2);
-    let eval_domain1 = domain1.eval_domain(n_bits + 3);
-    let constraint_domain = CircleDomain::constraint_domain(n_bits + 1);
+        // Extend.
+        let trace_eval0 = CircleEvaluation::new_canonical_ordered(domain0, values0);
+        let eval0 = trace_eval0.interpolate().evaluate(eval_domain0);
+        let trace_eval1 = CircleEvaluation::new_canonical_ordered(domain1, values1);
+        let eval1 = trace_eval1.interpolate().evaluate(eval_domain1);
 
-    // Compute values.
-    let values1: Vec<_> = (0..(domain1.len() as u32))
-        .map(Field::from_u32_unchecked)
-        .collect();
-    let values0: Vec<_> = values1[1..].iter().step_by(4).map(|x| *x * *x).collect();
-
-    // Extend.
-    let trace_eval0 = CircleEvaluation::new_canonical_ordered(domain0, values0);
-    let eval0 = trace_eval0.interpolate().evaluate(eval_domain0);
-    let trace_eval1 = CircleEvaluation::new_canonical_ordered(domain1, values1);
-    let eval1 = trace_eval1.interpolate().evaluate(eval_domain1);
-
-    // Compute constraint.
-    let constraint_eval = CircleEvaluation::new(
-        constraint_domain,
-        constraint_domain
-            .iter_indices()
-            .map(|ind| {
-                // The constraint is poly0(x+off0)^2 = poly1(x+off1).
-                EvalByEvaluation {
-                    offset: domain0.initial_index,
-                    eval: &eval0,
-                }
-                .get_at(ind)
-                .square()
-                    - EvalByEvaluation {
-                        offset: domain1.index_at(1),
-                        eval: &eval1,
+        // Compute constraint.
+        let constraint_eval = CircleEvaluation::new(
+            constraint_domain,
+            constraint_domain
+                .iter_indices()
+                .map(|ind| {
+                    // The constraint is poly0(x+off0)^2 = poly1(x+off1).
+                    EvalByEvaluation {
+                        offset: domain0.initial_index,
+                        eval: &eval0,
                     }
                     .get_at(ind)
                     .square()
-            })
-            .collect(),
-    );
-    // TODO(spapini): Check low degree.
-    println!("{:?}", constraint_eval);
+                        - EvalByEvaluation {
+                            offset: domain1.index_at(1),
+                            eval: &eval1,
+                        }
+                        .get_at(ind)
+                        .square()
+                })
+                .collect(),
+        );
+        // TODO(spapini): Check low degree.
+        println!("{:?}", constraint_eval);
+    }
 }

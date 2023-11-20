@@ -50,8 +50,8 @@ impl Mul for QM31 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::core::fields::m31::P;
+    use super::QM31;
+    use crate::core::fields::m31::{M31, P};
 
     #[test]
     fn test_addition() {
