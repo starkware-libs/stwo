@@ -18,11 +18,14 @@ impl Mask {
     }
 
     // TODO (ShaharS), Consider moving this functions to somewhere else and change the API.
-    pub fn eval(&self, cosets: &[CanonicCoset], poly_oracles: &[impl PolyOracle]) -> Vec<Field> {
+    pub fn eval(
+        &self,
+        points: &[CirclePointIndex],
+        poly_oracles: &[impl PolyOracle],
+    ) -> Vec<Field> {
         let mut res = Vec::with_capacity(self.items.len());
-        for item in &self.items {
-            let point_index = cosets[item.column_index].index_at(item.offset);
-            res.push(poly_oracles[item.column_index].get_at(point_index));
+        for (mask_item, point_index) in self.items.iter().zip(points) {
+            res.push(poly_oracles[mask_item.column_index].get_at(*point_index));
         }
         res
     }
