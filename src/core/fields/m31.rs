@@ -12,7 +12,7 @@ pub const K_BITS: u32 = 31;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct M31(u32);
-pub type Field = M31;
+pub type BaseField = M31;
 
 impl_field!(M31, P);
 

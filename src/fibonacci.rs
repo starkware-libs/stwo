@@ -3,7 +3,7 @@ use num_traits::One;
 use crate::core::air::{Mask, MaskItem};
 use crate::core::circle::Coset;
 use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle};
-use crate::core::fields::m31::Field;
+use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 
 pub struct Fibonacci {
@@ -11,11 +11,11 @@ pub struct Fibonacci {
     pub eval_domain: CircleDomain,
     pub constraint_coset: Coset,
     pub constraint_eval_domain: CircleDomain,
-    pub claim: Field,
+    pub claim: BaseField,
 }
 
 impl Fibonacci {
-    pub fn new(n_bits: usize, claim: Field) -> Self {
+    pub fn new(n_bits: usize, claim: BaseField) -> Self {
         let trace_coset = CanonicCoset::new(n_bits);
         let eval_domain = trace_coset.eval_domain(n_bits + 1);
         let constraint_coset = Coset::subgroup(n_bits);
@@ -34,8 +34,8 @@ impl Fibonacci {
         let mut trace = Vec::with_capacity(self.trace_coset.len());
 
         // Fill trace with fibonacci squared.
-        let mut a = Field::one();
-        let mut b = Field::one();
+        let mut a = BaseField::one();
+        let mut b = BaseField::one();
         for _ in 0..self.trace_coset.len() {
             trace.push(a);
             let tmp = a.square() + b.square();
@@ -47,13 +47,13 @@ impl Fibonacci {
         CircleEvaluation::new_canonical_ordered(self.trace_coset, trace)
     }
 
-    pub fn eval_step_constraint(&self, trace: impl PolyOracle) -> Field {
+    pub fn eval_step_constraint(&self, trace: impl PolyOracle) -> BaseField {
         trace.get_at(self.trace_coset.index_at(0)).square()
             + trace.get_at(self.trace_coset.index_at(1)).square()
             - trace.get_at(self.trace_coset.index_at(2))
     }
 
-    pub fn eval_step_quotient(&self, trace: impl PolyOracle) -> Field {
+    pub fn eval_step_quotient(&self, trace: impl PolyOracle) -> BaseField {
         let excluded0 = self.constraint_coset.at(self.constraint_coset.len() - 2);
         let excluded1 = self.constraint_coset.at(self.constraint_coset.len() - 1);
         let num = self.eval_step_constraint(trace)
@@ -63,7 +63,7 @@ impl Fibonacci {
         num / denom
     }
 
-    pub fn eval_boundary_constraint(&self, trace: impl PolyOracle, value: Field) -> Field {
+    pub fn eval_boundary_constraint(&self, trace: impl PolyOracle, value: BaseField) -> BaseField {
         trace.get_at(self.trace_coset.index_at(0)) - value
     }
 
@@ -71,16 +71,16 @@ impl Fibonacci {
         &self,
         trace: impl PolyOracle,
         point_index: usize,
-        value: Field,
-    ) -> Field {
+        value: BaseField,
+    ) -> BaseField {
         let num = self.eval_boundary_constraint(trace, value);
         let denom = point_vanishing(self.constraint_coset.at(point_index), trace.point());
         num / denom
     }
 
-    pub fn eval_quotient(&self, random_coeff: Field, trace: impl PolyOracle) -> Field {
+    pub fn eval_quotient(&self, random_coeff: BaseField, trace: impl PolyOracle) -> BaseField {
         let mut quotient = random_coeff.pow(0) * self.eval_step_quotient(trace);
-        quotient += random_coeff.pow(1) * self.eval_boundary_quotient(trace, 0, Field::one());
+        quotient += random_coeff.pow(1) * self.eval_boundary_quotient(trace, 0, BaseField::one());
         quotient += random_coeff.pow(2)
             * self.eval_boundary_quotient(trace, self.constraint_coset.len() - 1, self.claim);
         quotient
@@ -105,7 +105,7 @@ mod tests {
     use super::Fibonacci;
     use crate::core::circle::CirclePointIndex;
     use crate::core::constraints::EvalByPoly;
-    use crate::core::fields::m31::Field;
+    use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::CircleEvaluation;
 
     #[test]
@@ -114,7 +114,7 @@ mod tests {
 
         use crate::core::constraints::EvalByEvaluation;
 
-        let fib = Fibonacci::new(3, Field::from_u32_unchecked(1056169651));
+        let fib = Fibonacci::new(3, BaseField::from_u32_unchecked(1056169651));
         let trace = fib.get_trace();
 
         // Assert that the step constraint is satisfied on the trace.
@@ -127,7 +127,7 @@ mod tests {
                 offset: p_ind,
                 eval: &trace,
             });
-            assert_eq!(res, Field::zero());
+            assert_eq!(res, BaseField::zero());
         }
 
         // Assert that the first trace value is 1.
@@ -137,9 +137,9 @@ mod tests {
                     offset: fib.constraint_coset.index_at(0),
                     eval: &trace,
                 },
-                Field::one()
+                BaseField::one()
             ),
-            Field::zero()
+            BaseField::zero()
         );
 
         // Assert that the last trace value is the fibonacci claim.
@@ -153,7 +153,7 @@ mod tests {
                 },
                 fib.claim
             ),
-            Field::zero()
+            BaseField::zero()
         );
     }
 
@@ -163,7 +163,7 @@ mod tests {
         use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
         use crate::core::poly::circle::PointSetEvaluation;
 
-        let fib = Fibonacci::new(5, Field::from_u32_unchecked(443693538));
+        let fib = Fibonacci::new(5, BaseField::from_u32_unchecked(443693538));
         let trace = fib.get_trace();
         let trace_poly = trace.interpolate();
 
@@ -171,7 +171,7 @@ mod tests {
 
         // TODO(ShaharS), Change to a channel implementation to retrieve the random
         // coefficients from extension field.
-        let random_coeff = Field::from_u32_unchecked(2213980);
+        let random_coeff = BaseField::from_u32_unchecked(2213980);
 
         // Compute quotient on the evaluation domain.
         let mut quotient_values = Vec::with_capacity(fib.constraint_eval_domain.len());
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn test_mask() {
-        let fib = Fibonacci::new(5, Field::from_u32_unchecked(443693538));
+        let fib = Fibonacci::new(5, BaseField::from_u32_unchecked(443693538));
         let trace = fib.get_trace();
         let trace_poly = trace.interpolate();
         let z = (CirclePointIndex::generator() * 17).to_point();
