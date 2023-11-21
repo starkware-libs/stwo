@@ -1,6 +1,9 @@
+use std::collections::BTreeMap;
+
 use super::circle::CirclePointIndex;
+use super::fields::m31::Field;
+use super::poly::circle::PointSetEvaluation;
 use crate::core::constraints::PolyOracle;
-use crate::core::fields::m31::Field;
 use crate::core::poly::circle::CanonicCoset;
 
 pub struct MaskItem {
@@ -18,16 +21,19 @@ impl Mask {
     }
 
     // TODO (ShaharS), Consider moving this functions to somewhere else and change the API.
-    pub fn eval(
+    pub fn get_evaluation(
         &self,
-        points: &[CirclePointIndex],
+        mask_offsets: &[CirclePointIndex],
         poly_oracles: &[impl PolyOracle],
-    ) -> Vec<Field> {
-        let mut res = Vec::with_capacity(self.items.len());
-        for (mask_item, point_index) in self.items.iter().zip(points) {
-            res.push(poly_oracles[mask_item.column_index].get_at(*point_index));
+        evaluation_point: CirclePointIndex,
+    ) -> PointSetEvaluation {
+        let mut res: BTreeMap<CirclePointIndex, Field> = BTreeMap::new();
+        for (mask_item, mask_offset) in self.items.iter().zip(mask_offsets) {
+            let point = evaluation_point + *mask_offset;
+            res.insert(point, poly_oracles[mask_item.column_index].get_at(point));
+            res.insert(-point, poly_oracles[mask_item.column_index].get_at(-point));
         }
-        res
+        PointSetEvaluation::new(res)
     }
 
     pub fn get_point_indices(&self, cosets: &[CanonicCoset]) -> Vec<CirclePointIndex> {
