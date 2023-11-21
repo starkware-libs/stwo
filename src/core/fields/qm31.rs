@@ -32,7 +32,7 @@ impl QM31 {
 
 impl Display for QM31 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} + {}u", self.0, self.1)
+        write!(f, "({}) + ({})u", self.0, self.1)
     }
 }
 
