@@ -86,6 +86,14 @@ impl Zero for M31 {
 }
 
 #[cfg(test)]
+#[macro_export]
+macro_rules! m31 {
+    ($m:expr) => {
+        M31::from_u32_unchecked($m)
+    };
+}
+
+#[cfg(test)]
 mod tests {
     use rand::Rng;
 
@@ -113,18 +121,9 @@ mod tests {
         for _ in 0..10000 {
             let x: u32 = rng.gen::<u32>() % P;
             let y: u32 = rng.gen::<u32>() % P;
-            assert_eq!(
-                M31::from_u32_unchecked(add_p(x, y)),
-                M31::from_u32_unchecked(x) + M31::from_u32_unchecked(y)
-            );
-            assert_eq!(
-                M31::from_u32_unchecked(mul_p(x, y)),
-                M31::from_u32_unchecked(x) * M31::from_u32_unchecked(y)
-            );
-            assert_eq!(
-                M31::from_u32_unchecked(neg_p(x)),
-                -M31::from_u32_unchecked(x)
-            );
+            assert_eq!(m31!(add_p(x, y)), m31!(x) + m31!(y));
+            assert_eq!(m31!(mul_p(x, y)), m31!(x) * m31!(y));
+            assert_eq!(m31!(neg_p(x)), -m31!(x));
         }
     }
 }

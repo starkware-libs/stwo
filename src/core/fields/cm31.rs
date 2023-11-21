@@ -44,26 +44,35 @@ impl Mul for CM31 {
 }
 
 #[cfg(test)]
+#[macro_export]
+macro_rules! cm31 {
+    ($m0:expr, $m1:expr) => {
+        CM31::from_u32_unchecked($m0, $m1)
+    };
+}
+
+#[cfg(test)]
 mod tests {
     use super::CM31;
     use crate::core::fields::m31::{M31, P};
+    use crate::m31;
 
     #[test]
     fn test_ops() {
-        let cm0 = CM31::from_u32_unchecked(1, 2);
-        let cm1 = CM31::from_u32_unchecked(4, 5);
-        let m = M31::from_u32_unchecked(8);
+        let cm0 = cm31!(1, 2);
+        let cm1 = cm31!(4, 5);
+        let m = m31!(8);
         let cm = CM31::from(m);
-        let cm0_x_cm1 = CM31::from_u32_unchecked(P - 6, 13);
+        let cm0_x_cm1 = cm31!(P - 6, 13);
 
-        assert_eq!(cm0 + cm1, CM31::from_u32_unchecked(5, 7));
+        assert_eq!(cm0 + cm1, cm31!(5, 7));
         assert_eq!(cm1 + m, cm1 + cm);
         assert_eq!(cm0 * cm1, cm0_x_cm1);
         assert_eq!(cm1 * m, cm1 * cm);
-        assert_eq!(-cm0, CM31::from_u32_unchecked(P - 1, P - 2));
-        assert_eq!(cm0 - cm1, CM31::from_u32_unchecked(P - 3, P - 3));
+        assert_eq!(-cm0, cm31!(P - 1, P - 2));
+        assert_eq!(cm0 - cm1, cm31!(P - 3, P - 3));
         assert_eq!(cm1 - m, cm1 - cm);
-        assert_eq!(cm0_x_cm1 / cm1, CM31::from_u32_unchecked(1, 2));
+        assert_eq!(cm0_x_cm1 / cm1, cm31!(1, 2));
         assert_eq!(cm1 / m, cm1 / cm);
     }
 }
