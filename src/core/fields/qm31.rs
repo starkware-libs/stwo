@@ -3,8 +3,6 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
-use num_traits::{Num, One, Zero};
-
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
@@ -17,6 +15,7 @@ pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
 /// Represented as ((a, b), (c, d)) of (a + bi) + (c + di)u.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct QM31(CM31, CM31);
+pub type ExtensionField = QM31;
 
 impl_field!(QM31, P4);
 impl_extension_field!(QM31, CM31);

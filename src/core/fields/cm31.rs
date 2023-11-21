@@ -3,8 +3,6 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
-use num_traits::{Num, One, Zero};
-
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
 
