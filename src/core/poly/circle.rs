@@ -6,7 +6,7 @@ use num_traits::{One, Zero};
 
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly, psi_x};
-use crate::core::fields::m31::Field;
+use crate::core::fields::m31::BaseField;
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.
@@ -149,7 +149,7 @@ impl Deref for CanonicCoset {
 }
 
 pub trait Evaluation: Clone {
-    fn get_at(&self, point_index: CirclePointIndex) -> Field;
+    fn get_at(&self, point_index: CirclePointIndex) -> BaseField;
 }
 
 /// An evaluation defined on a [CircleDomain].
@@ -157,11 +157,11 @@ pub trait Evaluation: Clone {
 #[derive(Clone, Debug)]
 pub struct CircleEvaluation {
     pub domain: CircleDomain,
-    pub values: Vec<Field>,
+    pub values: Vec<BaseField>,
 }
 
 impl CircleEvaluation {
-    pub fn new(domain: CircleDomain, values: Vec<Field>) -> Self {
+    pub fn new(domain: CircleDomain, values: Vec<BaseField>) -> Self {
         assert_eq!(domain.len(), values.len());
         Self { domain, values }
     }
@@ -171,7 +171,7 @@ impl CircleEvaluation {
     ///   G_8, G_8 + G_4, G_8 + 2G_4, G_8 + 3G_4.
     /// The circle domain will be ordered like this:
     ///   G_8, G_8 + 2G_4, -G_8, -G_8 - 2G_4.
-    pub fn new_canonical_ordered(coset: CanonicCoset, values: Vec<Field>) -> Self {
+    pub fn new_canonical_ordered(coset: CanonicCoset, values: Vec<BaseField>) -> Self {
         let domain = coset.circle_domain();
         assert_eq!(values.len(), domain.len());
         let mut new_values = Vec::with_capacity(values.len());
@@ -208,7 +208,7 @@ impl CircleEvaluation {
         }
 
         // Divide all values by 2^n_bits.
-        let inv = Field::from_u32_unchecked(self.domain.len() as u32).inverse();
+        let inv = BaseField::from_u32_unchecked(self.domain.len() as u32).inverse();
         for val in &mut values {
             *val *= inv;
         }
@@ -221,7 +221,7 @@ impl CircleEvaluation {
 }
 
 impl Evaluation for CircleEvaluation {
-    fn get_at(&self, point_index: CirclePointIndex) -> Field {
+    fn get_at(&self, point_index: CirclePointIndex) -> BaseField {
         self.values[self.domain.find(point_index).expect("Not in domain")]
     }
 }
@@ -236,17 +236,17 @@ pub struct CirclePoly {
     /// monomial basis. The FFT basis is a tensor product of the twiddles:
     /// y, x, psi_x(x), psi_x^2(x), ..., psi_x^{bound_bits-2}(x).
     /// psi_x(x) := 2x^2 - 1.
-    coeffs: Vec<Field>,
+    coeffs: Vec<BaseField>,
 }
 
 impl CirclePoly {
-    pub fn new(bound_bits: usize, coeffs: Vec<Field>) -> Self {
+    pub fn new(bound_bits: usize, coeffs: Vec<BaseField>) -> Self {
         assert!(coeffs.len() == (1 << bound_bits));
         Self { bound_bits, coeffs }
     }
 
-    pub fn eval_at_point(&self, point: CirclePoint) -> Field {
-        let mut mults = vec![Field::one(), point.y];
+    pub fn eval_at_point(&self, point: CirclePoint) -> BaseField {
+        let mut mults = vec![BaseField::one(), point.y];
         let mut x = point.x;
         for _ in 0..(self.bound_bits - 1) {
             mults.push(x);
@@ -254,9 +254,9 @@ impl CirclePoly {
         }
         mults.reverse();
 
-        let mut sum = Field::zero();
+        let mut sum = BaseField::zero();
         for (i, val) in self.coeffs.iter().enumerate() {
-            let mut cur_mult = Field::one();
+            let mut cur_mult = BaseField::one();
             for (j, mult) in mults.iter().enumerate() {
                 if i & (1 << j) != 0 {
                     cur_mult *= *mult;
@@ -275,7 +275,7 @@ impl CirclePoly {
 
         // TODO(spapini): extend better.
         assert!(domain.n_bits() >= self.bound_bits);
-        let mut values = vec![Field::zero(); domain.len()];
+        let mut values = vec![BaseField::zero(); domain.len()];
         let jump_bits = domain.n_bits() - self.bound_bits;
         for (i, val) in self.coeffs.iter().enumerate() {
             values[i << jump_bits] = *val;
@@ -303,16 +303,16 @@ impl CirclePoly {
 }
 
 #[derive(Clone, Debug)]
-pub struct PointSetEvaluation(BTreeMap<CirclePointIndex, Field>);
+pub struct PointSetEvaluation(BTreeMap<CirclePointIndex, BaseField>);
 
 impl PointSetEvaluation {
-    pub fn new(evaluations: BTreeMap<CirclePointIndex, Field>) -> Self {
+    pub fn new(evaluations: BTreeMap<CirclePointIndex, BaseField>) -> Self {
         Self(evaluations)
     }
 }
 
 impl Evaluation for PointSetEvaluation {
-    fn get_at(&self, point_index: CirclePointIndex) -> Field {
+    fn get_at(&self, point_index: CirclePointIndex) -> BaseField {
         *self
             .0
             .get(&point_index)
@@ -325,7 +325,7 @@ mod tests {
     use super::{CanonicCoset, CircleDomain, CircleEvaluation, Coset};
     use crate::core::circle::CirclePointIndex;
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
-    use crate::core::fields::m31::Field;
+    use crate::core::fields::m31::BaseField;
 
     #[test]
     fn test_circle_domain_iterator() {
@@ -352,7 +352,7 @@ mod tests {
         let domain = CircleDomain::constraint_domain(3);
         assert_eq!(domain.n_bits(), 3);
         let evaluation =
-            CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
+            CircleEvaluation::new(domain, (0..8).map(BaseField::from_u32_unchecked).collect());
         let poly = evaluation.clone().interpolate();
         let evaluation2 = poly.evaluate(domain);
         assert_eq!(evaluation.values, evaluation2.values);
@@ -363,12 +363,12 @@ mod tests {
         let domain = CircleDomain::constraint_domain(3);
         assert_eq!(domain.n_bits(), 3);
         let evaluation =
-            CircleEvaluation::new(domain, (0..8).map(Field::from_u32_unchecked).collect());
+            CircleEvaluation::new(domain, (0..8).map(BaseField::from_u32_unchecked).collect());
         let poly = evaluation.interpolate();
         for (i, point) in domain.iter().enumerate() {
             assert_eq!(
                 poly.eval_at_point(point),
-                Field::from_u32_unchecked(i as u32)
+                BaseField::from_u32_unchecked(i as u32)
             );
         }
     }
@@ -378,13 +378,13 @@ mod tests {
         let coset = CanonicCoset::new(3);
         let evaluation = CircleEvaluation::new_canonical_ordered(
             coset,
-            (0..8).map(Field::from_u32_unchecked).collect(),
+            (0..8).map(BaseField::from_u32_unchecked).collect(),
         );
         let poly = evaluation.interpolate();
         for (i, point) in Coset::odds(3).iter().enumerate() {
             assert_eq!(
                 poly.eval_at_point(point),
-                Field::from_u32_unchecked(i as u32)
+                BaseField::from_u32_unchecked(i as u32)
             );
         }
     }
@@ -402,7 +402,7 @@ mod tests {
 
         // Compute values.
         let values1: Vec<_> = (0..(domain1.len() as u32))
-            .map(Field::from_u32_unchecked)
+            .map(BaseField::from_u32_unchecked)
             .collect();
         let values0: Vec<_> = values1[1..].iter().step_by(4).map(|x| *x * *x).collect();
 

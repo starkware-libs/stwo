@@ -2,11 +2,11 @@ use num_traits::One;
 
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fft::psi_x;
-use super::fields::m31::Field;
+use super::fields::m31::BaseField;
 use super::poly::circle::{CircleDomain, CirclePoly, Evaluation};
 
 // Evaluates a vanishing polynomial of the coset at a point.
-pub fn coset_vanishing(coset: Coset, mut p: CirclePoint) -> Field {
+pub fn coset_vanishing(coset: Coset, mut p: CirclePoint) -> BaseField {
     // Doubling a point `n_bits / 2` times and taking the x coordinate is
     // essentially evaluating a polynomial in x of degree `2**(n_bits-1)`. If
     // the entire `2**n_bits` points of the coset are roots (i.e. yield 0), then
@@ -28,28 +28,28 @@ pub fn coset_vanishing(coset: Coset, mut p: CirclePoint) -> Field {
     x
 }
 
-pub fn circle_domain_vanishing(domain: CircleDomain, p: CirclePoint) -> Field {
+pub fn circle_domain_vanishing(domain: CircleDomain, p: CirclePoint) -> BaseField {
     coset_vanishing(domain.half_coset, p) * coset_vanishing(domain.half_coset.conjugate(), p)
 }
 
 // Evaluates the polynmial that is used to exclude the excluded point at point
 // p. Note that this polynomial has a zero of multiplicity 2 at the excluded
 // point.
-pub fn point_excluder(excluded: CirclePoint, p: CirclePoint) -> Field {
-    (p - excluded).x - Field::one()
+pub fn point_excluder(excluded: CirclePoint, p: CirclePoint) -> BaseField {
+    (p - excluded).x - BaseField::one()
 }
 
 // Evaluates a vanishing polynomial of the vanish_point at a point.
 // Note that this function has a pole on the antipode of the vanish_point.
-pub fn point_vanishing(vanish_point: CirclePoint, p: CirclePoint) -> Field {
+pub fn point_vanishing(vanish_point: CirclePoint, p: CirclePoint) -> BaseField {
     let h = p - vanish_point;
-    h.y / (Field::one() + h.x)
+    h.y / (BaseField::one() + h.x)
 }
 
 // Utils for computing constraints.
 // Oracle to a polynomial constrained to a coset.
 pub trait PolyOracle: Copy {
-    fn get_at(&self, index: CirclePointIndex) -> Field;
+    fn get_at(&self, index: CirclePointIndex) -> BaseField;
     fn point(&self) -> CirclePoint;
 }
 
@@ -64,7 +64,7 @@ impl<'a> PolyOracle for EvalByPoly<'a> {
         self.point
     }
 
-    fn get_at(&self, index: CirclePointIndex) -> Field {
+    fn get_at(&self, index: CirclePointIndex) -> BaseField {
         self.poly.eval_at_point(self.point + index.to_point())
     }
 }
@@ -81,7 +81,7 @@ impl<'a, T: Evaluation> PolyOracle for EvalByEvaluation<'a, T> {
         self.offset.to_point()
     }
 
-    fn get_at(&self, index: CirclePointIndex) -> Field {
+    fn get_at(&self, index: CirclePointIndex) -> BaseField {
         self.eval.get_at(index + self.offset)
     }
 }
@@ -94,7 +94,7 @@ mod tests {
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
     use crate::core::circle::{CirclePointIndex, Coset};
-    use crate::core::fields::m31::Field;
+    use crate::core::fields::m31::BaseField;
 
     #[test]
     fn test_coset_vanishing() {
@@ -106,12 +106,12 @@ mod tests {
         ];
         for c0 in cosets.iter() {
             for el in c0.iter() {
-                assert_eq!(coset_vanishing(*c0, el), Field::zero());
+                assert_eq!(coset_vanishing(*c0, el), BaseField::zero());
                 for c1 in cosets.iter() {
                     if c0 == c1 {
                         continue;
                     }
-                    assert_ne!(coset_vanishing(*c1, el), Field::zero());
+                    assert_ne!(coset_vanishing(*c1, el), BaseField::zero());
                 }
             }
         }
@@ -134,13 +134,13 @@ mod tests {
         let vanish_point = coset.at(2);
         for el in coset.iter() {
             if el == vanish_point {
-                assert_eq!(point_vanishing(vanish_point, el), Field::zero());
+                assert_eq!(point_vanishing(vanish_point, el), BaseField::zero());
                 continue;
             }
             if el == vanish_point.antipode() {
                 continue;
             }
-            assert_ne!(point_vanishing(vanish_point, el), Field::zero());
+            assert_ne!(point_vanishing(vanish_point, el), BaseField::zero());
         }
     }
 
