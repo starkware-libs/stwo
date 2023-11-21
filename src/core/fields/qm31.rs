@@ -48,29 +48,35 @@ impl Mul for QM31 {
 }
 
 #[cfg(test)]
+#[macro_export]
+macro_rules! qm31 {
+    ($m0:expr, $m1:expr, $m2:expr, $m3:expr) => {
+        QM31::from_u32_unchecked($m0, $m1, $m2, $m3)
+    };
+}
+
+#[cfg(test)]
 mod tests {
     use super::QM31;
     use crate::core::fields::m31::{M31, P};
+    use crate::m31;
 
     #[test]
     fn test_ops() {
-        let qm0 = QM31::from_u32_unchecked(1, 2, 3, 4);
-        let qm1 = QM31::from_u32_unchecked(4, 5, 6, 7);
-        let m = M31::from_u32_unchecked(8);
+        let qm0 = qm31!(1, 2, 3, 4);
+        let qm1 = qm31!(4, 5, 6, 7);
+        let m = m31!(8);
         let qm = QM31::from(m);
-        let qm0_x_qm1 = QM31::from_u32_unchecked(P - 106, 38, P - 16, 50);
+        let qm0_x_qm1 = qm31!(P - 106, 38, P - 16, 50);
 
-        assert_eq!(qm0 + qm1, QM31::from_u32_unchecked(5, 7, 9, 11));
+        assert_eq!(qm0 + qm1, qm31!(5, 7, 9, 11));
         assert_eq!(qm1 + m, qm1 + qm);
         assert_eq!(qm0 * qm1, qm0_x_qm1);
         assert_eq!(qm1 * m, qm1 * qm);
-        assert_eq!(-qm0, QM31::from_u32_unchecked(P - 1, P - 2, P - 3, P - 4));
-        assert_eq!(
-            qm0 - qm1,
-            QM31::from_u32_unchecked(P - 3, P - 3, P - 3, P - 3)
-        );
+        assert_eq!(-qm0, qm31!(P - 1, P - 2, P - 3, P - 4));
+        assert_eq!(qm0 - qm1, qm31!(P - 3, P - 3, P - 3, P - 3));
         assert_eq!(qm1 - m, qm1 - qm);
-        assert_eq!(qm0_x_qm1 / qm1, QM31::from_u32_unchecked(1, 2, 3, 4));
+        assert_eq!(qm0_x_qm1 / qm1, qm31!(1, 2, 3, 4));
         assert_eq!(qm1 / m, qm1 / qm);
     }
 }
