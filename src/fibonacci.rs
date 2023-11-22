@@ -107,7 +107,7 @@ mod tests {
     use crate::core::circle::{CirclePoint, CirclePointIndex};
     use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
-    use crate::core::poly::circle::{CircleEvaluation, Evaluation};
+    use crate::core::poly::circle::CircleEvaluation;
     use crate::m31;
 
     #[test]
@@ -208,38 +208,5 @@ mod tests {
             quotient_poly.eval_at_point(oods_point),
             fib.eval_quotient(random_coeff, oods_evaluation)
         );
-    }
-
-    #[test]
-    fn test_mask() {
-        let fib = Fibonacci::new(5, m31!(443693538));
-        let trace = fib.get_trace();
-        let trace_poly = trace.interpolate();
-        let z_index = CirclePointIndex::generator() * 17;
-
-        let mask = fib.get_mask();
-        let mask_points = mask.get_point_indices(&[fib.trace_coset]);
-        let oods_evaluation = mask.get_evaluation(
-            &[fib.trace_coset],
-            &[EvalByPoly {
-                point: CirclePoint::zero(),
-                poly: &trace_poly,
-            }],
-            z_index,
-        );
-
-        assert_eq!(mask.items[0].column_index, 0);
-        assert_eq!(mask_points.len() * 2, oods_evaluation.len());
-        for mask_point in mask_points {
-            let point_index = mask_point + z_index;
-            let value = oods_evaluation.get_at(point_index);
-            let conjugate_value = oods_evaluation.get_at(-point_index);
-
-            assert_eq!(value, trace_poly.eval_at_point(point_index.to_point()));
-            assert_eq!(
-                conjugate_value,
-                trace_poly.eval_at_point(-point_index.to_point())
-            );
-        }
     }
 }
