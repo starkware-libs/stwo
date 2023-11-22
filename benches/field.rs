@@ -11,15 +11,15 @@ pub fn get_random_m31_element(rng: &mut ThreadRng) -> M31 {
 }
 
 pub fn get_random_cm31_element(rng: &mut ThreadRng) -> CM31 {
-    CM31::from_u32_unchecked(rng.gen::<u32>() % P, rng.gen::<u32>() % P)
+    CM31::from_m31(get_random_m31_element(rng), get_random_m31_element(rng))
 }
 
 pub fn get_random_qm31_element(rng: &mut ThreadRng) -> QM31 {
-    QM31::from_u32_unchecked(
-        rng.gen::<u32>() % P,
-        rng.gen::<u32>() % P,
-        rng.gen::<u32>() % P,
-        rng.gen::<u32>() % P,
+    QM31::from_m31(
+        get_random_m31_element(rng),
+        get_random_m31_element(rng),
+        get_random_m31_element(rng),
+        get_random_m31_element(rng),
     )
 }
 
