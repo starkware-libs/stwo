@@ -106,14 +106,15 @@ mod tests {
     use super::Fibonacci;
     use crate::core::circle::{CirclePoint, CirclePointIndex};
     use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
-    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::m31::{BaseField, M31};
     use crate::core::poly::circle::{CircleEvaluation, Evaluation};
+    use crate::m31;
 
     #[test]
     fn test_constraint_on_trace() {
         use num_traits::Zero;
 
-        let fib = Fibonacci::new(3, BaseField::from_u32_unchecked(1056169651));
+        let fib = Fibonacci::new(3, m31!(1056169651));
         let trace = fib.get_trace();
 
         // Assert that the step constraint is satisfied on the trace.
@@ -158,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_quotient_is_low_degree() {
-        let fib = Fibonacci::new(5, BaseField::from_u32_unchecked(443693538));
+        let fib = Fibonacci::new(5, m31!(443693538));
         let trace = fib.get_trace();
         let trace_poly = trace.interpolate();
 
@@ -166,7 +167,7 @@ mod tests {
 
         // TODO(ShaharS), Change to a channel implementation to retrieve the random
         // coefficients from extension field.
-        let random_coeff = BaseField::from_u32_unchecked(2213980);
+        let random_coeff = m31!(2213980);
 
         // Compute quotient on the evaluation domain.
         let mut quotient_values = Vec::with_capacity(fib.constraint_eval_domain.len());
@@ -211,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_mask() {
-        let fib = Fibonacci::new(5, BaseField::from_u32_unchecked(443693538));
+        let fib = Fibonacci::new(5, m31!(443693538));
         let trace = fib.get_trace();
         let trace_poly = trace.interpolate();
         let z_index = CirclePointIndex::generator() * 17;

@@ -157,6 +157,7 @@ mod tests {
     use super::{K_BLOCK_SIZE, M31AVX512};
     use crate::core::fields::m31::{M31, P};
     use crate::core::fields::Field;
+    use crate::m31;
 
     /// Tests field operations where field elements are in reduced form.
     #[test]
@@ -201,7 +202,7 @@ mod tests {
             M31AVX512::partial_reduce(avx_const_values.0).to_vec(),
             const_values
                 .iter()
-                .map(|x| M31::from_u32_unchecked(if *x == 2 * P { P } else { x % P }))
+                .map(|x| m31!(if *x == 2 * P { P } else { x % P }))
                 .collect::<Vec<_>>()
         );
 
@@ -216,17 +217,14 @@ mod tests {
         // Tests reduce.
         assert_eq!(
             M31AVX512::reduce(avx_const_values.0).to_vec(),
-            const_values
-                .iter()
-                .map(|x| M31::from_u32_unchecked(x % P))
-                .collect::<Vec<_>>()
+            const_values.iter().map(|x| m31!(x % P)).collect::<Vec<_>>()
         );
 
         assert_eq!(
             M31AVX512::reduce(avx_rand_values.0).to_vec(),
             rand_values
                 .iter()
-                .map(|x| M31::from_u32_unchecked((x % P as u64) as u32))
+                .map(|x| m31!((x % P as u64) as u32))
                 .collect::<Vec<_>>()
         );
     }

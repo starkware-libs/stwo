@@ -334,8 +334,9 @@ mod tests {
     use super::{CanonicCoset, CircleDomain, CircleEvaluation, Coset};
     use crate::core::circle::CirclePointIndex;
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
-    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::Field;
+    use crate::m31;
 
     #[test]
     fn test_circle_domain_iterator() {
@@ -376,10 +377,7 @@ mod tests {
             CircleEvaluation::new(domain, (0..8).map(BaseField::from_u32_unchecked).collect());
         let poly = evaluation.interpolate();
         for (i, point) in domain.iter().enumerate() {
-            assert_eq!(
-                poly.eval_at_point(point),
-                BaseField::from_u32_unchecked(i as u32)
-            );
+            assert_eq!(poly.eval_at_point(point), m31!(i as u32));
         }
     }
 
@@ -392,10 +390,7 @@ mod tests {
         );
         let poly = evaluation.interpolate();
         for (i, point) in Coset::odds(3).iter().enumerate() {
-            assert_eq!(
-                poly.eval_at_point(point),
-                BaseField::from_u32_unchecked(i as u32)
-            );
+            assert_eq!(poly.eval_at_point(point), m31!(i as u32));
         }
     }
 
