@@ -1,3 +1,5 @@
+use std::ops::Neg;
+
 use num_traits::NumAssign;
 
 #[cfg(target_arch = "x86_64")]
@@ -6,7 +8,7 @@ pub mod cm31;
 pub mod m31;
 pub mod qm31;
 
-pub trait Field: NumAssign + Copy {
+pub trait Field: NumAssign + Neg<Output = Self> + Copy {
     fn square(&self) -> Self {
         (*self) * (*self)
     }
