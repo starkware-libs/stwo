@@ -1,8 +1,10 @@
 use std::fmt::Display;
+use std::io::Write;
 use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use super::byte_translate::{ByteTranslate, ByteTranslateError};
 use crate::impl_field;
 
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
@@ -83,11 +85,66 @@ impl Zero for M31 {
     }
 }
 
+impl ByteTranslate for M31 {
+    const LENGTH_BYTES: usize = 4;
+
+    fn to_le_bytes(self) -> Vec<u8> {
+        self.0.to_le_bytes().to_vec()
+    }
+
+    fn to_be_bytes(self) -> Vec<u8> {
+        self.0.to_be_bytes().to_vec()
+    }
+
+    fn write_le_bytes(&self, mut dst: &mut [u8]) {
+        assert!(
+            dst.len() >= Self::LENGTH_BYTES,
+            "write_le_bytes failed, dst.len() = {}",
+            dst.len()
+        );
+        match dst.write(self.0.to_le_bytes().as_ref()) {
+            Ok(_) => {}
+            Err(_) => panic!("write_le_bytes failed"),
+        }
+    }
+
+    fn write_be_bytes(&self, mut dst: &mut [u8]) {
+        assert!(
+            dst.len() >= Self::LENGTH_BYTES,
+            "write_be_bytes failed, dst.len() = {}",
+            dst.len()
+        );
+        match dst.write(self.0.to_be_bytes().as_ref()) {
+            Ok(_) => {}
+            Err(_) => panic!("write_be_bytes failed"),
+        }
+    }
+
+    fn read_le_bytes(src: &[u8]) -> Result<Self, ByteTranslateError> {
+        if src.len() < Self::LENGTH_BYTES {
+            return Err(ByteTranslateError::InvalidLength);
+        }
+        Ok(Self(u32::from_le_bytes(
+            src[..Self::LENGTH_BYTES].try_into().unwrap(),
+        )))
+    }
+
+    fn read_be_bytes(src: &[u8]) -> Result<Self, ByteTranslateError> {
+        if src.len() < Self::LENGTH_BYTES {
+            return Err(ByteTranslateError::InvalidLength);
+        }
+        Ok(Self(u32::from_be_bytes(
+            src[..Self::LENGTH_BYTES].try_into().unwrap(),
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rand::Rng;
 
     use super::{M31, P};
+    use crate::core::fields::byte_translate::ByteTranslate;
 
     fn mul_p(a: u32, b: u32) -> u32 {
         ((a as u64 * b as u64) % P as u64) as u32
@@ -123,6 +180,26 @@ mod tests {
                 M31::from_u32_unchecked(neg_p(x)),
                 -M31::from_u32_unchecked(x)
             );
+        }
+    }
+
+    #[test]
+    pub fn test_byte_translate() {
+        let mut rng = rand::thread_rng();
+        for _ in 0..10000 {
+            let x = M31::from_u32_unchecked(rng.gen::<u32>() % P);
+            let mut dst_le = [0u8; M31::LENGTH_BYTES];
+            let mut dst_be = [0u8; M31::LENGTH_BYTES];
+
+            x.write_le_bytes(&mut dst_le);
+            x.write_be_bytes(&mut dst_be);
+            let x_le_bytes = x.to_le_bytes();
+            let x_be_bytes = x.to_be_bytes();
+
+            assert_eq!(x_le_bytes, dst_le);
+            assert_eq!(x_be_bytes, dst_be);
+            assert_eq!(x, M31::read_le_bytes(&x_le_bytes).unwrap());
+            assert_eq!(x, M31::read_be_bytes(&x_be_bytes).unwrap());
         }
     }
 }

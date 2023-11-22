@@ -11,6 +11,7 @@ pub const P2: u64 = 4611686014132420609; // (2 ** 31 - 1) ** 2
 /// Complex extension field of M31.
 /// Equivalent to M31\[x\] over (x^2 + 1) as the irreducible polynomial.
 /// Represented as (a, b) of a + bi.
+/// TODO(Ohad): implement byte_translate.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CM31(M31, M31);
 

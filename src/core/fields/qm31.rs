@@ -20,6 +20,7 @@ pub type ExtensionField = QM31;
 impl_field!(QM31, P4);
 impl_extension_field!(QM31, CM31);
 
+/// TODO(Ohad): implement byte_translate.
 impl QM31 {
     pub const fn from_u32_unchecked(a: u32, b: u32, c: u32, d: u32) -> Self {
         Self(
