@@ -56,43 +56,52 @@ mod tests {
 
     #[test]
     fn test_mask() {
+        const N_TRACE_COLUMNS: u32 = 4;
+        const COSET_SIZE: u32 = 8;
         let coset = CanonicCoset::new(3);
-        let trace = CircleEvaluation::new_canonical_ordered(
-            coset,
-            (0..8).map(BaseField::from_u32_unchecked).collect(),
-        );
-        let trace_poly = trace.interpolate();
-        let z_index = CirclePointIndex::generator() * 17;
-
+        let trace_cosets = [coset; N_TRACE_COLUMNS as usize];
+        let trace: Vec<CircleEvaluation> = (0..N_TRACE_COLUMNS)
+            .map(|i| {
+                CircleEvaluation::new_canonical_ordered(
+                    coset,
+                    (COSET_SIZE * i..COSET_SIZE * (i + 1))
+                        .map(BaseField::from_u32_unchecked)
+                        .collect(),
+                )
+            })
+            .collect();
+        let trace_polys = trace
+            .iter()
+            .map(|column| column.clone().interpolate())
+            .collect::<Vec<_>>();
         let mask = Mask::new(
             (0..3)
                 .map(|i| MaskItem {
-                    column_index: 0,
+                    column_index: i,
                     offset: i,
                 })
                 .collect(),
         );
-        let mask_points = mask.get_point_indices(&[coset]);
-        let oods_evaluation = mask.get_evaluation(
-            &[coset],
-            &[EvalByPoly {
+        let mask_points = mask.get_point_indices(&trace_cosets);
+        let poly_oracles = (0..N_TRACE_COLUMNS)
+            .map(|i| EvalByPoly {
                 point: CirclePoint::zero(),
-                poly: &trace_poly,
-            }],
-            z_index,
-        );
+                poly: &trace_polys[i as usize],
+            })
+            .collect::<Vec<_>>();
 
-        assert_eq!(mask.items[0].column_index, 0);
-        assert_eq!(mask_points.len() * 2, oods_evaluation.len());
-        for mask_point in mask_points {
-            let point_index = mask_point + z_index;
-            let value = oods_evaluation.get_at(point_index);
-            let conjugate_value = oods_evaluation.get_at(-point_index);
+        // Mask evaluations on the original trace coset.
+        let mask_evaluation =
+            mask.get_evaluation(&trace_cosets, &poly_oracles, CirclePointIndex(0));
 
-            assert_eq!(value, trace_poly.eval_at_point(point_index.to_point()));
+        assert_eq!(mask_points.len() * 2, mask_evaluation.len());
+        for (mask_item, mask_point) in mask.items.iter().zip(mask_points) {
+            let value = mask_evaluation.get_at(mask_point);
+            let conjugate_value = mask_evaluation.get_at(-mask_point);
+            assert_eq!(value, trace[mask_item.column_index].get_at(mask_point));
             assert_eq!(
                 conjugate_value,
-                trace_poly.eval_at_point(-point_index.to_point())
+                trace[mask_item.column_index].get_at(-mask_point)
             );
         }
     }
