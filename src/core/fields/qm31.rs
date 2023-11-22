@@ -27,6 +27,10 @@ impl QM31 {
             CM31::from_u32_unchecked(c, d),
         )
     }
+
+    pub fn from_m31(a: M31, b: M31, c: M31, d: M31) -> Self {
+        Self(CM31::from_m31(a, b), CM31::from_m31(c, d))
+    }
 }
 
 impl Display for QM31 {
