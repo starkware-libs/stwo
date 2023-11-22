@@ -45,3 +45,55 @@ impl Mask {
         res
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::core::air::{Mask, MaskItem};
+    use crate::core::circle::{CirclePoint, CirclePointIndex};
+    use crate::core::constraints::EvalByPoly;
+    use crate::core::fields::m31::BaseField;
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, Evaluation};
+
+    #[test]
+    fn test_mask() {
+        let coset = CanonicCoset::new(3);
+        let trace = CircleEvaluation::new_canonical_ordered(
+            coset,
+            (0..8).map(BaseField::from_u32_unchecked).collect(),
+        );
+        let trace_poly = trace.interpolate();
+        let z_index = CirclePointIndex::generator() * 17;
+
+        let mask = Mask::new(
+            (0..3)
+                .map(|i| MaskItem {
+                    column_index: 0,
+                    offset: i,
+                })
+                .collect(),
+        );
+        let mask_points = mask.get_point_indices(&[coset]);
+        let oods_evaluation = mask.get_evaluation(
+            &[coset],
+            &[EvalByPoly {
+                point: CirclePoint::zero(),
+                poly: &trace_poly,
+            }],
+            z_index,
+        );
+
+        assert_eq!(mask.items[0].column_index, 0);
+        assert_eq!(mask_points.len() * 2, oods_evaluation.len());
+        for mask_point in mask_points {
+            let point_index = mask_point + z_index;
+            let value = oods_evaluation.get_at(point_index);
+            let conjugate_value = oods_evaluation.get_at(-point_index);
+
+            assert_eq!(value, trace_poly.eval_at_point(point_index.to_point()));
+            assert_eq!(
+                conjugate_value,
+                trace_poly.eval_at_point(-point_index.to_point())
+            );
+        }
+    }
+}
