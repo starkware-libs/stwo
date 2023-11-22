@@ -35,7 +35,7 @@ impl<F: Field> CirclePoint<F> {
         res
     }
 
-    pub fn mul(&self, mut scalar: u64) -> CirclePoint<F> {
+    pub fn mul(&self, mut scalar: u128) -> CirclePoint<F> {
         let mut res = Self::zero();
         let mut cur = *self;
         while scalar > 0 {
@@ -129,7 +129,7 @@ impl CirclePointIndex {
     }
 
     pub fn to_point(self) -> CirclePoint<M31> {
-        M31_CIRCLE_GEN.mul(self.0 as u64)
+        M31_CIRCLE_GEN.mul(self.0 as u128)
     }
 
     pub fn half(self) -> Self {
