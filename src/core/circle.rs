@@ -1,22 +1,23 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
-use num_traits::{One, Zero};
-
 use super::fields::m31::M31;
+use super::fields::qm31::QM31;
+use super::fields::Field;
 use crate::math::egcd;
 
+// TODO(AlonH): Consider also generalizing structs using this struct.
 /// A point on the complex circle. Treaed as an additive group.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CirclePoint {
-    pub x: M31,
-    pub y: M31,
+pub struct CirclePoint<F: Field> {
+    pub x: F,
+    pub y: F,
 }
 
-impl CirclePoint {
+impl<F: Field> CirclePoint<F> {
     pub fn zero() -> Self {
         Self {
-            x: M31::one(),
-            y: M31::zero(),
+            x: F::one(),
+            y: F::zero(),
         }
     }
 
@@ -34,7 +35,7 @@ impl CirclePoint {
         res
     }
 
-    pub fn mul(&self, mut scalar: u64) -> CirclePoint {
+    pub fn mul(&self, mut scalar: u64) -> CirclePoint<F> {
         let mut res = Self::zero();
         let mut cur = *self;
         while scalar > 0 {
@@ -55,14 +56,14 @@ impl CirclePoint {
         res
     }
 
-    pub fn conjugate(&self) -> CirclePoint {
+    pub fn conjugate(&self) -> CirclePoint<F> {
         Self {
             x: self.x,
             y: -self.y,
         }
     }
 
-    pub fn antipode(&self) -> CirclePoint {
+    pub fn antipode(&self) -> CirclePoint<F> {
         Self {
             x: -self.x,
             y: -self.y,
@@ -70,7 +71,7 @@ impl CirclePoint {
     }
 }
 
-impl Add for CirclePoint {
+impl<F: Field> Add for CirclePoint<F> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -80,7 +81,7 @@ impl Add for CirclePoint {
     }
 }
 
-impl Neg for CirclePoint {
+impl<F: Field> Neg for CirclePoint<F> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -88,7 +89,7 @@ impl Neg for CirclePoint {
     }
 }
 
-impl Sub for CirclePoint {
+impl<F: Field> Sub for CirclePoint<F> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -96,9 +97,14 @@ impl Sub for CirclePoint {
     }
 }
 
-pub const CIRCLE_GEN: CirclePoint = CirclePoint {
+pub const M31_CIRCLE_GEN: CirclePoint<M31> = CirclePoint {
     x: M31::from_u32_unchecked(2),
     y: M31::from_u32_unchecked(1268011823),
+};
+
+pub const QM31_CIRCLE_GEN: CirclePoint<QM31> = CirclePoint {
+    x: QM31::from_u32_unchecked(1, 0, 478637715, 513582961),
+    y: QM31::from_u32_unchecked(568722919, 616616927, 0, 74382916),
 };
 
 pub const CIRCLE_ORDER_BITS: usize = 31;
@@ -122,8 +128,8 @@ impl CirclePointIndex {
         Self(1 << (CIRCLE_ORDER_BITS - n_bits))
     }
 
-    pub fn to_point(self) -> CirclePoint {
-        CIRCLE_GEN.mul(self.0 as u64)
+    pub fn to_point(self) -> CirclePoint<M31> {
+        M31_CIRCLE_GEN.mul(self.0 as u64)
     }
 
     pub fn half(self) -> Self {
@@ -188,9 +194,9 @@ impl Neg for CirclePointIndex {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Coset {
     pub initial_index: CirclePointIndex,
-    pub initial: CirclePoint,
+    pub initial: CirclePoint<M31>,
     pub step_size: CirclePointIndex,
-    pub step: CirclePoint,
+    pub step: CirclePoint<M31>,
     pub n_bits: usize,
 }
 
@@ -234,7 +240,7 @@ impl Coset {
         self.len() == 0
     }
 
-    pub fn iter(&self) -> CosetIterator<CirclePoint> {
+    pub fn iter(&self) -> CosetIterator<CirclePoint<M31>> {
         CosetIterator {
             cur: self.initial,
             step: self.step,
@@ -261,15 +267,15 @@ impl Coset {
         }
     }
 
-    pub fn initial(&self) -> CirclePoint {
-        CIRCLE_GEN.repeated_double(CIRCLE_ORDER_BITS - self.n_bits - 1)
+    pub fn initial(&self) -> CirclePoint<M31> {
+        M31_CIRCLE_GEN.repeated_double(CIRCLE_ORDER_BITS - self.n_bits - 1)
     }
 
     pub fn index_at(&self, index: usize) -> CirclePointIndex {
         self.initial_index + self.step_size.mul(index)
     }
 
-    pub fn at(&self, index: usize) -> CirclePoint {
+    pub fn at(&self, index: usize) -> CirclePoint<M31> {
         self.index_at(index).to_point()
     }
 

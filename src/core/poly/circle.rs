@@ -32,7 +32,9 @@ impl CircleDomain {
         }
     }
 
-    pub fn iter(&self) -> Chain<CosetIterator<CirclePoint>, CosetIterator<CirclePoint>> {
+    pub fn iter(
+        &self,
+    ) -> Chain<CosetIterator<CirclePoint<BaseField>>, CosetIterator<CirclePoint<BaseField>>> {
         self.half_coset
             .iter()
             .chain(self.half_coset.conjugate().iter())
@@ -58,7 +60,7 @@ impl CircleDomain {
         self.half_coset.n_bits + 1
     }
 
-    pub fn at(&self, index: usize) -> CirclePoint {
+    pub fn at(&self, index: usize) -> CirclePoint<BaseField> {
         if index < self.half_coset.len() {
             self.half_coset.at(index)
         } else {
@@ -246,7 +248,7 @@ impl CirclePoly {
         Self { bound_bits, coeffs }
     }
 
-    pub fn eval_at_point(&self, point: CirclePoint) -> BaseField {
+    pub fn eval_at_point(&self, point: CirclePoint<BaseField>) -> BaseField {
         let mut mults = vec![BaseField::one(), point.y];
         let mut x = point.x;
         for _ in 0..(self.bound_bits - 1) {

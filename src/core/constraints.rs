@@ -6,7 +6,7 @@ use super::fields::m31::BaseField;
 use super::poly::circle::{CircleDomain, CirclePoly, Evaluation};
 
 // Evaluates a vanishing polynomial of the coset at a point.
-pub fn coset_vanishing(coset: Coset, mut p: CirclePoint) -> BaseField {
+pub fn coset_vanishing(coset: Coset, mut p: CirclePoint<BaseField>) -> BaseField {
     // Doubling a point `n_bits / 2` times and taking the x coordinate is
     // essentially evaluating a polynomial in x of degree `2**(n_bits-1)`. If
     // the entire `2**n_bits` points of the coset are roots (i.e. yield 0), then
@@ -28,20 +28,23 @@ pub fn coset_vanishing(coset: Coset, mut p: CirclePoint) -> BaseField {
     x
 }
 
-pub fn circle_domain_vanishing(domain: CircleDomain, p: CirclePoint) -> BaseField {
+pub fn circle_domain_vanishing(domain: CircleDomain, p: CirclePoint<BaseField>) -> BaseField {
     coset_vanishing(domain.half_coset, p) * coset_vanishing(domain.half_coset.conjugate(), p)
 }
 
 // Evaluates the polynmial that is used to exclude the excluded point at point
 // p. Note that this polynomial has a zero of multiplicity 2 at the excluded
 // point.
-pub fn point_excluder(excluded: CirclePoint, p: CirclePoint) -> BaseField {
+pub fn point_excluder(excluded: CirclePoint<BaseField>, p: CirclePoint<BaseField>) -> BaseField {
     (p - excluded).x - BaseField::one()
 }
 
 // Evaluates a vanishing polynomial of the vanish_point at a point.
 // Note that this function has a pole on the antipode of the vanish_point.
-pub fn point_vanishing(vanish_point: CirclePoint, p: CirclePoint) -> BaseField {
+pub fn point_vanishing(
+    vanish_point: CirclePoint<BaseField>,
+    p: CirclePoint<BaseField>,
+) -> BaseField {
     let h = p - vanish_point;
     h.y / (BaseField::one() + h.x)
 }
@@ -50,17 +53,17 @@ pub fn point_vanishing(vanish_point: CirclePoint, p: CirclePoint) -> BaseField {
 // Oracle to a polynomial constrained to a coset.
 pub trait PolyOracle: Copy {
     fn get_at(&self, index: CirclePointIndex) -> BaseField;
-    fn point(&self) -> CirclePoint;
+    fn point(&self) -> CirclePoint<BaseField>;
 }
 
 #[derive(Copy, Clone)]
 pub struct EvalByPoly<'a> {
-    pub point: CirclePoint,
+    pub point: CirclePoint<BaseField>,
     pub poly: &'a CirclePoly,
 }
 
 impl<'a> PolyOracle for EvalByPoly<'a> {
-    fn point(&self) -> CirclePoint {
+    fn point(&self) -> CirclePoint<BaseField> {
         self.point
     }
 
@@ -77,7 +80,7 @@ pub struct EvalByEvaluation<'a, T: Evaluation> {
 }
 
 impl<'a, T: Evaluation> PolyOracle for EvalByEvaluation<'a, T> {
-    fn point(&self) -> CirclePoint {
+    fn point(&self) -> CirclePoint<BaseField> {
         self.offset.to_point()
     }
 
