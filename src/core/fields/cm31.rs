@@ -43,8 +43,12 @@ impl Mul for CM31 {
 
 #[cfg(test)]
 mod tests {
+    use rand::rngs::ThreadRng;
+    use rand::Rng;
+
     use super::CM31;
     use crate::core::fields::m31::{M31, P};
+    use crate::core::fields::Field;
 
     #[test]
     fn test_ops() {
@@ -63,5 +67,34 @@ mod tests {
         assert_eq!(cm1 - m, cm1 - cm);
         assert_eq!(cm0_x_cm1 / cm1, CM31::from_u32_unchecked(1, 2));
         assert_eq!(cm1 / m, cm1 / cm);
+    }
+
+    #[test]
+    fn test_cm_circle_point() {
+        pub fn get_random_element(rng: &mut ThreadRng) -> M31 {
+            M31::from_u32_unchecked(rng.gen::<u32>() % P)
+        }
+        let mut rng = rand::thread_rng();
+        let mut cnt = 0;
+        for _ in 1..1000 {
+            let ax = get_random_element(&mut rng);
+            let bx = get_random_element(&mut rng);
+
+            let b = -M31::from_u32_unchecked(1) + ax.square() - bx.square();
+            let delta = (b.square() + M31::from_u32_unchecked(4) * ax.square() * bx.square())
+                .sqrt()
+                .unwrap_or(M31::from_u32_unchecked(1));
+            let ay = ((-b + delta) / M31::from_u32_unchecked(2))
+                .sqrt()
+                .unwrap_or(M31::from_u32_unchecked(1));
+            let by = -(ax * bx) / ay;
+            let x = CM31::from_u32_unchecked(ax.0, bx.0);
+            let y = CM31::from_u32_unchecked(ay.0, by.0);
+            let res = x.square() + y.square();
+            if res == CM31::from_u32_unchecked(1, 0) {
+                cnt += 1;
+            }
+        }
+        dbg!(cnt);
     }
 }
