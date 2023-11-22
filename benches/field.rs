@@ -1,25 +1,39 @@
+use prover_research::core::fields::cm31::CM31;
 use prover_research::core::fields::m31::{M31, P};
+use prover_research::core::fields::qm31::QM31;
 use rand::rngs::ThreadRng;
 use rand::Rng;
-
 pub const N_ELEMENTS: usize = 1 << 16;
 pub const N_STATE_ELEMENTS: usize = 8;
 
-pub fn get_random_element(rng: &mut ThreadRng) -> M31 {
+pub fn get_random_m31_element(rng: &mut ThreadRng) -> M31 {
     M31::from_u32_unchecked(rng.gen::<u32>() % P)
 }
 
-pub fn field_operations_bench(c: &mut criterion::Criterion) {
+pub fn get_random_cm31_element(rng: &mut ThreadRng) -> CM31 {
+    CM31::from_u32_unchecked(rng.gen::<u32>() % P, rng.gen::<u32>() % P)
+}
+
+pub fn get_random_qm31_element(rng: &mut ThreadRng) -> QM31 {
+    QM31::from_u32_unchecked(
+        rng.gen::<u32>() % P,
+        rng.gen::<u32>() % P,
+        rng.gen::<u32>() % P,
+        rng.gen::<u32>() % P,
+    )
+}
+
+pub fn m31_operations_bench(c: &mut criterion::Criterion) {
     let mut rng = rand::thread_rng();
     let mut elements: Vec<M31> = Vec::new();
     let mut state: [M31; N_STATE_ELEMENTS] =
-        [(); N_STATE_ELEMENTS].map(|_| get_random_element(&mut rng));
+        [(); N_STATE_ELEMENTS].map(|_| get_random_m31_element(&mut rng));
 
     for _ in 0..(N_ELEMENTS) {
-        elements.push(get_random_element(&mut rng));
+        elements.push(get_random_m31_element(&mut rng));
     }
 
-    c.bench_function("mul", |b| {
+    c.bench_function("M31 mul", |b| {
         b.iter(|| {
             for elem in &elements {
                 for _ in 0..128 {
@@ -31,7 +45,77 @@ pub fn field_operations_bench(c: &mut criterion::Criterion) {
         })
     });
 
-    c.bench_function("add", |b| {
+    c.bench_function("M31 add", |b| {
+        b.iter(|| {
+            for elem in &elements {
+                for _ in 0..128 {
+                    for state_elem in &mut state {
+                        *state_elem += *elem;
+                    }
+                }
+            }
+        })
+    });
+}
+
+pub fn cm31_operations_bench(c: &mut criterion::Criterion) {
+    let mut rng = rand::thread_rng();
+    let mut elements: Vec<CM31> = Vec::new();
+    let mut state: [CM31; N_STATE_ELEMENTS] =
+        [(); N_STATE_ELEMENTS].map(|_| get_random_cm31_element(&mut rng));
+
+    for _ in 0..(N_ELEMENTS) {
+        elements.push(get_random_cm31_element(&mut rng));
+    }
+
+    c.bench_function("CM31 mul", |b| {
+        b.iter(|| {
+            for elem in &elements {
+                for _ in 0..128 {
+                    for state_elem in &mut state {
+                        *state_elem *= *elem;
+                    }
+                }
+            }
+        })
+    });
+
+    c.bench_function("CM31 add", |b| {
+        b.iter(|| {
+            for elem in &elements {
+                for _ in 0..128 {
+                    for state_elem in &mut state {
+                        *state_elem += *elem;
+                    }
+                }
+            }
+        })
+    });
+}
+
+pub fn qm31_operations_bench(c: &mut criterion::Criterion) {
+    let mut rng = rand::thread_rng();
+    let mut elements: Vec<QM31> = Vec::new();
+    let mut state: [QM31; N_STATE_ELEMENTS] =
+        [(); N_STATE_ELEMENTS].map(|_| get_random_qm31_element(&mut rng));
+
+    for _ in 0..(N_ELEMENTS) {
+        elements.push(get_random_qm31_element(&mut rng));
+    }
+
+    c.bench_function("QM31 mul", |b| {
+        b.iter(|| {
+            for elem in &elements {
+                for _ in 0..128 {
+                    for state_elem in &mut state {
+                        *state_elem *= *elem;
+                    }
+                }
+            }
+        })
+    });
+
+    c.bench_function("QM31 add", |b| {
         b.iter(|| {
             for elem in &elements {
                 for _ in 0..128 {
@@ -45,7 +129,7 @@ pub fn field_operations_bench(c: &mut criterion::Criterion) {
 }
 
 #[cfg(target_arch = "x86_64")]
-pub fn avx512_field_operations_bench(c: &mut criterion::Criterion) {
+pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
     use prover_research::platform;
     if !platform::avx512_detected() {
         return;
@@ -61,7 +145,7 @@ pub fn avx512_field_operations_bench(c: &mut criterion::Criterion) {
 
     for _ in 0..(N_ELEMENTS / K_BLOCK_SIZE) {
         elements.push(M31AVX512::from_vec(&vec![
-            get_random_element(&mut rng);
+            get_random_m31_element(&mut rng);
             K_BLOCK_SIZE
         ]));
     }
@@ -105,10 +189,17 @@ pub fn avx512_field_operations_bench(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 criterion::criterion_group!(
-    benches,
-    field_operations_bench,
-    avx512_field_operations_bench
+    m31_benches,
+    m31_operations_bench,
+    avx512_m31_operations_bench
 );
 #[cfg(not(target_arch = "x86_64"))]
-criterion::criterion_group!(benches, field_operations_bench);
-criterion::criterion_main!(benches);
+criterion::criterion_group!(m31_benches, m31_operations_bench);
+
+criterion::criterion_group!(
+    field_comparison,
+    m31_operations_bench,
+    cm31_operations_bench,
+    qm31_operations_bench
+);
+criterion::criterion_main!(field_comparison);
