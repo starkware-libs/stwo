@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::iter::Chain;
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 
 use num_traits::One;
@@ -148,6 +149,39 @@ impl Deref for CanonicCoset {
 
     fn deref(&self) -> &Self::Target {
         &self.coset
+    }
+}
+
+/// Domain defined as the x-coordinates of all points in a [CircleDomain]
+#[derive(Copy, Clone, Debug)]
+pub struct LineDomain(CircleDomain);
+
+impl LineDomain {
+    /// Returns the `i`th domain element
+    // TODO: could use Index trait
+    pub fn at(&self, i: usize) -> BaseField {
+        let n = self.len().get();
+        assert!(i < n, "the len is {n} but index is {i}");
+        self.0.at(i).x
+    }
+
+    /// Returns the number of elements in the domain
+    // TODO: size might be a better name
+    pub fn len(&self) -> NonZeroUsize {
+        // half the size because a [CircleDomain] is symmetric across the x-axis
+        // there's always at least one item in the domain
+        NonZeroUsize::new(self.0.len() / 2).unwrap()
+    }
+
+    /// Returns an iterator over elements in the domain
+    pub fn iter(&self) -> impl Iterator<Item = BaseField> {
+        self.0.iter().take(self.len().get()).map(|p| p.x)
+    }
+}
+
+impl From<CircleDomain> for LineDomain {
+    fn from(value: CircleDomain) -> Self {
+        Self(value)
     }
 }
 
@@ -333,7 +367,9 @@ impl Evaluation for PointSetEvaluation {
 
 #[cfg(test)]
 mod tests {
-    use super::{CanonicCoset, CircleDomain, CircleEvaluation, Coset};
+    use std::collections::BTreeSet;
+
+    use super::{CanonicCoset, CircleDomain, CircleEvaluation, Coset, LineDomain};
     use crate::core::circle::CirclePointIndex;
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::{BaseField, M31};
@@ -443,5 +479,19 @@ mod tests {
         );
         // TODO(spapini): Check low degree.
         println!("{:?}", constraint_eval);
+    }
+
+    #[test]
+    fn line_domain_is_circle_domain_xs() {
+        let log_domain_size = 3;
+        let circle_domain = CircleDomain::new(Coset::half_odds(log_domain_size));
+        let circle_domain_xs = BTreeSet::from_iter(circle_domain.iter().map(|p| p.x));
+        let line_domain = LineDomain::from(circle_domain);
+
+        let line_domain_elements = BTreeSet::from_iter(line_domain.iter());
+
+        assert_eq!(circle_domain_xs, line_domain_elements);
+        assert_eq!(1 << (log_domain_size + 1), circle_domain.len());
+        assert_eq!(1 << log_domain_size, line_domain_elements.len());
     }
 }
