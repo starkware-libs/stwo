@@ -23,9 +23,13 @@ codegen-units = 1
 lto = true
 
 [[bench]]
-harness = false
 name = "field"
+harness = false
 
 [[bench]]
 name = "merkle_bench"
+harness = false
+
+[[bench]]
+name = "circle"
 harness = false
