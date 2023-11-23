@@ -7,12 +7,12 @@ use super::hasher::Hasher;
 // TODO(Ohad): write verify function.
 // TODO(Ohad): derive Debug.
 #[derive(Default)]
-pub struct MerkleDecommitment<T: Sized + Display, H: Hasher, const LEAF_SIZE: usize> {
-    pub leaves: Vec<[T; LEAF_SIZE]>,
+pub struct MerkleDecommitment<T: Sized + Display, H: Hasher> {
+    pub leaves: Vec<Vec<T>>,
     pub layers: Vec<Vec<H::Hash>>,
 }
 
-impl<T: Sized + Display, H: Hasher, const LEAF_SIZE: usize> MerkleDecommitment<T, H, LEAF_SIZE> {
+impl<T: Sized + Display, H: Hasher> MerkleDecommitment<T, H> {
     pub fn new() -> Self {
         Self {
             leaves: Vec::new(),
@@ -25,9 +25,7 @@ impl<T: Sized + Display, H: Hasher, const LEAF_SIZE: usize> MerkleDecommitment<T
     }
 }
 
-impl<T: Sized + Display, H: Hasher, const LEAF_SIZE: usize> fmt::Display
-    for MerkleDecommitment<T, H, LEAF_SIZE>
-{
+impl<T: Sized + Display, H: Hasher> fmt::Display for MerkleDecommitment<T, H> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.layers.last() {
             Some(_) => {
