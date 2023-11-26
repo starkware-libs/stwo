@@ -332,7 +332,31 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{CirclePointIndex, Coset};
-    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+
+    #[test]
+    fn test_domains() {
+        let eval_n_bits = 4;
+        let canonic_cosets_extensions = [
+            CanonicCoset::new(2).eval_domain(eval_n_bits),
+            CanonicCoset::new(2).eval_domain(eval_n_bits + 1),
+        ];
+
+        // Special case: 2-extension.
+        let special_case_extension = CanonicCoset::new(eval_n_bits - 1).eval_domain(eval_n_bits);
+
+        let subgroup_gen = CirclePointIndex::subgroup_gen(eval_n_bits);
+        let constraint_evaluation = CircleDomain::constraint_domain(eval_n_bits);
+
+        for point_index in constraint_evaluation.iter_indices() {
+            for eval in &canonic_cosets_extensions {
+                assert!(eval.find(point_index).is_some());
+            }
+            assert!(special_case_extension
+                .find(point_index - subgroup_gen)
+                .is_some());
+        }
+    }
 
     #[test]
     fn test_iterator() {
