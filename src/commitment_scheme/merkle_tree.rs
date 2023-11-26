@@ -84,7 +84,7 @@ impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
 
         // Input layer, every leaf-block holds 'bottom_layer_block_size' elements.
         leaf_block_indices.iter().for_each(|block_index| {
-            proof.leaves.push(self.get_leaf_block(*block_index));
+            proof.leaf_blocks.push(self.get_leaf_block(*block_index));
         });
 
         // Sorted indices of the current layer.
