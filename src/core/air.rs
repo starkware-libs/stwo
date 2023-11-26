@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::circle::CirclePointIndex;
+use super::circle::M31CirclePointIndex;
 use super::fields::m31::BaseField;
 use super::poly::circle::PointSetEvaluation;
 use crate::core::constraints::PolyOracle;
@@ -25,9 +25,9 @@ impl Mask {
         &self,
         cosets: &[CanonicCoset],
         poly_oracles: &[impl PolyOracle],
-        evaluation_point: CirclePointIndex,
+        evaluation_point: M31CirclePointIndex,
     ) -> PointSetEvaluation {
-        let mut res: BTreeMap<CirclePointIndex, BaseField> = BTreeMap::new();
+        let mut res: BTreeMap<M31CirclePointIndex, BaseField> = BTreeMap::new();
         let mask_offsets = self.get_point_indices(cosets);
         for (mask_item, mask_offset) in self.items.iter().zip(mask_offsets) {
             let point = evaluation_point + mask_offset;
@@ -37,7 +37,7 @@ impl Mask {
         PointSetEvaluation::new(res)
     }
 
-    pub fn get_point_indices(&self, cosets: &[CanonicCoset]) -> Vec<CirclePointIndex> {
+    pub fn get_point_indices(&self, cosets: &[CanonicCoset]) -> Vec<M31CirclePointIndex> {
         let mut res = Vec::with_capacity(self.items.len());
         for item in &self.items {
             res.push(cosets[item.column_index].index_at(item.offset));
@@ -49,7 +49,7 @@ impl Mask {
 #[cfg(test)]
 mod tests {
     use crate::core::air::{Mask, MaskItem};
-    use crate::core::circle::{CirclePoint, CirclePointIndex};
+    use crate::core::circle::{CirclePoint, M31CirclePointIndex};
     use crate::core::constraints::EvalByPoly;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, Evaluation};
@@ -92,7 +92,7 @@ mod tests {
 
         // Mask evaluations on the original trace coset.
         let mask_evaluation =
-            mask.get_evaluation(&trace_cosets, &poly_oracles, CirclePointIndex(0));
+            mask.get_evaluation(&trace_cosets, &poly_oracles, M31CirclePointIndex(0));
 
         assert_eq!(mask_points.len() * 2, mask_evaluation.len());
         for (mask_item, mask_point) in mask.items.iter().zip(mask_points) {

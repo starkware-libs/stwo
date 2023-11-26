@@ -104,7 +104,7 @@ mod tests {
     use num_traits::One;
 
     use super::Fibonacci;
-    use crate::core::circle::{CirclePoint, CirclePointIndex};
+    use crate::core::circle::{CirclePoint, CirclePointIndex, M31CirclePointIndex};
     use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::poly::circle::CircleEvaluation;
@@ -187,7 +187,7 @@ mod tests {
 
         // Evaluate this polynomial at another point, out of eval_domain and compare to what we
         // expect.
-        let oods_point_index = CirclePointIndex::generator() * 2;
+        let oods_point_index = M31CirclePointIndex::generator() * 2;
         assert!(fib.constraint_eval_domain.find(oods_point_index).is_none());
         let oods_point = oods_point_index.to_point();
 
