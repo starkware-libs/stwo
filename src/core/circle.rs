@@ -123,6 +123,10 @@ impl CirclePointIndex {
         Self(1)
     }
 
+    pub fn reduce(self) -> Self {
+        Self(self.0 & ((1 << M31_CIRCLE_ORDER_BITS) - 1))
+    }
+
     pub fn subgroup_gen(n_bits: usize) -> Self {
         assert!(n_bits <= M31_CIRCLE_ORDER_BITS);
         Self(1 << (M31_CIRCLE_ORDER_BITS - n_bits))
@@ -154,7 +158,7 @@ impl Add for CirclePointIndex {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Self((self.0 + rhs.0) & ((1 << M31_CIRCLE_ORDER_BITS) - 1))
+        Self(self.0 + rhs.0).reduce()
     }
 }
 
@@ -162,7 +166,7 @@ impl Sub for CirclePointIndex {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        Self((self.0 + (1 << M31_CIRCLE_ORDER_BITS) - rhs.0) & ((1 << M31_CIRCLE_ORDER_BITS) - 1))
+        Self(self.0 + (1 << M31_CIRCLE_ORDER_BITS) - rhs.0).reduce()
     }
 }
 
@@ -170,7 +174,7 @@ impl Mul<usize> for CirclePointIndex {
     type Output = Self;
 
     fn mul(self, rhs: usize) -> Self::Output {
-        Self((self.0 * rhs) & ((1 << M31_CIRCLE_ORDER_BITS) - 1))
+        Self(self.0 * rhs).reduce()
     }
 }
 
@@ -186,7 +190,7 @@ impl Neg for CirclePointIndex {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Self((1 << M31_CIRCLE_ORDER_BITS) - self.0)
+        Self((1 << M31_CIRCLE_ORDER_BITS) - self.0).reduce()
     }
 }
 
