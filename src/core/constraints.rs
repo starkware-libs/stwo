@@ -1,6 +1,6 @@
 use num_traits::One;
 
-use super::circle::{CirclePoint, CirclePointIndex, Coset};
+use super::circle::{CirclePoint, CirclePointIndex, Coset, M31CirclePointIndex};
 use super::fft::psi_x;
 use super::fields::m31::BaseField;
 use super::poly::circle::{CircleDomain, CirclePoly, Evaluation};
@@ -52,7 +52,7 @@ pub fn point_vanishing(
 // Utils for computing constraints.
 // Oracle to a polynomial constrained to a coset.
 pub trait PolyOracle: Copy {
-    fn get_at(&self, index: CirclePointIndex) -> BaseField;
+    fn get_at(&self, index: M31CirclePointIndex) -> BaseField;
     fn point(&self) -> CirclePoint<BaseField>;
 }
 
@@ -67,7 +67,7 @@ impl<'a> PolyOracle for EvalByPoly<'a> {
         self.point
     }
 
-    fn get_at(&self, index: CirclePointIndex) -> BaseField {
+    fn get_at(&self, index: M31CirclePointIndex) -> BaseField {
         self.poly.eval_at_point(self.point + index.to_point())
     }
 }
@@ -75,7 +75,7 @@ impl<'a> PolyOracle for EvalByPoly<'a> {
 // TODO(spapini): make an iterator instead, so we do all computations beforehand.
 #[derive(Clone)]
 pub struct EvalByEvaluation<'a, T: Evaluation> {
-    pub offset: CirclePointIndex,
+    pub offset: M31CirclePointIndex,
     pub eval: &'a T,
 }
 
@@ -84,7 +84,7 @@ impl<'a, T: Evaluation> PolyOracle for EvalByEvaluation<'a, T> {
         self.offset.to_point()
     }
 
-    fn get_at(&self, index: CirclePointIndex) -> BaseField {
+    fn get_at(&self, index: M31CirclePointIndex) -> BaseField {
         self.eval.get_at(index + self.offset)
     }
 }
@@ -96,7 +96,7 @@ mod tests {
     use num_traits::Zero;
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
-    use crate::core::circle::{CirclePointIndex, Coset};
+    use crate::core::circle::{CirclePointIndex, Coset, M31CirclePointIndex};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::Field;
 
@@ -105,7 +105,7 @@ mod tests {
         let cosets = [
             Coset::half_odds(5),
             Coset::odds(5),
-            Coset::new(CirclePointIndex::zero(), 5),
+            Coset::new(M31CirclePointIndex::zero(), 5),
             Coset::half_odds(5).conjugate(),
         ];
         for c0 in cosets.iter() {
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn test_point_excluder() {
         let excluded = Coset::half_odds(5).at(10);
-        let point = (CirclePointIndex::generator() * 4).to_point();
+        let point = (M31CirclePointIndex::generator() * 4).to_point();
 
         let num = point_excluder(excluded, point) * point_excluder(excluded.conjugate(), point);
         let denom = (point.x - excluded.x).pow(2);

@@ -4,7 +4,9 @@ use std::ops::Deref;
 
 use num_traits::{One, Zero};
 
-use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
+use crate::core::circle::{
+    CirclePoint, CirclePointIndex, Coset, CosetIterator, M31CirclePointIndex,
+};
 use crate::core::fft::{butterfly, ibutterfly, psi_x};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::Field;
@@ -28,7 +30,7 @@ impl CircleDomain {
     pub fn constraint_evaluation_domain(n_bits: usize) -> Self {
         assert!(n_bits > 0);
         Self {
-            half_coset: Coset::new(CirclePointIndex::generator(), n_bits - 1),
+            half_coset: Coset::new(M31CirclePointIndex::generator(), n_bits - 1),
         }
     }
 
@@ -42,13 +44,13 @@ impl CircleDomain {
 
     pub fn iter_indices(
         &self,
-    ) -> Chain<CosetIterator<CirclePointIndex>, CosetIterator<CirclePointIndex>> {
+    ) -> Chain<CosetIterator<M31CirclePointIndex>, CosetIterator<M31CirclePointIndex>> {
         self.half_coset
             .iter_indices()
             .chain(self.half_coset.conjugate().iter_indices())
     }
 
-    pub fn len(&self) -> usize {
+    pub fn len(&self) -> u128 {
         self.half_coset.len() * 2
     }
 
@@ -60,7 +62,7 @@ impl CircleDomain {
         self.half_coset.n_bits + 1
     }
 
-    pub fn at(&self, index: usize) -> CirclePoint<BaseField> {
+    pub fn at(&self, index: u128) -> CirclePoint<BaseField> {
         if index < self.half_coset.len() {
             self.half_coset.at(index)
         } else {
@@ -70,7 +72,7 @@ impl CircleDomain {
         }
     }
 
-    pub fn find(&self, i: CirclePointIndex) -> Option<usize> {
+    pub fn find(&self, i: M31CirclePointIndex) -> Option<u128> {
         if let Some(d) = self.half_coset.find(i) {
             return Some(d);
         }
@@ -131,11 +133,14 @@ impl CanonicCoset {
         // TODO(spapini): Document why this is like this.
         if eval_n_bits == self.coset.n_bits + 1 {
             return CircleDomain::new(Coset::new(
-                CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(eval_n_bits),
+                M31CirclePointIndex::generator() + M31CirclePointIndex::subgroup_gen(eval_n_bits),
                 eval_n_bits - 1,
             ));
         }
-        CircleDomain::new(Coset::new(CirclePointIndex::generator(), eval_n_bits - 1))
+        CircleDomain::new(Coset::new(
+            M31CirclePointIndex::generator(),
+            eval_n_bits - 1,
+        ))
     }
 
     pub fn n_bits(&self) -> usize {
@@ -152,7 +157,7 @@ impl Deref for CanonicCoset {
 }
 
 pub trait Evaluation: Clone {
-    fn get_at(&self, point_index: CirclePointIndex) -> BaseField;
+    fn get_at(&self, point_index: M31CirclePointIndex) -> BaseField;
 }
 
 /// An evaluation defined on a [CircleDomain].
@@ -165,7 +170,7 @@ pub struct CircleEvaluation {
 
 impl CircleEvaluation {
     pub fn new(domain: CircleDomain, values: Vec<BaseField>) -> Self {
-        assert_eq!(domain.len(), values.len());
+        assert_eq!(domain.len(), values.len() as u128);
         Self { domain, values }
     }
 
@@ -176,14 +181,14 @@ impl CircleEvaluation {
     ///   G_8, G_8 + 2G_4, -G_8, -G_8 - 2G_4.
     pub fn new_canonical_ordered(coset: CanonicCoset, values: Vec<BaseField>) -> Self {
         let domain = coset.circle_domain();
-        assert_eq!(values.len(), domain.len());
+        assert_eq!(values.len() as u128, domain.len());
         let mut new_values = Vec::with_capacity(values.len());
         let half_len = 1 << (coset.n_bits - 1);
         for i in 0..half_len {
             new_values.push(values[i << 1]);
         }
         for i in 0..half_len {
-            new_values.push(values[domain.len() - 1 - (i << 1)]);
+            new_values.push(values[domain.len() as usize - 1 - (i << 1)]);
         }
         Self {
             domain,
@@ -196,14 +201,14 @@ impl CircleEvaluation {
         // Use CFFT to interpolate.
         let mut coset = self.domain.half_coset;
         let mut values = self.values;
-        let (l, r) = values.split_at_mut(coset.len());
+        let (l, r) = values.split_at_mut(coset.len() as usize);
         for (i, p) in coset.iter().enumerate() {
             ibutterfly(&mut l[i], &mut r[i], p.y.inverse());
         }
         while coset.len() > 1 {
-            for chunk in values.chunks_exact_mut(coset.len()) {
-                let (l, r) = chunk.split_at_mut(coset.len() / 2);
-                for (i, p) in coset.iter().take(coset.len() / 2).enumerate() {
+            for chunk in values.chunks_exact_mut(coset.len() as usize) {
+                let (l, r) = chunk.split_at_mut(coset.len() as usize / 2);
+                for (i, p) in coset.iter().take(coset.len() as usize / 2).enumerate() {
                     ibutterfly(&mut l[i], &mut r[i], p.x.inverse());
                 }
             }
@@ -224,8 +229,8 @@ impl CircleEvaluation {
 }
 
 impl Evaluation for CircleEvaluation {
-    fn get_at(&self, point_index: CirclePointIndex) -> BaseField {
-        self.values[self.domain.find(point_index).expect("Not in domain")]
+    fn get_at(&self, point_index: M31CirclePointIndex) -> BaseField {
+        self.values[self.domain.find(point_index).expect("Not in domain") as usize]
     }
 }
 
@@ -278,7 +283,7 @@ impl CirclePoly {
 
         // TODO(spapini): extend better.
         assert!(domain.n_bits() >= self.bound_bits);
-        let mut values = vec![BaseField::zero(); domain.len()];
+        let mut values = vec![BaseField::zero(); domain.len() as usize];
         let jump_bits = domain.n_bits() - self.bound_bits;
         for (i, val) in self.coeffs.iter().enumerate() {
             values[i << jump_bits] = *val;
@@ -289,15 +294,15 @@ impl CirclePoly {
             coset = coset.double();
         }
         for coset in cosets.iter().rev() {
-            for chunk in values.chunks_exact_mut(coset.len()) {
-                let (l, r) = chunk.split_at_mut(coset.len() / 2);
-                for (i, p) in coset.iter().take(coset.len() / 2).enumerate() {
+            for chunk in values.chunks_exact_mut(coset.len() as usize) {
+                let (l, r) = chunk.split_at_mut(coset.len() as usize / 2);
+                for (i, p) in coset.iter().take(coset.len() as usize / 2).enumerate() {
                     butterfly(&mut l[i], &mut r[i], p.x);
                 }
             }
         }
         let coset = domain.half_coset;
-        let (l, r) = values.split_at_mut(coset.len());
+        let (l, r) = values.split_at_mut(coset.len() as usize);
         for (i, p) in coset.iter().enumerate() {
             butterfly(&mut l[i], &mut r[i], p.y);
         }
@@ -306,10 +311,10 @@ impl CirclePoly {
 }
 
 #[derive(Clone, Debug)]
-pub struct PointSetEvaluation(BTreeMap<CirclePointIndex, BaseField>);
+pub struct PointSetEvaluation(BTreeMap<M31CirclePointIndex, BaseField>);
 
 impl PointSetEvaluation {
-    pub fn new(evaluations: BTreeMap<CirclePointIndex, BaseField>) -> Self {
+    pub fn new(evaluations: BTreeMap<M31CirclePointIndex, BaseField>) -> Self {
         Self(evaluations)
     }
 
@@ -323,7 +328,7 @@ impl PointSetEvaluation {
 }
 
 impl Evaluation for PointSetEvaluation {
-    fn get_at(&self, point_index: CirclePointIndex) -> BaseField {
+    fn get_at(&self, point_index: M31CirclePointIndex) -> BaseField {
         *self
             .0
             .get(&point_index)
@@ -334,7 +339,7 @@ impl Evaluation for PointSetEvaluation {
 #[cfg(test)]
 mod tests {
     use super::{CanonicCoset, CircleDomain, CircleEvaluation, Coset};
-    use crate::core::circle::CirclePointIndex;
+    use crate::core::circle::{CirclePointIndex, M31CirclePointIndex};
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::Field;
@@ -347,13 +352,15 @@ mod tests {
             if i < 4 {
                 assert_eq!(
                     point,
-                    (CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(2) * i)
+                    (M31CirclePointIndex::generator()
+                        + M31CirclePointIndex::subgroup_gen(2) * i as u128)
                         .to_point()
                 );
             } else {
                 assert_eq!(
                     point,
-                    (-(CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(2) * i))
+                    (-(M31CirclePointIndex::generator()
+                        + M31CirclePointIndex::subgroup_gen(2) * i as u128))
                         .to_point()
                 );
             }

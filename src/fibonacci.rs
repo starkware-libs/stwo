@@ -32,7 +32,7 @@ impl Fibonacci {
 
     pub fn get_trace(&self) -> CircleEvaluation {
         // Trace.
-        let mut trace = Vec::with_capacity(self.trace_coset.len());
+        let mut trace = Vec::with_capacity(self.trace_coset.len() as usize);
 
         // Fill trace with fibonacci squared.
         let mut a = BaseField::one();
@@ -71,7 +71,7 @@ impl Fibonacci {
     pub fn eval_boundary_quotient(
         &self,
         trace: impl PolyOracle,
-        point_index: usize,
+        point_index: u128,
         value: BaseField,
     ) -> BaseField {
         let num = self.eval_boundary_constraint(trace, value);
@@ -104,7 +104,7 @@ mod tests {
     use num_traits::One;
 
     use super::Fibonacci;
-    use crate::core::circle::{CirclePoint, CirclePointIndex};
+    use crate::core::circle::{CirclePoint, CirclePointIndex, M31CirclePointIndex};
     use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::poly::circle::CircleEvaluation;
@@ -121,7 +121,7 @@ mod tests {
         for p_ind in fib
             .constraint_coset
             .iter_indices()
-            .take(fib.constraint_coset.len() - 2)
+            .take(fib.constraint_coset.len() as usize - 2)
         {
             let res = fib.eval_step_constraint(EvalByEvaluation {
                 offset: p_ind,
@@ -170,7 +170,7 @@ mod tests {
         let random_coeff = m31!(2213980);
 
         // Compute quotient on the evaluation domain.
-        let mut quotient_values = Vec::with_capacity(fib.constraint_eval_domain.len());
+        let mut quotient_values = Vec::with_capacity(fib.constraint_eval_domain.len() as usize);
         for p_ind in fib.constraint_eval_domain.iter_indices() {
             quotient_values.push(fib.eval_quotient(
                 random_coeff,
@@ -187,7 +187,7 @@ mod tests {
 
         // Evaluate this polynomial at another point, out of eval_domain and compare to what we
         // expect.
-        let oods_point_index = CirclePointIndex::generator() * 2;
+        let oods_point_index = M31CirclePointIndex::generator() * 2;
         assert!(fib.constraint_eval_domain.find(oods_point_index).is_none());
         let oods_point = oods_point_index.to_point();
 
