@@ -41,7 +41,7 @@ pub fn usize_safe_div(a: usize, b: usize) -> usize {
 }
 
 /// Returns s, t, g such that g = gcd(x,y),  sx + ty = g.
-pub fn egcd(x: isize, y: isize) -> (isize, isize, isize) {
+pub fn egcd(x: i128, y: i128) -> (i128, i128, i128) {
     if x == 0 {
         return (0, 1, y);
     }

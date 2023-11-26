@@ -132,11 +132,11 @@ pub trait CirclePointIndex {
 
     fn half(self) -> Self;
 
-    fn try_div(&self, rhs: Self) -> Option<usize>;
+    fn try_div(&self, rhs: Self) -> Option<u128>;
 }
 
 macro_rules! impl_circle_point_index {
-    ($field_name: ty) => {
+    ($field_name: ty, $field_size: ident) => {
         impl CirclePointIndex for paste! {[<$field_name CirclePointIndex>]} {
             type F = $field_name;
 
@@ -170,16 +170,16 @@ macro_rules! impl_circle_point_index {
                 Self(self.0 >> 1)
             }
 
-            fn try_div(&self, rhs: Self) -> Option<usize> {
+            fn try_div(&self, rhs: Self) -> Option<u128> {
                 // Find x s.t. x * rhs.0 = self.0 (mod CIRCLE_ORDER).
-                let (s, _t, g) = egcd(rhs.0 as isize, 1 << Self::CIRCLE_ORDER_BITS);
-                if self.0 as isize % g != 0 {
+                let (s, _t, g) = egcd(rhs.0 as i128, 1 << Self::CIRCLE_ORDER_BITS);
+                if self.0 as i128 % g != 0 {
                     return None;
                 }
-                let res = s * self.0 as isize / g;
+                let res = s * self.0 as i128 / g;
                 let cap = (1 << Self::CIRCLE_ORDER_BITS) / g;
                 let res = ((res % cap) + cap) % cap;
-                Some(res as usize)
+                Some(res as u128)
             }
         }
 
@@ -199,19 +199,19 @@ macro_rules! impl_circle_point_index {
             }
         }
 
-        impl Mul<usize> for paste! {[<$field_name CirclePointIndex>]} {
+        impl Mul<$field_size> for paste! {[<$field_name CirclePointIndex>]} {
             type Output = Self;
 
-            fn mul(self, rhs: usize) -> Self::Output {
+            fn mul(self, rhs: $field_size) -> Self::Output {
                 Self(self.0 * rhs).reduce()
             }
         }
 
         impl Div for paste! {[<$field_name CirclePointIndex>]} {
-            type Output = usize;
+            type Output = $field_size;
 
             fn div(self, rhs: Self) -> Self::Output {
-                self.try_div(rhs).unwrap()
+                self.try_div(rhs).unwrap() as $field_size
             }
         }
 
@@ -230,7 +230,11 @@ macro_rules! impl_circle_point_index {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct M31CirclePointIndex(pub usize);
 
-impl_circle_point_index!(M31);
+impl_circle_point_index!(M31, usize);
+
+pub struct QM31CirclePointIndex(pub u128);
+
+impl_circle_point_index!(QM31, u128);
 
 /// Represents the coset initial + \<step\>.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -344,7 +348,9 @@ impl Coset {
     }
 
     pub fn find(&self, i: M31CirclePointIndex) -> Option<usize> {
-        (i - self.initial_index).try_div(self.step_size)
+        (i - self.initial_index)
+            .try_div(self.step_size)
+            .map(|x| x as usize)
     }
 }
 
