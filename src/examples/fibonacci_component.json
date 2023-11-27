@@ -1,0 +1,295 @@
+{
+  "name": "Fibonacci",
+  "version": "0.1",
+  "description": "Hand written fibonacci component",
+  "instances": [
+    {
+      "n_bits": 5,
+      "columns": [
+        {
+          "name": "f",
+          "description": "Fibonacci values",
+          "n_bits": 5,
+          "kind": {
+            "Witness": {
+              "generation": [
+                {
+                  "domain": {
+                    "inclusions": [
+                      {
+                        "offset": 0,
+                        "log_steps": 5
+                      }
+                    ],
+                    "exclusions": []
+                  },
+                  "formula": {
+                    "Explicit": {
+                      "Value": 1
+                    }
+                  }
+                },
+                {
+                  "domain": {
+                    "inclusions": [
+                      {
+                        "offset": 1,
+                        "log_steps": 5
+                      }
+                    ],
+                    "exclusions": []
+                  },
+                  "formula": {
+                    "Explicit": {
+                      "Extension": {
+                        "MaskItem": {
+                          "column": "secret",
+                          "log_expand": 0,
+                          "offset": 0
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "domain": {
+                    "inclusions": [
+                      {
+                        "offset": 0,
+                        "log_steps": 0
+                      }
+                    ],
+                    "exclusions": [
+                      {
+                        "offset": 0,
+                        "log_steps": 5
+                      }
+                    ]
+                  },
+                  "formula": {
+                    "Explicit": {
+                      "Extension": {
+                        "MaskItem": {
+                          "column": "f",
+                          "log_expand": 0,
+                          "offset": -1
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "secret",
+          "description": "Secret value",
+          "n_bits": 0,
+          "kind": "GenerationInput"
+        },
+        {
+          "name": "claim",
+          "description": "Claim value",
+          "n_bits": 5,
+          "kind": "Constant"
+        },
+        {
+          "name": "claim_mask",
+          "description": "Claim mask",
+          "n_bits": 5,
+          "kind": "Constant"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "initial_1",
+          "description": "Check that the first fibonacci value is 1",
+          "domain": {
+            "inclusions": [
+              {
+                "offset": 0,
+                "log_steps": 0
+              }
+            ],
+            "exclusions": []
+          },
+          "expr": {
+            "BinaryOp": {
+              "op": "Sub",
+              "lhs": {
+                "Extension": {
+                  "MaskItem": {
+                    "column": "f",
+                    "log_expand": 0,
+                    "offset": 0
+                  }
+                }
+              },
+              "rhs": {
+                "Value": 1
+              }
+            }
+          }
+        },
+        {
+          "name": "initial_secret",
+          "description": "Check that the second fibonacci value is the secret",
+          "domain": {
+            "inclusions": [
+              {
+                "offset": 1,
+                "log_steps": 0
+              }
+            ],
+            "exclusions": []
+          },
+          "expr": {
+            "BinaryOp": {
+              "op": "Sub",
+              "lhs": {
+                "Extension": {
+                  "MaskItem": {
+                    "column": "f",
+                    "log_expand": 0,
+                    "offset": 1
+                  }
+                }
+              },
+              "rhs": {
+                "Extension": {
+                  "MaskItem": {
+                    "column": "secret",
+                    "log_expand": 0,
+                    "offset": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "step",
+          "description": "Check that the next fibonacci value is the sum of the previous two.",
+          "domain": {
+            "inclusions": [
+              {
+                "offset": 0,
+                "log_steps": 0
+              }
+            ],
+            "exclusions": [
+              {
+                "offset": -2,
+                "log_steps": 5
+              },
+              {
+                "offset": -1,
+                "log_steps": 5
+              }
+            ]
+          },
+          "expr": {
+            "BinaryOp": {
+              "op": "Sub",
+              "lhs": {
+                "BinaryOp": {
+                  "op": "Add",
+                  "lhs": {
+                    "Pow": {
+                      "base": {
+                        "Extension": {
+                          "MaskItem": {
+                            "column": "f",
+                            "log_expand": 0,
+                            "offset": 0
+                          }
+                        }
+                      },
+                      "exp": 2
+                    }
+                  },
+                  "rhs": {
+                    "Pow": {
+                      "base": {
+                        "Extension": {
+                          "MaskItem": {
+                            "column": "f",
+                            "log_expand": 0,
+                            "offset": 1
+                          }
+                        }
+                      },
+                      "exp": 2
+                    }
+                  }
+                }
+              },
+              "rhs": {
+                "Extension": {
+                  "MaskItem": {
+                    "column": "f",
+                    "log_expand": 0,
+                    "offset": 2
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "claim",
+          "description": "Check that the claim matches the values at the specified mask.",
+          "domain": {
+            "inclusions": [
+              {
+                "offset": 0,
+                "log_steps": 0
+              }
+            ],
+            "exclusions": []
+          },
+          "expr": {
+            "BinaryOp": {
+              "op": "Mul",
+              "lhs": {
+                "BinaryOp": {
+                  "op": "Sub",
+                  "lhs": {
+                    "Extension": {
+                      "MaskItem": {
+                        "column": "f",
+                        "log_expand": 0,
+                        "offset": 0
+                      }
+                    }
+                  },
+                  "rhs": {
+                    "Extension": {
+                      "MaskItem": {
+                        "column": "claim",
+                        "log_expand": 0,
+                        "offset": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "rhs": {
+                "Extension": {
+                  "MaskItem": {
+                    "column": "claim_mask",
+                    "log_expand": 0,
+                    "offset": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "interaction_elements": [],
+      "outputs": []
+    }
+  ]
+}

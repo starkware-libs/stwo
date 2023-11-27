@@ -3,12 +3,16 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::impl_field;
 
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
 pub const K_BITS: u32 = 31;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct M31(u32);
 pub type BaseField = M31;
 

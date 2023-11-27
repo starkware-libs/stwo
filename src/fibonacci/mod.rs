@@ -1,12 +1,14 @@
 use num_traits::One;
 
-use crate::core::air::{Mask, MaskItem};
+use crate::core::air::mask::{Mask, MaskItem};
 use crate::core::circle::Coset;
 use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::Field;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
+
+pub mod component;
 
 pub struct Fibonacci {
     pub trace_coset: CanonicCoset,
