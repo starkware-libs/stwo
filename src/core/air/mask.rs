@@ -1,11 +1,10 @@
 use std::collections::BTreeMap;
 
-use super::circle::CirclePointIndex;
-use super::fields::m31::BaseField;
-use super::fields::ExtensionOf;
-use super::poly::circle::PointSetEvaluation;
+use crate::core::circle::CirclePointIndex;
 use crate::core::constraints::PolyOracle;
-use crate::core::poly::circle::CanonicCoset;
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::ExtensionOf;
+use crate::core::poly::circle::{CanonicCoset, PointSetEvaluation};
 
 pub struct MaskItem {
     pub column_index: usize,
@@ -49,7 +48,7 @@ impl Mask {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::air::{Mask, MaskItem};
+    use crate::core::air::mask::{Mask, MaskItem};
     use crate::core::circle::{CirclePoint, CirclePointIndex};
     use crate::core::constraints::EvalByPoly;
     use crate::core::fields::m31::BaseField;
