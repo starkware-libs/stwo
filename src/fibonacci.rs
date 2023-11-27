@@ -18,9 +18,9 @@ pub struct Fibonacci {
 impl Fibonacci {
     pub fn new(n_bits: usize, claim: BaseField) -> Self {
         let trace_coset = CanonicCoset::new(n_bits);
-        let eval_domain = trace_coset.eval_domain(n_bits + 1);
+        let eval_domain = trace_coset.evaluation_domain(n_bits + 1);
         let constraint_coset = Coset::subgroup(n_bits);
-        let constraint_eval_domain = CircleDomain::constraint_domain(n_bits + 1);
+        let constraint_eval_domain = CircleDomain::constraint_evaluation_domain(n_bits + 1);
         Self {
             trace_coset,
             eval_domain,
