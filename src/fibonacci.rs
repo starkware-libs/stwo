@@ -1,6 +1,6 @@
 use num_traits::One;
 
-use crate::core::air::{Mask, MaskItem};
+use crate::core::air::mask::{Mask, MaskItem};
 use crate::core::circle::Coset;
 use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle};
 use crate::core::fields::m31::BaseField;
