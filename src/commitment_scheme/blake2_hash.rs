@@ -3,6 +3,10 @@ use std::fmt;
 use blake2::digest::{Update, VariableOutput};
 use blake2::{Blake2s256, Blake2sVar, Digest};
 
+use crate::core::fields::m31::N_BYTES_FELT;
+
+pub const FELTS_PER_HASH: usize = 8;
+
 // Wrapper for the blake2s hash type.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Blake2sHash([u8; 32]);
@@ -36,6 +40,17 @@ impl From<&[u8]> for Blake2sHash {
 impl AsRef<[u8]> for Blake2sHash {
     fn as_ref(&self) -> &[u8] {
         &self.0
+    }
+}
+
+impl From<Blake2sHash> for [u32; FELTS_PER_HASH] {
+    fn from(val: Blake2sHash) -> Self {
+        val.0
+            .chunks_exact(N_BYTES_FELT) // 4 bytes per u32.
+            .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap()
     }
 }
 
