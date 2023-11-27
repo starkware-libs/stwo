@@ -152,39 +152,6 @@ impl Deref for CanonicCoset {
     }
 }
 
-/// Domain defined as the x-coordinates of all points in a [CircleDomain]
-#[derive(Copy, Clone, Debug)]
-pub struct LineDomain(CircleDomain);
-
-impl LineDomain {
-    /// Returns the `i`th domain element
-    // TODO: could use Index trait
-    pub fn at(&self, i: usize) -> BaseField {
-        let n = self.len().get();
-        assert!(i < n, "the len is {n} but index is {i}");
-        self.0.at(i).x
-    }
-
-    /// Returns the number of elements in the domain
-    // TODO: size might be a better name
-    pub fn len(&self) -> NonZeroUsize {
-        // half the size because a [CircleDomain] is symmetric across the x-axis
-        // there's always at least one item in the domain
-        NonZeroUsize::new(self.0.len() / 2).unwrap()
-    }
-
-    /// Returns an iterator over elements in the domain
-    pub fn iter(&self) -> impl Iterator<Item = BaseField> {
-        self.0.iter().take(self.len().get()).map(|p| p.x)
-    }
-}
-
-impl From<CircleDomain> for LineDomain {
-    fn from(value: CircleDomain) -> Self {
-        Self(value)
-    }
-}
-
 pub trait Evaluation: Clone {
     fn get_at(&self, point_index: CirclePointIndex) -> BaseField;
 }
