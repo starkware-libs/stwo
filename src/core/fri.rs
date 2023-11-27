@@ -33,8 +33,8 @@ use super::fields::m31::BaseField;
 ///    f_o(x)  = c1 + c3 * x + c5 * Φ(x) + c7 * Φ(x)*x
 ///    f(x)    = f_e(Φ(x)) + x * f_o(Φ(x))
 ///    f'(x)   = f_e(x) + α * f_o(x)
-///    deg(f') ≤ deg(f) / 2
 ///    α       = <random field element sent from verifier>
+///    deg(f') ≤ deg(f) / 2
 ///
 /// 4. obtain the DRP by evaluating f'(x) over a new domain of half the size:
 ///    ┌─────────┬───────────┬───────────┬───────────┬───────────┐
