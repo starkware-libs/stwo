@@ -10,10 +10,12 @@ blake2 = "0.10.6"
 blake3 = "1.5.0"
 hex = "0.4.3"
 num-traits = "0.2.17"
+serde = { version = "1.0.193", features = ["derive"] }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
 rand = "0.8.3"
+serde_json = "1.0.108"
 
 [features]
 avx512 = []
