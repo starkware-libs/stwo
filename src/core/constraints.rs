@@ -1,7 +1,6 @@
 use num_traits::One;
 
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
-use super::fft::psi_x;
 use super::fields::m31::BaseField;
 use super::poly::circle::{CircleDomain, CirclePoly, Evaluation};
 
@@ -23,7 +22,7 @@ pub fn coset_vanishing(coset: Coset, mut p: CirclePoint<BaseField>) -> BaseField
 
     // The formula for the x coordinate of the double of a point.
     for _ in 0..(coset.n_bits - 1) {
-        x = psi_x(x);
+        x = CirclePoint::double_x(x);
     }
     x
 }
