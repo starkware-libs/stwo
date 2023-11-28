@@ -8,7 +8,7 @@ use super::fields::m31::BaseField;
 /// `Φ(x) = 2x^2 - 1` is the circle's x-coordinate doubling map:
 ///
 /// ```text
-/// 1. interpolate evals over the evaluation domain to obtain coefficients of f(x):
+/// 1. interpolate evals over the evaluation domain, E, to obtain coefficients of f(x):
 ///    ┌─────────┬───┬───┬───┬───┬───┬───┬───┬───┐
 ///    │ i       │ 0 │ 1 │ 2 │ 3 │ 4 │ 5 │ 6 │ 7 │
 ///    ├─────────┼───┼───┼───┼───┼───┼───┼───┼───┤
@@ -36,12 +36,13 @@ use super::fields::m31::BaseField;
 ///    α       = <random field element sent from verifier>
 ///    deg(f') ≤ deg(f) / 2
 ///
-/// 4. obtain the DRP by evaluating f'(x) over a new domain of half the size:
+/// 4. obtain the DRP by evaluating f'(x) over E' (a new domain of half the size):
 ///    ┌─────────┬───────────┬───────────┬───────────┬───────────┐
 ///    │ p       │ 2*(c+0*G) │ 2*(c+1*G) │ 2*(c+2*G) │ 2*(c+3*G) │
 ///    ├─────────┼───────────┼───────────┼───────────┼───────────┤
 ///    │ f'(p.x) │ 82        │ 12        │ 57        │ 34        │
 ///    └─────────┴───────────┴───────────┴───────────┴───────────┘
+///      E' = 2E = 2c + <2G>
 ///    ┌────────┬────┬────┬────┬────┐
 ///    │ i      │ 0  │ 1  │ 2  │ 3  │
 ///    ├────────┼────┼────┼────┼────┤
