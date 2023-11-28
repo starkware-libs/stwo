@@ -28,8 +28,8 @@ impl LineDomain {
             }
             Ordering::Greater => {
                 // Let our coset be `E = c + <G>` with `|E| > 2` then:
-                // 1. if `order(c) <= order(G)` the coset contains two points at x=0
-                // 2. if `order(c) = 2 * order(G)` then `c = (x, y)` and `-c = (x, -y)` are in `E`
+                // 1. if `ord(c) <= ord(G)` the coset contains two points at x=0
+                // 2. if `ord(c) = 2 * ord(G)` then `c` and `-c` are in our coset
                 assert!(
                     coset.initial.order_bits() >= coset.step.order_bits() + 2,
                     "coset x-coordinates not unique"
