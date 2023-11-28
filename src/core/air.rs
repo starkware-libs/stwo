@@ -60,7 +60,7 @@ mod tests {
         const COSET_SIZE: u32 = 8;
         let coset = CanonicCoset::new(3);
         let trace_cosets = [coset; N_TRACE_COLUMNS as usize];
-        let trace: Vec<CircleEvaluation> = (0..N_TRACE_COLUMNS)
+        let trace: Vec<CircleEvaluation<BaseField>> = (0..N_TRACE_COLUMNS)
             .map(|i| {
                 CircleEvaluation::new_canonical_ordered(
                     coset,
