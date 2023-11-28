@@ -26,11 +26,27 @@ impl<F: Field> CirclePoint<F> {
         *self + *self
     }
 
+    /// Applies the circle's x-coordinate doubling map.
+    pub fn double_x(x: F) -> F {
+        x.square().double() - F::one()
+    }
+
+    /// Returns the order of a point.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use prover_research::core::circle::{CirclePoint, M31_CIRCLE_GEN, M31_CIRCLE_ORDER_BITS};
+    /// use prover_research::core::fields::m31::M31;
+    /// assert_eq!(M31_CIRCLE_GEN.order_bits(), M31_CIRCLE_ORDER_BITS);
+    /// ```
     pub fn order_bits(&self) -> usize {
+        // we only need the x-coordinate to check order since the only point
+        // with x=1 is the circle's identity
         let mut res = 0;
-        let mut cur = *self;
-        while cur != Self::zero() {
-            cur = cur.double();
+        let mut cur = self.x;
+        while !cur.is_one() {
+            cur = Self::double_x(cur);
             res += 1;
         }
         res

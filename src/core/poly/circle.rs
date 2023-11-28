@@ -5,7 +5,7 @@ use std::ops::Deref;
 use num_traits::One;
 
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
-use crate::core::fft::{butterfly, ibutterfly, psi_x};
+use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::Field;
 
@@ -253,7 +253,7 @@ impl<F: Field> CirclePoly<F> {
         let mut x = point.x;
         for _ in 0..(self.bound_bits - 1) {
             mults.push(x);
-            x = psi_x(x)
+            x = CirclePoint::double_x(x)
         }
         mults.reverse();
 
