@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
 
+use num_traits::Zero;
+
 use crate::core::circle::Coset;
 use crate::core::fields::m31::BaseField;
 
@@ -19,13 +21,17 @@ impl LineDomain {
         match coset.len().cmp(&2) {
             Ordering::Less => {}
             Ordering::Equal => {
-                assert_ne!(
-                    coset.at(0).x,
-                    coset.at(1).x,
+                // If the coset with two points contains `(0,y)` then the coset is `{(0,y), (0,-y)}`
+                assert!(
+                    !coset.initial.x.is_zero(),
                     "coset x-coordinates are not unique"
                 );
             }
             Ordering::Greater => {
+                // Here we check that our coset `E = c + <G>` is not symmetric over the x-axis which
+                // is the same as checking that all the x-coordinates are unique when `|E| > 2`:
+                // 1. If `order(c) <= order(G)` then the coset contains two points at `x=0`
+                // 2. If `order(c) == 2 * order(G)` then `c` has the same x-coordinate as `c - G`
                 assert!(
                     coset.initial.order_bits() >= coset.step.order_bits() + 2,
                     "coset x-coordinates are not unique"
@@ -47,8 +53,8 @@ impl LineDomain {
     }
 
     /// Returns the number of elements in the domain.
-    // TODO: rename len() on cosets and domains to size() and remove is_empty() since you shouldn't
-    // be able to create an empty coset
+    // TODO(andrew): rename len() on cosets and domains to size() and remove is_empty() since you
+    // shouldn't be able to create an empty coset
     pub fn size(&self) -> usize {
         self.coset.len()
     }
