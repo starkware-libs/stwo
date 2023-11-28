@@ -67,6 +67,45 @@ impl LineDomain {
     }
 }
 
+/// A polynomial defined on a [LineDomain].
+#[derive(Clone, Debug)]
+pub struct LinePoly {
+    /// Coefficients of the polynomial in the IFFT algorithm's basis.
+    ///
+    /// These are not coefficients in the standard monomial basis but rather the tensor product of
+    /// the twiddle factors i.e `{1} ⊗ {x} ⊗ {Φ(x)} ⊗ {Φ^2(x)} ⊗ ... ⊗ {Φ^{log(n)-2}(x)}`.
+    ///
+    /// The coefficients are stored in bit-reversed order.
+    coeffs: Vec<BaseField>,
+}
+
+impl LinePoly {
+    /// Creates a new line polynomial from a set of bit reversed coefficients.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of coefficients isn't a power of two.
+    pub fn new(coeffs: Vec<BaseField>) -> Self {
+        assert!(coeffs.len().is_power_of_two());
+        Self { coeffs }
+    }
+
+    /// Evaluates the polynomial at a point
+    pub fn eval_at_point(&self, _x: BaseField) -> BaseField {
+        todo!()
+    }
+
+    /// Evaluates the polynomial at all points in the domain.
+    pub fn evaluate(self, _domain: LineDomain) -> LineEvaluation {
+        todo!()
+    }
+}
+
+/// Evaluations of a polynomial on a [LineDomain].
+pub struct LineEvaluation {
+    evals: Vec<BaseField>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::LineDomain;
