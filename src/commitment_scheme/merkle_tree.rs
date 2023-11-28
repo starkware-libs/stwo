@@ -107,8 +107,7 @@ impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
                         _ => {
                             let node: H::Hash = self.data[i]
                                 [*q * H::OUTPUT_SIZE_IN_BYTES..(*q + 1) * H::OUTPUT_SIZE_IN_BYTES]
-                                .try_into()
-                                .expect("Error converting to hash object!");
+                                .into();
                             Some(node)
                         }
                     }

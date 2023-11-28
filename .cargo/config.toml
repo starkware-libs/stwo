@@ -1,0 +1,3 @@
+[build]
+# Configuration for these lints should be placed in `.clippy.toml` at the crate root.
+rustflags = ["-Dwarnings"]
