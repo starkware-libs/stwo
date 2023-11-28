@@ -1,7 +1,5 @@
 use std::cmp::Ordering;
 
-use num_traits::{One, Zero};
-
 use crate::core::circle::Coset;
 use crate::core::fields::m31::BaseField;
 
@@ -19,6 +17,7 @@ impl LineDomain {
     /// Panics if the coset items don't have unique x-coordinates.
     pub fn new(coset: Coset) -> Self {
         match coset.len().cmp(&2) {
+            Ordering::Less => {}
             Ordering::Equal => {
                 assert_ne!(
                     coset.at(0).x,
@@ -32,7 +31,6 @@ impl LineDomain {
                     "coset x-coordinates are not unique"
                 );
             }
-            Ordering::Less => {}
         }
         Self { coset }
     }
