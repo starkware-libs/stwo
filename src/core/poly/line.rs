@@ -94,9 +94,10 @@ mod tests {
     fn line_domain_has_correct_size() {
         const LOG_N: usize = 8;
         let coset = Coset::half_odds(LOG_N);
-
         let line_domain = LineDomain::new(coset);
 
-        assert_eq!(line_domain.len(), 1 << LOG_N);
+        let line_domain_len = line_domain.len();
+
+        assert_eq!(line_domain_len, 1 << LOG_N);
     }
 }
