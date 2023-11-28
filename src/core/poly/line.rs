@@ -6,6 +6,8 @@ use crate::core::circle::Coset;
 use crate::core::fields::m31::BaseField;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
+///
+/// For univariate polynomials.
 #[derive(Copy, Clone, Debug)]
 pub struct LineDomain {
     coset: Coset,
@@ -21,7 +23,7 @@ impl LineDomain {
         match coset.len().cmp(&2) {
             Ordering::Less => {}
             Ordering::Equal => {
-                // If the coset with two points contains `(0,y)` then the coset is `{(0,y), (0,-y)}`
+                // If the coset with two points contains (0, y) then the coset is {(0, y), (0, -y)}.
                 assert!(
                     !coset.initial.x.is_zero(),
                     "coset x-coordinates are not unique"
@@ -30,8 +32,8 @@ impl LineDomain {
             Ordering::Greater => {
                 // Here we check that our coset `E = c + <G>` is not symmetric over the x-axis which
                 // is the same as checking that all the x-coordinates are unique when `|E| > 2`:
-                // 1. If `order(c) <= order(G)` then the coset contains two points at `x=0`
-                // 2. If `order(c) == 2 * order(G)` then `c` has the same x-coordinate as `c - G`
+                // 1. If order(c) <= order(G) then the coset contains two points at x=0
+                // 2. If order(c) == 2 * order(G) then `c` has the same x-coordinate as `c - G`
                 assert!(
                     coset.initial.order_bits() >= coset.step.order_bits() + 2,
                     "coset x-coordinates are not unique"
@@ -53,8 +55,8 @@ impl LineDomain {
     }
 
     /// Returns the number of elements in the domain.
-    // TODO(andrew): rename len() on cosets and domains to size() and remove is_empty() since you
-    // shouldn't be able to create an empty coset
+    // TODO(Andrew): Rename len() on cosets and domains to size() and remove is_empty() since you
+    // shouldn't be able to create an empty coset.
     pub fn size(&self) -> usize {
         self.coset.len()
     }
@@ -75,12 +77,14 @@ impl LineDomain {
 #[cfg(test)]
 mod tests {
     use super::LineDomain;
-    use crate::core::circle::Coset;
+    use crate::core::circle::{CirclePoint, Coset};
+    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::Field;
 
     #[test]
     #[should_panic]
     fn bad_line_domain() {
-        // this coset doesn't have points with unique x-coordinates
+        // This coset doesn't have points with unique x-coordinates.
         let coset = Coset::odds(2);
 
         LineDomain::new(coset);
@@ -106,10 +110,37 @@ mod tests {
     fn line_domain_size_is_correct() {
         const LOG_N: usize = 8;
         let coset = Coset::half_odds(LOG_N);
-        let line_domain = LineDomain::new(coset);
+        let domain = LineDomain::new(coset);
 
-        let size = line_domain.size();
+        let size = domain.size();
 
         assert_eq!(size, 1 << LOG_N);
+    }
+
+    #[test]
+    fn line_domain_double_works() {
+        const LOG_N: usize = 8;
+        let coset = Coset::half_odds(LOG_N);
+        let domain = LineDomain::new(coset);
+
+        let doubled_domain = domain.double();
+
+        assert_eq!(doubled_domain.size(), 1 << (LOG_N - 1));
+        assert_eq!(doubled_domain.at(0), CirclePoint::double_x(domain.at(0)));
+        assert_eq!(doubled_domain.at(1), CirclePoint::double_x(domain.at(1)));
+    }
+
+    #[test]
+    fn line_domain_iter_works() {
+        const LOG_N: usize = 8;
+        let coset = Coset::half_odds(LOG_N);
+        let domain = LineDomain::new(coset);
+
+        let elements = domain.iter().collect::<Vec<BaseField>>();
+
+        assert_eq!(elements.len(), 1 << LOG_N);
+        for (i, element) in elements.into_iter().enumerate() {
+            assert_eq!(elements, domain.at(i), "mismatch at {i}");
+        }
     }
 }
