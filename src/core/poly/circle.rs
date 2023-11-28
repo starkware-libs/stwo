@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::iter::Chain;
 use std::ops::Deref;
 
-use num_traits::{One, Zero};
+use num_traits::One;
 
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly, psi_x};
@@ -158,13 +158,13 @@ pub trait Evaluation: Clone {
 /// An evaluation defined on a [CircleDomain].
 /// The values are ordered according to the [CircleDomain] ordering.
 #[derive(Clone, Debug)]
-pub struct CircleEvaluation {
+pub struct CircleEvaluation<F: Field> {
     pub domain: CircleDomain,
-    pub values: Vec<BaseField>,
+    pub values: Vec<F>,
 }
 
-impl CircleEvaluation {
-    pub fn new(domain: CircleDomain, values: Vec<BaseField>) -> Self {
+impl<F: Field> CircleEvaluation<F> {
+    pub fn new(domain: CircleDomain, values: Vec<F>) -> Self {
         assert_eq!(domain.len(), values.len());
         Self { domain, values }
     }
@@ -174,7 +174,7 @@ impl CircleEvaluation {
     ///   G_8, G_8 + G_4, G_8 + 2G_4, G_8 + 3G_4.
     /// The circle domain will be ordered like this:
     ///   G_8, G_8 + 2G_4, -G_8, -G_8 - 2G_4.
-    pub fn new_canonical_ordered(coset: CanonicCoset, values: Vec<BaseField>) -> Self {
+    pub fn new_canonical_ordered(coset: CanonicCoset, values: Vec<F>) -> Self {
         let domain = coset.circle_domain();
         assert_eq!(values.len(), domain.len());
         let mut new_values = Vec::with_capacity(values.len());
@@ -191,8 +191,8 @@ impl CircleEvaluation {
         }
     }
 
-    /// Computes a minimal [CirclePoly] that evalutes to the same values as this evaluation.
-    pub fn interpolate(self) -> CirclePoly {
+    /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
+    pub fn interpolate(self) -> CirclePoly<F> {
         // Use CFFT to interpolate.
         let mut coset = self.domain.half_coset;
         let mut values = self.values;
@@ -223,7 +223,7 @@ impl CircleEvaluation {
     }
 }
 
-impl Evaluation for CircleEvaluation {
+impl Evaluation for CircleEvaluation<BaseField> {
     fn get_at(&self, point_index: CirclePointIndex) -> BaseField {
         self.values[self.domain.find(point_index).expect("Not in domain")]
     }
@@ -231,7 +231,7 @@ impl Evaluation for CircleEvaluation {
 
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
-pub struct CirclePoly {
+pub struct CirclePoly<F: Field> {
     /// log size of the number of coefficients.
     bound_bits: usize,
     /// Coefficients of the polynomial in the FFT basis.
@@ -239,16 +239,16 @@ pub struct CirclePoly {
     /// monomial basis. The FFT basis is a tensor product of the twiddles:
     /// y, x, psi_x(x), psi_x^2(x), ..., psi_x^{bound_bits-2}(x).
     /// psi_x(x) := 2x^2 - 1.
-    coeffs: Vec<BaseField>,
+    coeffs: Vec<F>,
 }
 
-impl CirclePoly {
-    pub fn new(bound_bits: usize, coeffs: Vec<BaseField>) -> Self {
+impl<F: Field> CirclePoly<F> {
+    pub fn new(bound_bits: usize, coeffs: Vec<F>) -> Self {
         assert!(coeffs.len() == (1 << bound_bits));
         Self { bound_bits, coeffs }
     }
 
-    pub fn eval_at_point(&self, point: CirclePoint<BaseField>) -> BaseField {
+    pub fn eval_at_point(&self, point: CirclePoint<BaseField>) -> F {
         let mut mults = vec![BaseField::one(), point.y];
         let mut x = point.x;
         for _ in 0..(self.bound_bits - 1) {
@@ -257,9 +257,9 @@ impl CirclePoly {
         }
         mults.reverse();
 
-        let mut sum = BaseField::zero();
+        let mut sum = F::zero();
         for (i, val) in self.coeffs.iter().enumerate() {
-            let mut cur_mult = BaseField::one();
+            let mut cur_mult = F::one();
             for (j, mult) in mults.iter().enumerate() {
                 if i & (1 << j) != 0 {
                     cur_mult *= *mult;
@@ -271,14 +271,14 @@ impl CirclePoly {
     }
 
     /// Evaluates the polynomial at all points in the domain.
-    pub fn evaluate(self, domain: CircleDomain) -> CircleEvaluation {
+    pub fn evaluate(self, domain: CircleDomain) -> CircleEvaluation<F> {
         // Use CFFT to evaluate.
         let mut coset = domain.half_coset;
         let mut cosets = vec![];
 
         // TODO(spapini): extend better.
         assert!(domain.n_bits() >= self.bound_bits);
-        let mut values = vec![BaseField::zero(); domain.len()];
+        let mut values = vec![F::zero(); domain.len()];
         let jump_bits = domain.n_bits() - self.bound_bits;
         for (i, val) in self.coeffs.iter().enumerate() {
             values[i << jump_bits] = *val;

@@ -3,6 +3,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 use super::fields::m31::M31;
 use super::fields::qm31::QM31;
 use super::fields::Field;
+use crate::core::fields::qm31::P4;
 use crate::math::egcd;
 
 // TODO(AlonH): Consider also generalizing structs using this struct.
@@ -94,6 +95,13 @@ impl<F: Field> Sub for CirclePoint<F> {
 
     fn sub(self, rhs: Self) -> Self::Output {
         self + (-rhs)
+    }
+}
+
+impl CirclePoint<QM31> {
+    pub fn get_point(index: u128) -> Self {
+        assert!(index < P4 - 1);
+        QM31_CIRCLE_GEN.mul(index)
     }
 }
 
