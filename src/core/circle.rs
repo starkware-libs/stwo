@@ -26,12 +26,14 @@ impl<F: Field> CirclePoint<F> {
         *self + *self
     }
 
-    /// Applies the circle's x-coordinate doubling map i.e. `psi_x(x)`
+    /// Applies the circle's x-coordinate doubling map.
+    ///
+    /// i.e. `psi_x(x) = 2x^2 - 1`
     pub fn double_x(x: F) -> F {
         x.square().double() - F::one()
     }
 
-    /// Returns the order of a point
+    /// Returns the order of a point.
     ///
     /// # Examples
     ///
