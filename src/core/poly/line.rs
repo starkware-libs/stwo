@@ -7,7 +7,7 @@ use crate::core::fields::m31::BaseField;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///
-/// For univariate polynomials.
+/// For use with univariate polynomials.
 #[derive(Copy, Clone, Debug)]
 pub struct LineDomain {
     coset: Coset,
