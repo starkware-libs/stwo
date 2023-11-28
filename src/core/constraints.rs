@@ -59,7 +59,7 @@ pub trait PolyOracle: Copy {
 #[derive(Copy, Clone)]
 pub struct EvalByPoly<'a> {
     pub point: CirclePoint<BaseField>,
-    pub poly: &'a CirclePoly,
+    pub poly: &'a CirclePoly<BaseField>,
 }
 
 impl<'a> PolyOracle for EvalByPoly<'a> {
