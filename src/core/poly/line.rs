@@ -41,22 +41,28 @@ impl LineDomain {
     ///
     /// Panics if the index exceeds the size of the domain.
     pub fn at(&self, i: usize) -> BaseField {
-        let n = self.len();
+        let n = self.size();
         assert!(i < n, "the size of the domain is {n} but index is {i}");
         self.coset.at(i).x
     }
 
     /// Returns the number of elements in the domain.
-    // TODO: size might be a more appropriate name
-    // a line domain can never be empty
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
+    // TODO: rename len() on cosets and domains to size() and remove is_empty() since you shouldn't
+    // be able to create an empty coset
+    pub fn size(&self) -> usize {
         self.coset.len()
     }
 
     /// Returns an iterator over elements in the domain.
     pub fn iter(&self) -> impl Iterator<Item = BaseField> {
         self.coset.iter().map(|p| p.x)
+    }
+
+    /// Returns a new domain comprising of all points in current domain doubled.
+    pub fn double(&self) -> Self {
+        Self {
+            coset: self.coset.double(),
+        }
     }
 }
 
@@ -91,12 +97,12 @@ mod tests {
     }
 
     #[test]
-    fn line_domain_has_correct_size() {
+    fn line_domain_size_is_correct() {
         const LOG_N: usize = 8;
         let coset = Coset::half_odds(LOG_N);
         let line_domain = LineDomain::new(coset);
 
-        let line_domain_len = line_domain.len();
+        let line_domain_len = line_domain.size();
 
         assert_eq!(line_domain_len, 1 << LOG_N);
     }
