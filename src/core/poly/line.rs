@@ -24,19 +24,15 @@ impl LineDomain {
             Ordering::Less => {}
             Ordering::Equal => {
                 // If the coset with two points contains (0, y) then the coset is {(0, y), (0, -y)}.
-                assert!(
-                    !coset.initial.x.is_zero(),
-                    "coset x-coordinates are not unique"
-                );
+                assert!(!coset.initial.x.is_zero(), "coset x-coordinates not unique");
             }
             Ordering::Greater => {
-                // Here we check that our coset `E = c + <G>` is not symmetric over the x-axis which
-                // is the same as checking that all the x-coordinates are unique when `|E| > 2`:
-                // 1. If order(c) <= order(G) then the coset contains two points at x=0
-                // 2. If order(c) == 2 * order(G) then `c` has the same x-coordinate as `c - G`
+                // Let our coset be `E = c + <G>` with `|E| > 2` then:
+                // 1. if `order(c) <= order(G)` the coset contains two points at x=0
+                // 2. if `order(c) = 2 * order(G)` then `c = (x, y)` and `-c = (x, -y)` are in `E`
                 assert!(
                     coset.initial.order_bits() >= coset.step.order_bits() + 2,
-                    "coset x-coordinates are not unique"
+                    "coset x-coordinates not unique"
                 );
             }
         }
