@@ -1,4 +1,5 @@
 use super::fields::m31::BaseField;
+use super::fields::Field;
 
 pub fn butterfly<F: Field>(v0: &mut F, v1: &mut F, twid: BaseField) {
     let tmp = *v1 * twid;
