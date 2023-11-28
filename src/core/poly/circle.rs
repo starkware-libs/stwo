@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::iter::Chain;
-use std::num::NonZeroUsize;
 use std::ops::Deref;
 
 use num_traits::{One, Zero};
@@ -334,9 +333,7 @@ impl Evaluation for PointSetEvaluation {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
-    use super::{CanonicCoset, CircleDomain, CircleEvaluation, Coset, LineDomain};
+    use super::{CanonicCoset, CircleDomain, CircleEvaluation, Coset};
     use crate::core::circle::CirclePointIndex;
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::{BaseField, M31};
@@ -446,19 +443,5 @@ mod tests {
         );
         // TODO(spapini): Check low degree.
         println!("{:?}", constraint_eval);
-    }
-
-    #[test]
-    fn line_domain_is_circle_domain_xs() {
-        let log_domain_size = 3;
-        let circle_domain = CircleDomain::new(Coset::half_odds(log_domain_size));
-        let circle_domain_xs = BTreeSet::from_iter(circle_domain.iter().map(|p| p.x));
-        let line_domain = LineDomain::from(circle_domain);
-
-        let line_domain_elements = BTreeSet::from_iter(line_domain.iter());
-
-        assert_eq!(circle_domain_xs, line_domain_elements);
-        assert_eq!(1 << (log_domain_size + 1), circle_domain.len());
-        assert_eq!(1 << log_domain_size, line_domain_elements.len());
     }
 }
