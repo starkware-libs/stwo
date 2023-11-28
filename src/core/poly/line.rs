@@ -79,7 +79,6 @@ mod tests {
     use super::LineDomain;
     use crate::core::circle::{CirclePoint, Coset};
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::Field;
 
     #[test]
     #[should_panic]
@@ -140,7 +139,7 @@ mod tests {
 
         assert_eq!(elements.len(), 1 << LOG_N);
         for (i, element) in elements.into_iter().enumerate() {
-            assert_eq!(elements, domain.at(i), "mismatch at {i}");
+            assert_eq!(element, domain.at(i), "mismatch at {i}");
         }
     }
 }
