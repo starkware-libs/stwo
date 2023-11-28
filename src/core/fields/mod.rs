@@ -1,6 +1,8 @@
-use std::ops::Neg;
+use std::ops::{Mul, MulAssign, Neg};
 
 use num_traits::NumAssign;
+
+use self::m31::M31;
 
 #[cfg(target_arch = "x86_64")]
 pub mod avx512_m31;
@@ -8,7 +10,9 @@ pub mod cm31;
 pub mod m31;
 pub mod qm31;
 
-pub trait Field: NumAssign + Neg<Output = Self> + Copy {
+pub trait Field:
+    NumAssign + Neg<Output = Self> + Copy + Mul<M31, Output = Self> + MulAssign<M31>
+{
     fn square(&self) -> Self {
         (*self) * (*self)
     }
@@ -194,6 +198,12 @@ macro_rules! impl_extension_field {
         impl From<M31> for $field_name {
             fn from(x: M31) -> Self {
                 Self(x.into(), <$extended_field_name>::zero())
+            }
+        }
+
+        impl MulAssign<M31> for $field_name {
+            fn mul_assign(&mut self, rhs: M31) {
+                *self = *self * rhs;
             }
         }
     };

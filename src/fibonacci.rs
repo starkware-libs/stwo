@@ -30,7 +30,7 @@ impl Fibonacci {
         }
     }
 
-    pub fn get_trace(&self) -> CircleEvaluation {
+    pub fn get_trace(&self) -> CircleEvaluation<BaseField> {
         // Trace.
         let mut trace = Vec::with_capacity(self.trace_coset.len());
 
@@ -79,7 +79,7 @@ impl Fibonacci {
         num / denom
     }
 
-    pub fn eval_quotient(&self, random_coeff: BaseField, trace: impl PolyOracle) -> BaseField {
+    pub fn eval_quotient<F: Field>(&self, random_coeff: F, trace: impl PolyOracle) -> F {
         let mut quotient = random_coeff.pow(0) * self.eval_step_quotient(trace);
         quotient += random_coeff.pow(1) * self.eval_boundary_quotient(trace, 0, BaseField::one());
         quotient += random_coeff.pow(2)
@@ -107,8 +107,9 @@ mod tests {
     use crate::core::circle::{CirclePoint, CirclePointIndex};
     use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::qm31::QM31;
     use crate::core::poly::circle::CircleEvaluation;
-    use crate::m31;
+    use crate::{m31, qm31};
 
     #[test]
     fn test_constraint_on_trace() {
@@ -167,7 +168,7 @@ mod tests {
 
         // TODO(ShaharS), Change to a channel implementation to retrieve the random
         // coefficients from extension field.
-        let random_coeff = m31!(2213980);
+        let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
 
         // Compute quotient on the evaluation domain.
         let mut quotient_values = Vec::with_capacity(fib.constraint_eval_domain.len());
@@ -181,7 +182,7 @@ mod tests {
             ));
         }
         let quotient_eval = CircleEvaluation::new(fib.constraint_eval_domain, quotient_values);
-        // Interpolate the poly. The the poly is indeed of degree lower than the size of
+        // Interpolate the poly. The poly is indeed of degree lower than the size of
         // eval_domain, then it should interpolate correctly.
         let quotient_poly = quotient_eval.interpolate();
 
