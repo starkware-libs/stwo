@@ -102,8 +102,8 @@ mod tests {
         let coset = Coset::half_odds(LOG_N);
         let line_domain = LineDomain::new(coset);
 
-        let line_domain_len = line_domain.size();
+        let size = line_domain.size();
 
-        assert_eq!(line_domain_len, 1 << LOG_N);
+        assert_eq!(size, 1 << LOG_N);
     }
 }
