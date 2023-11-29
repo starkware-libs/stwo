@@ -4,6 +4,7 @@ use std::ops::Deref;
 use num_traits::Zero;
 
 use crate::core::circle::Coset;
+use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::Field;
 
@@ -78,7 +79,7 @@ impl LineDomain {
 /// A univariate polynomial defined on a [LineDomain].
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LinePoly<F> {
-    /// Coefficients of the polynomial in the IFFT algorithm's basis.
+    /// Coefficients of the polynomial in [line_ifft] algorithm's basis.
     ///
     /// The coefficients are stored in bit-reversed order.
     coeffs: Vec<F>,
@@ -141,6 +142,53 @@ impl<F: Field> Deref for LineEvaluation<F> {
 
     fn deref(&self) -> &Vec<F> {
         &self._evals
+    }
+}
+
+/// Performs a univariate IFFT on a polynomial's evaluations over a [LineDomain].
+///
+/// The transform happens in-place. `values` should be the evaluations of a polynomial over `domain`
+/// in their natural order. After the transformation `values` becomes the coefficients of the
+/// polynomial stored in bit-reversed order.
+///
+/// For performance reasons and flexibility the normalization of the coefficients is omitted. The
+/// normalized coefficients can be obtained by scaling all coefficients by `1 / len(values)`.
+///
+/// This algorithm does not return coefficients in the standard monomial basis but rather returns
+/// coefficients in a basis that relates to the circles x-coordinate doubling map `π(x) = 2x^2 - 1`
+///
+/// i.e.
+///
+/// ```text
+/// B = { 1 } ⊗ { x } ⊗ { π(x) } ⊗ { π(π(x)) } ⊗ ...
+///   = { 1, x, π(x), π(x) * x, π(π(x)), π(π(x)) * x, π(π(x)) * π(x), ... }
+/// ```
+pub(crate) fn line_ifft<F: Field>(values: &mut [F], mut domain: LineDomain) {
+    while domain.size() > 1 {
+        for chunk in values.chunks_exact_mut(domain.size()) {
+            let (l, r) = chunk.split_at_mut(domain.size() / 2);
+            for (i, x) in domain.iter().take(domain.size() / 2).enumerate() {
+                ibutterfly(&mut l[i], &mut r[i], x.inverse());
+            }
+        }
+        domain = domain.double();
+    }
+}
+
+/// Performs a univariate FFT of a polynomial over a [LineDomain].
+///
+/// The transform happens in-place. `values` consist of coefficients in [line_ifft] algorithm's
+/// basis in bit-reversed order. After the transformation `values` becomes evaluations of the
+/// polynomial over `domain` stored in natural order.
+pub(crate) fn line_fft<F: Field>(values: &mut [F], mut domain: LineDomain) {
+    while domain.size() > 1 {
+        for chunk in values.chunks_exact_mut(domain.size()) {
+            let (l, r) = chunk.split_at_mut(domain.size() / 2);
+            for (i, x) in domain.iter().take(domain.size() / 2).enumerate() {
+                butterfly(&mut l[i], &mut r[i], x.inverse());
+            }
+        }
+        domain = domain.double();
     }
 }
 
@@ -227,17 +275,17 @@ mod tests {
     fn line_polynomial_evaluation() {
         let poly = LinePoly::new(vec![
             BaseField::from(7), // 7 * 1
-            BaseField::from(9), // 9 * Φ(x)
+            BaseField::from(9), // 9 * π(x)
             BaseField::from(5), // 5 * x
-            BaseField::from(3), // 3 * Φ(x)*x
+            BaseField::from(3), // 3 * π(x)*x
         ]);
         let coset = Coset::half_odds(poly.len().ilog2() as usize);
         let domain = LineDomain::new(coset);
         let expected_evals = domain
             .iter()
             .map(|x| {
-                let phi_x = CirclePoint::double_x(x);
-                poly[0] + poly[1] * phi_x + poly[2] * x + poly[3] * phi_x * x
+                let pi_x = CirclePoint::double_x(x);
+                poly[0] + poly[1] * pi_x + poly[2] * x + poly[3] * pi_x * x
             })
             .collect::<Vec<BaseField>>();
 
@@ -251,9 +299,9 @@ mod tests {
     fn line_evaluation_interpolation() {
         let poly = LinePoly::new(vec![
             BaseField::from(7), // 7 * 1
-            BaseField::from(9), // 9 * Φ(x)
+            BaseField::from(9), // 9 * π(x)
             BaseField::from(5), // 5 * x
-            BaseField::from(3), // 3 * Φ(x)*x
+            BaseField::from(3), // 3 * π(x)*x
         ]);
         let coset = Coset::half_odds(poly.len().ilog2() as usize);
         let domain = LineDomain::new(coset);
@@ -261,8 +309,8 @@ mod tests {
             domain
                 .iter()
                 .map(|x| {
-                    let phi_x = CirclePoint::double_x(x);
-                    poly[0] + poly[1] * phi_x + poly[2] * x + poly[3] * phi_x * x
+                    let pi_x = CirclePoint::double_x(x);
+                    poly[0] + poly[1] * pi_x + poly[2] * x + poly[3] * pi_x * x
                 })
                 .collect::<Vec<BaseField>>(),
         );
