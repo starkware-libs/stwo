@@ -4,7 +4,7 @@ use std::ops::Deref;
 
 use num_traits::One;
 
-use super::line::line_ifft;
+use super::utils::fold;
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -238,26 +238,16 @@ impl<F: Field> CirclePoly<F> {
         Self { bound_bits, coeffs }
     }
 
+    /// Evaluates the polynomial at a single point.
     pub fn eval_at_point(&self, point: CirclePoint<BaseField>) -> F {
-        let mut mults = vec![BaseField::one(), point.y];
+        // TODO(Andrew): Allocation here expensive for small polynomials.
+        let mut twiddle_factors = vec![point.y, point.x];
         let mut x = point.x;
-        for _ in 0..(self.bound_bits - 1) {
-            mults.push(x);
-            x = CirclePoint::double_x(x)
+        for _ in 2..self.bound_bits {
+            x = CirclePoint::double_x(x);
+            twiddle_factors.push(x);
         }
-        mults.reverse();
-
-        let mut sum = F::zero();
-        for (i, val) in self.coeffs.iter().enumerate() {
-            let mut cur_mult = F::one();
-            for (j, mult) in mults.iter().enumerate() {
-                if i & (1 << j) != 0 {
-                    cur_mult *= *mult;
-                }
-            }
-            sum += *val * cur_mult;
-        }
-        sum
+        fold(&self.coeffs, &twiddle_factors)
     }
 
     /// Evaluates the polynomial at all points in the domain.
