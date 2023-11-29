@@ -270,9 +270,9 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
 
         let half_coset = domain.half_coset;
         let line_domain = LineDomain::new(half_coset);
-        let (l, r) = values.split_at_mut(half_coset.size());
-        line_fft(l, line_domain);
-        line_fft(r, line_domain);
+        let (l, r) = values.split_at_mut(half_coset.len());
+        line_fft(l, line_domain, 0);
+        line_fft(r, line_domain, 0);
         for (i, p) in half_coset.iter().enumerate() {
             butterfly(&mut l[i], &mut r[i], p.y);
         }

@@ -1,8 +1,10 @@
 use std::cmp::Ordering;
+use std::fmt::Debug;
 use std::ops::Deref;
 
 use num_traits::Zero;
 
+use super::utils::repeat_value;
 use crate::core::circle::Coset;
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -100,7 +102,25 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
 
     /// Evaluates the polynomial at all points in the domain.
     pub fn evaluate(mut self, domain: LineDomain) -> LineEvaluation<F> {
-        line_fft(&mut self.coeffs, domain);
+        assert!(domain.size() >= self.coeffs.len());
+        let mut n_skipped_layers = 0;
+        if domain.size() > self.coeffs.len() {
+            // TODO(Andrew): Update CirclePoly with degree aware FFT
+            // Degree aware evaluation: If the domain is larger than the number of coefficients then
+            // the first few butterfly layers of the FFT look like `lhs = lhs + 0 * twiddle, rhs =
+            // lhs - 0 * twiddle` which only has the effect of copying the coefficients into more
+            // locations. Instead of running these first few layers of the FFT we can skip them
+            // altogether and just handle the copying of these values directly. The resulting
+            // algorithm saves on arithmetic and is `O(n log d)` vs `O(n log n)` where `n` is the
+            // size of the domain and `d` is the number of coefficients.
+            let domain_bits = domain.size().ilog2();
+            let degree_bound_bits = self.coeffs.len().ilog2();
+            n_skipped_layers = (domain_bits - degree_bound_bits) as usize;
+            let duplicity = 1 << n_skipped_layers;
+            self.coeffs = repeat_value(&self.coeffs, duplicity);
+        }
+
+        line_fft(&mut self.coeffs, domain, n_skipped_layers);
         LineEvaluation::new(self.coeffs)
     }
 
@@ -142,7 +162,8 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     /// Interpolates the polynomial as evaluations on `domain`
     pub fn interpolate(mut self, domain: LineDomain) -> LinePoly<F> {
         line_ifft(&mut self.evals, domain);
-        let len_inv = BaseField::from(domain.size()).inverse();
+        // Normalize the coefficients.
+        let len_inv = BaseField::from(self.evals.len()).inverse();
         self.evals.iter_mut().for_each(|v| *v *= len_inv);
         LinePoly::new(self.evals)
     }
@@ -163,7 +184,7 @@ impl<F: ExtensionOf<BaseField>> Deref for LineEvaluation<F> {
     }
 }
 
-/// Performs a univariate IFFT on a polynomial's evaluations over a [LineDomain].
+/// Performs a univariate IFFT on a polynomial's evaluation over a [LineDomain].
 ///
 /// The transform happens in-place. `values` should be the evaluations of a polynomial over `domain`
 /// in their natural order. After the transformation `values` becomes the coefficients of the
@@ -200,19 +221,31 @@ pub(crate) fn line_ifft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain:
 /// Performs a univariate FFT of a polynomial over a [LineDomain].
 ///
 /// The transform happens in-place. `values` consist of coefficients in [line_ifft] algorithm's
-/// basis in bit-reversed order. After the transformation `values` becomes evaluations of the
-/// polynomial over `domain` stored in natural order.
+/// basis need to be stored in bit-reversed order. After the transformation `values` becomes
+/// evaluations of the polynomial over `domain` stored in natural order.
+///
+/// The `n_skipped_layers` argument allows specifying how many of the initial butterfly layers of
+/// the FFT to skip. This is useful when doing more efficient degree aware FFTs as the butterflies
+/// in the first layers of the FFT only involve copying coefficients to different locations.
 ///
 /// # Panics
 ///
 /// Panics if the number of values doesn't match the size of the domain.
-pub(crate) fn line_fft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain: LineDomain) {
+pub(crate) fn line_fft<F: ExtensionOf<BaseField>>(
+    values: &mut [F],
+    mut domain: LineDomain,
+    n_skipped_layers: usize,
+) {
     assert_eq!(values.len(), domain.size());
+
+    // Construct the domains we need.
     let mut domains = vec![];
-    while domain.size() > 1 {
+    while domain.size() > 1 << n_skipped_layers {
         domains.push(domain);
         domain = domain.double();
     }
+
+    // Execute the butterfly layers.
     for domain in domains.iter().rev() {
         for chunk in values.chunks_exact_mut(domain.size()) {
             let (l, r) = chunk.split_at_mut(domain.size() / 2);
@@ -310,6 +343,29 @@ mod tests {
             BaseField::from(3), // 3 * π(x)*x
         ]);
         let coset = Coset::half_odds(poly.len().ilog2() as usize);
+        let domain = LineDomain::new(coset);
+        let expected_evals = domain
+            .iter()
+            .map(|x| {
+                let pi_x = CirclePoint::double_x(x);
+                poly[0] + poly[1] * pi_x + poly[2] * x + poly[3] * pi_x * x
+            })
+            .collect::<Vec<BaseField>>();
+
+        let actual_evals = poly.evaluate(domain);
+
+        assert_eq!(*actual_evals, expected_evals);
+    }
+
+    #[test]
+    fn line_polynomial_evaluation_on_larger_domain() {
+        let poly = LinePoly::new(vec![
+            BaseField::from(7), // 7 * 1
+            BaseField::from(9), // 9 * π(x)
+            BaseField::from(5), // 5 * x
+            BaseField::from(3), // 3 * π(x)*x
+        ]);
+        let coset = Coset::half_odds(4 + poly.len().ilog2() as usize);
         let domain = LineDomain::new(coset);
         let expected_evals = domain
             .iter()
