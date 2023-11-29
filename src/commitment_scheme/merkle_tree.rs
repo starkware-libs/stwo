@@ -84,7 +84,7 @@ impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
 
         // Input layer, every leaf-block holds 'bottom_layer_block_size' elements.
         leaf_block_indices.iter().for_each(|block_index| {
-            proof.leaves.push(self.get_leaf_block(*block_index));
+            proof.leaf_blocks.push(self.get_leaf_block(*block_index));
         });
 
         // Sorted indices of the current layer.
@@ -208,7 +208,7 @@ mod tests {
         let queries: BTreeSet<usize> = (16..64).collect();
         let decommitment = tree.generate_decommitment(queries.clone());
 
-        assert_eq!(decommitment.leaves.len(), 3);
+        assert_eq!(decommitment.leaf_blocks.len(), 3);
 
         // Every leaf block in the first half of the trace is queried except for the first one,
         // therefore it should be the only one who's hash is in the decommitment's first
