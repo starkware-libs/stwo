@@ -6,6 +6,7 @@ use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, Field};
+use crate::core::poly::line::{line_fft, LineDomain};
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.
@@ -187,33 +188,24 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
     }
 
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
-    pub fn interpolate(self) -> CirclePoly<F> {
+    pub fn interpolate(mut self) -> CirclePoly<F> {
         // Use CFFT to interpolate.
-        let mut coset = self.domain.half_coset;
-        let mut values = self.values;
-        let (l, r) = values.split_at_mut(coset.size());
-        for (i, p) in coset.iter().enumerate() {
+        let half_coset = self.domain.half_coset;
+        let (l, r) = self.values.split_at_mut(half_coset.size());
+        for (i, p) in half_coset.iter().enumerate() {
             ibutterfly(&mut l[i], &mut r[i], p.y.inverse());
         }
-        while coset.size() > 1 {
-            for chunk in values.chunks_exact_mut(coset.size()) {
-                let (l, r) = chunk.split_at_mut(coset.size() / 2);
-                for (i, p) in coset.iter().take(coset.size() / 2).enumerate() {
-                    ibutterfly(&mut l[i], &mut r[i], p.x.inverse());
-                }
-            }
-            coset = coset.double();
-        }
+        let line_domain = LineDomain::new(half_coset);
+        line_ifft(l, line_domain);
+        line_ifft(r, line_domain);
 
-        // Divide all values by 2^n_bits.
-        let inv = BaseField::from_u32_unchecked(self.domain.size() as u32).inverse();
-        for val in &mut values {
-            *val *= inv;
-        }
+        // Normalize the coefficients.
+        let len_inv = BaseField::from(self.values.len()).inverse();
+        self.values.iter_mut().for_each(|v| *v *= len_inv);
 
         CirclePoly {
             bound_bits: self.domain.n_bits(),
-            coeffs: values,
+            coeffs: self.values,
         }
     }
 }
@@ -268,9 +260,6 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
     /// Evaluates the polynomial at all points in the domain.
     pub fn evaluate(self, domain: CircleDomain) -> CircleEvaluation<F> {
         // Use CFFT to evaluate.
-        let mut coset = domain.half_coset;
-        let mut cosets = vec![];
-
         // TODO(spapini): extend better.
         assert!(domain.n_bits() >= self.bound_bits);
         let mut values = vec![F::zero(); domain.size()];
@@ -279,21 +268,12 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
             values[i << jump_bits] = *val;
         }
 
-        while coset.size() > 1 {
-            cosets.push(coset);
-            coset = coset.double();
-        }
-        for coset in cosets.iter().rev() {
-            for chunk in values.chunks_exact_mut(coset.size()) {
-                let (l, r) = chunk.split_at_mut(coset.size() / 2);
-                for (i, p) in coset.iter().take(coset.size() / 2).enumerate() {
-                    butterfly(&mut l[i], &mut r[i], p.x);
-                }
-            }
-        }
-        let coset = domain.half_coset;
-        let (l, r) = values.split_at_mut(coset.size());
-        for (i, p) in coset.iter().enumerate() {
+        let half_coset = domain.half_coset;
+        let line_domain = LineDomain::new(half_coset);
+        let (l, r) = values.split_at_mut(half_coset.size());
+        line_fft(l, line_domain);
+        line_fft(r, line_domain);
+        for (i, p) in half_coset.iter().enumerate() {
             butterfly(&mut l[i], &mut r[i], p.y);
         }
         CircleEvaluation { domain, values }
