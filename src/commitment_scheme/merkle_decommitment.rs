@@ -10,18 +10,25 @@ use crate::commitment_scheme::utils::to_byte_slice;
 /// * `leaf_blocks` - The blocks of the bottom layer of the tree.
 /// * `layers` - Internal nodes(hashes) of a specific layer in the tree. nodes that are not in a
 ///   queried path, or nodes with both children in the queried path are excluded.
+/// * `n_rows_in_leaf_block` - The number of trace-rows packed in each leaf block.
 // TODO(Ohad): derive Debug.
 #[derive(Default)]
 pub struct MerkleDecommitment<T: Sized + Display, H: Hasher> {
     pub leaf_blocks: Vec<Vec<T>>,
     pub layers: Vec<Vec<H::Hash>>,
+    pub n_rows_in_leaf_block: usize,
 }
 
 impl<T: Sized + Display, H: Hasher> MerkleDecommitment<T, H> {
-    pub fn new() -> Self {
+    pub fn new(
+        leaf_blocks: Vec<Vec<T>>,
+        layers: Vec<Vec<H::Hash>>,
+        n_rows_in_leaf_block: usize,
+    ) -> Self {
         Self {
-            leaf_blocks: Vec::new(),
-            layers: Vec::new(),
+            leaf_blocks,
+            layers,
+            n_rows_in_leaf_block,
         }
     }
 

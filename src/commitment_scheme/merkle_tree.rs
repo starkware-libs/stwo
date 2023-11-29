@@ -76,15 +76,15 @@ impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
     }
 
     pub fn generate_decommitment(&self, queries: BTreeSet<usize>) -> MerkleDecommitment<T, H> {
-        let mut proof = MerkleDecommitment::<T, H>::new();
         let leaf_block_indices: BTreeSet<usize> = queries
             .iter()
             .map(|query| query / self.bottom_layer_n_rows_in_node)
             .collect();
+        let mut leaf_blocks = Vec::<Vec<T>>::new();
 
         // Input layer, every leaf-block holds 'bottom_layer_block_size' elements.
         leaf_block_indices.iter().for_each(|block_index| {
-            proof.leaf_blocks.push(self.get_leaf_block(*block_index));
+            leaf_blocks.push(self.get_leaf_block(*block_index));
         });
 
         // Sorted indices of the current layer.
@@ -92,6 +92,7 @@ impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
             .iter()
             .map(|index| index ^ 1)
             .collect::<BTreeSet<usize>>();
+        let mut layers = Vec::<Vec<H::Hash>>::new();
         for i in 0..self.height - 2 {
             let mut proof_layer = Vec::<H::Hash>::with_capacity(curr_layer_indices.len());
             let mut indices_iterator = curr_layer_indices.iter().peekable();
@@ -116,7 +117,7 @@ impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
                     proof_layer.push(node);
                 }
             }
-            proof.layers.push(proof_layer);
+            layers.push(proof_layer);
 
             // Next layer indices are the parents' siblings.
             curr_layer_indices = curr_layer_indices
@@ -124,7 +125,11 @@ impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
                 .map(|index| (index / 2) ^ 1)
                 .collect();
         }
-        proof
+        MerkleDecommitment {
+            leaf_blocks,
+            layers,
+            n_rows_in_leaf_block: self.bottom_layer_n_rows_in_node,
+        }
     }
 
     fn get_leaf_block(&self, block_index: usize) -> Vec<T> {
