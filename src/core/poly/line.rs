@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::ops::Deref;
 
 use num_traits::Zero;
 
@@ -108,6 +109,14 @@ impl<F: Field> LinePoly<F> {
     }
 }
 
+impl<F: Field> Deref for LinePoly<F> {
+    type Target = Vec<F>;
+
+    fn deref(&self) -> &Vec<F> {
+        &self.coeffs
+    }
+}
+
 /// Evaluations of a univariate polynomial on a [LineDomain].
 pub struct LineEvaluation<F> {
     _evals: Vec<F>,
@@ -119,6 +128,18 @@ impl<F: Field> LineEvaluation<F> {
         assert!(evals.len().is_power_of_two());
         Self { _evals: evals }
     }
+
+    pub fn interpolate(&self, _domain: LineDomain) -> LinePoly<F> {
+        todo!()
+    }
+}
+
+impl<F: Field> Deref for LineEvaluation<F> {
+    type Target = Vec<F>;
+
+    fn deref(&self) -> &Vec<F> {
+        &self._evals
+    }
 }
 
 #[cfg(test)]
@@ -126,6 +147,7 @@ mod tests {
     use super::LineDomain;
     use crate::core::circle::{CirclePoint, Coset};
     use crate::core::fields::m31::BaseField;
+    use crate::core::poly::line::{LineEvaluation, LinePoly};
 
     #[test]
     #[should_panic]
@@ -196,5 +218,53 @@ mod tests {
         for (i, element) in elements.into_iter().enumerate() {
             assert_eq!(element, domain.at(i), "mismatch at {i}");
         }
+    }
+
+    #[test]
+    fn line_polynomial_evaluation() {
+        let poly = LinePoly::new(vec![
+            BaseField::from(7), // 7 * 1
+            BaseField::from(9), // 9 * Φ(x)
+            BaseField::from(5), // 5 * x
+            BaseField::from(3), // 3 * Φ(x)*x
+        ]);
+        let coset = Coset::half_odds(poly.len().ilog2() as usize);
+        let domain = LineDomain::new(coset);
+        let expected_evals = domain
+            .iter()
+            .map(|x| {
+                let phi_x = CirclePoint::double_x(x);
+                poly[0] + poly[1] * phi_x + poly[2] * x + poly[3] * phi_x * x
+            })
+            .collect::<Vec<BaseField>>();
+
+        let actual_evals = poly.evaluate(domain);
+
+        assert_eq!(*actual_evals, expected_evals);
+    }
+
+    #[test]
+    fn line_evaluation_interpolation() {
+        let poly = LinePoly::new(vec![
+            BaseField::from(7), // 7 * 1
+            BaseField::from(9), // 9 * Φ(x)
+            BaseField::from(5), // 5 * x
+            BaseField::from(3), // 3 * Φ(x)*x
+        ]);
+        let coset = Coset::half_odds(poly.len().ilog2() as usize);
+        let domain = LineDomain::new(coset);
+        let evals = LineEvaluation::new(
+            domain
+                .iter()
+                .map(|x| {
+                    let phi_x = CirclePoint::double_x(x);
+                    poly[0] + poly[1] * phi_x + poly[2] * x + poly[3] * phi_x * x
+                })
+                .collect::<Vec<BaseField>>(),
+        );
+
+        let interpolated_poly = evals.interpolate(domain);
+
+        assert_eq!(interpolated_poly, poly);
     }
 }
