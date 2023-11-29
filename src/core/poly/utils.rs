@@ -17,7 +17,7 @@ use std::ops::{Add, Mul};
 /// # Panics
 ///
 /// Panics if the number of values is not a power of two.
-// TODO(Andrew): Can be made to run >10x faster by unrolling lower layers of recursion
+// TODO(Andrew): Can be made to run >10x faster by unrolling lower layers of recursion.
 pub(crate) fn fold<T, U>(values: &[T], folding_factors: &[U]) -> T
 where
     T: Copy + Add<Output = T> + Mul<U, Output = T>,
