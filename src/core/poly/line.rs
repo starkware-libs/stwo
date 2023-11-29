@@ -4,6 +4,7 @@ use num_traits::Zero;
 
 use crate::core::circle::Coset;
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::Field;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///
@@ -73,43 +74,51 @@ impl LineDomain {
     }
 }
 
-/// A polynomial defined on a [LineDomain].
-#[derive(Clone, Debug)]
-pub struct LinePoly {
+/// A univariate polynomial defined on a [LineDomain].
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LinePoly<F> {
     /// Coefficients of the polynomial in the IFFT algorithm's basis.
     ///
     /// These are not coefficients in the standard monomial basis but rather the tensor product of
     /// the twiddle factors i.e `{1} ⊗ {x} ⊗ {Φ(x)} ⊗ {Φ^2(x)} ⊗ ... ⊗ {Φ^{log(n)-2}(x)}`.
     ///
     /// The coefficients are stored in bit-reversed order.
-    coeffs: Vec<BaseField>,
+    coeffs: Vec<F>,
 }
 
-impl LinePoly {
-    /// Creates a new line polynomial from a set of bit reversed coefficients.
+impl<F: Field> LinePoly<F> {
+    /// Creates a new line polynomial from bit reversed coefficients.
     ///
     /// # Panics
     ///
     /// Panics if the number of coefficients isn't a power of two.
-    pub fn new(coeffs: Vec<BaseField>) -> Self {
+    pub fn new(coeffs: Vec<F>) -> Self {
         assert!(coeffs.len().is_power_of_two());
         Self { coeffs }
     }
 
-    /// Evaluates the polynomial at a point
-    pub fn eval_at_point(&self, _x: BaseField) -> BaseField {
+    /// Evaluates the polynomial at a single point.
+    pub fn eval_at_point(&self, _x: F) -> F {
         todo!()
     }
 
     /// Evaluates the polynomial at all points in the domain.
-    pub fn evaluate(self, _domain: LineDomain) -> LineEvaluation {
+    pub fn evaluate(self, _domain: LineDomain) -> LineEvaluation<F> {
         todo!()
     }
 }
 
-/// Evaluations of a polynomial on a [LineDomain].
-pub struct LineEvaluation {
-    evals: Vec<BaseField>,
+/// Evaluations of a univariate polynomial on a [LineDomain].
+pub struct LineEvaluation<F> {
+    _evals: Vec<F>,
+}
+
+impl<F: Field> LineEvaluation<F> {
+    // TODO: docs
+    pub fn new(evals: Vec<F>) -> Self {
+        assert!(evals.len().is_power_of_two());
+        Self { _evals: evals }
+    }
 }
 
 #[cfg(test)]
