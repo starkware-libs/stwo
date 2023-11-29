@@ -6,7 +6,7 @@ use num_traits::Zero;
 use crate::core::circle::Coset;
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::Field;
+use crate::core::fields::{ExtensionOf, Field};
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///
@@ -81,7 +81,7 @@ pub struct LinePoly<F> {
     log_n: u32,
 }
 
-impl<F: Field> LinePoly<F> {
+impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// Creates a new line polynomial from bit reversed coefficients.
     ///
     /// # Panics
@@ -99,8 +99,9 @@ impl<F: Field> LinePoly<F> {
     }
 
     /// Evaluates the polynomial at all points in the domain.
-    pub fn evaluate(self, _domain: LineDomain) -> LineEvaluation<F> {
-        todo!()
+    pub fn evaluate(mut self, domain: LineDomain) -> LineEvaluation<F> {
+        line_fft(&mut self.coeffs, domain);
+        LineEvaluation::new(self.coeffs)
     }
 
     /// Returns the number of coefficients.
@@ -111,7 +112,7 @@ impl<F: Field> LinePoly<F> {
     }
 }
 
-impl<F: Field> Deref for LinePoly<F> {
+impl<F: ExtensionOf<BaseField>> Deref for LinePoly<F> {
     type Target = Vec<F>;
 
     fn deref(&self) -> &Vec<F> {
@@ -126,7 +127,7 @@ pub struct LineEvaluation<F> {
     log_n: u32,
 }
 
-impl<F: Field> LineEvaluation<F> {
+impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     /// Creates new [LineEvaluation] from a set of polynomial evaluations over a [LineDomain].
     ///
     /// # Panics
@@ -134,15 +135,16 @@ impl<F: Field> LineEvaluation<F> {
     /// Panics if the number of evaluations is not a power of two.
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());
-        Self {
-            log_n: evals.len().ilog2(),
-            evals,
-        }
+        let log_n = evals.len().ilog2();
+        Self { evals, log_n }
     }
 
-    /// Interpolates the polynomial as evaluations on `domain`.
-    pub fn interpolate(self, _domain: LineDomain) -> LinePoly<F> {
-        todo!()
+    /// Interpolates the polynomial as evaluations on `domain`
+    pub fn interpolate(mut self, domain: LineDomain) -> LinePoly<F> {
+        line_ifft(&mut self.evals, domain);
+        let len_inv = BaseField::from(domain.size()).inverse();
+        self.evals.iter_mut().for_each(|v| *v *= len_inv);
+        LinePoly::new(self.evals)
     }
 
     /// Returns the number of evaluations.
@@ -153,7 +155,7 @@ impl<F: Field> LineEvaluation<F> {
     }
 }
 
-impl<F: Field> Deref for LineEvaluation<F> {
+impl<F: ExtensionOf<BaseField>> Deref for LineEvaluation<F> {
     type Target = Vec<F>;
 
     fn deref(&self) -> &Vec<F> {
@@ -179,7 +181,7 @@ impl<F: Field> Deref for LineEvaluation<F> {
 /// B = { 1 } ⊗ { x } ⊗ { π(x) } ⊗ { π(π(x)) } ⊗ ...
 ///   = { 1, x, π(x), π(x) * x, π(π(x)), π(π(x)) * x, π(π(x)) * π(x), ... }
 /// ```
-pub(crate) fn line_ifft<F: Field>(values: &mut [F], mut domain: LineDomain) {
+pub(crate) fn line_ifft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain: LineDomain) {
     while domain.size() > 1 {
         for chunk in values.chunks_exact_mut(domain.size()) {
             let (l, r) = chunk.split_at_mut(domain.size() / 2);
@@ -196,15 +198,19 @@ pub(crate) fn line_ifft<F: Field>(values: &mut [F], mut domain: LineDomain) {
 /// The transform happens in-place. `values` consist of coefficients in [line_ifft] algorithm's
 /// basis in bit-reversed order. After the transformation `values` becomes evaluations of the
 /// polynomial over `domain` stored in natural order.
-pub(crate) fn line_fft<F: Field>(values: &mut [F], mut domain: LineDomain) {
+pub(crate) fn line_fft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain: LineDomain) {
+    let mut domains = vec![];
     while domain.size() > 1 {
+        domains.push(domain);
+        domain = domain.double();
+    }
+    for domain in domains.iter().rev() {
         for chunk in values.chunks_exact_mut(domain.size()) {
             let (l, r) = chunk.split_at_mut(domain.size() / 2);
             for (i, x) in domain.iter().take(domain.size() / 2).enumerate() {
-                butterfly(&mut l[i], &mut r[i], x.inverse());
+                butterfly(&mut l[i], &mut r[i], x);
             }
         }
-        domain = domain.double();
     }
 }
 
@@ -287,7 +293,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "not implemented"]
     fn line_polynomial_evaluation() {
         let poly = LinePoly::new(vec![
             BaseField::from(7), // 7 * 1
@@ -311,7 +316,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "not implemented"]
     fn line_evaluation_interpolation() {
         let poly = LinePoly::new(vec![
             BaseField::from(7), // 7 * 1
