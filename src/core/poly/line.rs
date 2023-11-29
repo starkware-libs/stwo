@@ -96,8 +96,9 @@ impl<F: Field> LinePoly<F> {
     }
 
     /// Evaluates the polynomial at all points in the domain.
-    pub fn evaluate(self, _domain: LineDomain) -> LineEvaluation<F> {
-        todo!()
+    pub fn evaluate(mut self, domain: LineDomain) -> LineEvaluation<F> {
+        line_fft(&mut self.coeffs, domain);
+        LineEvaluation::new(self.coeffs)
     }
 }
 
@@ -111,7 +112,7 @@ impl<F: Field> Deref for LinePoly<F> {
 
 /// Evaluations of a univariate polynomial on a [LineDomain].
 pub struct LineEvaluation<F> {
-    _evals: Vec<F>,
+    evals: Vec<F>,
 }
 
 impl<F: Field> LineEvaluation<F> {
@@ -122,12 +123,15 @@ impl<F: Field> LineEvaluation<F> {
     /// Panics if the number of evaluations is not a power of two.
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());
-        Self { _evals: evals }
+        Self { evals }
     }
 
     /// Interpolates the polynomial as evaluations on `domain`
-    pub fn interpolate(self, _domain: LineDomain) -> LinePoly<F> {
-        todo!()
+    pub fn interpolate(mut self, domain: LineDomain) -> LinePoly<F> {
+        line_ifft(&mut self.evals, domain);
+        let len_inv = BaseField::from(domain.size()).inverse();
+        self.evals.iter_mut().for_each(|v| *v *= len_inv);
+        LinePoly::new(self.evals)
     }
 }
 
@@ -135,7 +139,7 @@ impl<F: Field> Deref for LineEvaluation<F> {
     type Target = Vec<F>;
 
     fn deref(&self) -> &Vec<F> {
-        &self._evals
+        &self.evals
     }
 }
 
@@ -175,14 +179,18 @@ pub(crate) fn line_ifft<F: Field>(values: &mut [F], mut domain: LineDomain) {
 /// basis in bit-reversed order. After the transformation `values` becomes evaluations of the
 /// polynomial over `domain` stored in natural order.
 pub(crate) fn line_fft<F: Field>(values: &mut [F], mut domain: LineDomain) {
+    let mut domains = vec![];
     while domain.size() > 1 {
+        domains.push(domain);
+        domain = domain.double();
+    }
+    for domain in domains.iter().rev() {
         for chunk in values.chunks_exact_mut(domain.size()) {
             let (l, r) = chunk.split_at_mut(domain.size() / 2);
             for (i, x) in domain.iter().take(domain.size() / 2).enumerate() {
-                butterfly(&mut l[i], &mut r[i], x.inverse());
+                butterfly(&mut l[i], &mut r[i], x);
             }
         }
-        domain = domain.double();
     }
 }
 
@@ -265,7 +273,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "not implemented"]
     fn line_polynomial_evaluation() {
         let poly = LinePoly::new(vec![
             BaseField::from(7), // 7 * 1
@@ -289,7 +296,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "not implemented"]
     fn line_evaluation_interpolation() {
         let poly = LinePoly::new(vec![
             BaseField::from(7), // 7 * 1
