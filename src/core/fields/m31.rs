@@ -83,6 +83,24 @@ impl Zero for M31 {
     }
 }
 
+impl From<usize> for M31 {
+    fn from(value: usize) -> Self {
+        M31::reduce(value.try_into().unwrap())
+    }
+}
+
+impl From<u32> for M31 {
+    fn from(value: u32) -> Self {
+        M31::reduce(value.try_into().unwrap())
+    }
+}
+
+impl From<i32> for M31 {
+    fn from(value: i32) -> Self {
+        M31::reduce(value.try_into().unwrap())
+    }
+}
+
 #[cfg(test)]
 #[macro_export]
 macro_rules! m31 {
