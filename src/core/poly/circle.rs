@@ -193,29 +193,6 @@ impl<F: Field> CircleEvaluation<F> {
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
     pub fn interpolate(mut self) -> CirclePoly<F> {
         // Use CFFT to interpolate.
-<<<<<<< HEAD
-        let mut coset = self.domain.half_coset;
-        let mut values = self.values;
-        let (l, r) = values.split_at_mut(coset.size());
-        for (i, p) in coset.iter().enumerate() {
-            ibutterfly(&mut l[i], &mut r[i], p.y.inverse());
-        }
-        while coset.size() > 1 {
-            for chunk in values.chunks_exact_mut(coset.size()) {
-                let (l, r) = chunk.split_at_mut(coset.size() / 2);
-                for (i, p) in coset.iter().take(coset.size() / 2).enumerate() {
-                    ibutterfly(&mut l[i], &mut r[i], p.x.inverse());
-                }
-            }
-            coset = coset.double();
-        }
-
-        // Divide all values by 2^n_bits.
-        let inv = BaseField::from_u32_unchecked(self.domain.size() as u32).inverse();
-        for val in &mut values {
-            *val *= inv;
-        }
-=======
         let half_coset = self.domain.half_coset;
         let (l, r) = self.values.split_at_mut(half_coset.len());
         for (i, p) in half_coset.iter().enumerate() {
@@ -228,7 +205,6 @@ impl<F: Field> CircleEvaluation<F> {
         // Normalize the coefficients.
         let len_inv = BaseField::from(self.values.len()).inverse();
         self.values.iter_mut().for_each(|v| *v *= len_inv);
->>>>>>> 70e92ae (Use line fft in circle fft)
 
         CirclePoly {
             bound_bits: self.domain.n_bits(),
@@ -297,9 +273,9 @@ impl<F: Field> CirclePoly<F> {
 
         let half_coset = domain.half_coset;
         let line_domain = LineDomain::new(half_coset);
-        let (l, r) = values.split_at_mut(half_coset.size());
-        line_fft(l, line_domain);
-        line_fft(r, line_domain);
+        let (l, r) = values.split_at_mut(half_coset.len());
+        line_fft(l, line_domain, 0);
+        line_fft(r, line_domain, 0);
         for (i, p) in half_coset.iter().enumerate() {
             butterfly(&mut l[i], &mut r[i], p.y);
         }
