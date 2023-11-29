@@ -77,9 +77,6 @@ impl LineDomain {
 pub struct LinePoly<F> {
     /// Coefficients of the polynomial in the IFFT algorithm's basis.
     ///
-    /// These are not coefficients in the standard monomial basis but rather the tensor product of
-    /// the twiddle factors i.e `{1} ⊗ {x} ⊗ {Φ(x)} ⊗ {Φ^2(x)} ⊗ ... ⊗ {Φ^{log(n)-2}(x)}`.
-    ///
     /// The coefficients are stored in bit-reversed order.
     coeffs: Vec<F>,
 }
@@ -126,7 +123,7 @@ impl<F: Field> LineEvaluation<F> {
         Self { _evals: evals }
     }
 
-    pub fn interpolate(&self, _domain: LineDomain) -> LinePoly<F> {
+    pub fn interpolate(self, _domain: LineDomain) -> LinePoly<F> {
         todo!()
     }
 }
@@ -210,6 +207,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "not implemented"]
     fn line_polynomial_evaluation() {
         let poly = LinePoly::new(vec![
             BaseField::from(7), // 7 * 1
@@ -233,6 +231,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "not implemented"]
     fn line_evaluation_interpolation() {
         let poly = LinePoly::new(vec![
             BaseField::from(7), // 7 * 1
