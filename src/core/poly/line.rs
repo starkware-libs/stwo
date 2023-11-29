@@ -153,8 +153,7 @@ impl<F: Field> Deref for LineEvaluation<F> {
 /// normalized coefficients can be obtained by scaling all coefficients by `1 / len(values)`.
 ///
 /// This algorithm does not return coefficients in the standard monomial basis but rather returns
-/// coefficients in a basis that relates to the circles x-coordinate doubling map `π(x) = 2x^2 - 1`
-///
+/// coefficients in a basis relating to the circle's x-coordinate doubling map `π(x) = 2x^2 - 1`
 /// i.e.
 ///
 /// ```text
