@@ -5,7 +5,7 @@ use std::ops::{Add, Mul};
 /// i.e. folding `n = 8` values with `folding_factors = [α, β, γ]`:
 ///
 /// ```text
-///               n2=n5+α*n6
+///               n2=n1+α*n2
 ///           /               \
 ///     n1=n3+β*n4          n2=n5+β*n6
 ///      /      \            /      \
