@@ -180,7 +180,12 @@ impl<F: ExtensionOf<BaseField>> Deref for LineEvaluation<F> {
 /// B = { 1 } ⊗ { x } ⊗ { π(x) } ⊗ { π(π(x)) } ⊗ ...
 ///   = { 1, x, π(x), π(x) * x, π(π(x)), π(π(x)) * x, π(π(x)) * π(x), ... }
 /// ```
+///
+/// # Panics
+///
+/// Panics if the number of values doesn't match the size of the domain.
 pub(crate) fn line_ifft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain: LineDomain) {
+    assert_eq!(values.len(), domain.size());
     while domain.size() > 1 {
         for chunk in values.chunks_exact_mut(domain.size()) {
             let (l, r) = chunk.split_at_mut(domain.size() / 2);
@@ -197,7 +202,12 @@ pub(crate) fn line_ifft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain:
 /// The transform happens in-place. `values` consist of coefficients in [line_ifft] algorithm's
 /// basis in bit-reversed order. After the transformation `values` becomes evaluations of the
 /// polynomial over `domain` stored in natural order.
+///
+/// # Panics
+///
+/// Panics if the number of values doesn't match the size of the domain.
 pub(crate) fn line_fft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain: LineDomain) {
+    assert_eq!(values.len(), domain.size());
     let mut domains = vec![];
     while domain.size() > 1 {
         domains.push(domain);
