@@ -232,8 +232,8 @@ pub struct CirclePoly<F: ExtensionOf<BaseField>> {
     /// Coefficients of the polynomial in the FFT basis.
     /// Note: These are not the coefficients of the polynomial in the standard
     /// monomial basis. The FFT basis is a tensor product of the twiddles:
-    /// y, x, psi_x(x), psi_x^2(x), ..., psi_x^{bound_bits-2}(x).
-    /// psi_x(x) := 2x^2 - 1.
+    /// y, x, π(x), π^2(x), ..., π^{bound_bits-2}(x).
+    /// π(x) := 2x^2 - 1.
     coeffs: Vec<F>,
 }
 
