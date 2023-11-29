@@ -83,7 +83,7 @@ impl<F: Field> LinePoly<F> {
     ///
     /// # Panics
     ///
-    /// Panics if the number of coefficients isn't a power of two.
+    /// Panics if the number of coefficients is not a power of two.
     pub fn new(coeffs: Vec<F>) -> Self {
         assert!(coeffs.len().is_power_of_two());
         Self { coeffs }
@@ -114,12 +114,17 @@ pub struct LineEvaluation<F> {
 }
 
 impl<F: Field> LineEvaluation<F> {
-    // TODO: docs
+    /// Creates new [LineEvaluation] from a set of polynomial evaluations over a [LineDomain].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of evaluations is not a power of two.
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());
         Self { _evals: evals }
     }
 
+    /// Interpolates the polynomial as evaluations on `domain`
     pub fn interpolate(self, _domain: LineDomain) -> LinePoly<F> {
         todo!()
     }
