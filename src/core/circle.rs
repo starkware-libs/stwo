@@ -27,6 +27,18 @@ impl<F: Field> CirclePoint<F> {
     }
 
     /// Applies the circle's x-coordinate doubling map.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use prover_research::core::circle::CirclePoint;
+    /// use prover_research::core::fields::m31::M31;
+    /// let p = CirclePoint {
+    ///     x: M31::from_u32_unchecked(2),
+    ///     y: M31::from_u32_unchecked(1268011823),
+    /// };
+    /// assert_eq!(CirclePoint::<M31>::double_x(p.x), (p + p).x);
+    /// ```
     pub fn double_x(x: F) -> F {
         x.square().double() - F::one()
     }
