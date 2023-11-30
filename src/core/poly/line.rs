@@ -96,7 +96,7 @@ impl<F: Field> LinePoly<F> {
     pub fn eval_at_point(&self, mut x: F) -> F {
         // TODO(Andrew): Allocation here expensive for small polynomials.
         let mut twiddle_factors = vec![x];
-        for _ in 2..self.coeffs.len().ilog2() {
+        for _ in 1..self.coeffs.len().ilog2() {
             x = CirclePoint::double_x(x);
             twiddle_factors.push(x);
         }
@@ -137,6 +137,7 @@ impl<F: Field> Deref for LinePoly<F> {
 }
 
 /// Evaluations of a univariate polynomial on a [LineDomain].
+#[derive(Debug, Clone)]
 pub struct LineEvaluation<F> {
     evals: Vec<F>,
 }
@@ -191,7 +192,7 @@ impl<F: Field> Deref for LineEvaluation<F> {
 /// # Panics
 ///
 /// Panics if the number of values doesn't match the size of the domain.
-pub(crate) fn line_ifft<F: Field>(values: &mut [F], mut domain: LineDomain) {
+pub(super) fn line_ifft<F: Field>(values: &mut [F], mut domain: LineDomain) {
     assert_eq!(values.len(), domain.size());
     while domain.size() > 1 {
         for chunk in values.chunks_exact_mut(domain.size()) {
@@ -217,7 +218,7 @@ pub(crate) fn line_ifft<F: Field>(values: &mut [F], mut domain: LineDomain) {
 /// # Panics
 ///
 /// Panics if the number of values doesn't match the size of the domain.
-pub(crate) fn line_fft<F: Field>(
+pub(super) fn line_fft<F: Field>(
     values: &mut [F],
     mut domain: LineDomain,
     n_skipped_layers: usize,
@@ -393,11 +394,11 @@ mod tests {
 
     #[test]
     fn line_polynomial_eval_at_point() {
-        const LOG_N: usize = 8;
+        const LOG_N: usize = 2;
         let coset = Coset::half_odds(LOG_N);
         let evals = LineEvaluation::new((0..1 << LOG_N).map(BaseField::from).collect());
         let domain = LineDomain::new(coset);
-        let poly = evals.interpolate(domain);
+        let poly = evals.clone().interpolate(domain);
 
         for (i, x) in domain.iter().enumerate() {
             assert_eq!(poly.eval_at_point(x), evals[i], "mismatch at {i}");
