@@ -287,19 +287,16 @@ impl Coset {
         Self::new(CirclePointIndex::subgroup_gen(n_bits + 2), n_bits)
     }
 
-    pub fn len(&self) -> usize {
+    /// Returns the size of the coset.
+    pub fn size(&self) -> usize {
         1 << self.n_bits
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     pub fn iter(&self) -> CosetIterator<CirclePoint<M31>> {
         CosetIterator {
             cur: self.initial,
             step: self.step,
-            remaining: self.len(),
+            remaining: self.size(),
         }
     }
 
@@ -307,7 +304,7 @@ impl Coset {
         CosetIterator {
             cur: self.initial_index,
             step: self.step_size,
-            remaining: self.len(),
+            remaining: self.size(),
         }
     }
 

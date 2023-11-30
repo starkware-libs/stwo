@@ -33,12 +33,12 @@ impl Fibonacci {
 
     pub fn get_trace(&self) -> CircleEvaluation<BaseField> {
         // Trace.
-        let mut trace = Vec::with_capacity(self.trace_coset.len());
+        let mut trace = Vec::with_capacity(self.trace_coset.size());
 
         // Fill trace with fibonacci squared.
         let mut a = BaseField::one();
         let mut b = BaseField::one();
-        for _ in 0..self.trace_coset.len() {
+        for _ in 0..self.trace_coset.size() {
             trace.push(a);
             let tmp = a.square() + b.square();
             a = b;
@@ -56,8 +56,8 @@ impl Fibonacci {
     }
 
     pub fn eval_step_quotient(&self, trace: impl PolyOracle) -> BaseField {
-        let excluded0 = self.constraint_coset.at(self.constraint_coset.len() - 2);
-        let excluded1 = self.constraint_coset.at(self.constraint_coset.len() - 1);
+        let excluded0 = self.constraint_coset.at(self.constraint_coset.size() - 2);
+        let excluded1 = self.constraint_coset.at(self.constraint_coset.size() - 1);
         let num = self.eval_step_constraint(trace)
             * point_excluder(excluded0, trace.point())
             * point_excluder(excluded1, trace.point());
@@ -84,7 +84,7 @@ impl Fibonacci {
         let mut quotient = random_coeff.pow(0) * self.eval_step_quotient(trace);
         quotient += random_coeff.pow(1) * self.eval_boundary_quotient(trace, 0, BaseField::one());
         quotient += random_coeff.pow(2)
-            * self.eval_boundary_quotient(trace, self.constraint_coset.len() - 1, self.claim);
+            * self.eval_boundary_quotient(trace, self.constraint_coset.size() - 1, self.claim);
         quotient
     }
 
@@ -123,7 +123,7 @@ mod tests {
         for p_ind in fib
             .constraint_coset
             .iter_indices()
-            .take(fib.constraint_coset.len() - 2)
+            .take(fib.constraint_coset.size() - 2)
         {
             let res = fib.eval_step_constraint(EvalByEvaluation {
                 offset: p_ind,
@@ -150,7 +150,7 @@ mod tests {
                 EvalByEvaluation {
                     offset: fib
                         .constraint_coset
-                        .index_at(fib.constraint_coset.len() - 1),
+                        .index_at(fib.constraint_coset.size() - 1),
                     eval: &trace,
                 },
                 fib.claim
@@ -172,7 +172,7 @@ mod tests {
         let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
 
         // Compute quotient on the evaluation domain.
-        let mut quotient_values = Vec::with_capacity(fib.constraint_eval_domain.len());
+        let mut quotient_values = Vec::with_capacity(fib.constraint_eval_domain.size());
         for p_ind in fib.constraint_eval_domain.iter_indices() {
             quotient_values.push(fib.eval_quotient(
                 random_coeff,

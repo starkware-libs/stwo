@@ -48,12 +48,9 @@ impl CircleDomain {
             .chain(self.half_coset.conjugate().iter_indices())
     }
 
-    pub fn len(&self) -> usize {
-        self.half_coset.len() * 2
-    }
-
-    pub fn is_empty(&self) -> bool {
-        false
+    /// Returns the size of the domain.
+    pub fn size(&self) -> usize {
+        self.half_coset.size() * 2
     }
 
     pub fn n_bits(&self) -> usize {
@@ -61,11 +58,11 @@ impl CircleDomain {
     }
 
     pub fn at(&self, index: usize) -> CirclePoint<BaseField> {
-        if index < self.half_coset.len() {
+        if index < self.half_coset.size() {
             self.half_coset.at(index)
         } else {
             self.half_coset
-                .at(index - self.half_coset.len())
+                .at(index - self.half_coset.size())
                 .conjugate()
         }
     }
@@ -75,7 +72,7 @@ impl CircleDomain {
             return Some(d);
         }
         if let Some(d) = self.half_coset.conjugate().find(i) {
-            return Some(self.half_coset.len() + d);
+            return Some(self.half_coset.size() + d);
         }
         None
     }
@@ -165,7 +162,7 @@ pub struct CircleEvaluation<F: Field> {
 
 impl<F: Field> CircleEvaluation<F> {
     pub fn new(domain: CircleDomain, values: Vec<F>) -> Self {
-        assert_eq!(domain.len(), values.len());
+        assert_eq!(domain.size(), values.len());
         Self { domain, values }
     }
 
@@ -176,14 +173,14 @@ impl<F: Field> CircleEvaluation<F> {
     ///   G_8, G_8 + 2G_4, -G_8, -G_8 - 2G_4.
     pub fn new_canonical_ordered(coset: CanonicCoset, values: Vec<F>) -> Self {
         let domain = coset.circle_domain();
-        assert_eq!(values.len(), domain.len());
+        assert_eq!(values.len(), domain.size());
         let mut new_values = Vec::with_capacity(values.len());
         let half_len = 1 << (coset.n_bits - 1);
         for i in 0..half_len {
             new_values.push(values[i << 1]);
         }
         for i in 0..half_len {
-            new_values.push(values[domain.len() - 1 - (i << 1)]);
+            new_values.push(values[domain.size() - 1 - (i << 1)]);
         }
         Self {
             domain,
@@ -196,14 +193,14 @@ impl<F: Field> CircleEvaluation<F> {
         // Use CFFT to interpolate.
         let mut coset = self.domain.half_coset;
         let mut values = self.values;
-        let (l, r) = values.split_at_mut(coset.len());
+        let (l, r) = values.split_at_mut(coset.size());
         for (i, p) in coset.iter().enumerate() {
             ibutterfly(&mut l[i], &mut r[i], p.y.inverse());
         }
-        while coset.len() > 1 {
-            for chunk in values.chunks_exact_mut(coset.len()) {
-                let (l, r) = chunk.split_at_mut(coset.len() / 2);
-                for (i, p) in coset.iter().take(coset.len() / 2).enumerate() {
+        while coset.size() > 1 {
+            for chunk in values.chunks_exact_mut(coset.size()) {
+                let (l, r) = chunk.split_at_mut(coset.size() / 2);
+                for (i, p) in coset.iter().take(coset.size() / 2).enumerate() {
                     ibutterfly(&mut l[i], &mut r[i], p.x.inverse());
                 }
             }
@@ -211,7 +208,7 @@ impl<F: Field> CircleEvaluation<F> {
         }
 
         // Divide all values by 2^n_bits.
-        let inv = BaseField::from_u32_unchecked(self.domain.len() as u32).inverse();
+        let inv = BaseField::from_u32_unchecked(self.domain.size() as u32).inverse();
         for val in &mut values {
             *val *= inv;
         }
@@ -278,26 +275,26 @@ impl<F: Field> CirclePoly<F> {
 
         // TODO(spapini): extend better.
         assert!(domain.n_bits() >= self.bound_bits);
-        let mut values = vec![F::zero(); domain.len()];
+        let mut values = vec![F::zero(); domain.size()];
         let jump_bits = domain.n_bits() - self.bound_bits;
         for (i, val) in self.coeffs.iter().enumerate() {
             values[i << jump_bits] = *val;
         }
 
-        while coset.len() > 1 {
+        while coset.size() > 1 {
             cosets.push(coset);
             coset = coset.double();
         }
         for coset in cosets.iter().rev() {
-            for chunk in values.chunks_exact_mut(coset.len()) {
-                let (l, r) = chunk.split_at_mut(coset.len() / 2);
-                for (i, p) in coset.iter().take(coset.len() / 2).enumerate() {
+            for chunk in values.chunks_exact_mut(coset.size()) {
+                let (l, r) = chunk.split_at_mut(coset.size() / 2);
+                for (i, p) in coset.iter().take(coset.size() / 2).enumerate() {
                     butterfly(&mut l[i], &mut r[i], p.x);
                 }
             }
         }
         let coset = domain.half_coset;
-        let (l, r) = values.split_at_mut(coset.len());
+        let (l, r) = values.split_at_mut(coset.size());
         for (i, p) in coset.iter().enumerate() {
             butterfly(&mut l[i], &mut r[i], p.y);
         }
@@ -408,7 +405,7 @@ mod tests {
         let constraint_domain = CircleDomain::constraint_evaluation_domain(n_bits + 1);
 
         // Compute values.
-        let values1: Vec<_> = (0..(domain1.len() as u32))
+        let values1: Vec<_> = (0..(domain1.size() as u32))
             .map(BaseField::from_u32_unchecked)
             .collect();
         let values0: Vec<_> = values1[1..].iter().step_by(4).map(|x| *x * *x).collect();
