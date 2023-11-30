@@ -4,7 +4,7 @@ use blake2::digest::{Update, VariableOutput};
 use blake2::{Blake2s256, Blake2sVar, Digest};
 
 // Wrapper for the blake2s hash type.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Blake2sHash([u8; 32]);
 
 impl From<Blake2sHash> for Vec<u8> {
@@ -95,6 +95,18 @@ impl super::hasher::Hasher for Blake2sHasher {
             )
             .for_each(|(input, out)| Self::hash_one_in_place(input, out))
     }
+
+    fn hash_many_multi_src(data: &[&[&[u8]]]) -> Vec<Self::Hash> {
+        data.iter()
+            .map(|input_group| {
+                let mut hasher = Blake2s256::new();
+                input_group.iter().for_each(|d| {
+                    blake2::Digest::update(&mut hasher, d);
+                });
+                Blake2sHash(hasher.finalize().into())
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -148,5 +160,22 @@ mod tests {
         unsafe { Blake2sHasher::hash_many_in_place(&input_arr, 1, &out_ptrs) };
 
         assert_eq!("4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e900000000000000000000004449e92c9a7657ef2d677b8ef9da46c088f13575ea887e4818fc455a2bca50000000000000000000000000000000000000000000000", hex::encode(out));
+    }
+
+    #[test]
+    fn hash_many_multi_src_test() {
+        let input1 = b"a";
+        let input2 = b"b";
+        let input3 = b"c";
+        let input4 = b"d";
+        let input_group_1 = [&input1[..], &input2[..]];
+        let input_group_2 = [&input3[..], &input4[..]];
+        let input_arr = [&input_group_1[..], &input_group_2[..]];
+
+        let hash_results = Blake2sHasher::hash_many_multi_src(&input_arr);
+
+        assert!(hash_results.len() == 2);
+        assert_eq!(hash_results[0], Blake2sHasher::hash(b"ab"));
+        assert_eq!(hash_results[1], Blake2sHasher::hash(b"cd"));
     }
 }

@@ -39,4 +39,6 @@ pub trait Hasher {
         single_input_length_bytes: usize,
         dst: &[*mut u8],
     );
+
+    fn hash_many_multi_src(data: &[&[&[u8]]]) -> Vec<Self::Hash>;
 }
