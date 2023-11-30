@@ -61,7 +61,7 @@ impl LineDomain {
         }
     }
 
-    /// Returns the domain's underlying coset
+    /// Returns the domain's underlying coset.
     pub fn coset(&self) -> Coset {
         self.coset
     }
