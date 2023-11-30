@@ -20,7 +20,7 @@ impl LineDomain {
     ///
     /// Panics if the coset items don't have unique x-coordinates.
     pub fn new(coset: Coset) -> Self {
-        match coset.len().cmp(&2) {
+        match coset.size().cmp(&2) {
             Ordering::Less => {}
             Ordering::Equal => {
                 // If the coset with two points contains (0, y) then the coset is {(0, y), (0, -y)}.
@@ -50,11 +50,9 @@ impl LineDomain {
         self.coset.at(i).x
     }
 
-    /// Returns the number of elements in the domain.
-    // TODO(Andrew): Rename len() on cosets and domains to size() and remove is_empty() since you
-    // shouldn't be able to create an empty coset.
+    /// Returns the size of the domain.
     pub fn size(&self) -> usize {
-        self.coset.len()
+        self.coset.size()
     }
 
     /// Returns an iterator over elements in the domain.
@@ -67,6 +65,11 @@ impl LineDomain {
         Self {
             coset: self.coset.double(),
         }
+    }
+
+    /// Returns the domain's underlying coset
+    pub fn coset(&self) -> Coset {
+        self.coset
     }
 }
 
@@ -110,6 +113,14 @@ mod tests {
         let size = domain.size();
 
         assert_eq!(size, 1 << LOG_N);
+    }
+
+    #[test]
+    fn line_domain_coset_returns_the_coset() {
+        let coset = Coset::half_odds(5);
+        let domain = LineDomain::new(coset);
+
+        assert_eq!(domain.coset(), coset);
     }
 
     #[test]
