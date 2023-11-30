@@ -5,7 +5,7 @@ use std::iter::zip;
 /// # Examples
 ///
 /// ```rust,ignore
-/// assert_eq!(repeat(&[1, 2, 3], 2), vec![1, 1, 2, 2, 3, 3]);
+/// assert_eq!(repeat_value(&[1, 2, 3], 2), vec![1, 1, 2, 2, 3, 3]);
 /// ```
 pub(super) fn repeat_value<T: Copy>(values: &[T], duplicity: usize) -> Vec<T> {
     if duplicity == 0 {
