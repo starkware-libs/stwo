@@ -144,7 +144,7 @@ mod tests {
 
         let elements = domain.iter().collect::<Vec<BaseField>>();
 
-        assert_eq!(elements.len(), 1 << LOG_N);
+        assert_eq!(elements.len(), domain.size());
         for (i, element) in elements.into_iter().enumerate() {
             assert_eq!(element, domain.at(i), "mismatch at {i}");
         }
