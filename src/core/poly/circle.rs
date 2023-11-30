@@ -194,7 +194,7 @@ impl<F: Field> CircleEvaluation<F> {
     pub fn interpolate(mut self) -> CirclePoly<F> {
         // Use CFFT to interpolate.
         let half_coset = self.domain.half_coset;
-        let (l, r) = self.values.split_at_mut(half_coset.len());
+        let (l, r) = self.values.split_at_mut(half_coset.size());
         for (i, p) in half_coset.iter().enumerate() {
             ibutterfly(&mut l[i], &mut r[i], p.y.inverse());
         }
@@ -273,7 +273,7 @@ impl<F: Field> CirclePoly<F> {
 
         let half_coset = domain.half_coset;
         let line_domain = LineDomain::new(half_coset);
-        let (l, r) = values.split_at_mut(half_coset.len());
+        let (l, r) = values.split_at_mut(half_coset.size());
         line_fft(l, line_domain, 0);
         line_fft(r, line_domain, 0);
         for (i, p) in half_coset.iter().enumerate() {
