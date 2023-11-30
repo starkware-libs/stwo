@@ -2,14 +2,12 @@ use std::collections::BTreeMap;
 use std::iter::Chain;
 use std::ops::Deref;
 
-use num_traits::One;
-
 use super::utils::fold;
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::Field;
-use crate::core::poly::line::{line_fft, LineDomain};
+use crate::core::poly::line::{line_fft, line_ifft, LineDomain};
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.

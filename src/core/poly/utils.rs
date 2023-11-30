@@ -17,7 +17,8 @@ use std::ops::{Add, Mul};
 ///
 /// # Panics
 ///
-/// Panics if the number of values is not a power of two.
+/// Panics if the number of values is not a power of two or if an incorrect number of of folding
+/// factors is provided.
 // TODO(Andrew): Can be made to run >10x faster by unrolling lower layers of recursion
 pub(super) fn fold<T, U>(values: &[T], folding_factors: &[U]) -> T
 where
@@ -25,7 +26,7 @@ where
     U: Copy,
 {
     let n = values.len();
-    assert!(n.is_power_of_two());
+    assert_eq!(n, 1 << folding_factors.len());
     if n == 1 {
         return values[0];
     }
