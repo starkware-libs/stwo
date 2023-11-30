@@ -40,13 +40,7 @@ impl LineDomain {
     }
 
     /// Returns the `i`th domain element.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index exceeds the size of the domain.
     pub fn at(&self, i: usize) -> BaseField {
-        let n = self.size();
-        assert!(i < n, "the size of the domain is {n} but index is {i}");
         self.coset.at(i).x
     }
 
