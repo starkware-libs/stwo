@@ -121,6 +121,24 @@ impl CirclePoint<QM31> {
     }
 }
 
+/// A generator for the circle group.
+///
+/// # Examples
+///
+/// ```
+/// use prover_research::core::circle::{CirclePoint, M31_CIRCLE_GEN};
+/// use prover_research::core::fields::m31::M31;
+///
+/// // Adding a generator to itself (2^30) times should NOT yield the identity.
+/// let circle_point = M31_CIRCLE_GEN.repeated_double(30);
+/// assert!(!circle_point.is_zero());
+///
+/// /// Shown above ord(M31_CIRCLE_GEN) > 2^30 . Group order is 2^31.
+/// /// Ord(M31_CIRCLE_GEN) must be a divisor of it, Hence ord(M31_CIRCLE_GEN) = 2^31.
+/// // Adding the generator to itself (2^31) times should yield the identity.
+/// let circle_point = M31_CIRCLE_GEN.repeated_double(31);
+/// assert!(circle_point.is_zero());
+/// ```
 pub const M31_CIRCLE_GEN: CirclePoint<M31> = CirclePoint {
     x: M31::from_u32_unchecked(2),
     y: M31::from_u32_unchecked(1268011823),
