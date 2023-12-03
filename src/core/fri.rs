@@ -69,7 +69,7 @@ pub fn apply_drp(evals: &[BaseField], alpha: BaseField) -> Vec<BaseField> {
     let n = evals.len();
     assert!(n.is_power_of_two());
 
-    // Note `f(x) = f_e(π(x)) + x * f_o(pi(x))` so `2 * f_e(pi(x)) = f(x) + f(-x)` and
+    // Note `f(x) = f_e(pi(x)) + x * f_o(pi(x))` so `2 * f_e(pi(x)) = f(x) + f(-x)` and
     // `2 * f_o(pi(x)) = (f(x) - f(-x)) / x` therefore we only need `f(x)` and `f(-x)` to compute
     // `f'(pi(x))`. Since all `evals` are bit-reversed `f(x)` and `f(-x)` neighbor each other.
     let eval_pairs = evals.array_chunks();
