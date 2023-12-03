@@ -1,5 +1,4 @@
-#![feature(stdsimd)]
-#![feature(new_uninit)]
+#![feature(stdsimd, new_uninit, array_chunks)]
 pub mod commitment_scheme;
 pub mod core;
 pub mod fibonacci;
