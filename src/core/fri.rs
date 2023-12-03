@@ -97,11 +97,11 @@ fn bit_reversed_domain_elements(domain: LineDomain) -> Vec<BaseField> {
     let n = domain.size() / 2;
     let log_n = n.ilog2() as usize;
 
-    // Compute all the required mappings of our generator point.
-    let mut mappings = Vec::with_capacity(log_n);
+    // Compute all the required doublings of our generator point.
+    let mut doublings = Vec::with_capacity(log_n);
     let mut g = domain.coset().step;
     for _ in 0..log_n {
-        mappings.push(g);
+        doublings.push(g);
         g = g.double();
     }
 
@@ -109,9 +109,9 @@ fn bit_reversed_domain_elements(domain: LineDomain) -> Vec<BaseField> {
     let mut elements = Vec::with_capacity(n);
     elements.push(domain.coset().initial);
     let mut segment_index = 0;
-    while let Some(mapping) = mappings.pop() {
+    while let Some(doubling) = doublings.pop() {
         for i in 0..1 << segment_index {
-            let element = mapping + elements[i];
+            let element = doubling + elements[i];
             elements.push(element);
         }
         segment_index += 1;
