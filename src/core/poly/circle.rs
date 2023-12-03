@@ -240,20 +240,20 @@ pub struct CirclePoly<F: ExtensionOf<BaseField>> {
 
 impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
     pub fn new(bound_bits: usize, coeffs: Vec<F>) -> Self {
-        assert!(coeffs.len() == (1 << bound_bits));
+        assert_eq!(coeffs.len(), 1 << bound_bits);
         Self { bound_bits, coeffs }
     }
 
     /// Evaluates the polynomial at a single point.
     pub fn eval_at_point(&self, point: CirclePoint<BaseField>) -> F {
         // TODO(Andrew): Allocation here expensive for small polynomials.
-        let mut twiddle_factors = vec![point.y, point.x];
+        let mut mappings = vec![point.y, point.x];
         let mut x = point.x;
         for _ in 2..self.bound_bits {
             x = CirclePoint::double_x(x);
-            twiddle_factors.push(x);
+            mappings.push(x);
         }
-        fold(&self.coeffs, &twiddle_factors)
+        fold(&self.coeffs, &mappings)
     }
 
     /// Evaluates the polynomial at all points in the domain.

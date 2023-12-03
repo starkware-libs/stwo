@@ -98,12 +98,12 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// Evaluates the polynomial at a single point.
     pub fn eval_at_point(&self, mut x: F) -> F {
         // TODO(Andrew): Allocation here expensive for small polynomials.
-        let mut twiddle_factors = vec![x];
+        let mut doublings = vec![x];
         for _ in 1..self.coeffs.len().ilog2() {
             x = CirclePoint::double_x(x);
-            twiddle_factors.push(x);
+            doublings.push(x);
         }
-        fold(&self.coeffs, &twiddle_factors)
+        fold(&self.coeffs, &doublings)
     }
 
     /// Evaluates the polynomial at all points in the domain.
