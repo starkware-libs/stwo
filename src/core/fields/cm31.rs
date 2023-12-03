@@ -4,6 +4,7 @@ use std::ops::{
 };
 
 use crate::core::fields::m31::M31;
+use crate::core::fields::ExtensionOf;
 use crate::{impl_extension_field, impl_field};
 
 pub const P2: u64 = 4611686014132420609; // (2 ** 31 - 1) ** 2
