@@ -61,7 +61,8 @@ use crate::core::poly::line::LineDomain;
 ///    └────────┴────┴────┴────┴────┘
 /// ```
 ///
-/// `evals` should be polynomial evaluations over a [LineDomain] stored in bit-reversed order.
+/// `evals` should be polynomial evaluations over a [LineDomain] stored in bit-reversed order. The
+/// return evaluations are also stored in bit-reversed order.
 // TODO: alpha and evals from extension field
 // TODO: use LineEvaluation
 pub fn apply_drp(evals: &[BaseField], alpha: BaseField) -> Vec<BaseField> {
@@ -159,7 +160,7 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::Field;
     use crate::core::fri::{apply_drp, bit_reversed_domain_elements};
-    use crate::core::poly::line::LineDomain;
+    use crate::core::poly::line::{LineDomain, LinePoly};
 
     #[test]
     fn batch_inverse_works() {
@@ -196,22 +197,23 @@ mod tests {
         // Coefficients are bit-reversed.
         let even_coeffs: [BaseField; DEGREE / 2] = [1, 2, 1, 3].map(BaseField::from_u32_unchecked);
         let odd_coeffs: [BaseField; DEGREE / 2] = [3, 5, 4, 1].map(BaseField::from_u32_unchecked);
-        let coeffs = LinePoly::new([even_coeffs, odd_coeffs].concat());
+        let poly = LinePoly::new([even_coeffs, odd_coeffs].concat());
+        let even_poly = LinePoly::new(even_coeffs.to_vec());
+        let odd_poly = LinePoly::new(odd_coeffs.to_vec());
         let alpha = BaseField::from_u32_unchecked(19283);
         let domain = LineDomain::new(Coset::half_odds(DEGREE.ilog2() as usize));
-        let evals = coeffs.evaluate(domain);
-        let bit_reversed_evals = bit_reverse(evals);
+        let drp_domain = domain.double();
+        let evals = poly.evaluate(domain);
+        let bit_reversed_evals = bit_reverse(evals.to_vec());
         let two = BaseField::from_u32_unchecked(2);
 
         let drp_evals = apply_drp(&bit_reversed_evals, alpha);
 
         assert_eq!(drp_evals.len(), DEGREE / 2);
-        for i in 0..DEGREE / 2 {
-            assert_eq!(
-                drp_evals[i],
-                two * (even_coeffs[i] + alpha * odd_coeffs[i]),
-                "mismatch at {i}"
-            );
+        for (i, (drp_eval, x)) in zip(bit_reverse(drp_evals), drp_domain.iter()).enumerate() {
+            let f_e = even_poly.eval_at_point(x);
+            let f_o = odd_poly.eval_at_point(x);
+            assert_eq!(drp_eval, two * (f_e + alpha * f_o), "mismatch at {i}");
         }
     }
 
