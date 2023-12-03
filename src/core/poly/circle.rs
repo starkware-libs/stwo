@@ -7,7 +7,7 @@ use num_traits::One;
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::Field;
+use crate::core::fields::{ExtensionOf, Field};
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.
@@ -155,12 +155,12 @@ pub trait Evaluation: Clone {
 /// An evaluation defined on a [CircleDomain].
 /// The values are ordered according to the [CircleDomain] ordering.
 #[derive(Clone, Debug)]
-pub struct CircleEvaluation<F: Field> {
+pub struct CircleEvaluation<F: ExtensionOf<BaseField>> {
     pub domain: CircleDomain,
     pub values: Vec<F>,
 }
 
-impl<F: Field> CircleEvaluation<F> {
+impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
     pub fn new(domain: CircleDomain, values: Vec<F>) -> Self {
         assert_eq!(domain.size(), values.len());
         Self { domain, values }
@@ -228,7 +228,7 @@ impl Evaluation for CircleEvaluation<BaseField> {
 
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
-pub struct CirclePoly<F: Field> {
+pub struct CirclePoly<F: ExtensionOf<BaseField>> {
     /// log size of the number of coefficients.
     bound_bits: usize,
     /// Coefficients of the polynomial in the FFT basis.
@@ -239,7 +239,7 @@ pub struct CirclePoly<F: Field> {
     coeffs: Vec<F>,
 }
 
-impl<F: Field> CirclePoly<F> {
+impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
     pub fn new(bound_bits: usize, coeffs: Vec<F>) -> Self {
         assert!(coeffs.len() == (1 << bound_bits));
         Self { bound_bits, coeffs }

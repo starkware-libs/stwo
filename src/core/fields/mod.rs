@@ -1,8 +1,6 @@
-use std::ops::{Mul, MulAssign, Neg};
+use std::ops::Neg;
 
-use num_traits::NumAssign;
-
-use self::m31::M31;
+use num_traits::{NumAssign, NumAssignOps, NumOps};
 
 #[cfg(target_arch = "x86_64")]
 pub mod avx512_m31;
@@ -10,9 +8,7 @@ pub mod cm31;
 pub mod m31;
 pub mod qm31;
 
-pub trait Field:
-    NumAssign + Neg<Output = Self> + Copy + Mul<M31, Output = Self> + MulAssign<M31>
-{
+pub trait Field: NumAssign + Neg<Output = Self> + Copy {
     fn square(&self) -> Self {
         (*self) * (*self)
     }
@@ -38,11 +34,13 @@ pub trait Field:
     fn inverse(&self) -> Self;
 }
 
+pub trait ExtensionOf<F: Field>: Field + From<F> + NumOps<F> + NumAssignOps<F> {}
+
 #[macro_export]
 macro_rules! impl_field {
     ($field_name: ty, $field_size: ident) => {
         use num_traits::{Num, One, Zero};
-        use $crate::core::fields::Field;
+        use $crate::core::fields::{ExtensionOf, Field};
 
         impl Num for $field_name {
             type FromStrRadixErr = Box<dyn std::error::Error>;
@@ -61,6 +59,8 @@ macro_rules! impl_field {
                 self.pow(($field_size - 2) as u128)
             }
         }
+
+        impl ExtensionOf<M31> for $field_name {}
 
         impl AddAssign for $field_name {
             fn add_assign(&mut self, rhs: Self) {
@@ -97,6 +97,7 @@ macro_rules! impl_field {
 
         impl Rem for $field_name {
             type Output = Self;
+
             fn rem(self, _rhs: Self) -> Self::Output {
                 unimplemented!("Rem is not implemented for {}", stringify!($field_name));
             }
@@ -201,9 +202,44 @@ macro_rules! impl_extension_field {
             }
         }
 
+        impl AddAssign<M31> for $field_name {
+            fn add_assign(&mut self, rhs: M31) {
+                *self = *self + rhs;
+            }
+        }
+
+        impl SubAssign<M31> for $field_name {
+            fn sub_assign(&mut self, rhs: M31) {
+                *self = *self - rhs;
+            }
+        }
+
         impl MulAssign<M31> for $field_name {
             fn mul_assign(&mut self, rhs: M31) {
                 *self = *self * rhs;
+            }
+        }
+
+        impl DivAssign<M31> for $field_name {
+            fn div_assign(&mut self, rhs: M31) {
+                *self = *self / rhs;
+            }
+        }
+
+        impl Rem<M31> for $field_name {
+            type Output = Self;
+
+            fn rem(self, _rhs: M31) -> Self::Output {
+                unimplemented!("Rem is not implemented for {}", stringify!($field_name));
+            }
+        }
+
+        impl RemAssign<M31> for $field_name {
+            fn rem_assign(&mut self, _rhs: M31) {
+                unimplemented!(
+                    "RemAssign is not implemented for {}",
+                    stringify!($field_name)
+                );
             }
         }
     };
