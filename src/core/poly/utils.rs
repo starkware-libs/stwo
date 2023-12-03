@@ -1,5 +1,3 @@
-use std::iter::zip;
-
 /// Repeats each value sequentially `duplicity` many times.
 ///
 /// # Examples
@@ -8,19 +6,15 @@ use std::iter::zip;
 /// assert_eq!(repeat_value(&[1, 2, 3], 2), vec![1, 1, 2, 2, 3, 3]);
 /// ```
 pub(super) fn repeat_value<T: Copy>(values: &[T], duplicity: usize) -> Vec<T> {
-    if duplicity == 0 {
-        return vec![];
-    }
-
     let n = values.len();
     let mut res: Vec<T> = Vec::with_capacity(n * duplicity);
 
     // Fill each chunk with its corresponding value.
-    let chunks = res.spare_capacity_mut().chunks_exact_mut(duplicity).take(n);
-    zip(values, chunks).for_each(|(&v, chunk)| chunk.iter_mut().for_each(|c| _ = c.write(v)));
-
-    // SAFETY: All values have been initialized.
-    unsafe { res.set_len(n * duplicity) }
+    for &v in values {
+        for _ in 0..duplicity {
+            res.push(v)
+        }
+    }
 
     res
 }
