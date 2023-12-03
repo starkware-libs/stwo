@@ -118,6 +118,8 @@ macro_rules! impl_field {
 #[macro_export]
 macro_rules! impl_extension_field {
     ($field_name: ty, $extended_field_name: ty) => {
+        impl ExtensionOf<$field_name> for $field_name {}
+
         impl Add for $field_name {
             type Output = Self;
 

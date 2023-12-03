@@ -2,8 +2,6 @@ use std::collections::BTreeMap;
 use std::iter::Chain;
 use std::ops::Deref;
 
-use num_traits::One;
-
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -245,8 +243,8 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
         Self { bound_bits, coeffs }
     }
 
-    pub fn eval_at_point(&self, point: CirclePoint<BaseField>) -> F {
-        let mut mults = vec![BaseField::one(), point.y];
+    pub fn eval_at_point<EF: ExtensionOf<F>>(&self, point: CirclePoint<EF>) -> EF {
+        let mut mults = vec![EF::one(), point.y];
         let mut x = point.x;
         for _ in 0..(self.bound_bits - 1) {
             mults.push(x);
@@ -254,15 +252,15 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
         }
         mults.reverse();
 
-        let mut sum = F::zero();
+        let mut sum = EF::zero();
         for (i, val) in self.coeffs.iter().enumerate() {
-            let mut cur_mult = F::one();
+            let mut cur_mult = EF::one();
             for (j, mult) in mults.iter().enumerate() {
                 if i & (1 << j) != 0 {
                     cur_mult *= *mult;
                 }
             }
-            sum += *val * cur_mult;
+            sum += cur_mult * *val;
         }
         sum
     }

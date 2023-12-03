@@ -2,10 +2,11 @@ use num_traits::One;
 
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fields::m31::BaseField;
+use super::fields::ExtensionOf;
 use super::poly::circle::{CircleDomain, CirclePoly, Evaluation};
 
 // Evaluates a vanishing polynomial of the coset at a point.
-pub fn coset_vanishing(coset: Coset, mut p: CirclePoint<BaseField>) -> BaseField {
+pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoint<F>) -> F {
     // Doubling a point `n_bits / 2` times and taking the x coordinate is
     // essentially evaluating a polynomial in x of degree `2**(n_bits-1)`. If
     // the entire `2**n_bits` points of the coset are roots (i.e. yield 0), then
@@ -17,7 +18,7 @@ pub fn coset_vanishing(coset: Coset, mut p: CirclePoint<BaseField>) -> BaseField
     // th polynomial x vanishes on these points.
     //   X
     // . . X
-    p = p - coset.initial + coset.step_size.half().to_point();
+    p = p - coset.initial.into_ef() + coset.step_size.half().to_point().into_ef();
     let mut x = p.x;
 
     // The formula for the x coordinate of the double of a point.
@@ -31,43 +32,47 @@ pub fn circle_domain_vanishing(domain: CircleDomain, p: CirclePoint<BaseField>) 
     coset_vanishing(domain.half_coset, p) * coset_vanishing(domain.half_coset.conjugate(), p)
 }
 
-// Evaluates the polynmial that is used to exclude the excluded point at point
+// Evaluates the polynomial that is used to exclude the excluded point at point
 // p. Note that this polynomial has a zero of multiplicity 2 at the excluded
 // point.
-pub fn point_excluder(excluded: CirclePoint<BaseField>, p: CirclePoint<BaseField>) -> BaseField {
-    (p - excluded).x - BaseField::one()
+pub fn point_excluder<F: ExtensionOf<BaseField>>(
+    excluded: CirclePoint<BaseField>,
+    p: CirclePoint<F>,
+) -> F {
+    (p - excluded.into_ef()).x - BaseField::one()
 }
 
 // Evaluates a vanishing polynomial of the vanish_point at a point.
 // Note that this function has a pole on the antipode of the vanish_point.
-pub fn point_vanishing(
+pub fn point_vanishing<F: ExtensionOf<BaseField>>(
     vanish_point: CirclePoint<BaseField>,
-    p: CirclePoint<BaseField>,
-) -> BaseField {
-    let h = p - vanish_point;
-    h.y / (BaseField::one() + h.x)
+    p: CirclePoint<F>,
+) -> F {
+    let h = p - vanish_point.into_ef();
+    h.y / (F::one() + h.x)
 }
 
 // Utils for computing constraints.
 // Oracle to a polynomial constrained to a coset.
-pub trait PolyOracle: Copy {
-    fn get_at(&self, index: CirclePointIndex) -> BaseField;
-    fn point(&self) -> CirclePoint<BaseField>;
+pub trait PolyOracle<F: ExtensionOf<BaseField>>: Copy {
+    fn get_at(&self, index: CirclePointIndex) -> F;
+    fn point(&self) -> CirclePoint<F>;
 }
 
 #[derive(Copy, Clone)]
-pub struct EvalByPoly<'a> {
-    pub point: CirclePoint<BaseField>,
+pub struct EvalByPoly<'a, F: ExtensionOf<BaseField>> {
+    pub point: CirclePoint<F>,
     pub poly: &'a CirclePoly<BaseField>,
 }
 
-impl<'a> PolyOracle for EvalByPoly<'a> {
-    fn point(&self) -> CirclePoint<BaseField> {
+impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByPoly<'a, F> {
+    fn point(&self) -> CirclePoint<F> {
         self.point
     }
 
-    fn get_at(&self, index: CirclePointIndex) -> BaseField {
-        self.poly.eval_at_point(self.point + index.to_point())
+    fn get_at(&self, index: CirclePointIndex) -> F {
+        let eval_point = self.point + index.to_point().into_ef();
+        self.poly.eval_at_point(eval_point)
     }
 }
 
@@ -78,7 +83,7 @@ pub struct EvalByEvaluation<'a, T: Evaluation> {
     pub eval: &'a T,
 }
 
-impl<'a, T: Evaluation> PolyOracle for EvalByEvaluation<'a, T> {
+impl<'a, T: Evaluation> PolyOracle<BaseField> for EvalByEvaluation<'a, T> {
     fn point(&self) -> CirclePoint<BaseField> {
         self.offset.to_point()
     }

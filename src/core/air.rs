@@ -24,7 +24,7 @@ impl Mask {
     pub fn get_evaluation(
         &self,
         cosets: &[CanonicCoset],
-        poly_oracles: &[impl PolyOracle],
+        poly_oracles: &[impl PolyOracle<BaseField>],
         evaluation_point: CirclePointIndex,
     ) -> PointSetEvaluation {
         let mut res: BTreeMap<CirclePointIndex, BaseField> = BTreeMap::new();
