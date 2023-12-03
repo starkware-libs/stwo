@@ -1,5 +1,3 @@
 pub mod definition;
-pub mod expr;
-pub mod generation;
+pub mod graph;
 pub mod mask;
-pub mod slice;
