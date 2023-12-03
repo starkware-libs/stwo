@@ -8,6 +8,10 @@ use std::iter::zip;
 /// assert_eq!(repeat_value(&[1, 2, 3], 2), vec![1, 1, 2, 2, 3, 3]);
 /// ```
 pub(super) fn repeat_value<T: Copy>(values: &[T], duplicity: usize) -> Vec<T> {
+    if duplicity == 0 {
+        return vec![];
+    }
+
     let n = values.len();
     let mut res: Vec<T> = Vec::with_capacity(n * duplicity);
 
