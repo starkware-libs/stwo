@@ -1,14 +1,5 @@
-use num_traits::One;
-
-use crate::core::air::definition::{
-    Column, ColumnKind, Component, ComponentInstance, UnivariateConstraint,
-};
-use crate::core::air::expr::{
-    BinaryOp, UnivariateExprExtension, UnivariateMaskItem, UnivariatePolyExpression,
-};
-use crate::core::air::generation::{GenerationFormula, SubcolumnGeneration};
-use crate::core::air::slice::{Slice, SliceDomain};
-use crate::core::fields::m31::BaseField;
+use crate::core::air::definition::{Column, ColumnKind, Component, ComponentInstance, Constraint};
+use crate::core::air::graph::{GraphNode, OpParam};
 
 pub fn create_fibonacci_component_definition(n_bits: u32) -> Component {
     Component {
@@ -17,242 +8,291 @@ pub fn create_fibonacci_component_definition(n_bits: u32) -> Component {
         description: "Hand written fibonacci component".to_string(),
         instances: vec![ComponentInstance {
             n_bits,
-            columns: vec![
-                Column {
+            generation_graph: vec![
+                // Fibonacci generation.
+                GraphNode {
                     name: "f".to_string(),
                     description: "Fibonacci values".to_string(),
-                    n_bits,
-                    kind: ColumnKind::Witness {
-                        generation: vec![
-                            SubcolumnGeneration {
-                                domain: SliceDomain {
-                                    inclusions: vec![Slice {
-                                        offset: 0,
-                                        log_steps: n_bits,
-                                    }],
-                                    exclusions: vec![],
-                                },
-                                formula: GenerationFormula::Explicit(
-                                    UnivariatePolyExpression::Value(BaseField::one()),
-                                ),
-                            },
-                            SubcolumnGeneration {
-                                domain: SliceDomain {
-                                    inclusions: vec![Slice {
-                                        offset: 1,
-                                        log_steps: n_bits,
-                                    }],
-                                    exclusions: vec![],
-                                },
-                                formula: GenerationFormula::Explicit(
-                                    UnivariatePolyExpression::Extension(
-                                        UnivariateExprExtension::MaskItem(UnivariateMaskItem {
-                                            column: "secret".to_string(),
-                                            log_expand: 0,
-                                            offset: 0, // TODO(spapini): Think about the offset.
-                                        }),
-                                    ),
-                                ),
-                            },
-                            SubcolumnGeneration {
-                                domain: SliceDomain {
-                                    inclusions: vec![Slice {
-                                        offset: 0,
-                                        log_steps: 0,
-                                    }],
-                                    exclusions: vec![Slice {
-                                        offset: 0,
-                                        log_steps: n_bits,
-                                    }],
-                                },
-                                formula: GenerationFormula::Explicit(
-                                    UnivariatePolyExpression::Extension(
-                                        UnivariateExprExtension::MaskItem(UnivariateMaskItem {
-                                            column: "f".to_string(),
-                                            log_expand: 0,
-                                            offset: -1,
-                                        }),
-                                    ),
-                                ),
-                            },
-                        ],
-                    },
+                    size: 1 << n_bits,
+                    ty: "M31".to_string(),
+                    op: "concat".to_string(),
+                    params: vec![],
+                    inputs: vec!["one".to_string(), "secret".to_string(), "f_rec".to_string()],
                 },
-                Column {
+                // One generation.
+                GraphNode {
+                    name: "one".to_string(),
+                    description: "One value".to_string(),
+                    size: 1,
+                    ty: "M31".to_string(),
+                    op: "constant".to_string(),
+                    params: vec![OpParam::Int(1)],
+                    inputs: vec![],
+                },
+                // Secret generation.
+                GraphNode {
                     name: "secret".to_string(),
                     description: "Secret value".to_string(),
-                    n_bits: 0,
-                    kind: ColumnKind::GenerationInput,
+                    size: 1,
+                    ty: "M31".to_string(),
+                    op: "generation_input".to_string(),
+                    params: vec![OpParam::String("secret".to_string())],
+                    inputs: vec![],
                 },
-                Column {
+                // Recursive fibonacci generation.
+                GraphNode {
+                    name: "f_rec".to_string(),
+                    description: "f[:2]**2 + f[1:-1]**2".to_string(),
+                    size: (1 << n_bits) - 2,
+                    ty: "M31".to_string(),
+                    op: "add".to_string(),
+                    params: vec![],
+                    inputs: vec!["f0sq".to_string(), "f1sq".to_string()],
+                },
+                // f0sq generation.
+                GraphNode {
+                    name: "f0sq".to_string(),
+                    description: "f[:2]**2".to_string(),
+                    size: (1 << n_bits) - 2,
+                    ty: "M31".to_string(),
+                    op: "mul".to_string(),
+                    params: vec![],
+                    inputs: vec!["f0".to_string(), "f0".to_string()],
+                },
+                // f1sq generation.
+                GraphNode {
+                    name: "f1sq".to_string(),
+                    description: "f[1:-1]**2".to_string(),
+                    size: (1 << n_bits) - 2,
+                    ty: "M31".to_string(),
+                    op: "mul".to_string(),
+                    params: vec![],
+                    inputs: vec!["f1".to_string(), "f1".to_string()],
+                },
+                // f0 generation.
+                GraphNode {
+                    name: "f0".to_string(),
+                    description: "f[:-2]".to_string(),
+                    size: (1 << n_bits) - 2,
+                    ty: "M31".to_string(),
+                    op: "slice".to_string(),
+                    params: vec![
+                        OpParam::Int(0),
+                        OpParam::Int((1 << n_bits) - 2),
+                        OpParam::Int(1),
+                    ],
+                    inputs: vec!["f".to_string()],
+                },
+                // f1 generation.
+                GraphNode {
+                    name: "f1".to_string(),
+                    description: "f[1:-1]".to_string(),
+                    size: (1 << n_bits) - 2,
+                    ty: "M31".to_string(),
+                    op: "slice".to_string(),
+                    params: vec![
+                        OpParam::Int(1),
+                        OpParam::Int((1 << n_bits) - 2),
+                        OpParam::Int(1),
+                    ],
+                    inputs: vec!["f".to_string()],
+                },
+            ],
+            columns: vec![Column {
+                name: "f".to_string(),
+                description: "Fibonacci values".to_string(),
+                generation_node: "f".to_string(),
+                kind: ColumnKind::Witness,
+            }],
+            outputs: vec![],
+            constraint_graph: vec![
+                // Initial 1.
+                GraphNode {
+                    name: "initial_1".to_string(),
+                    description: "Check that the first fibonacci value is 1".to_string(),
+                    size: 1,
+                    ty: "M31".to_string(),
+                    op: "sub".to_string(),
+                    params: vec![],
+                    inputs: vec!["f0".to_string(), "one".to_string()],
+                },
+                // one.
+                GraphNode {
+                    name: "one".to_string(),
+                    description: "One value".to_string(),
+                    size: 1,
+                    ty: "M31".to_string(),
+                    op: "constant".to_string(),
+                    params: vec![OpParam::Int(1)],
+                    inputs: vec![],
+                },
+                // f.
+                GraphNode {
+                    name: "f".to_string(),
+                    description: "Fibonacci values".to_string(),
+                    size: 1 << n_bits,
+                    ty: "M31".to_string(),
+                    op: "commited_column".to_string(),
+                    params: vec![OpParam::String("f".to_string())],
+                    inputs: vec![],
+                },
+                // f0.
+                GraphNode {
+                    name: "f0".to_string(),
+                    description: "f[0]".to_string(),
+                    size: 1,
+                    ty: "M31".to_string(),
+                    op: "slice".to_string(),
+                    params: vec![OpParam::Int(0), OpParam::Int(1), OpParam::Int(1)],
+                    inputs: vec!["f".to_string()],
+                },
+                // claim.
+                GraphNode {
                     name: "claim".to_string(),
-                    description: "Claim value".to_string(),
-                    n_bits,
-                    kind: ColumnKind::Constant,
+                    description: "f[claim_index] - claim".to_string(),
+                    size: 1,
+                    ty: "M31".to_string(),
+                    op: "sub".to_string(),
+                    params: vec![],
+                    inputs: vec!["f_at_claim_index".to_string(), "claim".to_string()],
                 },
-                Column {
-                    name: "claim_mask".to_string(),
-                    description: "Claim mask".to_string(),
-                    n_bits,
-                    kind: ColumnKind::Constant,
+                // f_at_claim_index.
+                GraphNode {
+                    name: "f_at_claim_index".to_string(),
+                    description: "f[claim_index]".to_string(),
+                    size: 1,
+                    ty: "M31".to_string(),
+                    op: "slice".to_string(),
+                    params: vec![
+                        OpParam::String("claim_index".to_string()),
+                        OpParam::Int(1),
+                        OpParam::Int(1),
+                    ],
+                    inputs: vec!["f".to_string()],
+                },
+                // claim_index.
+                GraphNode {
+                    name: "claim_index".to_string(),
+                    description: "Claim index".to_string(),
+                    size: 1,
+                    ty: "u64".to_string(),
+                    op: "public_input".to_string(),
+                    params: vec![OpParam::String("claim_index".to_string())],
+                    inputs: vec![],
+                },
+                // Step.
+                GraphNode {
+                    name: "step".to_string(),
+                    description: "f[2:]**2 - f[1:-1]**2 - f[:-2]".to_string(),
+                    size: 1,
+                    ty: "M31".to_string(),
+                    op: "sub".to_string(),
+                    params: vec![],
+                    inputs: vec!["f2".to_string(), "f_rec".to_string()],
+                },
+                // f2.
+                GraphNode {
+                    name: "f2".to_string(),
+                    description: "f[2:]".to_string(),
+                    size: (1 << n_bits) - 2,
+                    ty: "M31".to_string(),
+                    op: "slice".to_string(),
+                    params: vec![
+                        OpParam::Int(2),
+                        OpParam::Int((1 << n_bits) - 2),
+                        OpParam::Int(1),
+                    ],
+                    inputs: vec!["f".to_string()],
+                },
+                // f_rec.
+                GraphNode {
+                    name: "f_rec".to_string(),
+                    description: "f[1:-1]**2 + f[:-2]".to_string(),
+                    size: (1 << n_bits) - 2,
+                    ty: "M31".to_string(),
+                    op: "add".to_string(),
+                    params: vec![],
+                    inputs: vec!["f0sq".to_string(), "f1sq".to_string()],
+                },
+                // f0sq.
+                GraphNode {
+                    name: "f0sq".to_string(),
+                    description: "f[:-2]**2".to_string(),
+                    size: (1 << n_bits) - 2,
+                    ty: "M31".to_string(),
+                    op: "mul".to_string(),
+                    params: vec![],
+                    inputs: vec!["f0".to_string(), "f0".to_string()],
+                },
+                // f1sq.
+                GraphNode {
+                    name: "f1sq".to_string(),
+                    description: "f[1:-1]**2".to_string(),
+                    size: (1 << n_bits) - 2,
+                    ty: "M31".to_string(),
+                    op: "mul".to_string(),
+                    params: vec![],
+                    inputs: vec!["f1".to_string(), "f1".to_string()],
+                },
+                // f0.
+                GraphNode {
+                    name: "f0".to_string(),
+                    description: "f[:-2]".to_string(),
+                    size: (1 << n_bits) - 2,
+                    ty: "M31".to_string(),
+                    op: "slice".to_string(),
+                    params: vec![
+                        OpParam::Int(0),
+                        OpParam::Int((1 << n_bits) - 2),
+                        OpParam::Int(1),
+                    ],
+                    inputs: vec!["f".to_string()],
+                },
+                // f1.
+                GraphNode {
+                    name: "f1".to_string(),
+                    description: "f[1:-1]".to_string(),
+                    size: (1 << n_bits) - 2,
+                    ty: "M31".to_string(),
+                    op: "slice".to_string(),
+                    params: vec![
+                        OpParam::Int(1),
+                        OpParam::Int((1 << n_bits) - 2),
+                        OpParam::Int(1),
+                    ],
+                    inputs: vec!["f".to_string()],
                 },
             ],
             constraints: vec![
                 // Initial 1.
-                UnivariateConstraint {
+                Constraint {
                     name: "initial_1".to_string(),
                     description: "Check that the first fibonacci value is 1".to_string(),
-                    domain: SliceDomain {
-                        inclusions: vec![Slice {
-                            offset: 0,
-                            log_steps: 0,
-                        }],
-                        exclusions: vec![],
-                    },
-                    // The expression f[0] - 1.
-                    expr: UnivariatePolyExpression::BinaryOp {
-                        op: BinaryOp::Sub,
-                        lhs: Box::new(UnivariatePolyExpression::Extension(
-                            UnivariateExprExtension::MaskItem(UnivariateMaskItem {
-                                column: "f".to_string(),
-                                log_expand: 0,
-                                offset: 0,
-                            }),
-                        )),
-                        rhs: Box::new(UnivariatePolyExpression::Value(BaseField::one())),
-                    },
+                    constraint_node: "initial_1".to_string(),
                 },
                 // Initial secret.
-                UnivariateConstraint {
+                Constraint {
                     name: "initial_secret".to_string(),
                     description: "Check that the second fibonacci value is the secret".to_string(),
-                    domain: SliceDomain {
-                        inclusions: vec![Slice {
-                            offset: 1,
-                            log_steps: 0,
-                        }],
-                        exclusions: vec![],
-                    },
-                    // The expression f[1] - secret.
-                    expr: UnivariatePolyExpression::BinaryOp {
-                        op: BinaryOp::Sub,
-                        lhs: Box::new(UnivariatePolyExpression::Extension(
-                            UnivariateExprExtension::MaskItem(UnivariateMaskItem {
-                                column: "f".to_string(),
-                                log_expand: 0,
-                                offset: 1,
-                            }),
-                        )),
-                        rhs: Box::new(UnivariatePolyExpression::Extension(
-                            UnivariateExprExtension::MaskItem(UnivariateMaskItem {
-                                column: "secret".to_string(),
-                                log_expand: 0,
-                                offset: 0,
-                            }),
-                        )),
-                    },
+                    constraint_node: "initial_secret".to_string(),
                 },
                 // Step.
-                UnivariateConstraint {
+                Constraint {
                     name: "step".to_string(),
                     description:
                         "Check that the next fibonacci value is the sum of the previous two."
                             .to_string(),
-                    domain: SliceDomain {
-                        inclusions: vec![Slice {
-                            offset: 0,
-                            log_steps: 0,
-                        }],
-                        exclusions: vec![
-                            Slice {
-                                offset: -2,
-                                log_steps: n_bits,
-                            },
-                            Slice {
-                                offset: -1,
-                                log_steps: n_bits,
-                            },
-                        ],
-                    },
-                    // The expression f[i]**2 + f[i + 1] **2 - f[i + 2].
-                    expr: UnivariatePolyExpression::BinaryOp {
-                        op: BinaryOp::Sub,
-                        lhs: Box::new(UnivariatePolyExpression::BinaryOp {
-                            op: BinaryOp::Add,
-                            lhs: Box::new(UnivariatePolyExpression::Pow {
-                                base: Box::new(UnivariatePolyExpression::Extension(
-                                    UnivariateExprExtension::MaskItem(UnivariateMaskItem {
-                                        column: "f".to_string(),
-                                        log_expand: 0,
-                                        offset: 0,
-                                    }),
-                                )),
-                                exp: 2,
-                            }),
-                            rhs: Box::new(UnivariatePolyExpression::Pow {
-                                base: Box::new(UnivariatePolyExpression::Extension(
-                                    UnivariateExprExtension::MaskItem(UnivariateMaskItem {
-                                        column: "f".to_string(),
-                                        log_expand: 0,
-                                        offset: 1,
-                                    }),
-                                )),
-                                exp: 2,
-                            }),
-                        }),
-                        rhs: Box::new(UnivariatePolyExpression::Extension(
-                            UnivariateExprExtension::MaskItem(UnivariateMaskItem {
-                                column: "f".to_string(),
-                                log_expand: 0,
-                                offset: 2,
-                            }),
-                        )),
-                    },
+                    constraint_node: "step".to_string(),
                 },
                 // Claim.
-                UnivariateConstraint {
+                Constraint {
                     name: "claim".to_string(),
                     description: "Check that the claim matches the values at the specified mask."
                         .to_string(),
-                    domain: SliceDomain {
-                        inclusions: vec![Slice {
-                            offset: 0,
-                            log_steps: 0,
-                        }],
-                        exclusions: vec![],
-                    },
-                    // The expression (f - claim) * claim_mask.
-                    expr: UnivariatePolyExpression::BinaryOp {
-                        op: BinaryOp::Mul,
-                        lhs: Box::new(UnivariatePolyExpression::BinaryOp {
-                            op: BinaryOp::Sub,
-                            lhs: Box::new(UnivariatePolyExpression::Extension(
-                                UnivariateExprExtension::MaskItem(UnivariateMaskItem {
-                                    column: "f".to_string(),
-                                    log_expand: 0,
-                                    offset: 0,
-                                }),
-                            )),
-                            rhs: Box::new(UnivariatePolyExpression::Extension(
-                                UnivariateExprExtension::MaskItem(UnivariateMaskItem {
-                                    column: "claim".to_string(),
-                                    log_expand: 0,
-                                    offset: 0,
-                                }),
-                            )),
-                        }),
-                        rhs: Box::new(UnivariatePolyExpression::Extension(
-                            UnivariateExprExtension::MaskItem(UnivariateMaskItem {
-                                column: "claim_mask".to_string(),
-                                log_expand: 0,
-                                offset: 0,
-                            }),
-                        )),
-                    },
+                    constraint_node: "claim".to_string(),
                 },
             ],
             interaction_elements: vec![],
-            outputs: vec![],
         }],
     }
 }

@@ -5,291 +5,375 @@
   "instances": [
     {
       "n_bits": 5,
-      "columns": [
+      "generation_graph": [
         {
           "name": "f",
           "description": "Fibonacci values",
-          "n_bits": 5,
-          "kind": {
-            "Witness": {
-              "generation": [
-                {
-                  "domain": {
-                    "inclusions": [
-                      {
-                        "offset": 0,
-                        "log_steps": 5
-                      }
-                    ],
-                    "exclusions": []
-                  },
-                  "formula": {
-                    "Explicit": {
-                      "Value": 1
-                    }
-                  }
-                },
-                {
-                  "domain": {
-                    "inclusions": [
-                      {
-                        "offset": 1,
-                        "log_steps": 5
-                      }
-                    ],
-                    "exclusions": []
-                  },
-                  "formula": {
-                    "Explicit": {
-                      "Extension": {
-                        "MaskItem": {
-                          "column": "secret",
-                          "log_expand": 0,
-                          "offset": 0
-                        }
-                      }
-                    }
-                  }
-                },
-                {
-                  "domain": {
-                    "inclusions": [
-                      {
-                        "offset": 0,
-                        "log_steps": 0
-                      }
-                    ],
-                    "exclusions": [
-                      {
-                        "offset": 0,
-                        "log_steps": 5
-                      }
-                    ]
-                  },
-                  "formula": {
-                    "Explicit": {
-                      "Extension": {
-                        "MaskItem": {
-                          "column": "f",
-                          "log_expand": 0,
-                          "offset": -1
-                        }
-                      }
-                    }
-                  }
-                }
-              ]
+          "size": 32,
+          "ty": "M31",
+          "op": "concat",
+          "params": [],
+          "inputs": [
+            "one",
+            "secret",
+            "f_rec"
+          ]
+        },
+        {
+          "name": "one",
+          "description": "One value",
+          "size": 1,
+          "ty": "M31",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 1
             }
-          }
+          ],
+          "inputs": []
         },
         {
           "name": "secret",
           "description": "Secret value",
-          "n_bits": 0,
-          "kind": "GenerationInput"
+          "size": 1,
+          "ty": "M31",
+          "op": "generation_input",
+          "params": [
+            {
+              "String": "secret"
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "f_rec",
+          "description": "f[:2]**2 + f[1:-1]**2",
+          "size": 30,
+          "ty": "M31",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "f0sq",
+            "f1sq"
+          ]
+        },
+        {
+          "name": "f0sq",
+          "description": "f[:2]**2",
+          "size": 30,
+          "ty": "M31",
+          "op": "mul",
+          "params": [],
+          "inputs": [
+            "f0",
+            "f0"
+          ]
+        },
+        {
+          "name": "f1sq",
+          "description": "f[1:-1]**2",
+          "size": 30,
+          "ty": "M31",
+          "op": "mul",
+          "params": [],
+          "inputs": [
+            "f1",
+            "f1"
+          ]
+        },
+        {
+          "name": "f0",
+          "description": "f[:-2]",
+          "size": 30,
+          "ty": "M31",
+          "op": "slice",
+          "params": [
+            {
+              "Int": 0
+            },
+            {
+              "Int": 30
+            },
+            {
+              "Int": 1
+            }
+          ],
+          "inputs": [
+            "f"
+          ]
+        },
+        {
+          "name": "f1",
+          "description": "f[1:-1]",
+          "size": 30,
+          "ty": "M31",
+          "op": "slice",
+          "params": [
+            {
+              "Int": 1
+            },
+            {
+              "Int": 30
+            },
+            {
+              "Int": 1
+            }
+          ],
+          "inputs": [
+            "f"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "f",
+          "description": "Fibonacci values",
+          "generation_node": "f",
+          "kind": "Witness"
+        }
+      ],
+      "outputs": [],
+      "constraint_graph": [
+        {
+          "name": "initial_1",
+          "description": "Check that the first fibonacci value is 1",
+          "size": 1,
+          "ty": "M31",
+          "op": "sub",
+          "params": [],
+          "inputs": [
+            "f0",
+            "one"
+          ]
+        },
+        {
+          "name": "one",
+          "description": "One value",
+          "size": 1,
+          "ty": "M31",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 1
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "f",
+          "description": "Fibonacci values",
+          "size": 32,
+          "ty": "M31",
+          "op": "commited_column",
+          "params": [
+            {
+              "String": "f"
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "f0",
+          "description": "f[0]",
+          "size": 1,
+          "ty": "M31",
+          "op": "slice",
+          "params": [
+            {
+              "Int": 0
+            },
+            {
+              "Int": 1
+            },
+            {
+              "Int": 1
+            }
+          ],
+          "inputs": [
+            "f"
+          ]
         },
         {
           "name": "claim",
-          "description": "Claim value",
-          "n_bits": 5,
-          "kind": "Constant"
+          "description": "f[claim_index] - claim",
+          "size": 1,
+          "ty": "M31",
+          "op": "sub",
+          "params": [],
+          "inputs": [
+            "f_at_claim_index",
+            "claim"
+          ]
         },
         {
-          "name": "claim_mask",
-          "description": "Claim mask",
-          "n_bits": 5,
-          "kind": "Constant"
+          "name": "f_at_claim_index",
+          "description": "f[claim_index]",
+          "size": 1,
+          "ty": "M31",
+          "op": "slice",
+          "params": [
+            {
+              "String": "claim_index"
+            },
+            {
+              "Int": 1
+            },
+            {
+              "Int": 1
+            }
+          ],
+          "inputs": [
+            "f"
+          ]
+        },
+        {
+          "name": "claim_index",
+          "description": "Claim index",
+          "size": 1,
+          "ty": "u64",
+          "op": "public_input",
+          "params": [
+            {
+              "String": "claim_index"
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "step",
+          "description": "f[2:]**2 - f[1:-1]**2 - f[:-2]",
+          "size": 1,
+          "ty": "M31",
+          "op": "sub",
+          "params": [],
+          "inputs": [
+            "f2",
+            "f_rec"
+          ]
+        },
+        {
+          "name": "f2",
+          "description": "f[2:]",
+          "size": 30,
+          "ty": "M31",
+          "op": "slice",
+          "params": [
+            {
+              "Int": 2
+            },
+            {
+              "Int": 30
+            },
+            {
+              "Int": 1
+            }
+          ],
+          "inputs": [
+            "f"
+          ]
+        },
+        {
+          "name": "f_rec",
+          "description": "f[1:-1]**2 + f[:-2]",
+          "size": 30,
+          "ty": "M31",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "f0sq",
+            "f1sq"
+          ]
+        },
+        {
+          "name": "f0sq",
+          "description": "f[:-2]**2",
+          "size": 30,
+          "ty": "M31",
+          "op": "mul",
+          "params": [],
+          "inputs": [
+            "f0",
+            "f0"
+          ]
+        },
+        {
+          "name": "f1sq",
+          "description": "f[1:-1]**2",
+          "size": 30,
+          "ty": "M31",
+          "op": "mul",
+          "params": [],
+          "inputs": [
+            "f1",
+            "f1"
+          ]
+        },
+        {
+          "name": "f0",
+          "description": "f[:-2]",
+          "size": 30,
+          "ty": "M31",
+          "op": "slice",
+          "params": [
+            {
+              "Int": 0
+            },
+            {
+              "Int": 30
+            },
+            {
+              "Int": 1
+            }
+          ],
+          "inputs": [
+            "f"
+          ]
+        },
+        {
+          "name": "f1",
+          "description": "f[1:-1]",
+          "size": 30,
+          "ty": "M31",
+          "op": "slice",
+          "params": [
+            {
+              "Int": 1
+            },
+            {
+              "Int": 30
+            },
+            {
+              "Int": 1
+            }
+          ],
+          "inputs": [
+            "f"
+          ]
         }
       ],
       "constraints": [
         {
           "name": "initial_1",
           "description": "Check that the first fibonacci value is 1",
-          "domain": {
-            "inclusions": [
-              {
-                "offset": 0,
-                "log_steps": 0
-              }
-            ],
-            "exclusions": []
-          },
-          "expr": {
-            "BinaryOp": {
-              "op": "Sub",
-              "lhs": {
-                "Extension": {
-                  "MaskItem": {
-                    "column": "f",
-                    "log_expand": 0,
-                    "offset": 0
-                  }
-                }
-              },
-              "rhs": {
-                "Value": 1
-              }
-            }
-          }
+          "constraint_node": "initial_1"
         },
         {
           "name": "initial_secret",
           "description": "Check that the second fibonacci value is the secret",
-          "domain": {
-            "inclusions": [
-              {
-                "offset": 1,
-                "log_steps": 0
-              }
-            ],
-            "exclusions": []
-          },
-          "expr": {
-            "BinaryOp": {
-              "op": "Sub",
-              "lhs": {
-                "Extension": {
-                  "MaskItem": {
-                    "column": "f",
-                    "log_expand": 0,
-                    "offset": 1
-                  }
-                }
-              },
-              "rhs": {
-                "Extension": {
-                  "MaskItem": {
-                    "column": "secret",
-                    "log_expand": 0,
-                    "offset": 0
-                  }
-                }
-              }
-            }
-          }
+          "constraint_node": "initial_secret"
         },
         {
           "name": "step",
           "description": "Check that the next fibonacci value is the sum of the previous two.",
-          "domain": {
-            "inclusions": [
-              {
-                "offset": 0,
-                "log_steps": 0
-              }
-            ],
-            "exclusions": [
-              {
-                "offset": -2,
-                "log_steps": 5
-              },
-              {
-                "offset": -1,
-                "log_steps": 5
-              }
-            ]
-          },
-          "expr": {
-            "BinaryOp": {
-              "op": "Sub",
-              "lhs": {
-                "BinaryOp": {
-                  "op": "Add",
-                  "lhs": {
-                    "Pow": {
-                      "base": {
-                        "Extension": {
-                          "MaskItem": {
-                            "column": "f",
-                            "log_expand": 0,
-                            "offset": 0
-                          }
-                        }
-                      },
-                      "exp": 2
-                    }
-                  },
-                  "rhs": {
-                    "Pow": {
-                      "base": {
-                        "Extension": {
-                          "MaskItem": {
-                            "column": "f",
-                            "log_expand": 0,
-                            "offset": 1
-                          }
-                        }
-                      },
-                      "exp": 2
-                    }
-                  }
-                }
-              },
-              "rhs": {
-                "Extension": {
-                  "MaskItem": {
-                    "column": "f",
-                    "log_expand": 0,
-                    "offset": 2
-                  }
-                }
-              }
-            }
-          }
+          "constraint_node": "step"
         },
         {
           "name": "claim",
           "description": "Check that the claim matches the values at the specified mask.",
-          "domain": {
-            "inclusions": [
-              {
-                "offset": 0,
-                "log_steps": 0
-              }
-            ],
-            "exclusions": []
-          },
-          "expr": {
-            "BinaryOp": {
-              "op": "Mul",
-              "lhs": {
-                "BinaryOp": {
-                  "op": "Sub",
-                  "lhs": {
-                    "Extension": {
-                      "MaskItem": {
-                        "column": "f",
-                        "log_expand": 0,
-                        "offset": 0
-                      }
-                    }
-                  },
-                  "rhs": {
-                    "Extension": {
-                      "MaskItem": {
-                        "column": "claim",
-                        "log_expand": 0,
-                        "offset": 0
-                      }
-                    }
-                  }
-                }
-              },
-              "rhs": {
-                "Extension": {
-                  "MaskItem": {
-                    "column": "claim_mask",
-                    "log_expand": 0,
-                    "offset": 0
-                  }
-                }
-              }
-            }
-          }
+          "constraint_node": "claim"
         }
       ],
-      "interaction_elements": [],
-      "outputs": []
+      "interaction_elements": []
     }
   ]
 }
