@@ -159,7 +159,7 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
         Self { evals, log_n }
     }
 
-    /// Interpolates the polynomial as evaluations on `domain`
+    /// Interpolates the polynomial as evaluations on `domain`.
     pub fn interpolate(mut self, domain: LineDomain) -> LinePoly<F> {
         line_ifft(&mut self.evals, domain);
         // Normalize the coefficients.
