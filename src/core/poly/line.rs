@@ -8,7 +8,7 @@ use super::utils::repeat_value;
 use crate::core::circle::Coset;
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::Field;
+use crate::core::fields::{ExtensionOf, Field};
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///
@@ -81,7 +81,7 @@ pub struct LinePoly<F> {
     coeffs: Vec<F>,
 }
 
-impl<F: Field> LinePoly<F> {
+impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// Creates a new line polynomial from bit reversed coefficients.
     ///
     /// # Panics
@@ -135,7 +135,7 @@ pub struct LineEvaluation<F> {
     evals: Vec<F>,
 }
 
-impl<F: Field> LineEvaluation<F> {
+impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     /// Creates new [LineEvaluation] from a set of polynomial evaluations over a [LineDomain].
     ///
     /// # Panics
@@ -146,7 +146,7 @@ impl<F: Field> LineEvaluation<F> {
         Self { evals }
     }
 
-    /// Interpolates the polynomial as evaluations on `domain`
+    /// Interpolates the polynomial as evaluations on `domain`.
     pub fn interpolate(mut self, domain: LineDomain) -> LinePoly<F> {
         line_ifft(&mut self.evals, domain);
         // Normalize the coefficients.
@@ -185,7 +185,7 @@ impl<F: Field> Deref for LineEvaluation<F> {
 /// # Panics
 ///
 /// Panics if the number of values doesn't match the size of the domain.
-pub(crate) fn line_ifft<F: Field>(values: &mut [F], mut domain: LineDomain) {
+pub(crate) fn line_ifft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain: LineDomain) {
     assert_eq!(values.len(), domain.size());
     while domain.size() > 1 {
         for chunk in values.chunks_exact_mut(domain.size()) {
@@ -211,7 +211,7 @@ pub(crate) fn line_ifft<F: Field>(values: &mut [F], mut domain: LineDomain) {
 /// # Panics
 ///
 /// Panics if the number of values doesn't match the size of the domain.
-pub(crate) fn line_fft<F: Field>(
+pub(crate) fn line_fft<F: ExtensionOf<BaseField>>(
     values: &mut [F],
     mut domain: LineDomain,
     n_skipped_layers: usize,
