@@ -8,8 +8,8 @@ use crate::core::poly::line::LineDomain;
 
 /// Performs a degree respecting projection (DRP) on a polynomial.
 ///
-/// i.e. when our evaluation domain is `E = c + <G>, |E| = 8` and
-/// `Φ(x) = 2x^2 - 1` is the circle's x-coordinate doubling map:
+/// i.e. when our evaluation domain is `E = c + <G>, |E| = 8` and `pi(x) = 2x^2 - 1` is the circle's
+/// x-coordinate doubling map:
 ///
 /// 1. Interpolate evals over the domain to obtain coefficients of f(x):
 ///
@@ -26,23 +26,23 @@ use crate::core::poly::line::LineDomain;
 ///    └────────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┘
 ///      f(x) = c0 +
 ///             c1 * x +
-///             c2 * Φ(x) +
-///             c3 * Φ(x)*x +
-///             c4 * Φ(Φ(x)) +
-///             c5 * Φ(Φ(x))*x +
-///             c6 * Φ(Φ(x))*Φ(x) +
-///             c7 * Φ(Φ(x))*Φ(x)*x
+///             c2 * pi(x) +
+///             c3 * pi(x)*x +
+///             c4 * pi(pi(x)) +
+///             c5 * pi(pi(x))*x +
+///             c6 * pi(pi(x))*pi(x) +
+///             c7 * pi(pi(x))*pi(x)*x
 /// ```
 ///
 /// 2. Perform a random linear combination of odd and even coefficients of f(x):
 ///
 /// ```text
-///    f_e(x)  = c0 + c2 * x + c4 * Φ(x) + c6 * Φ(x)*x
-///    f_o(x)  = c1 + c3 * x + c5 * Φ(x) + c7 * Φ(x)*x
-///    f(x)    = f_e(Φ(x)) + x * f_o(Φ(x))
-///    f'(x)   = 2 * f_e(x) + α * 2 * f_o(x)
-///    deg(f') ≤ deg(f) / 2
-///    α       = <random field element sent from verifier>
+///    f_e(x)   = c0 + c2 * x + c4 * pi(x) + c6 * pi(x)*x
+///    f_o(x)   = c1 + c3 * x + c5 * pi(x) + c7 * pi(x)*x
+///    f(x)     = f_e(pi(x)) + x * f_o(pi(x))
+///    f'(x)    = 2 * f_e(x) + α * 2 * f_o(x)
+///    deg(f') <= deg(f) / 2
+///    α        = <random field element sent from verifier>
 /// ```
 ///
 /// 4. Obtain the DRP by evaluating f'(x) over a new domain of half the size:
@@ -68,9 +68,9 @@ pub fn apply_drp(evals: &[BaseField], alpha: BaseField) -> Vec<BaseField> {
     let n = evals.len();
     assert!(n.is_power_of_two());
 
-    // Note `f(x) = f_e(π(x)) + x * f_o(π(x))` so `2 * f_e(π(x)) = f(x) + f(-x)` and
-    // `2 * f_o(π(x)) = (f(x) - f(-x)) / x` therefore we only need `f(x)` and `f(-x)` to compute
-    // `f'(π(x))`. Since all `evals` are bit-reversed `f(x)` and `f(-x)` neighbor each other.
+    // Note `f(x) = f_e(π(x)) + x * f_o(pi(x))` so `2 * f_e(pi(x)) = f(x) + f(-x)` and
+    // `2 * f_o(pi(x)) = (f(x) - f(-x)) / x` therefore we only need `f(x)` and `f(-x)` to compute
+    // `f'(pi(x))`. Since all `evals` are bit-reversed `f(x)` and `f(-x)` neighbor each other.
     let eval_pairs = evals.array_chunks();
 
     let domain = LineDomain::new(Coset::half_odds(n.ilog2() as usize));
@@ -88,7 +88,7 @@ pub fn apply_drp(evals: &[BaseField], alpha: BaseField) -> Vec<BaseField> {
 
 /// Returns the first half of the domain elements in bit reversed order.
 ///
-/// This is used by [drp] to obtain the domain elements in the same order as the evaluations
+/// This is used by [apply_drp] to obtain the domain elements in the same order as the evaluations
 /// (bit-reversed). This algorithm is more efficient than generating the domain elements in their
 /// natural order and then doing a bit-reversal since the algorithm has almost no additional
 /// overhead to generating the domain elements in their natural order.
