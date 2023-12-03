@@ -29,3 +29,7 @@ name = "field"
 [[bench]]
 name = "merkle_bench"
 harness = false
+
+[[bench]]
+name = "fri"
+harness = false
