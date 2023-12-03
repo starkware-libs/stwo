@@ -179,7 +179,7 @@ impl<F: Field> Deref for LineEvaluation<F> {
 /// # Panics
 ///
 /// Panics if the number of values doesn't match the size of the domain.
-pub(crate) fn line_ifft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain: LineDomain) {
+fn line_ifft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain: LineDomain) {
     assert_eq!(values.len(), domain.size());
     while domain.size() > 1 {
         for chunk in values.chunks_exact_mut(domain.size()) {
@@ -207,7 +207,7 @@ pub(crate) fn line_ifft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain:
 /// # Panics
 ///
 /// Panics if the number of values doesn't match the size of the domain.
-pub(crate) fn line_fft<F: ExtensionOf<BaseField>>(
+fn line_fft<F: ExtensionOf<BaseField>>(
     values: &mut [F],
     mut domain: LineDomain,
     n_skipped_layers: usize,
