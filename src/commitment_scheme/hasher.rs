@@ -39,4 +39,8 @@ pub trait Hasher {
         single_input_length_bytes: usize,
         dst: &[*mut u8],
     );
+
+    // TODO(Ohad): Consider adding a trait for hashers that support multi-source hashing, and
+    // defining proper input structure for it.
+    fn hash_many_multi_src(data: &[&[&[u8]]]) -> Vec<Self::Hash>;
 }
