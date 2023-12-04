@@ -4,8 +4,7 @@ use crate::core::air::{Mask, MaskItem};
 use crate::core::circle::Coset;
 use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::QM31;
-use crate::core::fields::Field;
+use crate::core::fields::{ExtensionOf, Field};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 
 pub struct Fibonacci {
@@ -49,13 +48,13 @@ impl Fibonacci {
         CircleEvaluation::new_canonical_ordered(self.trace_coset, trace)
     }
 
-    pub fn eval_step_constraint(&self, trace: impl PolyOracle) -> BaseField {
+    pub fn eval_step_constraint<F: ExtensionOf<BaseField>>(&self, trace: impl PolyOracle<F>) -> F {
         trace.get_at(self.trace_coset.index_at(0)).square()
             + trace.get_at(self.trace_coset.index_at(1)).square()
             - trace.get_at(self.trace_coset.index_at(2))
     }
 
-    pub fn eval_step_quotient(&self, trace: impl PolyOracle) -> BaseField {
+    pub fn eval_step_quotient<F: ExtensionOf<BaseField>>(&self, trace: impl PolyOracle<F>) -> F {
         let excluded0 = self.constraint_coset.at(self.constraint_coset.size() - 2);
         let excluded1 = self.constraint_coset.at(self.constraint_coset.size() - 1);
         let num = self.eval_step_constraint(trace)
@@ -65,22 +64,30 @@ impl Fibonacci {
         num / denom
     }
 
-    pub fn eval_boundary_constraint(&self, trace: impl PolyOracle, value: BaseField) -> BaseField {
+    pub fn eval_boundary_constraint<F: ExtensionOf<BaseField>>(
+        &self,
+        trace: impl PolyOracle<F>,
+        value: BaseField,
+    ) -> F {
         trace.get_at(self.trace_coset.index_at(0)) - value
     }
 
-    pub fn eval_boundary_quotient(
+    pub fn eval_boundary_quotient<F: ExtensionOf<BaseField>>(
         &self,
-        trace: impl PolyOracle,
+        trace: impl PolyOracle<F>,
         point_index: usize,
         value: BaseField,
-    ) -> BaseField {
+    ) -> F {
         let num = self.eval_boundary_constraint(trace, value);
         let denom = point_vanishing(self.constraint_coset.at(point_index), trace.point());
         num / denom
     }
 
-    pub fn eval_quotient(&self, random_coeff: QM31, trace: impl PolyOracle) -> QM31 {
+    pub fn eval_quotient<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
+        &self,
+        random_coeff: EF,
+        trace: impl PolyOracle<F>,
+    ) -> EF {
         let mut quotient = random_coeff.pow(0) * self.eval_step_quotient(trace);
         quotient += random_coeff.pow(1) * self.eval_boundary_quotient(trace, 0, BaseField::one());
         quotient += random_coeff.pow(2)
@@ -105,7 +112,7 @@ mod tests {
     use num_traits::One;
 
     use super::Fibonacci;
-    use crate::core::circle::{CirclePoint, CirclePointIndex};
+    use crate::core::circle::CirclePoint;
     use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
@@ -185,30 +192,19 @@ mod tests {
         let quotient_eval = CircleEvaluation::new(fib.constraint_eval_domain, quotient_values);
         // Interpolate the poly. The poly is indeed of degree lower than the size of
         // eval_domain, then it should interpolate correctly.
-        let quotient_poly = quotient_eval.interpolate();
+        let interpolated_quotient_poly = quotient_eval.interpolate();
 
         // Evaluate this polynomial at another point, out of eval_domain and compare to what we
         // expect.
-        let oods_point_index = CirclePointIndex::generator() * 2;
-        assert!(fib.constraint_eval_domain.find(oods_point_index).is_none());
-        let oods_point = oods_point_index.to_point();
-
-        let oods_evaluation = fib.get_mask().get_evaluation(
-            &[fib.trace_coset],
-            &[EvalByPoly {
-                point: CirclePoint::zero(),
-                poly: &trace_poly,
-            }],
-            oods_point_index,
-        );
-        let oods_evaluation = EvalByEvaluation {
-            offset: oods_point_index,
-            eval: &oods_evaluation,
+        let oods_point = CirclePoint::<QM31>::get_point(98989892);
+        let trace_evaluator = EvalByPoly {
+            point: oods_point,
+            poly: &trace_poly,
         };
 
         assert_eq!(
-            quotient_poly.eval_at_point(oods_point),
-            fib.eval_quotient(random_coeff, oods_evaluation)
+            interpolated_quotient_poly.eval_at_point(oods_point),
+            fib.eval_quotient(random_coeff, trace_evaluator)
         );
     }
 }

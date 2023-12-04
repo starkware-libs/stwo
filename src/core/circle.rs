@@ -2,7 +2,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 
 use super::fields::m31::M31;
 use super::fields::qm31::QM31;
-use super::fields::Field;
+use super::fields::{ExtensionOf, Field};
 use crate::core::fields::qm31::P4;
 use crate::math::egcd;
 
@@ -93,6 +93,13 @@ impl<F: Field> CirclePoint<F> {
         Self {
             x: -self.x,
             y: -self.y,
+        }
+    }
+
+    pub fn into_ef<EF: ExtensionOf<F>>(&self) -> CirclePoint<EF> {
+        CirclePoint {
+            x: self.x.into(),
+            y: self.y.into(),
         }
     }
 }
