@@ -122,7 +122,7 @@ fn bit_reversed_domain_elements(domain: LineDomain) -> Vec<BaseField> {
 /// Computes the inverse of all items in `v`.
 ///
 /// Inversions are expensive but their cost can be amortized by batching inversions together.
-// TODO: move to utils
+// TODO(andrew): move to utils
 fn batch_inverse<F: Field, U: AsMut<[F]>>(mut v: U) -> U {
     // 1. `[1, a, ab, abc]`
     let mut acc = F::one();
