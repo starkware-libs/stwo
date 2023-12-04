@@ -8,10 +8,10 @@ use crate::core::poly::line::LineDomain;
 
 /// Performs a degree respecting projection (DRP) on a polynomial.
 ///
-/// Exmaple: Our evaluation domain is the x-coordinates of `E = c + <G>, |E| = 8`, `alpha`
-/// is a random field element and `pi(x) = 2x^2 - 1` is the circle's x-coordinate doubling map. We
-/// have evaluations of a polynomial `f` (i.e `evals`) and we can compute the evaluations of `f' =
-/// 2 * (fe + alpha * fo)` such that `f(x) = fe(pi(x)) + x * fo(pi(x))`.
+/// Example: Our evaluation domain is the x-coordinates of `E = c + <G>`, `alpha` is a random field
+/// element and `pi(x) = 2x^2 - 1` is the circle's x-coordinate doubling map. We have evaluations of
+/// a polynomial `f` on `E` (i.e `evals`) and we can compute the evaluations of `f' = 2 * (fe +
+/// alpha * fo)` over `E' = { pi(x) | x in E }` such that `f(x) = fe(pi(x)) + x * fo(pi(x))`.
 ///
 /// `evals` should be polynomial evaluations over a [LineDomain] stored in natural order. The return
 /// evaluations are evaluations over a [LineDomain] of half the size stored in natural order.
