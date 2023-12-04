@@ -134,6 +134,7 @@ impl<F: ExtensionOf<BaseField>> Deref for LinePoly<F> {
 
 /// Evaluations of a univariate polynomial on a [LineDomain].
 pub struct LineEvaluation<F> {
+    /// Evaluations of a univariate polynomial on a [LineDomain].
     evals: Vec<F>,
     /// The number of evaluations stored as `log2(len(evals))`.
     log_n: u32,
