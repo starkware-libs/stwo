@@ -76,10 +76,8 @@ pub struct LinePoly<F> {
     ///
     /// The coefficients are stored in bit-reversed order.
     coeffs: Vec<F>,
-    /// The degree bound of the polynomial stored as `log2(degree_bound)`.
-    ///
-    /// The number of `coeffs` will always equal `2^bound_bits`.
-    bound_bits: u32,
+    /// The number of coefficients stored as `log2(len(coeffs))`.
+    log_n: u32,
 }
 
 impl<F: Field> LinePoly<F> {
@@ -90,8 +88,8 @@ impl<F: Field> LinePoly<F> {
     /// Panics if the number of coefficients is not a power of two.
     pub fn new(coeffs: Vec<F>) -> Self {
         assert!(coeffs.len().is_power_of_two());
-        let bound_bits = coeffs.len().ilog2();
-        Self { coeffs, bound_bits }
+        let log_n = coeffs.len().ilog2();
+        Self { coeffs, log_n }
     }
 
     /// Evaluates the polynomial at a single point.
@@ -104,11 +102,11 @@ impl<F: Field> LinePoly<F> {
         todo!()
     }
 
-    /// Returns the number of evaluations.
+    /// Returns the number of coefficients.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.coeffs.len(), 1 << self.bound_bits);
-        1 << self.bound_bits
+        debug_assert_eq!(self.coeffs.len(), 1 << self.log_n);
+        1 << self.log_n
     }
 }
 
@@ -122,11 +120,9 @@ impl<F: Field> Deref for LinePoly<F> {
 
 /// Evaluations of a univariate polynomial on a [LineDomain].
 pub struct LineEvaluation<F> {
-    _evals: Vec<F>,
-    /// The degree bound of the polynomial stored as `log2(degree_bound)`.
-    ///
-    /// The number of `evals` will always equal `2^bound_bits`.
-    _bound_bits: u32,
+    evals: Vec<F>,
+    /// The number of evaluations stored as `log2(len(evals))`.
+    log_n: u32,
 }
 
 impl<F: Field> LineEvaluation<F> {
@@ -138,8 +134,8 @@ impl<F: Field> LineEvaluation<F> {
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());
         Self {
-            _bound_bits: evals.len().ilog2(),
-            _evals: evals,
+            log_n: evals.len().ilog2(),
+            evals,
         }
     }
 
@@ -151,8 +147,8 @@ impl<F: Field> LineEvaluation<F> {
     /// Returns the number of evaluations.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self._evals.len(), 1 << self._bound_bits);
-        1 << self._bound_bits
+        debug_assert_eq!(self.evals.len(), 1 << self.log_n);
+        1 << self.log_n
     }
 }
 
