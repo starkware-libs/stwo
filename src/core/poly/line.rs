@@ -156,7 +156,7 @@ impl<F: Field> Deref for LineEvaluation<F> {
     type Target = Vec<F>;
 
     fn deref(&self) -> &Vec<F> {
-        &self._evals
+        &self.evals
     }
 }
 
