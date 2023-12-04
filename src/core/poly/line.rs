@@ -103,6 +103,13 @@ impl<F: Field> LinePoly<F> {
     pub fn evaluate(self, _domain: LineDomain) -> LineEvaluation<F> {
         todo!()
     }
+
+    /// Returns the number of evaluations.
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        debug_assert_eq!(self.coeffs.len(), 1 << self.bound_bits);
+        1 << self.bound_bits
+    }
 }
 
 impl<F: Field> Deref for LinePoly<F> {
@@ -136,9 +143,16 @@ impl<F: Field> LineEvaluation<F> {
         }
     }
 
-    /// Interpolates the polynomial as evaluations on `domain`
+    /// Interpolates the polynomial as evaluations on `domain`.
     pub fn interpolate(self, _domain: LineDomain) -> LinePoly<F> {
         todo!()
+    }
+
+    /// Returns the number of evaluations.
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        debug_assert_eq!(self._evals.len(), 1 << self._bound_bits);
+        1 << self._bound_bits
     }
 }
 
