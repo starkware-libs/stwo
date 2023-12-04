@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -33,7 +35,8 @@ pub enum Op {
     },
     Repeat {
         input: String,
-        n: i64,
+        chunk_size: i64,
+        n_repeats: i64,
     },
     Pointwise {
         op: PointwiseOp,
@@ -55,6 +58,11 @@ pub enum PointwiseOp {
         op: BinaryOp,
         a: String,
         b: String,
+    },
+    Where {
+        cond: String,
+        t_case: String,
+        f_case: String,
     },
     Custom {
         name: String,
@@ -90,6 +98,7 @@ impl PointwiseOp {
                 BinaryOp::Max => "max".to_string(),
                 BinaryOp::Min => "min".to_string(),
             },
+            PointwiseOp::Where { .. } => "where".to_string(),
             PointwiseOp::Custom { name, .. } => name.clone(),
         }
     }
@@ -98,6 +107,7 @@ impl PointwiseOp {
             PointwiseOp::Const { value, .. } => vec![OpParam::String(value.clone())],
             PointwiseOp::Unary { .. } => vec![],
             PointwiseOp::Binary { .. } => vec![],
+            PointwiseOp::Where { .. } => vec![],
             PointwiseOp::Custom { params, .. } => params.clone(),
         }
     }
@@ -106,6 +116,11 @@ impl PointwiseOp {
             PointwiseOp::Const { .. } => vec![],
             PointwiseOp::Unary { a, .. } => vec![a.clone()],
             PointwiseOp::Binary { a, b, .. } => vec![a.clone(), b.clone()],
+            PointwiseOp::Where {
+                cond,
+                t_case,
+                f_case,
+            } => vec![cond.clone(), t_case.clone(), f_case.clone()],
             PointwiseOp::Custom { inputs, .. } => inputs.clone(),
         }
     }
@@ -145,4 +160,23 @@ pub enum OpParam {
     String(String),
     Bool(bool),
     List(Vec<OpParam>),
+}
+impl Display for OpParam {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OpParam::Int(i) => write!(f, "{}", i),
+            OpParam::String(s) => write!(f, "{}", s),
+            OpParam::Bool(b) => write!(f, "{}", b),
+            OpParam::List(l) => {
+                write!(f, "[")?;
+                for (i, item) in l.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", item)?;
+                }
+                write!(f, "]")
+            }
+        }
+    }
 }

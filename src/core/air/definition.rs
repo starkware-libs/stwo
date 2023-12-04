@@ -4,6 +4,7 @@ use super::graph::GraphNode;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Component {
+    // TODO: Share inputs and outputs between instances.
     pub name: String,
     pub version: String,
     pub description: String,
@@ -47,6 +48,7 @@ pub struct Constraint {
     pub name: String,
     pub description: String,
     /// Name of the node in the constraint graph that evaluates this constraint.
+    /// Must be of size that is a power of 2.
     pub constraint_node: String,
 }
 

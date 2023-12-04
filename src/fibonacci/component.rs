@@ -184,7 +184,7 @@ pub fn create_fibonacci_component_definition(n_bits: u32) -> Component {
                 GraphNode {
                     name: "step".to_string(),
                     description: "f[2:]**2 - f[1:-1]**2 - f[:-2]".to_string(),
-                    size: 1,
+                    size: (1 << n_bits) - 2,
                     ty: "M31".to_string(),
                     op: "sub".to_string(),
                     params: vec![],
@@ -269,12 +269,6 @@ pub fn create_fibonacci_component_definition(n_bits: u32) -> Component {
                     name: "initial_1".to_string(),
                     description: "Check that the first fibonacci value is 1".to_string(),
                     constraint_node: "initial_1".to_string(),
-                },
-                // Initial secret.
-                Constraint {
-                    name: "initial_secret".to_string(),
-                    description: "Check that the second fibonacci value is the secret".to_string(),
-                    constraint_node: "initial_secret".to_string(),
                 },
                 // Step.
                 Constraint {
