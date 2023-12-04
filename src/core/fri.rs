@@ -1,15 +1,15 @@
 use std::iter::zip;
 
 use super::fields::m31::BaseField;
-use super::fields::Field;
+use super::fields::{ExtensionOf, Field};
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
 use crate::core::poly::line::LineDomain;
 
 /// Performs a degree respecting projection (DRP) on a polynomial.
 ///
-/// i.e. when our evaluation domain is `E = c + <G>, |E| = 8` and `pi(x) = 2x^2 - 1` is the circle's
-/// x-coordinate doubling map:
+/// For example, when our evaluation domain is the x-coordinates of `E = c + <G>, |E| = 8` and
+/// `pi(x) = 2x^2 - 1` is the circle's x-coordinate doubling map:
 ///
 /// 1. Interpolate evals over the domain to obtain coefficients of f(x):
 ///
@@ -63,9 +63,7 @@ use crate::core::poly::line::LineDomain;
 ///
 /// `evals` should be polynomial evaluations over a [LineDomain] stored in bit-reversed order. The
 /// return evaluations are also stored in bit-reversed order.
-// TODO: alpha and evals from extension field
-// TODO: use LineEvaluation
-pub fn apply_drp(evals: &[BaseField], alpha: BaseField) -> Vec<BaseField> {
+pub fn apply_drp<F: ExtensionOf<BaseField>>(evals: &[F], alpha: F) -> Vec<F> {
     let n = evals.len();
     assert!(n.is_power_of_two());
 
