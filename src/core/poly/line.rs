@@ -76,6 +76,10 @@ pub struct LinePoly<F> {
     ///
     /// The coefficients are stored in bit-reversed order.
     coeffs: Vec<F>,
+    /// The degree bound of the polynomial stored as `log2(degree_bound)`.
+    ///
+    /// The number of `coeffs` will always equal `2^bound_bits`.
+    bound_bits: u32,
 }
 
 impl<F: Field> LinePoly<F> {
@@ -86,7 +90,8 @@ impl<F: Field> LinePoly<F> {
     /// Panics if the number of coefficients is not a power of two.
     pub fn new(coeffs: Vec<F>) -> Self {
         assert!(coeffs.len().is_power_of_two());
-        Self { coeffs }
+        let bound_bits = coeffs.len().ilog2();
+        Self { coeffs, bound_bits }
     }
 
     /// Evaluates the polynomial at a single point.
