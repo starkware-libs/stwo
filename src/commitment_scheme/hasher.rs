@@ -9,23 +9,24 @@ pub trait Hasher {
     type Hash: Copy
         + Display
         + self::Name
-        + Into<Vec<u8>>
-        + TryFrom<Vec<u8>>
-        + AsRef<[u8]>
-        + for<'a> From<&'a [u8]>;
+        + Into<Vec<Self::NativeType>>
+        + TryFrom<Vec<Self::NativeType>>
+        + AsRef<[Self::NativeType]>
+        + for<'a> From<&'a [Self::NativeType]>;
 
+    type NativeType: Eq;
     // Input size of the compression function.
     // TODO(Ohad): Consider packing hash paramaters in a dedicated struct.
-    const BLOCK_SIZE_IN_BYTES: usize;
-    const OUTPUT_SIZE_IN_BYTES: usize;
+    const BLOCK_SIZE: usize;
+    const OUTPUT_SIZE: usize;
 
     fn concat_and_hash(v1: &Self::Hash, v2: &Self::Hash) -> Self::Hash;
 
-    fn hash(data: &[u8]) -> Self::Hash;
+    fn hash(data: &[Self::NativeType]) -> Self::Hash;
 
-    fn hash_one_in_place(data: &[u8], dst: &mut [u8]);
+    fn hash_one_in_place(data: &[Self::NativeType], dst: &mut [Self::NativeType]);
 
-    fn hash_many(data: &[Vec<u8>]) -> Vec<Self::Hash>;
+    fn hash_many(data: &[Vec<Self::NativeType>]) -> Vec<Self::Hash>;
 
     /// Hash many inputs of the same length.
     /// Writes output directly to corresponding pointers in dst.
@@ -35,12 +36,12 @@ pub trait Hasher {
     /// Inputs must be of the same size. output locations must all point to valid, allocated and
     /// distinct locations in memory.
     unsafe fn hash_many_in_place(
-        data: &[*const u8],
+        data: &[*const Self::NativeType],
         single_input_length_bytes: usize,
-        dst: &[*mut u8],
+        dst: &[*mut Self::NativeType],
     );
 
     // TODO(Ohad): Consider adding a trait for hashers that support multi-source hashing, and
     // defining proper input structure for it.
-    fn hash_many_multi_src(data: &[&[&[u8]]]) -> Vec<Self::Hash>;
+    fn hash_many_multi_src(data: &[Vec<&[Self::NativeType]>]) -> Vec<Self::Hash>;
 }
