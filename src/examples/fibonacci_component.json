@@ -242,7 +242,7 @@
         {
           "name": "step",
           "description": "f[2:]**2 - f[1:-1]**2 - f[:-2]",
-          "size": 1,
+          "size": 30,
           "ty": "M31",
           "op": "sub",
           "params": [],
@@ -356,11 +356,6 @@
           "name": "initial_1",
           "description": "Check that the first fibonacci value is 1",
           "constraint_node": "initial_1"
-        },
-        {
-          "name": "initial_secret",
-          "description": "Check that the second fibonacci value is the secret",
-          "constraint_node": "initial_secret"
         },
         {
           "name": "step",
