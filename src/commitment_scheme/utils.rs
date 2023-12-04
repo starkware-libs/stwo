@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 use std::slice::Iter;
 
-use super::hasher::Hasher;
 use crate::core::fields::{Field, IntoSlice};
 <<<<<<< HEAD
 use crate::math::utils::{log2_ceil, usize_safe_div};
 =======
 >>>>>>> 5b6616e (native type for hasher trait, into slice for field)
+
+use super::hasher::Hasher;
 
 pub type ColumnArray<T> = Vec<Vec<T>>;
 pub type ColumnLengthMap<T> = BTreeMap<usize, ColumnArray<T>>;
