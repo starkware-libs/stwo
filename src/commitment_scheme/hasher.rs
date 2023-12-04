@@ -5,6 +5,7 @@ pub trait Name {
     const NAME: Cow<'static, str>;
 }
 
+<<<<<<< HEAD
 /// An API for hash functions that support incremental hashing.
 /// Provides advanced hashing functionality.
 ///
@@ -25,13 +26,29 @@ pub trait Name {
 pub trait Hasher: Sized {
     type Hash: Hash<Self::NativeType>;
     type NativeType: Sized + Eq;
+=======
+pub trait Hasher {
+    type Hash: Copy
+        + Display
+        + self::Name
+        + Into<Vec<Self::NativeType>>
+        + TryFrom<Vec<Self::NativeType>>
+        + AsRef<[Self::NativeType]>
+        + for<'a> From<&'a [Self::NativeType]>;
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 
+    type NativeType: Eq;
     // Input size of the compression function.
+<<<<<<< HEAD
+=======
+    // TODO(Ohad): Consider packing hash paramaters in a dedicated struct.
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
     const BLOCK_SIZE: usize;
     const OUTPUT_SIZE: usize;
 
     fn new() -> Self;
 
+<<<<<<< HEAD
     fn reset(&mut self);
 
     fn update(&mut self, data: &[Self::NativeType]);
@@ -58,6 +75,13 @@ pub trait Hasher: Sized {
     fn hash_many(data: &[Vec<Self::NativeType>]) -> Vec<Self::Hash> {
         data.iter().map(|x| Self::hash(x)).collect()
     }
+=======
+    fn hash(data: &[Self::NativeType]) -> Self::Hash;
+
+    fn hash_one_in_place(data: &[Self::NativeType], dst: &mut [Self::NativeType]);
+
+    fn hash_many(data: &[Vec<Self::NativeType>]) -> Vec<Self::Hash>;
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 
     /// Hash many inputs of the same length.
     /// Writes output directly to corresponding pointers in dst.
@@ -76,6 +100,7 @@ pub trait Hasher: Sized {
     // TODO(Ohad): Consider adding a trait for hashers that support multi-source hashing, and
     // defining proper input structure for it.
     fn hash_many_multi_src(data: &[Vec<&[Self::NativeType]>]) -> Vec<Self::Hash>;
+<<<<<<< HEAD
 
     fn hash_many_multi_src_in_place(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]);
 }
@@ -94,4 +119,6 @@ pub trait Hash<NativeType: Sized + Eq>:
     + Send
     + Sync
 {
+=======
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 }

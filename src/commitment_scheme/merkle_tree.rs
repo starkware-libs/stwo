@@ -10,9 +10,14 @@ use crate::commitment_scheme::utils::{
     tree_data_as_mut_ref, ColumnArray, TreeData,
 };
 use crate::core::fields::{Field, IntoSlice};
+<<<<<<< HEAD
 use crate::math::utils::{prev_pow_two, usize_div_ceil};
 
 pub struct MerkleTree<T: Field + Sized + Debug + Display, H: Hasher> {
+=======
+
+pub struct MerkleTree<T: Field + Sized + Debug + Default + Display, H: Hasher> {
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
     pub bottom_layer: Vec<T>,
     pub bottom_layer_block_size: usize,
     pub bottom_layer_n_rows_in_node: usize,
@@ -21,7 +26,11 @@ pub struct MerkleTree<T: Field + Sized + Debug + Display, H: Hasher> {
     phantom: std::marker::PhantomData<H>,
 }
 
+<<<<<<< HEAD
 impl<T: Field + Sized + Copy + Debug + Display, H: Hasher> MerkleTree<T, H>
+=======
+impl<T: Field + Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H>
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 where
     T: IntoSlice<H::NativeType>,
 {
@@ -49,7 +58,11 @@ where
         });
 
         let n_rows_in_node = std::cmp::min(
+<<<<<<< HEAD
             prev_pow_two(H::BLOCK_SIZE / (trace.len() * std::mem::size_of::<T>())),
+=======
+            crate::math::prev_pow_two(H::BLOCK_SIZE / (trace.len() * std::mem::size_of::<T>())),
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
             trace[0].len(),
         );
 
@@ -57,7 +70,12 @@ where
         let bottom_layer = column_to_row_major(trace);
 
         // Allocate rest of the tree.
+<<<<<<< HEAD
         let bottom_layer_length_nodes = usize_div_ceil(bottom_layer.len(), bottom_layer_block_size);
+=======
+        let bottom_layer_length_nodes =
+            crate::math::usize_div_ceil(bottom_layer.len(), bottom_layer_block_size);
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
         let tree_data =
             allocate_balanced_tree(bottom_layer_length_nodes, H::BLOCK_SIZE, H::OUTPUT_SIZE);
 
@@ -147,7 +165,10 @@ where
 mod tests {
     use crate::commitment_scheme::blake3_hash::*;
     use crate::commitment_scheme::hasher::Hasher;
+<<<<<<< HEAD
     use crate::commitment_scheme::utils::tests::generate_test_queries;
+=======
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
     use crate::core::fields::m31::M31;
     use crate::core::fields::IntoSlice;
 

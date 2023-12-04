@@ -22,9 +22,16 @@ pub struct MerkleDecommitment<T: Sized + Display, H: Hasher> {
     queries: Vec<usize>,
 }
 
+<<<<<<< HEAD
 impl<T: Sized + Display + Copy, H: Hasher> MerkleDecommitment<T, H>
 where
     T: IntoSlice<H::NativeType>,
+=======
+impl<'a, T: Sized + Display + 'a, H: Hasher> MerkleDecommitment<T, H>
+where
+    T: IntoSlice<H::NativeType>,
+    H::NativeType: 'a,
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 {
     pub fn new(
         leaf_blocks: Vec<Vec<T>>,

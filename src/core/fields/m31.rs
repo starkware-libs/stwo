@@ -3,6 +3,7 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use super::IntoSlice;
 use crate::impl_field;
 
 pub const MODULUS_BITS: u32 = 31;
@@ -99,6 +100,13 @@ impl From<u32> for M31 {
 impl From<i32> for M31 {
     fn from(value: i32) -> Self {
         M31::reduce(value.try_into().unwrap())
+    }
+}
+
+// TODO(Ohad): Address platform.
+impl IntoSlice<u8> for M31 {
+    fn into_slice(sl: &[Self]) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(sl.as_ptr() as *const u8, std::mem::size_of_val(sl)) }
     }
 }
 

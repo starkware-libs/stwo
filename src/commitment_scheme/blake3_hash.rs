@@ -58,9 +58,15 @@ pub struct Blake3Hasher {
 
 impl super::hasher::Hasher for Blake3Hasher {
     type Hash = Blake3Hash;
+<<<<<<< HEAD
     const BLOCK_SIZE: usize = 64;
     const OUTPUT_SIZE: usize = 32;
     type NativeType = u8;
+=======
+    type NativeType = u8;
+    const BLOCK_SIZE: usize = 64;
+    const OUTPUT_SIZE: usize = 32;
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 
     fn new() -> Self {
         Self {
@@ -198,6 +204,7 @@ mod tests {
     #[test]
     fn hash_many_multi_src_test() {
         let input1 = b"a";
+<<<<<<< HEAD
         let input2 = b"bb";
         let input3 = b"ccc";
         let input4 = b"dddd";
@@ -208,6 +215,14 @@ mod tests {
         hash_in_place_results.resize(2, Default::default());
         let expected_result0 = Blake3Hasher::hash(b"abb");
         let expected_result1 = Blake3Hasher::hash(b"cccdddd");
+=======
+        let input2 = b"b";
+        let input3 = b"c";
+        let input4 = b"d";
+        let input_group_1 = [&input1[..], &input2[..]].to_vec();
+        let input_group_2 = [&input3[..], &input4[..]].to_vec();
+        let input_arr = [input_group_1, input_group_2];
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 
         let hash_results = Blake3Hasher::hash_many_multi_src(&input_arr);
         Blake3Hasher::hash_many_multi_src_in_place(&input_arr, &mut hash_in_place_results);

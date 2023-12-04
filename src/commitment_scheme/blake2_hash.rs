@@ -65,9 +65,15 @@ pub struct Blake2sHasher {
 
 impl super::hasher::Hasher for Blake2sHasher {
     type Hash = Blake2sHash;
+<<<<<<< HEAD
     const BLOCK_SIZE: usize = 64;
     const OUTPUT_SIZE: usize = 32;
     type NativeType = u8;
+=======
+    type NativeType = u8;
+    const BLOCK_SIZE: usize = 64;
+    const OUTPUT_SIZE: usize = 32;
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 
     fn new() -> Self {
         Self {
@@ -111,9 +117,14 @@ impl super::hasher::Hasher for Blake2sHasher {
             .for_each(|(input, out)| Self::hash_one_in_place(input, out))
     }
 
+<<<<<<< HEAD
     // TODO(Ohad): Consider allocating manually and using the in_place function.
     fn hash_many_multi_src(data: &[Vec<&[u8]>]) -> Vec<Self::Hash> {
         let mut hasher = Blake2sHasher::new();
+=======
+    fn hash_many_multi_src(data: &[Vec<&[u8]>]) -> Vec<Self::Hash> {
+        let mut hasher = Blake2s256::new();
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
         data.iter()
             .map(|input_group| {
                 input_group.iter().for_each(|d| {
@@ -203,10 +214,13 @@ mod tests {
         let input_group_1 = [&input1[..], &input2[..]].to_vec();
         let input_group_2 = [&input3[..], &input4[..]].to_vec();
         let input_arr = [input_group_1, input_group_2];
+<<<<<<< HEAD
         let mut hash_in_place_results = Vec::new();
         hash_in_place_results.resize(2, Default::default());
         let expected_result0 = Blake2sHasher::hash(b"abb");
         let expected_result1 = Blake2sHasher::hash(b"cccdddd");
+=======
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 
         let hash_results = Blake2sHasher::hash_many_multi_src(&input_arr);
         Blake2sHasher::hash_many_multi_src_in_place(&input_arr, &mut hash_in_place_results);

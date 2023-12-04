@@ -3,32 +3,49 @@ use std::slice::Iter;
 
 use super::hasher::Hasher;
 use crate::core::fields::{Field, IntoSlice};
+<<<<<<< HEAD
 use crate::math::utils::{log2_ceil, usize_safe_div};
+=======
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 
 pub type ColumnArray<T> = Vec<Vec<T>>;
 pub type ColumnLengthMap<T> = BTreeMap<usize, ColumnArray<T>>;
 pub type TreeLayer<T> = Box<[T]>;
 pub type TreeData<T> = Box<[TreeLayer<T>]>;
 
+<<<<<<< HEAD
 pub fn allocate_layer<T: Sized>(n_bytes: usize) -> TreeLayer<T> {
     // Safe bacuase 0 is a valid u8 value.
     unsafe { Box::<[T]>::new_zeroed_slice(n_bytes).assume_init() }
+=======
+// TODO(Ohd): Change tree impl and remove.
+pub fn allocate_layer<T: Sized>(n_elements: usize) -> TreeLayer<T> {
+    // Safe because 0 is a valid u8 value.
+    unsafe { Box::<[T]>::new_zeroed_slice(n_elements).assume_init() }
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 }
 
 pub fn allocate_balanced_tree<T: Sized>(
     bottom_layer_length: usize,
+<<<<<<< HEAD
     size_of_node_bytes: usize,
     output_size_bytes: usize,
 ) -> TreeData<T> {
     assert!(output_size_bytes.is_power_of_two());
     let tree_height = log2_ceil(bottom_layer_length * size_of_node_bytes / output_size_bytes);
+=======
+    size_of_node: usize,
+    output_size: usize,
+) -> TreeData<T> {
+    assert!(output_size.is_power_of_two());
+    let tree_height = crate::math::log2_ceil(bottom_layer_length * size_of_node / output_size);
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 
     // Safe because pointers are initialized later.
     let mut data: TreeData<T> = unsafe { TreeData::new_zeroed_slice(tree_height).assume_init() };
     for i in 0..tree_height {
         let layer = allocate_layer(
-            2_usize.pow((tree_height - i - 1).try_into().expect("Failed cast!"))
-                * output_size_bytes,
+            2_usize.pow((tree_height - i - 1).try_into().expect("Failed cast!")) * output_size,
         );
         data[i] = layer;
     }
@@ -37,7 +54,11 @@ pub fn allocate_balanced_tree<T: Sized>(
 
 /// Performes a 2-to-1 hash on a layer of a merkle tree.
 pub fn hash_layer<H: Hasher>(layer: &[H::NativeType], node_size: usize, dst: &mut [H::NativeType]) {
+<<<<<<< HEAD
     let n_nodes_in_layer = usize_safe_div(layer.len(), node_size);
+=======
+    let n_nodes_in_layer = crate::math::usize_safe_div(layer.len(), node_size);
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
     assert!(n_nodes_in_layer.is_power_of_two());
     assert!(n_nodes_in_layer <= dst.len() / H::OUTPUT_SIZE);
 
@@ -69,7 +90,11 @@ pub fn hash_merkle_tree<H: Hasher>(data: &mut [&mut [H::NativeType]]) {
 // TODO(Ohad): Write a similiar function for when F does not implement IntoSlice(Non le platforms).
 pub fn hash_merkle_tree_from_bottom_layer<'a, F: Field, H: Hasher>(
     bottom_layer: &[F],
+<<<<<<< HEAD
     bottom_layer_node_size_bytes: usize,
+=======
+    bottom_layer_node_size: usize,
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
     data: &mut [&mut [H::NativeType]],
 ) where
     F: IntoSlice<H::NativeType>,
@@ -79,7 +104,11 @@ pub fn hash_merkle_tree_from_bottom_layer<'a, F: Field, H: Hasher>(
     let dst_slice = data.get_mut(0).expect("Empty tree!");
     let bottom_layer_data: &[H::NativeType] =
         <F as IntoSlice<H::NativeType>>::into_slice(bottom_layer);
+<<<<<<< HEAD
     hash_layer::<H>(bottom_layer_data, bottom_layer_node_size_bytes, dst_slice);
+=======
+    hash_layer::<H>(bottom_layer_data, bottom_layer_node_size, dst_slice);
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 
     // Rest of the sub-tree
     hash_merkle_tree::<H>(data);
@@ -176,6 +205,7 @@ pub fn column_to_row_major<T>(mut mat: ColumnArray<T>) -> Vec<T> {
     row_major_matrix_vec
 }
 
+<<<<<<< HEAD
 pub fn inject_hash_in_pairs<'a: 'b, 'b, H: Hasher>(
     hash_inputs: &'b mut [Vec<&'a [H::NativeType]>],
     values_to_inject: &'a [H::Hash],
@@ -216,6 +246,11 @@ pub fn inject_column_chunks<'b, 'a: 'b, H: Hasher, F: Field>(
 {
     for column in columns {
         let column_slice = get_column_chunk(column, chunk_idx, n_chunks_in_column);
+=======
+#[cfg(test)]
+mod tests {
+    use num_traits::One;
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 
         // TODO(Ohad): consider implementing a 'duplicate' feature and changing or removing this
         // assert.

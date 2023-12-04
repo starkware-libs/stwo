@@ -37,6 +37,7 @@ pub trait Field:
     fn inverse(&self) -> Self;
 }
 
+<<<<<<< HEAD
 /// # Safety
 ///
 /// Do not use unless you are aware of the endianess in the platform you are compiling for, and the
@@ -55,6 +56,12 @@ pub unsafe trait IntoSlice<T: Sized>: Sized {
 
 unsafe impl<F: Field> IntoSlice<u8> for F {}
 
+=======
+pub trait IntoSlice<T: Sized>: Sized {
+    fn into_slice(sl: &[Self]) -> &[T];
+}
+
+>>>>>>> 5b6616e (native type for hasher trait, into slice for field)
 pub trait ExtensionOf<F: Field>: Field + From<F> + NumOps<F> + NumAssignOps<F> {}
 
 impl<F: Field> ExtensionOf<F> for F {}
