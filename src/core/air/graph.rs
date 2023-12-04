@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -145,4 +147,23 @@ pub enum OpParam {
     String(String),
     Bool(bool),
     List(Vec<OpParam>),
+}
+impl Display for OpParam {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OpParam::Int(i) => write!(f, "{}", i),
+            OpParam::String(s) => write!(f, "{}", s),
+            OpParam::Bool(b) => write!(f, "{}", b),
+            OpParam::List(l) => {
+                write!(f, "[")?;
+                for (i, item) in l.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", item)?;
+                }
+                write!(f, "]")
+            }
+        }
+    }
 }
