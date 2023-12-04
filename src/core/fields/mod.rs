@@ -34,6 +34,10 @@ pub trait Field: NumAssign + Neg<Output = Self> + Copy {
     fn inverse(&self) -> Self;
 }
 
+pub trait IntoSlice<T: Sized>: Sized {
+    fn into_slice(sl: &[Self]) -> &[T];
+}
+
 pub trait ExtensionOf<F: Field>: Field + From<F> + NumOps<F> + NumAssignOps<F> {}
 
 #[macro_export]
