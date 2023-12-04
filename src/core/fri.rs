@@ -18,7 +18,7 @@ use crate::core::poly::line::LineDomain;
 ///
 /// # Panics
 ///
-/// Panics if the number of evaluations is not a power of two or if there are less than two.
+/// Panics if the number of evaluations is not a power of two greater than or equal to two.
 pub fn apply_drp<F: ExtensionOf<BaseField>>(evals: &[F], alpha: F) -> Vec<F> {
     let n = evals.len();
     assert!(n.is_power_of_two());
