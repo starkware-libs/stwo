@@ -80,7 +80,7 @@ pub struct LinePoly<F> {
     /// The coefficients are stored in bit-reversed order.
     coeffs: Vec<F>,
     /// The number of coefficients stored as `log2(len(coeffs))`.
-    log_n: u32,
+    n_bits: u32,
 }
 
 impl<F: ExtensionOf<BaseField>> LinePoly<F> {
@@ -91,8 +91,8 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// Panics if the number of coefficients is not a power of two.
     pub fn new(coeffs: Vec<F>) -> Self {
         assert!(coeffs.len().is_power_of_two());
-        let log_n = coeffs.len().ilog2();
-        Self { coeffs, log_n }
+        let n_bits = coeffs.len().ilog2();
+        Self { coeffs, n_bits }
     }
 
     /// Evaluates the polynomial at a single point.
@@ -119,8 +119,8 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// Returns the number of coefficients.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.coeffs.len(), 1 << self.log_n);
-        1 << self.log_n
+        debug_assert_eq!(self.coeffs.len(), 1 << self.n_bits);
+        1 << self.n_bits
     }
 }
 
@@ -137,7 +137,7 @@ pub struct LineEvaluation<F> {
     /// Evaluations of a univariate polynomial on a [LineDomain].
     evals: Vec<F>,
     /// The number of evaluations stored as `log2(len(evals))`.
-    log_n: u32,
+    n_bits: u32,
 }
 
 impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
@@ -148,8 +148,8 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     /// Panics if the number of evaluations is not a power of two.
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());
-        let log_n = evals.len().ilog2();
-        Self { evals, log_n }
+        let n_bits = evals.len().ilog2();
+        Self { evals, n_bits }
     }
 
     /// Interpolates the polynomial as evaluations on `domain`.
@@ -164,8 +164,8 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     /// Returns the number of evaluations.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.evals.len(), 1 << self.log_n);
-        1 << self.log_n
+        debug_assert_eq!(self.evals.len(), 1 << self.n_bits);
+        1 << self.n_bits
     }
 }
 
