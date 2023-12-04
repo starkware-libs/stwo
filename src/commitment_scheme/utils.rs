@@ -1,32 +1,32 @@
 use std::collections::BTreeMap;
 
 use super::hasher::Hasher;
+use crate::core::fields::{Field, IntoSlice};
 
 pub type ColumnArray<T> = Vec<Vec<T>>;
 pub type ColumnLengthMap<T> = BTreeMap<usize, ColumnArray<T>>;
-pub type TreeLayer = Box<[u8]>;
-pub type TreeData = Box<[TreeLayer]>;
+pub type TreeLayer<T> = Box<[T]>;
+pub type TreeData<T> = Box<[TreeLayer<T>]>;
 
-pub fn allocate_layer(n_bytes: usize) -> TreeLayer {
-    // Safe bacuase 0 is a valid u8 value.
-    unsafe { Box::<[u8]>::new_zeroed_slice(n_bytes).assume_init() }
+// TODO(Ohd): Change tree impl and remove.
+pub fn allocate_layer<T: Sized>(n_elements: usize) -> TreeLayer<T> {
+    // Safe because 0 is a valid u8 value.
+    unsafe { Box::<[T]>::new_zeroed_slice(n_elements).assume_init() }
 }
 
-pub fn allocate_balanced_tree(
+pub fn allocate_balanced_tree<T: Sized>(
     bottom_layer_length: usize,
-    size_of_node_bytes: usize,
-    output_size_bytes: usize,
-) -> TreeData {
-    assert!(output_size_bytes.is_power_of_two());
-    let tree_height =
-        crate::math::log2_ceil(bottom_layer_length * size_of_node_bytes / output_size_bytes);
+    size_of_node: usize,
+    output_size: usize,
+) -> TreeData<T> {
+    assert!(output_size.is_power_of_two());
+    let tree_height = crate::math::log2_ceil(bottom_layer_length * size_of_node / output_size);
 
     // Safe because pointers are initialized later.
-    let mut data: TreeData = unsafe { TreeData::new_zeroed_slice(tree_height).assume_init() };
+    let mut data: TreeData<T> = unsafe { TreeData::new_zeroed_slice(tree_height).assume_init() };
     for i in 0..tree_height {
         let layer = allocate_layer(
-            2_usize.pow((tree_height - i - 1).try_into().expect("Failed cast!"))
-                * output_size_bytes,
+            2_usize.pow((tree_height - i - 1).try_into().expect("Failed cast!")) * output_size,
         );
         data[i] = layer;
     }
@@ -34,45 +34,50 @@ pub fn allocate_balanced_tree(
 }
 
 /// Performes a 2-to-1 hash on a layer of a merkle tree.
-pub fn hash_layer<T: Hasher>(layer: &[u8], node_size_bytes: usize, dst: &mut [u8]) {
-    let n_nodes_in_layer = crate::math::usize_safe_div(layer.len(), node_size_bytes);
+pub fn hash_layer<H: Hasher>(layer: &[H::NativeType], node_size: usize, dst: &mut [H::NativeType]) {
+    let n_nodes_in_layer = crate::math::usize_safe_div(layer.len(), node_size);
     assert!(n_nodes_in_layer.is_power_of_two());
-    assert!(n_nodes_in_layer <= dst.len() / T::OUTPUT_SIZE_IN_BYTES);
+    assert!(n_nodes_in_layer <= dst.len() / H::OUTPUT_SIZE);
 
-    let src_ptrs: Vec<*const u8> = (0..n_nodes_in_layer)
-        .map(|i| unsafe { layer.as_ptr().add(node_size_bytes * i) })
+    let src_ptrs: Vec<*const H::NativeType> = (0..n_nodes_in_layer)
+        .map(|i| unsafe { layer.as_ptr().add(node_size * i) })
         .collect();
-    let dst_ptrs: Vec<*mut u8> = (0..n_nodes_in_layer)
-        .map(|i| unsafe { dst.as_mut_ptr().add(T::OUTPUT_SIZE_IN_BYTES * i) })
+    let dst_ptrs: Vec<*mut H::NativeType> = (0..n_nodes_in_layer)
+        .map(|i| unsafe { dst.as_mut_ptr().add(H::OUTPUT_SIZE * i) })
         .collect();
 
     // Safe because pointers are valid and distinct.
     unsafe {
-        T::hash_many_in_place(&src_ptrs, node_size_bytes, &dst_ptrs);
+        H::hash_many_in_place(&src_ptrs, node_size, &dst_ptrs);
     }
 }
 
 // Given a data of a tree, hashes the entire tree.
-pub fn hash_merkle_tree<H: Hasher>(data: &mut [&mut [u8]]) {
+pub fn hash_merkle_tree<H: Hasher>(data: &mut [&mut [H::NativeType]]) {
     (0..data.len() - 1).for_each(|i| {
         let (src, dst) = data.split_at_mut(i + 1);
         let src = src.get(i).unwrap();
         let dst = dst.get_mut(0).unwrap();
-        hash_layer::<H>(src, H::BLOCK_SIZE_IN_BYTES, dst)
+        hash_layer::<H>(src, H::BLOCK_SIZE, dst)
     })
 }
 
 /// Given a data of a tree, and a bottom layer of 'bottom_layer_node_size_bytes' sized nodes, hashes
 /// the entire tree. Nodes are hashed individually at the bottom layer.
-pub fn hash_merkle_tree_from_bottom_layer<H: Hasher>(
-    bottom_layer_data: &[u8],
-    bottom_layer_node_size_bytes: usize,
-    data: &mut [&mut [u8]],
-) {
+// TODO(Ohad): Write a similiar function for when F does not implement IntoSlice(Non le platforms).
+pub fn hash_merkle_tree_from_bottom_layer<'a, F: Field, H: Hasher>(
+    bottom_layer: &[F],
+    bottom_layer_node_size: usize,
+    data: &mut [&mut [H::NativeType]],
+) where
+    F: IntoSlice<H::NativeType>,
+    H::NativeType: 'a,
+{
     // Hash bottom layer.
     let dst_slice = data.get_mut(0).expect("Empty tree!");
-
-    hash_layer::<H>(bottom_layer_data, bottom_layer_node_size_bytes, dst_slice);
+    let bottom_layer_data: &[H::NativeType] =
+        <F as IntoSlice<H::NativeType>>::into_slice(bottom_layer);
+    hash_layer::<H>(bottom_layer_data, bottom_layer_node_size, dst_slice);
 
     // Rest of the sub-tree
     hash_merkle_tree::<H>(data);
@@ -96,7 +101,7 @@ pub fn map_columns_sorted<T: Sized>(cols: ColumnArray<T>) -> ColumnLengthMap<T> 
 ///
 /// Pointers in 'dst' should point to pre-allocated memory with enough space to store
 /// column_array.len() amount of u32 elements.
-// TODO(Ohad): Think about endianess.
+// TODO(Ohad): Change tree impl and remove.
 pub unsafe fn transpose_to_bytes<T: Sized>(column_array: &ColumnArray<T>, dst: &[*mut u8]) {
     let column_length = column_array[0].len();
 
@@ -115,7 +120,7 @@ pub unsafe fn transpose_to_bytes<T: Sized>(column_array: &ColumnArray<T>, dst: &
     }
 }
 
-pub fn tree_data_as_mut_ref(tree_data: &mut TreeData) -> Vec<&mut [u8]> {
+pub fn tree_data_as_mut_ref<T: Sized>(tree_data: &mut TreeData<T>) -> Vec<&mut [T]> {
     tree_data.iter_mut().map(|layer| &mut layer[..]).collect()
 }
 
@@ -129,6 +134,7 @@ pub fn tree_data_as_mut_ref(tree_data: &mut TreeData) -> Vec<&mut [u8]> {
 ///
 /// dst should point to pre-allocated memory with enough space to store the entire column array +
 /// offset*(n_rows/n_rows_in_node) amount of T elements.
+// TODO(Ohad): Change tree impl and remove.
 pub unsafe fn inject<T: Sized>(
     column_array: &ColumnArray<T>,
     dst: &mut [u8],
@@ -145,6 +151,7 @@ pub unsafe fn inject<T: Sized>(
 
 /// Given a matrix, returns a vector of the matrix elements in row-major order.
 /// Assumes all columns are of the same length and non-zero.
+// TODO(Ohad): Change tree impl and remove.
 pub fn column_to_row_major<T>(mut mat: ColumnArray<T>) -> Vec<T> {
     if mat.len() == 1 {
         return mat.remove(0);
@@ -165,17 +172,6 @@ pub fn column_to_row_major<T>(mut mat: ColumnArray<T>) -> Vec<T> {
         row_major_matrix_vec.set_len(vec_length);
     }
     row_major_matrix_vec
-}
-
-// TODO(Ohad): Address platform endianess.
-#[allow(clippy::manual_slice_size_calculation)]
-pub fn to_byte_slice<T: Sized>(slice: &[T]) -> &[u8] {
-    unsafe {
-        std::slice::from_raw_parts(
-            slice.as_ptr() as *const u8,
-            slice.len() * std::mem::size_of::<T>(),
-        )
-    }
 }
 
 #[cfg(test)]
@@ -284,22 +280,22 @@ mod tests {
 
     #[test]
     fn allocate_layer_test() {
-        let layer = allocate_layer(10);
+        let layer = allocate_layer::<u8>(10);
         assert_eq!(layer.len(), 10);
     }
 
     #[test]
     fn allocate_empty_layer_test() {
-        let layer = allocate_layer(0);
+        let layer = allocate_layer::<u8>(0);
         assert_eq!(layer.len(), 0);
     }
 
     #[test]
     fn allocate_balanced_tree_test() {
         let n_nodes = 8;
-        let node_size = Blake3Hasher::BLOCK_SIZE_IN_BYTES;
-        let output_size = Blake3Hasher::OUTPUT_SIZE_IN_BYTES;
-        let tree = allocate_balanced_tree(n_nodes, node_size, output_size);
+        let node_size = Blake3Hasher::BLOCK_SIZE;
+        let output_size = Blake3Hasher::OUTPUT_SIZE;
+        let tree = allocate_balanced_tree::<u8>(n_nodes, node_size, output_size);
 
         assert_eq!(tree.len(), math::log2_ceil(n_nodes) + 1);
         assert_eq!(tree[0].len(), n_nodes * output_size);
@@ -314,18 +310,15 @@ mod tests {
         let mut res_layer = allocate_layer(64);
         hash_layer::<Blake3Hasher>(&layer, 8, &mut res_layer);
         assert_eq!(
-            hex::encode(&res_layer[..Blake3Hasher::OUTPUT_SIZE_IN_BYTES]),
+            hex::encode(&res_layer[..Blake3Hasher::OUTPUT_SIZE]),
             Blake3Hasher::hash(&0u64.to_le_bytes()).to_string()
         );
     }
 
     #[test]
     fn hash_tree_test() {
-        let mut tree_data = allocate_balanced_tree(
-            16,
-            Blake3Hasher::BLOCK_SIZE_IN_BYTES,
-            Blake3Hasher::OUTPUT_SIZE_IN_BYTES,
-        );
+        let mut tree_data =
+            allocate_balanced_tree(16, Blake3Hasher::BLOCK_SIZE, Blake3Hasher::OUTPUT_SIZE);
 
         hash_merkle_tree::<Blake3Hasher>(&mut tree_data_as_mut_ref(&mut tree_data)[..]);
 
@@ -340,21 +333,15 @@ mod tests {
         const TEST_SIZE: usize = 512;
 
         let bottom_layer = [M31::one(); TEST_SIZE];
-        let bottom_layer_as_bytes = unsafe {
-            std::slice::from_raw_parts(
-                bottom_layer.as_ptr() as *const u8,
-                bottom_layer.len() * std::mem::size_of::<M31>(),
-            )
-        };
         let mut tree_data = allocate_balanced_tree(
-            TEST_SIZE * std::mem::size_of::<M31>() / Blake3Hasher::BLOCK_SIZE_IN_BYTES,
-            Blake3Hasher::BLOCK_SIZE_IN_BYTES,
-            Blake3Hasher::OUTPUT_SIZE_IN_BYTES,
+            TEST_SIZE * std::mem::size_of::<M31>() / Blake3Hasher::BLOCK_SIZE,
+            Blake3Hasher::BLOCK_SIZE,
+            Blake3Hasher::OUTPUT_SIZE,
         );
 
-        hash_merkle_tree_from_bottom_layer::<Blake3Hasher>(
-            bottom_layer_as_bytes,
-            Blake3Hasher::BLOCK_SIZE_IN_BYTES,
+        hash_merkle_tree_from_bottom_layer::<M31, Blake3Hasher>(
+            &bottom_layer[..],
+            Blake3Hasher::BLOCK_SIZE,
             &mut tree_data_as_mut_ref(&mut tree_data)[..],
         );
 

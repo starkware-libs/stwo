@@ -4,27 +4,30 @@ use std::fmt::{Debug, Display};
 use super::hasher::Hasher;
 use super::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::utils::{
-    allocate_balanced_tree, column_to_row_major, hash_merkle_tree_from_bottom_layer, to_byte_slice,
+    allocate_balanced_tree, column_to_row_major, hash_merkle_tree_from_bottom_layer,
     tree_data_as_mut_ref, ColumnArray, TreeData,
 };
+use crate::core::fields::{Field, IntoSlice};
 
-pub struct MerkleTree<T: Sized + Debug + Default + Display, H: Hasher> {
+pub struct MerkleTree<T: Field + Sized + Debug + Default + Display, H: Hasher> {
     pub bottom_layer: Vec<T>,
     pub bottom_layer_block_size: usize,
     pub bottom_layer_n_rows_in_node: usize,
-    pub data: TreeData,
+    pub data: TreeData<H::NativeType>,
     pub height: usize,
     phantom: std::marker::PhantomData<H>,
 }
 
-impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
+impl<T: Field + Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H>
+where
+    T: IntoSlice<H::NativeType>,
+{
     /// Commits on a given trace(matrix).
     pub fn commit(trace: ColumnArray<T>) -> Self {
         let mut tree = Self::init_from_column_array(trace);
 
-        let bottom_layer_as_byte_slice = to_byte_slice(&tree.bottom_layer);
-        hash_merkle_tree_from_bottom_layer::<H>(
-            bottom_layer_as_byte_slice,
+        hash_merkle_tree_from_bottom_layer::<T, H>(
+            &tree.bottom_layer[..],
             tree.bottom_layer_block_size * std::mem::size_of::<T>(),
             &mut tree_data_as_mut_ref(&mut tree.data)[..],
         );
@@ -43,9 +46,7 @@ impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
         });
 
         let n_rows_in_node = std::cmp::min(
-            crate::math::prev_pow_two(
-                H::BLOCK_SIZE_IN_BYTES / (trace.len() * std::mem::size_of::<T>()),
-            ),
+            crate::math::prev_pow_two(H::BLOCK_SIZE / (trace.len() * std::mem::size_of::<T>())),
             trace[0].len(),
         );
 
@@ -55,11 +56,8 @@ impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
         // Allocate rest of the tree.
         let bottom_layer_length_nodes =
             crate::math::usize_div_ceil(bottom_layer.len(), bottom_layer_block_size);
-        let tree_data = allocate_balanced_tree(
-            bottom_layer_length_nodes,
-            H::BLOCK_SIZE_IN_BYTES,
-            H::OUTPUT_SIZE_IN_BYTES,
-        );
+        let tree_data =
+            allocate_balanced_tree(bottom_layer_length_nodes, H::BLOCK_SIZE, H::OUTPUT_SIZE);
 
         Self {
             bottom_layer,
@@ -106,9 +104,8 @@ impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
                             None
                         }
                         _ => {
-                            let node: H::Hash = self.data[i]
-                                [*q * H::OUTPUT_SIZE_IN_BYTES..(*q + 1) * H::OUTPUT_SIZE_IN_BYTES]
-                                .into();
+                            let node: H::Hash =
+                                self.data[i][*q * H::OUTPUT_SIZE..(*q + 1) * H::OUTPUT_SIZE].into();
                             Some(node)
                         }
                     }
@@ -148,8 +145,8 @@ mod tests {
 
     use crate::commitment_scheme::blake3_hash::*;
     use crate::commitment_scheme::hasher::Hasher;
-    use crate::commitment_scheme::utils::to_byte_slice;
     use crate::core::fields::m31::M31;
+    use crate::core::fields::IntoSlice;
 
     fn init_m31_test_trace(len: usize) -> Vec<M31> {
         assert!(len.is_power_of_two());
@@ -191,7 +188,7 @@ mod tests {
     #[test]
     pub fn get_leaf_block_test() {
         let trace = vec![init_m31_test_trace(128)];
-        const BLOCK_LEN: usize = Blake3Hasher::BLOCK_SIZE_IN_BYTES / std::mem::size_of::<M31>();
+        const BLOCK_LEN: usize = Blake3Hasher::BLOCK_SIZE / std::mem::size_of::<M31>();
         let tree_from_matrix = super::MerkleTree::<M31, Blake3Hasher>::commit(trace);
         let queries: BTreeSet<usize> = (0..100).map(|_| thread_rng().gen_range(0..128)).collect();
 
@@ -221,7 +218,7 @@ mod tests {
         assert_eq!(decommitment.layers[0].len(), 1);
         assert_eq!(
             decommitment.layers[0][0],
-            Blake3Hasher::hash(to_byte_slice(&tree.get_leaf_block(0)))
+            Blake3Hasher::hash(<M31 as IntoSlice<u8>>::into_slice(&tree.get_leaf_block(0)))
         );
 
         // The queried leaves' parents can be computed by verifer therefore excluded from the proof.
