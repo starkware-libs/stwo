@@ -1,8 +1,9 @@
 use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 
-use super::hasher::Hasher;
 use crate::core::fields::IntoSlice;
+
+use super::hasher::Hasher;
 
 /// Merkle proof of queried indices.
 /// Used for storing a merkle proof of a given tree and a set of queries.

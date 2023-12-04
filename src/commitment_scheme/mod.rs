@@ -4,5 +4,8 @@ pub mod hasher;
 pub mod merkle_decommitment;
 pub mod merkle_tree;
 pub mod utils;
+pub mod trapezoid;
+pub mod mdconfig;
+pub mod des;
 
 pub const N_BYTES_FELT: usize = 4;

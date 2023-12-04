@@ -102,10 +102,10 @@ impl From<i32> for M31 {
     }
 }
 
-// TODO(Ohad): Address platform.
+//TODO(Ohad): Address platform.
 impl IntoSlice<u8> for M31 {
     fn into_slice(sl: &[Self]) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(sl.as_ptr() as *const u8, std::mem::size_of_val(sl)) }
+        unsafe {std::slice::from_raw_parts(sl.as_ptr() as *const u8, std::mem::size_of_val(sl))}
     }
 }
 

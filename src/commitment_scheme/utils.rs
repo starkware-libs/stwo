@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
-use super::hasher::Hasher;
 use crate::core::fields::{Field, IntoSlice};
+
+use super::hasher::Hasher;
 
 pub type ColumnArray<T> = Vec<Vec<T>>;
 pub type ColumnLengthMap<T> = BTreeMap<usize, ColumnArray<T>>;

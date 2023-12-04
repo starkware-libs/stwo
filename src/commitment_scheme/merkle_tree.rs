@@ -35,6 +35,25 @@ where
         tree
     }
 
+
+    pub fn commit_layer(prev_layer_hashes: &[H::Hash], matrix_to_inject: ColumnArray<T>) -> Vec<H::Hash> {
+        let n_rows_in_inject = matrix_to_inject[0].len() / prev_layer_hashes.len();
+
+        let inputs = prev_layer_hashes.iter().enumerate().map(|(i, prev_hash)| {
+            let mut input_group = Vec::new();
+            input_group.push(prev_hash.as_ref());
+
+            //TODO(Ohad): compile different loop in different platforms (none le will copy and return ref);
+            for column in matrix_to_inject.iter() {
+                input_group.push(unsafe {std::slice::from_raw_parts(column[i * n_rows_in_inject..].as_ptr() as *const H::NativeType, n_rows_in_inject * std::mem::size_of::<T>() / std::mem::size_of::<H::NativeType>())});
+            }
+            input_group
+        }).collect::<Vec<Vec<&[H::NativeType]>>>();
+
+        H::hash_many_multi_src(&inputs)
+
+    }
+
     /// Builds the base layer of the tree from the given trace.
     /// Allocates the rest of the tree.
     // TODO(Ohad): add support for columns of different lengths.
@@ -145,6 +164,7 @@ mod tests {
 
     use crate::commitment_scheme::blake3_hash::*;
     use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::utils::ColumnArray;
     use crate::core::fields::m31::M31;
     use crate::core::fields::IntoSlice;
 
@@ -183,6 +203,21 @@ mod tests {
             hex::encode(tree_from_matrix.root()),
             "c07e98e8a5d745ea99c3c3eac4c43b9df5ceb9e78973a785d90b3ffe4d5fcf5e"
         );
+    }
+
+    #[test]
+    pub fn commit_test1() {
+        let trace = init_m31_test_trace(1024);
+        let matrix = vec![trace];
+
+        let tree_from_matrix = super::MerkleTree::<M31, Blake3Hasher>::commit(matrix);
+
+
+        println!("{}", tree_from_matrix.height);
+        tree_from_matrix.data.iter().for_each(|layer| {
+            println!("{}, len {}", hex::encode(&layer[..32]), layer.len());
+        });
+        println!("{}", hex::encode(tree_from_matrix.root()));
     }
 
     #[test]
@@ -227,5 +262,23 @@ mod tests {
         // A verifer can compute the left child of the root from the previous layer, therefore
         // the proof only needs to contain the right child.
         assert_eq!(decommitment.layers[2].len(), 1);
+    }
+
+    #[test] 
+    pub fn commit_layer_test(){
+        let matrix_to_inject: ColumnArray<M31> = vec![(0..32).map(M31::from_u32_unchecked).collect()];
+        let prev_layer_hashes = vec![Blake3Hasher::hash(b"a"); 8];
+        let hash_a = Blake3Hasher::hash(b"a");
+
+        let hashes = super::MerkleTree::<M31,Blake3Hasher>::commit_layer(&prev_layer_hashes, matrix_to_inject);
+
+        hashes.iter().enumerate().for_each(|(i,hash)| {
+            let mut input: Vec<u8> = Vec::from(hash_a.as_ref());
+            input.append(&mut (i as u32 * 4).to_le_bytes().to_vec());
+            input.append(&mut (i as u32 * 4 + 1).to_le_bytes().to_vec());
+            input.append(&mut (i as u32 * 4 + 2).to_le_bytes().to_vec());
+            input.append(&mut (i as u32 * 4 + 3).to_le_bytes().to_vec());
+            assert_eq!(hash, &Blake3Hasher::hash(input.as_slice()));
+        });
     }
 }
