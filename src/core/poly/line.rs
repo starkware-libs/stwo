@@ -116,6 +116,10 @@ impl<F: Field> Deref for LinePoly<F> {
 /// Evaluations of a univariate polynomial on a [LineDomain].
 pub struct LineEvaluation<F> {
     _evals: Vec<F>,
+    /// The degree bound of the polynomial stored as `log2(degree_bound)`.
+    ///
+    /// The number of `evals` will always equal `2^bound_bits`.
+    _bound_bits: u32,
 }
 
 impl<F: Field> LineEvaluation<F> {
@@ -126,7 +130,10 @@ impl<F: Field> LineEvaluation<F> {
     /// Panics if the number of evaluations is not a power of two.
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());
-        Self { _evals: evals }
+        Self {
+            _bound_bits: evals.len().ilog2(),
+            _evals: evals,
+        }
     }
 
     /// Interpolates the polynomial as evaluations on `domain`
