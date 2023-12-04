@@ -57,6 +57,7 @@ macro_rules! cm31 {
 mod tests {
     use super::CM31;
     use crate::core::fields::m31::{M31, P};
+    use crate::core::fields::Field;
     use crate::m31;
 
     #[test]
@@ -76,5 +77,16 @@ mod tests {
         assert_eq!(cm1 - m, cm1 - cm);
         assert_eq!(cm0_x_cm1 / cm1, cm31!(1, 2));
         assert_eq!(cm1 / m, cm1 / cm);
+    }
+
+    #[test]
+    fn test_mds_construction() {
+        let one = cm31!(1, 0);
+        let omega = cm31!(2, 1268011823);
+        let inv_i = cm31!(0, 1).inverse();
+        let lambda = inv_i * (omega - one) / (omega + one);
+        assert_eq!(lambda.0, m31!(1138498490));
+        assert_eq!(lambda.1, m31!(0));
+        assert_ne!(omega.pow(2_u128.pow(30)), one)
     }
 }
