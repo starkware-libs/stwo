@@ -45,6 +45,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           profile: minimal
+          components: rustfmt
           toolchain: nightly-2023-07-05
       - uses: Swatinem/rust-cache@v2
       - run: cargo +nightly-2023-07-05 test --features avx512
