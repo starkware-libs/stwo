@@ -4,8 +4,8 @@ use std::ops::Deref;
 
 use num_traits::Zero;
 
-use super::utils::repeat_value;
-use crate::core::circle::Coset;
+use super::utils::{fold, repeat_value};
+use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, Field};
@@ -96,8 +96,14 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     }
 
     /// Evaluates the polynomial at a single point.
-    pub fn eval_at_point(&self, _x: F) -> F {
-        todo!()
+    pub fn eval_at_point<E: ExtensionOf<F>>(&self, mut x: E) -> E {
+        // TODO(Andrew): Allocation here expensive for small polynomials.
+        let mut doublings = vec![x];
+        for _ in 1..self.n_bits {
+            x = CirclePoint::double_x(x);
+            doublings.push(x);
+        }
+        fold(&self.coeffs, &doublings)
     }
 
     /// Evaluates the polynomial at all points in the domain.
@@ -119,6 +125,9 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// Returns the number of coefficients.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
+        // `.len().ilog2()` is a common operation. By returning the length like so the compiler
+        // optimizes `.len().ilog2()` to a load of `n_bits` instead of a 'branch check zero' and a
+        // 'count leading zeros' which would be the case if we would return `self.coeffs.len()`.
         debug_assert_eq!(self.coeffs.len(), 1 << self.n_bits);
         1 << self.n_bits
     }
@@ -133,6 +142,7 @@ impl<F: ExtensionOf<BaseField>> Deref for LinePoly<F> {
 }
 
 /// Evaluations of a univariate polynomial on a [LineDomain].
+#[derive(Debug, Clone)]
 pub struct LineEvaluation<F> {
     /// Evaluations of a univariate polynomial on a [LineDomain].
     evals: Vec<F>,
@@ -164,6 +174,9 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     /// Returns the number of evaluations.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
+        // `.len().ilog2()` is a common operation. By returning the length like so the compiler
+        // optimizes `.len().ilog2()` to a load of `n_bits` instead of a 'branch check zero' and a
+        // 'count leading zeros' which would be the case if we would return `self.evals.len()`.
         debug_assert_eq!(self.evals.len(), 1 << self.n_bits);
         1 << self.n_bits
     }
@@ -400,5 +413,18 @@ mod tests {
         let interpolated_poly = evals.interpolate(domain);
 
         assert_eq!(interpolated_poly, poly);
+    }
+
+    #[test]
+    fn line_polynomial_eval_at_point() {
+        const LOG_N: usize = 2;
+        let coset = Coset::half_odds(LOG_N);
+        let evals = LineEvaluation::new((0..1 << LOG_N).map(BaseField::from).collect());
+        let domain = LineDomain::new(coset);
+        let poly = evals.clone().interpolate(domain);
+
+        for (i, x) in domain.iter().enumerate() {
+            assert_eq!(poly.eval_at_point(x), evals[i], "mismatch at {i}");
+        }
     }
 }

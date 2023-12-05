@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::iter::Chain;
 use std::ops::Deref;
 
+use super::utils::fold;
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -239,30 +240,20 @@ pub struct CirclePoly<F: ExtensionOf<BaseField>> {
 
 impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
     pub fn new(bound_bits: usize, coeffs: Vec<F>) -> Self {
-        assert!(coeffs.len() == (1 << bound_bits));
+        assert_eq!(coeffs.len(), 1 << bound_bits);
         Self { bound_bits, coeffs }
     }
 
-    pub fn eval_at_point<EF: ExtensionOf<F>>(&self, point: CirclePoint<EF>) -> EF {
-        let mut mults = vec![EF::one(), point.y];
+    /// Evaluates the polynomial at a single point.
+    pub fn eval_at_point<E: ExtensionOf<F>>(&self, point: CirclePoint<E>) -> E {
+        // TODO(Andrew): Allocation here expensive for small polynomials.
+        let mut mappings = vec![point.y, point.x];
         let mut x = point.x;
-        for _ in 0..(self.bound_bits - 1) {
-            mults.push(x);
-            x = CirclePoint::double_x(x)
+        for _ in 2..self.bound_bits {
+            x = CirclePoint::double_x(x);
+            mappings.push(x);
         }
-        mults.reverse();
-
-        let mut sum = EF::zero();
-        for (i, val) in self.coeffs.iter().enumerate() {
-            let mut cur_mult = EF::one();
-            for (j, mult) in mults.iter().enumerate() {
-                if i & (1 << j) != 0 {
-                    cur_mult *= *mult;
-                }
-            }
-            sum += cur_mult * *val;
-        }
-        sum
+        fold(&self.coeffs, &mappings)
     }
 
     /// Evaluates the polynomial at all points in the domain.
