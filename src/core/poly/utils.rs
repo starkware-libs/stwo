@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul};
+use crate::core::fields::{ExtensionOf, Field};
 
 /// Folds values recursively in `O(n)` by a hierarchical application of folding factors.
 ///
@@ -19,15 +19,11 @@ use std::ops::{Add, Mul};
 /// Panics if the number of values is not a power of two or if an incorrect number of of folding
 /// factors is provided.
 // TODO(Andrew): Can be made to run >10x faster by unrolling lower layers of recursion
-pub(super) fn fold<T, U>(values: &[T], folding_factors: &[U]) -> T
-where
-    T: Copy + Add<Output = T> + Mul<U, Output = T>,
-    U: Copy,
-{
+pub(super) fn fold<F: Field, E: ExtensionOf<F>>(values: &[F], folding_factors: &[E]) -> E {
     let n = values.len();
     assert_eq!(n, 1 << folding_factors.len());
     if n == 1 {
-        return values[0];
+        return values[0].into();
     }
     let (lhs_values, rhs_values) = values.split_at(n / 2);
     let (&folding_factor, folding_factors) = folding_factors.split_first().unwrap();
