@@ -99,7 +99,7 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     pub fn eval_at_point<E: ExtensionOf<F>>(&self, mut x: E) -> E {
         // TODO(Andrew): Allocation here expensive for small polynomials.
         let mut doublings = vec![x];
-        for _ in 1..self.coeffs.len().ilog2() {
+        for _ in 1..self.n_bits {
             x = CirclePoint::double_x(x);
             doublings.push(x);
         }
