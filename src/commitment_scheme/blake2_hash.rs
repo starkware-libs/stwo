@@ -96,7 +96,7 @@ impl super::hasher::Hasher for Blake2sHasher {
             .for_each(|(input, out)| Self::hash_one_in_place(input, out))
     }
 
-    fn hash_many_multi_src(data: &[&[&[u8]]]) -> Vec<Self::Hash> {
+    fn hash_many_multi_src(data: &[Vec<&[u8]>]) -> Vec<Self::Hash> {
         let mut hasher = Blake2s256::new();
         data.iter()
             .map(|input_group| {
@@ -168,9 +168,9 @@ mod tests {
         let input2 = b"bb";
         let input3 = b"ccc";
         let input4 = b"dddd";
-        let input_group_1 = [&input1[..], &input2[..]];
-        let input_group_2 = [&input3[..], &input4[..]];
-        let input_arr = [&input_group_1[..], &input_group_2[..]];
+        let input_group_1 = [&input1[..], &input2[..]].to_vec();
+        let input_group_2 = [&input3[..], &input4[..]].to_vec();
+        let input_arr = [input_group_1, input_group_2];
 
         let hash_results = Blake2sHasher::hash_many_multi_src(&input_arr);
 

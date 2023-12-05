@@ -100,7 +100,7 @@ impl super::hasher::Hasher for Blake3Hasher {
             .for_each(|(input, out)| Self::hash_one_in_place(input, out))
     }
 
-    fn hash_many_multi_src(data: &[&[&[u8]]]) -> Vec<Self::Hash> {
+    fn hash_many_multi_src(data: &[Vec<&[u8]>]) -> Vec<Self::Hash> {
         let mut hasher = blake3::Hasher::new();
         data.iter()
             .map(|input_group| {
@@ -172,9 +172,9 @@ mod tests {
         let input2 = b"b";
         let input3 = b"c";
         let input4 = b"d";
-        let input_group_1 = [&input1[..], &input2[..]];
-        let input_group_2 = [&input3[..], &input4[..]];
-        let input_arr = [&input_group_1[..], &input_group_2[..]];
+        let input_group_1 = [&input1[..], &input2[..]].to_vec();
+        let input_group_2 = [&input3[..], &input4[..]].to_vec();
+        let input_arr = [input_group_1, input_group_2];
 
         let hash_results = Blake3Hasher::hash_many_multi_src(&input_arr);
 
