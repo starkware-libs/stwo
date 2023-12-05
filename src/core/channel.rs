@@ -21,14 +21,16 @@ impl Blake2sChannel {
     }
     /// Generates uniform 32 bytes and increases the channel counter by 1.
     pub fn draw_random_bytes(&mut self) -> [u8; 32] {
-        let mut padded_counter = [0; 32];
+        let mut hash_input = self.digest.as_ref().to_vec();
 
         // Pad the counter to 32 bytes.
+        let mut padded_counter = [0; 32];
         let counter_bytes = self.counter.to_le_bytes();
-        padded_counter[..counter_bytes.len()].copy_from_slice(&counter_bytes);
-        self.counter += 1;
+        padded_counter[0..counter_bytes.len()].copy_from_slice(&counter_bytes);
+        hash_input.extend_from_slice(&padded_counter);
 
-        Blake2sHasher::concat_and_hash(&self.digest, &Blake2sHash::from(&padded_counter[..])).into()
+        self.counter += 1;
+        Blake2sHasher::hash(&hash_input).into()
     }
 
     /// Generates a uniform random vector of BaseField elements.
