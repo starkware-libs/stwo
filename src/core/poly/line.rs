@@ -125,6 +125,9 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// Returns the number of coefficients.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
+        // `.len().ilog2()` is a common operation. By returning the length like so the compiler
+        // optimizes `.len().ilog2()` to a load of `n_bits` instead of a 'branch check zero' and a
+        // 'count leading zeros' which would be the case if we would return `self.coeffs.len()`.
         debug_assert_eq!(self.coeffs.len(), 1 << self.n_bits);
         1 << self.n_bits
     }
@@ -171,6 +174,9 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     /// Returns the number of evaluations.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
+        // `.len().ilog2()` is a common operation. By returning the length like so the compiler
+        // optimizes `.len().ilog2()` to a load of `n_bits` instead of a 'branch check zero' and a
+        // 'count leading zeros' which would be the case if we would return `self.evals.len()`.
         debug_assert_eq!(self.evals.len(), 1 << self.n_bits);
         1 << self.n_bits
     }
