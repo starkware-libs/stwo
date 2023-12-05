@@ -3,7 +3,6 @@ use std::fmt;
 use blake2::digest::{Update, VariableOutput};
 use blake2::{Blake2s256, Blake2sVar, Digest};
 
-// TODO(ShaharS) Share this 32 bytes constant with the hasher output size.
 // Wrapper for the blake2s hash type.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Blake2sHash([u8; 32]);
