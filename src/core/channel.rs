@@ -31,16 +31,6 @@ impl Blake2sChannel {
         Blake2sHasher::concat_and_hash(&self.digest, &Blake2sHash::from(&padded_counter[..])).into()
     }
 
-    /// Generates uniform 32 bytes and increases the channel counter by 1.
-    pub fn draw_random_bytes2(&mut self) -> [u8; 32] {
-        let mut x = self.digest.as_ref().to_vec();
-        x.extend_from_slice(&self.counter.to_le_bytes());
-
-        self.counter += 1;
-
-        Blake2sHasher::hash(&x).into()
-    }
-
     /// Generates a uniform random vector of BaseField elements.
     /// Repeats hashing with an increasing counter until getting a good result.
     /// Retry probablity for each round is ~ 2^(-28).
