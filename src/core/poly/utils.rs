@@ -2,14 +2,14 @@ use std::ops::{Add, Mul};
 
 /// Folds values recursively in `O(n)` by a hierarchical application of folding factors.
 ///
-/// i.e. folding `n = 8` values with `folding_factors = [α, β, γ]`:
+/// i.e. folding `n = 8` values with `folding_factors = [x, y, z]`:
 ///
 /// ```text
-///               n2=n1+α*n2
+///               n2=n1+x*n2
 ///           /               \
-///     n1=n3+β*n4          n2=n5+β*n6
+///     n1=n3+y*n4          n2=n5+y*n6
 ///      /      \            /      \
-/// n3=a+γ*b  n4=c+γ*d  n5=e+γ*f  n6=g+γ*h
+/// n3=a+z*b  n4=c+z*d  n5=e+z*f  n6=g+z*h
 ///   /  \      /  \      /  \      /  \
 ///  a    b    c    d    e    f    g    h
 /// ```
