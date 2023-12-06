@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Display};
 use std::ops::Neg;
 
 use num_traits::{NumAssign, NumAssignOps, NumOps};
@@ -8,7 +9,7 @@ pub mod cm31;
 pub mod m31;
 pub mod qm31;
 
-pub trait Field: NumAssign + Neg<Output = Self> + Copy {
+pub trait Field: NumAssign + Neg<Output = Self> + Copy + Debug + Display {
     fn square(&self) -> Self {
         (*self) * (*self)
     }
