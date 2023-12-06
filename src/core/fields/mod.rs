@@ -35,6 +35,13 @@ pub trait Field: NumAssign + Neg<Output = Self> + Copy + Debug + Display {
     fn inverse(&self) -> Self;
 }
 
+/// # Safety
+///
+/// Do not use unless you are aware of the endianess in the platform you are compiling for, and the
+/// Field element's representation in memory.
+pub unsafe trait IntoSlice<T: Sized>: Sized {
+    fn into_slice(sl: &[Self]) -> &[T];
+}
 pub trait ExtensionOf<F: Field>: Field + From<F> + NumOps<F> + NumAssignOps<F> {}
 
 #[macro_export]

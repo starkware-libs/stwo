@@ -3,6 +3,7 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use super::IntoSlice;
 use crate::impl_field;
 
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
@@ -101,6 +102,13 @@ impl From<i32> for M31 {
     }
 }
 
+// TODO(Ohad): Do not compile on non-le targets.
+unsafe impl IntoSlice<u8> for M31 {
+    fn into_slice(sl: &[Self]) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(sl.as_ptr() as *const u8, std::mem::size_of_val(sl)) }
+    }
+}
+
 #[cfg(test)]
 #[macro_export]
 macro_rules! m31 {
@@ -114,6 +122,7 @@ mod tests {
     use rand::Rng;
 
     use super::{M31, P};
+    use crate::core::fields::IntoSlice;
 
     fn mul_p(a: u32, b: u32) -> u32 {
         ((a as u64 * b as u64) % P as u64) as u32
@@ -140,6 +149,25 @@ mod tests {
             assert_eq!(m31!(add_p(x, y)), m31!(x) + m31!(y));
             assert_eq!(m31!(mul_p(x, y)), m31!(x) * m31!(y));
             assert_eq!(m31!(neg_p(x)), -m31!(x));
+        }
+    }
+
+    #[test]
+    fn test_into_slice() {
+        let mut rng = rand::thread_rng();
+        let x = (0..100)
+            .map(|_| M31::from(rng.gen::<u32>()))
+            .collect::<Vec<M31>>();
+
+        let slice = <M31 as IntoSlice<u8>>::into_slice(&x);
+
+        for i in 0..100 {
+            assert_eq!(
+                x[i],
+                M31::from_u32_unchecked(u32::from_le_bytes(
+                    slice[i * 4..(i + 1) * 4].try_into().unwrap()
+                ))
+            );
         }
     }
 }
