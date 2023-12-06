@@ -28,9 +28,9 @@ impl Mask {
         evaluation_point: CirclePointIndex,
     ) -> PointSetEvaluation {
         let mut res: BTreeMap<CirclePointIndex, BaseField> = BTreeMap::new();
-        let mask_offsets = self.get_point_indices(cosets);
-        for (mask_item, mask_offset) in self.items.iter().zip(mask_offsets) {
-            let point = evaluation_point + mask_offset;
+        for mask_item in &self.items {
+            let offset = cosets[mask_item.column_index].index_at(mask_item.offset);
+            let point = evaluation_point + offset;
             res.insert(point, poly_oracles[mask_item.column_index].get_at(point));
             res.insert(-point, poly_oracles[mask_item.column_index].get_at(-point));
         }
