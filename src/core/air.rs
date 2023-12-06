@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::circle::CirclePointIndex;
+use super::circle::{CirclePoint, CirclePointIndex};
 use super::fields::m31::BaseField;
 use super::fields::ExtensionOf;
 use super::poly::circle::PointSetEvaluation;
@@ -26,14 +26,20 @@ impl Mask {
         &self,
         cosets: &[CanonicCoset],
         poly_oracles: &[impl PolyOracle<F>],
-        evaluation_point: CirclePointIndex,
+        conjugate_poly_oracles: &[impl PolyOracle<F>],
     ) -> PointSetEvaluation<F> {
-        let mut res: BTreeMap<CirclePointIndex, F> = BTreeMap::new();
+        let mut res: BTreeMap<CirclePoint<F>, F> = BTreeMap::new();
         let mask_offsets = self.get_point_indices(cosets);
         for (mask_item, mask_offset) in self.items.iter().zip(mask_offsets) {
-            let point = evaluation_point + mask_offset;
-            res.insert(point, poly_oracles[mask_item.column_index].get_at(point));
-            res.insert(-point, poly_oracles[mask_item.column_index].get_at(-point));
+            res.insert(
+                poly_oracles[mask_item.column_index].point() + mask_offset.to_point().into_ef(),
+                poly_oracles[mask_item.column_index].get_at(mask_offset),
+            );
+            res.insert(
+                conjugate_poly_oracles[mask_item.column_index].point()
+                    - mask_offset.to_point().into_ef(),
+                conjugate_poly_oracles[mask_item.column_index].get_at(-mask_offset),
+            );
         }
         PointSetEvaluation::new(res)
     }
@@ -50,7 +56,7 @@ impl Mask {
 #[cfg(test)]
 mod tests {
     use crate::core::air::{Mask, MaskItem};
-    use crate::core::circle::{CirclePoint, CirclePointIndex};
+    use crate::core::circle::CirclePoint;
     use crate::core::constraints::EvalByPoly;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, Evaluation};
@@ -90,10 +96,11 @@ mod tests {
                 poly: &trace_polys[i as usize],
             })
             .collect::<Vec<_>>();
+        let conjugate_poly_oracles = poly_oracles.clone();
 
         // Mask evaluations on the original trace coset.
         let mask_evaluation =
-            mask.get_evaluation(&trace_cosets, &poly_oracles, CirclePointIndex(0));
+            mask.get_evaluation(&trace_cosets, &poly_oracles, &conjugate_poly_oracles);
 
         assert_eq!(mask_points.len() * 2, mask_evaluation.len());
         for (mask_item, mask_point) in mask.items.iter().zip(mask_points) {

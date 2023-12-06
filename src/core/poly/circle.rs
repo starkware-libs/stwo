@@ -292,10 +292,10 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
 }
 
 #[derive(Clone, Debug)]
-pub struct PointSetEvaluation<F: ExtensionOf<BaseField>>(BTreeMap<CirclePointIndex, F>);
+pub struct PointSetEvaluation<F: ExtensionOf<BaseField>>(BTreeMap<CirclePoint<F>, F>);
 
 impl<F: ExtensionOf<BaseField>> PointSetEvaluation<F> {
-    pub fn new(evaluations: BTreeMap<CirclePointIndex, F>) -> Self {
+    pub fn new(evaluations: BTreeMap<CirclePoint<F>, F>) -> Self {
         Self(evaluations)
     }
 
@@ -312,7 +312,7 @@ impl Evaluation for PointSetEvaluation<BaseField> {
     fn get_at(&self, point_index: CirclePointIndex) -> BaseField {
         *self
             .0
-            .get(&point_index)
+            .get(&point_index.to_point())
             .unwrap_or_else(|| panic!("Point not found in evaluation for {:?}", point_index))
     }
 }
