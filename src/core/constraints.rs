@@ -5,7 +5,7 @@ use super::fields::m31::BaseField;
 use super::fields::ExtensionOf;
 use super::poly::circle::{CircleDomain, CirclePoly, Evaluation};
 
-// Evaluates a vanishing polynomial of the coset at a point.
+/// Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoint<F>) -> F {
     // Doubling a point `n_bits / 2` times and taking the x coordinate is
     // essentially evaluating a polynomial in x of degree `2**(n_bits-1)`. If
@@ -32,9 +32,9 @@ pub fn circle_domain_vanishing(domain: CircleDomain, p: CirclePoint<BaseField>) 
     coset_vanishing(domain.half_coset, p) * coset_vanishing(domain.half_coset.conjugate(), p)
 }
 
-// Evaluates the polynomial that is used to exclude the excluded point at point
-// p. Note that this polynomial has a zero of multiplicity 2 at the excluded
-// point.
+/// Evaluates the polynomial that is used to exclude the excluded point at point
+/// p. Note that this polynomial has a zero of multiplicity 2 at the excluded
+/// point.
 pub fn point_excluder<F: ExtensionOf<BaseField>>(
     excluded: CirclePoint<BaseField>,
     p: CirclePoint<F>,
@@ -42,8 +42,8 @@ pub fn point_excluder<F: ExtensionOf<BaseField>>(
     (p - excluded.into_ef()).x - BaseField::one()
 }
 
-// Evaluates a vanishing polynomial of the vanish_point at a point.
-// Note that this function has a pole on the antipode of the vanish_point.
+/// Evaluates a vanishing polynomial of the vanish_point at a point.
+/// Note that this function has a pole on the antipode of the vanish_point.
 pub fn point_vanishing<F: ExtensionOf<BaseField>>(
     vanish_point: CirclePoint<BaseField>,
     p: CirclePoint<F>,
@@ -52,8 +52,8 @@ pub fn point_vanishing<F: ExtensionOf<BaseField>>(
     h.y / (F::one() + h.x)
 }
 
-// Utils for computing constraints.
-// Oracle to a polynomial constrained to a coset.
+/// Utils for computing constraints.
+/// Oracle to a polynomial constrained to a coset.
 pub trait PolyOracle<F: ExtensionOf<BaseField>>: Copy {
     fn get_at(&self, index: CirclePointIndex) -> F;
     fn point(&self) -> CirclePoint<F>;
