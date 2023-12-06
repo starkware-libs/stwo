@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use super::circle::CirclePointIndex;
 use super::fields::m31::BaseField;
+use super::fields::ExtensionOf;
 use super::poly::circle::PointSetEvaluation;
 use crate::core::constraints::PolyOracle;
 use crate::core::poly::circle::CanonicCoset;
@@ -21,13 +22,13 @@ impl Mask {
     }
 
     // TODO (ShaharS), Consider moving this functions to somewhere else and change the API.
-    pub fn get_evaluation(
+    pub fn get_evaluation<F: ExtensionOf<BaseField>>(
         &self,
         cosets: &[CanonicCoset],
-        poly_oracles: &[impl PolyOracle<BaseField>],
+        poly_oracles: &[impl PolyOracle<F>],
         evaluation_point: CirclePointIndex,
-    ) -> PointSetEvaluation {
-        let mut res: BTreeMap<CirclePointIndex, BaseField> = BTreeMap::new();
+    ) -> PointSetEvaluation<F> {
+        let mut res: BTreeMap<CirclePointIndex, F> = BTreeMap::new();
         let mask_offsets = self.get_point_indices(cosets);
         for (mask_item, mask_offset) in self.items.iter().zip(mask_offsets) {
             let point = evaluation_point + mask_offset;
@@ -85,7 +86,7 @@ mod tests {
         let mask_points = mask.get_point_indices(&trace_cosets);
         let poly_oracles = (0..N_TRACE_COLUMNS)
             .map(|i| EvalByPoly {
-                point: CirclePoint::zero(),
+                point: CirclePoint::<BaseField>::zero(),
                 poly: &trace_polys[i as usize],
             })
             .collect::<Vec<_>>();

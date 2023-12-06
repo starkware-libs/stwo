@@ -292,10 +292,10 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
 }
 
 #[derive(Clone, Debug)]
-pub struct PointSetEvaluation(BTreeMap<CirclePointIndex, BaseField>);
+pub struct PointSetEvaluation<F: ExtensionOf<BaseField>>(BTreeMap<CirclePointIndex, F>);
 
-impl PointSetEvaluation {
-    pub fn new(evaluations: BTreeMap<CirclePointIndex, BaseField>) -> Self {
+impl<F: ExtensionOf<BaseField>> PointSetEvaluation<F> {
+    pub fn new(evaluations: BTreeMap<CirclePointIndex, F>) -> Self {
         Self(evaluations)
     }
 
@@ -308,7 +308,7 @@ impl PointSetEvaluation {
     }
 }
 
-impl Evaluation for PointSetEvaluation {
+impl Evaluation for PointSetEvaluation<BaseField> {
     fn get_at(&self, point_index: CirclePointIndex) -> BaseField {
         *self
             .0
