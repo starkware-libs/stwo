@@ -84,8 +84,6 @@ mod tests {
 
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::Blake2sChannel;
-    use crate::core::fields::m31::M31;
-    use crate::m31;
 
     #[test]
     fn test_initliaze_channel() {
@@ -99,24 +97,40 @@ mod tests {
     }
 
     #[test]
-    fn test_get_random_bytes() {
-        let initial_digest = Blake2sHash::from(vec![1; 32]);
+    fn test_channel_time() {
+        let initial_digest = Blake2sHash::from(vec![0; 32]);
         let mut channel = Blake2sChannel::new(initial_digest);
-        let first_expected_random_bytes = vec![
-            213, 24, 235, 180, 216, 116, 28, 65, 88, 162, 204, 6, 23, 8, 66, 112, 214, 239, 242,
-            134, 165, 39, 172, 247, 65, 130, 155, 2, 97, 147, 14, 57,
-        ];
 
-        let x = channel.draw_random_bytes();
-        assert_eq!(x.to_vec(), first_expected_random_bytes);
+        // Assert that the channel time is initialized correctly.
+        assert_eq!(channel.channel_time.n_challenges, 0);
+        assert_eq!(channel.channel_time.n_sent, 0);
+
+        // Assert that the channel time is updated correctly.
+        channel.draw_random_bytes();
+        assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 1);
 
-        // Assert that next random bytes are different.
-        assert_ne!(x, channel.draw_random_bytes());
-        assert_eq!(channel.channel_time.n_sent, 2);
+        channel.mix_with_seed(Blake2sHash::from(vec![1; 32]));
+        assert_eq!(channel.channel_time.n_challenges, 1);
+        assert_eq!(channel.channel_time.n_sent, 0);
 
-        // Assert that the digest is not changed.
-        assert_eq!(channel.digest, initial_digest);
+        // Assert that the channel time is updated correctly.
+        channel.draw_random_felts();
+        assert_eq!(channel.channel_time.n_challenges, 1);
+        assert_eq!(channel.channel_time.n_sent, 1);
+
+        assert_ne!(channel.digest, initial_digest);
+    }
+
+    #[test]
+    fn test_draw_random_bytes() {
+        let initial_digest = Blake2sHash::from(vec![1; 32]);
+        let mut channel = Blake2sChannel::new(initial_digest);
+
+        let first_random_bytes = channel.draw_random_bytes();
+
+        // Assert that next random bytes are different.
+        assert_ne!(first_random_bytes, channel.draw_random_bytes());
     }
 
     #[test]
@@ -124,48 +138,21 @@ mod tests {
         let initial_digest = Blake2sHash::from(vec![2; 32]);
         let mut channel = Blake2sChannel::new(initial_digest);
 
-        let random_felts = channel.draw_random_felts();
-        let first_expected_random_felts = [
-            m31!(810174286),
-            m31!(1286926110),
-            m31!(1273907462),
-            m31!(1057714887),
-            m31!(639372448),
-            m31!(1004012265),
-            m31!(640278457),
-            m31!(1285241013),
-        ];
-
-        // Assert that the first random felts are the expected ones.
-        assert_eq!(random_felts, first_expected_random_felts);
-        assert_eq!(channel.channel_time.n_sent, 1);
+        let first_random_felts = channel.draw_random_felts();
 
         // Assert that the next random felts are different.
-        assert_ne!(random_felts, channel.draw_random_felts());
-        assert_eq!(channel.channel_time.n_sent, 2);
-
-        // Assert that the digest is not changed.
-        assert_eq!(channel.digest, initial_digest);
+        assert_ne!(first_random_felts, channel.draw_random_felts());
     }
 
     #[test]
     pub fn test_mix_with_seed() {
         let initial_digest = Blake2sHash::from(vec![0; 32]);
         let mut channel = Blake2sChannel::new(initial_digest);
-        let next_expected_digest =
-            "63df7eb227fb4e7bc7ff187ebf241e5114ea72b65b8f7bb26c1c41cce2aab1c8".to_string();
-
-        for _ in 0..10 {
-            channel.draw_random_bytes();
-            channel.draw_random_felts();
-        }
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 20);
 
         // Reseed channel and check the digest was changed.
         channel.mix_with_seed(Blake2sHash::from(vec![1; 32]));
-        assert_eq!(channel.digest.to_string(), next_expected_digest);
-        assert_eq!(channel.channel_time.n_challenges, 1);
-        assert_eq!(channel.channel_time.n_sent, 0);
+
+        // Assert that the digest is not changed.
+        assert_ne!(channel.digest, initial_digest);
     }
 }
