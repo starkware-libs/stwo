@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::fmt::Debug;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use num_traits::Zero;
 
@@ -131,13 +131,24 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
         debug_assert_eq!(self.coeffs.len(), 1 << self.n_bits);
         1 << self.n_bits
     }
+
+    /// Returns the polynomial's coefficients in bit reversed order.
+    pub fn into_coefficients(self) -> Vec<F> {
+        self.coeffs
+    }
 }
 
 impl<F: ExtensionOf<BaseField>> Deref for LinePoly<F> {
-    type Target = Vec<F>;
+    type Target = [F];
 
-    fn deref(&self) -> &Vec<F> {
+    fn deref(&self) -> &[F] {
         &self.coeffs
+    }
+}
+
+impl<F: ExtensionOf<BaseField>> DerefMut for LinePoly<F> {
+    fn deref_mut(&mut self) -> &mut [F] {
+        &mut self.coeffs
     }
 }
 
@@ -183,10 +194,16 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
 }
 
 impl<F: ExtensionOf<BaseField>> Deref for LineEvaluation<F> {
-    type Target = Vec<F>;
+    type Target = [F];
 
-    fn deref(&self) -> &Vec<F> {
+    fn deref(&self) -> &[F] {
         &self.evals
+    }
+}
+
+impl<F: ExtensionOf<BaseField>> DerefMut for LineEvaluation<F> {
+    fn deref_mut(&mut self) -> &mut [F] {
+        &mut self.evals
     }
 }
 
