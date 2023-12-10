@@ -33,7 +33,7 @@ impl FriConfig {
     const BLOWUP_FACTOR_BITS_RANGE: RangeInclusive<u32> =
         Self::MIN_BLOWUP_FACTOR_BITS..=Self::MAX_BLOWUP_FACTOR_BITS;
 
-    /// Creates new FRI configuration.
+    /// Creates a new FRI configuration.
     ///
     /// # Panics
     ///
