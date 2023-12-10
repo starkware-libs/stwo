@@ -82,7 +82,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// Panics if:
     /// * `evals` is empty or not sorted in ascending order by evaluation domain size.
     /// * An evaluation domain is smaller than or equal to the max last layer domain size.
-    /// * Each evaluation is not of sufficiently low degree.
+    /// * An evaluation is not of sufficiently low degree.
     pub fn commit(mut self, evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, QueryPhase> {
         assert!(evals.is_sorted_by_key(|evaluation| Reverse(evaluation.len())));
         let last_layer_evaluation = self.commit_inner_layers(evals);
@@ -136,7 +136,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     ///
     /// Panics if:
     /// * The domain size of the evaluation exceeds the max last layer domain size.
-    /// * The evaluation is not sufficiently low degree.
+    /// * The evaluation is not of sufficiently low degree.
     fn commit_last_layer(&mut self, evaluation: LineEvaluation<F>) {
         assert!(evaluation.len() <= self.config.max_last_layer_domain_size());
         let num_remainder_coeffs = evaluation.len() >> self.config.blowup_factor_bits;
