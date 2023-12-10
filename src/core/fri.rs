@@ -80,7 +80,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
         }
     }
 
-    /// Builds FRI layers from multiple [LineEvaluation]s.
+    /// Builds and commits to FRI layers from multiple [LineEvaluation]s.
     ///
     /// # Panics
     ///
@@ -113,10 +113,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
         // Add our folded evaluation to the set of evaluations.
         evals.push(evaluation);
 
-        self.set_remainder(evals)
+        self.build_remainder(evals)
     }
 
-    /// Obtains the coefficients of the FRI remainder polynomial (i.e. the last FRI layer).
+    /// Builds and commits to the FRI remainder polynomial's coefficients (the last FRI layer).
     ///
     /// # Panics
     ///
@@ -124,7 +124,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
     /// * `evals` is empty.
     /// * The domain size of an evaluation exceeds the maximum remainder domain size.
     /// * Each evaluation is not sufficiently low degree.
-    fn set_remainder(self, mut evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, Query> {
+    fn build_remainder(self, mut evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, Query> {
         let Self {
             options, layers, ..
         } = self;
@@ -148,6 +148,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
         }
 
         // Reorder coefficients to create a [LinePoly].
+        // TODO(andrew): seed channel with remainder
         let remainder = Some(LinePoly::new(bit_reverse(remainder_coeffs)));
 
         FriProver {
