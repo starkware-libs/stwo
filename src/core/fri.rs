@@ -184,11 +184,13 @@ pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub remainder: LinePoly<F>,
 }
 
+const FRI_STEP_SIZE: usize = 2;
+
 /// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
 pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub coset_evals: Vec<[F; 2]>,
+    pub coset_evals: Vec<[F; FRI_STEP_SIZE]>,
     pub decommitment: MerkleDecommitment<F, H>,
     pub commitment: H::Hash,
 }
@@ -208,7 +210,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
 // TODO(andrew): support different folding factors
 struct FriLayer<F: ExtensionOf<BaseField>, H: Hasher> {
     /// Coset evaluations stored in column-major.
-    coset_evals: [Vec<F>; 2],
+    coset_evals: [Vec<F>; FRI_STEP_SIZE],
     merkle_tree: MerkleTree<F, H>,
 }
 
@@ -310,7 +312,7 @@ mod tests {
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::ExtensionOf;
-    use crate::core::fri::apply_drp;
+    use crate::core::fri::{apply_drp, bit_reverse};
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
 
     #[test]
@@ -381,6 +383,15 @@ mod tests {
         let _proof = prover.into_proof(&query_positions);
 
         todo!("verify proof");
+    }
+
+    #[test]
+    fn bit_reverse_works() {
+        let items = [0, 1, 2, 3, 4, 5, 6, 7];
+
+        let br_items = bit_reverse(items);
+
+        assert_eq!(br_items, [0, 4, 2, 6, 1, 5, 3, 7])
     }
 
     #[test]
