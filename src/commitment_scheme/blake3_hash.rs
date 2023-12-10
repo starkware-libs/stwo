@@ -54,8 +54,9 @@ pub struct Blake3Hasher {}
 
 impl super::hasher::Hasher for Blake3Hasher {
     type Hash = Blake3Hash;
-    const BLOCK_SIZE_IN_BYTES: usize = 64;
-    const OUTPUT_SIZE_IN_BYTES: usize = 32;
+    const BLOCK_SIZE: usize = 64;
+    const OUTPUT_SIZE: usize = 32;
+    type NativeType = u8;
 
     fn hash(val: &[u8]) -> Blake3Hash {
         Blake3Hash(*blake3::hash(val).as_bytes())
@@ -72,13 +73,13 @@ impl super::hasher::Hasher for Blake3Hasher {
     fn hash_one_in_place(data: &[u8], dst: &mut [u8]) {
         assert_eq!(
             dst.len(),
-            Self::OUTPUT_SIZE_IN_BYTES,
+            Self::OUTPUT_SIZE,
             "Attempt to Generate blake3 hash of size different than 32 bytes!"
         );
         let mut hasher = blake3::Hasher::new();
         hasher.update(data);
         let mut output_reader = hasher.finalize_xof();
-        output_reader.fill(&mut dst[..Self::OUTPUT_SIZE_IN_BYTES])
+        output_reader.fill(&mut dst[..Self::OUTPUT_SIZE])
     }
 
     fn hash_many(data: &[Vec<u8>]) -> Vec<Self::Hash> {
@@ -95,7 +96,7 @@ impl super::hasher::Hasher for Blake3Hasher {
             .map(|p| std::slice::from_raw_parts(*p, single_input_length_bytes))
             .zip(
                 dst.iter()
-                    .map(|p| std::slice::from_raw_parts_mut(*p, Self::OUTPUT_SIZE_IN_BYTES)),
+                    .map(|p| std::slice::from_raw_parts_mut(*p, Self::OUTPUT_SIZE)),
             )
             .for_each(|(input, out)| Self::hash_one_in_place(input, out))
     }

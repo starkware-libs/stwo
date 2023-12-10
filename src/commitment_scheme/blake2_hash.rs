@@ -55,8 +55,9 @@ pub struct Blake2sHasher {}
 
 impl super::hasher::Hasher for Blake2sHasher {
     type Hash = Blake2sHash;
-    const BLOCK_SIZE_IN_BYTES: usize = 64;
-    const OUTPUT_SIZE_IN_BYTES: usize = 32;
+    const BLOCK_SIZE: usize = 64;
+    const OUTPUT_SIZE: usize = 32;
+    type NativeType = u8;
 
     fn hash(val: &[u8]) -> Self::Hash {
         let mut hasher = Blake2s256::new();
@@ -77,7 +78,7 @@ impl super::hasher::Hasher for Blake2sHasher {
     }
 
     fn hash_one_in_place(data: &[u8], dst: &mut [u8]) {
-        let mut hasher = Blake2sVar::new(Self::OUTPUT_SIZE_IN_BYTES).unwrap();
+        let mut hasher = Blake2sVar::new(Self::OUTPUT_SIZE).unwrap();
         hasher.update(data);
         hasher.finalize_variable(dst).unwrap();
     }
@@ -91,7 +92,7 @@ impl super::hasher::Hasher for Blake2sHasher {
             .map(|p| std::slice::from_raw_parts(*p, single_input_length_bytes))
             .zip(
                 dst.iter()
-                    .map(|p| std::slice::from_raw_parts_mut(*p, Self::OUTPUT_SIZE_IN_BYTES)),
+                    .map(|p| std::slice::from_raw_parts_mut(*p, Self::OUTPUT_SIZE)),
             )
             .for_each(|(input, out)| Self::hash_one_in_place(input, out))
     }
