@@ -15,7 +15,6 @@ use crate::core::poly::line::LineDomain;
 
 /// FRI proof options
 // TODO(andrew): support different folding factors
-// TODO(andrew):
 #[derive(Debug, Clone, Copy)]
 pub struct FriOptions {
     max_remainder_coeffs_bits: u32,
@@ -75,7 +74,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
     /// # Panics
     ///
     /// Panics if:
-    /// * `evals` does not contain at least one low degree evaluation of a polynomial.
+    /// * `evals` is empty.
     /// * Each evaluation is not of sufficiently low degree.
     pub fn build_layers(mut self, mut evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, Query> {
         // Sort in ascending order by evaluation domain size.
@@ -111,8 +110,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
     /// # Panics
     ///
     /// Panics if:
-    /// * `evals` does not contain at least one low degree evaluation of a polynomial.
-    /// * The domain size of an evaluation exceeds the FRI option's maximum remainder domain size.
+    /// * `evals` is empty.
+    /// * The domain size of an evaluation exceeds the maximum remainder domain size.
     /// * Each evaluation is not sufficiently low degree.
     fn set_remainder(self, mut evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, Query> {
         let Self {
@@ -174,7 +173,9 @@ pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub remainder: LinePoly<F>,
 }
 
-/// Stores a subset of evaluations in a [FriLayer] and their corresponding merkle decommitments.
+/// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
+///
+/// The subset corresponds to the set of evaluations needed by a FRI verifier.
 pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub coset_evals: Vec<[F; 2]>,
     pub decommitment: MerkleDecommitment<F, H>,
@@ -183,6 +184,7 @@ pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
     // TODO(andrew): implement and add docs
+    // TODO(andrew): create FRI verification error type
     pub fn verify(&self, _positions: &[usize]) -> Result<(), String> {
         todo!()
     }
@@ -350,7 +352,7 @@ mod tests {
 
     #[test]
     #[ignore = "verification not implemented"]
-    fn mided_degree_fri_proof_passes_verification() {
+    fn mixed_degree_fri_proof_passes_verification() {
         const BLOWUP_FACTOR_BITS: u32 = 2;
         let options = FriOptions::new(4, BLOWUP_FACTOR_BITS);
         let midex_degree_evals = vec![
