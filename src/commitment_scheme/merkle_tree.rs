@@ -8,7 +8,7 @@ use crate::commitment_scheme::utils::{
     tree_data_as_mut_ref, ColumnArray, TreeData,
 };
 
-pub struct MerkleTree<T: Sized + Debug + Default + Display, H: Hasher> {
+pub struct MerkleTree<T: Sized + Debug + Display, H: Hasher> {
     pub bottom_layer: Vec<T>,
     pub bottom_layer_block_size: usize,
     pub bottom_layer_n_rows_in_node: usize,
@@ -17,7 +17,7 @@ pub struct MerkleTree<T: Sized + Debug + Default + Display, H: Hasher> {
     phantom: std::marker::PhantomData<H>,
 }
 
-impl<T: Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H> {
+impl<T: Sized + Copy + Debug + Display, H: Hasher> MerkleTree<T, H> {
     /// Commits on a given trace(matrix).
     pub fn commit(trace: ColumnArray<T>) -> Self {
         let mut tree = Self::init_from_column_array(trace);
