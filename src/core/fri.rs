@@ -4,6 +4,8 @@ use std::iter::zip;
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 
+use thiserror::Error;
+
 use super::fields::m31::BaseField;
 use super::fields::{ExtensionOf, Field};
 use super::poly::line::{LineEvaluation, LinePoly};
@@ -174,34 +176,121 @@ pub struct CommitmentPhase;
 /// Query phase for [FriProver].
 pub struct QueryPhase;
 
-struct FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
+pub struct FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
     config: FriConfig,
     layer_alphas: Vec<F>,
+    max_degree_bits: u32,
     proof: FriProof<F, H>,
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
-    fn new(config: FriConfig, proof: FriProof<F, H>) -> Self {
+    pub fn new(
+        config: FriConfig,
+        proof: FriProof<F, H>,
+        max_degree_bits: u32,
+    ) -> Result<Self, VerificationError> {
         let mut layer_alphas = Vec::new();
 
-        for layer_proof in &proof.layer_proofs {
+        for _layer_proof in &proof.layer_proofs {
             // TODO(andrew): Seed channel with commitment.
             // TODO(andrew): Draw alpha from channel.
             let alpha = F::one();
             layer_alphas.push(alpha);
         }
 
-        Self {
+        Ok(Self {
             config,
             layer_alphas,
+            max_degree_bits,
             proof,
-        }
+        })
     }
 
+    /// Verifies the FRI commitment.
     // TODO(andrew): create error type
-    fn verify_positions(self, _query_positions: &[usize]) -> Result<(), String> {
-        todo!()
+    fn verify(
+        self,
+        mut query_positions: &[usize],
+        mut evaluations: &[F],
+    ) -> Result<(), VerificationError> {
+        let n_positions = query_positions.len();
+        let n_evals = evaluations.len();
+        if n_positions != n_evals {
+            return Err(VerificationError::InvalidEvaluations {
+                n_positions,
+                n_evals,
+            });
+        }
+
+        let last_layer_domain = self.verify_inner_layers(&mut query_positions, &mut evaluations)?;
+        self.verify_last_layer(last_layer_domain, query_positions, evaluations)
     }
+
+    /// Verifies the inner FRI layers.
+    ///
+    /// Returns the domain for the last layer.
+    fn verify_inner_layers(
+        &self,
+        positions: &mut Vec<usize>,
+        evals: &mut Vec<F>,
+    ) -> Result<LineDomain, VerificationError> {
+        let domain_size_bits = self.max_degree_bits + self.config.blowup_factor_bits;
+        let mut domain = LineDomain::new(Coset::half_odds(domain_size_bits as usize));
+        let mut layers = self.proof.layer_proofs.iter();
+        let mut layer_alphas = self.layer_alphas.iter().copied();
+
+        while domain.size() > self.config.max_last_layer_domain_size() {
+            let mut folded_positions = positions.clone();
+            fold_positions(&mut folded_positions, domain.size());
+
+            // Verify the decommitment.
+            let layer = layers.next().unwrap();
+            layer.verify(&folded_positions)?;
+
+            let layer_alpha = layer_alphas.next().unwrap();
+
+            *positions = folded_positions;
+            domain = domain.double();
+        }
+
+        assert!(layers.next().is_none());
+        assert!(layer_alphas.next().is_none());
+
+        Ok(domain)
+    }
+
+    /// Verifies the FRI remainder polynomial (the last FRI layer).
+    fn verify_last_layer(
+        self,
+        domain: LineDomain,
+        positions: Vec<usize>,
+        evals: Vec<F>,
+    ) -> Result<(), VerificationError> {
+        let remainder = self.proof.remainder;
+        let degree_bound = domain.size() >> self.config.blowup_factor_bits;
+        if remainder.len() > degree_bound {
+            return Err(VerificationError::LastLayerDegreeInvalid);
+        }
+        for (position, eval) in zip(positions, evals) {
+            let x: F = F::from(domain.at(position));
+            if eval != remainder.eval_at_point(x) {
+                return Err(VerificationError::LastLayerEvaluationInvalid);
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum VerificationError {
+    #[error("{n_positions} query positions but only {n_evals} evaluations")]
+    InvalidEvaluations { n_positions: usize, n_evals: usize },
+    #[error("queries do not resolve to their commitment in layer {layer}")]
+    InnerLayerInvalid { layer: usize },
+    #[error("degree of remainder polynomial is invalid")]
+    LastLayerDegreeInvalid,
+    #[error("remainder evaluation is invalid")]
+    LastLayerEvaluationInvalid,
 }
 
 /// A FRI proof.
@@ -223,8 +312,7 @@ pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
     // TODO(andrew): implement and add docs
-    // TODO(andrew): create FRI verification error type
-    pub fn verify(&self, _positions: &[usize]) -> Result<(), String> {
+    pub fn verify(&self, _positions: &[usize]) -> Result<(), VerificationError> {
         todo!()
     }
 }
