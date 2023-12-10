@@ -246,7 +246,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
 /// # Panics
 ///
 /// Panics if the number of evaluations is not greater than or equal to two.
-fn apply_drp<F: ExtensionOf<BaseField>>(evals: &LineEvaluation<F>, alpha: F) -> LineEvaluation<F> {
+pub fn apply_drp<F: ExtensionOf<BaseField>>(
+    evals: &LineEvaluation<F>,
+    alpha: F,
+) -> LineEvaluation<F> {
     let n = evals.len();
     assert!(n >= 2);
     let (l, r) = evals.split_at(n / 2);
