@@ -174,14 +174,34 @@ pub struct CommitmentPhase;
 /// Query phase for [FriProver].
 pub struct QueryPhase;
 
-struct _FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
-    options: FriConfig,
-    layer_alphas: F,
+struct FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
+    config: FriConfig,
+    layer_alphas: Vec<F>,
     proof: FriProof<F, H>,
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> _FriVerifier<F, H> {
-    // fn
+impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
+    fn new(config: FriConfig, proof: FriProof<F, H>) -> Self {
+        let mut layer_alphas = Vec::new();
+
+        for layer_proof in &proof.layer_proofs {
+            // TODO(andrew): Seed channel with commitment.
+            // TODO(andrew): Draw alpha from channel.
+            let alpha = F::one();
+            layer_alphas.push(alpha);
+        }
+
+        Self {
+            config,
+            layer_alphas,
+            proof,
+        }
+    }
+
+    // TODO(andrew): create error type
+    fn verify_positions(self, _query_positions: &[usize]) -> Result<(), String> {
+        todo!()
+    }
 }
 
 /// A FRI proof.
