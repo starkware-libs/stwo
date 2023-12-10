@@ -49,28 +49,22 @@ impl FriConfig {
         }
     }
 
-    fn max_remainder_domain_size(&self) -> usize {
+    fn max_last_layer_domain_size(&self) -> usize {
         1 << (self.last_layer_degree_bits + self.blowup_factor_bits)
     }
 }
 
-/// Commitment phase for [FriProver].
-pub struct Commitment;
-
-/// Query phase for [FriProver].
-pub struct Query;
-
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
 ///
 /// `Phase` is used to enforce the commitment phase is done before the query phase.
-pub struct FriProver<F: ExtensionOf<BaseField>, H: Hasher, Phase = Commitment> {
+pub struct FriProver<F: ExtensionOf<BaseField>, H: Hasher, Phase = CommitmentPhase> {
     config: FriConfig,
     layers: Vec<FriLayer<F, H>>,
     remainder: Option<LinePoly<F>>,
     _phase: PhantomData<Phase>,
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
+impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// Creates a new FRI prover.
     pub fn new(config: FriConfig) -> Self {
         Self {
@@ -81,24 +75,44 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
         }
     }
 
-    /// Builds and commits to the FRI layers from multiple [LineEvaluation]s.
+    /// Commits to multiple [LineEvaluation]s.
     ///
     /// # Panics
     ///
     /// Panics if:
-    /// * `evals` is empty.
+    /// * `evals` is empty or not sorted in ascending order by evaluation domain size.
+    /// * An evaluation domain is smaller than or equal to the max last layer domain size.
     /// * Each evaluation is not of sufficiently low degree.
-    pub fn commit(mut self, mut evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, Query> {
-        // Sort in ascending order by evaluation domain size.
-        evals.sort_by_key(|eval| Reverse(eval.len()));
+    pub fn commit(mut self, evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, QueryPhase> {
+        assert!(evals.is_sorted_by_key(|evaluation| Reverse(evaluation.len())));
+        let last_layer_evaluation = self.commit_inner_layers(evals);
+        self.commit_last_layer(last_layer_evaluation);
+        FriProver {
+            config: self.config,
+            layers: self.layers,
+            remainder: self.remainder,
+            _phase: PhantomData,
+        }
+    }
 
-        // build FRI layers
+    /// Builds and commits to the inner FRI layers (all layers except last layer).
+    ///
+    /// Returns the evaluation for the last layer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// * `evals` is empty
+    /// * An evaluation domain is smaller than or equal to the max last layer domain size.
+    fn commit_inner_layers(&mut self, mut evals: Vec<LineEvaluation<F>>) -> LineEvaluation<F> {
         let mut evaluation = evals.pop().expect("require at least one evaluation");
-        while evaluation.len() > self.config.max_remainder_domain_size() {
+        while evaluation.len() > self.config.max_last_layer_domain_size() {
             // Aggregate all evaluations that have the same domain size.
             while let Some(true) = evals.last().map(|e| e.len() == evaluation.len()) {
+                // TODO(andrew): draw random alpha from channel
+                let alpha = F::one();
                 for (i, &eval) in evals.pop().unwrap().iter().enumerate() {
-                    evaluation[i] += eval;
+                    evaluation[i] += alpha * eval;
                 }
             }
 
@@ -111,10 +125,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
             self.layers.push(layer)
         }
 
-        // Add our folded evaluation to the set of evaluations.
-        evals.push(evaluation);
-
-        self.commit_remainder(evals)
+        assert!(evals.is_empty());
+        evaluation
     }
 
     /// Builds and commits to the FRI remainder polynomial's coefficients (the last FRI layer).
@@ -122,44 +134,21 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
     /// # Panics
     ///
     /// Panics if:
-    /// * `evals` is empty.
-    /// * The domain size of an evaluation exceeds the maximum remainder domain size.
-    /// * Each evaluation is not sufficiently low degree.
-    fn commit_remainder(self, mut evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, Query> {
-        let Self { config, layers, .. } = self;
-
-        // Sort in ascending order by evaluation domain size.
-        evals.sort_by_key(|eval| Reverse(eval.len()));
-
-        let largest_domain_size = evals.last().expect("require at least one evaluation").len();
-        assert!(largest_domain_size <= config.max_remainder_domain_size());
-        let num_remainder_coeffs = largest_domain_size >> config.blowup_factor_bits;
-        let mut remainder_coeffs = vec![F::zero(); num_remainder_coeffs];
-
-        // Aggregate all polynomials into the remainder.
-        for evaluation in evals {
-            let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2() as usize));
-            let expected_num_coeffs = evaluation.len() >> config.blowup_factor_bits;
-            let mut coeffs = bit_reverse(evaluation.interpolate(domain).into_coefficients());
-            let zeros = coeffs.split_off(expected_num_coeffs);
-            assert!(zeros.iter().all(F::is_zero), "invalid degree");
-            zip(&mut remainder_coeffs, coeffs).for_each(|(rem_coeff, coeff)| *rem_coeff += coeff);
-        }
-
-        // Reorder coefficients to create a [LinePoly].
+    /// * The domain size of the evaluation exceeds the max last layer domain size.
+    /// * The evaluation is not sufficiently low degree.
+    fn commit_last_layer(&mut self, evaluation: LineEvaluation<F>) {
+        assert!(evaluation.len() <= self.config.max_last_layer_domain_size());
+        let num_remainder_coeffs = evaluation.len() >> self.config.blowup_factor_bits;
+        let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2() as usize));
+        let mut coeffs = evaluation.interpolate(domain).into_natural_coefficients();
+        let zeros = coeffs.split_off(num_remainder_coeffs);
+        assert!(zeros.iter().all(F::is_zero), "invalid degree");
+        self.remainder = Some(LinePoly::from_natural_coefficients(coeffs));
         // TODO(andrew): seed channel with remainder
-        let remainder = Some(LinePoly::new(bit_reverse(remainder_coeffs)));
-
-        FriProver {
-            config,
-            layers,
-            remainder,
-            _phase: PhantomData,
-        }
     }
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Query> {
+impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, QueryPhase> {
     pub fn into_proof(self, query_positions: &[usize]) -> FriProof<F, H> {
         let remainder = self.remainder.unwrap();
         let layer_proofs = self
@@ -177,6 +166,12 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Query> {
         }
     }
 }
+
+/// Commitment phase for [FriProver].
+pub struct CommitmentPhase;
+
+/// Query phase for [FriProver].
+pub struct QueryPhase;
 
 /// A FRI proof.
 pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
@@ -284,24 +279,6 @@ fn fold_positions(positions: &mut Vec<usize>, n: usize) {
     positions.dedup();
 }
 
-/// Bit reverses a slice.
-///
-/// # Panics
-///
-/// Panics if the length of the slice is not a power of two.
-fn bit_reverse<T, U: AsMut<[T]>>(mut v: U) -> U {
-    let n = v.as_mut().len();
-    assert!(n.is_power_of_two());
-    let n_bits = n.ilog2();
-    for i in 0..n {
-        let j = i.reverse_bits() >> (usize::BITS - n_bits);
-        if j > i {
-            v.as_mut().swap(i, j);
-        }
-    }
-    v
-}
-
 #[cfg(test)]
 mod tests {
     use std::iter::zip;
@@ -312,7 +289,7 @@ mod tests {
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::ExtensionOf;
-    use crate::core::fri::{apply_drp, bit_reverse};
+    use crate::core::fri::apply_drp;
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
 
     #[test]
@@ -383,15 +360,6 @@ mod tests {
         let _proof = prover.into_proof(&query_positions);
 
         todo!("verify proof");
-    }
-
-    #[test]
-    fn bit_reverse_works() {
-        let items = [0, 1, 2, 3, 4, 5, 6, 7];
-
-        let br_items = bit_reverse(items);
-
-        assert_eq!(br_items, [0, 4, 2, 6, 1, 5, 3, 7])
     }
 
     #[test]

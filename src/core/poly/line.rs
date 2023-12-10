@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 
 use num_traits::Zero;
 
-use super::utils::{fold, repeat_value};
+use super::utils::{bit_reverse, fold, repeat_value};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -132,9 +132,18 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
         1 << self.n_bits
     }
 
-    /// Returns the polynomial's coefficients in bit reversed order.
-    pub fn into_coefficients(self) -> Vec<F> {
-        self.coeffs
+    /// Returns the polynomial's coefficients in their natural order.
+    pub fn into_natural_coefficients(self) -> Vec<F> {
+        bit_reverse(self.coeffs)
+    }
+
+    /// Creates a new line polynomial from coefficients in their natural order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of coefficients is not a power of two.
+    pub fn from_natural_coefficients(coeffs: Vec<F>) -> Self {
+        Self::new(bit_reverse(coeffs))
     }
 }
 
