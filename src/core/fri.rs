@@ -118,7 +118,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
 
             let layer = FriLayer::new(&evaluation);
             // TODO(andrew): add merkle root to channel
-            let _merkle_root = layer.merkle_tree.root();
+            // TODO(ohad): Add back once IntoSlice implemented for Field.
+            // let _merkle_root = layer.merkle_tree.root();
             // TODO(andrew): draw random alpha from channel
             let alpha = F::one();
             evaluation = apply_drp(&evaluation, alpha);
@@ -206,17 +207,19 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
 struct FriLayer<F: ExtensionOf<BaseField>, H: Hasher> {
     /// Coset evaluations stored in column-major.
     coset_evals: [Vec<F>; FRI_STEP_SIZE],
-    merkle_tree: MerkleTree<F, H>,
+    _merkle_tree: MerkleTree<F, H>,
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
     fn new(evaluation: &LineEvaluation<F>) -> Self {
         let (l, r) = evaluation.split_at(evaluation.len() / 2);
         let coset_evals = [l.to_vec(), r.to_vec()];
-        let merkle_tree = MerkleTree::commit(coset_evals.to_vec());
+        // TODO(ohad): Add back once IntoSlice implemented for Field.
+        // let merkle_tree = MerkleTree::commit(coset_evals.to_vec());
+        #[allow(unreachable_code)]
         FriLayer {
             coset_evals,
-            merkle_tree,
+            _merkle_tree: todo!(),
         }
     }
 
@@ -230,13 +233,15 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
                 [eval0, eval1]
             })
             .collect();
-        let position_set = positions.iter().copied().collect();
-        let decommitment = self.merkle_tree.generate_decommitment(position_set);
-        let commitment = self.merkle_tree.root();
+        // TODO(ohad): Add back once IntoSlice implemented for Field.
+        // let position_set = positions.iter().copied().collect();
+        // let decommitment = self.merkle_tree.generate_decommitment(position_set);
+        // let commitment = self.merkle_tree.root();
+        #[allow(unreachable_code)]
         FriLayerProof {
             coset_evals,
-            decommitment,
-            commitment,
+            decommitment: todo!(),
+            commitment: todo!(),
         }
     }
 }

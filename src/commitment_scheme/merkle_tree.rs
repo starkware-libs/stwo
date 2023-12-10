@@ -9,7 +9,7 @@ use crate::commitment_scheme::utils::{
 };
 use crate::core::fields::{Field, IntoSlice};
 
-pub struct MerkleTree<T: Field + Sized + Debug + Default + Display, H: Hasher> {
+pub struct MerkleTree<T: Field + Sized + Debug + Display, H: Hasher> {
     pub bottom_layer: Vec<T>,
     pub bottom_layer_block_size: usize,
     pub bottom_layer_n_rows_in_node: usize,
@@ -18,7 +18,7 @@ pub struct MerkleTree<T: Field + Sized + Debug + Default + Display, H: Hasher> {
     phantom: std::marker::PhantomData<H>,
 }
 
-impl<T: Field + Sized + Copy + Default + Debug + Display, H: Hasher> MerkleTree<T, H>
+impl<T: Field + Sized + Copy + Debug + Display, H: Hasher> MerkleTree<T, H>
 where
     T: IntoSlice<H::NativeType>,
 {
