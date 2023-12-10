@@ -2,6 +2,7 @@ use std::cmp::Reverse;
 use std::fmt::Debug;
 use std::iter::zip;
 use std::marker::PhantomData;
+use std::ops::RangeInclusive;
 
 use super::fields::m31::BaseField;
 use super::fields::{ExtensionOf, Field};
@@ -16,30 +17,40 @@ use crate::core::poly::line::LineDomain;
 /// FRI proof options
 // TODO(andrew): support different folding factors
 #[derive(Debug, Clone, Copy)]
-pub struct FriOptions {
-    max_remainder_coeffs_bits: u32,
+pub struct FriConfig {
+    last_layer_degree_bits: u32,
     blowup_factor_bits: u32,
 }
 
-impl FriOptions {
-    /// Creates new FRI options.
+impl FriConfig {
+    const MIN_LAST_LAYER_DEGREE_BITS: u32 = 0;
+    const MAX_LAST_LAYER_DEGREE_BITS: u32 = 10;
+    const LAST_LAYER_DEGREE_BITS_RANGE: RangeInclusive<u32> =
+        Self::MIN_LAST_LAYER_DEGREE_BITS..=Self::MAX_LAST_LAYER_DEGREE_BITS;
+
+    const MIN_BLOWUP_FACTOR_BITS: u32 = 1;
+    const MAX_BLOWUP_FACTOR_BITS: u32 = 16;
+    const BLOWUP_FACTOR_BITS_RANGE: RangeInclusive<u32> =
+        Self::MIN_BLOWUP_FACTOR_BITS..=Self::MAX_BLOWUP_FACTOR_BITS;
+
+    /// Creates new FRI configuration.
     ///
     /// # Panics
     ///
     /// Panics if:
-    /// * `max_remainder_coeffs_bits` is greater than six.
-    /// * `blowup_factor_bits` is equal to zero or greater than four.
-    pub fn new(max_remainder_coeffs_bits: u32, blowup_factor_bits: u32) -> Self {
-        assert!(max_remainder_coeffs_bits <= 6);
-        assert!(blowup_factor_bits != 0 && blowup_factor_bits <= 4);
+    /// * `last_layer_degree_bits` is greater than 10.
+    /// * `blowup_factor_bits` is equal to zero or greater than 16.
+    pub fn new(last_layer_degree_bits: u32, blowup_factor_bits: u32) -> Self {
+        assert!(Self::LAST_LAYER_DEGREE_BITS_RANGE.contains(&last_layer_degree_bits));
+        assert!(Self::BLOWUP_FACTOR_BITS_RANGE.contains(&blowup_factor_bits));
         Self {
-            max_remainder_coeffs_bits,
+            last_layer_degree_bits,
             blowup_factor_bits,
         }
     }
 
     fn max_remainder_domain_size(&self) -> usize {
-        1 << (self.max_remainder_coeffs_bits + self.blowup_factor_bits)
+        1 << (self.last_layer_degree_bits + self.blowup_factor_bits)
     }
 }
 
@@ -51,16 +62,16 @@ pub struct Query;
 
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
 ///
-/// `Phase` is used for enforce the commitment phase is done before the query phase.
+/// `Phase` is used to enforce the commitment phase is done before the query phase.
 pub struct FriProver<F: ExtensionOf<BaseField>, H: Hasher, Phase = Commitment> {
-    options: FriOptions,
+    options: FriConfig,
     layers: Vec<FriLayer<F, H>>,
     remainder: Option<LinePoly<F>>,
     _phase: PhantomData<Phase>,
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
-    pub fn new(options: FriOptions) -> Self {
+    pub fn new(options: FriConfig) -> Self {
         Self {
             options,
             layers: Vec::new(),
@@ -293,7 +304,7 @@ fn bit_reverse<T, U: AsMut<[T]>>(mut v: U) -> U {
 mod tests {
     use std::iter::zip;
 
-    use super::{FriOptions, FriProver};
+    use super::{FriConfig, FriProver};
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::core::circle::Coset;
     use crate::core::fields::m31::{BaseField, M31};
@@ -332,7 +343,7 @@ mod tests {
     fn fri_prover_with_high_degree_polynomial_fails() {
         const EXPECTED_BLOWUP_FACTOR_BITS: u32 = 2;
         const INVALID_BLOWUP_FACTOR_BITS: u32 = 1;
-        let options = FriOptions::new(2, EXPECTED_BLOWUP_FACTOR_BITS);
+        let options = FriConfig::new(2, EXPECTED_BLOWUP_FACTOR_BITS);
         let prover = FriProver::<M31, Blake3Hasher>::new(options);
         let evaluation = polynomial_evaluation(6, INVALID_BLOWUP_FACTOR_BITS);
 
@@ -343,7 +354,7 @@ mod tests {
     #[ignore = "verification not implemented"]
     fn valid_fri_proof_passes_verification() {
         const BLOWUP_FACTOR_BITS: u32 = 2;
-        let options = FriOptions::new(2, BLOWUP_FACTOR_BITS);
+        let options = FriConfig::new(2, BLOWUP_FACTOR_BITS);
         let evaluation = polynomial_evaluation(6, BLOWUP_FACTOR_BITS);
         let prover = FriProver::<QM31, Blake3Hasher>::new(options);
         let prover = prover.build_layers(vec![evaluation]);
@@ -357,7 +368,7 @@ mod tests {
     #[ignore = "verification not implemented"]
     fn mixed_degree_fri_proof_passes_verification() {
         const BLOWUP_FACTOR_BITS: u32 = 2;
-        let options = FriOptions::new(4, BLOWUP_FACTOR_BITS);
+        let options = FriConfig::new(4, BLOWUP_FACTOR_BITS);
         let midex_degree_evals = vec![
             polynomial_evaluation(6, BLOWUP_FACTOR_BITS),
             polynomial_evaluation(4, BLOWUP_FACTOR_BITS),
