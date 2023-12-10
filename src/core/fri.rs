@@ -81,14 +81,14 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
         }
     }
 
-    /// Builds and commits to FRI layers from multiple [LineEvaluation]s.
+    /// Builds and commits to the FRI layers from multiple [LineEvaluation]s.
     ///
     /// # Panics
     ///
     /// Panics if:
     /// * `evals` is empty.
     /// * Each evaluation is not of sufficiently low degree.
-    pub fn build_layers(mut self, mut evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, Query> {
+    pub fn commit(mut self, mut evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, Query> {
         // Sort in ascending order by evaluation domain size.
         evals.sort_by_key(|eval| Reverse(eval.len()));
 
@@ -114,7 +114,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
         // Add our folded evaluation to the set of evaluations.
         evals.push(evaluation);
 
-        self.build_remainder(evals)
+        self.commit_remainder(evals)
     }
 
     /// Builds and commits to the FRI remainder polynomial's coefficients (the last FRI layer).
@@ -125,7 +125,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, Commitment> {
     /// * `evals` is empty.
     /// * The domain size of an evaluation exceeds the maximum remainder domain size.
     /// * Each evaluation is not sufficiently low degree.
-    fn build_remainder(self, mut evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, Query> {
+    fn commit_remainder(self, mut evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, Query> {
         let Self { config, layers, .. } = self;
 
         // Sort in ascending order by evaluation domain size.
@@ -342,14 +342,14 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn fri_prover_with_high_degree_polynomial_fails() {
+    fn committing_high_degree_polynomial_fails() {
         const EXPECTED_BLOWUP_FACTOR_BITS: u32 = 2;
         const INVALID_BLOWUP_FACTOR_BITS: u32 = 1;
         let config = FriConfig::new(2, EXPECTED_BLOWUP_FACTOR_BITS);
         let prover = FriProver::<M31, Blake3Hasher>::new(config);
         let evaluation = polynomial_evaluation(6, INVALID_BLOWUP_FACTOR_BITS);
 
-        prover.build_layers(vec![evaluation]);
+        prover.commit(vec![evaluation]);
     }
 
     #[test]
@@ -359,7 +359,7 @@ mod tests {
         let config = FriConfig::new(2, BLOWUP_FACTOR_BITS);
         let evaluation = polynomial_evaluation(6, BLOWUP_FACTOR_BITS);
         let prover = FriProver::<QM31, Blake3Hasher>::new(config);
-        let prover = prover.build_layers(vec![evaluation]);
+        let prover = prover.commit(vec![evaluation]);
         let query_positions = [1, 8, 7];
         let _proof = prover.into_proof(&query_positions);
 
@@ -378,7 +378,7 @@ mod tests {
             polynomial_evaluation(0, BLOWUP_FACTOR_BITS),
         ];
         let prover = FriProver::<QM31, Blake3Hasher>::new(config);
-        let prover = prover.build_layers(midex_degree_evals);
+        let prover = prover.commit(midex_degree_evals);
         let query_positions = [1, 8, 7];
         let _proof = prover.into_proof(&query_positions);
 
