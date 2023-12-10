@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 
 use super::hasher::Hasher;
-use crate::commitment_scheme::utils::to_byte_slice;
+use crate::core::fields::IntoSlice;
 
 /// Merkle proof of queried indices.
 /// Used for storing a merkle proof of a given tree and a set of queries.
@@ -19,7 +19,10 @@ pub struct MerkleDecommitment<T: Sized + Display, H: Hasher> {
     pub n_rows_in_leaf_block: usize,
 }
 
-impl<T: Sized + Display, H: Hasher> MerkleDecommitment<T, H> {
+impl<T: Sized + Display, H: Hasher> MerkleDecommitment<T, H>
+where
+    T: IntoSlice<H::NativeType>,
+{
     pub fn new(
         leaf_blocks: Vec<Vec<T>>,
         layers: Vec<Vec<H::Hash>>,
@@ -52,7 +55,7 @@ impl<T: Sized + Display, H: Hasher> MerkleDecommitment<T, H> {
         let mut curr_hashes = self
             .leaf_blocks
             .iter()
-            .map(|leaf_block| H::hash(to_byte_slice(leaf_block)))
+            .map(|leaf_block| H::hash(<T as IntoSlice<H::NativeType>>::into_slice(leaf_block)))
             .collect::<Vec<H::Hash>>();
 
         let mut layer_queries = leaf_block_queries.clone();
