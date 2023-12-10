@@ -39,6 +39,12 @@ impl AsRef<[u8]> for Blake2sHash {
     }
 }
 
+impl From<Blake2sHash> for [u8; 32] {
+    fn from(val: Blake2sHash) -> Self {
+        val.0
+    }
+}
+
 impl fmt::Display for Blake2sHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&hex::encode(self.0))
