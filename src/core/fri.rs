@@ -174,6 +174,16 @@ pub struct CommitmentPhase;
 /// Query phase for [FriProver].
 pub struct QueryPhase;
 
+struct _FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
+    options: FriConfig,
+    layer_alphas: F,
+    proof: FriProof<F, H>,
+}
+
+impl<F: ExtensionOf<BaseField>, H: Hasher> _FriVerifier<F, H> {
+    // fn
+}
+
 /// A FRI proof.
 pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub layer_proofs: Vec<FriLayerProof<F, H>>,
