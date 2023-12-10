@@ -95,14 +95,14 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
         }
     }
 
-    /// Builds and commits to the inner FRI layers (all layers except last layer).
+    /// Builds and commits to the inner FRI layers (all layers except the last layer).
     ///
     /// Returns the evaluation for the last layer.
     ///
     /// # Panics
     ///
     /// Panics if:
-    /// * `evals` is empty
+    /// * `evals` is empty.
     /// * An evaluation domain is smaller than or equal to the max last layer domain size.
     fn commit_inner_layers(&mut self, mut evals: Vec<LineEvaluation<F>>) -> LineEvaluation<F> {
         let mut evaluation = evals.pop().expect("require at least one evaluation");
