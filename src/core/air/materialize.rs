@@ -42,5 +42,4 @@ pub struct FusedNode {
     pub name: String,
     pub op: PointwiseOp,
     pub ty: String,
-    pub inputs: Vec<String>,
 }

@@ -106,18 +106,18 @@ fn append_computation(body_tokens: &mut Tokens<Rust>, computation: &Materialized
     let mut fused_op = rust::Tokens::new();
     for node in &computation.fused_op.ops {
         let mut params = rust::Tokens::new();
-        for param in &node.op.params {
+        for param in &node.op.params() {
             params.extend(quote! {
                 $(param.to_string()),
             });
         }
-        for input in &node.inputs {
+        for input in &node.op.inputs() {
             params.extend(quote! {
                 $(input),
             });
         }
         fused_op.extend(quote! {
-            let $(&node.name) = $(&node.op.name)($(&params));
+            let $(&node.name): $(&node.ty) = $(&node.op.name())($(&params));
         });
     }
 
@@ -154,7 +154,7 @@ fn append_arrays_struct(tokens: &mut Tokens<Rust>, arrays: &[MaterializedArray],
 fn test_fibonacci_rust_codegen() {
     use std::fs;
 
-    use crate::core::air::graph::{OpParam, PointwiseOp};
+    use crate::core::air::graph::{BinaryOp, PointwiseOp};
     use crate::core::air::materialize::{
         FusedNode, FusedOp, MaskItem, MaterializedArray, MaterializedComputation,
         MaterializedGraph, Ordering,
@@ -184,12 +184,11 @@ fn test_fibonacci_rust_codegen() {
                 fused_op: FusedOp {
                     ops: vec![FusedNode {
                         name: "one".into(),
-                        op: PointwiseOp {
-                            name: "M31::from_u32_unchecked".into(),
-                            params: vec![OpParam::Int(1)],
+                        op: PointwiseOp::Const {
+                            value: "1".into(),
+                            ty: "M31".into(),
                         },
                         ty: "M31".into(),
-                        inputs: vec![],
                     }],
                 },
                 ordering: Ordering::Sequential,
@@ -242,30 +241,30 @@ fn test_fibonacci_rust_codegen() {
                     ops: vec![
                         FusedNode {
                             name: "f0sq".into(),
-                            op: PointwiseOp {
-                                name: "mul".into(),
-                                params: vec![],
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Mul,
+                                a: "f0".into(),
+                                b: "f0".into(),
                             },
                             ty: "M31".into(),
-                            inputs: vec!["f0".into(), "f0".into()],
                         },
                         FusedNode {
                             name: "f1sq".into(),
-                            op: PointwiseOp {
-                                name: "mul".into(),
-                                params: vec![],
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Mul,
+                                a: "f1".into(),
+                                b: "f1".into(),
                             },
                             ty: "M31".into(),
-                            inputs: vec!["f1".into(), "f1".into()],
                         },
                         FusedNode {
                             name: "f_rec".into(),
-                            op: PointwiseOp {
-                                name: "add".into(),
-                                params: vec![],
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Add,
+                                a: "f0sq".into(),
+                                b: "f1sq".into(),
                             },
                             ty: "M31".into(),
-                            inputs: vec!["f0sq".into(), "f1sq".into()],
                         },
                     ],
                 },
