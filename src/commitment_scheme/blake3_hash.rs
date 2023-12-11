@@ -115,7 +115,7 @@ impl super::hasher::Hasher for Blake3Hasher {
             .collect()
     }
 
-    fn hash_many_multi_src_in_place(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]) {
+    fn hash_many_multi_src_in_place<'a:'b, 'b>(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]) {
         assert!(
             data.len() == dst.len(),
             "Attempt to hash many multi src with different input and output lengths!"

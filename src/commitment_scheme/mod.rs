@@ -1,10 +1,10 @@
 pub mod blake2_hash;
 pub mod blake3_hash;
 pub mod hasher;
-pub mod mdconfig;
 pub mod merkle_decommitment;
 pub mod merkle_input;
 pub mod merkle_polylayer;
 pub mod merkle_polylayer_cfg;
 pub mod merkle_tree;
 pub mod utils;
+pub mod new_merkle_tree;

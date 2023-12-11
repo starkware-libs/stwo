@@ -48,5 +48,5 @@ pub trait Hasher {
     // defining proper input structure for it.
     fn hash_many_multi_src(data: &[Vec<&[Self::NativeType]>]) -> Vec<Self::Hash>;
 
-    fn hash_many_multi_src_in_place(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]);
+    fn hash_many_multi_src_in_place<'a:'b,'b>(data: &'b [Vec<&'b [Self::NativeType]>], dst: &'b mut [Self::Hash]);
 }

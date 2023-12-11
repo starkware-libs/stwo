@@ -450,6 +450,7 @@ dependencies = [
  "hex",
  "num-traits",
  "rand",
+ "rayon",
  "thiserror",
 ]
 
