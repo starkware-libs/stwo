@@ -1,4 +1,5 @@
 use std::cmp::Reverse;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::iter::zip;
 use std::marker::PhantomData;
@@ -63,7 +64,7 @@ pub struct FriProver<F: ExtensionOf<BaseField>, H: Hasher, Phase = CommitmentPha
     config: FriConfig,
     layers: Vec<FriLayer<F, H>>,
     remainder: Option<LinePoly<F>>,
-    _phase: PhantomData<Phase>,
+    phase: PhantomData<Phase>,
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
@@ -73,27 +74,29 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
             config,
             layers: Vec::new(),
             remainder: None,
-            _phase: PhantomData,
+            phase: PhantomData,
         }
     }
 
-    /// Commits to multiple [LineEvaluation]s.
+    /// Commits on multiple [LineEvaluation]s.
     ///
     /// # Panics
     ///
     /// Panics if:
-    /// * `evals` is empty or not sorted in ascending order by evaluation domain size.
+    /// * `evals` is empty or contains two or more evaluations with the same domain size.
     /// * An evaluation domain is smaller than or equal to the max last layer domain size.
     /// * An evaluation is not of sufficiently low degree.
-    pub fn commit(mut self, evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, QueryPhase> {
-        assert!(evals.is_sorted_by_key(|evaluation| Reverse(evaluation.len())));
+    pub fn commit(mut self, mut evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, QueryPhase> {
+        // Check all evaluation domain sizes to be unique.
+        evals.sort_by_key(|eval| Reverse(eval.len()));
+        assert!(evals.array_windows().all(|[a, b]| a.len() < b.len()));
         let last_layer_evaluation = self.commit_inner_layers(evals);
         self.commit_last_layer(last_layer_evaluation);
         FriProver {
             config: self.config,
             layers: self.layers,
             remainder: self.remainder,
-            _phase: PhantomData,
+            phase: PhantomData,
         }
     }
 
@@ -107,10 +110,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// * `evals` is empty.
     /// * An evaluation domain is smaller than or equal to the max last layer domain size.
     fn commit_inner_layers(&mut self, mut evals: Vec<LineEvaluation<F>>) -> LineEvaluation<F> {
-        let mut evaluation = evals.pop().expect("require at least one evaluation");
+        let mut evaluation = evals.pop().expect("require an evaluation");
         while evaluation.len() > self.config.max_last_layer_domain_size() {
-            // Aggregate all evaluations that have the same domain size.
-            while let Some(true) = evals.last().map(|e| e.len() == evaluation.len()) {
+            // Combine the evaluation with the correct degree into this layer.
+            if let Some(true) = evals.last().map(|e| e.len() == evaluation.len()) {
                 // TODO(andrew): draw random alpha from channel
                 let alpha = F::one();
                 for (i, &eval) in evals.pop().unwrap().iter().enumerate() {
@@ -179,66 +182,107 @@ pub struct QueryPhase;
 pub struct FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
     config: FriConfig,
     layer_alphas: Vec<F>,
-    max_degree_bits: u32,
+    degree_bounds: BTreeSet<DegreeBoundBits>,
     proof: FriProof<F, H>,
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
+    /// Creates a new FRI verifier.
+    ///
+    /// This verifier can verify multiple polynomials, with different degrees, are all of low
+    /// degree. `degree_bounds` should be the degrees of all the polynomials involved in
+    /// verification.
+    ///
+    /// # Errors
+    ///
+    /// An `Err` will be returned if the proof contains an invalid number of FRI layers.
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// * `degree_bounds` is empty.
+    /// * An degree bound is less than or equal to the max last layer degree bound.
     pub fn new(
         config: FriConfig,
         proof: FriProof<F, H>,
-        max_degree_bits: u32,
+        // TODO: maybe poly_degree_bounds?
+        degree_bounds: BTreeSet<DegreeBoundBits>,
     ) -> Result<Self, VerificationError> {
         let mut layer_alphas = Vec::new();
 
-        for _layer_proof in &proof.layer_proofs {
-            // TODO(andrew): Seed channel with commitment.
-            // TODO(andrew): Draw alpha from channel.
-            let alpha = F::one();
-            layer_alphas.push(alpha);
+        {
+            let mut degree_bounds = degree_bounds.clone();
+            let mut degree_bound_bits = degree_bounds.pop_last().expect("require a degree bound");
+            for _layer_proof in &proof.layer_proofs {
+                // Draw an alpha if an evaluation will be combined into this layer.
+                if let Some(true) = degree_bounds.last().map(|&d| d == degree_bound_bits) {
+                    degree_bounds.pop_last();
+                    // TODO(andrew): draw random alpha from channel
+                    let alpha = F::one();
+                    layer_alphas.push(alpha);
+                }
+
+                if degree_bound_bits <= config.last_layer_degree_bits {
+                    return Err(VerificationError::InvalidNumFriLayers);
+                }
+
+                // TODO(andrew): Seed channel with commitment.
+                // TODO(andrew): Draw alpha from channel.
+                let alpha = F::one();
+                layer_alphas.push(alpha);
+
+                degree_bound_bits = degree_bound_bits
+                    .checked_sub(FRI_STEP_SIZE_BITS)
+                    .expect("invalid degree bound");
+            }
+
+            // Ensure there aren't any domain sizes left out.
+            assert!(degree_bounds.is_empty());
+
+            if degree_bound_bits > config.last_layer_degree_bits {
+                return Err(VerificationError::InvalidNumFriLayers);
+            }
         }
 
         Ok(Self {
             config,
             layer_alphas,
-            max_degree_bits,
+            degree_bounds,
             proof,
         })
     }
 
     /// Verifies the FRI commitment.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the wrong set of ealuations is given.
     // TODO(andrew): create error type
-    fn verify(
+    pub fn verify(
         self,
-        mut query_positions: &[usize],
-        mut evaluations: &[F],
+        query_positions: &[usize],
+        evaluation_sets: BTreeMap<DegreeBoundBits, Vec<F>>,
     ) -> Result<(), VerificationError> {
-        let n_positions = query_positions.len();
-        let n_evals = evaluations.len();
-        if n_positions != n_evals {
-            return Err(VerificationError::InvalidEvaluations {
-                n_positions,
-                n_evals,
-            });
-        }
-
-        let last_layer_domain = self.verify_inner_layers(&mut query_positions, &mut evaluations)?;
-        self.verify_last_layer(last_layer_domain, query_positions, evaluations)
+        assert!(evaluation_sets.keys().eq(&self.degree_bounds));
+        let (last_layer_domain, last_layer_positions, last_layer_evals) =
+            self.verify_inner_layers(query_positions.to_vec(), evaluation_sets)?;
+        self.verify_last_layer(last_layer_domain, last_layer_positions, last_layer_evals)
     }
 
-    /// Verifies the inner FRI layers.
+    /// Verifies the inner FRI layers (all layers except the last layer).
     ///
-    /// Returns the domain for the last layer.
+    /// Returns the domain, query positions and evaluations needed for verifying the last FRI layer.
+    /// Output is of the form: `(domain, query_positions, evaluations)`.
     fn verify_inner_layers(
         &self,
-        positions: &mut Vec<usize>,
-        evals: &mut Vec<F>,
-    ) -> Result<LineDomain, VerificationError> {
-        let domain_size_bits = self.max_degree_bits + self.config.blowup_factor_bits;
-        let mut domain = LineDomain::new(Coset::half_odds(domain_size_bits as usize));
+        mut positions: Vec<usize>,
+        mut evaluation_sets: BTreeMap<DegreeBoundBits, Vec<F>>,
+    ) -> Result<(LineDomain, Vec<usize>, Vec<F>), VerificationError> {
+        let (degree_bound_bits, evals) = evaluation_sets.pop_last().unwrap();
+        let eval_domain_size_bits = degree_bound_bits + self.config.blowup_factor_bits;
+        let mut domain = LineDomain::new(Coset::half_odds(eval_domain_size_bits as usize));
         let mut layers = self.proof.layer_proofs.iter();
         let mut layer_alphas = self.layer_alphas.iter().copied();
-
         while domain.size() > self.config.max_last_layer_domain_size() {
             let mut folded_positions = positions.clone();
             fold_positions(&mut folded_positions, domain.size());
@@ -247,16 +291,16 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
             let layer = layers.next().unwrap();
             layer.verify(&folded_positions)?;
 
-            let layer_alpha = layer_alphas.next().unwrap();
+            let _layer_alpha = layer_alphas.next().unwrap();
 
-            *positions = folded_positions;
+            positions = folded_positions;
             domain = domain.double();
         }
 
         assert!(layers.next().is_none());
         assert!(layer_alphas.next().is_none());
 
-        Ok(domain)
+        Ok((domain, positions, evals))
     }
 
     /// Verifies the FRI remainder polynomial (the last FRI layer).
@@ -266,14 +310,15 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
         positions: Vec<usize>,
         evals: Vec<F>,
     ) -> Result<(), VerificationError> {
+        assert_eq!(positions.len(), evals.len());
         let remainder = self.proof.remainder;
         let degree_bound = domain.size() >> self.config.blowup_factor_bits;
         if remainder.len() > degree_bound {
             return Err(VerificationError::LastLayerDegreeInvalid);
         }
         for (position, eval) in zip(positions, evals) {
-            let x: F = F::from(domain.at(position));
-            if eval != remainder.eval_at_point(x) {
+            let x = domain.at(position);
+            if eval != remainder.eval_at_point(x.into()) {
                 return Err(VerificationError::LastLayerEvaluationInvalid);
             }
         }
@@ -281,10 +326,17 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
     }
 }
 
+/// Degree bound of a polynomial stored as `log2(degree_bound)`.
+type DegreeBoundBits = u32;
+
 #[derive(Error, Debug)]
 pub enum VerificationError {
-    #[error("{n_positions} query positions but only {n_evals} evaluations")]
-    InvalidEvaluations { n_positions: usize, n_evals: usize },
+    // #[error("provided an incorrect number of evaluation sets")]
+    // InvalidEvaluationSets,
+    // #[error("evaluation set had {n_positions} query positions at but was provided {n_evals}
+    // evaluations")] InvalidEvaluationSet { n_positions: usize, n_evals: usize },
+    #[error("proof contains an invalid number of FRI layers")]
+    InvalidNumFriLayers,
     #[error("queries do not resolve to their commitment in layer {layer}")]
     InnerLayerInvalid { layer: usize },
     #[error("degree of remainder polynomial is invalid")]
@@ -299,13 +351,13 @@ pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub remainder: LinePoly<F>,
 }
 
-const FRI_STEP_SIZE: usize = 2;
+const FRI_STEP_SIZE_BITS: u32 = 1;
 
 /// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
 pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub coset_evals: Vec<[F; FRI_STEP_SIZE]>,
+    pub coset_evals: Vec<[F; 1 << FRI_STEP_SIZE_BITS]>,
     pub decommitment: MerkleDecommitment<F, H>,
     pub commitment: H::Hash,
 }
@@ -324,7 +376,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
 // TODO(andrew): support different folding factors
 struct FriLayer<F: ExtensionOf<BaseField>, H: Hasher> {
     /// Coset evaluations stored in column-major.
-    coset_evals: [Vec<F>; FRI_STEP_SIZE],
+    coset_evals: [Vec<F>; 1 << FRI_STEP_SIZE_BITS],
     _merkle_tree: MerkleTree<F, H>,
 }
 
