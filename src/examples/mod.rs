@@ -2,7 +2,7 @@
 #[allow(clippy::identity_op)]
 #[allow(clippy::uninit_vec)]
 #[allow(dead_code)]
-mod fibonacci_code;
+pub mod fibonacci_code;
 mod ops;
 
 #[test]

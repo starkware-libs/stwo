@@ -4,8 +4,9 @@ use crate::core::air::mask::{Mask, MaskItem};
 use crate::core::circle::Coset;
 use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{ExtensionOf, Field};
+use crate::core::fields::ExtensionOf;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
+use crate::examples::fibonacci_code;
 
 pub mod component;
 
@@ -33,21 +34,15 @@ impl Fibonacci {
     }
 
     pub fn get_trace(&self) -> CircleEvaluation<BaseField> {
-        // Trace.
-        let mut trace = Vec::with_capacity(self.trace_coset.size());
-
         // Fill trace with fibonacci squared.
-        let mut a = BaseField::one();
-        let mut b = BaseField::one();
-        for _ in 0..self.trace_coset.size() {
-            trace.push(a);
-            let tmp = a.square() + b.square();
-            a = b;
-            b = tmp;
-        }
+        // TODO(spapini): Extract correct component instance.
+        assert!(self.trace_coset.size() == 32);
+        let trace = fibonacci_code::compute(&fibonacci_code::Input {
+            secret: vec![BaseField::one()],
+        });
 
         // Returns as a CircleEvaluation.
-        CircleEvaluation::new_canonical_ordered(self.trace_coset, trace)
+        CircleEvaluation::new_canonical_ordered(self.trace_coset, trace.f)
     }
 
     pub fn eval_step_constraint<F: ExtensionOf<BaseField>>(&self, trace: impl PolyOracle<F>) -> F {
@@ -125,7 +120,7 @@ mod tests {
     fn test_constraint_on_trace() {
         use num_traits::Zero;
 
-        let fib = Fibonacci::new(3, m31!(1056169651));
+        let fib = Fibonacci::new(5, m31!(443693538));
         let trace = fib.get_trace();
 
         // Assert that the step constraint is satisfied on the trace.
