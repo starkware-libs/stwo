@@ -35,6 +35,12 @@ impl M31 {
     }
 }
 
+impl From<u32> for M31 {
+    fn from(arg: u32) -> Self {
+        Self::reduce(arg as u64)
+    }
+}
+
 impl Display for M31 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)

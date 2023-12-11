@@ -16,7 +16,7 @@ pub fn compute(input: &Input) -> Output {
         f.set_len(32);
     }
     for i in 0..1 {
-        let one = M31::from_u32_unchecked(1);
+        let one: M31 = const_val(1);
         f[i * 1 + 0] = one;
     }
     for i in 0..1 {
@@ -26,9 +26,9 @@ pub fn compute(input: &Input) -> Output {
     for i in 0..30 {
         let f0 = f[i * 1 + 0];
         let f1 = f[i * 1 + 1];
-        let f0sq = mul(f0, f0);
-        let f1sq = mul(f1, f1);
-        let f_rec = add(f0sq, f1sq);
+        let f0sq: M31 = mul(f0, f0);
+        let f1sq: M31 = mul(f1, f1);
+        let f_rec: M31 = add(f0sq, f1sq);
         f[i * 1 + 2] = f_rec;
     }
     Output { f }
