@@ -44,11 +44,13 @@ pub unsafe trait IntoSlice<T: Sized>: Sized {
 }
 pub trait ExtensionOf<F: Field>: Field + From<F> + NumOps<F> + NumAssignOps<F> {}
 
+impl<F: Field> ExtensionOf<F> for F {}
+
 #[macro_export]
 macro_rules! impl_field {
     ($field_name: ty, $field_size: ident) => {
         use num_traits::{Num, One, Zero};
-        use $crate::core::fields::{ExtensionOf, Field};
+        use $crate::core::fields::Field;
 
         impl Num for $field_name {
             type FromStrRadixErr = Box<dyn std::error::Error>;
@@ -67,8 +69,6 @@ macro_rules! impl_field {
                 self.pow(($field_size - 2) as u128)
             }
         }
-
-        impl ExtensionOf<M31> for $field_name {}
 
         impl AddAssign for $field_name {
             fn add_assign(&mut self, rhs: Self) {
@@ -126,7 +126,9 @@ macro_rules! impl_field {
 #[macro_export]
 macro_rules! impl_extension_field {
     ($field_name: ty, $extended_field_name: ty) => {
-        impl ExtensionOf<$field_name> for $field_name {}
+        use $crate::core::fields::ExtensionOf;
+
+        impl ExtensionOf<M31> for $field_name {}
 
         impl Add for $field_name {
             type Output = Self;
