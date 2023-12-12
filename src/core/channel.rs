@@ -5,20 +5,40 @@ use crate::commitment_scheme::hasher::Hasher;
 pub const BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
 
+#[derive(Default)]
+pub struct ChannelTime {
+    n_challenges: usize,
+    n_sent: usize,
+}
+
+impl ChannelTime {
+    fn inc_sent(&mut self) {
+        self.n_sent += 1;
+    }
+
+    fn inc_challenges(&mut self) {
+        self.n_challenges += 1;
+        self.n_sent = 0;
+    }
+}
+
 /// A channel that can be used to draw random elements from a [Blake2sHash] digest.
 pub struct Blake2sChannel {
     digest: Blake2sHash,
-    counter: u32,
+    channel_time: ChannelTime,
 }
 
 impl Blake2sChannel {
     pub fn new(digest: Blake2sHash) -> Self {
-        Blake2sChannel { digest, counter: 0 }
+        Blake2sChannel {
+            digest,
+            channel_time: ChannelTime::default(),
+        }
     }
 
     pub fn mix_with_seed(&mut self, seed: Blake2sHash) {
         self.digest = Blake2sHasher::concat_and_hash(&self.digest, &seed);
-        self.counter = 0;
+        self.channel_time.inc_challenges();
     }
 
     pub fn draw_random_bytes(&mut self) -> [u8; BYTES_PER_HASH] {
@@ -26,12 +46,12 @@ impl Blake2sChannel {
 
         // Pad the counter to 32 bytes.
         let mut padded_counter = [0; 32];
-        let counter_bytes = self.counter.to_le_bytes();
+        let counter_bytes = self.channel_time.n_sent.to_le_bytes();
         padded_counter[0..counter_bytes.len()].copy_from_slice(&counter_bytes);
 
         hash_input.extend_from_slice(&padded_counter);
 
-        self.counter += 1;
+        self.channel_time.inc_sent();
         Blake2sHasher::hash(&hash_input).into()
     }
 
@@ -74,23 +94,34 @@ mod tests {
 
         // Assert that the channel is initialized correctly.
         assert_eq!(channel.digest, initial_digest);
-        assert_eq!(channel.counter, 0);
+        assert_eq!(channel.channel_time.n_challenges, 0);
+        assert_eq!(channel.channel_time.n_sent, 0);
     }
 
     #[test]
-    fn test_counter() {
+    fn test_channel_time() {
         let initial_digest = Blake2sHash::from(vec![0; 32]);
         let mut channel = Blake2sChannel::new(initial_digest);
-        assert_eq!(channel.counter, 0);
+
+        assert_eq!(channel.channel_time.n_challenges, 0);
+        assert_eq!(channel.channel_time.n_sent, 0);
 
         channel.draw_random_bytes();
-        assert_eq!(channel.counter, 1);
+        assert_eq!(channel.channel_time.n_challenges, 0);
+        assert_eq!(channel.channel_time.n_sent, 1);
 
         channel.draw_random_felts();
-        assert_eq!(channel.counter, 2);
+        assert_eq!(channel.channel_time.n_challenges, 0);
+        assert_eq!(channel.channel_time.n_sent, 2);
 
         channel.mix_with_seed(Blake2sHash::from(vec![1; 32]));
-        assert_eq!(channel.counter, 0);
+        assert_eq!(channel.channel_time.n_challenges, 1);
+        assert_eq!(channel.channel_time.n_sent, 0);
+
+        channel.draw_random_felts();
+        assert_eq!(channel.channel_time.n_challenges, 1);
+        assert_eq!(channel.channel_time.n_sent, 1);
+        assert_ne!(channel.digest, initial_digest);
     }
 
     #[test]
