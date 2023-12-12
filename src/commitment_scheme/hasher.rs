@@ -12,7 +12,9 @@ pub trait Hasher {
         + Into<Vec<Self::NativeType>>
         + TryFrom<Vec<Self::NativeType>>
         + AsRef<[Self::NativeType]>
-        + for<'a> From<&'a [Self::NativeType]>;
+        + for<'a> From<&'a [Self::NativeType]>
+        + Send
+        + Sync;
     type NativeType: Sized + Eq;
     // Input size of the compression function.
     // TODO(Ohad): Consider packing hash paramaters in a dedicated struct.
