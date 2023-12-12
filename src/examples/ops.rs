@@ -14,3 +14,7 @@ pub fn add<T: Add<T, Output = T>>(x: T, y: T) -> T {
 pub fn sub<T: Sub<T, Output = T>>(x: T, y: T) -> T {
     x - y
 }
+
+pub fn shr(x: u64, n_bits: u64) -> u64 {
+    x >> n_bits
+}
