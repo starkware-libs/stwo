@@ -6,7 +6,9 @@ pub trait Name {
 }
 
 pub trait Hasher {
+    // TODO(Ohad): Define a 'hash' trait to enforce all these traits on an implementor.
     type Hash: Copy
+        + Default
         + Display
         + self::Name
         + Into<Vec<Self::NativeType>>
@@ -17,7 +19,6 @@ pub trait Hasher {
         + Sync;
     type NativeType: Sized + Eq;
     // Input size of the compression function.
-    // TODO(Ohad): Consider packing hash paramaters in a dedicated struct.
     const BLOCK_SIZE: usize;
     const OUTPUT_SIZE: usize;
 

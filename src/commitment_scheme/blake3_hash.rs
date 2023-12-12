@@ -3,7 +3,7 @@ use std::fmt;
 use super::hasher::Name;
 
 // Wrapper for the blake3 hash type.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct Blake3Hash([u8; 32]);
 
 impl From<Blake3Hash> for Vec<u8> {
