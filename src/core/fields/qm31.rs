@@ -3,6 +3,7 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use super::IntoSlice;
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
@@ -48,6 +49,12 @@ impl Mul for QM31 {
             self.0 * rhs.0 + R * self.1 * rhs.1,
             self.0 * rhs.1 + self.1 * rhs.0,
         )
+    }
+}
+
+unsafe impl IntoSlice<u8> for QM31 {
+    fn into_slice(sl: &[Self]) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(sl.as_ptr() as *const u8, std::mem::size_of_val(sl)) }
     }
 }
 
