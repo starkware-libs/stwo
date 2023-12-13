@@ -58,7 +58,7 @@ impl Blake2sChannel {
     /// Generates a uniform random vector of BaseField elements.
     pub fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
         // Repeats hashing with an increasing counter until getting a good result.
-        // Retry probablity for each round is ~ 2^(-28).
+        // Retry probability for each round is ~ 2^(-28).
         loop {
             let random_bytes: [u32; FELTS_PER_HASH] = self
                 .draw_random_bytes()
