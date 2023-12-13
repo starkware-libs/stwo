@@ -103,12 +103,7 @@ impl From<i32> for M31 {
     }
 }
 
-// TODO(Ohad): Do not compile on non-le targets.
-unsafe impl IntoSlice<u8> for M31 {
-    fn into_slice(sl: &[Self]) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(sl.as_ptr() as *const u8, std::mem::size_of_val(sl)) }
-    }
-}
+unsafe impl IntoSlice<u8> for M31 {}
 
 #[cfg(test)]
 #[macro_export]
@@ -157,15 +152,15 @@ mod tests {
     fn test_into_slice() {
         let mut rng = rand::thread_rng();
         let x = (0..100)
-            .map(|_| M31::from(rng.gen::<u32>()))
+            .map(|_| m31!(rng.gen::<u32>()))
             .collect::<Vec<M31>>();
 
-        let slice = <M31 as IntoSlice<u8>>::into_slice(&x);
+        let slice = M31::into_slice(&x);
 
         for i in 0..100 {
             assert_eq!(
                 x[i],
-                M31::from_u32_unchecked(u32::from_le_bytes(
+                m31!(u32::from_le_bytes(
                     slice[i * 4..(i + 1) * 4].try_into().unwrap()
                 ))
             );
