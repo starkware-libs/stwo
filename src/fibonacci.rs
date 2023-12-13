@@ -1,10 +1,17 @@
 use num_traits::One;
 
+use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
+use crate::commitment_scheme::hasher::Hasher;
+use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::air::{Mask, MaskItem};
+use crate::core::channel::Blake2sChannel;
 use crate::core::circle::Coset;
-use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing, PolyOracle};
+use crate::core::constraints::{
+    coset_vanishing, point_excluder, point_vanishing, EvalByEvaluation, PolyOracle,
+};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{ExtensionOf, Field};
+use crate::core::fields::qm31::QM31;
+use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 
 pub struct Fibonacci {
@@ -13,6 +20,12 @@ pub struct Fibonacci {
     pub constraint_coset: Coset,
     pub constraint_eval_domain: CircleDomain,
     pub claim: BaseField,
+}
+
+pub struct FibonacciProof {
+    pub public_input: BaseField,
+    pub trace_commitment: Blake2sHash,
+    pub quotient_commitment: Blake2sHash,
 }
 
 impl Fibonacci {
@@ -104,6 +117,43 @@ impl Fibonacci {
                 })
                 .collect(),
         )
+    }
+
+    pub fn prove(self) -> FibonacciProof {
+        let mut channel =
+            Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self.claim])));
+        let trace = self.get_trace();
+        let trace_poly = trace.interpolate();
+        let extended_evaluation = trace_poly.clone().evaluate(self.eval_domain);
+        let trace_merkle =
+            MerkleTree::<BaseField, Blake2sHasher>::commit(vec![extended_evaluation
+                .values
+                .clone()]);
+        channel.mix_with_seed(trace_merkle.root());
+
+        // Compute quotient on the evaluation domain.
+        let verifier_randomness = channel.draw_random_felts();
+        let random_coeff = QM31::from_m31_array(verifier_randomness[..4].try_into().unwrap());
+        let mut quotient_values = Vec::with_capacity(self.constraint_eval_domain.size());
+        for p_ind in self.constraint_eval_domain.iter_indices() {
+            quotient_values.push(self.eval_quotient(
+                random_coeff,
+                EvalByEvaluation {
+                    offset: p_ind,
+                    eval: &extended_evaluation,
+                },
+            ));
+        }
+        let quotient_merkle =
+            MerkleTree::<QM31, Blake2sHasher>::commit(vec![quotient_values.clone()]);
+        channel.mix_with_seed(quotient_merkle.root());
+
+        // TODO(AlonH): Complete the proof and add the relevant fields.
+        FibonacciProof {
+            public_input: self.claim,
+            trace_commitment: trace_merkle.root(),
+            quotient_commitment: quotient_merkle.root(),
+        }
     }
 }
 
