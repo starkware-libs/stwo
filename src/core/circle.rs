@@ -1,5 +1,6 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
+use super::channel::Blake2sChannel;
 use super::fields::m31::M31;
 use super::fields::qm31::QM31;
 use super::fields::{ExtensionOf, Field};
@@ -132,8 +133,26 @@ impl<F: Field> Sub for CirclePoint<F> {
 
 impl CirclePoint<QM31> {
     pub fn get_point(index: u128) -> Self {
-        assert!(index < P4 - 1);
+        assert!(index < QM31_CIRCLE_SIZE);
         QM31_CIRCLE_GEN.mul(index)
+    }
+
+    pub fn get_random_point(channel: &mut Blake2sChannel) -> Self {
+        // Repeats hashing with an increasing counter until getting a good result.
+        // Retry probability for each round is ~ 2^(-29).
+        loop {
+            let random_bytes = channel.draw_random_bytes();
+
+            let random_u128: u128 = u128::from_le_bytes(random_bytes[..16].try_into().unwrap());
+            if random_u128 < C * QM31_CIRCLE_SIZE {
+                return Self::get_point(random_u128 % QM31_CIRCLE_SIZE);
+            }
+
+            let random_u128: u128 = u128::from_le_bytes(random_bytes[16..].try_into().unwrap());
+            if random_u128 < C * QM31_CIRCLE_SIZE {
+                return Self::get_point(random_u128 % QM31_CIRCLE_SIZE);
+            }
+        }
     }
 }
 
@@ -166,6 +185,11 @@ pub const QM31_CIRCLE_GEN: CirclePoint<QM31> = CirclePoint {
     x: QM31::from_u32_unchecked(1, 0, 478637715, 513582961),
     y: QM31::from_u32_unchecked(568722919, 616616927, 0, 74382916),
 };
+
+pub const QM31_CIRCLE_SIZE: u128 = P4 - 1;
+// `QM31_CIRCLE_SIZE` fits a little over 16 times in a `u128`. This is used to generate a random
+// point on the circle from random bytes.
+pub const C: u128 = 16;
 
 /// Integer i that represent the circle point i * CIRCLE_GEN. Treated as an
 /// additive ring modulo 1 << CURVE_ORDER_BITS.
@@ -391,6 +415,9 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{CirclePointIndex, Coset};
+    use crate::commitment_scheme::blake2_hash::Blake2sHash;
+    use crate::core::channel::Blake2sChannel;
+    use crate::core::circle::CirclePoint;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 
     #[test]
@@ -448,5 +475,19 @@ mod tests {
             coset_points,
             &half_coset_points | &half_coset_conjugate_points
         )
+    }
+
+    #[test]
+    pub fn test_get_random_circle_point() {
+        let initial_digest = Blake2sHash::from(vec![2; 32]);
+        let mut channel = Blake2sChannel::new(initial_digest);
+
+        let first_random_felts = CirclePoint::get_random_point(&mut channel);
+
+        // Assert that the next random felts are different.
+        assert_ne!(
+            first_random_felts,
+            CirclePoint::get_random_point(&mut channel)
+        );
     }
 }
