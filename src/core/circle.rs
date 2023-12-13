@@ -1,8 +1,10 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
+use super::channel::Blake2sChannel;
 use super::fields::m31::M31;
 use super::fields::qm31::QM31;
 use super::fields::{ExtensionOf, Field};
+use crate::core::channel::BYTES_PER_HASH;
 use crate::core::fields::qm31::P4;
 use crate::math::egcd;
 
@@ -132,8 +134,29 @@ impl<F: Field> Sub for CirclePoint<F> {
 
 impl CirclePoint<QM31> {
     pub fn get_point(index: u128) -> Self {
-        assert!(index < P4 - 1);
+        assert!(index < QM31_CIRCLE_SIZE);
         QM31_CIRCLE_GEN.mul(index)
+    }
+
+    #[allow(clippy::assertions_on_constants)]
+    pub fn get_random_point(channel: &mut Blake2sChannel) -> Self {
+        const BYTES_PER_U128: usize = 16;
+        // `QM31_CIRCLE_SIZE` fits a little over 16 times in a `u128`.
+        const C: u128 = 16;
+        assert!(BYTES_PER_HASH >= BYTES_PER_U128);
+        // Repeats hashing with an increasing counter until getting a good result.
+        // Retry probability for each round is ~ 2^(-29).
+        loop {
+            let random_bytes: [u8; BYTES_PER_HASH] = channel.draw_random_bytes();
+            for i in 0..BYTES_PER_HASH / BYTES_PER_U128 {
+                let u128_bytes = &random_bytes[BYTES_PER_U128 * i..BYTES_PER_U128 * (i + 1)];
+                let random_u128: u128 = u128::from_le_bytes(u128_bytes.try_into().unwrap());
+                if random_u128 < C * QM31_CIRCLE_SIZE {
+                    // A circle point can be uniformly sampled.
+                    return Self::get_point(random_u128 % QM31_CIRCLE_SIZE);
+                }
+            }
+        }
     }
 }
 
@@ -166,6 +189,8 @@ pub const QM31_CIRCLE_GEN: CirclePoint<QM31> = CirclePoint {
     x: QM31::from_u32_unchecked(1, 0, 478637715, 513582961),
     y: QM31::from_u32_unchecked(568722919, 616616927, 0, 74382916),
 };
+
+pub const QM31_CIRCLE_SIZE: u128 = P4 - 1;
 
 /// Integer i that represent the circle point i * CIRCLE_GEN. Treated as an
 /// additive ring modulo 1 << CURVE_ORDER_BITS.
@@ -391,6 +416,9 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::{CirclePointIndex, Coset};
+    use crate::commitment_scheme::blake2_hash::Blake2sHash;
+    use crate::core::channel::Blake2sChannel;
+    use crate::core::circle::CirclePoint;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 
     #[test]
@@ -448,5 +476,19 @@ mod tests {
             coset_points,
             &half_coset_points | &half_coset_conjugate_points
         )
+    }
+
+    #[test]
+    pub fn test_get_random_circle_point() {
+        let initial_digest = Blake2sHash::from(vec![2; 32]);
+        let mut channel = Blake2sChannel::new(initial_digest);
+
+        let first_random_felts = CirclePoint::get_random_point(&mut channel);
+
+        // Assert that the next random felts are different.
+        assert_ne!(
+            first_random_felts,
+            CirclePoint::get_random_point(&mut channel)
+        );
     }
 }
