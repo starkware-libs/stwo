@@ -103,6 +103,7 @@ impl super::hasher::Hasher for Blake2sHasher {
             .for_each(|(input, out)| Self::hash_one_in_place(input, out))
     }
 
+    // TODO(Ohad): Consider allocating manually and using the in_place function.
     fn hash_many_multi_src(data: &[Vec<&[u8]>]) -> Vec<Self::Hash> {
         let mut hasher = Blake2s256::new();
         data.iter()
@@ -113,6 +114,22 @@ impl super::hasher::Hasher for Blake2sHasher {
                 Blake2sHash(hasher.finalize_reset().into())
             })
             .collect()
+    }
+
+    fn hash_many_multi_src_in_place(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]) {
+        assert!(
+            data.len() == dst.len(),
+            "Attempt to hash many multi src with different input and output lengths!"
+        );
+        let mut hasher = Blake2s256::new();
+        data.iter()
+            .zip(dst.iter_mut())
+            .for_each(|(input_group, out)| {
+                input_group.iter().for_each(|d| {
+                    blake2::Digest::update(&mut hasher, d);
+                });
+                *out = Blake2sHash(hasher.finalize_reset().into());
+            })
     }
 }
 
@@ -178,11 +195,18 @@ mod tests {
         let input_group_1 = [&input1[..], &input2[..]].to_vec();
         let input_group_2 = [&input3[..], &input4[..]].to_vec();
         let input_arr = [input_group_1, input_group_2];
+        let mut hash_in_place_results = Vec::new();
+        hash_in_place_results.resize(2, Default::default());
+        let expected_result0 = Blake2sHasher::hash(b"abb");
+        let expected_result1 = Blake2sHasher::hash(b"cccdddd");
 
         let hash_results = Blake2sHasher::hash_many_multi_src(&input_arr);
+        Blake2sHasher::hash_many_multi_src_in_place(&input_arr, &mut hash_in_place_results);
 
         assert!(hash_results.len() == 2);
-        assert_eq!(hash_results[0], Blake2sHasher::hash(b"abb"));
-        assert_eq!(hash_results[1], Blake2sHasher::hash(b"cccdddd"));
+        assert_eq!(hash_results[0], expected_result0);
+        assert_eq!(hash_results[1], expected_result1);
+        assert_eq!(hash_in_place_results[0], expected_result0);
+        assert_eq!(hash_in_place_results[1], expected_result1);
     }
 }
