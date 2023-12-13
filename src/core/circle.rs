@@ -1,5 +1,6 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
+use super::channel::Blake2sChannel;
 use super::fields::m31::M31;
 use super::fields::qm31::QM31;
 use super::fields::{ExtensionOf, Field};
@@ -134,6 +135,19 @@ impl CirclePoint<QM31> {
     pub fn get_point(index: u128) -> Self {
         assert!(index < P4 - 1);
         QM31_CIRCLE_GEN.mul(index)
+    }
+
+    pub fn get_random_point(mut channel: Blake2sChannel) -> Self {
+        // Repeats hashing with an increasing counter until getting a good result.
+        // Retry probability for each round is ~ 2^(-29).
+        loop {
+            let random_bytes: u128 =
+                u128::from_le_bytes(channel.draw_random_bytes()[..16].try_into().unwrap());
+
+            if random_bytes < 16 * (P4 - 1) {
+                return Self::get_point(random_bytes % (P4 - 1));
+            }
+        }
     }
 }
 
