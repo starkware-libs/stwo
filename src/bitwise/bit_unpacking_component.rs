@@ -1,11 +1,11 @@
 use crate::core::air::definition::{Column, ColumnKind, Component, ComponentInstance, Constraint};
 use crate::core::air::graph::{GraphNode, OpParam};
 
-pub fn create_bitwise_component_definition(n_bits: u32) -> Component {
+pub fn create_bit_unpacking_component_definition(n_bits: u32) -> Component {
     Component {
-        name: "Bitwise".to_string(),
+        name: "Bit unpacking".to_string(),
         version: "0.1".to_string(),
-        description: "Hand written bitwise component".to_string(),
+        description: "Hand written bit unpacking component".to_string(),
         instances: vec![ComponentInstance {
             n_bits,
             generation_graph: vec![
@@ -319,8 +319,8 @@ pub fn create_bitwise_component_definition(n_bits: u32) -> Component {
                     inputs: vec!["remainder15".to_string(), "one".to_string()],
                 },
                 GraphNode {
-                    name: "bitwise_x".to_string(),
-                    description: "bitwise representation (small endian) of the input".to_string(),
+                    name: "unpacked_x".to_string(),
+                    description: "Bit representation (small endian) of the input".to_string(),
                     size: 1 << (n_bits + 4),
                     ty: "u64".to_string(),
                     op: "interleave".to_string(),
@@ -353,32 +353,32 @@ pub fn create_bitwise_component_definition(n_bits: u32) -> Component {
                     kind: ColumnKind::Witness,
                 },
                 Column {
-                    name: "bitwise_x".to_string(),
+                    name: "unpacked_x".to_string(),
                     description: "x values in bit representation (small endian)".to_string(),
-                    generation_node: "bitwise_x".to_string(),
+                    generation_node: "unpacked_x".to_string(),
                     kind: ColumnKind::Witness,
                 },
             ],
             outputs: vec![],
             constraint_graph: vec![
-                // Check that the bitwise_x column consists only bits.
+                // Check that the unpacked_x column consists only bits.
                 GraphNode {
-                    name: "bitwise_x_square".to_string(),
-                    description: "bitwise_x square".to_string(),
+                    name: "unpacked_x_square".to_string(),
+                    description: "unpacked_x square".to_string(),
                     size: 1 << (n_bits + 4),
                     ty: "u64".to_string(),
                     op: "mul".to_string(),
                     params: vec![],
-                    inputs: vec!["bitwise_x".to_string(), "bitwise_x".to_string()],
+                    inputs: vec!["unpacked_x".to_string(), "unpacked_x".to_string()],
                 },
                 GraphNode {
-                    name: "bits".to_string(),
-                    description: "Check that the bitwise_x column consists only bits".to_string(),
+                    name: "is_bits".to_string(),
+                    description: "Check that the unpacked_x column consists only bits".to_string(),
                     size: 1 << (n_bits + 4),
                     ty: "u64".to_string(),
                     op: "sub".to_string(),
                     params: vec![],
-                    inputs: vec!["bitwise_x_square".to_string(), "bitwise_x".to_string()],
+                    inputs: vec!["unpacked_x_square".to_string(), "unpacked_x".to_string()],
                 },
                 // sum bits.
                 // n_bits constants.
@@ -806,37 +806,58 @@ pub fn create_bitwise_component_definition(n_bits: u32) -> Component {
                     ],
                 },
                 GraphNode {
-                    name: "bitwise_x_eq_x".to_string(),
-                    description: "bitwise_x is the bitwise representation of x".to_string(),
+                    name: "unpacked_x_eq_x".to_string(),
+                    description: "unpacked_x is the bit representation of x (low endian)"
+                        .to_string(),
                     size: 1 << n_bits,
                     ty: "u64".to_string(),
                     op: "sub".to_string(),
                     params: vec![],
-                    inputs: vec![
-                        "total_sum".to_string(),
-                        "x".to_string(),
-                    ],
+                    inputs: vec!["total_sum".to_string(), "x".to_string()],
                 },
             ],
             constraints: vec![
                 Constraint {
-                    name: "bits".to_string(),
-                    description: "Check that the bitwise_x column consists only bits".to_string(),
-                    constraint_node: "bits".to_string(),
+                    name: "is_bits".to_string(),
+                    description: "Check that the unpacked_x column consists only bits".to_string(),
+                    constraint_node: "is_bits".to_string(),
                 },
                 // TODO(ShaharS), Is it needed?
                 Constraint {
-                    name: "remainder".to_string(),
+                    name: "zero_remainder".to_string(),
                     description: "Check that the remainder column is zero".to_string(),
                     constraint_node: "remainder".to_string(),
                 },
                 Constraint {
                     name: "bit_representation".to_string(),
-                    description: "Check that bitwise_x is indeed the bitwise representation of x".to_string(),
-                    constraint_node: "bitwise_x_eq_x".to_string(),
+                    description: "Check that unpacked_x is indeed the bit representation of x"
+                        .to_string(),
+                    constraint_node: "unpacked_x_eq_x".to_string(),
                 },
             ],
             interaction_elements: vec![],
         }],
+    }
+}
+
+#[test]
+fn test_component_file() {
+    let component = create_bit_unpacking_component_definition(4);
+    let json = serde_json::to_string_pretty(&component).unwrap() + "\n";
+
+    // Compute the path to a nearby file.
+    // Use the cargo environment variable to get the correct path to the source directory.
+    let mut path = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    path.push("src/examples/bit_unpacking_component.json");
+
+    // Compare against the local file fibonacci_component.json.
+    let expected_json = std::fs::read_to_string(path.clone()).unwrap();
+    if json != expected_json {
+        // Fix the component file if the FIX_TESTS environment variable is set.
+        if std::env::var("FIX_TESTS").is_ok() {
+            std::fs::write(path, json).unwrap();
+        } else {
+            panic!("Fibonacci component file is not up to date. Run with FIX_TESTS=1 to fix.");
+        }
     }
 }

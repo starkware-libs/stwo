@@ -1,0 +1,1074 @@
+{
+  "name": "Bit unpacking",
+  "version": "0.1",
+  "description": "Hand written bit unpacking component",
+  "instances": [
+    {
+      "n_bits": 4,
+      "generation_graph": [
+        {
+          "name": "x",
+          "description": "x values",
+          "size": 16,
+          "ty": "u64",
+          "op": "generation_input",
+          "params": [
+            {
+              "String": "values"
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "one",
+          "description": "One value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 1
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "bit1",
+          "description": "value & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "x",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder1",
+          "description": "value // 2 ** 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "x",
+            "one"
+          ]
+        },
+        {
+          "name": "bit2",
+          "description": "value // 2 ** 1 & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder1",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder2",
+          "description": "Value // 2 ** 2",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder1",
+            "one"
+          ]
+        },
+        {
+          "name": "bit3",
+          "description": "(value // 2 ** 2) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder2",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder3",
+          "description": "Value // 2 ** 3",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder2",
+            "one"
+          ]
+        },
+        {
+          "name": "bit4",
+          "description": "(value // 2 ** 3) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder3",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder4",
+          "description": "Value // 2 ** 4",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder3",
+            "one"
+          ]
+        },
+        {
+          "name": "bit5",
+          "description": "(value // 2 ** 4) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder4",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder5",
+          "description": "Value // 2 ** 5",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder4",
+            "one"
+          ]
+        },
+        {
+          "name": "bit6",
+          "description": "(value // 2 ** 5) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder5",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder6",
+          "description": "Value // 2 ** 6",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder5",
+            "one"
+          ]
+        },
+        {
+          "name": "bit7",
+          "description": "(value // 2 ** 6) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder6",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder7",
+          "description": "Value // 2 ** 7",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder6",
+            "one"
+          ]
+        },
+        {
+          "name": "bit8",
+          "description": "(value // 2 ** 7) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder7",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder8",
+          "description": "Value // 2 ** 8",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder7",
+            "one"
+          ]
+        },
+        {
+          "name": "bit9",
+          "description": "(value // 2 ** 8) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder8",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder9",
+          "description": "Value // 2 ** 9",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder8",
+            "one"
+          ]
+        },
+        {
+          "name": "bit10",
+          "description": "(value // 2 ** 9) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder9",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder10",
+          "description": "Value // 2 ** 10",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder9",
+            "one"
+          ]
+        },
+        {
+          "name": "bit11",
+          "description": "(value // 2 ** 10) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder10",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder11",
+          "description": "Value // 2 ** 11",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder10",
+            "one"
+          ]
+        },
+        {
+          "name": "bit12",
+          "description": "(value // 2 ** 11) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder11",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder12",
+          "description": "Value // 2 ** 12",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder11",
+            "one"
+          ]
+        },
+        {
+          "name": "bit13",
+          "description": "(value // 2 ** 12) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder12",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder13",
+          "description": "Value // 2 ** 13",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder12",
+            "one"
+          ]
+        },
+        {
+          "name": "bit14",
+          "description": "(value // 2 ** 13) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder13",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder14",
+          "description": "Value // 2 ** 14",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder13",
+            "one"
+          ]
+        },
+        {
+          "name": "bit15",
+          "description": "(value // 2 ** 14) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder14",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder15",
+          "description": "Value // 2 ** 15",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder14",
+            "one"
+          ]
+        },
+        {
+          "name": "bit16",
+          "description": "(value // 2 ** 15) & 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "and",
+          "params": [],
+          "inputs": [
+            "remainder15",
+            "one"
+          ]
+        },
+        {
+          "name": "remainder",
+          "description": "Value // 2 ** 16",
+          "size": 16,
+          "ty": "u64",
+          "op": "shr",
+          "params": [],
+          "inputs": [
+            "remainder15",
+            "one"
+          ]
+        },
+        {
+          "name": "unpacked_x",
+          "description": "Bit representation (small endian) of the input",
+          "size": 256,
+          "ty": "u64",
+          "op": "interleave",
+          "params": [],
+          "inputs": [
+            "bit1",
+            "bit2",
+            "bit3",
+            "bit4",
+            "bit5",
+            "bit6",
+            "bit7",
+            "bit8",
+            "bit9",
+            "bit10",
+            "bit11",
+            "bit12",
+            "bit13",
+            "bit14",
+            "bit15",
+            "bit16"
+          ]
+        }
+      ],
+      "columns": [
+        {
+          "name": "x",
+          "description": "values",
+          "generation_node": "x",
+          "kind": "Witness"
+        },
+        {
+          "name": "unpacked_x",
+          "description": "x values in bit representation (small endian)",
+          "generation_node": "unpacked_x",
+          "kind": "Witness"
+        }
+      ],
+      "outputs": [],
+      "constraint_graph": [
+        {
+          "name": "unpacked_x_square",
+          "description": "unpacked_x square",
+          "size": 256,
+          "ty": "u64",
+          "op": "mul",
+          "params": [],
+          "inputs": [
+            "unpacked_x",
+            "unpacked_x"
+          ]
+        },
+        {
+          "name": "is_bits",
+          "description": "Check that the unpacked_x column consists only bits",
+          "size": 256,
+          "ty": "u64",
+          "op": "sub",
+          "params": [],
+          "inputs": [
+            "unpacked_x_square",
+            "unpacked_x"
+          ]
+        },
+        {
+          "name": "two",
+          "description": "Two value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 2
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "three",
+          "description": "Three value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 3
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "four",
+          "description": "Four value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 4
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "five",
+          "description": "Five value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 5
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "six",
+          "description": "Six value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 6
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "seven",
+          "description": "Seven value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 7
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "eight",
+          "description": "Eight value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 8
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "nine",
+          "description": "Nine value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 9
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "ten",
+          "description": "Ten value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 10
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "eleven",
+          "description": "Eleven value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 11
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "twelve",
+          "description": "Twelve value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 12
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "thirteen",
+          "description": "Thirteen value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 13
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "fourteen",
+          "description": "Fourteen value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 14
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "fifteen",
+          "description": "Fifteen value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 15
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "sixteen",
+          "description": "Sixteen value",
+          "size": 1,
+          "ty": "u64",
+          "op": "constant",
+          "params": [
+            {
+              "Int": 16
+            }
+          ],
+          "inputs": []
+        },
+        {
+          "name": "shifted_bit2",
+          "description": "bit2 << 1",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit2",
+            "two"
+          ]
+        },
+        {
+          "name": "shifted_bit3",
+          "description": "bit3 << 2",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit3",
+            "three"
+          ]
+        },
+        {
+          "name": "shifted_bit4",
+          "description": "bit4 << 3",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit4",
+            "four"
+          ]
+        },
+        {
+          "name": "shifted_bit5",
+          "description": "bit5 << 4",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit5",
+            "five"
+          ]
+        },
+        {
+          "name": "shifted_bit6",
+          "description": "bit6 << 5",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit6",
+            "six"
+          ]
+        },
+        {
+          "name": "shifted_bit7",
+          "description": "bit7 << 6",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit7",
+            "seven"
+          ]
+        },
+        {
+          "name": "shifted_bit8",
+          "description": "bit8 << 7",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit8",
+            "eight"
+          ]
+        },
+        {
+          "name": "shifted_bit9",
+          "description": "bit9 << 8",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit9",
+            "nine"
+          ]
+        },
+        {
+          "name": "shifted_bit10",
+          "description": "bit10 << 9",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit10",
+            "ten"
+          ]
+        },
+        {
+          "name": "shifted_bit11",
+          "description": "bit11 << 10",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit11",
+            "eleven"
+          ]
+        },
+        {
+          "name": "shifted_bit12",
+          "description": "bit12 << 11",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit12",
+            "twelve"
+          ]
+        },
+        {
+          "name": "shifted_bit13",
+          "description": "bit13 << 12",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit13",
+            "thirteen"
+          ]
+        },
+        {
+          "name": "shifted_bit14",
+          "description": "bit14 << 13",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit14",
+            "fourteen"
+          ]
+        },
+        {
+          "name": "shifted_bit15",
+          "description": "bit15 << 14",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit15",
+            "fifteen"
+          ]
+        },
+        {
+          "name": "shifted_bit16",
+          "description": "bit16 << 15",
+          "size": 16,
+          "ty": "u64",
+          "op": "shl",
+          "params": [],
+          "inputs": [
+            "bit16",
+            "sixteen"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits2",
+          "description": "Partial sum of the two shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "shifted_bit2",
+            "bit1"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits3",
+          "description": "partial sum of the three first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits2",
+            "shifted_bit3"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits4",
+          "description": "partial sum of the four first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits3",
+            "shifted_bit4"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits5",
+          "description": "partial sum of the five first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits4",
+            "shifted_bit5"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits6",
+          "description": "partial sum of the six first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits5",
+            "shifted_bit6"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits7",
+          "description": "partial sum of the seven first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits6",
+            "shifted_bit7"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits8",
+          "description": "partial sum of the eight first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits7",
+            "shifted_bit8"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits9",
+          "description": "partial sum of the nine first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits8",
+            "shifted_bit9"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits10",
+          "description": "partial sum of the ten first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits9",
+            "shifted_bit10"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits11",
+          "description": "partial sum of the eleven first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits10",
+            "shifted_bit11"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits12",
+          "description": "partial sum of the twelve first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits11",
+            "shifted_bit12"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits13",
+          "description": "partial sum of the thirteen first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits12",
+            "shifted_bit13"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits14",
+          "description": "partial sum of the fourteen first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits13",
+            "shifted_bit14"
+          ]
+        },
+        {
+          "name": "sum_shifted_bits15",
+          "description": "partial sum of the fifteen first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits14",
+            "shifted_bit15"
+          ]
+        },
+        {
+          "name": "total_sum",
+          "description": "partial sum of the sixteen first shifted bits",
+          "size": 16,
+          "ty": "u64",
+          "op": "add",
+          "params": [],
+          "inputs": [
+            "sum_shifted_bits15",
+            "shifted_bit16"
+          ]
+        },
+        {
+          "name": "unpacked_x_eq_x",
+          "description": "unpacked_x is the bit representation of x (low endian)",
+          "size": 16,
+          "ty": "u64",
+          "op": "sub",
+          "params": [],
+          "inputs": [
+            "total_sum",
+            "x"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "is_bits",
+          "description": "Check that the unpacked_x column consists only bits",
+          "constraint_node": "is_bits"
+        },
+        {
+          "name": "zero_remainder",
+          "description": "Check that the remainder column is zero",
+          "constraint_node": "remainder"
+        },
+        {
+          "name": "bit_representation",
+          "description": "Check that unpacked_x is indeed the bit representation of x",
+          "constraint_node": "unpacked_x_eq_x"
+        }
+      ],
+      "interaction_elements": []
+    }
+  ]
+}

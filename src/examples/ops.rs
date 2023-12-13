@@ -15,6 +15,12 @@ pub fn sub<T: Sub<T, Output = T>>(x: T, y: T) -> T {
     x - y
 }
 
+#[allow(dead_code)]
 pub fn shr(x: u64, n_bits: u64) -> u64 {
     x >> n_bits
+}
+
+#[allow(dead_code)]
+pub fn shl(x: u64, n_bits: u64) -> u64 {
+    x << n_bits
 }
