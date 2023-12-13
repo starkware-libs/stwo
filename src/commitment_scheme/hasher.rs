@@ -47,4 +47,6 @@ pub trait Hasher {
     // TODO(Ohad): Consider adding a trait for hashers that support multi-source hashing, and
     // defining proper input structure for it.
     fn hash_many_multi_src(data: &[Vec<&[Self::NativeType]>]) -> Vec<Self::Hash>;
+
+    fn hash_many_multi_src_in_place(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]);
 }

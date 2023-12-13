@@ -103,16 +103,32 @@ impl super::hasher::Hasher for Blake2sHasher {
             .for_each(|(input, out)| Self::hash_one_in_place(input, out))
     }
 
+    // TODO(Ohad): implement a Hash trait that requires 'Sized', then do a box allocation here, and
+    // remove #[allow(clippy::uninit_vec))]
+    #[allow(clippy::uninit_vec)]
     fn hash_many_multi_src(data: &[Vec<&[u8]>]) -> Vec<Self::Hash> {
+        let mut out = Vec::with_capacity(data.len());
+
+        // Safe because no reads are attempted before writing the entire vector.
+        unsafe { out.set_len(data.len()) };
+        Self::hash_many_multi_src_in_place(data, &mut out);
+        out
+    }
+
+    fn hash_many_multi_src_in_place(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]) {
+        assert!(
+            data.len() == dst.len(),
+            "Attempt to hash many multi src with different input and output lengths!"
+        );
         let mut hasher = Blake2s256::new();
         data.iter()
-            .map(|input_group| {
+            .zip(dst.iter_mut())
+            .for_each(|(input_group, out)| {
                 input_group.iter().for_each(|d| {
                     blake2::Digest::update(&mut hasher, d);
                 });
-                Blake2sHash(hasher.finalize_reset().into())
+                *out = Blake2sHash(hasher.finalize_reset().into());
             })
-            .collect()
     }
 }
 
@@ -182,6 +198,25 @@ mod tests {
         let hash_results = Blake2sHasher::hash_many_multi_src(&input_arr);
 
         assert!(hash_results.len() == 2);
+        assert_eq!(hash_results[0], Blake2sHasher::hash(b"abb"));
+        assert_eq!(hash_results[1], Blake2sHasher::hash(b"cccdddd"));
+    }
+
+    #[test]
+    fn hash_many_multi_src_in_place_test() {
+        let input1 = b"a";
+        let input2 = b"bb";
+        let input3 = b"ccc";
+        let input4 = b"dddd";
+        let input_group_1 = [&input1[..], &input2[..]].to_vec();
+        let input_group_2 = [&input3[..], &input4[..]].to_vec();
+        let input_arr = [input_group_1, input_group_2];
+
+        let mut hash_results = Vec::new();
+        hash_results.resize(2, Default::default());
+
+        Blake2sHasher::hash_many_multi_src_in_place(&input_arr, &mut hash_results);
+
         assert_eq!(hash_results[0], Blake2sHasher::hash(b"abb"));
         assert_eq!(hash_results[1], Blake2sHasher::hash(b"cccdddd"));
     }
