@@ -3,6 +3,7 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use super::IntoSlice;
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
 
@@ -45,6 +46,12 @@ impl Mul for CM31 {
     }
 }
 
+unsafe impl IntoSlice<u8> for CM31 {
+    fn into_slice(sl: &[Self]) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(sl.as_ptr() as *const u8, std::mem::size_of_val(sl)) }
+    }
+}
+
 #[cfg(test)]
 #[macro_export]
 macro_rules! cm31 {
@@ -55,8 +62,11 @@ macro_rules! cm31 {
 
 #[cfg(test)]
 mod tests {
+    use rand::Rng;
+
     use super::CM31;
     use crate::core::fields::m31::{M31, P};
+    use crate::core::fields::IntoSlice;
     use crate::m31;
 
     #[test]
@@ -76,5 +86,26 @@ mod tests {
         assert_eq!(cm1 - m, cm1 - cm);
         assert_eq!(cm0_x_cm1 / cm1, cm31!(1, 2));
         assert_eq!(cm1 / m, cm1 / cm);
+    }
+
+    #[test]
+    fn test_into_slice() {
+        let mut rng = rand::thread_rng();
+        let x = (0..100)
+            .map(|_| cm31!(rng.gen::<u32>(), rng.gen::<u32>()))
+            .collect::<Vec<CM31>>();
+
+        let slice = CM31::into_slice(&x);
+
+        for i in 0..100 {
+            let corresponding_sub_slice = &slice[i * 8..(i + 1) * 8];
+            assert_eq!(
+                x[i],
+                cm31!(
+                    u32::from_le_bytes(corresponding_sub_slice[..4].try_into().unwrap()),
+                    u32::from_le_bytes(corresponding_sub_slice[4..].try_into().unwrap())
+                )
+            )
+        }
     }
 }

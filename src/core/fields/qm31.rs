@@ -3,6 +3,7 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use super::IntoSlice;
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
@@ -51,6 +52,12 @@ impl Mul for QM31 {
     }
 }
 
+unsafe impl IntoSlice<u8> for QM31 {
+    fn into_slice(sl: &[Self]) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(sl.as_ptr() as *const u8, std::mem::size_of_val(sl)) }
+    }
+}
+
 #[cfg(test)]
 #[macro_export]
 macro_rules! qm31 {
@@ -61,8 +68,11 @@ macro_rules! qm31 {
 
 #[cfg(test)]
 mod tests {
+    use rand::Rng;
+
     use super::QM31;
     use crate::core::fields::m31::{M31, P};
+    use crate::core::fields::IntoSlice;
     use crate::m31;
 
     #[test]
@@ -82,5 +92,35 @@ mod tests {
         assert_eq!(qm1 - m, qm1 - qm);
         assert_eq!(qm0_x_qm1 / qm1, qm31!(1, 2, 3, 4));
         assert_eq!(qm1 / m, qm1 / qm);
+    }
+
+    #[test]
+    fn test_into_slice() {
+        let mut rng = rand::thread_rng();
+        let x = (0..100)
+            .map(|_| {
+                qm31!(
+                    rng.gen::<u32>(),
+                    rng.gen::<u32>(),
+                    rng.gen::<u32>(),
+                    rng.gen::<u32>()
+                )
+            })
+            .collect::<Vec<QM31>>();
+
+        let slice = QM31::into_slice(&x);
+
+        for i in 0..100 {
+            let corresponding_sub_slice = &slice[i * 16..(i + 1) * 16];
+            assert_eq!(
+                x[i],
+                qm31!(
+                    u32::from_le_bytes(corresponding_sub_slice[..4].try_into().unwrap()),
+                    u32::from_le_bytes(corresponding_sub_slice[4..8].try_into().unwrap()),
+                    u32::from_le_bytes(corresponding_sub_slice[8..12].try_into().unwrap()),
+                    u32::from_le_bytes(corresponding_sub_slice[12..16].try_into().unwrap())
+                )
+            )
+        }
     }
 }

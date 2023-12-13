@@ -157,15 +157,15 @@ mod tests {
     fn test_into_slice() {
         let mut rng = rand::thread_rng();
         let x = (0..100)
-            .map(|_| M31::from(rng.gen::<u32>()))
+            .map(|_| m31!(rng.gen::<u32>()))
             .collect::<Vec<M31>>();
 
-        let slice = <M31 as IntoSlice<u8>>::into_slice(&x);
+        let slice = <M31>::into_slice(&x);
 
         for i in 0..100 {
             assert_eq!(
                 x[i],
-                M31::from_u32_unchecked(u32::from_le_bytes(
+                m31!(u32::from_le_bytes(
                     slice[i * 4..(i + 1) * 4].try_into().unwrap()
                 ))
             );
