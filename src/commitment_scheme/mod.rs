@@ -3,5 +3,6 @@ pub mod blake3_hash;
 pub mod hasher;
 pub mod merkle_decommitment;
 pub mod merkle_input;
+pub mod merkle_multilayer;
 pub mod merkle_tree;
 pub mod utils;
