@@ -22,26 +22,37 @@ impl ChannelTime {
     }
 }
 
+pub trait Channel {
+    type ChannelHasher: Hasher;
+
+    fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self;
+    fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash);
+    fn draw_random_bytes(&mut self) -> [u8; BYTES_PER_HASH];
+    fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
+}
+
 /// A channel that can be used to draw random elements from a [Blake2sHash] digest.
 pub struct Blake2sChannel {
     digest: Blake2sHash,
     channel_time: ChannelTime,
 }
 
-impl Blake2sChannel {
-    pub fn new(digest: Blake2sHash) -> Self {
+impl Channel for Blake2sChannel {
+    type ChannelHasher = Blake2sHasher;
+
+    fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self {
         Blake2sChannel {
             digest,
             channel_time: ChannelTime::default(),
         }
     }
 
-    pub fn mix_with_seed(&mut self, seed: Blake2sHash) {
-        self.digest = Blake2sHasher::concat_and_hash(&self.digest, &seed);
+    fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash) {
+        self.digest = Self::ChannelHasher::concat_and_hash(&self.digest, &seed);
         self.channel_time.inc_challenges();
     }
 
-    pub fn draw_random_bytes(&mut self) -> [u8; BYTES_PER_HASH] {
+    fn draw_random_bytes(&mut self) -> [u8; BYTES_PER_HASH] {
         let mut hash_input = self.digest.as_ref().to_vec();
 
         // Pad the counter to 32 bytes.
@@ -52,11 +63,11 @@ impl Blake2sChannel {
         hash_input.extend_from_slice(&padded_counter);
 
         self.channel_time.inc_sent();
-        Blake2sHasher::hash(&hash_input).into()
+        Self::ChannelHasher::hash(&hash_input).into()
     }
 
     /// Generates a uniform random vector of BaseField elements.
-    pub fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
+    fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
         // Repeats hashing with an increasing counter until getting a good result.
         // Retry probablity for each round is ~ 2^(-28).
         loop {
@@ -85,7 +96,7 @@ impl Blake2sChannel {
 mod tests {
 
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
-    use crate::core::channel::Blake2sChannel;
+    use crate::core::channel::{Blake2sChannel, Channel};
 
     #[test]
     fn test_initliaze_channel() {
