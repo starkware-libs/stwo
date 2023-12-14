@@ -175,6 +175,24 @@ pub fn column_to_row_major<T>(mut mat: ColumnArray<T>) -> Vec<T> {
     row_major_matrix_vec
 }
 
+pub fn inject_hash_in_pairs<'a: 'b, 'b, H: Hasher>(
+    hash_inputs: &'b mut [Vec<&'a [H::NativeType]>],
+    values_to_inject: &'a [H::Hash],
+) {
+    assert_eq!(
+        values_to_inject.len(),
+        hash_inputs.len() << 1,
+        "Attempted injecting {} hash values into {} hash inputs",
+        values_to_inject.len(),
+        hash_inputs.len()
+    );
+    for (j, hashes) in values_to_inject.chunks(2).enumerate() {
+        // TODO(Ohad): Implement 'IntoSlice' for H::Hash and reduce here to one push.
+        hash_inputs[j].push(hashes[0].as_ref());
+        hash_inputs[j].push(hashes[1].as_ref());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use num_traits::One;
@@ -184,7 +202,7 @@ mod tests {
     use crate::commitment_scheme::hasher::Hasher;
     use crate::commitment_scheme::utils::{
         allocate_layer, hash_layer, hash_merkle_tree, hash_merkle_tree_from_bottom_layer, inject,
-        transpose_to_bytes, tree_data_as_mut_ref,
+        inject_hash_in_pairs, transpose_to_bytes, tree_data_as_mut_ref,
     };
     use crate::core::fields::m31::M31;
     use crate::math;
@@ -350,5 +368,35 @@ mod tests {
             hex::encode(tree_data.last().unwrap()),
             "234d7011f24adb0fec6604ff1fdfe4745340886418b6e2cd0633f6ad1c7e52d9"
         )
+    }
+
+    #[test]
+    fn inject_hash_in_pairs_test() {
+        let mut hash_inputs = vec![vec![], vec![]];
+        let values_to_inject = vec![
+            Blake3Hasher::hash(b"a"),
+            Blake3Hasher::hash(b"b"),
+            Blake3Hasher::hash(b"c"),
+            Blake3Hasher::hash(b"d"),
+        ];
+
+        inject_hash_in_pairs::<Blake3Hasher>(&mut hash_inputs, &values_to_inject);
+
+        assert_eq!(
+            hex::encode(hash_inputs[0][0]),
+            Blake3Hasher::hash(b"a").to_string()
+        );
+        assert_eq!(
+            hex::encode(hash_inputs[0][1]),
+            Blake3Hasher::hash(b"b").to_string()
+        );
+        assert_eq!(
+            hex::encode(hash_inputs[1][0]),
+            Blake3Hasher::hash(b"c").to_string()
+        );
+        assert_eq!(
+            hex::encode(hash_inputs[1][1]),
+            Blake3Hasher::hash(b"d").to_string()
+        );
     }
 }
