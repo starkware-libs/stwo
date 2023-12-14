@@ -4,14 +4,16 @@ use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
-use crate::core::circle::Coset;
+use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{
-    coset_vanishing, point_excluder, point_vanishing, EvalByEvaluation, PolyOracle,
+    coset_vanishing, point_excluder, point_vanishing, EvalByEvaluation, EvalByPoly, PolyOracle,
 };
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
-use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
+use crate::core::poly::circle::{
+    CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PointSetEvaluation,
+};
 
 type Channel = Blake2sChannel;
 type MerkleHasher = <Channel as ChannelTrait>::ChannelHasher;
@@ -28,6 +30,7 @@ pub struct FibonacciProof {
     pub public_input: BaseField,
     pub trace_commitment: <MerkleHasher as Hasher>::Hash,
     pub quotient_commitment: <MerkleHasher as Hasher>::Hash,
+    pub oods_eval: PointSetEvaluation<QM31>,
 }
 
 impl Fibonacci {
@@ -121,18 +124,12 @@ impl Fibonacci {
         )
     }
 
-    pub fn prove(self) -> FibonacciProof {
-        let mut channel = Channel::new(<Channel as ChannelTrait>::ChannelHasher::hash(
-            BaseField::into_slice(&[self.claim]),
-        ));
-        let trace = self.get_trace();
-        let trace_poly = trace.interpolate();
-        let extended_evaluation = trace_poly.clone().evaluate(self.eval_domain);
-        let trace_merkle =
-            MerkleTree::<BaseField, MerkleHasher>::commit(vec![extended_evaluation.values.clone()]);
-        channel.mix_with_seed(trace_merkle.root());
-
-        // Compute quotient on the evaluation domain.
+    /// Returns the quotient values using the trace and a random coefficient.
+    pub fn compute_quotient(
+        &self,
+        channel: &mut Channel,
+        trace_eval: &CircleEvaluation<BaseField>,
+    ) -> Vec<QM31> {
         let verifier_randomness = channel.draw_random_felts();
         let random_coeff = QM31::from_m31_array(verifier_randomness[..4].try_into().unwrap());
         let mut quotient_values = Vec::with_capacity(self.constraint_eval_domain.size());
@@ -141,19 +138,60 @@ impl Fibonacci {
                 random_coeff,
                 EvalByEvaluation {
                     offset: p_ind,
-                    eval: &extended_evaluation,
+                    eval: trace_eval,
                 },
             ));
         }
+        quotient_values
+    }
+
+    /// Returns the mask values for the OODS point.
+    pub fn get_oods_values(
+        &self,
+        channel: &mut Channel,
+        trace_poly: &CirclePoly<BaseField>,
+    ) -> PointSetEvaluation<QM31> {
+        let oods_point = CirclePoint::<QM31>::get_random_point(channel);
+        let oods_eval = EvalByPoly {
+            point: oods_point,
+            poly: trace_poly,
+        };
+        let oods_conjugate_eval = EvalByPoly {
+            point: -oods_point,
+            poly: trace_poly,
+        };
+        self.get_mask().get_evaluation(
+            &[self.trace_coset; 1],
+            &[oods_eval; 1],
+            &[oods_conjugate_eval; 1],
+        )
+    }
+
+    pub fn prove(self) -> FibonacciProof {
+        let mut channel = Channel::new(<Channel as ChannelTrait>::ChannelHasher::hash(
+            BaseField::into_slice(&[self.claim]),
+        ));
+        let trace = self.get_trace();
+        // TODO(AlonH): Move the two lines below into a commit function after fixing the domains.
+        let trace_poly = trace.interpolate();
+        let extended_evaluation = trace_poly.clone().evaluate(self.eval_domain);
+        let trace_merkle =
+            MerkleTree::<BaseField, MerkleHasher>::commit(vec![extended_evaluation.values.clone()]);
+        channel.mix_with_seed(trace_merkle.root());
+
+        let quotient_values = self.compute_quotient(&mut channel, &extended_evaluation);
         let quotient_merkle =
             MerkleTree::<QM31, MerkleHasher>::commit(vec![quotient_values.clone()]);
         channel.mix_with_seed(quotient_merkle.root());
+
+        let oods_eval = self.get_oods_values(&mut channel, &trace_poly);
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
             public_input: self.claim,
             trace_commitment: trace_merkle.root(),
             quotient_commitment: quotient_merkle.root(),
+            oods_eval,
         }
     }
 }
