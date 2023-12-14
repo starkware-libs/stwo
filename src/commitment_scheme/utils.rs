@@ -175,11 +175,48 @@ pub fn column_to_row_major<T>(mut mat: ColumnArray<T>) -> Vec<T> {
     row_major_matrix_vec
 }
 
+/// Inject Field element values into existing hash inputs.
+///
+/// # Arguments
+///    * `columns` - an array of injection element columns.
+///    * `hash_inputs` - The hash inputs to inject into.
+///  
+pub fn inject_columns<'b, 'a: 'b, H: Hasher, F: Field>(
+    columns: &'a [&'a [F]],
+    hash_inputs: &'b mut [Vec<&'a [H::NativeType]>],
+) where
+    F: IntoSlice<H::NativeType>,
+{
+    for column in columns.iter() {
+        // TODO(Ohad): consider implementing a 'duplicate' feature and removing this assert.
+        assert!(
+            column.len() >= hash_inputs.len(),
+            "Attempted to inject column of size {} into {} hash inputs",
+            column.len(),
+            hash_inputs.len()
+        );
+        assert_eq!(
+            column.len() % hash_inputs.len(),
+            0,
+            "Column of size {} can not be divided into {} hash inputs",
+            column.len(),
+            hash_inputs.len()
+        );
+        let n_rows_in_chunk = column.len() / hash_inputs.len();
+        column
+            .chunks(n_rows_in_chunk)
+            .zip(hash_inputs.iter_mut())
+            .for_each(|(chunk, hash_input)| {
+                hash_input.push(F::into_slice(chunk));
+            });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use num_traits::One;
 
-    use super::{allocate_balanced_tree, map_columns_sorted, ColumnArray};
+    use super::{allocate_balanced_tree, inject_columns, map_columns_sorted, ColumnArray};
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
     use crate::commitment_scheme::utils::{
@@ -350,5 +387,44 @@ mod tests {
             hex::encode(tree_data.last().unwrap()),
             "234d7011f24adb0fec6604ff1fdfe4745340886418b6e2cd0633f6ad1c7e52d9"
         )
+    }
+
+    #[test]
+    fn inject_columns_test() {
+        let col1: Vec<M31> = (0..4).map(M31::from_u32_unchecked).collect();
+        let col2: Vec<M31> = (4..8).map(M31::from_u32_unchecked).collect();
+        let columns = vec![&col1[..], &col2[..]];
+        let mut hash_inputs = vec![vec![], vec![]];
+
+        inject_columns::<Blake3Hasher, M31>(&columns, &mut hash_inputs);
+
+        assert_eq!(
+            format!("{:?}", hash_inputs[0]),
+            "[[0, 0, 0, 0, 1, 0, 0, 0], [4, 0, 0, 0, 5, 0, 0, 0]]"
+        );
+        assert_eq!(
+            format!("{:?}", hash_inputs[1]),
+            "[[2, 0, 0, 0, 3, 0, 0, 0], [6, 0, 0, 0, 7, 0, 0, 0]]"
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn inject_columns_too_short_test() {
+        let col1: Vec<M31> = (0..1).map(M31::from_u32_unchecked).collect();
+        let columns = vec![&col1[..]];
+        let mut hash_inputs = vec![vec![], vec![]];
+
+        inject_columns::<Blake3Hasher, M31>(&columns, &mut hash_inputs);
+    }
+
+    #[test]
+    #[should_panic]
+    fn inject_columns_size_not_divisible_test() {
+        let col1: Vec<M31> = (0..3).map(M31::from_u32_unchecked).collect();
+        let columns = vec![&col1[..]];
+        let mut hash_inputs = vec![vec![], vec![]];
+
+        inject_columns::<Blake3Hasher, M31>(&columns, &mut hash_inputs);
     }
 }
