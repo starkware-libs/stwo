@@ -216,6 +216,18 @@ impl<F: ExtensionOf<BaseField>> DerefMut for LineEvaluation<F> {
     }
 }
 
+impl<F: ExtensionOf<BaseField>> IntoIterator for LineEvaluation<F> {
+    type Item = F;
+    type IntoIter = std::vec::IntoIter<F>;
+
+    /// Creates a consuming iterator over the evaluations.
+    ///
+    /// Evaluations are returned in the same order as elements of the domain.
+    fn into_iter(self) -> Self::IntoIter {
+        self.evals.into_iter()
+    }
+}
+
 /// Performs a univariate IFFT on a polynomial's evaluation over a [LineDomain].
 ///
 /// This is not the standard univariate IFFT, because [LineDomain] is not a cyclic group.

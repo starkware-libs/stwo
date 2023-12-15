@@ -390,6 +390,16 @@ impl Coset {
     }
 }
 
+impl IntoIterator for Coset {
+    type Item = CirclePoint<M31>;
+    type IntoIter = CosetIterator<CirclePoint<M31>>;
+
+    /// Iterates over the points in the coset.
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 #[derive(Clone)]
 pub struct CosetIterator<T: Add> {
     pub cur: T,

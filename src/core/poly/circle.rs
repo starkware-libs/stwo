@@ -222,6 +222,14 @@ impl<F: ExtensionOf<BaseField>> Evaluation<F> for CircleEvaluation<F> {
     }
 }
 
+impl<F: ExtensionOf<BaseField>> Deref for CircleEvaluation<F> {
+    type Target = [F];
+
+    fn deref(&self) -> &[F] {
+        &self.values
+    }
+}
+
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
 pub struct CirclePoly<F: ExtensionOf<BaseField>> {
