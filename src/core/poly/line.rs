@@ -136,7 +136,7 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     }
 
     /// Returns the polynomial's coefficients in their natural order.
-    pub fn into_natural_coefficients(self) -> Vec<F> {
+    pub fn into_ordered_coefficients(self) -> Vec<F> {
         bit_reverse(self.coeffs)
     }
 
@@ -145,7 +145,7 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// # Panics
     ///
     /// Panics if the number of coefficients is not a power of two.
-    pub fn from_natural_coefficients(coeffs: Vec<F>) -> Self {
+    pub fn from_ordered_coefficients(coeffs: Vec<F>) -> Self {
         Self::new(bit_reverse(coeffs))
     }
 }
@@ -215,6 +215,18 @@ impl<F: ExtensionOf<BaseField>> Deref for LineEvaluation<F> {
 impl<F: ExtensionOf<BaseField>> DerefMut for LineEvaluation<F> {
     fn deref_mut(&mut self) -> &mut [F] {
         &mut self.evals
+    }
+}
+
+impl<F: ExtensionOf<BaseField>> IntoIterator for LineEvaluation<F> {
+    type Item = F;
+    type IntoIter = std::vec::IntoIter<F>;
+
+    /// Creates a consuming iterator over the evaluations.
+    ///
+    /// Evaluations are returned in the same order as elements of the domain.
+    fn into_iter(self) -> Self::IntoIter {
+        self.evals.into_iter()
     }
 }
 
