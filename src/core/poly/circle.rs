@@ -219,6 +219,14 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
     }
 }
 
+impl<F: ExtensionOf<BaseField>> Deref for CircleEvaluation<F> {
+    type Target = [F];
+
+    fn deref(&self) -> &[F] {
+        &self.values
+    }
+}
+
 impl Evaluation for CircleEvaluation<BaseField> {
     fn get_at(&self, point_index: CirclePointIndex) -> BaseField {
         self.values[self.domain.find(point_index).expect("Not in domain")]

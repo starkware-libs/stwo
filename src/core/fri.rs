@@ -1,4 +1,3 @@
-use std::cmp::Reverse;
 use std::fmt::Debug;
 use std::iter::zip;
 use std::marker::PhantomData;
@@ -6,12 +5,15 @@ use std::ops::RangeInclusive;
 
 use super::fields::m31::BaseField;
 use super::fields::{ExtensionOf, Field};
+use super::poly::circle::CircleEvaluation;
 use super::poly::line::{LineEvaluation, LinePoly};
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::circle::Coset;
+use crate::core::constraints::coset_vanishing;
 use crate::core::fft::ibutterfly;
+use crate::core::poly::circle::CircleDomain;
 use crate::core::poly::line::LineDomain;
 
 /// FRI proof config
@@ -75,16 +77,21 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
         }
     }
 
-    /// Commits to multiple [LineEvaluation]s.
+    /// Commits to multiple [CircleEvaluation]s.
+    ///
+    /// Mixed degree STARKs involve polynomials evaluated on multiple domains of different size and
+    /// structure. Combining evaluations on different domains into one evaluation can be inefficient
+    /// or tricky. Instead you can commit to multiple evaluations over differnt domains individually
+    /// and the necessary shifts and combining is taken care of at the appropriate FRI layer.
     ///
     /// # Panics
     ///
     /// Panics if:
     /// * `evals` is empty or not sorted in ascending order by evaluation domain size.
-    /// * An evaluation domain is smaller than or equal to the max last layer domain size.
+    /// * An evaluation domain is smaller than or equal to the maximum last layer domain size.
     /// * An evaluation is not of sufficiently low degree.
-    pub fn commit(mut self, evals: Vec<LineEvaluation<F>>) -> FriProver<F, H, QueryPhase> {
-        assert!(evals.is_sorted_by_key(|evaluation| Reverse(evaluation.len())));
+    pub fn commit(mut self, evals: Vec<CircleEvaluation<F>>) -> FriProver<F, H, QueryPhase> {
+        assert!(evals.is_sorted_by_key(|e| e.len()));
         let last_layer_evaluation = self.commit_inner_layers(evals);
         self.commit_last_layer(last_layer_evaluation);
         FriProver {
@@ -103,31 +110,42 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     ///
     /// Panics if:
     /// * `evals` is empty.
-    /// * An evaluation domain is smaller than or equal to the max last layer domain size.
-    fn commit_inner_layers(&mut self, mut evals: Vec<LineEvaluation<F>>) -> LineEvaluation<F> {
-        let mut evaluation = evals.pop().expect("require at least one evaluation");
-        while evaluation.len() > self.config.max_last_layer_domain_size() {
-            // Aggregate all evaluations that have the same domain size.
-            while let Some(true) = evals.last().map(|e| e.len() == evaluation.len()) {
+    /// * An evaluation domain is smaller than or equal to the maximum last layer domain size.
+    fn commit_inner_layers(&mut self, mut evals: Vec<CircleEvaluation<F>>) -> LineEvaluation<F> {
+        let mut line_evaluation = {
+            // TODO(andrew): draw from channel
+            let alpha = F::one();
+            let first_circle_evaluaiton = evals.pop().expect("requires an evaluation");
+            fold_circle_to_line(&first_circle_evaluaiton, alpha)
+        };
+
+        const CIRCLE_TO_LINE_FOLDING_FACTOR: usize = 4;
+        let folded_len = |e: &CircleEvaluation<F>| e.len() / CIRCLE_TO_LINE_FOLDING_FACTOR;
+
+        while line_evaluation.len() > self.config.max_last_layer_domain_size() {
+            // Check for any evaluations that should be combined.
+            while evals.last().map(folded_len) == Some(line_evaluation.len()) {
                 // TODO(andrew): draw random alpha from channel
                 let alpha = F::one();
-                for (i, &eval) in evals.pop().unwrap().iter().enumerate() {
-                    evaluation[i] += alpha * eval;
+                let folded_evaluation = fold_circle_to_line(&evals.pop().unwrap(), alpha);
+                assert_eq!(folded_evaluation.len(), line_evaluation.len());
+                for (i, eval) in folded_evaluation.into_iter().enumerate() {
+                    line_evaluation[i] += alpha * eval;
                 }
             }
 
-            let layer = FriLayer::new(&evaluation);
+            let layer = FriLayer::new(&line_evaluation);
             // TODO(andrew): add merkle root to channel
             // TODO(ohad): Add back once IntoSlice implemented for Field.
             // let _merkle_root = layer.merkle_tree.root();
             // TODO(andrew): draw random alpha from channel
             let alpha = F::one();
-            evaluation = apply_drp(&evaluation, alpha);
+            line_evaluation = fold_line(&line_evaluation, alpha);
             self.layers.push(layer)
         }
 
         assert!(evals.is_empty());
-        evaluation
+        line_evaluation
     }
 
     /// Builds and commits to the FRI remainder polynomial's coefficients (the last FRI layer).
@@ -135,7 +153,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// # Panics
     ///
     /// Panics if:
-    /// * The domain size of the evaluation exceeds the max last layer domain size.
+    /// * The evaluation domain size exceeds the maximum last layer domain size.
     /// * The evaluation is not of sufficiently low degree.
     fn commit_last_layer(&mut self, evaluation: LineEvaluation<F>) {
         assert!(evaluation.len() <= self.config.max_last_layer_domain_size());
@@ -180,6 +198,7 @@ pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub remainder: LinePoly<F>,
 }
 
+// TODO(andrew): Remove constant and support multiple folding factors.
 const FRI_STEP_SIZE: usize = 2;
 
 /// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
@@ -246,35 +265,142 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
     }
 }
 
-/// Performs a degree respecting projection (DRP) on a polynomial.
+/// Folds a degree `<d` polynomial evaluated on [LineDomain] `E` into a degree `<d/2` polynomial
+/// evaluated on `2E`.
 ///
 /// Example: Our evaluation domain is the x-coordinates of `E = c + <G>`, `alpha` is a random field
 /// element and `pi(x) = 2x^2 - 1` is the circle's x-coordinate doubling map. We have evaluations of
-/// a polynomial `f` on `E` (i.e `evals`) and we can compute the evaluations of `f' = 2 * (fe +
-/// alpha * fo)` over `E' = { pi(x) | x in E }` such that `f(x) = fe(pi(x)) + x * fo(pi(x))`.
-///
-/// `evals` should be polynomial evaluations over a [LineDomain] stored in natural order. The return
-/// evaluations are evaluations over a [LineDomain] of half the size stored in natural order.
+/// a polynomial `f` on `E` (i.e `evals`) and we can compute the evaluations of `f' = fe +
+/// alpha * fo` over `E' = { pi(x) | x in E }` such that `f(x) = (fe(pi(x)) + x * fo(pi(x))) / 2`.
 ///
 /// # Panics
 ///
-/// Panics if the number of evaluations is not greater than or equal to two.
-pub fn apply_drp<F: ExtensionOf<BaseField>>(
+/// Panics if there are less than two evaluations.
+pub fn fold_line<F: ExtensionOf<BaseField>>(
     evals: &LineEvaluation<F>,
     alpha: F,
 ) -> LineEvaluation<F> {
     let n = evals.len();
-    assert!(n >= 2);
+    assert!(n >= 2, "too few evals");
+
     let (l, r) = evals.split_at(n / 2);
     let domain = LineDomain::new(Coset::half_odds(n.ilog2() as usize));
-    let drp_evals = zip(zip(l, r), domain.iter())
-        .map(|((&f_x, &f_neg_x), x)| {
+    let folded_evals = zip(domain.iter(), zip(l, r))
+        .map(|(x, (&f_x, &f_neg_x))| {
             let (mut f_e, mut f_o) = (f_x, f_neg_x);
             ibutterfly(&mut f_e, &mut f_o, x.inverse());
             f_e + alpha * f_o
         })
         .collect();
-    LineEvaluation::new(drp_evals)
+
+    LineEvaluation::new(folded_evals)
+}
+
+/// Folds evaluations of a polynomial on a [CircleDomain] into evaluations on a [LineDomain].
+///
+/// This folds a degree `<d` polynomial evaluated on any [CircleDomain] of size `n` into a
+/// polynomial of degree `<d/4` evaluated on a canonic [LineDomain] (a domain of the form
+/// `{p_x | p in +-G_4n + <G_n>}`) of size `n / 4` .
+///
+/// Let `evals` be the evaluations of a polynomial `f` on the domain `E = +-c + <G_n>` and `v0`,
+/// `v1` be polynomials that vanish on `g + <G>` and `-g + <G>` respectively. We can obtain the
+/// evals of `f0` and `f1` on `E' = +-G_n + <G_n/2>` such that `f(p) = v1(p) * f0(p-c+G_n) + v0(p) *
+/// f1(p+c-G_n)`. This function returns `f' = f00 + alpha * f01 + alpha^2 * f10 + alpha^3 * f11`
+/// evaluated on the x-coordinates of `E'` such that `f0(p) = (f00(px) + py * f01(px)) / 2` and
+/// `f1(p) = (f10(px) + py * f11(px)) / 2`.
+///
+/// # Panics
+///
+/// Panics if there are less than four evaluations.
+fn fold_circle_to_line<F: ExtensionOf<BaseField>>(
+    evals: &CircleEvaluation<F>,
+    alpha: F,
+) -> LineEvaluation<F> {
+    let n = evals.len();
+    assert!(n >= 4, "too few evals");
+
+    // TODO: Faster to do all these operations in a single pass.
+    let (f0, f1) = split_and_shift(evals);
+    let (f00, f01) = split_to_line(&f0);
+    let (f10, f11) = split_to_line(&f1);
+
+    let alphas = [F::one(), alpha, alpha.pow(2), alpha.pow(3)];
+    let folded_evals = zip(zip(f00, f01), zip(f10, f11))
+        .map(|((f00, f01), (f10, f11))| {
+            f00 * alphas[0] + f01 * alphas[1] + f10 * alphas[2] + f11 * alphas[3]
+        })
+        .collect();
+
+    LineEvaluation::new(folded_evals)
+}
+
+/// Splits a polynomial evaluated on a circle domain of size `n` into two shifted polynomials
+/// evaluated on a canonic circle domain (domains of the form `+-G_2n + <G_n>`) of size `n / 2`.
+///
+/// Let `evals` be the evaluations of a polynomial `f` on the domain `E = +-c + <G_n>` and `v0`,
+/// `v1` be polynomials that vanish on `c + <G_n>` and `-c + <G_n>` respectively. This function
+/// returns polynomials `f0` and `f1` evaluated on `E' = +-G_n + <G_n/2>` such that `f(p) = v1(p) *
+/// f0(p-c+G_n) + v0(p) * f1(p+c-G_n)`.
+///
+/// # Panics
+///
+/// Panics if there are less than two evaluations.
+fn split_and_shift<F: ExtensionOf<BaseField>>(
+    evals: &CircleEvaluation<F>,
+) -> (CircleEvaluation<F>, CircleEvaluation<F>) {
+    let n = evals.len();
+    assert!(n >= 2, "too few evals");
+
+    let (e0, e1) = evals.split_at(n / 2);
+    let half_coset = evals.domain.half_coset;
+    let half_coset_conjugate = half_coset.conjugate();
+    let (f0_evals, f1_evals) = zip(half_coset, half_coset_conjugate)
+        .enumerate()
+        .map(|(i, (p0, p1))| {
+            let v0_p1 = coset_vanishing(half_coset, p1);
+            let v1_p0 = coset_vanishing(half_coset_conjugate, p0);
+            (e0[i] / v0_p1, e1[i] / v1_p0)
+        })
+        .unzip();
+
+    let canonic_domain = CircleDomain::new(Coset::half_odds(n.ilog2() as usize - 1));
+    let f0 = CircleEvaluation::new(canonic_domain, f0_evals);
+    let f1 = CircleEvaluation::new(canonic_domain, f1_evals);
+
+    (f0, f1)
+}
+
+/// Splits evaluations of a polynomial on [CircleDomain] of size `n` into two sets of evaluations on
+/// a [LineDomain] of size `n/2`.
+///
+/// Let `evals` be the evaluations be of a polynomial `f` on the domain `E = +-c + <G>`. This
+/// function returns the evaluations of `f0` and `f1` on the x-coordinates of `c + <G>` and
+/// `-c - <G>` respectively such that `f(p) = (f0(px) + py * f1(px)) / 2`.
+///
+/// # Panics
+///
+/// Panics if there are less than two evaluations.
+fn split_to_line<F: ExtensionOf<BaseField>>(
+    evals: &CircleEvaluation<F>,
+) -> (LineEvaluation<F>, LineEvaluation<F>) {
+    let n = evals.len();
+    assert!(n >= 2, "too few evals");
+
+    let (l, r) = evals.split_at(n / 2);
+    let (f0_evals, f1_evals) = zip(evals.domain.iter(), zip(l, r))
+        .map(|(p, (&f_p, &f_neg_p))| {
+            // Cauclate `f0(p_x)` and `f1(p_x)` such that `f(p) = (f0(p_x) + p_y * f1(p_x)) / 2`.
+            let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
+            ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
+            (f0_px, f1_px)
+        })
+        .unzip();
+
+    // TODO: add domain to [LineEvaluation]
+    let f0 = LineEvaluation::new(f0_evals);
+    let f1 = LineEvaluation::new(f1_evals);
+
+    (f0, f1)
 }
 
 // TODO(andrew): support different folding factors
@@ -294,11 +420,12 @@ mod tests {
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::ExtensionOf;
-    use crate::core::fri::apply_drp;
-    use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
+    use crate::core::fri::fold_line;
+    use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
+    use crate::core::poly::line::{LineDomain, LinePoly};
 
     #[test]
-    fn drp_works() {
+    fn fold_line_works() {
         const DEGREE: usize = 8;
         // Coefficients are bit-reversed.
         let even_coeffs: [BaseField; DEGREE / 2] = [1, 2, 1, 3].map(BaseField::from_u32_unchecked);
@@ -312,7 +439,7 @@ mod tests {
         let evals = poly.evaluate(domain);
         let two = BaseField::from_u32_unchecked(2);
 
-        let drp_evals = apply_drp(&evals, alpha);
+        let drp_evals = fold_line(&evals, alpha);
 
         assert_eq!(drp_evals.len(), DEGREE / 2);
         for (i, (&drp_eval, x)) in zip(&*drp_evals, drp_domain.iter()).enumerate() {
@@ -320,6 +447,12 @@ mod tests {
             let f_o = odd_poly.eval_at_point(x);
             assert_eq!(drp_eval, two * (f_e + alpha * f_o), "mismatch at {i}");
         }
+    }
+
+    #[test]
+    #[ignore = "TODO"]
+    fn fold_circle_to_line_works() {
+        todo!()
     }
 
     #[test]
@@ -379,10 +512,10 @@ mod tests {
     fn polynomial_evaluation<F: ExtensionOf<BaseField>>(
         degree_bits: u32,
         blowup_factor_bits: u32,
-    ) -> LineEvaluation<F> {
-        let poly = LinePoly::new(vec![F::one(); 1 << degree_bits]);
+    ) -> CircleEvaluation<F> {
+        let poly = CirclePoly::new(degree_bits as usize, vec![F::one(); 1 << degree_bits]);
         let coset = Coset::half_odds((degree_bits + blowup_factor_bits) as usize);
-        let domain = LineDomain::new(coset);
+        let domain = CircleDomain::new(coset);
         poly.evaluate(domain)
     }
 }
