@@ -111,6 +111,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// Panics if:
     /// * `evals` is empty.
     /// * An evaluation domain is smaller than or equal to the maximum last layer domain size.
+    // TODO(andrew): Consider folding circle evaluations on a canonical domain differently as they
+    // only needed to be folded into line evaluations.
     fn commit_inner_layers(&mut self, mut evals: Vec<CircleEvaluation<F>>) -> LineEvaluation<F> {
         let mut line_evaluation = {
             // TODO(andrew): draw from channel
