@@ -80,9 +80,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// Commits to multiple [CircleEvaluation]s.
     ///
     /// Mixed degree STARKs involve polynomials evaluated on multiple domains of different size and
-    /// structure. Combining evaluations on different domains into one evaluation can be inefficient
-    /// or tricky. Instead you can commit to multiple evaluations over differnt domains individually
-    /// and the necessary shifts and combining is taken care of at the appropriate FRI layer.
+    /// structure. Combining evaluations on different domains into an evaluation on a single domain
+    /// can be inefficient. Instead you can commit to multiple evaluations over different domains
+    /// individually and the necessary shifts and combining is taken care of at the appropriate
+    /// FRI layer.
     ///
     /// # Panics
     ///
@@ -326,11 +327,9 @@ fn fold_circle_to_line<F: ExtensionOf<BaseField>>(
     let (f00, f01) = split_to_line(&f0);
     let (f10, f11) = split_to_line(&f1);
 
-    let alphas = [F::one(), alpha, alpha.pow(2), alpha.pow(3)];
+    let [a0, a1, a2, a3] = [F::one(), alpha, alpha.pow(2), alpha.pow(3)];
     let folded_evals = zip(zip(f00, f01), zip(f10, f11))
-        .map(|((f00, f01), (f10, f11))| {
-            f00 * alphas[0] + f01 * alphas[1] + f10 * alphas[2] + f11 * alphas[3]
-        })
+        .map(|((f00, f01), (f10, f11))| f00 * a0 + f01 * a1 + f10 * a2 + f11 * a3)
         .collect();
 
     LineEvaluation::new(folded_evals)
@@ -353,27 +352,43 @@ fn split_and_shift<F: ExtensionOf<BaseField>>(
     let n = evals.len();
     assert!(n >= 2, "too few evals");
 
-    let (e0, e1) = evals.split_at(n / 2);
+    // TODO: This whole function can be a 4-value uninterleave
+    let (_e0, _e1) = evals.split_at(n / 2);
     let half_coset = evals.domain.half_coset;
     let half_coset_conjugate = half_coset.conjugate();
     let (f0_evals, f1_evals) = zip(half_coset, half_coset_conjugate)
         .enumerate()
         .map(|(i, (p0, p1))| {
-            let v0_p1 = coset_vanishing(half_coset, p1);
-            let v1_p0 = coset_vanishing(half_coset_conjugate, p0);
-            (e0[i] / v0_p1, e1[i] / v1_p0)
+            // v0(p1) and v1(p0) will alternate between 1 and -1
+            let _v0_p1 = coset_vanishing(half_coset, p1);
+            let _v1_p0 = coset_vanishing(half_coset_conjugate, p0);
+            // (_e0[i] / _v1_p0, _e1[i] / _v0_p1)
+            (_e0[i], _e1[i])
         })
         .unzip();
 
-    let canonic_domain = CircleDomain::new(Coset::half_odds(n.ilog2() as usize - 1));
+    let reorder = |evals: Vec<F>| -> Vec<F> {
+        #[allow(clippy::tuple_array_conversions)]
+        let (even_evals, mut odd_evals): (Vec<F>, Vec<F>) =
+            evals.array_chunks().map(|[e, o]| (e, o)).unzip();
+        odd_evals.reverse();
+        #[allow(clippy::tuple_array_conversions)]
+        [even_evals, odd_evals].concat()
+    };
+
+    // Reorder the evals in the same order as the domain
+    let f0_evals = reorder(f0_evals);
+    let f1_evals = reorder(f1_evals);
+
+    let canonic_domain = CircleDomain::new(Coset::half_odds(n.ilog2() as usize - 2));
     let f0 = CircleEvaluation::new(canonic_domain, f0_evals);
     let f1 = CircleEvaluation::new(canonic_domain, f1_evals);
 
     (f0, f1)
 }
 
-/// Splits evaluations of a polynomial on [CircleDomain] of size `n` into two sets of evaluations on
-/// a [LineDomain] of size `n/2`.
+/// Splits a circle polynomial evaluated on a [CircleDomain] of size `n` into two univariate
+/// polynomials evaluated on a [LineDomain] of size `n/2`.
 ///
 /// Let `evals` be the evaluations be of a polynomial `f` on the domain `E = +-c + <G>`. This
 /// function returns the evaluations of `f0` and `f1` on the x-coordinates of `c + <G>` and
@@ -398,7 +413,8 @@ fn split_to_line<F: ExtensionOf<BaseField>>(
         })
         .unzip();
 
-    // TODO: add domain to [LineEvaluation]
+    // TODO: Either add domain to [LineEvaluation] or consider changing LineDomain to be defined by
+    // its size and to always be canonic - since it may only be used by FRI.
     let f0 = LineEvaluation::new(f0_evals);
     let f1 = LineEvaluation::new(f1_evals);
 
@@ -416,15 +432,17 @@ fn fold_positions(positions: &mut Vec<usize>, n: usize) {
 mod tests {
     use std::iter::zip;
 
+    use num_traits::One;
+
     use super::{FriConfig, FriProver};
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::core::circle::Coset;
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::ExtensionOf;
-    use crate::core::fri::fold_line;
+    use crate::core::fri::{fold_circle_to_line, fold_line};
     use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
-    use crate::core::poly::line::{LineDomain, LinePoly};
+    use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
 
     #[test]
     fn fold_line_works() {
@@ -452,9 +470,15 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "TODO"]
     fn fold_circle_to_line_works() {
-        todo!()
+        const BLOWUP_FACTOR_BITS: u32 = 2;
+        const DEGREE_BITS: u32 = 4;
+        let circle_evaluation = polynomial_evaluation(DEGREE_BITS, BLOWUP_FACTOR_BITS);
+        let alpha = BaseField::one();
+
+        let folded_evaluation = fold_circle_to_line(&circle_evaluation, alpha);
+
+        assert_eq!(degree_bound_bits(folded_evaluation), DEGREE_BITS - 1);
     }
 
     #[test]
@@ -516,8 +540,17 @@ mod tests {
         blowup_factor_bits: u32,
     ) -> CircleEvaluation<F> {
         let poly = CirclePoly::new(degree_bits as usize, vec![F::one(); 1 << degree_bits]);
-        let coset = Coset::half_odds((degree_bits + blowup_factor_bits) as usize);
+        let coset = Coset::half_odds((degree_bits + blowup_factor_bits - 1) as usize);
         let domain = CircleDomain::new(coset);
         poly.evaluate(domain)
+    }
+
+    /// Returns the degree bound of a polynomial as `log2(degree_bound)`.
+    // TODO: move to test module
+    fn degree_bound_bits<F: ExtensionOf<BaseField>>(polynomial: LineEvaluation<F>) -> u32 {
+        let domain = LineDomain::new(Coset::half_odds(polynomial.len().ilog2() as usize));
+        let coeffs = polynomial.interpolate(domain).into_natural_coefficients();
+        let degree = coeffs.into_iter().rposition(|c| !c.is_zero()).unwrap_or(0);
+        (degree + 1).ilog2()
     }
 }
