@@ -822,12 +822,6 @@ pub fn create_bit_unpacking_component_definition(n_bits: u32) -> Component {
                     description: "Check that the unpacked_x column consists only bits".to_string(),
                     constraint_node: "is_bits".to_string(),
                 },
-                // TODO(ShaharS), Is it needed?
-                Constraint {
-                    name: "zero_remainder".to_string(),
-                    description: "Check that the remainder column is zero".to_string(),
-                    constraint_node: "remainder".to_string(),
-                },
                 Constraint {
                     name: "bit_representation".to_string(),
                     description: "Check that unpacked_x is indeed the bit representation of x"

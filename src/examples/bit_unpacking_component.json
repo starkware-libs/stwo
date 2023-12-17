@@ -1058,11 +1058,6 @@
           "constraint_node": "is_bits"
         },
         {
-          "name": "zero_remainder",
-          "description": "Check that the remainder column is zero",
-          "constraint_node": "remainder"
-        },
-        {
           "name": "bit_representation",
           "description": "Check that unpacked_x is indeed the bit representation of x",
           "constraint_node": "unpacked_x_eq_x"

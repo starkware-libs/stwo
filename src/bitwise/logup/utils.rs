@@ -1,5 +1,3 @@
-
-
 const DILUTED_BITS: usize = 15;
 
 pub fn dilute(x: u32) -> u32 {
@@ -17,12 +15,10 @@ pub fn gen_diluted_numbers(_n_bits: usize) -> Vec<u32> {
     unimplemented!()
 }
 
-
 #[cfg(test)]
 mod tests {
-    use crate::bitwise::diluted::utils::dilute;
-
     use super::{gen_diluted_numbers, DILUTED_BITS};
+    use crate::bitwise::logup::utils::dilute;
 
     #[test]
     fn test_diluted() {
