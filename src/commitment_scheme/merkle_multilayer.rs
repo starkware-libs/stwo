@@ -21,6 +21,19 @@ impl<H: Hasher> MerkleMultiLayer<H> {
         let data = vec![H::Hash::default(); config.sub_tree_size * config.n_sub_trees];
         Self { data, config }
     }
+
+    /// Returns the roots of the sub-trees.
+    pub fn get_roots(&self) -> Vec<H::Hash> {
+        self.data
+            .chunks(self.config.sub_tree_size)
+            .map(|sub_tree| {
+                sub_tree
+                    .last()
+                    .expect("Tried to extract roots but MerkleMultiLayer is empty!")
+                    .to_owned()
+            })
+            .collect()
+    }
 }
 
 // TODO(Ohad): change according to the future implementation of get_layer_view() and
@@ -60,7 +73,10 @@ impl MerkleMultiLayerConfig {
 
 #[cfg(test)]
 mod tests {
+    use rand::Rng;
+
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
+    use crate::commitment_scheme::hasher::Hasher;
 
     #[test]
     pub fn multi_layer_init_test() {
@@ -79,5 +95,28 @@ mod tests {
         let config = super::MerkleMultiLayerConfig::new(sub_trees_height, n_sub_trees);
         let multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
         println!("{}", multi_layer);
+    }
+
+    #[test]
+    pub fn get_roots_test() {
+        let (sub_trees_height, n_sub_trees) = (4, 4);
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, n_sub_trees);
+        let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
+        let rand_arr: Vec<u8> = (0..n_sub_trees)
+            .map(|_| rand::thread_rng().gen::<u8>())
+            .take(n_sub_trees)
+            .collect();
+        for i in 0..n_sub_trees {
+            multi_layer.data[(i + 1) * multi_layer.config.sub_tree_size - 1] =
+                Blake3Hasher::hash(&rand_arr[i..i + 1]);
+        }
+
+        let roots = multi_layer.get_roots();
+
+        roots
+            .iter()
+            .enumerate()
+            .for_each(|(i, r)| assert_eq!(r, &Blake3Hasher::hash(&rand_arr[i..i + 1])));
+        assert_eq!(roots.len(), n_sub_trees);
     }
 }
