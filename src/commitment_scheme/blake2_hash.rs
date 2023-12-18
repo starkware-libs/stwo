@@ -1,7 +1,11 @@
 use std::fmt;
+use std::slice::Iter;
 
 use blake2::digest::{Update, VariableOutput};
 use blake2::{Blake2s256, Blake2sVar, Digest};
+
+use super::merkle_hasher::MerkleHasher;
+use crate::core::fields::{Field, IntoSlice};
 
 // Wrapper for the blake2s hash type.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
@@ -133,11 +137,45 @@ impl super::hasher::Hasher for Blake2sHasher {
     }
 }
 
+impl<F: Field + Sized> MerkleHasher<F> for Blake2sHasher {
+    /// Assumes prev_hashes is twice the size of dst.
+    // TODO(Ohad): Implement SIMD blake2s.
+    fn inject_and_compress_layer_in_place(
+        prev_hashes: Option<&[Self::Hash]>,
+        dst: &mut [Self::Hash],
+        col_iter: &Iter<'_, &[F]>,
+    ) where
+        F: IntoSlice<Self::NativeType>,
+    {
+        let produced_layer_length = dst.len();
+        let mut hasher = blake2::Blake2s256::new();
+        let dst_iter = dst.iter_mut();
+        let col_iter = col_iter
+            .clone()
+            .zip(col_iter.clone().map(|c| c.len() / produced_layer_length));
+        dst_iter.enumerate().for_each(|(i, dst)| {
+            if let Some(hashes) = prev_hashes {
+                blake2::Digest::update(&mut hasher, hashes[i * 2].0.as_ref());
+                blake2::Digest::update(&mut hasher, hashes[i * 2 + 1].0.as_ref());
+            }
+            for (column, n_elements_in_chunk) in col_iter.clone() {
+                let chunk = &column[i * n_elements_in_chunk..(i + 1) * n_elements_in_chunk];
+                blake2::Digest::update(&mut hasher, F::into_slice(chunk));
+            }
+            *dst = Blake2sHash(hasher.finalize_reset().into());
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use blake2::{Blake2s256, Digest};
+
     use super::Blake2sHasher;
-    use crate::commitment_scheme::blake2_hash;
+    use crate::commitment_scheme::blake2_hash::{self, Blake2sHash};
     use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::merkle_hasher::MerkleHasher;
+    use crate::core::fields::m31::M31;
 
     #[test]
     fn single_hash_test() {
@@ -208,5 +246,39 @@ mod tests {
         assert_eq!(hash_results[1], expected_result1);
         assert_eq!(hash_in_place_results[0], expected_result0);
         assert_eq!(hash_in_place_results[1], expected_result1);
+    }
+
+    #[test]
+    fn inject_and_compress_test() {
+        let prev_hashes = vec![
+            Blake2sHasher::hash(b"a"),
+            Blake2sHasher::hash(b"b"),
+            Blake2sHasher::hash(b"a"),
+            Blake2sHasher::hash(b"b"),
+        ];
+        let mut dst = vec![Blake2sHash::default(); 2];
+        let col1: Vec<M31> = (0..2).map(M31::from_u32_unchecked).collect();
+        let col2: Vec<M31> = (2..4).map(M31::from_u32_unchecked).collect();
+        let columns = [&col1[..], &col2[..]];
+        let mut hasher = Blake2s256::new();
+        hasher.update(Blake2sHasher::hash(b"a").as_ref());
+        hasher.update(Blake2sHasher::hash(b"b").as_ref());
+        hasher.update(0_u32.to_le_bytes());
+        hasher.update(2_u32.to_le_bytes());
+        let expected_result0 = Blake2sHash(hasher.finalize_reset().into());
+        hasher.update(Blake2sHasher::hash(b"a").as_ref());
+        hasher.update(Blake2sHasher::hash(b"b").as_ref());
+        hasher.update(1_u32.to_le_bytes());
+        hasher.update(3_u32.to_le_bytes());
+        let expected_result1 = Blake2sHash(hasher.finalize().into());
+
+        Blake2sHasher::inject_and_compress_layer_in_place(
+            Some(&prev_hashes),
+            &mut dst,
+            &columns.iter(),
+        );
+
+        assert_eq!(dst[0], expected_result0);
+        assert_eq!(dst[1], expected_result1);
     }
 }
