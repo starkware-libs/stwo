@@ -308,6 +308,14 @@ impl<F: ExtensionOf<BaseField>> PointSetEvaluation<F> {
     }
 }
 
+impl<F: ExtensionOf<BaseField>> Deref for PointSetEvaluation<F> {
+    type Target = BTreeMap<CirclePoint<F>, F>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl Evaluation for PointSetEvaluation<BaseField> {
     fn get_at(&self, point_index: CirclePointIndex) -> BaseField {
         *self
