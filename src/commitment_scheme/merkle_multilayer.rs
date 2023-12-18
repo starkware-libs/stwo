@@ -7,8 +7,9 @@ use super::hasher::Hasher;
 /// Intended to be used as a layer of L1/L2 cache-sized sub-trees and commited on serially, and
 /// multithreaded within the multilayer.
 // TODO(Ohad): Implement get_layer_view() and get_layer_mut() for subtrees.
-// TODO(Ohad): Implement .commit(), .decommit(), .roots() for MerklePolyLayer.
+// TODO(Ohad): Implement .commit(), .decommit() for MerkleMultiLayer.
 // TODO(Ohad): Add as an attribute of the merkle tree.
+// TODO(Ohad): Implement Iterator for MerkleMultiLayer.
 pub struct MerkleMultiLayer<H: Hasher> {
     pub data: Vec<H::Hash>,
     config: MerkleMultiLayerConfig,
@@ -20,6 +21,19 @@ impl<H: Hasher> MerkleMultiLayer<H> {
         // implementation.
         let data = vec![H::Hash::default(); config.sub_tree_size * config.n_sub_trees];
         Self { data, config }
+    }
+
+    /// Returns the roots of the sub-trees.
+    pub fn get_roots(&self) -> Vec<H::Hash> {
+        self.data
+            .chunks(self.config.sub_tree_size)
+            .map(|sub_tree| {
+                sub_tree
+                    .last()
+                    .expect("Tried to extract roots but MerkleMultiLayer is empty!")
+                    .to_owned()
+            })
+            .collect()
     }
 }
 
@@ -61,6 +75,7 @@ impl MerkleMultiLayerConfig {
 #[cfg(test)]
 mod tests {
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
+    use crate::commitment_scheme::hasher::Hasher;
 
     #[test]
     pub fn multi_layer_init_test() {
@@ -79,5 +94,27 @@ mod tests {
         let config = super::MerkleMultiLayerConfig::new(sub_trees_height, n_sub_trees);
         let multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
         println!("{}", multi_layer);
+    }
+
+    #[test]
+    pub fn get_roots_test() {
+        let (sub_trees_height, n_sub_trees) = (4, 4);
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, n_sub_trees);
+        let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
+        multi_layer
+            .data
+            .chunks_mut(multi_layer.config.sub_tree_size)
+            .enumerate()
+            .for_each(|(i, sub_tree)| {
+                sub_tree[sub_tree.len() - 1] = Blake3Hasher::hash(&i.to_le_bytes());
+            });
+
+        let roots = multi_layer.get_roots();
+
+        assert_eq!(roots.len(), n_sub_trees);
+        roots
+            .iter()
+            .enumerate()
+            .for_each(|(i, r)| assert_eq!(r, &Blake3Hasher::hash(&i.to_le_bytes())));
     }
 }
