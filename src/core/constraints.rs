@@ -44,12 +44,12 @@ pub fn point_excluder<F: ExtensionOf<BaseField>>(
 
 /// Evaluates a vanishing polynomial of the vanish_point at a point.
 /// Note that this function has a pole on the antipode of the vanish_point.
-pub fn point_vanishing<F: ExtensionOf<BaseField>>(
-    vanish_point: CirclePoint<BaseField>,
-    p: CirclePoint<F>,
-) -> F {
+pub fn point_vanishing<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
+    vanish_point: CirclePoint<F>,
+    p: CirclePoint<EF>,
+) -> EF {
     let h = p - vanish_point.into_ef();
-    h.y / (F::one() + h.x)
+    h.y / (EF::one() + h.x)
 }
 
 /// Utils for computing constraints.
