@@ -272,7 +272,6 @@ pub fn create_logup_component_definition(n_bits: u32) -> Component {
                     description: "Check that the partial sum values is correct.".to_string(),
                     constraint_node: "partial_sum_step".to_string(),
                 },
-                // Last.
             ],
             interaction_elements: vec![InteractionElement {
                 name: "log_up_shift_element".to_string(),
