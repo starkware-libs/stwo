@@ -1,4 +1,5 @@
 use std::fmt::{self, Display};
+use std::ops::{Deref, DerefMut};
 
 use super::hasher::Hasher;
 
@@ -10,7 +11,7 @@ use super::hasher::Hasher;
 // TODO(Ohad): Implement .commit(), .decommit(), .roots() for MerklePolyLayer.
 // TODO(Ohad): Add as an attribute of the merkle tree.
 pub struct MerkleMultiLayer<H: Hasher> {
-    pub data: Vec<H::Hash>,
+    data: Vec<H::Hash>,
     config: MerkleMultiLayerConfig,
 }
 
@@ -23,18 +24,37 @@ impl<H: Hasher> MerkleMultiLayer<H> {
     }
 }
 
+impl<H: Hasher> Deref for MerkleMultiLayer<H> {
+    type Target = Vec<H::Hash>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl<H: Hasher> DerefMut for MerkleMultiLayer<H> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
+}
+
 // TODO(Ohad): change according to the future implementation of get_layer_view() and
 // get_root().
 impl<H: Hasher> Display for MerkleMultiLayer<H> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.data
-            .chunks(self.config.sub_tree_size)
+        self.chunks(self.config.sub_tree_size)
+            .map(|sub_tree| MerkleMultiLayerSubTreeView::new(sub_tree))
+            .collect::<Vec<MerkleMultiLayerSubTreeView<'_, H>>>()
+            .into_iter()
             .enumerate()
-            .for_each(|(i, c)| {
+            .for_each(|(i, it)| {
                 f.write_str(&std::format!("\nSubTree #[{}]:", i)).unwrap();
-                for (i, h) in c.iter().enumerate() {
-                    f.write_str(&std::format!("\nNode #[{}]: {}", i, h))
-                        .unwrap();
+                for (j, layer) in it.enumerate() {
+                    f.write_str(&std::format!("\nLayer #[{}]:", j)).unwrap();
+                    for (k, hash) in layer.iter().enumerate() {
+                        f.write_str(&std::format!("\nHash #[{}]: {}", k, hash))
+                            .unwrap();
+                    }
                 }
             });
         Ok(())
@@ -58,6 +78,34 @@ impl MerkleMultiLayerConfig {
     }
 }
 
+/// Iterates over layers of a given tree's data.
+pub struct MerkleMultiLayerSubTreeView<'a, H: Hasher> {
+    pub data: &'a [H::Hash],
+    cursor: usize,
+}
+
+impl<'a, H: Hasher> MerkleMultiLayerSubTreeView<'a, H> {
+    pub fn new(data: &'a [H::Hash]) -> Self {
+        assert!((data.len() + 1).is_power_of_two());
+        Self { data, cursor: 0 }
+    }
+}
+
+impl<'a, H: Hasher> Iterator for MerkleMultiLayerSubTreeView<'a, H> {
+    type Item = &'a [H::Hash];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor >= self.data.len() {
+            None
+        } else {
+            let res =
+                &self.data[self.cursor..self.cursor + (self.data.len() + 1 - self.cursor) / 2];
+            self.cursor += (self.data.len() + 1 - self.cursor) / 2;
+            Some(res)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
@@ -75,7 +123,7 @@ mod tests {
 
     #[test]
     pub fn multi_layer_display_test() {
-        let (sub_trees_height, n_sub_trees) = (8, 8);
+        let (sub_trees_height, n_sub_trees) = (5, 2);
         let config = super::MerkleMultiLayerConfig::new(sub_trees_height, n_sub_trees);
         let multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
         println!("{}", multi_layer);
