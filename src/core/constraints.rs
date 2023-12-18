@@ -52,6 +52,14 @@ pub fn point_vanishing<F: ExtensionOf<BaseField>>(
     h.y / (F::one() + h.x)
 }
 
+pub fn oods_point_vanishing<F: ExtensionOf<BaseField>>(
+    vanish_point: CirclePoint<F>,
+    p: CirclePoint<BaseField>,
+) -> F {
+    let h = p.into_ef() - vanish_point;
+    h.y / (F::one() + h.x)
+}
+
 /// Utils for computing constraints.
 /// Oracle to a polynomial constrained to a coset.
 pub trait PolyOracle<F: ExtensionOf<BaseField>>: Copy {
