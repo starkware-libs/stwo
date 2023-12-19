@@ -8,7 +8,6 @@ use crate::core::channel::{Channel, BYTES_PER_HASH};
 use crate::core::fields::qm31::P4;
 use crate::math::egcd;
 
-// TODO(AlonH): Consider also generalizing structs using this struct.
 /// A point on the complex circle. Treaed as an additive group.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CirclePoint<F: Field> {
