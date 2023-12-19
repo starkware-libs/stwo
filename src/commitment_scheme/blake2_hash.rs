@@ -55,6 +55,8 @@ impl super::hasher::Name for Blake2sHash {
     const NAME: std::borrow::Cow<'static, str> = std::borrow::Cow::Borrowed("BLAKE2");
 }
 
+impl super::hasher::Hash<u8> for Blake2sHash {}
+
 // Wrapper for the blake2s Hashing functionalities.
 #[derive(Clone)]
 pub struct Blake2sHasher {}
