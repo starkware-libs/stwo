@@ -113,6 +113,17 @@ impl Fibonacci {
         quotient
     }
 
+    pub fn eval_mask_quotient(
+        &self,
+        trace: impl PolyOracle<BaseField>,
+        point: CirclePoint<QM31>,
+        value: QM31,
+    ) -> QM31 {
+        let num = -value + trace.get_at(self.trace_coset.index_at(0));
+        let denom: QM31 = point_vanishing(point, trace.point().into_ef());
+        num / denom
+    }
+
     pub fn get_mask(&self) -> Mask {
         Mask::new(
             (0..3)
@@ -167,6 +178,26 @@ impl Fibonacci {
         )
     }
 
+    pub fn get_mask_quotient(
+        &self,
+        point: CirclePoint<QM31>,
+        value: QM31,
+        trace_eval: &CircleEvaluation<BaseField>,
+    ) -> CircleEvaluation<QM31> {
+        let mut values = Vec::with_capacity(self.constraint_eval_domain.size());
+        for p_ind in self.constraint_eval_domain.iter_indices() {
+            values.push(self.eval_mask_quotient(
+                EvalByEvaluation {
+                    offset: p_ind,
+                    eval: trace_eval,
+                },
+                point,
+                value,
+            ));
+        }
+        CircleEvaluation::new(self.constraint_eval_domain, values)
+    }
+
     pub fn prove(self) -> FibonacciProof {
         let mut channel = Channel::new(<Channel as ChannelTrait>::ChannelHasher::hash(
             BaseField::into_slice(&[self.claim]),
@@ -185,6 +216,10 @@ impl Fibonacci {
         channel.mix_with_seed(quotient_merkle.root());
 
         let oods_eval = self.get_oods_values(&mut channel, &trace_poly);
+        let mut mask_quotients = Vec::with_capacity(oods_eval.len());
+        for (point, value) in oods_eval.iter() {
+            mask_quotients.push(self.get_mask_quotient(*point, *value, &extended_evaluation));
+        }
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
