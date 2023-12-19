@@ -1,3 +1,5 @@
+pub mod matrix;
+
 #[inline]
 pub fn log2_ceil(n: usize) -> usize {
     assert_ne!(n, 0, "Attempt log(0)!");
