@@ -48,6 +48,8 @@ impl Name for Blake3Hash {
     const NAME: std::borrow::Cow<'static, str> = std::borrow::Cow::Borrowed("BLAKE3");
 }
 
+impl super::hasher::Hash<u8> for Blake3Hash {}
+
 // Wrapper for the blake3 Hashing functionalities.
 #[derive(Clone)]
 pub struct Blake3Hasher {}

@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
 pub trait Name {
     const NAME: Cow<'static, str>;
@@ -7,16 +7,7 @@ pub trait Name {
 
 pub trait Hasher {
     // TODO(Ohad): Define a 'hash' trait to enforce all these traits on an implementor.
-    type Hash: Copy
-        + Default
-        + Display
-        + self::Name
-        + Into<Vec<Self::NativeType>>
-        + TryFrom<Vec<Self::NativeType>>
-        + AsRef<[Self::NativeType]>
-        + for<'a> From<&'a [Self::NativeType]>
-        + Send
-        + Sync;
+    type Hash: Hash<Self::NativeType>;
     type NativeType: Sized + Eq;
     // Input size of the compression function.
     const BLOCK_SIZE: usize;
@@ -49,4 +40,19 @@ pub trait Hasher {
     fn hash_many_multi_src(data: &[Vec<&[Self::NativeType]>]) -> Vec<Self::Hash>;
 
     fn hash_many_multi_src_in_place(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]);
+}
+
+pub trait Hash<NativeType: Sized + Eq>:
+    Copy
+    + Default
+    + Display
+    + Debug
+    + self::Name
+    + Into<Vec<NativeType>>
+    + TryFrom<Vec<NativeType>>
+    + AsRef<[NativeType]>
+    + for<'a> From<&'a [NativeType]>
+    + Send
+    + Sync
+{
 }
