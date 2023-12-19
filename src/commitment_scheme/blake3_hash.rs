@@ -58,6 +58,7 @@ pub struct Blake3Hasher {
 
 impl super::hasher::Hasher for Blake3Hasher {
     type Hash = Blake3Hash;
+    type State = Blake3HashState;
     const BLOCK_SIZE: usize = 64;
     const OUTPUT_SIZE: usize = 32;
     type NativeType = u8;
@@ -140,6 +141,36 @@ impl super::hasher::Hasher for Blake3Hasher {
                 });
                 *out = Blake3Hash(hasher.finalize().into());
             })
+    }
+}
+
+pub struct Blake3HashState {
+    state: blake3::Hasher,
+}
+
+impl super::hasher::HashState<u8, Blake3Hash> for Blake3HashState {
+    fn new() -> Self {
+        Self {
+            state: blake3::Hasher::new(),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.state.reset();
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        self.state.update(data);
+    }
+
+    fn finalize(self) -> Blake3Hash {
+        Blake3Hash(self.state.finalize().into())
+    }
+
+    fn finalize_reset(&mut self) -> Blake3Hash {
+        let res = Blake3Hash(self.state.finalize().into());
+        self.state.reset();
+        res
     }
 }
 
