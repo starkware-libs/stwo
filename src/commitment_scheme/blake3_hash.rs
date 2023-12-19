@@ -1,6 +1,6 @@
 use std::fmt;
 
-use super::hasher::Name;
+use super::hasher::{HashState, Name};
 
 // Wrapper for the blake3 hash type.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
@@ -52,7 +52,9 @@ impl super::hasher::Hash<u8> for Blake3Hash {}
 
 // Wrapper for the blake3 Hashing functionalities.
 #[derive(Clone)]
-pub struct Blake3Hasher {}
+pub struct Blake3Hasher {
+    state: blake3::Hasher,
+}
 
 impl super::hasher::Hasher for Blake3Hasher {
     type Hash = Blake3Hash;
@@ -65,13 +67,13 @@ impl super::hasher::Hasher for Blake3Hasher {
     }
 
     fn concat_and_hash(v1: &Self::Hash, v2: &Self::Hash) -> Blake3Hash {
-        let mut hasher = blake3::Hasher::new();
+        let mut hasher = Blake3Hasher::new();
         hasher.update(&v1.0);
         hasher.update(&v2.0);
-
-        Blake3Hash(*hasher.finalize().as_bytes())
+        hasher.finalize()
     }
 
+    // TODO(Ohad): Remove.
     fn hash_one_in_place(data: &[u8], dst: &mut [u8]) {
         assert_eq!(
             dst.len(),
@@ -88,7 +90,7 @@ impl super::hasher::Hasher for Blake3Hasher {
         data.iter().map(|x| Self::hash(x)).collect()
     }
 
-    // TODO(Ohad): Implement better blake3 module (SIMD & Memory optimizations)
+    // TODO(Ohad): Remove.
     unsafe fn hash_many_in_place(
         data: &[*const u8],
         single_input_length_bytes: usize,
@@ -103,7 +105,7 @@ impl super::hasher::Hasher for Blake3Hasher {
             .for_each(|(input, out)| Self::hash_one_in_place(input, out))
     }
 
-    // TODO(Ohad): Consider allocating manually and using the in_place function.
+    // TODO(Ohad): Remove.
     fn hash_many_multi_src(data: &[Vec<&[u8]>]) -> Vec<Self::Hash> {
         let mut hasher = blake3::Hasher::new();
         data.iter()
@@ -117,6 +119,7 @@ impl super::hasher::Hasher for Blake3Hasher {
             .collect()
     }
 
+    // TODO(Ohad): Remove.
     fn hash_many_multi_src_in_place(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]) {
         assert!(
             data.len() == dst.len(),
@@ -135,10 +138,36 @@ impl super::hasher::Hasher for Blake3Hasher {
     }
 }
 
+impl HashState<u8, Blake3Hash> for Blake3Hasher {
+    fn new() -> Self {
+        Self {
+            state: blake3::Hasher::new(),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.state.reset();
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        self.state.update(data);
+    }
+
+    fn finalize(self) -> Blake3Hash {
+        Blake3Hash(self.state.finalize().into())
+    }
+
+    fn finalize_reset(&mut self) -> Blake3Hash {
+        let res = Blake3Hash(self.state.finalize().into());
+        self.state.reset();
+        res
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
-    use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::hasher::{HashState, Hasher};
 
     #[test]
     fn single_hash_test() {
@@ -209,5 +238,17 @@ mod tests {
         assert_eq!(hash_results[1], expected_result1);
         assert_eq!(hash_in_place_results[0], expected_result0);
         assert_eq!(hash_in_place_results[1], expected_result1);
+    }
+
+    #[test]
+    fn hash_state_test() {
+        let mut state = Blake3Hasher::new();
+        state.update(b"a");
+        state.update(b"b");
+        let hash = state.finalize_reset();
+        let hash_empty = state.finalize();
+
+        assert_eq!(hash.to_string(), Blake3Hasher::hash(b"ab").to_string());
+        assert_eq!(hash_empty.to_string(), Blake3Hasher::hash(b"").to_string())
     }
 }
