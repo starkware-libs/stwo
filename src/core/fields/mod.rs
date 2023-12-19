@@ -197,11 +197,27 @@ macro_rules! impl_extension_field {
             }
         }
 
+        impl Add<$field_name> for M31 {
+            type Output = $field_name;
+
+            fn add(self, rhs: $field_name) -> Self::Output {
+                rhs + self
+            }
+        }
+
         impl Sub<M31> for $field_name {
             type Output = Self;
 
             fn sub(self, rhs: M31) -> Self::Output {
                 Self(self.0 - rhs, self.1)
+            }
+        }
+
+        impl Sub<$field_name> for M31 {
+            type Output = $field_name;
+
+            fn sub(self, rhs: $field_name) -> Self::Output {
+                -rhs + self
             }
         }
 
@@ -213,11 +229,28 @@ macro_rules! impl_extension_field {
             }
         }
 
+        impl Mul<$field_name> for M31 {
+            type Output = $field_name;
+
+            fn mul(self, rhs: $field_name) -> Self::Output {
+                rhs * self
+            }
+        }
+
         impl Div<M31> for $field_name {
             type Output = Self;
 
             fn div(self, rhs: M31) -> Self::Output {
                 Self(self.0 / rhs, self.1 / rhs)
+            }
+        }
+
+        impl Div<$field_name> for M31 {
+            type Output = $field_name;
+
+            #[allow(clippy::suspicious_arithmetic_impl)]
+            fn div(self, rhs: $field_name) -> Self::Output {
+                rhs.inverse() * self
             }
         }
 
