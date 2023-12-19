@@ -31,7 +31,6 @@ where
             tree.bottom_layer_block_size * std::mem::size_of::<T>(),
             &mut tree_data_as_mut_ref(&mut tree.data)[..],
         );
-
         tree
     }
 

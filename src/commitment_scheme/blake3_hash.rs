@@ -52,7 +52,9 @@ impl super::hasher::Hash<u8> for Blake3Hash {}
 
 // Wrapper for the blake3 Hashing functionalities.
 #[derive(Clone)]
-pub struct Blake3Hasher {}
+pub struct Blake3Hasher {
+    state: blake3::Hasher,
+}
 
 impl super::hasher::Hasher for Blake3Hasher {
     type Hash = Blake3Hash;
@@ -60,16 +62,28 @@ impl super::hasher::Hasher for Blake3Hasher {
     const OUTPUT_SIZE: usize = 32;
     type NativeType = u8;
 
-    fn hash(val: &[u8]) -> Blake3Hash {
-        Blake3Hash(*blake3::hash(val).as_bytes())
+    fn new() -> Self {
+        Self {
+            state: blake3::Hasher::new(),
+        }
     }
 
-    fn concat_and_hash(v1: &Self::Hash, v2: &Self::Hash) -> Blake3Hash {
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(&v1.0);
-        hasher.update(&v2.0);
+    fn reset(&mut self) {
+        self.state.reset();
+    }
 
-        Blake3Hash(*hasher.finalize().as_bytes())
+    fn update(&mut self, data: &[u8]) {
+        self.state.update(data);
+    }
+
+    fn finalize(self) -> Blake3Hash {
+        Blake3Hash(self.state.finalize().into())
+    }
+
+    fn finalize_reset(&mut self) -> Blake3Hash {
+        let res = Blake3Hash(self.state.finalize().into());
+        self.state.reset();
+        res
     }
 
     fn hash_one_in_place(data: &[u8], dst: &mut [u8]) {
@@ -84,11 +98,6 @@ impl super::hasher::Hasher for Blake3Hasher {
         output_reader.fill(&mut dst[..Self::OUTPUT_SIZE])
     }
 
-    fn hash_many(data: &[Vec<u8>]) -> Vec<Self::Hash> {
-        data.iter().map(|x| Self::hash(x)).collect()
-    }
-
-    // TODO(Ohad): Implement better blake3 module (SIMD & Memory optimizations)
     unsafe fn hash_many_in_place(
         data: &[*const u8],
         single_input_length_bytes: usize,
@@ -103,7 +112,6 @@ impl super::hasher::Hasher for Blake3Hasher {
             .for_each(|(input, out)| Self::hash_one_in_place(input, out))
     }
 
-    // TODO(Ohad): Consider allocating manually and using the in_place function.
     fn hash_many_multi_src(data: &[Vec<&[u8]>]) -> Vec<Self::Hash> {
         let mut hasher = blake3::Hasher::new();
         data.iter()
@@ -209,5 +217,17 @@ mod tests {
         assert_eq!(hash_results[1], expected_result1);
         assert_eq!(hash_in_place_results[0], expected_result0);
         assert_eq!(hash_in_place_results[1], expected_result1);
+    }
+
+    #[test]
+    fn hash_state_test() {
+        let mut state = Blake3Hasher::new();
+        state.update(b"a");
+        state.update(b"b");
+        let hash = state.finalize_reset();
+        let hash_empty = state.finalize();
+
+        assert_eq!(hash.to_string(), Blake3Hasher::hash(b"ab").to_string());
+        assert_eq!(hash_empty.to_string(), Blake3Hasher::hash(b"").to_string())
     }
 }
