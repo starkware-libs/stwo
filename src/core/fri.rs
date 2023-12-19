@@ -7,7 +7,7 @@ use std::ops::RangeInclusive;
 use super::fields::m31::BaseField;
 use super::fields::{ExtensionOf, Field};
 use super::poly::line::{LineEvaluation, LinePoly};
-use crate::commitment_scheme::hasher::Hasher;
+use crate::commitment_scheme::hasher::BasicHasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::circle::Coset;
@@ -57,14 +57,14 @@ impl FriConfig {
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
 ///
 /// `Phase` is used to enforce the commitment phase is done before the query phase.
-pub struct FriProver<F: ExtensionOf<BaseField>, H: Hasher, Phase = CommitmentPhase> {
+pub struct FriProver<F: ExtensionOf<BaseField>, H: BasicHasher, Phase = CommitmentPhase> {
     config: FriConfig,
     layers: Vec<FriLayer<F, H>>,
     remainder: Option<LinePoly<F>>,
     _phase: PhantomData<Phase>,
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
+impl<F: ExtensionOf<BaseField>, H: BasicHasher> FriProver<F, H, CommitmentPhase> {
     /// Creates a new FRI prover.
     pub fn new(config: FriConfig) -> Self {
         Self {
@@ -149,7 +149,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     }
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, QueryPhase> {
+impl<F: ExtensionOf<BaseField>, H: BasicHasher> FriProver<F, H, QueryPhase> {
     pub fn into_proof(self, query_positions: &[usize]) -> FriProof<F, H> {
         let remainder = self.remainder.unwrap();
         let layer_proofs = self
@@ -175,7 +175,7 @@ pub struct CommitmentPhase;
 pub struct QueryPhase;
 
 /// A FRI proof.
-pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
+pub struct FriProof<F: ExtensionOf<BaseField>, H: BasicHasher> {
     pub layer_proofs: Vec<FriLayerProof<F, H>>,
     pub remainder: LinePoly<F>,
 }
@@ -185,13 +185,13 @@ const FRI_STEP_SIZE: usize = 2;
 /// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
-pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
+pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: BasicHasher> {
     pub coset_evals: Vec<[F; FRI_STEP_SIZE]>,
     pub decommitment: MerkleDecommitment<F, H>,
     pub commitment: H::Hash,
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
+impl<F: ExtensionOf<BaseField>, H: BasicHasher> FriLayerProof<F, H> {
     // TODO(andrew): implement and add docs
     // TODO(andrew): create FRI verification error type
     pub fn verify(&self, _positions: &[usize]) -> Result<(), String> {
@@ -204,13 +204,13 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
 /// The polynomial evaluations are viewed as evaluation of a polynomial on multiple distinct cosets
 /// of size two. Each leaf of the merkle tree commits to a single coset evaluation.
 // TODO(andrew): support different folding factors
-struct FriLayer<F: ExtensionOf<BaseField>, H: Hasher> {
+struct FriLayer<F: ExtensionOf<BaseField>, H: BasicHasher> {
     /// Coset evaluations stored in column-major.
     coset_evals: [Vec<F>; FRI_STEP_SIZE],
     _merkle_tree: MerkleTree<F, H>,
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
+impl<F: ExtensionOf<BaseField>, H: BasicHasher> FriLayer<F, H> {
     fn new(evaluation: &LineEvaluation<F>) -> Self {
         let (l, r) = evaluation.split_at(evaluation.len() / 2);
         let coset_evals = [l.to_vec(), r.to_vec()];

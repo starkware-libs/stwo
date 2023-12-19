@@ -6,7 +6,7 @@ use criterion::{
 };
 use prover_research::commitment_scheme::blake2_hash::Blake2sHasher;
 use prover_research::commitment_scheme::blake3_hash::Blake3Hasher;
-use prover_research::commitment_scheme::hasher::{Hasher, Name};
+use prover_research::commitment_scheme::hasher::{BasicHasher, Name};
 use prover_research::commitment_scheme::merkle_tree::MerkleTree;
 use prover_research::core::fields::m31::M31;
 
@@ -16,7 +16,7 @@ fn prepare_element_vector(size: usize) -> Vec<M31> {
     (0..size as u32).map(M31::from_u32_unchecked).collect()
 }
 
-fn merkle_bench<T: Hasher>(group: &mut BenchmarkGroup<'_, WallTime>, elems: &[M31]) {
+fn merkle_bench<T: BasicHasher>(group: &mut BenchmarkGroup<'_, WallTime>, elems: &[M31]) {
     let size = elems.len();
     let elems = elems.to_vec();
     group.sample_size(10);

@@ -5,7 +5,7 @@ pub trait Name {
     const NAME: Cow<'static, str>;
 }
 
-pub trait Hasher {
+pub trait BasicHasher {
     // TODO(Ohad): Define a 'hash' trait to enforce all these traits on an implementor.
     type Hash: Hash<Self::NativeType>;
     type NativeType: Sized + Eq;
@@ -55,4 +55,27 @@ pub trait Hash<NativeType: Sized + Eq>:
     + Send
     + Sync
 {
+}
+
+/// An API for hash functions that support incremental hashing.
+///
+/// # Example
+///
+/// ```
+/// use prover_research::commitment_scheme::blake3_hash::Blake3Hasher;
+/// use prover_research::commitment_scheme::hasher::{BasicHasher, IncrementalHasher};
+///
+/// let mut hasher = Blake3Hasher::new();
+/// hasher.update(&[1, 2, 3]);
+/// hasher.update(&[4, 5, 6]);
+/// let hash = hasher.finalize();
+///
+/// assert_eq!(hash, Blake3Hasher::hash(&[1, 2, 3, 4, 5, 6]));
+/// ```
+pub trait IncrementalHasher<NativeType: Sized + Eq, H: Hash<NativeType>> {
+    fn new() -> Self;
+    fn reset(&mut self);
+    fn update(&mut self, data: &[NativeType]);
+    fn finalize(self) -> H;
+    fn finalize_reset(&mut self) -> H;
 }

@@ -1,6 +1,6 @@
 use super::fields::m31::{BaseField, N_BYTES_FELT, P};
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
-use crate::commitment_scheme::hasher::Hasher;
+use crate::commitment_scheme::hasher::BasicHasher;
 
 pub const BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
@@ -23,10 +23,10 @@ impl ChannelTime {
 }
 
 pub trait Channel {
-    type ChannelHasher: Hasher;
+    type ChannelHasher: BasicHasher;
 
-    fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self;
-    fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash);
+    fn new(digest: <Self::ChannelHasher as BasicHasher>::Hash) -> Self;
+    fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as BasicHasher>::Hash);
     fn draw_random_bytes(&mut self) -> [u8; BYTES_PER_HASH];
     fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
 }
@@ -40,14 +40,14 @@ pub struct Blake2sChannel {
 impl Channel for Blake2sChannel {
     type ChannelHasher = Blake2sHasher;
 
-    fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self {
+    fn new(digest: <Self::ChannelHasher as BasicHasher>::Hash) -> Self {
         Blake2sChannel {
             digest,
             channel_time: ChannelTime::default(),
         }
     }
 
-    fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash) {
+    fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as BasicHasher>::Hash) {
         self.digest = Self::ChannelHasher::concat_and_hash(&self.digest, &seed);
         self.channel_time.inc_challenges();
     }

@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use super::hasher::Hasher;
+use super::hasher::BasicHasher;
 
 /// A MerkleMultiLayer represents multiple sequential merkle-tree layers, as a SubTreeMajor array of
 /// hash values. Each SubTree is a balanced binary tree of height `sub_trees_height`.
@@ -10,12 +10,12 @@ use super::hasher::Hasher;
 // TODO(Ohad): Implement .commit(), .decommit() for MerkleMultiLayer.
 // TODO(Ohad): Add as an attribute of the merkle tree.
 // TODO(Ohad): Implement Iterator for MerkleMultiLayer.
-pub struct MerkleMultiLayer<H: Hasher> {
+pub struct MerkleMultiLayer<H: BasicHasher> {
     pub data: Vec<H::Hash>,
     config: MerkleMultiLayerConfig,
 }
 
-impl<H: Hasher> MerkleMultiLayer<H> {
+impl<H: BasicHasher> MerkleMultiLayer<H> {
     pub fn new(config: MerkleMultiLayerConfig) -> Self {
         // TODO(Ohad): investigate if this is the best way to initialize the vector. Consider unsafe
         // implementation.
@@ -39,7 +39,7 @@ impl<H: Hasher> MerkleMultiLayer<H> {
 
 // TODO(Ohad): change according to the future implementation of get_layer_view() and
 // get_root().
-impl<H: Hasher> Display for MerkleMultiLayer<H> {
+impl<H: BasicHasher> Display for MerkleMultiLayer<H> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.data
             .chunks(self.config.sub_tree_size)
@@ -75,7 +75,7 @@ impl MerkleMultiLayerConfig {
 #[cfg(test)]
 mod tests {
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
-    use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::hasher::BasicHasher;
 
     #[test]
     pub fn multi_layer_init_test() {

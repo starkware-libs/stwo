@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 
-use super::hasher::Hasher;
+use super::hasher::BasicHasher;
 use crate::core::fields::IntoSlice;
 
 /// Merkle proof of queried indices.
@@ -13,13 +13,13 @@ use crate::core::fields::IntoSlice;
 /// * `n_rows_in_leaf_block` - The number of trace-rows packed in each leaf block.
 // TODO(Ohad): derive Debug.
 #[derive(Default)]
-pub struct MerkleDecommitment<T: Sized + Display, H: Hasher> {
+pub struct MerkleDecommitment<T: Sized + Display, H: BasicHasher> {
     pub leaf_blocks: Vec<Vec<T>>,
     pub layers: Vec<Vec<H::Hash>>,
     pub n_rows_in_leaf_block: usize,
 }
 
-impl<T: Sized + Display, H: Hasher> MerkleDecommitment<T, H>
+impl<T: Sized + Display, H: BasicHasher> MerkleDecommitment<T, H>
 where
     T: IntoSlice<H::NativeType>,
 {
@@ -99,7 +99,7 @@ where
     }
 }
 
-impl<T: Sized + Display, H: Hasher> fmt::Display for MerkleDecommitment<T, H> {
+impl<T: Sized + Display, H: BasicHasher> fmt::Display for MerkleDecommitment<T, H> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.layers.last() {
             Some(_) => {
@@ -128,7 +128,7 @@ mod tests {
     use rand::{thread_rng, Rng};
 
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
-    use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::hasher::BasicHasher;
     use crate::commitment_scheme::merkle_tree::MerkleTree;
     use crate::commitment_scheme::utils::ColumnArray;
     use crate::core::fields::m31::M31;
