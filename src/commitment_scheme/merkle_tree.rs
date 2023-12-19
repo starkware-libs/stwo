@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::fmt::{Debug, Display};
 
-use super::hasher::Hasher;
+use super::hasher::ComplexHasher;
 use super::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::utils::{
     allocate_balanced_tree, column_to_row_major, hash_merkle_tree_from_bottom_layer,
@@ -9,7 +9,7 @@ use crate::commitment_scheme::utils::{
 };
 use crate::core::fields::{Field, IntoSlice};
 
-pub struct MerkleTree<T: Field + Sized + Debug + Display, H: Hasher> {
+pub struct MerkleTree<T: Field + Sized + Debug + Display, H: ComplexHasher> {
     pub bottom_layer: Vec<T>,
     pub bottom_layer_block_size: usize,
     pub bottom_layer_n_rows_in_node: usize,
@@ -18,7 +18,7 @@ pub struct MerkleTree<T: Field + Sized + Debug + Display, H: Hasher> {
     phantom: std::marker::PhantomData<H>,
 }
 
-impl<T: Field + Sized + Copy + Debug + Display, H: Hasher> MerkleTree<T, H>
+impl<T: Field + Sized + Copy + Debug + Display, H: ComplexHasher> MerkleTree<T, H>
 where
     T: IntoSlice<H::NativeType>,
 {
@@ -144,7 +144,7 @@ mod tests {
     use rand::{thread_rng, Rng};
 
     use crate::commitment_scheme::blake3_hash::*;
-    use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::hasher::{BasicHasher, ComplexHasher};
     use crate::core::fields::m31::M31;
     use crate::core::fields::IntoSlice;
 

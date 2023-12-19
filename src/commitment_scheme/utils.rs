@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use super::hasher::Hasher;
+use super::hasher::ComplexHasher;
 use crate::core::fields::{Field, IntoSlice};
 
 pub type ColumnArray<T> = Vec<Vec<T>>;
@@ -35,7 +35,11 @@ pub fn allocate_balanced_tree<T: Sized>(
 }
 
 /// Performes a 2-to-1 hash on a layer of a merkle tree.
-pub fn hash_layer<H: Hasher>(layer: &[H::NativeType], node_size: usize, dst: &mut [H::NativeType]) {
+pub fn hash_layer<H: ComplexHasher>(
+    layer: &[H::NativeType],
+    node_size: usize,
+    dst: &mut [H::NativeType],
+) {
     let n_nodes_in_layer = crate::math::usize_safe_div(layer.len(), node_size);
     assert!(n_nodes_in_layer.is_power_of_two());
     assert!(n_nodes_in_layer <= dst.len() / H::OUTPUT_SIZE);
@@ -54,7 +58,7 @@ pub fn hash_layer<H: Hasher>(layer: &[H::NativeType], node_size: usize, dst: &mu
 }
 
 // Given a data of a tree, hashes the entire tree.
-pub fn hash_merkle_tree<H: Hasher>(data: &mut [&mut [H::NativeType]]) {
+pub fn hash_merkle_tree<H: ComplexHasher>(data: &mut [&mut [H::NativeType]]) {
     (0..data.len() - 1).for_each(|i| {
         let (src, dst) = data.split_at_mut(i + 1);
         let src = src.get(i).unwrap();
@@ -66,7 +70,7 @@ pub fn hash_merkle_tree<H: Hasher>(data: &mut [&mut [H::NativeType]]) {
 /// Given a data of a tree, and a bottom layer of 'bottom_layer_node_size_bytes' sized nodes, hashes
 /// the entire tree. Nodes are hashed individually at the bottom layer.
 // TODO(Ohad): Write a similiar function for when F does not implement IntoSlice(Non le platforms).
-pub fn hash_merkle_tree_from_bottom_layer<'a, F: Field, H: Hasher>(
+pub fn hash_merkle_tree_from_bottom_layer<'a, F: Field, H: ComplexHasher>(
     bottom_layer: &[F],
     bottom_layer_node_size_bytes: usize,
     data: &mut [&mut [H::NativeType]],
@@ -175,7 +179,7 @@ pub fn column_to_row_major<T>(mut mat: ColumnArray<T>) -> Vec<T> {
     row_major_matrix_vec
 }
 
-pub fn inject_hash_in_pairs<'a: 'b, 'b, H: Hasher>(
+pub fn inject_hash_in_pairs<'a: 'b, 'b, H: ComplexHasher>(
     hash_inputs: &'b mut [Vec<&'a [H::NativeType]>],
     values_to_inject: &'a [H::Hash],
 ) {
@@ -206,7 +210,7 @@ pub fn inject_hash_in_pairs<'a: 'b, 'b, H: Hasher>(
 ///    * `chunk_idx` - The index of the chunk to inject.
 ///    * `n_chunks_in_column` - The number of chunks every column is divided into.
 ///  
-pub fn inject_column_chunks<'b, 'a: 'b, H: Hasher, F: Field>(
+pub fn inject_column_chunks<'b, 'a: 'b, H: ComplexHasher, F: Field>(
     columns: &'a [&'a [F]],
     hash_inputs: &'b mut [Vec<&'a [H::NativeType]>],
     chunk_idx: usize,
@@ -248,7 +252,7 @@ mod tests {
 
     use super::{allocate_balanced_tree, inject_column_chunks, map_columns_sorted, ColumnArray};
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
-    use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::hasher::{BasicHasher, ComplexHasher};
     use crate::commitment_scheme::utils::{
         allocate_layer, hash_layer, hash_merkle_tree, hash_merkle_tree_from_bottom_layer, inject,
         inject_hash_in_pairs, transpose_to_bytes, tree_data_as_mut_ref,

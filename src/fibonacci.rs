@@ -1,6 +1,6 @@
 use num_traits::One;
 
-use crate::commitment_scheme::hasher::Hasher;
+use crate::commitment_scheme::hasher::{BasicHasher, ComplexHasher};
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
@@ -26,8 +26,8 @@ pub struct Fibonacci {
 
 pub struct FibonacciProof {
     pub public_input: BaseField,
-    pub trace_commitment: <MerkleHasher as Hasher>::Hash,
-    pub quotient_commitment: <MerkleHasher as Hasher>::Hash,
+    pub trace_commitment: <MerkleHasher as BasicHasher>::Hash,
+    pub quotient_commitment: <MerkleHasher as BasicHasher>::Hash,
 }
 
 impl Fibonacci {
