@@ -15,8 +15,8 @@ use crate::core::fields::Field;
 /// input.insert_column(3, &column);
 /// input.insert_column(3, &column);
 ///
-/// assert_eq!(input.get_columns(2).unwrap().len(), 1);
-/// assert_eq!(input.get_columns(3).unwrap().len(), 2);
+/// assert_eq!(input.get_columns(2).len(), 1);
+/// assert_eq!(input.get_columns(3).len(), 2);
 /// assert_eq!(input.max_injected_depth(), 3);
 /// ````
 #[derive(Default)]
@@ -55,8 +55,15 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
         self.columns_to_inject[depth - 1].push(column);
     }
 
-    pub fn get_columns(&'a self, depth: usize) -> Option<&'a LayerColumns<'a, F>> {
-        self.columns_to_inject.get(depth - 1)
+    pub fn get_columns(&'a self, depth: usize) -> &'a [&[F]] {
+        match self.columns_to_inject.get(depth - 1) {
+            Some(v) => &v[..],
+            _ => panic!(
+                "Attempted extraction of columns from depth: {}, but max injected depth is: {}",
+                depth,
+                self.max_injected_depth()
+            ),
+        }
     }
 
     pub fn max_injected_depth(&self) -> usize {
@@ -87,8 +94,8 @@ mod tests {
         input.insert_column(3, &column);
         input.insert_column(2, &column);
 
-        assert_eq!(input.get_columns(3).unwrap().len(), 2);
-        assert_eq!(input.get_columns(2).unwrap().len(), 1);
+        assert_eq!(input.get_columns(3).len(), 2);
+        assert_eq!(input.get_columns(2).len(), 1);
     }
 
     #[test]
@@ -102,6 +109,24 @@ mod tests {
         assert_eq!(input.max_injected_depth(), 3);
     }
 
+    #[test]
+    #[should_panic]
+    pub fn get_invalid_depth_test() {
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let column = vec![M31::from_u32_unchecked(0); 1024];
+        input.insert_column(3, &column);
+
+        input.get_columns(4);
+    }
+
+    #[test]
+    pub fn merkle_tree_input_empty_vec_test() {
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let column = vec![M31::from_u32_unchecked(0); 1024];
+        input.insert_column(3, &column);
+
+        assert_eq!(input.get_columns(2), Vec::<Vec<M31>>::new().as_slice());
+    }
     #[test]
     #[should_panic]
     pub fn mt_input_column_too_short_test() {
