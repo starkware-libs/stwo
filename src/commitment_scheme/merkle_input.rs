@@ -15,8 +15,8 @@ use crate::core::fields::Field;
 /// input.insert_column(3, &column);
 /// input.insert_column(3, &column);
 ///
-/// assert_eq!(input.get_columns(2).unwrap().len(), 1);
-/// assert_eq!(input.get_columns(3).unwrap().len(), 2);
+/// assert_eq!(input.get_columns(2).len(), 1);
+/// assert_eq!(input.get_columns(3).len(), 2);
 /// assert_eq!(input.max_injected_depth(), 3);
 /// ````
 #[derive(Default)]
@@ -55,8 +55,11 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
         self.columns_to_inject[depth - 1].push(column);
     }
 
-    pub fn get_columns(&'a self, depth: usize) -> Option<&'a LayerColumns<'a, F>> {
-        self.columns_to_inject.get(depth - 1)
+    pub fn get_columns(&'a self, depth: usize) -> &'a [&[F]] {
+        match self.columns_to_inject.get(depth - 1) {
+            Some(v) => &v[..],
+            _ => &[],
+        }
     }
 
     pub fn max_injected_depth(&self) -> usize {
@@ -87,8 +90,8 @@ mod tests {
         input.insert_column(3, &column);
         input.insert_column(2, &column);
 
-        assert_eq!(input.get_columns(3).unwrap().len(), 2);
-        assert_eq!(input.get_columns(2).unwrap().len(), 1);
+        assert_eq!(input.get_columns(3).len(), 2);
+        assert_eq!(input.get_columns(2).len(), 1);
     }
 
     #[test]
