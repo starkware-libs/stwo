@@ -65,7 +65,6 @@ pub struct Blake2sHasher {
 
 impl super::hasher::Hasher for Blake2sHasher {
     type Hash = Blake2sHash;
-    type State = Blake2sHashState;
     const BLOCK_SIZE: usize = 64;
     const OUTPUT_SIZE: usize = 32;
     type NativeType = u8;
@@ -142,39 +141,11 @@ impl super::hasher::Hasher for Blake2sHasher {
     }
 }
 
-pub struct Blake2sHashState {
-    state: Blake2s256,
-}
-
-impl super::hasher::HashState<u8, Blake2sHash> for Blake2sHashState {
-    fn new() -> Self {
-        Self {
-            state: Blake2s256::new(),
-        }
-    }
-
-    fn reset(&mut self) {
-        blake2::Digest::reset(&mut self.state);
-    }
-
-    fn update(&mut self, data: &[u8]) {
-        blake2::Digest::update(&mut self.state, data);
-    }
-
-    fn finalize(self) -> Blake2sHash {
-        Blake2sHash(self.state.finalize().into())
-    }
-
-    fn finalize_reset(&mut self) -> Blake2sHash {
-        Blake2sHash(self.state.finalize_reset().into())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::Blake2sHasher;
-    use crate::commitment_scheme::blake2_hash::{self, Blake2sHashState};
-    use crate::commitment_scheme::hasher::{HashState, Hasher};
+    use crate::commitment_scheme::blake2_hash;
+    use crate::commitment_scheme::hasher::Hasher;
 
     #[test]
     fn single_hash_test() {

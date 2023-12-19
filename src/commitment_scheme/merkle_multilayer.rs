@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 use std::slice::Iter;
 
-use super::hasher::{HashState, Hasher};
+use super::hasher::Hasher;
 use crate::core::fields::{Field, IntoSlice};
 
 /// A MerkleMultiLayer represents multiple sequential merkle-tree layers, as a SubTreeMajor array of
@@ -51,7 +51,7 @@ fn _hash_layer<H: Hasher, F: Field, const IS_INTERMEDIATE: bool>(
         assert_eq!(prev_hashes.len(), produced_layer_length * 2);
     }
 
-    let mut hash_state = H::State::new();
+    let mut hash_state = H::new();
     match input_columns.clone().peekable().next() {
         Some(_) => {
             // Match the input columns to corresponding chunk sizes, calculate once
@@ -74,21 +74,21 @@ fn _hash_layer<H: Hasher, F: Field, const IS_INTERMEDIATE: bool>(
                 *dst = hash_state.finalize_reset();
             });
         }
-        None if !IS_INTERMEDIATE => {
-            panic!("Tried to hash bottom layer without input columns!")
-        }
-        _ => {
+        None if IS_INTERMEDIATE => {
             dst.iter_mut().enumerate().for_each(|(i, dst)| {
                 _inject_previous_hash_values::<H>(i, &mut hash_state, prev_hashes);
                 *dst = hash_state.finalize_reset();
             });
+        }
+        _ => {
+            panic!("Tried to hash bottom layer without input columns!")
         }
     }
 }
 
 fn _inject_previous_hash_values<H: Hasher>(
     i: usize,
-    hash_state: &mut <H as Hasher>::State,
+    hash_state: &mut H,
     prev_hashes: &[<H as Hasher>::Hash],
 ) {
     hash_state.update(prev_hashes[i * 2].as_ref());
