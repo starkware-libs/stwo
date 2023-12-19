@@ -8,6 +8,7 @@ pub trait Name {
 pub trait Hasher {
     // TODO(Ohad): Define a 'hash' trait to enforce all these traits on an implementor.
     type Hash: Hash<Self::NativeType>;
+    type State: HashState<Self::NativeType, Self::Hash>;
     type NativeType: Sized + Eq;
     // Input size of the compression function.
     const BLOCK_SIZE: usize;
@@ -55,4 +56,12 @@ pub trait Hash<NativeType: Sized + Eq>:
     + Send
     + Sync
 {
+}
+
+pub trait HashState<NativeType: Sized + Eq, Hash> {
+    fn new() -> Self;
+    fn reset(&mut self);
+    fn update(&mut self, data: &[NativeType]);
+    fn finalize(self) -> Hash;
+    fn finalize_reset(&mut self) -> Hash;
 }

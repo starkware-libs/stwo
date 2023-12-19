@@ -56,6 +56,7 @@ pub struct Blake3Hasher {}
 
 impl super::hasher::Hasher for Blake3Hasher {
     type Hash = Blake3Hash;
+    type State = Blake3HashState;
     const BLOCK_SIZE: usize = 64;
     const OUTPUT_SIZE: usize = 32;
     type NativeType = u8;
@@ -135,10 +136,40 @@ impl super::hasher::Hasher for Blake3Hasher {
     }
 }
 
+pub struct Blake3HashState {
+    state: blake3::Hasher,
+}
+
+impl super::hasher::HashState<u8, Blake3Hash> for Blake3HashState {
+    fn new() -> Self {
+        Self {
+            state: blake3::Hasher::new(),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.state.reset();
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        self.state.update(data);
+    }
+
+    fn finalize(self) -> Blake3Hash {
+        Blake3Hash(self.state.finalize().into())
+    }
+
+    fn finalize_reset(&mut self) -> Blake3Hash {
+        let res = Blake3Hash(self.state.finalize().into());
+        self.state.reset();
+        res
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
-    use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::blake3_hash::{Blake3HashState, Blake3Hasher};
+    use crate::commitment_scheme::hasher::{HashState, Hasher};
 
     #[test]
     fn single_hash_test() {
@@ -209,5 +240,17 @@ mod tests {
         assert_eq!(hash_results[1], expected_result1);
         assert_eq!(hash_in_place_results[0], expected_result0);
         assert_eq!(hash_in_place_results[1], expected_result1);
+    }
+
+    #[test]
+    fn hash_state_test() {
+        let mut state = Blake3HashState::new();
+        state.update(b"a");
+        state.update(b"b");
+        let hash = state.finalize_reset();
+        let hash_empty = state.finalize();
+
+        assert_eq!(hash.to_string(), Blake3Hasher::hash(b"ab").to_string());
+        assert_eq!(hash_empty.to_string(), Blake3Hasher::hash(b"").to_string())
     }
 }
