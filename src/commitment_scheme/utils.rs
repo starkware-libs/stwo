@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::slice::Iter;
 
 use super::hasher::Hasher;
 use crate::core::fields::{Field, IntoSlice};
@@ -242,13 +243,85 @@ fn get_column_chunk<F>(column: &[F], index_to_view: usize, n_total_chunks: usize
     &column[slice_start_idx..slice_start_idx + slice_length]
 }
 
+/// Hashes a layer of a Merkle tree. Nodes are injected with child hashes and chunks from the input
+/// columns (if any).
+// TODO(Ohad): Consider renaming after current hash_layer function is deprecated.
+pub fn inject_and_hash_layer<H: Hasher, F: Field, const IS_INTERMEDIATE: bool>(
+    child_hashes: &[H::Hash],
+    dst: &mut [H::Hash],
+    input_columns: &Iter<'_, &[F]>,
+) where
+    F: IntoSlice<H::NativeType>,
+{
+    let produced_layer_length = dst.len();
+    if IS_INTERMEDIATE {
+        assert_eq!(
+            child_hashes.len(),
+            produced_layer_length * 2,
+            "The number of child hashes ({}) must be double the destination size ({})",
+            child_hashes.len(),
+            produced_layer_length
+        );
+    } else {
+        assert_eq!(
+            child_hashes.len(),
+            0,
+            "The bottom layer must not receive child hashes!"
+        );
+    }
+
+    let mut hasher = H::new();
+    match input_columns.clone().peekable().next() {
+        Some(_) => {
+            // Match the input columns to corresponding chunk sizes.
+            let input_columns = input_columns.clone().zip(
+                input_columns
+                    .clone()
+                    .map(|c| c.len() / produced_layer_length),
+            );
+            dst.iter_mut().enumerate().for_each(|(i, dst_node)| {
+                // Inject previous hash values if intermediate layer, and input columns.
+                if IS_INTERMEDIATE {
+                    inject_previous_hash_values::<H>(i, &mut hasher, child_hashes);
+                }
+                for (column, n_elements_in_chunk) in input_columns.clone() {
+                    let chunk = &column[i * n_elements_in_chunk..(i + 1) * n_elements_in_chunk];
+                    hasher.update(F::into_slice(chunk));
+                }
+                *dst_node = hasher.finalize_reset();
+            });
+        }
+        None => {
+            // Intermediate layer with no input columns.
+            dst.iter_mut().enumerate().for_each(|(i, dst)| {
+                inject_previous_hash_values::<H>(i, &mut hasher, child_hashes);
+                *dst = hasher.finalize_reset();
+            });
+        }
+    }
+}
+
+fn inject_previous_hash_values<H: Hasher>(
+    i: usize,
+    hash_state: &mut H,
+    prev_hashes: &[<H as Hasher>::Hash],
+) {
+    hash_state.update(prev_hashes[i * 2].as_ref());
+    hash_state.update(prev_hashes[i * 2 + 1].as_ref());
+}
+
 #[cfg(test)]
 mod tests {
     use num_traits::One;
 
-    use super::{allocate_balanced_tree, inject_column_chunks, map_columns_sorted, ColumnArray};
+    use super::{
+        allocate_balanced_tree, inject_and_hash_layer, inject_column_chunks, map_columns_sorted,
+        ColumnArray,
+    };
+    use crate::commitment_scheme;
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::merkle_input::MerkleTreeInput;
     use crate::commitment_scheme::utils::{
         allocate_layer, hash_layer, hash_merkle_tree, hash_merkle_tree_from_bottom_layer, inject,
         inject_hash_in_pairs, transpose_to_bytes, tree_data_as_mut_ref,
@@ -506,5 +579,106 @@ mod tests {
         let mut hash_inputs = vec![vec![], vec![]];
 
         inject_column_chunks::<Blake3Hasher, M31>(&columns, &mut hash_inputs, 0, 1);
+    }
+
+    #[test]
+    fn inject_and_hash_layer_test() {
+        // trace_column: [M31;16] = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+        let trace_column_0 = (0..16).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let trace_column_1 = (0..8).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let sub_trees_height = 3;
+        let mut input = MerkleTreeInput::new();
+        input.insert_column(sub_trees_height, &trace_column_0);
+        input.insert_column(sub_trees_height - 1, &trace_column_1);
+        let mut leaf_layer = vec![<commitment_scheme::blake3_hash::Blake3Hasher as commitment_scheme::hasher::Hasher>::Hash::default();1 << sub_trees_height];
+        let mut hashed_leaf_layer_injected = vec![<commitment_scheme::blake3_hash::Blake3Hasher as commitment_scheme::hasher::Hasher>::Hash::default();1 << (sub_trees_height-1)];
+        let mut hashed_leaf_layer_not_injected = vec![<commitment_scheme::blake3_hash::Blake3Hasher as commitment_scheme::hasher::Hasher>::Hash::default();1 << (sub_trees_height-1)];
+
+        inject_and_hash_layer::<commitment_scheme::blake3_hash::Blake3Hasher, M31, false>(
+            &[],
+            &mut leaf_layer,
+            &input.get_columns(sub_trees_height).iter(),
+        );
+        inject_and_hash_layer::<commitment_scheme::blake3_hash::Blake3Hasher, M31, true>(
+            &leaf_layer[..],
+            &mut hashed_leaf_layer_injected,
+            &input.get_columns(sub_trees_height - 1).iter(),
+        );
+        inject_and_hash_layer::<commitment_scheme::blake3_hash::Blake3Hasher, M31, true>(
+            &leaf_layer[..],
+            &mut hashed_leaf_layer_not_injected,
+            &input.get_columns(sub_trees_height - 2).iter(),
+        );
+
+        // leaf_layer: [Blake3Hash;8] = [h(0,1),h(2,3),...h(14,15)]
+        leaf_layer.iter().enumerate().for_each(|(i, h)| {
+            let mut hasher = Blake3Hasher::new();
+            hasher.update(&(2 * i as u32).to_le_bytes());
+            hasher.update(&((2 * i + 1) as u32).to_le_bytes());
+            assert_eq!(h, &hasher.finalize());
+        });
+
+        // hashed_leaf_layer_injected: [Blake3Hash;4] =
+        // [h(h(0,1),h(2,3),0,1),,...h(h(12,13),h(14,15),6,7)]
+        hashed_leaf_layer_injected
+            .iter()
+            .enumerate()
+            .for_each(|(i, h)| {
+                let mut hasher = Blake3Hasher::new();
+                hasher.update(leaf_layer[i * 2].as_ref());
+                hasher.update(leaf_layer[i * 2 + 1].as_ref());
+                hasher.update(&((2 * i) as u32).to_le_bytes());
+                hasher.update(&((2 * i + 1) as u32).to_le_bytes());
+                assert_eq!(h, &hasher.finalize());
+            });
+
+        // hashed_leaf_layer_not_injected: [Blake3Hash;4] =
+        // [h(h(0,1),h(2,3)),...h(h(12,13),h(14,15))]
+        hashed_leaf_layer_not_injected
+            .iter()
+            .enumerate()
+            .for_each(|(i, h)| {
+                let mut hasher = Blake3Hasher::new();
+                hasher.update(leaf_layer[i * 2].as_ref());
+                hasher.update(leaf_layer[i * 2 + 1].as_ref());
+                assert_eq!(h, &hasher.finalize());
+            })
+    }
+
+    #[test]
+    #[should_panic]
+    fn inject_and_hash_layer_wrong_size_test() {
+        let layer_length = 1 << 3;
+        let trace_column_0 = (0..16).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let prev_hashes = vec![
+            <Blake3Hasher as commitment_scheme::hasher::Hasher>::Hash::default();
+            layer_length
+        ];
+        let mut dst = vec![<commitment_scheme::blake3_hash::Blake3Hasher as commitment_scheme::hasher::Hasher>::Hash::default();layer_length / 4];
+        let mut input = MerkleTreeInput::new();
+
+        input.insert_column(1, &trace_column_0);
+        inject_and_hash_layer::<commitment_scheme::blake3_hash::Blake3Hasher, M31, true>(
+            &prev_hashes[..],
+            &mut dst,
+            &input.get_columns(1).iter(),
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn inject_and_hash_bottom_layer_with_child_hashes_test() {
+        let layer_length = 1 << 3;
+        let prev_hashes = vec![<commitment_scheme::blake3_hash::Blake3Hasher as commitment_scheme::hasher::Hasher>::Hash::default();layer_length];
+        let mut dst = vec![<commitment_scheme::blake3_hash::Blake3Hasher as commitment_scheme::hasher::Hasher>::Hash::default();layer_length / 2];
+        let mut input = MerkleTreeInput::new();
+        let trace_column_0 = (0..16).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+
+        input.insert_column(1, &trace_column_0);
+        inject_and_hash_layer::<commitment_scheme::blake3_hash::Blake3Hasher, M31, false>(
+            &prev_hashes[..],
+            &mut dst,
+            &input.get_columns(1).iter(),
+        );
     }
 }
