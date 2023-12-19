@@ -1,6 +1,8 @@
 use std::fmt::{self, Display};
+use std::slice::Iter;
 
-use super::hasher::Hasher;
+use super::hasher::{HashState, Hasher};
+use crate::core::fields::{Field, IntoSlice};
 
 /// A MerkleMultiLayer represents multiple sequential merkle-tree layers, as a SubTreeMajor array of
 /// hash values. Each SubTree is a balanced binary tree of height `sub_trees_height`.
@@ -35,6 +37,62 @@ impl<H: Hasher> MerkleMultiLayer<H> {
             })
             .collect()
     }
+}
+
+fn _hash_layer<H: Hasher, F: Field, const IS_INTERMEDIATE: bool>(
+    prev_hashes: &[H::Hash],
+    dst: &mut [H::Hash],
+    input_columns: &Iter<'_, &[F]>,
+) where
+    F: IntoSlice<H::NativeType>,
+{
+    let produced_layer_length = dst.len();
+    if IS_INTERMEDIATE {
+        assert_eq!(prev_hashes.len(), produced_layer_length * 2);
+    }
+
+    let mut hash_state = H::State::new();
+    match input_columns.clone().peekable().next() {
+        Some(_) => {
+            // Match the input columns to corresponding chunk sizes, calculate once
+            let input_columns: Vec<_> = input_columns
+                .clone()
+                .zip(
+                    input_columns
+                        .clone()
+                        .map(|c| c.len() / produced_layer_length),
+                )
+                .collect();
+            dst.iter_mut().enumerate().for_each(|(i, dst)| {
+                if IS_INTERMEDIATE {
+                    _inject_previous_hash_values::<H>(i, &mut hash_state, prev_hashes);
+                }
+                for (column, n_elements_in_chunk) in input_columns.iter() {
+                    let chunk = &column[i * n_elements_in_chunk..(i + 1) * n_elements_in_chunk];
+                    hash_state.update(F::into_slice(chunk));
+                }
+                *dst = hash_state.finalize_reset();
+            });
+        }
+        None if !IS_INTERMEDIATE => {
+            panic!("Tried to hash bottom layer without input columns!")
+        }
+        _ => {
+            dst.iter_mut().enumerate().for_each(|(i, dst)| {
+                _inject_previous_hash_values::<H>(i, &mut hash_state, prev_hashes);
+                *dst = hash_state.finalize_reset();
+            });
+        }
+    }
+}
+
+fn _inject_previous_hash_values<H: Hasher>(
+    i: usize,
+    hash_state: &mut <H as Hasher>::State,
+    prev_hashes: &[<H as Hasher>::Hash],
+) {
+    hash_state.update(prev_hashes[i * 2].as_ref());
+    hash_state.update(prev_hashes[i * 2 + 1].as_ref());
 }
 
 // TODO(Ohad): change according to the future implementation of get_layer_view() and
