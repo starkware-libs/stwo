@@ -3,10 +3,12 @@ use std::iter::Chain;
 use std::ops::Deref;
 
 use super::utils::fold;
+use crate::commitment_scheme::hasher::Hasher;
+use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{ExtensionOf, Field};
+use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.
@@ -257,7 +259,7 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
     }
 
     /// Evaluates the polynomial at all points in the domain.
-    pub fn evaluate(self, domain: CircleDomain) -> CircleEvaluation<F> {
+    pub fn evaluate(&self, domain: CircleDomain) -> CircleEvaluation<F> {
         // Use CFFT to evaluate.
         let mut coset = domain.half_coset;
         let mut cosets = vec![];
@@ -288,6 +290,15 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
             butterfly(&mut l[i], &mut r[i], p.y);
         }
         CircleEvaluation { domain, values }
+    }
+
+    pub fn commit<H: Hasher>(&self, n_bits: usize) -> MerkleTree<F, H>
+    where
+        F: IntoSlice<H::NativeType>,
+    {
+        let commitment_domain = CanonicCoset::new(n_bits);
+        let evaluation = self.evaluate(commitment_domain.circle_domain());
+        MerkleTree::<F, H>::commit(vec![evaluation.values])
     }
 }
 
