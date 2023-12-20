@@ -257,7 +257,7 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
     }
 
     /// Evaluates the polynomial at all points in the domain.
-    pub fn evaluate(self, domain: CircleDomain) -> CircleEvaluation<F> {
+    pub fn evaluate(&self, domain: CircleDomain) -> CircleEvaluation<F> {
         // Use CFFT to evaluate.
         let mut coset = domain.half_coset;
         let mut cosets = vec![];
