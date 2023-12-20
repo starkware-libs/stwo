@@ -6,7 +6,7 @@ use super::fields::qm31::QM31;
 use super::fields::{ExtensionOf, Field};
 use crate::core::channel::{Channel, BYTES_PER_HASH};
 use crate::core::fields::qm31::P4;
-use crate::math::egcd;
+use crate::math::utils::egcd;
 
 /// A point on the complex circle. Treaed as an additive group.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

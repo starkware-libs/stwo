@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use super::hasher::Hasher;
 use crate::core::fields::{Field, IntoSlice};
+use crate::math::utils::{log2_ceil, usize_safe_div};
 
 pub type ColumnArray<T> = Vec<Vec<T>>;
 pub type ColumnLengthMap<T> = BTreeMap<usize, ColumnArray<T>>;
@@ -19,8 +20,7 @@ pub fn allocate_balanced_tree<T: Sized>(
     output_size_bytes: usize,
 ) -> TreeData<T> {
     assert!(output_size_bytes.is_power_of_two());
-    let tree_height =
-        crate::math::log2_ceil(bottom_layer_length * size_of_node_bytes / output_size_bytes);
+    let tree_height = log2_ceil(bottom_layer_length * size_of_node_bytes / output_size_bytes);
 
     // Safe because pointers are initialized later.
     let mut data: TreeData<T> = unsafe { TreeData::new_zeroed_slice(tree_height).assume_init() };
@@ -36,7 +36,7 @@ pub fn allocate_balanced_tree<T: Sized>(
 
 /// Performes a 2-to-1 hash on a layer of a merkle tree.
 pub fn hash_layer<H: Hasher>(layer: &[H::NativeType], node_size: usize, dst: &mut [H::NativeType]) {
-    let n_nodes_in_layer = crate::math::usize_safe_div(layer.len(), node_size);
+    let n_nodes_in_layer = usize_safe_div(layer.len(), node_size);
     assert!(n_nodes_in_layer.is_power_of_two());
     assert!(n_nodes_in_layer <= dst.len() / H::OUTPUT_SIZE);
 
@@ -254,7 +254,7 @@ mod tests {
         inject_hash_in_pairs, transpose_to_bytes, tree_data_as_mut_ref,
     };
     use crate::core::fields::m31::M31;
-    use crate::math;
+    use crate::math::utils::log2_ceil;
 
     fn init_test_trace() -> ColumnArray<u32> {
         let col0 = std::iter::repeat(0).take(8).collect();
@@ -365,7 +365,7 @@ mod tests {
         let output_size = Blake3Hasher::OUTPUT_SIZE;
         let tree = allocate_balanced_tree::<u8>(n_nodes, node_size, output_size);
 
-        assert_eq!(tree.len(), math::log2_ceil(n_nodes) + 1);
+        assert_eq!(tree.len(), log2_ceil(n_nodes) + 1);
         assert_eq!(tree[0].len(), n_nodes * output_size);
         assert_eq!(tree[1].len(), 4 * output_size);
         assert_eq!(tree[2].len(), 2 * output_size);

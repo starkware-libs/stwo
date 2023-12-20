@@ -8,6 +8,7 @@ use crate::commitment_scheme::utils::{
     tree_data_as_mut_ref, ColumnArray, TreeData,
 };
 use crate::core::fields::{Field, IntoSlice};
+use crate::math::utils::{prev_pow_two, usize_div_ceil};
 
 pub struct MerkleTree<T: Field + Sized + Debug + Display, H: Hasher> {
     pub bottom_layer: Vec<T>,
@@ -46,7 +47,7 @@ where
         });
 
         let n_rows_in_node = std::cmp::min(
-            crate::math::prev_pow_two(H::BLOCK_SIZE / (trace.len() * std::mem::size_of::<T>())),
+            prev_pow_two(H::BLOCK_SIZE / (trace.len() * std::mem::size_of::<T>())),
             trace[0].len(),
         );
 
@@ -54,8 +55,7 @@ where
         let bottom_layer = column_to_row_major(trace);
 
         // Allocate rest of the tree.
-        let bottom_layer_length_nodes =
-            crate::math::usize_div_ceil(bottom_layer.len(), bottom_layer_block_size);
+        let bottom_layer_length_nodes = usize_div_ceil(bottom_layer.len(), bottom_layer_block_size);
         let tree_data =
             allocate_balanced_tree(bottom_layer_length_nodes, H::BLOCK_SIZE, H::OUTPUT_SIZE);
 
