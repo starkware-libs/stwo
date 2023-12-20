@@ -12,7 +12,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::poly::circle::{
-    CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PointSetEvaluation,
+    commit, CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PointSetEvaluation,
 };
 
 type Channel = Blake2sChannel;
@@ -142,7 +142,7 @@ impl Fibonacci {
         &self,
         channel: &mut Channel,
         trace_evaluation: &CircleEvaluation<BaseField>,
-    ) -> Vec<QM31> {
+    ) -> CircleEvaluation<QM31> {
         let verifier_randomness = channel.draw_random_felts();
         let random_coeff = QM31::from_m31_array(verifier_randomness[..4].try_into().unwrap());
         let mut quotient_values = Vec::with_capacity(self.constraint_eval_domain.size());
@@ -155,7 +155,7 @@ impl Fibonacci {
                 },
             ));
         }
-        quotient_values
+        CircleEvaluation::new(self.constraint_eval_domain, quotient_values)
     }
 
     /// Returns the mask values for the OODS point.
@@ -203,22 +203,22 @@ impl Fibonacci {
             BaseField::into_slice(&[self.claim]),
         ));
         let trace = self.get_trace();
-        // TODO(AlonH): Move the two lines below into a commit function after fixing the domains.
         let trace_poly = trace.interpolate();
-        let extended_evaluation = trace_poly.clone().evaluate(self.eval_domain);
-        let trace_merkle =
-            MerkleTree::<BaseField, MerkleHasher>::commit(vec![extended_evaluation.values.clone()]);
+        let trace_evaluation = trace_poly.evaluate(self.eval_domain);
+        let trace_merkle: MerkleTree<BaseField, MerkleHasher> =
+            commit(&trace_poly, self.trace_coset.n_bits + 1);
         channel.mix_with_seed(trace_merkle.root());
 
-        let quotient_values = self.compute_quotient(&mut channel, &extended_evaluation);
-        let quotient_merkle =
-            MerkleTree::<QM31, MerkleHasher>::commit(vec![quotient_values.clone()]);
+        let quotient = self.compute_quotient(&mut channel, &trace_evaluation);
+        let quotient_poly = quotient.interpolate();
+        let quotient_merkle: MerkleTree<QM31, MerkleHasher> =
+            commit(&quotient_poly, self.constraint_eval_domain.n_bits() + 1);
         channel.mix_with_seed(quotient_merkle.root());
 
         let oods_evaluation = self.get_oods_values(&mut channel, &trace_poly);
         let mut mask_quotients = Vec::with_capacity(oods_evaluation.len());
         for (point, value) in oods_evaluation.iter() {
-            mask_quotients.push(self.get_mask_quotient(*point, *value, &extended_evaluation));
+            mask_quotients.push(self.get_mask_quotient(*point, *value, &trace_evaluation));
         }
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
@@ -296,7 +296,7 @@ mod tests {
         let trace = fib.get_trace();
         let trace_poly = trace.interpolate();
 
-        let extended_evaluation = trace_poly.clone().evaluate(fib.eval_domain);
+        let extended_evaluation = trace_poly.evaluate(fib.eval_domain);
 
         // TODO(ShaharS), Change to a channel implementation to retrieve the random
         // coefficients from extension field.
