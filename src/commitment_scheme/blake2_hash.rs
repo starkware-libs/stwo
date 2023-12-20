@@ -59,7 +59,9 @@ impl super::hasher::Hash<u8> for Blake2sHash {}
 
 // Wrapper for the blake2s Hashing functionalities.
 #[derive(Clone)]
-pub struct Blake2sHasher {}
+pub struct Blake2sHasher {
+    state: Blake2s256,
+}
 
 impl super::hasher::Hasher for Blake2sHasher {
     type Hash = Blake2sHash;
@@ -67,22 +69,26 @@ impl super::hasher::Hasher for Blake2sHasher {
     const OUTPUT_SIZE: usize = 32;
     type NativeType = u8;
 
-    fn hash(val: &[u8]) -> Self::Hash {
-        let mut hasher = Blake2s256::new();
-        blake2::Digest::update(&mut hasher, val);
-        Blake2sHash(hasher.finalize().into())
+    fn new() -> Self {
+        Self {
+            state: Blake2s256::new(),
+        }
     }
 
-    fn concat_and_hash(v1: &Self::Hash, v2: &Self::Hash) -> Blake2sHash {
-        let mut hasher = Blake2s256::new();
-        blake2::Digest::update(&mut hasher, v1.0);
-        blake2::Digest::update(&mut hasher, v2.0);
-
-        Blake2sHash(hasher.finalize().into())
+    fn reset(&mut self) {
+        blake2::Digest::reset(&mut self.state);
     }
 
-    fn hash_many(data: &[Vec<u8>]) -> Vec<Self::Hash> {
-        data.iter().map(|x| Self::hash(x)).collect()
+    fn update(&mut self, data: &[u8]) {
+        blake2::Digest::update(&mut self.state, data);
+    }
+
+    fn finalize(self) -> Blake2sHash {
+        Blake2sHash(self.state.finalize().into())
+    }
+
+    fn finalize_reset(&mut self) -> Blake2sHash {
+        Blake2sHash(self.state.finalize_reset().into())
     }
 
     fn hash_one_in_place(data: &[u8], dst: &mut [u8]) {
@@ -107,13 +113,13 @@ impl super::hasher::Hasher for Blake2sHasher {
 
     // TODO(Ohad): Consider allocating manually and using the in_place function.
     fn hash_many_multi_src(data: &[Vec<&[u8]>]) -> Vec<Self::Hash> {
-        let mut hasher = Blake2s256::new();
+        let mut hasher = Blake2sHasher::new();
         data.iter()
             .map(|input_group| {
                 input_group.iter().for_each(|d| {
-                    blake2::Digest::update(&mut hasher, d);
+                    hasher.update(d);
                 });
-                Blake2sHash(hasher.finalize_reset().into())
+                hasher.finalize_reset()
             })
             .collect()
     }
@@ -123,14 +129,14 @@ impl super::hasher::Hasher for Blake2sHasher {
             data.len() == dst.len(),
             "Attempt to hash many multi src with different input and output lengths!"
         );
-        let mut hasher = Blake2s256::new();
+        let mut hasher = Blake2sHasher::new();
         data.iter()
             .zip(dst.iter_mut())
             .for_each(|(input_group, out)| {
                 input_group.iter().for_each(|d| {
-                    blake2::Digest::update(&mut hasher, d);
+                    hasher.update(d);
                 });
-                *out = Blake2sHash(hasher.finalize_reset().into());
+                *out = hasher.finalize_reset();
             })
     }
 }
@@ -210,5 +216,17 @@ mod tests {
         assert_eq!(hash_results[1], expected_result1);
         assert_eq!(hash_in_place_results[0], expected_result0);
         assert_eq!(hash_in_place_results[1], expected_result1);
+    }
+
+    #[test]
+    fn hash_state_test() {
+        let mut state = Blake2sHasher::new();
+        state.update(b"a");
+        state.update(b"b");
+        let hash = state.finalize_reset();
+        let hash_empty = state.finalize();
+
+        assert_eq!(hash.to_string(), Blake2sHasher::hash(b"ab").to_string());
+        assert_eq!(hash_empty.to_string(), Blake2sHasher::hash(b"").to_string());
     }
 }
