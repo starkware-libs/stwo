@@ -38,11 +38,41 @@ impl<F: ExtensionOf<BaseField>, const N: usize> SquareMatrix<F, N> for RowMajorM
     }
 }
 
+/// A square matrix of size N, with the following property:
+/// M(i, j) is equal to unique_values at index '(j - i) % unique_values.len()'.
+pub struct CircularMatrix<F: ExtensionOf<BaseField>, const N: usize> {
+    unique_values: Vec<F>,
+}
+
+impl<F: ExtensionOf<BaseField>, const N: usize> CircularMatrix<F, N> {
+    pub fn new(values: Vec<F>) -> Self {
+        assert!(values.len() >= N);
+        Self {
+            unique_values: values,
+        }
+    }
+}
+
+impl<F: ExtensionOf<BaseField>, const N: usize> SquareMatrix<F, N> for CircularMatrix<F, N> {
+    fn get_at(&self, i: usize, j: usize) -> F {
+        let mut index = j as isize - i as isize;
+
+        if index >= 0 {
+            return self.unique_values[index as usize];
+        }
+
+        // Matrix is Circular.
+        index += self.unique_values.len() as isize;
+        self.unique_values[index as usize]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::core::fields::m31::M31;
+    use crate::core::fields::qm31::QM31;
     use crate::m31;
-    use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
+    use crate::math::matrix::{CircularMatrix, RowMajorMatrix, SquareMatrix};
 
     #[test]
     fn test_matrix_multiplication() {
@@ -61,5 +91,19 @@ mod tests {
         let result = matrix.mul(vector);
 
         assert_eq!(result, expected_result);
+    }
+
+    #[test]
+    fn test_circular_matrix() {
+        let n_unique_values = 32;
+        let matrix = CircularMatrix::<QM31, 24>::new(
+            (0..n_unique_values)
+                .map(|x| QM31::from(m31!(x)))
+                .collect::<Vec<_>>(),
+        );
+
+        assert_eq!(matrix.get_at(0, 0), QM31::from(m31!(0)));
+        assert_eq!(matrix.get_at(1, 3), QM31::from(m31!(2)));
+        assert_eq!(matrix.get_at(3, 1), QM31::from(m31!(n_unique_values - 2)));
     }
 }
