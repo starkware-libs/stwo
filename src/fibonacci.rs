@@ -4,16 +4,15 @@ use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
-use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
+use crate::core::circle::Coset;
 use crate::core::constraints::{
-    coset_vanishing, point_excluder, point_vanishing, EvalByEvaluation, EvalByPoly, PolyOracle,
+    coset_vanishing, point_excluder, point_vanishing, EvalByEvaluation, PolyOracle,
 };
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
-use crate::core::poly::circle::{
-    CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PointSetEvaluation,
-};
+use crate::core::oods::{get_mask_quotient, get_oods_values};
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointSetEvaluation};
 
 type Channel = Blake2sChannel;
 type MerkleHasher = <Channel as ChannelTrait>::ChannelHasher;
@@ -116,18 +115,6 @@ impl Fibonacci {
         quotient
     }
 
-    /// Evaluates the OODS boundary polynomial at the trace point.
-    pub fn eval_mask_quotient(
-        &self,
-        trace: impl PolyOracle<BaseField>,
-        oods_point: CirclePoint<QM31>,
-        oods_value: QM31,
-    ) -> QM31 {
-        let num = trace.get_at(CirclePointIndex(0)) - oods_value;
-        let denom: QM31 = point_vanishing(oods_point, trace.point().into_ef());
-        num / denom
-    }
-
     pub fn get_mask(&self) -> Mask {
         Mask::new(
             (0..3)
@@ -160,45 +147,6 @@ impl Fibonacci {
         CircleEvaluation::new(self.constraint_eval_domain, quotient_values)
     }
 
-    /// Returns the mask values for the OODS point.
-    pub fn get_oods_values(
-        &self,
-        channel: &mut Channel,
-        trace_poly: &CirclePoly<BaseField>,
-    ) -> PointSetEvaluation<QM31> {
-        let oods_point = CirclePoint::<QM31>::get_random_point(channel);
-        let oods_eval = EvalByPoly {
-            point: oods_point,
-            poly: trace_poly,
-        };
-        let oods_conjugate_eval = EvalByPoly {
-            point: -oods_point,
-            poly: trace_poly,
-        };
-        self.get_mask()
-            .get_evaluation(&[self.trace_coset], &[oods_eval], &[oods_conjugate_eval])
-    }
-
-    pub fn get_mask_quotient(
-        &self,
-        point: CirclePoint<QM31>,
-        value: QM31,
-        eval: &CircleEvaluation<BaseField>,
-    ) -> Vec<QM31> {
-        let mut values = Vec::with_capacity(eval.domain.size());
-        for p_ind in eval.domain.iter_indices() {
-            values.push(self.eval_mask_quotient(
-                EvalByEvaluation {
-                    offset: p_ind,
-                    eval,
-                },
-                point,
-                value,
-            ));
-        }
-        values
-    }
-
     pub fn prove(self) -> FibonacciProof {
         let mut channel = Channel::new(<Channel as ChannelTrait>::ChannelHasher::hash(
             BaseField::into_slice(&[self.claim]),
@@ -226,10 +174,15 @@ impl Fibonacci {
             MerkleTree::<QM31, MerkleHasher>::commit(vec![quotient_commitment_evaluation.values]);
         channel.mix_with_seed(quotient_merkle.root());
 
-        let oods_evaluation = self.get_oods_values(&mut channel, &trace_poly);
+        let oods_evaluation = get_oods_values(
+            self.get_mask(),
+            &mut channel,
+            &[self.trace_coset],
+            &[trace_poly],
+        );
         let mut mask_quotients = Vec::with_capacity(oods_evaluation.len());
         for (point, value) in oods_evaluation.iter() {
-            mask_quotients.push(self.get_mask_quotient(
+            mask_quotients.push(get_mask_quotient(
                 *point,
                 *value,
                 &trace_commitment_evaluation,
