@@ -4,14 +4,14 @@ use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
-use crate::core::circle::Coset;
+use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{
     coset_vanishing, point_excluder, point_vanishing, EvalByEvaluation, PolyOracle,
 };
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
-use crate::core::oods::{get_mask_quotient, get_oods_values};
+use crate::core::oods::{get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
 
 type Channel = Blake2sChannel;
@@ -144,7 +144,7 @@ impl Fibonacci {
     }
 
     pub fn prove(self) -> FibonacciProof {
-        let mut channel = Channel::new(<Channel as ChannelTrait>::ChannelHasher::hash(
+        let channel = &mut Channel::new(<Channel as ChannelTrait>::ChannelHasher::hash(
             BaseField::into_slice(&[self.claim]),
         ));
         let trace = self.get_trace();
@@ -160,30 +160,43 @@ impl Fibonacci {
                 .clone()]);
         channel.mix_with_seed(trace_merkle.root());
 
-        let quotient = self.compute_quotient(&mut channel, &trace_evaluation);
+        let quotient = self.compute_quotient(channel, &trace_evaluation);
         let quotient_poly = quotient.interpolate();
         let quotient_commitment_domain =
             CanonicCoset::new(self.constraint_eval_domain.n_bits() + BLOW_UP_FACTOR_BITS);
         let quotient_commitment_evaluation =
             quotient_poly.evaluate(quotient_commitment_domain.circle_domain());
         let quotient_merkle =
-            MerkleTree::<QM31, MerkleHasher>::commit(vec![quotient_commitment_evaluation.values]);
+            MerkleTree::<QM31, MerkleHasher>::commit(vec![quotient_commitment_evaluation
+                .values
+                .clone()]);
         channel.mix_with_seed(quotient_merkle.root());
 
+        let oods_point = CirclePoint::<QM31>::get_random_point(channel);
         let oods_evaluation = get_oods_values(
             self.get_mask(),
-            &mut channel,
-            &[self.trace_coset],
+            oods_point,
+            &[trace_commitment_domain],
             &[trace_poly],
         );
-        let mut mask_quotients = Vec::with_capacity(oods_evaluation.len());
+        let mut oods_quotients = Vec::with_capacity(oods_evaluation.len() + 2);
         for (point, value) in oods_evaluation.iter() {
-            mask_quotients.push(get_mask_quotient(
+            oods_quotients.push(get_oods_quotient(
                 *point,
                 *value,
                 &trace_commitment_evaluation,
             ));
         }
+        oods_quotients.push(get_oods_quotient(
+            oods_point,
+            quotient_poly.eval_at_point(oods_point),
+            &quotient_commitment_evaluation,
+        ));
+        oods_quotients.push(get_oods_quotient(
+            -oods_point,
+            quotient_poly.eval_at_point(-oods_point),
+            &quotient_commitment_evaluation,
+        ));
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
@@ -284,5 +297,11 @@ mod tests {
             interpolated_quotient_poly.eval_at_point(oods_point),
             fib.eval_quotient(random_coeff, trace_evaluator)
         );
+    }
+
+    #[test]
+    fn test_prove() {
+        let fib = Fibonacci::new(5, m31!(443693538));
+        fib.prove();
     }
 }
