@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::ops::Mul;
 
 use super::circle::{CirclePoint, CirclePointIndex};
 use super::fields::m31::BaseField;
@@ -47,7 +48,7 @@ impl Mask {
     pub fn get_point_indices(&self, cosets: &[CanonicCoset]) -> Vec<CirclePointIndex> {
         let mut res = Vec::with_capacity(self.items.len());
         for item in &self.items {
-            res.push(cosets[item.column_index].index_at(item.offset));
+            res.push(cosets[item.column_index].step_size.mul(item.offset));
         }
         res
     }
@@ -89,7 +90,7 @@ mod tests {
                 .collect(),
         );
         let mask_points = mask.get_point_indices(&trace_cosets);
-        let oracle_point_index = coset.step_size * 3;
+        let oracle_point_index = coset.index_at(3);
         let oracle_point = oracle_point_index.to_point();
         let poly_oracles = (0..N_TRACE_COLUMNS)
             .map(|i| EvalByPoly {
