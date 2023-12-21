@@ -88,7 +88,7 @@ mod tests {
                 })
                 .collect(),
         );
-        let mask_points = mask.get_point_indices(&trace_cosets);
+        let mask_point_indices = mask.get_point_indices(&trace_cosets);
         let oracle_point_index = coset.step_size * 3;
         let oracle_point = oracle_point_index.to_point();
         let poly_oracles = (0..N_TRACE_COLUMNS)
@@ -107,15 +107,16 @@ mod tests {
         let mask_evaluation =
             mask.get_evaluation(&trace_cosets, &poly_oracles, &conjugate_poly_oracles);
 
-        assert_eq!(mask_points.len() * 2, mask_evaluation.len());
-        for (mask_item, mask_point) in mask.items.iter().zip(mask_points) {
-            let point = oracle_point_index + mask_point;
+        assert_eq!(mask_point_indices.len() * 2, mask_evaluation.len());
+        for (mask_item, mask_point_index) in mask.items.iter().zip(mask_point_indices) {
+            let point_index = oracle_point_index + mask_point_index;
+            let point = point_index.to_point();
             let value = mask_evaluation.get_at(point);
             let conjugate_value = mask_evaluation.get_at(-point);
-            assert_eq!(value, trace[mask_item.column_index].get_at(point));
+            assert_eq!(value, trace[mask_item.column_index].get_at(point_index));
             assert_eq!(
                 conjugate_value,
-                trace[mask_item.column_index].get_at(-point)
+                trace[mask_item.column_index].get_at(-point_index)
             );
         }
     }
