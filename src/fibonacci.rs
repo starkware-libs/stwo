@@ -136,13 +136,9 @@ impl Fibonacci {
         let random_coeff = QM31::from_m31_array(verifier_randomness[..4].try_into().unwrap());
         let mut quotient_values = Vec::with_capacity(self.constraint_eval_domain.size());
         for p_ind in self.constraint_eval_domain.iter_indices() {
-            quotient_values.push(self.eval_quotient(
-                random_coeff,
-                EvalByEvaluation {
-                    offset: p_ind,
-                    eval: trace_evaluation,
-                },
-            ));
+            quotient_values.push(
+                self.eval_quotient(random_coeff, EvalByEvaluation::new(p_ind, trace_evaluation)),
+            );
         }
         CircleEvaluation::new(self.constraint_eval_domain, quotient_values)
     }
@@ -224,20 +220,14 @@ mod tests {
             .iter_indices()
             .take(fib.constraint_coset.size() - 2)
         {
-            let res = fib.eval_step_constraint(EvalByEvaluation {
-                offset: p_ind,
-                eval: &trace,
-            });
+            let res = fib.eval_step_constraint(EvalByEvaluation::new(p_ind, &trace));
             assert_eq!(res, BaseField::zero());
         }
 
         // Assert that the first trace value is 1.
         assert_eq!(
             fib.eval_boundary_constraint(
-                EvalByEvaluation {
-                    offset: fib.constraint_coset.index_at(0),
-                    eval: &trace,
-                },
+                EvalByEvaluation::new(fib.constraint_coset.index_at(0), &trace,),
                 BaseField::one()
             ),
             BaseField::zero()
@@ -246,12 +236,11 @@ mod tests {
         // Assert that the last trace value is the fibonacci claim.
         assert_eq!(
             fib.eval_boundary_constraint(
-                EvalByEvaluation {
-                    offset: fib
-                        .constraint_coset
+                EvalByEvaluation::new(
+                    fib.constraint_coset
                         .index_at(fib.constraint_coset.size() - 1),
-                    eval: &trace,
-                },
+                    &trace,
+                ),
                 fib.claim
             ),
             BaseField::zero()
@@ -275,10 +264,7 @@ mod tests {
         for p_ind in fib.constraint_eval_domain.iter_indices() {
             quotient_values.push(fib.eval_quotient(
                 random_coeff,
-                EvalByEvaluation {
-                    offset: p_ind,
-                    eval: &extended_evaluation,
-                },
+                EvalByEvaluation::new(p_ind, &extended_evaluation),
             ));
         }
         let quotient_eval = CircleEvaluation::new(fib.constraint_eval_domain, quotient_values);

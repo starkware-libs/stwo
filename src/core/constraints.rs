@@ -77,23 +77,38 @@ impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByPoly<'a, F> {
 }
 
 // TODO(spapini): make an iterator instead, so we do all computations beforehand.
+/// Polynomial evaluation over the base circle domain. The evaluation could be over an extension of
+/// the base field.
 #[derive(Clone)]
-pub struct EvalByEvaluation<'a, T: Evaluation<BaseField>> {
+pub struct EvalByEvaluation<'a, F: ExtensionOf<BaseField>, T: Evaluation<F>> {
     pub offset: CirclePointIndex,
     pub eval: &'a T,
+    pub _eval_field: std::marker::PhantomData<F>,
 }
 
-impl<'a, T: Evaluation<BaseField>> PolyOracle<BaseField> for EvalByEvaluation<'a, T> {
-    fn point(&self) -> CirclePoint<BaseField> {
-        self.offset.to_point()
+impl<'a, F: ExtensionOf<BaseField>, T: Evaluation<F>> EvalByEvaluation<'a, F, T> {
+    pub fn new(offset: CirclePointIndex, eval: &'a T) -> Self {
+        Self {
+            offset,
+            eval,
+            _eval_field: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, F: ExtensionOf<BaseField>, T: Evaluation<F>> PolyOracle<F> for EvalByEvaluation<'a, F, T> {
+    fn point(&self) -> CirclePoint<F> {
+        // TODO(AlonH): Separate the point field generality from the evaluation field generality and
+        // remove the `into_ef` here.
+        self.offset.to_point().into_ef()
     }
 
-    fn get_at(&self, index: CirclePointIndex) -> BaseField {
+    fn get_at(&self, index: CirclePointIndex) -> F {
         self.eval.get_at(index + self.offset)
     }
 }
 
-impl<'a, T: Evaluation<BaseField>> Copy for EvalByEvaluation<'a, T> {}
+impl<'a, F: ExtensionOf<BaseField>, T: Evaluation<F>> Copy for EvalByEvaluation<'a, F, T> {}
 
 #[cfg(test)]
 mod tests {

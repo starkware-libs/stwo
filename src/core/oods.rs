@@ -26,10 +26,7 @@ pub fn get_mask_quotient(
     let mut values = Vec::with_capacity(eval.domain.size());
     for p_ind in eval.domain.iter_indices() {
         values.push(eval_mask_quotient_point(
-            EvalByEvaluation {
-                offset: p_ind,
-                eval,
-            },
+            EvalByEvaluation::new(p_ind, eval),
             point,
             value,
         ));
