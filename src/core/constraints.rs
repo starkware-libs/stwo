@@ -78,12 +78,12 @@ impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByPoly<'a, F> {
 
 // TODO(spapini): make an iterator instead, so we do all computations beforehand.
 #[derive(Clone)]
-pub struct EvalByEvaluation<'a, T: Evaluation> {
+pub struct EvalByEvaluation<'a, T: Evaluation<BaseField>> {
     pub offset: CirclePointIndex,
     pub eval: &'a T,
 }
 
-impl<'a, T: Evaluation> PolyOracle<BaseField> for EvalByEvaluation<'a, T> {
+impl<'a, T: Evaluation<BaseField>> PolyOracle<BaseField> for EvalByEvaluation<'a, T> {
     fn point(&self) -> CirclePoint<BaseField> {
         self.offset.to_point()
     }
@@ -93,7 +93,7 @@ impl<'a, T: Evaluation> PolyOracle<BaseField> for EvalByEvaluation<'a, T> {
     }
 }
 
-impl<'a, T: Evaluation> Copy for EvalByEvaluation<'a, T> {}
+impl<'a, T: Evaluation<BaseField>> Copy for EvalByEvaluation<'a, T> {}
 
 #[cfg(test)]
 mod tests {
