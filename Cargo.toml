@@ -27,6 +27,10 @@ harness = false
 name = "field"
 
 [[bench]]
+name = "matrix"
+harness = false
+
+[[bench]]
 name = "merkle_bench"
 harness = false
 
