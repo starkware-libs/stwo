@@ -109,13 +109,13 @@ mod tests {
 
         assert_eq!(mask_points.len() * 2, mask_evaluation.len());
         for (mask_item, mask_point) in mask.items.iter().zip(mask_points) {
-            let point = oracle_point_index + mask_point;
-            let value = mask_evaluation.get_at(point);
-            let conjugate_value = mask_evaluation.get_at(-point);
-            assert_eq!(value, trace[mask_item.column_index].get_at(point));
+            let point_index = oracle_point_index + mask_point;
+            let value = mask_evaluation.get_at(point_index.to_point());
+            let conjugate_value = mask_evaluation.get_at(-point_index.to_point());
+            assert_eq!(value, trace[mask_item.column_index].get_at(point_index));
             assert_eq!(
                 conjugate_value,
-                trace[mask_item.column_index].get_at(-point)
+                trace[mask_item.column_index].get_at(-point_index)
             );
         }
     }
