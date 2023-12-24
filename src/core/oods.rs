@@ -4,7 +4,7 @@ use super::circle::{CirclePoint, CirclePointIndex};
 use super::constraints::{point_vanishing, EvalByEvaluation, EvalByPoly, PolyOracle};
 use super::fields::m31::BaseField;
 use super::fields::qm31::QM31;
-use super::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PointSetEvaluation};
+use super::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PointMapping};
 
 /// Evaluates the OODS boundary polynomial at the trace point.
 pub fn eval_mask_quotient_point(
@@ -43,7 +43,7 @@ pub fn get_oods_values(
     channel: &mut Blake2sChannel,
     trace_domains: &[CanonicCoset],
     trace_polys: &[CirclePoly<BaseField>],
-) -> PointSetEvaluation<QM31> {
+) -> PointMapping<QM31> {
     let oods_point = CirclePoint::<QM31>::get_random_point(channel);
     let mut oods_evals = Vec::with_capacity(trace_polys.len());
     let mut oods_conjugate_evals = Vec::with_capacity(trace_polys.len());
