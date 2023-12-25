@@ -4,8 +4,8 @@ use prover_research::core::fields::qm31::QM31;
 use prover_research::math::matrix::{RowMajorMatrix, SquareMatrix};
 use rand::Rng;
 
-const MATRIX_SIZE: usize = 16;
-const QM31_MATRIX_SIZE: usize = 8;
+const MATRIX_SIZE: usize = 24;
+const QM31_MATRIX_SIZE: usize = 6;
 
 // TODO(ShaharS): Share code with other benchmarks.
 fn row_major_matrix_multiplication_bench(c: &mut Criterion) {
