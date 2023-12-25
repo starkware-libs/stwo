@@ -1,6 +1,7 @@
 use num_traits::One;
 
 use crate::commitment_scheme::hasher::Hasher;
+use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
@@ -13,11 +14,13 @@ use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::oods::{get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
+use crate::core::queries::generate_queries;
 
 type Channel = Blake2sChannel;
 type MerkleHasher = <Channel as ChannelTrait>::ChannelHasher;
 
 const BLOW_UP_FACTOR_BITS: usize = 1;
+const N_QUERIES: usize = 3;
 
 pub struct Fibonacci {
     pub trace_coset: CanonicCoset,
@@ -27,10 +30,15 @@ pub struct Fibonacci {
     pub claim: BaseField,
 }
 
+pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
+    pub decommitment: MerkleDecommitment<F, H>,
+    pub commitment: H::Hash,
+}
+
 pub struct FibonacciProof {
     pub public_input: BaseField,
-    pub trace_commitment: <MerkleHasher as Hasher>::Hash,
-    pub quotient_commitment: <MerkleHasher as Hasher>::Hash,
+    pub trace_commitment: CommitmentProof<BaseField, MerkleHasher>,
+    pub quotient_commitment: CommitmentProof<QM31, MerkleHasher>,
     // TODO(AlonH): Consider including only the values.
     pub trace_oods_evaluation: PointMapping<QM31>,
 }
@@ -195,11 +203,23 @@ impl Fibonacci {
             ));
         }
 
+        let quotient_queries =
+            generate_queries(channel, quotient_commitment_domain.n_bits, N_QUERIES);
+        let trace_queries = quotient_queries.iter().map(|q| q / 2).collect();
+        let quotient_decommitment = quotient_merkle.generate_decommitment(quotient_queries);
+        let trace_decommitment = trace_merkle.generate_decommitment(trace_queries);
+
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
             public_input: self.claim,
-            trace_commitment: trace_merkle.root(),
-            quotient_commitment: quotient_merkle.root(),
+            trace_commitment: CommitmentProof {
+                decommitment: trace_decommitment,
+                commitment: trace_merkle.root(),
+            },
+            quotient_commitment: CommitmentProof {
+                decommitment: quotient_decommitment,
+                commitment: quotient_merkle.root(),
+            },
             trace_oods_evaluation,
         }
     }
