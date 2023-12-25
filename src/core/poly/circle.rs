@@ -418,18 +418,12 @@ mod tests {
                 .iter_indices()
                 .map(|ind| {
                     // The constraint is poly0(x+off0)^2 = poly1(x+off1).
-                    EvalByEvaluation {
-                        offset: domain0.initial_index,
-                        eval: &eval0,
-                    }
-                    .get_at(ind)
-                    .square()
-                        - EvalByEvaluation {
-                            offset: domain1.index_at(1),
-                            eval: &eval1,
-                        }
+                    EvalByEvaluation::new(domain0.initial_index, &eval0)
                         .get_at(ind)
                         .square()
+                        - EvalByEvaluation::new(domain1.index_at(1), &eval1)
+                            .get_at(ind)
+                            .square()
                 })
                 .collect(),
         );
