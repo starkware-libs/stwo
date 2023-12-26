@@ -161,6 +161,28 @@ pub enum OpParam {
     Bool(bool),
     List(Vec<OpParam>),
 }
+
+impl OpParam {
+    pub fn unwrap(&self) -> (String, String) {
+        match self {
+            OpParam::Int(i) => ("int".to_string(), i.to_string()),
+            OpParam::String(s) => ("string".to_string(), s.clone()),
+            OpParam::Bool(b) => ("bool".to_string(), b.to_string()),
+            OpParam::List(l) => {
+                let mut s = String::new();
+                for (i, item) in l.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(", ");
+                    }
+                    let (ty, val) = item.unwrap();
+                    s.push_str(&format!("{}: {}", ty, val));
+                }
+                ("list".to_string(), s)
+            }
+        }
+    }
+}
+
 impl Display for OpParam {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

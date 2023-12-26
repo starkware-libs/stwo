@@ -1,5 +1,8 @@
 use super::definition::ComponentInstance;
-use super::materialize::{MaterializedArray, MaterializedComputation};
+use super::graph::{GraphNode, PointwiseOp};
+use super::materialize::{
+    FusedNode, FusedOp, MaterializedArray, MaterializedComputation, Ordering,
+};
 
 pub fn get_component_inputs(component: &ComponentInstance) -> Vec<MaterializedArray> {
     let mut inputs = vec![];
@@ -37,4 +40,31 @@ pub fn get_component_computations(
     _component_instance: &ComponentInstance,
 ) -> Vec<MaterializedComputation> {
     unimplemented!()
+}
+
+pub fn get_materialized_computation(node: &GraphNode) -> MaterializedComputation {
+    let node_params: Vec<(String, String)> =
+        node.params.iter().map(|param| param.unwrap()).collect();
+    match node.op.as_str() {
+        "constant" => MaterializedComputation {
+            output_tile: vec![],
+            input_tile: vec![],
+            n_repeats: 1,
+            fused_op: FusedOp {
+                ops: node_params
+                    .iter()
+                    .map(|(param_ty, param_value)| FusedNode {
+                        name: node.name.clone(),
+                        op: PointwiseOp::Const {
+                            value: param_value.clone(),
+                            ty: param_ty.clone(),
+                        },
+                        ty: node.ty.clone(),
+                    })
+                    .collect(),
+            },
+            ordering: Ordering::Sequential,
+        },
+        &_ => unimplemented!(),
+    }
 }
