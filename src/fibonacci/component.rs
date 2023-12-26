@@ -291,24 +291,51 @@ pub fn create_fibonacci_component_definition(n_bits: u32) -> Component {
     }
 }
 
-#[test]
-fn test_component_file() {
-    let component = create_fibonacci_component_definition(5);
-    let json = serde_json::to_string_pretty(&component).unwrap() + "\n";
+#[cfg(test)]
+mod tests {
+    use super::create_fibonacci_component_definition;
+    use crate::core::air::materialize::MaterializedGraph;
+    use crate::core::air::materialize_utils::{
+        get_component_computations, get_component_inputs, get_component_outputs,
+    };
 
-    // Compute the path to a nearby file.
-    // Use the cargo environment variable to get the correct path to the source directory.
-    let mut path = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    path.push("src/examples/fibonacci_component.json");
+    #[test]
+    fn test_component_file() {
+        let component = create_fibonacci_component_definition(5);
+        let json = serde_json::to_string_pretty(&component).unwrap() + "\n";
 
-    // Compare against the local file fibonacci_component.json.
-    let expected_json = std::fs::read_to_string(path.clone()).unwrap();
-    if json != expected_json {
-        // Fix the component file if the FIX_TESTS environment variable is set.
-        if std::env::var("FIX_TESTS").is_ok() {
-            std::fs::write(path, json).unwrap();
-        } else {
-            panic!("Fibonacci component file is not up to date. Run with FIX_TESTS=1 to fix.");
+        // Compute the path to a nearby file.
+        // Use the cargo environment variable to get the correct path to the source directory.
+        let mut path = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+        path.push("src/examples/fibonacci_component.json");
+
+        // Compare against the local file fibonacci_component.json.
+        let expected_json = std::fs::read_to_string(path.clone()).unwrap();
+        if json != expected_json {
+            // Fix the component file if the FIX_TESTS environment variable is set.
+            if std::env::var("FIX_TESTS").is_ok() {
+                std::fs::write(path, json).unwrap();
+            } else {
+                panic!("Fibonacci component file is not up to date. Run with FIX_TESTS=1 to fix.");
+            }
         }
+    }
+
+    #[ignore = "unimplemented"]
+    #[test]
+    pub fn to_materialize_graph() {
+        let component = create_fibonacci_component_definition(4);
+        let component_instance = component.instances.first().unwrap();
+        let inputs = get_component_inputs(component_instance);
+        let outputs = get_component_outputs(component_instance);
+        let computations = get_component_computations(component_instance);
+
+        let x = MaterializedGraph {
+            inputs,
+            outputs,
+            computations,
+        };
+        println!("inputs: {:?}", x.inputs[0]);
+        println!("outputs: {:?}", x.outputs[0]);
     }
 }

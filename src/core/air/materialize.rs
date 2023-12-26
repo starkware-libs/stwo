@@ -1,5 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 use super::graph::PointwiseOp;
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MaterializedGraph {
     pub inputs: Vec<MaterializedArray>,
     pub outputs: Vec<MaterializedArray>,
@@ -7,12 +10,14 @@ pub struct MaterializedGraph {
     pub computations: Vec<MaterializedComputation>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MaterializedArray {
     pub name: String,
     pub size: u64,
     pub ty: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MaterializedComputation {
     pub output_tile: Vec<MaskItem>,
     pub input_tile: Vec<MaskItem>,
@@ -21,11 +26,13 @@ pub struct MaterializedComputation {
     pub ordering: Ordering,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Ordering {
     Sequential,
     Parallel,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MaskItem {
     pub item_name: String,
     pub array_name: String,
@@ -34,10 +41,12 @@ pub struct MaskItem {
     pub modulus: Option<u64>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FusedOp {
     pub ops: Vec<FusedNode>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FusedNode {
     pub name: String,
     pub op: PointwiseOp,
