@@ -25,6 +25,15 @@ pub fn generate_queries(
     }
 }
 
+pub fn get_trace_queries(
+    quotient_queries: &BTreeSet<usize>,
+    log_trace_domain_size: usize,
+    log_quotient_domain_size: usize,
+) -> BTreeSet<usize> {
+    let domain_ratio = 1 << (log_quotient_domain_size - log_trace_domain_size);
+    quotient_queries.iter().map(|q| q / domain_ratio).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::generate_queries;
