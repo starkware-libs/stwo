@@ -326,6 +326,7 @@ mod tests {
     pub fn to_materialize_graph() {
         let component = create_fibonacci_component_definition(4);
         let component_instance = component.instances.first().unwrap();
+
         let inputs = get_component_inputs(component_instance);
         let outputs = get_component_outputs(component_instance);
         let computations = get_component_computations(component_instance);
@@ -335,7 +336,8 @@ mod tests {
             outputs,
             computations,
         };
-        println!("inputs: {:?}", x.inputs[0]);
-        println!("outputs: {:?}", x.outputs[0]);
+        println!("inputs: {:?}", x.inputs);
+        println!("outputs: {:?}", x.outputs);
+        println!("computations: {:?}", x.computations);
     }
 }

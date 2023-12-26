@@ -1,7 +1,7 @@
 use super::definition::ComponentInstance;
 use super::graph::{GraphNode, PointwiseOp};
 use super::materialize::{
-    FusedNode, FusedOp, MaterializedArray, MaterializedComputation, Ordering,
+    FusedNode, FusedOp, MaskItem, MaterializedArray, MaterializedComputation, Ordering,
 };
 
 pub fn get_component_inputs(component: &ComponentInstance) -> Vec<MaterializedArray> {
@@ -37,9 +37,17 @@ pub fn get_component_outputs(component: &ComponentInstance) -> Vec<MaterializedA
 }
 
 pub fn get_component_computations(
-    _component_instance: &ComponentInstance,
+    component_instance: &ComponentInstance,
 ) -> Vec<MaterializedComputation> {
-    unimplemented!()
+    let ordering = vec![1_usize, 2];
+    let mut computations = vec![];
+    for index in ordering {
+        let node = &component_instance.generation_graph[index];
+        println!("node: {:?}", node);
+        let computation = get_materialized_computation(node);
+        computations.push(computation);
+    }
+    computations
 }
 
 pub fn get_materialized_computation(node: &GraphNode) -> MaterializedComputation {
@@ -53,16 +61,32 @@ pub fn get_materialized_computation(node: &GraphNode) -> MaterializedComputation
             fused_op: FusedOp {
                 ops: node_params
                     .iter()
-                    .map(|(param_ty, param_value)| FusedNode {
+                    .map(|(_param_ty, param_value)| FusedNode {
                         name: node.name.clone(),
                         op: PointwiseOp::Const {
                             value: param_value.clone(),
-                            ty: param_ty.clone(),
+                            ty: node.ty.clone(),
                         },
                         ty: node.ty.clone(),
                     })
                     .collect(),
             },
+            ordering: Ordering::Sequential,
+        },
+        "generation_input" => MaterializedComputation {
+            output_tile: vec![],
+            input_tile: node_params
+                .iter()
+                .map(|(_param_ty, param_value)| MaskItem {
+                    item_name: node.name.clone(),
+                    array_name: param_value.clone(),
+                    offset: 0,
+                    step: 1,
+                    modulus: None,
+                })
+                .collect(),
+            n_repeats: 1,
+            fused_op: FusedOp { ops: vec![] },
             ordering: Ordering::Sequential,
         },
         &_ => unimplemented!(),
