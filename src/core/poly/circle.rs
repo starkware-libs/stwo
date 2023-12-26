@@ -125,13 +125,10 @@ impl CanonicCoset {
     pub fn evaluation_domain(&self, eval_n_bits: usize) -> CircleDomain {
         assert!(eval_n_bits > self.coset.n_bits);
         // TODO(spapini): Document why this is like this.
-        if eval_n_bits == self.coset.n_bits + 1 {
-            return CircleDomain::new(Coset::new(
-                CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(eval_n_bits),
-                eval_n_bits - 1,
-            ));
-        }
-        CircleDomain::new(Coset::new(CirclePointIndex::generator(), eval_n_bits - 1))
+        CircleDomain::new(Coset::new(
+            CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(self.coset.n_bits + 1),
+            eval_n_bits - 1,
+        ))
     }
 
     pub fn n_bits(&self) -> usize {
