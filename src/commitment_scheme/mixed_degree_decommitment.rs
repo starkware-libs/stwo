@@ -40,6 +40,10 @@ impl<F: Field, H: Hasher> fmt::Display for MixedDecommitment<F, H> {
 
 impl<F: Field, H: Hasher> fmt::Display for DecommitmentNode<F, H> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&std::format!(
+            "Position in Layer: {}, ",
+            self.position_in_layer
+        ))?;
         if let Some(hash) = self.hash {
             f.write_str(&std::format!("Hash: {}, ", hash))?;
         }
@@ -64,15 +68,30 @@ mod tests {
             vec![super::DecommitmentNode::<M31, Blake3Hasher> {
                 hash: Some(Blake3Hasher::hash(b"a")),
                 injected_elements: (0..3).map(M31::from_u32_unchecked).collect(),
+                position_in_layer: 0,
             }],
             vec![
                 super::DecommitmentNode::<M31, Blake3Hasher> {
                     hash: Some(Blake3Hasher::hash(b"b")),
                     injected_elements: (3..6).map(M31::from_u32_unchecked).collect(),
+                    position_in_layer: 1,
                 },
                 super::DecommitmentNode::<M31, Blake3Hasher> {
                     hash: Some(Blake3Hasher::hash(b"c")),
                     injected_elements: (6..9).map(M31::from_u32_unchecked).collect(),
+                    position_in_layer: 0,
+                },
+            ],
+            vec![
+                super::DecommitmentNode::<M31, Blake3Hasher> {
+                    hash: Some(Blake3Hasher::hash(b"d")),
+                    injected_elements: Vec::new(),
+                    position_in_layer: 2,
+                },
+                super::DecommitmentNode::<M31, Blake3Hasher> {
+                    hash: Some(Blake3Hasher::hash(b"e")),
+                    injected_elements: Vec::new(),
+                    position_in_layer: 1,
                 },
             ],
         ]);
