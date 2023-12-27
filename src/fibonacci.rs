@@ -6,7 +6,8 @@ use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{
-    coset_vanishing, point_excluder, point_vanishing, EvalByEvaluation, PolyOracle,
+    coset_vanishing, point_excluder, point_vanishing, EvalByEvaluation, EvalByPointMapping,
+    PolyOracle,
 };
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
@@ -224,11 +225,30 @@ impl Fibonacci {
     }
 }
 
+pub fn verify_oods_values(
+    oods_point: CirclePoint<QM31>,
+    quotient_random_coeff: QM31,
+    trace_oods_evaluation: &PointMapping<QM31>,
+    claim: BaseField,
+    n_bits: usize,
+    quotient_oods_evaluation: &PointMapping<QM31>,
+) -> bool {
+    let fib = Fibonacci::new(n_bits, claim);
+    let hz = fib.eval_quotient(
+        quotient_random_coeff,
+        EvalByPointMapping {
+            point: oods_point,
+            point_mapping: trace_oods_evaluation,
+        },
+    );
+    quotient_oods_evaluation.get_at(oods_point) == hz
+}
+
 #[cfg(test)]
 mod tests {
     use num_traits::One;
 
-    use super::Fibonacci;
+    use super::{verify_oods_values, Fibonacci};
     use crate::core::circle::CirclePoint;
     use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
@@ -313,5 +333,21 @@ mod tests {
             interpolated_quotient_poly.eval_at_point(oods_point),
             fib.eval_quotient(random_coeff, trace_evaluator)
         );
+    }
+
+    #[test]
+    fn test_prove() {
+        let fib = Fibonacci::new(5, m31!(443693538));
+
+        let proof = fib.prove();
+
+        assert!(verify_oods_values(
+            proof.additional_proof_data.oods_point,
+            proof.additional_proof_data.quotient_random_coeff,
+            &proof.trace_oods_evaluation,
+            proof.public_input,
+            fib.constraint_coset.n_bits,
+            &proof.additional_proof_data.quotient_oods_evaluation,
+        ));
     }
 }
