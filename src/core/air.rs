@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::ops::Deref;
 
 use super::circle::{CirclePoint, CirclePointIndex};
 use super::fields::m31::BaseField;
@@ -50,6 +51,14 @@ impl Mask {
             res.push(cosets[item.column_index].index_at(item.offset));
         }
         res
+    }
+}
+
+impl Deref for Mask {
+    type Target = Vec<MaskItem>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.items
     }
 }
 
