@@ -115,7 +115,7 @@ impl Fibonacci {
         quotient
     }
 
-    pub fn get_mask(&self) -> Mask {
+    pub fn get_mask() -> Mask {
         Mask::new(
             (0..3)
                 .map(|offset| MaskItem {
@@ -174,7 +174,7 @@ impl Fibonacci {
         channel.mix_with_seed(quotient_merkle.root());
 
         let oods_point = CirclePoint::<QM31>::get_random_point(channel);
-        let mask = self.get_mask();
+        let mask = Self::get_mask();
         let trace_oods_evaluation =
             get_oods_values(&mask, oods_point, &[self.trace_coset], &[trace_poly]);
         // A quotient for each mask item and for the CP, in the OODS point and its conjugate.
