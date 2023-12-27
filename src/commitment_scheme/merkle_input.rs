@@ -41,9 +41,10 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
             column.len()
         );
 
+        // Column is spread over 'hash buckets' in the layer, every layer holds 2^(depth-1) buckets.
         // TODO(Ohad): implement embedd by repeatition and remove assert.
         assert!(
-            column.len() >= 2usize.pow(depth as u32),
+            column.len() >= 2usize.pow((depth - 1) as u32),
             "Column of size: {} is too small for injection at layer:{}",
             column.len(),
             depth
@@ -133,7 +134,7 @@ mod tests {
         let mut input = super::MerkleTreeInput::<M31>::new();
         let column = vec![M31::from_u32_unchecked(0); 1024];
 
-        input.insert_column(11, &column);
+        input.insert_column(12, &column);
     }
 
     #[test]
