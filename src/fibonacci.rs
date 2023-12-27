@@ -230,7 +230,7 @@ mod tests {
 
     use super::Fibonacci;
     use crate::core::circle::CirclePoint;
-    use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
+    use crate::core::constraints::{EvalByEvaluation, EvalByPointMapping, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::poly::circle::CircleEvaluation;
@@ -312,6 +312,29 @@ mod tests {
         assert_eq!(
             interpolated_quotient_poly.eval_at_point(oods_point),
             fib.eval_quotient(random_coeff, trace_evaluator)
+        );
+    }
+
+    #[test]
+    fn test_prove() {
+        let fib = Fibonacci::new(5, m31!(443693538));
+
+        let proof = fib.prove();
+
+        let oods_point = proof.additional_proof_data.oods_point;
+        let hz = fib.eval_quotient(
+            proof.additional_proof_data.quotient_random_coeff,
+            EvalByPointMapping {
+                point: oods_point,
+                point_mapping: &proof.trace_oods_evaluation,
+            },
+        );
+        assert_eq!(
+            proof
+                .additional_proof_data
+                .quotient_oods_evaluation
+                .get_at(oods_point),
+            hz
         );
     }
 }
