@@ -27,6 +27,15 @@ pub struct ComponentInstance {
     pub interaction_elements: Vec<InteractionElement>,
 }
 
+impl ComponentInstance {
+    pub fn get_generation_node(&self, name: &str) -> &GraphNode {
+        self.generation_graph
+            .iter()
+            .find(|n| n.name == name)
+            .unwrap()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Column {
     pub name: String,
