@@ -224,11 +224,106 @@ impl Fibonacci {
     }
 }
 
+pub fn eval_step_constraint_by_trace_values(fz: QM31, fgz: QM31, fg2z: QM31) -> QM31 {
+    fz.square() + fgz.square() - fg2z
+}
+
+pub fn eval_step_quotient_by_trace_values(
+    fz: QM31,
+    fgz: QM31,
+    fg2z: QM31,
+    oods_point: CirclePoint<QM31>,
+    constraint_coset: Coset,
+) -> QM31 {
+    let excluded0 = constraint_coset.at(constraint_coset.size() - 2);
+    let excluded1 = constraint_coset.at(constraint_coset.size() - 1);
+    let num = eval_step_constraint_by_trace_values(fz, fgz, fg2z)
+        * point_excluder(excluded0, oods_point)
+        * point_excluder(excluded1, oods_point);
+    let denom = coset_vanishing(constraint_coset, oods_point);
+    num / denom
+}
+
+pub fn eval_boundary_constraint_by_trace_values(fz: QM31, value: BaseField) -> QM31 {
+    fz - value
+}
+
+pub fn eval_boundary_quotient_by_trace_values(
+    fz: QM31,
+    point_index: usize,
+    value: BaseField,
+    oods_point: CirclePoint<QM31>,
+    constraint_coset: Coset,
+) -> QM31 {
+    let num = eval_boundary_constraint_by_trace_values(fz, value);
+    let denom = point_vanishing(constraint_coset.at(point_index), oods_point);
+    num / denom
+}
+
+pub fn eval_quotient_by_trace_values(
+    random_coeff: QM31,
+    fz: QM31,
+    fgz: QM31,
+    fg2z: QM31,
+    claim: BaseField,
+    oods_point: CirclePoint<QM31>,
+    constraint_coset: Coset,
+) -> QM31 {
+    let mut quotient = random_coeff.pow(0)
+        * eval_step_quotient_by_trace_values(fz, fgz, fg2z, oods_point, constraint_coset);
+    quotient += random_coeff.pow(1)
+        * eval_boundary_quotient_by_trace_values(
+            fz,
+            0,
+            BaseField::one(),
+            oods_point,
+            constraint_coset,
+        );
+    quotient += random_coeff.pow(2)
+        * eval_boundary_quotient_by_trace_values(
+            fz,
+            constraint_coset.size() - 1,
+            claim,
+            oods_point,
+            constraint_coset,
+        );
+    quotient
+}
+
+pub fn verify_oods_values(
+    oods_point: CirclePoint<QM31>,
+    quotient_random_coeff: QM31,
+    mask: Mask,
+    trace_oods_evaluation: &PointMapping<QM31>,
+    claim: BaseField,
+    n_bits: usize,
+    quotient_oods_evaluation: &PointMapping<QM31>,
+) -> bool {
+    let mut mask_values = Vec::with_capacity(mask.len());
+    let cosets = &[CanonicCoset::new(n_bits)];
+    for mask_offset in mask.get_point_indices(cosets) {
+        mask_values
+            .push(trace_oods_evaluation.get_at(oods_point + mask_offset.to_point().into_ef()));
+    }
+    let constraint_coset = Coset::subgroup(n_bits);
+    let (fz, fgz, fg2z) = (mask_values[0], mask_values[1], mask_values[2]);
+    let hz = eval_quotient_by_trace_values(
+        quotient_random_coeff,
+        fz,
+        fgz,
+        fg2z,
+        claim,
+        oods_point,
+        constraint_coset,
+    );
+    quotient_oods_evaluation.get_at(oods_point) == hz
+}
+
 #[cfg(test)]
 mod tests {
     use num_traits::One;
 
-    use super::Fibonacci;
+    use super::{verify_oods_values, Fibonacci};
     use crate::core::circle::CirclePoint;
     use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
@@ -313,5 +408,22 @@ mod tests {
             interpolated_quotient_poly.eval_at_point(oods_point),
             fib.eval_quotient(random_coeff, trace_evaluator)
         );
+    }
+
+    #[test]
+    fn test_prove() {
+        let fib = Fibonacci::new(5, m31!(443693538));
+
+        let proof = fib.prove();
+
+        assert!(verify_oods_values(
+            proof.additional_proof_data.oods_point,
+            proof.additional_proof_data.quotient_random_coeff,
+            fib.get_mask(),
+            &proof.trace_oods_evaluation,
+            proof.public_input,
+            fib.constraint_coset.n_bits,
+            &proof.additional_proof_data.quotient_oods_evaluation,
+        ));
     }
 }
