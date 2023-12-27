@@ -1,7 +1,9 @@
+use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
+use super::mixed_degree_decommitment::{DecommitmentNode, MixedDecommitment, PositionInLayer};
 use super::utils::{get_column_chunk, inject_and_hash_layer};
 use crate::core::fields::{Field, IntoSlice};
 
@@ -67,6 +69,111 @@ impl<H: Hasher> MerkleMultiLayer<H> {
             };
             hash_subtree::<F, H, IS_INTERMEDIATE>(tree_data, input, prev_hashes, &self.config, i);
         });
+    }
+
+    pub fn generate_decommitment<'a, F: Field, const IS_INTERMEDIATE: bool>(
+        &self,
+        input: &MerkleTreeInput<'_, F>,
+        relative_depth: usize,
+        mut queried_indices: BTreeSet<usize>,
+    ) -> MixedDecommitment<F, H>
+    where
+        H::Hash: 'a,
+    {
+        let mut proof_layers = Vec::<Vec<DecommitmentNode<F, H>>>::new();
+
+        // Leaf layer.
+        if !IS_INTERMEDIATE {
+            let tree_height = self.config.sub_tree_height + relative_depth;
+            debug_assert_eq!(tree_height, input.max_injected_depth());
+
+            let mut leaf_layer = Vec::<DecommitmentNode<F, H>>::new();
+            let leaf_layer_indices = queried_indices.iter().peekable();
+            for q in leaf_layer_indices {
+                let position_in_layer = PositionInLayer::Leaf(*q);
+                let injected_elements = self.get_injected_elements(input, tree_height, *q);
+                leaf_layer.push(DecommitmentNode {
+                    hash: None,
+                    position_in_layer,
+                    injected_elements,
+                });
+            }
+            proof_layers.push(leaf_layer);
+        }
+
+        let last_included_layer = std::cmp::max(1, relative_depth);
+        // Rest of the layers.
+        for i in (last_included_layer..self.config.sub_tree_height + relative_depth).rev() {
+            queried_indices = queried_indices
+                .into_iter()
+                .map(|index| (index / 2) ^ 1)
+                .collect();
+            let mut proof_layer = Vec::<DecommitmentNode<F, H>>::new();
+            let mut curr_layer_indices = queried_indices.iter().peekable();
+            while let Some(q) = curr_layer_indices.next() {
+                let hash_witness = match curr_layer_indices.peek() {
+                    // If both children are in the layer, only injected elements are needed
+                    // to calculate the parent.
+                    Some(next_q) if q ^ 1 == **next_q => {
+                        curr_layer_indices.next();
+                        None
+                    }
+                    _ => Some(self.get_hash_value(i, *q)),
+                };
+                let injected_elements = self.get_injected_elements(input, i, *q);
+                if hash_witness.is_some() || !injected_elements.is_empty() {
+                    let position_in_layer = PositionInLayer::new_child(*q);
+                    proof_layer.push(DecommitmentNode {
+                        position_in_layer,
+                        hash: hash_witness,
+                        injected_elements,
+                    });
+                }
+            }
+            proof_layers.push(proof_layer);
+
+            // Next layer indices are the parents' siblings.
+        }
+        MixedDecommitment::<F, H>::new(proof_layers)
+    }
+
+    fn get_injected_elements<F: Field>(
+        &self,
+        input: &MerkleTreeInput<'_, F>,
+        depth: usize,
+        query: usize,
+    ) -> Vec<F> {
+        // TODO(Ohad): Redefine tree height.
+        let mut injected_elements = Vec::<F>::new();
+        let tree_idx = self.get_containing_tree_idx(depth, query);
+        let relative_sack_query = (query % (1 << depth)) / 2;
+        for column in input.get_columns(depth).iter() {
+            let col_chunk = get_column_chunk(column, tree_idx, self.config.n_sub_trees);
+            let chunk = col_chunk
+                .chunks(col_chunk.len() >> (depth - 1))
+                .nth(relative_sack_query)
+                .unwrap();
+            injected_elements.extend(chunk);
+        }
+        injected_elements
+    }
+
+    // Consider adding safety checks and making public.
+    fn get_hash_value(&self, layer: usize, node_idx: usize) -> H::Hash {
+        let layer_len = 1 << layer;
+        let tree_idx = node_idx / layer_len;
+        let sub_tree_data = self
+            .data
+            .chunks(self.config.sub_tree_size)
+            .nth(tree_idx)
+            .unwrap();
+        let layer_view = &sub_tree_data[sub_tree_data.len() - (layer_len * 2 - 1)
+            ..sub_tree_data.len() - (layer_len * 2 - 1) + layer_len];
+        layer_view[node_idx % layer_len]
+    }
+    fn get_containing_tree_idx(&self, depth: usize, node_idx: usize) -> usize {
+        let n_nodes_in_layer = (1 << (depth - 1)) * self.config.n_sub_trees;
+        node_idx / n_nodes_in_layer
     }
 }
 
@@ -142,7 +249,9 @@ mod tests {
     use crate::commitment_scheme::hasher::Hasher;
     use crate::commitment_scheme::merkle_input::MerkleTreeInput;
     use crate::commitment_scheme::merkle_multilayer;
+    use crate::commitment_scheme::mixed_degree_decommitment::PositionInLayer;
     use crate::core::fields::m31::M31;
+    use crate::m31;
 
     #[test]
     pub fn multi_layer_init_test() {
@@ -195,7 +304,7 @@ mod tests {
         );
         trace_column
     }
-    
+
     fn hash_symmetric_path<H: Hasher>(
         initial_value: &[H::NativeType],
         path_length: usize,
@@ -344,5 +453,144 @@ mod tests {
             sub_trees_height,
             &roots.copied().collect::<Vec<_>>(),
         )
+    }
+
+    // TODO(Ohad): Implement 'verify' for decommitment
+    #[test]
+    fn decommit_layer_test() {
+        let trace_column = (0..16).map(M31::from_u32_unchecked).collect::<Vec<_>>();
+        let trace_column_rev = trace_column.clone().into_iter().rev().collect::<Vec<M31>>();
+        let sub_trees_height = 4;
+        let mut input = MerkleTreeInput::new();
+        input.insert_column(sub_trees_height, &trace_column);
+        input.insert_column(sub_trees_height - 1, trace_column_rev.as_slice());
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
+        let prev_hashes = [Blake3Hasher::hash(b"a"); 32];
+
+        multi_layer.commit_layer::<M31, true>(&input, &prev_hashes);
+        let decommitment =
+            multi_layer.generate_decommitment::<M31, false>(&input, 0, [0, 2, 14, 30].into());
+
+        println!("{}", decommitment);
+        // Check leaves are correct.
+        assert_eq!(decommitment.decommitment_layers.len(), 4);
+        assert_eq!(decommitment.decommitment_layers[0].len(), 4);
+        assert_eq!(
+            decommitment.decommitment_layers[0][0].injected_elements[0],
+            m31!(0)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[0][0].position_in_layer,
+            PositionInLayer::Leaf(0)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[0][1].injected_elements[0],
+            m31!(1)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[0][1].position_in_layer,
+            PositionInLayer::Leaf(2)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[0][2].injected_elements[0],
+            m31!(7)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[0][2].position_in_layer,
+            PositionInLayer::Leaf(14)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[0][3].injected_elements[0],
+            m31!(15)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[0][3].position_in_layer,
+            PositionInLayer::Leaf(30)
+        );
+
+        // Layer #1. Siblings are mapped to the same parent node.
+        assert_eq!(decommitment.decommitment_layers[1].len(), 3);
+
+        // Parents of 0,1 should not contain a hash as they can both be calculated by the verifier.
+        assert_eq!(decommitment.decommitment_layers[1][0].hash, None);
+        assert_eq!(
+            decommitment.decommitment_layers[1][0].injected_elements[0],
+            m31!(15)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[1][0].injected_elements[1],
+            m31!(14)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[1][0].position_in_layer,
+            PositionInLayer::Left(0)
+        );
+
+        // Parents of 7 should contain the hash of it's sibling.
+        let mut hasher = Blake3Hasher::new();
+        hasher.update(Blake3Hasher::hash(b"a").as_ref());
+        hasher.update(Blake3Hasher::hash(b"a").as_ref());
+        hasher.update(6u32.to_le_bytes().as_ref());
+        let expected_hash = hasher.finalize();
+        assert_eq!(
+            decommitment.decommitment_layers[1][1].hash,
+            Some(expected_hash)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[1][1].injected_elements[0],
+            m31!(9)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[1][1].injected_elements[1],
+            m31!(8)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[1][1].position_in_layer,
+            PositionInLayer::Left(6)
+        );
+
+        // Parents of 15 should contain the hash of it's sibling.
+        let mut hasher = Blake3Hasher::new();
+        hasher.update(Blake3Hasher::hash(b"a").as_ref());
+        hasher.update(Blake3Hasher::hash(b"a").as_ref());
+        hasher.update(14u32.to_le_bytes().as_ref());
+        let expected_hash = hasher.finalize();
+        assert_eq!(
+            decommitment.decommitment_layers[1][2].hash,
+            Some(expected_hash)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[1][2].injected_elements[0],
+            m31!(1)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[1][2].injected_elements[1],
+            m31!(0)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[1][2].position_in_layer,
+            PositionInLayer::Left(14)
+        );
+
+        // Layer #2
+        assert_eq!(
+            decommitment.decommitment_layers[2][0].position_in_layer,
+            PositionInLayer::Right(1)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[2][1].position_in_layer,
+            PositionInLayer::Left(2)
+        );
+        assert_eq!(
+            decommitment.decommitment_layers[2][2].position_in_layer,
+            PositionInLayer::Left(6)
+        );
+
+        // Layer #3
+        assert_eq!(
+            decommitment.decommitment_layers[3][0].position_in_layer,
+            PositionInLayer::Left(2)
+        );
     }
 }
