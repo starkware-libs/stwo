@@ -38,11 +38,28 @@ impl<H: Hasher> MerkleMultiLayer<H> {
             })
             .collect()
     }
+
+    pub fn commit_layer<F: Field + Sync + IntoSlice<H::NativeType>, const IS_INTERMEDIATE: bool>(
+        &mut self,
+        input: &MerkleTreeInput<'_, F>,
+        prev_hashes: &[H::Hash],
+    ) {
+        // TODO(Ohad): implement multithreading (rayon par iter).
+        let tree_iter = self.data.chunks_mut(self.config.sub_tree_size);
+        tree_iter.enumerate().for_each(|(i, tree_data)| {
+            let prev_hashes = if IS_INTERMEDIATE {
+                let sub_layer_size = 1 << self.config.sub_tree_height;
+                &prev_hashes[i * sub_layer_size..(i + 1) * sub_layer_size]
+            } else {
+                &[]
+            };
+            hash_subtree::<F, H, IS_INTERMEDIATE>(tree_data, input, prev_hashes, &self.config, i);
+        });
+    }
 }
 
 // Hashes a single sub-tree.
-// TODO(Ohad): Remove '_' after using it in the commit function.
-fn _hash_subtree<F: Field, H: Hasher, const IS_INTERMEDIATE: bool>(
+fn hash_subtree<F: Field, H: Hasher, const IS_INTERMEDIATE: bool>(
     sub_tree_data: &mut [H::Hash],
     input: &MerkleTreeInput<'_, F>,
     prev_hashes: &[H::Hash],
@@ -173,6 +190,37 @@ mod tests {
             .for_each(|(i, r)| assert_eq!(r, &Blake3Hasher::hash(&i.to_le_bytes())));
     }
 
+    fn hash_symmetric_path<H: Hasher>(iv: &[H::NativeType], n: usize) -> H::Hash {
+        (1..n).fold(H::hash(iv), |curr_hash, _| {
+            H::concat_and_hash(&curr_hash, &curr_hash)
+        })
+    }
+
+    fn assert_correct_roots<H: Hasher>(
+        iv_0: &[H::NativeType],
+        iv_1: &[H::NativeType],
+        n: usize,
+        roots: &[H::Hash],
+    ) {
+        let expected_root0 = hash_symmetric_path::<H>(iv_0, n);
+        let expected_root1 = hash_symmetric_path::<H>(iv_1, n);
+        assert_eq!(roots[0], expected_root0);
+        assert_eq!(roots[1], expected_root1);
+    }
+
+    fn prepare_intermediate_initial_values() -> (Vec<u8>, Vec<u8>) {
+        // Column will get spread to one value per leaf.
+        let mut leaf_0_input: Vec<u8> = vec![];
+        leaf_0_input.extend(Blake3Hasher::hash(b"a").as_ref());
+        leaf_0_input.extend(Blake3Hasher::hash(b"a").as_ref());
+        leaf_0_input.extend(&u32::to_le_bytes(1));
+        let mut leaf_1_input: Vec<u8> = vec![];
+        leaf_1_input.extend(Blake3Hasher::hash(b"b").as_ref());
+        leaf_1_input.extend(Blake3Hasher::hash(b"b").as_ref());
+        leaf_1_input.extend(&u32::to_le_bytes(2));
+        (leaf_0_input, leaf_1_input)
+    }
+
     #[test]
     pub fn hash_sub_tree_non_intermediate_test() {
         // trace_column: [M31;16] = [1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2]
@@ -190,24 +238,14 @@ mod tests {
         let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
 
-        // Column will get spread to one value per leaf.
-        let expected_root0 = (1..sub_trees_height)
-            .fold(Blake3Hasher::hash(&u32::to_le_bytes(1)), |curr_hash, _i| {
-                Blake3Hasher::concat_and_hash(&curr_hash, &curr_hash)
-            });
-        let expected_root1 = (1..sub_trees_height)
-            .fold(Blake3Hasher::hash(&u32::to_le_bytes(2)), |curr_hash, _i| {
-                Blake3Hasher::concat_and_hash(&curr_hash, &curr_hash)
-            });
-
-        merkle_multilayer::_hash_subtree::<M31, Blake3Hasher, false>(
+        merkle_multilayer::hash_subtree::<M31, Blake3Hasher, false>(
             &mut multi_layer.data[..multi_layer.config.sub_tree_size],
             &input,
             &[],
             &multi_layer.config,
             0,
         );
-        merkle_multilayer::_hash_subtree::<M31, Blake3Hasher, false>(
+        merkle_multilayer::hash_subtree::<M31, Blake3Hasher, false>(
             &mut multi_layer.data[multi_layer.config.sub_tree_size..],
             &input,
             &[],
@@ -216,9 +254,12 @@ mod tests {
         );
         let roots = multi_layer.get_roots();
 
-        assert_eq!(hex::encode(roots[0]), hex::encode(expected_root0));
-        assert_eq!(hex::encode(roots[1]), hex::encode(expected_root1));
-        assert_ne!(roots[0], roots[1]);
+        assert_correct_roots::<Blake3Hasher>(
+            &u32::to_le_bytes(1),
+            &u32::to_le_bytes(2),
+            sub_trees_height,
+            &roots,
+        );
     }
 
     #[test]
@@ -239,34 +280,16 @@ mod tests {
         input.insert_column(sub_trees_height, &trace_column);
         let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
+        let (leaf_0_input, leaf_1_input) = prepare_intermediate_initial_values();
 
-        // Column will get spread to one value per leaf.
-        let mut leaf_0_input: Vec<u8> = vec![];
-        leaf_0_input.extend(Blake3Hasher::hash(b"a").as_ref());
-        leaf_0_input.extend(Blake3Hasher::hash(b"a").as_ref());
-        leaf_0_input.extend(&u32::to_le_bytes(1));
-        let mut leaf_1_input: Vec<u8> = vec![];
-        leaf_1_input.extend(Blake3Hasher::hash(b"b").as_ref());
-        leaf_1_input.extend(Blake3Hasher::hash(b"b").as_ref());
-        leaf_1_input.extend(&u32::to_le_bytes(2));
-
-        let expected_root0 = (1..sub_trees_height).fold(
-            Blake3Hasher::hash(leaf_0_input.as_slice()),
-            |curr_hash, _i| Blake3Hasher::concat_and_hash(&curr_hash, &curr_hash),
-        );
-        let expected_root1 = (1..sub_trees_height).fold(
-            Blake3Hasher::hash(leaf_1_input.as_slice()),
-            |curr_hash, _i| Blake3Hasher::concat_and_hash(&curr_hash, &curr_hash),
-        );
-
-        merkle_multilayer::_hash_subtree::<M31, Blake3Hasher, true>(
+        merkle_multilayer::hash_subtree::<M31, Blake3Hasher, true>(
             &mut multi_layer.data[..multi_layer.config.sub_tree_size],
             &input,
             &prev_hash_values[..prev_hash_values.len() / 2],
             &multi_layer.config,
             0,
         );
-        merkle_multilayer::_hash_subtree::<M31, Blake3Hasher, true>(
+        merkle_multilayer::hash_subtree::<M31, Blake3Hasher, true>(
             &mut multi_layer.data[multi_layer.config.sub_tree_size..],
             &input,
             &prev_hash_values[prev_hash_values.len() / 2..],
@@ -274,8 +297,71 @@ mod tests {
             1,
         );
         let roots = multi_layer.get_roots();
-        assert_eq!(hex::encode(roots[0]), hex::encode(expected_root0));
-        assert_eq!(hex::encode(roots[1]), hex::encode(expected_root1));
-        assert_ne!(roots[0], roots[1]);
+
+        assert_correct_roots::<Blake3Hasher>(
+            leaf_0_input.as_slice(),
+            leaf_1_input.as_slice(),
+            sub_trees_height,
+            &roots,
+        );
+    }
+
+    #[test]
+    fn commit_layer_non_intermediate_test() {
+        // trace_column: [M31;16] = [1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2]
+        let mut trace_column = std::iter::repeat(M31::from_u32_unchecked(1))
+            .take(8)
+            .collect::<Vec<M31>>();
+        trace_column.extend(
+            std::iter::repeat(M31::from_u32_unchecked(2))
+                .take(8)
+                .collect::<Vec<M31>>(),
+        );
+        let sub_trees_height = 4;
+        let mut input = MerkleTreeInput::new();
+        input.insert_column(sub_trees_height, &trace_column);
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
+
+        multi_layer.commit_layer::<M31, false>(&input, &[]);
+        let roots = multi_layer.get_roots();
+
+        assert_correct_roots::<Blake3Hasher>(
+            &u32::to_le_bytes(1),
+            &u32::to_le_bytes(2),
+            sub_trees_height,
+            &roots,
+        );
+    }
+
+    #[test]
+    fn commit_layer_intermediate_test() {
+        // trace_column: [M31;16] = [1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2]
+        let mut trace_column = std::iter::repeat(M31::from_u32_unchecked(1))
+            .take(8)
+            .collect::<Vec<M31>>();
+        trace_column.extend(
+            std::iter::repeat(M31::from_u32_unchecked(2))
+                .take(8)
+                .collect::<Vec<M31>>(),
+        );
+        let mut prev_hash_values = vec![Blake3Hasher::hash(b"a"); 16];
+        prev_hash_values.extend(vec![Blake3Hasher::hash(b"b"); 16]);
+        let sub_trees_height = 4;
+        let mut input = MerkleTreeInput::new();
+        input.insert_column(sub_trees_height, &trace_column);
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
+        let (leaf_0_input, leaf_1_input) = prepare_intermediate_initial_values();
+
+        multi_layer.commit_layer::<M31, true>(&input, &prev_hash_values);
+        let roots = multi_layer.get_roots();
+
+        assert_correct_roots::<Blake3Hasher>(
+            leaf_0_input.as_slice(),
+            leaf_1_input.as_slice(),
+            sub_trees_height,
+            &roots,
+        )
     }
 }
