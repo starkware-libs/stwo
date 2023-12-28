@@ -28,11 +28,21 @@ pub struct ComponentInstance {
 }
 
 impl ComponentInstance {
-    pub fn get_generation_node(&self, name: &str) -> &GraphNode {
+    pub fn get_generation_node(&self, name: &str) -> (usize, &GraphNode) {
         self.generation_graph
             .iter()
-            .find(|n| n.name == name)
+            .enumerate()
+            .find(|(_index, n)| n.name == name)
             .unwrap()
+    }
+
+    pub fn get_node_index(self, name: &str) -> usize {
+        self.generation_graph
+            .iter()
+            .enumerate()
+            .find(|(_index, n)| n.name == name)
+            .unwrap()
+            .0.clone()
     }
 }
 

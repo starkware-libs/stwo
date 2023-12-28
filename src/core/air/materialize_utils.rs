@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use super::definition::ComponentInstance;
 use super::graph::{GraphNode, PointwiseOp};
 use super::materialize::{
@@ -114,17 +116,8 @@ pub fn get_materialized_computation(
 
 pub fn get_output_tiles(component_instance: &ComponentInstance) -> Vec<MaskItem> {
     let mut output_tiles: Vec<MaskItem> = vec![];
-    for column in &component_instance.columns {
-        let column_generation_node = component_instance
-            .generation_graph
-            .iter()
-            .find(|n| n.name == column.generation_node)
-            .unwrap();
-        let _column_params: Vec<(String, String)> = column_generation_node
-            .params
-            .iter()
-            .map(|p| p.unwrap())
-            .collect();
+    let column_nodes = get_column_generation_nodes(component_instance);
+    for column_generation_node in &column_nodes {
         let column_inputs_nodes: Vec<&GraphNode> = column_generation_node
             .inputs
             .iter()
@@ -134,7 +127,7 @@ pub fn get_output_tiles(component_instance: &ComponentInstance) -> Vec<MaskItem>
         match column_generation_node.op.as_str() {
             "concat" => {
                 let mut offset = 0;
-                for input_node in column_inputs_nodes {
+                for (_input_node_index, input_node) in column_inputs_nodes {
                     output_tiles.push(MaskItem {
                         item_name: input_node.name.clone(),
                         array_name: column_generation_node.name.clone(),
@@ -147,15 +140,17 @@ pub fn get_output_tiles(component_instance: &ComponentInstance) -> Vec<MaskItem>
                 }
             }
             "interleave" => {
-                let first_size = column_inputs_nodes[0].size;
+                let first_size = column_inputs_nodes[0].1.size;
                 assert!(column_inputs_nodes
                     .iter()
-                    .all(|node| node.size == first_size));
+                    .all(|node| node.1.size == first_size));
                 assert_eq!(
                     column_generation_node.size,
                     column_inputs_nodes.len() as u64 * first_size
                 );
-                for (offset, input_node) in column_inputs_nodes.into_iter().enumerate() {
+                for (offset, (_node_index, input_node)) in
+                    column_inputs_nodes.into_iter().enumerate()
+                {
                     output_tiles.push(MaskItem {
                         item_name: input_node.name.clone(),
                         array_name: column_generation_node.name.clone(),
@@ -175,4 +170,50 @@ pub fn get_output_tiles(component_instance: &ComponentInstance) -> Vec<MaskItem>
         }
     }
     output_tiles
+}
+
+pub fn get_intersection(
+    nodes: Vec<(usize, &GraphNode)>,
+    output_tiles: &Vec<MaskItem>,
+) -> Vec<usize> {
+    let mut intersection = vec![];
+    for (index, node) in nodes.iter() {
+        let node_tile = output_tiles.iter().find(|tile| tile.item_name == node.name);
+        if node_tile.is_some() {
+            intersection.push(*index);
+        }
+    }
+    intersection
+}
+
+pub fn get_column_generation_nodes(
+    component_instance: &ComponentInstance,
+) -> BTreeMap<usize, &GraphNode> {
+    let mut column_nodes: BTreeMap<usize, &GraphNode> = BTreeMap::new();
+    for column in &component_instance.columns {
+        let (node_index, column_generation_node) =
+            component_instance.get_generation_node(&column.generation_node);
+        column_nodes.insert(node_index, column_generation_node);
+    }
+    column_nodes
+}
+
+pub fn get_input_indices(
+    component_instance: &ComponentInstance,
+    nodes: BTreeMap<usize, &GraphNode>,
+) -> Vec<usize> {
+    let mut node_input_names = nodes
+        .iter()
+        .flat_map(|(_index, node)| node.inputs.clone())
+        .collect::<BTreeSet<String>>();
+    for node in nodes.values() {
+        node_input_names.remove(&node.name);
+    }
+    component_instance
+        .generation_graph
+        .iter()
+        .enumerate()
+        .filter(|(_index, node)| node_input_names.contains(&node.name))
+        .map(|(index, _node)| index)
+        .collect::<Vec<usize>>()
 }
