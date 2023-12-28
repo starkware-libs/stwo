@@ -16,4 +16,5 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
 pub struct DecommitmentNode<F: Field, H: Hasher> {
     pub hash: Option<H::Hash>,
     pub injected_elements: Vec<F>,
+    pub index_in_layer: usize,
 }
