@@ -1,4 +1,6 @@
 use std::fmt::{self, Display};
+use std::iter::{Skip, StepBy};
+use std::slice::Iter;
 
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
@@ -27,16 +29,11 @@ impl<H: Hasher> MerkleMultiLayer<H> {
     }
 
     /// Returns the roots of the sub-trees.
-    pub fn get_roots(&self) -> Vec<H::Hash> {
+    pub fn get_roots(&self) -> StepBy<Skip<Iter<'_, H::Hash>>> {
         self.data
-            .chunks(self.config.sub_tree_size)
-            .map(|sub_tree| {
-                sub_tree
-                    .last()
-                    .expect("Tried to extract roots but MerkleMultiLayer is empty!")
-                    .to_owned()
-            })
-            .collect()
+            .iter()
+            .skip(self.config.sub_tree_size - 1)
+            .step_by(self.config.sub_tree_size)
     }
 }
 
@@ -168,7 +165,6 @@ mod tests {
 
         assert_eq!(roots.len(), n_sub_trees);
         roots
-            .iter()
             .enumerate()
             .for_each(|(i, r)| assert_eq!(r, &Blake3Hasher::hash(&i.to_le_bytes())));
     }
@@ -214,11 +210,16 @@ mod tests {
             &multi_layer.config,
             1,
         );
-        let roots = multi_layer.get_roots();
+        let mut roots = multi_layer.get_roots();
 
-        assert_eq!(hex::encode(roots[0]), hex::encode(expected_root0));
-        assert_eq!(hex::encode(roots[1]), hex::encode(expected_root1));
-        assert_ne!(roots[0], roots[1]);
+        assert_eq!(
+            hex::encode(roots.next().unwrap()),
+            hex::encode(expected_root0)
+        );
+        assert_eq!(
+            hex::encode(roots.next().unwrap()),
+            hex::encode(expected_root1)
+        );
     }
 
     #[test]
@@ -273,9 +274,14 @@ mod tests {
             &multi_layer.config,
             1,
         );
-        let roots = multi_layer.get_roots();
-        assert_eq!(hex::encode(roots[0]), hex::encode(expected_root0));
-        assert_eq!(hex::encode(roots[1]), hex::encode(expected_root1));
-        assert_ne!(roots[0], roots[1]);
+        let mut roots = multi_layer.get_roots();
+        assert_eq!(
+            hex::encode(roots.next().unwrap()),
+            hex::encode(expected_root0)
+        );
+        assert_eq!(
+            hex::encode(roots.next().unwrap()),
+            hex::encode(expected_root1)
+        );
     }
 }
