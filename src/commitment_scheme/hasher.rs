@@ -85,6 +85,7 @@ pub trait Hash<NativeType: Sized + Eq>:
     + Default
     + Display
     + Debug
+    + Eq
     + self::Name
     + Into<Vec<NativeType>>
     + TryFrom<Vec<NativeType>>
