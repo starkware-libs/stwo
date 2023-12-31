@@ -40,15 +40,10 @@ where
     }
 
     // TODO(Ohad): Implement more verbose error handling.
-    pub fn verify(
-        &self,
-        root: H::Hash,
-        queries: BTreeSet<usize>,
-        n_rows_in_leaf_block: usize,
-    ) -> bool {
+    pub fn verify(&self, root: H::Hash, queries: BTreeSet<usize>) -> bool {
         let leaf_block_queries = queries
             .iter()
-            .map(|q| q / n_rows_in_leaf_block)
+            .map(|q| q / self.n_rows_in_leaf_block)
             .collect::<BTreeSet<usize>>();
         assert_eq!(self.leaf_blocks.len(), leaf_block_queries.len());
 
@@ -140,7 +135,7 @@ mod tests {
         let queries: BTreeSet<usize> = (0..100).map(|_| thread_rng().gen_range(0..4096)).collect();
         let decommitment = tree.generate_decommitment(queries.clone());
 
-        assert!(decommitment.verify(tree.root(), queries, tree.bottom_layer_n_rows_in_node));
+        assert!(decommitment.verify(tree.root(), queries));
     }
 
     #[test]
@@ -163,19 +158,11 @@ mod tests {
         wrong_leaf_block_decommitment.leaf_blocks[0][0] += M31::from_u32_unchecked(1);
 
         assert!(
-            !wrong_internal_node_decommitment.verify(
-                tree.root(),
-                queries.clone(),
-                tree.bottom_layer_n_rows_in_node
-            ),
+            !wrong_internal_node_decommitment.verify(tree.root(), queries.clone(),),
             "Wrong internal node decommitment passed!"
         );
         assert!(
-            !wrong_leaf_block_decommitment.verify(
-                tree.root(),
-                queries,
-                tree.bottom_layer_n_rows_in_node
-            ),
+            !wrong_leaf_block_decommitment.verify(tree.root(), queries,),
             "Wrong leaf block decommitment passed!"
         );
     }
