@@ -4,7 +4,7 @@ use blake2::digest::{Update, VariableOutput};
 use blake2::{Blake2s256, Blake2sVar, Digest};
 
 // Wrapper for the blake2s hash type.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Debug, Default, Eq)]
 pub struct Blake2sHash([u8; 32]);
 
 impl From<Blake2sHash> for Vec<u8> {
@@ -228,5 +228,14 @@ mod tests {
 
         assert_eq!(hash.to_string(), Blake2sHasher::hash(b"ab").to_string());
         assert_eq!(hash_empty.to_string(), Blake2sHasher::hash(b"").to_string());
+    }
+
+    #[test]
+    fn eq_test() {
+        assert_eq!(
+            Blake2sHasher::hash(b"ab"),
+            Blake2sHasher::hash(b"ab"),
+            "Failed comparing two equal hashes!"
+        );
     }
 }

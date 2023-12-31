@@ -3,7 +3,7 @@ use std::fmt;
 use super::hasher::Name;
 
 // Wrapper for the blake3 hash type.
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Debug, Default, Eq)]
 pub struct Blake3Hash([u8; 32]);
 
 impl From<Blake3Hash> for Vec<u8> {
@@ -229,5 +229,14 @@ mod tests {
 
         assert_eq!(hash.to_string(), Blake3Hasher::hash(b"ab").to_string());
         assert_eq!(hash_empty.to_string(), Blake3Hasher::hash(b"").to_string())
+    }
+
+    #[test]
+    fn eq_test() {
+        assert_eq!(
+            Blake3Hasher::hash(b"ab"),
+            Blake3Hasher::hash(b"ab"),
+            "Failed comparing two equal hashes!"
+        );
     }
 }
