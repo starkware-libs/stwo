@@ -133,7 +133,7 @@ mod tests {
         let trace: ColumnArray<M31> = vec![(0..4096).map(M31::from_u32_unchecked).collect(); 7];
         let tree = MerkleTree::<M31, Blake3Hasher>::commit(trace);
         let queries: BTreeSet<usize> = (0..100).map(|_| thread_rng().gen_range(0..4096)).collect();
-        let decommitment = tree.generate_decommitment(queries.clone());
+        let decommitment = tree.generate_decommitment(&queries);
 
         assert!(decommitment.verify(tree.root(), queries));
     }
@@ -151,8 +151,8 @@ mod tests {
         let queries: BTreeSet<usize> = (0..10)
             .map(|_| thread_rng().gen_range(0..trace_column_length as usize))
             .collect();
-        let mut wrong_internal_node_decommitment = tree.generate_decommitment(queries.clone());
-        let mut wrong_leaf_block_decommitment = tree.generate_decommitment(queries.clone());
+        let mut wrong_internal_node_decommitment = tree.generate_decommitment(&queries);
+        let mut wrong_leaf_block_decommitment = tree.generate_decommitment(&queries);
 
         wrong_internal_node_decommitment.layers[0][0] = Blake3Hasher::hash(&[0]);
         wrong_leaf_block_decommitment.leaf_blocks[0][0] += M31::from_u32_unchecked(1);
