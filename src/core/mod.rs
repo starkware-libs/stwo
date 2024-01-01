@@ -7,3 +7,4 @@ pub mod fields;
 pub mod fri;
 pub mod oods;
 pub mod poly;
+pub mod queries;
