@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use num_traits::One;
 
 use crate::commitment_scheme::hasher::Hasher;
@@ -34,11 +36,19 @@ pub struct AdditionalProofData {
     pub quotient_oods_value: QM31,
     pub quotient_random_coeff: QM31,
     pub oods_point: CirclePoint<QM31>,
+    pub quotient_queries: BTreeSet<usize>,
+    pub trace_queries: BTreeSet<usize>,
 }
 
 pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub decommitment: MerkleDecommitment<F, H>,
     pub commitment: H::Hash,
+}
+
+impl<F: ExtensionOf<BaseField> + IntoSlice<H::NativeType>, H: Hasher> CommitmentProof<F, H> {
+    pub fn verify(&self, queries: BTreeSet<usize>) -> bool {
+        self.decommitment.verify(self.commitment, queries)
+    }
 }
 
 pub struct FibonacciProof {
@@ -216,8 +226,8 @@ impl Fibonacci {
             trace_commitment_domain.n_bits,
             quotient_commitment_domain.n_bits,
         );
-        let quotient_decommitment = quotient_merkle.generate_decommitment(quotient_queries);
-        let trace_decommitment = trace_merkle.generate_decommitment(trace_queries);
+        let quotient_decommitment = quotient_merkle.generate_decommitment(&quotient_queries);
+        let trace_decommitment = trace_merkle.generate_decommitment(&trace_queries);
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
@@ -235,6 +245,8 @@ impl Fibonacci {
                 quotient_oods_value,
                 quotient_random_coeff: random_coeff,
                 oods_point,
+                quotient_queries,
+                trace_queries,
             },
         }
     }
@@ -336,7 +348,6 @@ mod tests {
         let fib = Fibonacci::new(5, m31!(443693538));
 
         let proof = fib.prove();
-
         let oods_point = proof.additional_proof_data.oods_point;
         let hz = fib.eval_quotient(
             proof.additional_proof_data.quotient_random_coeff,
@@ -346,5 +357,11 @@ mod tests {
             },
         );
         assert_eq!(proof.additional_proof_data.quotient_oods_value, hz);
+        assert!(proof
+            .quotient_commitment
+            .verify(proof.additional_proof_data.quotient_queries));
+        assert!(proof
+            .trace_commitment
+            .verify(proof.additional_proof_data.trace_queries));
     }
 }
