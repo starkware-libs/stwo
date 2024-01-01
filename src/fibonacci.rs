@@ -27,12 +27,19 @@ pub struct Fibonacci {
     pub claim: BaseField,
 }
 
+pub struct AdditionalProofData {
+    pub quotient_oods_evaluation: PointMapping<QM31>,
+    pub quotient_random_coeff: QM31,
+    pub oods_point: CirclePoint<QM31>,
+}
+
 pub struct FibonacciProof {
     pub public_input: BaseField,
     pub trace_commitment: <MerkleHasher as Hasher>::Hash,
     pub quotient_commitment: <MerkleHasher as Hasher>::Hash,
     // TODO(AlonH): Consider including only the values.
     pub trace_oods_evaluation: PointMapping<QM31>,
+    pub additional_proof_data: AdditionalProofData,
 }
 
 impl Fibonacci {
@@ -115,7 +122,7 @@ impl Fibonacci {
         quotient
     }
 
-    pub fn get_mask() -> Mask {
+    pub fn get_mask(&self) -> Mask {
         Mask::new(
             (0..3)
                 .map(|offset| MaskItem {
@@ -129,11 +136,9 @@ impl Fibonacci {
     /// Returns the quotient values using the trace and a random coefficient.
     pub fn compute_quotient(
         &self,
-        channel: &mut Channel,
+        random_coeff: QM31,
         trace_evaluation: &CircleEvaluation<BaseField>,
     ) -> CircleEvaluation<QM31> {
-        let verifier_randomness = channel.draw_random_felts();
-        let random_coeff = QM31::from_m31_array(verifier_randomness[..4].try_into().unwrap());
         let mut quotient_values = Vec::with_capacity(self.constraint_eval_domain.size());
         for p_ind in self.constraint_eval_domain.iter_indices() {
             quotient_values.push(
@@ -160,7 +165,9 @@ impl Fibonacci {
                 .clone()]);
         channel.mix_with_seed(trace_merkle.root());
 
-        let quotient = self.compute_quotient(channel, &trace_evaluation);
+        let verifier_randomness = channel.draw_random_felts();
+        let random_coeff = QM31::from_m31_array(verifier_randomness[..4].try_into().unwrap());
+        let quotient = self.compute_quotient(random_coeff, &trace_evaluation);
         let quotient_poly = quotient.interpolate();
         let quotient_commitment_domain =
             CanonicCoset::new(self.constraint_eval_domain.n_bits() + BLOW_UP_FACTOR_BITS);
@@ -174,9 +181,17 @@ impl Fibonacci {
         channel.mix_with_seed(quotient_merkle.root());
 
         let oods_point = CirclePoint::<QM31>::get_random_point(channel);
-        let mask = Self::get_mask();
+        let mask = self.get_mask();
         let trace_oods_evaluation =
             get_oods_values(&mask, oods_point, &[self.trace_coset], &[trace_poly]);
+        let quotient_oods_evaluation = PointMapping::new(
+            [
+                (oods_point, quotient_poly.eval_at_point(oods_point)),
+                (-oods_point, quotient_poly.eval_at_point(-oods_point)),
+            ]
+            .into(),
+        );
+
         // A quotient for each mask item and for the CP, in the OODS point and its conjugate.
         let mut oods_quotients = Vec::with_capacity((mask.len() + 1) * 2);
         for (point, value) in trace_oods_evaluation.iter() {
@@ -186,10 +201,10 @@ impl Fibonacci {
                 &trace_commitment_evaluation,
             ));
         }
-        for point in [oods_point, -oods_point] {
+        for (point, value) in quotient_oods_evaluation.iter() {
             oods_quotients.push(get_oods_quotient(
-                point,
-                quotient_poly.eval_at_point(point),
+                *point,
+                *value,
                 &quotient_commitment_evaluation,
             ));
         }
@@ -200,6 +215,11 @@ impl Fibonacci {
             trace_commitment: trace_merkle.root(),
             quotient_commitment: quotient_merkle.root(),
             trace_oods_evaluation,
+            additional_proof_data: AdditionalProofData {
+                quotient_oods_evaluation,
+                quotient_random_coeff: random_coeff,
+                oods_point,
+            },
         }
     }
 }
@@ -210,7 +230,7 @@ mod tests {
 
     use super::Fibonacci;
     use crate::core::circle::CirclePoint;
-    use crate::core::constraints::{EvalByEvaluation, EvalByPoly};
+    use crate::core::constraints::{EvalByEvaluation, EvalByPointMapping, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::poly::circle::CircleEvaluation;
@@ -298,6 +318,23 @@ mod tests {
     #[test]
     fn test_prove() {
         let fib = Fibonacci::new(5, m31!(443693538));
-        fib.prove();
+
+        let proof = fib.prove();
+
+        let oods_point = proof.additional_proof_data.oods_point;
+        let hz = fib.eval_quotient(
+            proof.additional_proof_data.quotient_random_coeff,
+            EvalByPointMapping {
+                point: oods_point,
+                point_mapping: &proof.trace_oods_evaluation,
+            },
+        );
+        assert_eq!(
+            proof
+                .additional_proof_data
+                .quotient_oods_evaluation
+                .get_at(oods_point),
+            hz
+        );
     }
 }
