@@ -46,16 +46,11 @@ pub fn get_oods_values(
     trace_polys: &[CirclePoly<BaseField>],
 ) -> PointMapping<QM31> {
     let mut oods_evals = Vec::with_capacity(trace_polys.len());
-    let mut oods_conjugate_evals = Vec::with_capacity(trace_polys.len());
     for poly in trace_polys {
         oods_evals.push(EvalByPoly {
             point: oods_point,
             poly,
         });
-        oods_conjugate_evals.push(EvalByPoly {
-            point: -oods_point,
-            poly,
-        });
     }
-    mask.get_evaluation(trace_domains, &oods_evals[..], &oods_conjugate_evals[..])
+    mask.get_evaluation(trace_domains, &oods_evals[..])
 }
