@@ -27,19 +27,13 @@ impl Mask {
         &self,
         cosets: &[CanonicCoset],
         poly_oracles: &[impl PolyOracle<F>],
-        conjugate_poly_oracles: &[impl PolyOracle<F>],
     ) -> PointMapping<F> {
         let mut res: BTreeMap<CirclePoint<F>, F> = BTreeMap::new();
         let mask_offsets = self.get_point_indices(cosets);
         for (mask_item, mask_offset) in self.items.iter().zip(mask_offsets) {
-            let mask_point = mask_offset.to_point().into_ef();
             res.insert(
-                poly_oracles[mask_item.column_index].point() + mask_point,
+                poly_oracles[mask_item.column_index].point() + mask_offset.to_point().into_ef(),
                 poly_oracles[mask_item.column_index].get_at(mask_offset),
-            );
-            res.insert(
-                conjugate_poly_oracles[mask_item.column_index].point() - mask_point,
-                conjugate_poly_oracles[mask_item.column_index].get_at(-mask_offset),
             );
         }
         PointMapping::new(res)
@@ -106,27 +100,15 @@ mod tests {
                 poly: &trace_polys[i as usize],
             })
             .collect::<Vec<_>>();
-        let conjugate_poly_oracles = (0..N_TRACE_COLUMNS)
-            .map(|i| EvalByPoly {
-                point: -oracle_point,
-                poly: &trace_polys[i as usize],
-            })
-            .collect::<Vec<_>>();
         // Mask evaluations on the original trace coset.
-        let mask_evaluation =
-            mask.get_evaluation(&trace_cosets, &poly_oracles, &conjugate_poly_oracles);
+        let mask_evaluation = mask.get_evaluation(&trace_cosets, &poly_oracles);
 
-        assert_eq!(mask_point_indices.len() * 2, mask_evaluation.len());
+        assert_eq!(mask_point_indices.len(), mask_evaluation.len());
         for (mask_item, mask_point_index) in mask.items.iter().zip(mask_point_indices) {
             let point_index = oracle_point_index + mask_point_index;
             let point = point_index.to_point();
             let value = mask_evaluation.get_at(point);
-            let conjugate_value = mask_evaluation.get_at(-point);
             assert_eq!(value, trace[mask_item.column_index].get_at(point_index));
-            assert_eq!(
-                conjugate_value,
-                trace[mask_item.column_index].get_at(-point_index)
-            );
         }
     }
 }

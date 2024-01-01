@@ -28,7 +28,7 @@ pub struct Fibonacci {
 }
 
 pub struct AdditionalProofData {
-    pub quotient_oods_evaluation: PointMapping<QM31>,
+    pub quotient_oods_value: QM31,
     pub quotient_random_coeff: QM31,
     pub oods_point: CirclePoint<QM31>,
 }
@@ -184,13 +184,7 @@ impl Fibonacci {
         let mask = self.get_mask();
         let trace_oods_evaluation =
             get_oods_values(&mask, oods_point, &[self.trace_coset], &[trace_poly]);
-        let quotient_oods_evaluation = PointMapping::new(
-            [
-                (oods_point, quotient_poly.eval_at_point(oods_point)),
-                (-oods_point, quotient_poly.eval_at_point(-oods_point)),
-            ]
-            .into(),
-        );
+        let quotient_oods_value = quotient_poly.eval_at_point(oods_point);
 
         // A quotient for each mask item and for the CP, in the OODS point and its conjugate.
         let mut oods_quotients = Vec::with_capacity((mask.len() + 1) * 2);
@@ -201,13 +195,11 @@ impl Fibonacci {
                 &trace_commitment_evaluation,
             ));
         }
-        for (point, value) in quotient_oods_evaluation.iter() {
-            oods_quotients.push(get_oods_quotient(
-                *point,
-                *value,
-                &quotient_commitment_evaluation,
-            ));
-        }
+        oods_quotients.push(get_oods_quotient(
+            oods_point,
+            quotient_oods_value,
+            &quotient_commitment_evaluation,
+        ));
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
@@ -216,7 +208,7 @@ impl Fibonacci {
             quotient_commitment: quotient_merkle.root(),
             trace_oods_evaluation,
             additional_proof_data: AdditionalProofData {
-                quotient_oods_evaluation,
+                quotient_oods_value,
                 quotient_random_coeff: random_coeff,
                 oods_point,
             },
@@ -329,12 +321,6 @@ mod tests {
                 point_mapping: &proof.trace_oods_evaluation,
             },
         );
-        assert_eq!(
-            proof
-                .additional_proof_data
-                .quotient_oods_evaluation
-                .get_at(oods_point),
-            hz
-        );
+        assert_eq!(proof.additional_proof_data.quotient_oods_value, hz);
     }
 }
