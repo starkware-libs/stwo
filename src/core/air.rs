@@ -68,7 +68,7 @@ mod tests {
         const N_TRACE_COLUMNS: u32 = 4;
         const COSET_SIZE: u32 = 16;
         let coset = CanonicCoset::new(4);
-        let trace_cosets = [coset; N_TRACE_COLUMNS as usize];
+        let trace_domains = [coset; N_TRACE_COLUMNS as usize];
         let trace: Vec<CircleEvaluation<BaseField>> = (0..N_TRACE_COLUMNS)
             .map(|i| {
                 CircleEvaluation::new_canonical_ordered(
@@ -91,7 +91,7 @@ mod tests {
                 })
                 .collect(),
         );
-        let mask_point_indices = mask.get_point_indices(&trace_cosets);
+        let mask_point_indices = mask.get_point_indices(&trace_domains);
         let oracle_point_index = coset.step_size * 3;
         let oracle_point = oracle_point_index.to_point();
         let poly_oracles = (0..N_TRACE_COLUMNS)
@@ -101,7 +101,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         // Mask evaluations on the original trace coset.
-        let mask_evaluation = mask.get_evaluation(&trace_cosets, &poly_oracles);
+        let mask_evaluation = mask.get_evaluation(&trace_domains, &poly_oracles);
 
         assert_eq!(mask_point_indices.len(), mask_evaluation.len());
         for (mask_item, mask_point_index) in mask.items.iter().zip(mask_point_indices) {

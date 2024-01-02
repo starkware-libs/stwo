@@ -20,10 +20,12 @@ type MerkleHasher = <Channel as ChannelTrait>::ChannelHasher;
 const BLOW_UP_FACTOR_BITS: usize = 1;
 
 pub struct Fibonacci {
-    pub trace_coset: CanonicCoset,
-    pub eval_domain: CircleDomain,
-    pub constraint_coset: Coset,
+    pub trace_domain: CanonicCoset,
+    pub trace_eval_domain: CircleDomain,
+    pub trace_commitment_domain: CanonicCoset,
+    pub constraint_domain: Coset,
     pub constraint_eval_domain: CircleDomain,
+    pub quotient_commitment_domain: CanonicCoset,
     pub claim: BaseField,
 }
 
@@ -44,27 +46,31 @@ pub struct FibonacciProof {
 
 impl Fibonacci {
     pub fn new(n_bits: usize, claim: BaseField) -> Self {
-        let trace_coset = CanonicCoset::new(n_bits);
-        let eval_domain = trace_coset.evaluation_domain(n_bits + 1);
-        let constraint_coset = Coset::subgroup(n_bits);
+        let trace_domain = CanonicCoset::new(n_bits);
+        let trace_eval_domain = trace_domain.evaluation_domain(n_bits + 1);
+        let trace_commitment_domain = CanonicCoset::new(n_bits + BLOW_UP_FACTOR_BITS);
+        let constraint_domain = Coset::subgroup(n_bits);
         let constraint_eval_domain = CircleDomain::constraint_evaluation_domain(n_bits + 1);
+        let quotient_commitment_domain = CanonicCoset::new(n_bits + 1 + BLOW_UP_FACTOR_BITS);
         Self {
-            trace_coset,
-            eval_domain,
-            constraint_coset,
+            trace_domain,
+            trace_eval_domain,
+            trace_commitment_domain,
+            constraint_domain,
             constraint_eval_domain,
+            quotient_commitment_domain,
             claim,
         }
     }
 
     pub fn get_trace(&self) -> CircleEvaluation<BaseField> {
         // Trace.
-        let mut trace = Vec::with_capacity(self.trace_coset.size());
+        let mut trace = Vec::with_capacity(self.trace_domain.size());
 
         // Fill trace with fibonacci squared.
         let mut a = BaseField::one();
         let mut b = BaseField::one();
-        for _ in 0..self.trace_coset.size() {
+        for _ in 0..self.trace_domain.size() {
             trace.push(a);
             let tmp = a.square() + b.square();
             a = b;
@@ -72,22 +78,22 @@ impl Fibonacci {
         }
 
         // Returns as a CircleEvaluation.
-        CircleEvaluation::new_canonical_ordered(self.trace_coset, trace)
+        CircleEvaluation::new_canonical_ordered(self.trace_domain, trace)
     }
 
     pub fn eval_step_constraint<F: ExtensionOf<BaseField>>(&self, trace: impl PolyOracle<F>) -> F {
-        trace.get_at(self.trace_coset.index_at(0)).square()
-            + trace.get_at(self.trace_coset.index_at(1)).square()
-            - trace.get_at(self.trace_coset.index_at(2))
+        trace.get_at(self.trace_domain.index_at(0)).square()
+            + trace.get_at(self.trace_domain.index_at(1)).square()
+            - trace.get_at(self.trace_domain.index_at(2))
     }
 
     pub fn eval_step_quotient<F: ExtensionOf<BaseField>>(&self, trace: impl PolyOracle<F>) -> F {
-        let excluded0 = self.constraint_coset.at(self.constraint_coset.size() - 2);
-        let excluded1 = self.constraint_coset.at(self.constraint_coset.size() - 1);
+        let excluded0 = self.constraint_domain.at(self.constraint_domain.size() - 2);
+        let excluded1 = self.constraint_domain.at(self.constraint_domain.size() - 1);
         let num = self.eval_step_constraint(trace)
             * point_excluder(excluded0, trace.point())
             * point_excluder(excluded1, trace.point());
-        let denom = coset_vanishing(self.constraint_coset, trace.point());
+        let denom = coset_vanishing(self.constraint_domain, trace.point());
         num / denom
     }
 
@@ -96,7 +102,7 @@ impl Fibonacci {
         trace: impl PolyOracle<F>,
         value: BaseField,
     ) -> F {
-        trace.get_at(self.trace_coset.index_at(0)) - value
+        trace.get_at(self.trace_domain.index_at(0)) - value
     }
 
     pub fn eval_boundary_quotient<F: ExtensionOf<BaseField>>(
@@ -106,7 +112,7 @@ impl Fibonacci {
         value: BaseField,
     ) -> F {
         let num = self.eval_boundary_constraint(trace, value);
-        let denom = point_vanishing(self.constraint_coset.at(point_index), trace.point());
+        let denom = point_vanishing(self.constraint_domain.at(point_index), trace.point());
         num / denom
     }
 
@@ -118,7 +124,7 @@ impl Fibonacci {
         let mut quotient = random_coeff.pow(0) * self.eval_step_quotient(trace);
         quotient += random_coeff.pow(1) * self.eval_boundary_quotient(trace, 0, BaseField::one());
         quotient += random_coeff.pow(2)
-            * self.eval_boundary_quotient(trace, self.constraint_coset.size() - 1, self.claim);
+            * self.eval_boundary_quotient(trace, self.constraint_domain.size() - 1, self.claim);
         quotient
     }
 
@@ -154,11 +160,9 @@ impl Fibonacci {
         ));
         let trace = self.get_trace();
         let trace_poly = trace.interpolate();
-        let trace_evaluation = trace_poly.evaluate(self.eval_domain);
-        let trace_commitment_domain =
-            CanonicCoset::new(self.trace_coset.n_bits + BLOW_UP_FACTOR_BITS);
+        let trace_evaluation = trace_poly.evaluate(self.trace_eval_domain);
         let trace_commitment_evaluation =
-            trace_poly.evaluate(trace_commitment_domain.circle_domain());
+            trace_poly.evaluate(self.trace_commitment_domain.circle_domain());
         let trace_merkle =
             MerkleTree::<BaseField, MerkleHasher>::commit(vec![trace_commitment_evaluation
                 .values
@@ -169,10 +173,8 @@ impl Fibonacci {
         let random_coeff = QM31::from_m31_array(verifier_randomness[..4].try_into().unwrap());
         let quotient = self.compute_quotient(random_coeff, &trace_evaluation);
         let quotient_poly = quotient.interpolate();
-        let quotient_commitment_domain =
-            CanonicCoset::new(self.constraint_eval_domain.n_bits() + BLOW_UP_FACTOR_BITS);
         let quotient_commitment_evaluation =
-            quotient_poly.evaluate(quotient_commitment_domain.circle_domain());
+            quotient_poly.evaluate(self.quotient_commitment_domain.circle_domain());
         // TODO(AlonH): Remove the clone.
         let quotient_merkle =
             MerkleTree::<QM31, MerkleHasher>::commit(vec![quotient_commitment_evaluation
@@ -183,7 +185,7 @@ impl Fibonacci {
         let oods_point = CirclePoint::<QM31>::get_random_point(channel);
         let mask = self.get_mask();
         let trace_oods_evaluation =
-            get_oods_values(&mask, oods_point, &[self.trace_coset], &[trace_poly]);
+            get_oods_values(&mask, oods_point, &[self.trace_domain], &[trace_poly]);
         let quotient_oods_value = quotient_poly.eval_at_point(oods_point);
 
         // A quotient for each mask item and for the CP, in the OODS point and its conjugate.
@@ -237,9 +239,9 @@ mod tests {
 
         // Assert that the step constraint is satisfied on the trace.
         for p_ind in fib
-            .constraint_coset
+            .constraint_domain
             .iter_indices()
-            .take(fib.constraint_coset.size() - 2)
+            .take(fib.constraint_domain.size() - 2)
         {
             let res = fib.eval_step_constraint(EvalByEvaluation::new(p_ind, &trace));
             assert_eq!(res, BaseField::zero());
@@ -248,7 +250,7 @@ mod tests {
         // Assert that the first trace value is 1.
         assert_eq!(
             fib.eval_boundary_constraint(
-                EvalByEvaluation::new(fib.constraint_coset.index_at(0), &trace,),
+                EvalByEvaluation::new(fib.constraint_domain.index_at(0), &trace,),
                 BaseField::one()
             ),
             BaseField::zero()
@@ -258,8 +260,8 @@ mod tests {
         assert_eq!(
             fib.eval_boundary_constraint(
                 EvalByEvaluation::new(
-                    fib.constraint_coset
-                        .index_at(fib.constraint_coset.size() - 1),
+                    fib.constraint_domain
+                        .index_at(fib.constraint_domain.size() - 1),
                     &trace,
                 ),
                 fib.claim
@@ -274,7 +276,7 @@ mod tests {
         let trace = fib.get_trace();
         let trace_poly = trace.interpolate();
 
-        let extended_evaluation = trace_poly.evaluate(fib.eval_domain);
+        let extended_evaluation = trace_poly.evaluate(fib.trace_eval_domain);
 
         // TODO(ShaharS), Change to a channel implementation to retrieve the random
         // coefficients from extension field.
@@ -290,11 +292,11 @@ mod tests {
         }
         let quotient_eval = CircleEvaluation::new(fib.constraint_eval_domain, quotient_values);
         // Interpolate the poly. The poly is indeed of degree lower than the size of
-        // eval_domain, then it should interpolate correctly.
+        // trace_eval_domain, then it should interpolate correctly.
         let interpolated_quotient_poly = quotient_eval.interpolate();
 
-        // Evaluate this polynomial at another point, out of eval_domain and compare to what we
-        // expect.
+        // Evaluate this polynomial at another point, out of trace_eval_domain and compare to what
+        // we expect.
         let oods_point = CirclePoint::<QM31>::get_point(98989892);
         let trace_evaluator = EvalByPoly {
             point: oods_point,
