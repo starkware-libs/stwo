@@ -247,8 +247,8 @@ impl Fibonacci {
         );
         let trace_queries = get_projected_queries(
             &composition_polynomial_queries,
-            self.trace_commitment_domain.log_size,
-            self.composition_polynomial_commitment_domain.log_size,
+            self.composition_polynomial_commitment_domain.log_size
+                - self.trace_commitment_domain.log_size,
         );
         let composition_polynomial_decommitment = composition_polynomial_merkle
             .generate_decommitment(composition_polynomial_queries.clone());
