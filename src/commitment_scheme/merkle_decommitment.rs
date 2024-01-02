@@ -44,6 +44,7 @@ where
     }
 
     // TODO(Ohad): Implement more verbose error handling.
+    // TODO(AlonH): Consider using a vector for the queries.
     pub fn verify(&self, root: H::Hash, queries: BTreeSet<usize>) -> bool {
         let leaf_block_queries = queries
             .iter()
