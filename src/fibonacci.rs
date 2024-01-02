@@ -209,8 +209,9 @@ impl Fibonacci {
             &quotient_commitment_evaluation,
         ));
 
-        let quotient_queries =
+        let (mut quotient_queries, mut conjugate_quotient_queries) =
             generate_queries(channel, quotient_commitment_domain.n_bits, N_QUERIES);
+        quotient_queries.append(&mut conjugate_quotient_queries);
         let trace_queries = get_projected_queries(
             &quotient_queries,
             trace_commitment_domain.n_bits,
