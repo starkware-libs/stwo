@@ -16,7 +16,7 @@ use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::oods::{get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
-use crate::core::queries::{generate_queries, get_projected_queries};
+use crate::core::queries::{flatten_queries, generate_queries, get_projected_queries};
 
 type Channel = Blake2sChannel;
 type MerkleHasher = <Channel as ChannelTrait>::ChannelHasher;
@@ -223,9 +223,10 @@ impl Fibonacci {
             generate_queries(channel, quotient_commitment_domain.log_size, N_QUERIES);
         let trace_queries = get_projected_queries(
             &quotient_queries,
-            trace_commitment_domain.log_size,
-            quotient_commitment_domain.log_size,
+            quotient_commitment_domain.log_size - trace_commitment_domain.log_size,
         );
+        let quotient_queries = flatten_queries(quotient_queries);
+        let trace_queries = flatten_queries(trace_queries);
         let quotient_decommitment = quotient_merkle.generate_decommitment(&quotient_queries);
         let trace_decommitment = trace_merkle.generate_decommitment(&trace_queries);
 
