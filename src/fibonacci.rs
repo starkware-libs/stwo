@@ -16,7 +16,7 @@ use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::oods::{get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
-use crate::core::queries::{generate_queries, get_projected_queries};
+use crate::core::queries::{generate_queries, get_folded_queries};
 
 type Channel = Blake2sChannel;
 type MerkleHasher = <Channel as ChannelTrait>::ChannelHasher;
@@ -245,10 +245,10 @@ impl Fibonacci {
             self.composition_polynomial_commitment_domain.log_size,
             N_QUERIES,
         );
-        let trace_queries = get_projected_queries(
+        let trace_queries = get_folded_queries(
             &composition_polynomial_queries,
-            self.trace_commitment_domain.log_size,
-            self.composition_polynomial_commitment_domain.log_size,
+            self.composition_polynomial_commitment_domain.log_size
+                - self.trace_commitment_domain.log_size,
         );
         let composition_polynomial_decommitment = composition_polynomial_merkle
             .generate_decommitment(composition_polynomial_queries.clone());
