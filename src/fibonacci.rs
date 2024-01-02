@@ -226,6 +226,13 @@ impl Fibonacci {
             trace_commitment_domain.n_bits,
             quotient_commitment_domain.n_bits,
         );
+        let [quotient_queries, trace_queries]: [BTreeSet<usize>; 2] =
+            [quotient_queries, trace_queries].map(|queries| {
+                queries
+                    .into_iter()
+                    .flat_map(|t| Into::<[usize; 2]>::into(t).into_iter())
+                    .collect()
+            });
         let quotient_decommitment = quotient_merkle.generate_decommitment(&quotient_queries);
         let trace_decommitment = trace_merkle.generate_decommitment(&trace_queries);
 
