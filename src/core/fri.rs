@@ -106,7 +106,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
 
     /// Builds and commits to the inner FRI layers (all layers except the last layer).
     ///
-    /// Returns the evaluations of the last FRI layer's polynomial.
+    /// Returns the evaluation for the last layer.
     ///
     /// # Panics
     ///
