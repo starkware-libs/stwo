@@ -226,8 +226,8 @@ impl Fibonacci {
             trace_commitment_domain.n_bits,
             quotient_commitment_domain.n_bits,
         );
-        let quotient_decommitment = quotient_merkle.generate_decommitment(&quotient_queries);
-        let trace_decommitment = trace_merkle.generate_decommitment(&trace_queries);
+        let quotient_decommitment = quotient_merkle.generate_decommitment(quotient_queries.clone());
+        let trace_decommitment = trace_merkle.generate_decommitment(trace_queries.clone());
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
