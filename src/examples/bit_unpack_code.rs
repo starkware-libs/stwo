@@ -5,15 +5,27 @@ use super::ops::*;
 use crate::core::fields::m31::M31;
 pub struct Input {
     pub values: Vec<u16>,
+    pub random_element: Vec<M31>,
 }
 pub struct Output {
     pub unpacked: Vec<M31>,
+    pub rc_logup_num: Vec<M31>,
+    pub rc_logup_denom: Vec<M31>,
 }
 pub fn compute(input: &Input) -> Output {
     let values = &input.values;
+    let random_element = &input.random_element;
     let mut unpacked = Vec::<M31>::with_capacity(1024);
     unsafe {
         unpacked.set_len(1024);
+    }
+    let mut rc_logup_num = Vec::<M31>::with_capacity(1024);
+    unsafe {
+        rc_logup_num.set_len(1024);
+    }
+    let mut rc_logup_denom = Vec::<M31>::with_capacity(1024);
+    unsafe {
+        rc_logup_denom.set_len(1024);
     }
     for i in 0..64 {
         let value_shr_0 = values[i * 1 + 0];
@@ -66,5 +78,29 @@ pub fn compute(input: &Input) -> Output {
         unpacked[i * 16 + 14] = m31_value_shr_14;
         unpacked[i * 16 + 15] = m31_value_shr_15;
     }
-    Output { unpacked }
+    for i in 0..1 {
+        let unpacked0 = unpacked[i * 1 + 0];
+        let random_element0 = random_element[(i * 1 + 0) % 1];
+        let rc_logup_num0: M31 = M31::from(1);
+        let shifted_unpacked0: M31 = sub(unpacked0, random_element0);
+        rc_logup_num[i * 1 + 0] = rc_logup_num0;
+        rc_logup_denom[i * 1 + 0] = shifted_unpacked0;
+    }
+    for i in 0..1023 {
+        let random_element0 = random_element[(i * 1 + 0) % 1];
+        let unpacked_curr = unpacked[i * 1 + 1];
+        let rc_logup_num_curr = rc_logup_num[i * 1 + 0];
+        let rc_logup_denom_curr = rc_logup_denom[i * 1 + 0];
+        let shifted_unpacked: M31 = sub(unpacked_curr, random_element0);
+        let rc_logup_denom_next: M31 = mul(rc_logup_denom_curr, shifted_unpacked);
+        let rc_logup_num_temp: M31 = mul(rc_logup_num_curr, shifted_unpacked);
+        let rc_logup_num_next: M31 = add(rc_logup_num_temp, rc_logup_denom_curr);
+        rc_logup_num[i * 1 + 1] = rc_logup_num_next;
+        rc_logup_denom[i * 1 + 1] = rc_logup_denom_next;
+    }
+    Output {
+        unpacked,
+        rc_logup_num,
+        rc_logup_denom,
+    }
 }

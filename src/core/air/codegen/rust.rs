@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use genco::prelude::*;
 use xshell::{cmd, Shell};
 
+use crate::core::air::graph::{BinaryOp, PointwiseOp};
 use crate::core::air::materialize::{
-    MaterializedArray, MaterializedComputation, MaterializedGraph,
+    FusedNode, FusedOp, MaskItem, MaterializedArray, MaterializedComputation, MaterializedGraph,
+    Ordering,
 };
 
 pub fn project_root() -> PathBuf {
@@ -293,10 +295,229 @@ fn test_bit_unpack_trace_generation_codegen() {
     use std::fs;
 
     use crate::core::air::graph::{BinaryOp, PointwiseOp};
-    use crate::core::air::materialize::{
-        FusedNode, FusedOp, MaskItem, MaterializedComputation, MaterializedGraph, Ordering,
-    };
+    use crate::core::air::materialize::{FusedNode, MaterializedGraph};
     let n_bits = 6;
+    let bitwise_generation_fused_ops = get_bitwise_generation_fused_ops();
+    let graph = MaterializedGraph {
+        inputs: vec![
+            MaterializedArray {
+                name: "values".into(),
+                size: 1 << n_bits,
+                ty: "u16".into(),
+            },
+            MaterializedArray {
+                name: "random_element".into(),
+                size: 1,
+                ty: "M31".into(), // TODO: Change to QM31.
+            },
+        ],
+        outputs: vec![
+            MaterializedArray {
+                name: "unpacked".into(),
+                size: 1 << (n_bits + 4), // each value is represented with 16 bits.
+                ty: "M31".into(),
+            },
+            MaterializedArray {
+                name: "rc_logup_num".into(),
+                size: 1 << (n_bits + 4),
+                ty: "M31".into(),
+            },
+            MaterializedArray {
+                name: "rc_logup_denom".into(),
+                size: 1 << (n_bits + 4),
+                ty: "M31".into(),
+            },
+        ],
+        computations: vec![
+            MaterializedComputation {
+                output_tile: (0..16)
+                    .map(|i| MaskItem {
+                        item_name: format!("m31_value_shr_{}", i),
+                        array_name: "unpacked".into(),
+                        offset: i,
+                        step: 1 << 4,
+                        modulus: None,
+                    })
+                    .collect(),
+                input_tile: vec![MaskItem {
+                    item_name: "value_shr_0".into(),
+                    array_name: "values".into(),
+                    offset: 0,
+                    step: 1,
+                    modulus: None,
+                }],
+                n_repeats: 1 << n_bits,
+                fused_op: FusedOp {
+                    ops: bitwise_generation_fused_ops,
+                },
+                ordering: Ordering::Sequential,
+            },
+            MaterializedComputation {
+                output_tile: vec![
+                    MaskItem {
+                        item_name: "rc_logup_num0".into(),
+                        array_name: "rc_logup_num".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: None,
+                    },
+                    MaskItem {
+                        item_name: "shifted_unpacked0".into(),
+                        array_name: "rc_logup_denom".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: None,
+                    },
+                ],
+                input_tile: vec![
+                    MaskItem {
+                        item_name: "unpacked0".into(),
+                        array_name: "unpacked".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: None,
+                    },
+                    MaskItem {
+                        item_name: "random_element0".into(),
+                        array_name: "random_element".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: Some(1),
+                    },
+                ],
+                n_repeats: 1,
+                fused_op: FusedOp {
+                    ops: vec![
+                        FusedNode {
+                            name: "rc_logup_num0".into(),
+                            op: PointwiseOp::Cast {
+                                input: "1".into(),
+                                ty: "M31".into(),
+                            },
+                            ty: "M31".into(),
+                        },
+                        FusedNode {
+                            name: "shifted_unpacked0".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Sub,
+                                a: "unpacked0".into(),
+                                b: "random_element0".into(),
+                            },
+                            ty: "M31".into(),
+                        },
+                    ],
+                },
+                ordering: Ordering::Sequential,
+            },
+            MaterializedComputation {
+                output_tile: vec![
+                    MaskItem {
+                        item_name: "rc_logup_num_next".into(),
+                        array_name: "rc_logup_num".into(),
+                        offset: 1,
+                        step: 1,
+                        modulus: None,
+                    },
+                    MaskItem {
+                        item_name: "rc_logup_denom_next".into(),
+                        array_name: "rc_logup_denom".into(),
+                        offset: 1,
+                        step: 1,
+                        modulus: None,
+                    },
+                ],
+                input_tile: vec![
+                    MaskItem {
+                        item_name: "random_element0".into(),
+                        array_name: "random_element".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: Some(1),
+                    },
+                    MaskItem {
+                        item_name: "unpacked_curr".into(),
+                        array_name: "unpacked".into(),
+                        offset: 1,
+                        step: 1,
+                        modulus: None,
+                    },
+                    MaskItem {
+                        item_name: "rc_logup_num_curr".into(),
+                        array_name: "rc_logup_num".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: None,
+                    },
+                    MaskItem {
+                        item_name: "rc_logup_denom_curr".into(),
+                        array_name: "rc_logup_denom".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: None,
+                    },
+                ],
+                n_repeats: (1 << (n_bits + 4)) - 1,
+                fused_op: FusedOp {
+                    ops: vec![
+                        FusedNode {
+                            name: "shifted_unpacked".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Sub,
+                                a: "unpacked_curr".into(),
+                                b: "random_element0".into(),
+                            },
+                            ty: "M31".into(),
+                        },
+                        FusedNode {
+                            name: "rc_logup_denom_next".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Mul,
+                                a: "rc_logup_denom_curr".into(),
+                                b: "shifted_unpacked".into(),
+                            },
+                            ty: "M31".into(),
+                        },
+                        FusedNode {
+                            name: "rc_logup_num_temp".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Mul,
+                                a: "rc_logup_num_curr".into(),
+                                b: "shifted_unpacked".into(),
+                            },
+                            ty: "M31".into(),
+                        },
+                        FusedNode {
+                            name: "rc_logup_num_next".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Add,
+                                a: "rc_logup_num_temp".into(),
+                                b: "rc_logup_denom_curr".into(),
+                            },
+                            ty: "M31".into(),
+                        },
+                    ],
+                },
+                ordering: Ordering::Sequential,
+            },
+        ],
+    };
+    let tokens = generate_code(&graph);
+    let text = reformat_rust_code(tokens.to_string().expect("Could not format Rust code."));
+
+    let mut path = project_root();
+    path.push("src/examples/bit_unpack_code.rs");
+
+    let expected = fs::read_to_string(&path).unwrap();
+    if text != expected {
+        if std::env::var("FIX_TESTS").is_ok() {
+            fs::write(path, text).unwrap();
+        } else {
+            panic!("Bit unpack codegen file is not up to date. Run with FIX_TESTS=1 to fix");
+        }
+    }
+}
+
+pub fn get_bitwise_generation_fused_ops() -> Vec<FusedNode> {
     let mut fused_ops = vec![FusedNode {
         name: "one".into(),
         op: PointwiseOp::Const {
@@ -330,52 +551,5 @@ fn test_bit_unpack_trace_generation_codegen() {
             })
             .collect::<Vec<_>>(),
     );
-
-    let graph = MaterializedGraph {
-        inputs: vec![MaterializedArray {
-            name: "values".into(),
-            size: 1 << n_bits,
-            ty: "u16".into(),
-        }],
-        outputs: vec![MaterializedArray {
-            name: "unpacked".into(),
-            size: 1 << (n_bits + 4), // each value is represented with 16 bits.
-            ty: "M31".into(),
-        }],
-        computations: vec![MaterializedComputation {
-            output_tile: (0..16)
-                .map(|i| MaskItem {
-                    item_name: format!("m31_value_shr_{}", i),
-                    array_name: "unpacked".into(),
-                    offset: i,
-                    step: 1 << 4,
-                    modulus: None,
-                })
-                .collect(),
-            input_tile: vec![MaskItem {
-                item_name: "value_shr_0".into(),
-                array_name: "values".into(),
-                offset: 0,
-                step: 1,
-                modulus: None,
-            }],
-            n_repeats: 1 << n_bits,
-            fused_op: FusedOp { ops: fused_ops },
-            ordering: Ordering::Sequential,
-        }],
-    };
-    let tokens = generate_code(&graph);
-    let text = reformat_rust_code(tokens.to_string().expect("Could not format Rust code."));
-
-    let mut path = project_root();
-    path.push("src/examples/bit_unpack_code.rs");
-
-    let expected = fs::read_to_string(&path).unwrap();
-    if text != expected {
-        if std::env::var("FIX_TESTS").is_ok() {
-            fs::write(path, text).unwrap();
-        } else {
-            panic!("Bit unpack codegen file is not up to date. Run with FIX_TESTS=1 to fix");
-        }
-    }
+    fused_ops
 }
