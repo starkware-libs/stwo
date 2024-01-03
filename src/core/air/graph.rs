@@ -50,6 +50,10 @@ pub enum PointwiseOp {
         value: String,
         ty: String,
     },
+    Cast {
+        input: String,
+        ty: String,
+    },
     Unary {
         op: UnaryOp,
         a: String,
@@ -74,6 +78,7 @@ impl PointwiseOp {
     pub fn name(&self) -> String {
         match self {
             PointwiseOp::Const { .. } => "const_val".to_string(),
+            PointwiseOp::Cast { ty, .. } => format!("{}::from", ty),
             PointwiseOp::Unary { op, .. } => match op {
                 UnaryOp::Neg => "neg".to_string(),
                 UnaryOp::Not => "not".to_string(),
@@ -92,6 +97,8 @@ impl PointwiseOp {
                 BinaryOp::Gt => "gt".to_string(),
                 BinaryOp::Leq => "leq".to_string(),
                 BinaryOp::Geq => "geq".to_string(),
+                BinaryOp::Shr => "shr".to_string(),
+                BinaryOp::Shl => "shl".to_string(),
                 BinaryOp::And => "and".to_string(),
                 BinaryOp::Or => "or".to_string(),
                 BinaryOp::Xor => "xor".to_string(),
@@ -104,7 +111,12 @@ impl PointwiseOp {
     }
     pub fn params(&self) -> Vec<OpParam> {
         match self {
-            PointwiseOp::Const { value, .. } => vec![OpParam::String(value.clone())],
+            PointwiseOp::Const { value, ty } => vec![OpParam::String(format!(
+                " {} as {}",
+                value.clone(),
+                ty.clone()
+            ))],
+            PointwiseOp::Cast { .. } => vec![],
             PointwiseOp::Unary { .. } => vec![],
             PointwiseOp::Binary { .. } => vec![],
             PointwiseOp::Where { .. } => vec![],
@@ -114,6 +126,7 @@ impl PointwiseOp {
     pub fn inputs(&self) -> Vec<String> {
         match self {
             PointwiseOp::Const { .. } => vec![],
+            PointwiseOp::Cast { input, .. } => vec![input.clone()],
             PointwiseOp::Unary { a, .. } => vec![a.clone()],
             PointwiseOp::Binary { a, b, .. } => vec![a.clone(), b.clone()],
             PointwiseOp::Where {
@@ -141,6 +154,8 @@ pub enum BinaryOp {
     Geq,
     And,
     Or,
+    Shr,
+    Shl,
     Xor,
     Max,
     Min,

@@ -287,3 +287,95 @@ fn test_fibonacci_rust_codegen() {
         }
     }
 }
+
+#[test]
+fn test_bit_unpack_trace_generation_codegen() {
+    use std::fs;
+
+    use crate::core::air::graph::{BinaryOp, PointwiseOp};
+    use crate::core::air::materialize::{
+        FusedNode, FusedOp, MaskItem, MaterializedComputation, MaterializedGraph, Ordering,
+    };
+    let n_bits = 6;
+    let mut fused_ops = vec![FusedNode {
+        name: "one".into(),
+        op: PointwiseOp::Const {
+            value: "1".into(),
+            ty: "u16".into(),
+        },
+        ty: "u16".into(),
+    }];
+    fused_ops.append(
+        &mut (0..15)
+            .map(|i| FusedNode {
+                name: format!("value_shr_{}", i + 1),
+                op: PointwiseOp::Binary {
+                    op: BinaryOp::Shr,
+                    a: format!("value_shr_{}", i),
+                    b: "one".into(),
+                },
+                ty: "u16".into(),
+            })
+            .collect::<Vec<_>>(),
+    );
+    fused_ops.append(
+        &mut (0..16)
+            .map(|i| FusedNode {
+                name: format!("m31_value_shr_{}", i),
+                op: PointwiseOp::Cast {
+                    input: format!("value_shr_{}", i),
+                    ty: "M31".into(),
+                },
+                ty: "M31".into(),
+            })
+            .collect::<Vec<_>>(),
+    );
+
+    let graph = MaterializedGraph {
+        inputs: vec![MaterializedArray {
+            name: "values".into(),
+            size: 1 << n_bits,
+            ty: "u16".into(),
+        }],
+        outputs: vec![MaterializedArray {
+            name: "unpacked".into(),
+            size: 1 << (n_bits + 4), // each value is represented with 16 bits.
+            ty: "M31".into(),
+        }],
+        computations: vec![MaterializedComputation {
+            output_tile: (0..16)
+                .map(|i| MaskItem {
+                    item_name: format!("m31_value_shr_{}", i),
+                    array_name: "unpacked".into(),
+                    offset: i,
+                    step: 1 << 4,
+                    modulus: None,
+                })
+                .collect(),
+            input_tile: vec![MaskItem {
+                item_name: "value_shr_0".into(),
+                array_name: "values".into(),
+                offset: 0,
+                step: 1,
+                modulus: None,
+            }],
+            n_repeats: 1 << n_bits,
+            fused_op: FusedOp { ops: fused_ops },
+            ordering: Ordering::Sequential,
+        }],
+    };
+    let tokens = generate_code(&graph);
+    let text = reformat_rust_code(tokens.to_string().expect("Could not format Rust code."));
+
+    let mut path = project_root();
+    path.push("src/examples/bit_unpack_code.rs");
+
+    let expected = fs::read_to_string(&path).unwrap();
+    if text != expected {
+        if std::env::var("FIX_TESTS").is_ok() {
+            fs::write(path, text).unwrap();
+        } else {
+            panic!("Bit unpack codegen file is not up to date. Run with FIX_TESTS=1 to fix");
+        }
+    }
+}

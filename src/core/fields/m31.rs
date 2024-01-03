@@ -100,6 +100,11 @@ impl From<u32> for M31 {
         M31::reduce(value.into())
     }
 }
+impl From<u16> for M31 {
+    fn from(value: u16) -> Self {
+        M31::from_u32_unchecked(value.into())
+    }
+}
 
 impl From<i32> for M31 {
     fn from(value: i32) -> Self {
