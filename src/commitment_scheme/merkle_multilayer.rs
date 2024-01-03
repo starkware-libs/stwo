@@ -195,7 +195,7 @@ mod tests {
         );
         trace_column
     }
-    
+
     fn hash_symmetric_path<H: Hasher>(
         initial_value: &[H::NativeType],
         path_length: usize,
