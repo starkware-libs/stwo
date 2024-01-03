@@ -86,8 +86,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     ///
     /// Panics if:
     /// * `evals` is empty or not sorted in ascending order by evaluation domain size.
+    /// * An evaluation is not from a sufficiently low degree polynomial.
     /// * An evaluation domain is smaller than or equal to the maximum last layer domain size.
-    /// * An evaluation is not of sufficiently low degree.
+    /// * An evaluation domain is not canonic.
+    // TODO: add docs for all evaluations needing to be from canonic domains
     pub fn commit(mut self, evals: Vec<CircleEvaluation<F>>) -> FriProver<F, H, QueryPhase> {
         assert!(evals.is_sorted_by_key(|e| e.len()));
         let last_layer_evaluation = self.commit_inner_layers(evals);
