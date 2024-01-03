@@ -79,8 +79,9 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     ///
     /// Mixed degree STARKs involve polynomials evaluated on multiple domains of different size.
     /// Combining evaluations on different sized domains into an evaluation of a single polynomial
-    /// on a single domain is inefficient. Instead, commit to multiple polynomials so combining
-    /// of evaluations can be taken care of efficiently at the appropriate FRI layer.
+    /// on a single domain for the purpose of commitment is inefficient. Instead, commit to multiple
+    /// polynomials so combining of evaluations can be taken care of efficiently at the appropriate
+    /// FRI layer. All evaluations must be taken over canonic [CircleDomain]s.
     ///
     /// # Panics
     ///
@@ -89,9 +90,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// * An evaluation is not from a sufficiently low degree polynomial.
     /// * An evaluation domain is smaller than or equal to the maximum last layer domain size.
     /// * An evaluation domain is not canonic.
-    // TODO: add docs for all evaluations needing to be from canonic domains
+    // TODO(andrew): Add docs for all evaluations needing to be from canonic domains.
     pub fn commit(mut self, evals: Vec<CircleEvaluation<F>>) -> FriProver<F, H, QueryPhase> {
-        assert!(evals.is_sorted_by_key(|e| e.len()));
+        assert!(evals.is_sorted_by_key(|e| e.len()), "not sorted");
+        assert!(evals.iter().all(|e| e.domain.is_canonic()), "not canonic");
         let last_layer_evaluation = self.commit_inner_layers(evals);
         self.commit_last_layer(last_layer_evaluation);
         FriProver {
@@ -111,40 +113,40 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// Panics if `evals` is empty or if an evaluation domain is smaller than or equal to the
     /// maximum last layer domain size.
     fn commit_inner_layers(&mut self, mut evals: Vec<CircleEvaluation<F>>) -> LineEvaluation<F> {
-        let mut line_evaluation = {
+        let mut evaluation = {
             // TODO(andrew): draw from channel
             let alpha = F::one();
             let first_circle_evaluaiton = evals.pop().expect("requires an evaluation");
             fold_circle_to_line(&first_circle_evaluaiton, alpha)
         };
 
-        const CIRCLE_TO_LINE_FOLDING_FACTOR: usize = 4;
-        let folded_len = |e: &CircleEvaluation<F>| e.len() / CIRCLE_TO_LINE_FOLDING_FACTOR;
+        while evaluation.len() > self.config.max_last_layer_domain_size() {
+            const CIRCLE_TO_LINE_FOLDING_FACTOR: usize = 2;
+            let folded_len = |e: &CircleEvaluation<F>| e.len() / CIRCLE_TO_LINE_FOLDING_FACTOR;
 
-        while line_evaluation.len() > self.config.max_last_layer_domain_size() {
             // Check for any evaluations that should be combined.
-            while evals.last().map(folded_len) == Some(line_evaluation.len()) {
+            while evals.last().map(folded_len) == Some(evaluation.len()) {
                 // TODO(andrew): draw random alpha from channel
                 let alpha = F::one();
                 let folded_evaluation = fold_circle_to_line(&evals.pop().unwrap(), alpha);
-                assert_eq!(folded_evaluation.len(), line_evaluation.len());
+                assert_eq!(folded_evaluation.len(), evaluation.len());
                 for (i, eval) in folded_evaluation.into_iter().enumerate() {
-                    line_evaluation[i] += alpha * eval;
+                    evaluation[i] += alpha * eval;
                 }
             }
 
-            let layer = FriLayer::new(&line_evaluation);
+            let layer = FriLayer::new(&evaluation);
             // TODO(andrew): add merkle root to channel
             // TODO(ohad): Add back once IntoSlice implemented for Field.
             // let _merkle_root = layer.merkle_tree.root();
             // TODO(andrew): draw random alpha from channel
             let alpha = F::one();
-            line_evaluation = fold_line(&line_evaluation, alpha);
+            evaluation = fold_line(&evaluation, alpha);
             self.layers.push(layer)
         }
 
         assert!(evals.is_empty());
-        line_evaluation
+        evaluation
     }
 
     /// Builds and commits to the FRI remainder polynomial's coefficients (the last FRI layer).
@@ -264,11 +266,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
     }
 }
 
-/// Folds a degree < d polynomial evaluated on [LineDomain] into a degree < d/2 polynomial
-/// evaluated on domain of half the size.
+/// Folds a degree `d` polynomial into a degree `d/2` polynomial.
 ///
-/// Let `evals` be the evaluation of a polynomial on a [LineDomain] `E`, `alpha` be a random field
-/// element and `pi(x) = 2x^2 - 1` be the circle's x-coordinate doubling map. This function returns
+/// Let `evals` be a polynomial evaluated on a [LineDomain] `E`, `alpha` be a random field element
+/// and `pi(x) = 2x^2 - 1` be the circle's x-coordinate doubling map. This function returns
 /// `f' = f0 + alpha * f1` evaluated on `pi(E)` such that `2f(x) = f0(pi(x)) + x * f1(pi(x))`.
 ///
 /// # Panics
@@ -296,64 +297,26 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
     LineEvaluation::new(folded_evals)
 }
 
-/// Folds a circle polynomial evaluated on a canonic [CircleDomain] of size `n` into a univariate
-/// polynomial evaluated on a [LineDomain] of size `n/2`.
+/// Folds a degree `d` circle polynomial into a degree `d/2` univariate polynomial.
 ///
-/// Canonic [CircleDomain]'s are domains of the form `+-G_2n + <G_n>`.
-///
-/// Let `evals` be the evaluations be of a polynomial `f` on a canonic [CircleDomain] `E`. This
-/// function returns `f' = f0 + alpha * f1` evaluated on the x-coordinates of `E` such that
-/// `2f(p) = f0(px) + py * f1(px)`.
-///
-/// # Panics
-///
-/// Panics if the evaluations are not taken over a canonic domain of size two or more.
+/// Let `evals` be the evaluation of a circle polynomial `f` on a [CircleDomain] `E`. This function
+/// returns a univariate polynomial `f' = f0 + alpha * f1` evaluated on the x-coordinates of `E`
+/// such that `2f(p) = f0(px) + py * f1(px)`.
 fn fold_circle_to_line<F: ExtensionOf<BaseField>>(
     evals: &CircleEvaluation<F>,
     alpha: F,
 ) -> LineEvaluation<F> {
-    let n = evals.len();
-    assert!(n >= 2, "too few evals");
-    assert!(evals.domain.is_canonic(), "not a canonic domain");
-
-    let (f0, f1) = split_to_line(evals);
-    let folded_evals = zip(f0, f1).map(|(f0, f1)| f0 + alpha * f1).collect();
-
-    LineEvaluation::new(folded_evals)
-}
-
-/// Splits a circle polynomial evaluated on a [CircleDomain] of size `n` into two univariate
-/// polynomials evaluated on a [LineDomain] of size `n/2`.
-///
-/// Let `evals` be the evaluations be of a polynomial `f` on the domain `E = +-c + <G>`. This
-/// function returns the evaluations of `f0` and `f1` on the x-coordinates of `E` such that
-/// `2f(p) = f0(px) + py * f1(px)`.
-///
-/// # Panics
-///
-/// Panics if there are less than two evaluations.
-fn split_to_line<F: ExtensionOf<BaseField>>(
-    evals: &CircleEvaluation<F>,
-) -> (LineEvaluation<F>, LineEvaluation<F>) {
-    let n = evals.len();
-    assert!(n >= 2, "too few evals");
-
-    let (l, r) = evals.split_at(n / 2);
-    let (f0_evals, f1_evals) = zip(evals.domain.iter(), zip(l, r))
+    let (l, r) = evals.split_at(evals.len() / 2);
+    let folded_evals = zip(evals.domain.iter(), zip(l, r))
         .map(|(p, (&f_p, &f_neg_p))| {
             // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
             let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
             ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
-            (f0_px, f1_px)
+            f0_px + alpha * f1_px
         })
-        .unzip();
+        .collect();
 
-    // TODO: Either add domain to [LineEvaluation] or consider changing LineDomain to be defined by
-    // its size and to always be canonic - since it may only be used by FRI.
-    let f0 = LineEvaluation::new(f0_evals);
-    let f1 = LineEvaluation::new(f1_evals);
-
-    (f0, f1)
+    LineEvaluation::new(folded_evals)
 }
 
 // TODO(andrew): support different folding factors
@@ -371,7 +334,7 @@ mod tests {
 
     use super::{FriConfig, FriProver};
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
-    use crate::core::circle::Coset;
+    use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::ExtensionOf;
@@ -425,6 +388,17 @@ mod tests {
         let config = FriConfig::new(2, EXPECTED_BLOWUP_FACTOR_BITS);
         let prover = FriProver::<M31, Blake3Hasher>::new(config);
         let evaluation = polynomial_evaluation(6, INVALID_BLOWUP_FACTOR_BITS);
+
+        prover.commit(vec![evaluation]);
+    }
+
+    #[test]
+    #[should_panic = "not canonic"]
+    fn committing_evaluation_from_invalid_domain_fails() {
+        // not a canonic domain
+        let invalid_domain = CircleDomain::new(Coset::new(CirclePointIndex(1), 3));
+        let evaluation = CircleEvaluation::new(invalid_domain, vec![QM31::one(); 1 << 4]);
+        let prover = FriProver::<QM31, Blake3Hasher>::new(FriConfig::new(2, 2));
 
         prover.commit(vec![evaluation]);
     }
