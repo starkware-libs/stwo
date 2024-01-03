@@ -20,6 +20,23 @@ pub struct MerkleMultiLayer<H: Hasher> {
     config: MerkleMultiLayerConfig,
 }
 
+pub struct MerkleMultiLayerConfig {
+    pub n_sub_trees: usize,
+    pub sub_tree_height: usize,
+    pub sub_tree_size: usize,
+}
+
+impl MerkleMultiLayerConfig {
+    pub fn new(sub_tree_height: usize, n_sub_trees: usize) -> Self {
+        let sub_tree_size = (1 << sub_tree_height) - 1;
+        Self {
+            n_sub_trees,
+            sub_tree_height,
+            sub_tree_size,
+        }
+    }
+}
+
 impl<H: Hasher> MerkleMultiLayer<H> {
     pub fn new(config: MerkleMultiLayerConfig) -> Self {
         // TODO(Ohad): investigate if this is the best way to initialize the vector. Consider unsafe
@@ -101,23 +118,6 @@ impl<H: Hasher> Display for MerkleMultiLayer<H> {
                 }
             });
         Ok(())
-    }
-}
-
-pub struct MerkleMultiLayerConfig {
-    pub n_sub_trees: usize,
-    pub sub_tree_height: usize,
-    pub sub_tree_size: usize,
-}
-
-impl MerkleMultiLayerConfig {
-    pub fn new(sub_tree_height: usize, n_sub_trees: usize) -> Self {
-        let sub_tree_size = (1 << sub_tree_height) - 1;
-        Self {
-            n_sub_trees,
-            sub_tree_height,
-            sub_tree_size,
-        }
     }
 }
 
