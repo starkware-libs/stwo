@@ -457,7 +457,7 @@ mod tests {
 
     #[test]
     fn is_canonic_invalid_domain() {
-        let half_coset = Coset::new(CirclePointIndex(1), 4);
+        let half_coset = Coset::new(CirclePointIndex::generator(), 4);
         let not_canonic_domain = CircleDomain::new(half_coset);
 
         assert!(!not_canonic_domain.is_canonic());
