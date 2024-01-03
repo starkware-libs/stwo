@@ -122,11 +122,12 @@ where
                 .map(|index| (index / 2) ^ 1)
                 .collect();
         }
-        MerkleDecommitment {
+        MerkleDecommitment::new(
             leaf_blocks,
             layers,
-            n_rows_in_leaf_block: self.bottom_layer_n_rows_in_node,
-        }
+            self.bottom_layer_n_rows_in_node,
+            leaf_block_indices,
+        )
     }
 
     fn get_leaf_block(&self, block_index: usize) -> Vec<T> {

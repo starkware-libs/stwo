@@ -17,9 +17,10 @@ pub struct MerkleDecommitment<T: Sized + Display, H: Hasher> {
     pub leaf_blocks: Vec<Vec<T>>,
     pub layers: Vec<Vec<H::Hash>>,
     pub n_rows_in_leaf_block: usize,
+    queried_leaf_block_indices: BTreeSet<usize>,
 }
 
-impl<T: Sized + Display, H: Hasher> MerkleDecommitment<T, H>
+impl<T: Sized + Display + Copy, H: Hasher> MerkleDecommitment<T, H>
 where
     T: IntoSlice<H::NativeType>,
 {
@@ -27,11 +28,13 @@ where
         leaf_blocks: Vec<Vec<T>>,
         layers: Vec<Vec<H::Hash>>,
         n_rows_in_leaf_block: usize,
+        queried_block_indices: BTreeSet<usize>,
     ) -> Self {
         Self {
             leaf_blocks,
             layers,
             n_rows_in_leaf_block,
+            queried_leaf_block_indices: queried_block_indices,
         }
     }
 
@@ -91,6 +94,27 @@ where
         );
         assert_eq!(curr_hashes.len(), 1);
         curr_hashes[0].into() == root.into()
+    }
+
+    pub fn get_values_at(&self, query: usize) -> Vec<T> {
+        // Get containing block.
+        let leaf_block_index = query / self.n_rows_in_leaf_block;
+        assert!(
+            self.queried_leaf_block_indices.contains(&leaf_block_index),
+            "Query {} not in decommitment!",
+            query
+        );
+        let index_in_decommitment = self
+            .queried_leaf_block_indices
+            .iter()
+            .position(|&i| i == leaf_block_index)
+            .unwrap();
+        let leaf_block = self.leaf_blocks.get(index_in_decommitment).unwrap();
+
+        // Extract values.
+        let row_length = leaf_block.len() / self.n_rows_in_leaf_block;
+        let row_start_index = (query % self.n_rows_in_leaf_block) * row_length;
+        leaf_block[row_start_index..row_start_index + row_length].to_vec()
     }
 }
 
@@ -165,5 +189,46 @@ mod tests {
             !wrong_leaf_block_decommitment.verify(tree.root(), queries,),
             "Wrong leaf block decommitment passed!"
         );
+    }
+
+    #[test]
+    fn get_values_at_test() {
+        let trace_column_length = 1 << 6;
+        let trace: ColumnArray<M31> = vec![
+            (0..trace_column_length)
+                .map(M31::from_u32_unchecked)
+                .collect();
+            4
+        ];
+        let tree = MerkleTree::<M31, Blake3Hasher>::commit(trace.clone());
+        let queries: BTreeSet<usize> = (0..10)
+            .map(|_| thread_rng().gen_range(0..trace_column_length as usize))
+            .collect();
+        let decommitment = tree.generate_decommitment(queries.clone());
+        let first_query = *queries.iter().next().unwrap();
+
+        let values_at_first_query = decommitment.get_values_at(first_query);
+
+        assert_eq!(
+            values_at_first_query,
+            vec![M31::from_u32_unchecked(first_query as u32); 4]
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn get_values_at_unincluded_blocks_test() {
+        let trace_column_length = 1 << 6;
+        let trace: ColumnArray<M31> = vec![
+            (0..trace_column_length)
+                .map(M31::from_u32_unchecked)
+                .collect();
+            4
+        ];
+        let tree = MerkleTree::<M31, Blake3Hasher>::commit(trace.clone());
+        let queries: BTreeSet<usize> = (0..10).collect();
+        let decommitment = tree.generate_decommitment(queries.clone());
+
+        decommitment.get_values_at(63);
     }
 }
