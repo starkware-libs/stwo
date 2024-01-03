@@ -133,7 +133,7 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     }
 
     /// Returns the polynomial's coefficients in their natural order.
-    pub fn into_natural_coefficients(self) -> Vec<F> {
+    pub fn into_ordered_coefficients(self) -> Vec<F> {
         bit_reverse(self.coeffs)
     }
 
@@ -142,7 +142,7 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// # Panics
     ///
     /// Panics if the number of coefficients is not a power of two.
-    pub fn from_natural_coefficients(coeffs: Vec<F>) -> Self {
+    pub fn from_ordered_coefficients(coeffs: Vec<F>) -> Self {
         Self::new(bit_reverse(coeffs))
     }
 }

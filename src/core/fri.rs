@@ -11,9 +11,7 @@ use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::circle::Coset;
-use crate::core::constraints::coset_vanishing;
 use crate::core::fft::ibutterfly;
-use crate::core::poly::circle::CircleDomain;
 use crate::core::poly::line::LineDomain;
 
 /// FRI proof config
@@ -79,11 +77,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
 
     /// Commits to multiple [CircleEvaluation]s.
     ///
-    /// Mixed degree STARKs involve polynomials evaluated on multiple domains of different size and
-    /// structure. Combining evaluations on different domains into an evaluation on a single domain
-    /// can be inefficient. Instead you can commit to multiple evaluations over different domains
-    /// individually and the necessary shifts and combining is taken care of at the appropriate
-    /// FRI layer.
+    /// Mixed degree STARKs involve polynomials evaluated on multiple domains of different size.
+    /// Combining evaluations on different sized domains into an evaluation of a single polynomial
+    /// on a single domain is inefficient. Instead, commit to multiple polynomials so combining
+    /// of evaluations can be taken care of efficiently at the appropriate FRI layer.
     ///
     /// # Panics
     ///
@@ -109,11 +106,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     ///
     /// # Panics
     ///
-    /// Panics if:
-    /// * `evals` is empty.
-    /// * An evaluation domain is smaller than or equal to the maximum last layer domain size.
-    // TODO(andrew): Consider folding circle evaluations on a canonical domain differently as they
-    // only needed to be folded into line evaluations.
+    /// Panics if `evals` is empty or if an evaluation domain is smaller than or equal to the
+    /// maximum last layer domain size.
     fn commit_inner_layers(&mut self, mut evals: Vec<CircleEvaluation<F>>) -> LineEvaluation<F> {
         let mut line_evaluation = {
             // TODO(andrew): draw from channel
@@ -162,10 +156,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
         assert!(evaluation.len() <= self.config.max_last_layer_domain_size());
         let num_remainder_coeffs = evaluation.len() >> self.config.blowup_factor_bits;
         let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2() as usize));
-        let mut coeffs = evaluation.interpolate(domain).into_natural_coefficients();
+        let mut coeffs = evaluation.interpolate(domain).into_ordered_coefficients();
         let zeros = coeffs.split_off(num_remainder_coeffs);
         assert!(zeros.iter().all(F::is_zero), "invalid degree");
-        self.remainder = Some(LinePoly::from_natural_coefficients(coeffs));
+        self.remainder = Some(LinePoly::from_ordered_coefficients(coeffs));
         // TODO(andrew): seed channel with remainder
     }
 }
@@ -268,13 +262,12 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
     }
 }
 
-/// Folds a degree `<d` polynomial evaluated on [LineDomain] `E` into a degree `<d/2` polynomial
-/// evaluated on `2E`.
+/// Folds a degree < d polynomial evaluated on [LineDomain] into a degree < d/2 polynomial
+/// evaluated on domain of half the size.
 ///
-/// Example: Our evaluation domain is the x-coordinates of `E = c + <G>`, `alpha` is a random field
-/// element and `pi(x) = 2x^2 - 1` is the circle's x-coordinate doubling map. We have evaluations of
-/// a polynomial `f` on `E` (i.e `evals`) and we can compute the evaluations of `f' = fe +
-/// alpha * fo` over `E' = { pi(x) | x in E }` such that `f(x) = (fe(pi(x)) + x * fo(pi(x))) / 2`.
+/// Let `evals` be the evaluation of a polynomial on a [LineDomain] `E`, `alpha` be a random field
+/// element and `pi(x) = 2x^2 - 1` be the circle's x-coordinate doubling map. This function returns
+/// `f' = f0 + alpha * f1` evaluated on `pi(E)` such that `2f(x) = f0(pi(x)) + x * f1(pi(x))`.
 ///
 /// # Panics
 ///
@@ -287,6 +280,8 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
     assert!(n >= 2, "too few evals");
 
     let (l, r) = evals.split_at(n / 2);
+    // TODO: Either add domain to [LineEvaluation] or consider changing LineDomain to be defined by
+    // its size and to always be canonic - since it may only be used by FRI.
     let domain = LineDomain::new(Coset::half_odds(n.ilog2() as usize));
     let folded_evals = zip(domain.iter(), zip(l, r))
         .map(|(x, (&f_x, &f_neg_x))| {
@@ -299,100 +294,38 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
     LineEvaluation::new(folded_evals)
 }
 
-/// Folds evaluations of a polynomial on a [CircleDomain] into evaluations on a [LineDomain].
+/// Folds a circle polynomial evaluated on a canonic [CircleDomain] of size `n` into a univariate
+/// polynomial evaluated on a [LineDomain] of size `n/2`.
 ///
-/// This folds a degree `<d` polynomial evaluated on any [CircleDomain] of size `n` into a
-/// polynomial of degree `<d/4` evaluated on a canonic [LineDomain] (a domain of the form
-/// `{p_x | p in +-G_4n + <G_n>}`) of size `n / 4` .
+/// Canonic [CircleDomain]'s are domains of the form `+-G_2n + <G_n>`.
 ///
-/// Let `evals` be the evaluations of a polynomial `f` on the domain `E = +-c + <G_n>` and `v0`,
-/// `v1` be polynomials that vanish on `g + <G>` and `-g + <G>` respectively. We can obtain the
-/// evals of `f0` and `f1` on `E' = +-G_n + <G_n/2>` such that `f(p) = v1(p) * f0(p-c+G_n) + v0(p) *
-/// f1(p+c-G_n)`. This function returns `f' = f00 + alpha * f01 + alpha^2 * f10 + alpha^3 * f11`
-/// evaluated on the x-coordinates of `E'` such that `f0(p) = (f00(px) + py * f01(px)) / 2` and
-/// `f1(p) = (f10(px) + py * f11(px)) / 2`.
+/// Let `evals` be the evaluations be of a polynomial `f` on a canonic [CircleDomain] `E`. This
+/// function returns `f' = f0 + alpha * f1` evaluated on the x-coordinates of `E` such that
+/// `2f(p) = f0(px) + py * f1(px)`.
 ///
 /// # Panics
 ///
-/// Panics if there are less than four evaluations.
+/// Panics if the evaluations are not taken over a canonic domain of size two or more.
 fn fold_circle_to_line<F: ExtensionOf<BaseField>>(
     evals: &CircleEvaluation<F>,
     alpha: F,
 ) -> LineEvaluation<F> {
     let n = evals.len();
-    assert!(n >= 4, "too few evals");
+    assert!(n >= 2, "too few evals");
+    assert!(evals.domain.is_canonic(), "not a canonic domain");
 
-    // TODO: Faster to do all these operations in a single pass.
-    let (f0, f1) = split_and_shift(evals);
-    let (f00, f01) = split_to_line(&f0);
-    let (f10, f11) = split_to_line(&f1);
-
-    let [a0, a1, a2, a3] = [F::one(), alpha, alpha.pow(2), alpha.pow(3)];
-    let folded_evals = zip(zip(f00, f01), zip(f10, f11))
-        .map(|((f00, f01), (f10, f11))| f00 * a0 + f01 * a1 + f10 * a2 + f11 * a3)
-        .collect();
+    let (f0, f1) = split_to_line(evals);
+    let folded_evals = zip(f0, f1).map(|(f0, f1)| f0 + alpha * f1).collect();
 
     LineEvaluation::new(folded_evals)
-}
-
-/// Splits a polynomial evaluated on a circle domain of size `n` into two shifted polynomials
-/// evaluated on a canonic circle domain (domains of the form `+-G_2n + <G_n>`) of size `n / 2`.
-///
-/// Let `evals` be the evaluations of a polynomial `f` on the domain `E = +-c + <G_n>` and `v0`,
-/// `v1` be polynomials that vanish on `c + <G_n>` and `-c + <G_n>` respectively. This function
-/// returns polynomials `f0` and `f1` evaluated on `E' = +-G_n + <G_n/2>` such that `f(p) = v1(p) *
-/// f0(p-c+G_n) + v0(p) * f1(p+c-G_n)`.
-///
-/// # Panics
-///
-/// Panics if there are less than two evaluations.
-fn split_and_shift<F: ExtensionOf<BaseField>>(
-    evals: &CircleEvaluation<F>,
-) -> (CircleEvaluation<F>, CircleEvaluation<F>) {
-    let n = evals.len();
-    assert!(n >= 2, "too few evals");
-
-    // TODO: This whole function can be a 4-value uninterleave
-    let (_e0, _e1) = evals.split_at(n / 2);
-    let half_coset = evals.domain.half_coset;
-    let half_coset_conjugate = half_coset.conjugate();
-    let (f0_evals, f1_evals) = zip(half_coset, half_coset_conjugate)
-        .enumerate()
-        .map(|(i, (p0, p1))| {
-            // v0(p1) and v1(p0) will alternate between 1 and -1
-            let _v0_p1 = coset_vanishing(half_coset, p1);
-            let _v1_p0 = coset_vanishing(half_coset_conjugate, p0);
-            // (_e0[i] / _v1_p0, _e1[i] / _v0_p1)
-            (_e0[i], _e1[i])
-        })
-        .unzip();
-
-    let reorder = |evals: Vec<F>| -> Vec<F> {
-        #[allow(clippy::tuple_array_conversions)]
-        let (even_evals, mut odd_evals): (Vec<F>, Vec<F>) =
-            evals.array_chunks().map(|[e, o]| (e, o)).unzip();
-        odd_evals.reverse();
-        #[allow(clippy::tuple_array_conversions)]
-        [even_evals, odd_evals].concat()
-    };
-
-    // Reorder the evals in the same order as the domain
-    let f0_evals = reorder(f0_evals);
-    let f1_evals = reorder(f1_evals);
-
-    let canonic_domain = CircleDomain::new(Coset::half_odds(n.ilog2() as usize - 2));
-    let f0 = CircleEvaluation::new(canonic_domain, f0_evals);
-    let f1 = CircleEvaluation::new(canonic_domain, f1_evals);
-
-    (f0, f1)
 }
 
 /// Splits a circle polynomial evaluated on a [CircleDomain] of size `n` into two univariate
 /// polynomials evaluated on a [LineDomain] of size `n/2`.
 ///
 /// Let `evals` be the evaluations be of a polynomial `f` on the domain `E = +-c + <G>`. This
-/// function returns the evaluations of `f0` and `f1` on the x-coordinates of `c + <G>` and
-/// `-c - <G>` respectively such that `f(p) = (f0(px) + py * f1(px)) / 2`.
+/// function returns the evaluations of `f0` and `f1` on the x-coordinates of `E` such that
+/// `2f(p) = f0(px) + py * f1(px)`.
 ///
 /// # Panics
 ///
@@ -406,7 +339,7 @@ fn split_to_line<F: ExtensionOf<BaseField>>(
     let (l, r) = evals.split_at(n / 2);
     let (f0_evals, f1_evals) = zip(evals.domain.iter(), zip(l, r))
         .map(|(p, (&f_p, &f_neg_p))| {
-            // Cauclate `f0(p_x)` and `f1(p_x)` such that `f(p) = (f0(p_x) + p_y * f1(p_x)) / 2`.
+            // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
             let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
             ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
             (f0_px, f1_px)
@@ -482,7 +415,8 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic = "invalid degree"]
+    #[ignore = "commit not implemented"]
     fn committing_high_degree_polynomial_fails() {
         const EXPECTED_BLOWUP_FACTOR_BITS: u32 = 2;
         const INVALID_BLOWUP_FACTOR_BITS: u32 = 1;
@@ -546,10 +480,9 @@ mod tests {
     }
 
     /// Returns the degree bound of a polynomial as `log2(degree_bound)`.
-    // TODO: move to test module
     fn degree_bound_bits<F: ExtensionOf<BaseField>>(polynomial: LineEvaluation<F>) -> u32 {
         let domain = LineDomain::new(Coset::half_odds(polynomial.len().ilog2() as usize));
-        let coeffs = polynomial.interpolate(domain).into_natural_coefficients();
+        let coeffs = polynomial.interpolate(domain).into_ordered_coefficients();
         let degree = coeffs.into_iter().rposition(|c| !c.is_zero()).unwrap_or(0);
         (degree + 1).ilog2()
     }
