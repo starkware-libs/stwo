@@ -33,6 +33,12 @@ impl QM31 {
     }
 }
 
+impl From<[u32; 4]> for QM31 {
+    fn from(values: [u32; 4]) -> Self {
+        QM31::from_u32_unchecked(values[0], values[1], values[2], values[3])
+    }
+}
+
 impl Display for QM31 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}) + ({})u", self.0, self.1)
