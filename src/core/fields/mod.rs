@@ -10,7 +10,7 @@ pub mod m31;
 pub mod qm31;
 
 pub trait Field:
-    NumAssign + Neg<Output = Self> + Copy + Debug + Display + PartialOrd + Ord
+    NumAssign + Neg<Output = Self> + Copy + Debug + Display + PartialOrd + Ord + Send + Sync + Sized
 {
     fn square(&self) -> Self {
         (*self) * (*self)
