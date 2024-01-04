@@ -1,6 +1,4 @@
 use std::fmt::{self, Display};
-use std::iter::{Skip, StepBy};
-use std::slice::Iter;
 
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
@@ -46,7 +44,7 @@ impl<H: Hasher> MerkleMultiLayer<H> {
     }
 
     /// Returns the roots of the sub-trees.
-    pub fn get_roots(&self) -> StepBy<Skip<Iter<'_, H::Hash>>> {
+    pub fn get_roots(&self) -> impl ExactSizeIterator<Item = &H::Hash> {
         self.data
             .iter()
             .skip(self.config.sub_tree_size - 1)
