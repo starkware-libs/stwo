@@ -1,8 +1,13 @@
+// TODO(andrew): File getting large consider splitting components across multiple files.
+use core::array;
 use std::fmt::Debug;
 use std::iter::zip;
 use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 
+use thiserror::Error;
+
+use super::constraints::PolyOracle;
 use super::fields::m31::BaseField;
 use super::fields::{ExtensionOf, Field};
 use super::poly::circle::CircleEvaluation;
@@ -12,14 +17,15 @@ use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
+use crate::core::poly::circle::CircleDomain;
 use crate::core::poly::line::LineDomain;
 
 /// FRI proof config
 // TODO(andrew): support different folding factors
 #[derive(Debug, Clone, Copy)]
 pub struct FriConfig {
-    log_last_layer_degree_bound: u32,
     log_blowup_factor: u32,
+    log_last_layer_degree_bound: u32,
 }
 
 impl FriConfig {
@@ -44,8 +50,8 @@ impl FriConfig {
         assert!(Self::LOG_LAST_LAYER_DEGREE_BOUND_RANGE.contains(&log_last_layer_degree_bound));
         assert!(Self::LOG_BLOWUP_FACTOR_RANGE.contains(&log_blowup_factor));
         Self {
-            log_last_layer_degree_bound,
             log_blowup_factor,
+            log_last_layer_degree_bound,
         }
     }
 
@@ -59,8 +65,8 @@ impl FriConfig {
 /// `Phase` is used to enforce the commitment phase is done before the query phase.
 pub struct FriProver<F: ExtensionOf<BaseField>, H: Hasher, Phase = CommitmentPhase> {
     config: FriConfig,
-    layers: Vec<FriLayer<F, H>>,
-    remainder: Option<LinePoly<F>>,
+    inner_layers: Vec<FriLayer<F, H>>,
+    last_layer_poly: Option<LinePoly<F>>,
     _phase: PhantomData<Phase>,
 }
 
@@ -69,8 +75,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     pub fn new(config: FriConfig) -> Self {
         Self {
             config,
-            layers: Vec::new(),
-            remainder: None,
+            inner_layers: Vec::new(),
+            last_layer_poly: None,
             _phase: PhantomData,
         }
     }
@@ -87,10 +93,9 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     ///
     /// Panics if:
     /// * `evals` is empty or not sorted in ascending order by evaluation domain size.
-    /// * An evaluation is not from a sufficiently low degree polynomial.
-    /// * An evaluation domain is smaller than or equal to 2x the maximum last layer domain size.
-    /// * An evaluation domain is not canonic circle domain.
-    // TODO(andrew): Add docs for all evaluations needing to be from canonic domains.
+    /// * A circle evaluation is not of a sufficiently low degree polynomial.
+    /// * A circle evaluation's domain is smaller than the last layer.
+    /// * A circle evaluation's domain is not canonic circle domain.
     pub fn commit(mut self, evals: Vec<CircleEvaluation<F>>) -> FriProver<F, H, QueryPhase> {
         assert!(evals.is_sorted_by_key(|e| e.len()), "not sorted");
         assert!(evals.iter().all(|e| e.domain.is_canonic()), "not canonic");
@@ -98,8 +103,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
         self.commit_last_layer(last_layer_evaluation);
         FriProver {
             config: self.config,
-            layers: self.layers,
-            remainder: self.remainder,
+            inner_layers: self.inner_layers,
+            last_layer_poly: self.last_layer_poly,
             _phase: PhantomData,
         }
     }
@@ -145,14 +150,17 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
 
             evaluation = Some(folded_evaluation);
             layer_size >>= LOG_FOLDING_FACTOR;
-            self.layers.push(layer);
+            self.inner_layers.push(layer)
         }
 
         assert!(evals.is_empty());
         evaluation.unwrap()
     }
 
-    /// Builds and commits to the remainder polynomial's coefficients (the last FRI layer).
+    /// Builds and commits to the last layer.
+    ///
+    /// The layer is committed to by sending the verifier all the coefficients of the remaining
+    /// polynomial.
     ///
     /// # Panics
     ///
@@ -161,31 +169,33 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// * The evaluation is not of sufficiently low degree.
     fn commit_last_layer(&mut self, evaluation: LineEvaluation<F>) {
         assert_eq!(evaluation.len(), self.config.last_layer_domain_size());
-        let num_remainder_coeffs = evaluation.len() >> self.config.log_blowup_factor;
+        let max_num_coeffs = evaluation.len() >> self.config.log_blowup_factor;
         let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2()));
         let mut coeffs = evaluation.interpolate(domain).into_ordered_coefficients();
-        let zeros = coeffs.split_off(num_remainder_coeffs);
+        let zeros = coeffs.split_off(max_num_coeffs);
         assert!(zeros.iter().all(F::is_zero), "invalid degree");
-        self.remainder = Some(LinePoly::from_ordered_coefficients(coeffs));
-        // TODO(andrew): seed channel with remainder
+        self.last_layer_poly = Some(LinePoly::from_ordered_coefficients(coeffs));
+        // TODO(andrew): seed channel with last layer polynomial's coefficients.
     }
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, QueryPhase> {
     pub fn into_proof(self, query_positions: &[usize]) -> FriProof<F, H> {
-        let remainder = self.remainder.unwrap();
-        let layer_proofs = self
-            .layers
+        let last_layer_poly = self.last_layer_poly.unwrap();
+        let inner_layers = self
+            .inner_layers
             .into_iter()
             .scan(query_positions.to_vec(), |positions, layer| {
                 let num_layer_cosets = layer.coset_evals[0].len();
-                fold_positions(positions, num_layer_cosets);
-                Some(layer.into_proof(positions))
+                let folded_positions = fold_positions(positions, num_layer_cosets);
+                let layer_proof = layer.into_proof(positions, &folded_positions);
+                *positions = folded_positions;
+                Some(layer_proof)
             })
             .collect();
         FriProof {
-            layer_proofs,
-            remainder,
+            inner_layers,
+            last_layer_poly,
         }
     }
 }
@@ -196,35 +206,224 @@ pub struct CommitmentPhase;
 /// Query phase for [FriProver].
 pub struct QueryPhase;
 
-/// A FRI proof.
-pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub layer_proofs: Vec<FriLayerProof<F, H>>,
-    pub remainder: LinePoly<F>,
+pub struct FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
+    /// Alphas used for folding.
+    alphas: Vec<F>,
+    config: FriConfig,
+    /// The list of degree bounds of all committed circle polynomials.
+    poly_degree_bounds: Vec<LogCirclePolyDegreeBound>,
+    proof: FriProof<F, H>,
 }
 
-/// Folding factor for univariate polynomials.
+impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
+    /// Creates a new FRI verifier.
+    ///
+    /// This verifier can verify multiple polynomials, with different degrees, are each low degree.
+    /// `degree_bounds` should be a list of degree bounds of all committed circle polynomials.
+    ///
+    /// # Errors
+    ///
+    /// An `Err` will be returned if:
+    /// * The proof contains an invalid number of FRI layers.
+    /// * The last layer polynomial's degree is too high.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are no degree bounds or if a degree bound is less than the last layer.
+    pub fn new(
+        config: FriConfig,
+        proof: FriProof<F, H>,
+        mut poly_degree_bounds: Vec<LogCirclePolyDegreeBound>,
+    ) -> Result<Self, VerificationError> {
+        poly_degree_bounds.sort();
+        let mut alphas = Vec::new();
+        let mut degree_bounds = poly_degree_bounds.clone();
+        let mut log_degree = degree_bounds.last().map(folded_circle_poly_degree).unwrap();
+
+        for _ in &proof.inner_layers {
+            // Draw alphas for the evaluations that will be combined into this layer.
+            while degree_bounds.last().map(folded_circle_poly_degree) == Some(log_degree) {
+                degree_bounds.pop();
+                // TODO(andrew): draw random alpha from channel
+                let alpha = F::one();
+                alphas.push(alpha);
+            }
+
+            // TODO(andrew): Seed channel with commitment.
+            // TODO(andrew): Draw alpha from channel.
+            let alpha = F::one();
+            alphas.push(alpha);
+
+            log_degree = log_degree.wrapping_sub(LOG_FOLDING_FACTOR);
+        }
+
+        // Check there aren't an invalid number of layer proofs.
+        if log_degree != config.log_last_layer_degree_bound {
+            return Err(VerificationError::InvalidNumFriLayers);
+        }
+
+        // Ensure there aren't any circle polynomials left out.
+        assert!(degree_bounds.is_empty());
+
+        // Check the degree of the last layer's polynomial for the last layer.
+        let last_layer_degree_bound = 1 << config.log_last_layer_degree_bound;
+        if proof.last_layer_poly.len() > last_layer_degree_bound {
+            return Err(VerificationError::LastLayerDegreeInvalid);
+        }
+
+        Ok(Self {
+            config,
+            alphas,
+            poly_degree_bounds,
+            proof,
+        })
+    }
+
+    /// Verifies the FRI commitment.
+    ///
+    /// The polynomials need to be provided in the same order as they were committed on.
+    pub fn verify(
+        self,
+        query_positions: &[usize],
+        polynomial_oracles: Vec<impl PolyOracle<F>>,
+    ) -> Result<(), VerificationError> {
+        if polynomial_oracles.len() != self.poly_degree_bounds.len() {
+            return Err(VerificationError::InvalidNumPolynomials {
+                expected: self.poly_degree_bounds.len(),
+                given: polynomial_oracles.len(),
+            });
+        }
+
+        let (last_layer_domain, last_layer_positions, last_layer_evals) =
+            self.verify_inner_layers(query_positions.to_vec(), polynomial_oracles)?;
+        self.verify_last_layer(last_layer_domain, last_layer_positions, last_layer_evals)
+    }
+
+    /// Verifies all layers except the last layer.
+    ///
+    /// Returns the domain, query positions and evaluations needed for verifying the last FRI
+    /// layer. Output is of the form: `(domain, query_positions, evaluations)`.
+    // TODO: Separate into two functions. 1st to generate the oracle queries and 2nd to get the
+    // answers.
+    fn verify_inner_layers(
+        &self,
+        mut positions: Vec<usize>,
+        mut polynomial_oracles: Vec<impl PolyOracle<F>>,
+    ) -> Result<(LineDomain, Vec<usize>, Vec<F>), VerificationError> {
+        let log_blowup_factor = self.config.log_blowup_factor;
+
+        let mut alphas = self.alphas.iter().copied();
+        let mut degrees = self.poly_degree_bounds.clone();
+        let mut log_degree = degrees.last().map(folded_circle_poly_degree).unwrap();
+        let mut evals = vec![F::zero(); positions.len()];
+        let mut domain = LineDomain::new(Coset::half_odds(log_degree + log_blowup_factor));
+
+        for (i, layer) in self.proof.inner_layers.iter().enumerate() {
+            let folded_positions = fold_positions(&positions, domain.size());
+
+            // Fold and combine circle polynomial evaluations.
+            while degrees.last().map(folded_circle_poly_degree) == Some(log_degree) {
+                degrees.pop();
+                let poly_oracle = polynomial_oracles.pop().unwrap();
+                let alpha = alphas.next().unwrap();
+                let circle_domain = CircleDomain::new(domain.coset());
+                for (eval, &position) in zip(&mut evals, &positions) {
+                    let p_index = circle_domain.index_at(position);
+                    let p = p_index.to_point();
+                    let f_p = poly_oracle.get_at(p_index);
+                    let f_neg_p = poly_oracle.get_at(-p_index);
+                    let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
+                    ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
+                    let folded_eval = f0_px + alpha * f1_px;
+                    *eval += alpha * folded_eval;
+                }
+            }
+
+            let coset_evals = layer
+                .coset_evals(&positions, &folded_positions, domain.size(), &evals)
+                .ok_or(VerificationError::InnerLayerEvaluationsInvalid { layer: i })?;
+
+            // Verify the decommitment.
+            if !layer.verify(&folded_positions, &coset_evals) {
+                return Err(VerificationError::InnerLayerCommitmentInvalid { layer: i });
+            }
+
+            let alpha = alphas.next().unwrap();
+            let folded_evals = layer.fold_evals(domain, &folded_positions, &coset_evals, alpha);
+
+            // Prepare the next layer.
+            evals = folded_evals;
+            positions = folded_positions;
+            log_degree -= LOG_FOLDING_FACTOR;
+            domain = domain.double();
+        }
+
+        // Check all values have been consumed.
+        assert!(alphas.next().is_none());
+        assert!(degrees.is_empty());
+        assert!(polynomial_oracles.is_empty());
+
+        Ok((domain, positions, evals))
+    }
+
+    /// Verifies the last layer.
+    fn verify_last_layer(
+        self,
+        domain: LineDomain,
+        positions: Vec<usize>,
+        evals: Vec<F>,
+    ) -> Result<(), VerificationError> {
+        let last_layer_poly = self.proof.last_layer_poly;
+        for (position, eval) in zip(positions, evals) {
+            let x = domain.at(position);
+            if eval != last_layer_poly.eval_at_point(x.into()) {
+                return Err(VerificationError::LastLayerEvaluationsInvalid);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Log degree bound of a circle polynomial.
+pub(crate) type LogCirclePolyDegreeBound = u32;
+
+/// Log degree bound of a univariate (line) polynomial.
+pub(crate) type LogLinePolyDegreeBound = u32;
+
+/// Maps a circle polynomial's degree bound to the degree bound of the line polynomial it gets
+/// folded into.
+fn folded_circle_poly_degree(degree: &LogCirclePolyDegreeBound) -> LogLinePolyDegreeBound {
+    degree - LOG_CIRCLE_TO_LINE_FOLDING_FACTOR
+}
+
+#[derive(Error, Debug)]
+pub enum VerificationError {
+    #[error("proof contains an invalid number of FRI layers")]
+    InvalidNumFriLayers,
+    #[error("provided an invalid number of polynomials (expected {expected}, given {given}")]
+    InvalidNumPolynomials { expected: usize, given: usize },
+    #[error("queries do not resolve to their commitment in layer {layer}")]
+    InnerLayerCommitmentInvalid { layer: usize },
+    #[error("evaluations are invalid in layer {layer}")]
+    InnerLayerEvaluationsInvalid { layer: usize },
+    #[error("degree of last layer is invalid")]
+    LastLayerDegreeInvalid,
+    #[error("evaluations in the last layer are invalid")]
+    LastLayerEvaluationsInvalid,
+}
+
+/// A FRI proof.
+pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
+    pub inner_layers: Vec<FriLayerProof<F, H>>,
+    pub last_layer_poly: LinePoly<F>,
+}
+
+/// Log folding factor for univariate (line) polynomials.
 // TODO(andrew): Support multiple folding factors.
 const LOG_FOLDING_FACTOR: u32 = 1;
 
-/// Folding factor when folding a circle polynomial to univariate polynomial.
+/// Log folding factor for circle polynomials.
 const LOG_CIRCLE_TO_LINE_FOLDING_FACTOR: u32 = 1;
-
-/// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
-///
-/// The subset corresponds to the set of evaluations needed by a FRI verifier.
-pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub coset_evals: Vec<[F; 1 << LOG_FOLDING_FACTOR]>,
-    pub decommitment: MerkleDecommitment<F, H>,
-    pub commitment: H::Hash,
-}
-
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
-    // TODO(andrew): implement and add docs
-    // TODO(andrew): create FRI verification error type
-    pub fn verify(&self, _positions: &[usize]) -> Result<(), String> {
-        todo!()
-    }
-}
 
 /// A FRI layer comprises of a merkle tree that commits to evaluations of a polynomial.
 ///
@@ -251,14 +450,25 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
     }
 
     /// Decommits to the coset evaluation at the specified positions.
-    fn into_proof(self, positions: &[usize]) -> FriLayerProof<F, H> {
-        let coset_evals = positions
+    fn into_proof(self, positions: &[usize], folded_positions: &[usize]) -> FriLayerProof<F, H> {
+        const COSET_SIZE: usize = 1 << LOG_FOLDING_FACTOR;
+        let num_cosets = self.coset_evals[0].len();
+        let coset_evals_subset = folded_positions
             .iter()
-            .map(|i| {
-                let eval0 = self.coset_evals[0][*i];
-                let eval1 = self.coset_evals[1][*i];
-                [eval0, eval1]
+            .flat_map(|&folded_position| {
+                let mut coset_evals: [Option<F>; COSET_SIZE] =
+                    array::from_fn(|i| Some(self.coset_evals[i][folded_position]));
+
+                // Remove evals the verifier will be able to calculate.
+                for position in positions {
+                    if position % num_cosets == folded_position {
+                        coset_evals[position % COSET_SIZE] = None;
+                    }
+                }
+
+                coset_evals
             })
+            .flatten()
             .collect();
         // TODO(ohad): Add back once IntoSlice implemented for Field.
         // let position_set = positions.iter().copied().collect();
@@ -266,10 +476,128 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
         // let commitment = self.merkle_tree.root();
         #[allow(unreachable_code)]
         FriLayerProof {
-            coset_evals,
-            decommitment: todo!(),
+            coset_evals_subset,
             commitment: todo!(),
+            decommitment: todo!(),
         }
+    }
+}
+
+/// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
+#[derive(Clone)]
+pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
+    /// Subset of coset evaluations.
+    ///
+    /// The subset stored corresponds to the set of evaluations the verifier doesn't have but needs
+    /// in order to verify the decommitment.
+    pub coset_evals_subset: Vec<F>,
+    pub decommitment: MerkleDecommitment<F, H>,
+    pub commitment: H::Hash,
+}
+
+impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
+    /// Returns the validity of the merkle tree decommitment at the positions.
+    pub fn verify(
+        &self,
+        _positions: &[usize],
+        _coset_evals: &[[F; 1 << LOG_FOLDING_FACTOR]],
+    ) -> bool {
+        todo!()
+    }
+
+    /// Returns the coset evals in this layer needed for decommitment.
+    ///
+    /// `evals` must be the verifier's set of evals at the corresponding positions. `layer_size`
+    /// should be the total number of evaluations in the entire layer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [None] if the proof contains an invalid number of evaluations.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the positions are not sorted in ascending order or if the number of positions
+    /// doesn't match the number of evals.
+    fn coset_evals(
+        &self,
+        positions: &[usize],
+        folded_positions: &[usize],
+        layer_size: usize,
+        evals: &[F],
+    ) -> Option<Vec<[F; 1 << LOG_FOLDING_FACTOR]>> {
+        const COSET_SIZE: usize = 1 << LOG_FOLDING_FACTOR;
+
+        assert!(positions.is_sorted());
+        assert!(folded_positions.is_sorted());
+        assert_eq!(positions.len(), evals.len());
+
+        let num_cosets = layer_size / COSET_SIZE;
+
+        // The evals provided by the verifier.
+        let mut verifier_evals = evals.iter().copied();
+
+        // The evals stored in the proof.
+        let mut proof_evals = self.coset_evals_subset.iter().copied();
+
+        let mut all_coset_evals = Vec::new();
+
+        for &folded_position in folded_positions {
+            let mut coset_evals = [None; COSET_SIZE];
+
+            // Insert the verifier's evals.
+            for position in positions {
+                if position % num_cosets == folded_position {
+                    coset_evals[position % COSET_SIZE] = Some(verifier_evals.next().unwrap());
+                }
+            }
+
+            // Fill in the remaining evals using values stored in the proof.
+            for eval in &mut coset_evals {
+                if eval.is_none() {
+                    *eval = Some(proof_evals.next()?);
+                }
+            }
+
+            all_coset_evals.push(coset_evals.map(Option::unwrap))
+        }
+
+        // Check all the verifier's evals have been consumed.
+        assert!(verifier_evals.next().is_none());
+
+        // TODO(andrew): Do we even care if the proof stores too many evaluations?
+        if proof_evals.next().is_some() {
+            return None;
+        }
+
+        Some(all_coset_evals)
+    }
+
+    /// Returns the folded coset evaluations.
+    ///
+    /// `domain` must be the evaluation domain of the entire layer. `positions` should be the
+    /// positions of cosets.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the positions are not sorted in ascending order or if the number of positions
+    /// doesn't match the number of coset evaluations.
+    fn fold_evals(
+        &self,
+        domain: LineDomain,
+        positions: &[usize],
+        coset_evals: &[[F; 1 << LOG_FOLDING_FACTOR]],
+        alpha: F,
+    ) -> Vec<F> {
+        assert!(positions.is_sorted());
+        assert_eq!(positions.len(), coset_evals.len());
+        zip(coset_evals, positions)
+            .map(|(&[f_x, f_neg_x], &position)| {
+                let coset_x = domain.at(position);
+                let (mut f0, mut f1) = (f_x, f_neg_x);
+                ibutterfly(&mut f0, &mut f1, coset_x.inverse());
+                f0 + alpha * f1
+            })
+            .collect()
     }
 }
 
@@ -326,10 +654,11 @@ fn fold_circle_to_line<F: ExtensionOf<BaseField>>(
 }
 
 // TODO(andrew): support different folding factors
-fn fold_positions(positions: &mut Vec<usize>, n: usize) {
-    positions.iter_mut().for_each(|p| *p %= n);
-    positions.sort_unstable();
-    positions.dedup();
+fn fold_positions(positions: &[usize], n: usize) -> Vec<usize> {
+    let mut folded_positions = positions.iter().map(|p| p % n).collect::<Vec<usize>>();
+    folded_positions.sort_unstable();
+    folded_positions.dedup();
+    folded_positions
 }
 
 #[cfg(test)]
@@ -338,17 +667,17 @@ mod tests {
 
     use num_traits::One;
 
-    use super::{FriConfig, FriProver};
+    use super::{FriConfig, FriProver, VerificationError};
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::core::circle::{CirclePointIndex, Coset};
+    use crate::core::constraints::EvalByEvaluation;
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::ExtensionOf;
-    use crate::core::fri::{fold_circle_to_line, fold_line, LOG_FOLDING_FACTOR};
+    use crate::core::fri::{fold_circle_to_line, fold_line, FriVerifier, LOG_FOLDING_FACTOR};
     use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
 
-    /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
 
     #[test]
@@ -415,40 +744,176 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "verification not implemented"]
-    fn valid_fri_proof_passes_verification() {
+    #[ignore = "verification incomplete"]
+    fn valid_fri_proof_passes_verification() -> Result<(), VerificationError> {
+        const LOG_DEGREE: u32 = 6;
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
-        let evaluation = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
         let prover = FriProver::<QM31, Blake3Hasher>::new(config);
-        let prover = prover.commit(vec![evaluation]);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let oracle = EvalByEvaluation::new(CirclePointIndex::zero(), &polynomial);
+        let prover = prover.commit(vec![polynomial.clone()]);
         let query_positions = [1, 8, 7];
-        let _proof = prover.into_proof(&query_positions);
+        let proof = prover.into_proof(&query_positions);
+        let verifier = FriVerifier::new(config, proof, vec![LOG_DEGREE]).unwrap();
 
-        todo!("verify proof");
+        verifier.verify(&query_positions, vec![oracle])
     }
 
     #[test]
-    #[ignore = "verification not implemented"]
-    fn mixed_degree_fri_proof_passes_verification() {
-        let config = FriConfig::new(4, LOG_BLOWUP_FACTOR);
-        let midex_degree_evals = vec![
-            polynomial_evaluation(6, LOG_BLOWUP_FACTOR),
-            polynomial_evaluation(4, LOG_BLOWUP_FACTOR),
-            polynomial_evaluation(1, LOG_BLOWUP_FACTOR),
-            polynomial_evaluation(0, LOG_BLOWUP_FACTOR),
-        ];
+    #[ignore = "verification incomplete"]
+    fn mixed_degree_fri_proof_passes_verification() -> Result<(), VerificationError> {
+        const DEGREES: [u32; 3] = [4, 5, 6];
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
         let prover = FriProver::<QM31, Blake3Hasher>::new(config);
-        let prover = prover.commit(midex_degree_evals);
+        let polynomials = DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
+        let oracles = polynomials
+            .iter()
+            .map(|p| EvalByEvaluation::new(CirclePointIndex::zero(), p))
+            .collect();
+        let prover = prover.commit(polynomials.to_vec());
         let query_positions = [1, 8, 7];
-        let _proof = prover.into_proof(&query_positions);
+        let proof = prover.into_proof(&query_positions);
+        let verifier = FriVerifier::new(config, proof, DEGREES.to_vec()).unwrap();
 
-        todo!("verify proof");
+        verifier.verify(&query_positions, oracles)
     }
 
     #[test]
-    #[ignore = "verification not implemented"]
-    fn invalid_fri_proof_fails_verification() {
-        todo!()
+    #[ignore = "verification incomplete"]
+    fn proof_with_removed_layer_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        let prover_config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let prover = FriProver::<QM31, Blake3Hasher>::new(prover_config);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let oracle = EvalByEvaluation::new(CirclePointIndex::zero(), &polynomial);
+        let prover = prover.commit(vec![polynomial.clone()]);
+        let query_positions = [1, 8, 7];
+        let proof = prover.into_proof(&query_positions);
+        // Set verifier config to expect one extra layer than prover config.
+        let mut verifier_config = prover_config;
+        verifier_config.log_last_layer_degree_bound -= 1;
+        let verifier = FriVerifier::new(verifier_config, proof, vec![LOG_DEGREE]).unwrap();
+
+        let verification_result = verifier.verify(&query_positions, vec![oracle]);
+
+        assert!(matches!(
+            verification_result,
+            Err(VerificationError::InvalidNumFriLayers)
+        ));
+    }
+
+    #[test]
+    #[ignore = "verification incomplete"]
+    fn proof_with_added_layer_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        let prover_config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let prover = FriProver::<QM31, Blake3Hasher>::new(prover_config);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let oracle = EvalByEvaluation::new(CirclePointIndex::zero(), &polynomial);
+        let prover = prover.commit(vec![polynomial.clone()]);
+        let query_positions = [1, 8, 7];
+        let proof = prover.into_proof(&query_positions);
+        // Set verifier config to expect one less layer than prover config.
+        let mut verifier_config = prover_config;
+        verifier_config.log_last_layer_degree_bound += 1;
+        let verifier = FriVerifier::new(verifier_config, proof, vec![LOG_DEGREE]).unwrap();
+
+        let verification_result = verifier.verify(&query_positions, vec![oracle]);
+
+        assert!(matches!(
+            verification_result,
+            Err(VerificationError::InvalidNumFriLayers)
+        ));
+    }
+
+    #[test]
+    #[ignore = "verification incomplete"]
+    fn proof_with_invalid_inner_layer_evaluation_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let prover = FriProver::<QM31, Blake3Hasher>::new(config);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let oracle = EvalByEvaluation::new(CirclePointIndex::zero(), &polynomial);
+        let prover = prover.commit(vec![polynomial.clone()]);
+        let query_position = [5];
+        let mut proof = prover.into_proof(&query_position);
+        // Compromises the evaluation in the second layer but retains a valid merkle decommitment.
+        proof.inner_layers[1] = proof.inner_layers[0].clone();
+        let verifier = FriVerifier::new(config, proof, vec![LOG_DEGREE]).unwrap();
+
+        let verification_result = verifier.verify(&query_position, vec![oracle]);
+
+        assert!(matches!(
+            verification_result,
+            Err(VerificationError::InnerLayerEvaluationsInvalid { layer: 1 })
+        ));
+    }
+
+    #[test]
+    #[ignore = "verification incomplete"]
+    fn proof_with_invalid_inner_layer_decommitment_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let prover = FriProver::<QM31, Blake3Hasher>::new(config);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let oracle = EvalByEvaluation::new(CirclePointIndex::zero(), &polynomial);
+        let prover = prover.commit(vec![polynomial.clone()]);
+        let query_position = [5];
+        let mut proof = prover.into_proof(&query_position);
+        // Modify the committed values in the second layer.
+        proof.inner_layers[1].coset_evals_subset[0] += QM31::one();
+        let verifier = FriVerifier::new(config, proof, vec![LOG_DEGREE]).unwrap();
+
+        let verification_result = verifier.verify(&query_position, vec![oracle]);
+
+        assert!(matches!(
+            verification_result,
+            Err(VerificationError::InnerLayerCommitmentInvalid { layer: 1 })
+        ));
+    }
+
+    #[test]
+    #[ignore = "verification incomplete"]
+    fn proof_with_invalid_last_layer_degree_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        const LOG_MAX_LAST_LAYER_DEGREE: u32 = 2;
+        let config = FriConfig::new(LOG_MAX_LAST_LAYER_DEGREE, LOG_BLOWUP_FACTOR);
+        let prover = FriProver::<QM31, Blake3Hasher>::new(config);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let prover = prover.commit(vec![polynomial.clone()]);
+        let mut proof = prover.into_proof(&[1, 8, 7]);
+        let bad_last_layer_coeffs = vec![QM31::one(); 1 << (LOG_MAX_LAST_LAYER_DEGREE + 1)];
+        proof.last_layer_poly = LinePoly::new(bad_last_layer_coeffs);
+
+        let verifier = FriVerifier::new(config, proof, vec![LOG_DEGREE]);
+
+        assert!(matches!(
+            verifier,
+            Err(VerificationError::LastLayerDegreeInvalid)
+        ));
+    }
+
+    #[test]
+    #[ignore = "verification incomplete"]
+    fn proof_with_invalid_last_layer_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let prover = FriProver::<QM31, Blake3Hasher>::new(config);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let oracle = EvalByEvaluation::new(CirclePointIndex::zero(), &polynomial);
+        let prover = prover.commit(vec![polynomial.clone()]);
+        let query_positions = [1, 8, 7];
+        let mut proof = prover.into_proof(&query_positions);
+        // Compromise the last layer polynomial's first coefficient.
+        proof.last_layer_poly[0] += QM31::one();
+        let verifier = FriVerifier::new(config, proof, vec![LOG_DEGREE]).unwrap();
+
+        let verification_result = verifier.verify(&query_positions, vec![oracle]);
+
+        assert!(matches!(
+            verification_result,
+            Err(VerificationError::LastLayerEvaluationsInvalid)
+        ));
     }
 
     /// Returns an evaluation of a random polynomial with degree `2^log_degree`.
