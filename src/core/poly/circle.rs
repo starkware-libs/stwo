@@ -4,7 +4,7 @@ use std::ops::Deref;
 
 use super::utils::fold;
 use crate::core::circle::{
-    CirclePoint, CirclePointIndex, Coset, CosetIterator, M31_CIRCLE_GEN, M31_CIRCLE_ORDER_BITS,
+    CirclePoint, CirclePointIndex, Coset, CosetIterator, LOG_M31_CIRCLE_ORDER, M31_CIRCLE_GEN,
 };
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -81,10 +81,10 @@ impl CircleDomain {
 
     /// Returns true if the domain is canonic.
     ///
-    /// Canonic domains are those of the form `E = +-G_2n + <G_n>` where `G_n` and `G_2n`
-    /// are obtained by repeatedly doubling [M31_CIRCLE_GEN].
+    /// Canonic domains are domains with elements that are the entire set of points defined by
+    /// `G_2n + <G_n>` where `G_n` and `G_2n` are obtained by repeatedly doubling [M31_CIRCLE_GEN].
     pub fn is_canonic(&self) -> bool {
-        let g_2n = M31_CIRCLE_GEN.repeated_double(M31_CIRCLE_ORDER_BITS - self.n_bits() - 1);
+        let g_2n = M31_CIRCLE_GEN.repeated_double(LOG_M31_CIRCLE_ORDER - self.log_size() - 1);
         self.half_coset.initial == g_2n && self.half_coset.step == g_2n.double().double()
     }
 }
