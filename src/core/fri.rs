@@ -17,8 +17,9 @@ use crate::core::poly::line::LineDomain;
 // TODO(andrew): support different folding factors
 #[derive(Debug, Clone, Copy)]
 pub struct FriConfig {
-    log_last_layer_degree_bound: u32,
     log_blowup_factor: u32,
+    log_last_layer_degree_bound: u32,
+    // TODO(andrew): Add pow_bits, num_queries, folding_factors.
 }
 
 impl FriConfig {
@@ -43,8 +44,8 @@ impl FriConfig {
         assert!(Self::LOG_LAST_LAYER_DEGREE_BOUND_RANGE.contains(&log_last_layer_degree_bound));
         assert!(Self::LOG_BLOWUP_FACTOR_RANGE.contains(&log_blowup_factor));
         Self {
-            log_last_layer_degree_bound,
             log_blowup_factor,
+            log_last_layer_degree_bound,
         }
     }
 
@@ -57,8 +58,8 @@ impl FriConfig {
 ///
 /// `Phase` is used to enforce the commitment phase is done before the query phase.
 pub struct FriProver<F: ExtensionOf<BaseField>, H: Hasher> {
-    layers: Vec<FriLayer<F, H>>,
-    remainder: LinePoly<F>,
+    inner_layers: Vec<FriLayer<F, H>>,
+    last_layer_poly: LinePoly<F>,
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
@@ -73,17 +74,21 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
     /// # Panics
     ///
     /// Panics if:
-    /// * `evals` is empty or not sorted in ascending order by evaluation domain size.
-    /// * An evaluation is not from a sufficiently low degree polynomial.
-    /// * An evaluation domain is smaller than or equal to 2x the maximum last layer domain size.
-    /// * An evaluation domain is not canonic circle domain.
+    /// * `evals` is empty or not sorted in ascending order by domain size.
+    /// * An evaluation is not from a sufficiently low degree circle polynomial.
+    /// * An evaluation's domain is smaller than the last layer.
+    /// * An evaluation's domain is not a canonic circle domain.
     // TODO(andrew): Add docs for all evaluations needing to be from canonic domains.
     pub fn commit(config: FriConfig, evals: Vec<CircleEvaluation<F>>) -> Self {
         assert!(evals.is_sorted_by_key(|e| e.len()), "not sorted");
         assert!(evals.iter().all(|e| e.domain.is_canonic()), "not canonic");
-        let (layers, last_layer_evaluation) = Self::commit_inner_layers(config, evals);
-        let remainder = Self::commit_last_layer(config, last_layer_evaluation);
-        Self { layers, remainder }
+        let (inner_layers, last_layer_evaluation) = Self::commit_inner_layers(config, evals);
+        let last_layer_poly = Self::commit_last_layer(config, last_layer_evaluation);
+        // TODO: Grind commitments.
+        Self {
+            inner_layers,
+            last_layer_poly,
+        }
     }
 
     /// Builds and commits to the inner FRI layers (all layers except the last layer).
@@ -139,7 +144,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
         (layers, evaluation.unwrap())
     }
 
-    /// Returns the remainder polynomial's coefficients (the last FRI layer).
+    /// Builds and commits to the last layer.
+    ///
+    /// The layer is committed to by sending the verifier all the coefficients of the remaining
+    /// polynomial.
     ///
     /// # Panics
     ///
@@ -148,19 +156,19 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
     /// * The evaluation is not of sufficiently low degree.
     fn commit_last_layer(config: FriConfig, evaluation: LineEvaluation<F>) -> LinePoly<F> {
         assert_eq!(evaluation.len(), config.last_layer_domain_size());
-        let num_remainder_coeffs = evaluation.len() >> config.log_blowup_factor;
+        let max_num_coeffs = evaluation.len() >> config.log_blowup_factor;
         let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2()));
         let mut coeffs = evaluation.interpolate(domain).into_ordered_coefficients();
-        let zeros = coeffs.split_off(num_remainder_coeffs);
+        let zeros = coeffs.split_off(max_num_coeffs);
         assert!(zeros.iter().all(F::is_zero), "invalid degree");
         LinePoly::from_ordered_coefficients(coeffs)
         // TODO(andrew): seed channel with remainder
     }
 
     pub fn into_proof(self, query_positions: &[usize]) -> FriProof<F, H> {
-        let remainder = self.remainder;
-        let layer_proofs = self
-            .layers
+        let last_layer_poly = self.last_layer_poly;
+        let inner_layers = self
+            .inner_layers
             .into_iter()
             .scan(query_positions.to_vec(), |positions, layer| {
                 let num_layer_cosets = layer.coset_evals[0].len();
@@ -169,16 +177,16 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
             })
             .collect();
         FriProof {
-            layer_proofs,
-            remainder,
+            inner_layers,
+            last_layer_poly,
         }
     }
 }
 
 /// A FRI proof.
 pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub layer_proofs: Vec<FriLayerProof<F, H>>,
-    pub remainder: LinePoly<F>,
+    pub inner_layers: Vec<FriLayerProof<F, H>>,
+    pub last_layer_poly: LinePoly<F>,
 }
 
 /// Folding factor for univariate polynomials.
@@ -397,9 +405,9 @@ mod tests {
     fn valid_fri_proof_passes_verification() {
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
         let evaluation = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
-        let commitment = FriProver::<QM31, Blake3Hasher>::commit(config, vec![evaluation]);
+        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![evaluation]);
         let query_positions = [1, 8, 7];
-        let _proof = commitment.into_proof(&query_positions);
+        let _proof = prover.into_proof(&query_positions);
 
         todo!("verify proof");
     }
@@ -414,9 +422,9 @@ mod tests {
             polynomial_evaluation(1, LOG_BLOWUP_FACTOR),
             polynomial_evaluation(0, LOG_BLOWUP_FACTOR),
         ];
-        let commitment = FriProver::<QM31, Blake3Hasher>::commit(config, mixed_degree_evals);
+        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, mixed_degree_evals);
         let query_positions = [1, 8, 7];
-        let _proof = commitment.into_proof(&query_positions);
+        let _proof = prover.into_proof(&query_positions);
 
         todo!("verify proof");
     }
