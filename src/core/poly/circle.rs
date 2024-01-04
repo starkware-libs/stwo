@@ -3,7 +3,9 @@ use std::iter::Chain;
 use std::ops::Deref;
 
 use super::utils::fold;
-use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
+use crate::core::circle::{
+    CirclePoint, CirclePointIndex, Coset, CosetIterator, M31_CIRCLE_GEN, M31_CIRCLE_LOG_ORDER,
+};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, Field};
@@ -72,6 +74,15 @@ impl CircleDomain {
             return Some(self.half_coset.size() + d);
         }
         None
+    }
+
+    /// Returns true if the domain is canonic.
+    ///
+    /// Canonic domains are domains with elements that are the entire set of points defined by
+    /// `G_2n + <G_n>` where `G_n` and `G_2n` are obtained by repeatedly doubling [M31_CIRCLE_GEN].
+    pub fn is_canonic(&self) -> bool {
+        let g_2n = M31_CIRCLE_GEN.repeated_double(M31_CIRCLE_LOG_ORDER - self.log_size() - 1);
+        self.half_coset.initial == g_2n && self.half_coset.step == g_2n.double().double()
     }
 }
 
@@ -235,6 +246,14 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
 impl<F: ExtensionOf<BaseField>> Evaluation<F> for CircleEvaluation<F> {
     fn get_at(&self, point_index: CirclePointIndex) -> F {
         self.values[self.domain.find(point_index).expect("Not in domain")]
+    }
+}
+
+impl<F: ExtensionOf<BaseField>> Deref for CircleEvaluation<F> {
+    type Target = [F];
+
+    fn deref(&self) -> &[F] {
+        &self.values
     }
 }
 
@@ -450,5 +469,21 @@ mod tests {
         );
         // TODO(spapini): Check low degree.
         println!("{:?}", constraint_eval);
+    }
+
+    #[test]
+    fn is_canonic_valid_domain() {
+        let half_coset = Coset::half_odds(8);
+        let canonic_domain = CircleDomain::new(half_coset);
+
+        assert!(canonic_domain.is_canonic());
+    }
+
+    #[test]
+    fn is_canonic_invalid_domain() {
+        let half_coset = Coset::new(CirclePointIndex::generator(), 4);
+        let not_canonic_domain = CircleDomain::new(half_coset);
+
+        assert!(!not_canonic_domain.is_canonic());
     }
 }
