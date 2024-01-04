@@ -12,7 +12,7 @@ use crate::core::fields::IntoSlice;
 ///   queried path, or nodes with both children in the queried path are excluded.
 /// * `n_rows_in_leaf_block` - The number of trace-rows packed in each leaf block.
 // TODO(Ohad): derive Debug.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct MerkleDecommitment<T: Sized + Display, H: Hasher> {
     pub leaf_blocks: Vec<Vec<T>>,
     pub layers: Vec<Vec<H::Hash>>,

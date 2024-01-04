@@ -54,13 +54,17 @@ impl CircleDomain {
         self.half_coset.log_size + 1
     }
 
-    pub fn at(&self, index: usize) -> CirclePoint<BaseField> {
-        if index < self.half_coset.size() {
-            self.half_coset.at(index)
+    /// Returns the `i`th domain element.
+    pub fn at(&self, i: usize) -> CirclePoint<BaseField> {
+        self.index_at(i).to_point()
+    }
+
+    /// Returns the [CirclePointIndex] of the `i`th domain element.
+    pub fn index_at(&self, i: usize) -> CirclePointIndex {
+        if i < self.half_coset.size() {
+            self.half_coset.index_at(i)
         } else {
-            self.half_coset
-                .at(index - self.half_coset.size())
-                .conjugate()
+            -self.half_coset.index_at(i - self.half_coset.size())
         }
     }
 
