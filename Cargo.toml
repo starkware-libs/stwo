@@ -11,6 +11,7 @@ blake3 = "1.5.0"
 hex = "0.4.3"
 itertools = "0.12.0"
 num-traits = "0.2.17"
+thiserror = "1.0.56"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
