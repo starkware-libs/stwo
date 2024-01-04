@@ -266,7 +266,7 @@ pub fn apply_drp<F: ExtensionOf<BaseField>>(
     let n = evals.len();
     assert!(n >= 2);
     let (l, r) = evals.split_at(n / 2);
-    let domain = LineDomain::new(Coset::half_odds(n.ilog2() as usize));
+    let domain = LineDomain::new(Coset::half_odds(n.ilog2()));
     let drp_evals = zip(zip(l, r), domain.iter())
         .map(|((&f_x, &f_neg_x), x)| {
             let (mut f_e, mut f_o) = (f_x, f_neg_x);
@@ -307,7 +307,7 @@ mod tests {
         let even_poly = LinePoly::new(even_coeffs.to_vec());
         let odd_poly = LinePoly::new(odd_coeffs.to_vec());
         let alpha = BaseField::from_u32_unchecked(19283);
-        let domain = LineDomain::new(Coset::half_odds(DEGREE.ilog2() as usize));
+        let domain = LineDomain::new(Coset::half_odds(DEGREE.ilog2()));
         let drp_domain = domain.double();
         let evals = poly.evaluate(domain);
         let two = BaseField::from_u32_unchecked(2);
