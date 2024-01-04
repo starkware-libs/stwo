@@ -237,7 +237,7 @@ pub struct CirclePoly<F: ExtensionOf<BaseField>> {
 impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
     /// Creates a new circle polynomial.
     ///
-    /// Coefficients must be in the circle IFFT algorithms basis stored in bit-reversed order.
+    /// Coefficients must be in the circle IFFT algorithm's basis stored in bit-reversed order.
     ///
     /// # Panics
     ///
