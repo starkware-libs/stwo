@@ -21,7 +21,7 @@ use crate::core::queries::{generate_queries, get_projected_queries};
 type Channel = Blake2sChannel;
 type MerkleHasher = <Channel as ChannelTrait>::ChannelHasher;
 
-const BLOW_UP_FACTOR_BITS: usize = 1;
+const LOG_BLOWUP_FACTOR: u32 = 1;
 const N_QUERIES: usize = 3;
 
 pub struct Fibonacci {
@@ -61,11 +61,11 @@ pub struct FibonacciProof {
 }
 
 impl Fibonacci {
-    pub fn new(n_bits: usize, claim: BaseField) -> Self {
-        let trace_coset = CanonicCoset::new(n_bits);
-        let eval_domain = trace_coset.evaluation_domain(n_bits + 1);
-        let constraint_coset = Coset::subgroup(n_bits);
-        let constraint_eval_domain = CircleDomain::constraint_evaluation_domain(n_bits + 1);
+    pub fn new(log_n: u32, claim: BaseField) -> Self {
+        let trace_coset = CanonicCoset::new(log_n);
+        let eval_domain = trace_coset.evaluation_domain(log_n + 1);
+        let constraint_coset = Coset::subgroup(log_n);
+        let constraint_eval_domain = CircleDomain::constraint_evaluation_domain(log_n + 1);
         Self {
             trace_coset,
             eval_domain,
@@ -173,8 +173,7 @@ impl Fibonacci {
         let trace = self.get_trace();
         let trace_poly = trace.interpolate();
         let trace_evaluation = trace_poly.evaluate(self.eval_domain);
-        let trace_commitment_domain =
-            CanonicCoset::new(self.trace_coset.n_bits + BLOW_UP_FACTOR_BITS);
+        let trace_commitment_domain = CanonicCoset::new(self.trace_coset.log_n + LOG_BLOWUP_FACTOR);
         let trace_commitment_evaluation =
             trace_poly.evaluate(trace_commitment_domain.circle_domain());
         let trace_merkle =
@@ -188,7 +187,7 @@ impl Fibonacci {
         let quotient = self.compute_quotient(random_coeff, &trace_evaluation);
         let quotient_poly = quotient.interpolate();
         let quotient_commitment_domain =
-            CanonicCoset::new(self.constraint_eval_domain.n_bits() + BLOW_UP_FACTOR_BITS);
+            CanonicCoset::new(self.constraint_eval_domain.log_size() + LOG_BLOWUP_FACTOR);
         let quotient_commitment_evaluation =
             quotient_poly.evaluate(quotient_commitment_domain.circle_domain());
         // TODO(AlonH): Remove the clone.
@@ -220,11 +219,11 @@ impl Fibonacci {
         ));
 
         let quotient_queries =
-            generate_queries(channel, quotient_commitment_domain.n_bits, N_QUERIES);
+            generate_queries(channel, quotient_commitment_domain.log_n, N_QUERIES);
         let trace_queries = get_projected_queries(
             &quotient_queries,
-            trace_commitment_domain.n_bits,
-            quotient_commitment_domain.n_bits,
+            trace_commitment_domain.log_n,
+            quotient_commitment_domain.log_n,
         );
         let quotient_decommitment = quotient_merkle.generate_decommitment(&quotient_queries);
         let trace_decommitment = trace_merkle.generate_decommitment(&trace_queries);

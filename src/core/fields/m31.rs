@@ -5,7 +5,7 @@ use std::ops::{
 
 use crate::impl_field;
 
-pub const K_BITS: u32 = 31;
+pub const MODULUS_BITS: u32 = 31;
 pub const N_BYTES_FELT: usize = 4;
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
 
@@ -22,7 +22,7 @@ impl M31 {
     }
 
     pub fn reduce(val: u64) -> Self {
-        Self((((((val >> K_BITS) + val + 1) >> K_BITS) + val) & (P as u64)) as u32)
+        Self((((((val >> MODULUS_BITS) + val + 1) >> MODULUS_BITS) + val) & (P as u64)) as u32)
     }
 
     pub const fn from_u32_unchecked(arg: u32) -> Self {

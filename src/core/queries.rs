@@ -6,7 +6,7 @@ pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
 pub fn generate_queries(
     channel: &mut Blake2sChannel,
-    log_query_size: usize,
+    log_query_size: u32,
     n_queries: usize,
 ) -> BTreeSet<usize> {
     let mut queries = BTreeSet::new();
@@ -28,8 +28,8 @@ pub fn generate_queries(
 /// Calculates the locations of the queries in the trace commitment domain.
 pub fn get_projected_queries(
     quotient_queries: &BTreeSet<usize>,
-    log_trace_domain_size: usize,
-    log_quotient_domain_size: usize,
+    log_trace_domain_size: u32,
+    log_quotient_domain_size: u32,
 ) -> BTreeSet<usize> {
     let domain_ratio = 1 << (log_quotient_domain_size - log_trace_domain_size);
     quotient_queries.iter().map(|q| q / domain_ratio).collect()

@@ -61,9 +61,9 @@ pub(super) fn repeat_value<T: Copy>(values: &[T], duplicity: usize) -> Vec<T> {
 pub(super) fn bit_reverse<T, U: AsMut<[T]>>(mut v: U) -> U {
     let n = v.as_mut().len();
     assert!(n.is_power_of_two());
-    let n_bits = n.ilog2();
+    let log_n = n.ilog2();
     for i in 0..n {
-        let j = i.reverse_bits() >> (usize::BITS - n_bits);
+        let j = i.reverse_bits() >> (usize::BITS - log_n);
         if j > i {
             v.as_mut().swap(i, j);
         }
