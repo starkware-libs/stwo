@@ -298,7 +298,7 @@ fn test_bit_unpack_trace_generation_codegen() {
     use crate::core::air::graph::{BinaryOp, PointwiseOp};
     use crate::core::air::materialize::{FusedNode, MaterializedGraph};
     let n_bits = 6;
-    let bitwise_generation_fused_ops = get_bitwise_generation_fused_ops();
+    let bitwise_generation_fused_ops = _get_bitwise_generation_fused_ops();
     let graph = MaterializedGraph {
         inputs: vec![
             MaterializedArray {
@@ -534,7 +534,7 @@ fn test_bit_unpack_trace_generation_codegen() {
     }
 }
 
-pub fn get_bitwise_generation_fused_ops() -> Vec<FusedNode> {
+pub fn _get_bitwise_generation_fused_ops() -> Vec<FusedNode> {
     let mut fused_ops = vec![FusedNode {
         name: "one".into(),
         op: PointwiseOp::Const {
@@ -569,4 +569,293 @@ pub fn get_bitwise_generation_fused_ops() -> Vec<FusedNode> {
             .collect::<Vec<_>>(),
     );
     fused_ops
+}
+
+/// Gen code for the constraints numerators.
+/// Denomerators code is a function of the size of the trace and and the offset
+/// of the relevant cells in the trace so should be generated separately.
+#[test]
+fn test_bit_unpack_constraint_codegen() {
+    use std::fs;
+
+    use crate::core::air::graph::{BinaryOp, PointwiseOp};
+    use crate::core::air::materialize::{FusedNode, MaterializedGraph};
+    let n_bits = 6;
+    let graph = MaterializedGraph {
+        inputs: vec![],
+        outputs: vec![],
+        computations: vec![
+            // f(x) - 2f(gx) is bit.
+            MaterializedComputation {
+                output_tile: vec![MaskItem {
+                    item_name: "unpacked_constraint0".into(),
+                    array_name: "unpacked_constraint".into(),
+                    offset: 0,
+                    step: 1,
+                    modulus: None,
+                }],
+                input_tile: vec![
+                    MaskItem {
+                        item_name: "unpacked0".into(),
+                        array_name: "unpacked".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: None,
+                    },
+                    MaskItem {
+                        item_name: "unpacked1".into(),
+                        array_name: "unpacked".into(),
+                        offset: 1,
+                        step: 1,
+                        modulus: None,
+                    },
+                ],
+                n_repeats: 1 << (n_bits + 4) - 1, // Not sure which size should be here.
+                fused_op: FusedOp {
+                    ops: vec![
+                        FusedNode {
+                            name: "two".into(),
+                            op: PointwiseOp::Const {
+                                value: "2".into(),
+                                ty: "M31".into(),
+                            },
+                            ty: "M31".into(),
+                        },
+                        FusedNode {
+                            name: "two_unpacked1".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Mul,
+                                a: "two".into(),
+                                b: "unpacked1".into(),
+                            },
+                            ty: "M31".into(),
+                        },
+                        FusedNode {
+                            name: "bit".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Sub,
+                                a: "unpacked0".into(),
+                                b: "two_unpacked1".into(),
+                            },
+                            ty: "M31".into(),
+                        },
+                        FusedNode {
+                            name: "bit_sq".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Mul,
+                                a: "bit".into(),
+                                b: "bit".into(),
+                            },
+                            ty: "M31".into(),
+                        },
+                        FusedNode {
+                            name: "unpacked_constraint0".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Sub,
+                                a: "bit_sq".into(),
+                                b: "bit".into(),
+                            },
+                            ty: "QM31".into(),
+                        },
+                    ],
+                },
+                ordering: Ordering::Sequential,
+            },
+            // Check first numenator in the rc partial sum column is one.
+            MaterializedComputation {
+                output_tile: vec![MaskItem {
+                    item_name: "rc_num_initial".into(),
+                    array_name: "rc_num_constraint".into(),
+                    offset: 0,
+                    step: 1,
+                    modulus: None,
+                }],
+                input_tile: vec![MaskItem {
+                    item_name: "rc_logup_num0".into(),
+                    array_name: "rc_logup_num".into(),
+                    offset: 0,
+                    step: 1,
+                    modulus: None,
+                }],
+                n_repeats: 1,
+                fused_op: FusedOp {
+                    ops: vec![
+                        FusedNode {
+                            name: "one".into(),
+                            op: PointwiseOp::Cast {
+                                input: "1".into(),
+                                ty: "QM31".into(),
+                            },
+                            ty: "QM31".into(),
+                        },
+                        FusedNode {
+                            name: "rc_num_initial".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Sub,
+                                a: "rc_logup_num0".into(),
+                                b: "one".into(),
+                            },
+                            ty: "QM31".into(),
+                        },
+                    ],
+                },
+                ordering: Ordering::Sequential,
+            },
+            // Check first denominator in the rc partial sum column is f(x).
+            MaterializedComputation {
+                output_tile: vec![MaskItem {
+                    item_name: "rc_denom_initial".into(),
+                    array_name: "rc_denom_constraint".into(),
+                    offset: 0,
+                    step: 1,
+                    modulus: None,
+                }],
+                input_tile: vec![
+                    MaskItem {
+                        item_name: "rc_logup_denom0".into(),
+                        array_name: "rc_logup_denom".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: None,
+                    },
+                    MaskItem {
+                        item_name: "unpacked0".into(),
+                        array_name: "unpacked".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: None,
+                    },
+                    MaskItem {
+                        item_name: "random_element0".into(),
+                        array_name: "random_element".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: Some(1),
+                    },
+                ],
+                n_repeats: 1,
+                fused_op: FusedOp {
+                    ops: vec![
+                        FusedNode {
+                            name: "shifted_unpacked0".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Sub,
+                                a: "unpacked0".into(),
+                                b: "random_element0".into(),
+                            },
+                            ty: "QM31".into(),
+                        },
+                        FusedNode {
+                            name: "rc_denom_initial".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Sub,
+                                a: "rc_logup_denom0".into(),
+                                b: "shifted_unpacked0".into(),
+                            },
+                            ty: "QM31".into(),
+                        },
+                    ],
+                },
+                ordering: Ordering::Sequential,
+            },
+            // Check that the rc partial sum columns is correct.
+            MaterializedComputation {
+                output_tile: vec![
+                    MaskItem {
+                        item_name: "rc_num_next".into(),
+                        array_name: "rc_num_constraint".into(),
+                        offset: 1,
+                        step: 1,
+                        modulus: None,
+                    },
+                    MaskItem {
+                        item_name: "rc_denom_next".into(),
+                        array_name: "rc_denom_constraint".into(),
+                        offset: 1,
+                        step: 1,
+                        modulus: None,
+                    },
+                ],
+                input_tile: vec![
+                    MaskItem {
+                        item_name: "rc_num_curr".into(),
+                        array_name: "rc_num_constraint".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: None,
+                    },
+                    MaskItem {
+                        item_name: "rc_denom_curr".into(),
+                        array_name: "rc_denom_constraint".into(),
+                        offset: 0,
+                        step: 1,
+                        modulus: None,
+                    },
+                    MaskItem {
+                        item_name: "unpacked_next".into(),
+                        array_name: "unpacked".into(),
+                        offset: 1,
+                        step: 1,
+                        modulus: None,
+                    },
+                ],
+                n_repeats: 1 << (n_bits + 4) - 1,
+                fused_op: FusedOp {
+                    ops: vec![
+                        FusedNode {
+                            name: "shifted_unpacked_next".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Sub,
+                                a: "unpacked_next".into(),
+                                b: "random_element0".into(),
+                            },
+                            ty: "QM31".into(),
+                        },
+                        FusedNode {
+                            name: "rc_num_temp".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Mul,
+                                a: "rc_num_curr".into(),
+                                b: "shifted_unpacked_next".into(),
+                            },
+                            ty: "QM31".into(),
+                        },
+                        FusedNode {
+                            name: "rc_num_next".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Add,
+                                a: "rc_num_temp".into(),
+                                b: "rc_denom_curr".into(),
+                            },
+                            ty: "QM31".into(),
+                        },
+                        FusedNode {
+                            name: "rc_denom_next".into(),
+                            op: PointwiseOp::Binary {
+                                op: BinaryOp::Mul,
+                                a: "rc_denom_curr".into(),
+                                b: "shifted_unpacked_curr".into(),
+                            },
+                            ty: "QM31".into(),
+                        },
+                    ],
+                },
+                ordering: Ordering::Sequential,
+            },
+        ],
+    };
+    let tokens = generate_constraint_code(&graph); // TODO (implement).
+    let text = reformat_rust_code(tokens.to_string().expect("Could not format Rust code."));
+
+    let mut path = project_root();
+    path.push("src/examples/bit_unpack_constraint_code.rs");
+
+    let expected = fs::read_to_string(&path).unwrap();
+    if text != expected {
+        if std::env::var("FIX_TESTS").is_ok() {
+            fs::write(path, text).unwrap();
+        } else {
+            panic!("Bit unpack codegen file is not up to date. Run with FIX_TESTS=1 to fix");
+        }
+    }
 }

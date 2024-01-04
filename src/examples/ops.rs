@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Sub, Shr, Shl};
+use std::ops::{Add, Mul, Shl, Shr, Sub};
 
 pub fn const_val<T: From<S>, S>(x: S) -> T {
     T::from(x)

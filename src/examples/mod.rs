@@ -3,6 +3,7 @@
 #[allow(clippy::uninit_vec)]
 #[allow(dead_code)]
 pub mod bit_unpack_code;
+pub mod bit_unpack_constraint_code;
 pub mod fibonacci_code;
 mod ops;
 
