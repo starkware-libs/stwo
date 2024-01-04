@@ -139,7 +139,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
         (layers, evaluation.unwrap())
     }
 
-    /// Returns the remainder polynomial's coefficients (the last FRI layer).
+    /// Builds and commits to the remainder polynomial's coefficients (the last FRI layer).
     ///
     /// # Panics
     ///
