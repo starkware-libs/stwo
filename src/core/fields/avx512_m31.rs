@@ -6,7 +6,7 @@ use core::arch::x86_64::{
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use super::m31::{K_BITS, M31, P};
+use super::m31::{M31, MODULUS_BITS, P};
 pub const K_BLOCK_SIZE: usize = 8;
 pub const M512P: __m512i = unsafe { core::mem::transmute([P as u64; K_BLOCK_SIZE]) };
 pub const M512ONE: __m512i = unsafe { core::mem::transmute([1u64; K_BLOCK_SIZE]) };
@@ -42,8 +42,8 @@ impl M31AVX512 {
 
             // z_i = x_i // P (integer division).
             let z: __m512i = _mm512_srli_epi64(
-                _mm512_add_epi64(_mm512_srli_epi64(x, K_BITS), x_plus_one),
-                K_BITS,
+                _mm512_add_epi64(_mm512_srli_epi64(x, MODULUS_BITS), x_plus_one),
+                MODULUS_BITS,
             );
             let result: __m512i = _mm512_add_epi64(x, z);
             Self(_mm512_and_epi64(result, M512P))

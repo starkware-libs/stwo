@@ -7,22 +7,25 @@ use super::poly::circle::{CircleDomain, CirclePoly, Evaluation, PointMapping};
 
 /// Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoint<F>) -> F {
-    // Doubling a point `n_bits / 2` times and taking the x coordinate is
-    // essentially evaluating a polynomial in x of degree `2**(n_bits-1)`. If
-    // the entire `2**n_bits` points of the coset are roots (i.e. yield 0), then
+    // Doubling a point `log_order - 1` times and taking the x coordinate is
+    // essentially evaluating a polynomial in x of degree `2^(log_order - 1)`. If
+    // the entire `2^log_order` points of the coset are roots (i.e. yield 0), then
     // this is a vanishing polynomial of these points.
 
     // Rotating the coset -coset.initial + step / 2 yields a canonic coset:
     // `step/2 + <step>.`
-    // Doubling this coset n_bits - 1 times yields the coset +-G_4.
-    // th polynomial x vanishes on these points.
+    // Doubling this coset log_order - 1 times yields the coset +-G_4.
+    // The polynomial x vanishes on these points.
+    // ```text
     //   X
-    // . . X
+    // .   .
+    //   X
+    // ```
     p = p - coset.initial.into_ef() + coset.step_size.half().to_point().into_ef();
     let mut x = p.x;
 
     // The formula for the x coordinate of the double of a point.
-    for _ in 0..(coset.n_bits - 1) {
+    for _ in 1..coset.log_size {
         x = CirclePoint::double_x(x);
     }
     x

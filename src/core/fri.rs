@@ -18,39 +18,39 @@ use crate::core::poly::line::LineDomain;
 // TODO(andrew): support different folding factors
 #[derive(Debug, Clone, Copy)]
 pub struct FriConfig {
-    last_layer_degree_bits: u32,
-    blowup_factor_bits: u32,
+    log_last_layer_degree_bound: u32,
+    log_blowup_factor: u32,
 }
 
 impl FriConfig {
-    const MIN_LAST_LAYER_DEGREE_BITS: u32 = 0;
-    const MAX_LAST_LAYER_DEGREE_BITS: u32 = 10;
-    const LAST_LAYER_DEGREE_BITS_RANGE: RangeInclusive<u32> =
-        Self::MIN_LAST_LAYER_DEGREE_BITS..=Self::MAX_LAST_LAYER_DEGREE_BITS;
+    const LOG_MIN_LAST_LAYER_DEGREE_BOUND: u32 = 0;
+    const LOG_MAX_LAST_LAYER_DEGREE_BOUND: u32 = 10;
+    const LOG_LAST_LAYER_DEGREE_BOUND_RANGE: RangeInclusive<u32> =
+        Self::LOG_MIN_LAST_LAYER_DEGREE_BOUND..=Self::LOG_MAX_LAST_LAYER_DEGREE_BOUND;
 
-    const MIN_BLOWUP_FACTOR_BITS: u32 = 1;
-    const MAX_BLOWUP_FACTOR_BITS: u32 = 16;
-    const BLOWUP_FACTOR_BITS_RANGE: RangeInclusive<u32> =
-        Self::MIN_BLOWUP_FACTOR_BITS..=Self::MAX_BLOWUP_FACTOR_BITS;
+    const LOG_MIN_BLOWUP_FACTOR: u32 = 1;
+    const LOG_MAX_BLOWUP_FACTOR: u32 = 16;
+    const LOG_BLOWUP_FACTOR_RANGE: RangeInclusive<u32> =
+        Self::LOG_MIN_BLOWUP_FACTOR..=Self::LOG_MAX_BLOWUP_FACTOR;
 
     /// Creates a new FRI configuration.
     ///
     /// # Panics
     ///
     /// Panics if:
-    /// * `last_layer_degree_bits` is greater than 10.
-    /// * `blowup_factor_bits` is equal to zero or greater than 16.
-    pub fn new(last_layer_degree_bits: u32, blowup_factor_bits: u32) -> Self {
-        assert!(Self::LAST_LAYER_DEGREE_BITS_RANGE.contains(&last_layer_degree_bits));
-        assert!(Self::BLOWUP_FACTOR_BITS_RANGE.contains(&blowup_factor_bits));
+    /// * `log_last_layer_degree_bound` is greater than 10.
+    /// * `log_blowup_factor` is equal to zero or greater than 16.
+    pub fn new(log_last_layer_degree_bound: u32, log_blowup_factor: u32) -> Self {
+        assert!(Self::LOG_LAST_LAYER_DEGREE_BOUND_RANGE.contains(&log_last_layer_degree_bound));
+        assert!(Self::LOG_BLOWUP_FACTOR_RANGE.contains(&log_blowup_factor));
         Self {
-            last_layer_degree_bits,
-            blowup_factor_bits,
+            log_last_layer_degree_bound,
+            log_blowup_factor,
         }
     }
 
     fn max_last_layer_domain_size(&self) -> usize {
-        1 << (self.last_layer_degree_bits + self.blowup_factor_bits)
+        1 << (self.log_last_layer_degree_bound + self.log_blowup_factor)
     }
 }
 
@@ -139,8 +139,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// * The evaluation is not of sufficiently low degree.
     fn commit_last_layer(&mut self, evaluation: LineEvaluation<F>) {
         assert!(evaluation.len() <= self.config.max_last_layer_domain_size());
-        let num_remainder_coeffs = evaluation.len() >> self.config.blowup_factor_bits;
-        let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2() as usize));
+        let num_remainder_coeffs = evaluation.len() >> self.config.log_blowup_factor;
+        let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2()));
         let mut coeffs = evaluation.interpolate(domain).into_natural_coefficients();
         let zeros = coeffs.split_off(num_remainder_coeffs);
         assert!(zeros.iter().all(F::is_zero), "invalid degree");
@@ -266,7 +266,7 @@ pub fn apply_drp<F: ExtensionOf<BaseField>>(
     let n = evals.len();
     assert!(n >= 2);
     let (l, r) = evals.split_at(n / 2);
-    let domain = LineDomain::new(Coset::half_odds(n.ilog2() as usize));
+    let domain = LineDomain::new(Coset::half_odds(n.ilog2()));
     let drp_evals = zip(zip(l, r), domain.iter())
         .map(|((&f_x, &f_neg_x), x)| {
             let (mut f_e, mut f_o) = (f_x, f_neg_x);
@@ -307,7 +307,7 @@ mod tests {
         let even_poly = LinePoly::new(even_coeffs.to_vec());
         let odd_poly = LinePoly::new(odd_coeffs.to_vec());
         let alpha = BaseField::from_u32_unchecked(19283);
-        let domain = LineDomain::new(Coset::half_odds(DEGREE.ilog2() as usize));
+        let domain = LineDomain::new(Coset::half_odds(DEGREE.ilog2()));
         let drp_domain = domain.double();
         let evals = poly.evaluate(domain);
         let two = BaseField::from_u32_unchecked(2);
@@ -325,11 +325,11 @@ mod tests {
     #[test]
     #[should_panic]
     fn committing_high_degree_polynomial_fails() {
-        const EXPECTED_BLOWUP_FACTOR_BITS: u32 = 2;
-        const INVALID_BLOWUP_FACTOR_BITS: u32 = 1;
-        let config = FriConfig::new(2, EXPECTED_BLOWUP_FACTOR_BITS);
+        const LOG_EXPECTED_BLOWUP_FACTOR: u32 = 2;
+        const LOG_INVALID_BLOWUP_FACTOR: u32 = 1;
+        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR);
         let prover = FriProver::<M31, Blake3Hasher>::new(config);
-        let evaluation = polynomial_evaluation(6, INVALID_BLOWUP_FACTOR_BITS);
+        let evaluation = polynomial_evaluation(6, LOG_INVALID_BLOWUP_FACTOR);
 
         prover.commit(vec![evaluation]);
     }
@@ -337,9 +337,9 @@ mod tests {
     #[test]
     #[ignore = "verification not implemented"]
     fn valid_fri_proof_passes_verification() {
-        const BLOWUP_FACTOR_BITS: u32 = 2;
-        let config = FriConfig::new(2, BLOWUP_FACTOR_BITS);
-        let evaluation = polynomial_evaluation(6, BLOWUP_FACTOR_BITS);
+        const LOG_BLOWUP_FACTOR: u32 = 2;
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let evaluation = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
         let prover = FriProver::<QM31, Blake3Hasher>::new(config);
         let prover = prover.commit(vec![evaluation]);
         let query_positions = [1, 8, 7];
@@ -351,13 +351,13 @@ mod tests {
     #[test]
     #[ignore = "verification not implemented"]
     fn mixed_degree_fri_proof_passes_verification() {
-        const BLOWUP_FACTOR_BITS: u32 = 2;
-        let config = FriConfig::new(4, BLOWUP_FACTOR_BITS);
+        const LOG_BLOWUP_FACTOR: u32 = 2;
+        let config = FriConfig::new(4, LOG_BLOWUP_FACTOR);
         let midex_degree_evals = vec![
-            polynomial_evaluation(6, BLOWUP_FACTOR_BITS),
-            polynomial_evaluation(4, BLOWUP_FACTOR_BITS),
-            polynomial_evaluation(1, BLOWUP_FACTOR_BITS),
-            polynomial_evaluation(0, BLOWUP_FACTOR_BITS),
+            polynomial_evaluation(6, LOG_BLOWUP_FACTOR),
+            polynomial_evaluation(4, LOG_BLOWUP_FACTOR),
+            polynomial_evaluation(1, LOG_BLOWUP_FACTOR),
+            polynomial_evaluation(0, LOG_BLOWUP_FACTOR),
         ];
         let prover = FriProver::<QM31, Blake3Hasher>::new(config);
         let prover = prover.commit(midex_degree_evals);
@@ -373,15 +373,15 @@ mod tests {
         todo!()
     }
 
-    /// Returns an evaluation of a random polynomial with degree `2^degree_bits`.
+    /// Returns an evaluation of a random polynomial with degree `2^log_degree`.
     ///
-    /// The evaluation domain size is `2^(degree_bits + blowup_factor_bits)`.
+    /// The evaluation domain size is `2^(log_degree + log_blowup_factor)`.
     fn polynomial_evaluation<F: ExtensionOf<BaseField>>(
-        degree_bits: u32,
-        blowup_factor_bits: u32,
+        log_degree: u32,
+        log_blowup_factor: u32,
     ) -> LineEvaluation<F> {
-        let poly = LinePoly::new(vec![F::one(); 1 << degree_bits]);
-        let coset = Coset::half_odds((degree_bits + blowup_factor_bits) as usize);
+        let poly = LinePoly::new(vec![F::one(); 1 << log_degree]);
+        let coset = Coset::half_odds(log_degree + log_blowup_factor);
         let domain = LineDomain::new(coset);
         poly.evaluate(domain)
     }

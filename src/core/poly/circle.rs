@@ -24,10 +24,10 @@ impl CircleDomain {
     }
 
     /// Constructs a domain for constraint evaluation.
-    pub fn constraint_evaluation_domain(n_bits: usize) -> Self {
-        assert!(n_bits > 0);
+    pub fn constraint_evaluation_domain(log_size: u32) -> Self {
+        assert!(log_size > 0);
         Self {
-            half_coset: Coset::new(CirclePointIndex::generator(), n_bits - 1),
+            half_coset: Coset::new(CirclePointIndex::generator(), log_size - 1),
         }
     }
 
@@ -49,11 +49,12 @@ impl CircleDomain {
 
     /// Returns the size of the domain.
     pub fn size(&self) -> usize {
-        self.half_coset.size() * 2
+        1 << self.log_size()
     }
 
-    pub fn n_bits(&self) -> usize {
-        self.half_coset.n_bits + 1
+    /// Returns the log size of the domain.
+    pub fn log_size(&self) -> u32 {
+        self.half_coset.log_size + 1
     }
 
     pub fn at(&self, index: usize) -> CirclePoint<BaseField> {
@@ -82,7 +83,7 @@ impl CircleDomain {
 /// These cosets can be used as a [CircleDomain], and be interpolated on.
 /// Not that this changes the ordering on the coset to be like [CircleDomain],
 /// which is G_2n + i * G_2n and then -G_2n -i * G_2n.
-/// For example, the Xs below are a canonic coset with n_bits=3.
+/// For example, the Xs below are a canonic coset with n=8.
 /// ```text
 ///    X O X
 ///  O       O
@@ -98,10 +99,10 @@ pub struct CanonicCoset {
 }
 
 impl CanonicCoset {
-    pub fn new(n_bits: usize) -> Self {
-        assert!(n_bits > 0);
+    pub fn new(log_size: u32) -> Self {
+        assert!(log_size > 0);
         Self {
-            coset: Coset::odds(n_bits),
+            coset: Coset::odds(log_size),
         }
     }
 
@@ -112,27 +113,28 @@ impl CanonicCoset {
 
     /// Gets half of the coset (its conjugate complements to the whole coset), G_{2n} + <G_{n/2}>
     pub fn half_coset(&self) -> Coset {
-        Coset::half_odds(self.n_bits - 1)
+        Coset::half_odds(self.log_size - 1)
     }
 
     /// Gets the [CircleDomain] representing the same point set (in another order).
     pub fn circle_domain(&self) -> CircleDomain {
-        CircleDomain::new(Coset::half_odds(self.coset.n_bits - 1))
+        CircleDomain::new(Coset::half_odds(self.coset.log_size - 1))
     }
 
     /// Gets a good [CircleDomain] for extension of a poly defined on this coset.
     /// The reason the domain looks like this is a bit more intricate, and not covered here.
-    pub fn evaluation_domain(&self, eval_n_bits: usize) -> CircleDomain {
-        assert!(eval_n_bits > self.coset.n_bits);
+    pub fn evaluation_domain(&self, log_size: u32) -> CircleDomain {
+        assert!(log_size > self.coset.log_size);
         // TODO(spapini): Document why this is like this.
         CircleDomain::new(Coset::new(
-            CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(self.coset.n_bits + 1),
-            eval_n_bits - 1,
+            CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(self.coset.log_size + 1),
+            log_size - 1,
         ))
     }
 
-    pub fn n_bits(&self) -> usize {
-        self.coset.n_bits
+    /// Returns the size of the coset as `log2(coset_size)`.
+    pub fn log_size(&self) -> u32 {
+        self.coset.log_size
     }
 }
 
@@ -171,7 +173,7 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
         let domain = coset.circle_domain();
         assert_eq!(values.len(), domain.size());
         let mut new_values = Vec::with_capacity(values.len());
-        let half_len = 1 << (coset.n_bits - 1);
+        let half_len = 1 << (coset.log_size - 1);
         for i in 0..half_len {
             new_values.push(values[i << 1]);
         }
@@ -203,16 +205,13 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
             coset = coset.double();
         }
 
-        // Divide all values by 2^n_bits.
+        // Divide all values by 2^log_size.
         let inv = BaseField::from_u32_unchecked(self.domain.size() as u32).inverse();
         for val in &mut values {
             *val *= inv;
         }
 
-        CirclePoly {
-            bound_bits: self.domain.n_bits(),
-            coeffs: values,
-        }
+        CirclePoly::new(values)
     }
 }
 
@@ -225,20 +224,28 @@ impl<F: ExtensionOf<BaseField>> Evaluation<F> for CircleEvaluation<F> {
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
 pub struct CirclePoly<F: ExtensionOf<BaseField>> {
-    /// log size of the number of coefficients.
-    bound_bits: usize,
     /// Coefficients of the polynomial in the FFT basis.
     /// Note: These are not the coefficients of the polynomial in the standard
     /// monomial basis. The FFT basis is a tensor product of the twiddles:
-    /// y, x, pi(x), pi^2(x), ..., pi^{bound_bits-2}(x).
+    /// y, x, pi(x), pi^2(x), ..., pi^{log_size-2}(x).
     /// pi(x) := 2x^2 - 1.
     coeffs: Vec<F>,
+    /// The number of coefficients stored as `log2(len(coeffs))`.
+    log_size: u32,
 }
 
 impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
-    pub fn new(bound_bits: usize, coeffs: Vec<F>) -> Self {
-        assert_eq!(coeffs.len(), 1 << bound_bits);
-        Self { bound_bits, coeffs }
+    /// Creates a new circle polynomial.
+    ///
+    /// Coefficients must be in the circle IFFT algorithm's basis stored in bit-reversed order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of coefficients isn't a power of two.
+    pub fn new(coeffs: Vec<F>) -> Self {
+        assert!(coeffs.len().is_power_of_two());
+        let log_size = coeffs.len().ilog2();
+        Self { log_size, coeffs }
     }
 
     /// Evaluates the polynomial at a single point.
@@ -246,7 +253,7 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
         // TODO(Andrew): Allocation here expensive for small polynomials.
         let mut mappings = vec![point.y, point.x];
         let mut x = point.x;
-        for _ in 2..self.bound_bits {
+        for _ in 2..self.log_size {
             x = CirclePoint::double_x(x);
             mappings.push(x);
         }
@@ -260,11 +267,11 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
         let mut cosets = vec![];
 
         // TODO(spapini): extend better.
-        assert!(domain.n_bits() >= self.bound_bits);
+        assert!(domain.log_size() >= self.log_size);
         let mut values = vec![F::zero(); domain.size()];
-        let jump_bits = domain.n_bits() - self.bound_bits;
+        let log_jump = domain.log_size() - self.log_size;
         for (i, val) in self.coeffs.iter().enumerate() {
-            values[i << jump_bits] = *val;
+            values[i << log_jump] = *val;
         }
 
         while coset.size() > 1 {
@@ -352,7 +359,7 @@ mod tests {
     #[test]
     fn test_interpolate_and_eval() {
         let domain = CircleDomain::constraint_evaluation_domain(3);
-        assert_eq!(domain.n_bits(), 3);
+        assert_eq!(domain.log_size(), 3);
         let evaluation =
             CircleEvaluation::new(domain, (0..8).map(BaseField::from_u32_unchecked).collect());
         let poly = evaluation.clone().interpolate();
@@ -363,7 +370,7 @@ mod tests {
     #[test]
     fn test_interpolate_canonic_eval() {
         let domain = CircleDomain::constraint_evaluation_domain(3);
-        assert_eq!(domain.n_bits(), 3);
+        assert_eq!(domain.log_size(), 3);
         let evaluation =
             CircleEvaluation::new(domain, (0..8).map(BaseField::from_u32_unchecked).collect());
         let poly = evaluation.interpolate();
@@ -387,14 +394,14 @@ mod tests {
 
     #[test]
     fn test_mixed_degree_example() {
-        let n_bits = 4;
+        let log_size = 4;
 
         // Compute domains.
-        let domain0 = CanonicCoset::new(n_bits);
-        let eval_domain0 = domain0.evaluation_domain(n_bits + 4);
-        let domain1 = CanonicCoset::new(n_bits + 2);
-        let eval_domain1 = domain1.evaluation_domain(n_bits + 3);
-        let constraint_domain = CircleDomain::constraint_evaluation_domain(n_bits + 1);
+        let domain0 = CanonicCoset::new(log_size);
+        let eval_domain0 = domain0.evaluation_domain(log_size + 4);
+        let domain1 = CanonicCoset::new(log_size + 2);
+        let eval_domain1 = domain1.evaluation_domain(log_size + 3);
+        let constraint_domain = CircleDomain::constraint_evaluation_domain(log_size + 1);
 
         // Compute values.
         let values1: Vec<_> = (0..(domain1.size() as u32))
