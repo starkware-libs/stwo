@@ -122,7 +122,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
             // let _merkle_root = layer.merkle_tree.root();
             // TODO(andrew): draw random alpha from channel
             let alpha = F::one();
-            evaluation = apply_drp(&evaluation, alpha);
+            evaluation = fold_line(&evaluation, alpha);
             self.layers.push(layer)
         }
 
@@ -141,10 +141,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
         assert!(evaluation.len() <= self.config.max_last_layer_domain_size());
         let num_remainder_coeffs = evaluation.len() >> self.config.log_blowup_factor;
         let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2()));
-        let mut coeffs = evaluation.interpolate(domain).into_natural_coefficients();
+        let mut coeffs = evaluation.interpolate(domain).into_ordered_coefficients();
         let zeros = coeffs.split_off(num_remainder_coeffs);
         assert!(zeros.iter().all(F::is_zero), "invalid degree");
-        self.remainder = Some(LinePoly::from_natural_coefficients(coeffs));
+        self.remainder = Some(LinePoly::from_ordered_coefficients(coeffs));
         // TODO(andrew): seed channel with remainder
     }
 }
@@ -180,13 +180,15 @@ pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub remainder: LinePoly<F>,
 }
 
-const FRI_STEP_SIZE: usize = 2;
+/// Folding factor for univariate polynomials.
+// TODO(andrew): support multiple folding factors.
+const LOG_FOLDING_FACTOR: u32 = 1;
 
 /// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
 pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub coset_evals: Vec<[F; FRI_STEP_SIZE]>,
+    pub coset_evals: Vec<[F; 1 << LOG_FOLDING_FACTOR]>,
     pub decommitment: MerkleDecommitment<F, H>,
     pub commitment: H::Hash,
 }
@@ -206,7 +208,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
 // TODO(andrew): support different folding factors
 struct FriLayer<F: ExtensionOf<BaseField>, H: Hasher> {
     /// Coset evaluations stored in column-major.
-    coset_evals: [Vec<F>; FRI_STEP_SIZE],
+    coset_evals: [Vec<F>; 1 << LOG_FOLDING_FACTOR],
     _merkle_tree: MerkleTree<F, H>,
 }
 
@@ -246,35 +248,35 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
     }
 }
 
-/// Performs a degree respecting projection (DRP) on a polynomial.
+/// Folds a degree `d` polynomial into a degree `d/2` polynomial.
 ///
-/// Example: Our evaluation domain is the x-coordinates of `E = c + <G>`, `alpha` is a random field
-/// element and `pi(x) = 2x^2 - 1` is the circle's x-coordinate doubling map. We have evaluations of
-/// a polynomial `f` on `E` (i.e `evals`) and we can compute the evaluations of `f' = 2 * (fe +
-/// alpha * fo)` over `E' = { pi(x) | x in E }` such that `f(x) = fe(pi(x)) + x * fo(pi(x))`.
-///
-/// `evals` should be polynomial evaluations over a [LineDomain] stored in natural order. The return
-/// evaluations are evaluations over a [LineDomain] of half the size stored in natural order.
+/// Let `evals` be a polynomial evaluated on a [LineDomain] `E`, `alpha` be a random field element
+/// and `pi(x) = 2x^2 - 1` be the circle's x-coordinate doubling map. This function returns
+/// `f' = f0 + alpha * f1` evaluated on `pi(E)` such that `2f(x) = f0(pi(x)) + x * f1(pi(x))`.
 ///
 /// # Panics
 ///
-/// Panics if the number of evaluations is not greater than or equal to two.
-pub fn apply_drp<F: ExtensionOf<BaseField>>(
+/// Panics if there are less than two evaluations.
+pub fn fold_line<F: ExtensionOf<BaseField>>(
     evals: &LineEvaluation<F>,
     alpha: F,
 ) -> LineEvaluation<F> {
     let n = evals.len();
-    assert!(n >= 2);
+    assert!(n >= 2, "too few evals");
+
     let (l, r) = evals.split_at(n / 2);
+    // TODO: Either add domain to [LineEvaluation] or consider changing LineDomain to be defined by
+    // its size and to always be canonic - since it may only be used by FRI.
     let domain = LineDomain::new(Coset::half_odds(n.ilog2()));
-    let drp_evals = zip(zip(l, r), domain)
-        .map(|((&f_x, &f_neg_x), x)| {
-            let (mut f_e, mut f_o) = (f_x, f_neg_x);
-            ibutterfly(&mut f_e, &mut f_o, x.inverse());
-            f_e + alpha * f_o
+    let folded_evals = zip(domain, zip(l, r))
+        .map(|(x, (&f_x, &f_neg_x))| {
+            let (mut f0, mut f1) = (f_x, f_neg_x);
+            ibutterfly(&mut f0, &mut f1, x.inverse());
+            f0 + alpha * f1
         })
         .collect();
-    LineEvaluation::new(drp_evals)
+
+    LineEvaluation::new(folded_evals)
 }
 
 // TODO(andrew): support different folding factors
@@ -294,11 +296,11 @@ mod tests {
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::ExtensionOf;
-    use crate::core::fri::apply_drp;
+    use crate::core::fri::fold_line;
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
 
     #[test]
-    fn drp_works() {
+    fn fold_line_works() {
         const DEGREE: usize = 8;
         // Coefficients are bit-reversed.
         let even_coeffs: [BaseField; DEGREE / 2] = [1, 2, 1, 3].map(BaseField::from_u32_unchecked);
@@ -312,7 +314,7 @@ mod tests {
         let evals = poly.evaluate(domain);
         let two = BaseField::from_u32_unchecked(2);
 
-        let drp_evals = apply_drp(&evals, alpha);
+        let drp_evals = fold_line(&evals, alpha);
 
         assert_eq!(drp_evals.len(), DEGREE / 2);
         for (i, (&drp_eval, x)) in zip(&*drp_evals, drp_domain).enumerate() {
