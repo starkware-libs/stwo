@@ -85,7 +85,7 @@ pub struct LinePoly<F> {
     /// The coefficients are stored in bit-reversed order.
     coeffs: Vec<F>,
     /// The number of coefficients stored as `log2(len(coeffs))`.
-    log_n: u32,
+    log_size: u32,
 }
 
 impl<F: ExtensionOf<BaseField>> LinePoly<F> {
@@ -96,15 +96,15 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// Panics if the number of coefficients is not a power of two.
     pub fn new(coeffs: Vec<F>) -> Self {
         assert!(coeffs.len().is_power_of_two());
-        let log_n = coeffs.len().ilog2();
-        Self { coeffs, log_n }
+        let log_size = coeffs.len().ilog2();
+        Self { coeffs, log_size }
     }
 
     /// Evaluates the polynomial at a single point.
     pub fn eval_at_point<E: ExtensionOf<F>>(&self, mut x: E) -> E {
         // TODO(Andrew): Allocation here expensive for small polynomials.
         let mut doublings = vec![x];
-        for _ in 1..self.log_n {
+        for _ in 1..self.log_size {
             x = CirclePoint::double_x(x);
             doublings.push(x);
         }
@@ -117,7 +117,7 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
 
         // The first few FFT layers may just copy coefficients so we do it directly.
         // See the docs for `n_skipped_layers` in [line_fft].
-        let log_degree_bound = self.log_n;
+        let log_degree_bound = self.log_size;
         let n_skipped_layers = (domain.log_size() - log_degree_bound) as usize;
         let duplicity = 1 << n_skipped_layers;
         self.coeffs = repeat_value(&self.coeffs, duplicity);
@@ -130,9 +130,9 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         // `.len().ilog2()` is a common operation. By returning the length like so the compiler
-        // optimizes `.len().ilog2()` to a load of `log_n` instead of a branch and a bit count.
-        debug_assert_eq!(self.coeffs.len(), 1 << self.log_n);
-        1 << self.log_n
+        // optimizes `.len().ilog2()` to a load of `log_size` instead of a branch and a bit count.
+        debug_assert_eq!(self.coeffs.len(), 1 << self.log_size);
+        1 << self.log_size
     }
 
     /// Returns the polynomial's coefficients in their natural order.
@@ -170,7 +170,7 @@ pub struct LineEvaluation<F> {
     /// Evaluations of a univariate polynomial on a [LineDomain].
     evals: Vec<F>,
     /// The number of evaluations stored as `log2(len(evals))`.
-    log_n: u32,
+    log_size: u32,
 }
 
 impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
@@ -181,8 +181,8 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     /// Panics if the number of evaluations is not a power of two.
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());
-        let log_n = evals.len().ilog2();
-        Self { evals, log_n }
+        let log_size = evals.len().ilog2();
+        Self { evals, log_size }
     }
 
     /// Interpolates the polynomial as evaluations on `domain`.
@@ -198,9 +198,9 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         // `.len().ilog2()` is a common operation. By returning the length like so the compiler
-        // optimizes `.len().ilog2()` to a load of `log_n` instead of a branch and a bit count.
-        debug_assert_eq!(self.evals.len(), 1 << self.log_n);
-        1 << self.log_n
+        // optimizes `.len().ilog2()` to a load of `log_size` instead of a branch and a bit count.
+        debug_assert_eq!(self.evals.len(), 1 << self.log_size);
+        1 << self.log_size
     }
 }
 
@@ -312,29 +312,29 @@ mod tests {
 
     #[test]
     fn line_domain_of_size_two_works() {
-        const LOG_N: u32 = 1;
-        let coset = Coset::subgroup(LOG_N);
+        const LOG_SIZE: u32 = 1;
+        let coset = Coset::subgroup(LOG_SIZE);
 
         LineDomain::new(coset);
     }
 
     #[test]
     fn line_domain_of_size_one_works() {
-        const LOG_N: u32 = 0;
-        let coset = Coset::subgroup(LOG_N);
+        const LOG_SIZE: u32 = 0;
+        let coset = Coset::subgroup(LOG_SIZE);
 
         LineDomain::new(coset);
     }
 
     #[test]
     fn line_domain_size_is_correct() {
-        const LOG_N: u32 = 8;
-        let coset = Coset::half_odds(LOG_N);
+        const LOG_SIZE: u32 = 8;
+        let coset = Coset::half_odds(LOG_SIZE);
         let domain = LineDomain::new(coset);
 
         let size = domain.size();
 
-        assert_eq!(size, 1 << LOG_N);
+        assert_eq!(size, 1 << LOG_SIZE);
     }
 
     #[test]
@@ -347,21 +347,21 @@ mod tests {
 
     #[test]
     fn line_domain_double_works() {
-        const LOG_N: u32 = 8;
-        let coset = Coset::half_odds(LOG_N);
+        const LOG_SIZE: u32 = 8;
+        let coset = Coset::half_odds(LOG_SIZE);
         let domain = LineDomain::new(coset);
 
         let doubled_domain = domain.double();
 
-        assert_eq!(doubled_domain.size(), 1 << (LOG_N - 1));
+        assert_eq!(doubled_domain.size(), 1 << (LOG_SIZE - 1));
         assert_eq!(doubled_domain.at(0), CirclePoint::double_x(domain.at(0)));
         assert_eq!(doubled_domain.at(1), CirclePoint::double_x(domain.at(1)));
     }
 
     #[test]
     fn line_domain_iter_works() {
-        const LOG_N: u32 = 8;
-        let coset = Coset::half_odds(LOG_N);
+        const LOG_SIZE: u32 = 8;
+        let coset = Coset::half_odds(LOG_SIZE);
         let domain = LineDomain::new(coset);
 
         let elements = domain.iter().collect::<Vec<BaseField>>();
@@ -445,9 +445,9 @@ mod tests {
 
     #[test]
     fn line_polynomial_eval_at_point() {
-        const LOG_N: u32 = 2;
-        let coset = Coset::half_odds(LOG_N);
-        let evals = LineEvaluation::new((0..1 << LOG_N).map(BaseField::from).collect());
+        const LOG_SIZE: u32 = 2;
+        let coset = Coset::half_odds(LOG_SIZE);
+        let evals = LineEvaluation::new((0..1 << LOG_SIZE).map(BaseField::from).collect());
         let domain = LineDomain::new(coset);
         let poly = evals.clone().interpolate(domain);
 

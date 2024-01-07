@@ -61,11 +61,11 @@ pub struct FibonacciProof {
 }
 
 impl Fibonacci {
-    pub fn new(log_n: u32, claim: BaseField) -> Self {
-        let trace_coset = CanonicCoset::new(log_n);
-        let eval_domain = trace_coset.evaluation_domain(log_n + 1);
-        let constraint_coset = Coset::subgroup(log_n);
-        let constraint_eval_domain = CircleDomain::constraint_evaluation_domain(log_n + 1);
+    pub fn new(log_size: u32, claim: BaseField) -> Self {
+        let trace_coset = CanonicCoset::new(log_size);
+        let eval_domain = trace_coset.evaluation_domain(log_size + 1);
+        let constraint_coset = Coset::subgroup(log_size);
+        let constraint_eval_domain = CircleDomain::constraint_evaluation_domain(log_size + 1);
         Self {
             trace_coset,
             eval_domain,
@@ -173,7 +173,8 @@ impl Fibonacci {
         let trace = self.get_trace();
         let trace_poly = trace.interpolate();
         let trace_evaluation = trace_poly.evaluate(self.eval_domain);
-        let trace_commitment_domain = CanonicCoset::new(self.trace_coset.log_n + LOG_BLOWUP_FACTOR);
+        let trace_commitment_domain =
+            CanonicCoset::new(self.trace_coset.log_size + LOG_BLOWUP_FACTOR);
         let trace_commitment_evaluation =
             trace_poly.evaluate(trace_commitment_domain.circle_domain());
         let trace_merkle =
@@ -219,11 +220,11 @@ impl Fibonacci {
         ));
 
         let quotient_queries =
-            generate_queries(channel, quotient_commitment_domain.log_n, N_QUERIES);
+            generate_queries(channel, quotient_commitment_domain.log_size, N_QUERIES);
         let trace_queries = get_projected_queries(
             &quotient_queries,
-            trace_commitment_domain.log_n,
-            quotient_commitment_domain.log_n,
+            trace_commitment_domain.log_size,
+            quotient_commitment_domain.log_size,
         );
         let quotient_decommitment = quotient_merkle.generate_decommitment(&quotient_queries);
         let trace_decommitment = trace_merkle.generate_decommitment(&trace_queries);

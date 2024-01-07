@@ -25,7 +25,7 @@ pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoi
     let mut x = p.x;
 
     // The formula for the x coordinate of the double of a point.
-    for _ in 1..coset.log_n {
+    for _ in 1..coset.log_size {
         x = CirclePoint::double_x(x);
     }
     x
