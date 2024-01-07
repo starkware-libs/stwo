@@ -15,7 +15,7 @@ pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoi
     // Rotating the coset -coset.initial + step / 2 yields a canonic coset:
     // `step/2 + <step>.`
     // Doubling this coset log_order - 1 times yields the coset +-G_4.
-    // th polynomial x vanishes on these points.
+    // The polynomial x vanishes on these points.
     // ```text
     //   X
     // .   .

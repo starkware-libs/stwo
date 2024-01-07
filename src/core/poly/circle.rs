@@ -52,7 +52,7 @@ impl CircleDomain {
         1 << self.log_size()
     }
 
-    /// Returns the size of the domain as `log2(domain_size)`
+    /// Returns the log size of the domain.
     pub fn log_size(&self) -> u32 {
         self.half_coset.log_size + 1
     }
@@ -224,14 +224,14 @@ impl<F: ExtensionOf<BaseField>> Evaluation<F> for CircleEvaluation<F> {
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
 pub struct CirclePoly<F: ExtensionOf<BaseField>> {
-    /// The number of coefficients stored as `log2(len(coeffs))`.
-    log_size: u32,
     /// Coefficients of the polynomial in the FFT basis.
     /// Note: These are not the coefficients of the polynomial in the standard
     /// monomial basis. The FFT basis is a tensor product of the twiddles:
     /// y, x, pi(x), pi^2(x), ..., pi^{log_size-2}(x).
     /// pi(x) := 2x^2 - 1.
     coeffs: Vec<F>,
+    /// The number of coefficients stored as `log2(len(coeffs))`.
+    log_size: u32,
 }
 
 impl<F: ExtensionOf<BaseField>> CirclePoly<F> {

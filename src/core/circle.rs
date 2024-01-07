@@ -41,14 +41,16 @@ impl<F: Field> CirclePoint<F> {
         x.square().double() - F::one()
     }
 
-    /// Returns the order of a point.
+    /// Returns the log order of a point.
+    ///
+    /// All points have an order of the form `2^k`.
     ///
     /// # Examples
     ///
     /// ```
-    /// use prover_research::core::circle::{CirclePoint, M31_CIRCLE_GEN, M31_CIRCLE_ORDER_BITS};
+    /// use prover_research::core::circle::{CirclePoint, M31_CIRCLE_GEN, M31_CIRCLE_LOG_ORDER};
     /// use prover_research::core::fields::m31::M31;
-    /// assert_eq!(M31_CIRCLE_GEN.log_order(), M31_CIRCLE_ORDER_BITS);
+    /// assert_eq!(M31_CIRCLE_GEN.log_order(), M31_CIRCLE_LOG_ORDER);
     /// ```
     pub fn log_order(&self) -> u32 {
         // we only need the x-coordinate to check order since the only point
@@ -133,14 +135,14 @@ impl<F: Field> Sub for CirclePoint<F> {
 
 impl CirclePoint<QM31> {
     pub fn get_point(index: u128) -> Self {
-        assert!(index < QM31_CIRCLE_SIZE);
+        assert!(index < QM31_CIRCLE_ORDER);
         QM31_CIRCLE_GEN.mul(index)
     }
 
     #[allow(clippy::assertions_on_constants)]
     pub fn get_random_point(channel: &mut Blake2sChannel) -> Self {
         const BYTES_PER_U128: usize = 16;
-        // `QM31_CIRCLE_SIZE` fits a little over 16 times in a `u128`.
+        // `QM31_CIRCLE_ORDER` fits a little over 16 times in a `u128`.
         const C: u128 = 16;
         // TODO(AlonH): Consider using static-assertions crate.
         assert!(BYTES_PER_HASH >= BYTES_PER_U128);
@@ -151,16 +153,16 @@ impl CirclePoint<QM31> {
             for i in 0..BYTES_PER_HASH / BYTES_PER_U128 {
                 let u128_bytes = &random_bytes[BYTES_PER_U128 * i..BYTES_PER_U128 * (i + 1)];
                 let random_u128: u128 = u128::from_le_bytes(u128_bytes.try_into().unwrap());
-                if random_u128 < C * QM31_CIRCLE_SIZE {
+                if random_u128 < C * QM31_CIRCLE_ORDER {
                     // A circle point can be uniformly sampled.
-                    return Self::get_point(random_u128 % QM31_CIRCLE_SIZE);
+                    return Self::get_point(random_u128 % QM31_CIRCLE_ORDER);
                 }
             }
         }
     }
 }
 
-/// A generator for the circle group.
+/// A generator for the circle group over [M31].
 ///
 /// # Examples
 ///
@@ -183,17 +185,20 @@ pub const M31_CIRCLE_GEN: CirclePoint<M31> = CirclePoint {
     y: M31::from_u32_unchecked(1268011823),
 };
 
-pub const M31_CIRCLE_ORDER_BITS: u32 = 31;
+/// Order of [M31_CIRCLE_GEN].
+pub const M31_CIRCLE_LOG_ORDER: u32 = 31;
 
+/// A generator for the circle group over [QM31].
 pub const QM31_CIRCLE_GEN: CirclePoint<QM31> = CirclePoint {
     x: QM31::from_u32_unchecked(1, 0, 478637715, 513582961),
     y: QM31::from_u32_unchecked(568722919, 616616927, 0, 74382916),
 };
 
-pub const QM31_CIRCLE_SIZE: u128 = P4 - 1;
+/// Order of [QM31_CIRCLE_GEN].
+pub const QM31_CIRCLE_ORDER: u128 = P4 - 1;
 
 /// Integer i that represent the circle point i * CIRCLE_GEN. Treated as an
-/// additive ring modulo `1 << M31_CIRCLE_ORDER_BITS`.
+/// additive ring modulo `1 << M31_CIRCLE_LOG_ORDER`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct CirclePointIndex(pub usize);
 
@@ -207,12 +212,12 @@ impl CirclePointIndex {
     }
 
     pub fn reduce(self) -> Self {
-        Self(self.0 & ((1 << M31_CIRCLE_ORDER_BITS) - 1))
+        Self(self.0 & ((1 << M31_CIRCLE_LOG_ORDER) - 1))
     }
 
     pub fn subgroup_gen(log_size: u32) -> Self {
-        assert!(log_size <= M31_CIRCLE_ORDER_BITS);
-        Self(1 << (M31_CIRCLE_ORDER_BITS - log_size))
+        assert!(log_size <= M31_CIRCLE_LOG_ORDER);
+        Self(1 << (M31_CIRCLE_LOG_ORDER - log_size))
     }
 
     pub fn to_point(self) -> CirclePoint<M31> {
@@ -226,12 +231,12 @@ impl CirclePointIndex {
 
     pub fn try_div(&self, rhs: CirclePointIndex) -> Option<usize> {
         // Find x s.t. x * rhs.0 = self.0 (mod CIRCLE_ORDER).
-        let (s, _t, g) = egcd(rhs.0 as isize, 1 << M31_CIRCLE_ORDER_BITS);
+        let (s, _t, g) = egcd(rhs.0 as isize, 1 << M31_CIRCLE_LOG_ORDER);
         if self.0 as isize % g != 0 {
             return None;
         }
         let res = s * self.0 as isize / g;
-        let cap = (1 << M31_CIRCLE_ORDER_BITS) / g;
+        let cap = (1 << M31_CIRCLE_LOG_ORDER) / g;
         let res = ((res % cap) + cap) % cap;
         Some(res as usize)
     }
@@ -249,7 +254,7 @@ impl Sub for CirclePointIndex {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        Self(self.0 + (1 << M31_CIRCLE_ORDER_BITS) - rhs.0).reduce()
+        Self(self.0 + (1 << M31_CIRCLE_LOG_ORDER) - rhs.0).reduce()
     }
 }
 
@@ -273,7 +278,7 @@ impl Neg for CirclePointIndex {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Self((1 << M31_CIRCLE_ORDER_BITS) - self.0).reduce()
+        Self((1 << M31_CIRCLE_LOG_ORDER) - self.0).reduce()
     }
 }
 
@@ -289,7 +294,7 @@ pub struct Coset {
 
 impl Coset {
     pub fn new(initial_index: CirclePointIndex, log_size: u32) -> Self {
-        assert!(log_size <= M31_CIRCLE_ORDER_BITS);
+        assert!(log_size <= M31_CIRCLE_LOG_ORDER);
         let step_size = CirclePointIndex::subgroup_gen(log_size);
         Self {
             initial_index,
@@ -347,6 +352,7 @@ impl Coset {
 
     /// Returns a new coset comprising of all points in current coset doubled.
     pub fn double(&self) -> Self {
+        assert!(self.log_size > 0);
         Self {
             initial_index: self.initial_index * 2,
             initial: self.initial.double(),
@@ -357,7 +363,7 @@ impl Coset {
     }
 
     pub fn initial(&self) -> CirclePoint<M31> {
-        M31_CIRCLE_GEN.repeated_double(M31_CIRCLE_ORDER_BITS - self.log_size - 1)
+        M31_CIRCLE_GEN.repeated_double(M31_CIRCLE_LOG_ORDER - self.log_size - 1)
     }
 
     pub fn index_at(&self, index: usize) -> CirclePointIndex {

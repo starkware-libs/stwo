@@ -54,7 +54,7 @@ impl LineDomain {
         self.coset.size()
     }
 
-    /// Returns the size of the domain as `log2(domain_size)`.
+    /// Returns the log size of the domain.
     pub fn log_size(&self) -> u32 {
         self.coset.log_size()
     }
