@@ -73,6 +73,14 @@ impl CircleDomain {
         }
         None
     }
+
+    /// Returns true if the domain is canonic.
+    ///
+    /// Canonic domains are domains with elements that are the entire set of points defined by
+    /// `G_2n + <G_n>` where `G_n` and `G_2n` are obtained by repeatedly doubling [M31_CIRCLE_GEN].
+    pub fn is_canonic(&self) -> bool {
+        self.half_coset.initial_index * 4 == self.half_coset.step_size
+    }
 }
 
 impl IntoIterator for CircleDomain {
@@ -235,6 +243,26 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
 impl<F: ExtensionOf<BaseField>> Evaluation<F> for CircleEvaluation<F> {
     fn get_at(&self, point_index: CirclePointIndex) -> F {
         self.values[self.domain.find(point_index).expect("Not in domain")]
+    }
+}
+
+impl<F: ExtensionOf<BaseField>> Deref for CircleEvaluation<F> {
+    type Target = [F];
+
+    fn deref(&self) -> &[F] {
+        &self.values
+    }
+}
+
+impl<F: ExtensionOf<BaseField>> IntoIterator for CircleEvaluation<F> {
+    type Item = F;
+    type IntoIter = std::vec::IntoIter<F>;
+
+    /// Creates a consuming iterator over the evaluations.
+    ///
+    /// Evaluations are returned in the same order as elements of the domain.
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.into_iter()
     }
 }
 
@@ -450,5 +478,20 @@ mod tests {
         );
         // TODO(spapini): Check low degree.
         println!("{:?}", constraint_eval);
+    }
+
+    #[test]
+    fn is_canonic_valid_domain() {
+        let canonic_domain = CanonicCoset::new(4).circle_domain();
+
+        assert!(canonic_domain.is_canonic());
+    }
+
+    #[test]
+    fn is_canonic_invalid_domain() {
+        let half_coset = Coset::new(CirclePointIndex::generator(), 4);
+        let not_canonic_domain = CircleDomain::new(half_coset);
+
+        assert!(!not_canonic_domain.is_canonic());
     }
 }
