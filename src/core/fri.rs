@@ -88,8 +88,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// Panics if:
     /// * `evals` is empty or not sorted in ascending order by evaluation domain size.
     /// * An evaluation is not from a sufficiently low degree polynomial.
-    /// * An evaluation domain is smaller than or equal to the maximum last layer domain size.
-    /// * An evaluation domain is not canonic.
+    /// * An evaluation domain is smaller than or equal to 2x the maximum last layer domain size.
+    /// * An evaluation domain is not canonic circle domain.
     // TODO(andrew): Add docs for all evaluations needing to be from canonic domains.
     pub fn commit(mut self, evals: Vec<CircleEvaluation<F>>) -> FriProver<F, H, QueryPhase> {
         assert!(evals.is_sorted_by_key(|e| e.len()), "not sorted");
@@ -121,8 +121,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
         };
 
         while evaluation.len() > self.config.max_last_layer_domain_size() {
-            const CIRCLE_TO_LINE_FOLDING_FACTOR: usize = 2;
-            let folded_len = |e: &CircleEvaluation<F>| e.len() / CIRCLE_TO_LINE_FOLDING_FACTOR;
+            let folded_len = |e: &CircleEvaluation<F>| e.len() >> LOG_CIRCLE_TO_LINE_FOLDING_FACTOR;
 
             // Check for any evaluations that should be combined.
             while evals.last().map(folded_len) == Some(evaluation.len()) {
@@ -199,14 +198,17 @@ pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub remainder: LinePoly<F>,
 }
 
-// TODO(andrew): Remove constant and support multiple folding factors.
-const FRI_STEP_SIZE: usize = 2;
+/// Folding factor for univariate polynomials.
+const LOG_FOLDING_FACTOR: u32 = 1;
+
+/// Folding factor when folding a circle polynomial to univariate polynomial.
+const LOG_CIRCLE_TO_LINE_FOLDING_FACTOR: u32 = 1;
 
 /// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
 pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub coset_evals: Vec<[F; FRI_STEP_SIZE]>,
+    pub coset_evals: Vec<[F; 1 << LOG_FOLDING_FACTOR]>,
     pub decommitment: MerkleDecommitment<F, H>,
     pub commitment: H::Hash,
 }
@@ -226,7 +228,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
 // TODO(andrew): support different folding factors
 struct FriLayer<F: ExtensionOf<BaseField>, H: Hasher> {
     /// Coset evaluations stored in column-major.
-    coset_evals: [Vec<F>; FRI_STEP_SIZE],
+    coset_evals: [Vec<F>; 1 << LOG_FOLDING_FACTOR],
     _merkle_tree: MerkleTree<F, H>,
 }
 
@@ -288,9 +290,9 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
     let domain = LineDomain::new(Coset::half_odds(n.ilog2()));
     let folded_evals = zip(domain.iter(), zip(l, r))
         .map(|(x, (&f_x, &f_neg_x))| {
-            let (mut f_e, mut f_o) = (f_x, f_neg_x);
-            ibutterfly(&mut f_e, &mut f_o, x.inverse());
-            f_e + alpha * f_o
+            let (mut f0, mut f1) = (f_x, f_neg_x);
+            ibutterfly(&mut f0, &mut f1, x.inverse());
+            f0 + alpha * f1
         })
         .collect();
 
@@ -338,9 +340,12 @@ mod tests {
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::ExtensionOf;
-    use crate::core::fri::{fold_circle_to_line, fold_line};
+    use crate::core::fri::{fold_circle_to_line, fold_line, LOG_FOLDING_FACTOR};
     use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
+
+    /// Default blowup factor used for tests.
+    const LOG_BLOWUP_FACTOR: u32 = 2;
 
     #[test]
     fn fold_line_works() {
@@ -369,22 +374,24 @@ mod tests {
 
     #[test]
     fn fold_circle_to_line_works() {
-        const BLOWUP_FACTOR_BITS: u32 = 2;
-        const DEGREE_BITS: u32 = 4;
-        let circle_evaluation = polynomial_evaluation(DEGREE_BITS, BLOWUP_FACTOR_BITS);
+        const LOG_DEGREE: u32 = 4;
+        let circle_evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let alpha = BaseField::one();
 
         let folded_evaluation = fold_circle_to_line(&circle_evaluation, alpha);
 
-        assert_eq!(degree_bound_bits(folded_evaluation), DEGREE_BITS - 1);
+        assert_eq!(
+            log_degree_bound(folded_evaluation),
+            LOG_DEGREE - LOG_FOLDING_FACTOR
+        );
     }
 
     #[test]
     #[should_panic = "invalid degree"]
     #[ignore = "commit not implemented"]
     fn committing_high_degree_polynomial_fails() {
-        const LOG_EXPECTED_BLOWUP_FACTOR: u32 = 2;
-        const LOG_INVALID_BLOWUP_FACTOR: u32 = 1;
+        const LOG_EXPECTED_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR;
+        const LOG_INVALID_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR - 1;
         let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR);
         let prover = FriProver::<M31, Blake3Hasher>::new(config);
         let evaluation = polynomial_evaluation(6, LOG_INVALID_BLOWUP_FACTOR);
@@ -406,7 +413,6 @@ mod tests {
     #[test]
     #[ignore = "verification not implemented"]
     fn valid_fri_proof_passes_verification() {
-        const LOG_BLOWUP_FACTOR: u32 = 2;
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
         let evaluation = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
         let prover = FriProver::<QM31, Blake3Hasher>::new(config);
@@ -420,7 +426,6 @@ mod tests {
     #[test]
     #[ignore = "verification not implemented"]
     fn mixed_degree_fri_proof_passes_verification() {
-        const LOG_BLOWUP_FACTOR: u32 = 2;
         let config = FriConfig::new(4, LOG_BLOWUP_FACTOR);
         let midex_degree_evals = vec![
             polynomial_evaluation(6, LOG_BLOWUP_FACTOR),
@@ -456,7 +461,7 @@ mod tests {
     }
 
     /// Returns the degree bound of a polynomial as `log2(degree_bound)`.
-    fn degree_bound_bits<F: ExtensionOf<BaseField>>(polynomial: LineEvaluation<F>) -> u32 {
+    fn log_degree_bound<F: ExtensionOf<BaseField>>(polynomial: LineEvaluation<F>) -> u32 {
         let domain = LineDomain::new(Coset::half_odds(polynomial.len().ilog2()));
         let coeffs = polynomial.interpolate(domain).into_ordered_coefficients();
         let degree = coeffs.into_iter().rposition(|c| !c.is_zero()).unwrap_or(0);
