@@ -31,17 +31,14 @@ impl CircleDomain {
         }
     }
 
-    pub fn iter(
-        &self,
-    ) -> Chain<CosetIterator<CirclePoint<BaseField>>, CosetIterator<CirclePoint<BaseField>>> {
+    pub fn iter(&self) -> CircleDomainIterator {
         self.half_coset
             .iter()
             .chain(self.half_coset.conjugate().iter())
     }
 
-    pub fn iter_indices(
-        &self,
-    ) -> Chain<CosetIterator<CirclePointIndex>, CosetIterator<CirclePointIndex>> {
+    /// Iterates over point indices.
+    pub fn iter_indices(&self) -> CircleDomainIndexIterator {
         self.half_coset
             .iter_indices()
             .chain(self.half_coset.conjugate().iter_indices())
@@ -77,6 +74,26 @@ impl CircleDomain {
         None
     }
 }
+
+impl IntoIterator for CircleDomain {
+    type Item = CirclePoint<BaseField>;
+    type IntoIter = CircleDomainIterator;
+
+    /// Iterates over the points in the domain.
+    fn into_iter(self) -> CircleDomainIterator {
+        self.iter()
+    }
+}
+
+/// An iterator over points in a circle domain.
+///
+/// Let the domain be `+-c + <G>`. The first iterated points are `c + <G>`, then `-c + <-G>`.
+pub type CircleDomainIterator =
+    Chain<CosetIterator<CirclePoint<BaseField>>, CosetIterator<CirclePoint<BaseField>>>;
+
+/// Like [CircleDomainIterator] but returns corresponding [CirclePointIndex]s.
+type CircleDomainIndexIterator =
+    Chain<CosetIterator<CirclePointIndex>, CosetIterator<CirclePointIndex>>;
 
 /// A coset of the form G_{2n} + <G_n>, where G_n is the generator of the
 /// subgroup of order n. The ordering on this coset is G_2n + i * G_n.
@@ -132,7 +149,7 @@ impl CanonicCoset {
         ))
     }
 
-    /// Returns the size of the coset as `log2(coset_size)`.
+    /// Returns the log size of the coset.
     pub fn log_size(&self) -> u32 {
         self.coset.log_size
     }

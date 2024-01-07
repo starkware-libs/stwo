@@ -329,7 +329,7 @@ impl Coset {
         1 << self.log_size()
     }
 
-    /// Returns the size of the coset as `log2(coset_size)`.
+    /// Returns the log size of the coset.
     pub fn log_size(&self) -> u32 {
         self.log_size
     }
@@ -398,6 +398,16 @@ impl Coset {
 
     pub fn find(&self, i: CirclePointIndex) -> Option<usize> {
         (i - self.initial_index).try_div(self.step_size)
+    }
+}
+
+impl IntoIterator for Coset {
+    type Item = CirclePoint<M31>;
+    type IntoIter = CosetIterator<CirclePoint<M31>>;
+
+    /// Iterates over the points in the coset.
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
