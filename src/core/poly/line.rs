@@ -1,11 +1,12 @@
 use std::cmp::Ordering;
 use std::fmt::Debug;
+use std::iter::Map;
 use std::ops::{Deref, DerefMut};
 
 use num_traits::Zero;
 
 use super::utils::{bit_reverse, fold, repeat_value};
-use crate::core::circle::{CirclePoint, Coset};
+use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, Field};
@@ -60,7 +61,7 @@ impl LineDomain {
     }
 
     /// Returns an iterator over elements in the domain.
-    pub fn iter(&self) -> impl Iterator<Item = BaseField> {
+    pub fn iter(&self) -> LineDomainIterator {
         self.coset.iter().map(|p| p.x)
     }
 
@@ -76,6 +77,20 @@ impl LineDomain {
         self.coset
     }
 }
+
+impl IntoIterator for LineDomain {
+    type Item = BaseField;
+    type IntoIter = LineDomainIterator;
+
+    /// Returns an iterator over elements in the domain.
+    fn into_iter(self) -> LineDomainIterator {
+        self.iter()
+    }
+}
+
+/// An iterator over the x-coordinates of points in a coset.
+type LineDomainIterator =
+    Map<CosetIterator<CirclePoint<BaseField>>, fn(CirclePoint<BaseField>) -> BaseField>;
 
 /// A univariate polynomial defined on a [LineDomain].
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

@@ -267,7 +267,7 @@ pub fn apply_drp<F: ExtensionOf<BaseField>>(
     assert!(n >= 2);
     let (l, r) = evals.split_at(n / 2);
     let domain = LineDomain::new(Coset::half_odds(n.ilog2()));
-    let drp_evals = zip(zip(l, r), domain.iter())
+    let drp_evals = zip(zip(l, r), domain)
         .map(|((&f_x, &f_neg_x), x)| {
             let (mut f_e, mut f_o) = (f_x, f_neg_x);
             ibutterfly(&mut f_e, &mut f_o, x.inverse());
@@ -315,7 +315,7 @@ mod tests {
         let drp_evals = apply_drp(&evals, alpha);
 
         assert_eq!(drp_evals.len(), DEGREE / 2);
-        for (i, (&drp_eval, x)) in zip(&*drp_evals, drp_domain.iter()).enumerate() {
+        for (i, (&drp_eval, x)) in zip(&*drp_evals, drp_domain).enumerate() {
             let f_e = even_poly.eval_at_point(x);
             let f_o = odd_poly.eval_at_point(x);
             assert_eq!(drp_eval, two * (f_e + alpha * f_o), "mismatch at {i}");
