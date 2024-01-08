@@ -18,6 +18,7 @@ pub struct MixedDegreeMerkleTreeConfig {
 impl<'a, F: Field, H: Hasher> MixedDegreeMerkleTree<'a, F, H>
 where
     F: IntoSlice<H::NativeType>,
+    H::Hash: 'static
 {
     pub fn new(_input: MerkleTreeInput<'a, F>, _config: MixedDegreeMerkleTreeConfig) -> Self {
         todo!()

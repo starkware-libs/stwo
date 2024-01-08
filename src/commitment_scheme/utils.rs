@@ -247,12 +247,13 @@ pub fn get_column_chunk<F>(column: &[F], index_to_view: usize, n_total_chunks: u
 /// Hashes a layer of a Merkle tree. Nodes are injected with child hashes and chunks from the input
 /// columns (if any).
 // TODO(Ohad): Consider renaming after current hash_layer function is deprecated.
-pub fn inject_and_hash_layer<H: Hasher, F: Field, const IS_INTERMEDIATE: bool>(
-    child_hashes: &[H::Hash],
+pub fn inject_and_hash_layer<'a, H: Hasher, F: Field, const IS_INTERMEDIATE: bool>(
+    mut child_hashes: impl ExactSizeIterator<Item = &'a H::Hash> + Clone,
     dst: &mut [H::Hash],
     input_columns: &Iter<'_, &[F]>,
 ) where
     F: IntoSlice<H::NativeType>,
+    H::Hash: 'static,
 {
     let produced_layer_length = dst.len();
     if IS_INTERMEDIATE {
@@ -283,7 +284,8 @@ pub fn inject_and_hash_layer<H: Hasher, F: Field, const IS_INTERMEDIATE: bool>(
             dst.iter_mut().enumerate().for_each(|(i, dst_node)| {
                 // Inject previous hash values if intermediate layer, and input columns.
                 if IS_INTERMEDIATE {
-                    inject_previous_hash_values::<H>(i, &mut hasher, child_hashes);
+                    hasher.update(child_hashes.next().unwrap().as_ref());
+                    hasher.update(child_hashes.next().unwrap().as_ref());
                 }
                 for (column, n_elements_in_chunk) in input_columns.clone() {
                     let chunk = &column[i * n_elements_in_chunk..(i + 1) * n_elements_in_chunk];
@@ -294,21 +296,24 @@ pub fn inject_and_hash_layer<H: Hasher, F: Field, const IS_INTERMEDIATE: bool>(
         }
         None => {
             // Intermediate layer with no input columns.
-            dst.iter_mut().enumerate().for_each(|(i, dst)| {
-                inject_previous_hash_values::<H>(i, &mut hasher, child_hashes);
+            dst.iter_mut().enumerate().for_each(|(_i, dst)| {
+                hasher.update(child_hashes.next().unwrap().as_ref());
+                hasher.update(child_hashes.next().unwrap().as_ref());
                 *dst = hasher.finalize_reset();
             });
         }
     }
 }
 
-fn inject_previous_hash_values<H: Hasher>(
-    i: usize,
+// TODO(Ohad): Deprecate.
+fn _inject_previous_hash_values<'a, H: Hasher>(
     hash_state: &mut H,
-    prev_hashes: &[<H as Hasher>::Hash],
-) {
-    hash_state.update(prev_hashes[i * 2].as_ref());
-    hash_state.update(prev_hashes[i * 2 + 1].as_ref());
+    mut prev_hashes: impl ExactSizeIterator<Item = &'a H::Hash>,
+) where
+    H::Hash: 'static,
+{
+    hash_state.update(prev_hashes.next().unwrap().as_ref());
+    hash_state.update(prev_hashes.next().unwrap().as_ref());
 }
 
 #[cfg(test)]
@@ -597,17 +602,17 @@ mod tests {
             vec![<Blake3Hasher as Hasher>::Hash::default(); 1 << (sub_trees_height - 1)];
 
         inject_and_hash_layer::<Blake3Hasher, M31, false>(
-            &[],
+            [].iter(),
             &mut leaf_layer,
             &input.get_columns(sub_trees_height).iter(),
         );
         inject_and_hash_layer::<Blake3Hasher, M31, true>(
-            &leaf_layer[..],
+            leaf_layer.iter(),
             &mut hashed_leaf_layer_injected,
             &input.get_columns(sub_trees_height - 1).iter(),
         );
         inject_and_hash_layer::<Blake3Hasher, M31, true>(
-            &leaf_layer[..],
+            leaf_layer.iter(),
             &mut hashed_leaf_layer_not_injected,
             &input.get_columns(sub_trees_height - 2).iter(),
         );
@@ -658,7 +663,7 @@ mod tests {
 
         input.insert_column(1, &trace_column_0);
         inject_and_hash_layer::<Blake3Hasher, M31, true>(
-            &prev_hashes[..],
+            prev_hashes.iter(),
             &mut dst,
             &input.get_columns(1).iter(),
         );
@@ -675,7 +680,7 @@ mod tests {
 
         input.insert_column(1, &trace_column_0);
         inject_and_hash_layer::<Blake3Hasher, M31, false>(
-            &prev_hashes[..],
+            prev_hashes.iter(),
             &mut dst,
             &input.get_columns(1).iter(),
         );
