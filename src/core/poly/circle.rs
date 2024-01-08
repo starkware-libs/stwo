@@ -379,6 +379,7 @@ mod tests {
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::Field;
+    use crate::core::utils::bit_reverse_index;
     use crate::m31;
 
     #[test]
@@ -493,5 +494,18 @@ mod tests {
         let not_canonic_domain = CircleDomain::new(half_coset);
 
         assert!(!not_canonic_domain.is_canonic());
+    }
+
+    #[test]
+    pub fn test_bit_reverse_indices() {
+        let log_domain_size = 7;
+        let domain = CanonicCoset::new(log_domain_size);
+        let small_domain = CanonicCoset::new(log_domain_size - 1);
+        for i in 0..2u32.pow(log_domain_size) {
+            let point = domain.at(bit_reverse_index(i, log_domain_size) as usize);
+            let small_point =
+                small_domain.at(bit_reverse_index(i / 2, log_domain_size - 1) as usize);
+            assert_eq!(point.double(), small_point);
+        }
     }
 }
