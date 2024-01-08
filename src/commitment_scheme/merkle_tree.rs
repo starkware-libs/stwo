@@ -73,7 +73,7 @@ where
         (&self.data.last().unwrap()[..]).into()
     }
 
-    pub fn generate_decommitment(&self, queries: &BTreeSet<usize>) -> MerkleDecommitment<T, H> {
+    pub fn generate_decommitment(&self, queries: BTreeSet<usize>) -> MerkleDecommitment<T, H> {
         let leaf_block_indices: BTreeSet<usize> = queries
             .iter()
             .map(|query| query / self.bottom_layer_n_rows_in_node)
@@ -122,11 +122,12 @@ where
                 .map(|index| (index / 2) ^ 1)
                 .collect();
         }
-        MerkleDecommitment {
+        MerkleDecommitment::new(
             leaf_blocks,
             layers,
-            n_rows_in_leaf_block: self.bottom_layer_n_rows_in_node,
-        }
+            self.bottom_layer_n_rows_in_node,
+            queries,
+        )
     }
 
     fn get_leaf_block(&self, block_index: usize) -> Vec<T> {
@@ -208,7 +209,7 @@ mod tests {
 
         let tree = super::MerkleTree::<M31, Blake3Hasher>::commit(trace);
         let queries: BTreeSet<usize> = (16..64).collect();
-        let decommitment = tree.generate_decommitment(&queries);
+        let decommitment = tree.generate_decommitment(queries);
 
         assert_eq!(decommitment.leaf_blocks.len(), 3);
 
