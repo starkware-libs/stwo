@@ -37,8 +37,37 @@ where
         MixedDegreeMerkleTree { input, layers }
     }
 
-    pub fn commit(&self) -> H::Hash {
-        todo!()
+    pub fn commit(&mut self) -> H::Hash {
+        let total_tree_height = self.input.max_injected_depth();
+
+        // Bottom layer.
+        let bottom_layer_input = self
+            .input
+            .split(total_tree_height - self.layers[0].config.sub_tree_height + 1);
+        self.layers[0].commit_layer::<F, false>(&bottom_layer_input, &[]);
+
+        // Rest of the tree.
+        let mut layers_left = total_tree_height - self.layers[0].config.sub_tree_height;
+        for i in 1..self.layers.len() {
+            // TODO(Ohad): implement Hash oracle and avoid these copies.
+            let prev_hashes = self.layers[i - 1]
+                .get_roots()
+                .copied()
+                .collect::<Vec<H::Hash>>();
+            let layer_input = self
+                .input
+                .split(layers_left - self.layers[i].config.sub_tree_height + 1);
+            self.layers[i].commit_layer::<F, true>(&layer_input, &prev_hashes);
+            layers_left -= self.layers[i].config.sub_tree_height;
+        }
+
+        self.layers
+            .last()
+            .unwrap()
+            .get_roots()
+            .next()
+            .expect("Error extracting root!")
+            .to_owned()
     }
 
     pub fn decommit(&self, _queries: BTreeSet<usize>) -> MixedDecommitment<F, H> {
@@ -72,6 +101,8 @@ where
 mod tests {
     use super::{MixedDegreeMerkleTree, MixedDegreeMerkleTreeConfig};
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
+    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
+    use crate::commitment_scheme::hasher::Hasher;
     use crate::core::fields::m31::M31;
 
     #[test]
@@ -118,5 +149,42 @@ mod tests {
             },
         );
     }
-}
 
+    fn hash_symmetric_path<H: Hasher>(
+        initial_value: &[H::NativeType],
+        path_length: usize,
+    ) -> H::Hash {
+        (1..path_length).fold(H::hash(initial_value), |curr_hash, _| {
+            H::concat_and_hash(&curr_hash, &curr_hash)
+        })
+    }
+
+    #[test]
+    fn commit_test() {
+        const TREE_HEIGHT: usize = 8;
+        const INJECT_DEPTH: usize = 3;
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let base_column = vec![M31::from_u32_unchecked(0); 1 << (TREE_HEIGHT)];
+        let injected_column = vec![M31::from_u32_unchecked(1); 1 << (INJECT_DEPTH - 1)];
+        input.insert_column(TREE_HEIGHT + 1, &base_column);
+        input.insert_column(INJECT_DEPTH, &injected_column);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [5, 2, 2].to_vec(),
+            },
+        );
+        let expected_hash_at_injected_depth = hash_symmetric_path::<Blake3Hasher>(
+            0_u32.to_le_bytes().as_ref(),
+            TREE_HEIGHT + 1 - INJECT_DEPTH,
+        );
+        let mut sack_at_injected_depth = expected_hash_at_injected_depth.as_ref().to_vec();
+        sack_at_injected_depth.extend(expected_hash_at_injected_depth.as_ref().to_vec());
+        sack_at_injected_depth.extend(1u32.to_le_bytes());
+        let expected_result =
+            hash_symmetric_path::<Blake3Hasher>(sack_at_injected_depth.as_ref(), INJECT_DEPTH);
+
+        let root = tree.commit();
+        assert_eq!(root, expected_result);
+    }
+}
