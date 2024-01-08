@@ -29,16 +29,16 @@ pub struct Fibonacci {
     pub trace_eval_domain: CircleDomain,
     pub trace_commitment_domain: CanonicCoset,
     pub constraint_zero_domain: Coset,
-    pub quotient_eval_domain: CircleDomain,
-    pub quotient_commitment_domain: CanonicCoset,
+    pub composition_polynomial_eval_domain: CircleDomain,
+    pub composition_polynomial_commitment_domain: CanonicCoset,
     pub claim: BaseField,
 }
 
 pub struct AdditionalProofData {
-    pub quotient_oods_value: QM31,
-    pub quotient_random_coeff: QM31,
+    pub composition_polynomial_oods_value: QM31,
+    pub composition_polynomial_random_coeff: QM31,
     pub oods_point: CirclePoint<QM31>,
-    pub quotient_queries: BTreeSet<usize>,
+    pub composition_polynomial_queries: BTreeSet<usize>,
     pub trace_queries: BTreeSet<usize>,
 }
 
@@ -56,7 +56,7 @@ impl<F: ExtensionOf<BaseField> + IntoSlice<H::NativeType>, H: Hasher> Commitment
 pub struct FibonacciProof {
     pub public_input: BaseField,
     pub trace_commitment: CommitmentProof<BaseField, MerkleHasher>,
-    pub quotient_commitment: CommitmentProof<QM31, MerkleHasher>,
+    pub composition_polynomial_commitment: CommitmentProof<QM31, MerkleHasher>,
     // TODO(AlonH): Consider including only the values.
     pub trace_oods_evaluation: PointMapping<QM31>,
     pub additional_proof_data: AdditionalProofData,
@@ -68,15 +68,17 @@ impl Fibonacci {
         let trace_eval_domain = trace_domain.evaluation_domain(log_size + 1);
         let trace_commitment_domain = CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR);
         let constraint_zero_domain = Coset::subgroup(log_size);
-        let quotient_eval_domain = CircleDomain::constraint_evaluation_domain(log_size + 1);
-        let quotient_commitment_domain = CanonicCoset::new(log_size + 1 + LOG_BLOWUP_FACTOR);
+        let composition_polynomial_eval_domain =
+            CircleDomain::constraint_evaluation_domain(log_size + 1);
+        let composition_polynomial_commitment_domain =
+            CanonicCoset::new(log_size + 1 + LOG_BLOWUP_FACTOR);
         Self {
             trace_domain,
             trace_eval_domain,
             trace_commitment_domain,
             constraint_zero_domain,
-            quotient_eval_domain,
-            quotient_commitment_domain,
+            composition_polynomial_eval_domain,
+            composition_polynomial_commitment_domain,
             claim,
         }
     }
@@ -138,20 +140,20 @@ impl Fibonacci {
         num / denom
     }
 
-    pub fn eval_quotient<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
+    pub fn eval_composition_polynomial<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
         &self,
         random_coeff: EF,
         trace: impl PolyOracle<F>,
     ) -> EF {
-        let mut quotient = random_coeff.pow(0) * self.eval_step_quotient(trace);
-        quotient += random_coeff.pow(1) * self.eval_boundary_quotient(trace, 0, BaseField::one());
-        quotient += random_coeff.pow(2)
+        let mut value = random_coeff.pow(0) * self.eval_step_quotient(trace);
+        value += random_coeff.pow(1) * self.eval_boundary_quotient(trace, 0, BaseField::one());
+        value += random_coeff.pow(2)
             * self.eval_boundary_quotient(
                 trace,
                 self.constraint_zero_domain.size() - 1,
                 self.claim,
             );
-        quotient
+        value
     }
 
     pub fn get_mask(&self) -> Mask {
@@ -165,19 +167,24 @@ impl Fibonacci {
         )
     }
 
-    /// Returns the quotient values using the trace and a random coefficient.
-    pub fn compute_quotient(
+    /// Returns the composition polynomial evaluations using the trace and a random coefficient.
+    pub fn compute_composition_polynomial(
         &self,
         random_coeff: QM31,
         trace_evaluation: &CircleEvaluation<BaseField>,
     ) -> CircleEvaluation<QM31> {
-        let mut quotient_values = Vec::with_capacity(self.quotient_eval_domain.size());
-        for p_ind in self.quotient_eval_domain.iter_indices() {
-            quotient_values.push(
-                self.eval_quotient(random_coeff, EvalByEvaluation::new(p_ind, trace_evaluation)),
-            );
+        let mut composition_polynomial_values =
+            Vec::with_capacity(self.composition_polynomial_eval_domain.size());
+        for p_ind in self.composition_polynomial_eval_domain.iter_indices() {
+            composition_polynomial_values.push(self.eval_composition_polynomial(
+                random_coeff,
+                EvalByEvaluation::new(p_ind, trace_evaluation),
+            ));
         }
-        CircleEvaluation::new(self.quotient_eval_domain, quotient_values)
+        CircleEvaluation::new(
+            self.composition_polynomial_eval_domain,
+            composition_polynomial_values,
+        )
     }
 
     pub fn prove(&self) -> FibonacciProof {
@@ -197,24 +204,28 @@ impl Fibonacci {
 
         let verifier_randomness = channel.draw_random_felts();
         let random_coeff = QM31::from_m31_array(verifier_randomness[..4].try_into().unwrap());
-        let quotient = self.compute_quotient(random_coeff, &trace_evaluation);
-        let quotient_poly = quotient.interpolate();
-        let quotient_commitment_evaluation =
-            quotient_poly.evaluate(self.quotient_commitment_domain.circle_domain());
+        let composition_polynomial =
+            self.compute_composition_polynomial(random_coeff, &trace_evaluation);
+        let composition_polynomial_poly = composition_polynomial.interpolate();
+        let composition_polynomial_commitment_evaluation = composition_polynomial_poly.evaluate(
+            self.composition_polynomial_commitment_domain
+                .circle_domain(),
+        );
         // TODO(AlonH): Remove the clone.
-        let quotient_merkle =
-            MerkleTree::<QM31, MerkleHasher>::commit(vec![quotient_commitment_evaluation
-                .values
-                .clone()]);
-        channel.mix_with_seed(quotient_merkle.root());
+        let composition_polynomial_merkle = MerkleTree::<QM31, MerkleHasher>::commit(vec![
+            composition_polynomial_commitment_evaluation.values.clone(),
+        ]);
+        channel.mix_with_seed(composition_polynomial_merkle.root());
 
         let oods_point = CirclePoint::<QM31>::get_random_point(channel);
         let mask = self.get_mask();
         let trace_oods_evaluation =
             get_oods_values(&mask, oods_point, &[self.trace_domain], &[trace_poly]);
-        let quotient_oods_value = quotient_poly.eval_at_point(oods_point);
+        let composition_polynomial_oods_value =
+            composition_polynomial_poly.eval_at_point(oods_point);
 
-        // A quotient for each mask item and for the CP, in the OODS point and its conjugate.
+        // A quotient for each mask item and for the composition_polynomial, in the OODS point and
+        // its conjugate.
         let mut oods_quotients = Vec::with_capacity((mask.len() + 1) * 2);
         for (point, value) in trace_oods_evaluation.iter() {
             oods_quotients.push(get_oods_quotient(
@@ -225,18 +236,22 @@ impl Fibonacci {
         }
         oods_quotients.push(get_oods_quotient(
             oods_point,
-            quotient_oods_value,
-            &quotient_commitment_evaluation,
+            composition_polynomial_oods_value,
+            &composition_polynomial_commitment_evaluation,
         ));
 
-        let quotient_queries =
-            generate_queries(channel, self.quotient_commitment_domain.log_size, N_QUERIES);
-        let trace_queries = get_projected_queries(
-            &quotient_queries,
-            self.trace_commitment_domain.log_size,
-            self.quotient_commitment_domain.log_size,
+        let composition_polynomial_queries = generate_queries(
+            channel,
+            self.composition_polynomial_commitment_domain.log_size,
+            N_QUERIES,
         );
-        let quotient_decommitment = quotient_merkle.generate_decommitment(quotient_queries.clone());
+        let trace_queries = get_projected_queries(
+            &composition_polynomial_queries,
+            self.trace_commitment_domain.log_size,
+            self.composition_polynomial_commitment_domain.log_size,
+        );
+        let composition_polynomial_decommitment = composition_polynomial_merkle
+            .generate_decommitment(composition_polynomial_queries.clone());
         let trace_decommitment = trace_merkle.generate_decommitment(trace_queries.clone());
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
@@ -246,16 +261,16 @@ impl Fibonacci {
                 decommitment: trace_decommitment,
                 commitment: trace_merkle.root(),
             },
-            quotient_commitment: CommitmentProof {
-                decommitment: quotient_decommitment,
-                commitment: quotient_merkle.root(),
+            composition_polynomial_commitment: CommitmentProof {
+                decommitment: composition_polynomial_decommitment,
+                commitment: composition_polynomial_merkle.root(),
             },
             trace_oods_evaluation,
             additional_proof_data: AdditionalProofData {
-                quotient_oods_value,
-                quotient_random_coeff: random_coeff,
+                composition_polynomial_oods_value,
+                composition_polynomial_random_coeff: random_coeff,
                 oods_point,
-                quotient_queries,
+                composition_polynomial_queries,
                 trace_queries,
             },
         }
@@ -315,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn test_quotient_is_low_degree() {
+    fn test_composition_polynomial_is_low_degree() {
         let fib = Fibonacci::new(5, m31!(443693538));
         let trace = fib.get_trace();
         let trace_poly = trace.interpolate();
@@ -326,18 +341,22 @@ mod tests {
         // coefficients from extension field.
         let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
 
-        // Compute quotient on the evaluation domain.
-        let mut quotient_values = Vec::with_capacity(fib.quotient_eval_domain.size());
-        for p_ind in fib.quotient_eval_domain.iter_indices() {
-            quotient_values.push(fib.eval_quotient(
+        // Compute composition_polynomial on the evaluation domain.
+        let mut composition_polynomial_values =
+            Vec::with_capacity(fib.composition_polynomial_eval_domain.size());
+        for p_ind in fib.composition_polynomial_eval_domain.iter_indices() {
+            composition_polynomial_values.push(fib.eval_composition_polynomial(
                 random_coeff,
                 EvalByEvaluation::new(p_ind, &extended_evaluation),
             ));
         }
-        let quotient_eval = CircleEvaluation::new(fib.quotient_eval_domain, quotient_values);
+        let composition_polynomial_eval = CircleEvaluation::new(
+            fib.composition_polynomial_eval_domain,
+            composition_polynomial_values,
+        );
         // Interpolate the poly. The poly is indeed of degree lower than the size of
         // trace_eval_domain, then it should interpolate correctly.
-        let interpolated_quotient_poly = quotient_eval.interpolate();
+        let interpolated_composition_polynomial_poly = composition_polynomial_eval.interpolate();
 
         // Evaluate this polynomial at another point, out of trace_eval_domain and compare to what
         // we expect.
@@ -348,8 +367,8 @@ mod tests {
         };
 
         assert_eq!(
-            interpolated_quotient_poly.eval_at_point(oods_point),
-            fib.eval_quotient(random_coeff, trace_evaluator)
+            interpolated_composition_polynomial_poly.eval_at_point(oods_point),
+            fib.eval_composition_polynomial(random_coeff, trace_evaluator)
         );
     }
 
@@ -359,18 +378,25 @@ mod tests {
 
         let proof = fib.prove();
         let oods_point = proof.additional_proof_data.oods_point;
-        let hz = fib.eval_quotient(
-            proof.additional_proof_data.quotient_random_coeff,
+        let hz = fib.eval_composition_polynomial(
+            proof
+                .additional_proof_data
+                .composition_polynomial_random_coeff,
             EvalByPointMapping {
                 point: oods_point,
                 point_mapping: &proof.trace_oods_evaluation,
             },
         );
 
-        assert_eq!(proof.additional_proof_data.quotient_oods_value, hz);
+        assert_eq!(
+            proof
+                .additional_proof_data
+                .composition_polynomial_oods_value,
+            hz
+        );
         assert!(proof
-            .quotient_commitment
-            .verify(proof.additional_proof_data.quotient_queries));
+            .composition_polynomial_commitment
+            .verify(proof.additional_proof_data.composition_polynomial_queries));
         assert!(proof
             .trace_commitment
             .verify(proof.additional_proof_data.trace_queries));
