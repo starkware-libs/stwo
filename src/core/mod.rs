@@ -8,3 +8,4 @@ pub mod fri;
 pub mod oods;
 pub mod poly;
 pub mod queries;
+pub mod utils;
