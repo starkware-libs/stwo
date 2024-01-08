@@ -15,7 +15,7 @@ use crate::core::fields::{Field, IntoSlice};
 // TODO(Ohad): Implement Iterator for MerkleMultiLayer.
 pub struct MerkleMultiLayer<H: Hasher> {
     pub data: Vec<H::Hash>,
-    config: MerkleMultiLayerConfig,
+    pub config: MerkleMultiLayerConfig,
 }
 
 pub struct MerkleMultiLayerConfig {
