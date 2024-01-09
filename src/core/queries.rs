@@ -33,6 +33,23 @@ pub fn get_folded_queries(queries: &BTreeSet<usize>, n_folds: u32) -> BTreeSet<u
     queries.iter().map(|q| q >> n_folds).collect()
 }
 
+/// Calculates the matching query indices in a domain that is split into two parts (half a coset and
+/// it's conjugate) given the queries of the original domain and its size.
+pub fn get_split_queries(queries: &BTreeSet<usize>, domain_size: usize) -> BTreeSet<usize> {
+    fn get_split_query(i: usize, domain_size: usize) -> usize {
+        let folded_domain_size = domain_size / 2;
+        if i < folded_domain_size {
+            i
+        } else {
+            domain_size - i - 1
+        }
+    }
+    queries
+        .iter()
+        .map(|q| get_split_query(*q, domain_size))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::generate_queries;

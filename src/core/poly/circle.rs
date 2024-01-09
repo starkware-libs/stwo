@@ -374,12 +374,15 @@ impl<F: ExtensionOf<BaseField>> Deref for PointMapping<F> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::{CanonicCoset, CircleDomain, CircleEvaluation, Coset};
     use crate::core::circle::CirclePointIndex;
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::Field;
-    use crate::core::utils::bit_reverse_index;
+    use crate::core::queries::get_split_queries;
+    use crate::core::utils::{bit_reverse_index, bit_reverse_vec};
     use crate::m31;
 
     #[test]
@@ -506,6 +509,42 @@ mod tests {
             let small_point =
                 small_domain.at(bit_reverse_index(i / 2, log_domain_size - 1) as usize);
             assert_eq!(point.double(), small_point);
+        }
+    }
+
+    #[test]
+    pub fn test_conjugate_pairing_indices() {
+        let log_domain_size = 7;
+        let domain = CanonicCoset::new(log_domain_size);
+        let trace_domain = bit_reverse_vec(
+            &domain.iter_indices().map(|i| i.0).collect(),
+            log_domain_size,
+        );
+        let oods_quotient_domain = bit_reverse_vec(
+            &domain.half_coset().iter_indices().map(|i| i.0).collect(),
+            log_domain_size - 1,
+        );
+        let conj_oods_quotient_domain = bit_reverse_vec(
+            &domain
+                .half_coset()
+                .conjugate()
+                .iter_indices()
+                .map(|i| i.0)
+                .collect(),
+            log_domain_size - 1,
+        );
+
+        let domain_size = 2u32.pow(log_domain_size) as usize;
+        let queries: BTreeSet<usize> = (0..domain_size).collect();
+        for (query, folded_query) in queries.iter().zip(get_split_queries(&queries, domain_size)) {
+            if *query < domain_size / 2 {
+                assert_eq!(trace_domain[*query], oods_quotient_domain[folded_query])
+            } else {
+                assert_eq!(
+                    trace_domain[*query],
+                    conj_oods_quotient_domain[folded_query]
+                )
+            }
         }
     }
 }
