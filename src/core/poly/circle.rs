@@ -98,8 +98,8 @@ type CircleDomainIndexIterator =
 /// A coset of the form G_{2n} + <G_n>, where G_n is the generator of the
 /// subgroup of order n. The ordering on this coset is G_2n + i * G_n.
 /// These cosets can be used as a [CircleDomain], and be interpolated on.
-/// Not that this changes the ordering on the coset to be like [CircleDomain],
-/// which is G_2n + i * G_2n and then -G_2n -i * G_2n.
+/// Note that this changes the ordering on the coset to be like [CircleDomain],
+/// which is G_2n + i * G_n/2 and then -G_2n -i * G_n/2.
 /// For example, the Xs below are a canonic coset with n=8.
 /// ```text
 ///    X O X
