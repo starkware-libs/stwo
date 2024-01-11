@@ -202,8 +202,7 @@ impl Fibonacci {
                 .clone()]);
         channel.mix_with_seed(trace_merkle.root());
 
-        let verifier_randomness = channel.draw_random_felts();
-        let random_coeff = QM31::from_m31_array(verifier_randomness[..4].try_into().unwrap());
+        let random_coeff = channel.draw_random_extension_felts()[0];
         let composition_polynomial =
             self.compute_composition_polynomial(random_coeff, &trace_evaluation);
         let composition_polynomial_poly = composition_polynomial.interpolate();
