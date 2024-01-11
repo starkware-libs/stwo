@@ -1,9 +1,11 @@
 use super::fields::m31::{BaseField, N_BYTES_FELT, P};
+use super::fields::qm31::QM31;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
 
 pub const BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
+pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 
 #[derive(Default)]
 pub struct ChannelTime {
@@ -29,6 +31,13 @@ pub trait Channel {
     fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash);
     fn draw_random_bytes(&mut self) -> [u8; BYTES_PER_HASH];
     fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
+    fn draw_random_extension_felts(&mut self) -> [QM31; EXTENSION_FELTS_PER_HASH] {
+        let felts = self.draw_random_felts();
+        [
+            QM31::from_m31_array(felts[..4].try_into().unwrap()),
+            QM31::from_m31_array(felts[4..].try_into().unwrap()),
+        ]
+    }
 }
 
 /// A channel that can be used to draw random elements from a [Blake2sHash] digest.
