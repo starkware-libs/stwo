@@ -5,6 +5,7 @@ use crate::core::fields::m31::BaseField;
 use crate::math::matrix::RowMajorMatrix;
 
 const POSEIDON_WIDTH: usize = 24; // in BaseField elements.
+const POSEIDON_CAPACITY: usize = 8; // in BaseField elements.
 
 /// Parameters for the Poseidon hash function.
 /// For more info, see https://eprint.iacr.org/2019/458.pdf
@@ -24,6 +25,15 @@ impl Name for PoseidonHash {
     const NAME: std::borrow::Cow<'static, str> = std::borrow::Cow::Borrowed("Poseidon");
 }
 
+impl IntoIterator for PoseidonHash {
+    type Item = BaseField;
+    type IntoIter = std::array::IntoIter<BaseField, POSEIDON_WIDTH>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 impl fmt::Display for PoseidonHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for x in self.0 {
@@ -34,32 +44,32 @@ impl fmt::Display for PoseidonHash {
 }
 
 impl From<PoseidonHash> for Vec<BaseField> {
-    fn from(_value: PoseidonHash) -> Self {
-        unimplemented!("From<PoseidonHash> for Vec<u8>")
+    fn from(value: PoseidonHash) -> Self {
+        Self::from(value.0)
     }
 }
 
 impl From<Vec<BaseField>> for PoseidonHash {
-    fn from(_value: Vec<BaseField>) -> Self {
-        unimplemented!("From<Vec<BaseField>> for PoseidonHash")
+    fn from(value: Vec<BaseField>) -> Self {
+        Self::from(value.as_slice())
     }
 }
 
 impl From<&[BaseField]> for PoseidonHash {
-    fn from(_value: &[BaseField]) -> Self {
-        unimplemented!("From<&[BaseField]> for PoseidonHash")
+    fn from(value: &[BaseField]) -> Self {
+        Self(value.try_into().unwrap())
     }
 }
 
 impl AsRef<[BaseField]> for PoseidonHash {
     fn as_ref(&self) -> &[BaseField] {
-        unimplemented!("AsRef<[BaseField]> for PoseidonHash")
+        &self.0
     }
 }
 
 impl From<PoseidonHash> for [BaseField; POSEIDON_WIDTH] {
-    fn from(_value: PoseidonHash) -> Self {
-        unimplemented!("From<PoseidonHash> for [BaseField; 8]")
+    fn from(value: PoseidonHash) -> Self {
+        value.0
     }
 }
 
@@ -72,8 +82,8 @@ pub struct PoseidonHasher {
 
 impl Hasher for PoseidonHasher {
     type Hash = PoseidonHash;
-    const BLOCK_SIZE: usize = POSEIDON_WIDTH * 4;
-    const OUTPUT_SIZE: usize = POSEIDON_WIDTH * 4;
+    const BLOCK_SIZE: usize = POSEIDON_WIDTH;
+    const OUTPUT_SIZE: usize = POSEIDON_CAPACITY;
     type NativeType = BaseField;
 
     fn new() -> Self {
@@ -127,14 +137,20 @@ mod tests {
     use crate::m31;
 
     #[test]
-    fn poseidon_state_debug_test() {
-        let values = (0..24)
-            .map(|x| m31!(x))
-            .collect::<Vec<BaseField>>()
-            .try_into()
-            .unwrap();
-        let poseidon_state = PoseidonHash(values);
+    fn poseidon_hash_debug_test() {
+        let values = (0..24).map(|x| m31!(x)).collect::<Vec<BaseField>>();
+        let poseidon_state = PoseidonHash::from(values);
 
         println!("Poseidon State: {:?}", poseidon_state);
+    }
+
+    #[test]
+    fn poseidon_hash_iter_test() {
+        let values = (0..24).map(|x| m31!(x)).collect::<Vec<BaseField>>();
+        let poseidon_state = PoseidonHash::from(values);
+
+        for (i, x) in poseidon_state.into_iter().enumerate() {
+            assert_eq!(x, m31!(i as u32));
+        }
     }
 }
