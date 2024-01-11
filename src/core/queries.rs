@@ -4,6 +4,7 @@ use super::channel::{Blake2sChannel, Channel};
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
+/// Randomizes a set of query indices uniformly over the range [0, 2^`log_query_size`).
 pub fn generate_queries(
     channel: &mut Blake2sChannel,
     log_query_size: u32,
@@ -11,11 +12,12 @@ pub fn generate_queries(
 ) -> BTreeSet<usize> {
     let mut queries = BTreeSet::new();
     let mut query_cnt = 0;
+    let max_query = (1 << log_query_size) - 1;
     loop {
         let random_bytes = channel.draw_random_bytes();
         for chunk in random_bytes.chunks_exact(UPPER_BOUND_QUERY_BYTES) {
             let query_bits = u32::from_le_bytes(chunk.try_into().unwrap());
-            let quotient_query = query_bits & ((1 << log_query_size) - 1);
+            let quotient_query = query_bits & max_query;
             queries.insert(quotient_query as usize);
             query_cnt += 1;
             if query_cnt == n_queries {
@@ -25,14 +27,10 @@ pub fn generate_queries(
     }
 }
 
-/// Calculates the locations of the queries in the trace commitment domain.
-pub fn get_projected_queries(
-    quotient_queries: &BTreeSet<usize>,
-    log_trace_domain_size: u32,
-    log_quotient_domain_size: u32,
-) -> BTreeSet<usize> {
-    let domain_ratio = 1 << (log_quotient_domain_size - log_trace_domain_size);
-    quotient_queries.iter().map(|q| q / domain_ratio).collect()
+/// Calculates the matching query indices in a folded domain (i.e each domain point is doubled)
+/// given the queries of the original domain and the number of folds between domains.
+pub fn get_folded_queries(queries: &BTreeSet<usize>, n_folds: u32) -> BTreeSet<usize> {
+    queries.iter().map(|q| q >> n_folds).collect()
 }
 
 #[cfg(test)]
