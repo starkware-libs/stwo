@@ -1,9 +1,11 @@
 use super::fields::m31::{BaseField, N_BYTES_FELT, P};
+use super::fields::qm31::QM31;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
 
 pub const BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
+pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 
 #[derive(Default)]
 pub struct ChannelTime {
@@ -28,7 +30,40 @@ pub trait Channel {
     fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self;
     fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash);
     fn draw_random_bytes(&mut self) -> [u8; BYTES_PER_HASH];
-    fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
+
+    /// Generates a uniform random vector of BaseField elements.
+    fn _draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
+        // Repeats hashing with an increasing counter until getting a good result.
+        // Retry probability for each round is ~ 2^(-28).
+        loop {
+            let random_bytes: [u32; FELTS_PER_HASH] = self
+                .draw_random_bytes()
+                .chunks_exact(N_BYTES_FELT) // 4 bytes per u32.
+                .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap();
+
+            // Retry if not all the u32 are in the range [0, 2P).
+            if random_bytes.iter().all(|x| *x < 2 * P) {
+                return random_bytes
+                    .into_iter()
+                    .map(|x| BaseField::reduce(x as u64))
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
+            }
+        }
+    }
+
+    /// Generates a uniform random vector of QM31 elements.
+    fn draw_random_extension_felts(&mut self) -> [QM31; EXTENSION_FELTS_PER_HASH] {
+        let felts = self._draw_random_felts();
+        [
+            QM31::from_m31_array(felts[..4].try_into().unwrap()),
+            QM31::from_m31_array(felts[4..].try_into().unwrap()),
+        ]
+    }
 }
 
 /// A channel that can be used to draw random elements from a [Blake2sHash] digest.
@@ -65,31 +100,6 @@ impl Channel for Blake2sChannel {
         self.channel_time.inc_sent();
         Self::ChannelHasher::hash(&hash_input).into()
     }
-
-    /// Generates a uniform random vector of BaseField elements.
-    fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
-        // Repeats hashing with an increasing counter until getting a good result.
-        // Retry probability for each round is ~ 2^(-28).
-        loop {
-            let random_bytes: [u32; FELTS_PER_HASH] = self
-                .draw_random_bytes()
-                .chunks_exact(N_BYTES_FELT) // 4 bytes per u32.
-                .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
-
-            // Retry if not all the u32 are in the range [0, 2P).
-            if random_bytes.iter().all(|x| *x < 2 * P) {
-                return random_bytes
-                    .into_iter()
-                    .map(|x| BaseField::reduce(x as u64))
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap();
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -121,7 +131,7 @@ mod tests {
         assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 1);
 
-        channel.draw_random_felts();
+        channel._draw_random_felts();
         assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 2);
 
@@ -129,7 +139,7 @@ mod tests {
         assert_eq!(channel.channel_time.n_challenges, 1);
         assert_eq!(channel.channel_time.n_sent, 0);
 
-        channel.draw_random_felts();
+        channel._draw_random_felts();
         assert_eq!(channel.channel_time.n_challenges, 1);
         assert_eq!(channel.channel_time.n_sent, 1);
         assert_ne!(channel.digest, initial_digest);
@@ -151,10 +161,10 @@ mod tests {
         let initial_digest = Blake2sHash::from(vec![2; 32]);
         let mut channel = Blake2sChannel::new(initial_digest);
 
-        let first_random_felts = channel.draw_random_felts();
+        let first_random_felts = channel._draw_random_felts();
 
         // Assert that the next random felts are different.
-        assert_ne!(first_random_felts, channel.draw_random_felts());
+        assert_ne!(first_random_felts, channel._draw_random_felts());
     }
 
     #[test]
@@ -164,7 +174,7 @@ mod tests {
 
         for _ in 0..10 {
             channel.draw_random_bytes();
-            channel.draw_random_felts();
+            channel._draw_random_felts();
         }
 
         // Reseed channel and check the digest was changed.
