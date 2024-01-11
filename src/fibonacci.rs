@@ -10,7 +10,7 @@ use crate::core::constraints::{
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
-use crate::core::oods::{get_oods_quotient, get_oods_values};
+use crate::core::oods::{get_oods_quotient_combination, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
 use crate::core::poly::commitment::{CommitmentProof, PolynomialCommitmentScheme};
 use crate::core::queries::Queries;
@@ -187,9 +187,9 @@ impl Fibonacci {
         ]);
         channel.mix_with_seed(trace_commitment.root());
 
-        let random_coeff = channel.draw_random_extension_felts()[0];
-        let composition_polynomial =
-            self.compute_composition_polynomial(random_coeff, &trace_evaluation);
+        let composition_polynomial_random_coeff = channel.draw_random_extension_felts()[0];
+        let composition_polynomial = self
+            .compute_composition_polynomial(composition_polynomial_random_coeff, &trace_evaluation);
         let composition_polynomial_poly = composition_polynomial.interpolate();
         let composition_polynomial_commitment_evaluation = composition_polynomial_poly.evaluate(
             self.composition_polynomial_commitment_domain
@@ -208,21 +208,27 @@ impl Fibonacci {
         let composition_polynomial_oods_value =
             composition_polynomial_poly.eval_at_point(oods_point);
 
-        // A quotient for each mask item and for the composition_polynomial, in the OODS point and
-        // its conjugate.
-        let mut oods_quotients = Vec::with_capacity((mask.len() + 1) * 2);
-        for (point, value) in trace_oods_evaluation.iter() {
-            oods_quotients.push(get_oods_quotient(
-                *point,
-                *value,
-                &trace_commitment_evaluation,
-            ));
-        }
-        oods_quotients.push(get_oods_quotient(
-            oods_point,
-            composition_polynomial_oods_value,
+        let oods_random_coeff = channel.draw_random_extension_felts()[0];
+        let combined_trace_oods_quotients = get_oods_quotient_combination(
+            oods_random_coeff,
+            &trace_oods_evaluation,
+            &trace_commitment_evaluation,
+        );
+        let trace_oods_quotients_merkle =
+            PolynomialCommitmentScheme::<QM31, MerkleHasher>::commit(vec![
+                &combined_trace_oods_quotients,
+            ]);
+        channel.mix_with_seed(trace_oods_quotients_merkle.root());
+        let composition_polynomial_oods_quotient = get_oods_quotient_combination(
+            oods_random_coeff,
+            &PointMapping::new([(oods_point, composition_polynomial_oods_value)].into()),
             &composition_polynomial_commitment_evaluation,
-        ));
+        );
+        let composition_polynomial_oods_quotient_merkle =
+            PolynomialCommitmentScheme::<QM31, MerkleHasher>::commit(vec![
+                &composition_polynomial_oods_quotient,
+            ]);
+        channel.mix_with_seed(composition_polynomial_oods_quotient_merkle.root());
 
         let composition_polynomial_queries = Queries::generate(
             channel,
@@ -262,7 +268,7 @@ impl Fibonacci {
             trace_queried_values,
             additional_proof_data: AdditionalProofData {
                 composition_polynomial_oods_value,
-                composition_polynomial_random_coeff: random_coeff,
+                composition_polynomial_random_coeff,
                 oods_point,
             },
         }
