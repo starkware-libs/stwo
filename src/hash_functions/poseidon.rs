@@ -1,5 +1,7 @@
 use core::fmt;
 
+use num_traits::Zero;
+
 use crate::commitment_scheme::hasher::{self, Hasher, Name};
 use crate::core::fields::m31::BaseField;
 use crate::math::matrix::RowMajorMatrix;
@@ -9,13 +11,32 @@ const POSEIDON_CAPACITY: usize = 8; // in BaseField elements.
 
 /// Parameters for the Poseidon hash function.
 /// For more info, see https://eprint.iacr.org/2019/458.pdf
-// TODO (ShaharS): Add an attribute for the Add-round key constant.
 pub struct PoseidonParams {
     pub rate: usize,
     pub capacity: usize,
-    pub n_full_rounds: usize,
+    pub n_half_full_rounds: usize,
     pub n_partial_rounds: usize,
     pub mds: RowMajorMatrix<BaseField, POSEIDON_WIDTH>,
+    // TODO(ShaharS): check if more constants are needed.
+    pub constants: [BaseField; POSEIDON_WIDTH],
+}
+
+// TODO(ShaharS) find out good poseidon params.
+impl Default for PoseidonParams {
+    fn default() -> Self {
+        Self {
+            rate: POSEIDON_WIDTH - POSEIDON_CAPACITY,
+            capacity: POSEIDON_CAPACITY,
+            n_half_full_rounds: 1,
+            n_partial_rounds: 1,
+            mds: RowMajorMatrix::<BaseField, POSEIDON_WIDTH>::new(
+                (0..POSEIDON_WIDTH * POSEIDON_WIDTH)
+                    .map(|x| BaseField::from_u32_unchecked(x as u32))
+                    .collect::<Vec<_>>(),
+            ),
+            constants: [BaseField::zero(); POSEIDON_WIDTH],
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug, Default, Eq)]
@@ -77,7 +98,23 @@ impl hasher::Hash<BaseField> for PoseidonHash {}
 
 pub struct PoseidonHasher {
     _params: PoseidonParams,
-    _state: PoseidonHash,
+    state: PoseidonHash,
+}
+
+impl PoseidonHasher {
+    pub fn new(state: PoseidonHash) -> Self {
+        Self {
+            _params: PoseidonParams::default(),
+            state,
+        }
+    }
+
+    pub fn set_state(&mut self, state: [BaseField; POSEIDON_WIDTH]) {
+        self.state.0 = state;
+    }
+    pub fn set_state_0(&mut self, val: BaseField) {
+        self.state.0[0] = val;
+    }
 }
 
 impl Hasher for PoseidonHasher {
@@ -132,6 +169,7 @@ impl Hasher for PoseidonHasher {
 
 #[cfg(test)]
 mod tests {
+    use super::{PoseidonHasher, POSEIDON_WIDTH};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::hash_functions::poseidon::PoseidonHash;
     use crate::m31;
@@ -151,6 +189,23 @@ mod tests {
 
         for (i, x) in poseidon_state.into_iter().enumerate() {
             assert_eq!(x, m31!(i as u32));
+        }
+    }
+
+    #[test]
+    fn poseidon_hasher_set_state_test() {
+        let mut hasher = PoseidonHasher::new(PoseidonHash([m31!(0); POSEIDON_WIDTH]));
+        let values = (0..24).map(|x| m31!(x)).collect::<Vec<BaseField>>();
+
+        hasher.set_state(values.try_into().unwrap());
+        hasher.set_state_0(m31!(100));
+
+        for (i, x) in hasher.state.into_iter().enumerate() {
+            if i == 0 {
+                assert_eq!(x, m31!(100));
+            } else {
+                assert_eq!(x, m31!(i as u32));
+            }
         }
     }
 }
