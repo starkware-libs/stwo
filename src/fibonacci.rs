@@ -1,9 +1,6 @@
-use std::collections::BTreeSet;
-
 use num_traits::One;
 
 use crate::commitment_scheme::hasher::Hasher;
-use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::{CirclePoint, Coset};
@@ -15,7 +12,7 @@ use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::oods::{get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
-use crate::core::poly::commitment::PolynomialCommitmentScheme;
+use crate::core::poly::commitment::{PolynomialCommitmentScheme, PolynomialDecommitment};
 use crate::core::queries::Queries;
 
 type Channel = Blake2sChannel;
@@ -41,12 +38,12 @@ pub struct AdditionalProofData {
 }
 
 pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub decommitment: MerkleDecommitment<F, H>,
+    pub decommitment: PolynomialDecommitment<F, H>,
     pub commitment: H::Hash,
 }
 
 impl<F: ExtensionOf<BaseField> + IntoSlice<H::NativeType>, H: Hasher> CommitmentProof<F, H> {
-    pub fn verify(&self, queries: BTreeSet<usize>) -> bool {
+    pub fn verify(&self, queries: &Queries) -> bool {
         self.decommitment.verify(self.commitment, queries)
     }
 }
@@ -245,9 +242,9 @@ impl Fibonacci {
             self.composition_polynomial_commitment_domain.log_size
                 - self.trace_commitment_domain.log_size,
         );
-        let composition_polynomial_decommitment = composition_polynomial_commitment
-            .generate_decommitment(composition_polynomial_queries.clone());
-        let trace_decommitment = trace_commitment.generate_decommitment(trace_queries.collect());
+        let composition_polynomial_decommitment =
+            composition_polynomial_commitment.decommit(&composition_polynomial_queries);
+        let trace_decommitment = trace_commitment.decommit(&trace_queries.collect());
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
