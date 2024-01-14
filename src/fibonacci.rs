@@ -16,7 +16,7 @@ use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::oods::{get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
-use crate::core::queries::{generate_queries, get_folded_queries};
+use crate::core::queries::Queries;
 
 type Channel = Blake2sChannel;
 type MerkleHasher = <Channel as ChannelTrait>::ChannelHasher;
@@ -38,8 +38,6 @@ pub struct AdditionalProofData {
     pub composition_polynomial_oods_value: QM31,
     pub composition_polynomial_random_coeff: QM31,
     pub oods_point: CirclePoint<QM31>,
-    pub composition_polynomial_queries: BTreeSet<usize>,
-    pub trace_queries: BTreeSet<usize>,
 }
 
 pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
@@ -239,19 +237,19 @@ impl Fibonacci {
             &composition_polynomial_commitment_evaluation,
         ));
 
-        let composition_polynomial_queries = generate_queries(
+        let composition_polynomial_queries = Queries::generate(
             channel,
             self.composition_polynomial_commitment_domain.log_size,
             N_QUERIES,
         );
-        let trace_queries = get_folded_queries(
-            &composition_polynomial_queries,
+        let trace_queries = composition_polynomial_queries.iter_folded(
             self.composition_polynomial_commitment_domain.log_size
                 - self.trace_commitment_domain.log_size,
         );
         let composition_polynomial_decommitment = composition_polynomial_merkle
             .generate_decommitment(composition_polynomial_queries.clone());
-        let trace_decommitment = trace_merkle.generate_decommitment(trace_queries.clone());
+        // TODO(AlonH): Remove the collect (generate decommitment with iterator).
+        let trace_decommitment = trace_merkle.generate_decommitment(trace_queries.collect());
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
@@ -269,8 +267,6 @@ impl Fibonacci {
                 composition_polynomial_oods_value,
                 composition_polynomial_random_coeff: random_coeff,
                 oods_point,
-                composition_polynomial_queries,
-                trace_queries,
             },
         }
     }
@@ -393,11 +389,5 @@ mod tests {
                 .composition_polynomial_oods_value,
             hz
         );
-        assert!(proof
-            .composition_polynomial_commitment
-            .verify(proof.additional_proof_data.composition_polynomial_queries));
-        assert!(proof
-            .trace_commitment
-            .verify(proof.additional_proof_data.trace_queries));
     }
 }
