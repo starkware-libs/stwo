@@ -17,7 +17,7 @@ use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
-use crate::core::poly::circle::CircleDomain;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::poly::line::LineDomain;
 
 /// FRI proof config
@@ -285,7 +285,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
     pub fn verify(
         self,
         query_positions: &[usize],
-        poly_oracles: Vec<impl PolyOracle<F>>,
+        poly_oracles: &[impl PolyOracle<F>],
     ) -> Result<(), VerificationError> {
         if poly_oracles.len() != self.poly_degree_bounds.len() {
             return Err(VerificationError::InvalidNumPolynomials {
@@ -294,8 +294,16 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
             });
         }
 
+        // Obtain the evaluations needed for verification.
+        let sparse_evaluations = query_oracles(
+            self.config.log_blowup_factor,
+            query_positions,
+            &self.poly_degree_bounds,
+            poly_oracles,
+        );
+
         let (last_layer_domain, last_layer_positions, last_layer_evals) =
-            self.verify_inner_layers(query_positions.to_vec(), poly_oracles)?;
+            self.verify_inner_layers(query_positions.to_vec(), sparse_evaluations)?;
         self.verify_last_layer(last_layer_domain, last_layer_positions, last_layer_evals)
     }
 
@@ -308,7 +316,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
     fn verify_inner_layers(
         &self,
         mut positions: Vec<usize>,
-        mut poly_oracles: Vec<impl PolyOracle<F>>,
+        mut sparse_evaluations: Vec<SparseCircleEvaluation<F>>,
     ) -> Result<(LineDomain, Vec<usize>, Vec<F>), VerificationError> {
         let log_blowup_factor = self.config.log_blowup_factor;
 
@@ -324,19 +332,12 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
             // Fold and combine circle polynomial evaluations.
             while degrees.last().map(folded_circle_poly_degree) == Some(log_degree) {
                 degrees.pop();
-                let poly_oracle = poly_oracles.pop().unwrap();
                 let alpha = alphas.next().unwrap();
-                let circle_domain = CircleDomain::new(domain.coset());
-                for (eval, &position) in zip(&mut evals, &positions) {
-                    let p_index = circle_domain.index_at(position);
-                    let p = p_index.to_point();
-                    let f_p = poly_oracle.get_at(p_index);
-                    let f_neg_p = poly_oracle.get_at(-p_index);
-                    let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
-                    ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
-                    let folded_eval = f0_px + alpha * f1_px;
-                    *eval += alpha * folded_eval;
-                }
+                let sparse_evaluation = sparse_evaluations.pop().unwrap();
+                let folded_evals = sparse_evaluation.fold(alpha);
+                assert_eq!(folded_evals.len(), evals.len());
+                zip(&mut evals, folded_evals)
+                    .for_each(|(eval, folded_eval)| *eval += alpha * folded_eval);
             }
 
             let coset_evals = layer
@@ -361,7 +362,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
         // Check all values have been consumed.
         assert!(alphas.next().is_none());
         assert!(degrees.is_empty());
-        assert!(poly_oracles.is_empty());
+        assert!(sparse_evaluations.is_empty());
 
         Ok((domain, positions, evals))
     }
@@ -381,6 +382,57 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
             }
         }
         Ok(())
+    }
+}
+
+/// # Panics
+///
+/// Panics if there is a different amount of oracles and degree bounds.
+pub(crate) fn query_oracles<F: ExtensionOf<BaseField>>(
+    log_blowup_factor: u32,
+    positions: &[usize],
+    log_poly_degree_bounds: &[u32],
+    poly_oracles: &[impl PolyOracle<F>],
+) -> Vec<SparseCircleEvaluation<F>> {
+    assert_eq!(poly_oracles.len(), log_poly_degree_bounds.len());
+    assert!(log_poly_degree_bounds.is_sorted());
+    assert!(positions.is_sorted());
+
+    zip(log_poly_degree_bounds, poly_oracles)
+        .rev()
+        .map(|(log_degree_bound, oracle)| {
+            let domain = CanonicCoset::new(log_degree_bound + log_blowup_factor).circle_domain();
+            let folded_positions = fold_positions(positions, domain.size());
+            SparseCircleEvaluation::new(domain, oracle, &folded_positions)
+        })
+        .collect()
+}
+
+pub(crate) struct SparseCircleEvaluation<F: ExtensionOf<BaseField>> {
+    coset_evals: Vec<CircleEvaluation<F>>,
+}
+
+impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F> {
+    fn new(domain: CircleDomain, oracle: &impl PolyOracle<F>, positions: &[usize]) -> Self {
+        Self {
+            coset_evals: positions
+                .iter()
+                .map(|position| {
+                    let p = domain.index_at(*position);
+                    let coset_domain = CircleDomain::new(Coset::new(p, 0));
+                    let coset_evals = domain.iter_indices().map(|p| oracle.get_at(p)).collect();
+                    CircleEvaluation::new(coset_domain, coset_evals)
+                })
+                .collect(),
+            // domain,
+        }
+    }
+
+    fn fold(self, alpha: F) -> Vec<F> {
+        self.coset_evals
+            .into_iter()
+            .map(|e| fold_circle_to_line(&e, alpha)[0])
+            .collect()
     }
 }
 
@@ -699,9 +751,9 @@ mod tests {
 
         assert_eq!(drp_evals.len(), DEGREE / 2);
         for (i, (&drp_eval, x)) in zip(&*drp_evals, drp_domain).enumerate() {
-            let f_e = even_poly.eval_at_point(x);
-            let f_o = odd_poly.eval_at_point(x);
-            assert_eq!(drp_eval, two * (f_e + alpha * f_o), "mismatch at {i}");
+            let f0 = even_poly.eval_at_point(x);
+            let f1 = odd_poly.eval_at_point(x);
+            assert_eq!(drp_eval, two * (f0 + alpha * f1), "mismatch at {i}");
         }
     }
 
@@ -756,7 +808,7 @@ mod tests {
         let proof = prover.into_proof(&query_positions);
         let verifier = FriVerifier::new(config, proof, vec![LOG_DEGREE]).unwrap();
 
-        verifier.verify(&query_positions, vec![oracle])
+        verifier.verify(&query_positions, &[oracle])
     }
 
     #[test]
@@ -769,13 +821,13 @@ mod tests {
         let oracles = polynomials
             .iter()
             .map(|p| EvalByEvaluation::new(CirclePointIndex::zero(), p))
-            .collect();
+            .collect::<Vec<_>>();
         let prover = prover.commit(polynomials.to_vec());
         let query_positions = [1, 8, 7];
         let proof = prover.into_proof(&query_positions);
         let verifier = FriVerifier::new(config, proof, DEGREES.to_vec()).unwrap();
 
-        verifier.verify(&query_positions, oracles)
+        verifier.verify(&query_positions, &oracles)
     }
 
     #[test]
@@ -794,7 +846,7 @@ mod tests {
         verifier_config.log_last_layer_degree_bound -= 1;
         let verifier = FriVerifier::new(verifier_config, proof, vec![LOG_DEGREE]).unwrap();
 
-        let verification_result = verifier.verify(&query_positions, vec![oracle]);
+        let verification_result = verifier.verify(&query_positions, &[oracle]);
 
         assert!(matches!(
             verification_result,
@@ -818,7 +870,7 @@ mod tests {
         verifier_config.log_last_layer_degree_bound += 1;
         let verifier = FriVerifier::new(verifier_config, proof, vec![LOG_DEGREE]).unwrap();
 
-        let verification_result = verifier.verify(&query_positions, vec![oracle]);
+        let verification_result = verifier.verify(&query_positions, &[oracle]);
 
         assert!(matches!(
             verification_result,
@@ -841,7 +893,7 @@ mod tests {
         proof.inner_layers[1] = proof.inner_layers[0].clone();
         let verifier = FriVerifier::new(config, proof, vec![LOG_DEGREE]).unwrap();
 
-        let verification_result = verifier.verify(&query_position, vec![oracle]);
+        let verification_result = verifier.verify(&query_position, &[oracle]);
 
         assert!(matches!(
             verification_result,
@@ -864,7 +916,7 @@ mod tests {
         proof.inner_layers[1].coset_evals_subset[0] += QM31::one();
         let verifier = FriVerifier::new(config, proof, vec![LOG_DEGREE]).unwrap();
 
-        let verification_result = verifier.verify(&query_position, vec![oracle]);
+        let verification_result = verifier.verify(&query_position, &[oracle]);
 
         assert!(matches!(
             verification_result,
@@ -908,7 +960,7 @@ mod tests {
         proof.last_layer_poly[0] += QM31::one();
         let verifier = FriVerifier::new(config, proof, vec![LOG_DEGREE]).unwrap();
 
-        let verification_result = verifier.verify(&query_positions, vec![oracle]);
+        let verification_result = verifier.verify(&query_positions, &[oracle]);
 
         assert!(matches!(
             verification_result,
