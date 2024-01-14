@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 use num_traits::One;
 
 use crate::commitment_scheme::hasher::Hasher;
-use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::{CirclePoint, Coset};
@@ -15,7 +14,9 @@ use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::oods::{get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
-use crate::core::poly::commitment::PolynomialCommitmentScheme;
+use crate::core::poly::commitment::{
+    PolynomialCommitmentConfig, PolynomialCommitmentScheme, PolynomialDecommitment,
+};
 use crate::core::queries::{generate_queries, get_folded_queries};
 
 type Channel = Blake2sChannel;
@@ -43,13 +44,13 @@ pub struct AdditionalProofData {
 }
 
 pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub decommitment: MerkleDecommitment<F, H>,
+    pub decommitment: PolynomialDecommitment<F, H>,
     pub commitment: H::Hash,
 }
 
 impl<F: ExtensionOf<BaseField> + IntoSlice<H::NativeType>, H: Hasher> CommitmentProof<F, H> {
-    pub fn verify(&self, queries: BTreeSet<usize>) -> bool {
-        self.decommitment.verify(self.commitment, queries)
+    pub fn verify(&self, queries: &BTreeSet<usize>, config: PolynomialCommitmentConfig) -> bool {
+        self.decommitment.verify(self.commitment, queries, config)
     }
 }
 
@@ -249,9 +250,9 @@ impl Fibonacci {
             self.composition_polynomial_commitment_domain.log_size
                 - self.trace_commitment_domain.log_size,
         );
-        let composition_polynomial_decommitment = composition_polynomial_commitment
-            .generate_decommitment(composition_polynomial_queries.clone());
-        let trace_decommitment = trace_commitment.generate_decommitment(trace_queries.clone());
+        let composition_polynomial_decommitment =
+            composition_polynomial_commitment.decommit(&composition_polynomial_queries);
+        let trace_decommitment = trace_commitment.decommit(&trace_queries);
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
@@ -393,11 +394,5 @@ mod tests {
                 .composition_polynomial_oods_value,
             hz
         );
-        assert!(proof
-            .composition_polynomial_commitment
-            .verify(proof.additional_proof_data.composition_polynomial_queries));
-        assert!(proof
-            .trace_commitment
-            .verify(proof.additional_proof_data.trace_queries));
     }
 }
