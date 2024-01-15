@@ -4,10 +4,12 @@ use num_traits::Zero;
 
 use crate::commitment_scheme::hasher::{self, Hasher, Name};
 use crate::core::fields::m31::BaseField;
-use crate::math::matrix::RowMajorMatrix;
+use crate::core::fields::Field;
+use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
 
 const POSEIDON_WIDTH: usize = 24; // in BaseField elements.
 const POSEIDON_CAPACITY: usize = 8; // in BaseField elements.
+const POSEIDON_POWER: usize = 5;
 
 /// Parameters for the Poseidon hash function.
 /// For more info, see https://eprint.iacr.org/2019/458.pdf
@@ -97,25 +99,69 @@ impl From<PoseidonHash> for [BaseField; POSEIDON_WIDTH] {
 impl hasher::Hash<BaseField> for PoseidonHash {}
 
 pub struct PoseidonHasher {
-    _params: PoseidonParams,
+    params: PoseidonParams,
     state: PoseidonHash,
 }
 
 impl PoseidonHasher {
     pub fn new(initial_state: PoseidonHash) -> Self {
         Self {
-            _params: PoseidonParams::default(),
+            params: PoseidonParams::default(),
             state: initial_state,
         }
     }
 
-    pub fn set_state(&mut self, state: [BaseField; POSEIDON_WIDTH]) {
+    fn set_state(&mut self, state: [BaseField; POSEIDON_WIDTH]) {
         self.state.0 = state;
     }
 
     // Setter the first element of the state.
-    pub fn set_state_0(&mut self, val: BaseField) {
+    fn set_state_0(&mut self, val: BaseField) {
         self.state.0[0] = val;
+    }
+
+    fn add_param_constants(&mut self) {
+        self.set_state(
+            self.state
+                .into_iter()
+                .zip(self.params.constants.iter())
+                .map(|(val, constant)| val + *constant)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+        );
+    }
+
+    fn hades_partial_round(&mut self) {
+        self.add_param_constants();
+        self.set_state_0(self.state.as_ref()[0].pow(POSEIDON_POWER as u128));
+        self.set_state(self.params.mds.mul(self.state.as_ref().try_into().unwrap()));
+    }
+
+    fn hades_full_round(&mut self) {
+        self.add_param_constants();
+        self.set_state(
+            self.state
+                .as_ref()
+                .iter()
+                .map(|x| x.pow(POSEIDON_POWER as u128))
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+        );
+        self.set_state(self.params.mds.mul(self.state.as_ref().try_into().unwrap()));
+    }
+
+    pub fn hades_permutation(&mut self) {
+        for _ in 0..self.params.n_half_full_rounds {
+            self.hades_full_round();
+        }
+        for _ in 0..self.params.n_partial_rounds {
+            self.hades_partial_round();
+        }
+        for _ in 0..self.params.n_half_full_rounds {
+            self.hades_full_round();
+        }
     }
 }
 
@@ -209,5 +255,40 @@ mod tests {
                 assert_eq!(x, m31!(i as u32));
             }
         }
+    }
+
+    #[test]
+    fn hades_permutation_regression_test() {
+        let mut hasher = PoseidonHasher::new(PoseidonHash([m31!(1); POSEIDON_WIDTH]));
+        let expected_state = PoseidonHash([
+            m31!(945942046),
+            m31!(1014745611),
+            m31!(1083549176),
+            m31!(1152352741),
+            m31!(1221156306),
+            m31!(1289959871),
+            m31!(1358763436),
+            m31!(1427567001),
+            m31!(1496370566),
+            m31!(1565174131),
+            m31!(1633977696),
+            m31!(1702781261),
+            m31!(1771584826),
+            m31!(1840388391),
+            m31!(1909191956),
+            m31!(1977995521),
+            m31!(2046799086),
+            m31!(2115602651),
+            m31!(36922569),
+            m31!(105726134),
+            m31!(174529699),
+            m31!(243333264),
+            m31!(312136829),
+            m31!(380940394),
+        ]);
+
+        hasher.hades_permutation();
+
+        assert_eq!(hasher.state, expected_state);
     }
 }
