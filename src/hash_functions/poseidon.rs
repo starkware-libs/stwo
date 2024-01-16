@@ -1,6 +1,6 @@
 use core::fmt;
 
-use num_traits::Zero;
+use num_traits::One;
 
 use crate::commitment_scheme::hasher::{self, Hasher, Name};
 use crate::core::fields::m31::BaseField;
@@ -36,7 +36,7 @@ impl Default for PoseidonParams {
                     .map(|x| BaseField::from_u32_unchecked(x as u32))
                     .collect::<Vec<_>>(),
             ),
-            constants: [BaseField::zero(); POSEIDON_WIDTH],
+            constants: [BaseField::one(); POSEIDON_WIDTH],
         }
     }
 }
@@ -104,7 +104,7 @@ pub struct PoseidonHasher {
 }
 
 impl PoseidonHasher {
-    pub fn new(initial_state: PoseidonHash) -> Self {
+    pub fn from_state(initial_state: PoseidonHash) -> Self {
         Self {
             params: PoseidonParams::default(),
             state: initial_state,
@@ -115,9 +115,9 @@ impl PoseidonHasher {
         self.state.0 = state;
     }
 
-    // Setter the first element of the state.
-    fn set_state_0(&mut self, val: BaseField) {
-        self.state.0[0] = val;
+    // Setter for the prefix of the state.
+    fn set_prefix(&mut self, prefix: &[BaseField]) {
+        self.state.0[..prefix.len()].copy_from_slice(prefix);
     }
 
     fn add_param_constants(&mut self) {
@@ -134,7 +134,7 @@ impl PoseidonHasher {
 
     fn hades_partial_round(&mut self) {
         self.add_param_constants();
-        self.set_state_0(self.state.as_ref()[0].pow(POSEIDON_POWER as u128));
+        self.set_prefix(&[self.state.as_ref()[0].pow(POSEIDON_POWER as u128)]);
         self.set_state(self.params.mds.mul(self.state.as_ref().try_into().unwrap()));
     }
 
@@ -172,23 +172,27 @@ impl Hasher for PoseidonHasher {
     type NativeType = BaseField;
 
     fn new() -> Self {
-        unimplemented!("new for PoseidonHasher")
+        Self::from_state(PoseidonHash::default())
     }
 
     fn reset(&mut self) {
-        unimplemented!("reset for PoseidonHasher")
+        self.state = PoseidonHash::default()
     }
 
     fn update(&mut self, _data: &[BaseField]) {
         unimplemented!("update for PoseidonHasher")
     }
 
-    fn finalize(self) -> PoseidonHash {
-        unimplemented!("finalize for PoseidonHasher")
+    fn finalize(mut self) -> PoseidonHash {
+        self.hades_permutation();
+        self.state
     }
 
     fn finalize_reset(&mut self) -> PoseidonHash {
-        unimplemented!("finalize_reset for PoseidonHasher")
+        self.hades_permutation();
+        let res = self.state;
+        self.reset();
+        res
     }
 
     fn hash_one_in_place(_data: &[Self::NativeType], _dst: &mut [Self::NativeType]) {
@@ -218,9 +222,37 @@ impl Hasher for PoseidonHasher {
 #[cfg(test)]
 mod tests {
     use super::{PoseidonHasher, POSEIDON_WIDTH};
+    use crate::commitment_scheme::hasher::Hasher;
     use crate::core::fields::m31::{BaseField, M31};
     use crate::hash_functions::poseidon::PoseidonHash;
     use crate::m31;
+
+    const ZERO_HASH_RESULT: [BaseField; POSEIDON_WIDTH] = [
+        m31!(1783652178),
+        m31!(1273199544),
+        m31!(762746910),
+        m31!(252294276),
+        m31!(1889325289),
+        m31!(1378872655),
+        m31!(868420021),
+        m31!(357967387),
+        m31!(1994998400),
+        m31!(1484545766),
+        m31!(974093132),
+        m31!(463640498),
+        m31!(2100671511),
+        m31!(1590218877),
+        m31!(1079766243),
+        m31!(569313609),
+        m31!(58860975),
+        m31!(1695891988),
+        m31!(1185439354),
+        m31!(674986720),
+        m31!(164534086),
+        m31!(1801565099),
+        m31!(1291112465),
+        m31!(780659831),
+    ];
 
     #[test]
     fn poseidon_hash_debug_test() {
@@ -242,11 +274,11 @@ mod tests {
 
     #[test]
     fn poseidon_hasher_set_state_test() {
-        let mut hasher = PoseidonHasher::new(PoseidonHash([m31!(0); POSEIDON_WIDTH]));
+        let mut hasher = PoseidonHasher::new();
         let values = (0..24).map(|x| m31!(x)).collect::<Vec<BaseField>>();
 
         hasher.set_state(values.try_into().unwrap());
-        hasher.set_state_0(m31!(100));
+        hasher.set_prefix(&[m31!(100)]);
 
         for (i, x) in hasher.state.into_iter().enumerate() {
             if i == 0 {
@@ -258,37 +290,12 @@ mod tests {
     }
 
     #[test]
-    fn hades_permutation_regression_test() {
-        let mut hasher = PoseidonHasher::new(PoseidonHash([m31!(1); POSEIDON_WIDTH]));
-        let expected_state = PoseidonHash([
-            m31!(945942046),
-            m31!(1014745611),
-            m31!(1083549176),
-            m31!(1152352741),
-            m31!(1221156306),
-            m31!(1289959871),
-            m31!(1358763436),
-            m31!(1427567001),
-            m31!(1496370566),
-            m31!(1565174131),
-            m31!(1633977696),
-            m31!(1702781261),
-            m31!(1771584826),
-            m31!(1840388391),
-            m31!(1909191956),
-            m31!(1977995521),
-            m31!(2046799086),
-            m31!(2115602651),
-            m31!(36922569),
-            m31!(105726134),
-            m31!(174529699),
-            m31!(243333264),
-            m31!(312136829),
-            m31!(380940394),
-        ]);
+    fn finalize_reset_test() {
+        let mut hasher = PoseidonHasher::new();
 
-        hasher.hades_permutation();
+        let res = hasher.finalize_reset();
 
-        assert_eq!(hasher.state, expected_state);
+        assert_eq!(res, PoseidonHash(ZERO_HASH_RESULT));
+        assert_eq!(hasher.state, PoseidonHash::default());
     }
 }
