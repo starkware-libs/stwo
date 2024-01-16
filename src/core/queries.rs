@@ -5,7 +5,7 @@ use super::channel::{Blake2sChannel, Channel};
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
-pub struct Queries(pub BTreeSet<usize>);
+pub struct Queries(pub Vec<usize>);
 
 impl Queries {
     /// Randomizes a set of query indices uniformly over the range [0, 2^`log_query_size`).
@@ -21,7 +21,7 @@ impl Queries {
                 queries.insert(quotient_query as usize);
                 query_cnt += 1;
                 if query_cnt == n_queries {
-                    return Self(queries);
+                    return Self(queries.into_iter().collect());
                 }
             }
         }
@@ -35,10 +35,16 @@ impl Queries {
 }
 
 impl Deref for Queries {
-    type Target = BTreeSet<usize>;
+    type Target = Vec<usize>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl FromIterator<usize> for Queries {
+    fn from_iter<T: IntoIterator<Item = usize>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
     }
 }
 

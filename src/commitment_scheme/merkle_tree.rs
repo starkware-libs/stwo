@@ -1,8 +1,10 @@
-use std::collections::BTreeSet;
 use std::fmt::{Debug, Display};
+
+use itertools::Itertools;
 
 use super::hasher::Hasher;
 use super::merkle_decommitment::MerkleDecommitment;
+use super::utils::sort_adjacent_indices;
 use crate::commitment_scheme::utils::{
     allocate_balanced_tree, column_to_row_major, hash_merkle_tree_from_bottom_layer,
     tree_data_as_mut_ref, ColumnArray, TreeData,
@@ -73,10 +75,12 @@ where
         (&self.data.last().unwrap()[..]).into()
     }
 
-    pub fn generate_decommitment(&self, queries: BTreeSet<usize>) -> MerkleDecommitment<T, H> {
-        let leaf_block_indices: BTreeSet<usize> = queries
+    /// Generates a merkle decommitment for the given queries. Queries must be sorted.
+    pub fn generate_decommitment(&self, queries: Vec<usize>) -> MerkleDecommitment<T, H> {
+        let leaf_block_indices: Vec<usize> = queries
             .iter()
             .map(|query| query / self.bottom_layer_n_rows_in_node)
+            .dedup()
             .collect();
         let mut leaf_blocks = Vec::<Vec<T>>::new();
 
@@ -89,7 +93,8 @@ where
         let mut curr_layer_indices = leaf_block_indices
             .iter()
             .map(|index| index ^ 1)
-            .collect::<BTreeSet<usize>>();
+            .collect::<Vec<usize>>();
+        sort_adjacent_indices(&mut curr_layer_indices); // Only adjacent indices can be out of order.
         let mut layers = Vec::<Vec<H::Hash>>::new();
         for i in 0..self.height - 2 {
             let mut proof_layer = Vec::<H::Hash>::with_capacity(curr_layer_indices.len());
@@ -120,7 +125,9 @@ where
             curr_layer_indices = curr_layer_indices
                 .iter()
                 .map(|index| (index / 2) ^ 1)
+                .dedup()
                 .collect();
+            sort_adjacent_indices(&mut curr_layer_indices);
         }
         MerkleDecommitment::new(
             leaf_blocks,
@@ -140,12 +147,9 @@ where
 }
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
-    use rand::{thread_rng, Rng};
-
     use crate::commitment_scheme::blake3_hash::*;
     use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::utils::tests::generate_test_queries;
     use crate::core::fields::m31::M31;
     use crate::core::fields::IntoSlice;
 
@@ -191,7 +195,7 @@ mod tests {
         let trace = vec![init_m31_test_trace(128)];
         const BLOCK_LEN: usize = Blake3Hasher::BLOCK_SIZE / std::mem::size_of::<M31>();
         let tree_from_matrix = super::MerkleTree::<M31, Blake3Hasher>::commit(trace);
-        let queries: BTreeSet<usize> = (0..100).map(|_| thread_rng().gen_range(0..128)).collect();
+        let queries = generate_test_queries(100, 128);
 
         for query in queries {
             let leaf_block_index = query / BLOCK_LEN;
@@ -208,7 +212,7 @@ mod tests {
         let trace = vec![init_m31_test_trace(128)];
 
         let tree = super::MerkleTree::<M31, Blake3Hasher>::commit(trace);
-        let queries: BTreeSet<usize> = (16..64).collect();
+        let queries: Vec<usize> = (16..64).collect();
         let decommitment = tree.generate_decommitment(queries);
 
         assert_eq!(decommitment.leaf_blocks.len(), 3);
