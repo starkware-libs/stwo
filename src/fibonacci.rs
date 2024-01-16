@@ -4,7 +4,6 @@ use num_traits::One;
 
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
-use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::{CirclePoint, Coset};
@@ -16,6 +15,7 @@ use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::oods::{get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
+use crate::core::poly::commitment::PolynomialCommitmentScheme;
 use crate::core::queries::Queries;
 
 type Channel = Blake2sChannel;
@@ -194,11 +194,10 @@ impl Fibonacci {
         let trace_evaluation = trace_poly.evaluate(self.trace_eval_domain);
         let trace_commitment_evaluation =
             trace_poly.evaluate(self.trace_commitment_domain.circle_domain());
-        let trace_merkle =
-            MerkleTree::<BaseField, MerkleHasher>::commit(vec![trace_commitment_evaluation
-                .values
-                .clone()]);
-        channel.mix_with_seed(trace_merkle.root());
+        let trace_commitment = PolynomialCommitmentScheme::<BaseField, MerkleHasher>::commit(vec![
+            &trace_commitment_evaluation,
+        ]);
+        channel.mix_with_seed(trace_commitment.root());
 
         let random_coeff = channel.draw_random_extension_felts()[0];
         let composition_polynomial =
@@ -208,11 +207,11 @@ impl Fibonacci {
             self.composition_polynomial_commitment_domain
                 .circle_domain(),
         );
-        // TODO(AlonH): Remove the clone.
-        let composition_polynomial_merkle = MerkleTree::<QM31, MerkleHasher>::commit(vec![
-            composition_polynomial_commitment_evaluation.values.clone(),
-        ]);
-        channel.mix_with_seed(composition_polynomial_merkle.root());
+        let composition_polynomial_commitment =
+            PolynomialCommitmentScheme::<QM31, MerkleHasher>::commit(vec![
+                &composition_polynomial_commitment_evaluation,
+            ]);
+        channel.mix_with_seed(composition_polynomial_commitment.root());
 
         let oods_point = CirclePoint::<QM31>::get_random_point(channel);
         let mask = self.get_mask();
@@ -246,21 +245,20 @@ impl Fibonacci {
             self.composition_polynomial_commitment_domain.log_size
                 - self.trace_commitment_domain.log_size,
         );
-        let composition_polynomial_decommitment = composition_polynomial_merkle
+        let composition_polynomial_decommitment = composition_polynomial_commitment
             .generate_decommitment(composition_polynomial_queries.clone());
-        // TODO(AlonH): Remove the collect (generate decommitment with iterator).
-        let trace_decommitment = trace_merkle.generate_decommitment(trace_queries.collect());
+        let trace_decommitment = trace_commitment.generate_decommitment(trace_queries.collect());
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
             public_input: self.claim,
             trace_commitment: CommitmentProof {
                 decommitment: trace_decommitment,
-                commitment: trace_merkle.root(),
+                commitment: trace_commitment.root(),
             },
             composition_polynomial_commitment: CommitmentProof {
                 decommitment: composition_polynomial_decommitment,
-                commitment: composition_polynomial_merkle.root(),
+                commitment: composition_polynomial_commitment.root(),
             },
             trace_oods_evaluation,
             additional_proof_data: AdditionalProofData {
