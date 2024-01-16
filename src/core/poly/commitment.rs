@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::ops::Deref;
 
 use super::circle::CircleEvaluation;
@@ -8,6 +7,7 @@ use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::commitment_scheme::utils::ColumnArray;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, IntoSlice};
+use crate::core::queries::Queries;
 use crate::core::utils::{bit_reverse_index, bit_reverse_vec};
 
 /// Polynomial commitment interface. Used to internalize commitment logic (e.g. reordering of
@@ -33,11 +33,11 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> PolynomialCommitmentScheme<F, H> {
         }
     }
 
-    pub fn decommit(&self, queries: &BTreeSet<usize>) -> PolynomialDecommitment<F, H>
+    pub fn decommit(&self, queries: &Queries) -> PolynomialDecommitment<F, H>
     where
         F: IntoSlice<H::NativeType>,
     {
-        let bit_reversed_queries: BTreeSet<usize> = queries
+        let bit_reversed_queries = queries
             .iter()
             .map(|query| bit_reverse_index(*query as u32, self.domain_log_size) as usize)
             .collect();
@@ -61,10 +61,11 @@ pub struct PolynomialDecommitment<F: ExtensionOf<BaseField>, H: Hasher> {
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> PolynomialDecommitment<F, H> {
-    pub fn verify(&self, root: H::Hash, queries: &BTreeSet<usize>) -> bool
+    pub fn verify(&self, root: H::Hash, queries: &Queries) -> bool
     where
         F: IntoSlice<H::NativeType>,
     {
-        self.merkle_decommitment.verify(root, queries.clone())
+        self.merkle_decommitment
+            .verify(root, queries.deref().clone())
     }
 }

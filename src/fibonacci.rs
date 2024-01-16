@@ -244,7 +244,8 @@ impl Fibonacci {
         );
         let composition_polynomial_decommitment =
             composition_polynomial_commitment.decommit(&composition_polynomial_queries);
-        let trace_decommitment = trace_commitment.decommit(&trace_queries.collect());
+        // TODO(AlonH): Use iterators instead of collecting.
+        let trace_decommitment = trace_commitment.decommit(&Queries(trace_queries.collect()));
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
