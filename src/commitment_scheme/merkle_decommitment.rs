@@ -1,6 +1,7 @@
-use std::collections::BTreeSet;
 use std::fmt::{self, Display};
 use std::iter::Peekable;
+
+use itertools::Itertools;
 
 use super::hasher::Hasher;
 use crate::core::fields::IntoSlice;
@@ -18,7 +19,7 @@ pub struct MerkleDecommitment<T: Sized + Display, H: Hasher> {
     pub leaf_blocks: Vec<Vec<T>>,
     pub layers: Vec<Vec<H::Hash>>,
     pub n_rows_in_leaf_block: usize,
-    queries: BTreeSet<usize>,
+    queries: Vec<usize>,
 }
 
 impl<T: Sized + Display + Copy, H: Hasher> MerkleDecommitment<T, H>
@@ -29,7 +30,7 @@ where
         leaf_blocks: Vec<Vec<T>>,
         layers: Vec<Vec<H::Hash>>,
         n_rows_in_leaf_block: usize,
-        queries: BTreeSet<usize>,
+        queries: Vec<usize>,
     ) -> Self {
         Self {
             leaf_blocks,
@@ -44,12 +45,12 @@ where
     }
 
     // TODO(Ohad): Implement more verbose error handling.
-    // TODO(AlonH): Consider using a vector for the queries.
-    pub fn verify(&self, root: H::Hash, queries: BTreeSet<usize>) -> bool {
+    pub fn verify(&self, root: H::Hash, queries: Vec<usize>) -> bool {
         let leaf_block_queries = queries
             .iter()
             .map(|q| q / self.n_rows_in_leaf_block)
-            .collect::<BTreeSet<usize>>();
+            .dedup()
+            .collect::<Vec<usize>>();
         assert_eq!(self.leaf_blocks.len(), leaf_block_queries.len());
 
         let mut curr_hashes = self
@@ -88,7 +89,8 @@ where
             layer_queries = layer_queries
                 .iter()
                 .map(|q| q / 2)
-                .collect::<BTreeSet<usize>>();
+                .dedup()
+                .collect::<Vec<usize>>();
         }
         assert_eq!(
             layer_queries.into_iter().collect::<Vec<usize>>(),
@@ -110,7 +112,7 @@ where
 }
 
 pub struct QueriedValuesIterator<'a, T: Sized + Display> {
-    query_iterator: std::collections::btree_set::Iter<'a, usize>,
+    query_iterator: std::slice::Iter<'a, usize>,
     leaf_block_iterator: Peekable<std::slice::Iter<'a, Vec<T>>>,
     current_leaf_block_index: usize,
     n_elements_in_row: usize,
@@ -171,13 +173,10 @@ impl<T: Sized + Display, H: Hasher> fmt::Display for MerkleDecommitment<T, H> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
-    use rand::{thread_rng, Rng};
-
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
     use crate::commitment_scheme::merkle_tree::MerkleTree;
+    use crate::commitment_scheme::utils::tests::generate_queries;
     use crate::commitment_scheme::utils::ColumnArray;
     use crate::core::fields::m31::M31;
 
@@ -185,7 +184,7 @@ mod tests {
     pub fn verify_test() {
         let trace: ColumnArray<M31> = vec![(0..4096).map(M31::from_u32_unchecked).collect(); 7];
         let tree = MerkleTree::<M31, Blake3Hasher>::commit(trace);
-        let queries: BTreeSet<usize> = (0..100).map(|_| thread_rng().gen_range(0..4096)).collect();
+        let queries = generate_queries(100, 4096);
         let decommitment = tree.generate_decommitment(queries.clone());
 
         assert!(decommitment.verify(tree.root(), queries.clone()));
@@ -201,9 +200,7 @@ mod tests {
             4
         ];
         let tree = MerkleTree::<M31, Blake3Hasher>::commit(trace);
-        let queries: BTreeSet<usize> = (0..10)
-            .map(|_| thread_rng().gen_range(0..trace_column_length as usize))
-            .collect();
+        let queries = generate_queries(10, trace_column_length as usize);
         let mut wrong_internal_node_decommitment = tree.generate_decommitment(queries.clone());
         let mut wrong_leaf_block_decommitment = tree.generate_decommitment(queries.clone());
 
@@ -229,9 +226,7 @@ mod tests {
         let reversed_trace_column = trace_column.iter().rev().cloned().collect::<Vec<M31>>();
         let trace: ColumnArray<M31> = vec![trace_column, reversed_trace_column];
         let tree = MerkleTree::<M31, Blake3Hasher>::commit(trace.clone());
-        let queries: BTreeSet<usize> = (0..30)
-            .map(|_| thread_rng().gen_range(0..trace_column_length as usize))
-            .collect();
+        let queries = generate_queries(30, trace_column_length as usize);
         let decommitment = tree.generate_decommitment(queries.clone());
         let values = decommitment.values();
         assert!(queries

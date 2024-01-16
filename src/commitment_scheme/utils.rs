@@ -206,7 +206,6 @@ pub fn inject_hash_in_pairs<'a: 'b, 'b, H: Hasher>(
 ///    * `hash_inputs` - The hash inputs to inject into.
 ///    * `chunk_idx` - The index of the chunk to inject.
 ///    * `n_chunks_in_column` - The number of chunks every column is divided into.
-///  
 pub fn inject_column_chunks<'b, 'a: 'b, H: Hasher, F: Field>(
     columns: &'a [&'a [F]],
     hash_inputs: &'b mut [Vec<&'a [H::NativeType]>],
@@ -312,8 +311,9 @@ fn inject_previous_hash_values<H: Hasher>(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use num_traits::One;
+    use rand::{thread_rng, Rng};
 
     use super::{
         allocate_balanced_tree, inject_and_hash_layer, inject_column_chunks, map_columns_sorted,
@@ -328,6 +328,15 @@ mod tests {
     };
     use crate::core::fields::m31::M31;
     use crate::math::utils::log2_ceil;
+
+    pub fn generate_queries(n_queries: usize, trace_length: usize) -> Vec<usize> {
+        let mut queries: Vec<usize> = (0..n_queries)
+            .map(|_| thread_rng().gen_range(0..trace_length))
+            .collect();
+        queries.sort();
+        queries.dedup();
+        queries
+    }
 
     fn init_test_trace() -> ColumnArray<u32> {
         let col0 = std::iter::repeat(0).take(8).collect();

@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 use std::fmt::{Debug, Display};
 
+use itertools::Itertools;
+
 use super::hasher::Hasher;
 use super::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::utils::{
@@ -73,10 +75,11 @@ where
         (&self.data.last().unwrap()[..]).into()
     }
 
-    pub fn generate_decommitment(&self, queries: BTreeSet<usize>) -> MerkleDecommitment<T, H> {
-        let leaf_block_indices: BTreeSet<usize> = queries
+    pub fn generate_decommitment(&self, queries: Vec<usize>) -> MerkleDecommitment<T, H> {
+        let leaf_block_indices: Vec<usize> = queries
             .iter()
             .map(|query| query / self.bottom_layer_n_rows_in_node)
+            .dedup()
             .collect();
         let mut leaf_blocks = Vec::<Vec<T>>::new();
 
@@ -140,12 +143,9 @@ where
 }
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
-    use rand::{thread_rng, Rng};
-
     use crate::commitment_scheme::blake3_hash::*;
     use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::utils::tests::generate_queries;
     use crate::core::fields::m31::M31;
     use crate::core::fields::IntoSlice;
 
@@ -191,7 +191,7 @@ mod tests {
         let trace = vec![init_m31_test_trace(128)];
         const BLOCK_LEN: usize = Blake3Hasher::BLOCK_SIZE / std::mem::size_of::<M31>();
         let tree_from_matrix = super::MerkleTree::<M31, Blake3Hasher>::commit(trace);
-        let queries: BTreeSet<usize> = (0..100).map(|_| thread_rng().gen_range(0..128)).collect();
+        let queries = generate_queries(100, 128);
 
         for query in queries {
             let leaf_block_index = query / BLOCK_LEN;
@@ -208,7 +208,7 @@ mod tests {
         let trace = vec![init_m31_test_trace(128)];
 
         let tree = super::MerkleTree::<M31, Blake3Hasher>::commit(trace);
-        let queries: BTreeSet<usize> = (16..64).collect();
+        let queries: Vec<usize> = (16..64).collect();
         let decommitment = tree.generate_decommitment(queries);
 
         assert_eq!(decommitment.leaf_blocks.len(), 3);

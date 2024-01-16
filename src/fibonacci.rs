@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use num_traits::One;
 
 use crate::commitment_scheme::hasher::Hasher;
@@ -46,7 +44,7 @@ pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
 }
 
 impl<F: ExtensionOf<BaseField> + IntoSlice<H::NativeType>, H: Hasher> CommitmentProof<F, H> {
-    pub fn verify(&self, queries: BTreeSet<usize>) -> bool {
+    pub fn verify(&self, queries: Vec<usize>) -> bool {
         self.decommitment.verify(self.commitment, queries)
     }
 }
