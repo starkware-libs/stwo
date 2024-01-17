@@ -1,4 +1,4 @@
-#![feature(stdsimd, new_uninit, is_sorted)]
+#![feature(stdsimd, new_uninit, is_sorted, get_many_mut)]
 pub mod commitment_scheme;
 pub mod core;
 pub mod fibonacci;
