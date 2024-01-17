@@ -133,6 +133,7 @@ impl<F: Field> Sub for CirclePoint<F> {
 }
 
 impl CirclePoint<QM31> {
+    // TODO(spapini): Consider using QM31CirclePointIndex.
     pub fn get_point(index: u128) -> Self {
         assert!(index < QM31_CIRCLE_ORDER);
         QM31_CIRCLE_GEN.mul(index)

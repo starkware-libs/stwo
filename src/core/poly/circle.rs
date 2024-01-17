@@ -274,7 +274,7 @@ pub struct CirclePoly<F: ExtensionOf<BaseField>> {
     /// monomial basis. The FFT basis is a tensor product of the twiddles:
     /// y, x, pi(x), pi^2(x), ..., pi^{log_size-2}(x).
     /// pi(x) := 2x^2 - 1.
-    coeffs: Vec<F>,
+    pub coeffs: Vec<F>,
     /// The number of coefficients stored as `log2(len(coeffs))`.
     log_size: u32,
 }
@@ -305,6 +305,17 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
         fold(&self.coeffs, &mappings)
     }
 
+    /// Extends the polynomial to a larger degree bound.
+    pub fn extend(self, log_size: u32) -> Self {
+        assert!(log_size >= self.log_size);
+        let mut coeffs = vec![F::zero(); 1 << log_size];
+        let log_jump = log_size - self.log_size;
+        for (i, val) in self.coeffs.iter().enumerate() {
+            coeffs[i << log_jump] = *val;
+        }
+        Self { coeffs, log_size }
+    }
+
     /// Evaluates the polynomial at all points in the domain.
     pub fn evaluate(&self, domain: CircleDomain) -> CircleEvaluation<F> {
         // Use CFFT to evaluate.
@@ -313,11 +324,7 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
 
         // TODO(spapini): extend better.
         assert!(domain.log_size() >= self.log_size);
-        let mut values = vec![F::zero(); domain.size()];
-        let log_jump = domain.log_size() - self.log_size;
-        for (i, val) in self.coeffs.iter().enumerate() {
-            values[i << log_jump] = *val;
-        }
+        let mut values = self.clone().extend(domain.log_size()).coeffs;
 
         while coset.size() > 1 {
             cosets.push(coset);
