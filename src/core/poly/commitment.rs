@@ -8,13 +8,12 @@ use crate::commitment_scheme::utils::ColumnArray;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, IntoSlice};
 use crate::core::queries::Queries;
-use crate::core::utils::{bit_reverse_index, bit_reverse_vec};
+use crate::core::utils::bit_reverse_vec;
 
 /// Polynomial commitment interface. Used to internalize commitment logic (e.g. reordering of
 /// evaluations)
 pub struct PolynomialCommitmentScheme<F: ExtensionOf<BaseField>, H: Hasher> {
     merkle_tree: MerkleTree<F, H>,
-    domain_log_size: u32,
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> PolynomialCommitmentScheme<F, H> {
@@ -27,21 +26,16 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> PolynomialCommitmentScheme<F, H> {
             .map(|p| bit_reverse_vec(&p.values, p.domain.log_size()))
             .collect();
         let merkle_tree = MerkleTree::<F, H>::commit(bit_reversed_polynomials);
-        Self {
-            merkle_tree,
-            domain_log_size: polynomials[0].domain.log_size(),
-        }
+        Self { merkle_tree }
     }
 
     pub fn decommit(&self, queries: &Queries) -> PolynomialDecommitment<F, H>
     where
         F: IntoSlice<H::NativeType>,
     {
-        let bit_reversed_queries = queries
-            .iter()
-            .map(|query| bit_reverse_index(*query as u32, self.domain_log_size) as usize)
-            .collect();
-        let merkle_decommitment = self.merkle_tree.generate_decommitment(bit_reversed_queries);
+        let merkle_decommitment = self
+            .merkle_tree
+            .generate_decommitment(queries.deref().clone());
         PolynomialDecommitment {
             merkle_decommitment,
         }
@@ -65,7 +59,33 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> PolynomialDecommitment<F, H> {
     where
         F: IntoSlice<H::NativeType>,
     {
-        self.merkle_decommitment
-            .verify(root, queries.deref().clone())
+        self.merkle_decommitment.verify(root, queries)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PolynomialCommitmentScheme;
+    use crate::commitment_scheme::blake2_hash::Blake2sHasher;
+    use crate::commitment_scheme::utils::tests::generate_test_queries;
+    use crate::core::fields::m31::M31;
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+    use crate::core::queries::Queries;
+    use crate::m31;
+
+    #[test]
+    fn test_polynomial_commitment_scheme() {
+        let log_size = 7;
+        let size = 1 << log_size;
+        let domain = CanonicCoset::new(7).circle_domain();
+        let values = (0..size).map(|x| m31!(x)).collect();
+        let polynomial = CircleEvaluation::new(domain, values);
+        let queries = Queries(generate_test_queries((size / 2) as usize, size as usize));
+
+        let commitment_scheme =
+            PolynomialCommitmentScheme::<M31, Blake2sHasher>::commit(vec![&polynomial]);
+        let decommitment = commitment_scheme.decommit(&queries);
+
+        assert!(decommitment.verify(commitment_scheme.root(), &queries));
     }
 }
