@@ -3,10 +3,54 @@ use std::ops::Deref;
 
 use super::circle::{CirclePoint, CirclePointIndex};
 use super::fields::m31::BaseField;
+use super::fields::qm31::QM31;
 use super::fields::ExtensionOf;
-use super::poly::circle::PointMapping;
+use super::poly::circle::{CircleEvaluation, CirclePoly, PointMapping};
 use crate::core::constraints::PolyOracle;
 use crate::core::poly::circle::CanonicCoset;
+
+/// Arithmetic Intermediate Representation (AIR).
+/// An Air instance is assumed to already contain all the information needed to
+/// evaluate the constraints.
+/// For instance, all interaction elements are assumed to be present in it.
+/// Therefore, an AIR is generated only after the initial trace commitment phase.
+// TODO(spapini): consider renaming this struct.
+pub trait Air {
+    fn components(&self) -> Vec<Box<dyn Component>>;
+}
+
+/// A component is a set of trace columns of various sizes along with a set of
+/// constraints on them.
+pub trait Component {
+    /// Evaluates the constraint quotients of the component on canonic cosets.
+    /// Accumulates quotients using `combination_coefficient` for each size.
+    // Note: This will be computed using a MaterializedGraph.
+    fn evaluate_constraint_quotients_on_domain(
+        &self,
+        trace: &ComponentTrace,
+        combination_coefficient: QM31,
+        evaluation_accumulator: &mut Vec<Option<CircleEvaluation<QM31>>>,
+    );
+
+    /// Evaluates the mask values for the constraints at a point.
+    fn mask_values_at_point(
+        &self,
+        point: CirclePoint<QM31>,
+        component_trace: &ComponentTrace,
+    ) -> Vec<QM31>;
+
+    /// Evaluates the constraint quotients combincation of the component, given the mask values.
+    fn evaluate_quotients_by_mask(
+        &self,
+        point: CirclePoint<QM31>,
+        combination_coefficient: QM31,
+        mask: Vec<QM31>,
+    ) -> Vec<QM31>;
+
+    // TODO(spapini): Extra functions for FRI and decommitment.
+}
+
+pub struct ComponentTrace(pub Vec<CirclePoly<BaseField>>);
 
 pub struct MaskItem {
     pub column_index: usize,
