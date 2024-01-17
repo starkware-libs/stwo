@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::ops::Deref;
 
-use super::channel::{Blake2sChannel, Channel};
+use super::channel::Channel;
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
@@ -9,7 +9,7 @@ pub struct Queries(pub Vec<usize>);
 
 impl Queries {
     /// Randomizes a set of query indices uniformly over the range [0, 2^`log_query_size`).
-    pub fn generate(channel: &mut Blake2sChannel, log_query_size: u32, n_queries: usize) -> Self {
+    pub fn generate(channel: &mut impl Channel, log_query_size: u32, n_queries: usize) -> Self {
         let mut queries = BTreeSet::new();
         let mut query_cnt = 0;
         let max_query = (1 << log_query_size) - 1;

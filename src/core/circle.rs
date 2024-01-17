@@ -1,6 +1,5 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
-use super::channel::Blake2sChannel;
 use super::fields::m31::{BaseField, M31};
 use super::fields::qm31::QM31;
 use super::fields::{ExtensionOf, Field};
@@ -140,7 +139,7 @@ impl CirclePoint<QM31> {
     }
 
     #[allow(clippy::assertions_on_constants)]
-    pub fn get_random_point(channel: &mut Blake2sChannel) -> Self {
+    pub fn get_random_point(channel: &mut impl Channel) -> Self {
         const BYTES_PER_U128: usize = 16;
         // `QM31_CIRCLE_ORDER` fits a little over 16 times in a `u128`.
         const C: u128 = 16;
