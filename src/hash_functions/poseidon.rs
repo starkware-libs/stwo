@@ -116,6 +116,10 @@ impl PoseidonHasher {
         self.state.0[..prefix.len()].copy_from_slice(prefix);
     }
 
+    fn get_state_capacity(&self) -> [BaseField; POSEIDON_CAPACITY] {
+        self.state.0[..POSEIDON_CAPACITY].try_into().unwrap()
+    }
+
     fn add_param_constants(&mut self) {
         self.set_state_prefix(
             self.state
@@ -183,8 +187,19 @@ impl Hasher for PoseidonHasher {
         self.state = PoseidonHash::default()
     }
 
-    fn update(&mut self, _data: &[BaseField]) {
-        unimplemented!("update for PoseidonHasher")
+    fn update(&mut self, data: &[BaseField]) {
+        data.chunks_exact(POSEIDON_CAPACITY).for_each(|values| {
+            let state_capacity = self.get_state_capacity();
+            self.set_state_prefix(
+                state_capacity
+                    .iter()
+                    .zip(values.iter())
+                    .map(|(x, y)| *x + *y)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            );
+            self.hades_permutation();
+        });
     }
 
     fn finalize(mut self) -> PoseidonHash {
@@ -225,9 +240,9 @@ impl Hasher for PoseidonHasher {
 
 #[cfg(test)]
 mod tests {
-    use super::{PoseidonHasher, POSEIDON_WIDTH};
+    use super::{PoseidonHasher, POSEIDON_CAPACITY, POSEIDON_WIDTH};
     use crate::commitment_scheme::hasher::Hasher;
-    use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::m31::{BaseField, M31, P};
     use crate::hash_functions::poseidon::PoseidonHash;
     use crate::m31;
 
@@ -259,7 +274,7 @@ mod tests {
     ];
 
     #[test]
-    fn poseidon_hash_debug_test() {
+    fn hash_debug_test() {
         let values = (0..24).map(|x| m31!(x)).collect::<Vec<BaseField>>();
         let poseidon_state = PoseidonHash::from(values);
 
@@ -267,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn poseidon_hash_iter_test() {
+    fn hash_iter_test() {
         let values = (0..24).map(|x| m31!(x)).collect::<Vec<BaseField>>();
         let poseidon_state = PoseidonHash::from(values);
 
@@ -277,7 +292,7 @@ mod tests {
     }
 
     #[test]
-    fn poseidon_hasher_set_state_test() {
+    fn hasher_set_state_test() {
         let values = (0..24).map(|x| m31!(x)).collect::<Vec<BaseField>>();
         let mut hasher = PoseidonHasher::from_state(PoseidonHash::from(values));
 
@@ -293,12 +308,24 @@ mod tests {
     }
 
     #[test]
-    fn finalize_reset_test() {
+    fn hasher_finalize_reset_test() {
         let mut hasher = PoseidonHasher::new();
 
         let res = hasher.finalize_reset();
 
         assert_eq!(res, PoseidonHash(ZERO_HASH_RESULT));
         assert_eq!(hasher.state, PoseidonHash::default());
+    }
+
+    #[test]
+    fn hasher_update_test() {
+        let values = (0..24)
+            .map(|x| if x < 8 { m31!(1) } else { m31!(0) })
+            .collect::<Vec<BaseField>>();
+        let mut hasher = PoseidonHasher::from_state(PoseidonHash::from(values));
+
+        hasher.update([m31!(P - 1); POSEIDON_CAPACITY].as_ref());
+
+        assert_eq!(hasher.state.0, ZERO_HASH_RESULT);
     }
 }
