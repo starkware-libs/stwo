@@ -54,6 +54,8 @@ pub struct FibonacciProof {
     pub composition_polynomial_commitment: CommitmentProof<QM31, MerkleHasher>,
     // TODO(AlonH): Consider including only the values.
     pub trace_oods_evaluation: PointMapping<QM31>,
+    pub composition_polynomial_queried_values: Vec<QM31>,
+    pub trace_queried_values: Vec<BaseField>,
     pub additional_proof_data: AdditionalProofData,
 }
 
@@ -238,10 +240,18 @@ impl Fibonacci {
             self.composition_polynomial_commitment_domain.log_size,
             N_QUERIES,
         );
+        let composition_polynomial_queried_values = composition_polynomial_queries
+            .iter()
+            .map(|q| composition_polynomial_commitment_evaluation.values[*q])
+            .collect();
         let trace_queries = composition_polynomial_queries.iter_folded(
             self.composition_polynomial_commitment_domain.log_size
                 - self.trace_commitment_domain.log_size,
         );
+        let trace_queried_values = trace_queries
+            .clone()
+            .map(|q| trace_commitment_evaluation.values[q])
+            .collect();
         let composition_polynomial_decommitment =
             composition_polynomial_commitment.decommit(&composition_polynomial_queries);
         // TODO(AlonH): Use iterators instead of collecting.
@@ -259,6 +269,8 @@ impl Fibonacci {
                 commitment: composition_polynomial_commitment.root(),
             },
             trace_oods_evaluation,
+            composition_polynomial_queried_values,
+            trace_queried_values,
             additional_proof_data: AdditionalProofData {
                 composition_polynomial_oods_value,
                 composition_polynomial_random_coeff: random_coeff,
