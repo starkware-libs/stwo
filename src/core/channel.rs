@@ -3,7 +3,7 @@ use super::fields::qm31::QM31;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
 
-pub const BYTES_PER_HASH: usize = 32;
+pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
 pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 
@@ -26,10 +26,44 @@ impl ChannelTime {
 
 pub trait Channel {
     type ChannelHasher: Hasher;
+    const BYTES_PER_HASH: usize;
 
     fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self;
     fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash);
-    fn draw_random_bytes(&mut self) -> [u8; BYTES_PER_HASH];
+    fn _draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
+    // Returns a vector of random bytes of length `BYTES_PER_HASH`.
+    fn draw_random_bytes(&mut self) -> Vec<u8>;
+    /// Generates a uniform random vector of QM31 elements.
+    fn draw_random_extension_felts(&mut self) -> [QM31; EXTENSION_FELTS_PER_HASH] {
+        let felts: [BaseField; FELTS_PER_HASH] = self._draw_random_felts();
+        [
+            QM31::from_m31_array(felts[..4].try_into().unwrap()),
+            QM31::from_m31_array(felts[4..].try_into().unwrap()),
+        ]
+    }
+}
+
+/// A channel that can be used to draw random elements from a [Blake2sHash] digest.
+pub struct Blake2sChannel {
+    digest: Blake2sHash,
+    channel_time: ChannelTime,
+}
+
+impl Channel for Blake2sChannel {
+    type ChannelHasher = Blake2sHasher;
+    const BYTES_PER_HASH: usize = BLAKE_BYTES_PER_HASH;
+
+    fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self {
+        Blake2sChannel {
+            digest,
+            channel_time: ChannelTime::default(),
+        }
+    }
+
+    fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash) {
+        self.digest = Self::ChannelHasher::concat_and_hash(&self.digest, &seed);
+        self.channel_time.inc_challenges();
+    }
 
     /// Generates a uniform random vector of BaseField elements.
     fn _draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
@@ -56,49 +90,18 @@ pub trait Channel {
         }
     }
 
-    /// Generates a uniform random vector of QM31 elements.
-    fn draw_random_extension_felts(&mut self) -> [QM31; EXTENSION_FELTS_PER_HASH] {
-        let felts = self._draw_random_felts();
-        [
-            QM31::from_m31_array(felts[..4].try_into().unwrap()),
-            QM31::from_m31_array(felts[4..].try_into().unwrap()),
-        ]
-    }
-}
-
-/// A channel that can be used to draw random elements from a [Blake2sHash] digest.
-pub struct Blake2sChannel {
-    digest: Blake2sHash,
-    channel_time: ChannelTime,
-}
-
-impl Channel for Blake2sChannel {
-    type ChannelHasher = Blake2sHasher;
-
-    fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self {
-        Blake2sChannel {
-            digest,
-            channel_time: ChannelTime::default(),
-        }
-    }
-
-    fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash) {
-        self.digest = Self::ChannelHasher::concat_and_hash(&self.digest, &seed);
-        self.channel_time.inc_challenges();
-    }
-
-    fn draw_random_bytes(&mut self) -> [u8; BYTES_PER_HASH] {
+    fn draw_random_bytes(&mut self) -> Vec<u8> {
         let mut hash_input = self.digest.as_ref().to_vec();
 
         // Pad the counter to 32 bytes.
-        let mut padded_counter = [0; 32];
+        let mut padded_counter = [0; BLAKE_BYTES_PER_HASH];
         let counter_bytes = self.channel_time.n_sent.to_le_bytes();
         padded_counter[0..counter_bytes.len()].copy_from_slice(&counter_bytes);
 
         hash_input.extend_from_slice(&padded_counter);
 
         self.channel_time.inc_sent();
-        Self::ChannelHasher::hash(&hash_input).into()
+        Self::ChannelHasher::hash(&hash_input).try_into().unwrap()
     }
 }
 
