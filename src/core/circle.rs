@@ -3,7 +3,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 use super::fields::m31::{BaseField, M31};
 use super::fields::qm31::QM31;
 use super::fields::{ExtensionOf, Field};
-use crate::core::channel::{Channel, BYTES_PER_HASH};
+use crate::core::channel::Channel;
 use crate::core::fields::qm31::P4;
 use crate::math::utils::egcd;
 
@@ -144,12 +144,13 @@ impl CirclePoint<QM31> {
         // `QM31_CIRCLE_ORDER` fits a little over 16 times in a `u128`.
         const C: u128 = 16;
         // TODO(AlonH): Consider using static-assertions crate.
-        assert!(BYTES_PER_HASH >= BYTES_PER_U128);
+        assert!(channel.n_bytes_per_hash() >= BYTES_PER_U128);
+
         // Repeats hashing with an increasing counter until getting a good result.
         // Retry probability for each round is ~ 2^(-29).
         loop {
-            let random_bytes: [u8; BYTES_PER_HASH] = channel.draw_random_bytes();
-            for i in 0..BYTES_PER_HASH / BYTES_PER_U128 {
+            let random_bytes = channel.draw_random_bytes();
+            for i in 0..channel.n_bytes_per_hash() / BYTES_PER_U128 {
                 let u128_bytes = &random_bytes[BYTES_PER_U128 * i..BYTES_PER_U128 * (i + 1)];
                 let random_u128: u128 = u128::from_le_bytes(u128_bytes.try_into().unwrap());
                 if random_u128 < C * QM31_CIRCLE_ORDER {
