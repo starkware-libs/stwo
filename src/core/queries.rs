@@ -29,7 +29,7 @@ impl Queries {
 
     /// Calculates the matching query indices in a folded domain (i.e each domain point is doubled)
     /// given `self` (the queries of the original domain) and the number of folds between domains.
-    pub fn iter_folded(&self, n_folds: u32) -> impl Iterator<Item = usize> + '_ {
+    pub fn iter_folded(&self, n_folds: u32) -> impl Iterator<Item = usize> + Clone + '_ {
         self.iter().map(move |q| q >> n_folds) // move is needed to move n_folds into the closure.
     }
 }
