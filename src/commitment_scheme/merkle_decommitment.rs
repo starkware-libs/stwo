@@ -46,7 +46,7 @@ where
 
     // TODO(Ohad): Implement more verbose error handling.
     /// Verifies the decommitment against a given root. Queries are assumed to be sorted.
-    pub fn verify(&self, root: H::Hash, queries: Vec<usize>) -> bool {
+    pub fn verify(&self, root: H::Hash, queries: &[usize]) -> bool {
         let leaf_block_queries = queries
             .iter()
             .map(|q| q / self.n_rows_in_leaf_block)
@@ -188,7 +188,7 @@ mod tests {
         let queries = generate_test_queries(100, 4096);
         let decommitment = tree.generate_decommitment(queries.clone());
 
-        assert!(decommitment.verify(tree.root(), queries.clone()));
+        assert!(decommitment.verify(tree.root(), &queries));
     }
 
     #[test]
@@ -209,11 +209,11 @@ mod tests {
         wrong_leaf_block_decommitment.leaf_blocks[0][0] += M31::from_u32_unchecked(1);
 
         assert!(
-            !wrong_internal_node_decommitment.verify(tree.root(), queries.clone(),),
+            !wrong_internal_node_decommitment.verify(tree.root(), &queries),
             "Wrong internal node decommitment passed!"
         );
         assert!(
-            !wrong_leaf_block_decommitment.verify(tree.root(), queries,),
+            !wrong_leaf_block_decommitment.verify(tree.root(), &queries),
             "Wrong leaf block decommitment passed!"
         );
     }
