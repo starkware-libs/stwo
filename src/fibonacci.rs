@@ -12,7 +12,7 @@ use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::oods::{get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
-use crate::core::poly::commitment::{PolynomialCommitmentScheme, PolynomialDecommitment};
+use crate::core::poly::commitment::{CommitmentProof, PolynomialCommitmentScheme};
 use crate::core::queries::Queries;
 
 type Channel = Blake2sChannel;
@@ -35,17 +35,6 @@ pub struct AdditionalProofData {
     pub composition_polynomial_oods_value: QM31,
     pub composition_polynomial_random_coeff: QM31,
     pub oods_point: CirclePoint<QM31>,
-}
-
-pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub decommitment: PolynomialDecommitment<F, H>,
-    pub commitment: H::Hash,
-}
-
-impl<F: ExtensionOf<BaseField> + IntoSlice<H::NativeType>, H: Hasher> CommitmentProof<F, H> {
-    pub fn verify(&self, queries: &Queries) -> bool {
-        self.decommitment.verify(self.commitment, queries)
-    }
 }
 
 pub struct FibonacciProof {
