@@ -5,6 +5,7 @@ use super::channel::Channel;
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
+/// A set of query indices over a `CircleDomain`.
 pub struct Queries(pub Vec<usize>);
 
 impl Queries {
@@ -31,6 +32,14 @@ impl Queries {
     /// given `self` (the queries of the original domain) and the number of folds between domains.
     pub fn iter_folded(&self, n_folds: u32) -> impl Iterator<Item = usize> + Clone + '_ {
         self.iter().map(move |q| q >> n_folds) // move is needed to move n_folds into the closure.
+    }
+
+    /// Calculates the conjugate query indices.
+    pub fn iter_conjugate(&self, log_domain_size: u32) -> impl Iterator<Item = usize> + Clone + '_ {
+        let half_domain_size = 1 << log_domain_size;
+        let domain_size = 2 * half_domain_size;
+        self.iter()
+            .map(move |q| (q + half_domain_size) % domain_size)
     }
 }
 
