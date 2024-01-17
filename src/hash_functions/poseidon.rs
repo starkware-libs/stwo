@@ -111,45 +111,49 @@ impl PoseidonHasher {
         }
     }
 
-    fn set_state(&mut self, state: [BaseField; POSEIDON_WIDTH]) {
-        self.state.0 = state;
-    }
-
     // Setter for the prefix of the state.
-    fn set_prefix(&mut self, prefix: &[BaseField]) {
+    fn set_state_prefix(&mut self, prefix: &[BaseField]) {
         self.state.0[..prefix.len()].copy_from_slice(prefix);
     }
 
     fn add_param_constants(&mut self) {
-        self.set_state(
+        self.set_state_prefix(
             self.state
                 .into_iter()
                 .zip(self.params.constants.iter())
                 .map(|(val, constant)| val + *constant)
                 .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
+                .as_slice(),
         );
     }
 
     fn hades_partial_round(&mut self) {
         self.add_param_constants();
-        self.set_prefix(&[self.state.as_ref()[0].pow(POSEIDON_POWER as u128)]);
-        self.set_state(self.params.mds.mul(self.state.as_ref().try_into().unwrap()));
+        self.set_state_prefix(&[self.state.as_ref()[0].pow(POSEIDON_POWER as u128)]);
+        self.set_state_prefix(
+            self.params
+                .mds
+                .mul(self.state.as_ref().try_into().unwrap())
+                .as_slice(),
+        );
     }
 
     fn hades_full_round(&mut self) {
         self.add_param_constants();
-        self.set_state(
+        self.set_state_prefix(
             self.state
                 .as_ref()
                 .iter()
                 .map(|x| x.pow(POSEIDON_POWER as u128))
                 .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
+                .as_slice(),
         );
-        self.set_state(self.params.mds.mul(self.state.as_ref().try_into().unwrap()));
+        self.set_state_prefix(
+            self.params
+                .mds
+                .mul(self.state.as_ref().try_into().unwrap())
+                .as_slice(),
+        );
     }
 
     pub fn hades_permutation(&mut self) {
@@ -274,11 +278,10 @@ mod tests {
 
     #[test]
     fn poseidon_hasher_set_state_test() {
-        let mut hasher = PoseidonHasher::new();
         let values = (0..24).map(|x| m31!(x)).collect::<Vec<BaseField>>();
+        let mut hasher = PoseidonHasher::from_state(PoseidonHash::from(values));
 
-        hasher.set_state(values.try_into().unwrap());
-        hasher.set_prefix(&[m31!(100)]);
+        hasher.set_state_prefix(&[m31!(100)]);
 
         for (i, x) in hasher.state.into_iter().enumerate() {
             if i == 0 {
