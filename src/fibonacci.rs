@@ -24,10 +24,10 @@ const N_QUERIES: usize = 3;
 pub struct Fibonacci {
     pub trace_domain: CanonicCoset,
     pub trace_eval_domain: CircleDomain,
-    pub trace_commitment_domain: CanonicCoset,
+    pub trace_commitment_domain: CircleDomain,
     pub constraint_zero_domain: Coset,
     pub composition_polynomial_eval_domain: CircleDomain,
-    pub composition_polynomial_commitment_domain: CanonicCoset,
+    pub composition_polynomial_commitment_domain: CircleDomain,
     pub claim: BaseField,
 }
 
@@ -52,12 +52,13 @@ impl Fibonacci {
     pub fn new(log_size: u32, claim: BaseField) -> Self {
         let trace_domain = CanonicCoset::new(log_size);
         let trace_eval_domain = trace_domain.evaluation_domain(log_size + 1);
-        let trace_commitment_domain = CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR);
+        let trace_commitment_domain =
+            CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR).circle_domain();
         let constraint_zero_domain = Coset::subgroup(log_size);
         let composition_polynomial_eval_domain =
             CircleDomain::constraint_evaluation_domain(log_size + 1);
         let composition_polynomial_commitment_domain =
-            CanonicCoset::new(log_size + 1 + LOG_BLOWUP_FACTOR);
+            CanonicCoset::new(log_size + 1 + LOG_BLOWUP_FACTOR).circle_domain();
         Self {
             trace_domain,
             trace_eval_domain,
@@ -180,8 +181,7 @@ impl Fibonacci {
         let trace = self.get_trace();
         let trace_poly = trace.interpolate();
         let trace_evaluation = trace_poly.evaluate(self.trace_eval_domain);
-        let trace_commitment_evaluation =
-            trace_poly.evaluate(self.trace_commitment_domain.circle_domain());
+        let trace_commitment_evaluation = trace_poly.evaluate(self.trace_commitment_domain);
         let trace_commitment = PolynomialCommitmentScheme::<BaseField, MerkleHasher>::commit(vec![
             &trace_commitment_evaluation,
         ]);
@@ -191,10 +191,8 @@ impl Fibonacci {
         let composition_polynomial =
             self.compute_composition_polynomial(random_coeff, &trace_evaluation);
         let composition_polynomial_poly = composition_polynomial.interpolate();
-        let composition_polynomial_commitment_evaluation = composition_polynomial_poly.evaluate(
-            self.composition_polynomial_commitment_domain
-                .circle_domain(),
-        );
+        let composition_polynomial_commitment_evaluation =
+            composition_polynomial_poly.evaluate(self.composition_polynomial_commitment_domain);
         let composition_polynomial_commitment =
             PolynomialCommitmentScheme::<QM31, MerkleHasher>::commit(vec![
                 &composition_polynomial_commitment_evaluation,
@@ -226,7 +224,7 @@ impl Fibonacci {
 
         let composition_polynomial_queries = Queries::generate(
             channel,
-            self.composition_polynomial_commitment_domain.log_size,
+            self.composition_polynomial_commitment_domain.log_size(),
             N_QUERIES,
         );
         let composition_polynomial_queried_values = composition_polynomial_queries
@@ -234,8 +232,8 @@ impl Fibonacci {
             .map(|q| composition_polynomial_commitment_evaluation.values[*q])
             .collect();
         let trace_queries = composition_polynomial_queries.iter_folded(
-            self.composition_polynomial_commitment_domain.log_size
-                - self.trace_commitment_domain.log_size,
+            self.composition_polynomial_commitment_domain.log_size()
+                - self.trace_commitment_domain.log_size(),
         );
         let trace_queried_values = trace_queries
             .clone()
