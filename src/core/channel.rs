@@ -1,11 +1,10 @@
 use super::fields::m31::{BaseField, N_BYTES_FELT, P};
-use super::fields::qm31::QM31;
+use super::fields::qm31::{QM31, QM31_EXTENSION_DEGREE};
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
 
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
-pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 
 #[derive(Default)]
 pub struct ChannelTime {
@@ -27,19 +26,21 @@ impl ChannelTime {
 pub trait Channel {
     type ChannelHasher: Hasher;
     const BYTES_PER_HASH: usize;
+    const FELTS_PER_HASH: usize;
 
     fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self;
     fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash);
-    fn _draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
+    fn _draw_random_felts(&mut self) -> Vec<BaseField>;
     // Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
     /// Generates a uniform random vector of QM31 elements.
-    fn draw_random_extension_felts(&mut self) -> [QM31; EXTENSION_FELTS_PER_HASH] {
-        let felts: [BaseField; FELTS_PER_HASH] = self._draw_random_felts();
-        [
-            QM31::from_m31_array(felts[..4].try_into().unwrap()),
-            QM31::from_m31_array(felts[4..].try_into().unwrap()),
-        ]
+    fn draw_random_extension_felts(&mut self) -> Vec<QM31> {
+        let felts = self._draw_random_felts();
+        let mut res = vec![];
+        for chunk in felts.chunks_exact(QM31_EXTENSION_DEGREE) {
+            res.push(QM31::from_m31_array(chunk.try_into().unwrap()));
+        }
+        res
     }
 
     fn n_bytes_per_hash(&self) -> usize {
@@ -56,6 +57,7 @@ pub struct Blake2sChannel {
 impl Channel for Blake2sChannel {
     type ChannelHasher = Blake2sHasher;
     const BYTES_PER_HASH: usize = BLAKE_BYTES_PER_HASH;
+    const FELTS_PER_HASH: usize = FELTS_PER_HASH;
 
     fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self {
         Blake2sChannel {
@@ -70,7 +72,7 @@ impl Channel for Blake2sChannel {
     }
 
     /// Generates a uniform random vector of BaseField elements.
-    fn _draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
+    fn _draw_random_felts(&mut self) -> Vec<BaseField> {
         // Repeats hashing with an increasing counter until getting a good result.
         // Retry probability for each round is ~ 2^(-28).
         loop {
@@ -87,9 +89,7 @@ impl Channel for Blake2sChannel {
                 return random_bytes
                     .into_iter()
                     .map(|x| BaseField::reduce(x as u64))
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap();
+                    .collect::<Vec<_>>();
             }
         }
     }
