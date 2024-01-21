@@ -230,7 +230,7 @@ impl Fibonacci {
         );
         let composition_polynomial_queried_values = composition_polynomial_queries
             .iter()
-            .map(|q| composition_polynomial_commitment_evaluation.values[*q])
+            .map(|q| composition_polynomial_commitment_evaluation.values[q])
             .collect();
         let trace_queries = composition_polynomial_queries.iter_folded(
             self.composition_polynomial_commitment_domain.log_size
