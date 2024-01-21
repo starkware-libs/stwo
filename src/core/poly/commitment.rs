@@ -63,6 +63,17 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> PolynomialDecommitment<F, H> {
     }
 }
 
+pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
+    pub decommitment: PolynomialDecommitment<F, H>,
+    pub commitment: H::Hash,
+}
+
+impl<F: ExtensionOf<BaseField> + IntoSlice<H::NativeType>, H: Hasher> CommitmentProof<F, H> {
+    pub fn verify(&self, queries: &Queries) -> bool {
+        self.decommitment.verify(self.commitment, queries)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::PolynomialCommitmentScheme;
@@ -87,16 +98,5 @@ mod tests {
         let decommitment = commitment_scheme.decommit(&queries);
 
         assert!(decommitment.verify(commitment_scheme.root(), &queries));
-    }
-}
-
-pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub decommitment: PolynomialDecommitment<F, H>,
-    pub commitment: H::Hash,
-}
-
-impl<F: ExtensionOf<BaseField> + IntoSlice<H::NativeType>, H: Hasher> CommitmentProof<F, H> {
-    pub fn verify(&self, queries: &Queries) -> bool {
-        self.decommitment.verify(self.commitment, queries)
     }
 }
