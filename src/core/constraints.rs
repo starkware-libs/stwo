@@ -45,6 +45,25 @@ pub fn point_excluder<F: ExtensionOf<BaseField>>(
     (p - excluded.into_ef()).x - BaseField::one()
 }
 
+// A vanishing polynomial on 2 circle points.
+pub fn pair_excluder<F: ExtensionOf<BaseField>>(
+    excluded0: CirclePoint<F>,
+    excluded1: CirclePoint<F>,
+    p: CirclePoint<F>,
+) -> F {
+    // The algorithm check computes the area of the triangle formed by the
+    // 3 points. This is done using the determinant of:
+    // | p.x  p.y  1 |
+    // | e0.x e0.y 1 |
+    // | e1.x e1.y 1 |
+    // This is a polynomial of degree 1 in p.x and p.y, and thus it is a line.
+    // It vanishes at e0 and e1.
+    p.x * excluded0.y + excluded0.x * excluded1.y + excluded1.x * p.y
+        - p.x * excluded1.y
+        - excluded0.x * p.y
+        - excluded1.x * excluded0.y
+}
+
 /// Evaluates a vanishing polynomial of the vanish_point at a point.
 /// Note that this function has a pole on the antipode of the vanish_point.
 pub fn point_vanishing<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
