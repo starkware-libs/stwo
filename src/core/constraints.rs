@@ -45,6 +45,25 @@ pub fn point_excluder<F: ExtensionOf<BaseField>>(
     (p - excluded.into_ef()).x - BaseField::one()
 }
 
+// A vanishing polynomial on 2 circle points.
+pub fn pair_excluder<F: ExtensionOf<BaseField>>(
+    excluded0: CirclePoint<F>,
+    excluded1: CirclePoint<F>,
+    p: CirclePoint<F>,
+) -> F {
+    // The algorithm check computes the area of the triangle formed by the
+    // 3 points. This is done using the determinant of:
+    // | p.x  p.y  1 |
+    // | e0.x e0.y 1 |
+    // | e1.x e1.y 1 |
+    // This is a polynomial of degree 1 in p.x and p.y, and thus it is a line.
+    // It vanishes at e0 and e1.
+    p.x * excluded0.y + excluded0.x * excluded1.y + excluded1.x * p.y
+        - p.x * excluded1.y
+        - excluded0.x * p.y
+        - excluded1.x * excluded0.y
+}
+
 /// Evaluates a vanishing polynomial of the vanish_point at a point.
 /// Note that this function has a pole on the antipode of the vanish_point.
 pub fn point_vanishing<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
@@ -140,7 +159,8 @@ mod tests {
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
     use crate::core::circle::{CirclePointIndex, Coset};
-    use crate::core::fields::m31::BaseField;
+    use crate::core::constraints::pair_excluder;
+    use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::Field;
 
     #[test]
@@ -173,6 +193,17 @@ mod tests {
         let denom = (point.x - excluded.x).pow(2);
 
         assert_eq!(num, denom);
+    }
+
+    #[test]
+    fn test_pair_excluder() {
+        let excluded0 = Coset::half_odds(5).at(10);
+        let excluded1 = Coset::half_odds(5).at(13);
+        let point = (CirclePointIndex::generator() * 4).to_point();
+
+        assert_ne!(pair_excluder(excluded0, excluded1, point), M31::zero());
+        assert_eq!(pair_excluder(excluded0, excluded1, excluded0), M31::zero());
+        assert_eq!(pair_excluder(excluded0, excluded1, excluded1), M31::zero());
     }
 
     #[test]
