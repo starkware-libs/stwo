@@ -207,9 +207,8 @@ impl Fibonacci {
         let composition_polynomial_oods_value =
             composition_polynomial_poly.eval_at_point(oods_point);
 
-        // A quotient for each mask item and for the composition_polynomial, in the OODS point and
-        // its conjugate.
-        let mut oods_quotients = Vec::with_capacity((mask.len() + 1) * 2);
+        // A quotient for each mask item and one for the composition_polynomial.
+        let mut oods_quotients = Vec::with_capacity(mask.len() + 1);
         for (point, value) in trace_oods_evaluation.iter() {
             oods_quotients.push(get_oods_quotient(
                 *point,

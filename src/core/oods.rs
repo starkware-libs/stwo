@@ -26,7 +26,7 @@ pub fn get_oods_quotient<F: ExtensionOf<BaseField>, EF: ExtensionOf<BaseField> +
     oods_point: CirclePoint<EF>,
     oods_value: EF,
     eval: &CircleEvaluation<F>,
-) -> Vec<EF> {
+) -> CircleEvaluation<EF> {
     let mut values = Vec::with_capacity(eval.domain.size());
     for p_ind in eval.domain.iter_indices() {
         values.push(eval_oods_quotient_point(
@@ -35,7 +35,10 @@ pub fn get_oods_quotient<F: ExtensionOf<BaseField>, EF: ExtensionOf<BaseField> +
             EvalByEvaluation::new(p_ind, eval),
         ));
     }
-    values
+    CircleEvaluation {
+        domain: eval.domain,
+        values,
+    }
 }
 
 /// Returns the mask values for the OODS point.
