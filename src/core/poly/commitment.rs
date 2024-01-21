@@ -88,7 +88,7 @@ mod tests {
     fn test_polynomial_commitment_scheme() {
         let log_size = 7;
         let size = 1 << log_size;
-        let domain = CanonicCoset::new(7).circle_domain();
+        let domain = CanonicCoset::new(log_size).circle_domain();
         let values = (0..size).map(|x| m31!(x)).collect();
         let polynomial = CircleEvaluation::new(domain, values);
         let queries = Queries(generate_test_queries((size / 2) as usize, size as usize));
