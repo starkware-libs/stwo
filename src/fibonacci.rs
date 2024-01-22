@@ -231,18 +231,18 @@ impl Fibonacci {
             .iter()
             .map(|q| composition_polynomial_commitment_evaluation.values[*q])
             .collect();
-        let trace_queries = composition_polynomial_queries.iter_folded(
+        let trace_queries = composition_polynomial_queries.fold(
             self.composition_polynomial_commitment_domain.log_size
                 - self.trace_commitment_domain.log_size,
         );
         let trace_queried_values = trace_queries
-            .clone()
-            .map(|q| trace_commitment_evaluation.values[q])
+            .iter()
+            .map(|q| trace_commitment_evaluation.values[*q])
             .collect();
         let composition_polynomial_decommitment =
             composition_polynomial_commitment.decommit(&composition_polynomial_queries);
         // TODO(AlonH): Use iterators instead of collecting.
-        let trace_decommitment = trace_commitment.decommit(&Queries(trace_queries.collect()));
+        let trace_decommitment = trace_commitment.decommit(&trace_queries);
 
         // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
