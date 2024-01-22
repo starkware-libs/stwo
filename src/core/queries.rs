@@ -1,11 +1,14 @@
 use std::collections::BTreeSet;
 use std::ops::Deref;
 
+use itertools::Itertools;
+
 use super::channel::Channel;
+use super::poly::commitment::DecommitmentPositions;
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
-/// A set of query indices over a `CircleDomain`.
+/// An ordered set of query indices over a bit reversed `CircleDomain`.
 pub struct Queries(pub Vec<usize>);
 
 impl Queries {
@@ -30,13 +33,20 @@ impl Queries {
 
     /// Calculates the matching query indices in a folded domain (i.e each domain point is doubled)
     /// given `self` (the queries of the original domain) and the number of folds between domains.
-    pub fn iter_folded(&self, n_folds: u32) -> impl Iterator<Item = usize> + Clone + '_ {
-        self.iter().map(move |q| q >> n_folds) // move is needed to move n_folds into the closure.
+    pub fn fold(&self, n_folds: u32) -> Self {
+        Self(self.iter().map(|q| q >> n_folds).dedup().collect())
     }
 
-    /// Calculates the conjugate query indices.
-    pub fn iter_conjugate(&self) -> impl Iterator<Item = usize> + Clone + '_ {
-        self.iter().map(move |q| q ^ 1)
+    /// Calculates the decommitment position needed for each query given the (log) folding factor.
+    pub fn to_decommitment_positions(&self, log_folding_factor: u32) -> DecommitmentPositions {
+        DecommitmentPositions(
+            self.iter()
+                .map(|q| q >> log_folding_factor)
+                .map(|q| (q << log_folding_factor..(q + 1) << log_folding_factor))
+                .dedup()
+                .flatten()
+                .collect(),
+        )
     }
 }
 
@@ -51,7 +61,6 @@ impl Deref for Queries {
 #[cfg(test)]
 mod tests {
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
-    use crate::commitment_scheme::utils::tests::generate_test_queries;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::queries::Queries;
@@ -84,36 +93,40 @@ mod tests {
         let folded_values = bit_reverse_vec(&folded_values, log_folded_domain_size);
 
         // Generate all possible queries.
-        let queries = Queries(generate_test_queries(
-            1 << log_domain_size,
-            1 << log_domain_size,
-        ));
+        let queries = Queries((0..1 << log_domain_size).collect());
         let n_folds = log_domain_size - log_folded_domain_size;
+        let ratio = 1 << n_folds;
 
-        for (query, folded_query) in queries.iter().zip(queries.iter_folded(n_folds)) {
+        let folded_queries = queries.fold(n_folds);
+        let repeated_folded_queries = folded_queries
+            .iter()
+            .flat_map(|q| std::iter::repeat(q).take(ratio));
+        for (query, folded_query) in queries.iter().zip(repeated_folded_queries) {
             // Check only the x coordinate since folding might give you the conjugate point.
             assert_eq!(
                 values[*query].repeated_double(n_folds).x,
-                folded_values[folded_query].x
+                folded_values[*folded_query].x
             );
         }
     }
 
     #[test]
     pub fn test_conjugate_queries() {
+        let channel = &mut Blake2sChannel::new(Blake2sHash::default());
         let log_domain_size = 7;
         let domain = CanonicCoset::new(log_domain_size).circle_domain();
         let values = domain.iter().collect();
         let values = bit_reverse_vec(&values, log_domain_size);
 
-        // Generate all possible queries.
-        let queries = Queries(generate_test_queries(
-            1 << log_domain_size,
-            1 << log_domain_size,
-        ));
-
-        for (query, conjugate_query) in queries.iter().zip(queries.iter_conjugate()) {
-            assert_eq!(values[*query], values[conjugate_query].conjugate());
+        // Test random queries one by one because the conjugate queries are sorted.
+        for _ in 0..100 {
+            let query = Queries::generate(channel, log_domain_size, 1);
+            let conjugate_query = query.0[0] ^ 1;
+            let query_and_conjugate = query.to_decommitment_positions(1);
+            let mut expected_query_and_conjugate = vec![query.0[0], conjugate_query];
+            expected_query_and_conjugate.sort();
+            assert_eq!(query_and_conjugate.0, expected_query_and_conjugate);
+            assert_eq!(values[query.0[0]], values[conjugate_query].conjugate());
         }
     }
 }

@@ -7,7 +7,6 @@ use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::commitment_scheme::utils::ColumnArray;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, IntoSlice};
-use crate::core::queries::Queries;
 use crate::core::utils::bit_reverse_vec;
 
 /// Polynomial commitment interface. Used to internalize commitment logic (e.g. reordering of
@@ -29,13 +28,13 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> PolynomialCommitmentScheme<F, H> {
         Self { merkle_tree }
     }
 
-    pub fn decommit(&self, queries: &Queries) -> PolynomialDecommitment<F, H>
+    pub fn decommit(&self, positions: &DecommitmentPositions) -> PolynomialDecommitment<F, H>
     where
         F: IntoSlice<H::NativeType>,
     {
         let merkle_decommitment = self
             .merkle_tree
-            .generate_decommitment(queries.deref().clone());
+            .generate_decommitment(positions.deref().clone());
         PolynomialDecommitment {
             merkle_decommitment,
         }
@@ -50,16 +49,27 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> Deref for PolynomialCommitmentScheme<
     }
 }
 
+/// An ordered set of decommitment positions over a bit reversed `CircleDomain`.
+pub struct DecommitmentPositions(pub Vec<usize>);
+
+impl Deref for DecommitmentPositions {
+    type Target = Vec<usize>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 pub struct PolynomialDecommitment<F: ExtensionOf<BaseField>, H: Hasher> {
     merkle_decommitment: MerkleDecommitment<F, H>,
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> PolynomialDecommitment<F, H> {
-    pub fn verify(&self, root: H::Hash, queries: &Queries) -> bool
+    pub fn verify(&self, root: H::Hash, positions: &DecommitmentPositions) -> bool
     where
         F: IntoSlice<H::NativeType>,
     {
-        self.merkle_decommitment.verify(root, queries)
+        self.merkle_decommitment.verify(root, positions)
     }
 }
 
@@ -69,16 +79,17 @@ pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
 }
 
 impl<F: ExtensionOf<BaseField> + IntoSlice<H::NativeType>, H: Hasher> CommitmentProof<F, H> {
-    pub fn verify(&self, queries: &Queries) -> bool {
-        self.decommitment.verify(self.commitment, queries)
+    pub fn verify(&self, positions: &DecommitmentPositions) -> bool {
+        self.decommitment.verify(self.commitment, positions)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::PolynomialCommitmentScheme;
-    use crate::commitment_scheme::blake2_hash::Blake2sHasher;
+    use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
     use crate::commitment_scheme::utils::tests::generate_test_queries;
+    use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::M31;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
     use crate::core::queries::Queries;
@@ -92,11 +103,40 @@ mod tests {
         let values = (0..size).map(|x| m31!(x)).collect();
         let polynomial = CircleEvaluation::new(domain, values);
         let queries = Queries(generate_test_queries((size / 2) as usize, size as usize));
+        let positions = queries.to_decommitment_positions(1);
 
         let commitment_scheme =
             PolynomialCommitmentScheme::<M31, Blake2sHasher>::commit(vec![&polynomial]);
-        let decommitment = commitment_scheme.decommit(&queries);
+        let decommitment = commitment_scheme.decommit(&positions);
 
-        assert!(decommitment.verify(commitment_scheme.root(), &queries));
+        assert!(decommitment.verify(commitment_scheme.root(), &positions));
+    }
+
+    #[test]
+    pub fn test_decommitment_positions() {
+        let channel = &mut Blake2sChannel::new(Blake2sHash::default());
+        let log_domain_size = 31;
+        let n_queries = 100;
+        let log_folding_factor = 3;
+
+        let queries = Queries::generate(channel, log_domain_size, n_queries);
+        let queries_with_added_positions = queries.to_decommitment_positions(log_folding_factor);
+
+        assert!(queries_with_added_positions.is_sorted());
+        assert_eq!(
+            queries_with_added_positions.len(),
+            n_queries * (1 << log_folding_factor)
+        );
+    }
+
+    #[test]
+    pub fn test_dedup_decommitment_positions() {
+        let log_domain_size = 7;
+
+        // Generate all possible queries.
+        let queries = Queries((0..1 << log_domain_size).collect());
+        let queries_with_conjugates = queries.to_decommitment_positions(log_domain_size - 2);
+
+        assert_eq!(queries.0, queries_with_conjugates.0);
     }
 }
