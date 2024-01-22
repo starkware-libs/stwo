@@ -105,7 +105,7 @@ where
         QueriedValuesIterator {
             query_iterator: self.queries.iter(),
             leaf_block_iterator: self.leaf_blocks.iter().peekable(),
-            current_leaf_block_index: 0,
+            current_leaf_block_index: self.queries[0] / self.n_rows_in_leaf_block,
             n_elements_in_row: self.leaf_blocks[0].len() / self.n_rows_in_leaf_block,
             n_rows_in_leaf_block: self.n_rows_in_leaf_block,
         }
@@ -219,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn get_values_at_test() {
+    fn values_test() {
         let trace_column_length = 1 << 6;
         let trace_column = (0..trace_column_length)
             .map(M31::from_u32_unchecked)
@@ -227,12 +227,18 @@ mod tests {
         let reversed_trace_column = trace_column.iter().rev().cloned().collect::<Vec<M31>>();
         let trace: ColumnArray<M31> = vec![trace_column, reversed_trace_column];
         let tree = MerkleTree::<M31, Blake3Hasher>::commit(trace.clone());
-        let queries = generate_test_queries(30, trace_column_length as usize);
-        let decommitment = tree.generate_decommitment(queries.clone());
-        let values = decommitment.values();
-        assert!(queries
+        let random_queries = generate_test_queries(10, 1 << 6);
+        let test_skip_queries = vec![17, 50];
+        let random_query_decommitment = tree.generate_decommitment(random_queries.clone());
+        let test_skip_decommitment = tree.generate_decommitment(test_skip_queries.clone());
+
+        assert!(random_queries
             .iter()
-            .zip(values)
+            .zip(random_query_decommitment.values())
+            .all(|(q, v)| v == vec![trace[0][*q], trace[1][*q]]));
+        assert!(test_skip_queries
+            .iter()
+            .zip(test_skip_decommitment.values())
             .all(|(q, v)| v == vec![trace[0][*q], trace[1][*q]]));
     }
 }
