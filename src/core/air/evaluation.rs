@@ -1,0 +1,2 @@
+pub struct PointEvaluationAccumulator;
+pub struct DomainEvaluationAccumulator;
