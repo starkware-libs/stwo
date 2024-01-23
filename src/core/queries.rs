@@ -11,9 +11,11 @@ use super::utils::bit_reverse_index;
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
-// TODO(AlonH): Add log size field to the struct.
 /// An ordered set of query indices over a bit reversed [CircleDomain].
-pub struct Queries(pub Vec<usize>);
+pub struct Queries {
+    pub positions: Vec<usize>,
+    pub log_domain_size: u32,
+}
 
 /// A set of [CircleDomain]s over which to evaluate the polynomial for each respective query in
 /// [Queries].
@@ -21,10 +23,10 @@ pub struct QueryEvaluationDomains(Vec<CircleDomain>);
 
 impl Queries {
     /// Randomizes a set of query indices uniformly over the range [0, 2^`log_query_size`).
-    pub fn generate(channel: &mut impl Channel, log_query_size: u32, n_queries: usize) -> Self {
+    pub fn generate(channel: &mut impl Channel, log_domain_size: u32, n_queries: usize) -> Self {
         let mut queries = BTreeSet::new();
         let mut query_cnt = 0;
-        let max_query = (1 << log_query_size) - 1;
+        let max_query = (1 << log_domain_size) - 1;
         loop {
             let random_bytes = channel.draw_random_bytes();
             for chunk in random_bytes.chunks_exact(UPPER_BOUND_QUERY_BYTES) {
@@ -33,7 +35,10 @@ impl Queries {
                 queries.insert(quotient_query as usize);
                 query_cnt += 1;
                 if query_cnt == n_queries {
-                    return Self(queries.into_iter().collect());
+                    return Self {
+                        positions: queries.into_iter().collect(),
+                        log_domain_size,
+                    };
                 }
             }
         }
@@ -42,7 +47,11 @@ impl Queries {
     /// Calculates the matching query indices in a folded domain (i.e each domain point is doubled)
     /// given `self` (the queries of the original domain) and the number of folds between domains.
     pub fn fold(&self, n_folds: u32) -> Self {
-        Self(self.iter().map(|q| q >> n_folds).dedup().collect())
+        assert!(n_folds <= self.log_domain_size);
+        Self {
+            positions: self.iter().map(|q| q >> n_folds).dedup().collect(),
+            log_domain_size: self.log_domain_size - n_folds,
+        }
     }
 
     /// Calculates the decommitment position needed for each query given the (log) folding factor.
@@ -58,18 +67,14 @@ impl Queries {
     }
 
     /// Calculates the evaluation domains needed for each query given the (log) folding factor.
-    pub fn to_evaluation_domains(
-        &self,
-        log_query_size: u32,
-        log_folding_factor: u32,
-    ) -> QueryEvaluationDomains {
-        assert!(log_folding_factor > 0);
+    pub fn to_evaluation_domains(&self, log_query_size: u32) -> QueryEvaluationDomains {
+        assert!(self.log_domain_size > 0);
         let query_domain = CanonicCoset::new(log_query_size);
         let mut query_evaluation_domains = Vec::with_capacity(self.len());
         for bit_reversed_query in self.iter() {
             let query = bit_reverse_index(*bit_reversed_query as u32, log_query_size);
             let initial_index = query_domain.index_at(query as usize);
-            let half_coset = Coset::new(initial_index, log_folding_factor - 1);
+            let half_coset = Coset::new(initial_index, self.log_domain_size - 1);
             query_evaluation_domains.push(CircleDomain::new(half_coset));
         }
         QueryEvaluationDomains(query_evaluation_domains)
@@ -80,7 +85,7 @@ impl Deref for Queries {
     type Target = Vec<usize>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.positions
     }
 }
 
@@ -119,7 +124,10 @@ mod tests {
         let folded_values = bit_reverse_vec(&folded_values, log_folded_domain_size);
 
         // Generate all possible queries.
-        let queries = Queries((0..1 << log_domain_size).collect());
+        let queries = Queries {
+            positions: (0..1 << log_domain_size).collect(),
+            log_domain_size,
+        };
         let n_folds = log_domain_size - log_folded_domain_size;
         let ratio = 1 << n_folds;
 
@@ -147,12 +155,12 @@ mod tests {
         // Test random queries one by one because the conjugate queries are sorted.
         for _ in 0..100 {
             let query = Queries::generate(channel, log_domain_size, 1);
-            let conjugate_query = query.0[0] ^ 1;
+            let conjugate_query = query[0] ^ 1;
             let query_and_conjugate = query.to_decommitment_positions(1);
-            let mut expected_query_and_conjugate = vec![query.0[0], conjugate_query];
+            let mut expected_query_and_conjugate = vec![query[0], conjugate_query];
             expected_query_and_conjugate.sort();
             assert_eq!(query_and_conjugate.0, expected_query_and_conjugate);
-            assert_eq!(values[query.0[0]], values[conjugate_query].conjugate());
+            assert_eq!(values[query[0]], values[conjugate_query].conjugate());
         }
     }
 }
