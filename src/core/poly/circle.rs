@@ -184,10 +184,6 @@ impl CanonicCoset {
     }
 }
 
-pub trait Evaluation<F: ExtensionOf<BaseField>>: Clone {
-    fn get_at(&self, point_index: CirclePointIndex) -> F;
-}
-
 /// An evaluation defined on a [CircleDomain].
 /// The values are ordered according to the [CircleDomain] ordering.
 #[derive(Clone, Debug)]
@@ -251,10 +247,8 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
 
         CirclePoly::new(values)
     }
-}
 
-impl<F: ExtensionOf<BaseField>> Evaluation<F> for CircleEvaluation<F> {
-    fn get_at(&self, point_index: CirclePointIndex) -> F {
+    pub fn get_at(&self, point_index: CirclePointIndex) -> F {
         self.values[self.domain.find(point_index).expect("Not in domain")]
     }
 }
