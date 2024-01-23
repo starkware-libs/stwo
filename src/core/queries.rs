@@ -4,13 +4,17 @@ use std::ops::Deref;
 use itertools::Itertools;
 
 use super::channel::Channel;
+use super::circle::Coset;
+use super::poly::circle::{CanonicCoset, CircleDomain};
 use super::poly::commitment::DecommitmentPositions;
+use super::utils::bit_reverse_index;
 
 // TODO(AlonH): Move file to fri directory.
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
-/// An ordered set of query indices over a bit reversed `CircleDomain`.
+// TODO(AlonH): Add log size field to the struct.
+/// An ordered set of query indices over a bit reversed [CircleDomain].
 pub struct Queries(pub Vec<usize>);
 
 impl Queries {
@@ -39,7 +43,8 @@ impl Queries {
         Self(self.iter().map(|q| q >> n_folds).dedup().collect())
     }
 
-    pub fn to_sub_circle_domain(&self, fri_step_size: u32) -> SparseSubCircleDomain {
+    pub fn to_sparse_sub_circle_domain(&self, fri_step_size: u32) -> SparseSubCircleDomain {
+        assert!(fri_step_size > 0);
         SparseSubCircleDomain(
             self.iter()
                 .map(|q| SubCircleDomain {
@@ -89,11 +94,22 @@ pub struct SubCircleDomain {
 }
 
 impl SubCircleDomain {
-    /// Calculates the decommitment position needed for each query given the fri step size.
+    /// Calculates the decommitment positions needed for each query given the fri step size.
     pub fn to_decommitment_positions(&self) -> DecommitmentPositions {
         DecommitmentPositions(
             (self.coset_index << self.log_size..(self.coset_index + 1) << self.log_size).collect(),
         )
+    }
+
+    /// Returns the represented [CircleDomain].
+    pub fn to_circle_domain(&self, query_domain: &CanonicCoset) -> CircleDomain {
+        let query = bit_reverse_index(
+            (self.coset_index << self.log_size) as u32,
+            query_domain.log_size(),
+        );
+        let initial_index = query_domain.index_at(query as usize);
+        let half_coset = Coset::new(initial_index, self.log_size - 1);
+        CircleDomain::new(half_coset)
     }
 }
 
@@ -161,7 +177,9 @@ mod tests {
         for _ in 0..100 {
             let query = Queries::generate(channel, log_domain_size, 1);
             let conjugate_query = query.0[0] ^ 1;
-            let query_and_conjugate = query.to_sub_circle_domain(1).to_decommitment_positions();
+            let query_and_conjugate = query
+                .to_sparse_sub_circle_domain(1)
+                .to_decommitment_positions();
             let mut expected_query_and_conjugate = vec![query.0[0], conjugate_query];
             expected_query_and_conjugate.sort();
             assert_eq!(query_and_conjugate.0, expected_query_and_conjugate);
