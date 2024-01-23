@@ -103,7 +103,7 @@ mod tests {
         let values = (0..size).map(|x| m31!(x)).collect();
         let polynomial = CircleEvaluation::new(domain, values);
         let queries = Queries(generate_test_queries((size / 2) as usize, size as usize));
-        let positions = queries.to_sub_circle_domain(1).to_decommitment_positions();
+        let positions = queries.to_sub_circle_domains(1).to_decommitment_positions();
 
         let commitment_scheme =
             PolynomialCommitmentScheme::<M31, Blake2sHasher>::commit(vec![&polynomial]);
@@ -121,7 +121,7 @@ mod tests {
 
         let queries = Queries::generate(channel, log_domain_size, n_queries);
         let queries_with_added_positions = queries
-            .to_sub_circle_domain(fri_step_size)
+            .to_sub_circle_domains(fri_step_size)
             .to_decommitment_positions();
 
         assert!(queries_with_added_positions.is_sorted());
@@ -138,7 +138,7 @@ mod tests {
         // Generate all possible queries.
         let queries = Queries((0..1 << log_domain_size).collect());
         let queries_with_conjugates = queries
-            .to_sub_circle_domain(log_domain_size - 2)
+            .to_sub_circle_domains(log_domain_size - 2)
             .to_decommitment_positions();
 
         assert_eq!(queries.0, queries_with_conjugates.0);

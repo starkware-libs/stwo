@@ -243,12 +243,12 @@ impl Fibonacci {
         const FRI_STEP_SIZE: u32 = 1;
         let composition_polynomial_decommitment = composition_polynomial_commitment.decommit(
             &composition_polynomial_queries
-                .to_sub_circle_domain(FRI_STEP_SIZE)
+                .to_sub_circle_domains(FRI_STEP_SIZE)
                 .to_decommitment_positions(),
         );
         let trace_decommitment = trace_commitment.decommit(
             &trace_queries
-                .to_sub_circle_domain(FRI_STEP_SIZE)
+                .to_sub_circle_domains(FRI_STEP_SIZE)
                 .to_decommitment_positions(),
         );
 

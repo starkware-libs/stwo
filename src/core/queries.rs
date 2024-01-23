@@ -4,14 +4,21 @@ use std::ops::Deref;
 use itertools::Itertools;
 
 use super::channel::Channel;
+use super::circle::Coset;
+use super::poly::circle::{CanonicCoset, CircleDomain};
 use super::poly::commitment::DecommitmentPositions;
+use super::utils::bit_reverse_index;
 
 // TODO(AlonH): Move file to fri directory.
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
-/// An ordered set of query indices over a bit reversed `CircleDomain`.
+// TODO(AlonH): Add log size field to the struct.
+/// An ordered set of query indices over a bit reversed [CircleDomain].
 pub struct Queries(pub Vec<usize>);
+
+/// A set of [CircleDomain]s over which to evaluate the polynomial for all queries.
+pub struct EvaluationDomains(Vec<CircleDomain>);
 
 impl Queries {
     /// Randomizes a set of query indices uniformly over the range [0, 2^`log_query_size`).
@@ -39,7 +46,8 @@ impl Queries {
         Self(self.iter().map(|q| q >> n_folds).dedup().collect())
     }
 
-    pub fn to_sub_circle_domain(&self, fri_step_size: u32) -> SubCircleDomains {
+    pub fn to_sub_circle_domains(&self, fri_step_size: u32) -> SubCircleDomains {
+        assert!(fri_step_size > 0);
         SubCircleDomains(
             self.iter()
                 .map(|q| SubCircleDomain {
@@ -60,6 +68,14 @@ impl Deref for Queries {
     }
 }
 
+impl Deref for EvaluationDomains {
+    type Target = Vec<CircleDomain>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 pub struct SubCircleDomains(pub Vec<SubCircleDomain>);
 
 impl SubCircleDomains {
@@ -67,6 +83,15 @@ impl SubCircleDomains {
         DecommitmentPositions(
             self.iter()
                 .flat_map(|sub_circle_domain| sub_circle_domain.to_decommitment_positions().0)
+                .collect(),
+        )
+    }
+
+    pub fn to_evaluation_domains(&self, log_query_size: u32) -> EvaluationDomains {
+        let query_domain = CanonicCoset::new(log_query_size);
+        EvaluationDomains(
+            self.iter()
+                .map(|sub_circle_domain| sub_circle_domain.to_circle_domain(&query_domain))
                 .collect(),
         )
     }
@@ -89,11 +114,19 @@ pub struct SubCircleDomain {
 }
 
 impl SubCircleDomain {
-    /// Calculates the decommitment position needed for each query given the fri step size.
+    /// Calculates the decommitment positions needed for each query given the fri step size.
     pub fn to_decommitment_positions(&self) -> DecommitmentPositions {
         DecommitmentPositions(
             (self.initial_index..self.initial_index + (1 << self.log_size)).collect(),
         )
+    }
+
+    /// Returns the represented [CircleDomain].
+    pub fn to_circle_domain(&self, query_domain: &CanonicCoset) -> CircleDomain {
+        let query = bit_reverse_index(self.initial_index as u32, query_domain.log_size());
+        let initial_index = query_domain.index_at(query as usize);
+        let half_coset = Coset::new(initial_index, self.log_size - 1);
+        CircleDomain::new(half_coset)
     }
 }
 
@@ -161,11 +194,26 @@ mod tests {
         for _ in 0..100 {
             let query = Queries::generate(channel, log_domain_size, 1);
             let conjugate_query = query.0[0] ^ 1;
-            let query_and_conjugate = query.to_sub_circle_domain(1).to_decommitment_positions();
+            let query_and_conjugate = query.to_sub_circle_domains(1).to_decommitment_positions();
             let mut expected_query_and_conjugate = vec![query.0[0], conjugate_query];
             expected_query_and_conjugate.sort();
             assert_eq!(query_and_conjugate.0, expected_query_and_conjugate);
             assert_eq!(values[query.0[0]], values[conjugate_query].conjugate());
         }
+    }
+
+    #[test]
+    pub fn test_sub_circle_domain() {
+        let channel = &mut Blake2sChannel::new(Blake2sHash::default());
+        let log_domain_size = 30;
+        let n_queries = 100;
+        let fri_step_size = log_domain_size - 1;
+
+        let queries = Queries::generate(channel, log_domain_size, n_queries);
+        let evaluation_domains = queries
+            .to_sub_circle_domains(fri_step_size)
+            .to_evaluation_domains(log_domain_size);
+
+        assert_eq!(evaluation_domains.len(), 2)
     }
 }
