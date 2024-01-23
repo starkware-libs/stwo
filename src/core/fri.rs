@@ -19,8 +19,9 @@ use crate::core::poly::line::LineDomain;
 // TODO(andrew): support different folding factors
 #[derive(Debug, Clone, Copy)]
 pub struct FriConfig {
-    log_last_layer_degree_bound: u32,
     log_blowup_factor: u32,
+    log_last_layer_degree_bound: u32,
+    // TODO(andrew): Add pow_bits, num_queries, folding_factors.
 }
 
 impl FriConfig {
@@ -45,12 +46,12 @@ impl FriConfig {
         assert!(Self::LOG_LAST_LAYER_DEGREE_BOUND_RANGE.contains(&log_last_layer_degree_bound));
         assert!(Self::LOG_BLOWUP_FACTOR_RANGE.contains(&log_blowup_factor));
         Self {
-            log_last_layer_degree_bound,
             log_blowup_factor,
+            log_last_layer_degree_bound,
         }
     }
 
-    fn max_last_layer_domain_size(&self) -> usize {
+    fn last_layer_domain_size(&self) -> usize {
         1 << (self.log_last_layer_degree_bound + self.log_blowup_factor)
     }
 }
@@ -60,8 +61,8 @@ impl FriConfig {
 /// `Phase` is used to enforce the commitment phase is done before the query phase.
 pub struct FriProver<F: ExtensionOf<BaseField>, H: Hasher, Phase = CommitmentPhase> {
     config: FriConfig,
-    layers: Vec<FriLayer<F, H>>,
-    remainder: Option<LinePoly<F>>,
+    inner_layers: Vec<FriLayer<F, H>>,
+    last_layer_poly: Option<LinePoly<F>>,
     _phase: PhantomData<Phase>,
 }
 
@@ -70,8 +71,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     pub fn new(config: FriConfig) -> Self {
         Self {
             config,
-            layers: Vec::new(),
-            remainder: None,
+            inner_layers: Vec::new(),
+            last_layer_poly: None,
             _phase: PhantomData,
         }
     }
@@ -90,8 +91,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
         self.commit_last_layer(last_layer_evaluation);
         FriProver {
             config: self.config,
-            layers: self.layers,
-            remainder: self.remainder,
+            inner_layers: self.inner_layers,
+            last_layer_poly: self.last_layer_poly,
             _phase: PhantomData,
         }
     }
@@ -107,7 +108,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
     /// * An evaluation domain is smaller than or equal to the max last layer domain size.
     fn commit_inner_layers(&mut self, mut evals: Vec<LineEvaluation<F>>) -> LineEvaluation<F> {
         let mut evaluation = evals.pop().expect("require at least one evaluation");
-        while evaluation.len() > self.config.max_last_layer_domain_size() {
+        while evaluation.len() > self.config.last_layer_domain_size() {
             // Aggregate all evaluations that have the same domain size.
             while let Some(true) = evals.last().map(|e| e.len() == evaluation.len()) {
                 // TODO(andrew): draw random alpha from channel
@@ -124,37 +125,40 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, CommitmentPhase> {
             // TODO(andrew): draw random alpha from channel
             let alpha = F::one();
             evaluation = fold_line(&evaluation, alpha);
-            self.layers.push(layer)
+            self.inner_layers.push(layer)
         }
 
         assert!(evals.is_empty());
         evaluation
     }
 
-    /// Builds and commits to the FRI remainder polynomial's coefficients (the last FRI layer).
+    /// Builds and commits to the last layer.
+    ///
+    /// The layer is committed to by sending the verifier all the coefficients of the remaining
+    /// polynomial.
     ///
     /// # Panics
     ///
     /// Panics if:
-    /// * The domain size of the evaluation exceeds the max last layer domain size.
+    /// * The evaluation's domain size exceeds the maximum last layer domain size.
     /// * The evaluation is not of sufficiently low degree.
     fn commit_last_layer(&mut self, evaluation: LineEvaluation<F>) {
-        assert!(evaluation.len() <= self.config.max_last_layer_domain_size());
-        let num_remainder_coeffs = evaluation.len() >> self.config.log_blowup_factor;
+        assert_eq!(evaluation.len(), self.config.last_layer_domain_size());
+        let max_num_coeffs = evaluation.len() >> self.config.log_blowup_factor;
         let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2()));
         let mut coeffs = evaluation.interpolate(domain).into_ordered_coefficients();
-        let zeros = coeffs.split_off(num_remainder_coeffs);
+        let zeros = coeffs.split_off(max_num_coeffs);
         assert!(zeros.iter().all(F::is_zero), "invalid degree");
-        self.remainder = Some(LinePoly::from_ordered_coefficients(coeffs));
-        // TODO(andrew): seed channel with remainder
+        self.last_layer_poly = Some(LinePoly::from_ordered_coefficients(coeffs));
+        // TODO(andrew): seed channel with last_layer_poly
     }
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, QueryPhase> {
     pub fn into_proof(self, query_positions: &[usize]) -> FriProof<F, H> {
-        let remainder = self.remainder.unwrap();
-        let layer_proofs = self
-            .layers
+        let last_layer_poly = self.last_layer_poly.unwrap();
+        let inner_layers = self
+            .inner_layers
             .into_iter()
             .scan(query_positions.to_vec(), |positions, layer| {
                 let num_layer_cosets = layer.coset_evals[0].len();
@@ -163,8 +167,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H, QueryPhase> {
             })
             .collect();
         FriProof {
-            layer_proofs,
-            remainder,
+            inner_layers,
+            last_layer_poly,
         }
     }
 }
@@ -177,8 +181,8 @@ pub struct QueryPhase;
 
 /// A FRI proof.
 pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub layer_proofs: Vec<FriLayerProof<F, H>>,
-    pub remainder: LinePoly<F>,
+    pub inner_layers: Vec<FriLayerProof<F, H>>,
+    pub last_layer_poly: LinePoly<F>,
 }
 
 /// Folding factor for univariate polynomials.
