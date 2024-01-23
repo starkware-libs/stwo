@@ -50,7 +50,7 @@ impl M31AVX512 {
         }
     }
 
-    pub fn from_vec(v: &Vec<M31>) -> M31AVX512 {
+    pub fn from_slice(v: &[M31]) -> M31AVX512 {
         unsafe {
             Self(_mm512_cvtepu32_epi64(_mm256_loadu_si256(
                 v.as_ptr() as *const __m256i
@@ -169,7 +169,7 @@ mod tests {
         let values = [0, 1, 2, 10, (P - 1) / 2, (P + 1) / 2, P - 2, P - 1]
             .map(M31::from_u32_unchecked)
             .to_vec();
-        let avx_values = M31AVX512::from_vec(&values);
+        let avx_values = M31AVX512::from_slice(&values);
 
         assert_eq!(
             (avx_values + avx_values).to_vec(),
@@ -195,7 +195,7 @@ mod tests {
 
         let const_values = [0, 1, (P + 1) / 2, P - 1, P, P + 1, 2 * P - 1, 2 * P];
         let avx_const_values =
-            M31AVX512::from_vec(&const_values.map(M31::from_u32_unchecked).to_vec());
+            M31AVX512::from_slice(const_values.map(M31::from_u32_unchecked).as_ref());
 
         // Tests partial reduce.
         assert_eq!(

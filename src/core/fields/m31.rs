@@ -92,7 +92,7 @@ impl From<usize> for M31 {
 
 impl From<u32> for M31 {
     fn from(value: u32) -> Self {
-        M31::reduce(value.try_into().unwrap())
+        M31::reduce(value.into())
     }
 }
 
