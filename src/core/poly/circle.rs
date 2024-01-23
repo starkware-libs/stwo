@@ -138,7 +138,7 @@ impl CanonicCoset {
 
     /// Gets half of the coset (its conjugate complements to the whole coset), G_{2n} + <G_{n/2}>
     pub fn half_coset(&self) -> Coset {
-        Coset::half_odds(self.log_size - 1)
+        Coset::half_odds(self.log_size() - 1)
     }
 
     /// Gets the [CircleDomain] representing the same point set (in another order).
@@ -161,13 +161,26 @@ impl CanonicCoset {
     pub fn log_size(&self) -> u32 {
         self.coset.log_size
     }
-}
 
-impl Deref for CanonicCoset {
-    type Target = Coset;
+    /// Returns the size of the coset.
+    pub fn size(&self) -> usize {
+        self.coset.size()
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.coset
+    pub fn initial_index(&self) -> CirclePointIndex {
+        self.coset.initial_index
+    }
+
+    pub fn step_size(&self) -> CirclePointIndex {
+        self.coset.step_size
+    }
+
+    pub fn index_at(&self, i: usize) -> CirclePointIndex {
+        self.coset.index_at(i)
+    }
+
+    pub fn at(&self, i: usize) -> CirclePoint<BaseField> {
+        self.coset.at(i)
     }
 }
 
@@ -198,7 +211,7 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
         let domain = coset.circle_domain();
         assert_eq!(values.len(), domain.size());
         let mut new_values = Vec::with_capacity(values.len());
-        let half_len = 1 << (coset.log_size - 1);
+        let half_len = 1 << (coset.log_size() - 1);
         for i in 0..half_len {
             new_values.push(values[i << 1]);
         }
@@ -468,7 +481,7 @@ mod tests {
                 .iter_indices()
                 .map(|ind| {
                     // The constraint is poly0(x+off0)^2 = poly1(x+off1).
-                    EvalByEvaluation::new(domain0.initial_index, &eval0)
+                    EvalByEvaluation::new(domain0.initial_index(), &eval0)
                         .get_at(ind)
                         .square()
                         - EvalByEvaluation::new(domain1.index_at(1), &eval1)

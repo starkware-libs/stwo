@@ -224,7 +224,7 @@ impl Fibonacci {
 
         let composition_polynomial_queries = Queries::generate(
             channel,
-            self.composition_polynomial_commitment_domain.log_size,
+            self.composition_polynomial_commitment_domain.log_size(),
             N_QUERIES,
         );
         let composition_polynomial_queried_values = composition_polynomial_queries
@@ -232,8 +232,8 @@ impl Fibonacci {
             .map(|q| composition_polynomial_commitment_evaluation.values[*q])
             .collect();
         let trace_queries = composition_polynomial_queries.iter_folded(
-            self.composition_polynomial_commitment_domain.log_size
-                - self.trace_commitment_domain.log_size,
+            self.composition_polynomial_commitment_domain.log_size()
+                - self.trace_commitment_domain.log_size(),
         );
         let trace_queried_values = trace_queries
             .clone()

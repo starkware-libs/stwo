@@ -144,7 +144,7 @@ mod tests {
                 .collect(),
         );
         let mask_point_indices = mask.get_point_indices(&trace_domains);
-        let oracle_point_index = coset.step_size * 3;
+        let oracle_point_index = coset.step_size() * 3;
         let oracle_point = oracle_point_index.to_point();
         let poly_oracles = (0..N_TRACE_COLUMNS)
             .map(|i| EvalByPoly {
