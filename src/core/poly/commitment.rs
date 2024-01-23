@@ -97,12 +97,15 @@ mod tests {
 
     #[test]
     fn test_polynomial_commitment_scheme() {
-        let log_size = 7;
-        let size = 1 << log_size;
-        let domain = CanonicCoset::new(log_size).circle_domain();
-        let values = (0..size).map(|x| m31!(x)).collect();
+        let log_domain_size = 7;
+        let domain_size = 1 << log_domain_size;
+        let domain = CanonicCoset::new(log_domain_size).circle_domain();
+        let values = (0..domain_size).map(|x| m31!(x)).collect();
         let polynomial = CircleEvaluation::new(domain, values);
-        let queries = Queries(generate_test_queries((size / 2) as usize, size as usize));
+        let queries = Queries {
+            positions: generate_test_queries((domain_size / 2) as usize, domain_size as usize),
+            log_domain_size,
+        };
         let positions = queries.to_sub_circle_domains(1).to_decommitment_positions();
 
         let commitment_scheme =
@@ -136,11 +139,14 @@ mod tests {
         let log_domain_size = 7;
 
         // Generate all possible queries.
-        let queries = Queries((0..1 << log_domain_size).collect());
+        let queries = Queries {
+            positions: (0..1 << log_domain_size).collect(),
+            log_domain_size,
+        };
         let queries_with_conjugates = queries
             .to_sub_circle_domains(log_domain_size - 2)
             .to_decommitment_positions();
 
-        assert_eq!(queries.0, queries_with_conjugates.0);
+        assert_eq!(*queries, *queries_with_conjugates);
     }
 }
