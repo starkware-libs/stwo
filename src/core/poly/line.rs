@@ -1,11 +1,13 @@
 use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::iter::Map;
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 use num_traits::Zero;
 
 use super::utils::{bit_reverse, fold, repeat_value};
+use super::NaturalOrder;
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -182,7 +184,7 @@ impl<F: ExtensionOf<BaseField>> DerefMut for LinePoly<F> {
 /// Evaluations of a univariate polynomial on a [LineDomain].
 #[derive(Debug, Clone)]
 pub struct LineEvaluation<F> {
-    /// Evaluations of a univariate polynomial on a [LineDomain].
+    /// Evaluations of a univariate polynomial on a [LineDomain] stored in bit-reversed order.
     evals: Vec<F>,
     /// The number of evaluations stored as `log2(len(evals))`.
     log_size: u32,
@@ -190,6 +192,8 @@ pub struct LineEvaluation<F> {
 
 impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     /// Creates new [LineEvaluation] from a set of polynomial evaluations over a [LineDomain].
+    ///
+    /// Evaluations should be provided in bit-reversed order.
     ///
     /// # Panics
     ///
@@ -202,7 +206,8 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
 
     /// Interpolates the polynomial as evaluations on `domain`.
     pub fn interpolate(mut self, domain: LineDomain) -> LinePoly<F> {
-        line_ifft(&mut self.evals, domain);
+        // TODO(andrew): Change FFT instead of bit-reversal.
+        line_ifft(bit_reverse(&mut self.evals), domain);
         // Normalize the coefficients.
         let len_inv = BaseField::from(self.evals.len()).inverse();
         self.evals.iter_mut().for_each(|v| *v *= len_inv);
@@ -239,7 +244,7 @@ impl<F: ExtensionOf<BaseField>> IntoIterator for LineEvaluation<F> {
 
     /// Creates a consuming iterator over the evaluations.
     ///
-    /// Evaluations are returned in the same order as elements of the domain.
+    /// Evaluations are returned in bit-reversed order.
     fn into_iter(self) -> Self::IntoIter {
         self.evals.into_iter()
     }
