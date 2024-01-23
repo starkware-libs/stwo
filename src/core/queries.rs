@@ -4,12 +4,20 @@ use std::ops::Deref;
 use itertools::Itertools;
 
 use super::channel::Channel;
+use super::circle::Coset;
+use super::poly::circle::{CanonicCoset, CircleDomain};
 use super::poly::commitment::DecommitmentPositions;
+use super::utils::bit_reverse_index;
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
-/// An ordered set of query indices over a bit reversed `CircleDomain`.
+// TODO(AlonH): Add log size field to the struct.
+/// An ordered set of query indices over a bit reversed [CircleDomain].
 pub struct Queries(pub Vec<usize>);
+
+/// A set of [CircleDomain]s over which to evaluate the polynomial for each respective query in
+/// [Queries].
+pub struct QueryEvaluationDomains(Vec<CircleDomain>);
 
 impl Queries {
     /// Randomizes a set of query indices uniformly over the range [0, 2^`log_query_size`).
@@ -47,6 +55,24 @@ impl Queries {
                 .flatten()
                 .collect(),
         )
+    }
+
+    /// Calculates the evaluation domains needed for each query given the (log) folding factor.
+    pub fn to_evaluation_domains(
+        &self,
+        log_query_size: u32,
+        log_folding_factor: u32,
+    ) -> QueryEvaluationDomains {
+        assert!(log_folding_factor > 0);
+        let query_domain = CanonicCoset::new(log_query_size);
+        let mut query_evaluation_domains = Vec::with_capacity(self.len());
+        for bit_reversed_query in self.iter() {
+            let query = bit_reverse_index(*bit_reversed_query as u32, log_query_size);
+            let initial_index = query_domain.index_at(query as usize);
+            let half_coset = Coset::new(initial_index, log_folding_factor - 1);
+            query_evaluation_domains.push(CircleDomain::new(half_coset));
+        }
+        QueryEvaluationDomains(query_evaluation_domains)
     }
 }
 
