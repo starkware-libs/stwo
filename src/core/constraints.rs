@@ -3,7 +3,7 @@ use num_traits::One;
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fields::m31::BaseField;
 use super::fields::ExtensionOf;
-use super::poly::circle::{CircleDomain, CirclePoly, Evaluation, PointMapping};
+use super::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly, PointMapping};
 
 /// Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoint<F>) -> F {
@@ -101,15 +101,15 @@ impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByPoly<'a, F> {
 // TODO(spapini): make an iterator instead, so we do all computations beforehand.
 /// Polynomial evaluation over the base circle domain. The evaluation could be over an extension of
 /// the base field.
-#[derive(Clone)]
-pub struct EvalByEvaluation<'a, F: ExtensionOf<BaseField>, T: Evaluation<F>> {
+#[derive(Copy, Clone)]
+pub struct EvalByEvaluation<'a, F: ExtensionOf<BaseField>> {
     pub offset: CirclePointIndex,
-    pub eval: &'a T,
+    pub eval: &'a CircleEvaluation<F>,
     pub _eval_field: std::marker::PhantomData<F>,
 }
 
-impl<'a, F: ExtensionOf<BaseField>, T: Evaluation<F>> EvalByEvaluation<'a, F, T> {
-    pub fn new(offset: CirclePointIndex, eval: &'a T) -> Self {
+impl<'a, F: ExtensionOf<BaseField>> EvalByEvaluation<'a, F> {
+    pub fn new(offset: CirclePointIndex, eval: &'a CircleEvaluation<F>) -> Self {
         Self {
             offset,
             eval,
@@ -118,7 +118,7 @@ impl<'a, F: ExtensionOf<BaseField>, T: Evaluation<F>> EvalByEvaluation<'a, F, T>
     }
 }
 
-impl<'a, F: ExtensionOf<BaseField>, T: Evaluation<F>> PolyOracle<F> for EvalByEvaluation<'a, F, T> {
+impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByEvaluation<'a, F> {
     fn point(&self) -> CirclePoint<F> {
         // TODO(AlonH): Separate the point field generality from the evaluation field generality and
         // remove the `into_ef` here.
@@ -129,8 +129,6 @@ impl<'a, F: ExtensionOf<BaseField>, T: Evaluation<F>> PolyOracle<F> for EvalByEv
         self.eval.get_at(index + self.offset)
     }
 }
-
-impl<'a, F: ExtensionOf<BaseField>, T: Evaluation<F>> Copy for EvalByEvaluation<'a, F, T> {}
 
 #[derive(Clone)]
 pub struct EvalByPointMapping<'a, F: ExtensionOf<BaseField>> {

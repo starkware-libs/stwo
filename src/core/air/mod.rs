@@ -113,7 +113,7 @@ mod tests {
     use crate::core::air::{Mask, MaskItem};
     use crate::core::constraints::EvalByPoly;
     use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, Evaluation};
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 
     #[test]
     fn test_mask() {
