@@ -35,10 +35,7 @@ pub fn get_oods_quotient<F: ExtensionOf<BaseField>, EF: ExtensionOf<BaseField> +
             EvalByEvaluation::new(p_ind, eval),
         ));
     }
-    CircleEvaluation {
-        domain: eval.domain,
-        values,
-    }
+    CircleEvaluation::new(eval.domain, values)
 }
 
 /// Returns the mask values for the OODS point.

@@ -1,8 +1,11 @@
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::iter::Chain;
+use std::marker::PhantomData;
 use std::ops::Deref;
 
 use super::utils::fold;
+use super::NaturalOrder;
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -186,18 +189,24 @@ impl CanonicCoset {
 
 /// An evaluation defined on a [CircleDomain].
 /// The values are ordered according to the [CircleDomain] ordering.
-#[derive(Clone, Debug)]
-pub struct CircleEvaluation<F: ExtensionOf<BaseField>> {
+pub struct CircleEvaluation<F: ExtensionOf<BaseField>, EvalOrder = NaturalOrder> {
     pub domain: CircleDomain,
     pub values: Vec<F>,
+    _eval_order: PhantomData<EvalOrder>,
+}
+
+impl<F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<F, EvalOrder> {
+    pub fn new(domain: CircleDomain, values: Vec<F>) -> Self {
+        assert_eq!(domain.size(), values.len());
+        Self {
+            domain,
+            values,
+            _eval_order: PhantomData,
+        }
+    }
 }
 
 impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
-    pub fn new(domain: CircleDomain, values: Vec<F>) -> Self {
-        assert_eq!(domain.size(), values.len());
-        Self { domain, values }
-    }
-
     /// Creates a [CircleEvaluation] from values ordered according to
     /// [CanonicCoset]. For example, the canonic coset might look like this:
     ///   G_8, G_8 + G_4, G_8 + 2G_4, G_8 + 3G_4.
@@ -217,6 +226,7 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
         Self {
             domain,
             values: new_values,
+            _eval_order: PhantomData,
         }
     }
 
@@ -253,7 +263,27 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
     }
 }
 
-impl<F: ExtensionOf<BaseField>> Deref for CircleEvaluation<F> {
+impl<F: ExtensionOf<BaseField>, EvalOrder> Debug for CircleEvaluation<F, EvalOrder> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CircleEvaluation")
+            .field("domain", &self.domain)
+            .field("values", &self.values)
+            .field("_eval_order", &self._eval_order)
+            .finish()
+    }
+}
+
+impl<F: ExtensionOf<BaseField>, EvalOrder> Clone for CircleEvaluation<F, EvalOrder> {
+    fn clone(&self) -> Self {
+        Self {
+            domain: self.domain,
+            values: self.values.clone(),
+            _eval_order: PhantomData,
+        }
+    }
+}
+
+impl<F: ExtensionOf<BaseField>, EvalOrder> Deref for CircleEvaluation<F, EvalOrder> {
     type Target = [F];
 
     fn deref(&self) -> &[F] {
@@ -261,7 +291,7 @@ impl<F: ExtensionOf<BaseField>> Deref for CircleEvaluation<F> {
     }
 }
 
-impl<F: ExtensionOf<BaseField>> IntoIterator for CircleEvaluation<F> {
+impl<F: ExtensionOf<BaseField>, EvalOrder> IntoIterator for CircleEvaluation<F, EvalOrder> {
     type Item = F;
     type IntoIter = std::vec::IntoIter<F>;
 
@@ -343,7 +373,11 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
         for (i, p) in coset.iter().enumerate() {
             butterfly(&mut l[i], &mut r[i], p.y);
         }
-        CircleEvaluation { domain, values }
+        CircleEvaluation {
+            domain,
+            values,
+            _eval_order: PhantomData,
+        }
     }
 }
 
@@ -386,6 +420,7 @@ mod tests {
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::Field;
+    use crate::core::poly::NaturalOrder;
     use crate::core::utils::bit_reverse_index;
     use crate::m31;
 
@@ -469,7 +504,7 @@ mod tests {
         let eval1 = trace_eval1.interpolate().evaluate(eval_domain1);
 
         // Compute constraint.
-        let constraint_eval = CircleEvaluation::new(
+        let constraint_eval = CircleEvaluation::<BaseField, NaturalOrder>::new(
             constraint_domain,
             constraint_domain
                 .iter_indices()
