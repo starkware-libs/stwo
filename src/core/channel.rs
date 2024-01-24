@@ -101,7 +101,7 @@ impl Channel for Blake2sChannel {
         hash_input.extend_from_slice(&padded_counter);
 
         self.channel_time.inc_sent();
-        Self::ChannelHasher::hash(&hash_input).try_into().unwrap()
+        Self::ChannelHasher::hash(&hash_input).into()
     }
 }
 
