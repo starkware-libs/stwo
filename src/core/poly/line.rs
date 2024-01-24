@@ -6,12 +6,13 @@ use std::ops::{Deref, DerefMut};
 
 use num_traits::Zero;
 
-use super::utils::{bit_reverse, fold, repeat_value};
+use super::utils::{fold, repeat_value};
 use super::NaturalOrder;
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, Field};
+use crate::core::utils::bit_reverse;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///

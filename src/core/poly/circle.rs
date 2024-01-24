@@ -545,10 +545,12 @@ mod tests {
         let domain = CanonicCoset::new(log_domain_size);
         let small_domain = CanonicCoset::new(log_small_domain_size);
         let n_folds = log_domain_size - log_small_domain_size;
-        for i in 0..2u32.pow(log_domain_size) {
-            let point = domain.at(bit_reverse_index(i, log_domain_size) as usize);
-            let small_point = small_domain
-                .at(bit_reverse_index(i / 2_u32.pow(n_folds), log_small_domain_size) as usize);
+        for i in 0..2usize.pow(log_domain_size) {
+            let point = domain.at(bit_reverse_index(i, log_domain_size));
+            let small_point = small_domain.at(bit_reverse_index(
+                i / 2usize.pow(n_folds),
+                log_small_domain_size,
+            ));
             assert_eq!(point.repeated_double(n_folds), small_point);
         }
     }
