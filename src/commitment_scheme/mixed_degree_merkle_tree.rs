@@ -133,7 +133,6 @@ where
         } else {
             None
         };
-
         Some(DecommitmentNode {
             right_hash,
             left_hash,
