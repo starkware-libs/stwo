@@ -98,9 +98,17 @@ where
         todo!()
     }
 
-    // TODO(Ohad): implement.
-    pub fn get_hash_at(&self, _layer_depth: usize, _position: usize) -> H::Hash {
-        todo!()
+    pub fn get_hash_at(&self, layer_depth: usize, position: usize) -> H::Hash {
+        // Determine correct multilayer
+        let mut depth_accumulator = layer_depth;
+        for multi_layer in self.multi_layers.iter().rev() {
+            let multi_layer_height = multi_layer.config.sub_tree_height;
+            if multi_layer_height > depth_accumulator {
+                return multi_layer.get_hash_value(depth_accumulator, position);
+            }
+            depth_accumulator -= multi_layer_height;
+        }
+        panic!()
     }
 
     pub fn root(&self) -> H::Hash {
@@ -220,5 +228,58 @@ mod tests {
 
         let root = tree.commit();
         assert_eq!(root, expected_result);
+    }
+
+    #[test]
+    fn get_hash_at_test() {
+        const TREE_HEIGHT: usize = 3;
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let base_column = (0..4).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        input.insert_column(TREE_HEIGHT, &base_column);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [2, 1].to_vec(),
+            },
+        );
+        let root = tree.commit();
+        assert_eq!(root, tree.get_hash_at(0, 0));
+
+        let mut hasher = Blake3Hasher::new();
+        hasher.update(&0_u32.to_le_bytes());
+        // hasher.update(&1_u32.to_le_bytes());
+        let expected_hash_at_2_0 = hasher.finalize_reset();
+        let hash_at_2_0 = tree.get_hash_at(2, 0);
+        assert_eq!(hash_at_2_0, expected_hash_at_2_0);
+
+        hasher.update(&2_u32.to_le_bytes());
+        let expected_hash_at_2_2 = hasher.finalize_reset();
+        let hash_at_2_2 = tree.get_hash_at(2, 2);
+        assert_eq!(hash_at_2_2, expected_hash_at_2_2);
+        hasher.update(&3_u32.to_le_bytes());
+        let expected_hash_at_2_3 = hasher.finalize_reset();
+        let hash_at_2_3 = tree.get_hash_at(2, 3);
+        assert_eq!(hash_at_2_3, expected_hash_at_2_3);
+
+        let expected_parent_of_2_2_and_2_3 =
+            Blake3Hasher::concat_and_hash(&expected_hash_at_2_2, &expected_hash_at_2_3);
+        let parent_of_2_2_and_2_3 = tree.get_hash_at(1, 1);
+        assert_eq!(parent_of_2_2_and_2_3, expected_parent_of_2_2_and_2_3);
+    }
+
+    #[test]
+    #[should_panic]
+    fn get_hash_at_invalid_layer_test() {
+        const TREE_HEIGHT: usize = 3;
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let base_column = (0..4).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        input.insert_column(TREE_HEIGHT, &base_column);
+        let tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [2, 1].to_vec(),
+            },
+        );
+        tree.get_hash_at(4, 0);
     }
 }
