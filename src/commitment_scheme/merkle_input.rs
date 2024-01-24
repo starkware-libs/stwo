@@ -84,6 +84,10 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
         }
     }
 
+    pub fn prepend(&mut self, other: Self) {
+        self.columns_to_inject.splice(0..0, other.columns_to_inject);
+    }
+
     pub fn get_injected_elements(&self, depth: usize, bag_index: usize) -> Vec<F> {
         let n_bags_in_layer = 1 << (depth - 1);
         let mut injected_elements = Vec::<F>::new();
@@ -168,6 +172,23 @@ mod tests {
         let input_for_deeper_layers = input.split(2);
         assert_eq!(input.max_injected_depth(), 1);
         assert_eq!(input_for_deeper_layers.max_injected_depth(), 2);
+    }
+
+    #[test]
+    pub fn test_prepend() {
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let mut identical_input = super::MerkleTreeInput::<M31>::new();
+        let column = vec![M31::from_u32_unchecked(0); 1024];
+        input.insert_column(3, column.as_ref());
+        identical_input.insert_column(3, column.as_ref());
+
+        let mut splitted_input = input.split(2);
+        splitted_input.prepend(input);
+
+        assert_eq!(
+            splitted_input.columns_to_inject,
+            identical_input.columns_to_inject
+        );
     }
 
     #[test]
