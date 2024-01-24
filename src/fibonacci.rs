@@ -15,7 +15,7 @@ use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::oods::{get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
 use crate::core::queries::Queries;
-use crate::core::utils::bit_reverse_vec;
+use crate::core::utils::bit_reverse;
 
 type Channel = Blake2sChannel;
 type MerkleHasher = <Channel as ChannelTrait>::ChannelHasher;
@@ -190,11 +190,9 @@ impl Fibonacci {
         let trace_evaluation = trace_poly.evaluate(self.trace_eval_domain);
         let trace_commitment_evaluation =
             trace_poly.evaluate(self.trace_commitment_domain.circle_domain());
-        let trace_commitment =
-            MerkleTree::<BaseField, MerkleHasher>::commit(vec![bit_reverse_vec(
-                &trace_commitment_evaluation.values,
-                trace_commitment_evaluation.domain.log_size(),
-            )]);
+        let trace_commitment = MerkleTree::<BaseField, MerkleHasher>::commit(vec![bit_reverse(
+            trace_commitment_evaluation.values.clone(),
+        )]);
         channel.mix_with_seed(trace_commitment.root());
 
         let random_coeff = channel.draw_random_extension_felts()[0];
@@ -206,11 +204,8 @@ impl Fibonacci {
                 .circle_domain(),
         );
         let composition_polynomial_commitment =
-            MerkleTree::<QM31, MerkleHasher>::commit(vec![bit_reverse_vec(
-                &composition_polynomial_commitment_evaluation.values,
-                composition_polynomial_commitment_evaluation
-                    .domain
-                    .log_size(),
+            MerkleTree::<QM31, MerkleHasher>::commit(vec![bit_reverse(
+                composition_polynomial_commitment_evaluation.values.clone(),
             )]);
         channel.mix_with_seed(composition_polynomial_commitment.root());
 

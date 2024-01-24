@@ -1,33 +1,41 @@
-pub fn bit_reverse_index(x: u32, log_domain_size: u32) -> u32 {
-    x.reverse_bits() >> (32 - log_domain_size)
+pub(crate) fn bit_reverse_index(i: usize, log_size: u32) -> usize {
+    i.reverse_bits() >> (usize::BITS - log_size)
 }
 
+/// Performs a naive bit-reversal permutation.
+///
+/// # Panics
+///
+/// Panics if the length of the slice is not a power of two.
 // TODO(AlonH): Consider benchmarking this function.
-/// A naive (not cache friendly) implementation of bit-reversal permutation.
-pub fn bit_reverse_in_place<T: Copy>(array: &mut [T], log_domain_size: u32) {
-    assert!(array.len() == (1 << log_domain_size));
-    for i in 0..array.len() {
-        let j = bit_reverse_index(i as u32, log_domain_size) as usize;
-        if i < j {
-            array.swap(i, j);
+pub(crate) fn bit_reverse<T, U: AsMut<[T]>>(mut v: U) -> U {
+    let n = v.as_mut().len();
+    assert!(n.is_power_of_two());
+    let log_n = n.ilog2();
+    for i in 0..n {
+        let j = bit_reverse_index(i, log_n);
+        if j > i {
+            v.as_mut().swap(i, j);
         }
     }
-}
-
-pub fn bit_reverse_vec<T: Copy>(vec: &Vec<T>, log_domain_size: u32) -> Vec<T> {
-    let mut result = vec.to_owned();
-    bit_reverse_in_place(&mut result, log_domain_size);
-    result
+    v
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::core::utils::bit_reverse;
+
     #[test]
-    fn test_bit_reverse_vec() {
-        let vec = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-        let log_domain_size = 4;
-        let expected = vec![0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15];
-        let actual = super::bit_reverse_vec(&vec, log_domain_size);
-        assert_eq!(actual, expected);
+    fn bit_reverse_works() {
+        assert_eq!(
+            bit_reverse([0, 1, 2, 3, 4, 5, 6, 7]),
+            [0, 4, 2, 6, 1, 5, 3, 7]
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn bit_reverse_non_power_of_two_size_fails() {
+        bit_reverse([0, 1, 2, 3, 4, 5]);
     }
 }
