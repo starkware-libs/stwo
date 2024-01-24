@@ -6,7 +6,6 @@ use itertools::Itertools;
 use super::channel::Channel;
 use super::circle::Coset;
 use super::poly::circle::{CanonicCoset, CircleDomain};
-use super::poly::commitment::DecommitmentPositions;
 use super::utils::bit_reverse_index;
 
 // TODO(AlonH): Move file to fri directory.
@@ -82,12 +81,10 @@ pub struct SparseSubCircleDomain {
 }
 
 impl SparseSubCircleDomain {
-    pub fn to_decommitment_positions(&self) -> DecommitmentPositions {
-        DecommitmentPositions(
-            self.iter()
-                .flat_map(|sub_circle_domain| sub_circle_domain.to_decommitment_positions().0)
-                .collect(),
-        )
+    pub fn to_decommitment_positions(&self) -> Vec<usize> {
+        self.iter()
+            .flat_map(|sub_circle_domain| sub_circle_domain.to_decommitment_positions())
+            .collect()
     }
 }
 
@@ -109,10 +106,8 @@ pub struct SubCircleDomain {
 
 impl SubCircleDomain {
     /// Calculates the decommitment positions needed for each query given the fri step size.
-    pub fn to_decommitment_positions(&self) -> DecommitmentPositions {
-        DecommitmentPositions(
-            (self.coset_index << self.log_size..(self.coset_index + 1) << self.log_size).collect(),
-        )
+    pub fn to_decommitment_positions(&self) -> Vec<usize> {
+        (self.coset_index << self.log_size..(self.coset_index + 1) << self.log_size).collect()
     }
 
     /// Returns the represented [CircleDomain].
@@ -197,8 +192,43 @@ mod tests {
             let query_and_conjugate = query.to_sub_circle_domains(1).to_decommitment_positions();
             let mut expected_query_and_conjugate = vec![query[0], conjugate_query];
             expected_query_and_conjugate.sort();
-            assert_eq!(query_and_conjugate.0, expected_query_and_conjugate);
+            assert_eq!(query_and_conjugate, expected_query_and_conjugate);
             assert_eq!(values[query[0]], values[conjugate_query].conjugate());
         }
+    }
+
+    #[test]
+    pub fn test_decommitment_positions() {
+        let channel = &mut Blake2sChannel::new(Blake2sHash::default());
+        let log_domain_size = 31;
+        let n_queries = 100;
+        let fri_step_size = 3;
+
+        let queries = Queries::generate(channel, log_domain_size, n_queries);
+        let queries_with_added_positions = queries
+            .to_sub_circle_domains(fri_step_size)
+            .to_decommitment_positions();
+
+        assert!(queries_with_added_positions.is_sorted());
+        assert_eq!(
+            queries_with_added_positions.len(),
+            n_queries * (1 << fri_step_size)
+        );
+    }
+
+    #[test]
+    pub fn test_dedup_decommitment_positions() {
+        let log_domain_size = 7;
+
+        // Generate all possible queries.
+        let queries = Queries {
+            positions: (0..1 << log_domain_size).collect(),
+            log_domain_size,
+        };
+        let queries_with_conjugates = queries
+            .to_sub_circle_domains(log_domain_size - 2)
+            .to_decommitment_positions();
+
+        assert_eq!(*queries, *queries_with_conjugates);
     }
 }
