@@ -71,6 +71,7 @@ impl<H: Hasher> MerkleMultiLayer<H> {
         });
     }
 
+    // TODO(Ohad): Deprecate.
     pub fn generate_decommitment<F: Field>(
         &self,
         input: &MerkleTreeInput<'_, F>,
@@ -92,6 +93,7 @@ impl<H: Hasher> MerkleMultiLayer<H> {
         MixedDecommitment::<F, H>::new(proof_layers)
     }
 
+    // TODO(Ohad): Move to MerkleTree and deprecate.
     fn decommit_intermediate_layer<'a, F: Field>(
         &self,
         layer_depth: usize,
@@ -123,6 +125,7 @@ impl<H: Hasher> MerkleMultiLayer<H> {
         proof_layer
     }
 
+    // TODO(Ohad): Deprecate.
     fn get_injected_elements<F: Field>(
         &self,
         input: &MerkleTreeInput<'_, F>,
