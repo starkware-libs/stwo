@@ -5,11 +5,12 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 
 use super::utils::fold;
-use super::NaturalOrder;
+use super::{BitReversedOrder, NaturalOrder};
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, Field};
+use crate::core::utils::bit_reverse;
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.
@@ -260,6 +261,18 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
 
     pub fn get_at(&self, point_index: CirclePointIndex) -> F {
         self.values[self.domain.find(point_index).expect("Not in domain")]
+    }
+}
+
+impl<F: ExtensionOf<BaseField>> From<CircleEvaluation<F, NaturalOrder>>
+    for CircleEvaluation<F, BitReversedOrder>
+{
+    fn from(evaluation: CircleEvaluation<F, NaturalOrder>) -> Self {
+        Self {
+            domain: evaluation.domain,
+            values: bit_reverse(evaluation.values),
+            _eval_order: PhantomData,
+        }
     }
 }
 
