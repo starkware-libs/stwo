@@ -1,11 +1,13 @@
 use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::iter::Map;
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 use num_traits::Zero;
 
 use super::utils::{bit_reverse, fold, repeat_value};
+use super::NaturalOrder;
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -180,15 +182,17 @@ impl<F: ExtensionOf<BaseField>> DerefMut for LinePoly<F> {
 }
 
 /// Evaluations of a univariate polynomial on a [LineDomain].
-#[derive(Debug, Clone)]
-pub struct LineEvaluation<F> {
+// TODO(andrew): Remove EvalOrder. Bit-reversed evals are only necessary since LineEvaluation is
+// only used by FRI where evaluations are in bit-reversed order.
+pub struct LineEvaluation<F, EvalOrder = NaturalOrder> {
     /// Evaluations of a univariate polynomial on a [LineDomain].
     evals: Vec<F>,
     /// The number of evaluations stored as `log2(len(evals))`.
     log_size: u32,
+    _eval_order: PhantomData<EvalOrder>,
 }
 
-impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
+impl<F: ExtensionOf<BaseField>, EvalOrder> LineEvaluation<F, EvalOrder> {
     /// Creates new [LineEvaluation] from a set of polynomial evaluations over a [LineDomain].
     ///
     /// # Panics
@@ -197,16 +201,11 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());
         let log_size = evals.len().ilog2();
-        Self { evals, log_size }
-    }
-
-    /// Interpolates the polynomial as evaluations on `domain`.
-    pub fn interpolate(mut self, domain: LineDomain) -> LinePoly<F> {
-        line_ifft(&mut self.evals, domain);
-        // Normalize the coefficients.
-        let len_inv = BaseField::from(self.evals.len()).inverse();
-        self.evals.iter_mut().for_each(|v| *v *= len_inv);
-        LinePoly::new(self.evals)
+        Self {
+            evals,
+            log_size,
+            _eval_order: PhantomData,
+        }
     }
 
     /// Returns the number of evaluations.
@@ -219,7 +218,38 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     }
 }
 
-impl<F: ExtensionOf<BaseField>> Deref for LineEvaluation<F> {
+impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
+    /// Interpolates the polynomial as evaluations on `domain`.
+    pub fn interpolate(mut self, domain: LineDomain) -> LinePoly<F> {
+        line_ifft(&mut self.evals, domain);
+        // Normalize the coefficients.
+        let len_inv = BaseField::from(self.evals.len()).inverse();
+        self.evals.iter_mut().for_each(|v| *v *= len_inv);
+        LinePoly::new(self.evals)
+    }
+}
+
+impl<F: ExtensionOf<BaseField>, EvalOrder> Debug for LineEvaluation<F, EvalOrder> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LineEvaluation")
+            .field("evals", &self.evals)
+            .field("log_size", &self.log_size)
+            .field("_eval_order", &self._eval_order)
+            .finish()
+    }
+}
+
+impl<F: ExtensionOf<BaseField>, EvalOrder> Clone for LineEvaluation<F, EvalOrder> {
+    fn clone(&self) -> Self {
+        Self {
+            evals: self.evals.clone(),
+            log_size: self.log_size,
+            _eval_order: PhantomData,
+        }
+    }
+}
+
+impl<F: ExtensionOf<BaseField>, EvalOrder> Deref for LineEvaluation<F, EvalOrder> {
     type Target = [F];
 
     fn deref(&self) -> &[F] {
@@ -227,13 +257,13 @@ impl<F: ExtensionOf<BaseField>> Deref for LineEvaluation<F> {
     }
 }
 
-impl<F: ExtensionOf<BaseField>> DerefMut for LineEvaluation<F> {
+impl<F: ExtensionOf<BaseField>, EvalOrder> DerefMut for LineEvaluation<F, EvalOrder> {
     fn deref_mut(&mut self) -> &mut [F] {
         &mut self.evals
     }
 }
 
-impl<F: ExtensionOf<BaseField>> IntoIterator for LineEvaluation<F> {
+impl<F: ExtensionOf<BaseField>, EvalOrder> IntoIterator for LineEvaluation<F, EvalOrder> {
     type Item = F;
     type IntoIter = std::vec::IntoIter<F>;
 
