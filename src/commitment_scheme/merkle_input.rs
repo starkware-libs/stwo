@@ -1,3 +1,4 @@
+use super::utils::get_column_chunk;
 use crate::core::fields::Field;
 
 /// The Input of a Merkle-Tree Mixed-Degree commitment scheme.
@@ -82,11 +83,26 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
             columns_to_inject: self.columns_to_inject.split_off(split_at - 1),
         }
     }
+
+    pub fn get_injected_elements(&self, depth: usize, bag_index: usize) -> Vec<F> {
+        // Determine amount of injected elements.
+        let sum_column_lengths: usize = self.get_columns(depth).iter().map(|c| c.len()).sum();
+        let n_bags_in_layer = 1 << (depth - 1);
+        let n_injected_elements = sum_column_lengths / n_bags_in_layer;
+        // TODO(Ohad): Redefine tree height.
+        let mut injected_elements = Vec::<F>::with_capacity(n_injected_elements);
+        for column in self.get_columns(depth).iter() {
+            let col_chunk = get_column_chunk(column, bag_index, n_bags_in_layer);
+            injected_elements.extend(col_chunk);
+        }
+        injected_elements
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::core::fields::m31::M31;
+    use crate::m31;
 
     #[test]
     pub fn md_input_insert_test() {
@@ -156,5 +172,27 @@ mod tests {
         let input_for_deeper_layers = input.split(2);
         assert_eq!(input.max_injected_depth(), 1);
         assert_eq!(input_for_deeper_layers.max_injected_depth(), 2);
+    }
+
+    #[test]
+    fn get_injected_elements_test() {
+        let trace_column = (0..4).map(M31::from_u32_unchecked).collect::<Vec<_>>();
+        let mut merkle_input = super::MerkleTreeInput::<M31>::new();
+        merkle_input.insert_column(3, &trace_column);
+        merkle_input.insert_column(2, &trace_column);
+
+        let injected_elements_30 = merkle_input.get_injected_elements(3, 0);
+        let injected_elements_31 = merkle_input.get_injected_elements(3, 1);
+        let injected_elements_32 = merkle_input.get_injected_elements(3, 2);
+        let injected_elements_33 = merkle_input.get_injected_elements(3, 3);
+        let injected_elements_20 = merkle_input.get_injected_elements(2, 0);
+        let injected_elements_21 = merkle_input.get_injected_elements(2, 1);
+
+        assert_eq!(injected_elements_30, vec![m31!(0)]);
+        assert_eq!(injected_elements_31, vec![m31!(1)]);
+        assert_eq!(injected_elements_32, vec![m31!(2)]);
+        assert_eq!(injected_elements_33, vec![m31!(3)]);
+        assert_eq!(injected_elements_20, vec![m31!(0), m31!(1)]);
+        assert_eq!(injected_elements_21, vec![m31!(2), m31!(3)]);
     }
 }
