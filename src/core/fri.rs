@@ -7,12 +7,14 @@ use super::fields::m31::BaseField;
 use super::fields::{ExtensionOf, Field};
 use super::poly::circle::CircleEvaluation;
 use super::poly::line::{LineEvaluation, LinePoly};
+use super::poly::BitReversedOrder;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
 use crate::core::poly::line::LineDomain;
+use crate::core::utils::bit_reverse_index;
 
 /// FRI proof config
 // TODO(andrew): support different folding factors
@@ -82,7 +84,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
     /// * An evaluation's domain is smaller than the last layer.
     /// * An evaluation's domain is not a canonic circle domain.
     // TODO(andrew): Add docs for all evaluations needing to be from canonic domains.
-    pub fn commit(config: FriConfig, evals: Vec<CircleEvaluation<F>>) -> Self {
+    pub fn commit(config: FriConfig, evals: Vec<CircleEvaluation<F, BitReversedOrder>>) -> Self {
         assert!(evals.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
         assert!(evals.iter().all(|e| e.domain.is_canonic()), "not canonic");
         let (inner_layers, last_layer_evaluation) = Self::commit_inner_layers(config, evals);
@@ -105,10 +107,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
     /// layer's domain.
     fn commit_inner_layers(
         config: FriConfig,
-        evals: Vec<CircleEvaluation<F>>,
-    ) -> (Vec<FriLayer<F, H>>, LineEvaluation<F>) {
+        evals: Vec<CircleEvaluation<F, BitReversedOrder>>,
+    ) -> (Vec<FriLayer<F, H>>, LineEvaluation<F, BitReversedOrder>) {
         // Returns the length of the [LineEvaluation] a [CircleEvaluation] gets folded into.
-        let folded_len = |e: &CircleEvaluation<F>| e.len() >> LOG_CIRCLE_TO_LINE_FOLDING_FACTOR;
+        let folded_len = |e: &CircleEvaluation<_, _>| e.len() >> LOG_CIRCLE_TO_LINE_FOLDING_FACTOR;
         let mut evals = evals.into_iter().peekable();
         let mut layer_size = evals.peek().map(folded_len).expect("no evaluation");
         let mut evaluation = LineEvaluation::new(vec![F::zero(); layer_size]);
@@ -123,13 +125,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
             // Check for any evaluations that should be combined.
             while evals.peek().map(folded_len) == Some(layer_size) {
                 let circle_evaluation = evals.next().unwrap();
-                let folded_evaluation = fold_circle_to_line(&circle_evaluation, circle_poly_alpha);
-                assert_eq!(folded_evaluation.len(), evaluation.len());
-
-                let alpha = circle_poly_alpha.pow(1 << LOG_FOLDING_FACTOR);
-                for (eval, folded_eval) in zip(&mut *evaluation, folded_evaluation) {
-                    *eval = *eval * alpha + folded_eval;
-                }
+                fold_circle_into_line(&mut evaluation, &circle_evaluation, circle_poly_alpha);
             }
 
             let layer = FriLayer::new(&evaluation);
@@ -160,15 +156,22 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
     /// Panics if:
     /// * The evaluation domain size exceeds the maximum last layer domain size.
     /// * The evaluation is not of sufficiently low degree.
-    fn commit_last_layer(config: FriConfig, evaluation: LineEvaluation<F>) -> LinePoly<F> {
+    fn commit_last_layer(
+        config: FriConfig,
+        evaluation: LineEvaluation<F, BitReversedOrder>,
+    ) -> LinePoly<F> {
         assert_eq!(evaluation.len(), config.last_layer_domain_size());
-        let max_num_coeffs = evaluation.len() >> config.log_blowup_factor;
+
         let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2()));
+        let evaluation = evaluation.bit_reverse();
         let mut coeffs = evaluation.interpolate(domain).into_ordered_coefficients();
+
+        let max_num_coeffs = 1 << config.log_last_layer_degree_bound;
         let zeros = coeffs.split_off(max_num_coeffs);
         assert!(zeros.iter().all(F::is_zero), "invalid degree");
+
         LinePoly::from_ordered_coefficients(coeffs)
-        // TODO(andrew): seed channel with remainder
+        // TODO(andrew): Seed channel with coeffs.
     }
 
     pub fn decommit(self, query_positions: &[usize]) -> FriProof<F, H> {
@@ -231,7 +234,8 @@ struct FriLayer<F: ExtensionOf<BaseField>, H: Hasher> {
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
-    fn new(evaluation: &LineEvaluation<F>) -> Self {
+    fn new(evaluation: &LineEvaluation<F, BitReversedOrder>) -> Self {
+        // TODO(andrew): With bit-reversed order coset evals are next to each other. Update.
         let (l, r) = evaluation.split_at(evaluation.len() / 2);
         let coset_evals = [l.to_vec(), r.to_vec()];
         // TODO(ohad): Add back once IntoSlice implemented for Field.
@@ -276,17 +280,23 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
 ///
 /// Panics if there are less than two evaluations.
 pub fn fold_line<F: ExtensionOf<BaseField>>(
-    evals: &LineEvaluation<F>,
+    evals: &LineEvaluation<F, BitReversedOrder>,
     alpha: F,
-) -> LineEvaluation<F> {
+) -> LineEvaluation<F, BitReversedOrder> {
     let n = evals.len();
     assert!(n >= 2, "too few evals");
 
-    let (l, r) = evals.split_at(n / 2);
     // TODO: Change LineDomain to be defined by its size and to always be canonic.
     let domain = LineDomain::new(Coset::half_odds(n.ilog2()));
-    let folded_evals = zip(domain, zip(l, r))
-        .map(|(x, (&f_x, &f_neg_x))| {
+    let log_folded_domain_size = domain.log_size() - LOG_FOLDING_FACTOR;
+
+    let folded_evals = evals
+        .array_chunks()
+        .enumerate()
+        .map(|(i, &[f_x, f_neg_x])| {
+            // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
+            let x = domain.at(bit_reverse_index(i, log_folded_domain_size));
+
             let (mut f0, mut f1) = (f_x, f_neg_x);
             ibutterfly(&mut f0, &mut f1, x.inverse());
             f0 + alpha * f1
@@ -296,27 +306,42 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
     LineEvaluation::new(folded_evals)
 }
 
-/// Folds a degree `d` circle polynomial into a degree `d/2` univariate polynomial.
+/// Folds and accumulates a degree `d` circle polynomial into a degree `d/2` univariate polynomial.
 ///
-/// Let `evals` be the evaluation of a circle polynomial `f` on a [CircleDomain] `E`. This function
-/// returns a univariate polynomial `f' = f0 + alpha * f1` evaluated on the x-coordinates of `E`
-/// such that `2f(p) = f0(px) + py * f1(px)`.
+/// Let `src` be the evaluation of a circle polynomial `f` on a [CircleDomain] `E`. This function
+/// computes evaluations of `f' = f0 + alpha * f1` on the x-coordinates of `E` such that
+/// `2f(p) = f0(px) + py * f1(px)`. The evaluations of `f'` are accumulated into `dst` by the
+/// formula `dst = dst * alpha^2 + f'`.
+///
+/// # Panics
+///
+/// Panics if `src` is not double the length of `dst`.
+// TODO(andrew): Make folding factor generic.
 // TODO(andrew): Fold directly into FRI layer to prevent allocation.
-fn fold_circle_to_line<F: ExtensionOf<BaseField>>(
-    evals: &CircleEvaluation<F>,
+fn fold_circle_into_line<F: ExtensionOf<BaseField>>(
+    dst: &mut LineEvaluation<F, BitReversedOrder>,
+    src: &CircleEvaluation<F, BitReversedOrder>,
     alpha: F,
-) -> LineEvaluation<F> {
-    let (l, r) = evals.split_at(evals.len() / 2);
-    let folded_evals = zip(evals.domain, zip(l, r))
-        .map(|(p, (&f_p, &f_neg_p))| {
+) {
+    assert_eq!(src.len() >> LOG_CIRCLE_TO_LINE_FOLDING_FACTOR, dst.len());
+
+    let domain = src.domain;
+    let log_folded_domain_size = domain.log_size() - LOG_CIRCLE_TO_LINE_FOLDING_FACTOR;
+    let alpha_sq = alpha * alpha;
+
+    zip(&mut **dst, src.array_chunks())
+        .enumerate()
+        .for_each(|(i, (dst, &[f_p, f_neg_p]))| {
+            // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
+            let p = domain.at(bit_reverse_index(i, log_folded_domain_size));
+
             // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
             let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
             ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
-            f0_px + alpha * f1_px
-        })
-        .collect();
+            let f_prime = f0_px + alpha * f1_px;
 
-    LineEvaluation::new(folded_evals)
+            *dst = *dst * alpha_sq + f_prime;
+        });
 }
 
 // TODO(andrew): support different folding factors
@@ -330,14 +355,15 @@ fn fold_positions(positions: &mut Vec<usize>, n: usize) {
 mod tests {
     use std::iter::zip;
 
-    use num_traits::One;
+    use num_traits::{One, Zero};
 
     use crate::core::circle::Coset;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::ExtensionOf;
-    use crate::core::fri::{fold_circle_to_line, fold_line, LOG_CIRCLE_TO_LINE_FOLDING_FACTOR};
+    use crate::core::fri::{fold_circle_into_line, fold_line, LOG_CIRCLE_TO_LINE_FOLDING_FACTOR};
     use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
+    use crate::core::poly::BitReversedOrder;
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
@@ -354,12 +380,13 @@ mod tests {
         let alpha = BaseField::from_u32_unchecked(19283);
         let domain = LineDomain::new(Coset::half_odds(DEGREE.ilog2()));
         let drp_domain = domain.double();
-        let evals = poly.evaluate(domain);
+        let evals = poly.evaluate(domain).bit_reverse();
         let two = BaseField::from_u32_unchecked(2);
 
         let drp_evals = fold_line(&evals, alpha);
 
         assert_eq!(drp_evals.len(), DEGREE / 2);
+        let drp_evals = drp_evals.bit_reverse();
         for (i, (&drp_eval, x)) in zip(&*drp_evals, drp_domain).enumerate() {
             let f_e = even_poly.eval_at_point(x);
             let f_o = odd_poly.eval_at_point(x);
@@ -371,9 +398,11 @@ mod tests {
     fn fold_circle_to_line_works() {
         const LOG_DEGREE: u32 = 4;
         let circle_evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let num_folded_evals = circle_evaluation.domain.size() >> LOG_CIRCLE_TO_LINE_FOLDING_FACTOR;
         let alpha = BaseField::one();
 
-        let folded_evaluation = fold_circle_to_line(&circle_evaluation, alpha);
+        let mut folded_evaluation = LineEvaluation::new(vec![BaseField::zero(); num_folded_evals]);
+        fold_circle_into_line(&mut folded_evaluation, &circle_evaluation, alpha);
 
         assert_eq!(
             log_degree_bound(folded_evaluation),
@@ -387,16 +416,19 @@ mod tests {
     fn polynomial_evaluation<F: ExtensionOf<BaseField>>(
         log_degree: u32,
         log_blowup_factor: u32,
-    ) -> CircleEvaluation<F> {
+    ) -> CircleEvaluation<F, BitReversedOrder> {
         let poly = CirclePoly::new(vec![F::one(); 1 << log_degree]);
         let coset = Coset::half_odds(log_degree + log_blowup_factor - 1);
         let domain = CircleDomain::new(coset);
-        poly.evaluate(domain)
+        poly.evaluate(domain).bit_reverse()
     }
 
     /// Returns the log degree bound of a polynomial.
-    fn log_degree_bound<F: ExtensionOf<BaseField>>(polynomial: LineEvaluation<F>) -> u32 {
+    fn log_degree_bound<F: ExtensionOf<BaseField>>(
+        polynomial: LineEvaluation<F, BitReversedOrder>,
+    ) -> u32 {
         let domain = LineDomain::new(Coset::half_odds(polynomial.len().ilog2()));
+        let polynomial = polynomial.bit_reverse();
         let coeffs = polynomial.interpolate(domain).into_ordered_coefficients();
         let degree = coeffs.into_iter().rposition(|c| !c.is_zero()).unwrap_or(0);
         (degree + 1).ilog2()
