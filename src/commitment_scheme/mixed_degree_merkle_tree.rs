@@ -1,9 +1,10 @@
 use std::collections::BTreeSet;
+use std::iter::Peekable;
 
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
 use super::merkle_multilayer::MerkleMultiLayer;
-use super::mixed_degree_decommitment::MixedDecommitment;
+use super::mixed_degree_decommitment::{DecommitmentNode, MixedDecommitment, PositionInLayer};
 use crate::commitment_scheme::merkle_multilayer::MerkleMultiLayerConfig;
 use crate::core::fields::{Field, IntoSlice};
 
@@ -111,6 +112,38 @@ where
         panic!()
     }
 
+    // TODO(Ohad): use in decommit and remove '_'.
+    fn _decommit_intermediate_layer(
+        &self,
+        layer_depth: usize,
+        mut current_queried_indices: Peekable<impl Iterator<Item = usize>>,
+    ) -> Vec<DecommitmentNode<F, H>> {
+        let mut proof_layer = Vec::<DecommitmentNode<F, H>>::new();
+        while let Some(q) = current_queried_indices.next() {
+            let sibling_index = q ^ 1;
+            let hash_witness = match current_queried_indices.peek() {
+                // If both children are in the layer, only injected elements are needed
+                // to calculate the parent.
+                Some(next_q) if *next_q == sibling_index => {
+                    current_queried_indices.next();
+                    None
+                }
+                _ => Some(self.get_hash_at(layer_depth, sibling_index)),
+            };
+            let bag_index = q / 2;
+            let injected_elements = self.input.get_injected_elements(layer_depth, bag_index);
+            if hash_witness.is_some() || !injected_elements.is_empty() {
+                let position_in_layer = PositionInLayer::new_child(sibling_index);
+                proof_layer.push(DecommitmentNode {
+                    position_in_layer,
+                    hash: hash_witness,
+                    injected_elements,
+                });
+            }
+        }
+        proof_layer
+    }
+
     pub fn root(&self) -> H::Hash {
         match &self.multi_layers.last() {
             Some(top_layer) => {
@@ -146,6 +179,7 @@ mod tests {
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
     use crate::core::fields::m31::M31;
+    use crate::m31;
 
     #[test]
     fn new_mixed_degree_merkle_tree_test() {
@@ -281,5 +315,46 @@ mod tests {
             },
         );
         tree.get_hash_at(4, 0);
+    }
+
+    #[test]
+    fn decommit_intermediate_layer_test() {
+        const TREE_HEIGHT: usize = 3;
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let base_column = (0..4).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let inject_at_depth_1_column = vec![m31!(1)];
+        input.insert_column(TREE_HEIGHT, &base_column);
+        input.insert_column(1, &inject_at_depth_1_column);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [2, 1].to_vec(),
+            },
+        );
+        tree.commit();
+
+        let queried_indices = vec![0, 2, 3].into_iter().peekable();
+        let parent_indices = vec![0, 1].into_iter().peekable();
+        let proof_layer_depth_2 =
+            tree._decommit_intermediate_layer(TREE_HEIGHT - 1, queried_indices);
+        let proof_layer_depth_1 =
+            tree._decommit_intermediate_layer(TREE_HEIGHT - 2, parent_indices);
+
+        // Only 1 bag in that layer.
+        assert_eq!(proof_layer_depth_1.len(), 1);
+
+        // Indices are siblings hence no hash in that node.
+        assert_eq!(proof_layer_depth_1[0].hash, None);
+        assert_eq!(proof_layer_depth_1[0].injected_elements, vec![m31!(1)]);
+
+        // 2,3 are siblings, and no injected elements in that layer so bag is not included.
+        assert_eq!(proof_layer_depth_1.len(), 1);
+        assert_eq!(proof_layer_depth_1[0].hash, None);
+
+        let mut hasher = Blake3Hasher::new();
+        hasher.update(&1_u32.to_le_bytes());
+        let expected_hash_at_2_0 = hasher.finalize_reset();
+        assert_eq!(proof_layer_depth_2[0].hash, Some(expected_hash_at_2_0));
+        assert_eq!(proof_layer_depth_2[0].injected_elements, vec![]);
     }
 }
