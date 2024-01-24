@@ -13,16 +13,18 @@ use super::utils::bit_reverse_index;
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
-// TODO(AlonH): Add log size field to the struct.
 /// An ordered set of query indices over a bit reversed [CircleDomain].
-pub struct Queries(pub Vec<usize>);
+pub struct Queries {
+    pub positions: Vec<usize>,
+    pub log_domain_size: u32,
+}
 
 impl Queries {
     /// Randomizes a set of query indices uniformly over the range [0, 2^`log_query_size`).
-    pub fn generate(channel: &mut impl Channel, log_query_size: u32, n_queries: usize) -> Self {
+    pub fn generate(channel: &mut impl Channel, log_domain_size: u32, n_queries: usize) -> Self {
         let mut queries = BTreeSet::new();
         let mut query_cnt = 0;
-        let max_query = (1 << log_query_size) - 1;
+        let max_query = (1 << log_domain_size) - 1;
         loop {
             let random_bytes = channel.draw_random_bytes();
             for chunk in random_bytes.chunks_exact(UPPER_BOUND_QUERY_BYTES) {
@@ -31,7 +33,10 @@ impl Queries {
                 queries.insert(quotient_query as usize);
                 query_cnt += 1;
                 if query_cnt == n_queries {
-                    return Self(queries.into_iter().collect());
+                    return Self {
+                        positions: queries.into_iter().collect(),
+                        log_domain_size,
+                    };
                 }
             }
         }
@@ -40,20 +45,26 @@ impl Queries {
     /// Calculates the matching query indices in a folded domain (i.e each domain point is doubled)
     /// given `self` (the queries of the original domain) and the number of folds between domains.
     pub fn fold(&self, n_folds: u32) -> Self {
-        Self(self.iter().map(|q| q >> n_folds).dedup().collect())
+        assert!(n_folds <= self.log_domain_size);
+        Self {
+            positions: self.iter().map(|q| q >> n_folds).dedup().collect(),
+            log_domain_size: self.log_domain_size - n_folds,
+        }
     }
 
     pub fn to_sparse_sub_circle_domain(&self, fri_step_size: u32) -> SparseSubCircleDomain {
         assert!(fri_step_size > 0);
-        SparseSubCircleDomain(
-            self.iter()
+        SparseSubCircleDomain {
+            domains: self
+                .iter()
                 .map(|q| SubCircleDomain {
                     coset_index: q >> fri_step_size,
                     log_size: fri_step_size,
                 })
                 .dedup()
                 .collect(),
-        )
+            large_domain_size: self.log_domain_size,
+        }
     }
 }
 
@@ -61,11 +72,14 @@ impl Deref for Queries {
     type Target = Vec<usize>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.positions
     }
 }
 
-pub struct SparseSubCircleDomain(pub Vec<SubCircleDomain>);
+pub struct SparseSubCircleDomain {
+    pub domains: Vec<SubCircleDomain>,
+    pub large_domain_size: u32,
+}
 
 impl SparseSubCircleDomain {
     pub fn to_decommitment_positions(&self) -> DecommitmentPositions {
@@ -81,7 +95,7 @@ impl Deref for SparseSubCircleDomain {
     type Target = Vec<SubCircleDomain>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.domains
     }
 }
 
@@ -148,7 +162,10 @@ mod tests {
         let folded_values = bit_reverse_vec(&folded_values, log_folded_domain_size);
 
         // Generate all possible queries.
-        let queries = Queries((0..1 << log_domain_size).collect());
+        let queries = Queries {
+            positions: (0..1 << log_domain_size).collect(),
+            log_domain_size,
+        };
         let n_folds = log_domain_size - log_folded_domain_size;
         let ratio = 1 << n_folds;
 
@@ -176,14 +193,14 @@ mod tests {
         // Test random queries one by one because the conjugate queries are sorted.
         for _ in 0..100 {
             let query = Queries::generate(channel, log_domain_size, 1);
-            let conjugate_query = query.0[0] ^ 1;
+            let conjugate_query = query[0] ^ 1;
             let query_and_conjugate = query
                 .to_sparse_sub_circle_domain(1)
                 .to_decommitment_positions();
-            let mut expected_query_and_conjugate = vec![query.0[0], conjugate_query];
+            let mut expected_query_and_conjugate = vec![query[0], conjugate_query];
             expected_query_and_conjugate.sort();
             assert_eq!(query_and_conjugate.0, expected_query_and_conjugate);
-            assert_eq!(values[query.0[0]], values[conjugate_query].conjugate());
+            assert_eq!(values[query[0]], values[conjugate_query].conjugate());
         }
     }
 }
