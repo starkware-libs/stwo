@@ -144,8 +144,9 @@ impl<H: Hasher> MerkleMultiLayer<H> {
         injected_elements
     }
 
-    // Consider adding safety checks and making public.
-    fn get_hash_value(&self, layer: usize, node_idx: usize) -> H::Hash {
+    pub fn get_hash_value(&self, layer: usize, node_idx: usize) -> H::Hash {
+        assert!(layer < self.config.sub_tree_height);
+        assert!(node_idx < (1 << layer) * self.config.n_sub_trees);
         let layer_len = 1 << layer;
         let tree_idx = node_idx >> layer;
         let sub_tree_data = self
@@ -447,6 +448,54 @@ mod tests {
             sub_trees_height,
             &roots.copied().collect::<Vec<_>>(),
         )
+    }
+
+    #[test]
+    fn get_hash_at_test() {
+        let trace_column = (0..16).map(M31::from_u32_unchecked).collect::<Vec<_>>();
+        let sub_trees_height = 4;
+        let mut input = MerkleTreeInput::new();
+        input.insert_column(sub_trees_height, &trace_column);
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
+        multi_layer.commit_layer::<M31, false>(&input, &[]);
+
+        let mut hasher = Blake3Hasher::new();
+        hasher.update(&0_u32.to_le_bytes());
+        let expected_hash_result = hasher.finalize_reset();
+        let most_left_hash = multi_layer.get_hash_value(3, 0);
+        assert_eq!(most_left_hash, expected_hash_result);
+        hasher.update(&1_u32.to_le_bytes());
+        let expected_hash_result = hasher.finalize_reset();
+        let most_left_hash_sibling = multi_layer.get_hash_value(3, 1);
+        assert_eq!(most_left_hash_sibling, expected_hash_result);
+
+        let expected_most_left_parent =
+            Blake3Hasher::concat_and_hash(&most_left_hash, &most_left_hash_sibling);
+        assert_eq!(multi_layer.get_hash_value(2, 0), expected_most_left_parent);
+
+        hasher.update(&15_u32.to_le_bytes());
+        let expected_hash_result = hasher.finalize_reset();
+        let most_right_hash = multi_layer.get_hash_value(3, 15);
+        assert_eq!(most_right_hash, expected_hash_result);
+    }
+
+    #[test]
+    #[should_panic]
+    fn get_hash_at_index_out_of_range_test() {
+        let sub_trees_height = 4;
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        let multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
+        multi_layer.get_hash_value(3, 16);
+    }
+
+    #[test]
+    #[should_panic]
+    fn get_hash_at_layer_index_out_of_range_test() {
+        let sub_trees_height = 4;
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        let multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
+        multi_layer.get_hash_value(4, 0);
     }
 
     // TODO(Ohad): Implement 'verify' for decommitment

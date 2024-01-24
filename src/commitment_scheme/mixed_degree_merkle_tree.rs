@@ -93,6 +93,11 @@ where
         todo!()
     }
 
+    // TODO(Ohad): implement.
+    pub fn get_hash_at(&self, _layer_depth: usize, _position: usize) -> H::Hash {
+        todo!()
+    }
+
     pub fn root(&self) -> H::Hash {
         match &self.multi_layers.last() {
             Some(top_layer) => {
