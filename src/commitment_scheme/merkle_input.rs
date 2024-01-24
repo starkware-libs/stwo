@@ -21,7 +21,7 @@ use crate::core::fields::Field;
 /// assert_eq!(input.get_columns(3).len(), 2);
 /// assert_eq!(input.max_injected_depth(), 3);
 /// ````
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct MerkleTreeInput<'a, F: Field> {
     columns_to_inject: Vec<LayerColumns<'a, F>>,
 }

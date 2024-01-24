@@ -64,8 +64,7 @@ where
     pub fn commit(&mut self) -> H::Hash {
         let mut curr_layer = self.height() - self.multi_layer_height(0);
         // Bottom layer.
-        let bottom_multi_layer_input = self.input.split(curr_layer + 1);
-        self.multi_layers[0].commit_layer::<F, false>(&bottom_multi_layer_input, &[]);
+        self.multi_layers[0].commit_layer::<F, false>(&self.input, &[]);
 
         // Rest of the tree.
         for i in 1..self.multi_layers.len() {
@@ -76,8 +75,7 @@ where
                 .collect::<Vec<H::Hash>>();
             debug_assert_eq!(prev_hashes.len(), 1 << (curr_layer));
             curr_layer -= self.multi_layer_height(i);
-            let layer_input = self.input.split(curr_layer + 1);
-            self.multi_layers[i].commit_layer::<F, true>(&layer_input, &prev_hashes);
+            self.multi_layers[i].commit_layer::<F, true>(&self.input, &prev_hashes);
         }
 
         let mut top_layer_roots = self.multi_layers.last().unwrap().get_roots();

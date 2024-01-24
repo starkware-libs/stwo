@@ -6,6 +6,7 @@ use super::merkle_input::MerkleTreeInput;
 use super::mixed_degree_decommitment::{DecommitmentNode, MixedDecommitment, PositionInLayer};
 use super::utils::{get_column_chunk, inject_and_hash_layer};
 use crate::core::fields::{Field, IntoSlice};
+use crate::math;
 
 /// A MerkleMultiLayer represents multiple sequential merkle-tree layers, as a SubTreeMajor array of
 /// hash values. Each SubTree is a balanced binary tree of height `sub_trees_height`.
@@ -34,6 +35,11 @@ impl MerkleMultiLayerConfig {
             sub_tree_height,
             sub_tree_size,
         }
+    }
+
+    /// Depth of the first layer in the multi layer, relative to the entire tree.
+    pub fn get_relative_depth(&self) -> usize {
+        math::utils::log2_floor(self.n_sub_trees)
     }
 }
 
@@ -190,7 +196,7 @@ fn hash_subtree<F: Field, H: Hasher, const IS_INTERMEDIATE: bool>(
         prev_hashes,
         dst,
         &input
-            .get_columns(config.sub_tree_height)
+            .get_columns(config.sub_tree_height + config.get_relative_depth())
             .iter()
             .map(|c| get_column_chunk(c, index_in_layer, config.n_sub_trees))
             .collect::<Vec<_>>()
@@ -210,7 +216,7 @@ fn hash_subtree<F: Field, H: Hasher, const IS_INTERMEDIATE: bool>(
             prev_hashes,
             dst,
             &input
-                .get_columns(hashed_layer_idx)
+                .get_columns(hashed_layer_idx + config.get_relative_depth())
                 .iter()
                 .map(|c| get_column_chunk(c, index_in_layer, config.n_sub_trees))
                 .collect::<Vec<_>>()
@@ -338,9 +344,10 @@ mod tests {
         // trace_column: [M31;16] = [1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2]
         let trace_column = gen_example_column();
         let sub_trees_height = 4;
+        let log_n_sub_trees = 1;
         let mut input = MerkleTreeInput::new();
-        input.insert_column(sub_trees_height, &trace_column);
-        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        input.insert_column(sub_trees_height + log_n_sub_trees, &trace_column);
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 1 << log_n_sub_trees);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
 
         merkle_multilayer::hash_subtree::<M31, Blake3Hasher, false>(
@@ -374,9 +381,10 @@ mod tests {
         let mut prev_hash_values = vec![Blake3Hasher::hash(b"a"); 16];
         prev_hash_values.extend(vec![Blake3Hasher::hash(b"b"); 16]);
         let sub_trees_height = 4;
+        let log_n_sub_trees = 1;
         let mut input = MerkleTreeInput::new();
-        input.insert_column(sub_trees_height, &trace_column);
-        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        input.insert_column(sub_trees_height + log_n_sub_trees, &trace_column);
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 1 << log_n_sub_trees);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
         let (leaf_0_input, leaf_1_input) = prepare_intermediate_initial_values();
 
@@ -409,9 +417,10 @@ mod tests {
         // trace_column: [M31;16] = [1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2]
         let trace_column = gen_example_column();
         let sub_trees_height = 4;
+        let log_n_sub_trees = 1;
         let mut input = MerkleTreeInput::new();
-        input.insert_column(sub_trees_height, &trace_column);
-        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        input.insert_column(sub_trees_height + log_n_sub_trees, &trace_column);
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 1 << log_n_sub_trees);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
 
         multi_layer.commit_layer::<M31, false>(&input, &[]);
@@ -432,9 +441,10 @@ mod tests {
         let mut prev_hash_values = vec![Blake3Hasher::hash(b"a"); 16];
         prev_hash_values.extend(vec![Blake3Hasher::hash(b"b"); 16]);
         let sub_trees_height = 4;
+        let log_n_sub_trees = 1;
         let mut input = MerkleTreeInput::new();
-        input.insert_column(sub_trees_height, &trace_column);
-        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        input.insert_column(sub_trees_height + log_n_sub_trees, &trace_column);
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 1 << log_n_sub_trees);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
         let (leaf_0_input, leaf_1_input) = prepare_intermediate_initial_values();
 
@@ -455,19 +465,27 @@ mod tests {
         let trace_column = (0..16).map(M31::from_u32_unchecked).collect::<Vec<_>>();
         let trace_column_rev = trace_column.clone().into_iter().rev().collect::<Vec<M31>>();
         let sub_trees_height = 4;
+        let log_n_sub_trees = 1;
         let mut input = MerkleTreeInput::new();
-        input.insert_column(sub_trees_height, &trace_column);
-        input.insert_column(sub_trees_height - 1, trace_column_rev.as_slice());
-        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        input.insert_column(sub_trees_height + log_n_sub_trees, &trace_column);
+        input.insert_column(
+            sub_trees_height + log_n_sub_trees - 1,
+            trace_column_rev.as_slice(),
+        );
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 1 << log_n_sub_trees);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
         let prev_hashes = [Blake3Hasher::hash(b"a"); 32];
         let queried_leaves = vec![0, 2, 14, 30];
         let queried_leaf_parents = super::get_parent_indices(queried_leaves);
 
         multi_layer.commit_layer::<M31, true>(&input, &prev_hashes);
-        let decommitment =
-            multi_layer.generate_decommitment::<M31>(&input, 1, queried_leaf_parents);
 
+        // TODO(Ohad): change this test so the input doesn't have to be splitted.
+        let decommitment_input = input.split(2);
+        let decommitment =
+            multi_layer.generate_decommitment::<M31>(&decommitment_input, 1, queried_leaf_parents);
+
+        println!("{}", decommitment);
         assert_eq!(decommitment.decommitment_layers.len(), 3);
 
         // Layer #1. Siblings are mapped to the same parent node.
