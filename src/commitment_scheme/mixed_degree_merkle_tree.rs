@@ -144,6 +144,23 @@ where
         proof_layer
     }
 
+    fn _decommit_leaf_layer(
+        &self,
+        leaf_layer_indices: Peekable<impl Iterator<Item = usize>>,
+    ) -> Vec<DecommitmentNode<F, H>> {
+        let mut leaf_layer = Vec::<DecommitmentNode<F, H>>::new();
+        for q in leaf_layer_indices {
+            let position_in_layer = PositionInLayer::Leaf(q);
+            let injected_elements = self.input.get_injected_elements(self.height(), q);
+            leaf_layer.push(DecommitmentNode {
+                hash: None,
+                position_in_layer,
+                injected_elements,
+            });
+        }
+        leaf_layer
+    }
+
     pub fn root(&self) -> H::Hash {
         match &self.multi_layers.last() {
             Some(top_layer) => {
@@ -315,6 +332,31 @@ mod tests {
             },
         );
         tree.get_hash_at(4, 0);
+    }
+
+    #[test]
+    fn decommit_leaf_layer_test() {
+        const TREE_HEIGHT: usize = 4;
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let base_column = (0..8).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        input.insert_column(TREE_HEIGHT, &base_column);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [1, 2, 1].to_vec(),
+            },
+        );
+        tree.commit();
+        let leaf_layer_indices = (0..4).step_by(2).peekable();
+        let leaf_layer_decommitment = tree._decommit_leaf_layer(leaf_layer_indices);
+
+        leaf_layer_decommitment
+            .iter()
+            .enumerate()
+            .for_each(|(i, node)| {
+                assert_eq!(node.hash, None);
+                assert_eq!(node.injected_elements, vec![m31!(2 * i as u32)]);
+            });
     }
 
     #[test]
