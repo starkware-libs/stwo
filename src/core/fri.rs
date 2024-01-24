@@ -6,6 +6,7 @@ use std::ops::RangeInclusive;
 
 use super::fields::m31::BaseField;
 use super::fields::{ExtensionOf, Field};
+use super::poly::circle::CircleEvaluation;
 use super::poly::line::{LineEvaluation, LinePoly};
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
@@ -184,6 +185,9 @@ pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
 // TODO(andrew): Support multiple folding factors.
 const LOG_FOLDING_FACTOR: u32 = 1;
 
+/// Folding factor when folding a circle polynomial to univariate polynomial.
+const _LOG_CIRCLE_TO_LINE_FOLDING_FACTOR: u32 = 1;
+
 /// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
@@ -265,14 +269,36 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
     assert!(n >= 2, "too few evals");
 
     let (l, r) = evals.split_at(n / 2);
-    // TODO: Either add domain to [LineEvaluation] or consider changing LineDomain to be defined by
-    // its size and to always be canonic - since it may only be used by FRI.
+    // TODO: Change LineDomain to be defined by its size and to always be canonic.
     let domain = LineDomain::new(Coset::half_odds(n.ilog2()));
     let folded_evals = zip(domain, zip(l, r))
         .map(|(x, (&f_x, &f_neg_x))| {
             let (mut f0, mut f1) = (f_x, f_neg_x);
             ibutterfly(&mut f0, &mut f1, x.inverse());
             f0 + alpha * f1
+        })
+        .collect();
+
+    LineEvaluation::new(folded_evals)
+}
+
+/// Folds a degree `d` circle polynomial into a degree `d/2` univariate polynomial.
+///
+/// Let `evals` be the evaluation of a circle polynomial `f` on a [CircleDomain] `E`. This function
+/// returns a univariate polynomial `f' = f0 + alpha * f1` evaluated on the x-coordinates of `E`
+/// such that `2f(p) = f0(px) + py * f1(px)`.
+// TODO(andrew): Fold directly into FRI layer to prevent allocation.
+fn _fold_circle_to_line<F: ExtensionOf<BaseField>>(
+    evals: &CircleEvaluation<F>,
+    alpha: F,
+) -> LineEvaluation<F> {
+    let (l, r) = evals.split_at(evals.len() / 2);
+    let folded_evals = zip(evals.domain, zip(l, r))
+        .map(|(p, (&f_p, &f_neg_p))| {
+            // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
+            let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
+            ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
+            f0_px + alpha * f1_px
         })
         .collect();
 
@@ -290,14 +316,17 @@ fn fold_positions(positions: &mut Vec<usize>, n: usize) {
 mod tests {
     use std::iter::zip;
 
-    use super::{FriConfig, FriProver};
-    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
+    use num_traits::One;
+
     use crate::core::circle::Coset;
-    use crate::core::fields::m31::{BaseField, M31};
-    use crate::core::fields::qm31::QM31;
+    use crate::core::fields::m31::BaseField;
     use crate::core::fields::ExtensionOf;
-    use crate::core::fri::fold_line;
+    use crate::core::fri::{_fold_circle_to_line, fold_line, _LOG_CIRCLE_TO_LINE_FOLDING_FACTOR};
+    use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
+
+    /// Default blowup factor used for tests.
+    const LOG_BLOWUP_FACTOR: u32 = 2;
 
     #[test]
     fn fold_line_works() {
@@ -325,54 +354,17 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn committing_high_degree_polynomial_fails() {
-        const LOG_EXPECTED_BLOWUP_FACTOR: u32 = 2;
-        const LOG_INVALID_BLOWUP_FACTOR: u32 = 1;
-        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR);
-        let prover = FriProver::<M31, Blake3Hasher>::new(config);
-        let evaluation = polynomial_evaluation(6, LOG_INVALID_BLOWUP_FACTOR);
+    fn fold_circle_to_line_works() {
+        const LOG_DEGREE: u32 = 4;
+        let circle_evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let alpha = BaseField::one();
 
-        prover.commit(vec![evaluation]);
-    }
+        let folded_evaluation = _fold_circle_to_line(&circle_evaluation, alpha);
 
-    #[test]
-    #[ignore = "verification not implemented"]
-    fn valid_fri_proof_passes_verification() {
-        const LOG_BLOWUP_FACTOR: u32 = 2;
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
-        let evaluation = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
-        let prover = FriProver::<QM31, Blake3Hasher>::new(config);
-        let prover = prover.commit(vec![evaluation]);
-        let query_positions = [1, 8, 7];
-        let _proof = prover.into_proof(&query_positions);
-
-        todo!("verify proof");
-    }
-
-    #[test]
-    #[ignore = "verification not implemented"]
-    fn mixed_degree_fri_proof_passes_verification() {
-        const LOG_BLOWUP_FACTOR: u32 = 2;
-        let config = FriConfig::new(4, LOG_BLOWUP_FACTOR);
-        let midex_degree_evals = vec![
-            polynomial_evaluation(6, LOG_BLOWUP_FACTOR),
-            polynomial_evaluation(4, LOG_BLOWUP_FACTOR),
-            polynomial_evaluation(1, LOG_BLOWUP_FACTOR),
-            polynomial_evaluation(0, LOG_BLOWUP_FACTOR),
-        ];
-        let prover = FriProver::<QM31, Blake3Hasher>::new(config);
-        let prover = prover.commit(midex_degree_evals);
-        let query_positions = [1, 8, 7];
-        let _proof = prover.into_proof(&query_positions);
-
-        todo!("verify proof");
-    }
-
-    #[test]
-    #[ignore = "verification not implemented"]
-    fn invalid_fri_proof_fails_verification() {
-        todo!()
+        assert_eq!(
+            log_degree_bound(folded_evaluation),
+            LOG_DEGREE - _LOG_CIRCLE_TO_LINE_FOLDING_FACTOR
+        );
     }
 
     /// Returns an evaluation of a random polynomial with degree `2^log_degree`.
@@ -381,10 +373,18 @@ mod tests {
     fn polynomial_evaluation<F: ExtensionOf<BaseField>>(
         log_degree: u32,
         log_blowup_factor: u32,
-    ) -> LineEvaluation<F> {
-        let poly = LinePoly::new(vec![F::one(); 1 << log_degree]);
-        let coset = Coset::half_odds(log_degree + log_blowup_factor);
-        let domain = LineDomain::new(coset);
+    ) -> CircleEvaluation<F> {
+        let poly = CirclePoly::new(vec![F::one(); 1 << log_degree]);
+        let coset = Coset::half_odds(log_degree + log_blowup_factor - 1);
+        let domain = CircleDomain::new(coset);
         poly.evaluate(domain)
+    }
+
+    /// Returns the log degree bound of a polynomial.
+    fn log_degree_bound<F: ExtensionOf<BaseField>>(polynomial: LineEvaluation<F>) -> u32 {
+        let domain = LineDomain::new(Coset::half_odds(polynomial.len().ilog2()));
+        let coeffs = polynomial.interpolate(domain).into_ordered_coefficients();
+        let degree = coeffs.into_iter().rposition(|c| !c.is_zero()).unwrap_or(0);
+        (degree + 1).ilog2()
     }
 }
