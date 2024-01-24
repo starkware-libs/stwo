@@ -1,9 +1,10 @@
 use std::collections::BTreeSet;
+use std::iter::Peekable;
 
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
 use super::merkle_multilayer::MerkleMultiLayer;
-use super::mixed_degree_decommitment::MixedDecommitment;
+use super::mixed_degree_decommitment::{DecommitmentNode, MixedDecommitment, PositionInLayer};
 use crate::commitment_scheme::merkle_multilayer::MerkleMultiLayerConfig;
 use crate::core::fields::{Field, IntoSlice};
 
@@ -101,6 +102,23 @@ where
     // TODO(Ohad): implement.
     pub fn get_hash_at(&self, _layer_depth: usize, _position: usize) -> H::Hash {
         todo!()
+    }
+
+    fn _decommit_leaf_layer(
+        &self,
+        leaf_layer_indices: Peekable<impl Iterator<Item = usize>>,
+    ) -> Vec<DecommitmentNode<F, H>> {
+        let mut leaf_layer = Vec::<DecommitmentNode<F, H>>::new();
+        for q in leaf_layer_indices {
+            let position_in_layer = PositionInLayer::Leaf(q);
+            let injected_elements = self.input.get_injected_elements(self.height(), q);
+            leaf_layer.push(DecommitmentNode {
+                hash: None,
+                position_in_layer,
+                injected_elements,
+            });
+        }
+        leaf_layer
     }
 
     pub fn root(&self) -> H::Hash {
