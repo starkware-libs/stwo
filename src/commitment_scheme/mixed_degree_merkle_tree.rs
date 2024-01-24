@@ -1,9 +1,10 @@
 use std::collections::BTreeSet;
+use std::iter::Peekable;
 
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
 use super::merkle_multilayer::MerkleMultiLayer;
-use super::mixed_degree_decommitment::MixedDecommitment;
+use super::mixed_degree_decommitment::{DecommitmentNode, MixedDecommitment, PositionInLayer};
 use crate::commitment_scheme::merkle_multilayer::MerkleMultiLayerConfig;
 use crate::core::fields::{Field, IntoSlice};
 
@@ -109,6 +110,37 @@ where
             depth_accumulator -= multi_layer_height;
         }
         panic!()
+    }
+
+    // TODO(Ohad): use in decommit and remove '_'.
+    fn _decommit_intermediate_layer(
+        &self,
+        layer_depth: usize,
+        mut current_queried_indices: Peekable<impl Iterator<Item = usize>>,
+    ) -> Vec<DecommitmentNode<F, H>> {
+        let mut proof_layer = Vec::<DecommitmentNode<F, H>>::new();
+        while let Some(q) = current_queried_indices.next() {
+            let sibling_index = q ^ 1;
+            let hash_witness = match current_queried_indices.peek() {
+                // If both children are in the layer, only injected elements are needed
+                // to calculate the parent.
+                Some(next_q) if *next_q == sibling_index => {
+                    current_queried_indices.next();
+                    None
+                }
+                _ => Some(self.get_hash_at(layer_depth, sibling_index)),
+            };
+            let injected_elements = self.input.get_injected_elements(layer_depth, q / 2);
+            if hash_witness.is_some() || !injected_elements.is_empty() {
+                let position_in_layer = PositionInLayer::new_child(sibling_index);
+                proof_layer.push(DecommitmentNode {
+                    position_in_layer,
+                    hash: hash_witness,
+                    injected_elements,
+                });
+            }
+        }
+        proof_layer
     }
 
     pub fn root(&self) -> H::Hash {
