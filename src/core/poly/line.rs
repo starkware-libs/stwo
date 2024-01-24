@@ -7,7 +7,7 @@ use std::ops::{Deref, DerefMut};
 use num_traits::Zero;
 
 use super::utils::{fold, repeat_value};
-use super::NaturalOrder;
+use super::{BitReversedOrder, NaturalOrder};
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -216,6 +216,26 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> LineEvaluation<F, EvalOrder> {
         // optimizes `.len().ilog2()` to a load of `log_size` instead of a branch and a bit count.
         debug_assert_eq!(self.evals.len(), 1 << self.log_size);
         1 << self.log_size
+    }
+}
+
+impl<F: ExtensionOf<BaseField>> LineEvaluation<F, NaturalOrder> {
+    pub fn bit_reverse(self) -> LineEvaluation<F, BitReversedOrder> {
+        LineEvaluation {
+            evals: bit_reverse(self.evals),
+            log_size: self.log_size,
+            _eval_order: PhantomData,
+        }
+    }
+}
+
+impl<F: ExtensionOf<BaseField>> LineEvaluation<F, BitReversedOrder> {
+    pub fn bit_reverse(self) -> LineEvaluation<F, NaturalOrder> {
+        LineEvaluation {
+            evals: bit_reverse(self.evals),
+            log_size: self.log_size,
+            _eval_order: PhantomData,
+        }
     }
 }
 
