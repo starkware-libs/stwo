@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::iter::Peekable;
 
 use super::hasher::Hasher;
@@ -95,9 +94,34 @@ where
         root
     }
 
-    pub fn decommit(&self, _queries: BTreeSet<usize>) -> MixedDecommitment<F, H> {
-        todo!()
+    pub fn decommit(&self, mut queries: Vec<usize>) -> MixedDecommitment<F, H> {
+        let mut decommitment_layers = Vec::<Vec<DecommitmentNode<F, H>>>::with_capacity(self.height());
+        
+        // Leaf layer.
+        let leaf_layer_decommitment = self._decommit_leaf_layer(queries.iter().copied().peekable());
+        decommitment_layers.push(leaf_layer_decommitment);
+
+        // Rest of the tree.
+        for i in (1..self.height()).rev() {
+            let layer_decommitment = self._decommit_intermediate_layer(
+                i,
+                queries.iter().copied().peekable(),
+            );
+            decommitment_layers.push(layer_decommitment);
+            queries = Self::get_parent_indices(queries);
+        }
+
+        MixedDecommitment {
+            decommitment_layers,
+        }
     }
+
+    fn get_parent_indices(children: Vec<usize>) -> Vec<usize> {
+        let mut parent_indices = children.into_iter().map(|c| c / 2).collect::<Vec<_>>();
+        parent_indices.dedup();
+        parent_indices
+    }
+    
 
     pub fn get_hash_at(&self, layer_depth: usize, position: usize) -> H::Hash {
         // Determine correct multilayer
@@ -335,31 +359,6 @@ mod tests {
     }
 
     #[test]
-    fn decommit_leaf_layer_test() {
-        const TREE_HEIGHT: usize = 4;
-        let mut input = super::MerkleTreeInput::<M31>::new();
-        let base_column = (0..8).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
-        input.insert_column(TREE_HEIGHT, &base_column);
-        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
-            input,
-            MixedDegreeMerkleTreeConfig {
-                multi_layer_sizes: [1, 2, 1].to_vec(),
-            },
-        );
-        tree.commit();
-        let leaf_layer_indices = (0..4).step_by(2).peekable();
-        let leaf_layer_decommitment = tree._decommit_leaf_layer(leaf_layer_indices);
-
-        leaf_layer_decommitment
-            .iter()
-            .enumerate()
-            .for_each(|(i, node)| {
-                assert_eq!(node.hash, None);
-                assert_eq!(node.injected_elements, vec![m31!(2 * i as u32)]);
-            });
-    }
-
-    #[test]
     fn decommit_intermediate_layer_test() {
         const TREE_HEIGHT: usize = 3;
         let mut input = super::MerkleTreeInput::<M31>::new();
@@ -398,5 +397,66 @@ mod tests {
         let expected_hash_at_2_0 = hasher.finalize_reset();
         assert_eq!(proof_layer_depth_2[0].hash, Some(expected_hash_at_2_0));
         assert_eq!(proof_layer_depth_2[0].injected_elements, vec![]);
+    }
+
+    #[test]
+    fn decommit_test() {
+        const TREE_HEIGHT: usize = 4;
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let base_column = (0..8).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        input.insert_column(TREE_HEIGHT, &base_column);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [1, 2, 1].to_vec(),
+            },
+        );
+        tree.commit();
+        let leaf_layer_queries = vec![0,2,7];
+        let decommitment = tree.decommit(leaf_layer_queries);
+        
+        let leaf_layer_decommitment = &decommitment.decommitment_layers[0];
+        assert_eq!(leaf_layer_decommitment.len(), 3);
+        assert_eq!(leaf_layer_decommitment[0].injected_elements, vec![m31!(0)]);
+        assert_eq!(leaf_layer_decommitment[1].injected_elements, vec![m31!(2)]);
+        assert_eq!(leaf_layer_decommitment[2].injected_elements, vec![m31!(7)]);
+
+        let expected_hash_at_1_1 = Blake3Hasher::hash(&1_u32.to_le_bytes());
+        let expected_hash_at_1_3 = Blake3Hasher::hash(&3_u32.to_le_bytes());
+        let expected_hash_at_1_6 = Blake3Hasher::hash(&6_u32.to_le_bytes());
+        let decommitment_layer_1 = &decommitment.decommitment_layers[1];
+        assert_eq!(decommitment_layer_1.len(), 3);
+        assert_eq!(decommitment_layer_1[0].hash, Some(expected_hash_at_1_1));
+        assert_eq!(decommitment_layer_1[1].hash, Some(expected_hash_at_1_3));
+        assert_eq!(decommitment_layer_1[2].hash, Some(expected_hash_at_1_6));
+
+        let expected_hash_at_2_1 = Blake3Hasher::concat_and_hash(
+            &Blake3Hasher::hash(&2_u32.to_le_bytes()),
+            &Blake3Hasher::hash(&3_u32.to_le_bytes()),
+        );
+        let expected_hash_at_2_2 = Blake3Hasher::concat_and_hash(
+            &Blake3Hasher::hash(&4_u32.to_le_bytes()),
+            &Blake3Hasher::hash(&5_u32.to_le_bytes()),
+        );
+        let expected_hash_at_2_3 = Blake3Hasher::concat_and_hash(
+            &Blake3Hasher::hash(&6_u32.to_le_bytes()),
+            &Blake3Hasher::hash(&7_u32.to_le_bytes()),
+        );
+        let expected_hash_at_3_1 = Blake3Hasher::concat_and_hash(
+            &expected_hash_at_2_2,
+            &expected_hash_at_2_3,
+        );
+
+        println!("{}", decommitment);
+        let layer_1_decommitment = &decommitment.decommitment_layers[1];
+        assert_eq!(layer_1_decommitment.len(), 3);
+
+
+        let layer_2_decommitment = &decommitment.decommitment_layers[2];
+        assert_eq!(layer_2_decommitment.len(), 1);
+        assert_eq!(layer_2_decommitment[0].hash, Some(expected_hash_at_2_1));
+        let layer_3_decommitment = &decommitment.decommitment_layers[3];
+        assert_eq!(layer_3_decommitment.len(), 1);
+        assert_eq!(layer_3_decommitment[0].hash, Some(expected_hash_at_3_1));
     }
 }
