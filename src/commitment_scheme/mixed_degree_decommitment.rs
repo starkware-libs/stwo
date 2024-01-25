@@ -68,10 +68,6 @@ impl<F: Field, H: Hasher> fmt::Display for DecommitmentNode<F, H> {
         if let Some(hash) = self.right_hash {
             f.write_str(&std::format!("Right hash: {}, ", hash))?;
         }
-        f.write_str(&std::format!(
-            " Injected Elements: {:?}",
-            self.injected_elements
-        ))?;
         f.write_str("\n")?;
         Ok(())
     }
