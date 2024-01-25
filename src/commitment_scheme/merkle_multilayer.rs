@@ -1,5 +1,6 @@
 use std::fmt::{self, Display};
 
+// use std::iter::Peekable;
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
 use super::utils::{get_column_chunk, inject_and_hash_layer};

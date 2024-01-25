@@ -72,6 +72,7 @@ impl<F: Field, H: Hasher> fmt::Display for DecommitmentNode<F, H> {
             " Injected Elements: {:?}",
             self.injected_elements
         ))?;
+
         f.write_str("\n")?;
         Ok(())
     }
