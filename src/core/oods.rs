@@ -6,7 +6,7 @@ use super::fields::qm31::QM31;
 use super::fields::ExtensionOf;
 use super::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PointMapping};
 
-/// Returns the quotient value for the OODS point.
+/// Evaluates the OODS quotient polynomial on a single point.
 pub fn eval_oods_quotient_point<
     F: ExtensionOf<BaseField>,
     EF: ExtensionOf<BaseField> + ExtensionOf<F>,
@@ -21,7 +21,7 @@ pub fn eval_oods_quotient_point<
 }
 
 // TODO(AlonH): Consider duplicating function instead of using generics (check performance).
-/// Evaluate the quotient for the OODS point over the whole domain.
+/// Returns the OODS quotient polynomial evaluation over the whole domain.
 pub fn get_oods_quotient<F: ExtensionOf<BaseField>, EF: ExtensionOf<BaseField> + ExtensionOf<F>>(
     oods_point: CirclePoint<EF>,
     oods_value: EF,
@@ -38,7 +38,7 @@ pub fn get_oods_quotient<F: ExtensionOf<BaseField>, EF: ExtensionOf<BaseField> +
     CircleEvaluation::new(eval.domain, values)
 }
 
-/// Returns the mask values for the OODS point.
+/// Returns trace evaluations in the OODS point offset by the mask offsets.
 pub fn get_oods_values(
     mask: &Mask,
     oods_point: CirclePoint<QM31>,
@@ -53,4 +53,18 @@ pub fn get_oods_values(
         });
     }
     mask.get_evaluation(trace_domains, &oods_evals[..])
+}
+
+// TODO(AlonH): Consider refactoring and using this function in `get_oods_values`.
+/// Returns the OODS evaluation points for the mask.
+pub fn get_oods_points(
+    mask: &Mask,
+    oods_point: CirclePoint<QM31>,
+    trace_domains: &[CanonicCoset],
+) -> Vec<CirclePoint<QM31>> {
+    let mask_offsets = mask.get_point_indices(trace_domains);
+    mask_offsets
+        .iter()
+        .map(|offset| oods_point + offset.to_point().into_ef())
+        .collect()
 }
