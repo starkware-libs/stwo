@@ -54,3 +54,15 @@ pub fn get_oods_values(
     }
     mask.get_evaluation(trace_domains, &oods_evals[..])
 }
+
+pub fn get_oods_points(
+    mask: &Mask,
+    oods_point: CirclePoint<QM31>,
+    trace_domains: &[CanonicCoset],
+) -> Vec<CirclePoint<QM31>> {
+    let mask_offsets = mask.get_point_indices(trace_domains);
+    mask_offsets
+        .iter()
+        .map(|offset| oods_point + offset.to_point().into_ef())
+        .collect()
+}
