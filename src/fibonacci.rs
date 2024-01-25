@@ -13,7 +13,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::oods::{get_oods_quotient, get_oods_values};
-use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 use crate::core::queries::Queries;
 use crate::core::utils::bit_reverse_vec;
 
@@ -50,8 +50,7 @@ pub struct FibonacciProof {
     pub public_input: BaseField,
     pub trace_commitment: CommitmentProof<BaseField, MerkleHasher>,
     pub composition_polynomial_commitment: CommitmentProof<QM31, MerkleHasher>,
-    // TODO(AlonH): Consider including only the values.
-    pub trace_oods_evaluation: PointMapping<QM31>,
+    pub trace_oods_values: Vec<QM31>,
     pub composition_polynomial_queried_values: Vec<QM31>,
     pub trace_queried_values: Vec<BaseField>,
     pub additional_proof_data: AdditionalProofData,
@@ -281,7 +280,7 @@ impl Fibonacci {
                 decommitment: composition_polynomial_decommitment,
                 commitment: composition_polynomial_commitment.root(),
             },
-            trace_oods_evaluation,
+            trace_oods_values: trace_oods_evaluation.values,
             composition_polynomial_queried_values,
             trace_queried_values,
             additional_proof_data: AdditionalProofData {
@@ -302,7 +301,8 @@ mod tests {
     use crate::core::constraints::{EvalByEvaluation, EvalByPointMapping, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
-    use crate::core::poly::circle::CircleEvaluation;
+    use crate::core::oods::get_oods_points;
+    use crate::core::poly::circle::{CircleEvaluation, PointMapping};
     use crate::{m31, qm31};
 
     #[test]
@@ -394,13 +394,18 @@ mod tests {
 
         let proof = fib.prove();
         let oods_point = proof.additional_proof_data.oods_point;
+        let mask = fib.get_mask();
+        let oods_points = get_oods_points(&mask, oods_point, &[fib.trace_domain]);
         let hz = fib.eval_composition_polynomial(
             proof
                 .additional_proof_data
                 .composition_polynomial_random_coeff,
             EvalByPointMapping {
                 point: oods_point,
-                point_mapping: &proof.trace_oods_evaluation,
+                point_mapping: &PointMapping {
+                    points: oods_points,
+                    values: proof.trace_oods_values,
+                },
             },
         );
 
