@@ -32,16 +32,10 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
 /// * `position_in_layer` - The position of the provided hash in the layer - for debugging purposes,
 ///   can be deducted by a verifier.
 pub struct DecommitmentNode<F: Field, H: Hasher> {
-    pub hash: Option<H::Hash>,
+    pub left_hash: Option<H::Hash>,
+    pub right_hash: Option<H::Hash>,
     pub injected_elements: Vec<F>,
-    pub position_in_layer: PositionInLayer,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum PositionInLayer {
-    Left(usize),
-    Right(usize),
-    Leaf(usize),
+    pub position_in_layer: usize,
 }
 
 impl<F: Field, H: Hasher> fmt::Display for MixedDecommitment<F, H> {
@@ -64,11 +58,14 @@ impl<F: Field, H: Hasher> fmt::Display for MixedDecommitment<F, H> {
 impl<F: Field, H: Hasher> fmt::Display for DecommitmentNode<F, H> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&std::format!(
-            "Position in Layer: {}, ",
+            "Node position in Layer: {}, ",
             self.position_in_layer
         ))?;
-        if let Some(hash) = self.hash {
-            f.write_str(&std::format!("Hash: {}, ", hash))?;
+        if let Some(hash) = self.left_hash {
+            f.write_str(&std::format!("Left hash: {}, ", hash))?;
+        }
+        if let Some(hash) = self.right_hash {
+            f.write_str(&std::format!("Right hash: {}, ", hash))?;
         }
         f.write_str(&std::format!(
             " Injected Elements: {:?}",
@@ -79,67 +76,36 @@ impl<F: Field, H: Hasher> fmt::Display for DecommitmentNode<F, H> {
     }
 }
 
-impl fmt::Display for PositionInLayer {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PositionInLayer::Left(i) => f.write_str(&std::format!("Left({})", i)),
-            PositionInLayer::Right(i) => f.write_str(&std::format!("Right({})", i)),
-            PositionInLayer::Leaf(i) => f.write_str(&std::format!("Leaf({})", i)),
-        }
-    }
-}
-
-impl PositionInLayer {
-    pub fn new_child(index: usize) -> Self {
-        if index % 2 == 0 {
-            PositionInLayer::Left(index)
-        } else {
-            PositionInLayer::Right(index)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
-    use crate::commitment_scheme::mixed_degree_decommitment::PositionInLayer;
     use crate::core::fields::m31::M31;
 
     #[test]
     fn display_test() {
         let path = super::MixedDecommitment::<M31, Blake3Hasher>::new(vec![
             vec![super::DecommitmentNode::<M31, Blake3Hasher> {
-                hash: Some(Blake3Hasher::hash(b"a")),
+                left_hash: Some(Blake3Hasher::hash(b"a")),
+                right_hash: None,
                 injected_elements: (0..3).map(M31::from_u32_unchecked).collect(),
-                position_in_layer: PositionInLayer::new_child(0),
+                position_in_layer: 0,
             }],
             vec![
                 super::DecommitmentNode::<M31, Blake3Hasher> {
-                    hash: Some(Blake3Hasher::hash(b"b")),
+                    right_hash: Some(Blake3Hasher::hash(b"b")),
+                    left_hash: None,
                     injected_elements: (3..6).map(M31::from_u32_unchecked).collect(),
-                    position_in_layer: PositionInLayer::new_child(1),
+                    position_in_layer: 1,
                 },
                 super::DecommitmentNode::<M31, Blake3Hasher> {
-                    hash: Some(Blake3Hasher::hash(b"c")),
+                    left_hash: Some(Blake3Hasher::hash(b"c")),
+                    right_hash: None,
                     injected_elements: (6..9).map(M31::from_u32_unchecked).collect(),
-                    position_in_layer: PositionInLayer::new_child(0),
-                },
-            ],
-            vec![
-                super::DecommitmentNode::<M31, Blake3Hasher> {
-                    hash: Some(Blake3Hasher::hash(b"d")),
-                    injected_elements: Vec::new(),
-                    position_in_layer: PositionInLayer::new_child(2),
-                },
-                super::DecommitmentNode::<M31, Blake3Hasher> {
-                    hash: Some(Blake3Hasher::hash(b"e")),
-                    injected_elements: Vec::new(),
-                    position_in_layer: PositionInLayer::new_child(1),
+                    position_in_layer: 0,
                 },
             ],
         ]);
-
         println!("{}", path)
     }
 }
