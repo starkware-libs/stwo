@@ -7,13 +7,14 @@ use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{
-    coset_vanishing, pair_excluder, point_vanishing, EvalByEvaluation, PolyOracle,
+    coset_vanishing, pair_excluder, point_vanishing, EvalByEvaluation, EvalByPointMapping,
+    PolyOracle,
 };
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
-use crate::core::oods::{get_oods_quotient, get_oods_values};
-use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
+use crate::core::oods::{get_oods_points, get_oods_quotient, get_oods_values};
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
 use crate::core::queries::Queries;
 use crate::core::utils::bit_reverse_vec;
 
@@ -292,6 +293,35 @@ impl Fibonacci {
     }
 }
 
+pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
+    let fib = Fibonacci::new(N_BITS, proof.public_input);
+    let channel = &mut Channel::new(<Channel as ChannelTrait>::ChannelHasher::hash(
+        BaseField::into_slice(&[proof.public_input]),
+    ));
+    channel.mix_with_seed(proof.trace_commitment.commitment);
+    let random_coeff = channel.draw_random_extension_felts()[0];
+    channel.mix_with_seed(proof.composition_polynomial_commitment.commitment);
+    let oods_point = CirclePoint::<QM31>::get_random_point(channel);
+    let mask = fib.get_mask();
+    let trace_oods_points = get_oods_points(&mask, oods_point, &[fib.trace_domain]);
+    let oods_point_eval = EvalByPointMapping {
+        point: oods_point,
+        point_mapping: &PointMapping {
+            points: trace_oods_points.clone(),
+            values: proof.trace_oods_values.clone(),
+        },
+    };
+    let composition_polynomial_oods_value =
+        fib.eval_composition_polynomial(random_coeff, oods_point_eval);
+    assert_eq!(
+        composition_polynomial_oods_value,
+        proof
+            .additional_proof_data
+            .composition_polynomial_oods_value
+    );
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use num_traits::One;
@@ -303,6 +333,7 @@ mod tests {
     use crate::core::fields::qm31::QM31;
     use crate::core::oods::get_oods_points;
     use crate::core::poly::circle::{CircleEvaluation, PointMapping};
+    use crate::fibonacci::verify_proof;
     use crate::{m31, qm31};
 
     #[test]
@@ -404,7 +435,7 @@ mod tests {
                 point: oods_point,
                 point_mapping: &PointMapping {
                     points: oods_points,
-                    values: proof.trace_oods_values,
+                    values: proof.trace_oods_values.clone(),
                 },
             },
         );
@@ -415,5 +446,6 @@ mod tests {
                 .composition_polynomial_oods_value,
             hz
         );
+        assert!(verify_proof::<5>(&proof));
     }
 }
