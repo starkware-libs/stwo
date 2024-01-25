@@ -1,10 +1,11 @@
-use std::collections::BTreeSet;
 use std::iter::Peekable;
+
+use itertools::Itertools;
 
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
 use super::merkle_multilayer::MerkleMultiLayer;
-use super::mixed_degree_decommitment::{DecommitmentNode, MixedDecommitment, PositionInLayer};
+use super::mixed_degree_decommitment::{DecommitmentNode, MixedDecommitment};
 use crate::commitment_scheme::merkle_multilayer::MerkleMultiLayerConfig;
 use crate::core::fields::{Field, IntoSlice};
 
@@ -95,8 +96,43 @@ where
         root
     }
 
-    pub fn decommit(&self, _queries: BTreeSet<usize>) -> MixedDecommitment<F, H> {
-        todo!()
+    // queries should be a query struct that supports queries at multiple layers/
+    pub fn decommit(&self, mut _queries: Vec<Vec<usize>>) -> MixedDecommitment<F, H> {
+        let leaf_layer_queries = _queries.remove(self.height() - 1);
+        let leaf_layer_decommitment =
+            self.decommit_leaf_layer(leaf_layer_queries.iter().copied().peekable());
+
+        let mut parent_indices_of_previous_layer = leaf_layer_queries;
+        let mut proof_layers = (1..self.height())
+            .rev()
+            .map(|i| {
+                let current_layer_bag_queries = _queries.remove(i - 1);
+                let decommitment_layer = self.decommit_intermediate_layer(
+                    i,
+                    parent_indices_of_previous_layer.iter().copied().peekable(),
+                    current_layer_bag_queries.iter().copied().peekable(),
+                );
+                parent_indices_of_previous_layer = Self::prepare_parent_indices(
+                    parent_indices_of_previous_layer.clone(),
+                    current_layer_bag_queries,
+                );
+                decommitment_layer
+            })
+            .collect_vec();
+
+        proof_layers.insert(0, leaf_layer_decommitment);
+        MixedDecommitment::new(proof_layers)
+    }
+
+    fn prepare_parent_indices(
+        previous_layer_parents: Vec<usize>,
+        current_layer_bag_queries: Vec<usize>,
+    ) -> Vec<usize> {
+        let mut next_layer_parents = previous_layer_parents.iter().map(|q| *q / 2).collect_vec();
+        next_layer_parents.extend(current_layer_bag_queries);
+        next_layer_parents.sort();
+        next_layer_parents.dedup();
+        previous_layer_parents
     }
 
     pub fn get_hash_at(&self, layer_depth: usize, position: usize) -> H::Hash {
@@ -112,35 +148,102 @@ where
         panic!()
     }
 
-    // TODO(Ohad): use in decommit and remove '_'.
-    fn _decommit_intermediate_layer(
+    fn decommit_leaf_layer(
         &self,
-        layer_depth: usize,
-        mut current_queried_indices: Peekable<impl Iterator<Item = usize>>,
+        leaf_queries: Peekable<impl Iterator<Item = usize>>,
     ) -> Vec<DecommitmentNode<F, H>> {
         let mut proof_layer = Vec::<DecommitmentNode<F, H>>::new();
-        while let Some(q) = current_queried_indices.next() {
+        for q in leaf_queries {
+            let node_bag = self.get_bag(self.height(), q, false, false);
+            proof_layer.push(node_bag.expect("No elements in leaf node!"));
+        }
+        proof_layer
+    }
+
+    // TODO(Ohad): use in decommit and remove '_'.
+    fn decommit_intermediate_layer(
+        &self,
+        layer_depth: usize,
+        mut parent_indices_of_previous_layer: Peekable<impl Iterator<Item = usize>>,
+        mut current_layer_bag_queries: Peekable<impl Iterator<Item = usize>>,
+    ) -> Vec<DecommitmentNode<F, H>> {
+        let mut proof_layer = Vec::<DecommitmentNode<F, H>>::new();
+
+        while let Some(q) = parent_indices_of_previous_layer.next() {
+            // Handle bag queries.
+            let parent_query_bag_index = q / 2;
+            loop {
+                let next_bag_query = current_layer_bag_queries.peek();
+                if next_bag_query.is_none() || *next_bag_query.unwrap() >= parent_query_bag_index {
+                    break;
+                }
+                if let Some(node_bag) =
+                    self.get_bag(layer_depth, *next_bag_query.unwrap(), true, true)
+                {
+                    proof_layer.push(node_bag);
+                }
+            }
+
             let sibling_index = q ^ 1;
-            let hash_witness = match current_queried_indices.peek() {
+            match parent_indices_of_previous_layer.peek() {
                 // If both children are in the layer, only injected elements are needed
                 // to calculate the parent.
                 Some(next_q) if *next_q == sibling_index => {
-                    current_queried_indices.next();
-                    None
+                    parent_indices_of_previous_layer.next();
                 }
-                _ => Some(self.get_hash_at(layer_depth, sibling_index)),
+                _ => {
+                    if q % 2 == 0 {
+                        if let Some(node_bag) =
+                            self.get_bag(layer_depth, parent_query_bag_index, false, true)
+                        {
+                            proof_layer.push(node_bag);
+                        };
+                    } else if let Some(node_bag) =
+                        self.get_bag(layer_depth, parent_query_bag_index, true, false)
+                    {
+                        proof_layer.push(node_bag);
+                    };
+                }
             };
-            let injected_elements = self.input.get_injected_elements(layer_depth, q / 2);
-            if hash_witness.is_some() || !injected_elements.is_empty() {
-                let position_in_layer = PositionInLayer::new_child(sibling_index);
-                proof_layer.push(DecommitmentNode {
-                    position_in_layer,
-                    hash: hash_witness,
-                    injected_elements,
-                });
+        }
+
+        // Rest of bag queries.
+        for bag_query in current_layer_bag_queries.by_ref() {
+            if let Some(node_bag) = self.get_bag(layer_depth, bag_query, true, true) {
+                proof_layer.push(node_bag);
             }
         }
         proof_layer
+    }
+
+    fn get_bag(
+        &self,
+        layer_depth: usize,
+        bag_index: usize,
+        include_left_hash: bool,
+        include_right_hash: bool,
+    ) -> Option<DecommitmentNode<F, H>> {
+        let right_hash = if include_right_hash {
+            Some(self.get_hash_at(layer_depth, bag_index * 2 + 1))
+        } else {
+            None
+        };
+        let left_hash = if include_left_hash {
+            Some(self.get_hash_at(layer_depth, bag_index * 2))
+        } else {
+            None
+        };
+        let injected_elements = self.input.get_injected_elements(layer_depth, bag_index);
+
+        if right_hash.is_none() && left_hash.is_none() && injected_elements.is_empty() {
+            return None;
+        }
+        Some(DecommitmentNode {
+            bag_position_in_layer: bag_index,
+            right_hash,
+            left_hash,
+            injected_elements,
+        })
     }
 
     pub fn root(&self) -> H::Hash {
@@ -313,5 +416,27 @@ mod tests {
             },
         );
         tree.get_hash_at(4, 0);
+    }
+
+    #[test]
+    fn decommit_test() {
+        const TREE_HEIGHT: usize = 4;
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let base_column = (0..8).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let injected_column = (0..4)
+            .rev()
+            .map(M31::from_u32_unchecked)
+            .collect::<Vec<M31>>();
+        input.insert_column(TREE_HEIGHT, &base_column);
+        input.insert_column(TREE_HEIGHT - 1, &injected_column);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [4].to_vec(),
+            },
+        );
+        tree.commit();
+        let decommitment = tree.decommit(vec![vec![], vec![], vec![0, 1, 3], vec![]]);
+        println!("{}", decommitment);
     }
 }
