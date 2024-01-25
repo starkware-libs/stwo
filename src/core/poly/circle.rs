@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::iter::Chain;
 use std::marker::PhantomData;
@@ -382,34 +381,32 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
 }
 
 #[derive(Clone, Debug)]
-pub struct PointMapping<F: ExtensionOf<BaseField>>(BTreeMap<CirclePoint<F>, F>);
+pub struct PointMapping<F: ExtensionOf<BaseField>> {
+    pub points: Vec<CirclePoint<F>>,
+    pub values: Vec<F>,
+}
 
 impl<F: ExtensionOf<BaseField>> PointMapping<F> {
-    pub fn new(evaluations: BTreeMap<CirclePoint<F>, F>) -> Self {
-        Self(evaluations)
+    pub fn new(points: Vec<CirclePoint<F>>, values: Vec<F>) -> Self {
+        assert_eq!(points.len(), values.len());
+        Self { points, values }
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.points.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.points.is_empty()
     }
 
+    // TODO(AlonH): Consider optimizing data structures for a more efficient get_at.
     pub fn get_at(&self, point: CirclePoint<F>) -> F {
-        *self
-            .0
-            .get(&point)
-            .unwrap_or_else(|| panic!("Point not found in evaluation for {:?}", point))
-    }
-}
-
-impl<F: ExtensionOf<BaseField>> Deref for PointMapping<F> {
-    type Target = BTreeMap<CirclePoint<F>, F>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+        self.values[self
+            .points
+            .iter()
+            .position(|p| *p == point)
+            .expect("Not in points")]
     }
 }
 

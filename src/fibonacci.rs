@@ -223,7 +223,11 @@ impl Fibonacci {
 
         // A quotient for each mask item and one for the composition_polynomial.
         let mut oods_quotients = Vec::with_capacity(mask.len() + 1);
-        for (point, value) in trace_oods_evaluation.iter() {
+        for (point, value) in trace_oods_evaluation
+            .points
+            .iter()
+            .zip(trace_oods_evaluation.values.iter())
+        {
             oods_quotients.push(get_oods_quotient(
                 *point,
                 *value,

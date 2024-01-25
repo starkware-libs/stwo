@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::ops::Deref;
 
 use self::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -80,15 +79,16 @@ impl Mask {
         cosets: &[CanonicCoset],
         poly_oracles: &[impl PolyOracle<F>],
     ) -> PointMapping<F> {
-        let mut res: BTreeMap<CirclePoint<F>, F> = BTreeMap::new();
+        let mut points = Vec::with_capacity(self.items.len());
+        let mut values = Vec::with_capacity(self.items.len());
         let mask_offsets = self.get_point_indices(cosets);
         for (mask_item, mask_offset) in self.items.iter().zip(mask_offsets) {
-            res.insert(
+            points.push(
                 poly_oracles[mask_item.column_index].point() + mask_offset.to_point().into_ef(),
-                poly_oracles[mask_item.column_index].get_at(mask_offset),
             );
+            values.push(poly_oracles[mask_item.column_index].get_at(mask_offset));
         }
-        PointMapping::new(res)
+        PointMapping::new(points, values)
     }
 
     pub fn get_point_indices(&self, cosets: &[CanonicCoset]) -> Vec<CirclePointIndex> {
