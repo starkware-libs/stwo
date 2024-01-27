@@ -32,7 +32,17 @@ pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoi
 }
 
 pub fn circle_domain_vanishing(domain: CircleDomain, p: CirclePoint<BaseField>) -> BaseField {
-    coset_vanishing(domain.half_coset, p) * coset_vanishing(domain.half_coset.conjugate(), p)
+    let log_size = domain.log_size();
+    // TODO(spapini): Cache d_x in a dedicated VanishingPolynomial struct.
+    let mut d_x = domain.half_coset.initial().x;
+    for _ in 1..log_size {
+        d_x = CirclePoint::double_x(d_x);
+    }
+    let mut x = p.x;
+    for _ in 1..log_size {
+        x = CirclePoint::double_x(x);
+    }
+    x - d_x
 }
 
 /// Evaluates the polynomial that is used to exclude the excluded point at point
@@ -152,9 +162,10 @@ mod tests {
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
     use crate::core::circle::{CirclePointIndex, Coset};
-    use crate::core::constraints::pair_excluder;
+    use crate::core::constraints::{circle_domain_vanishing, pair_excluder};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::Field;
+    use crate::core::poly::circle::CircleDomain;
 
     #[test]
     fn test_coset_vanishing() {
@@ -174,6 +185,14 @@ mod tests {
                     assert_ne!(coset_vanishing(*c1, el), BaseField::zero());
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_circle_domain_vanishing() {
+        let domain = CircleDomain::constraint_evaluation_domain(5);
+        for el in domain.iter() {
+            assert_eq!(circle_domain_vanishing(domain, el), BaseField::zero());
         }
     }
 
