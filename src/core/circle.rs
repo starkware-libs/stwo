@@ -363,7 +363,7 @@ impl Coset {
     }
 
     pub fn initial(&self) -> CirclePoint<M31> {
-        M31_CIRCLE_GEN.repeated_double(M31_CIRCLE_LOG_ORDER - self.log_size - 1)
+        self.initial
     }
 
     pub fn index_at(&self, index: usize) -> CirclePointIndex {
