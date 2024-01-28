@@ -78,7 +78,7 @@ impl Fibonacci {
         }
     }
 
-    pub fn get_trace(&self) -> CircleEvaluation<BaseField> {
+    fn get_trace(&self) -> CircleEvaluation<BaseField> {
         // Trace.
         let mut trace = Vec::with_capacity(self.trace_domain.size());
 
@@ -162,7 +162,7 @@ impl Fibonacci {
     }
 
     /// Returns the composition polynomial evaluations using the trace and a random coefficient.
-    pub fn compute_composition_polynomial(
+    fn compute_composition_polynomial(
         &self,
         random_coeff: QM31,
         trace_evaluation: &CircleEvaluation<BaseField>,
