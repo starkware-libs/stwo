@@ -86,10 +86,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
     /// * An evaluation's domain is smaller than the last layer.
     /// * An evaluation's domain is not a canonic circle domain.
     // TODO(andrew): Add docs for all evaluations needing to be from canonic domains.
-    pub fn commit(config: FriConfig, evals: Vec<CircleEvaluation<F, BitReversedOrder>>) -> Self {
-        assert!(evals.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
-        assert!(evals.iter().all(|e| e.domain.is_canonic()), "not canonic");
-        let (inner_layers, last_layer_evaluation) = Self::commit_inner_layers(config, evals);
+    pub fn commit(config: FriConfig, columns: Vec<CircleEvaluation<F, BitReversedOrder>>) -> Self {
+        assert!(columns.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
+        assert!(columns.iter().all(|e| e.domain.is_canonic()), "not canonic");
+        let (inner_layers, last_layer_evaluation) = Self::commit_inner_layers(config, columns);
         let last_layer_poly = Self::commit_last_layer(config, last_layer_evaluation);
         Self {
             inner_layers,
@@ -99,26 +99,19 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
 
     /// Builds and commits to the inner FRI layers (all layers except the last layer).
     ///
-    /// `evals` must be provided in descending order by size.
+    /// All `columns` must be provided in descending order by size.
     ///
-    /// Returns all inner layers and the evaluation for the last layer.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `evals` is empty or if an evaluation's domain is smaller than or equal to the last
-    /// layer's domain.
+    /// Returns all inner layers and the evaluation of the last layer.
     fn commit_inner_layers(
         config: FriConfig,
-        evals: Vec<CircleEvaluation<F, BitReversedOrder>>,
+        columns: Vec<CircleEvaluation<F, BitReversedOrder>>,
     ) -> (
         Vec<FriLayerProver<F, H>>,
         LineEvaluation<F, BitReversedOrder>,
     ) {
-        // Returns the length of the [LineEvaluation] a [CircleEvaluation] gets folded into.
-        let folded_len = |e: &CircleEvaluation<_, _>| e.len() >> LOG_CIRCLE_TO_LINE_FOLDING_FACTOR;
-        let mut evals = evals.into_iter().peekable();
-        let mut layer_size = evals.peek().map(folded_len).expect("no evaluation");
-        let mut evaluation = LineEvaluation::new(vec![F::zero(); layer_size]);
+        let mut layer_size = columns[0].len() >> LOG_CIRCLE_TO_LINE_FOLDING_FACTOR;
+        let mut layer_evaluation = LineEvaluation::new(vec![F::zero(); layer_size]);
+        let mut columns = columns.into_iter().peekable();
 
         let mut layers = Vec::new();
 
@@ -126,29 +119,30 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
         // TODO(andrew): draw random alpha from channel
         let circle_poly_alpha = F::one();
 
-        while evaluation.len() > config.last_layer_domain_size() {
-            // Check for any evaluations that should be combined.
-            while evals.peek().map(folded_len) == Some(layer_size) {
-                let circle_evaluation = evals.next().unwrap();
-                fold_circle_into_line(&mut evaluation, &circle_evaluation, circle_poly_alpha);
+        while layer_evaluation.len() > config.last_layer_domain_size() {
+            // Check for any columns (circle poly evaluations) that should be combined.
+            while let Some(column) = columns.next_if(|c| c.len() > layer_size) {
+                fold_circle_into_line(&mut layer_evaluation, &column, circle_poly_alpha);
             }
 
-            let layer = FriLayerProver::new(&evaluation);
+            let layer = FriLayerProver::new(&layer_evaluation);
 
             // TODO(andrew): add merkle root to channel
             // TODO(ohad): Add back once IntoSlice implemented for Field.
             // let _merkle_root = layer.merkle_tree.root();
             // TODO(andrew): draw random alpha from channel
             let alpha = F::one();
-            let folded_evaluation = fold_line(&evaluation, alpha);
+            let folded_layer_evaluation = fold_line(&layer_evaluation, alpha);
 
-            evaluation = folded_evaluation;
+            layer_evaluation = folded_layer_evaluation;
             layer_size >>= LOG_FOLDING_FACTOR;
             layers.push(layer);
         }
 
-        assert!(evals.next().is_none());
-        (layers, evaluation)
+        // Check all columns have been consumed.
+        assert!(columns.is_empty());
+
+        (layers, layer_evaluation)
     }
 
     /// Builds and commits to the last layer.
@@ -201,7 +195,7 @@ pub struct FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
     /// Alpha used to fold all circle polynomials to univariate polynomials.
     _circle_poly_alpha: F,
     /// The list of degree bounds of all committed circle polynomials.
-    _column_degree_bounds: Vec<LogCirclePolyDegreeBound>,
+    _column_bounds: Vec<CirclePolyDegreeBound>,
     _config: FriConfig,
     /// Alphas used to fold all inner layers.
     _layer_alphas: Vec<F>,
@@ -211,8 +205,7 @@ pub struct FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
     /// Verifies the commitment stage of FRI.
     ///
-    /// `column_degree_bounds` should be a list of degree bounds of all committed circle
-    /// polynomials.
+    /// `column_bounds` should be the committed circle polynomial degree bounds in descending order.
     ///
     /// # Errors
     ///
@@ -222,14 +215,50 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
     ///
     /// # Panics
     ///
-    /// Panics if there are no degree bounds or if one is less than or equal to the last
-    /// layer's degree bound.
+    /// Panics if:
+    /// * There are no degree bounds.
+    /// * The degree bounds are not sorted in descending order.
+    /// * A degree bound is less than or equal to the last layer's degree bound.
     pub fn commit(
-        _config: FriConfig,
-        _proof: FriProof<F, H>,
-        _column_degree_bounds: Vec<LogCirclePolyDegreeBound>,
+        config: FriConfig,
+        proof: FriProof<F, H>,
+        column_bounds: Vec<CirclePolyDegreeBound>,
     ) -> Result<Self, VerificationError> {
-        todo!()
+        assert!(column_bounds.is_sorted_by_key(|b| Reverse(*b)));
+
+        // Circle polynomials can all be folded with the same alpha.
+        // TODO(andrew): Draw alpha from channel.
+        let circle_poly_alpha = F::one();
+
+        let mut layer_alphas = Vec::new();
+        let mut layer_bound = column_bounds[0].fold_to_line();
+
+        for _ in &proof.inner_layers {
+            // TODO(andrew): Seed channel with commitment.
+            // TODO(andrew): Draw alpha from channel.
+            let alpha = F::one();
+            layer_alphas.push(alpha);
+            layer_bound = layer_bound
+                .fold(LOG_FOLDING_FACTOR)
+                .ok_or(VerificationError::InvalidNumFriLayers)?;
+        }
+
+        if layer_bound.log_degree_bound != config.log_last_layer_degree_bound {
+            return Err(VerificationError::InvalidNumFriLayers);
+        }
+
+        let last_layer_degree_bound = 1 << config.log_last_layer_degree_bound;
+        if proof.last_layer_poly.len() > last_layer_degree_bound {
+            return Err(VerificationError::LastLayerDegreeInvalid);
+        }
+
+        Ok(Self {
+            _circle_poly_alpha: circle_poly_alpha,
+            _column_bounds: column_bounds,
+            _config: config,
+            _layer_alphas: layer_alphas,
+            _proof: proof,
+        })
     }
 
     /// Verifies the decommitment stage of FRI.
@@ -260,8 +289,41 @@ pub enum VerificationError {
     LastLayerEvaluationsInvalid,
 }
 
-/// Log degree bound of a circle polynomial.
-type LogCirclePolyDegreeBound = u32;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CirclePolyDegreeBound {
+    log_degree_bound: u32,
+}
+
+impl CirclePolyDegreeBound {
+    pub fn new(log_degree_bound: u32) -> Self {
+        Self { log_degree_bound }
+    }
+
+    /// Maps a circle polynomial's degree bound to the degree bound of the univariate (line)
+    /// polynomial it gets folded into.
+    fn fold_to_line(&self) -> LinePolyDegreeBound {
+        LinePolyDegreeBound {
+            log_degree_bound: self.log_degree_bound - LOG_CIRCLE_TO_LINE_FOLDING_FACTOR,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct LinePolyDegreeBound {
+    log_degree_bound: u32,
+}
+
+impl LinePolyDegreeBound {
+    /// Returns [None] if the degree bound is smaller than the folding factor.
+    fn fold(self, n_folds: u32) -> Option<Self> {
+        if self.log_degree_bound < n_folds {
+            return None;
+        }
+
+        let log_degree_bound = self.log_degree_bound - n_folds;
+        Some(Self { log_degree_bound })
+    }
+}
 
 /// A FRI proof.
 pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
