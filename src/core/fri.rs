@@ -8,6 +8,8 @@ use super::fields::{ExtensionOf, Field};
 use super::poly::circle::CircleEvaluation;
 use super::poly::line::{LineEvaluation, LinePoly};
 use super::poly::BitReversedOrder;
+// TODO(andrew): Create fri/ directory, move queries.rs there and split this file up.
+use super::queries::Queries;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
@@ -58,8 +60,6 @@ impl FriConfig {
 }
 
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
-///
-/// `Phase` is used to enforce the commitment phase is done before the query phase.
 pub struct FriProver<F: ExtensionOf<BaseField>, H: Hasher> {
     inner_layers: Vec<FriLayer<F, H>>,
     last_layer_poly: LinePoly<F>,
@@ -174,15 +174,15 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
         // TODO(andrew): Seed channel with coeffs.
     }
 
-    pub fn decommit(self, query_positions: &[usize]) -> FriProof<F, H> {
+    pub fn decommit(self, queries: &Queries) -> FriProof<F, H> {
         let last_layer_poly = self.last_layer_poly;
         let inner_layers = self
             .inner_layers
             .into_iter()
-            .scan(query_positions.to_vec(), |positions, layer| {
-                let num_layer_cosets = layer.coset_evals[0].len();
-                fold_positions(positions, num_layer_cosets);
-                Some(layer.decommit(positions))
+            .scan(queries.clone(), |queries, layer| {
+                let layer_proof = layer.decommit(queries);
+                *queries = queries.fold(LOG_FOLDING_FACTOR);
+                Some(layer_proof)
             })
             .collect();
         FriProof {
@@ -208,8 +208,15 @@ const LOG_CIRCLE_TO_LINE_FOLDING_FACTOR: u32 = 1;
 /// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
+// TODO(andrew): Consider adding docs here explaining the idea of splitting the layer's evaluations
+// into evaluations on multiple smaller cosets. Also perhaps coset isn't the best name because it
+// clashes with [Coset].
 pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub coset_evals: Vec<[F; 1 << LOG_FOLDING_FACTOR]>,
+    /// Subset of all subcircle evaluations.
+    ///
+    /// The subset stored corresponds to the set of evaluations the verifier doesn't have but needs
+    /// to verify the decommitment.
+    pub evals_subset: Vec<F>,
     pub decommitment: MerkleDecommitment<F, H>,
     pub commitment: H::Hash,
 }
@@ -217,7 +224,7 @@ pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
     // TODO(andrew): implement and add docs
     // TODO(andrew): create FRI verification error type
-    pub fn verify(&self, _positions: &[usize]) -> Result<(), String> {
+    pub fn verify(&self, _queries: &Queries) -> Result<(), String> {
         todo!()
     }
 }
@@ -229,7 +236,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
 // TODO(andrew): support different folding factors
 struct FriLayer<F: ExtensionOf<BaseField>, H: Hasher> {
     /// Coset evaluations stored in column-major.
-    coset_evals: [Vec<F>; 1 << LOG_FOLDING_FACTOR],
+    subcircle_evals: [Vec<F>; 1 << LOG_FOLDING_FACTOR],
     _merkle_tree: MerkleTree<F, H>,
 }
 
@@ -237,33 +244,46 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
     fn new(evaluation: &LineEvaluation<F, BitReversedOrder>) -> Self {
         // TODO(andrew): With bit-reversed order coset evals are next to each other. Update.
         let (l, r) = evaluation.split_at(evaluation.len() / 2);
-        let coset_evals = [l.to_vec(), r.to_vec()];
+        let subcircle_evals = [l.to_vec(), r.to_vec()];
         // TODO(ohad): Add back once IntoSlice implemented for Field.
         // let merkle_tree = MerkleTree::commit(coset_evals.to_vec());
         #[allow(unreachable_code)]
         FriLayer {
-            coset_evals,
+            subcircle_evals,
             _merkle_tree: todo!(),
         }
     }
 
-    /// Decommits to the coset evaluation at the specified positions.
-    fn decommit(self, positions: &[usize]) -> FriLayerProof<F, H> {
-        let coset_evals = positions
-            .iter()
-            .map(|i| {
-                let eval0 = self.coset_evals[0][*i];
-                let eval1 = self.coset_evals[1][*i];
-                [eval0, eval1]
-            })
-            .collect();
+    /// Generates a decommitment of the subcircle evaluations at the specified positions.
+    fn decommit(self, queries: &Queries) -> FriLayerProof<F, H> {
+        const SUBCIRCLE_SIZE: usize = 1 << LOG_FOLDING_FACTOR;
+
+        let mut evals_subset = Vec::new();
+
+        // Group queries by the subcircle they reside in.
+        for query_group in queries.group_by(|a, b| a / SUBCIRCLE_SIZE == b / SUBCIRCLE_SIZE) {
+            let subcircle_index = query_group[0] / SUBCIRCLE_SIZE;
+            let mut subcircle_queries = query_group.iter().map(|q| q % SUBCIRCLE_SIZE).peekable();
+
+            for i in 0..SUBCIRCLE_SIZE {
+                // Skip evals the verifier can calculate.
+                if subcircle_queries.peek() == Some(&i) {
+                    subcircle_queries.next();
+                    continue;
+                }
+
+                let eval = self.subcircle_evals[i][subcircle_index];
+                evals_subset.push(eval);
+            }
+        }
+
         // TODO(ohad): Add back once IntoSlice implemented for Field.
         // let position_set = positions.iter().copied().collect();
         // let decommitment = self.merkle_tree.generate_decommitment(position_set);
         // let commitment = self.merkle_tree.root();
         #[allow(unreachable_code)]
         FriLayerProof {
-            coset_evals,
+            evals_subset,
             decommitment: todo!(),
             commitment: todo!(),
         }
@@ -342,13 +362,6 @@ fn fold_circle_into_line<F: ExtensionOf<BaseField>>(
 
             *dst = *dst * alpha_sq + f_prime;
         });
-}
-
-// TODO(andrew): support different folding factors
-fn fold_positions(positions: &mut Vec<usize>, n: usize) {
-    positions.iter_mut().for_each(|p| *p %= n);
-    positions.sort_unstable();
-    positions.dedup();
 }
 
 #[cfg(test)]
