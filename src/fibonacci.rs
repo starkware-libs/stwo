@@ -319,6 +319,37 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
             .additional_proof_data
             .composition_polynomial_oods_value
     );
+
+    let composition_polynomial_queries = Queries::generate(
+        channel,
+        fib.composition_polynomial_commitment_domain.log_size(),
+        N_QUERIES,
+    );
+    let trace_queries = composition_polynomial_queries.fold(
+        fib.composition_polynomial_commitment_domain.log_size()
+            - fib.trace_commitment_domain.log_size(),
+    );
+    // TODO(AlonH): Get sub circle domains from FRI.
+    const FRI_STEP_SIZE: u32 = 1;
+    let composition_polynomial_sparse_sub_circle_domain =
+        composition_polynomial_queries.to_sparse_sub_circle_domain(FRI_STEP_SIZE);
+    let trace_sparse_sub_circle_domain = trace_queries.to_sparse_sub_circle_domain(FRI_STEP_SIZE);
+    assert_eq!(
+        trace_sparse_sub_circle_domain.len(),
+        proof.trace_queried_values.len() >> FRI_STEP_SIZE
+    );
+    assert_eq!(
+        composition_polynomial_sparse_sub_circle_domain.len(),
+        proof.composition_polynomial_queried_values.len() >> FRI_STEP_SIZE
+    );
+    assert!(proof.trace_commitment.decommitment.verify(
+        proof.trace_commitment.commitment,
+        &trace_sparse_sub_circle_domain.to_decommitment_positions()
+    ));
+    assert!(proof.composition_polynomial_commitment.decommitment.verify(
+        proof.composition_polynomial_commitment.commitment,
+        &composition_polynomial_sparse_sub_circle_domain.to_decommitment_positions()
+    ));
     true
 }
 
