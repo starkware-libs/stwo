@@ -1,4 +1,4 @@
-#![feature(stdsimd, new_uninit, is_sorted, array_chunks)]
+#![feature(stdsimd, new_uninit, is_sorted, array_chunks, slice_group_by)]
 pub mod commitment_scheme;
 pub mod core;
 pub mod fibonacci;

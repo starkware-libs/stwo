@@ -13,6 +13,7 @@ use super::utils::bit_reverse_index;
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
 /// An ordered set of query indices over a bit reversed [CircleDomain].
+#[derive(Debug, Clone)]
 pub struct Queries {
     pub positions: Vec<usize>,
     pub log_domain_size: u32,
