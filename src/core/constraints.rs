@@ -3,7 +3,7 @@ use num_traits::One;
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fields::m31::BaseField;
 use super::fields::ExtensionOf;
-use super::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly, PointMapping};
+use super::poly::circle::{CircleEvaluation, CirclePoly, PointMapping};
 
 /// Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoint<F>) -> F {
@@ -29,10 +29,6 @@ pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoi
         x = CirclePoint::double_x(x);
     }
     x
-}
-
-pub fn circle_domain_vanishing(domain: CircleDomain, p: CirclePoint<BaseField>) -> BaseField {
-    coset_vanishing(domain.half_coset, p) * coset_vanishing(domain.half_coset.conjugate(), p)
 }
 
 /// Evaluates the polynomial that is used to exclude the excluded point at point
