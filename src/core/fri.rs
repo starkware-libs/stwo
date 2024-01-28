@@ -222,11 +222,45 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
     /// Panics if there are no degree bounds or if one is less than or equal to the last
     /// layer's degree bound.
     pub fn commit(
-        _config: FriConfig,
-        _proof: FriProof<F, H>,
-        _column_degree_bounds: Vec<LogCirclePolyDegreeBound>,
+        config: FriConfig,
+        proof: FriProof<F, H>,
+        mut column_degree_bounds: Vec<LogCirclePolyDegreeBound>,
     ) -> Result<Self, VerificationError> {
-        todo!()
+        // Sort descending order
+        column_degree_bounds.sort_by_key(|d| Reverse(*d));
+        let first_layer_degree_bound = folded_circle_poly_degree(&column_degree_bounds[0]);
+        let mut log_degree = first_layer_degree_bound;
+
+        // Circle polynomials can all be folded with the same alpha.
+        // TODO(andrew): Draw alpha from channel.
+        let circle_poly_alpha = F::one();
+
+        let mut layer_alphas = Vec::new();
+
+        for _ in &proof.inner_layers {
+            // TODO(andrew): Seed channel with commitment.
+            // TODO(andrew): Draw alpha from channel.
+            let alpha = F::one();
+            layer_alphas.push(alpha);
+            log_degree = log_degree.wrapping_sub(LOG_FOLDING_FACTOR);
+        }
+
+        if log_degree != config.log_last_layer_degree_bound {
+            return Err(VerificationError::InvalidNumFriLayers);
+        }
+
+        let last_layer_degree_bound = 1 << config.log_last_layer_degree_bound;
+        if proof.last_layer_poly.len() > last_layer_degree_bound {
+            return Err(VerificationError::LastLayerDegreeInvalid);
+        }
+
+        Ok(Self {
+            _circle_poly_alpha: circle_poly_alpha,
+            _config: config,
+            _layer_alphas: layer_alphas,
+            _column_degree_bounds: column_degree_bounds,
+            _proof: proof,
+        })
     }
 
     /// Verifies the decommitment stage of FRI.
@@ -259,6 +293,15 @@ pub enum VerificationError {
 
 /// Log degree bound of a circle polynomial.
 pub(crate) type LogCirclePolyDegreeBound = u32;
+
+/// Log degree bound of a univariate (line) polynomial.
+pub(crate) type LogLinePolyDegreeBound = u32;
+
+/// Maps a circle polynomial's degree bound to the degree bound of the line polynomial it gets
+/// folded into.
+fn folded_circle_poly_degree(degree: &LogCirclePolyDegreeBound) -> LogLinePolyDegreeBound {
+    degree - LOG_CIRCLE_TO_LINE_FOLDING_FACTOR
+}
 
 /// A FRI proof.
 pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
