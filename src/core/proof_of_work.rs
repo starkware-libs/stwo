@@ -7,23 +7,40 @@ pub struct ProofOfWork<H: Hasher<NativeType = u8>> {
     work_bits: u32,
 }
 
-// TODO (ShaharS): Implement ProofOfWorkProver for hashers with other native type.
+// TODO(ShaharS): Consider to split to prover and verifier and create traits for them.
 impl<H: Hasher<NativeType = u8>> ProofOfWork<H> {
-    pub fn prove(&self) -> Vec<H::NativeType> {
-        unimplemented!("ProofOfWorkProver::prove")
+    pub fn new(seed: H::Hash, work_bits: u32) -> Self {
+        Self { seed, work_bits }
     }
 
-    pub fn verify(&self, nonce: &[H::NativeType]) -> bool {
+    pub fn prove(&self) -> u64 {
         let hash_total_output_bits = H::OUTPUT_SIZE as u32 * H::NativeType::BITS;
+        let mut nonce = 0u64;
+        // TODO(ShaharS): naive implementation, should be replaced with a parallel one.
+        loop {
+            let hash = BigUint::from_bytes_le(self.hash_with_nonce(nonce).as_ref());
+            if hash.bits() <= hash_total_output_bits as u64 - self.work_bits as u64 {
+                return nonce;
+            }
+            nonce += 1;
+        }
+    }
+
+    pub fn verify(&self, nonce: u64) -> bool {
+        let hash_total_output_bits = H::OUTPUT_SIZE as u32 * H::NativeType::BITS;
+        let hash = BigUint::from_bytes_le(self.hash_with_nonce(nonce).as_ref());
+        hash.bits() <= hash_total_output_bits as u64 - self.work_bits as u64
+    }
+
+    fn hash_with_nonce(&self, nonce: u64) -> H::Hash {
         let hash_input = self
             .seed
             .as_ref()
             .iter()
-            .chain(nonce.iter())
+            .chain(nonce.to_le_bytes().iter())
             .cloned()
             .collect::<Vec<_>>();
-        let hash_int = BigUint::from_bytes_le(H::hash(&hash_input).as_ref());
-        hash_int.bits() <= hash_total_output_bits as u64 - self.work_bits as u64
+        H::hash(&hash_input)
     }
 }
 
@@ -33,15 +50,36 @@ mod tests {
     use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 
     #[test]
+    fn test_verify_proof_of_work_success() {
+        let proof_of_work_prover = ProofOfWork::<Blake2sHasher> {
+            seed: Blake2sHash::from(vec![0; 32]),
+            work_bits: 10,
+        };
+        let valid_salt = 133;
+
+        assert!(proof_of_work_prover.verify(valid_salt));
+    }
+
+    #[test]
+    fn test_verify_proof_of_work_fail() {
+        let proof_of_work_prover = ProofOfWork::<Blake2sHasher> {
+            seed: Blake2sHash::from(vec![0; 32]),
+            work_bits: 1,
+        };
+        let invalid_salt = 0;
+
+        assert!(!proof_of_work_prover.verify(invalid_salt));
+    }
+
+    #[test]
     fn test_proof_of_work() {
         let proof_of_work_prover = ProofOfWork::<Blake2sHasher> {
             seed: Blake2sHash::from(vec![0; 32]),
-            work_bits: 7,
+            work_bits: 12,
         };
-        let valid_nonce = 3u8.to_le_bytes();
-        let invalid_nonce = 0u8.to_le_bytes();
 
-        assert!(proof_of_work_prover.verify(&valid_nonce));
-        assert!(!proof_of_work_prover.verify(&invalid_nonce));
+        let salt = proof_of_work_prover.prove();
+
+        assert!(proof_of_work_prover.verify(salt));
     }
 }
