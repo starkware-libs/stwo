@@ -185,6 +185,8 @@ impl Fibonacci {
         let channel = &mut Channel::new(<Channel as ChannelTrait>::ChannelHasher::hash(
             BaseField::into_slice(&[self.claim]),
         ));
+
+        // Evaluate and commit on trace.
         let trace = self.get_trace();
         let trace_poly = trace.interpolate();
         let trace_evaluation = trace_poly.evaluate(self.trace_eval_domain);
@@ -197,6 +199,7 @@ impl Fibonacci {
             )]);
         channel.mix_with_seed(trace_commitment.root());
 
+        // Evaluate and commit on composition polynomial.
         let random_coeff = channel.draw_random_extension_felts()[0];
         let composition_polynomial =
             self.compute_composition_polynomial(random_coeff, &trace_evaluation);
@@ -214,6 +217,7 @@ impl Fibonacci {
             )]);
         channel.mix_with_seed(composition_polynomial_commitment.root());
 
+        // Evaluate the trace mask and the composition polynomial on the OODS point.
         let oods_point = CirclePoint::<QM31>::get_random_point(channel);
         let mask = self.get_mask();
         let trace_oods_evaluation =
@@ -221,7 +225,8 @@ impl Fibonacci {
         let composition_polynomial_oods_value =
             composition_polynomial_poly.eval_at_point(oods_point);
 
-        // A quotient for each mask item and one for the composition_polynomial.
+        // Calculate a quotient polynomial for each trace mask item and one for the composition
+        // polynomial.
         let mut oods_quotients = Vec::with_capacity(mask.len() + 1);
         for (point, value) in trace_oods_evaluation
             .points
@@ -240,6 +245,7 @@ impl Fibonacci {
             &composition_polynomial_commitment_evaluation,
         ));
 
+        // TODO(AlonH): Pass the oods quotients to FRI prover and get opening positions from it.
         let composition_polynomial_queries = Queries::generate(
             channel,
             self.composition_polynomial_commitment_domain.log_size(),
@@ -249,7 +255,6 @@ impl Fibonacci {
             self.composition_polynomial_commitment_domain.log_size()
                 - self.trace_commitment_domain.log_size(),
         );
-        // TODO(AlonH): Get sub circle domains from FRI.
         const FRI_STEP_SIZE: u32 = 1;
         let composition_polynomial_decommitment_positions = composition_polynomial_queries
             .to_sparse_sub_circle_domain(FRI_STEP_SIZE)
@@ -257,6 +262,8 @@ impl Fibonacci {
         let trace_decommitment_positions = trace_queries
             .to_sparse_sub_circle_domain(FRI_STEP_SIZE)
             .to_decommitment_positions();
+
+        // Decommit and get the values in the opening positions.
         let composition_polynomial_queried_values = composition_polynomial_decommitment_positions
             .iter()
             .map(|p| composition_polynomial_commitment_evaluation.values[*p])
