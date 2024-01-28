@@ -112,11 +112,8 @@ impl SubCircleDomain {
 
     /// Returns the represented [CircleDomain].
     pub fn to_circle_domain(&self, query_domain: &CanonicCoset) -> CircleDomain {
-        let query = bit_reverse_index(
-            (self.coset_index << self.log_size) as u32,
-            query_domain.log_size(),
-        );
-        let initial_index = query_domain.index_at(query as usize);
+        let query = bit_reverse_index(self.coset_index << self.log_size, query_domain.log_size());
+        let initial_index = query_domain.index_at(query);
         let half_coset = Coset::new(initial_index, self.log_size - 1);
         CircleDomain::new(half_coset)
     }
@@ -128,7 +125,7 @@ mod tests {
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::queries::Queries;
-    use crate::core::utils::bit_reverse_vec;
+    use crate::core::utils::bit_reverse;
 
     #[test]
     fn test_generate_queries() {
@@ -148,13 +145,13 @@ mod tests {
     pub fn test_folded_queries() {
         let log_domain_size = 7;
         let domain = CanonicCoset::new(log_domain_size).circle_domain();
-        let values = domain.iter().collect();
-        let values = bit_reverse_vec(&values, log_domain_size);
+        let values = domain.iter().collect::<Vec<_>>();
+        let values = bit_reverse(values.clone());
 
         let log_folded_domain_size = 5;
         let folded_domain = CanonicCoset::new(log_folded_domain_size).circle_domain();
-        let folded_values = folded_domain.iter().collect();
-        let folded_values = bit_reverse_vec(&folded_values, log_folded_domain_size);
+        let folded_values = folded_domain.iter().collect::<Vec<_>>();
+        let folded_values = bit_reverse(folded_values.clone());
 
         // Generate all possible queries.
         let queries = Queries {
@@ -182,8 +179,8 @@ mod tests {
         let channel = &mut Blake2sChannel::new(Blake2sHash::default());
         let log_domain_size = 7;
         let domain = CanonicCoset::new(log_domain_size).circle_domain();
-        let values = domain.iter().collect();
-        let values = bit_reverse_vec(&values, log_domain_size);
+        let values = domain.iter().collect::<Vec<_>>();
+        let values = bit_reverse(values.clone());
 
         // Test random queries one by one because the conjugate queries are sorted.
         for _ in 0..100 {
