@@ -51,7 +51,7 @@ impl Queries {
         }
     }
 
-    pub fn to_sparse_sub_circle_domain(&self, fri_step_size: u32) -> SparseSubCircleDomain {
+    pub fn opening_positions(&self, fri_step_size: u32) -> SparseSubCircleDomain {
         assert!(fri_step_size > 0);
         SparseSubCircleDomain {
             domains: self
@@ -81,7 +81,7 @@ pub struct SparseSubCircleDomain {
 }
 
 impl SparseSubCircleDomain {
-    pub fn to_decommitment_positions(&self) -> Vec<usize> {
+    pub fn flatten(&self) -> Vec<usize> {
         self.iter()
             .flat_map(|sub_circle_domain| sub_circle_domain.to_decommitment_positions())
             .collect()
@@ -189,9 +189,7 @@ mod tests {
         for _ in 0..100 {
             let query = Queries::generate(channel, log_domain_size, 1);
             let conjugate_query = query[0] ^ 1;
-            let query_and_conjugate = query
-                .to_sparse_sub_circle_domain(1)
-                .to_decommitment_positions();
+            let query_and_conjugate = query.opening_positions(1).flatten();
             let mut expected_query_and_conjugate = vec![query[0], conjugate_query];
             expected_query_and_conjugate.sort();
             assert_eq!(query_and_conjugate, expected_query_and_conjugate);
@@ -207,9 +205,7 @@ mod tests {
         let fri_step_size = 3;
 
         let queries = Queries::generate(channel, log_domain_size, n_queries);
-        let queries_with_added_positions = queries
-            .to_sparse_sub_circle_domain(fri_step_size)
-            .to_decommitment_positions();
+        let queries_with_added_positions = queries.opening_positions(fri_step_size).flatten();
 
         assert!(queries_with_added_positions.is_sorted());
         assert_eq!(
@@ -227,9 +223,7 @@ mod tests {
             positions: (0..1 << log_domain_size).collect(),
             log_domain_size,
         };
-        let queries_with_conjugates = queries
-            .to_sparse_sub_circle_domain(log_domain_size - 2)
-            .to_decommitment_positions();
+        let queries_with_conjugates = queries.opening_positions(log_domain_size - 2).flatten();
 
         assert_eq!(*queries, *queries_with_conjugates);
     }

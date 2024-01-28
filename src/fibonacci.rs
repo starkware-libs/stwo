@@ -52,8 +52,8 @@ pub struct FibonacciProof {
     pub trace_commitment: CommitmentProof<BaseField, MerkleHasher>,
     pub composition_polynomial_commitment: CommitmentProof<QM31, MerkleHasher>,
     pub trace_oods_values: Vec<QM31>,
-    pub composition_polynomial_queried_values: Vec<QM31>,
-    pub trace_queried_values: Vec<BaseField>,
+    pub composition_polynomial_opened_values: Vec<QM31>,
+    pub trace_opened_values: Vec<BaseField>,
     pub additional_proof_data: AdditionalProofData,
 }
 
@@ -252,16 +252,14 @@ impl Fibonacci {
         // TODO(AlonH): Get sub circle domains from FRI.
         const FRI_STEP_SIZE: u32 = 1;
         let composition_polynomial_decommitment_positions = composition_polynomial_queries
-            .to_sparse_sub_circle_domain(FRI_STEP_SIZE)
-            .to_decommitment_positions();
-        let trace_decommitment_positions = trace_queries
-            .to_sparse_sub_circle_domain(FRI_STEP_SIZE)
-            .to_decommitment_positions();
-        let composition_polynomial_queried_values = composition_polynomial_decommitment_positions
+            .opening_positions(FRI_STEP_SIZE)
+            .flatten();
+        let trace_decommitment_positions = trace_queries.opening_positions(FRI_STEP_SIZE).flatten();
+        let composition_polynomial_opened_values = composition_polynomial_decommitment_positions
             .iter()
             .map(|p| composition_polynomial_commitment_evaluation.values[*p])
             .collect();
-        let trace_queried_values = trace_decommitment_positions
+        let trace_opened_values = trace_decommitment_positions
             .iter()
             .map(|p| trace_commitment_evaluation.values[*p])
             .collect();
@@ -282,8 +280,8 @@ impl Fibonacci {
                 commitment: composition_polynomial_commitment.root(),
             },
             trace_oods_values: trace_oods_evaluation.values,
-            composition_polynomial_queried_values,
-            trace_queried_values,
+            composition_polynomial_opened_values,
+            trace_opened_values,
             additional_proof_data: AdditionalProofData {
                 composition_polynomial_oods_value,
                 composition_polynomial_random_coeff: random_coeff,
@@ -319,6 +317,37 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
             .additional_proof_data
             .composition_polynomial_oods_value
     );
+
+    let composition_polynomial_queries = Queries::generate(
+        channel,
+        fib.composition_polynomial_commitment_domain.log_size(),
+        N_QUERIES,
+    );
+    let trace_queries = composition_polynomial_queries.fold(
+        fib.composition_polynomial_commitment_domain.log_size()
+            - fib.trace_commitment_domain.log_size(),
+    );
+    // TODO(AlonH): Get sub circle domains from FRI.
+    const FRI_STEP_SIZE: u32 = 1;
+    let composition_polynomial_opening_positions =
+        composition_polynomial_queries.opening_positions(FRI_STEP_SIZE);
+    let trace_opening_positions = trace_queries.opening_positions(FRI_STEP_SIZE);
+    assert_eq!(
+        trace_opening_positions.len(),
+        proof.trace_opened_values.len() >> FRI_STEP_SIZE
+    );
+    assert_eq!(
+        composition_polynomial_opening_positions.len(),
+        proof.composition_polynomial_opened_values.len() >> FRI_STEP_SIZE
+    );
+    assert!(proof.trace_commitment.decommitment.verify(
+        proof.trace_commitment.commitment,
+        &trace_opening_positions.flatten()
+    ));
+    assert!(proof.composition_polynomial_commitment.decommitment.verify(
+        proof.composition_polynomial_commitment.commitment,
+        &composition_polynomial_opening_positions.flatten()
+    ));
     true
 }
 
