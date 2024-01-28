@@ -1,5 +1,3 @@
-use num_bigint::BigUint;
-
 use crate::commitment_scheme::hasher::Hasher;
 
 pub struct ProofOfWork<H: Hasher<NativeType = u8>> {
@@ -14,12 +12,11 @@ impl<H: Hasher<NativeType = u8>> ProofOfWork<H> {
     }
 
     pub fn prove(&self) -> u64 {
-        let hash_total_output_bits = H::OUTPUT_SIZE as u32 * H::NativeType::BITS;
         let mut nonce = 0u64;
         // TODO(ShaharS): naive implementation, should be replaced with a parallel one.
         loop {
-            let hash = BigUint::from_bytes_le(self.hash_with_nonce(nonce).as_ref());
-            if hash.bits() <= hash_total_output_bits as u64 - self.work_bits as u64 {
+            let hash = self.hash_with_nonce(nonce);
+            if check_leading_zeros(hash.as_ref(), self.work_bits) {
                 return nonce;
             }
             nonce += 1;
@@ -27,9 +24,8 @@ impl<H: Hasher<NativeType = u8>> ProofOfWork<H> {
     }
 
     pub fn verify(&self, nonce: u64) -> bool {
-        let hash_total_output_bits = H::OUTPUT_SIZE as u32 * H::NativeType::BITS;
-        let hash = BigUint::from_bytes_le(self.hash_with_nonce(nonce).as_ref());
-        hash.bits() <= hash_total_output_bits as u64 - self.work_bits as u64
+        let hash = self.hash_with_nonce(nonce);
+        check_leading_zeros(hash.as_ref(), self.work_bits)
     }
 
     fn hash_with_nonce(&self, nonce: u64) -> H::Hash {
@@ -42,6 +38,21 @@ impl<H: Hasher<NativeType = u8>> ProofOfWork<H> {
             .collect::<Vec<_>>();
         H::hash(&hash_input)
     }
+}
+
+/// Check that the prefix leading zeros is greater than `bound_bits`.
+fn check_leading_zeros(bytes: &[u8], bound_bits: u32) -> bool {
+    let mut n_bits = 0;
+    // bytes are in little endian order.
+    for byte in bytes.iter().rev() {
+        if *byte == 0 {
+            n_bits += 8;
+        } else {
+            n_bits += byte.leading_zeros();
+            break;
+        }
+    }
+    n_bits >= bound_bits
 }
 
 #[cfg(test)]
