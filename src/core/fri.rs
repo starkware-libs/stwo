@@ -3,6 +3,8 @@ use std::fmt::Debug;
 use std::iter::zip;
 use std::ops::RangeInclusive;
 
+use thiserror::Error;
+
 use super::fields::m31::BaseField;
 use super::fields::{ExtensionOf, Field};
 use super::poly::circle::CircleEvaluation;
@@ -195,6 +197,72 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
     }
 }
 
+pub struct FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
+    /// Alpha used to fold all circle polynomials to univariate polynomials.
+    _circle_poly_alpha: F,
+    /// The list of degree bounds of all committed circle polynomials.
+    _column_degree_bounds: Vec<LogCirclePolyDegreeBound>,
+    _config: FriConfig,
+    /// Alphas used to fold all inner layers.
+    _layer_alphas: Vec<F>,
+    _proof: FriProof<F, H>,
+}
+
+impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
+    /// Verifies the commitment stage of FRI.
+    ///
+    /// `column_degree_bounds` should be a list of degree bounds of all committed circle
+    /// polynomials.
+    ///
+    /// # Errors
+    ///
+    /// An `Err` will be returned if:
+    /// * The proof contains an invalid number of FRI layers.
+    /// * The degree of the last layer polynomial is too high.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are no degree bounds or if one is less than or equal to the last
+    /// layer's degree bound.
+    pub fn commit(
+        _config: FriConfig,
+        _proof: FriProof<F, H>,
+        _column_degree_bounds: Vec<LogCirclePolyDegreeBound>,
+    ) -> Result<Self, VerificationError> {
+        todo!()
+    }
+
+    /// Verifies the decommitment stage of FRI.
+    ///
+    /// The decommitment values need to be provided in the same order as their commitment.
+    pub fn decommit(
+        self,
+        _queries: &Queries,
+        _decommited_values: Vec<SparseCircleEvaluation<F>>,
+    ) -> Result<(), VerificationError> {
+        todo!()
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum VerificationError {
+    #[error("proof contains an invalid number of FRI layers")]
+    InvalidNumFriLayers,
+    #[error("provided an invalid number of polynomials (expected {expected}, given {given}")]
+    InvalidNumPolynomials { expected: usize, given: usize },
+    #[error("queries do not resolve to their commitment in layer {layer}")]
+    InnerLayerCommitmentInvalid { layer: usize },
+    #[error("evaluations are invalid in layer {layer}")]
+    InnerLayerEvaluationsInvalid { layer: usize },
+    #[error("degree of last layer is invalid")]
+    LastLayerDegreeInvalid,
+    #[error("evaluations in the last layer are invalid")]
+    LastLayerEvaluationsInvalid,
+}
+
+/// Log degree bound of a circle polynomial.
+type LogCirclePolyDegreeBound = u32;
+
 /// A FRI proof.
 pub struct FriProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub inner_layers: Vec<FriLayerProof<F, H>>,
@@ -290,6 +358,33 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProver<F, H> {
             decommitment: todo!(),
             commitment: todo!(),
         }
+    }
+}
+
+/// Holds a foldable subset of circle polynomial evaluations.
+pub struct SparseCircleEvaluation<F: ExtensionOf<BaseField>> {
+    _coset_evals: Vec<CircleEvaluation<F, BitReversedOrder>>,
+}
+
+impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F> {
+    /// # Panics
+    ///
+    /// Panics if the coset sizes aren't the same as the folding factor.
+    pub fn new(_coset_evals: Vec<CircleEvaluation<F, BitReversedOrder>>) -> Self {
+        let folding_factor = 1 << LOG_FOLDING_FACTOR;
+        assert!(_coset_evals.iter().all(|e| e.len() == folding_factor));
+        Self { _coset_evals }
+    }
+
+    fn _fold(self, alpha: F) -> Vec<F> {
+        self._coset_evals
+            .into_iter()
+            .map(|e| {
+                let mut buffer = LineEvaluation::new(vec![F::zero()]);
+                fold_circle_into_line(&mut buffer, &e, alpha);
+                buffer[0]
+            })
+            .collect()
     }
 }
 
