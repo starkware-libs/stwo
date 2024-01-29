@@ -214,10 +214,6 @@ impl Hasher for PoseidonHasher {
         res
     }
 
-    fn hash_one_in_place(_data: &[Self::NativeType], _dst: &mut [Self::NativeType]) {
-        unimplemented!("hash_one_in_place for PoseidonHasher")
-    }
-
     unsafe fn hash_many_in_place(
         _data: &[*const Self::NativeType],
         _single_input_length_bytes: usize,
@@ -228,13 +224,6 @@ impl Hasher for PoseidonHasher {
 
     fn concat_and_hash(_v1: &PoseidonHash, _v2: &PoseidonHash) -> PoseidonHash {
         unimplemented!("concat_and_hash for PoseidonHasher")
-    }
-    fn hash_many_multi_src(_data: &[Vec<&[Self::NativeType]>]) -> Vec<PoseidonHash> {
-        unimplemented!("hash_many_multi_src for PoseidonHasher")
-    }
-
-    fn hash_many_multi_src_in_place(_data: &[Vec<&[Self::NativeType]>], _dst: &mut [PoseidonHash]) {
-        unimplemented!("hash_many_multi_src_in_place for PoseidonHasher")
     }
 }
 
