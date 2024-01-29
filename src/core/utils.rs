@@ -22,6 +22,23 @@ pub(crate) fn bit_reverse<T, U: AsMut<[T]>>(mut v: U) -> U {
     v
 }
 
+/// Returns the next chunk of the iterator and advances it by `chunk_size`.
+///
+/// # Panics
+///
+/// Panics if there are less then `chunk_size` elements in the iterator.
+pub(crate) fn next_chunk<T>(
+    iter: &mut (impl Iterator<Item = T> + Clone),
+    chunk_size: usize,
+) -> Vec<T> {
+    let vec = iter.clone().take(chunk_size).collect();
+    assert!(
+        iter.advance_by(chunk_size).is_ok(),
+        "Not enough elements in iterator."
+    );
+    vec
+}
+
 #[cfg(test)]
 mod tests {
     use crate::core::utils::bit_reverse;
