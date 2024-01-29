@@ -220,8 +220,8 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> LineEvaluation<F, EvalOrder> {
 
 impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     /// Interpolates the polynomial as evaluations on `domain`.
-    pub fn interpolate(mut self, domain: LineDomain) -> LinePoly<F> {
-        line_ifft(&mut self.evals, domain);
+    pub fn interpolate(mut self) -> LinePoly<F> {
+        line_ifft(&mut self.evals, self.domain);
         // Normalize the coefficients.
         let len_inv = BaseField::from(self.evals.len()).inverse();
         self.evals.iter_mut().for_each(|v| *v *= len_inv);
@@ -514,7 +514,7 @@ mod tests {
                 .collect::<Vec<BaseField>>(),
         );
 
-        let interpolated_poly = evals.interpolate(domain);
+        let interpolated_poly = evals.interpolate();
 
         assert_eq!(interpolated_poly, poly);
     }
@@ -525,7 +525,7 @@ mod tests {
         let coset = Coset::half_odds(LOG_SIZE);
         let domain = LineDomain::new(coset);
         let evals = LineEvaluation::new(domain, (0..1 << LOG_SIZE).map(BaseField::from).collect());
-        let poly = evals.clone().interpolate(domain);
+        let poly = evals.clone().interpolate();
 
         for (i, x) in domain.iter().enumerate() {
             assert_eq!(poly.eval_at_point(x), evals[i], "mismatch at {i}");
