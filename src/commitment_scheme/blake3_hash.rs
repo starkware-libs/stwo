@@ -86,59 +86,23 @@ impl super::hasher::Hasher for Blake3Hasher {
         res
     }
 
-    fn hash_one_in_place(data: &[u8], dst: &mut [u8]) {
-        assert_eq!(
-            dst.len(),
-            Self::OUTPUT_SIZE,
-            "Attempt to Generate blake3 hash of size different than 32 bytes!"
-        );
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(data);
-        let mut output_reader = hasher.finalize_xof();
-        output_reader.fill(&mut dst[..Self::OUTPUT_SIZE])
-    }
-
     unsafe fn hash_many_in_place(
         data: &[*const u8],
         single_input_length_bytes: usize,
         dst: &[*mut u8],
     ) {
+        let mut hasher = blake3::Hasher::new();
         data.iter()
             .map(|p| std::slice::from_raw_parts(*p, single_input_length_bytes))
             .zip(
                 dst.iter()
                     .map(|p| std::slice::from_raw_parts_mut(*p, Self::OUTPUT_SIZE)),
             )
-            .for_each(|(input, out)| Self::hash_one_in_place(input, out))
-    }
-
-    fn hash_many_multi_src(data: &[Vec<&[u8]>]) -> Vec<Self::Hash> {
-        let mut hasher = blake3::Hasher::new();
-        data.iter()
-            .map(|input_group| {
+            .for_each(|(input, out)| {
+                hasher.update(input);
+                let mut output_reader = hasher.finalize_xof();
+                output_reader.fill(&mut out[..Self::OUTPUT_SIZE]);
                 hasher.reset();
-                input_group.iter().for_each(|d| {
-                    hasher.update(d);
-                });
-                Blake3Hash(hasher.finalize().into())
-            })
-            .collect()
-    }
-
-    fn hash_many_multi_src_in_place(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]) {
-        assert!(
-            data.len() == dst.len(),
-            "Attempt to hash many multi src with different input and output lengths!"
-        );
-        let mut hasher = blake3::Hasher::new();
-        data.iter()
-            .zip(dst.iter_mut())
-            .for_each(|(input_group, out)| {
-                hasher.reset();
-                input_group.iter().for_each(|d| {
-                    hasher.update(d);
-                });
-                *out = Blake3Hash(hasher.finalize().into());
             })
     }
 }
@@ -158,31 +122,6 @@ mod tests {
     }
 
     #[test]
-    fn hash_many_test() {
-        let input: Vec<Vec<u8>> = std::iter::repeat(b"a".to_vec()).take(3).collect();
-        let hash_result = Blake3Hasher::hash_many(&input);
-
-        for h in hash_result {
-            assert_eq!(
-                h.to_string(),
-                "17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f"
-            );
-        }
-    }
-
-    #[test]
-    fn hash_xof_test() {
-        let input = b"a";
-        let mut out = [0_u8; 32];
-
-        Blake3Hasher::hash_one_in_place(input, &mut out[..]);
-        assert_eq!(
-            "17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f",
-            hex::encode(out)
-        )
-    }
-
-    #[test]
     fn hash_many_xof_test() {
         let input1 = "a";
         let input2 = "b";
@@ -193,30 +132,6 @@ mod tests {
         unsafe { Blake3Hasher::hash_many_in_place(&input_arr, 1, &out_ptrs) };
 
         assert_eq!("17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f0000000000000000000010e5cf3d3c8a4f9f3468c8cc58eea84892a22fdadbc1acb22410190044c1d55300000000000000000000000000000000000000000000", hex::encode(out));
-    }
-
-    #[test]
-    fn hash_many_multi_src_test() {
-        let input1 = b"a";
-        let input2 = b"bb";
-        let input3 = b"ccc";
-        let input4 = b"dddd";
-        let input_group_1 = [&input1[..], &input2[..]].to_vec();
-        let input_group_2 = [&input3[..], &input4[..]].to_vec();
-        let input_arr = [input_group_1, input_group_2];
-        let mut hash_in_place_results = Vec::new();
-        hash_in_place_results.resize(2, Default::default());
-        let expected_result0 = Blake3Hasher::hash(b"abb");
-        let expected_result1 = Blake3Hasher::hash(b"cccdddd");
-
-        let hash_results = Blake3Hasher::hash_many_multi_src(&input_arr);
-        Blake3Hasher::hash_many_multi_src_in_place(&input_arr, &mut hash_in_place_results);
-
-        assert!(hash_results.len() == 2);
-        assert_eq!(hash_results[0], expected_result0);
-        assert_eq!(hash_results[1], expected_result1);
-        assert_eq!(hash_in_place_results[0], expected_result0);
-        assert_eq!(hash_in_place_results[1], expected_result1);
     }
 
     #[test]

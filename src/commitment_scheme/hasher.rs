@@ -53,12 +53,6 @@ pub trait Hasher: Sized {
         hasher.finalize()
     }
 
-    fn hash_one_in_place(data: &[Self::NativeType], dst: &mut [Self::NativeType]);
-
-    fn hash_many(data: &[Vec<Self::NativeType>]) -> Vec<Self::Hash> {
-        data.iter().map(|x| Self::hash(x)).collect()
-    }
-
     /// Hash many inputs of the same length.
     /// Writes output directly to corresponding pointers in dst.
     ///
@@ -72,12 +66,6 @@ pub trait Hasher: Sized {
         single_input_length_bytes: usize,
         dst: &[*mut Self::NativeType],
     );
-
-    // TODO(Ohad): Consider adding a trait for hashers that support multi-source hashing, and
-    // defining proper input structure for it.
-    fn hash_many_multi_src(data: &[Vec<&[Self::NativeType]>]) -> Vec<Self::Hash>;
-
-    fn hash_many_multi_src_in_place(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]);
 }
 
 pub trait Hash<NativeType: Sized + Eq>:

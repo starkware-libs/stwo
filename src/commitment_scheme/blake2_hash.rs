@@ -91,12 +91,6 @@ impl super::hasher::Hasher for Blake2sHasher {
         Blake2sHash(self.state.finalize_reset().into())
     }
 
-    fn hash_one_in_place(data: &[u8], dst: &mut [u8]) {
-        let mut hasher = Blake2sVar::new(Self::OUTPUT_SIZE).unwrap();
-        hasher.update(data);
-        hasher.finalize_variable(dst).unwrap();
-    }
-
     unsafe fn hash_many_in_place(
         data: &[*const u8],
         single_input_length_bytes: usize,
@@ -108,35 +102,10 @@ impl super::hasher::Hasher for Blake2sHasher {
                 dst.iter()
                     .map(|p| std::slice::from_raw_parts_mut(*p, Self::OUTPUT_SIZE)),
             )
-            .for_each(|(input, out)| Self::hash_one_in_place(input, out))
-    }
-
-    // TODO(Ohad): Consider allocating manually and using the in_place function.
-    fn hash_many_multi_src(data: &[Vec<&[u8]>]) -> Vec<Self::Hash> {
-        let mut hasher = Blake2sHasher::new();
-        data.iter()
-            .map(|input_group| {
-                input_group.iter().for_each(|d| {
-                    hasher.update(d);
-                });
-                hasher.finalize_reset()
-            })
-            .collect()
-    }
-
-    fn hash_many_multi_src_in_place(data: &[Vec<&[Self::NativeType]>], dst: &mut [Self::Hash]) {
-        assert!(
-            data.len() == dst.len(),
-            "Attempt to hash many multi src with different input and output lengths!"
-        );
-        let mut hasher = Blake2sHasher::new();
-        data.iter()
-            .zip(dst.iter_mut())
-            .for_each(|(input_group, out)| {
-                input_group.iter().for_each(|d| {
-                    hasher.update(d);
-                });
-                *out = hasher.finalize_reset();
+            .for_each(|(input, out)| {
+                let mut hasher = Blake2sVar::new(Self::OUTPUT_SIZE).unwrap();
+                hasher.update(input);
+                hasher.finalize_variable(out).unwrap();
             })
     }
 }
@@ -157,31 +126,6 @@ mod tests {
     }
 
     #[test]
-    fn hash_many_test() {
-        let input: Vec<Vec<u8>> = std::iter::repeat(b"a".to_vec()).take(3).collect();
-        let hash_result = blake2_hash::Blake2sHasher::hash_many(&input);
-
-        for h in hash_result {
-            assert_eq!(
-                h.to_string(),
-                "4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e90"
-            );
-        }
-    }
-
-    #[test]
-    fn hash_xof_test() {
-        let input = b"a";
-        let mut out = [0_u8; 32];
-
-        Blake2sHasher::hash_one_in_place(input, &mut out[..]);
-        assert_eq!(
-            "4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e90",
-            hex::encode(out)
-        )
-    }
-
-    #[test]
     fn hash_many_xof_test() {
         let input1 = "a";
         let input2 = "b";
@@ -192,30 +136,6 @@ mod tests {
         unsafe { Blake2sHasher::hash_many_in_place(&input_arr, 1, &out_ptrs) };
 
         assert_eq!("4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e900000000000000000000004449e92c9a7657ef2d677b8ef9da46c088f13575ea887e4818fc455a2bca50000000000000000000000000000000000000000000000", hex::encode(out));
-    }
-
-    #[test]
-    fn hash_many_multi_src_test() {
-        let input1 = b"a";
-        let input2 = b"bb";
-        let input3 = b"ccc";
-        let input4 = b"dddd";
-        let input_group_1 = [&input1[..], &input2[..]].to_vec();
-        let input_group_2 = [&input3[..], &input4[..]].to_vec();
-        let input_arr = [input_group_1, input_group_2];
-        let mut hash_in_place_results = Vec::new();
-        hash_in_place_results.resize(2, Default::default());
-        let expected_result0 = Blake2sHasher::hash(b"abb");
-        let expected_result1 = Blake2sHasher::hash(b"cccdddd");
-
-        let hash_results = Blake2sHasher::hash_many_multi_src(&input_arr);
-        Blake2sHasher::hash_many_multi_src_in_place(&input_arr, &mut hash_in_place_results);
-
-        assert!(hash_results.len() == 2);
-        assert_eq!(hash_results[0], expected_result0);
-        assert_eq!(hash_results[1], expected_result1);
-        assert_eq!(hash_in_place_results[0], expected_result0);
-        assert_eq!(hash_in_place_results[1], expected_result1);
     }
 
     #[test]
