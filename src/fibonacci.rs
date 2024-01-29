@@ -355,15 +355,19 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
     use num_traits::One;
 
     use super::Fibonacci;
+    use crate::commitment_scheme::utils::tests::generate_test_queries;
     use crate::core::circle::CirclePoint;
     use crate::core::constraints::{EvalByEvaluation, EvalByPointMapping, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::oods::get_oods_points;
     use crate::core::poly::circle::{CircleEvaluation, PointMapping};
+    use crate::core::queries::Queries;
+    use crate::core::utils::bit_reverse;
     use crate::fibonacci::verify_proof;
     use crate::{m31, qm31};
 
@@ -448,6 +452,93 @@ mod tests {
             interpolated_composition_polynomial_poly.eval_at_point(oods_point),
             fib.eval_composition_polynomial(random_coeff, trace_evaluator)
         );
+    }
+
+    #[test]
+    fn test_sparse_circle_evaluations() {
+        let fib = Fibonacci::new(5, m31!(443693538));
+
+        // Get the trace commitment values.
+        let trace = fib.get_trace();
+        let trace_poly = trace.interpolate();
+        let trace_evaluation = trace_poly.evaluate(fib.trace_eval_domain);
+        let trace_commitment_evaluation =
+            trace_poly.evaluate(fib.trace_commitment_domain.circle_domain());
+        let trace_commitment_values = bit_reverse(trace_commitment_evaluation.values);
+
+        // Get the composition polynomial commitment values.
+        let random_coeff = qm31!(227980, 227981, 227982, 227983);
+        let composition_polynomial =
+            fib.compute_composition_polynomial(random_coeff, &trace_evaluation);
+        let composition_polynomial_poly = composition_polynomial.interpolate();
+        let composition_polynomial_commitment_evaluation = composition_polynomial_poly
+            .evaluate(fib.composition_polynomial_commitment_domain.circle_domain());
+        let composition_polynomial_commitment_values =
+            bit_reverse(composition_polynomial_commitment_evaluation.values.clone());
+
+        // Generate all queries.
+        let composition_polynomial_queries = Queries {
+            positions: generate_test_queries(
+                7,
+                fib.composition_polynomial_commitment_domain.size(),
+            ),
+            log_domain_size: fib.composition_polynomial_commitment_domain.log_size(),
+        };
+        let trace_queries = composition_polynomial_queries.fold(
+            fib.composition_polynomial_commitment_domain.log_size()
+                - fib.trace_commitment_domain.log_size(),
+        );
+
+        // Get the opening positions and values.
+        const FRI_STEP_SIZE: u32 = 1;
+        let composition_polynomial_opening_positions =
+            composition_polynomial_queries.opening_positions(FRI_STEP_SIZE);
+        let trace_opening_positions = trace_queries.opening_positions(FRI_STEP_SIZE);
+        let composition_polynomial_decommitment_positions =
+            composition_polynomial_opening_positions.flatten();
+        let trace_decommitment_positions = trace_opening_positions.flatten();
+        let composition_polynomial_opened_values = composition_polynomial_decommitment_positions
+            .iter()
+            .map(|p| composition_polynomial_commitment_values[*p])
+            .collect_vec();
+        let trace_opened_values = trace_decommitment_positions
+            .iter()
+            .map(|p| trace_commitment_values[*p])
+            .collect_vec();
+
+        // Assert that we got the correct trace values.
+        for (sub_circle_domain, values) in trace_opening_positions
+            .iter()
+            .zip(trace_opened_values.chunks(1 << FRI_STEP_SIZE))
+        {
+            let circle_domain =
+                sub_circle_domain.to_circle_domain(&fib.trace_commitment_domain.circle_domain());
+            let mut sub_circle_evaluation_values = circle_domain
+                .iter()
+                .map(|p| trace_poly.eval_at_point(p))
+                .collect_vec();
+            sub_circle_evaluation_values.sort();
+            let mut sorted_values = values.to_vec();
+            sorted_values.sort();
+            assert_eq!(sorted_values, sub_circle_evaluation_values);
+        }
+
+        // Assert that we got the correct composition polynomial values.
+        for (sub_circle_domain, values) in composition_polynomial_opening_positions
+            .iter()
+            .zip(composition_polynomial_opened_values.chunks(1 << FRI_STEP_SIZE))
+        {
+            let circle_domain = sub_circle_domain
+                .to_circle_domain(&fib.composition_polynomial_commitment_domain.circle_domain());
+            let mut sub_circle_evaluation_values = circle_domain
+                .iter()
+                .map(|p| composition_polynomial_poly.eval_at_point(p.into_ef()))
+                .collect_vec();
+            sub_circle_evaluation_values.sort();
+            let mut sorted_values = values.to_vec();
+            sorted_values.sort();
+            assert_eq!(sorted_values, sub_circle_evaluation_values);
+        }
     }
 
     #[test]
