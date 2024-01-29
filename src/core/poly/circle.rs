@@ -83,6 +83,13 @@ impl CircleDomain {
     pub fn is_canonic(&self) -> bool {
         self.half_coset.initial_index * 4 == self.half_coset.step_size
     }
+
+    pub fn index_at(&self, i: usize) -> CirclePointIndex {
+        if i < self.half_coset.size() {
+            return self.half_coset.index_at(i);
+        }
+        self.half_coset.index_at(i - self.half_coset.size())
+    }
 }
 
 impl IntoIterator for CircleDomain {
