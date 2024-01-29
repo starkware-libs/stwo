@@ -343,6 +343,45 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
         proof.composition_polynomial_commitment.commitment,
         &composition_polynomial_opening_positions.flatten()
     ));
+
+    // An evaluation for each mask item and one for the composition_polynomial.
+    let mut sparse_circle_evaluations = Vec::with_capacity(mask.len() + 1);
+    for (oods_point, oods_value) in trace_oods_points.iter().zip(proof.trace_oods_values.iter()) {
+        // TODO(AlonH): Change from Vec to SparseCircleEvaluation.
+        let mut evaluation = Vec::with_capacity(trace_opening_positions.len());
+        for (sub_circle_domain, values) in trace_opening_positions
+            .iter()
+            .zip(proof.trace_opened_values.chunks(1 << FRI_STEP_SIZE))
+        {
+            let sub_circle_evaluation = CircleEvaluation::new(
+                sub_circle_domain.to_circle_domain(&fib.trace_commitment_domain),
+                values.to_vec(),
+            );
+            evaluation.push(get_oods_quotient(
+                *oods_point,
+                *oods_value,
+                &sub_circle_evaluation,
+            ));
+        }
+        sparse_circle_evaluations.push(evaluation);
+    }
+    let mut evaluation = Vec::with_capacity(composition_polynomial_opening_positions.len());
+    for (sub_circle_domain, values) in composition_polynomial_opening_positions.iter().zip(
+        proof
+            .composition_polynomial_opened_values
+            .chunks(1 << FRI_STEP_SIZE),
+    ) {
+        let sub_circle_evaluation = CircleEvaluation::new(
+            sub_circle_domain.to_circle_domain(&fib.composition_polynomial_commitment_domain),
+            values.to_vec(),
+        );
+        evaluation.push(get_oods_quotient(
+            oods_point,
+            composition_polynomial_oods_value,
+            &sub_circle_evaluation,
+        ));
+    }
+    sparse_circle_evaluations.push(evaluation);
     true
 }
 
