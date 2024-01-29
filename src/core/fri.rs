@@ -196,13 +196,12 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
 
 pub struct FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
     /// Alpha used to fold all circle polynomials to univariate polynomials.
-    _circle_poly_alpha: F,
+    circle_poly_alpha: F,
     /// The list of degree bounds of all committed circle polynomials.
-    _column_degree_bounds: Vec<LogCirclePolyDegreeBound>,
-    _config: FriConfig,
-    /// Alphas used to fold all inner layers.
-    _layer_alphas: Vec<F>,
-    _proof: FriProof<F, H>,
+    column_degree_bounds: Vec<LogCirclePolyDegreeBound>,
+    config: FriConfig,
+    inner_layer_alphas: Vec<F>,
+    proof: FriProof<F, H>,
 }
 
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
@@ -228,20 +227,20 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
     ) -> Result<Self, VerificationError> {
         // Sort descending order
         column_degree_bounds.sort_by_key(|d| Reverse(*d));
-        let first_layer_degree_bound = folded_circle_poly_degree(&column_degree_bounds[0]);
-        let mut log_degree = first_layer_degree_bound;
+        let log_first_layer_degree_bound = folded_circle_poly_degree(&column_degree_bounds[0]);
+        let mut log_degree = log_first_layer_degree_bound;
 
         // Circle polynomials can all be folded with the same alpha.
         // TODO(andrew): Draw alpha from channel.
         let circle_poly_alpha = F::one();
 
-        let mut layer_alphas = Vec::new();
+        let mut inner_layer_alphas = Vec::new();
 
         for _ in &proof.inner_layers {
             // TODO(andrew): Seed channel with commitment.
             // TODO(andrew): Draw alpha from channel.
             let alpha = F::one();
-            layer_alphas.push(alpha);
+            inner_layer_alphas.push(alpha);
             log_degree = log_degree.wrapping_sub(LOG_FOLDING_FACTOR);
         }
 
@@ -255,23 +254,113 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
         }
 
         Ok(Self {
-            _circle_poly_alpha: circle_poly_alpha,
-            _config: config,
-            _layer_alphas: layer_alphas,
-            _column_degree_bounds: column_degree_bounds,
-            _proof: proof,
+            circle_poly_alpha,
+            config,
+            inner_layer_alphas,
+            column_degree_bounds,
+            proof,
         })
     }
 
     /// Verifies the decommitment stage of FRI.
     ///
     /// The decommitment values need to be provided in the same order as their commitment.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there aren't the same number of decommited values as degree bounds.
+    // TODO(andrew): Finish docs.
     pub fn decommit(
         self,
-        _queries: &Queries,
-        _decommited_values: Vec<SparseCircleEvaluation<F>>,
+        queries: &Queries,
+        decommited_values: Vec<SparseCircleEvaluation<F>>,
     ) -> Result<(), VerificationError> {
-        todo!()
+        assert_eq!(decommited_values.len(), self.column_degree_bounds.len());
+
+        let (last_layer_domain, last_layer_queries, last_layer_evals) =
+            self.decommit_inner_layers(queries, decommited_values)?;
+
+        self.decommit_last_layer(last_layer_domain, last_layer_queries, last_layer_evals)
+    }
+
+    /// Verifies all inner layer decommitments.
+    ///
+    /// Returns the domain, query positions and evaluations needed for verifying the last FRI
+    /// layer. Output is of the form: `(domain, query_positions, evaluations)`.
+    fn decommit_inner_layers(
+        &self,
+        queries: &Queries,
+        decommited_values: Vec<SparseCircleEvaluation<F>>,
+    ) -> Result<(LineDomain, Queries, Vec<F>), VerificationError> {
+        let log_blowup_factor = self.config.log_blowup_factor;
+
+        let circle_poly_alpha = self.circle_poly_alpha;
+        let circle_poly_alpha_sq = circle_poly_alpha * circle_poly_alpha;
+
+        let mut queries = queries.clone();
+        let mut alphas = self.inner_layer_alphas.iter().copied();
+        let mut decommited_values = decommited_values.into_iter();
+        let mut degrees = self.column_degree_bounds.iter().copied().peekable();
+        let mut log_degree = folded_circle_poly_degree(&self.column_degree_bounds[0]);
+        let mut evals = vec![F::zero(); queries.len()];
+        let mut domain = LineDomain::new(Coset::half_odds(log_degree + log_blowup_factor));
+
+        for (i, layer) in self.proof.inner_layers.iter().enumerate() {
+            // Fold and combine circle polynomial evaluations.
+            while degrees.peek().map(folded_circle_poly_degree) == Some(log_degree) {
+                let sparse_evaluation = decommited_values.next().unwrap();
+                let folded_evals = sparse_evaluation.fold(circle_poly_alpha);
+                assert_eq!(folded_evals.len(), evals.len());
+
+                for (eval, folded_eval) in zip(&mut evals, folded_evals) {
+                    *eval = *eval * circle_poly_alpha_sq + folded_eval;
+                }
+
+                degrees.next();
+            }
+
+            // Extract the values needed to fold.
+            let sparse_evaluation = layer
+                .extract_evaluation(&queries, &evals)
+                .ok_or(VerificationError::InnerLayerEvaluationsInvalid { layer: i })?;
+
+            // Verify the decommitment.
+            if !layer.verify(&queries, &sparse_evaluation) {
+                return Err(VerificationError::InnerLayerCommitmentInvalid { layer: i });
+            }
+
+            let alpha = alphas.next().unwrap();
+            let folded_evals = sparse_evaluation.fold(alpha);
+
+            // Prepare the next layer.
+            evals = folded_evals;
+            queries = queries.fold(LOG_FOLDING_FACTOR);
+            log_degree -= LOG_FOLDING_FACTOR;
+            domain = domain.double();
+        }
+
+        // Check all values have been consumed.
+        assert!(alphas.is_empty());
+        assert!(degrees.is_empty());
+        assert!(decommited_values.is_empty());
+
+        Ok((domain, queries, evals))
+    }
+
+    /// Verifies the last layer.
+    fn decommit_last_layer(
+        self,
+        domain: LineDomain,
+        queries: Queries,
+        evals: Vec<F>,
+    ) -> Result<(), VerificationError> {
+        for (&query, eval) in zip(&*queries, evals) {
+            let x = domain.at(bit_reverse_index(query, domain.log_size()));
+            if eval != self.proof.last_layer_poly.eval_at_point(x.into()) {
+                return Err(VerificationError::LastLayerEvaluationsInvalid);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -279,8 +368,6 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
 pub enum VerificationError {
     #[error("proof contains an invalid number of FRI layers")]
     InvalidNumFriLayers,
-    #[error("provided an invalid number of polynomials (expected {expected}, given {given}")]
-    InvalidNumPolynomials { expected: usize, given: usize },
     #[error("queries do not resolve to their commitment in layer {layer}")]
     InnerLayerCommitmentInvalid { layer: usize },
     #[error("evaluations are invalid in layer {layer}")]
@@ -335,7 +422,27 @@ pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
 impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
     // TODO(andrew): implement and add docs
     // TODO(andrew): create FRI verification error type
-    pub fn verify(&self, _queries: &Queries) -> Result<(), String> {
+    fn verify(&self, _queries: &Queries, _evaluation: &SparseLineEvaluation<F>) -> bool {
+        todo!()
+    }
+
+    /// Returns the coset evals needed for decommitment.
+    ///
+    /// `evals` must be the verifier's set of evals at the corresponding positions. `layer_size`
+    /// should be the total number of evaluations in the entire layer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [None] if the proof contains an invalid number of evaluations.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of queries doesn't match the number of evals.
+    fn extract_evaluation(
+        &self,
+        _queries: &Queries,
+        _evals: &[F],
+    ) -> Option<SparseLineEvaluation<F>> {
         todo!()
     }
 }
@@ -403,27 +510,50 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayer<F, H> {
 
 /// Holds a foldable subset of circle polynomial evaluations.
 pub struct SparseCircleEvaluation<F: ExtensionOf<BaseField>> {
-    _coset_evals: Vec<CircleEvaluation<F, BitReversedOrder>>,
+    coset_evals: Vec<CircleEvaluation<F, BitReversedOrder>>,
 }
 
 impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F> {
     /// # Panics
     ///
     /// Panics if the coset sizes aren't the same as the folding factor.
-    pub fn new(_coset_evals: Vec<CircleEvaluation<F, BitReversedOrder>>) -> Self {
+    pub fn new(coset_evals: Vec<CircleEvaluation<F, BitReversedOrder>>) -> Self {
         let folding_factor = 1 << LOG_FOLDING_FACTOR;
-        assert!(_coset_evals.iter().all(|e| e.len() == folding_factor));
-        Self { _coset_evals }
+        assert!(coset_evals.iter().all(|e| e.len() == folding_factor));
+        Self { coset_evals }
     }
 
-    fn _fold(self, alpha: F) -> Vec<F> {
-        self._coset_evals
+    fn fold(self, alpha: F) -> Vec<F> {
+        self.coset_evals
             .into_iter()
             .map(|e| {
                 let mut buffer = LineEvaluation::new(vec![F::zero()]);
                 fold_circle_into_line(&mut buffer, &e, alpha);
                 buffer[0]
             })
+            .collect()
+    }
+}
+
+/// Holds a foldable subset of univariate polynomial evaluations.
+struct SparseLineEvaluation<F: ExtensionOf<BaseField>> {
+    coset_evals: Vec<LineEvaluation<F, BitReversedOrder>>,
+}
+
+impl<F: ExtensionOf<BaseField>> SparseLineEvaluation<F> {
+    /// # Panics
+    ///
+    /// Panics if the coset sizes aren't the same as the folding factor.
+    fn _new(coset_evals: Vec<LineEvaluation<F, BitReversedOrder>>) -> Self {
+        let folding_factor = 1 << LOG_FOLDING_FACTOR;
+        assert!(coset_evals.iter().all(|e| e.len() == folding_factor));
+        Self { coset_evals }
+    }
+
+    fn fold(self, alpha: F) -> Vec<F> {
+        self.coset_evals
+            .into_iter()
+            .map(|e| fold_line(&e, alpha)[0])
             .collect()
     }
 }
