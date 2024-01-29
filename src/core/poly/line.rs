@@ -7,7 +7,7 @@ use std::ops::{Deref, DerefMut};
 use num_traits::Zero;
 
 use super::utils::{fold, repeat_value};
-use super::NaturalOrder;
+use super::{BitReversedOrder, NaturalOrder};
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -227,6 +227,24 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
         let len_inv = BaseField::from(self.evals.len()).inverse();
         self.evals.iter_mut().for_each(|v| *v *= len_inv);
         LinePoly::new(self.evals)
+    }
+
+    pub fn bit_reverse(self) -> LineEvaluation<F, BitReversedOrder> {
+        LineEvaluation {
+            evals: bit_reverse(self.evals),
+            log_size: self.log_size,
+            _eval_order: PhantomData,
+        }
+    }
+}
+
+impl<F: ExtensionOf<BaseField>> LineEvaluation<F, BitReversedOrder> {
+    pub fn bit_reverse(self) -> LineEvaluation<F, NaturalOrder> {
+        LineEvaluation {
+            evals: bit_reverse(self.evals),
+            log_size: self.log_size,
+            _eval_order: PhantomData,
+        }
     }
 }
 
