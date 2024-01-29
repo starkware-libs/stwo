@@ -141,7 +141,7 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
         self.coeffs = repeat_value(&self.coeffs, duplicity);
 
         line_fft(&mut self.coeffs, domain, n_skipped_layers);
-        LineEvaluation::new(self.coeffs)
+        LineEvaluation::new(domain, self.coeffs)
     }
 
     /// Returns the number of coefficients.
@@ -186,10 +186,9 @@ impl<F: ExtensionOf<BaseField>> DerefMut for LinePoly<F> {
 // TODO(andrew): Remove EvalOrder. Bit-reversed evals are only necessary since LineEvaluation is
 // only used by FRI where evaluations are in bit-reversed order.
 pub struct LineEvaluation<F, EvalOrder = NaturalOrder> {
-    /// Evaluations of a univariate polynomial on a [LineDomain].
+    /// Evaluations of a univariate polynomial on `domain`.
     evals: Vec<F>,
-    /// The number of evaluations stored as `log2(len(evals))`.
-    log_size: u32,
+    domain: LineDomain,
     _eval_order: PhantomData<EvalOrder>,
 }
 
@@ -198,13 +197,12 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> LineEvaluation<F, EvalOrder> {
     ///
     /// # Panics
     ///
-    /// Panics if the number of evaluations is not a power of two.
-    pub fn new(evals: Vec<F>) -> Self {
-        assert!(evals.len().is_power_of_two());
-        let log_size = evals.len().ilog2();
+    /// Panics if the number of evaluations does not match the size of the domain.
+    pub fn new(domain: LineDomain, evals: Vec<F>) -> Self {
+        assert_eq!(evals.len(), domain.size());
         Self {
             evals,
-            log_size,
+            domain,
             _eval_order: PhantomData,
         }
     }
@@ -212,10 +210,11 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> LineEvaluation<F, EvalOrder> {
     /// Returns the number of evaluations.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        // `.len().ilog2()` is a common operation. By returning the length like so the compiler
-        // optimizes `.len().ilog2()` to a load of `log_size` instead of a branch and a bit count.
-        debug_assert_eq!(self.evals.len(), 1 << self.log_size);
-        1 << self.log_size
+        1 << self.domain.log_size()
+    }
+
+    pub fn domain(&self) -> LineDomain {
+        self.domain
     }
 }
 
@@ -232,7 +231,7 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
     pub fn bit_reverse(self) -> LineEvaluation<F, BitReversedOrder> {
         LineEvaluation {
             evals: bit_reverse(self.evals),
-            log_size: self.log_size,
+            domain: self.domain,
             _eval_order: PhantomData,
         }
     }
@@ -242,7 +241,7 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F, BitReversedOrder> {
     pub fn bit_reverse(self) -> LineEvaluation<F, NaturalOrder> {
         LineEvaluation {
             evals: bit_reverse(self.evals),
-            log_size: self.log_size,
+            domain: self.domain,
             _eval_order: PhantomData,
         }
     }
@@ -252,7 +251,7 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> Debug for LineEvaluation<F, EvalOrder
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LineEvaluation")
             .field("evals", &self.evals)
-            .field("log_size", &self.log_size)
+            .field("domain", &self.domain)
             .field("_eval_order", &self._eval_order)
             .finish()
     }
@@ -262,7 +261,7 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> Clone for LineEvaluation<F, EvalOrder
     fn clone(&self) -> Self {
         Self {
             evals: self.evals.clone(),
-            log_size: self.log_size,
+            domain: self.domain,
             _eval_order: PhantomData,
         }
     }
@@ -505,6 +504,7 @@ mod tests {
         let coset = Coset::half_odds(poly.len().ilog2());
         let domain = LineDomain::new(coset);
         let evals = LineEvaluation::new(
+            domain,
             domain
                 .iter()
                 .map(|x| {
@@ -523,8 +523,8 @@ mod tests {
     fn line_polynomial_eval_at_point() {
         const LOG_SIZE: u32 = 2;
         let coset = Coset::half_odds(LOG_SIZE);
-        let evals = LineEvaluation::new((0..1 << LOG_SIZE).map(BaseField::from).collect());
         let domain = LineDomain::new(coset);
+        let evals = LineEvaluation::new(domain, (0..1 << LOG_SIZE).map(BaseField::from).collect());
         let poly = evals.clone().interpolate(domain);
 
         for (i, x) in domain.iter().enumerate() {
