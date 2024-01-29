@@ -165,12 +165,11 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
     ) -> LinePoly<F> {
         assert_eq!(evaluation.len(), config.last_layer_domain_size());
 
-        let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2()));
         let evaluation = evaluation.bit_reverse();
-        let mut coeffs = evaluation.interpolate(domain).into_ordered_coefficients();
+        let mut coeffs = evaluation.interpolate().into_ordered_coefficients();
 
-        let max_num_coeffs = 1 << config.log_last_layer_degree_bound;
-        let zeros = coeffs.split_off(max_num_coeffs);
+        let last_layer_degree_bound = 1 << config.log_last_layer_degree_bound;
+        let zeros = coeffs.split_off(last_layer_degree_bound);
         assert!(zeros.iter().all(F::is_zero), "invalid degree");
 
         LinePoly::from_ordered_coefficients(coeffs)
@@ -205,7 +204,7 @@ pub struct FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
     last_layer_poly: LinePoly<F>,
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
+impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriVerifier<F, H> {
     /// Verifies the commitment stage of FRI.
     ///
     /// `column_bounds` should be the committed circle polynomial degree bounds in descending order.
@@ -415,7 +414,7 @@ struct LinePolyDegreeBound {
 }
 
 impl LinePolyDegreeBound {
-    /// Returns [None] if the degree bound is smaller than the folding factor.
+    /// Returns [None] if the unfolded degree bound is smaller than the folding factor.
     fn fold(self, n_folds: u32) -> Option<Self> {
         if self.log_degree_bound < n_folds {
             return None;
@@ -450,7 +449,6 @@ pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub commitment: H::Hash,
 }
 
-#[allow(dead_code)]
 struct FriLayerVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
     degree_bound: LinePolyDegreeBound,
     domain: LineDomain,
@@ -459,7 +457,7 @@ struct FriLayerVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
     proof: FriLayerProof<F, H>,
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerVerifier<F, H> {
+impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriLayerVerifier<F, H> {
     /// Verifies the layer's merkle decommitment and returns the the folded queries and query evals.
     ///
     /// # Errors
@@ -476,8 +474,63 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerVerifier<F, H> {
         queries: Queries,
         evals_at_queries: Vec<F>,
     ) -> Result<(Queries, Vec<F>), VerificationError> {
-        let _decommitment_value = self.extract_evaluation(&queries, &evals_at_queries)?;
-        todo!()
+        let decommitment = &self.proof.decommitment;
+        let commitment = self.proof.commitment;
+
+        let sparse_evaluation = self.extract_evaluation(&queries, &evals_at_queries)?;
+
+        // TODO: When leaf values are removed from the decommitment, also remove this block.
+        {
+            let mut expected_decommitment_evals = Vec::new();
+
+            for leaf in decommitment.values() {
+                // Ensure each leaf is a single value.
+                if let [eval] = *leaf {
+                    expected_decommitment_evals.push(eval);
+                } else {
+                    return Err(VerificationError::InnerLayerCommitmentInvalid {
+                        layer: self.layer_index,
+                    });
+                }
+            }
+
+            let actual_decommitment_evals = sparse_evaluation
+                .subline_evals
+                .iter()
+                .flat_map(|e| &**e)
+                .copied()
+                .collect::<Vec<F>>();
+
+            if expected_decommitment_evals != actual_decommitment_evals {
+                return Err(VerificationError::InnerLayerCommitmentInvalid {
+                    layer: self.layer_index,
+                });
+            }
+        }
+
+        let folded_queries = queries.fold(LOG_FOLDING_FACTOR);
+
+        // Positions of all the decommitment evals.
+        let decommitment_positions = folded_queries
+            .iter()
+            .flat_map(|folded_query| {
+                const SUBGROUP_SIZE: usize = 1 << LOG_FOLDING_FACTOR;
+                let subgroup_index = folded_query;
+                let subgroup_start = subgroup_index * SUBGROUP_SIZE;
+                let subgroup_end = subgroup_start + SUBGROUP_SIZE;
+                subgroup_start..subgroup_end
+            })
+            .collect::<Vec<usize>>();
+
+        if !decommitment.verify(commitment, &decommitment_positions) {
+            return Err(VerificationError::InnerLayerCommitmentInvalid {
+                layer: self.layer_index,
+            });
+        }
+
+        let evals_at_folded_queries = sparse_evaluation.fold(self.folding_alpha);
+
+        Ok((folded_queries, evals_at_folded_queries))
     }
 
     /// Returns the evaluations needed for decommitment.
@@ -812,9 +865,8 @@ mod tests {
     fn log_degree_bound<F: ExtensionOf<BaseField>>(
         polynomial: LineEvaluation<F, BitReversedOrder>,
     ) -> u32 {
-        let domain = LineDomain::new(Coset::half_odds(polynomial.len().ilog2()));
         let polynomial = polynomial.bit_reverse();
-        let coeffs = polynomial.interpolate(domain).into_ordered_coefficients();
+        let coeffs = polynomial.interpolate().into_ordered_coefficients();
         let degree = coeffs.into_iter().rposition(|c| !c.is_zero()).unwrap_or(0);
         (degree + 1).ilog2()
     }
