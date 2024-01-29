@@ -42,6 +42,17 @@ impl Queries {
         }
     }
 
+    // TODO docs
+    #[allow(clippy::missing_safety_doc)]
+    pub fn from_positions(positions: Vec<usize>, log_domain_size: u32) -> Self {
+        assert!(positions.is_sorted());
+        assert!(positions.iter().all(|p| *p < (1 << log_domain_size)));
+        Self {
+            positions,
+            log_domain_size,
+        }
+    }
+
     /// Calculates the matching query indices in a folded domain (i.e each domain point is doubled)
     /// given `self` (the queries of the original domain) and the number of folds between domains.
     pub fn fold(&self, n_folds: u32) -> Self {
