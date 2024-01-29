@@ -67,7 +67,7 @@ pub struct FriProver<F: ExtensionOf<BaseField>, H: Hasher> {
     last_layer_poly: LinePoly<F>,
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
+impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriProver<F, H> {
     /// Commits to multiple [CircleEvaluation]s.
     ///
     /// `evals` must be provided in descending order by size.
@@ -127,14 +127,14 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
                 fold_circle_into_line(&mut layer_evaluation, &column, circle_poly_alpha);
             }
 
-            let layer = FriLayerProver::new(&layer_evaluation);
+            let layer = FriLayerProver::new(layer_evaluation);
 
             // TODO(andrew): add merkle root to channel
             // TODO(ohad): Add back once IntoSlice implemented for Field.
             // let _merkle_root = layer.merkle_tree.root();
             // TODO(andrew): draw random alpha from channel
             let alpha = F::one();
-            let folded_layer_evaluation = fold_line(&layer_evaluation, alpha);
+            let folded_layer_evaluation = fold_line(&layer.evaluation, alpha);
 
             layer_evaluation = folded_layer_evaluation;
             layers.push(layer);
@@ -436,13 +436,10 @@ const LOG_CIRCLE_TO_LINE_FOLDING_FACTOR: u32 = 1;
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
 // TODO(andrew): Consider adding docs here explaining the idea of splitting the layer's evaluations
-// into evaluations on multiple smaller cosets. Also perhaps coset isn't the best name because it
-// clashes with [Coset].
+// into evaluations on multiple smaller subgroups.
 pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    /// Subset of all subcircle evaluations.
-    ///
     /// The subset stored corresponds to the set of evaluations the verifier doesn't have but needs
-    /// to verify the decommitment.
+    /// to fold and verify the merkle decommitment.
     pub evals_subset: Vec<F>,
     pub decommitment: MerkleDecommitment<F, H>,
     pub commitment: H::Hash,
@@ -476,6 +473,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriLayerVerifier<F, 
         let decommitment = &self.proof.decommitment;
         let commitment = self.proof.commitment;
 
+        // Extract the evals needed for decommitment and folding.
         let sparse_evaluation = self.extract_evaluation(&queries, &evals_at_queries)?;
 
         // TODO: When leaf values are removed from the decommitment, also remove this block.
@@ -556,7 +554,6 @@ impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriLayerVerifier<F, 
         for subgroup_queries in queries.group_by(|a, b| a / SUBGROUP_SIZE == b / SUBGROUP_SIZE) {
             let subgroup_index = subgroup_queries[0] / SUBGROUP_SIZE;
 
-            // Construct the subcircle domain
             let subgroup_initial_index = bit_reverse_index(subgroup_index, self.domain.log_size());
             let subgroup_initial = self.domain.coset().index_at(subgroup_initial_index);
             let subgroup_domain = LineDomain::new(Coset::new(subgroup_initial, LOG_FOLDING_FACTOR));
@@ -590,56 +587,56 @@ impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriLayerVerifier<F, 
 /// of size two. Each leaf of the merkle tree commits to a single coset evaluation.
 // TODO(andrew): support different folding factors
 struct FriLayerProver<F: ExtensionOf<BaseField>, H: Hasher> {
-    /// Coset evaluations stored in column-major.
-    subcircle_evals: [Vec<F>; 1 << LOG_FOLDING_FACTOR],
-    _merkle_tree: MerkleTree<F, H>,
+    evaluation: LineEvaluation<F, BitReversedOrder>,
+    merkle_tree: MerkleTree<F, H>,
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProver<F, H> {
-    fn new(evaluation: &LineEvaluation<F, BitReversedOrder>) -> Self {
-        // TODO(andrew): With bit-reversed order coset evals are next to each other. Update.
-        let (l, r) = evaluation.split_at(evaluation.len() / 2);
-        let subcircle_evals = [l.to_vec(), r.to_vec()];
-        // TODO(ohad): Add back once IntoSlice implemented for Field.
-        // let merkle_tree = MerkleTree::commit(coset_evals.to_vec());
+impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriLayerProver<F, H> {
+    fn new(evaluation: LineEvaluation<F, BitReversedOrder>) -> Self {
+        // TODO: Commit on slice.
+        let merkle_tree = MerkleTree::commit(vec![evaluation.to_vec()]);
         #[allow(unreachable_code)]
         FriLayerProver {
-            subcircle_evals,
-            _merkle_tree: todo!(),
+            evaluation,
+            merkle_tree,
         }
     }
 
-    /// Generates a decommitment of the subcircle evaluations at the specified positions.
+    /// Generates a decommitment of the subgroup evaluations at the specified positions.
+    // TODO: Explain what the subgroups are better.
     fn decommit(self, queries: &Queries) -> FriLayerProof<F, H> {
-        const SUBCIRCLE_SIZE: usize = 1 << LOG_FOLDING_FACTOR;
+        const SUBGROUP_SIZE: usize = 1 << LOG_FOLDING_FACTOR;
 
+        let mut decommit_positions = Vec::new();
         let mut evals_subset = Vec::new();
 
-        // Group queries by the subcircle they reside in.
-        for query_group in queries.group_by(|a, b| a / SUBCIRCLE_SIZE == b / SUBCIRCLE_SIZE) {
-            let subcircle_index = query_group[0] / SUBCIRCLE_SIZE;
-            let mut subcircle_queries = query_group.iter().map(|q| q % SUBCIRCLE_SIZE).peekable();
+        // Group queries by the subgroup they reside in.
+        for query_group in queries.group_by(|a, b| a / SUBGROUP_SIZE == b / SUBGROUP_SIZE) {
+            let subgroup_index = query_group[0] / SUBGROUP_SIZE;
+            let mut subgroup_queries = query_group.iter().peekable();
 
-            for i in 0..SUBCIRCLE_SIZE {
+            for i in 0..SUBGROUP_SIZE {
+                // Add decommitment position.
+                let eval_position = subgroup_index * SUBGROUP_SIZE + i;
+                decommit_positions.push(eval_position);
+
                 // Skip evals the verifier can calculate.
-                if subcircle_queries.next_if_eq(&i).is_some() {
+                if subgroup_queries.next_if_eq(&&eval_position).is_some() {
                     continue;
                 }
 
-                let eval = self.subcircle_evals[i][subcircle_index];
+                let eval = self.evaluation[eval_position];
                 evals_subset.push(eval);
             }
         }
 
-        // TODO(ohad): Add back once IntoSlice implemented for Field.
-        // let position_set = positions.iter().copied().collect();
-        // let decommitment = self.merkle_tree.generate_decommitment(position_set);
-        // let commitment = self.merkle_tree.root();
-        #[allow(unreachable_code)]
+        let commitment = self.merkle_tree.root();
+        let decommitment = self.merkle_tree.generate_decommitment(decommit_positions);
+
         FriLayerProof {
             evals_subset,
-            decommitment: todo!(),
-            commitment: todo!(),
+            decommitment,
+            commitment,
         }
     }
 }
@@ -719,7 +716,10 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
         .enumerate()
         .map(|(i, &[f_x, f_neg_x])| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
-            let x = domain.at(bit_reverse_index(i * 2, domain.log_size()));
+            let x = domain.at(bit_reverse_index(
+                i << LOG_FOLDING_FACTOR,
+                domain.log_size(),
+            ));
 
             let (mut f0, mut f1) = (f_x, f_neg_x);
             ibutterfly(&mut f0, &mut f1, x.inverse());
@@ -750,14 +750,16 @@ fn fold_circle_into_line<F: ExtensionOf<BaseField>>(
     assert_eq!(src.len() >> LOG_CIRCLE_TO_LINE_FOLDING_FACTOR, dst.len());
 
     let domain = src.domain;
-    let log_folded_domain_size = domain.log_size() - LOG_CIRCLE_TO_LINE_FOLDING_FACTOR;
     let alpha_sq = alpha * alpha;
 
     zip(&mut **dst, src.array_chunks())
         .enumerate()
         .for_each(|(i, (dst, &[f_p, f_neg_p]))| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
-            let p = domain.at(bit_reverse_index(i, log_folded_domain_size));
+            let p = domain.at(bit_reverse_index(
+                i << LOG_CIRCLE_TO_LINE_FOLDING_FACTOR,
+                domain.log_size(),
+            ));
 
             // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
             let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
@@ -774,13 +776,22 @@ mod tests {
 
     use num_traits::{One, Zero};
 
-    use crate::core::circle::Coset;
+    use super::{SparseCircleEvaluation, VerificationError};
+    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
+    use crate::core::circle::{CirclePointIndex, Coset};
+    use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::BaseField;
+    use crate::core::fields::qm31::QM31;
     use crate::core::fields::ExtensionOf;
-    use crate::core::fri::{fold_circle_into_line, fold_line, LOG_CIRCLE_TO_LINE_FOLDING_FACTOR};
+    use crate::core::fri::{
+        fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig, FriProver, FriVerifier,
+        LOG_CIRCLE_TO_LINE_FOLDING_FACTOR,
+    };
     use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
-    use crate::core::poly::BitReversedOrder;
+    use crate::core::poly::{BitReversedOrder, NaturalOrder};
+    use crate::core::queries::Queries;
+    use crate::core::utils::bit_reverse_index;
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
@@ -829,6 +840,202 @@ mod tests {
         );
     }
 
+    #[test]
+    #[should_panic = "invalid degree"]
+    fn committing_high_degree_polynomial_fails() {
+        const LOG_EXPECTED_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR;
+        const LOG_INVALID_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR - 1;
+        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR);
+        let evaluation = polynomial_evaluation(6, LOG_INVALID_BLOWUP_FACTOR);
+
+        FriProver::<BaseField, Blake3Hasher>::commit(config, vec![evaluation]);
+    }
+
+    #[test]
+    #[should_panic = "not canonic"]
+    fn committing_evaluation_from_invalid_domain_fails() {
+        let invalid_domain = CircleDomain::new(Coset::new(CirclePointIndex::generator(), 3));
+        assert!(!invalid_domain.is_canonic(), "must be an invalid domain");
+        let evaluation = CircleEvaluation::new(invalid_domain, vec![QM31::one(); 1 << 4]);
+
+        FriProver::<QM31, Blake3Hasher>::commit(FriConfig::new(2, 2), vec![evaluation]);
+    }
+
+    #[test]
+    #[ignore = "verification issues"]
+    fn valid_fri_proof_passes_verification() -> Result<(), VerificationError> {
+        const LOG_DEGREE: u32 = 3;
+        let config = FriConfig::new(1, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial.clone()]);
+        let log_domain_size = polynomial.domain.log_size();
+        let queries = Queries::from_positions(vec![5], log_domain_size);
+        let proof = prover.decommit(&queries);
+        let decommitment_value = query_polynomial(&polynomial, &queries);
+        let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+        let verifier = FriVerifier::commit(config, proof, vec![column_bound]).unwrap();
+
+        verifier.decommit(&queries, vec![decommitment_value])
+    }
+
+    #[test]
+    #[ignore = "verification issues"]
+    fn mixed_degree_fri_proof_passes_verification() -> Result<(), VerificationError> {
+        const LOG_DEGREES: [u32; 3] = [6, 5, 4];
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let polynomials = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
+        let log_domain_size = polynomials[0].domain.log_size();
+        let queries = Queries::from_positions(vec![7, 70], log_domain_size);
+        let decommitment_values = polynomials
+            .iter()
+            .map(|p| query_polynomial(p, &queries))
+            .collect();
+        let prover = FriProver::<BaseField, Blake3Hasher>::commit(config, polynomials.to_vec());
+        let proof = prover.decommit(&queries);
+        let column_bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new);
+        let verifier = FriVerifier::commit(config, proof, column_bounds.to_vec()).unwrap();
+
+        verifier.decommit(&queries, decommitment_values)
+    }
+
+    #[test]
+    fn proof_with_removed_layer_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
+        let log_domain_size = polynomial.domain.log_size();
+        let queries = Queries::from_positions(vec![1], log_domain_size);
+        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let proof = prover.decommit(&queries);
+        let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+        // Set verifier's config to expect one extra layer than prover config.
+        let mut invalid_config = config;
+        invalid_config.log_last_layer_degree_bound -= 1;
+
+        let verifier = FriVerifier::commit(invalid_config, proof, vec![column_bound]);
+
+        assert!(matches!(
+            verifier,
+            Err(VerificationError::InvalidNumFriLayers)
+        ));
+    }
+
+    #[test]
+    fn proof_with_added_layer_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let log_domain_size = polynomial.domain.log_size();
+        let queries = Queries::from_positions(vec![1], log_domain_size);
+        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let proof = prover.decommit(&queries);
+        let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+        // Set verifier's config to expect one less layer than prover config.
+        let mut invalid_config = config;
+        invalid_config.log_last_layer_degree_bound += 1;
+
+        let verifier = FriVerifier::commit(invalid_config, proof, vec![column_bound]);
+
+        assert!(matches!(
+            verifier,
+            Err(VerificationError::InvalidNumFriLayers)
+        ));
+    }
+
+    #[test]
+    #[ignore = "verification issues"]
+    fn proof_with_invalid_inner_layer_evaluation_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let log_domain_size = polynomial.domain.log_size();
+        let queries = Queries::from_positions(vec![5], log_domain_size);
+        let decommitment_value = query_polynomial(&polynomial, &queries);
+        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+        let mut proof = prover.decommit(&queries);
+        // Remove an evaluation from the second layer's proof.
+        proof.inner_layers[1].evals_subset.pop();
+        let verifier = FriVerifier::commit(config, proof, vec![column_bound]).unwrap();
+
+        let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
+
+        assert!(matches!(
+            verification_result,
+            Err(VerificationError::InnerLayerEvaluationsInvalid { layer: 1 })
+        ));
+    }
+
+    #[test]
+    #[ignore = "verification incomplete"]
+    fn proof_with_invalid_inner_layer_decommitment_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let log_domain_size = polynomial.domain.log_size();
+        let queries = Queries::from_positions(vec![5], log_domain_size);
+        let decommitment_value = query_polynomial(&polynomial, &queries);
+        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+        let mut proof = prover.decommit(&queries);
+        // Modify the committed values in the second layer.
+        proof.inner_layers[1].evals_subset[0] += QM31::one();
+        let verifier = FriVerifier::commit(config, proof, vec![column_bound]).unwrap();
+
+        let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
+
+        assert!(matches!(
+            verification_result,
+            Err(VerificationError::InnerLayerCommitmentInvalid { layer: 1 })
+        ));
+    }
+
+    #[test]
+    fn proof_with_invalid_last_layer_degree_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        const LOG_MAX_LAST_LAYER_DEGREE: u32 = 2;
+        let config = FriConfig::new(LOG_MAX_LAST_LAYER_DEGREE, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let log_domain_size = polynomial.domain.log_size();
+        let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
+        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+        let mut proof = prover.decommit(&queries);
+        let bad_last_layer_coeffs = vec![QM31::one(); 1 << (LOG_MAX_LAST_LAYER_DEGREE + 1)];
+        proof.last_layer_poly = LinePoly::new(bad_last_layer_coeffs);
+
+        let verifier = FriVerifier::commit(config, proof, vec![column_bound]);
+
+        assert!(matches!(
+            verifier,
+            Err(VerificationError::LastLayerDegreeInvalid)
+        ));
+    }
+
+    #[test]
+    #[ignore = "verification issues"]
+    fn proof_with_invalid_last_layer_fails_verification() {
+        const LOG_DEGREE: u32 = 6;
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let log_domain_size = polynomial.domain.log_size();
+        let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
+        let decommitment_value = query_polynomial(&polynomial, &queries);
+        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
+        let mut proof = prover.decommit(&queries);
+        // Compromise the last layer polynomial's first coefficient.
+        proof.last_layer_poly[0] += QM31::one();
+        let verifier = FriVerifier::commit(config, proof, vec![column_bound]).unwrap();
+
+        let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
+
+        assert!(matches!(
+            verification_result,
+            Err(VerificationError::LastLayerEvaluationsInvalid)
+        ));
+    }
+
     /// Returns an evaluation of a random polynomial with degree `2^log_degree`.
     ///
     /// The evaluation domain size is `2^(log_degree + log_blowup_factor)`.
@@ -850,5 +1057,32 @@ mod tests {
         let coeffs = polynomial.interpolate().into_ordered_coefficients();
         let degree = coeffs.into_iter().rposition(|c| !c.is_zero()).unwrap_or(0);
         (degree + 1).ilog2()
+    }
+
+    // TODO: Remove after SubcircleDomain integration.
+    fn query_polynomial<F: ExtensionOf<BaseField>>(
+        polynomial: &CircleEvaluation<F, BitReversedOrder>,
+        queries: &Queries,
+    ) -> SparseCircleEvaluation<F> {
+        let domain = polynomial.domain;
+        let polynomial = polynomial.clone().bit_reverse();
+        let oracle = EvalByEvaluation::new(CirclePointIndex::zero(), &polynomial);
+
+        let coset_evals = queries
+            .iter()
+            .map(|&query| {
+                let position = bit_reverse_index(query, domain.log_size());
+                let p = domain.index_at(position);
+                let coset_domain = CircleDomain::new(Coset::new(p, 0));
+                let evals = coset_domain
+                    .iter_indices()
+                    .map(|p| oracle.get_at(p))
+                    .collect();
+                let coset_eval = CircleEvaluation::<F, NaturalOrder>::new(coset_domain, evals);
+                coset_eval.bit_reverse()
+            })
+            .collect();
+
+        SparseCircleEvaluation::new(coset_evals)
     }
 }
