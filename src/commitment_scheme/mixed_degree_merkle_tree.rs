@@ -170,13 +170,47 @@ where
     }
 }
 
+// Translates queries of the form <column, entry_index> to the form <layer, node_index>
+// Input queries are per column, i.e queries[0] is a vector of queries for the first column that was
+// inserted to the tree's input in that layer.
+#[allow(dead_code)]
+fn queried_node_indices_in_layer<'a>(
+    queries: impl Iterator<Item = &'a Vec<usize>>,
+    input: &MerkleTreeInput<'_, impl Field>,
+    layer_depth: usize,
+) -> Vec<usize> {
+    let column_log_lengths = input
+        .get_columns(layer_depth)
+        .iter()
+        .map(|c| crate::math::utils::log2_floor(c.len()));
+    let mut node_queries = queries
+        .into_iter()
+        .zip(column_log_lengths)
+        .flat_map(|(column_queries, log_column_length)| {
+            let log_n_bags_in_layer = layer_depth - 1;
+            let log_n_elements_in_bag = log_column_length - log_n_bags_in_layer;
+            column_queries
+                .iter()
+                .map(move |q| q >> log_n_elements_in_bag)
+        })
+        .collect::<Vec<_>>();
+    node_queries.sort();
+    node_queries.dedup();
+    node_queries
+}
+
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use super::{MixedDegreeMerkleTree, MixedDegreeMerkleTreeConfig};
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::merkle_input::MerkleTreeInput;
     use crate::core::fields::m31::M31;
+    use crate::core::fields::Field;
+    use crate::m31;
 
     #[test]
     fn new_mixed_degree_merkle_tree_test() {
@@ -312,5 +346,57 @@ mod tests {
             },
         );
         tree.get_hash_at(4, 0);
+    }
+
+    // TODO(Ohad): remove after test sub-routine is used.
+    fn translate_queries<F: Field>(
+        mut queries: Vec<Vec<usize>>,
+        input: &MerkleTreeInput<'_, F>,
+    ) -> Vec<Vec<usize>> {
+        (1..=input.max_injected_depth())
+            .rev()
+            .map(|i| {
+                let n_columns_injected_at_depth = input.get_columns(i).len();
+                let column_queries_at_depth = queries
+                    .drain(..n_columns_injected_at_depth)
+                    .collect::<Vec<_>>();
+                super::queried_node_indices_in_layer(column_queries_at_depth.iter(), input, i)
+            })
+            .collect::<Vec<Vec<usize>>>()
+    }
+
+    #[test]
+    fn translate_queries_test() {
+        let col_length_8 = [m31!(0); 8];
+        let col_length_4 = [m31!(0); 4];
+        let mut merkle_input = MerkleTreeInput::<M31>::new();
+
+        // Column Length 8 -> depth 4
+        // Column Length 8 -> depth 3
+        // Column Length 4 -> depth 3
+        merkle_input.insert_column(4, &col_length_8);
+        merkle_input.insert_column(3, &col_length_8);
+        merkle_input.insert_column(3, &col_length_4);
+
+        let first_column_queries = [0, 7];
+        let second_column_queries = [3, 7];
+        let third_column_queries = [1, 2];
+
+        let expeted_queries_at_depth_4 = [0, 7];
+        let expeted_queries_at_depth_3 = [1, 2, 3]; // [1,3] U [1,2]
+
+        let translated_queries = translate_queries(
+            vec![
+                first_column_queries.to_vec(),
+                second_column_queries.to_vec(),
+                third_column_queries.to_vec(),
+            ],
+            &merkle_input,
+        );
+
+        assert_eq!(translated_queries[0], expeted_queries_at_depth_4);
+        assert_eq!(translated_queries[1], expeted_queries_at_depth_3);
+        assert_eq!(translated_queries[2], vec![]);
+        assert_eq!(translated_queries[3], vec![]);
     }
 }
