@@ -111,8 +111,11 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
     ) {
         // Returns the length of the [LineEvaluation] a [CircleEvaluation] gets folded into.
         let folded_len = |e: &CircleEvaluation<_, _>| e.len() >> LOG_CIRCLE_TO_LINE_FOLDING_FACTOR;
-        let mut layer_size = folded_len(&columns[0]);
-        let mut layer_evaluation = LineEvaluation::new(vec![F::zero(); layer_size]);
+
+        let first_layer_size = folded_len(&columns[0]);
+        let first_layer_domain = LineDomain::new(Coset::half_odds(first_layer_size.ilog2()));
+        let mut layer_evaluation = LineEvaluation::new_zero(first_layer_domain);
+
         let mut columns = columns.into_iter().peekable();
 
         let mut layers = Vec::new();
@@ -123,7 +126,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
 
         while layer_evaluation.len() > config.last_layer_domain_size() {
             // Check for any columns (circle poly evaluations) that should be combined.
-            while let Some(column) = columns.next_if(|c| folded_len(c) == layer_size) {
+            while let Some(column) = columns.next_if(|c| folded_len(c) == layer_evaluation.len()) {
                 fold_circle_into_line(&mut layer_evaluation, &column, circle_poly_alpha);
             }
 
@@ -137,7 +140,6 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
             let folded_layer_evaluation = fold_line(&layer_evaluation, alpha);
 
             layer_evaluation = folded_layer_evaluation;
-            layer_size >>= LOG_FOLDING_FACTOR;
             layers.push(layer);
         }
 
@@ -322,8 +324,8 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
                 let folded_evals = sparse_evaluation.fold(circle_poly_alpha);
                 assert_eq!(folded_evals.len(), layer_query_evals.len());
 
-                for (eval, folded_eval) in zip(&mut layer_query_evals, folded_evals) {
-                    *eval = *eval * circle_poly_alpha_sq + folded_eval;
+                for (layer_eval, folded_eval) in zip(&mut layer_query_evals, folded_evals) {
+                    *layer_eval = *layer_eval * circle_poly_alpha_sq + folded_eval;
                 }
             }
 
@@ -440,14 +442,9 @@ const LOG_CIRCLE_TO_LINE_FOLDING_FACTOR: u32 = 1;
 /// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
-// TODO(andrew): Consider adding docs here explaining the idea of splitting the layer's evaluations
-// into evaluations on multiple smaller cosets. Also perhaps coset isn't the best name because it
-// clashes with [Coset].
 pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    /// Subset of all subcircle evaluations.
-    ///
     /// The subset stored corresponds to the set of evaluations the verifier doesn't have but needs
-    /// to verify the decommitment.
+    /// to fold and verify the decommitment.
     pub evals_subset: Vec<F>,
     pub decommitment: MerkleDecommitment<F, H>,
     pub commitment: H::Hash,
@@ -476,10 +473,77 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerVerifier<F, H> {
     /// Panics if the number of queries doesn't match the number of evals.
     fn verify_and_fold(
         &self,
-        _queries: Queries,
-        _evals_at_queries: Vec<F>,
+        queries: Queries,
+        evals_at_queries: Vec<F>,
     ) -> Result<(Queries, Vec<F>), VerificationError> {
+        let _decommitment_value = self.extract_evaluation(&queries, &evals_at_queries)?;
         todo!()
+    }
+
+    /// Returns the evaluations needed for decommitment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Err` if the proof doesn't store enough evaluations.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of queries doesn't match the number of evals.
+    fn extract_evaluation(
+        &self,
+        queries: &Queries,
+        evals_at_queries: &[F],
+    ) -> Result<SparseLineEvaluation<F>, VerificationError> {
+        // Evals provided by the verifier.
+        let mut evals_at_queries = evals_at_queries.iter().copied();
+
+        // Evals stored in the proof.
+        let mut proof_evals = self.proof.evals_subset.iter().copied();
+
+        let mut all_subline_evals = Vec::new();
+
+        // Group queries by the subline they reside in.
+        for subline_queries in
+            queries.group_by(|a, b| a >> LOG_FOLDING_FACTOR == b >> LOG_FOLDING_FACTOR)
+        {
+            let subline_index = subline_queries[0] >> LOG_FOLDING_FACTOR;
+
+            // Construct the subline domain
+            // TODO(andrew): Create a constructor for LineDomain.
+            let subline_initial_index = bit_reverse_index(subline_index, self.domain.log_size());
+            let subline_initial = self.domain.coset().index_at(subline_initial_index);
+            let subline_domain = LineDomain::new(Coset::new(subline_initial, LOG_FOLDING_FACTOR));
+
+            let mut subline_evals = Vec::new();
+            let mut subline_queries = subline_queries.iter().peekable();
+
+            // Insert the evals.
+            for i in 0..(1 << LOG_FOLDING_FACTOR) {
+                let eval_position = (subline_index << LOG_FOLDING_FACTOR) + i;
+
+                let eval = match subline_queries.next_if_eq(&&eval_position) {
+                    Some(_) => evals_at_queries.next().unwrap(),
+                    None => proof_evals.next().ok_or(
+                        VerificationError::InnerLayerEvaluationsInvalid {
+                            layer: self.layer_index,
+                        },
+                    )?,
+                };
+
+                subline_evals.push(eval);
+            }
+
+            all_subline_evals.push(LineEvaluation::new(subline_domain, subline_evals));
+        }
+
+        // Check all proof evals have been consumed.
+        if !proof_evals.is_empty() {
+            return Err(VerificationError::InnerLayerEvaluationsInvalid {
+                layer: self.layer_index,
+            });
+        }
+
+        Ok(SparseLineEvaluation::new(all_subline_evals))
     }
 }
 
@@ -490,7 +554,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerVerifier<F, H> {
 // TODO(andrew): support different folding factors
 struct FriLayerProver<F: ExtensionOf<BaseField>, H: Hasher> {
     /// Coset evaluations stored in column-major.
-    subcircle_evals: [Vec<F>; 1 << LOG_FOLDING_FACTOR],
+    subline_evals: [Vec<F>; 1 << LOG_FOLDING_FACTOR],
     _merkle_tree: MerkleTree<F, H>,
 }
 
@@ -498,35 +562,37 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProver<F, H> {
     fn new(evaluation: &LineEvaluation<F, BitReversedOrder>) -> Self {
         // TODO(andrew): With bit-reversed order coset evals are next to each other. Update.
         let (l, r) = evaluation.split_at(evaluation.len() / 2);
-        let subcircle_evals = [l.to_vec(), r.to_vec()];
+        let subline_evals = [l.to_vec(), r.to_vec()];
         // TODO(ohad): Add back once IntoSlice implemented for Field.
         // let merkle_tree = MerkleTree::commit(coset_evals.to_vec());
         #[allow(unreachable_code)]
         FriLayerProver {
-            subcircle_evals,
+            subline_evals,
             _merkle_tree: todo!(),
         }
     }
 
-    /// Generates a decommitment of the subcircle evaluations at the specified positions.
+    /// Generates a decommitment of the subline evaluations at the specified positions.
     fn decommit(self, queries: &Queries) -> FriLayerProof<F, H> {
-        const SUBCIRCLE_SIZE: usize = 1 << LOG_FOLDING_FACTOR;
-
         let mut evals_subset = Vec::new();
 
-        // Group queries by the subcircle they reside in.
-        for query_group in queries.group_by(|a, b| a / SUBCIRCLE_SIZE == b / SUBCIRCLE_SIZE) {
-            let subcircle_index = query_group[0] / SUBCIRCLE_SIZE;
-            let mut subcircle_queries = query_group.iter().map(|q| q % SUBCIRCLE_SIZE).peekable();
+        // Group queries by the subline they reside in.
+        // TODO(andrew): Explain what a "subline" is at the top of the module.
+        for query_group in
+            queries.group_by(|a, b| a >> LOG_FOLDING_FACTOR == b >> LOG_FOLDING_FACTOR)
+        {
+            let subline_index = query_group[0] >> LOG_FOLDING_FACTOR;
+            let mut subline_queries = query_group.iter().peekable();
 
-            for i in 0..SUBCIRCLE_SIZE {
+            for i in 0..(1 << LOG_FOLDING_FACTOR) {
+                let eval_position = (subline_index << LOG_FOLDING_FACTOR) + i;
+
                 // Skip evals the verifier can calculate.
-                if subcircle_queries.peek() == Some(&i) {
-                    subcircle_queries.next();
+                if subline_queries.next_if_eq(&&eval_position).is_some() {
                     continue;
                 }
 
-                let eval = self.subcircle_evals[i][subcircle_index];
+                let eval = self.subline_evals[i][subline_index];
                 evals_subset.push(eval);
             }
         }
@@ -546,24 +612,25 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProver<F, H> {
 
 /// Holds a foldable subset of circle polynomial evaluations.
 pub struct SparseCircleEvaluation<F: ExtensionOf<BaseField>> {
-    coset_evals: Vec<CircleEvaluation<F, BitReversedOrder>>,
+    subcircle_evals: Vec<CircleEvaluation<F, BitReversedOrder>>,
 }
 
 impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F> {
     /// # Panics
     ///
-    /// Panics if the coset sizes aren't the same as the folding factor.
-    pub fn new(coset_evals: Vec<CircleEvaluation<F, BitReversedOrder>>) -> Self {
+    /// Panics if the evaluation domain sizes don't equal the folding factor.
+    pub fn new(subcircle_evals: Vec<CircleEvaluation<F, BitReversedOrder>>) -> Self {
         let folding_factor = 1 << LOG_FOLDING_FACTOR;
-        assert!(coset_evals.iter().all(|e| e.len() == folding_factor));
-        Self { coset_evals }
+        assert!(subcircle_evals.iter().all(|e| e.len() == folding_factor));
+        Self { subcircle_evals }
     }
 
     fn fold(self, alpha: F) -> Vec<F> {
-        self.coset_evals
+        self.subcircle_evals
             .into_iter()
             .map(|e| {
-                let mut buffer = LineEvaluation::new(vec![F::zero()]);
+                let buffer_domain = LineDomain::new(e.domain.half_coset);
+                let mut buffer = LineEvaluation::new(buffer_domain, vec![F::zero()]);
                 fold_circle_into_line(&mut buffer, &e, alpha);
                 buffer[0]
             })
@@ -573,22 +640,22 @@ impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F> {
 
 /// Holds a foldable subset of univariate polynomial evaluations.
 struct SparseLineEvaluation<F: ExtensionOf<BaseField>> {
-    coset_evals: Vec<LineEvaluation<F, BitReversedOrder>>,
+    subline_evals: Vec<LineEvaluation<F, BitReversedOrder>>,
 }
 
 impl<F: ExtensionOf<BaseField>> SparseLineEvaluation<F> {
     /// # Panics
     ///
-    /// Panics if the coset sizes aren't the same as the folding factor.
-    fn _new(coset_evals: Vec<LineEvaluation<F, BitReversedOrder>>) -> Self {
+    /// Panics if the evaluation domain sizes don't equal the folding factor.
+    fn new(subline_evals: Vec<LineEvaluation<F, BitReversedOrder>>) -> Self {
         let folding_factor = 1 << LOG_FOLDING_FACTOR;
-        assert!(coset_evals.iter().all(|e| e.len() == folding_factor));
-        Self { coset_evals }
+        assert!(subline_evals.iter().all(|e| e.len() == folding_factor));
+        Self { subline_evals }
     }
 
     #[allow(dead_code)]
     fn fold(self, alpha: F) -> Vec<F> {
-        self.coset_evals
+        self.subline_evals
             .into_iter()
             .map(|e| fold_line(&e, alpha)[0])
             .collect()
@@ -611,16 +678,14 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
     let n = evals.len();
     assert!(n >= 2, "too few evals");
 
-    // TODO: Change LineDomain to be defined by its size and to always be canonic.
-    let domain = LineDomain::new(Coset::half_odds(n.ilog2()));
-    let log_folded_domain_size = domain.log_size() - LOG_FOLDING_FACTOR;
+    let domain = evals.domain();
 
     let folded_evals = evals
         .array_chunks()
         .enumerate()
         .map(|(i, &[f_x, f_neg_x])| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
-            let x = domain.at(bit_reverse_index(i, log_folded_domain_size));
+            let x = domain.at(bit_reverse_index(i * 2, domain.log_size()));
 
             let (mut f0, mut f1) = (f_x, f_neg_x);
             ibutterfly(&mut f0, &mut f1, x.inverse());
@@ -628,7 +693,7 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
         })
         .collect();
 
-    LineEvaluation::new(folded_evals)
+    LineEvaluation::new(domain.double(), folded_evals)
 }
 
 /// Folds and accumulates a degree `d` circle polynomial into a degree `d/2` univariate polynomial.
@@ -718,8 +783,10 @@ mod tests {
         let circle_evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let num_folded_evals = circle_evaluation.domain.size() >> LOG_CIRCLE_TO_LINE_FOLDING_FACTOR;
         let alpha = BaseField::one();
+        let folded_domain = LineDomain::new(circle_evaluation.domain.half_coset);
 
-        let mut folded_evaluation = LineEvaluation::new(vec![BaseField::zero(); num_folded_evals]);
+        let mut folded_evaluation =
+            LineEvaluation::new(folded_domain, vec![BaseField::zero(); num_folded_evals]);
         fold_circle_into_line(&mut folded_evaluation, &circle_evaluation, alpha);
 
         assert_eq!(
