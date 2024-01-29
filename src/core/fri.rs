@@ -3,10 +3,8 @@ use std::fmt::Debug;
 use std::iter::zip;
 use std::ops::RangeInclusive;
 
-use itertools::Itertools;
 use thiserror::Error;
 
-use super::circle::CirclePointIndex;
 use super::fields::m31::BaseField;
 use super::fields::{ExtensionOf, Field};
 use super::poly::circle::CircleEvaluation;
@@ -19,6 +17,7 @@ use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
+use crate::core::poly::circle::CanonicCoset;
 use crate::core::poly::line::LineDomain;
 use crate::core::utils::bit_reverse_index;
 
@@ -117,7 +116,9 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
         let folded_len = |e: &CircleEvaluation<_, _>| e.len() >> LOG_CIRCLE_TO_LINE_FOLDING_FACTOR;
         let mut evals = evals.into_iter().peekable();
         let mut layer_size = evals.peek().map(folded_len).expect("no evaluation");
-        let mut evaluation = LineEvaluation::new(vec![F::zero(); layer_size]);
+
+        let domain = LineDomain::new(CanonicCoset::new(layer_size.ilog2()).coset());
+        let mut evaluation = LineEvaluation::new(domain, vec![F::zero(); layer_size]);
 
         let mut layers = Vec::new();
 
@@ -166,12 +167,11 @@ impl<F: ExtensionOf<BaseField>, H: Hasher> FriProver<F, H> {
     ) -> LinePoly<F> {
         assert_eq!(evaluation.len(), config.last_layer_domain_size());
 
-        let domain = LineDomain::new(Coset::half_odds(evaluation.len().ilog2()));
         let evaluation = evaluation.bit_reverse();
-        let mut coeffs = evaluation.interpolate(domain).into_ordered_coefficients();
+        let mut coeffs = evaluation.interpolate().into_ordered_coefficients();
 
-        let max_num_coeffs = 1 << config.log_last_layer_degree_bound;
-        let zeros = coeffs.split_off(max_num_coeffs);
+        let last_layer_degree_bound = 1 << config.log_last_layer_degree_bound;
+        let zeros = coeffs.split_off(last_layer_degree_bound);
         assert!(zeros.iter().all(F::is_zero), "invalid degree");
 
         LinePoly::from_ordered_coefficients(coeffs)
@@ -206,7 +206,7 @@ pub struct FriVerifier<F: ExtensionOf<BaseField>, H: Hasher> {
     proof: FriProof<F, H>,
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriVerifier<F, H> {
+impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriVerifier<F, H> {
     /// Verifies the commitment stage of FRI.
     ///
     /// `column_degree_bounds` should be a list of degree bounds of all committed circle
@@ -421,11 +421,52 @@ pub struct FriLayerProof<F: ExtensionOf<BaseField>, H: Hasher> {
     pub commitment: H::Hash,
 }
 
-impl<F: ExtensionOf<BaseField>, H: Hasher> FriLayerProof<F, H> {
+impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriLayerProof<F, H> {
+    /// Verifies the layer's decommitment.
+    ///
+    /// `queries` should be the queries into this layer. `evaluation` should be the evaluation
+    /// returned by [Self::extract_evaluation].
     // TODO(andrew): implement and add docs
     // TODO(andrew): create FRI verification error type
-    fn verify(&self, _queries: &Queries, _evaluation: &SparseLineEvaluation<F>) -> bool {
-        todo!()
+    fn verify(&self, queries: &Queries, evaluation: &SparseLineEvaluation<F>) -> bool {
+        // All evals flattened.
+        let evals = evaluation
+            .coset_evals
+            .iter()
+            .flat_map(|e| e.iter())
+            .copied()
+            .collect::<Vec<F>>();
+
+        let mut decommitment_values = Vec::new();
+
+        // TODO: Remove leaf values from the decommitment.
+        for leaf in self.decommitment.values() {
+            // Ensure each leaf is a single value.
+            if let [leaf] = *leaf {
+                decommitment_values.push(leaf);
+            } else {
+                return false;
+            }
+        }
+
+        if decommitment_values != evals {
+            return false;
+        }
+
+        // Positions of all the flattened evals.
+        let eval_positions = queries
+            .fold(LOG_FOLDING_FACTOR)
+            .iter()
+            .flat_map(|folded_query| {
+                const COSET_SIZE: usize = 1 << LOG_FOLDING_FACTOR;
+                let coset_start = folded_query * COSET_SIZE;
+                let coset_end = coset_start + COSET_SIZE;
+                coset_start..coset_end
+            })
+            .collect::<Vec<usize>>();
+        assert_eq!(eval_positions.len(), evals.len());
+
+        self.decommitment.verify(self.commitment, &eval_positions)
     }
 
     /// Returns the coset evals needed for decommitment.
@@ -620,7 +661,7 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
         .enumerate()
         .map(|(i, &[f_x, f_neg_x])| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
-            let x = domain.at(bit_reverse_index(i, domain.log_size()));
+            let x = domain.at(bit_reverse_index(i, domain.log_size() - 1));
 
             let (mut f0, mut f1) = (f_x, f_neg_x);
             ibutterfly(&mut f0, &mut f1, x.inverse());
@@ -747,9 +788,8 @@ mod tests {
     fn log_degree_bound<F: ExtensionOf<BaseField>>(
         polynomial: LineEvaluation<F, BitReversedOrder>,
     ) -> u32 {
-        let domain = LineDomain::new(Coset::half_odds(polynomial.len().ilog2()));
         let polynomial = polynomial.bit_reverse();
-        let coeffs = polynomial.interpolate(domain).into_ordered_coefficients();
+        let coeffs = polynomial.interpolate().into_ordered_coefficients();
         let degree = coeffs.into_iter().rposition(|c| !c.is_zero()).unwrap_or(0);
         (degree + 1).ilog2()
     }
