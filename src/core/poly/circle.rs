@@ -58,13 +58,7 @@ impl CircleDomain {
     }
 
     pub fn at(&self, index: usize) -> CirclePoint<BaseField> {
-        if index < self.half_coset.size() {
-            self.half_coset.at(index)
-        } else {
-            self.half_coset
-                .at(index - self.half_coset.size())
-                .conjugate()
-        }
+        self.index_at(index).to_point()
     }
 
     pub fn find(&self, i: CirclePointIndex) -> Option<usize> {
@@ -83,6 +77,13 @@ impl CircleDomain {
     /// `G_2n + <G_n>` where `G_n` and `G_2n` are obtained by repeatedly doubling [M31_CIRCLE_GEN].
     pub fn is_canonic(&self) -> bool {
         self.half_coset.initial_index * 4 == self.half_coset.step_size
+    }
+
+    pub fn index_at(&self, index: usize) -> CirclePointIndex {
+        if index < self.half_coset.size() {
+            return self.half_coset.index_at(index);
+        }
+        -self.half_coset.index_at(index - self.half_coset.size())
     }
 }
 
@@ -178,8 +179,8 @@ impl CanonicCoset {
         self.coset.step_size
     }
 
-    pub fn index_at(&self, i: usize) -> CirclePointIndex {
-        self.coset.index_at(i)
+    pub fn index_at(&self, index: usize) -> CirclePointIndex {
+        self.coset.index_at(index)
     }
 
     pub fn at(&self, i: usize) -> CirclePoint<BaseField> {
@@ -568,6 +569,17 @@ mod tests {
                 log_small_domain_size,
             ));
             assert_eq!(point.repeated_double(n_folds), small_point);
+        }
+    }
+
+    #[test]
+    pub fn test_at_circle_domain() {
+        let domain = CanonicCoset::new(7).circle_domain();
+        let half_domain_size = domain.size() / 2;
+
+        for i in 0..half_domain_size {
+            assert_eq!(domain.index_at(i), -domain.index_at(i + half_domain_size));
+            assert_eq!(domain.at(i), domain.at(i + half_domain_size).conjugate());
         }
     }
 }
