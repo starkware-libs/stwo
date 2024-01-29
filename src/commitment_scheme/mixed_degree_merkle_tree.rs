@@ -1,3 +1,7 @@
+use std::iter::Peekable;
+
+use merging_iterator::MergeIter;
+
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
 use super::merkle_multilayer::MerkleMultiLayer;
@@ -92,9 +96,57 @@ where
         root
     }
 
-    // Queries should be a query struct that supports queries at multiple layers.
+    // Option 1:
+    // Queries are per column.
     pub fn decommit(&self, _queries: Vec<Vec<usize>>) -> MixedDecommitment<F, H> {
-        todo!()
+        let node_queries = translate_queries(_queries, &self.input);
+        self.decommit_node_queries(&node_queries)
+    }
+
+    fn decommit_node_queries(&self, node_queries: &[Vec<usize>]) -> MixedDecommitment<F, H> {
+        let mut proof_layers = Vec::<Vec<DecommitmentNode<F, H>>>::new();
+        let mut parent_indices_of_previous_layer = vec![];
+
+        for (i, layer_queries) in (node_queries.iter()).enumerate().rev() {
+            proof_layers.push(self._decommit_layer(
+                i + 1,
+                parent_indices_of_previous_layer.iter().copied().peekable(),
+                layer_queries.iter().copied().peekable(),
+            ));
+            parent_indices_of_previous_layer =
+                MergeIter::new(parent_indices_of_previous_layer, layer_queries).collect_vec();
+        }
+        MixedDecommitment::new(proof_layers)
+    }
+
+    // Option 2:
+    pub fn decommit2(
+        &self,
+        mut entry_queries_per_column: Vec<Vec<usize>>,
+    ) -> MixedDecommitment<F, H> {
+        let mut proof_layers = Vec::<Vec<DecommitmentNode<F, H>>>::new();
+        let mut parent_indices_of_previous_layer = vec![];
+
+        for i in (1..self.input.max_injected_depth()).rev() {
+            let layer_node_queries = self.get_layer_node_queries(&mut entry_queries_per_column, i);
+            proof_layers.push(self._decommit_layer(
+                i + 1,
+                parent_indices_of_previous_layer.iter().copied().peekable(),
+                layer_node_queries.iter().copied().peekable(),
+            ));
+            parent_indices_of_previous_layer =
+                MergeIter::new(parent_indices_of_previous_layer, layer_node_queries).collect_vec();
+        }
+        MixedDecommitment::new(proof_layers)
+    }
+
+    // Assumes the first entries in 'queries' are for layer depth 'i'.
+    fn get_layer_node_queries(&self, queries: &mut Vec<Vec<usize>>, i: usize) -> Vec<usize> {
+        let columns_injected_in_layer = self.input.get_columns(i);
+        let n_columns_injected_at_depth = columns_injected_in_layer.len();
+        let column_queries_at_depth = queries.drain(..n_columns_injected_at_depth);
+        let column_lengths_at_depth = columns_injected_in_layer.iter().map(|c| c.len());
+        translate_layer_queries(column_queries_at_depth, column_lengths_at_depth, i)
     }
 
     pub fn get_hash_at(&self, layer_depth: usize, position: usize) -> H::Hash {
@@ -108,6 +160,84 @@ where
             depth_accumulator -= multi_layer_height;
         }
         panic!()
+    }
+    // Takes iterators to the ancestor indices of the previous layers and the current layer's
+    // queried node indices. Advances on both simultaneously to produce the current layer's
+    // proof in ascending order (left -> right).
+    // TODO(Ohad): remove '_'.
+    fn _decommit_layer(
+        &self,
+        layer_depth: usize,
+        mut ancestors_of_previous_layers: Peekable<impl Iterator<Item = usize>>,
+        mut current_layer_node_queries: Peekable<impl Iterator<Item = usize>>,
+    ) -> Vec<DecommitmentNode<F, H>> {
+        let mut proof_layer = Vec::<DecommitmentNode<F, H>>::new();
+
+        while let Some(query) = ancestors_of_previous_layers.next() {
+            // Handle node queries that precede the next ancestor-query.
+            self._append_preceding_queried_nodes(
+                &mut current_layer_node_queries,
+                query / 2,
+                layer_depth,
+                &mut proof_layer,
+            );
+
+            // Handle ancestor query.
+            if let Some(node) =
+                self._get_ancestor_query_node(query, &mut ancestors_of_previous_layers, layer_depth)
+            {
+                proof_layer.push(node);
+            }
+        }
+
+        // Consumes remaining node queries.
+        self._append_preceding_queried_nodes(
+            &mut current_layer_node_queries,
+            usize::MAX,
+            layer_depth,
+            &mut proof_layer,
+        );
+        proof_layer
+    }
+
+    // Consumes node queries until the next ancestor query is reached.
+    // TODO(Ohad): remove '_'.
+    // TODO(Ohad): remove clippy allow, it doesn't like a vector passed as ref, but it should be
+    // here.
+    #[allow(clippy::ptr_arg)]
+    fn _append_preceding_queried_nodes(
+        &self,
+        _node_query_iterator: &mut Peekable<impl Iterator<Item = usize>>,
+        _node_index_upper_bound: usize,
+        _layer_depth: usize,
+        _proof_layer: &mut Vec<DecommitmentNode<F, H>>,
+    ) {
+        todo!()
+    }
+
+    // Returns the a node that includes an ancestor of a previous layer query if needed, otherwise
+    // returns None.
+    fn _get_ancestor_query_node(
+        &self,
+        query: usize,
+        ancestors_iterator: &mut Peekable<impl Iterator<Item = usize>>,
+        layer_depth: usize,
+    ) -> Option<DecommitmentNode<F, H>> {
+        match ancestors_iterator.peek() {
+            // If both children are in the layer, only injected elements are needed
+            // to calculate the parent.
+            Some(next_q) if *next_q == query ^ 1 => {
+                ancestors_iterator.next();
+                None
+            }
+            _ => {
+                if query % 2 == 0 {
+                    self._get_node(layer_depth, query / 2, false, true)
+                } else {
+                    self._get_node(layer_depth, query / 2, true, false)
+                }
+            }
+        }
     }
 
     // TODO(Ohad): remove '_'.
@@ -168,6 +298,47 @@ where
         assert!(layer_index < self.multi_layers.len());
         self.multi_layers[layer_index].config.sub_tree_height
     }
+}
+
+// input queries are per column, output per layer.
+#[allow(dead_code)]
+pub fn translate_queries<F: Field>(
+    mut queries: Vec<Vec<usize>>,
+    input: &MerkleTreeInput<F>,
+) -> Vec<Vec<usize>> {
+    (1..=input.max_injected_depth())
+        .rev()
+        .map(|i| {
+            let columns_at_depth = input.get_columns(i);
+            let n_columns_injected_at_depth = columns_at_depth.len();
+            let column_queries_at_depth = queries.drain(..n_columns_injected_at_depth);
+            let column_lengths_at_depth = columns_at_depth.iter().map(|c| c.len());
+            translate_layer_queries(column_queries_at_depth, column_lengths_at_depth, i)
+        })
+        .collect::<Vec<Vec<usize>>>()
+}
+
+// Queries are per column in the layer,
+#[allow(dead_code)]
+fn translate_layer_queries(
+    queries: impl ExactSizeIterator<Item = Vec<usize>>,
+    column_lengths: impl Iterator<Item = usize>,
+    depth: usize,
+) -> Vec<usize> {
+    let mut node_queries = queries
+        .into_iter()
+        .zip(column_lengths)
+        .flat_map(|(column_queries, column_length)| {
+            let n_bags_in_layer = 1 << (depth - 1);
+            let n_elements_in_bag = column_length / n_bags_in_layer;
+            column_queries
+                .into_iter()
+                .map(move |q| q / n_elements_in_bag)
+        })
+        .collect::<Vec<usize>>();
+    node_queries.sort();
+    node_queries.dedup();
+    node_queries
 }
 
 #[cfg(test)]
