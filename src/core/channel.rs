@@ -29,6 +29,7 @@ pub trait Channel {
     const BYTES_PER_HASH: usize;
 
     fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self;
+    fn get_digest(&self) -> Vec<<Self::ChannelHasher as Hasher>::NativeType>;
     fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash);
     fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
@@ -58,6 +59,10 @@ impl Channel for Blake2sChannel {
             digest,
             channel_time: ChannelTime::default(),
         }
+    }
+
+    fn get_digest(&self) -> Vec<<Self::ChannelHasher as Hasher>::NativeType> {
+        self.digest.as_ref().to_vec()
     }
 
     fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash) {
