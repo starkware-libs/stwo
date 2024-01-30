@@ -70,7 +70,7 @@ fn check_leading_zeros(bytes: &[u8], bound_bits: u32) -> bool {
 mod tests {
     use super::ProofOfWork;
     use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
-    use crate::core::proof_of_work::{ProofOfWorkConfig, ProofOfWorkProof};
+    use crate::core::proof_of_work::utils::{ProofOfWorkConfig, ProofOfWorkProof};
 
     #[test]
     fn test_verify_proof_of_work_success() {
