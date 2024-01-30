@@ -16,6 +16,16 @@ pub struct ProofOfWorkData<H: Hasher<NativeType = u8>> {
     seed: H::Hash,
 }
 
+impl ProofOfWorkProof {
+    // TODO(ShaharS): move this function in the digest trait and support different digests.
+    pub fn to_digest(&self, size: usize) -> Vec<u8> {
+        let mut padded = vec![0; size];
+        // Copy the elements from the original array to the new array
+        padded[..8].copy_from_slice(&self.nonce.to_le_bytes());
+        padded
+    }
+}
+
 // TODO(ShaharS): Consider to split to prover and verifier and create traits for them.
 impl<H: Hasher<NativeType = u8>> ProofOfWorkData<H> {
     pub fn new(seed: H::Hash, config: ProofOfWorkConfig) -> Self {
