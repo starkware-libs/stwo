@@ -355,15 +355,19 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
     use num_traits::One;
 
     use super::Fibonacci;
+    use crate::commitment_scheme::utils::tests::generate_test_queries;
     use crate::core::circle::CirclePoint;
     use crate::core::constraints::{EvalByEvaluation, EvalByPointMapping, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::oods::get_oods_points;
-    use crate::core::poly::circle::{CircleEvaluation, PointMapping};
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PointMapping};
+    use crate::core::queries::Queries;
+    use crate::core::utils::bit_reverse;
     use crate::fibonacci::verify_proof;
     use crate::{m31, qm31};
 
@@ -448,6 +452,40 @@ mod tests {
             interpolated_composition_polynomial_poly.eval_at_point(oods_point),
             fib.eval_composition_polynomial(random_coeff, trace_evaluator)
         );
+    }
+
+    #[test]
+    fn test_sparse_circle_points() {
+        let log_domain_size = 7;
+        let domain = CanonicCoset::new(log_domain_size).circle_domain();
+        let domain_points = domain.iter().collect_vec();
+        let trace_commitment_points = bit_reverse(domain_points);
+
+        // Generate queries.
+        let trace_queries = Queries {
+            positions: generate_test_queries(7, 1 << log_domain_size),
+            log_domain_size,
+        };
+
+        // Get the opening positions and points.
+        const FRI_STEP_SIZE: u32 = 3;
+        let trace_opening_positions = trace_queries.opening_positions(FRI_STEP_SIZE);
+        let trace_decommitment_positions = trace_opening_positions.flatten();
+        let trace_opened_points = trace_decommitment_positions
+            .iter()
+            .map(|p| trace_commitment_points[*p])
+            .collect_vec();
+
+        // Assert that we got the correct domain_points.
+        for (sub_circle_domain, points) in trace_opening_positions
+            .iter()
+            .zip(trace_opened_points.chunks(1 << FRI_STEP_SIZE))
+        {
+            let circle_domain = sub_circle_domain.to_circle_domain(&domain);
+            // Bit reverse the domain points to match the order of the opened points.
+            let domain_points = bit_reverse(circle_domain.iter().collect_vec());
+            assert_eq!(points, domain_points);
+        }
     }
 
     #[test]

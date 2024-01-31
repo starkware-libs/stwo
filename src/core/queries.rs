@@ -5,7 +5,7 @@ use itertools::Itertools;
 
 use super::channel::Channel;
 use super::circle::Coset;
-use super::poly::circle::{CanonicCoset, CircleDomain};
+use super::poly::circle::CircleDomain;
 use super::utils::bit_reverse_index;
 
 // TODO(AlonH): Move file to fri directory.
@@ -111,7 +111,7 @@ impl SubCircleDomain {
     }
 
     /// Returns the represented [CircleDomain].
-    pub fn to_circle_domain(&self, query_domain: &CanonicCoset) -> CircleDomain {
+    pub fn to_circle_domain(&self, query_domain: &CircleDomain) -> CircleDomain {
         let query = bit_reverse_index(self.coset_index << self.log_size, query_domain.log_size());
         let initial_index = query_domain.index_at(query);
         let half_coset = Coset::new(initial_index, self.log_size - 1);
