@@ -400,6 +400,18 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
     }
 }
 
+#[cfg(test)]
+impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
+    /// Returns the coefficients of the polynomial in the standard rising degree order.
+    pub fn coeffs(&self) -> Vec<F> {
+        let mut coeffs = bit_reverse(self.coeffs.clone());
+        while coeffs.last() == Some(&F::zero()) {
+            coeffs.pop();
+        }
+        coeffs
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PointMapping<F: ExtensionOf<BaseField>> {
     pub points: Vec<CirclePoint<F>>,
