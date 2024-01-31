@@ -237,6 +237,7 @@ pub fn inject_column_chunks<'b, 'a: 'b, H: Hasher, F: Field>(
 }
 
 /// Returns the i'th chunk of a column split into n_total_chunks.
+// TODO(Ohad): change div to shift-right.
 pub fn get_column_chunk<F>(column: &[F], index_to_view: usize, n_total_chunks: usize) -> &[F] {
     let slice_length = column.len() / n_total_chunks;
     let slice_start_idx = slice_length * index_to_view;
