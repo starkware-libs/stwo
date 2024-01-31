@@ -400,6 +400,13 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
     }
 }
 
+#[cfg(test)]
+impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
+    pub fn coeffs(&self) -> Vec<F> {
+        bit_reverse(self.coeffs.clone())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PointMapping<F: ExtensionOf<BaseField>> {
     pub points: Vec<CirclePoint<F>>,
