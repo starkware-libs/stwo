@@ -1,7 +1,7 @@
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
 use super::merkle_multilayer::MerkleMultiLayer;
-use super::mixed_degree_decommitment::{DecommitmentNode, MixedDecommitment};
+use super::mixed_degree_decommitment::{DebugInfo, DecommitmentNode, MixedDecommitment};
 use crate::commitment_scheme::merkle_multilayer::MerkleMultiLayerConfig;
 use crate::core::fields::{Field, IntoSlice};
 
@@ -134,12 +134,26 @@ where
             None
         };
 
-        Some(DecommitmentNode {
+        #[cfg(non_debug_assertions)]
+        return Some(DecommitmentNode {
             right_hash,
             left_hash,
-            injected_elements,
-            position_in_layer: node_index,
-        })
+            witness_elements: injected_elements,
+            d: DebugInfo {},
+        });
+
+        // TODO(Ohad): this currently does not make sense, change this function to correctly deal
+        // with witness/queried values.
+        #[cfg(debug_assertions)]
+        return Some(DecommitmentNode {
+            right_hash,
+            left_hash,
+            witness_elements: vec![],
+            d: DebugInfo {
+                position_in_layer: node_index,
+                queried_values: injected_elements,
+            },
+        });
     }
 
     pub fn root(&self) -> H::Hash {
