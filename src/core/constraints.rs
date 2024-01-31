@@ -151,6 +151,8 @@ mod tests {
     use crate::core::constraints::pair_excluder;
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::Field;
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
+    use crate::m31;
 
     #[test]
     fn test_coset_vanishing() {
@@ -217,5 +219,42 @@ mod tests {
         let coset = Coset::half_odds(6);
         let point = coset.at(4);
         point_vanishing(point, point.antipode());
+    }
+
+    #[test]
+    fn test_point_vanishing_degree() {
+        // Create a polynomial over a circle domain.
+        let log_domain_size = 7;
+        let domain_size = 1 << log_domain_size;
+        let polynomial = CirclePoly::new((0..domain_size).map(|i| m31!(i)).collect());
+
+        // Create a larger domain.
+        let log_large_domain_size = log_domain_size + 1;
+        let large_domain_size = 1 << log_large_domain_size;
+        let large_domain = CanonicCoset::new(log_large_domain_size).circle_domain();
+
+        // Create a vanish point that is not in the large domain.
+        let vanish_point_index = CirclePointIndex::generator();
+        assert!(large_domain.find(vanish_point_index).is_none());
+        let vanish_point = vanish_point_index.to_point();
+        let vanish_point_value = polynomial.eval_at_point(vanish_point);
+
+        // Compute the quotient polynomial.
+        let mut quotient_polynomial_values = Vec::with_capacity(large_domain_size as usize);
+        for point in large_domain.iter() {
+            let mut value = polynomial.eval_at_point(point) - vanish_point_value;
+            value /= point_vanishing(vanish_point, point);
+            quotient_polynomial_values.push(value);
+        }
+        let quotient_evaluation =
+            CircleEvaluation::<M31>::new(large_domain, quotient_polynomial_values);
+        let quotient_polynomial = quotient_evaluation.interpolate();
+
+        // Check that the quotient polynomial indeed has one coefficient more than the original
+        // polynomial.
+        assert_eq!(
+            quotient_polynomial.coeffs().len(),
+            polynomial.coeffs().len() + 1
+        );
     }
 }
