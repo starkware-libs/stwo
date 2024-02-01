@@ -115,6 +115,7 @@ impl hasher::Hash<BaseField> for PoseidonHash {}
 pub struct PoseidonHasher {
     params: PoseidonParams,
     state: [BaseField; POSEIDON_WIDTH],
+    buffer: Vec<<PoseidonHasher as hasher::Hasher>::NativeType>,
 }
 
 impl PoseidonHasher {
@@ -123,6 +124,7 @@ impl PoseidonHasher {
         Self {
             params: PoseidonParams::default(),
             state: initial_hash.into(),
+            buffer: vec![],
         }
     }
 
@@ -198,20 +200,39 @@ impl Hasher for PoseidonHasher {
         self.state = PoseidonHash::default().into();
     }
 
-    fn update(&mut self, _data: &[BaseField]) {
-        unimplemented!("update for PoseidonHasher")
+    fn update(&mut self, data: &[BaseField]) {
+        let n = self.params.capacity - self.buffer.len();
+        if data.len() < n {
+            self.buffer.extend_from_slice(data);
+            return;
+        }
+        let (first, rest) = data.split_at(n);
+        let mut values = self.buffer.clone();
+        values.extend(first);
+        self.set_state_prefix(values[0..POSEIDON_CAPACITY].try_into().unwrap());
+        self.hades_permutation();
+
+        let mut chunks_iter = rest.chunks_exact(POSEIDON_CAPACITY);
+        for chunk in &mut chunks_iter {
+            self.set_state_prefix(chunk);
+            self.hades_permutation();
+        }
+        self.buffer = chunks_iter.remainder().to_vec();
     }
 
     fn finalize(mut self) -> PoseidonHash {
+        let mut values = vec![BaseField::zero(); self.params.capacity];
+        self.buffer.push(BaseField::zero()); // Change to one
+        values[..self.buffer.len()].copy_from_slice(self.buffer.as_slice());
+
+        self.set_state_prefix(&values);
         self.hades_permutation();
+
         self.state.into()
     }
 
     fn finalize_reset(&mut self) -> PoseidonHash {
-        self.hades_permutation();
-        let res = self.state.into();
-        self.reset();
-        res
+        unimplemented!("finalize_reset for PoseidonHasher")
     }
 
     unsafe fn hash_many_in_place(
@@ -289,11 +310,26 @@ mod tests {
 
     #[test]
     fn hasher_regression_test() {
-        let mut hasher = PoseidonHasher::new();
+        let hasher = PoseidonHasher::new();
 
-        let res = hasher.finalize_reset();
+        let res = hasher.finalize();
 
         assert_eq!(res, PoseidonHash(ZERO_HASH_RESULT));
-        assert_eq!(hasher.state, PoseidonHasher::new().state);
+    }
+
+    #[test]
+    fn hasher_update_test() {
+        let mut hasher = PoseidonHasher::new();
+        let mut hasher2 = PoseidonHasher::new();
+
+        hasher.update((0..30).map(|x| m31!(x)).collect::<Vec<_>>().as_slice());
+        hasher2.update((0..10).map(|x| m31!(x)).collect::<Vec<_>>().as_slice());
+        hasher2.update((10..20).map(|x| m31!(x)).collect::<Vec<_>>().as_slice());
+        hasher2.update((20..30).map(|x| m31!(x)).collect::<Vec<_>>().as_slice());
+
+        let res = hasher.finalize();
+        let res2 = hasher2.finalize();
+
+        assert_eq!(res, res2);
     }
 }
