@@ -86,7 +86,10 @@ impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriProver<F, H> {
     /// * An evaluation's domain is smaller than the last layer.
     /// * An evaluation's domain is not a canonic circle domain.
     // TODO(andrew): Add docs for all evaluations needing to be from canonic domains.
-    pub fn commit(config: FriConfig, columns: Vec<CircleEvaluation<F, BitReversedOrder>>) -> Self {
+    pub fn commit(
+        config: FriConfig,
+        columns: Vec<CircleEvaluation<BaseField, BitReversedOrder>>,
+    ) -> Self {
         assert!(columns.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
         assert!(columns.iter().all(|e| e.domain.is_canonic()), "not canonic");
         let (inner_layers, last_layer_evaluation) = Self::commit_inner_layers(config, columns);
@@ -104,7 +107,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriProver<F, H> {
     /// Returns all inner layers and the evaluation of the last layer.
     fn commit_inner_layers(
         config: FriConfig,
-        columns: Vec<CircleEvaluation<F, BitReversedOrder>>,
+        columns: Vec<CircleEvaluation<BaseField, BitReversedOrder>>,
     ) -> (
         Vec<FriLayerProver<F, H>>,
         LineEvaluation<F, BitReversedOrder>,
@@ -301,7 +304,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriVerifier<F, H> {
     pub fn decommit(
         self,
         queries: &Queries,
-        decommited_values: Vec<SparseCircleEvaluation<F>>,
+        decommited_values: Vec<SparseCircleEvaluation>,
     ) -> Result<(), VerificationError> {
         assert_eq!(queries.log_domain_size, self.expected_query_log_domain_size);
         assert_eq!(decommited_values.len(), self.column_bounds.len());
@@ -318,7 +321,7 @@ impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriVerifier<F, H> {
     fn decommit_inner_layers(
         &self,
         queries: &Queries,
-        decommited_values: Vec<SparseCircleEvaluation<F>>,
+        decommited_values: Vec<SparseCircleEvaluation>,
     ) -> Result<(Queries, Vec<F>), VerificationError> {
         let circle_poly_alpha = self.circle_poly_alpha;
         let circle_poly_alpha_sq = circle_poly_alpha * circle_poly_alpha;
@@ -671,21 +674,21 @@ impl<F: ExtensionOf<BaseField>, H: Hasher<NativeType = u8>> FriLayerProver<F, H>
 }
 
 /// Holds a foldable subset of circle polynomial evaluations.
-pub struct SparseCircleEvaluation<F: ExtensionOf<BaseField>> {
-    subcircle_evals: Vec<CircleEvaluation<F, BitReversedOrder>>,
+pub struct SparseCircleEvaluation {
+    subcircle_evals: Vec<CircleEvaluation<BaseField, BitReversedOrder>>,
 }
 
-impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F> {
+impl SparseCircleEvaluation {
     /// # Panics
     ///
     /// Panics if the evaluation domain sizes don't equal the folding factor.
-    pub fn new(subcircle_evals: Vec<CircleEvaluation<F, BitReversedOrder>>) -> Self {
+    pub fn new(subcircle_evals: Vec<CircleEvaluation<BaseField, BitReversedOrder>>) -> Self {
         let folding_factor = 1 << CIRCLE_TO_LINE_FOLD_STEP;
         assert!(subcircle_evals.iter().all(|e| e.len() == folding_factor));
         Self { subcircle_evals }
     }
 
-    fn fold(self, alpha: F) -> Vec<F> {
+    fn fold<F: ExtensionOf<BaseField>>(self, alpha: F) -> Vec<F> {
         self.subcircle_evals
             .into_iter()
             .map(|e| {
@@ -770,7 +773,7 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
 // TODO(andrew): Fold directly into FRI layer to prevent allocation.
 fn fold_circle_into_line<F: ExtensionOf<BaseField>>(
     dst: &mut LineEvaluation<F, BitReversedOrder>,
-    src: &CircleEvaluation<F, BitReversedOrder>,
+    src: &CircleEvaluation<BaseField, BitReversedOrder>,
     alpha: F,
 ) {
     assert_eq!(src.len() >> CIRCLE_TO_LINE_FOLD_STEP, dst.len());
@@ -790,7 +793,7 @@ fn fold_circle_into_line<F: ExtensionOf<BaseField>>(
             // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
             let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
             ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
-            let f_prime = f0_px + alpha * f1_px;
+            let f_prime = alpha * f1_px + f0_px;
 
             *dst = *dst * alpha_sq + f_prime;
         });
@@ -882,7 +885,7 @@ mod tests {
     fn committing_evaluation_from_invalid_domain_fails() {
         let invalid_domain = CircleDomain::new(Coset::new(CirclePointIndex::generator(), 3));
         assert!(!invalid_domain.is_canonic(), "must be an invalid domain");
-        let evaluation = CircleEvaluation::new(invalid_domain, vec![QM31::one(); 1 << 4]);
+        let evaluation = CircleEvaluation::new(invalid_domain, vec![BaseField::one(); 1 << 4]);
 
         FriProver::<QM31, Blake3Hasher>::commit(FriConfig::new(2, 2), vec![evaluation]);
     }
@@ -1101,10 +1104,10 @@ mod tests {
     }
 
     // TODO: Remove after SubcircleDomain integration.
-    fn query_polynomial<F: ExtensionOf<BaseField>>(
-        polynomial: &CircleEvaluation<F, BitReversedOrder>,
+    fn query_polynomial(
+        polynomial: &CircleEvaluation<BaseField, BitReversedOrder>,
         queries: &Queries,
-    ) -> SparseCircleEvaluation<F> {
+    ) -> SparseCircleEvaluation {
         let domain = polynomial.domain;
         let polynomial = polynomial.clone().bit_reverse();
         let oracle = EvalByEvaluation::new(CirclePointIndex::zero(), &polynomial);
@@ -1122,7 +1125,7 @@ mod tests {
                     .iter_indices()
                     .map(|p| oracle.get_at(p))
                     .collect();
-                let coset_eval = CircleEvaluation::<F, NaturalOrder>::new(coset_domain, evals);
+                let coset_eval = CircleEvaluation::<_, NaturalOrder>::new(coset_domain, evals);
                 coset_eval.bit_reverse()
             })
             .collect();
