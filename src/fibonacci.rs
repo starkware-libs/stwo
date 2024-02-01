@@ -38,6 +38,7 @@ pub struct AdditionalProofData {
     pub composition_polynomial_oods_value: QM31,
     pub composition_polynomial_random_coeff: QM31,
     pub oods_point: CirclePoint<QM31>,
+    pub oods_quotients: Vec<CircleEvaluation<QM31>>,
 }
 
 // TODO(AlonH): Removed this struct and separate the decommitment from the the commitment in the
@@ -288,6 +289,7 @@ impl Fibonacci {
                 composition_polynomial_oods_value,
                 composition_polynomial_random_coeff: random_coeff,
                 oods_point,
+                oods_quotients,
             },
         }
     }
@@ -491,6 +493,30 @@ mod tests {
             interpolated_composition_polynomial_poly.eval_at_point(oods_point),
             fib.eval_composition_polynomial(random_coeff, trace_evaluator)
         );
+    }
+
+    #[test]
+    fn test_oods_quotients_are_low_degree() {
+        const FIB_LOG_SIZE: u32 = 5;
+        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
+
+        let proof = fib.prove();
+        let (composition_polynomial_quotient, trace_quotients) = proof
+            .additional_proof_data
+            .oods_quotients
+            .split_last()
+            .unwrap();
+
+        // Assert that the trace quotients are low degree.
+        for quotient in trace_quotients.iter() {
+            let interpolated_quotient_poly = quotient.clone().interpolate();
+            // TODO(AlonH): remove the +1 once we use pair vanishing.
+            assert!(interpolated_quotient_poly.coeffs().len() <= (1 << FIB_LOG_SIZE) + 1);
+        }
+
+        // Assert that the composition polynomial quotient is low degree.
+        let interpolated_quotient_poly = composition_polynomial_quotient.clone().interpolate();
+        assert!(interpolated_quotient_poly.coeffs().len() <= (1 << (FIB_LOG_SIZE + 1)));
     }
 
     #[test]
