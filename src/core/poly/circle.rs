@@ -57,8 +57,18 @@ impl CircleDomain {
         self.half_coset.log_size + 1
     }
 
-    pub fn at(&self, index: usize) -> CirclePoint<BaseField> {
-        self.index_at(index).to_point()
+    /// Returns the `i` th domain element.
+    pub fn at(&self, i: usize) -> CirclePoint<BaseField> {
+        self.index_at(i).to_point()
+    }
+
+    /// Returns the [CirclePointIndex] of the `i`th domain element.
+    pub fn index_at(&self, i: usize) -> CirclePointIndex {
+        if i < self.half_coset.size() {
+            self.half_coset.index_at(i)
+        } else {
+            -self.half_coset.index_at(i - self.half_coset.size())
+        }
     }
 
     pub fn find(&self, i: CirclePointIndex) -> Option<usize> {
@@ -77,13 +87,6 @@ impl CircleDomain {
     /// `G_2n + <G_n>` where `G_n` and `G_2n` are obtained by repeatedly doubling [M31_CIRCLE_GEN].
     pub fn is_canonic(&self) -> bool {
         self.half_coset.initial_index * 4 == self.half_coset.step_size
-    }
-
-    pub fn index_at(&self, index: usize) -> CirclePointIndex {
-        if index < self.half_coset.size() {
-            return self.half_coset.index_at(index);
-        }
-        -self.half_coset.index_at(index - self.half_coset.size())
     }
 }
 
