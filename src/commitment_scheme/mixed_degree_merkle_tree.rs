@@ -1,8 +1,11 @@
+use itertools::Itertools;
+
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
 use super::merkle_multilayer::MerkleMultiLayer;
 use super::mixed_degree_decommitment::{DebugInfo, DecommitmentNode, MixedDecommitment};
 use crate::commitment_scheme::merkle_multilayer::MerkleMultiLayerConfig;
+use crate::commitment_scheme::utils::get_column_chunk;
 use crate::core::fields::{Field, IntoSlice};
 
 /// A mixed degree merkle tree.
@@ -184,6 +187,45 @@ where
         assert!(layer_index < self.multi_layers.len());
         self.multi_layers[layer_index].config.sub_tree_height
     }
+
+    // Returns the felt witnesses and queried elements for the given node indices in the specified
+    // layer. Assumes that the queries & node indices are sorted in ascending order.
+    #[allow(dead_code)]
+    fn layer_felt_witnesses_and_queried_elements(
+        &self,
+        layer_depth: usize,
+        queries: impl Iterator<Item = &'a Vec<usize>>,
+        node_indices: impl ExactSizeIterator<Item = usize>,
+    ) -> Vec<(Vec<F>, Vec<F>)> {
+        let mut witnesses_and_queried_values_by_node = vec![(vec![], vec![]); node_indices.len()];
+        let mut column_query_iterators = queries
+            .map(|column_queries| column_queries.iter().peekable())
+            .collect_vec();
+
+        // For every node --> For every column --> For every column chunk --> Append
+        // queried/witness elements according to that layer's queries.
+        for (node_index, (witness_elements, queried_elements)) in
+            node_indices.zip(witnesses_and_queried_values_by_node.iter_mut())
+        {
+            for (column, column_queries) in self
+                .input
+                .get_columns(layer_depth)
+                .iter()
+                .zip(column_query_iterators.iter_mut())
+            {
+                let column_chunk = get_column_chunk(column, node_index, 1 << (layer_depth - 1));
+                let column_chunk_start_index = column_chunk.len() * node_index;
+                for (i, &felt) in column_chunk.iter().enumerate() {
+                    match column_queries.next_if(|&&q| q == i + column_chunk_start_index) {
+                        Some(_) => queried_elements.push(felt),
+                        None => witness_elements.push(felt),
+                    }
+                }
+            }
+        }
+
+        witnesses_and_queried_values_by_node
+    }
 }
 
 // Translates queries of the form <column, entry_index> to the form <layer, node_index>
@@ -219,7 +261,9 @@ fn queried_node_indices_in_layer<'a>(
 mod tests {
     use std::vec;
 
-    use super::{MixedDegreeMerkleTree, MixedDegreeMerkleTreeConfig};
+    use super::{
+        queried_node_indices_in_layer, MixedDegreeMerkleTree, MixedDegreeMerkleTreeConfig,
+    };
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
@@ -414,5 +458,60 @@ mod tests {
         assert_eq!(translated_queries[1], expeted_queries_at_depth_3);
         assert_eq!(translated_queries[2], vec![]);
         assert_eq!(translated_queries[3], vec![]);
+    }
+
+    #[test]
+    fn build_node_felt_witness_test() {
+        let col_length_16 = (0..16).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let col_length_8 = (0..8).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let col_length_4 = (0..4).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let mut merkle_input = MerkleTreeInput::<M31>::new();
+
+        // Column Length 8 -> depth 4
+        // Column Length 8 -> depth 3
+        // Column Length 4 -> depth 3
+        merkle_input.insert_column(4, &col_length_16);
+        merkle_input.insert_column(4, &col_length_8);
+        merkle_input.insert_column(3, &col_length_8);
+        merkle_input.insert_column(3, &col_length_4);
+        let tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            merkle_input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [4].to_vec(),
+            },
+        );
+
+        let zero_column_queries = vec![0, 15];
+        let first_column_queries = vec![0, 7];
+        let second_column_queries = vec![3, 7];
+        let third_column_queries = vec![1, 2];
+        let queries = vec![
+            zero_column_queries,
+            first_column_queries,
+            second_column_queries,
+            third_column_queries,
+        ];
+
+        let node_indices = queried_node_indices_in_layer(queries.iter().take(2), &tree.input, 4);
+        let w4 = tree.layer_felt_witnesses_and_queried_elements(
+            4,
+            queries[..2].iter(),
+            node_indices.iter().copied(),
+        );
+        let node_indices = queried_node_indices_in_layer(queries.iter().skip(2), &tree.input, 3);
+        let w3 = tree.layer_felt_witnesses_and_queried_elements(
+            4,
+            queries[2..4].iter(),
+            node_indices.iter().copied(),
+        );
+
+        assert_eq!(
+            format!("{:?}", w4),
+            "[([M31(1)], [M31(0), M31(0)]), ([M31(14)], [M31(15), M31(7)])]"
+        );
+        assert_eq!(
+            format!("{:?}", w3),
+            "[([M31(2)], [M31(3), M31(1)]), ([M31(4), M31(5)], [M31(2)]), ([M31(6), M31(3)], [M31(7)])]"
+        );
     }
 }
