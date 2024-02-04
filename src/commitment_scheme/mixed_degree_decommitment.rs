@@ -29,14 +29,53 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
 /// # Attributes
 ///
 /// * `left_hash`, 'right_hash' - Optional values, hash of one of the node's children.
-/// * `injected_elements` - Elements injected to the node.
-/// * `position_in_layer` - The position of the provided hash in the layer - for debugging purposes,
-///   can be deducted by a verifier.
+/// * `witness_elements` - Elements injected to the node that are part of the witness.
+/// * 'DebugInfo' - Debug information, only available in debug builds.
+///     * `d.queried_values` - Elements injected to the node that are not part of the witness.
+///     * `d.position_in_layer` - The position of the provided hash in the layer - for debugging
+///       purposes,
 pub struct DecommitmentNode<F: Field, H: Hasher> {
     pub left_hash: Option<H::Hash>,
     pub right_hash: Option<H::Hash>,
-    pub injected_elements: Vec<F>,
+    pub witness_elements: Vec<F>,
+    pub d: DebugInfo<F>,
+}
+
+#[cfg(debug_assertions)]
+pub struct DebugInfo<F: Field> {
+    pub queried_values: Vec<F>,
     pub position_in_layer: usize,
+}
+
+#[cfg(debug_assertions)]
+impl<F: Field> DebugInfo<F> {
+    pub fn new(queried_values: Vec<F>, position_in_layer: usize) -> Self {
+        Self {
+            queried_values,
+            position_in_layer,
+        }
+    }
+
+    pub fn queried_values(&self) -> &Vec<F> {
+        &self.queried_values
+    }
+
+    pub fn position_in_layer(&self) -> usize {
+        self.position_in_layer
+    }
+
+    pub fn set_queried_values(&mut self, queried_values: Vec<F>) {
+        self.queried_values = queried_values;
+    }
+
+    pub fn set_position_in_layer(&mut self, position_in_layer: usize) {
+        self.position_in_layer = position_in_layer;
+    }
+}
+
+#[cfg(not(debug_assertions))]
+pub struct DebugInfo<F> {
+    pub _phantom: std::marker::PhantomData<F>,
 }
 
 impl<F: Field, H: Hasher> fmt::Display for MixedDecommitment<F, H> {
@@ -58,10 +97,6 @@ impl<F: Field, H: Hasher> fmt::Display for MixedDecommitment<F, H> {
 
 impl<F: Field, H: Hasher> fmt::Display for DecommitmentNode<F, H> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&std::format!(
-            "Node position in Layer: {}, ",
-            self.position_in_layer
-        ))?;
         if let Some(hash) = self.left_hash {
             f.write_str(&std::format!("Left hash: {}, ", hash))?;
         }
@@ -69,18 +104,28 @@ impl<F: Field, H: Hasher> fmt::Display for DecommitmentNode<F, H> {
             f.write_str(&std::format!("Right hash: {}, ", hash))?;
         }
         f.write_str(&std::format!(
-            " Injected Elements: {:?}",
-            self.injected_elements
+            " Witness Elements: {:?}",
+            self.witness_elements
         ))?;
+        #[cfg(debug_assertions)]
+        {
+            f.write_str(&std::format!(
+                " Queried Values: {:?}, Position in Layer: {}",
+                self.d.queried_values(),
+                self.d.position_in_layer()
+            ))?;
+        }
         f.write_str("\n")?;
         Ok(())
     }
 }
 
+#[cfg(debug_assertions)]
 #[cfg(test)]
 mod tests {
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
+    use crate::commitment_scheme::mixed_degree_decommitment::DebugInfo;
     use crate::core::fields::m31::M31;
 
     #[test]
@@ -89,21 +134,21 @@ mod tests {
             vec![super::DecommitmentNode::<M31, Blake3Hasher> {
                 left_hash: Some(Blake3Hasher::hash(b"a")),
                 right_hash: None,
-                injected_elements: (0..3).map(M31::from_u32_unchecked).collect(),
-                position_in_layer: 0,
+                witness_elements: (0..6).step_by(2).map(M31::from_u32_unchecked).collect(),
+                d: DebugInfo::new((1..7).step_by(2).map(M31::from_u32_unchecked).collect(), 0),
             }],
             vec![
                 super::DecommitmentNode::<M31, Blake3Hasher> {
                     right_hash: Some(Blake3Hasher::hash(b"b")),
                     left_hash: None,
-                    injected_elements: (3..6).map(M31::from_u32_unchecked).collect(),
-                    position_in_layer: 1,
+                    witness_elements: (3..6).step_by(2).map(M31::from_u32_unchecked).collect(),
+                    d: DebugInfo::new((4..7).step_by(2).map(M31::from_u32_unchecked).collect(), 0),
                 },
                 super::DecommitmentNode::<M31, Blake3Hasher> {
                     left_hash: Some(Blake3Hasher::hash(b"c")),
                     right_hash: None,
-                    injected_elements: (6..9).map(M31::from_u32_unchecked).collect(),
-                    position_in_layer: 0,
+                    witness_elements: (6..9).step_by(2).map(M31::from_u32_unchecked).collect(),
+                    d: DebugInfo::new((7..10).step_by(2).map(M31::from_u32_unchecked).collect(), 0),
                 },
             ],
         ]);
