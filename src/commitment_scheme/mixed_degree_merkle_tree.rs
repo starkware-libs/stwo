@@ -1,3 +1,6 @@
+use std::iter::Peekable;
+use std::vec;
+
 use itertools::Itertools;
 
 use super::hasher::Hasher;
@@ -113,54 +116,6 @@ where
         panic!()
     }
 
-    // TODO(Ohad): remove '_'.
-    fn _get_node(
-        &self,
-        layer_depth: usize,
-        node_index: usize,
-        include_left_hash: bool,
-        include_right_hash: bool,
-    ) -> Option<DecommitmentNode<F, H>> {
-        let injected_elements = self.input.get_injected_elements(layer_depth, node_index);
-        if !include_left_hash && !include_right_hash && injected_elements.is_empty() {
-            return None;
-        }
-
-        let right_hash = if include_right_hash {
-            Some(self.get_hash_at(layer_depth, node_index * 2 + 1))
-        } else {
-            None
-        };
-        let left_hash = if include_left_hash {
-            Some(self.get_hash_at(layer_depth, node_index * 2))
-        } else {
-            None
-        };
-
-        #[cfg(not(debug_assertions))]
-        return Some(DecommitmentNode {
-            right_hash,
-            left_hash,
-            witness_elements: injected_elements,
-            d: DebugInfo {
-                _phantom: std::marker::PhantomData,
-            },
-        });
-
-        // TODO(Ohad): this currently does not make sense, change this function to correctly deal
-        // with witness/queried values.
-        #[cfg(debug_assertions)]
-        return Some(DecommitmentNode {
-            right_hash,
-            left_hash,
-            witness_elements: vec![],
-            d: DebugInfo {
-                position_in_layer: node_index,
-                queried_values: injected_elements,
-            },
-        });
-    }
-
     pub fn root(&self) -> H::Hash {
         match &self.multi_layers.last() {
             Some(top_layer) => {
@@ -186,6 +141,54 @@ where
     fn multi_layer_height(&self, layer_index: usize) -> usize {
         assert!(layer_index < self.multi_layers.len());
         self.multi_layers[layer_index].config.sub_tree_height
+    }
+
+    #[allow(dead_code)]
+    fn decommit_single_layer(
+        &self,
+        layer_depth: usize,
+        queries_to_layer: impl Iterator<Item = &'a Vec<usize>>,
+        queried_node_indices: &[usize],
+        mut ancestors_of_previous_layers_indices: Peekable<impl Iterator<Item = usize>>,
+    ) -> Vec<DecommitmentNode<F, H>> {
+        let mut proof_layer = Vec::<DecommitmentNode<F, H>>::new();
+        let mut it = queried_node_indices
+            .iter()
+            .copied()
+            .zip(self.layer_felt_witnesses_and_queried_elements(
+                layer_depth,
+                queries_to_layer,
+                queried_node_indices.iter().copied(),
+            ))
+            .peekable();
+
+        while let Some(query) = ancestors_of_previous_layers_indices.next() {
+            // Handle queries that precede the next ancestor-query and are not ancestor queries.
+            proof_layer.extend(self.preceding_queried_nodes(&mut it, query / 2, layer_depth));
+
+            match it.next_if(|peeked| peeked.0 == query / 2) {
+                Some((_, (witness_elements, queried_values))) => {
+                    proof_layer.push(self.build_queried_ancestor_node(
+                        query,
+                        layer_depth,
+                        witness_elements,
+                        queried_values,
+                    ));
+                }
+                None => {
+                    match ancestors_of_previous_layers_indices
+                        .next_if(|&next_q| next_q == query ^ 1)
+                    {
+                        Some(_) => (),
+                        None => proof_layer.push(self.build_ancestor_node(layer_depth, query)),
+                    }
+                }
+            }
+        }
+        // Consume remaining node queries.
+        proof_layer.extend(self.preceding_queried_nodes(&mut it, usize::MAX, layer_depth));
+
+        proof_layer
     }
 
     // Returns the felt witnesses and queried elements for the given node indices in the specified
@@ -225,6 +228,146 @@ where
         }
 
         witnesses_and_queried_values_by_node
+    }
+
+    // Returns nodes that are directly queried in the given layer and are not ancestors of previous
+    // queries. Nodes returned contain the felt witness, queried values(debug_only), and both
+    // child hashes.
+    #[allow(clippy::ptr_arg)]
+    #[allow(dead_code)]
+    fn preceding_queried_nodes(
+        &self,
+        _node_query_values: &mut Peekable<impl Iterator<Item = (usize, (Vec<F>, Vec<F>))>>,
+        _node_index_upper_bound: usize,
+        layer_depth: usize,
+    ) -> Vec<DecommitmentNode<F, H>> {
+        let mut nodes = Vec::<DecommitmentNode<F, H>>::new();
+        while let Some((node_index, (witness_elements, queried_values))) =
+            _node_query_values.next_if(|(node_index, _)| *node_index < _node_index_upper_bound)
+        {
+            nodes.push(self.build_queried_node(
+                node_index,
+                layer_depth,
+                witness_elements,
+                queried_values,
+            ));
+        }
+
+        nodes
+    }
+
+    // Returns the node of an ancestor query that was not queried in the current layer.
+    // Therefore, only contains one hash, and every injected element is a witness.
+    // TODO(Ohad): remove #[allow(dead_code)].
+    #[allow(dead_code)]
+    fn build_ancestor_node(&self, layer_depth: usize, query: usize) -> DecommitmentNode<F, H> {
+        let node_index = query / 2;
+        let injected_elements = self.input.get_injected_elements(layer_depth, node_index);
+        let (left_hash, right_hash) = self.sibling_hash(query, layer_depth);
+
+        #[cfg(debug_assertions)]
+        let d = DebugInfo {
+            position_in_layer: node_index,
+            queried_values: vec![],
+        };
+
+        #[cfg(not(debug_assertions))]
+        let d = DebugInfo {
+            _phantom: std::marker::PhantomData,
+        };
+
+        DecommitmentNode {
+            right_hash,
+            left_hash,
+            witness_elements: injected_elements,
+            d,
+        }
+    }
+
+    #[allow(dead_code)]
+    fn build_queried_ancestor_node(
+        &self,
+        query: usize,
+        layer_depth: usize,
+        witness_elements: Vec<F>,
+        queried_values: Vec<F>,
+    ) -> DecommitmentNode<F, H> {
+        let (left_hash, right_hash) = self.sibling_hash(query, layer_depth);
+
+        #[cfg(debug_assertions)]
+        let d = DebugInfo {
+            position_in_layer: query / 2,
+            queried_values,
+        };
+
+        #[cfg(not(debug_assertions))]
+        let d = {
+            std::mem::drop(queried_values);
+            DebugInfo {
+                _phantom: std::marker::PhantomData,
+            }
+        };
+
+        DecommitmentNode {
+            left_hash,
+            right_hash,
+            witness_elements,
+            d,
+        }
+    }
+
+    #[allow(dead_code)]
+    fn build_queried_node(
+        &self,
+        node_index: usize,
+        layer_depth: usize,
+        witness_elements: Vec<F>,
+        queried_values: Vec<F>,
+    ) -> DecommitmentNode<F, H> {
+        let (left_hash, right_hash) = if layer_depth >= self.height() {
+            (None, None)
+        } else {
+            let hash_pair = self.both_hash_siblings(node_index, layer_depth);
+            (Some(hash_pair.0), Some(hash_pair.1))
+        };
+
+        #[cfg(debug_assertions)]
+        let d = DebugInfo {
+            position_in_layer: node_index,
+            queried_values,
+        };
+
+        #[cfg(not(debug_assertions))]
+        let d = {
+            std::mem::drop(queried_values);
+            DebugInfo {
+                _phantom: std::marker::PhantomData,
+            }
+        };
+
+        DecommitmentNode {
+            left_hash,
+            right_hash,
+            witness_elements,
+            d,
+        }
+    }
+
+    #[allow(dead_code)]
+    fn sibling_hash(&self, query: usize, layer_depth: usize) -> (Option<H::Hash>, Option<H::Hash>) {
+        if query % 2 == 0 {
+            (None, Some(self.get_hash_at(layer_depth, query ^ 1)))
+        } else {
+            (Some(self.get_hash_at(layer_depth, query ^ 1)), None)
+        }
+    }
+
+    #[allow(dead_code)]
+    fn both_hash_siblings(&self, node_index: usize, layer_depth: usize) -> (H::Hash, H::Hash) {
+        (
+            self.get_hash_at(layer_depth, node_index * 2),
+            self.get_hash_at(layer_depth, node_index * 2 + 1),
+        )
     }
 }
 
@@ -513,5 +656,63 @@ mod tests {
             format!("{:?}", w3),
             "[([M31(2)], [M31(3), M31(1)]), ([M31(4), M31(5)], [M31(2)]), ([M31(6), M31(3)], [M31(7)])]"
         );
+    }
+
+    #[test]
+    fn decommit_single_layer_test() {
+        let col_length_16 = (1600..1616)
+            .map(M31::from_u32_unchecked)
+            .collect::<Vec<M31>>();
+        let col_length_8 = (80..88).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let col_length_4 = (40..44).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let mut merkle_input = MerkleTreeInput::<M31>::new();
+
+        // Column Length 8 -> depth 4
+        // Column Length 8 -> depth 3
+        // Column Length 4 -> depth 3
+        merkle_input.insert_column(4, &col_length_16);
+        merkle_input.insert_column(4, &col_length_8);
+        merkle_input.insert_column(3, &col_length_8);
+        merkle_input.insert_column(3, &col_length_4);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            merkle_input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [4].to_vec(),
+            },
+        );
+        tree.commit();
+
+        let zero_column_queries = vec![5];
+        let one_column_queries = vec![0, 3];
+        let queries = vec![zero_column_queries, one_column_queries];
+
+        let decommitment = tree.decommit_single_layer(
+            3,
+            queries.iter(),
+            &super::queried_node_indices_in_layer(queries.iter(), &tree.input, 3),
+            vec![].into_iter().peekable(),
+        );
+
+        decommitment.iter().for_each(|node| {
+            println!("{}", node);
+        });
+        // first node is a '0' query of column length 4, node index 0. 40 should appear as the value
+        // and the other column values should appear as a witness alongside 2 child hashes.
+        let node_0 = &decommitment[0];
+        assert_eq!(node_0.witness_elements, vec![m31!(80), m31!(81)]);
+        assert_eq!(node_0.d.queried_values, vec![m31!(40)]);
+
+        // second node is a '5' query of column length 8, // second node is a '5' query of column
+        // length 8, node index 2. 85 should appear as the value, 84 that got injected in
+        // the same node as a witness, and 42 from the other column.
+        let node_1 = &decommitment[1];
+        assert_eq!(node_1.witness_elements, vec![m31!(84), m31!(42)]);
+        assert_eq!(node_1.d.queried_values, vec![m31!(85)]);
+
+        // third node is a '3' query of column length 4, node index 3. 43 should appear as the
+        // other column elements as witness - 86,87.
+        let node_2 = &decommitment[2];
+        assert_eq!(node_2.witness_elements, vec![m31!(86), m31!(87)]);
+        assert_eq!(node_2.d.queried_values, vec![m31!(43)]);
     }
 }
