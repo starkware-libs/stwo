@@ -1,42 +1,77 @@
+use super::channel::Blake2sChannel;
+use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
+use crate::core::channel::Channel;
 
-pub struct ProofOfWork<H: Hasher<NativeType = u8>> {
-    seed: H::Hash,
-    work_bits: u32,
+// TODO(ShaharS): generalize to more channels and create a from function in the hash traits.
+pub struct ProofOfWork {
+    // Proof of work difficulty.
+    pub n_bits: u32,
 }
 
-// TODO(ShaharS): Consider to split to prover and verifier and create traits for them.
-impl<H: Hasher<NativeType = u8>> ProofOfWork<H> {
-    pub fn new(seed: H::Hash, work_bits: u32) -> Self {
-        Self { seed, work_bits }
+#[derive(Clone, Debug)]
+pub struct ProofOfWorkProof {
+    pub nonce: u64,
+}
+
+impl ProofOfWorkProof {
+    // TODO(ShaharS): Support multiple digests and move this to the channel.
+    pub fn to_digest(&self, size: usize) -> Vec<u8> {
+        let mut padded = vec![0; size];
+        // Copy the elements from the original array to the new array
+        padded[..8].copy_from_slice(&self.nonce.to_le_bytes());
+        padded
+    }
+}
+
+impl ProofOfWork {
+    pub fn new(n_bits: u32) -> Self {
+        Self { n_bits }
     }
 
-    pub fn prove(&self) -> u64 {
+    pub fn prove(&self, channel: &mut Blake2sChannel) -> ProofOfWorkProof {
+        let seed = channel.get_digest();
+        let proof = self.grind(seed);
+        channel.mix_with_seed(Blake2sHash::from(
+            proof.to_digest(Blake2sHasher::OUTPUT_SIZE).as_ref(),
+        ));
+        proof
+    }
+
+    pub fn verify(&self, channel: &mut Blake2sChannel, proof: &ProofOfWorkProof) -> bool {
+        let seed = channel.get_digest();
+        let verified = check_leading_zeros(
+            self.hash_with_nonce(&seed, proof.nonce).as_ref(),
+            self.n_bits,
+        );
+
+        if verified {
+            channel.mix_with_seed(Blake2sHash::from(
+                proof.to_digest(Blake2sHasher::OUTPUT_SIZE).as_ref(),
+            ));
+        }
+        verified
+    }
+
+    fn grind(&self, seed: Vec<u8>) -> ProofOfWorkProof {
         let mut nonce = 0u64;
         // TODO(ShaharS): naive implementation, should be replaced with a parallel one.
         loop {
-            let hash = self.hash_with_nonce(nonce);
-            if check_leading_zeros(hash.as_ref(), self.work_bits) {
-                return nonce;
+            let hash = self.hash_with_nonce(&seed, nonce);
+            if check_leading_zeros(hash.as_ref(), self.n_bits) {
+                return ProofOfWorkProof { nonce };
             }
             nonce += 1;
         }
     }
 
-    pub fn verify(&self, nonce: u64) -> bool {
-        let hash = self.hash_with_nonce(nonce);
-        check_leading_zeros(hash.as_ref(), self.work_bits)
-    }
-
-    fn hash_with_nonce(&self, nonce: u64) -> H::Hash {
-        let hash_input = self
-            .seed
-            .as_ref()
+    fn hash_with_nonce(&self, seed: &[u8], nonce: u64) -> Blake2sHash {
+        let hash_input = seed
             .iter()
             .chain(nonce.to_le_bytes().iter())
             .cloned()
             .collect::<Vec<_>>();
-        H::hash(&hash_input)
+        Blake2sHasher::hash(&hash_input)
     }
 }
 
@@ -57,40 +92,40 @@ fn check_leading_zeros(bytes: &[u8], bound_bits: u32) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::ProofOfWork;
-    use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
+    use crate::commitment_scheme::blake2_hash::Blake2sHash;
+    use crate::core::channel::{Blake2sChannel, Channel};
+    use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
 
     #[test]
     fn test_verify_proof_of_work_success() {
-        let proof_of_work_prover = ProofOfWork::<Blake2sHasher> {
-            seed: Blake2sHash::from(vec![0; 32]),
-            work_bits: 10,
-        };
-        let valid_salt = 133;
+        let mut channel = Blake2sChannel::new(Blake2sHash::from(vec![0; 32]));
+        let proof_of_work_prover = ProofOfWork { n_bits: 11 };
+        let proof = ProofOfWorkProof { nonce: 133 };
 
-        assert!(proof_of_work_prover.verify(valid_salt));
+        assert!(proof_of_work_prover.verify(&mut channel, &proof));
     }
 
     #[test]
     fn test_verify_proof_of_work_fail() {
-        let proof_of_work_prover = ProofOfWork::<Blake2sHasher> {
-            seed: Blake2sHash::from(vec![0; 32]),
-            work_bits: 1,
-        };
-        let invalid_salt = 0;
+        let mut channel = Blake2sChannel::new(Blake2sHash::from(vec![0; 32]));
+        let proof_of_work_prover = ProofOfWork { n_bits: 1 };
+        let invalid_proof = ProofOfWorkProof { nonce: 0 };
 
-        assert!(!proof_of_work_prover.verify(invalid_salt));
+        assert!(!proof_of_work_prover.verify(&mut channel, &invalid_proof));
     }
 
     #[test]
     fn test_proof_of_work() {
-        let proof_of_work_prover = ProofOfWork::<Blake2sHasher> {
-            seed: Blake2sHash::from(vec![0; 32]),
-            work_bits: 12,
-        };
+        let n_bits = 12;
+        let mut prover_channel = Blake2sChannel::new(Blake2sHash::default());
+        let mut verifier_channel = Blake2sChannel::new(Blake2sHash::default());
+        let prover = ProofOfWork::new(n_bits);
+        let verifier = ProofOfWork::new(n_bits);
 
-        let salt = proof_of_work_prover.prove();
+        let proof = prover.prove(&mut prover_channel);
+        let verified = verifier.verify(&mut verifier_channel, &proof);
 
-        assert!(proof_of_work_prover.verify(salt));
+        assert!(verified);
+        assert_eq!(prover_channel.get_digest(), verifier_channel.get_digest());
     }
 }
