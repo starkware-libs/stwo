@@ -41,6 +41,43 @@ pub struct DecommitmentNode<F: Field, H: Hasher> {
     pub d: DebugInfo<F>,
 }
 
+impl<F: Field, H: Hasher> DecommitmentNode<F, H> {
+    #[cfg(debug_assertions)]
+    pub fn new(
+        left_hash: Option<H::Hash>,
+        right_hash: Option<H::Hash>,
+        witness_elements: Vec<F>,
+        queried_values: Vec<F>,
+        position_in_layer: usize,
+    ) -> Self {
+        Self {
+            left_hash,
+            right_hash,
+            witness_elements,
+            d: DebugInfo {
+                queried_values,
+                position_in_layer,
+            },
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    pub fn new(
+        left_hash: Option<H::Hash>,
+        right_hash: Option<H::Hash>,
+        witness_elements: Vec<F>,
+    ) -> Self {
+        Self {
+            left_hash,
+            right_hash,
+            witness_elements,
+            d: DebugInfo {
+                _phantom: std::marker::PhantomData,
+            },
+        }
+    }
+}
+
 #[cfg(debug_assertions)]
 pub struct DebugInfo<F: Field> {
     pub queried_values: Vec<F>,
