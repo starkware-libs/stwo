@@ -175,6 +175,62 @@ where
         self.multi_layers[layer_index].config.sub_tree_height
     }
 
+    #[allow(dead_code)]
+    fn decommit_single_layer(
+        &self,
+        layer_depth: usize,
+        queries_to_layer: impl Iterator<Item = &'a Vec<usize>>,
+        queried_node_indices: &[usize],
+        mut ancestors_of_previous_layers_indices: Peekable<impl Iterator<Item = usize>>,
+    ) -> Vec<DecommitmentNode<F, H>> {
+        let mut proof_layer = Vec::<DecommitmentNode<F, H>>::new();
+        let mut index_value_iterator = queried_node_indices
+            .iter()
+            .copied()
+            .zip(self.layer_felt_witnesses_and_queried_elements(
+                layer_depth,
+                queries_to_layer,
+                queried_node_indices.iter().copied(),
+            ))
+            .peekable();
+
+        while let Some(query) = ancestors_of_previous_layers_indices.next() {
+            // Handle queries that precede the next ancestor-query and are not ancestor queries.
+            proof_layer.extend(self.preceding_queried_nodes(
+                &mut index_value_iterator,
+                query / 2,
+                layer_depth,
+            ));
+
+            match index_value_iterator.next_if(|peeked| peeked.0 == query / 2) {
+                Some((_, (witness_elements, queried_values))) => {
+                    proof_layer.push(self.build_queried_ancestor_node(
+                        query,
+                        layer_depth,
+                        witness_elements,
+                        queried_values,
+                    ));
+                }
+                None => {
+                    match ancestors_of_previous_layers_indices
+                        .next_if(|&next_q| next_q == query ^ 1)
+                    {
+                        Some(_) => (),
+                        None => proof_layer.push(self.build_ancestor_node(layer_depth, query)),
+                    }
+                }
+            }
+        }
+        // Consume remaining node queries.
+        proof_layer.extend(self.preceding_queried_nodes(
+            &mut index_value_iterator,
+            usize::MAX,
+            layer_depth,
+        ));
+
+        proof_layer
+    }
+
     // Returns the felt witnesses and queried elements for the given node indices in the specified
     // layer. Assumes that the queries & node indices are sorted in ascending order.
     #[allow(dead_code)]
@@ -618,5 +674,63 @@ mod tests {
             format!("{:?}", w3),
             "[([M31(2)], [M31(3), M31(1)]), ([M31(4), M31(5)], [M31(2)]), ([M31(6), M31(3)], [M31(7)])]"
         );
+    }
+
+    #[test]
+    fn decommit_single_layer_test() {
+        let col_length_16 = (1600..1616)
+            .map(M31::from_u32_unchecked)
+            .collect::<Vec<M31>>();
+        let col_length_8 = (80..88).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let col_length_4 = (40..44).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let mut merkle_input = MerkleTreeInput::<M31>::new();
+
+        // Column Length 8 -> depth 4
+        // Column Length 8 -> depth 3
+        // Column Length 4 -> depth 3
+        merkle_input.insert_column(4, &col_length_16);
+        merkle_input.insert_column(4, &col_length_8);
+        merkle_input.insert_column(3, &col_length_8);
+        merkle_input.insert_column(3, &col_length_4);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            merkle_input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [4].to_vec(),
+            },
+        );
+        tree.commit();
+
+        let zero_column_queries = vec![5];
+        let one_column_queries = vec![0, 3];
+        let queries = vec![zero_column_queries, one_column_queries];
+
+        let decommitment = tree.decommit_single_layer(
+            3,
+            queries.iter(),
+            &super::queried_node_indices_in_layer(queries.iter(), &tree.input, 3),
+            vec![].into_iter().peekable(),
+        );
+
+        // first node is a '0' query of column length 4, node index 0. 40 should appear as the value
+        // and the other column values should appear as a witness alongside 2 child hashes.
+        let node_0 = &decommitment[0];
+        assert_eq!(node_0.witness_elements, vec![m31!(80), m31!(81)]);
+        #[cfg(debug_assertions)]
+        assert_eq!(node_0.d.queried_values, vec![m31!(40)]);
+
+        // second node is a '5' query of column length 8, // second node is a '5' query of column
+        // length 8, node index 2. 85 should appear as the value, 84 that got injected in
+        // the same node as a witness, and 42 from the other column.
+        let node_1 = &decommitment[1];
+        assert_eq!(node_1.witness_elements, vec![m31!(84), m31!(42)]);
+        #[cfg(debug_assertions)]
+        assert_eq!(node_1.d.queried_values, vec![m31!(85)]);
+
+        // third node is a '3' query of column length 4, node index 3. 43 should appear as the
+        // other column elements as witness - 86,87.
+        let node_2 = &decommitment[2];
+        assert_eq!(node_2.witness_elements, vec![m31!(86), m31!(87)]);
+        #[cfg(debug_assertions)]
+        assert_eq!(node_2.d.queried_values, vec![m31!(43)]);
     }
 }
