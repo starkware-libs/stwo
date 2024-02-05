@@ -1,6 +1,7 @@
 use std::iter::Peekable;
 
 use itertools::Itertools;
+use merging_iterator::MergeIter;
 
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
@@ -98,8 +99,49 @@ where
     }
 
     // Queries should be a query struct that supports queries at multiple layers.
-    pub fn decommit(&self, _queries: Vec<Vec<usize>>) -> MixedDecommitment<F, H> {
-        todo!()
+    // TODO(Ohad): introduce a proper query struct, then deprecate 'drain' usage and accepting vecs.
+    pub fn decommit(&self, mut queries_per_column: Vec<Vec<usize>>) -> MixedDecommitment<F, H> {
+        assert_eq!(
+            queries_per_column.len(),
+            self.input.n_injected_columns(),
+            "Number of query vectors does not match number of injected columns."
+        );
+
+        // Decommitment layers are built from the bottom up, excluding the root.
+        let mut ancestor_indices = vec![];
+        let decommitment_layers = (1..=self.input.max_injected_depth())
+            .rev()
+            .map(|i| {
+                // TODO(Ohad): do better than a drain.
+                let layer_column_queries = queries_per_column
+                    .drain(..self.input.get_columns(i).len())
+                    .collect_vec();
+                let queried_nodes =
+                    queried_nodes_in_layer(layer_column_queries.iter(), &self.input, i);
+                let decommitment_layer = self.decommit_single_layer(
+                    i,
+                    layer_column_queries.iter(),
+                    &queried_nodes,
+                    ancestor_indices.iter().copied().peekable(),
+                );
+
+                // Ancestor indices for the next layer are the parent indices of the queried nodes,
+                // which are the node indices themselves, and parents of the current layer
+                // ancestors.
+                ancestor_indices =
+                    MergeIter::new(Self::parent_indices(&ancestor_indices), queried_nodes)
+                        .collect_vec();
+                decommitment_layer
+            })
+            .collect_vec();
+
+        MixedDecommitment::new(decommitment_layers)
+    }
+
+    fn parent_indices(child_indices: &[usize]) -> Vec<usize> {
+        let mut parent_indices = child_indices.iter().map(|q| q / 2).collect_vec();
+        parent_indices.dedup();
+        parent_indices
     }
 
     pub fn get_hash_at(&self, layer_depth: usize, position: usize) -> H::Hash {
@@ -175,7 +217,6 @@ where
         self.multi_layers[layer_index].config.sub_tree_height
     }
 
-    #[allow(dead_code)]
     fn decommit_single_layer(
         &self,
         layer_depth: usize,
@@ -233,7 +274,6 @@ where
 
     // Returns the felt witnesses and queried elements for the given node indices in the specified
     // layer. Assumes that the queries & node indices are sorted in ascending order.
-    #[allow(dead_code)]
     fn layer_felt_witnesses_and_queried_elements(
         &self,
         layer_depth: usize,
@@ -273,8 +313,6 @@ where
     // Builds nodes that are directly queried in the given layer, are not ancestors of previous
     // queries, and preside the next index that is an ancestor and was not consumed
     // yet,'node_index_upper_bound'.
-    // TODO(Ohad): remove #[allow(dead_code)].
-    #[allow(dead_code)]
     fn preceding_queried_nodes(
         &self,
         node_query_values: &mut Peekable<impl Iterator<Item = (usize, (Vec<F>, Vec<F>))>>,
@@ -298,8 +336,6 @@ where
 
     // Builds the node of an ancestor query that was not queried in the current layer.
     // Therefore, only contains one hash, and every injected element is a witness.
-    // TODO(Ohad): remove #[allow(dead_code)].
-    #[allow(dead_code)]
     fn build_ancestor_node(&self, layer_depth: usize, query: usize) -> DecommitmentNode<F, H> {
         let node_index = query / 2;
         let injected_elements = self.input.get_injected_elements(layer_depth, node_index);
@@ -319,8 +355,6 @@ where
 
     // Builds the node of an ancestor query that participates in a query for some column.
     // Therefore, contains one hash, and witness/queried elements needs to be placed accordingly.
-    // TODO(Ohad): remove #[allow(dead_code)].
-    #[allow(dead_code)]
     fn build_queried_ancestor_node(
         &self,
         query: usize,
@@ -387,7 +421,6 @@ where
 // Translates queries of the form <column, entry_index> to the form <layer, node_index>
 // Input queries are per column, i.e queries[0] is a vector of queries for the first column that was
 // inserted to the tree's input in that layer.
-#[allow(dead_code)]
 fn queried_nodes_in_layer<'a>(
     queries: impl Iterator<Item = &'a Vec<usize>>,
     input: &MerkleTreeInput<'_, impl Field>,
@@ -708,7 +741,6 @@ mod tests {
         // and the other column values should appear as a witness alongside 2 child hashes.
         let node_0 = &decommitment[0];
         assert_eq!(node_0.witness_elements, vec![m31!(80), m31!(81)]);
-        #[cfg(debug_assertions)]
         assert_eq!(node_0.queried_values, vec![m31!(40)]);
 
         // second node is a '5' query of column length 8, // second node is a '5' query of column
@@ -716,14 +748,73 @@ mod tests {
         // the same node as a witness, and 42 from the other column.
         let node_1 = &decommitment[1];
         assert_eq!(node_1.witness_elements, vec![m31!(84), m31!(42)]);
-        #[cfg(debug_assertions)]
         assert_eq!(node_1.queried_values, vec![m31!(85)]);
 
         // third node is a '3' query of column length 4, node index 3. 43 should appear as the
         // other column elements as witness - 86,87.
         let node_2 = &decommitment[2];
         assert_eq!(node_2.witness_elements, vec![m31!(86), m31!(87)]);
-        #[cfg(debug_assertions)]
         assert_eq!(node_2.queried_values, vec![m31!(43)]);
+    }
+
+    #[test]
+    fn decommit_test() {
+        const TREE_HEIGHT: usize = 4;
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let column_length_8 = (80..88).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let column_length_4 = (40..44).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        input.insert_column(TREE_HEIGHT, &column_length_8);
+        input.insert_column(TREE_HEIGHT - 1, &column_length_4);
+        input.insert_column(TREE_HEIGHT - 1, &column_length_8);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [3, 1].to_vec(),
+            },
+        );
+        tree.commit();
+
+        // Query column 0 at 0, column 1 at 2, and column 2 at 4,7.
+        let queries = vec![vec![0], vec![2], vec![4, 7]];
+        let decommitment = tree.decommit(queries);
+
+        let decommitment_leaf_layer = &decommitment.decommitment_layers[0];
+        let decommitment_layer_1 = &decommitment.decommitment_layers[1];
+        let decommitment_layer_2 = &decommitment.decommitment_layers[2];
+        let decommitment_layer_3 = &decommitment.decommitment_layers[3];
+        assert_eq!(decommitment_leaf_layer.len(), 1);
+        assert_eq!(decommitment_leaf_layer[0].witness_elements, vec![]);
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(decommitment_leaf_layer[0].queried_values, vec![m31!(80)]);
+            assert_eq!(decommitment_leaf_layer[0].position_in_layer, 0);
+        }
+
+        assert_eq!(decommitment_layer_1.len(), 3);
+        assert_eq!(
+            decommitment_layer_1[0].witness_elements,
+            vec![m31!(40), m31!(80), m31!(81)]
+        );
+        assert_eq!(decommitment_layer_1[1].witness_elements, vec![m31!(85)]);
+
+        {
+            assert_eq!(
+                decommitment_layer_1[1].queried_values,
+                vec![m31!(42), m31!(84)]
+            );
+            assert_eq!(decommitment_layer_1[1].position_in_layer, 2);
+        }
+        assert_eq!(
+            decommitment_layer_1[2].witness_elements,
+            vec![m31!(43), m31!(86)]
+        );
+        {
+            assert_eq!(decommitment_layer_1[2].queried_values, vec![m31!(87)]);
+            assert_eq!(decommitment_layer_1[2].position_in_layer, 3);
+        }
+        assert_eq!(decommitment_layer_2.len(), 1);
+        assert_eq!(decommitment_layer_2[0].witness_elements, vec![]);
+        assert_eq!(decommitment_layer_2[0].left_hash, None);
+        assert_eq!(decommitment_layer_3.len(), 0);
     }
 }
