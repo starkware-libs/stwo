@@ -211,6 +211,19 @@ where
 
         witnesses_and_queried_values_by_node
     }
+
+    #[allow(dead_code)]
+    fn sibling_hash(&self, query: usize, layer_depth: usize) -> H::Hash {
+        self.get_hash_at(layer_depth, query ^ 1)
+    }
+
+    #[allow(dead_code)]
+    fn child_hashes(&self, node_index: usize, layer_depth: usize) -> (H::Hash, H::Hash) {
+        (
+            self.get_hash_at(layer_depth, node_index * 2),
+            self.get_hash_at(layer_depth, node_index * 2 + 1),
+        )
+    }
 }
 
 // Translates queries of the form <column, entry_index> to the form <layer, node_index>
