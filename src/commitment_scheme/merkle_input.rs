@@ -97,6 +97,10 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
         }
         injected_elements
     }
+
+    pub fn n_injected_columns(&self) -> usize {
+        (1..=self.max_injected_depth()).fold(0, |acc, d| acc + self.get_columns(d).len())
+    }
 }
 
 #[cfg(test)]
@@ -211,5 +215,16 @@ mod tests {
         assert_eq!(injected_elements_33, vec![m31!(3)]);
         assert_eq!(injected_elements_20, vec![m31!(0), m31!(1)]);
         assert_eq!(injected_elements_21, vec![m31!(2), m31!(3)]);
+    }
+
+    #[test]
+    fn n_injected_columns_test() {
+        let mut merkle_input = super::MerkleTreeInput::<M31>::new();
+        let trace_column = (0..4).map(M31::from_u32_unchecked).collect::<Vec<_>>();
+        merkle_input.insert_column(3, &trace_column);
+        merkle_input.insert_column(2, &trace_column);
+        merkle_input.insert_column(2, &trace_column);
+
+        assert_eq!(merkle_input.n_injected_columns(), 3);
     }
 }
