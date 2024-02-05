@@ -147,10 +147,12 @@ mod tests {
     use num_traits::Zero;
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
-    use crate::core::circle::{CirclePointIndex, Coset};
+    use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::constraints::pair_excluder;
     use crate::core::fields::m31::{BaseField, M31};
-    use crate::core::fields::Field;
+    use crate::core::fields::{ComplexConjugate, Field};
+    use crate::core::poly::circle::CirclePoly;
+    use crate::m31;
 
     #[test]
     fn test_coset_vanishing() {
@@ -217,5 +219,28 @@ mod tests {
         let coset = Coset::half_odds(6);
         let point = coset.at(4);
         point_vanishing(point, point.antipode());
+    }
+
+    #[test]
+    fn test_complex_conjugate_symmetry() {
+        // Create a polynomial over a base circle domain.
+        let log_domain_size = 7;
+        let domain_size = 1 << log_domain_size;
+        let polynomial = CirclePoly::new((0..domain_size).map(|i| m31!(i)).collect());
+        let oods_points = [
+            CirclePoint::get_point(6),
+            CirclePoint::get_point(199),
+            CirclePoint::get_point(9834759221),
+        ];
+
+        // Assert that the base field polynomial is complex conjugate symmetric.
+        for oods_point in oods_points.into_iter() {
+            assert_eq!(
+                polynomial.eval_at_point(oods_point),
+                polynomial
+                    .eval_at_point(oods_point.complex_conjugate())
+                    .complex_conjugate()
+            );
+        }
     }
 }
