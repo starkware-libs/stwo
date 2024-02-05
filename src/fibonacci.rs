@@ -14,7 +14,7 @@ use crate::core::constraints::{
     PolyOracle,
 };
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::QM31;
+use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::fri::{
     CirclePolyDegreeBound, FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation,
@@ -47,10 +47,10 @@ pub struct Fibonacci {
 }
 
 pub struct AdditionalProofData {
-    pub composition_polynomial_oods_value: QM31,
-    pub composition_polynomial_random_coeff: QM31,
-    pub oods_point: CirclePoint<QM31>,
-    pub oods_quotients: Vec<CircleEvaluation<QM31, BitReversedOrder>>,
+    pub composition_polynomial_oods_value: SecureField,
+    pub composition_polynomial_random_coeff: SecureField,
+    pub oods_point: CirclePoint<SecureField>,
+    pub oods_quotients: Vec<CircleEvaluation<SecureField, BitReversedOrder>>,
 }
 
 // TODO(AlonH): Removed this struct and separate the decommitment from the the commitment in the
@@ -63,9 +63,9 @@ pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
 pub struct FibonacciProof {
     pub public_input: BaseField,
     pub trace_commitment: CommitmentProof<BaseField, MerkleHasher>,
-    pub composition_polynomial_commitment: CommitmentProof<QM31, MerkleHasher>,
-    pub trace_oods_values: Vec<QM31>,
-    pub composition_polynomial_opened_values: Vec<QM31>,
+    pub composition_polynomial_commitment: CommitmentProof<SecureField, MerkleHasher>,
+    pub trace_oods_values: Vec<SecureField>,
+    pub composition_polynomial_opened_values: Vec<SecureField>,
     pub trace_opened_values: Vec<BaseField>,
     pub proof_of_work: ProofOfWorkProof,
     pub fri_proof: FriProof<MerkleHasher>,
@@ -180,9 +180,9 @@ impl Fibonacci {
     /// Returns the composition polynomial evaluations using the trace and a random coefficient.
     fn compute_composition_polynomial(
         &self,
-        random_coeff: QM31,
+        random_coeff: SecureField,
         trace_evaluation: &CircleEvaluation<BaseField>,
-    ) -> CircleEvaluation<QM31> {
+    ) -> CircleEvaluation<SecureField> {
         let mut composition_polynomial_values =
             Vec::with_capacity(self.composition_polynomial_eval_domain.size());
         for p_ind in self.composition_polynomial_eval_domain.iter_indices() {
@@ -214,7 +214,7 @@ impl Fibonacci {
         channel.mix_digest(trace_commitment.root());
 
         // Evaluate and commit on composition polynomial.
-        let random_coeff = channel.draw_random_extension_felts()[0];
+        let random_coeff = channel.draw_random_secure_felts()[0];
         let composition_polynomial =
             self.compute_composition_polynomial(random_coeff, &trace_evaluation);
         let composition_polynomial_poly = composition_polynomial.interpolate();
@@ -224,13 +224,14 @@ impl Fibonacci {
                     .circle_domain(),
             )
             .bit_reverse();
-        let composition_polynomial_commitment = MerkleTree::<QM31, MerkleHasher>::commit(vec![
-            composition_polynomial_commitment_evaluation.values.clone(),
-        ]);
+        let composition_polynomial_commitment =
+            MerkleTree::<SecureField, MerkleHasher>::commit(vec![
+                composition_polynomial_commitment_evaluation.values.clone(),
+            ]);
         channel.mix_digest(composition_polynomial_commitment.root());
 
         // Evaluate the trace mask and the composition polynomial on the OODS point.
-        let oods_point = CirclePoint::<QM31>::get_random_point(channel);
+        let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
         let mask = self.get_mask();
         let trace_oods_evaluation =
             get_oods_values(&mask, oods_point, &[self.trace_domain], &[trace_poly]);
@@ -321,9 +322,9 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
         proof.public_input
     ])));
     channel.mix_digest(proof.trace_commitment.commitment);
-    let random_coeff = channel.draw_random_extension_felts()[0];
+    let random_coeff = channel.draw_random_secure_felts()[0];
     channel.mix_digest(proof.composition_polynomial_commitment.commitment);
-    let oods_point = CirclePoint::<QM31>::get_random_point(channel);
+    let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
     let mask = fib.get_mask();
     let trace_oods_points = get_oods_points(&mask, oods_point, &[fib.trace_domain]);
     let oods_point_eval = EvalByPointMapping {
@@ -439,7 +440,7 @@ mod tests {
     use crate::core::circle::CirclePoint;
     use crate::core::constraints::{EvalByEvaluation, EvalByPointMapping, EvalByPoly};
     use crate::core::fields::m31::{BaseField, M31};
-    use crate::core::fields::qm31::QM31;
+    use crate::core::fields::qm31::SecureField;
     use crate::core::oods::get_oods_points;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PointMapping};
     use crate::core::queries::Queries;
@@ -518,7 +519,7 @@ mod tests {
 
         // Evaluate this polynomial at another point, out of trace_eval_domain and compare to what
         // we expect.
-        let oods_point = CirclePoint::<QM31>::get_point(98989892);
+        let oods_point = CirclePoint::<SecureField>::get_point(98989892);
         let trace_evaluator = EvalByPoly {
             point: oods_point,
             poly: &trace_poly,
