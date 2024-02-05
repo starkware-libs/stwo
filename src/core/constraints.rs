@@ -1,7 +1,8 @@
-use num_traits::One;
+use num_traits::{One, Zero};
 
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fields::m31::BaseField;
+use super::fields::qm31::QM31;
 use super::fields::ExtensionOf;
 use super::poly::circle::{CircleEvaluation, CirclePoly, PointMapping};
 
@@ -68,6 +69,17 @@ pub fn point_vanishing<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
 ) -> EF {
     let h = p - vanish_point.into_ef();
     h.y / (EF::one() + h.x)
+}
+
+/// Evaluates a point on a line between a point and its complex conjugate.
+pub fn complex_conjugate_line(
+    point: CirclePoint<QM31>,
+    value: QM31,
+    p: CirclePoint<BaseField>,
+) -> QM31 {
+    assert_ne!(point.y, QM31::zero());
+    let conjugate_value = value.conjugate();
+    value + (conjugate_value - value) * (p.y - point.y) / (point.y.conjugate() - point.y)
 }
 
 /// Utils for computing constraints.
@@ -147,9 +159,10 @@ mod tests {
     use num_traits::Zero;
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
-    use crate::core::circle::{CirclePointIndex, Coset};
-    use crate::core::constraints::pair_excluder;
+    use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
+    use crate::core::constraints::{complex_conjugate_line, pair_excluder};
     use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::qm31::QM31;
     use crate::core::fields::Field;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
     use crate::m31;
@@ -234,27 +247,30 @@ mod tests {
         let large_domain = CanonicCoset::new(log_large_domain_size).circle_domain();
 
         // Create a vanish point that is not in the large domain.
-        let vanish_point_index = CirclePointIndex::generator();
-        assert!(large_domain.find(vanish_point_index).is_none());
-        let vanish_point = vanish_point_index.to_point();
+        let vanish_point = CirclePoint::get_point(97);
         let vanish_point_value = polynomial.eval_at_point(vanish_point);
 
         // Compute the quotient polynomial.
         let mut quotient_polynomial_values = Vec::with_capacity(large_domain_size as usize);
         for point in large_domain.iter() {
-            let mut value = polynomial.eval_at_point(point) - vanish_point_value;
-            value /= point_vanishing(vanish_point, point);
+            let line = complex_conjugate_line(vanish_point, vanish_point_value, point);
+            let mut value = polynomial.eval_at_point(point) - line;
+            let vanish_point_conjugate = CirclePoint {
+                x: vanish_point.x.conjugate(),
+                y: vanish_point.y.conjugate(),
+            };
+            value /= pair_excluder(vanish_point, vanish_point_conjugate, point.into_ef());
             quotient_polynomial_values.push(value);
         }
         let quotient_evaluation =
-            CircleEvaluation::<M31>::new(large_domain, quotient_polynomial_values);
+            CircleEvaluation::<QM31>::new(large_domain, quotient_polynomial_values);
         let quotient_polynomial = quotient_evaluation.interpolate();
 
-        // Check that the quotient polynomial indeed has one coefficient more than the original
+        // Check that the quotient polynomial indeed has one coefficient less than the original
         // polynomial.
         assert_eq!(
             quotient_polynomial.coeffs().len(),
-            polynomial.coeffs().len() + 1
+            polynomial.coeffs().len() - 1
         );
     }
 }
