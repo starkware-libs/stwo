@@ -2,7 +2,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 
 use super::fields::m31::{BaseField, M31};
 use super::fields::qm31::QM31;
-use super::fields::{ExtensionOf, Field};
+use super::fields::{ComplexConjugate, ExtensionOf, Field};
 use crate::core::channel::Channel;
 use crate::core::fields::qm31::P4;
 use crate::math::utils::egcd;
@@ -129,6 +129,15 @@ impl<F: Field> Sub for CirclePoint<F> {
 
     fn sub(self, rhs: Self) -> Self::Output {
         self + (-rhs)
+    }
+}
+
+impl<F: Field> ComplexConjugate for CirclePoint<F> {
+    fn complex_conjugate(&self) -> Self {
+        Self {
+            x: self.x.complex_conjugate(),
+            y: self.y.complex_conjugate(),
+        }
     }
 }
 
