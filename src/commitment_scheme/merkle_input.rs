@@ -103,6 +103,42 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
             .iter()
             .fold(0, |sum, layer| sum + layer.len())
     }
+
+    // Returns the structure of the merkle tree. i.e. for each depth, the length of the columns
+    // assigned to it.
+    pub fn structure(&self) -> MerkleTreeStructure {
+        MerkleTreeStructure::new(
+            (1..=self.max_injected_depth())
+                .map(|i| {
+                    self.get_columns(i)
+                        .iter()
+                        .map(|col| col.len())
+                        .collect::<Vec<usize>>()
+                })
+                .collect::<Vec<Vec<usize>>>(),
+        )
+    }
+}
+
+/// The structure of a mixed degree merkle tree.
+/// The sizes of columns assigned to every layer, ordered as they were inserted & injected into hash
+/// blocks.
+pub struct MerkleTreeStructure {
+    lengths_per_column: Vec<Vec<usize>>,
+}
+
+impl MerkleTreeStructure {
+    pub fn new(lengths_per_column: Vec<Vec<usize>>) -> Self {
+        Self { lengths_per_column }
+    }
+
+    pub fn column_lengths_at_depth(&self, depth: usize) -> &[usize] {
+        assert!(
+            depth > 0 && depth <= self.lengths_per_column.len(),
+            "Invalid depth!"
+        );
+        &self.lengths_per_column[depth - 1]
+    }
 }
 
 #[cfg(test)]
@@ -228,5 +264,21 @@ mod tests {
         merkle_input.insert_column(2, &trace_column);
 
         assert_eq!(merkle_input.n_injected_columns(), 3);
+    }
+
+    #[test]
+    fn structure_test() {
+        let mut merkle_input = super::MerkleTreeInput::<M31>::new();
+        let column_length_4 = (0..4).map(M31::from_u32_unchecked).collect::<Vec<_>>();
+        let column_length_8 = (0..8).map(M31::from_u32_unchecked).collect::<Vec<_>>();
+        merkle_input.insert_column(3, &column_length_4);
+        merkle_input.insert_column(2, &column_length_4);
+        merkle_input.insert_column(2, &column_length_8);
+
+        assert_eq!(
+            merkle_input.structure().lengths_per_column,
+            vec![vec![], vec![4, 8], vec![4]]
+        );
+        assert_eq!(merkle_input.structure().column_lengths_at_depth(2), &[4, 8]);
     }
 }
