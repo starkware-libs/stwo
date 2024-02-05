@@ -3,6 +3,7 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use super::ComplexConjugate;
 use crate::impl_field;
 
 pub const MODULUS_BITS: u32 = 31;
@@ -65,6 +66,12 @@ impl Mul for M31 {
 
     fn mul(self, rhs: Self) -> Self::Output {
         Self::reduce((self.0 as u64) * (rhs.0 as u64))
+    }
+}
+
+impl ComplexConjugate for M31 {
+    fn complex_conjugate(&self) -> Self {
+        *self
     }
 }
 
