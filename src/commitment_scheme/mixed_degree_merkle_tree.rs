@@ -1,9 +1,10 @@
-use itertools::Itertools;
+use std::iter::Peekable;
 
+use itertools::Itertools;
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
 use super::merkle_multilayer::MerkleMultiLayer;
-use super::mixed_degree_decommitment::{DecommitmentNode, MixedDecommitment};
+use super::mixed_degree_decommitment::MixedDecommitment;
 use crate::commitment_scheme::merkle_multilayer::MerkleMultiLayerConfig;
 use crate::commitment_scheme::utils::get_column_chunk;
 use crate::core::fields::{Field, IntoSlice};
@@ -96,7 +97,8 @@ where
     }
 
     // Queries should be a query struct that supports queries at multiple layers.
-    pub fn decommit(&self, _queries: Vec<Vec<usize>>) -> MixedDecommitment<F, H> {
+    // TODO(Ohad): introduce a proper query struct, then deprecate 'drain' usage and accepting vecs.
+    pub fn decommit(&self, mut _queries_per_column: Vec<Vec<usize>>) -> MixedDecommitment<F, H> {
         todo!()
     }
 
@@ -111,39 +113,6 @@ where
             depth_accumulator -= multi_layer_height;
         }
         panic!()
-    }
-
-    // TODO(Ohad): remove '_'.
-    fn _get_node(
-        &self,
-        layer_depth: usize,
-        node_index: usize,
-        include_left_hash: bool,
-        include_right_hash: bool,
-    ) -> Option<DecommitmentNode<F, H>> {
-        let injected_elements = self.input.get_injected_elements(layer_depth, node_index);
-        if !include_left_hash && !include_right_hash && injected_elements.is_empty() {
-            return None;
-        }
-
-        let right_hash = if include_right_hash {
-            Some(self.get_hash_at(layer_depth, node_index * 2 + 1))
-        } else {
-            None
-        };
-        let left_hash = if include_left_hash {
-            Some(self.get_hash_at(layer_depth, node_index * 2))
-        } else {
-            None
-        };
-
-        Some(DecommitmentNode {
-            right_hash,
-            left_hash,
-            witness_elements: vec![],
-            position_in_layer: node_index,
-            queried_values: injected_elements,
-        })
     }
 
     pub fn root(&self) -> H::Hash {
@@ -173,9 +142,71 @@ where
         self.multi_layers[layer_index].config.sub_tree_height
     }
 
+    #[allow(dead_code)]
+    fn decommit_single_layer(
+        &self,
+        layer_depth: usize,
+        queries_to_layer: impl Iterator<Item = &'a Vec<usize>>,
+        queried_node_indices: &[usize],
+        mut ancestors_of_previous_layers_indices: Peekable<impl Iterator<Item = usize>>,
+        decommitment: &mut MixedDecommitment<F, H>,
+    ) {
+        let mut index_value_iterator = queried_node_indices
+            .iter()
+            .copied()
+            .zip(self.layer_felt_witnesses_and_queried_elements(
+                layer_depth,
+                queries_to_layer,
+                queried_node_indices.iter().copied(),
+            ))
+            .peekable();
+
+        while let Some(query) = ancestors_of_previous_layers_indices.next() {
+            // Handle queries that precede the next ancestor-query and are not ancestor queries.
+            self.push_preceding_queried_nodes(
+                &mut index_value_iterator,
+                query / 2,
+                layer_depth,
+                decommitment,
+            );
+
+            match index_value_iterator.next_if(|peeked| peeked.0 == query / 2) {
+                Some((_, (witness_elements, queried_values))) => {
+                    {
+                        decommitment
+                            .hashes
+                            .push(self.sibling_hash(query, layer_depth));
+                        decommitment.witness_elements.extend(witness_elements);
+                        decommitment.queried_values.extend(queried_values);
+                    };
+                }
+                None => {
+                    match ancestors_of_previous_layers_indices
+                        .next_if(|&next_q| next_q == query ^ 1)
+                    {
+                        Some(_) => (),
+                        None => {
+                            let node_index = query / 2;
+                            let injected_elements = self.input.get_injected_elements(layer_depth, node_index);
+
+                                decommitment.hashes.push(self.sibling_hash(query, layer_depth));
+                            decommitment.witness_elements.extend(injected_elements);
+                        }
+                    }
+                }
+            }
+        }
+        // Consume remaining node queries.
+        self.push_preceding_queried_nodes(
+            &mut index_value_iterator,
+            usize::MAX,
+            layer_depth,
+            decommitment,
+        );
+    }
+
     // Returns the felt witnesses and queried elements for the given node indices in the specified
     // layer. Assumes that the queries & node indices are sorted in ascending order.
-    #[allow(dead_code)]
     fn layer_felt_witnesses_and_queried_elements(
         &self,
         layer_depth: usize,
@@ -212,6 +243,30 @@ where
         witnesses_and_queried_values_by_node
     }
 
+    // Builds nodes that are directly queried in the given layer, are not ancestors of previous
+    // queries, and preside the next index that is an ancestor and was not consumed
+    // yet,'node_index_upper_bound'.
+    fn push_preceding_queried_nodes(
+        &self,
+        node_query_values: &mut Peekable<impl Iterator<Item = (usize, (Vec<F>, Vec<F>))>>,
+        node_index_upper_bound: usize,
+        layer_depth: usize,
+        decommitment: &mut MixedDecommitment<F, H>,
+    ) {
+        while let Some((node_index, (witness_elements, queried_values))) =
+            node_query_values.next_if(|(node_index, _)| *node_index < node_index_upper_bound)
+        {
+            if layer_depth < self.height() {
+                let hash_pair = self.child_hashes(node_index, layer_depth);
+                decommitment.hashes.push(hash_pair.0);
+                decommitment.hashes.push(hash_pair.1);
+            };
+            decommitment.witness_elements.extend(witness_elements);
+            decommitment.queried_values.extend(queried_values);
+        }
+    }
+
+
     #[allow(dead_code)]
     fn sibling_hash(&self, query: usize, layer_depth: usize) -> H::Hash {
         self.get_hash_at(layer_depth, query ^ 1)
@@ -230,7 +285,7 @@ where
 // Input queries are per column, i.e queries[0] is a vector of queries for the first column that was
 // inserted to the tree's input in that layer.
 #[allow(dead_code)]
-fn queried_node_indices_in_layer<'a>(
+fn queried_nodes_in_layer<'a>(
     queries: impl Iterator<Item = &'a Vec<usize>>,
     input: &MerkleTreeInput<'_, impl Field>,
     layer_depth: usize,
@@ -259,9 +314,7 @@ fn queried_node_indices_in_layer<'a>(
 mod tests {
     use std::vec;
 
-    use super::{
-        queried_node_indices_in_layer, MixedDegreeMerkleTree, MixedDegreeMerkleTreeConfig,
-    };
+    use super::{queried_nodes_in_layer, MixedDegreeMerkleTree, MixedDegreeMerkleTreeConfig};
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
@@ -418,7 +471,7 @@ mod tests {
                 let column_queries_at_depth = queries
                     .drain(..n_columns_injected_at_depth)
                     .collect::<Vec<_>>();
-                super::queried_node_indices_in_layer(column_queries_at_depth.iter(), input, i)
+                super::queried_nodes_in_layer(column_queries_at_depth.iter(), input, i)
             })
             .collect::<Vec<Vec<usize>>>()
     }
@@ -490,13 +543,13 @@ mod tests {
             third_column_queries,
         ];
 
-        let node_indices = queried_node_indices_in_layer(queries.iter().take(2), &tree.input, 4);
+        let node_indices = queried_nodes_in_layer(queries.iter().take(2), &tree.input, 4);
         let w4 = tree.layer_felt_witnesses_and_queried_elements(
             4,
             queries[..2].iter(),
             node_indices.iter().copied(),
         );
-        let node_indices = queried_node_indices_in_layer(queries.iter().skip(2), &tree.input, 3);
+        let node_indices = queried_nodes_in_layer(queries.iter().skip(2), &tree.input, 3);
         let w3 = tree.layer_felt_witnesses_and_queried_elements(
             4,
             queries[2..4].iter(),
