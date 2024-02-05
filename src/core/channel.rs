@@ -1,5 +1,5 @@
 use super::fields::m31::{BaseField, N_BYTES_FELT, P};
-use super::fields::qm31::{QM31, QM31_EXTENSION_DEGREE};
+use super::fields::qm31::{SecureField, SECURE_FIELD_EXTENSION_DEGREE};
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
 
@@ -33,12 +33,12 @@ pub trait Channel {
     fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
-    /// Generates a uniform random vector of QM31 elements.
-    fn draw_random_extension_felts(&mut self) -> [QM31; EXTENSION_FELTS_PER_HASH] {
+    /// Generates a uniform random vector of SecureField elements.
+    fn draw_random_secure_felts(&mut self) -> [SecureField; EXTENSION_FELTS_PER_HASH] {
         let felts: [BaseField; FELTS_PER_HASH] = self.draw_random_felts();
         [
-            QM31::from_m31_array(felts[..QM31_EXTENSION_DEGREE].try_into().unwrap()),
-            QM31::from_m31_array(felts[QM31_EXTENSION_DEGREE..].try_into().unwrap()),
+            SecureField::from_m31_array(felts[..SECURE_FIELD_EXTENSION_DEGREE].try_into().unwrap()),
+            SecureField::from_m31_array(felts[SECURE_FIELD_EXTENSION_DEGREE..].try_into().unwrap()),
         ]
     }
 }

@@ -2,7 +2,7 @@ use super::air::Mask;
 use super::circle::{CirclePoint, CirclePointIndex};
 use super::constraints::{point_vanishing, EvalByEvaluation, EvalByPoly, PolyOracle};
 use super::fields::m31::BaseField;
-use super::fields::qm31::QM31;
+use super::fields::qm31::SecureField;
 use super::fields::ExtensionOf;
 use super::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PointMapping};
 
@@ -41,10 +41,10 @@ pub fn get_oods_quotient<F: ExtensionOf<BaseField>, EF: ExtensionOf<BaseField> +
 /// Returns the evaluations of the trace mask at the OODS point.
 pub fn get_oods_values(
     mask: &Mask,
-    oods_point: CirclePoint<QM31>,
+    oods_point: CirclePoint<SecureField>,
     trace_domains: &[CanonicCoset],
     trace_polys: &[CirclePoly<BaseField>],
-) -> PointMapping<QM31> {
+) -> PointMapping<SecureField> {
     let mut oods_evals = Vec::with_capacity(trace_polys.len());
     for poly in trace_polys {
         oods_evals.push(EvalByPoly {
@@ -59,9 +59,9 @@ pub fn get_oods_values(
 /// Returns the OODS evaluation points for the mask.
 pub fn get_oods_points(
     mask: &Mask,
-    oods_point: CirclePoint<QM31>,
+    oods_point: CirclePoint<SecureField>,
     trace_domains: &[CanonicCoset],
-) -> Vec<CirclePoint<QM31>> {
+) -> Vec<CirclePoint<SecureField>> {
     let mask_offsets = mask.get_point_indices(trace_domains);
     mask_offsets
         .iter()

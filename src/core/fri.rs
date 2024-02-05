@@ -807,7 +807,7 @@ mod tests {
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::QM31;
+    use crate::core::fields::qm31::SecureField;
     use crate::core::fields::ExtensionOf;
     use crate::core::fri::{
         fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig, FriProver, FriVerifier,
@@ -882,9 +882,9 @@ mod tests {
     fn committing_evaluation_from_invalid_domain_fails() {
         let invalid_domain = CircleDomain::new(Coset::new(CirclePointIndex::generator(), 3));
         assert!(!invalid_domain.is_canonic(), "must be an invalid domain");
-        let evaluation = CircleEvaluation::new(invalid_domain, vec![QM31::one(); 1 << 4]);
+        let evaluation = CircleEvaluation::new(invalid_domain, vec![SecureField::one(); 1 << 4]);
 
-        FriProver::<QM31, Blake3Hasher>::commit(FriConfig::new(2, 2), vec![evaluation]);
+        FriProver::<SecureField, Blake3Hasher>::commit(FriConfig::new(2, 2), vec![evaluation]);
     }
 
     #[test]
@@ -892,7 +892,8 @@ mod tests {
         const LOG_DEGREE: u32 = 3;
         let config = FriConfig::new(1, LOG_BLOWUP_FACTOR);
         let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
-        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial.clone()]);
+        let prover =
+            FriProver::<SecureField, Blake3Hasher>::commit(config, vec![polynomial.clone()]);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let proof = prover.decommit(&queries);
@@ -929,7 +930,7 @@ mod tests {
         let polynomial = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1], log_domain_size);
-        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let prover = FriProver::<SecureField, Blake3Hasher>::commit(config, vec![polynomial]);
         let proof = prover.decommit(&queries);
         let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
         // Set verifier's config to expect one extra layer than prover config.
@@ -951,7 +952,7 @@ mod tests {
         let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1], log_domain_size);
-        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let prover = FriProver::<SecureField, Blake3Hasher>::commit(config, vec![polynomial]);
         let proof = prover.decommit(&queries);
         let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
         // Set verifier's config to expect one less layer than prover config.
@@ -974,7 +975,7 @@ mod tests {
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let decommitment_value = query_polynomial(&polynomial, &queries);
-        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let prover = FriProver::<SecureField, Blake3Hasher>::commit(config, vec![polynomial]);
         let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
         let mut proof = prover.decommit(&queries);
         // Remove an evaluation from the second layer's proof.
@@ -997,11 +998,11 @@ mod tests {
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let decommitment_value = query_polynomial(&polynomial, &queries);
-        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let prover = FriProver::<SecureField, Blake3Hasher>::commit(config, vec![polynomial]);
         let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
         let mut proof = prover.decommit(&queries);
         // Modify the committed values in the second layer.
-        proof.inner_layers[1].evals_subset[0] += QM31::one();
+        proof.inner_layers[1].evals_subset[0] += SecureField::one();
         let verifier = FriVerifier::commit(config, proof, vec![column_bound]).unwrap();
 
         let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
@@ -1020,10 +1021,10 @@ mod tests {
         let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
-        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let prover = FriProver::<SecureField, Blake3Hasher>::commit(config, vec![polynomial]);
         let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
         let mut proof = prover.decommit(&queries);
-        let bad_last_layer_coeffs = vec![QM31::one(); 1 << (LOG_MAX_LAST_LAYER_DEGREE + 1)];
+        let bad_last_layer_coeffs = vec![SecureField::one(); 1 << (LOG_MAX_LAST_LAYER_DEGREE + 1)];
         proof.last_layer_poly = LinePoly::new(bad_last_layer_coeffs);
 
         let verifier = FriVerifier::commit(config, proof, vec![column_bound]);
@@ -1042,11 +1043,11 @@ mod tests {
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
         let decommitment_value = query_polynomial(&polynomial, &queries);
-        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial]);
+        let prover = FriProver::<SecureField, Blake3Hasher>::commit(config, vec![polynomial]);
         let column_bound = CirclePolyDegreeBound::new(LOG_DEGREE);
         let mut proof = prover.decommit(&queries);
         // Compromise the last layer polynomial's first coefficient.
-        proof.last_layer_poly[0] += QM31::one();
+        proof.last_layer_poly[0] += SecureField::one();
         let verifier = FriVerifier::commit(config, proof, vec![column_bound]).unwrap();
 
         let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
@@ -1063,7 +1064,8 @@ mod tests {
         const LOG_DEGREE: u32 = 3;
         let config = FriConfig::new(1, LOG_BLOWUP_FACTOR);
         let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
-        let prover = FriProver::<QM31, Blake3Hasher>::commit(config, vec![polynomial.clone()]);
+        let prover =
+            FriProver::<SecureField, Blake3Hasher>::commit(config, vec![polynomial.clone()]);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let proof = prover.decommit(&queries);

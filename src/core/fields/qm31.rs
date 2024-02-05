@@ -7,7 +7,7 @@ use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
 
-pub const QM31_EXTENSION_DEGREE: usize = 4;
+pub const SECURE_FIELD_EXTENSION_DEGREE: usize = 4;
 pub const P4: u128 = 21267647892944572736998860269687930881; // (2 ** 31 - 1) ** 4
 pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
 
@@ -16,7 +16,7 @@ pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
 /// Represented as ((a, b), (c, d)) of (a + bi) + (c + di)u.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct QM31(CM31, CM31);
-pub type ExtensionField = QM31;
+pub type SecureField = QM31;
 
 impl_field!(QM31, P4);
 impl_extension_field!(QM31, CM31);
@@ -59,9 +59,10 @@ impl Mul for QM31 {
 #[cfg(test)]
 #[macro_export]
 macro_rules! qm31 {
-    ($m0:expr, $m1:expr, $m2:expr, $m3:expr) => {
+    ($m0:expr, $m1:expr, $m2:expr, $m3:expr) => {{
+        use $crate::core::fields::qm31::QM31;
         QM31::from_u32_unchecked($m0, $m1, $m2, $m3)
-    };
+    }};
 }
 
 #[cfg(test)]
