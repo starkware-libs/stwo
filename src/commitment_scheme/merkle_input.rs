@@ -97,10 +97,59 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
     pub fn n_injected_columns(&self) -> usize {
         self.columns_to_inject.len()
     }
+
+    // Returns the structure of the merkle tree. i.e. for each depth, the length of the columns
+    // assigned to it.
+    // TODO(Ohad): implement this logic for the verifier.
+    pub fn configuration(&self) -> MerkleTreeConfig {
+        let column_sizes = self
+            .columns_to_inject
+            .iter()
+            .map(|col| col.len())
+            .collect::<Vec<usize>>();
+        MerkleTreeConfig {
+            column_sizes,
+            injected_depths_map: self.injected_depths_map.clone(),
+        }
+    }
+}
+
+/// The structure of a mixed degree merkle tree.
+/// The sizes of columns assigned to every layer, ordered as they were inserted & injected into hash
+/// blocks.
+pub struct MerkleTreeConfig {
+    column_sizes: Vec<usize>,
+    injected_depths_map: Vec<Vec<usize>>,
+}
+
+impl MerkleTreeConfig {
+    pub fn sort_queries_by_layer(&self, queries: &[Vec<usize>]) -> Vec<Vec<Vec<usize>>> {
+        let mut queries_to_layers = vec![vec![]; self.injected_depths_map.len()];
+        (1..=queries_to_layers.len()).for_each(|i| {
+            let columns_in_layer = self.column_indices_at(i);
+            columns_in_layer.iter().for_each(|&column_index| {
+                queries_to_layers[i - 1].push(queries[column_index].clone());
+            });
+        });
+        queries_to_layers
+    }
+
+    pub fn column_lengths_at_depth(&self, depth: usize) -> Vec<usize> {
+        self.column_indices_at(depth)
+            .iter()
+            .map(|&index| self.column_sizes[index])
+            .collect::<Vec<usize>>()
+    }
+
+    fn column_indices_at(&self, depth: usize) -> &[usize] {
+        &self.injected_depths_map[depth - 1]
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use crate::core::fields::m31::M31;
     use crate::m31;
 
@@ -195,5 +244,49 @@ mod tests {
         merkle_input.insert_column(2, &trace_column);
 
         assert_eq!(merkle_input.n_injected_columns(), 3);
+    }
+
+    #[test]
+    fn config_length_at_depth_test() {
+        let mut merkle_input = super::MerkleTreeInput::<M31>::new();
+        let column_length_4 = (0..4).map(M31::from_u32_unchecked).collect::<Vec<_>>();
+        let column_length_8 = (0..8).map(M31::from_u32_unchecked).collect::<Vec<_>>();
+        let column_length_16 = (0..16).map(M31::from_u32_unchecked).collect::<Vec<_>>();
+        merkle_input.insert_column(3, &column_length_4);
+        merkle_input.insert_column(2, &column_length_8);
+        merkle_input.insert_column(2, &column_length_4);
+        merkle_input.insert_column(3, &column_length_16);
+
+        let merkle_config = merkle_input.configuration();
+
+        assert_eq!(merkle_config.column_lengths_at_depth(3), vec![4, 16]);
+        assert_eq!(merkle_config.column_lengths_at_depth(2), vec![8, 4]);
+    }
+
+    #[test]
+    fn sort_queries_by_layer_test() {
+        let mut merkle_input = super::MerkleTreeInput::<M31>::new();
+        let column = [M31::from_u32_unchecked(0); 64];
+        merkle_input.insert_column(3, &column);
+        merkle_input.insert_column(2, &column);
+        merkle_input.insert_column(4, &column);
+        merkle_input.insert_column(2, &column);
+        merkle_input.insert_column(4, &column);
+        merkle_input.insert_column(3, &column);
+
+        let queries = vec![vec![0], vec![1], vec![2], vec![3], vec![4], vec![5]];
+
+        let merkle_config = merkle_input.configuration();
+        let sorted_queries = merkle_config.sort_queries_by_layer(&queries);
+
+        assert_eq!(
+            sorted_queries,
+            vec![
+                vec![],
+                vec![vec![1], vec![3]],
+                vec![vec![0], vec![5]],
+                vec![vec![2], vec![4]]
+            ]
+        );
     }
 }
