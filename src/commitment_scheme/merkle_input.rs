@@ -103,6 +103,42 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
             .iter()
             .fold(0, |sum, layer| sum + layer.len())
     }
+
+    // Returns the structure of the merkle tree, i.e. for each depth, number of elements injected
+    // to it's nodes.
+    pub fn structure(&self) -> MerkleTreeStructure {
+        MerkleTreeStructure::new(
+            (1..=self.max_injected_depth())
+                .map(|i| {
+                    let n_nodes_at_depth = 1 << (i - 1);
+                    self.get_columns(i)
+                        .iter()
+                        .map(|col| col.len() / n_nodes_at_depth)
+                        .sum()
+                })
+                .collect::<Vec<usize>>(),
+        )
+    }
+}
+
+/// The structure of a mixed degree merkle tree.
+/// The number of elements injected into nodes at every layer of the tree
+pub struct MerkleTreeStructure {
+    n_elements_in_node: Vec<usize>,
+}
+
+impl MerkleTreeStructure {
+    pub fn new(n_elements_in_node: Vec<usize>) -> Self {
+        Self { n_elements_in_node }
+    }
+
+    pub fn n_elements_in_node_at_depth(&self, depth: usize) -> usize {
+        assert!(
+            depth > 0 && depth <= self.n_elements_in_node.len(),
+            "Invalid depth!"
+        );
+        self.n_elements_in_node[depth - 1]
+    }
 }
 
 #[cfg(test)]
@@ -228,5 +264,20 @@ mod tests {
         merkle_input.insert_column(2, &trace_column);
 
         assert_eq!(merkle_input.n_injected_columns(), 3);
+    }
+
+    #[test]
+    fn structure_test() {
+        let mut merkle_input = super::MerkleTreeInput::<M31>::new();
+        let column_length_4 = (0..4).map(M31::from_u32_unchecked).collect::<Vec<_>>();
+        let column_length_8 = (0..8).map(M31::from_u32_unchecked).collect::<Vec<_>>();
+        merkle_input.insert_column(3, &column_length_4);
+        merkle_input.insert_column(2, &column_length_4);
+        merkle_input.insert_column(2, &column_length_8);
+
+        let structure = merkle_input.structure();
+        assert_eq!(structure.n_elements_in_node_at_depth(3), 1);
+        assert_eq!(structure.n_elements_in_node_at_depth(2), 6);
+        assert_eq!(structure.n_elements_in_node_at_depth(1), 0);
     }
 }
