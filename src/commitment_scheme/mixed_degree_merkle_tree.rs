@@ -227,6 +227,85 @@ where
         witnesses_and_queried_values_by_node
     }
 
+    // Builds the node of an ancestor query that was not queried in the current layer.
+    // Therefore, only contains one hash, and every injected element is a witness.
+    // TODO(Ohad): remove #[allow(dead_code)].
+    #[allow(dead_code)]
+    fn build_ancestor_node(&self, layer_depth: usize, query: usize) -> DecommitmentNode<F, H> {
+        let node_index = query / 2;
+        let injected_elements = self.input.get_injected_elements(layer_depth, node_index);
+        let (left_hash, right_hash) = self.sibling_hash(query, layer_depth);
+
+        #[cfg(debug_assertions)]
+        return DecommitmentNode::new(left_hash, right_hash, injected_elements, vec![], node_index);
+
+        #[cfg(not(debug_assertions))]
+        return DecommitmentNode::new(left_hash, right_hash, injected_elements);
+    }
+
+    // Builds the node of an ancestor query that participates in a query for some column.
+    // Therefore, contains one hash, and witness/queried elements needs to be placed accordingly.
+    // TODO(Ohad): remove #[allow(dead_code)].
+    #[allow(dead_code)]
+    fn build_queried_ancestor_node(
+        &self,
+        query: usize,
+        layer_depth: usize,
+        witness_elements: Vec<F>,
+        queried_values: Vec<F>,
+    ) -> DecommitmentNode<F, H> {
+        let (left_hash, right_hash) = self.sibling_hash(query, layer_depth);
+
+        #[cfg(debug_assertions)]
+        return DecommitmentNode::new(
+            left_hash,
+            right_hash,
+            witness_elements,
+            queried_values,
+            query / 2,
+        );
+
+        #[cfg(not(debug_assertions))]
+        {
+            std::mem::drop(queried_values);
+            DecommitmentNode::new(left_hash, right_hash, witness_elements)
+        }
+    }
+
+    // Builds a node that participates in a query in the current layer, and is not an ancestor of
+    // any query from deeper layers . Therefore, contains both hashes, and witness/queried
+    // elements needs to be placed accordingly. TODO(Ohad): remove #[allow(dead_code)].
+    #[allow(dead_code)]
+    fn build_queried_node(
+        &self,
+        node_index: usize,
+        layer_depth: usize,
+        witness_elements: Vec<F>,
+        queried_values: Vec<F>,
+    ) -> DecommitmentNode<F, H> {
+        let (left_hash, right_hash) = if layer_depth >= self.height() {
+            (None, None)
+        } else {
+            let hash_pair = self.both_hash_siblings(node_index, layer_depth);
+            (Some(hash_pair.0), Some(hash_pair.1))
+        };
+
+        #[cfg(debug_assertions)]
+        return DecommitmentNode::new(
+            left_hash,
+            right_hash,
+            witness_elements,
+            queried_values,
+            node_index,
+        );
+
+        #[cfg(not(debug_assertions))]
+        {
+            std::mem::drop(queried_values);
+            DecommitmentNode::new(left_hash, right_hash, witness_elements)
+        }
+    }
+
     #[allow(dead_code)]
     fn sibling_hash(&self, query: usize, layer_depth: usize) -> (Option<H::Hash>, Option<H::Hash>) {
         if query % 2 == 0 {
