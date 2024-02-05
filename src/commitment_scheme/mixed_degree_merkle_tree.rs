@@ -1,3 +1,5 @@
+use std::iter::Peekable;
+
 use itertools::Itertools;
 
 use super::hasher::Hasher;
@@ -210,6 +212,32 @@ where
         }
 
         witnesses_and_queried_values_by_node
+    }
+
+    // Builds nodes that are directly queried in the given layer, are not ancestors of previous
+    // queries, and preside the next index that is an ancestor and was not consumed
+    // yet,'node_index_upper_bound'.
+    // TODO(Ohad): remove #[allow(dead_code)].
+    #[allow(dead_code)]
+    fn preceding_queried_nodes(
+        &self,
+        node_query_values: &mut Peekable<impl Iterator<Item = (usize, (Vec<F>, Vec<F>))>>,
+        node_index_upper_bound: usize,
+        layer_depth: usize,
+    ) -> Vec<DecommitmentNode<F, H>> {
+        let mut nodes = Vec::<DecommitmentNode<F, H>>::new();
+        while let Some((node_index, (witness_elements, queried_values))) =
+            node_query_values.next_if(|(node_index, _)| *node_index < node_index_upper_bound)
+        {
+            nodes.push(self.build_queried_node(
+                node_index,
+                layer_depth,
+                witness_elements,
+                queried_values,
+            ));
+        }
+
+        nodes
     }
 
     // Builds the node of an ancestor query that was not queried in the current layer.
