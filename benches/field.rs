@@ -1,6 +1,6 @@
 use prover_research::core::fields::cm31::CM31;
 use prover_research::core::fields::m31::{M31, P};
-use prover_research::core::fields::qm31::QM31;
+use prover_research::core::fields::qm31::SecureField;
 use rand::rngs::ThreadRng;
 use rand::Rng;
 pub const N_ELEMENTS: usize = 1 << 16;
@@ -14,8 +14,8 @@ pub fn get_random_cm31_element(rng: &mut ThreadRng) -> CM31 {
     CM31::from_m31(get_random_m31_element(rng), get_random_m31_element(rng))
 }
 
-pub fn get_random_qm31_element(rng: &mut ThreadRng) -> QM31 {
-    QM31::from_m31(
+pub fn get_random_qm31_element(rng: &mut ThreadRng) -> SecureField {
+    SecureField::from_m31(
         get_random_m31_element(rng),
         get_random_m31_element(rng),
         get_random_m31_element(rng),
@@ -95,15 +95,15 @@ pub fn cm31_operations_bench(c: &mut criterion::Criterion) {
 
 pub fn qm31_operations_bench(c: &mut criterion::Criterion) {
     let mut rng = rand::thread_rng();
-    let mut elements: Vec<QM31> = Vec::new();
-    let mut state: [QM31; N_STATE_ELEMENTS] =
+    let mut elements: Vec<SecureField> = Vec::new();
+    let mut state: [SecureField; N_STATE_ELEMENTS] =
         [(); N_STATE_ELEMENTS].map(|_| get_random_qm31_element(&mut rng));
 
     for _ in 0..(N_ELEMENTS) {
         elements.push(get_random_qm31_element(&mut rng));
     }
 
-    c.bench_function("QM31 mul", |b| {
+    c.bench_function("SecureField mul", |b| {
         b.iter(|| {
             for elem in &elements {
                 for _ in 0..128 {
@@ -115,7 +115,7 @@ pub fn qm31_operations_bench(c: &mut criterion::Criterion) {
         })
     });
 
-    c.bench_function("QM31 add", |b| {
+    c.bench_function("SecureField add", |b| {
         b.iter(|| {
             for elem in &elements {
                 for _ in 0..128 {

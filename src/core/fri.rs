@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use super::channel::Channel;
 use super::fields::m31::BaseField;
-use super::fields::qm31::ExtensionField;
+use super::fields::qm31::SecureField;
 use super::fields::{ExtensionOf, Field};
 use super::poly::circle::CircleEvaluation;
 use super::poly::line::{LineEvaluation, LinePoly};
@@ -67,7 +67,7 @@ impl FriConfig {
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
 pub struct FriProver<H: Hasher> {
     inner_layers: Vec<FriLayerProver<H>>,
-    last_layer_poly: LinePoly<ExtensionField>,
+    last_layer_poly: LinePoly<SecureField>,
 }
 
 impl<H: Hasher<NativeType = u8>> FriProver<H> {
@@ -96,7 +96,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
     ) -> Self
     where
         F: ExtensionOf<BaseField>,
-        ExtensionField: ExtensionOf<F>,
+        SecureField: ExtensionOf<F>,
     {
         assert!(columns.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
         assert!(columns.iter().all(|e| e.domain.is_canonic()), "not canonic");
@@ -120,11 +120,11 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         columns: &[CircleEvaluation<F, BitReversedOrder>],
     ) -> (
         Vec<FriLayerProver<H>>,
-        LineEvaluation<ExtensionField, BitReversedOrder>,
+        LineEvaluation<SecureField, BitReversedOrder>,
     )
     where
         F: ExtensionOf<BaseField>,
-        ExtensionField: ExtensionOf<F>,
+        SecureField: ExtensionOf<F>,
     {
         // Returns the length of the [LineEvaluation] a [CircleEvaluation] gets folded into.
         let folded_len = |e: &CircleEvaluation<_, _>| e.len() >> CIRCLE_TO_LINE_FOLD_STEP;
@@ -138,7 +138,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         let mut layers = Vec::new();
 
         // Circle polynomials can all be folded with the same alpha.
-        let circle_poly_alpha = channel.draw_random_extension_felts()[0];
+        let circle_poly_alpha = channel.draw_random_secure_felts()[0];
 
         while layer_evaluation.len() > config.last_layer_domain_size() {
             // Check for any columns (circle poly evaluations) that should be combined.
@@ -148,7 +148,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
 
             let layer = FriLayerProver::new(layer_evaluation);
             channel.mix_digest(layer.merkle_tree.root());
-            let folding_alpha = channel.draw_random_extension_felts()[0];
+            let folding_alpha = channel.draw_random_secure_felts()[0];
             let folded_layer_evaluation = fold_line(&layer.evaluation, folding_alpha);
 
             layer_evaluation = folded_layer_evaluation;
@@ -174,8 +174,8 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
     fn commit_last_layer(
         _channel: &mut impl Channel<Digest = H::Hash>,
         config: FriConfig,
-        evaluation: LineEvaluation<ExtensionField, BitReversedOrder>,
-    ) -> LinePoly<ExtensionField> {
+        evaluation: LineEvaluation<SecureField, BitReversedOrder>,
+    ) -> LinePoly<SecureField> {
         assert_eq!(evaluation.len(), config.last_layer_domain_size());
 
         let evaluation = evaluation.bit_reverse();
@@ -183,7 +183,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
 
         let last_layer_degree_bound = 1 << config.log_last_layer_degree_bound;
         let zeros = coeffs.split_off(last_layer_degree_bound);
-        assert!(zeros.iter().all(ExtensionField::is_zero), "invalid degree");
+        assert!(zeros.iter().all(SecureField::is_zero), "invalid degree");
 
         let last_layer_poly = LinePoly::from_ordered_coefficients(coeffs);
         // TODO: Add back when channel support. Remove allow below.
@@ -219,14 +219,14 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
 
 pub struct FriVerifier<H: Hasher> {
     /// Alpha used to fold all circle polynomials to univariate polynomials.
-    circle_poly_alpha: ExtensionField,
+    circle_poly_alpha: SecureField,
     /// Domain size queries should be sampled from.
     expected_query_log_domain_size: u32,
     /// The list of degree bounds of all committed circle polynomials.
     column_bounds: Vec<CirclePolyDegreeBound>,
     inner_layers: Vec<FriLayerVerifier<H>>,
     last_layer_domain: LineDomain,
-    last_layer_poly: LinePoly<ExtensionField>,
+    last_layer_poly: LinePoly<SecureField>,
 }
 
 impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
@@ -259,7 +259,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
             max_column_bound.log_degree_bound + config.log_blowup_factor;
 
         // Circle polynomials can all be folded with the same alpha.
-        let circle_poly_alpha = channel.draw_random_extension_felts()[0];
+        let circle_poly_alpha = channel.draw_random_secure_felts()[0];
 
         let mut inner_layers = Vec::new();
         let mut layer_bound = max_column_bound.fold_to_line();
@@ -270,7 +270,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         for (layer_index, proof) in proof.inner_layers.into_iter().enumerate() {
             channel.mix_digest(proof.commitment);
 
-            let folding_alpha = channel.draw_random_extension_felts()[0];
+            let folding_alpha = channel.draw_random_secure_felts()[0];
 
             inner_layers.push(FriLayerVerifier {
                 degree_bound: layer_bound,
@@ -327,7 +327,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     ) -> Result<(), VerificationError>
     where
         F: ExtensionOf<BaseField>,
-        ExtensionField: ExtensionOf<F>,
+        SecureField: ExtensionOf<F>,
     {
         assert_eq!(queries.log_domain_size, self.expected_query_log_domain_size);
         assert_eq!(decommited_values.len(), self.column_bounds.len());
@@ -345,10 +345,10 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         &self,
         queries: &Queries,
         decommited_values: Vec<SparseCircleEvaluation<F>>,
-    ) -> Result<(Queries, Vec<ExtensionField>), VerificationError>
+    ) -> Result<(Queries, Vec<SecureField>), VerificationError>
     where
         F: ExtensionOf<BaseField>,
-        ExtensionField: ExtensionOf<F> + Field,
+        SecureField: ExtensionOf<F> + Field,
     {
         let circle_poly_alpha = self.circle_poly_alpha;
         let circle_poly_alpha_sq = circle_poly_alpha * circle_poly_alpha;
@@ -356,7 +356,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         let mut decommited_values = decommited_values.into_iter();
         let mut column_bounds = self.column_bounds.iter().copied().peekable();
         let mut layer_queries = queries.fold(CIRCLE_TO_LINE_FOLD_STEP);
-        let mut layer_query_evals = vec![ExtensionField::zero(); layer_queries.len()];
+        let mut layer_query_evals = vec![SecureField::zero(); layer_queries.len()];
 
         for layer in self.inner_layers.iter() {
             // Check for column evals that need to folded into this layer.
@@ -388,7 +388,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     fn decommit_last_layer(
         self,
         queries: Queries,
-        query_evals: Vec<ExtensionField>,
+        query_evals: Vec<SecureField>,
     ) -> Result<(), VerificationError> {
         let Self {
             last_layer_domain: domain,
@@ -488,7 +488,7 @@ impl LinePolyDegreeBound {
 /// A FRI proof.
 pub struct FriProof<H: Hasher> {
     pub inner_layers: Vec<FriLayerProof<H>>,
-    pub last_layer_poly: LinePoly<ExtensionField>,
+    pub last_layer_poly: LinePoly<SecureField>,
 }
 
 /// Number of folds for univariate polynomials.
@@ -504,15 +504,15 @@ const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
 pub struct FriLayerProof<H: Hasher> {
     /// The subset stored corresponds to the set of evaluations the verifier doesn't have but needs
     /// to fold and verify the merkle decommitment.
-    pub evals_subset: Vec<ExtensionField>,
-    pub decommitment: MerkleDecommitment<ExtensionField, H>,
+    pub evals_subset: Vec<SecureField>,
+    pub decommitment: MerkleDecommitment<SecureField, H>,
     pub commitment: H::Hash,
 }
 
 struct FriLayerVerifier<H: Hasher> {
     degree_bound: LinePolyDegreeBound,
     domain: LineDomain,
-    folding_alpha: ExtensionField,
+    folding_alpha: SecureField,
     layer_index: usize,
     proof: FriLayerProof<H>,
 }
@@ -532,8 +532,8 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
     fn verify_and_fold(
         &self,
         queries: Queries,
-        evals_at_queries: Vec<ExtensionField>,
-    ) -> Result<(Queries, Vec<ExtensionField>), VerificationError> {
+        evals_at_queries: Vec<SecureField>,
+    ) -> Result<(Queries, Vec<SecureField>), VerificationError> {
         let decommitment = &self.proof.decommitment;
         let commitment = self.proof.commitment;
 
@@ -600,8 +600,8 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
     fn extract_evaluation(
         &self,
         queries: &Queries,
-        evals_at_queries: &[ExtensionField],
-    ) -> Result<SparseLineEvaluation<ExtensionField>, VerificationError> {
+        evals_at_queries: &[SecureField],
+    ) -> Result<SparseLineEvaluation<SecureField>, VerificationError> {
         // Evals provided by the verifier.
         let mut evals_at_queries = evals_at_queries.iter().copied();
 
@@ -658,12 +658,12 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
 /// of size two. Each leaf of the merkle tree commits to a single coset evaluation.
 // TODO(andrew): Support different step sizes.
 struct FriLayerProver<H: Hasher> {
-    evaluation: LineEvaluation<ExtensionField, BitReversedOrder>,
-    merkle_tree: MerkleTree<ExtensionField, H>,
+    evaluation: LineEvaluation<SecureField, BitReversedOrder>,
+    merkle_tree: MerkleTree<SecureField, H>,
 }
 
 impl<H: Hasher<NativeType = u8>> FriLayerProver<H> {
-    fn new(evaluation: LineEvaluation<ExtensionField, BitReversedOrder>) -> Self {
+    fn new(evaluation: LineEvaluation<SecureField, BitReversedOrder>) -> Self {
         // TODO: Commit on slice.
         let merkle_tree = MerkleTree::commit(vec![evaluation.to_vec()]);
         #[allow(unreachable_code)]
@@ -727,15 +727,15 @@ impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F> {
         Self { subcircle_evals }
     }
 
-    fn fold(self, alpha: ExtensionField) -> Vec<ExtensionField>
+    fn fold(self, alpha: SecureField) -> Vec<SecureField>
     where
-        ExtensionField: ExtensionOf<F>,
+        SecureField: ExtensionOf<F>,
     {
         self.subcircle_evals
             .into_iter()
             .map(|e| {
                 let buffer_domain = LineDomain::new(e.domain.half_coset);
-                let mut buffer = LineEvaluation::new(buffer_domain, vec![ExtensionField::zero()]);
+                let mut buffer = LineEvaluation::new(buffer_domain, vec![SecureField::zero()]);
                 fold_circle_into_line(&mut buffer, &e, alpha);
                 buffer[0]
             })
@@ -815,12 +815,12 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
 // TODO(andrew): Make folding factor generic.
 // TODO(andrew): Fold directly into FRI layer to prevent allocation.
 fn fold_circle_into_line<F>(
-    dst: &mut LineEvaluation<ExtensionField, BitReversedOrder>,
+    dst: &mut LineEvaluation<SecureField, BitReversedOrder>,
     src: &CircleEvaluation<F, BitReversedOrder>,
-    alpha: ExtensionField,
+    alpha: SecureField,
 ) where
     F: ExtensionOf<BaseField>,
-    ExtensionField: ExtensionOf<F> + Field,
+    SecureField: ExtensionOf<F> + Field,
 {
     assert_eq!(src.len() >> CIRCLE_TO_LINE_FOLD_STEP, dst.len());
 
@@ -857,7 +857,7 @@ mod tests {
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::ExtensionField;
+    use crate::core::fields::qm31::SecureField;
     use crate::core::fields::ExtensionOf;
     use crate::core::fri::{
         fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig, FriVerifier,
@@ -904,7 +904,7 @@ mod tests {
         const LOG_DEGREE: u32 = 4;
         let circle_evaluation = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let num_folded_evals = circle_evaluation.domain.size() >> CIRCLE_TO_LINE_FOLD_STEP;
-        let alpha = ExtensionField::one();
+        let alpha = SecureField::one();
         let folded_domain = LineDomain::new(circle_evaluation.domain.half_coset);
 
         let mut folded_evaluation =
