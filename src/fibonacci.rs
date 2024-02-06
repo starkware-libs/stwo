@@ -15,7 +15,9 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::fri::SparseCircleEvaluation;
-use crate::core::oods::{get_oods_points, get_oods_quotient, get_oods_values};
+use crate::core::oods::{
+    get_oods_points, get_oods_quotient, get_oods_values, get_pair_oods_quotient,
+};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
 use crate::core::poly::BitReversedOrder;
 use crate::core::queries::Queries;
@@ -233,7 +235,7 @@ impl Fibonacci {
             .zip(trace_oods_evaluation.values.iter())
         {
             oods_quotients.push(
-                get_oods_quotient(*point, *value, &trace_commitment_evaluation).bit_reverse(),
+                get_pair_oods_quotient(*point, *value, &trace_commitment_evaluation).bit_reverse(),
             );
         }
         oods_quotients.push(
@@ -371,7 +373,8 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
                 values,
             );
             evaluation.push(
-                get_oods_quotient(*oods_point, *oods_value, &sub_circle_evaluation).bit_reverse(),
+                get_pair_oods_quotient(*oods_point, *oods_value, &sub_circle_evaluation)
+                    .bit_reverse(),
             );
         }
         assert!(opened_values.next().is_none(), "Not all values were used.");
@@ -518,8 +521,7 @@ mod tests {
         // Assert that the trace quotients are low degree.
         for quotient in trace_quotients.iter() {
             let interpolated_quotient_poly = quotient.clone().bit_reverse().interpolate();
-            // TODO(AlonH): remove the +1 once we use pair vanishing.
-            assert!(interpolated_quotient_poly.is_in_fft_space(FIB_LOG_SIZE + 1));
+            assert!(interpolated_quotient_poly.is_in_fft_space(FIB_LOG_SIZE));
         }
 
         // Assert that the composition polynomial quotient is low degree.
