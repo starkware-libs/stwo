@@ -13,6 +13,7 @@ use crate::core::constraints::{
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
+use crate::core::fri::SparseCircleEvaluation;
 use crate::core::oods::{get_oods_points, get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
 use crate::core::queries::Queries;
@@ -358,7 +359,6 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
     // An evaluation for each mask item and one for the composition_polynomial.
     let mut sparse_circle_evaluations = Vec::with_capacity(mask.len() + 1);
     for (oods_point, oods_value) in trace_oods_points.iter().zip(proof.trace_oods_values.iter()) {
-        // TODO(AlonH): Change from Vec to SparseCircleEvaluation.
         let mut evaluation = Vec::with_capacity(trace_opening_positions.len());
         let mut opened_values = proof.trace_opened_values.iter().copied();
         for sub_circle_domain in trace_opening_positions.iter() {
@@ -367,14 +367,12 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
                 sub_circle_domain.to_circle_domain(&fib.trace_commitment_domain.circle_domain()),
                 values,
             );
-            evaluation.push(get_oods_quotient(
-                *oods_point,
-                *oods_value,
-                &sub_circle_evaluation,
-            ));
+            evaluation.push(
+                get_oods_quotient(*oods_point, *oods_value, &sub_circle_evaluation).bit_reverse(),
+            );
         }
         assert!(opened_values.next().is_none(), "Not all values were used.");
-        sparse_circle_evaluations.push(evaluation);
+        sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
     }
     let mut evaluation = Vec::with_capacity(composition_polynomial_opening_positions.len());
     let mut opened_values = proof.composition_polynomial_opened_values.iter().copied();
@@ -385,14 +383,17 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
                 .to_circle_domain(&fib.composition_polynomial_commitment_domain.circle_domain()),
             values.to_vec(),
         );
-        evaluation.push(get_oods_quotient(
-            oods_point,
-            composition_polynomial_oods_value,
-            &sub_circle_evaluation,
-        ));
+        evaluation.push(
+            get_oods_quotient(
+                oods_point,
+                composition_polynomial_oods_value,
+                &sub_circle_evaluation,
+            )
+            .bit_reverse(),
+        );
     }
     assert!(opened_values.next().is_none(), "Not all values were used.");
-    sparse_circle_evaluations.push(evaluation);
+    sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
     true
 }
 
