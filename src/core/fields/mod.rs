@@ -10,7 +10,17 @@ pub mod m31;
 pub mod qm31;
 
 pub trait Field:
-    NumAssign + Neg<Output = Self> + Copy + Debug + Display + PartialOrd + Ord + Send + Sync + Sized
+    NumAssign
+    + Neg<Output = Self>
+    + ComplexConjugate
+    + Copy
+    + Debug
+    + Display
+    + PartialOrd
+    + Ord
+    + Send
+    + Sync
+    + Sized
 {
     fn square(&self) -> Self {
         (*self) * (*self)
@@ -54,6 +64,23 @@ pub unsafe trait IntoSlice<T: Sized>: Sized {
 }
 
 unsafe impl<F: Field> IntoSlice<u8> for F {}
+
+pub trait ComplexConjugate {
+    /// # Example
+    ///
+    /// ```
+    /// use prover_research::core::fields::m31::P;
+    /// use prover_research::core::fields::qm31::QM31;
+    /// use prover_research::core::fields::ComplexConjugate;
+    ///
+    /// let x = QM31::from_u32_unchecked(1, 2, 3, 4);
+    /// assert_eq!(
+    ///     x.complex_conjugate(),
+    ///     QM31::from_u32_unchecked(1, 2, P - 3, P - 4)
+    /// );
+    /// ```
+    fn complex_conjugate(&self) -> Self;
+}
 
 pub trait ExtensionOf<F: Field>: Field + From<F> + NumOps<F> + NumAssignOps<F> {}
 
@@ -251,6 +278,12 @@ macro_rules! impl_extension_field {
             #[allow(clippy::suspicious_arithmetic_impl)]
             fn div(self, rhs: $field_name) -> Self::Output {
                 rhs.inverse() * self
+            }
+        }
+
+        impl ComplexConjugate for $field_name {
+            fn complex_conjugate(&self) -> Self {
+                Self(self.0, -self.1)
             }
         }
 

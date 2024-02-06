@@ -1,7 +1,7 @@
 use std::cmp::Reverse;
 use std::fmt::Debug;
 use std::iter::zip;
-use std::ops::{Add, Mul, RangeInclusive};
+use std::ops::RangeInclusive;
 
 use num_traits::Zero;
 use thiserror::Error;
@@ -349,12 +349,10 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     ) -> Result<(Queries, Vec<ExtensionField>), VerificationError>
     where
         F: ExtensionOf<BaseField>,
-        ExtensionField: ExtensionOf<F>,
+        ExtensionField: ExtensionOf<F> + Field,
     {
         let circle_poly_alpha = self.circle_poly_alpha;
-        // TODO(andrew): `circle_poly_alpha * circle_poly_alpha` throws an error. Investigate why
-        // has to be explicit here.
-        let circle_poly_alpha_sq = Mul::<ExtensionField>::mul(circle_poly_alpha, circle_poly_alpha);
+        let circle_poly_alpha_sq = circle_poly_alpha * circle_poly_alpha;
 
         let mut decommited_values = decommited_values.into_iter();
         let mut column_bounds = self.column_bounds.iter().copied().peekable();
@@ -372,12 +370,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
                 assert_eq!(folded_evals.len(), layer_query_evals.len());
 
                 for (layer_eval, folded_eval) in zip(&mut layer_query_evals, folded_evals) {
-                    // TODO(andrew): `layer_eval * circle_poly_alpha_sq + folded_eval` throws an
-                    // error. Investigate why has to be explicit here.
-                    *layer_eval = Add::<ExtensionField>::add(
-                        Mul::<ExtensionField>::mul(*layer_eval, circle_poly_alpha_sq),
-                        folded_eval,
-                    );
+                    *layer_eval = *layer_eval * circle_poly_alpha_sq + folded_eval;
                 }
             }
 
@@ -828,14 +821,12 @@ fn fold_circle_into_line<F>(
     alpha: ExtensionField,
 ) where
     F: ExtensionOf<BaseField>,
-    ExtensionField: ExtensionOf<F>,
+    ExtensionField: ExtensionOf<F> + Field,
 {
     assert_eq!(src.len() >> CIRCLE_TO_LINE_FOLD_STEP, dst.len());
 
     let domain = src.domain;
-    // TODO(andrew): Getting error with `alpha * alpha`: "the expected type parameter `F` found
-    // struct `core::fields::qm31::QM31`". Not sure why I have to be explicit here.
-    let alpha_sq = Mul::<ExtensionField>::mul(alpha, alpha);
+    let alpha_sq = alpha * alpha;
 
     zip(&mut **dst, src.array_chunks())
         .enumerate()
@@ -851,10 +842,7 @@ fn fold_circle_into_line<F>(
             ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
             let f_prime = alpha * f1_px + f0_px;
 
-            // TODO(andrew): Getting error with `*dst * alpha_sq + f_prime`: "the expected type
-            // parameter `F` found struct `core::fields::qm31::QM31`". Not sure why I
-            // have to be explicit here.
-            *dst = Add::<ExtensionField>::add(Mul::<ExtensionField>::mul(*dst, alpha_sq), f_prime);
+            *dst = *dst * alpha_sq + f_prime;
         });
 }
 
