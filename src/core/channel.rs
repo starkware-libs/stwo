@@ -25,12 +25,12 @@ impl ChannelTime {
 }
 
 pub trait Channel {
-    type ChannelHasher: Hasher;
+    type Digest;
     const BYTES_PER_HASH: usize;
 
-    fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self;
-    fn get_digest(&self) -> Vec<<Self::ChannelHasher as Hasher>::NativeType>;
-    fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash);
+    fn get_digest(&self) -> Self::Digest;
+    fn new(digest: Self::Digest) -> Self;
+    fn mix_with_seed(&mut self, seed: Self::Digest);
     fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
@@ -51,22 +51,22 @@ pub struct Blake2sChannel {
 }
 
 impl Channel for Blake2sChannel {
-    type ChannelHasher = Blake2sHasher;
+    type Digest = Blake2sHash;
     const BYTES_PER_HASH: usize = BLAKE_BYTES_PER_HASH;
 
-    fn new(digest: <Self::ChannelHasher as Hasher>::Hash) -> Self {
+    fn new(digest: Self::Digest) -> Self {
         Blake2sChannel {
             digest,
             channel_time: ChannelTime::default(),
         }
     }
 
-    fn get_digest(&self) -> Vec<<Self::ChannelHasher as Hasher>::NativeType> {
-        self.digest.as_ref().to_vec()
+    fn get_digest(&self) -> Self::Digest {
+        self.digest
     }
 
-    fn mix_with_seed(&mut self, seed: <Self::ChannelHasher as Hasher>::Hash) {
-        self.digest = Self::ChannelHasher::concat_and_hash(&self.digest, &seed);
+    fn mix_with_seed(&mut self, digest: Self::Digest) {
+        self.digest = Blake2sHasher::concat_and_hash(&self.digest, &digest);
         self.channel_time.inc_challenges();
     }
 
@@ -106,7 +106,7 @@ impl Channel for Blake2sChannel {
         hash_input.extend_from_slice(&padded_counter);
 
         self.channel_time.inc_sent();
-        Self::ChannelHasher::hash(&hash_input).into()
+        Blake2sHasher::hash(&hash_input).into()
     }
 }
 
