@@ -30,7 +30,7 @@ impl ProofOfWork {
     }
 
     pub fn prove(&self, channel: &mut Blake2sChannel) -> ProofOfWorkProof {
-        let seed = channel.get_digest();
+        let seed = channel.get_digest().as_ref().to_vec();
         let proof = self.grind(seed);
         channel.mix_with_seed(Blake2sHash::from(
             proof.to_digest(Blake2sHasher::OUTPUT_SIZE).as_ref(),
@@ -39,7 +39,7 @@ impl ProofOfWork {
     }
 
     pub fn verify(&self, channel: &mut Blake2sChannel, proof: &ProofOfWorkProof) -> bool {
-        let seed = channel.get_digest();
+        let seed = channel.get_digest().as_ref().to_vec();
         let verified = check_leading_zeros(
             self.hash_with_nonce(&seed, proof.nonce).as_ref(),
             self.n_bits,

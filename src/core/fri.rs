@@ -90,7 +90,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
     /// * An evaluation's domain is not a canonic circle domain.
     // TODO(andrew): Add docs for all evaluations needing to be from canonic domains.
     pub fn commit<F>(
-        channel: &mut impl Channel<ChannelHasher = H>,
+        channel: &mut impl Channel<Digest = H::Hash>,
         config: FriConfig,
         columns: Vec<CircleEvaluation<F, BitReversedOrder>>,
     ) -> Self
@@ -115,7 +115,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
     ///
     /// Returns all inner layers and the evaluation of the last layer.
     fn commit_inner_layers<F>(
-        channel: &mut impl Channel<ChannelHasher = H>,
+        channel: &mut impl Channel<Digest = H::Hash>,
         config: FriConfig,
         columns: Vec<CircleEvaluation<F, BitReversedOrder>>,
     ) -> (
@@ -147,7 +147,6 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
             }
 
             let layer = FriLayerProver::new(layer_evaluation);
-
             channel.mix_with_seed(layer.merkle_tree.root());
             let folding_alpha = channel.draw_random_extension_felts()[0];
             let folded_layer_evaluation = fold_line(&layer.evaluation, folding_alpha);
@@ -173,7 +172,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
     /// * The evaluation domain size exceeds the maximum last layer domain size.
     /// * The evaluation is not of sufficiently low degree.
     fn commit_last_layer(
-        _channel: &mut impl Channel<ChannelHasher = H>,
+        _channel: &mut impl Channel<Digest = H::Hash>,
         config: FriConfig,
         evaluation: LineEvaluation<ExtensionField, BitReversedOrder>,
     ) -> LinePoly<ExtensionField> {
@@ -248,7 +247,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     /// * The degree bounds are not sorted in descending order.
     /// * A degree bound is less than or equal to the last layer's degree bound.
     pub fn commit(
-        channel: &mut impl Channel<ChannelHasher = H>,
+        channel: &mut impl Channel<Digest = H::Hash>,
         config: FriConfig,
         proof: FriProof<H>,
         column_bounds: Vec<CirclePolyDegreeBound>,
@@ -853,7 +852,7 @@ mod tests {
     use num_traits::{One, Zero};
 
     use super::{SparseCircleEvaluation, VerificationError};
-    use crate::commitment_scheme::blake2_hash::Blake2sHash;
+    use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
@@ -861,7 +860,7 @@ mod tests {
     use crate::core::fields::qm31::ExtensionField;
     use crate::core::fields::ExtensionOf;
     use crate::core::fri::{
-        fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig, FriProver, FriVerifier,
+        fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig, FriVerifier,
         CIRCLE_TO_LINE_FOLD_STEP,
     };
     use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
@@ -872,6 +871,7 @@ mod tests {
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
+    type FriProver = super::FriProver<Blake2sHasher>;
 
     #[test]
     fn fold_line_works() {
