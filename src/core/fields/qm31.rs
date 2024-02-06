@@ -37,10 +37,6 @@ impl QM31 {
     pub fn from_m31_array(array: [M31; 4]) -> Self {
         Self::from_m31(array[0], array[1], array[2], array[3])
     }
-
-    pub fn conjugate(self) -> Self {
-        Self(self.0, -self.1)
-    }
 }
 
 impl Display for QM31 {

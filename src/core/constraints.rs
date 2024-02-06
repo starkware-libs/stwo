@@ -1,10 +1,11 @@
-use num_traits::{One, Zero};
+use num_traits::One;
 
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fields::m31::BaseField;
 use super::fields::qm31::QM31;
 use super::fields::ExtensionOf;
 use super::poly::circle::{CircleEvaluation, CirclePoly, PointMapping};
+use crate::core::fields::ComplexConjugate;
 
 /// Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoint<F>) -> F {
@@ -77,9 +78,11 @@ pub fn complex_conjugate_line(
     value: QM31,
     p: CirclePoint<BaseField>,
 ) -> QM31 {
-    assert_ne!(point.y, QM31::zero());
-    let conjugate_value = value.conjugate();
-    value + (conjugate_value - value) * (p.y - point.y) / (point.y.conjugate() - point.y)
+    assert_ne!(point.y, point.y.complex_conjugate());
+    assert_ne!(value, value.complex_conjugate());
+    value
+        + (value.complex_conjugate() - value) * (-point.y + p.y)
+            / (point.y.complex_conjugate() - point.y)
 }
 
 /// Utils for computing constraints.
@@ -256,8 +259,8 @@ mod tests {
             let line = complex_conjugate_line(vanish_point, vanish_point_value, point);
             let mut value = polynomial.eval_at_point(point) - line;
             let vanish_point_conjugate = CirclePoint {
-                x: vanish_point.x.conjugate(),
-                y: vanish_point.y.conjugate(),
+                x: vanish_point.x.complex_conjugate(),
+                y: vanish_point.y.complex_conjugate(),
             };
             value /= pair_excluder(vanish_point, vanish_point_conjugate, point.into_ef());
             quotient_polynomial_values.push(value);
