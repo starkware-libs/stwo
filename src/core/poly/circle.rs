@@ -9,7 +9,7 @@ use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, Field};
-use crate::core::utils::bit_reverse;
+use crate::core::utils::{bit_reverse, bit_reverse_index};
 
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.
@@ -282,6 +282,13 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F, BitReversedOrder> {
             domain: self.domain,
             _eval_order: PhantomData,
         }
+    }
+
+    pub fn get_at(&self, point_index: CirclePointIndex) -> F {
+        self.values[bit_reverse_index(
+            self.domain.find(point_index).expect("Not in domain"),
+            self.domain.log_size(),
+        )]
     }
 }
 
@@ -583,6 +590,20 @@ mod tests {
         for i in 0..half_domain_size {
             assert_eq!(domain.index_at(i), -domain.index_at(i + half_domain_size));
             assert_eq!(domain.at(i), domain.at(i + half_domain_size).conjugate());
+        }
+    }
+
+    #[test]
+    pub fn test_get_at_circle_evaluation() {
+        let domain = CanonicCoset::new(7).circle_domain();
+        let values = (0..domain.size()).map(|i| m31!(i as u32)).collect();
+        let circle_evaluation = CircleEvaluation::<BaseField>::new(domain, values);
+        let bit_reversed_circle_evaluation = circle_evaluation.clone().bit_reverse();
+        for index in domain.iter_indices() {
+            assert_eq!(
+                circle_evaluation.get_at(index),
+                bit_reversed_circle_evaluation.get_at(index)
+            );
         }
     }
 }
