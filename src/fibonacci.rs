@@ -230,6 +230,14 @@ impl Fibonacci {
         // Calculate a quotient polynomial for each trace mask item and one for the composition
         // polynomial.
         let mut oods_quotients = Vec::with_capacity(mask.len() + 1);
+        oods_quotients.push(
+            get_oods_quotient(
+                oods_point,
+                composition_polynomial_oods_value,
+                &composition_polynomial_commitment_evaluation,
+            )
+            .bit_reverse(),
+        );
         for (point, value) in trace_oods_evaluation
             .points
             .iter()
@@ -239,14 +247,6 @@ impl Fibonacci {
                 get_pair_oods_quotient(*point, *value, &trace_commitment_evaluation).bit_reverse(),
             );
         }
-        oods_quotients.push(
-            get_oods_quotient(
-                oods_point,
-                composition_polynomial_oods_value,
-                &composition_polynomial_commitment_evaluation,
-            )
-            .bit_reverse(),
-        );
 
         // TODO(AlonH): Pass the oods quotients to FRI prover and get opening positions from it.
         let composition_polynomial_queries = Queries::generate(
@@ -362,25 +362,6 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
 
     // An evaluation for each mask item and one for the composition_polynomial.
     let mut sparse_circle_evaluations = Vec::with_capacity(mask.len() + 1);
-    for (oods_point, oods_value) in trace_oods_points.iter().zip(proof.trace_oods_values.iter()) {
-        let mut evaluation = Vec::with_capacity(trace_opening_positions.len());
-        let mut opened_values = proof.trace_opened_values.iter().copied();
-        for sub_circle_domain in trace_opening_positions.iter() {
-            let values = (&mut opened_values)
-                .take(1 << sub_circle_domain.log_size)
-                .collect();
-            let sub_circle_evaluation = CircleEvaluation::new(
-                sub_circle_domain.to_circle_domain(&fib.trace_commitment_domain.circle_domain()),
-                values,
-            );
-            evaluation.push(
-                get_pair_oods_quotient(*oods_point, *oods_value, &sub_circle_evaluation)
-                    .bit_reverse(),
-            );
-        }
-        assert!(opened_values.next().is_none(), "Not all values were used.");
-        sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
-    }
     let mut evaluation = Vec::with_capacity(composition_polynomial_opening_positions.len());
     let mut opened_values = proof.composition_polynomial_opened_values.iter().copied();
     for sub_circle_domain in composition_polynomial_opening_positions.iter() {
@@ -403,6 +384,25 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
     }
     assert!(opened_values.next().is_none(), "Not all values were used.");
     sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
+    for (oods_point, oods_value) in trace_oods_points.iter().zip(proof.trace_oods_values.iter()) {
+        let mut evaluation = Vec::with_capacity(trace_opening_positions.len());
+        let mut opened_values = proof.trace_opened_values.iter().copied();
+        for sub_circle_domain in trace_opening_positions.iter() {
+            let values = (&mut opened_values)
+                .take(1 << sub_circle_domain.log_size)
+                .collect();
+            let sub_circle_evaluation = CircleEvaluation::new(
+                sub_circle_domain.to_circle_domain(&fib.trace_commitment_domain.circle_domain()),
+                values,
+            );
+            evaluation.push(
+                get_pair_oods_quotient(*oods_point, *oods_value, &sub_circle_evaluation)
+                    .bit_reverse(),
+            );
+        }
+        assert!(opened_values.next().is_none(), "Not all values were used.");
+        sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
+    }
     true
 }
 
@@ -516,7 +516,7 @@ mod tests {
         let (composition_polynomial_quotient, trace_quotients) = proof
             .additional_proof_data
             .oods_quotients
-            .split_last()
+            .split_first()
             .unwrap();
 
         // Assert that the trace quotients are low degree.
