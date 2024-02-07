@@ -5,6 +5,7 @@ use super::fields::m31::BaseField;
 use super::fields::qm31::QM31;
 use super::fields::ExtensionOf;
 use super::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PointMapping};
+use super::poly::{BitReversedOrder, NaturalOrder};
 
 /// Evaluates the OODS quotient polynomial on a single point.
 pub fn eval_oods_quotient_point<
@@ -25,8 +26,8 @@ pub fn eval_oods_quotient_point<
 pub fn get_oods_quotient<F: ExtensionOf<BaseField>, EF: ExtensionOf<BaseField> + ExtensionOf<F>>(
     oods_point: CirclePoint<EF>,
     oods_value: EF,
-    eval: &CircleEvaluation<F>,
-) -> CircleEvaluation<EF> {
+    eval: &CircleEvaluation<F, BitReversedOrder>,
+) -> CircleEvaluation<EF, NaturalOrder> {
     let mut values = Vec::with_capacity(eval.domain.size());
     for p_ind in eval.domain.iter_indices() {
         values.push(eval_oods_quotient_point(

@@ -185,6 +185,7 @@ impl<F: ExtensionOf<BaseField>> DerefMut for LinePoly<F> {
 /// Evaluations of a univariate polynomial on a [LineDomain].
 // TODO(andrew): Remove EvalOrder. Bit-reversed evals are only necessary since LineEvaluation is
 // only used by FRI where evaluations are in bit-reversed order.
+#[derive(Clone, Debug)]
 pub struct LineEvaluation<F, EvalOrder = NaturalOrder> {
     /// Evaluations of a univariate polynomial on `domain`.
     evals: Vec<F>,
@@ -245,26 +246,6 @@ impl<F: ExtensionOf<BaseField>> LineEvaluation<F, BitReversedOrder> {
     pub fn bit_reverse(self) -> LineEvaluation<F, NaturalOrder> {
         LineEvaluation {
             evals: bit_reverse(self.evals),
-            domain: self.domain,
-            _eval_order: PhantomData,
-        }
-    }
-}
-
-impl<F: ExtensionOf<BaseField>, EvalOrder> Debug for LineEvaluation<F, EvalOrder> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LineEvaluation")
-            .field("evals", &self.evals)
-            .field("domain", &self.domain)
-            .field("_eval_order", &self._eval_order)
-            .finish()
-    }
-}
-
-impl<F: ExtensionOf<BaseField>, EvalOrder> Clone for LineEvaluation<F, EvalOrder> {
-    fn clone(&self) -> Self {
-        Self {
-            evals: self.evals.clone(),
             domain: self.domain,
             _eval_order: PhantomData,
         }

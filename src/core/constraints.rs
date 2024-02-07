@@ -4,6 +4,7 @@ use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fields::m31::BaseField;
 use super::fields::ExtensionOf;
 use super::poly::circle::{CircleEvaluation, CirclePoly, PointMapping};
+use super::poly::{BitReversedOrder, NaturalOrder};
 
 /// Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoint<F>) -> F {
@@ -98,18 +99,30 @@ impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByPoly<'a, F> {
 /// Polynomial evaluation over the base circle domain. The evaluation could be over an extension of
 /// the base field.
 #[derive(Copy, Clone)]
-pub struct EvalByEvaluation<'a, F: ExtensionOf<BaseField>> {
+pub struct EvalByEvaluation<'a, F: ExtensionOf<BaseField>, EvalOrder = NaturalOrder> {
     pub offset: CirclePointIndex,
-    pub eval: &'a CircleEvaluation<F>,
+    pub eval: &'a CircleEvaluation<F, EvalOrder>,
 }
 
-impl<'a, F: ExtensionOf<BaseField>> EvalByEvaluation<'a, F> {
-    pub fn new(offset: CirclePointIndex, eval: &'a CircleEvaluation<F>) -> Self {
+impl<'a, F: ExtensionOf<BaseField>, EvalOrder> EvalByEvaluation<'a, F, EvalOrder> {
+    pub fn new(offset: CirclePointIndex, eval: &'a CircleEvaluation<F, EvalOrder>) -> Self {
         Self { offset, eval }
     }
 }
 
 impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByEvaluation<'a, F> {
+    fn point(&self) -> CirclePoint<F> {
+        // TODO(AlonH): Separate the point field generality from the evaluation field generality and
+        // remove the `into_ef` here.
+        self.offset.to_point().into_ef()
+    }
+
+    fn get_at(&self, index: CirclePointIndex) -> F {
+        self.eval.get_at(index + self.offset)
+    }
+}
+
+impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByEvaluation<'a, F, BitReversedOrder> {
     fn point(&self) -> CirclePoint<F> {
         // TODO(AlonH): Separate the point field generality from the evaluation field generality and
         // remove the `into_ef` here.
