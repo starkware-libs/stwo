@@ -1,5 +1,6 @@
 use super::fields::m31::{BaseField, N_BYTES_FELT, P};
 use super::fields::qm31::{QM31, QM31_EXTENSION_DEGREE};
+use super::fields::IntoSlice;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
 
@@ -34,6 +35,7 @@ pub trait Channel {
     // Mix functions
     fn mix_digest(&mut self, seed: Self::Digest);
     fn mix_nonce(&mut self, nonce: u64);
+    fn mix_felts(&mut self, felts: &[QM31]);
 
     // Draw functions
     fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
@@ -82,6 +84,15 @@ impl Channel for Blake2sChannel {
 
         self.digest =
             Blake2sHasher::concat_and_hash(&self.digest, &Blake2sHash::from(padded_nonce));
+        self.channel_time.inc_challenges();
+    }
+
+    fn mix_felts(&mut self, felts: &[QM31]) {
+        let mut hasher = Blake2sHasher::new();
+        hasher.update(self.digest.as_ref());
+        hasher.update(IntoSlice::<u8>::into_slice(felts));
+
+        self.digest = hasher.finalize();
         self.channel_time.inc_challenges();
     }
 
