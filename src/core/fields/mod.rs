@@ -89,6 +89,8 @@ impl<F: Field> ExtensionOf<F> for F {}
 #[macro_export]
 macro_rules! impl_field {
     ($field_name: ty, $field_size: ident) => {
+        use std::iter::{Product, Sum};
+
         use num_traits::{Num, One, Zero};
         use $crate::core::fields::Field;
 
@@ -159,13 +161,33 @@ macro_rules! impl_field {
                 );
             }
         }
+
+        impl Sum for $field_name {
+            fn sum<I>(mut iter: I) -> Self
+            where
+                I: Iterator<Item = Self>,
+            {
+                let first = iter.next().unwrap_or_else(<$field_name>::zero);
+                iter.fold(first, |a, b| a + b)
+            }
+        }
+
+        impl Product for $field_name {
+            fn product<I>(mut iter: I) -> Self
+            where
+                I: Iterator<Item = Self>,
+            {
+                let first = iter.next().unwrap_or_else(<$field_name>::one);
+                iter.fold(first, |a, b| a * b)
+            }
+        }
     };
 }
 
 /// Used to extend a field (with characteristic M31) by 2.
 #[macro_export]
 macro_rules! impl_extension_field {
-    ($field_name: ty, $extended_field_name: ty) => {
+    ($field_name: ident, $extended_field_name: ty) => {
         use $crate::core::fields::ExtensionOf;
 
         impl ExtensionOf<M31> for $field_name {}
@@ -213,6 +235,12 @@ macro_rules! impl_extension_field {
 
             fn is_zero(&self) -> bool {
                 *self == Self::zero()
+            }
+        }
+
+        impl rand::distributions::Distribution<$field_name> for rand::distributions::Standard {
+            fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> $field_name {
+                $field_name(rng.gen(), rng.gen())
             }
         }
 

@@ -3,6 +3,9 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use rand::distributions::{Distribution, Standard};
+use rand::Rng;
+
 use super::ComplexConjugate;
 use crate::impl_field;
 
@@ -106,6 +109,18 @@ impl From<u32> for M31 {
 impl From<i32> for M31 {
     fn from(value: i32) -> Self {
         M31::reduce(value.try_into().unwrap())
+    }
+}
+
+impl From<u16> for M31 {
+    fn from(value: u16) -> Self {
+        Self(value as u32)
+    }
+}
+
+impl Distribution<M31> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> M31 {
+        M31(rng.gen_range(0..P))
     }
 }
 
