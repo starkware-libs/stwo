@@ -17,7 +17,7 @@ use crate::core::fields::{ExtensionOf, Field, IntoSlice};
 use crate::core::oods::{get_oods_points, get_oods_quotient, get_oods_values};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
 use crate::core::queries::Queries;
-use crate::core::utils::{bit_reverse, next_chunk};
+use crate::core::utils::next_chunk;
 
 type Channel = Blake2sChannel;
 type MerkleHasher = Blake2sHasher;
@@ -189,11 +189,13 @@ impl Fibonacci {
         let trace = self.get_trace();
         let trace_poly = trace.interpolate();
         let trace_evaluation = trace_poly.evaluate(self.trace_eval_domain);
-        let trace_commitment_evaluation =
-            trace_poly.evaluate(self.trace_commitment_domain.circle_domain());
-        let trace_commitment = MerkleTree::<BaseField, MerkleHasher>::commit(vec![bit_reverse(
-            trace_commitment_evaluation.values.clone(),
-        )]);
+        let trace_commitment_evaluation = trace_poly
+            .evaluate(self.trace_commitment_domain.circle_domain())
+            .bit_reverse();
+        let trace_commitment =
+            MerkleTree::<BaseField, MerkleHasher>::commit(vec![trace_commitment_evaluation
+                .values
+                .clone()]);
         channel.mix_with_seed(trace_commitment.root());
 
         // Evaluate and commit on composition polynomial.
@@ -201,14 +203,15 @@ impl Fibonacci {
         let composition_polynomial =
             self.compute_composition_polynomial(random_coeff, &trace_evaluation);
         let composition_polynomial_poly = composition_polynomial.interpolate();
-        let composition_polynomial_commitment_evaluation = composition_polynomial_poly.evaluate(
-            self.composition_polynomial_commitment_domain
-                .circle_domain(),
-        );
-        let composition_polynomial_commitment =
-            MerkleTree::<QM31, MerkleHasher>::commit(vec![bit_reverse(
-                composition_polynomial_commitment_evaluation.values.clone(),
-            )]);
+        let composition_polynomial_commitment_evaluation = composition_polynomial_poly
+            .evaluate(
+                self.composition_polynomial_commitment_domain
+                    .circle_domain(),
+            )
+            .bit_reverse();
+        let composition_polynomial_commitment = MerkleTree::<QM31, MerkleHasher>::commit(vec![
+            composition_polynomial_commitment_evaluation.values.clone(),
+        ]);
         channel.mix_with_seed(composition_polynomial_commitment.root());
 
         // Evaluate the trace mask and the composition polynomial on the OODS point.
@@ -227,17 +230,18 @@ impl Fibonacci {
             .iter()
             .zip(trace_oods_evaluation.values.iter())
         {
-            oods_quotients.push(get_oods_quotient(
-                *point,
-                *value,
-                &trace_commitment_evaluation,
-            ));
+            oods_quotients.push(
+                get_oods_quotient(*point, *value, &trace_commitment_evaluation).bit_reverse(),
+            );
         }
-        oods_quotients.push(get_oods_quotient(
-            oods_point,
-            composition_polynomial_oods_value,
-            &composition_polynomial_commitment_evaluation,
-        ));
+        oods_quotients.push(
+            get_oods_quotient(
+                oods_point,
+                composition_polynomial_oods_value,
+                &composition_polynomial_commitment_evaluation,
+            )
+            .bit_reverse(),
+        );
 
         // TODO(AlonH): Pass the oods quotients to FRI prover and get opening positions from it.
         let composition_polynomial_queries = Queries::generate(
