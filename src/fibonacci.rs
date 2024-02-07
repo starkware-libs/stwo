@@ -613,4 +613,46 @@ mod tests {
         );
         assert!(verify_proof::<FIB_LOG_SIZE>(proof));
     }
+
+    // TODO(AlonH): Check the correct error occurs after introducing errors instead of
+    // #[should_panic].
+    #[test]
+    #[should_panic]
+    fn test_prove_invalid_trace_value() {
+        const FIB_LOG_SIZE: u32 = 5;
+        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
+
+        let mut invalid_proof = fib.prove();
+        invalid_proof.trace_opened_values[4] += BaseField::one();
+
+        verify_proof::<FIB_LOG_SIZE>(invalid_proof);
+    }
+
+    // TODO(AlonH): Check the correct error occurs after introducing errors instead of
+    // #[should_panic].
+    #[test]
+    #[should_panic]
+    fn test_prove_invalid_trace_oods_values() {
+        const FIB_LOG_SIZE: u32 = 5;
+        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
+
+        let mut invalid_proof = fib.prove();
+        invalid_proof.trace_oods_values.swap(0, 1);
+
+        verify_proof::<FIB_LOG_SIZE>(invalid_proof);
+    }
+
+    // TODO(AlonH): Check the correct error occurs after introducing errors instead of
+    // #[should_panic].
+    #[test]
+    #[should_panic]
+    fn test_prove_insufficient_trace_values() {
+        const FIB_LOG_SIZE: u32 = 5;
+        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
+
+        let mut invalid_proof = fib.prove();
+        invalid_proof.trace_opened_values.pop();
+
+        verify_proof::<FIB_LOG_SIZE>(invalid_proof);
+    }
 }
