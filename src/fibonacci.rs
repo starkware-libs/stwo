@@ -1,3 +1,5 @@
+use std::iter::zip;
+
 use num_traits::One;
 
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
@@ -229,15 +231,6 @@ impl Fibonacci {
         // Calculate a quotient polynomial for each trace mask item and one for the composition
         // polynomial.
         let mut oods_quotients = Vec::with_capacity(mask.len() + 1);
-        for (point, value) in trace_oods_evaluation
-            .points
-            .iter()
-            .zip(trace_oods_evaluation.values.iter())
-        {
-            oods_quotients.push(
-                get_pair_oods_quotient(*point, *value, &trace_commitment_evaluation).bit_reverse(),
-            );
-        }
         oods_quotients.push(
             get_oods_quotient(
                 oods_point,
@@ -246,6 +239,11 @@ impl Fibonacci {
             )
             .bit_reverse(),
         );
+        for (point, value) in zip(&trace_oods_evaluation.points, &trace_oods_evaluation.values) {
+            oods_quotients.push(
+                get_pair_oods_quotient(*point, *value, &trace_commitment_evaluation).bit_reverse(),
+            );
+        }
 
         // TODO(AlonH): Pass the oods quotients to FRI prover and get opening positions from it.
         let composition_polynomial_queries = Queries::generate(
@@ -301,7 +299,7 @@ impl Fibonacci {
     }
 }
 
-pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
+pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let fib = Fibonacci::new(N_BITS, proof.public_input);
     let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(&[
         proof.public_input
@@ -361,27 +359,8 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
 
     // An evaluation for each mask item and one for the composition_polynomial.
     let mut sparse_circle_evaluations = Vec::with_capacity(mask.len() + 1);
-    for (oods_point, oods_value) in trace_oods_points.iter().zip(proof.trace_oods_values.iter()) {
-        let mut evaluation = Vec::with_capacity(trace_opening_positions.len());
-        let mut opened_values = proof.trace_opened_values.iter().copied();
-        for sub_circle_domain in trace_opening_positions.iter() {
-            let values = (&mut opened_values)
-                .take(1 << sub_circle_domain.log_size)
-                .collect();
-            let sub_circle_evaluation = CircleEvaluation::new(
-                sub_circle_domain.to_circle_domain(&fib.trace_commitment_domain.circle_domain()),
-                values,
-            );
-            evaluation.push(
-                get_pair_oods_quotient(*oods_point, *oods_value, &sub_circle_evaluation)
-                    .bit_reverse(),
-            );
-        }
-        assert!(opened_values.next().is_none(), "Not all values were used.");
-        sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
-    }
     let mut evaluation = Vec::with_capacity(composition_polynomial_opening_positions.len());
-    let mut opened_values = proof.composition_polynomial_opened_values.iter().copied();
+    let mut opened_values = proof.composition_polynomial_opened_values.into_iter();
     for sub_circle_domain in composition_polynomial_opening_positions.iter() {
         let values = (&mut opened_values)
             .take(1 << sub_circle_domain.log_size)
@@ -402,6 +381,25 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
     }
     assert!(opened_values.next().is_none(), "Not all values were used.");
     sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
+    for (oods_point, oods_value) in zip(&trace_oods_points, &proof.trace_oods_values) {
+        let mut evaluation = Vec::with_capacity(trace_opening_positions.len());
+        let mut opened_values = proof.trace_opened_values.iter().copied();
+        for sub_circle_domain in trace_opening_positions.iter() {
+            let values = (&mut opened_values)
+                .take(1 << sub_circle_domain.log_size)
+                .collect();
+            let sub_circle_evaluation = CircleEvaluation::new(
+                sub_circle_domain.to_circle_domain(&fib.trace_commitment_domain.circle_domain()),
+                values,
+            );
+            evaluation.push(
+                get_pair_oods_quotient(*oods_point, *oods_value, &sub_circle_evaluation)
+                    .bit_reverse(),
+            );
+        }
+        assert!(opened_values.next().is_none(), "Not all values were used.");
+        sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
+    }
     true
 }
 
@@ -515,7 +513,7 @@ mod tests {
         let (composition_polynomial_quotient, trace_quotients) = proof
             .additional_proof_data
             .oods_quotients
-            .split_last()
+            .split_first()
             .unwrap();
 
         // Assert that the trace quotients are low degree.
@@ -549,16 +547,15 @@ mod tests {
         const FRI_STEP_SIZE: u32 = 3;
         let trace_opening_positions = trace_queries.opening_positions(FRI_STEP_SIZE);
         let trace_decommitment_positions = trace_opening_positions.flatten();
-        let trace_opened_points = trace_decommitment_positions
+        let mut trace_opened_points = trace_decommitment_positions
             .iter()
-            .map(|p| trace_commitment_points[*p])
-            .collect_vec();
+            .map(|p| trace_commitment_points[*p]);
 
         // Assert that we got the correct domain_points.
-        for (sub_circle_domain, points) in trace_opening_positions
-            .iter()
-            .zip(trace_opened_points.chunks(1 << FRI_STEP_SIZE))
-        {
+        for sub_circle_domain in trace_opening_positions.iter() {
+            let points = (&mut trace_opened_points)
+                .take(1 << sub_circle_domain.log_size)
+                .collect_vec();
             let circle_domain = sub_circle_domain.to_circle_domain(&domain);
             // Bit reverse the domain points to match the order of the opened points.
             let domain_points = bit_reverse(circle_domain.iter().collect_vec());
@@ -594,6 +591,6 @@ mod tests {
                 .composition_polynomial_oods_value,
             hz
         );
-        assert!(verify_proof::<FIB_LOG_SIZE>(&proof));
+        assert!(verify_proof::<FIB_LOG_SIZE>(proof));
     }
 }
