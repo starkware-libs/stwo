@@ -16,7 +16,9 @@ use crate::core::constraints::{
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
-use crate::core::fri::SparseCircleEvaluation;
+use crate::core::fri::{
+    CirclePolyDegreeBound, FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation,
+};
 use crate::core::oods::{
     get_oods_points, get_oods_quotient, get_oods_values, get_pair_oods_quotient,
 };
@@ -28,6 +30,8 @@ type Channel = Blake2sChannel;
 type MerkleHasher = Blake2sHasher;
 
 const LOG_BLOWUP_FACTOR: u32 = 1;
+// TODO(Andrew): Change to 0 once related bug is fixed.
+const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 1;
 const N_QUERIES: usize = 3;
 
 pub struct Fibonacci {
@@ -61,6 +65,7 @@ pub struct FibonacciProof {
     pub trace_oods_values: Vec<QM31>,
     pub composition_polynomial_opened_values: Vec<QM31>,
     pub trace_opened_values: Vec<BaseField>,
+    pub fri_proof: FriProof<MerkleHasher>,
     pub additional_proof_data: AdditionalProofData,
 }
 
@@ -246,7 +251,10 @@ impl Fibonacci {
             );
         }
 
-        // TODO(AlonH): Pass the oods quotients to FRI prover and get opening positions from it.
+        let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR);
+        let fri_prover = FriProver::commit(channel, fri_config, &oods_quotients);
+        // TODO(AlonH): Get opening positions from FRI.
+        // TODO(AlonH): Integrate proof of work.
         let composition_polynomial_queries = Queries::generate(
             channel,
             self.composition_polynomial_commitment_domain.log_size(),
@@ -256,6 +264,8 @@ impl Fibonacci {
             self.composition_polynomial_commitment_domain.log_size()
                 - self.trace_commitment_domain.log_size(),
         );
+        let fri_proof = fri_prover.decommit(&composition_polynomial_queries);
+
         const FRI_STEP_SIZE: u32 = 1;
         let composition_polynomial_decommitment_positions = composition_polynomial_queries
             .opening_positions(FRI_STEP_SIZE)
@@ -276,7 +286,6 @@ impl Fibonacci {
         let trace_decommitment =
             trace_commitment.generate_decommitment(trace_decommitment_positions);
 
-        // TODO(AlonH): Complete the proof and add the relevant fields.
         FibonacciProof {
             public_input: self.claim,
             trace_commitment: CommitmentProof {
@@ -290,6 +299,7 @@ impl Fibonacci {
             trace_oods_values: trace_oods_evaluation.values,
             composition_polynomial_opened_values,
             trace_opened_values,
+            fri_proof,
             additional_proof_data: AdditionalProofData {
                 composition_polynomial_oods_value,
                 composition_polynomial_random_coeff: random_coeff,
@@ -320,12 +330,15 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     };
     let composition_polynomial_oods_value =
         fib.eval_composition_polynomial(random_coeff, oods_point_eval);
-    assert_eq!(
-        composition_polynomial_oods_value,
-        proof
-            .additional_proof_data
-            .composition_polynomial_oods_value
-    );
+
+    let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR);
+    let bound = vec![
+        CirclePolyDegreeBound::new(fib.composition_polynomial_eval_domain.log_size()),
+        CirclePolyDegreeBound::new(fib.trace_domain.log_size()),
+        CirclePolyDegreeBound::new(fib.trace_domain.log_size()),
+        CirclePolyDegreeBound::new(fib.trace_domain.log_size()),
+    ];
+    let fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bound).unwrap();
 
     let composition_polynomial_queries = Queries::generate(
         channel,
@@ -401,6 +414,11 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
         assert!(opened_values.next().is_none(), "Not all values were used.");
         sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
     }
+
+    fri_verifier
+        .decommit(&composition_polynomial_queries, sparse_circle_evaluations)
+        .unwrap();
+
     true
 }
 
