@@ -197,7 +197,7 @@ impl Fibonacci {
         channel.mix_digest(trace_commitment.root());
 
         // Evaluate and commit on composition polynomial.
-        let random_coeff = channel.draw_random_extension_felts()[0];
+        let random_coeff = channel.draw_felt();
         let composition_polynomial =
             self.compute_composition_polynomial(random_coeff, &trace_evaluation);
         let composition_polynomial_poly = composition_polynomial.interpolate();
@@ -298,7 +298,7 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
         proof.public_input
     ])));
     channel.mix_digest(proof.trace_commitment.commitment);
-    let random_coeff = channel.draw_random_extension_felts()[0];
+    let random_coeff = channel.draw_felt();
     channel.mix_digest(proof.composition_polynomial_commitment.commitment);
     let oods_point = CirclePoint::<QM31>::get_random_point(channel);
     let mask = fib.get_mask();

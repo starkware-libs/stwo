@@ -41,14 +41,8 @@ pub trait Channel {
     fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
-    /// Generates a uniform random vector of QM31 elements.
-    fn draw_random_extension_felts(&mut self) -> [QM31; EXTENSION_FELTS_PER_HASH] {
-        let felts: [BaseField; FELTS_PER_HASH] = self.draw_random_felts();
-        [
-            QM31::from_m31_array(felts[..QM31_EXTENSION_DEGREE].try_into().unwrap()),
-            QM31::from_m31_array(felts[QM31_EXTENSION_DEGREE..].try_into().unwrap()),
-        ]
-    }
+    fn draw_felt(&mut self) -> QM31;
+    fn draw_felts(&mut self, n_felts: usize) -> Vec<QM31>;
 }
 
 /// A channel that can be used to draw random elements from a [Blake2sHash] digest.
@@ -94,6 +88,30 @@ impl Channel for Blake2sChannel {
 
         self.digest = hasher.finalize();
         self.channel_time.inc_challenges();
+    }
+
+    fn draw_felt(&mut self) -> QM31 {
+        let felts: [BaseField; FELTS_PER_HASH] = self.draw_random_felts();
+        QM31::from_m31_array(felts[..QM31_EXTENSION_DEGREE].try_into().unwrap())
+    }
+
+    fn draw_felts(&mut self, n_felts: usize) -> Vec<QM31> {
+        let mut res = Vec::with_capacity(n_felts);
+        let mut counter = 0;
+        while counter < n_felts {
+            let felts: [BaseField; FELTS_PER_HASH] = self.draw_random_felts();
+            res.push(QM31::from_m31_array(
+                felts[..QM31_EXTENSION_DEGREE].try_into().unwrap(),
+            ));
+            res.push(QM31::from_m31_array(
+                felts[QM31_EXTENSION_DEGREE..].try_into().unwrap(),
+            ));
+            counter += EXTENSION_FELTS_PER_HASH;
+        }
+        if res.len() > n_felts {
+            res.pop();
+        }
+        res
     }
 
     /// Generates a uniform random vector of BaseField elements.
