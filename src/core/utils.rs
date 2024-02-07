@@ -22,25 +22,9 @@ pub(crate) fn bit_reverse<T, U: AsMut<[T]>>(mut v: U) -> U {
     v
 }
 
-/// Returns the next chunk of the iterator and advances it by `chunk_size`.
-///
-/// # Panics
-///
-/// Panics if there are less then `chunk_size` elements in the iterator.
-pub(crate) fn next_chunk<T>(iter: &mut impl Iterator<Item = T>, chunk_size: usize) -> Vec<T> {
-    let mut vec = Vec::with_capacity(chunk_size);
-    for _ in 0..chunk_size {
-        vec.push(
-            iter.next()
-                .unwrap_or_else(|| panic!("Not enough elements in iterator.")),
-        );
-    }
-    vec
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::core::utils::{bit_reverse, next_chunk};
+    use crate::core::utils::bit_reverse;
 
     #[test]
     fn bit_reverse_works() {
@@ -54,21 +38,5 @@ mod tests {
     #[should_panic]
     fn bit_reverse_non_power_of_two_size_fails() {
         bit_reverse([0, 1, 2, 3, 4, 5]);
-    }
-
-    #[test]
-    fn test_next_chunk() {
-        let mut iter = 0..10;
-        assert_eq!(next_chunk(&mut iter, 3), vec![0, 1, 2]);
-        assert_eq!(next_chunk(&mut iter, 3), vec![3, 4, 5]);
-        assert_eq!(next_chunk(&mut iter, 3), vec![6, 7, 8]);
-        assert_eq!(next_chunk(&mut iter, 1), vec![9]);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_insufficient_elements_in_next_chunk() {
-        let mut iter = 0..3;
-        next_chunk(&mut iter, 4);
     }
 }
