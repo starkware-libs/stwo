@@ -434,7 +434,7 @@ mod tests {
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PointMapping};
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
-    use crate::fibonacci::verify_proof;
+    use crate::fibonacci::{verify_proof, FibonacciProof};
     use crate::{m31, qm31};
 
     #[test]
@@ -608,5 +608,43 @@ mod tests {
             hz
         );
         assert!(verify_proof::<FIB_LOG_SIZE>(proof));
+    }
+
+    // TODO(AlonH): Check the correct error occurs after introducing errors instead of
+    // #[should_panic].
+    #[test]
+    #[should_panic]
+    fn test_prove_wrong_trace_value() {
+        const FIB_LOG_SIZE: u32 = 5;
+        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
+
+        let proof = fib.prove();
+        let mut wrong_trace_opened_values = proof.trace_opened_values.clone();
+        wrong_trace_opened_values[4] += BaseField::one();
+        let wrong_proof = FibonacciProof {
+            trace_opened_values: wrong_trace_opened_values,
+            ..proof
+        };
+
+        verify_proof::<FIB_LOG_SIZE>(wrong_proof);
+    }
+
+    // TODO(AlonH): Check the correct error occurs after introducing errors instead of
+    // #[should_panic].
+    #[test]
+    #[should_panic]
+    fn test_prove_wrong_trace_oods_values() {
+        const FIB_LOG_SIZE: u32 = 5;
+        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
+
+        let proof = fib.prove();
+        let mut wrong_trace_oods_values = proof.trace_oods_values.clone();
+        wrong_trace_oods_values.swap(0, 1);
+        let wrong_proof = FibonacciProof {
+            trace_oods_values: wrong_trace_oods_values,
+            ..proof
+        };
+
+        verify_proof::<FIB_LOG_SIZE>(wrong_proof);
     }
 }
