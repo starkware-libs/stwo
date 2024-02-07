@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::ops::Deref;
 
 use itertools::Itertools;
@@ -10,8 +9,6 @@ use super::utils::bit_reverse_index;
 
 // TODO(AlonH): Move file to fri directory.
 
-pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
-
 /// An ordered set of query indices over a bit reversed [CircleDomain].
 #[derive(Debug, Clone)]
 pub struct Queries {
@@ -22,23 +19,10 @@ pub struct Queries {
 impl Queries {
     /// Randomizes a set of query indices uniformly over the range [0, 2^`log_query_size`).
     pub fn generate(channel: &mut impl Channel, log_domain_size: u32, n_queries: usize) -> Self {
-        let mut queries = BTreeSet::new();
-        let mut query_cnt = 0;
-        let max_query = (1 << log_domain_size) - 1;
-        loop {
-            let random_bytes = channel.draw_random_bytes();
-            for chunk in random_bytes.chunks_exact(UPPER_BOUND_QUERY_BYTES) {
-                let query_bits = u32::from_le_bytes(chunk.try_into().unwrap());
-                let quotient_query = query_bits & max_query;
-                queries.insert(quotient_query as usize);
-                query_cnt += 1;
-                if query_cnt == n_queries {
-                    return Self {
-                        positions: queries.into_iter().collect(),
-                        log_domain_size,
-                    };
-                }
-            }
+        let queries = channel.draw_queries(n_queries, log_domain_size as usize);
+        Self {
+            positions: queries.into_iter().collect(),
+            log_domain_size,
         }
     }
 

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use super::fields::m31::{BaseField, N_BYTES_FELT, P};
 use super::fields::qm31::{QM31, QM31_EXTENSION_DEGREE};
 use super::fields::IntoSlice;
@@ -7,6 +9,7 @@ use crate::commitment_scheme::hasher::Hasher;
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
 pub const EXTENSION_FELTS_PER_HASH: usize = 2;
+pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
 #[derive(Default)]
 pub struct ChannelTime {
@@ -38,6 +41,7 @@ pub trait Channel {
     fn mix_felts(&mut self, felts: &[QM31]);
 
     // Draw functions
+    fn draw_queries(&mut self, n_queries: usize, bound_bits: usize) -> Vec<usize>;
     fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
@@ -88,6 +92,24 @@ impl Channel for Blake2sChannel {
 
         self.digest = hasher.finalize();
         self.channel_time.inc_challenges();
+    }
+
+    fn draw_queries(&mut self, n_queries: usize, bound_bits: usize) -> Vec<usize> {
+        let mut queries = BTreeSet::new();
+        let mut query_cnt = 0;
+        let max_query = (1 << bound_bits) - 1;
+        loop {
+            let random_bytes = self.draw_random_bytes();
+            for chunk in random_bytes.chunks_exact(UPPER_BOUND_QUERY_BYTES) {
+                let query_bits = u32::from_le_bytes(chunk.try_into().unwrap());
+                let quotient_query = query_bits & max_query;
+                queries.insert(quotient_query as usize);
+                query_cnt += 1;
+                if query_cnt == n_queries {
+                    return queries.into_iter().collect();
+                }
+            }
+        }
     }
 
     fn draw_felt(&mut self) -> QM31 {
