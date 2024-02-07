@@ -30,7 +30,12 @@ pub trait Channel {
 
     fn get_digest(&self) -> Self::Digest;
     fn new(digest: Self::Digest) -> Self;
+
+    // Mix functions
     fn mix_with_seed(&mut self, seed: Self::Digest);
+    fn mix_nonce(&mut self, nonce: u64);
+
+    // Draw functions
     fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
@@ -67,6 +72,16 @@ impl Channel for Blake2sChannel {
 
     fn mix_with_seed(&mut self, digest: Self::Digest) {
         self.digest = Blake2sHasher::concat_and_hash(&self.digest, &digest);
+        self.channel_time.inc_challenges();
+    }
+
+    fn mix_nonce(&mut self, nonce: u64) {
+        // Copy the elements from the original array to the new array
+        let mut padded_nonce = vec![0; BLAKE_BYTES_PER_HASH];
+        padded_nonce[..8].copy_from_slice(&nonce.to_le_bytes());
+
+        self.digest =
+            Blake2sHasher::concat_and_hash(&self.digest, &Blake2sHash::from(padded_nonce));
         self.channel_time.inc_challenges();
     }
 

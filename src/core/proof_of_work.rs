@@ -14,16 +14,6 @@ pub struct ProofOfWorkProof {
     pub nonce: u64,
 }
 
-impl ProofOfWorkProof {
-    // TODO(ShaharS): Support multiple digests and move this to the channel.
-    pub fn to_digest(&self, size: usize) -> Vec<u8> {
-        let mut padded = vec![0; size];
-        // Copy the elements from the original array to the new array
-        padded[..8].copy_from_slice(&self.nonce.to_le_bytes());
-        padded
-    }
-}
-
 impl ProofOfWork {
     pub fn new(n_bits: u32) -> Self {
         Self { n_bits }
@@ -32,9 +22,7 @@ impl ProofOfWork {
     pub fn prove(&self, channel: &mut Blake2sChannel) -> ProofOfWorkProof {
         let seed = channel.get_digest().as_ref().to_vec();
         let proof = self.grind(seed);
-        channel.mix_with_seed(Blake2sHash::from(
-            proof.to_digest(Blake2sHasher::OUTPUT_SIZE).as_ref(),
-        ));
+        channel.mix_nonce(proof.nonce);
         proof
     }
 
@@ -46,9 +34,7 @@ impl ProofOfWork {
         );
 
         if verified {
-            channel.mix_with_seed(Blake2sHash::from(
-                proof.to_digest(Blake2sHasher::OUTPUT_SIZE).as_ref(),
-            ));
+            channel.mix_nonce(proof.nonce);
         }
         verified
     }
