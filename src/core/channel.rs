@@ -32,7 +32,7 @@ pub trait Channel {
     fn new(digest: Self::Digest) -> Self;
 
     // Mix functions
-    fn mix_with_seed(&mut self, seed: Self::Digest);
+    fn mix_digest(&mut self, seed: Self::Digest);
     fn mix_nonce(&mut self, nonce: u64);
 
     // Draw functions
@@ -70,7 +70,7 @@ impl Channel for Blake2sChannel {
         self.digest
     }
 
-    fn mix_with_seed(&mut self, digest: Self::Digest) {
+    fn mix_digest(&mut self, digest: Self::Digest) {
         self.digest = Blake2sHasher::concat_and_hash(&self.digest, &digest);
         self.channel_time.inc_challenges();
     }
@@ -158,7 +158,7 @@ mod tests {
         assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 2);
 
-        channel.mix_with_seed(Blake2sHash::from(vec![1; 32]));
+        channel.mix_digest(Blake2sHash::from(vec![1; 32]));
         assert_eq!(channel.channel_time.n_challenges, 1);
         assert_eq!(channel.channel_time.n_sent, 0);
 
@@ -201,7 +201,7 @@ mod tests {
         }
 
         // Reseed channel and check the digest was changed.
-        channel.mix_with_seed(Blake2sHash::from(vec![1; 32]));
+        channel.mix_digest(Blake2sHash::from(vec![1; 32]));
         assert_ne!(initial_digest, channel.digest);
     }
 }

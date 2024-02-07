@@ -194,7 +194,7 @@ impl Fibonacci {
         let trace_commitment = MerkleTree::<BaseField, MerkleHasher>::commit(vec![bit_reverse(
             trace_commitment_evaluation.values.clone(),
         )]);
-        channel.mix_with_seed(trace_commitment.root());
+        channel.mix_digest(trace_commitment.root());
 
         // Evaluate and commit on composition polynomial.
         let random_coeff = channel.draw_random_extension_felts()[0];
@@ -209,7 +209,7 @@ impl Fibonacci {
             MerkleTree::<QM31, MerkleHasher>::commit(vec![bit_reverse(
                 composition_polynomial_commitment_evaluation.values.clone(),
             )]);
-        channel.mix_with_seed(composition_polynomial_commitment.root());
+        channel.mix_digest(composition_polynomial_commitment.root());
 
         // Evaluate the trace mask and the composition polynomial on the OODS point.
         let oods_point = CirclePoint::<QM31>::get_random_point(channel);
@@ -297,9 +297,9 @@ pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
     let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(&[
         proof.public_input
     ])));
-    channel.mix_with_seed(proof.trace_commitment.commitment);
+    channel.mix_digest(proof.trace_commitment.commitment);
     let random_coeff = channel.draw_random_extension_felts()[0];
-    channel.mix_with_seed(proof.composition_polynomial_commitment.commitment);
+    channel.mix_digest(proof.composition_polynomial_commitment.commitment);
     let oods_point = CirclePoint::<QM31>::get_random_point(channel);
     let mask = fib.get_mask();
     let trace_oods_points = get_oods_points(&mask, oods_point, &[fib.trace_domain]);
