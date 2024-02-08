@@ -1,5 +1,6 @@
 use num_traits::One;
 
+use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
@@ -19,7 +20,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, Po
 use crate::core::queries::Queries;
 
 type Channel = Blake2sChannel;
-type MerkleHasher = <Channel as ChannelTrait>::ChannelHasher;
+type MerkleHasher = Blake2sHasher;
 
 const LOG_BLOWUP_FACTOR: u32 = 1;
 const N_QUERIES: usize = 3;
@@ -182,9 +183,7 @@ impl Fibonacci {
     }
 
     pub fn prove(&self) -> FibonacciProof {
-        let channel = &mut Channel::new(<Channel as ChannelTrait>::ChannelHasher::hash(
-            BaseField::into_slice(&[self.claim]),
-        ));
+        let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(&[self.claim])));
 
         // Evaluate and commit on trace.
         let trace = self.get_trace();
@@ -299,9 +298,9 @@ impl Fibonacci {
 
 pub fn verify_proof<const N_BITS: u32>(proof: &FibonacciProof) -> bool {
     let fib = Fibonacci::new(N_BITS, proof.public_input);
-    let channel = &mut Channel::new(<Channel as ChannelTrait>::ChannelHasher::hash(
-        BaseField::into_slice(&[proof.public_input]),
-    ));
+    let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(&[
+        proof.public_input
+    ])));
     channel.mix_with_seed(proof.trace_commitment.commitment);
     let random_coeff = channel.draw_random_extension_felts()[0];
     channel.mix_with_seed(proof.composition_polynomial_commitment.commitment);
