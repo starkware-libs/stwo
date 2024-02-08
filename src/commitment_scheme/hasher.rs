@@ -81,5 +81,6 @@ pub trait Hash<NativeType: Sized + Eq>:
     + for<'a> From<&'a [NativeType]>
     + Send
     + Sync
+    + 'static
 {
 }
