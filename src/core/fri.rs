@@ -147,7 +147,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
             }
 
             let layer = FriLayerProver::new(layer_evaluation);
-            channel.mix_with_seed(layer.merkle_tree.root());
+            channel.mix_seed(layer.merkle_tree.root());
             let folding_alpha = channel.draw_random_extension_felts()[0];
             let folded_layer_evaluation = fold_line(&layer.evaluation, folding_alpha);
 
@@ -268,7 +268,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         ));
 
         for (layer_index, proof) in proof.inner_layers.into_iter().enumerate() {
-            channel.mix_with_seed(proof.commitment);
+            channel.mix_seed(proof.commitment);
 
             let folding_alpha = channel.draw_random_extension_felts()[0];
 
