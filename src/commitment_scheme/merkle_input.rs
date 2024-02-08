@@ -76,6 +76,13 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
         }
     }
 
+    pub fn column_indices_at<'b>(&self, depth: usize) -> &'_ [usize]
+    where
+        'a: 'b,
+    {
+        &self.injected_depths_map[depth - 1]
+    }
+
     pub fn max_injected_depth(&self) -> usize {
         self.injected_depths_map.len()
     }

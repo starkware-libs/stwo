@@ -89,10 +89,70 @@ where
         root
     }
 
-    // Queries should be a query struct that supports queries at multiple layers.
+    /// Generates a mixed degree merkle decommitment.
+    ///
+    /// # Arguments
+    /// * 'queries' - A sequence of queries to each of the columns. Expected to be ordered by the
+    ///   order in which the columns were inserted to the tree.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use prover_research::commitment_scheme::blake3_hash::Blake3Hasher;
+    /// use prover_research::commitment_scheme::merkle_input::MerkleTreeInput;
+    /// use prover_research::commitment_scheme::mixed_degree_merkle_tree::{
+    ///     MixedDegreeMerkleTree, MixedDegreeMerkleTreeConfig,
+    /// };
+    /// use prover_research::core::fields::m31::M31;
+    ///
+    /// let mut input = MerkleTreeInput::<M31>::new();
+    /// let column_0 = vec![M31::from_u32_unchecked(0); 1024];
+    /// let column_1 = vec![M31::from_u32_unchecked(0); 512];
+    /// input.insert_column(7, &column_0);
+    /// input.insert_column(6, &column_1);
+    /// let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+    ///     input,
+    ///     MixedDegreeMerkleTreeConfig {
+    ///         multi_layer_sizes: [5, 2].to_vec(),
+    ///     },
+    /// );
+    /// let root = tree.commit();
+    ///
+    /// let queries = vec![vec![0], vec![300, 511]];
+    /// let decommitment = tree.decommit(queries.as_ref());
+    /// ```
     // TODO(Ohad): introduce a proper query struct, then deprecate 'drain' usage and accepting vecs.
-    pub fn decommit(&self, mut _queries_per_column: Vec<Vec<usize>>) -> MixedDecommitment<F, H> {
-        todo!()
+    pub fn decommit(&self, queries: &[Vec<usize>]) -> MixedDecommitment<F, H> {
+        assert_eq!(
+            queries.len(),
+            self.input.n_injected_columns(),
+            "Number of query vectors does not match number of injected columns."
+        );
+        let mut decommitment = MixedDecommitment::<F, H>::new();
+        let queries_to_layers = self.sort_queries_by_layer(queries);
+
+        // Decommitment layers are built from the bottom up, excluding the root.
+        let mut ancestor_indices = vec![];
+        (1..=self.input.max_injected_depth()).rev().for_each(|i| {
+            ancestor_indices = self.decommit_single_layer(
+                i,
+                &queries_to_layers[i - 1],
+                ancestor_indices.iter().copied().peekable(),
+                &mut decommitment,
+            );
+        });
+        decommitment
+    }
+
+    fn sort_queries_by_layer(&self, queries: &[Vec<usize>]) -> Vec<Vec<Vec<usize>>> {
+        let mut queries_to_layers = vec![vec![]; self.height()];
+        (1..=self.height()).for_each(|i| {
+            let columns_in_layer = self.input.column_indices_at(i);
+            columns_in_layer.iter().for_each(|&column_index| {
+                queries_to_layers[i - 1].push(queries[column_index].clone());
+            });
+        });
+        queries_to_layers
     }
 
     pub fn get_hash_at(&self, layer_depth: usize, position: usize) -> H::Hash {
@@ -142,18 +202,18 @@ where
     fn decommit_single_layer(
         &self,
         layer_depth: usize,
-        queries_to_layer: impl Iterator<Item = &'a Vec<usize>> + Clone,
+        queries_to_layer: &[Vec<usize>],
         mut previous_layers_indices: Peekable<impl ExactSizeIterator<Item = usize> + Clone>,
         decommitment: &mut MixedDecommitment<F, H>,
     ) -> Vec<usize> {
         let directly_queried_node_indices =
-            queried_nodes_in_layer(queries_to_layer.clone(), &self.input, layer_depth);
+            queried_nodes_in_layer(queries_to_layer.iter(), &self.input, layer_depth);
         let mut index_value_iterator = directly_queried_node_indices
             .iter()
             .copied()
             .zip(self.layer_felt_witnesses_and_queried_elements(
                 layer_depth,
-                queries_to_layer,
+                queries_to_layer.iter(),
                 directly_queried_node_indices.iter().copied(),
             ))
             .peekable();
@@ -528,5 +588,67 @@ mod tests {
             format!("{:?}", w3),
             "[([M31(2)], [M31(3), M31(1)]), ([M31(4), M31(5)], [M31(2)]), ([M31(6), M31(3)], [M31(7)])]"
         );
+    }
+
+    #[test]
+    fn decommit_witness_elements_test() {
+        const TREE_HEIGHT: usize = 4;
+        let mut input = MerkleTreeInput::<M31>::new();
+        let column_length_8 = (80..88).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let column_length_4 = (40..44).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        input.insert_column(TREE_HEIGHT - 1, &column_length_4);
+        input.insert_column(TREE_HEIGHT, &column_length_8);
+        input.insert_column(TREE_HEIGHT - 1, &column_length_8);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [3, 1].to_vec(),
+            },
+        );
+        tree.commit();
+        let queries: Vec<Vec<usize>> = vec![vec![2], vec![0], vec![4, 7]];
+        let test_decommitment = tree.decommit(queries.as_ref());
+
+        assert_eq!(
+            test_decommitment.witness_elements,
+            vec![m31!(40), m31!(80), m31!(81), m31!(85), m31!(43), m31!(86)]
+        );
+        assert_eq!(
+            test_decommitment.queried_values,
+            vec![m31!(80), m31!(42), m31!(84), m31!(87)]
+        );
+    }
+
+    #[test]
+    fn decommit_hash_validity_test() {
+        const TREE_HEIGHT: usize = 4;
+        let mut input = MerkleTreeInput::<M31>::new();
+        let column_length_8 = (80..88).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let column_length_4 = (40..44).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        input.insert_column(TREE_HEIGHT, &column_length_8);
+        input.insert_column(TREE_HEIGHT - 1, &column_length_4);
+        input.insert_column(TREE_HEIGHT - 1, &column_length_8);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [3, 1].to_vec(),
+            },
+        );
+        tree.commit();
+        let queries: Vec<Vec<usize>> = vec![vec![0_usize], vec![2], vec![4, 7]];
+        let hash_82 = Blake3Hasher::hash(&82_u32.to_le_bytes());
+        let hash_83 = Blake3Hasher::hash(&83_u32.to_le_bytes());
+        let mut hasher = Blake3Hasher::new();
+        hasher.update(hash_82.as_ref());
+        hasher.update(hash_83.as_ref());
+        hasher.update(&41_u32.to_le_bytes());
+        hasher.update(&82_u32.to_le_bytes());
+        hasher.update(&83_u32.to_le_bytes());
+        let expected_hash = hasher.finalize();
+
+        let test_decommitment = tree.decommit(queries.as_ref());
+
+        assert_eq!(test_decommitment.hashes.len(), 6);
+        assert_eq!(test_decommitment.hashes[5], expected_hash);
     }
 }
