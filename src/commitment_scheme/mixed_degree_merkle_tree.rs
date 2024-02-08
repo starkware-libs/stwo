@@ -100,8 +100,45 @@ where
 
     // Queries should be a query struct that supports queries at multiple layers.
     // TODO(Ohad): introduce a proper query struct, then deprecate 'drain' usage and accepting vecs.
-    pub fn decommit(&self, mut _queries_per_column: Vec<Vec<usize>>) -> MixedDecommitment<F, H> {
-        todo!()
+    pub fn decommit(&self, mut queries_per_column: Vec<Vec<usize>>) -> MixedDecommitment<F, H> {
+        assert_eq!(
+            queries_per_column.len(),
+            self.input.n_injected_columns(),
+            "Number of query vectors does not match number of injected columns."
+        );
+
+        let mut decommitment = MixedDecommitment::<F, H>::new();
+        // Decommitment layers are built from the bottom up, excluding the root.
+        let mut ancestor_indices = vec![];
+        (1..=self.input.max_injected_depth()).rev().for_each(|i| {
+            // TODO(Ohad): do better than a drain.
+            let layer_column_queries = queries_per_column
+                .drain(..self.input.get_columns(i).len())
+                .collect_vec();
+            let queried_nodes = queried_nodes_in_layer(layer_column_queries.iter(), &self.input, i);
+            self.decommit_single_layer(
+                i,
+                layer_column_queries.iter(),
+                &queried_nodes,
+                ancestor_indices.iter().copied().peekable(),
+                &mut decommitment,
+            );
+
+            // Ancestor indices for the next layer are the parent indices of the queried nodes,
+            // which are the node indices themselves, and parents of the current layer
+            // ancestors.
+            ancestor_indices =
+                MergeIter::new(Self::parent_indices(&ancestor_indices), queried_nodes)
+                    .collect_vec();
+        });
+
+        decommitment
+    }
+
+    fn parent_indices(child_indices: &[usize]) -> Vec<usize> {
+        let mut parent_indices = child_indices.iter().map(|q| q / 2).collect_vec();
+        parent_indices.dedup();
+        parent_indices
     }
 
     pub fn get_hash_at(&self, layer_depth: usize, position: usize) -> H::Hash {
@@ -546,5 +583,67 @@ mod tests {
             format!("{:?}", w3),
             "[([M31(2)], [M31(3), M31(1)]), ([M31(4), M31(5)], [M31(2)]), ([M31(6), M31(3)], [M31(7)])]"
         );
+    }
+
+    #[test]
+    fn decommit_test() {
+        const TREE_HEIGHT: usize = 4;
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let column_length_8 = (80..88).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let column_length_4 = (40..44).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        input.insert_column(TREE_HEIGHT, &column_length_8);
+        input.insert_column(TREE_HEIGHT - 1, &column_length_4);
+        input.insert_column(TREE_HEIGHT - 1, &column_length_8);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [3, 1].to_vec(),
+            },
+        );
+        tree.commit();
+
+        // Query column 0 at 0, column 1 at 2, and column 2 at 4,7.
+        let queries = vec![vec![0], vec![2], vec![4, 7]];
+        let decommitment = tree.decommit(queries);
+
+        assert_eq!(
+            decommitment.witness_elements,
+            vec![m31!(40), m31!(80), m31!(81), m31!(85), m31!(43), m31!(86)]
+        );
+        assert_eq!(
+            decommitment.queried_values,
+            vec![m31!(80), m31!(42), m31!(84), m31!(87)]
+        );
+        assert_eq!(decommitment.hashes.len(), 6);
+
+        assert_eq!(
+            decommitment.hashes[0],
+            Blake3Hasher::hash(&81_u32.to_le_bytes())
+        );
+        assert_eq!(
+            decommitment.hashes[1],
+            Blake3Hasher::hash(&84_u32.to_le_bytes())
+        );
+        assert_eq!(
+            decommitment.hashes[2],
+            Blake3Hasher::hash(&85_u32.to_le_bytes())
+        );
+        assert_eq!(
+            decommitment.hashes[3],
+            Blake3Hasher::hash(&86_u32.to_le_bytes())
+        );
+        assert_eq!(
+            decommitment.hashes[4],
+            Blake3Hasher::hash(&87_u32.to_le_bytes())
+        );
+        let hash_82 = Blake3Hasher::hash(&82_u32.to_le_bytes());
+        let hash_83 = Blake3Hasher::hash(&83_u32.to_le_bytes());
+        let mut hasher = Blake3Hasher::new();
+        hasher.update(hash_82.as_ref());
+        hasher.update(hash_83.as_ref());
+        hasher.update(&41_u32.to_le_bytes());
+        hasher.update(&82_u32.to_le_bytes());
+        hasher.update(&83_u32.to_le_bytes());
+        assert_eq!(decommitment.hashes[5], hasher.finalize_reset());
     }
 }
