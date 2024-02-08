@@ -3,7 +3,7 @@ use itertools::Itertools;
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
 use super::merkle_multilayer::MerkleMultiLayer;
-use super::mixed_degree_decommitment::{DecommitmentNode, MixedDecommitment};
+use super::mixed_degree_decommitment::MixedDecommitment;
 use crate::commitment_scheme::merkle_multilayer::MerkleMultiLayerConfig;
 use crate::commitment_scheme::utils::get_column_chunk;
 use crate::core::fields::{Field, IntoSlice};
@@ -111,39 +111,6 @@ where
             depth_accumulator -= multi_layer_height;
         }
         panic!()
-    }
-
-    // TODO(Ohad): remove '_'.
-    fn _get_node(
-        &self,
-        layer_depth: usize,
-        node_index: usize,
-        include_left_hash: bool,
-        include_right_hash: bool,
-    ) -> Option<DecommitmentNode<F, H>> {
-        let injected_elements = self.input.get_injected_elements(layer_depth, node_index);
-        if !include_left_hash && !include_right_hash && injected_elements.is_empty() {
-            return None;
-        }
-
-        let right_hash = if include_right_hash {
-            Some(self.get_hash_at(layer_depth, node_index * 2 + 1))
-        } else {
-            None
-        };
-        let left_hash = if include_left_hash {
-            Some(self.get_hash_at(layer_depth, node_index * 2))
-        } else {
-            None
-        };
-
-        Some(DecommitmentNode {
-            right_hash,
-            left_hash,
-            witness_elements: vec![],
-            position_in_layer: node_index,
-            queried_values: injected_elements,
-        })
     }
 
     pub fn root(&self) -> H::Hash {
