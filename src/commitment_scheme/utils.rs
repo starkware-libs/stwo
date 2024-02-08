@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::slice::Iter;
 
 use super::hasher::Hasher;
+use super::merkle_input::MerkleTreeConfig;
 use crate::core::fields::{Field, IntoSlice};
 use crate::math::utils::{log2_ceil, usize_safe_div};
 
@@ -309,6 +310,32 @@ fn inject_previous_hash_values<H: Hasher>(
 ) {
     hash_state.update(prev_hashes[i * 2].as_ref());
     hash_state.update(prev_hashes[i * 2 + 1].as_ref());
+}
+
+// Translates queries of the form <column, entry_index> to the form <layer, node_index>
+// Input queries are per column, i.e queries[0] is a vector of queries for the first column that was
+// inserted to the tree's input in that layer.
+pub fn queried_nodes_in_layer<'a>(
+    queries: impl Iterator<Item = &'a Vec<usize>>,
+    config: &MerkleTreeConfig,
+    layer_depth: usize,
+) -> Vec<usize> {
+    let columns_lengths = config.column_lengths_at_depth(layer_depth);
+    let column_log_lengths = columns_lengths.iter().map(|c_len| c_len.ilog2() as usize);
+    let mut node_queries = queries
+        .into_iter()
+        .zip(column_log_lengths)
+        .flat_map(|(column_queries, log_column_length)| {
+            let log_n_bags_in_layer = layer_depth - 1;
+            let log_n_elements_in_bag = log_column_length - log_n_bags_in_layer;
+            column_queries
+                .iter()
+                .map(move |q| q >> log_n_elements_in_bag)
+        })
+        .collect::<Vec<_>>();
+    node_queries.sort();
+    node_queries.dedup();
+    node_queries
 }
 
 #[cfg(test)]
