@@ -23,7 +23,7 @@ pub trait Name {
 /// ```
 
 pub trait Hasher: Sized {
-    type Hash: Hash<Self::NativeType>;
+    type Hash: Hash<Self::NativeType> + 'static;
     type NativeType: Sized + Eq;
 
     // Input size of the compression function.
