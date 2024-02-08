@@ -310,7 +310,6 @@ fn inject_previous_hash_values<H: Hasher>(
     hash_state.update(prev_hashes[i * 2].as_ref());
     hash_state.update(prev_hashes[i * 2 + 1].as_ref());
 }
-
 #[cfg(test)]
 pub mod tests {
     use num_traits::One;
