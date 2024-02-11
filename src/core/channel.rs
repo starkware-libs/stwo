@@ -1,5 +1,6 @@
 use super::fields::m31::{BaseField, N_BYTES_FELT, P};
 use super::fields::qm31::{QM31, QM31_EXTENSION_DEGREE};
+use super::fields::IntoSlice;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
 
@@ -26,11 +27,17 @@ impl ChannelTime {
 
 pub trait Channel {
     type Digest;
+
     const BYTES_PER_HASH: usize;
 
-    fn get_digest(&self) -> Self::Digest;
     fn new(digest: Self::Digest) -> Self;
-    fn mix_with_seed(&mut self, seed: Self::Digest);
+    fn get_digest(&self) -> Self::Digest;
+
+    // Mix functions.
+    fn mix_digest(&mut self, digest: Self::Digest);
+    fn mix_felts(&mut self, felts: &[QM31]);
+
+    // Draw functions.
     fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
@@ -65,7 +72,7 @@ impl Channel for Blake2sChannel {
         self.digest
     }
 
-    fn mix_with_seed(&mut self, digest: Self::Digest) {
+    fn mix_digest(&mut self, digest: Self::Digest) {
         self.digest = Blake2sHasher::concat_and_hash(&self.digest, &digest);
         self.channel_time.inc_challenges();
     }
@@ -95,6 +102,15 @@ impl Channel for Blake2sChannel {
         }
     }
 
+    fn mix_felts(&mut self, felts: &[QM31]) {
+        let mut hasher = Blake2sHasher::new();
+        hasher.update(self.digest.as_ref());
+        hasher.update(IntoSlice::<u8>::into_slice(felts));
+
+        self.digest = hasher.finalize();
+        self.channel_time.inc_challenges();
+    }
+
     fn draw_random_bytes(&mut self) -> Vec<u8> {
         let mut hash_input = self.digest.as_ref().to_vec();
 
@@ -112,9 +128,11 @@ impl Channel for Blake2sChannel {
 
 #[cfg(test)]
 mod tests {
-
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::{Blake2sChannel, Channel};
+    use crate::core::fields::m31::M31;
+    use crate::core::fields::qm31::QM31;
+    use crate::m31;
 
     #[test]
     fn test_initialize_channel() {
@@ -143,7 +161,7 @@ mod tests {
         assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 2);
 
-        channel.mix_with_seed(Blake2sHash::from(vec![1; 32]));
+        channel.mix_digest(Blake2sHash::from(vec![1; 32]));
         assert_eq!(channel.channel_time.n_challenges, 1);
         assert_eq!(channel.channel_time.n_sent, 0);
 
@@ -176,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_mix_with_seed() {
+    pub fn test_mix_digest() {
         let initial_digest = Blake2sHash::from(vec![0; 32]);
         let mut channel = Blake2sChannel::new(initial_digest);
 
@@ -186,7 +204,18 @@ mod tests {
         }
 
         // Reseed channel and check the digest was changed.
-        channel.mix_with_seed(Blake2sHash::from(vec![1; 32]));
+        channel.mix_digest(Blake2sHash::from(vec![1; 32]));
+        assert_ne!(initial_digest, channel.digest);
+    }
+
+    #[test]
+    pub fn test_mix_felts() {
+        let initial_digest = Blake2sHash::from(vec![0; 32]);
+        let mut channel = Blake2sChannel::new(initial_digest);
+        let felts: Vec<QM31> = (0..2).map(|i| QM31::from(m31!(i + 1923782))).collect();
+
+        channel.mix_felts(felts.as_slice());
+
         assert_ne!(initial_digest, channel.digest);
     }
 }
