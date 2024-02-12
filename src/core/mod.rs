@@ -1,6 +1,7 @@
 pub mod air;
 pub mod channel;
 pub mod circle;
+pub mod commitment_scheme;
 pub mod constraints;
 pub mod fft;
 pub mod fields;
