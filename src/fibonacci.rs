@@ -9,6 +9,7 @@ use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::{CirclePoint, Coset};
+use crate::core::commitment_scheme::TraceCommitmentScheme;
 use crate::core::constraints::{
     coset_vanishing, pair_excluder, point_vanishing, EvalByEvaluation, EvalByPointMapping,
     PolyOracle,
@@ -200,20 +201,19 @@ impl Fibonacci {
         // Evaluate and commit on trace.
         let trace = self.get_trace();
         let trace_poly = trace.interpolate();
-        let trace_evaluation = trace_poly.evaluate(self.trace_eval_domain);
-        let trace_commitment_evaluation = trace_poly
-            .evaluate(self.trace_commitment_domain.circle_domain())
-            .bit_reverse();
-        let trace_commitment =
-            MerkleTree::<BaseField, MerkleHasher>::commit(vec![trace_commitment_evaluation
-                .values
-                .clone()]);
-        channel.mix_digest(trace_commitment.root());
+        let trace_commitment_scheme = TraceCommitmentScheme::new(
+            vec![trace_poly],
+            vec![self.trace_commitment_domain],
+            channel,
+        );
 
         // Evaluate and commit on composition polynomial.
         let random_coeff = channel.draw_random_extension_felts()[0];
-        let composition_polynomial =
-            self.compute_composition_polynomial(random_coeff, &trace_evaluation);
+        // TODO(AlonH): Use Component for cp computation.
+        let composition_polynomial = self.compute_composition_polynomial(
+            random_coeff,
+            &trace_commitment_scheme.polynomials[0].evaluate(self.trace_eval_domain),
+        );
         let composition_polynomial_poly = composition_polynomial.interpolate();
         let composition_polynomial_commitment_evaluation = composition_polynomial_poly
             .evaluate(
@@ -229,8 +229,12 @@ impl Fibonacci {
         // Evaluate the trace mask and the composition polynomial on the OODS point.
         let oods_point = CirclePoint::<QM31>::get_random_point(channel);
         let mask = self.get_mask();
-        let trace_oods_evaluation =
-            get_oods_values(&mask, oods_point, &[self.trace_domain], &[trace_poly]);
+        let trace_oods_evaluation = get_oods_values(
+            &mask,
+            oods_point,
+            &[self.trace_domain],
+            &trace_commitment_scheme.polynomials,
+        );
         let composition_polynomial_oods_value =
             composition_polynomial_poly.eval_at_point(oods_point);
 
@@ -247,7 +251,8 @@ impl Fibonacci {
         );
         for (point, value) in zip(&trace_oods_evaluation.points, &trace_oods_evaluation.values) {
             oods_quotients.push(
-                get_pair_oods_quotient(*point, *value, &trace_commitment_evaluation).bit_reverse(),
+                get_pair_oods_quotient(*point, *value, &trace_commitment_scheme.evaluations[0])
+                    .bit_reverse(),
             );
         }
 
@@ -279,18 +284,19 @@ impl Fibonacci {
             .collect();
         let trace_opened_values = trace_decommitment_positions
             .iter()
-            .map(|p| trace_commitment_evaluation.values[*p])
+            .map(|p| trace_commitment_scheme.evaluations[0].values[*p])
             .collect();
         let composition_polynomial_decommitment = composition_polynomial_commitment
             .generate_decommitment(composition_polynomial_decommitment_positions);
-        let trace_decommitment =
-            trace_commitment.generate_decommitment(trace_decommitment_positions);
+        let trace_decommitment = trace_commitment_scheme
+            .commitment
+            .generate_decommitment(trace_decommitment_positions);
 
         FibonacciProof {
             public_input: self.claim,
             trace_commitment: CommitmentProof {
                 decommitment: trace_decommitment,
-                commitment: trace_commitment.root(),
+                commitment: trace_commitment_scheme.commitment.root(),
             },
             composition_polynomial_commitment: CommitmentProof {
                 decommitment: composition_polynomial_decommitment,
