@@ -1,112 +1,28 @@
-use std::fmt;
-
 use super::hasher::Hasher;
 use crate::core::fields::Field;
 
 /// A Merkle proof of queried indices.
 /// Used for storing a all the paths from the query leaves to the root.
 /// A correctly generated decommitment should hold all the information needed to generate the root
-/// of the tree, proving the queried values.
+/// of the tree, proving the queried values and the tree's structure.
+// TODO(Ohad): write printing functions.
 pub struct MixedDecommitment<F: Field, H: Hasher> {
-    pub decommitment_layers: Vec<Vec<DecommitmentNode<F, H>>>,
-}
-
-impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
-    pub fn new(decommitment_layers: Vec<Vec<DecommitmentNode<F, H>>>) -> Self {
-        Self {
-            decommitment_layers,
-        }
-    }
-}
-
-/// A node in a Merkle tree's decommitment path.
-/// Holds the input to the hash function, excluding information that can be calculated by a verifier
-/// given the entire decommitment.
-/// Hashes - two or less of the children hashes(zero happens at the leaves or at the joining point
-/// of 2 coinciding paths, two happens when a node is directly queried and is not a parent).
-/// injected elements - if exists.
-///
-/// # Attributes
-///
-/// * `left_hash`, 'right_hash' - Optional values, hash of one of the node's children.
-/// * `witness_elements` - Elements injected to the node that are part of the witness.
-pub struct DecommitmentNode<F: Field, H: Hasher> {
-    pub left_hash: Option<H::Hash>,
-    pub right_hash: Option<H::Hash>,
+    pub hashes: Vec<H::Hash>,
     pub witness_elements: Vec<F>,
-
-    // TODO(Ohad): remove these.
     pub queried_values: Vec<F>,
-    pub position_in_layer: usize,
 }
 
-impl<F: Field, H: Hasher> fmt::Display for MixedDecommitment<F, H> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.decommitment_layers.last() {
-            Some(_) => {
-                for (i, layer) in self.decommitment_layers.iter().enumerate() {
-                    f.write_str(&std::format!("\nLayer #[{}]:", i))?;
-                    for (j, node) in layer.iter().enumerate() {
-                        f.write_str(&std::format!("\n\tNode #[{}]: {}", j, node))?;
-                    }
-                }
-            }
-            None => f.write_str("Empty Path!")?,
+#[allow(clippy::new_without_default)]
+impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
+    pub fn new() -> Self {
+        Self {
+            hashes: vec![],
+            witness_elements: vec![],
+            queried_values: vec![],
         }
-        Ok(())
     }
-}
 
-impl<F: Field, H: Hasher> fmt::Display for DecommitmentNode<F, H> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(hash) = self.left_hash {
-            f.write_str(&std::format!("Left hash: {}, ", hash))?;
-        }
-        if let Some(hash) = self.right_hash {
-            f.write_str(&std::format!("Right hash: {}, ", hash))?;
-        }
-        f.write_str(&std::format!(
-            " Witness Elements: {:?}",
-            self.witness_elements
-        ))?;
-        f.write_str("\n")?;
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
-    use crate::commitment_scheme::hasher::Hasher;
-    use crate::core::fields::m31::M31;
-
-    #[test]
-    fn display_test() {
-        let path = super::MixedDecommitment::<M31, Blake3Hasher>::new(vec![
-            vec![super::DecommitmentNode::<M31, Blake3Hasher> {
-                left_hash: Some(Blake3Hasher::hash(b"a")),
-                right_hash: None,
-                witness_elements: (0..6).step_by(2).map(M31::from_u32_unchecked).collect(),
-                queried_values: (1..7).step_by(2).map(M31::from_u32_unchecked).collect(),
-                position_in_layer: 0,
-            }],
-            vec![
-                super::DecommitmentNode::<M31, Blake3Hasher> {
-                    right_hash: Some(Blake3Hasher::hash(b"b")),
-                    left_hash: None,
-                    witness_elements: (3..6).step_by(2).map(M31::from_u32_unchecked).collect(),
-                    queried_values: (4..7).step_by(2).map(M31::from_u32_unchecked).collect(),
-                    position_in_layer: 0,
-                },
-                super::DecommitmentNode::<M31, Blake3Hasher> {
-                    left_hash: Some(Blake3Hasher::hash(b"c")),
-                    right_hash: None,
-                    witness_elements: (6..9).step_by(2).map(M31::from_u32_unchecked).collect(),
-                    queried_values: (7..10).step_by(2).map(M31::from_u32_unchecked).collect(),
-                    position_in_layer: 0,
-                },
-            ],
-        ]);
-        println!("{}", path)
+    pub fn verify(&self, _root: H::Hash, _structre: usize, _queried_values: Vec<F>) {
+        todo!()
     }
 }
