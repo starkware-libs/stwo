@@ -98,7 +98,26 @@ where
         root
     }
 
-    // Queries should be a query struct that supports queries at multiple layers.
+    /// A mixed degree merkle tree decommitment.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use prover_research::commitment_scheme::merkle_input::MerkleTreeInput;
+    /// use prover_research::commitment_scheme::mixed_degree_merkle_tree::*;
+    /// use prover_research::commitment_scheme::blake3_hash::Blake3Hasher;
+    /// use prover_research::core::fields::m31::M31;
+    ///
+    /// let mut input = MerkleTreeInput::<M31>::new();
+    /// let column_0 = vec![M31::from_u32_unchecked(0); 1024];
+    /// let column_1 = vec![M31::from_u32_unchecked(0); 512];
+    /// input.insert_column(7, &column_0);
+    /// input.insert_column(6, &column_1);
+    /// let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(input,MixedDegreeMerkleTreeConfig {multi_layer_sizes: [5,2].to_vec(),});
+    /// let root = tree.commit();
+    ///
+    /// let queries = vec![vec![0],vec![300, 511]];
+    /// let decommitment = tree.decommit(queries);
     // TODO(Ohad): introduce a proper query struct, then deprecate 'drain' usage and accepting vecs.
     pub fn decommit(&self, mut queries_per_column: Vec<Vec<usize>>) -> MixedDecommitment<F, H> {
         assert_eq!(
@@ -108,6 +127,7 @@ where
         );
 
         let mut decommitment = MixedDecommitment::<F, H>::new();
+
         // Decommitment layers are built from the bottom up, excluding the root.
         let mut ancestor_indices = vec![];
         (1..=self.input.max_injected_depth()).rev().for_each(|i| {
@@ -115,30 +135,15 @@ where
             let layer_column_queries = queries_per_column
                 .drain(..self.input.get_columns(i).len())
                 .collect_vec();
-            let queried_nodes = queried_nodes_in_layer(layer_column_queries.iter(), &self.input, i);
-            self.decommit_single_layer(
+            ancestor_indices = self.decommit_single_layer(
                 i,
                 layer_column_queries.iter(),
-                &queried_nodes,
                 ancestor_indices.iter().copied().peekable(),
                 &mut decommitment,
             );
-
-            // Ancestor indices for the next layer are the parent indices of the queried nodes,
-            // which are the node indices themselves, and parents of the current layer
-            // ancestors.
-            ancestor_indices =
-                MergeIter::new(Self::parent_indices(&ancestor_indices), queried_nodes)
-                    .collect_vec();
         });
 
         decommitment
-    }
-
-    fn parent_indices(child_indices: &[usize]) -> Vec<usize> {
-        let mut parent_indices = child_indices.iter().map(|q| q / 2).collect_vec();
-        parent_indices.dedup();
-        parent_indices
     }
 
     pub fn get_hash_at(&self, layer_depth: usize, position: usize) -> H::Hash {
