@@ -80,7 +80,6 @@ pub fn get_pair_oods_quotient(
 pub fn get_oods_values(
     mask: &Mask,
     oods_point: CirclePoint<SecureField>,
-    trace_domains: &[CanonicCoset],
     trace_polys: &[CirclePoly<BaseField>],
 ) -> PointMapping<SecureField> {
     let mut oods_evals = Vec::with_capacity(trace_polys.len());
@@ -90,7 +89,11 @@ pub fn get_oods_values(
             poly,
         });
     }
-    mask.get_evaluation(trace_domains, &oods_evals[..])
+    let trace_domains = trace_polys
+        .iter()
+        .map(|poly| CanonicCoset::new(poly.log_size()))
+        .collect::<Vec<_>>();
+    mask.get_evaluation(&trace_domains, &oods_evals[..])
 }
 
 // TODO(AlonH): Consider refactoring and using this function in `get_oods_values`.

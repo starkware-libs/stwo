@@ -35,7 +35,7 @@ pub trait Component {
     // Note: This will be computed using a MaterializedGraph.
     fn evaluate_constraint_quotients_on_domain(
         &self,
-        trace: &ComponentTrace,
+        trace: &ComponentTrace<'_>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator,
     );
 
@@ -43,7 +43,7 @@ pub trait Component {
     fn mask_values_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        component_trace: &ComponentTrace,
+        component_trace: &ComponentTrace<'_>,
     ) -> Vec<SecureField>;
 
     /// Evaluates the constraint quotients combination of the component, given the mask values.
@@ -57,7 +57,15 @@ pub trait Component {
     // TODO(spapini): Extra functions for FRI and decommitment.
 }
 
-pub struct ComponentTrace(pub Vec<CirclePoly<BaseField>>);
+pub struct ComponentTrace<'a> {
+    pub columns: Vec<&'a CirclePoly<BaseField>>,
+}
+
+impl<'a> ComponentTrace<'a> {
+    pub fn new(columns: Vec<&'a CirclePoly<BaseField>>) -> Self {
+        Self { columns }
+    }
+}
 
 pub struct MaskItem {
     pub column_index: usize,
