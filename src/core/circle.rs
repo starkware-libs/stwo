@@ -238,16 +238,14 @@ impl CirclePointIndex {
         Self(self.0 >> 1)
     }
 
-    pub fn try_div(&self, rhs: CirclePointIndex) -> Option<usize> {
+    pub fn try_div(&self, rhs: CirclePointIndex) -> Option<isize> {
         // Find x s.t. x * rhs.0 = self.0 (mod CIRCLE_ORDER).
         let (s, _t, g) = egcd(rhs.0 as isize, 1 << M31_CIRCLE_LOG_ORDER);
         if self.0 as isize % g != 0 {
             return None;
         }
         let res = s * self.0 as isize / g;
-        let cap = (1 << M31_CIRCLE_LOG_ORDER) / g;
-        let res = ((res % cap) + cap) % cap;
-        Some(res as usize)
+        Some(res)
     }
 }
 
@@ -276,7 +274,7 @@ impl Mul<usize> for CirclePointIndex {
 }
 
 impl Div for CirclePointIndex {
-    type Output = usize;
+    type Output = isize;
 
     fn div(self, rhs: Self) -> Self::Output {
         self.try_div(rhs).unwrap()
@@ -406,7 +404,8 @@ impl Coset {
     }
 
     pub fn find(&self, i: CirclePointIndex) -> Option<usize> {
-        (i - self.initial_index).try_div(self.step_size)
+        let res = (i - self.initial_index).try_div(self.step_size)?;
+        Some(res.rem_euclid(self.size() as isize) as usize)
     }
 }
 
