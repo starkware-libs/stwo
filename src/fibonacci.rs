@@ -24,6 +24,7 @@ use crate::core::oods::{
 };
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PointMapping};
 use crate::core::poly::BitReversedOrder;
+use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
 use crate::core::queries::Queries;
 
 type Channel = Blake2sChannel;
@@ -32,6 +33,7 @@ type MerkleHasher = Blake2sHasher;
 const LOG_BLOWUP_FACTOR: u32 = 1;
 // TODO(Andrew): Change to 0 once related bug is fixed.
 const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 1;
+const PROOF_OF_WORK_BITS: u32 = 12;
 const N_QUERIES: usize = 3;
 
 pub struct Fibonacci {
@@ -65,6 +67,7 @@ pub struct FibonacciProof {
     pub trace_oods_values: Vec<QM31>,
     pub composition_polynomial_opened_values: Vec<QM31>,
     pub trace_opened_values: Vec<BaseField>,
+    pub proof_of_work: ProofOfWorkProof,
     pub fri_proof: FriProof<MerkleHasher>,
     pub additional_proof_data: AdditionalProofData,
 }
@@ -253,8 +256,9 @@ impl Fibonacci {
 
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR);
         let fri_prover = FriProver::commit(channel, fri_config, &oods_quotients);
+
+        let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
         // TODO(AlonH): Get opening positions from FRI.
-        // TODO(AlonH): Integrate proof of work.
         let composition_polynomial_queries = Queries::generate(
             channel,
             self.composition_polynomial_commitment_domain.log_size(),
@@ -299,6 +303,7 @@ impl Fibonacci {
             trace_oods_values: trace_oods_evaluation.values,
             composition_polynomial_opened_values,
             trace_opened_values,
+            proof_of_work,
             fri_proof,
             additional_proof_data: AdditionalProofData {
                 composition_polynomial_oods_value,
@@ -341,6 +346,7 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     ];
     let fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
 
+    ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work);
     let composition_polynomial_queries = Queries::generate(
         channel,
         fib.composition_polynomial_commitment_domain.log_size(),
