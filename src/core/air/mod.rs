@@ -3,7 +3,7 @@ use std::ops::Deref;
 use self::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::circle::{CirclePoint, CirclePointIndex};
 use super::fields::m31::BaseField;
-use super::fields::qm31::QM31;
+use super::fields::qm31::SecureField;
 use super::fields::ExtensionOf;
 use super::poly::circle::{CirclePoly, PointMapping};
 use crate::core::constraints::PolyOracle;
@@ -42,15 +42,15 @@ pub trait Component {
     /// Evaluates the mask values for the constraints at a point.
     fn mask_values_at_point(
         &self,
-        point: CirclePoint<QM31>,
+        point: CirclePoint<SecureField>,
         component_trace: &ComponentTrace,
-    ) -> Vec<QM31>;
+    ) -> Vec<SecureField>;
 
     /// Evaluates the constraint quotients combination of the component, given the mask values.
     fn evaluate_quotients_by_mask(
         &self,
-        point: CirclePoint<QM31>,
-        mask: &[QM31],
+        point: CirclePoint<SecureField>,
+        mask: &[SecureField],
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     );
 
