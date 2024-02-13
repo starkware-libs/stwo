@@ -11,7 +11,7 @@ use crate::core::air::{Component, ComponentTrace, Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::commitment_scheme::CommitmentSchemeProver;
-use crate::core::constraints::{coset_vanishing, pair_excluder, point_vanishing, PolyOracle};
+use crate::core::constraints::{coset_vanishing, pair_vanishing, point_vanishing, PolyOracle};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field, IntoSlice};
@@ -129,7 +129,7 @@ impl Fibonacci {
             .constraint_zero_domain
             .at(self.constraint_zero_domain.size() - 1);
         let num = self.eval_step_constraint(trace)
-            * pair_excluder(excluded0.into_ef(), excluded1.into_ef(), trace.point());
+            * pair_vanishing(excluded0.into_ef(), excluded1.into_ef(), trace.point());
         let denom = coset_vanishing(self.constraint_zero_domain, trace.point());
         num / denom
     }

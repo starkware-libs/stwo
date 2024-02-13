@@ -45,7 +45,7 @@ pub fn point_excluder<F: ExtensionOf<BaseField>>(
 }
 
 // A vanishing polynomial on 2 circle points.
-pub fn pair_excluder<F: ExtensionOf<BaseField>>(
+pub fn pair_vanishing<F: ExtensionOf<BaseField>>(
     excluded0: CirclePoint<F>,
     excluded1: CirclePoint<F>,
     p: CirclePoint<F>,
@@ -182,7 +182,7 @@ mod tests {
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
-    use crate::core::constraints::{complex_conjugate_line, pair_excluder};
+    use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::{ComplexConjugate, Field};
@@ -227,9 +227,9 @@ mod tests {
         let excluded1 = Coset::half_odds(5).at(13);
         let point = (CirclePointIndex::generator() * 4).to_point();
 
-        assert_ne!(pair_excluder(excluded0, excluded1, point), M31::zero());
-        assert_eq!(pair_excluder(excluded0, excluded1, excluded0), M31::zero());
-        assert_eq!(pair_excluder(excluded0, excluded1, excluded1), M31::zero());
+        assert_ne!(pair_vanishing(excluded0, excluded1, point), M31::zero());
+        assert_eq!(pair_vanishing(excluded0, excluded1, excluded0), M31::zero());
+        assert_eq!(pair_vanishing(excluded0, excluded1, excluded1), M31::zero());
     }
 
     #[test]
@@ -290,7 +290,7 @@ mod tests {
         for point in large_domain.iter() {
             let line = complex_conjugate_line(vanish_point, vanish_point_value, point);
             let mut value = polynomial.eval_at_point(point) - line;
-            value /= pair_excluder(
+            value /= pair_vanishing(
                 vanish_point,
                 vanish_point.complex_conjugate(),
                 point.into_ef(),
