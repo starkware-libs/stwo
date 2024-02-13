@@ -1,7 +1,7 @@
 use super::air::Mask;
 use super::circle::{CirclePoint, CirclePointIndex};
 use super::constraints::{
-    complex_conjugate_line, pair_excluder, point_vanishing, EvalByEvaluation, EvalByPoly,
+    complex_conjugate_line, pair_vanishing, point_vanishing, EvalByEvaluation, EvalByPoly,
     PolyOracle,
 };
 use super::fields::m31::BaseField;
@@ -30,7 +30,7 @@ pub fn eval_pair_oods_quotient_point(
 ) -> SecureField {
     let num = eval.get_at(CirclePointIndex(0))
         - complex_conjugate_line(oods_point, oods_value, eval.point());
-    let denom = pair_excluder(
+    let denom = pair_vanishing(
         oods_point,
         oods_point.complex_conjugate(),
         eval.point().into_ef(),
