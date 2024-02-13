@@ -5,7 +5,8 @@
     new_uninit,
     slice_group_by,
     stdsimd,
-    get_many_mut
+    get_many_mut,
+    option_get_or_insert_default
 )]
 pub mod commitment_scheme;
 pub mod core;
