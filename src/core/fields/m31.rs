@@ -22,6 +22,10 @@ impl M31 {
         (result.square() == *self).then_some(result)
     }
 
+    pub fn partial_reduce(val: u32) -> Self {
+        Self(val.min(val.wrapping_sub(P)))
+    }
+
     pub fn reduce(val: u64) -> Self {
         Self((((((val >> MODULUS_BITS) + val + 1) >> MODULUS_BITS) + val) & (P as u64)) as u32)
     }
@@ -41,7 +45,7 @@ impl Add for M31 {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Self::reduce((self.0 as u64) + (rhs.0 as u64))
+        Self::partial_reduce(self.0 + rhs.0)
     }
 }
 
@@ -49,7 +53,7 @@ impl Neg for M31 {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Self::reduce(P as u64 - (self.0 as u64))
+        Self::partial_reduce(P - self.0)
     }
 }
 
@@ -57,7 +61,7 @@ impl Sub for M31 {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        Self::reduce((self.0 as u64) + (P as u64) - (rhs.0 as u64))
+        Self::partial_reduce(self.0 + P - rhs.0)
     }
 }
 
