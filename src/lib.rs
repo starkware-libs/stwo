@@ -4,7 +4,8 @@
     is_sorted,
     new_uninit,
     slice_group_by,
-    stdsimd
+    stdsimd,
+    get_many_mut
 )]
 pub mod commitment_scheme;
 pub mod core;
