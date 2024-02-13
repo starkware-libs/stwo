@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::iter::Chain;
 use std::marker::PhantomData;
-use std::ops::Deref;
+use std::ops::{Deref, Index};
 
 use super::utils::fold;
 use super::{BitReversedOrder, NaturalOrder};
@@ -29,9 +29,7 @@ impl CircleDomain {
     /// Constructs a domain for constraint evaluation.
     pub fn constraint_evaluation_domain(log_size: u32) -> Self {
         assert!(log_size > 0);
-        Self {
-            half_coset: Coset::new(CirclePointIndex::generator(), log_size - 1),
-        }
+        CircleDomain::new(Coset::new(CirclePointIndex::generator(), log_size - 1))
     }
 
     pub fn iter(&self) -> CircleDomainIterator {
@@ -263,6 +261,25 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
         CirclePoly::new(values)
     }
 
+    pub fn fetch_eval_on_coset(&self, coset: Coset) -> CosetSubEvaluation<'_, F> {
+        assert!(coset.log_size() <= self.domain.half_coset.log_size());
+        if let Some(offset) = self.domain.half_coset.find(coset.initial_index) {
+            return CosetSubEvaluation::new(
+                &self.values[..self.domain.half_coset.size()],
+                offset,
+                coset.step_size / self.domain.half_coset.step_size,
+            );
+        }
+        if let Some(offset) = self.domain.half_coset.conjugate().find(coset.initial_index) {
+            return CosetSubEvaluation::new(
+                &self.values[self.domain.half_coset.size()..],
+                offset,
+                (-coset.step_size) / self.domain.half_coset.step_size,
+            );
+        }
+        panic!("Coset not found in domain");
+    }
+
     pub fn get_at(&self, point_index: CirclePointIndex) -> F {
         self.values[self.domain.find(point_index).expect("Not in domain")]
     }
@@ -273,6 +290,39 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
             domain: self.domain,
             _eval_order: PhantomData,
         }
+    }
+}
+
+/// A part of a [CircleEvaluation], for a specific coset that is a subset of the circle domain.
+pub struct CosetSubEvaluation<'a, F: ExtensionOf<BaseField>> {
+    evaluation: &'a [F],
+    offset: usize,
+    step: usize,
+}
+impl<'a, F: ExtensionOf<BaseField>> CosetSubEvaluation<'a, F> {
+    fn new(evaluation: &'a [F], offset: usize, step: usize) -> Self {
+        assert!(evaluation.len().is_power_of_two());
+        Self {
+            evaluation,
+            offset,
+            step,
+        }
+    }
+}
+impl<'a, F: ExtensionOf<BaseField>> Index<isize> for CosetSubEvaluation<'a, F> {
+    type Output = F;
+
+    fn index(&self, index: isize) -> &Self::Output {
+        let index = ((self.offset as isize) + index * (self.step as isize))
+            & ((self.evaluation.len() - 1) as isize);
+        &self.evaluation[index as usize]
+    }
+}
+impl<'a, F: ExtensionOf<BaseField>> Index<usize> for CosetSubEvaluation<'a, F> {
+    type Output = F;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self[index as isize]
     }
 }
 
@@ -338,6 +388,10 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
         assert!(coeffs.len().is_power_of_two());
         let log_size = coeffs.len().ilog2();
         Self { log_size, coeffs }
+    }
+
+    pub fn log_size(&self) -> u32 {
+        self.log_size
     }
 
     /// Evaluates the polynomial at a single point.
@@ -617,5 +671,17 @@ mod tests {
             poly.eval_at_point(random_point),
             extended.eval_at_point(random_point)
         );
+    }
+
+    #[test]
+    fn test_sub_evaluation() {
+        let domain = CanonicCoset::new(7).circle_domain();
+        let values = (0..domain.size()).map(|i| m31!(i as u32)).collect();
+        let circle_evaluation = CircleEvaluation::<BaseField>::new(domain, values);
+        let coset = Coset::new(domain.index_at(17), 3);
+        let sub_eval = circle_evaluation.fetch_eval_on_coset(coset);
+        for i in 0..coset.size() {
+            assert_eq!(sub_eval[i], circle_evaluation.get_at(coset.index_at(i)));
+        }
     }
 }
