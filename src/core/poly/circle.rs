@@ -321,7 +321,7 @@ pub struct CirclePoly<F: ExtensionOf<BaseField>> {
     /// monomial basis. The FFT basis is a tensor product of the twiddles:
     /// y, x, pi(x), pi^2(x), ..., pi^{log_size-2}(x).
     /// pi(x) := 2x^2 - 1.
-    coeffs: Vec<F>,
+    pub coeffs: Vec<F>,
     /// The number of coefficients stored as `log2(len(coeffs))`.
     log_size: u32,
 }
@@ -352,6 +352,17 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
         fold(&self.coeffs, &mappings)
     }
 
+    /// Extends the polynomial to a larger degree bound.
+    pub fn extend(self, log_size: u32) -> Self {
+        assert!(log_size >= self.log_size);
+        let mut coeffs = vec![F::zero(); 1 << log_size];
+        let log_jump = log_size - self.log_size;
+        for (i, val) in self.coeffs.iter().enumerate() {
+            coeffs[i << log_jump] = *val;
+        }
+        Self { coeffs, log_size }
+    }
+
     /// Evaluates the polynomial at all points in the domain.
     pub fn evaluate(&self, domain: CircleDomain) -> CircleEvaluation<F> {
         // Use CFFT to evaluate.
@@ -360,11 +371,7 @@ impl<F: ExtensionOf<BaseField>> CirclePoly<F> {
 
         // TODO(spapini): extend better.
         assert!(domain.log_size() >= self.log_size);
-        let mut values = vec![F::zero(); domain.size()];
-        let log_jump = domain.log_size() - self.log_size;
-        for (i, val) in self.coeffs.iter().enumerate() {
-            values[i << log_jump] = *val;
-        }
+        let mut values = self.clone().extend(domain.log_size()).coeffs;
 
         while coset.size() > 1 {
             cosets.push(coset);
@@ -435,10 +442,11 @@ impl<F: ExtensionOf<BaseField>> PointMapping<F> {
 #[cfg(test)]
 mod tests {
     use super::{CanonicCoset, CircleDomain, CircleEvaluation, Coset};
-    use crate::core::circle::CirclePointIndex;
+    use crate::core::circle::{CirclePoint, CirclePointIndex};
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::Field;
+    use crate::core::poly::circle::CirclePoly;
     use crate::core::poly::NaturalOrder;
     use crate::core::utils::bit_reverse_index;
     use crate::m31;
@@ -597,5 +605,17 @@ mod tests {
                 bit_reversed_circle_evaluation.get_at(index)
             );
         }
+    }
+
+    #[test]
+    fn test_circle_poly_extend() {
+        let poly = CirclePoly::new((0..16).map(BaseField::from_u32_unchecked).collect());
+        let extended = poly.clone().extend(8);
+        let random_point = CirclePoint::get_point(21903);
+
+        assert_eq!(
+            poly.eval_at_point(random_point),
+            extended.eval_at_point(random_point)
+        );
     }
 }
