@@ -5,7 +5,7 @@ use num_traits::One;
 use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentTrace};
 use crate::core::circle::{CirclePoint, Coset};
-use crate::core::constraints::{coset_vanishing, pair_excluder};
+use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
@@ -31,7 +31,7 @@ impl FibonacciComponent {
     ) -> F {
         let constraint_zero_domain = Coset::subgroup(self.log_size);
         let constraint_value = mask[0].square() + mask[1].square() - mask[2];
-        let selector = pair_excluder(
+        let selector = pair_vanishing(
             constraint_zero_domain
                 .at(constraint_zero_domain.size() - 2)
                 .into_ef(),
@@ -60,7 +60,7 @@ impl FibonacciComponent {
         let linear = F::one() + point.y * (self.claim - BaseField::one()) * p.y.inverse();
 
         let num = mask[0] - linear;
-        let denom = pair_excluder(p.into_ef(), CirclePoint::zero(), point);
+        let denom = pair_vanishing(p.into_ef(), CirclePoint::zero(), point);
         num / denom
     }
 }
