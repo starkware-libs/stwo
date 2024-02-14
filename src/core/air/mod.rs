@@ -2,6 +2,7 @@ use std::iter::zip;
 use std::ops::Deref;
 
 use self::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
+use super::backend::Backend;
 use super::circle::{CirclePoint, CirclePointIndex};
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
@@ -19,15 +20,15 @@ pub mod evaluation;
 /// Therefore, an AIR is generated only after the initial trace commitment phase.
 // TODO(spapini): consider renaming this struct.
 pub trait Air {
-    fn visit_components<V: ComponentVisitor>(&self, v: &mut V);
+    fn visit_components<B: Backend, V: ComponentVisitor<B>>(&self, v: &mut V);
 }
-pub trait ComponentVisitor {
-    fn visit<C: Component>(&mut self, component: &C);
+pub trait ComponentVisitor<B: Backend> {
+    fn visit<C: Component<B>>(&mut self, component: &C);
 }
 
 /// A component is a set of trace columns of various sizes along with a set of
 /// constraints on them.
-pub trait Component {
+pub trait Component<B: Backend> {
     fn max_constraint_log_degree_bound(&self) -> u32;
 
     /// Evaluates the constraint quotients of the component on constraint evaluation domains.
@@ -36,8 +37,8 @@ pub trait Component {
     // Note: This will be computed using a MaterializedGraph.
     fn evaluate_constraint_quotients_on_domain(
         &self,
-        trace: &ComponentTrace<'_>,
-        evaluation_accumulator: &mut DomainEvaluationAccumulator,
+        trace: &ComponentTrace<'_, B>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
     );
 
     /// Calculates the mask points at each column.
@@ -52,7 +53,7 @@ pub trait Component {
     fn mask_points_and_values(
         &self,
         point: CirclePoint<SecureField>,
-        trace: &ComponentTrace<'_>,
+        trace: &ComponentTrace<'_, B>,
     ) -> (Vec<Vec<CirclePoint<SecureField>>>, Vec<Vec<SecureField>>) {
         let points = self.mask_points(point);
         let values = zip(&points, &trace.columns)
@@ -78,12 +79,12 @@ pub trait Component {
     // TODO(spapini): Extra functions for FRI and decommitment.
 }
 
-pub struct ComponentTrace<'a> {
-    pub columns: Vec<&'a CirclePoly<BaseField>>,
+pub struct ComponentTrace<'a, B: Backend> {
+    pub columns: Vec<&'a CirclePoly<B, BaseField>>,
 }
 
-impl<'a> ComponentTrace<'a> {
-    pub fn new(columns: Vec<&'a CirclePoly<BaseField>>) -> Self {
+impl<'a, B: Backend> ComponentTrace<'a, B> {
+    pub fn new(columns: Vec<&'a CirclePoly<B, BaseField>>) -> Self {
         Self { columns }
     }
 }
@@ -140,6 +141,7 @@ impl Deref for Mask {
 #[cfg(test)]
 mod tests {
     use crate::core::air::{Mask, MaskItem};
+    use crate::core::backend::CPUBackend;
     use crate::core::constraints::EvalByPoly;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
@@ -150,7 +152,7 @@ mod tests {
         const COSET_SIZE: u32 = 16;
         let coset = CanonicCoset::new(4);
         let trace_domains = [coset; N_TRACE_COLUMNS as usize];
-        let trace: Vec<CircleEvaluation<BaseField>> = (0..N_TRACE_COLUMNS)
+        let trace: Vec<CircleEvaluation<CPUBackend, BaseField>> = (0..N_TRACE_COLUMNS)
             .map(|i| {
                 CircleEvaluation::new_canonical_ordered(
                     coset,
