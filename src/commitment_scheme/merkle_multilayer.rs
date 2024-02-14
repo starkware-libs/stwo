@@ -65,7 +65,14 @@ impl<H: Hasher> MerkleMultiLayer<H> {
             } else {
                 &[]
             };
-            hash_subtree::<F, H, IS_INTERMEDIATE>(tree_data, input, prev_hashes, &self.config, i);
+            hash_subtree::<F, H, IS_INTERMEDIATE>(
+                tree_data,
+                input,
+                self.config.n_sub_trees.ilog2() as usize,
+                prev_hashes,
+                &self.config,
+                i,
+            );
         });
     }
 
@@ -90,6 +97,7 @@ impl<H: Hasher> MerkleMultiLayer<H> {
 fn hash_subtree<F: Field, H: Hasher, const IS_INTERMEDIATE: bool>(
     sub_tree_data: &mut [H::Hash],
     input: &MerkleTreeInput<'_, F>,
+    relative_depth: usize,
     prev_hashes: &[H::Hash],
     config: &MerkleMultiLayerConfig,
     index_in_layer: usize,
@@ -105,7 +113,7 @@ fn hash_subtree<F: Field, H: Hasher, const IS_INTERMEDIATE: bool>(
         prev_hashes,
         dst,
         &input
-            .get_columns(config.sub_tree_height)
+            .get_columns(config.sub_tree_height + relative_depth)
             .iter()
             .map(|c| get_column_chunk(c, index_in_layer, config.n_sub_trees))
             .collect::<Vec<_>>()
@@ -125,7 +133,7 @@ fn hash_subtree<F: Field, H: Hasher, const IS_INTERMEDIATE: bool>(
             prev_hashes,
             dst,
             &input
-                .get_columns(hashed_layer_idx)
+                .get_columns(config.sub_tree_height - hashed_layer_idx + relative_depth)
                 .iter()
                 .map(|c| get_column_chunk(c, index_in_layer, config.n_sub_trees))
                 .collect::<Vec<_>>()
@@ -259,6 +267,7 @@ mod tests {
         merkle_multilayer::hash_subtree::<M31, Blake3Hasher, false>(
             &mut multi_layer.data[..multi_layer.config.sub_tree_size],
             &input,
+            0,
             &[],
             &multi_layer.config,
             0,
@@ -266,6 +275,7 @@ mod tests {
         merkle_multilayer::hash_subtree::<M31, Blake3Hasher, false>(
             &mut multi_layer.data[multi_layer.config.sub_tree_size..],
             &input,
+            0,
             &[],
             &multi_layer.config,
             1,
@@ -296,6 +306,7 @@ mod tests {
         merkle_multilayer::hash_subtree::<M31, Blake3Hasher, true>(
             &mut multi_layer.data[..multi_layer.config.sub_tree_size],
             &input,
+            0,
             &prev_hash_values[..prev_hash_values.len() / 2],
             &multi_layer.config,
             0,
@@ -303,6 +314,7 @@ mod tests {
         merkle_multilayer::hash_subtree::<M31, Blake3Hasher, true>(
             &mut multi_layer.data[multi_layer.config.sub_tree_size..],
             &input,
+            0,
             &prev_hash_values[prev_hash_values.len() / 2..],
             &multi_layer.config,
             1,
@@ -322,9 +334,13 @@ mod tests {
         // trace_column: [M31;16] = [1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2]
         let trace_column = gen_example_column();
         let sub_trees_height = 4;
+        let n_sub_trees: usize = 2;
         let mut input = MerkleTreeInput::new();
-        input.insert_column(sub_trees_height, &trace_column);
-        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        input.insert_column(
+            sub_trees_height + n_sub_trees.ilog2() as usize,
+            &trace_column,
+        );
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, n_sub_trees);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
 
         multi_layer.commit_layer::<M31, false>(&input, &[]);
@@ -345,9 +361,13 @@ mod tests {
         let mut prev_hash_values = vec![Blake3Hasher::hash(b"a"); 16];
         prev_hash_values.extend(vec![Blake3Hasher::hash(b"b"); 16]);
         let sub_trees_height = 4;
+        let n_sub_trees: usize = 2;
         let mut input = MerkleTreeInput::new();
-        input.insert_column(sub_trees_height, &trace_column);
-        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
+        input.insert_column(
+            sub_trees_height + n_sub_trees.ilog2() as usize,
+            &trace_column,
+        );
+        let config = super::MerkleMultiLayerConfig::new(sub_trees_height, n_sub_trees);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
         let (leaf_0_input, leaf_1_input) = prepare_intermediate_initial_values();
 
@@ -366,8 +386,12 @@ mod tests {
     fn get_hash_at_test() {
         let trace_column = (0..16).map(M31::from_u32_unchecked).collect::<Vec<_>>();
         let sub_trees_height = 4;
+        let n_sub_trees: usize = 2;
         let mut input = MerkleTreeInput::new();
-        input.insert_column(sub_trees_height, &trace_column);
+        input.insert_column(
+            sub_trees_height + n_sub_trees.ilog2() as usize,
+            &trace_column,
+        );
         let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
         multi_layer.commit_layer::<M31, false>(&input, &[]);
