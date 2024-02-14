@@ -1,6 +1,8 @@
 pub mod circle;
 pub mod line;
-mod utils;
+// TODO(spapini): Remove pub, when LinePoly moved to the backend as well, and we can move the fold
+// function there.
+pub mod utils;
 
 /// Bit-reversed evaluation ordering.
 #[derive(Copy, Clone, Debug)]

@@ -4,6 +4,7 @@ use std::ops::Deref;
 use self::evaluation::{
     ConstraintEvaluator, DomainEvaluationAccumulator, PointEvaluationAccumulator,
 };
+use super::backend::{Backend, CPUBackend};
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
@@ -18,18 +19,18 @@ pub mod evaluation;
 /// For instance, all interaction elements are assumed to be present in it.
 /// Therefore, an AIR is generated only after the initial trace commitment phase.
 // TODO(spapini): consider renaming this struct.
-pub trait Air {
-    fn visit_components<V: ComponentVisitor>(&self, v: &mut V);
+pub trait Air<B: Backend> {
+    fn visit_components<V: ComponentVisitor<B>>(&self, v: &mut V);
 
     fn max_constraint_log_degree_bound(&self) -> u32;
 }
 
-pub trait AirExt: Air {
+pub trait AirExt: Air<CPUBackend> {
     fn compute_composition_polynomial(
         &self,
         random_coeff: SecureField,
-        component_traces: &[ComponentTrace<'_>],
-    ) -> CirclePoly<SecureField> {
+        component_traces: &[ComponentTrace<'_, CPUBackend>],
+    ) -> CirclePoly<CPUBackend, SecureField> {
         let mut evaluator = ConstraintEvaluator::new(
             component_traces,
             self.max_constraint_log_degree_bound(),
@@ -40,10 +41,10 @@ pub trait AirExt: Air {
     }
 }
 
-impl<A: Air> AirExt for A {}
+impl<A: Air<CPUBackend>> AirExt for A {}
 
-pub trait ComponentVisitor {
-    fn visit<C: Component>(&mut self, component: &C);
+pub trait ComponentVisitor<B: Backend> {
+    fn visit<C: Component<B>>(&mut self, component: &C);
 }
 
 /// Holds the mask offsets at each column.
@@ -78,7 +79,7 @@ impl Deref for Mask {
 
 /// A component is a set of trace columns of various sizes along with a set of
 /// constraints on them.
-pub trait Component {
+pub trait Component<B: Backend> {
     fn max_constraint_log_degree_bound(&self) -> u32;
 
     /// Returns the degree bounds of each trace column.
@@ -90,8 +91,8 @@ pub trait Component {
     // Note: This will be computed using a MaterializedGraph.
     fn evaluate_constraint_quotients_on_domain(
         &self,
-        trace: &ComponentTrace<'_>,
-        evaluation_accumulator: &mut DomainEvaluationAccumulator,
+        trace: &ComponentTrace<'_, B>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
     );
 
     fn mask(&self) -> Mask;
@@ -103,7 +104,7 @@ pub trait Component {
     fn mask_points_and_values(
         &self,
         point: CirclePoint<SecureField>,
-        trace: &ComponentTrace<'_>,
+        trace: &ComponentTrace<'_, B>,
     ) -> (ColumnVec<CirclePoint<SecureField>>, ColumnVec<SecureField>) {
         let domains = trace
             .columns
@@ -134,12 +135,12 @@ pub trait Component {
     // TODO(spapini): Extra functions for FRI and decommitment.
 }
 
-pub struct ComponentTrace<'a> {
-    pub columns: Vec<&'a CirclePoly<BaseField>>,
+pub struct ComponentTrace<'a, B: Backend> {
+    pub columns: Vec<&'a CirclePoly<B, BaseField>>,
 }
 
-impl<'a> ComponentTrace<'a> {
-    pub fn new(columns: Vec<&'a CirclePoly<BaseField>>) -> Self {
+impl<'a, B: Backend> ComponentTrace<'a, B> {
+    pub fn new(columns: Vec<&'a CirclePoly<B, BaseField>>) -> Self {
         Self { columns }
     }
 }

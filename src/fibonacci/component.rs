@@ -4,6 +4,7 @@ use num_traits::One;
 
 use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentTrace, Mask};
+use crate::core::backend::CPUBackend;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
@@ -65,7 +66,7 @@ impl FibonacciComponent {
     }
 }
 
-impl Component for FibonacciComponent {
+impl Component<CPUBackend> for FibonacciComponent {
     fn max_constraint_log_degree_bound(&self) -> u32 {
         // Step constraint is of degree 2.
         self.log_size + 1
@@ -77,8 +78,8 @@ impl Component for FibonacciComponent {
 
     fn evaluate_constraint_quotients_on_domain(
         &self,
-        trace: &ComponentTrace<'_>,
-        evaluation_accumulator: &mut DomainEvaluationAccumulator,
+        trace: &ComponentTrace<'_, CPUBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
     ) {
         let poly = &trace.columns[0];
         let trace_domain = CanonicCoset::new(self.log_size);
