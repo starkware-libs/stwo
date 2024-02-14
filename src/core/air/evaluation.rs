@@ -3,6 +3,7 @@
 //! Given a random alpha, the combined polynomial is defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i (P).
 
+use crate::core::backend::{Backend, CPUBackend, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;
@@ -56,20 +57,18 @@ impl PointEvaluationAccumulator {
     }
 }
 
-type Column = Vec<SecureField>;
-
 /// Accumulates evaluations of u_i(P), each at an evaluation domain of the size of that polynomial.
 /// Computes the coefficients of f(P).
-pub struct DomainEvaluationAccumulator {
+pub struct DomainEvaluationAccumulator<B: Backend> {
     random_coeff: SecureField,
     // Accumulated evaluations for each log_size.
     // Each `sub_accumulation` holds `sum_{i=0}^{n-1} evaluation_i * alpha^(n-1-i)`,
     // where `n` is the number of accumulated evaluations for this log_size.
-    sub_accumulations: Vec<Column>,
+    sub_accumulations: Vec<Column<B, SecureField>>,
     // Number of accumulated evaluations for each log_size.
     n_cols_per_size: Vec<usize>,
 }
-impl DomainEvaluationAccumulator {
+impl<B: Backend> DomainEvaluationAccumulator<B> {
     /// Creates a new accumulator.
     /// `random_coeff` should be a secure random field element, drawn from the channel.
     /// `max_log_size` is the maximum log_size of the accumulated evaluations.
@@ -78,7 +77,7 @@ impl DomainEvaluationAccumulator {
         Self {
             random_coeff,
             sub_accumulations: (0..(max_log_size + 1))
-                .map(|n| vec![SecureField::default(); 1 << n])
+                .map(|n| Column::<B, SecureField>::from_iter(vec![SecureField::default(); 1 << n]))
                 .collect(),
             n_cols_per_size: vec![0; max_log_size + 1],
         }
@@ -92,7 +91,7 @@ impl DomainEvaluationAccumulator {
     pub fn columns<const N: usize>(
         &mut self,
         n_cols_per_size: [(u32, usize); N],
-    ) -> [ColumnAccumulator<'_>; N] {
+    ) -> [ColumnAccumulator<'_, B>; N] {
         n_cols_per_size.iter().for_each(|(log_size, n_col)| {
             self.n_cols_per_size[*log_size as usize] += n_col;
         });
@@ -105,8 +104,15 @@ impl DomainEvaluationAccumulator {
             })
     }
 
+    /// Returns the log_size of the resulting polynomial.
+    pub fn log_size(&self) -> u32 {
+        (self.sub_accumulations.len() - 1) as u32
+    }
+}
+
+impl DomainEvaluationAccumulator<CPUBackend> {
     /// Computes f(P) as coefficients.
-    pub fn finalize(self) -> CirclePoly<SecureField> {
+    pub fn finalize(self) -> CirclePoly<CPUBackend, SecureField> {
         let mut res_coeffs = vec![SecureField::default(); 1 << self.log_size()];
         let res_log_size = self.log_size();
         for (coeffs, n_cols) in self
@@ -117,7 +123,7 @@ impl DomainEvaluationAccumulator {
                 if log_size == 0 {
                     return values;
                 }
-                CircleEvaluation::new(
+                CircleEvaluation::<CPUBackend, SecureField>::new(
                     CircleDomain::constraint_evaluation_domain(log_size as u32),
                     values,
                 )
@@ -139,19 +145,14 @@ impl DomainEvaluationAccumulator {
 
         CirclePoly::new(res_coeffs)
     }
-
-    /// Returns the log_size of the resulting polynomial.
-    pub fn log_size(&self) -> u32 {
-        (self.sub_accumulations.len() - 1) as u32
-    }
 }
 
 /// An domain accumulator for polynomials of a single size.
-pub struct ColumnAccumulator<'a> {
+pub struct ColumnAccumulator<'a, B: Backend> {
     random_coeff: SecureField,
-    col: &'a mut Column,
+    col: &'a mut Column<B, SecureField>,
 }
-impl<'a> ColumnAccumulator<'a> {
+impl<'a> ColumnAccumulator<'a, CPUBackend> {
     pub fn accumulate(&mut self, index: usize, evaluation: BaseField) {
         let accum = &mut self.col[index];
         *accum = *accum * self.random_coeff + evaluation;
@@ -166,9 +167,12 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::*;
+    use crate::core::backend::CPUBackend;
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::{M31, P};
     use crate::qm31;
+
+    type B = CPUBackend;
 
     #[test]
     fn test_point_evaluation_accumulator() {
@@ -229,7 +233,7 @@ mod tests {
         let alpha = qm31!(2, 3, 4, 5);
 
         // Use accumulator.
-        let mut accumulator = DomainEvaluationAccumulator::new(alpha, LOG_SIZE_BOUND);
+        let mut accumulator = DomainEvaluationAccumulator::<B>::new(alpha, LOG_SIZE_BOUND);
         let n_cols_per_size: [(u32, usize); (LOG_SIZE_BOUND - LOG_SIZE_MIN) as usize] =
             array::from_fn(|i| {
                 let current_log_size = LOG_SIZE_MIN + i as u32;
@@ -260,7 +264,7 @@ mod tests {
         let mut res = SecureField::default();
         for (log_size, values) in pairs.into_iter() {
             res = res * alpha
-                + CircleEvaluation::new(
+                + CircleEvaluation::<B, _>::new(
                     CircleDomain::constraint_evaluation_domain(log_size),
                     values,
                 )

@@ -1,6 +1,7 @@
 use std::iter::zip;
 
 use super::air::Component;
+use super::backend::{Backend, CPUBackend};
 use super::circle::{CirclePoint, CirclePointIndex};
 use super::constraints::{
     complex_conjugate_line, pair_vanishing, point_vanishing, EvalByEvaluation, PolyOracle,
@@ -11,6 +12,8 @@ use super::fields::ComplexConjugate;
 use super::fri::CirclePolyDegreeBound;
 use super::poly::circle::CircleEvaluation;
 use super::poly::{BitReversedOrder, NaturalOrder};
+
+type B = CPUBackend;
 
 /// Evaluates the OODS quotient polynomial on a single point.
 pub fn eval_oods_quotient_point(
@@ -45,8 +48,8 @@ pub fn eval_pair_oods_quotient_point(
 pub fn get_oods_quotient(
     oods_point: CirclePoint<SecureField>,
     oods_value: SecureField,
-    eval: &CircleEvaluation<SecureField, BitReversedOrder>,
-) -> CircleEvaluation<SecureField, NaturalOrder> {
+    eval: &CircleEvaluation<B, SecureField, BitReversedOrder>,
+) -> CircleEvaluation<B, SecureField, NaturalOrder> {
     let mut values = Vec::with_capacity(eval.domain.size());
     for p_ind in eval.domain.iter_indices() {
         values.push(eval_oods_quotient_point(
@@ -65,8 +68,8 @@ pub fn get_oods_quotient(
 pub fn get_pair_oods_quotient(
     oods_point: CirclePoint<SecureField>,
     oods_value: SecureField,
-    eval: &CircleEvaluation<BaseField, BitReversedOrder>,
-) -> CircleEvaluation<SecureField, NaturalOrder> {
+    eval: &CircleEvaluation<B, BaseField, BitReversedOrder>,
+) -> CircleEvaluation<B, SecureField, NaturalOrder> {
     let mut values = Vec::with_capacity(eval.domain.size());
     for p_ind in eval.domain.iter_indices() {
         values.push(eval_pair_oods_quotient_point(
@@ -78,7 +81,7 @@ pub fn get_pair_oods_quotient(
     CircleEvaluation::new(eval.domain, values)
 }
 
-pub fn quotient_log_bounds(component: impl Component) -> Vec<CirclePolyDegreeBound> {
+pub fn quotient_log_bounds<B: Backend>(component: impl Component<B>) -> Vec<CirclePolyDegreeBound> {
     zip(
         component.mask().iter(),
         &component.trace_log_degree_bounds(),

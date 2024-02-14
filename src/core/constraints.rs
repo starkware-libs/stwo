@@ -1,10 +1,11 @@
 use num_traits::One;
 
+use super::backend::{Backend, FieldOps};
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::ExtensionOf;
-use super::poly::circle::{CircleEvaluation, CirclePoly};
+use super::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
 use super::poly::{BitReversedOrder, NaturalOrder};
 use crate::core::fields::ComplexConjugate;
 
@@ -100,12 +101,14 @@ pub trait PolyOracle<F: ExtensionOf<BaseField>>: Copy {
 }
 
 #[derive(Copy, Clone)]
-pub struct EvalByPoly<'a, F: ExtensionOf<BaseField>> {
+pub struct EvalByPoly<'a, B: FieldOps<F> + PolyOps<BaseField>, F: ExtensionOf<BaseField>> {
     pub point: CirclePoint<F>,
-    pub poly: &'a CirclePoly<BaseField>,
+    pub poly: &'a CirclePoly<B, BaseField>,
 }
 
-impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByPoly<'a, F> {
+impl<'a, B: FieldOps<F> + Backend, F: ExtensionOf<BaseField>> PolyOracle<F>
+    for EvalByPoly<'a, B, F>
+{
     fn point(&self) -> CirclePoint<F> {
         self.point
     }
@@ -120,18 +123,23 @@ impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByPoly<'a, F> {
 /// Polynomial evaluation over the base circle domain. The evaluation could be over an extension of
 /// the base field.
 #[derive(Copy, Clone)]
-pub struct EvalByEvaluation<'a, F: ExtensionOf<BaseField>, EvalOrder = NaturalOrder> {
+pub struct EvalByEvaluation<'a, B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder = NaturalOrder>
+{
     pub offset: CirclePointIndex,
-    pub eval: &'a CircleEvaluation<F, EvalOrder>,
+    pub eval: &'a CircleEvaluation<B, F, EvalOrder>,
 }
 
-impl<'a, F: ExtensionOf<BaseField>, EvalOrder> EvalByEvaluation<'a, F, EvalOrder> {
-    pub fn new(offset: CirclePointIndex, eval: &'a CircleEvaluation<F, EvalOrder>) -> Self {
+impl<'a, B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder>
+    EvalByEvaluation<'a, B, F, EvalOrder>
+{
+    pub fn new(offset: CirclePointIndex, eval: &'a CircleEvaluation<B, F, EvalOrder>) -> Self {
         Self { offset, eval }
     }
 }
 
-impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByEvaluation<'a, F> {
+impl<'a, B: PolyOps<F> + Backend, F: ExtensionOf<BaseField>> PolyOracle<F>
+    for EvalByEvaluation<'a, B, F>
+{
     fn point(&self) -> CirclePoint<F> {
         // TODO(AlonH): Separate the point field generality from the evaluation field generality and
         // remove the `into_ef` here.
@@ -143,7 +151,9 @@ impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByEvaluation<'a, F> {
     }
 }
 
-impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByEvaluation<'a, F, BitReversedOrder> {
+impl<'a, B: PolyOps<F> + Backend, F: ExtensionOf<BaseField>> PolyOracle<F>
+    for EvalByEvaluation<'a, B, F, BitReversedOrder>
+{
     fn point(&self) -> CirclePoint<F> {
         // TODO(AlonH): Separate the point field generality from the evaluation field generality and
         // remove the `into_ef` here.
@@ -160,6 +170,7 @@ mod tests {
     use num_traits::Zero;
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
+    use crate::core::backend::CPUBackend;
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
     use crate::core::fields::m31::{BaseField, M31};
@@ -238,7 +249,7 @@ mod tests {
     #[test]
     fn test_complex_conjugate_symmetry() {
         // Create a polynomial over a base circle domain.
-        let polynomial = CirclePoly::new((0..1 << 7).map(|i| m31!(i)).collect());
+        let polynomial = CirclePoly::<CPUBackend, _>::new((0..1 << 7).map(|i| m31!(i)).collect());
         let oods_point = CirclePoint::get_point(9834759221);
 
         // Assert that the base field polynomial is complex conjugate symmetric.
@@ -253,7 +264,8 @@ mod tests {
         // Create a polynomial over a circle domain.
         let log_domain_size = 7;
         let domain_size = 1 << log_domain_size;
-        let polynomial = CirclePoly::new((0..domain_size).map(|i| m31!(i)).collect());
+        let polynomial =
+            CirclePoly::<CPUBackend, _>::new((0..domain_size).map(|i| m31!(i)).collect());
 
         // Create a larger domain.
         let log_large_domain_size = log_domain_size + 1;
@@ -276,8 +288,10 @@ mod tests {
             );
             quotient_polynomial_values.push(value);
         }
-        let quotient_evaluation =
-            CircleEvaluation::<SecureField>::new(large_domain, quotient_polynomial_values);
+        let quotient_evaluation = CircleEvaluation::<CPUBackend, SecureField>::new(
+            large_domain,
+            quotient_polynomial_values,
+        );
         let quotient_polynomial = quotient_evaluation.interpolate();
 
         // Check that the quotient polynomial is indeed in the wanted fft space.

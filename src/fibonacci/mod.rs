@@ -8,6 +8,7 @@ use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentTrace};
+use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
@@ -44,7 +45,7 @@ pub struct AdditionalProofData {
     pub composition_polynomial_oods_value: SecureField,
     pub composition_polynomial_random_coeff: SecureField,
     pub oods_point: CirclePoint<SecureField>,
-    pub oods_quotients: Vec<CircleEvaluation<SecureField, BitReversedOrder>>,
+    pub oods_quotients: Vec<CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>,
 }
 
 pub struct FibonacciProof {
@@ -74,7 +75,7 @@ impl Fibonacci {
         }
     }
 
-    fn get_trace(&self) -> CircleEvaluation<BaseField> {
+    fn get_trace(&self) -> CircleEvaluation<CPUBackend, BaseField> {
         // Trace.
         let trace_domain = CanonicCoset::new(self.component.log_size);
         // TODO(AlonH): Consider using Vec::new instead of Vec::with_capacity throughout file.
@@ -98,8 +99,8 @@ impl Fibonacci {
     fn compute_composition_polynomial(
         &self,
         random_coeff: SecureField,
-        trace: &ComponentTrace<'_>,
-    ) -> CirclePoly<SecureField> {
+        trace: &ComponentTrace<'_, CPUBackend>,
+    ) -> CirclePoly<CPUBackend, SecureField> {
         let mut accumulator = DomainEvaluationAccumulator::new(
             random_coeff,
             self.component.max_constraint_log_degree_bound(),
