@@ -5,10 +5,12 @@ use itertools::Itertools;
 
 use super::channel::Blake2sChannel;
 use super::fields::m31::BaseField;
+use super::fields::qm31::SecureField;
 use super::fields::ExtensionOf;
 use super::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
-use crate::commitment_scheme::blake2_hash::Blake2sHasher;
+use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
+use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::channel::Channel;
 
@@ -51,4 +53,20 @@ impl<F: ExtensionOf<BaseField>> Deref for CommitmentSchemeProver<F> {
     fn deref(&self) -> &Self::Target {
         &self.commitment
     }
+}
+
+pub struct Commitments(pub Vec<Blake2sHash>);
+
+impl Deref for Commitments {
+    type Target = Vec<Blake2sHash>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub struct Decommitments {
+    pub trace_decommitment: MerkleDecommitment<BaseField, Blake2sHasher>,
+    // TODO(AlonH): Consider committing only on base field elements.
+    pub composition_polynomial_decommitment: MerkleDecommitment<SecureField, Blake2sHasher>,
 }

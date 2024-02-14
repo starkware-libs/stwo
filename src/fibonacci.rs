@@ -4,11 +4,10 @@ use num_traits::One;
 
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
-use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::core::air::{Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::{CirclePoint, Coset};
-use crate::core::commitment_scheme::CommitmentSchemeProver;
+use crate::core::commitment_scheme::{CommitmentSchemeProver, Commitments, Decommitments};
 use crate::core::constraints::{
     coset_vanishing, pair_excluder, point_vanishing, EvalByEvaluation, EvalByPointMapping,
     PolyOracle,
@@ -53,17 +52,10 @@ pub struct AdditionalProofData {
     pub oods_quotients: Vec<CircleEvaluation<SecureField, BitReversedOrder>>,
 }
 
-// TODO(AlonH): Removed this struct and separate the decommitment from the the commitment in the
-// stark proof.
-pub struct CommitmentProof<F: ExtensionOf<BaseField>, H: Hasher> {
-    pub decommitment: MerkleDecommitment<F, H>,
-    pub commitment: H::Hash,
-}
-
 pub struct FibonacciProof {
     pub public_input: BaseField,
-    pub trace_commitment: CommitmentProof<BaseField, MerkleHasher>,
-    pub composition_polynomial_commitment: CommitmentProof<SecureField, MerkleHasher>,
+    pub commitments: Commitments,
+    pub decommitments: Decommitments,
     pub trace_oods_values: Vec<SecureField>,
     pub composition_polynomial_opened_values: Vec<SecureField>,
     pub trace_opened_values: Vec<BaseField>,
@@ -291,13 +283,13 @@ impl Fibonacci {
 
         FibonacciProof {
             public_input: self.claim,
-            trace_commitment: CommitmentProof {
-                decommitment: trace_decommitment,
-                commitment: trace_commitment_scheme.root(),
-            },
-            composition_polynomial_commitment: CommitmentProof {
-                decommitment: composition_polynomial_decommitment,
-                commitment: composition_polynomial_commitment_scheme.root(),
+            commitments: Commitments(vec![
+                trace_commitment_scheme.root(),
+                composition_polynomial_commitment_scheme.root(),
+            ]),
+            decommitments: Decommitments {
+                trace_decommitment,
+                composition_polynomial_decommitment,
             },
             trace_oods_values: trace_oods_evaluation.values,
             composition_polynomial_opened_values,
@@ -319,9 +311,10 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(&[
         proof.public_input
     ])));
-    channel.mix_digest(proof.trace_commitment.commitment);
+    assert_eq!(proof.commitments.len(), 2);
+    channel.mix_digest(proof.commitments[0]);
     let random_coeff = channel.draw_random_secure_felts()[0];
-    channel.mix_digest(proof.composition_polynomial_commitment.commitment);
+    channel.mix_digest(proof.commitments[1]);
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
     let mask = fib.get_mask();
     let trace_oods_points = get_oods_points(&mask, oods_point, &[fib.trace_domain]);
@@ -368,14 +361,17 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
         composition_polynomial_opening_positions.len(),
         proof.composition_polynomial_opened_values.len() >> FRI_STEP_SIZE
     );
-    assert!(proof.trace_commitment.decommitment.verify(
-        proof.trace_commitment.commitment,
-        &trace_opening_positions.flatten()
-    ));
-    assert!(proof.composition_polynomial_commitment.decommitment.verify(
-        proof.composition_polynomial_commitment.commitment,
-        &composition_polynomial_opening_positions.flatten()
-    ));
+    assert!(proof
+        .decommitments
+        .trace_decommitment
+        .verify(proof.commitments[0], &trace_opening_positions.flatten()));
+    assert!(proof
+        .decommitments
+        .composition_polynomial_decommitment
+        .verify(
+            proof.commitments[1],
+            &composition_polynomial_opening_positions.flatten()
+        ));
 
     // An evaluation for each mask item and one for the composition_polynomial.
     let mut sparse_circle_evaluations = Vec::with_capacity(mask.len() + 1);
