@@ -1,4 +1,5 @@
 use super::air::Mask;
+use super::backend::{Backend, CPUBackend};
 use super::circle::{CirclePoint, CirclePointIndex};
 use super::constraints::{
     complex_conjugate_line, pair_vanishing, point_vanishing, EvalByEvaluation, EvalByPoly,
@@ -9,6 +10,8 @@ use super::fields::qm31::SecureField;
 use super::fields::ComplexConjugate;
 use super::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PointMapping};
 use super::poly::{BitReversedOrder, NaturalOrder};
+
+type B = CPUBackend;
 
 /// Evaluates the OODS quotient polynomial on a single point.
 pub fn eval_oods_quotient_point(
@@ -43,8 +46,8 @@ pub fn eval_pair_oods_quotient_point(
 pub fn get_oods_quotient(
     oods_point: CirclePoint<SecureField>,
     oods_value: SecureField,
-    eval: &CircleEvaluation<SecureField, BitReversedOrder>,
-) -> CircleEvaluation<SecureField, NaturalOrder> {
+    eval: &CircleEvaluation<B, SecureField, BitReversedOrder>,
+) -> CircleEvaluation<B, SecureField, NaturalOrder> {
     let mut values = Vec::with_capacity(eval.domain.size());
     for p_ind in eval.domain.iter_indices() {
         values.push(eval_oods_quotient_point(
@@ -63,8 +66,8 @@ pub fn get_oods_quotient(
 pub fn get_pair_oods_quotient(
     oods_point: CirclePoint<SecureField>,
     oods_value: SecureField,
-    eval: &CircleEvaluation<BaseField, BitReversedOrder>,
-) -> CircleEvaluation<SecureField, NaturalOrder> {
+    eval: &CircleEvaluation<B, BaseField, BitReversedOrder>,
+) -> CircleEvaluation<B, SecureField, NaturalOrder> {
     let mut values = Vec::with_capacity(eval.domain.size());
     for p_ind in eval.domain.iter_indices() {
         values.push(eval_pair_oods_quotient_point(
@@ -77,10 +80,10 @@ pub fn get_pair_oods_quotient(
 }
 
 /// Returns the evaluations of the trace mask at the OODS point.
-pub fn get_oods_values(
+pub fn get_oods_values<B: Backend>(
     mask: &Mask,
     oods_point: CirclePoint<SecureField>,
-    trace_polys: &[CirclePoly<BaseField>],
+    trace_polys: &[CirclePoly<B, BaseField>],
 ) -> PointMapping<SecureField> {
     let mut oods_evals = Vec::with_capacity(trace_polys.len());
     for poly in trace_polys {
