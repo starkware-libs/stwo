@@ -66,14 +66,10 @@ where
     }
 
     pub fn commit(&mut self) -> H::Hash {
-        let tree_height = self.height();
         let mut curr_layer = self.height() - self.multi_layer_height(0);
         // Bottom layer.
-        let bottom_multi_layer_input = self.input.split(curr_layer + 1);
-        self.multi_layers[0].commit_layer::<F, false>(&bottom_multi_layer_input, &[]);
-
+        self.multi_layers[0].commit_layer::<F, false>(&self.input, &[]);
         // Rest of the tree.
-        let mut rebuilt_input = bottom_multi_layer_input;
         for i in 1..self.multi_layers.len() {
             // TODO(Ohad): implement Hash oracle and avoid these copies.
             let prev_hashes = self.multi_layers[i - 1]
@@ -82,19 +78,14 @@ where
                 .collect::<Vec<H::Hash>>();
             debug_assert_eq!(prev_hashes.len(), 1 << (curr_layer));
             curr_layer -= self.multi_layer_height(i);
-            let layer_input = self.input.split(curr_layer + 1);
-            self.multi_layers[i].commit_layer::<F, true>(&layer_input, &prev_hashes);
-            rebuilt_input.prepend(layer_input);
+            self.multi_layers[i].commit_layer::<F, true>(&self.input, &prev_hashes);
         }
-
         let mut top_layer_roots = self.multi_layers.last().unwrap().get_roots();
         let root = top_layer_roots
             .next()
             .expect("Top layer should have exactly one root")
             .to_owned();
         debug_assert_eq!(top_layer_roots.count(), 0);
-        debug_assert_eq!(rebuilt_input.max_injected_depth(), tree_height);
-        self.input = rebuilt_input;
         root
     }
 
