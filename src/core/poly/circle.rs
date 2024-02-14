@@ -297,11 +297,11 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<F> {
 pub struct CosetSubEvaluation<'a, F: ExtensionOf<BaseField>> {
     evaluation: &'a [F],
     offset: usize,
-    step: usize,
+    step: isize,
 }
 
 impl<'a, F: ExtensionOf<BaseField>> CosetSubEvaluation<'a, F> {
-    fn new(evaluation: &'a [F], offset: usize, step: usize) -> Self {
+    fn new(evaluation: &'a [F], offset: usize, step: isize) -> Self {
         assert!(evaluation.len().is_power_of_two());
         Self {
             evaluation,
@@ -315,8 +315,8 @@ impl<'a, F: ExtensionOf<BaseField>> Index<isize> for CosetSubEvaluation<'a, F> {
     type Output = F;
 
     fn index(&self, index: isize) -> &Self::Output {
-        let index = ((self.offset as isize) + index * (self.step as isize))
-            & ((self.evaluation.len() - 1) as isize);
+        let index =
+            ((self.offset as isize) + index * self.step) & ((self.evaluation.len() - 1) as isize);
         &self.evaluation[index as usize]
     }
 }
