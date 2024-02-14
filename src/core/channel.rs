@@ -36,6 +36,7 @@ pub trait Channel {
     // Mix functions.
     fn mix_digest(&mut self, digest: Self::Digest);
     fn mix_felts(&mut self, felts: &[SecureField]);
+    fn mix_nonce(&mut self, nonce: u64);
 
     // Draw functions.
     fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
@@ -108,6 +109,16 @@ impl Channel for Blake2sChannel {
         hasher.update(IntoSlice::<u8>::into_slice(felts));
 
         self.digest = hasher.finalize();
+        self.channel_time.inc_challenges();
+    }
+
+    fn mix_nonce(&mut self, nonce: u64) {
+        // Copy the elements from the original array to the new array
+        let mut padded_nonce = vec![0; BLAKE_BYTES_PER_HASH];
+        padded_nonce[..8].copy_from_slice(&nonce.to_le_bytes());
+
+        self.digest =
+            Blake2sHasher::concat_and_hash(&self.digest, &Blake2sHash::from(padded_nonce));
         self.channel_time.inc_challenges();
     }
 
