@@ -172,7 +172,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
     /// * The evaluation domain size exceeds the maximum last layer domain size.
     /// * The evaluation is not of sufficiently low degree.
     fn commit_last_layer(
-        _channel: &mut impl Channel<Digest = H::Hash>,
+        channel: &mut impl Channel<Digest = H::Hash>,
         config: FriConfig,
         evaluation: LineEvaluation<SecureField, BitReversedOrder>,
     ) -> LinePoly<SecureField> {
@@ -186,10 +186,8 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         assert!(zeros.iter().all(SecureField::is_zero), "invalid degree");
 
         let last_layer_poly = LinePoly::from_ordered_coefficients(coeffs);
-        // TODO: Add back when channel support. Remove allow below.
-        // channel.mix_with_field_elements(&last_layer_poly);
+        channel.mix_felts(&last_layer_poly);
 
-        #[allow(clippy::let_and_return)]
         last_layer_poly
     }
 
@@ -297,8 +295,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
             return Err(VerificationError::LastLayerDegreeInvalid);
         }
 
-        // TODO: Add back when channel support.
-        // channel.mix_with_field_elements(&last_layer_poly);
+        channel.mix_felts(&last_layer_poly);
 
         Ok(Self {
             circle_poly_alpha,
