@@ -19,7 +19,7 @@ use crate::core::fields::{ExtensionOf, Field};
 /// Panics if the number of values is not a power of two or if an incorrect number of of folding
 /// factors is provided.
 // TODO(Andrew): Can be made to run >10x faster by unrolling lower layers of recursion
-pub(super) fn fold<F: Field, E: ExtensionOf<F>>(values: &[F], folding_factors: &[E]) -> E {
+pub fn fold<F: Field, E: ExtensionOf<F>>(values: &[F], folding_factors: &[E]) -> E {
     let n = values.len();
     assert_eq!(n, 1 << folding_factors.len());
     if n == 1 {
@@ -39,7 +39,7 @@ pub(super) fn fold<F: Field, E: ExtensionOf<F>>(values: &[F], folding_factors: &
 /// ```rust,ignore
 /// assert_eq!(repeat_value(&[1, 2, 3], 2), vec![1, 1, 2, 2, 3, 3]);
 /// ```
-pub(super) fn repeat_value<T: Copy>(values: &[T], duplicity: usize) -> Vec<T> {
+pub fn repeat_value<T: Copy>(values: &[T], duplicity: usize) -> Vec<T> {
     let n = values.len();
     let mut res: Vec<T> = Vec::with_capacity(n * duplicity);
 

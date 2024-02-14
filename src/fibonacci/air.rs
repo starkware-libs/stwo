@@ -1,5 +1,6 @@
 use super::component::FibonacciComponent;
 use crate::core::air::{Air, Component, ComponentVisitor};
+use crate::core::backend::CPUBackend;
 
 pub struct FibonacciAir {
     pub component: FibonacciComponent,
@@ -11,8 +12,9 @@ impl FibonacciAir {
     }
 }
 
-impl Air for FibonacciAir {
-    fn visit_components<V: ComponentVisitor>(&self, v: &mut V) {
+type B = CPUBackend;
+impl Air<B> for FibonacciAir {
+    fn visit_components<V: ComponentVisitor<B>>(&self, v: &mut V) {
         v.visit(&self.component);
     }
 
