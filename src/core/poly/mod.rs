@@ -1,6 +1,6 @@
 pub mod circle;
 pub mod line;
-mod utils;
+pub mod utils;
 
 /// Bit-reversed evaluation ordering.
 #[derive(Copy, Clone, Debug)]
