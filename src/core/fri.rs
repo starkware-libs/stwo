@@ -138,7 +138,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         let mut layers = Vec::new();
 
         // Circle polynomials can all be folded with the same alpha.
-        let circle_poly_alpha = channel.draw_random_secure_felts()[0];
+        let circle_poly_alpha = channel.draw_felt();
 
         while layer_evaluation.len() > config.last_layer_domain_size() {
             // Check for any columns (circle poly evaluations) that should be combined.
@@ -148,7 +148,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
 
             let layer = FriLayerProver::new(layer_evaluation);
             channel.mix_digest(layer.merkle_tree.root());
-            let folding_alpha = channel.draw_random_secure_felts()[0];
+            let folding_alpha = channel.draw_felt();
             let folded_layer_evaluation = fold_line(&layer.evaluation, folding_alpha);
 
             layer_evaluation = folded_layer_evaluation;
@@ -257,7 +257,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
             max_column_bound.log_degree_bound + config.log_blowup_factor;
 
         // Circle polynomials can all be folded with the same alpha.
-        let circle_poly_alpha = channel.draw_random_secure_felts()[0];
+        let circle_poly_alpha = channel.draw_felt();
 
         let mut inner_layers = Vec::new();
         let mut layer_bound = max_column_bound.fold_to_line();
@@ -268,7 +268,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         for (layer_index, proof) in proof.inner_layers.into_iter().enumerate() {
             channel.mix_digest(proof.commitment);
 
-            let folding_alpha = channel.draw_random_secure_felts()[0];
+            let folding_alpha = channel.draw_felt();
 
             inner_layers.push(FriLayerVerifier {
                 degree_bound: layer_bound,
