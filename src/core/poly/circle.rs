@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use std::ops::{Deref, Index};
 
 use super::{BitReversedOrder, NaturalOrder};
-use crate::core::backend::{CPUBackend, Column, FieldOps, VecLike};
+use crate::core::backend::{CPUBackend, Column, ColumnTrait, FieldOps};
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, CosetIterator};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::ExtensionOf;
@@ -215,12 +215,6 @@ pub trait PolyOps<F: ExtensionOf<BaseField>>: FieldOps<F> + Sized {
         values: Column<Self, F>,
     ) -> CircleEvaluation<Self, F>;
     fn interpolate(eval: CircleEvaluation<Self, F>) -> CirclePoly<Self, F>;
-    fn bit_reverse_natural(
-        eval: CircleEvaluation<Self, F>,
-    ) -> CircleEvaluation<Self, F, BitReversedOrder>;
-    fn bit_reverse_reversed(
-        eval: CircleEvaluation<Self, F, BitReversedOrder>,
-    ) -> CircleEvaluation<Self, F, NaturalOrder>;
 
     // Polynomial ops.
     fn eval_at_point<E: ExtensionOf<F>>(poly: &CirclePoly<Self, F>, point: CirclePoint<E>) -> E;
@@ -248,7 +242,7 @@ impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CircleEvaluation<B, F> {
     }
 
     pub fn bit_reverse(self) -> CircleEvaluation<B, F, BitReversedOrder> {
-        B::bit_reverse_natural(self)
+        CircleEvaluation::new(self.domain, B::bit_reverse_column(self.values))
     }
 }
 
@@ -275,7 +269,7 @@ impl<F: ExtensionOf<BaseField>> CircleEvaluation<CPUBackend, F> {
 
 impl<B: PolyOps<F>, F: ExtensionOf<BaseField>> CircleEvaluation<B, F, BitReversedOrder> {
     pub fn bit_reverse(self) -> CircleEvaluation<B, F, NaturalOrder> {
-        B::bit_reverse_reversed(self)
+        CircleEvaluation::new(self.domain, B::bit_reverse_column(self.values))
     }
 
     pub fn get_at(&self, point_index: CirclePointIndex) -> F {

@@ -3,7 +3,7 @@
 //! Given a random alpha, the combined polynomial is defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i (P).
 
-use crate::core::backend::{Backend, CPUBackend, Column, VecLike};
+use crate::core::backend::{Backend, CPUBackend, Column, ColumnTrait};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;

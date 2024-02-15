@@ -19,7 +19,7 @@ use super::queries::Queries;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
-use crate::core::backend::VecLike;
+use crate::core::backend::{Column, ColumnTrait};
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
 use crate::core::poly::line::LineDomain;
@@ -72,7 +72,7 @@ impl FriConfig {
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
 pub struct FriProver<H: Hasher> {
     inner_layers: Vec<FriLayerProver<H>>,
-    last_layer_poly: LinePoly<SecureField>,
+    last_layer_poly: LinePoly<B, SecureField>,
 }
 
 impl<H: Hasher<NativeType = u8>> FriProver<H> {
@@ -126,7 +126,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         columns: &[CircleEvaluation<B, F, BitReversedOrder>],
     ) -> (
         Vec<FriLayerProver<H>>,
-        LineEvaluation<SecureField, BitReversedOrder>,
+        LineEvaluation<B, SecureField, BitReversedOrder>,
     )
     where
         F: ExtensionOf<BaseField>,
@@ -180,8 +180,8 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
     fn commit_last_layer(
         channel: &mut impl Channel<Digest = H::Hash>,
         config: FriConfig,
-        evaluation: LineEvaluation<SecureField, BitReversedOrder>,
-    ) -> LinePoly<SecureField> {
+        evaluation: LineEvaluation<B, SecureField, BitReversedOrder>,
+    ) -> LinePoly<B, SecureField> {
         assert_eq!(evaluation.len(), config.last_layer_domain_size());
 
         let evaluation = evaluation.bit_reverse();
@@ -192,7 +192,8 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         assert!(zeros.iter().all(SecureField::is_zero), "invalid degree");
 
         let last_layer_poly = LinePoly::from_ordered_coefficients(coeffs);
-        channel.mix_felts(&last_layer_poly);
+        let x: &Column<B, SecureField> = &last_layer_poly.coeffs;
+        channel.mix_felts(&x.to_vec());
 
         last_layer_poly
     }
@@ -230,7 +231,7 @@ pub struct FriVerifier<H: Hasher> {
     column_bounds: Vec<CirclePolyDegreeBound>,
     inner_layers: Vec<FriLayerVerifier<H>>,
     last_layer_domain: LineDomain,
-    last_layer_poly: LinePoly<SecureField>,
+    last_layer_poly: LinePoly<B, SecureField>,
 }
 
 impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
@@ -301,7 +302,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
             return Err(VerificationError::LastLayerDegreeInvalid);
         }
 
-        channel.mix_felts(&last_layer_poly);
+        channel.mix_felts(&last_layer_poly.coeffs);
 
         Ok(Self {
             circle_poly_alpha,
@@ -326,7 +327,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     pub fn decommit<F>(
         self,
         queries: &Queries,
-        decommited_values: Vec<SparseCircleEvaluation<F>>,
+        decommited_values: Vec<SparseCircleEvaluation<B, F>>,
     ) -> Result<(), VerificationError>
     where
         F: ExtensionOf<BaseField>,
@@ -348,7 +349,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     fn decommit_inner_layers<F>(
         &self,
         queries: &Queries,
-        decommited_values: Vec<SparseCircleEvaluation<F>>,
+        decommited_values: Vec<SparseCircleEvaluation<B, F>>,
     ) -> Result<(Queries, Vec<SecureField>), VerificationError>
     where
         F: ExtensionOf<BaseField>,
@@ -416,13 +417,13 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
 pub trait FriChannel {
     type Digest;
 
-    type Field;
+    type Field: ExtensionOf<BaseField>;
 
     /// Reseeds the channel with a commitment to an inner FRI layer.
     fn reseed_with_inner_layer(&mut self, commitment: &Self::Digest);
 
     /// Reseeds the channel with the FRI last layer polynomial.
-    fn reseed_with_last_layer(&mut self, last_layer: &LinePoly<Self::Field>);
+    fn reseed_with_last_layer(&mut self, last_layer: &LinePoly<B, Self::Field>);
 
     /// Draws a random field element.
     fn draw(&mut self) -> Self::Field;
@@ -493,7 +494,7 @@ impl LinePolyDegreeBound {
 /// A FRI proof.
 pub struct FriProof<H: Hasher> {
     pub inner_layers: Vec<FriLayerProof<H>>,
-    pub last_layer_poly: LinePoly<SecureField>,
+    pub last_layer_poly: LinePoly<B, SecureField>,
 }
 
 /// Number of folds for univariate polynomials.
@@ -560,8 +561,10 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
                 }
             }
 
-            let actual_decommitment_evals =
-                sparse_evaluation.subline_evals.iter().flat_map(|e| &**e);
+            let actual_decommitment_evals = sparse_evaluation
+                .subline_evals
+                .iter()
+                .flat_map(|e| &e.values);
 
             if !actual_decommitment_evals.eq(&expected_decommitment_evals) {
                 return Err(VerificationError::InnerLayerCommitmentInvalid {
@@ -663,14 +666,14 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
 /// of size two. Each leaf of the merkle tree commits to a single coset evaluation.
 // TODO(andrew): Support different step sizes.
 struct FriLayerProver<H: Hasher> {
-    evaluation: LineEvaluation<SecureField, BitReversedOrder>,
+    evaluation: LineEvaluation<B, SecureField, BitReversedOrder>,
     merkle_tree: MerkleTree<SecureField, H>,
 }
 
 impl<H: Hasher<NativeType = u8>> FriLayerProver<H> {
-    fn new(evaluation: LineEvaluation<SecureField, BitReversedOrder>) -> Self {
+    fn new(evaluation: LineEvaluation<B, SecureField, BitReversedOrder>) -> Self {
         // TODO: Commit on slice.
-        let merkle_tree = MerkleTree::commit(vec![evaluation.to_vec()]);
+        let merkle_tree = MerkleTree::commit(vec![evaluation.values.clone()]);
         #[allow(unreachable_code)]
         FriLayerProver {
             evaluation,
@@ -700,7 +703,7 @@ impl<H: Hasher<NativeType = u8>> FriLayerProver<H> {
                     continue;
                 }
 
-                let eval = self.evaluation[eval_position];
+                let eval = self.evaluation.values[eval_position];
                 evals_subset.push(eval);
             }
         }
@@ -718,14 +721,14 @@ impl<H: Hasher<NativeType = u8>> FriLayerProver<H> {
 
 /// Holds a foldable subset of circle polynomial evaluations.
 #[derive(Debug, Clone)]
-pub struct SparseCircleEvaluation<F: ExtensionOf<BaseField>>
+pub struct SparseCircleEvaluation<B, F: ExtensionOf<BaseField>>
 where
     B: FieldOps<F>,
 {
     subcircle_evals: Vec<CircleEvaluation<B, F, BitReversedOrder>>,
 }
 
-impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F>
+impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<B, F>
 where
     B: FieldOps<F>,
 {
@@ -748,7 +751,7 @@ where
                 let buffer_domain = LineDomain::new(e.domain.half_coset);
                 let mut buffer = LineEvaluation::new(buffer_domain, vec![SecureField::zero()]);
                 fold_circle_into_line(&mut buffer, &e, alpha);
-                buffer[0]
+                buffer.values[0]
             })
             .collect()
     }
@@ -757,14 +760,14 @@ where
 /// Holds a foldable subset of univariate polynomial evaluations.
 #[derive(Debug, Clone)]
 struct SparseLineEvaluation<F: ExtensionOf<BaseField>> {
-    subline_evals: Vec<LineEvaluation<F, BitReversedOrder>>,
+    subline_evals: Vec<LineEvaluation<B, F, BitReversedOrder>>,
 }
 
 impl<F: ExtensionOf<BaseField>> SparseLineEvaluation<F> {
     /// # Panics
     ///
     /// Panics if the evaluation domain sizes don't equal the folding factor.
-    fn new(subline_evals: Vec<LineEvaluation<F, BitReversedOrder>>) -> Self {
+    fn new(subline_evals: Vec<LineEvaluation<B, F, BitReversedOrder>>) -> Self {
         let folding_factor = 1 << FOLD_STEP;
         assert!(subline_evals.iter().all(|e| e.len() == folding_factor));
         Self { subline_evals }
@@ -774,7 +777,7 @@ impl<F: ExtensionOf<BaseField>> SparseLineEvaluation<F> {
     fn fold(self, alpha: F) -> Vec<F> {
         self.subline_evals
             .into_iter()
-            .map(|e| fold_line(&e, alpha)[0])
+            .map(|e| fold_line(&e, alpha).values[0])
             .collect()
     }
 }
@@ -789,15 +792,16 @@ impl<F: ExtensionOf<BaseField>> SparseLineEvaluation<F> {
 ///
 /// Panics if there are less than two evaluations.
 pub fn fold_line<F: ExtensionOf<BaseField>>(
-    evals: &LineEvaluation<F, BitReversedOrder>,
+    evals: &LineEvaluation<B, F, BitReversedOrder>,
     alpha: F,
-) -> LineEvaluation<F, BitReversedOrder> {
+) -> LineEvaluation<B, F, BitReversedOrder> {
     let n = evals.len();
     assert!(n >= 2, "too few evals");
 
     let domain = evals.domain();
 
     let folded_evals = evals
+        .values
         .array_chunks()
         .enumerate()
         .map(|(i, &[f_x, f_neg_x])| {
@@ -826,7 +830,7 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
 // TODO(andrew): Make folding factor generic.
 // TODO(andrew): Fold directly into FRI layer to prevent allocation.
 fn fold_circle_into_line<F: Field>(
-    dst: &mut LineEvaluation<SecureField, BitReversedOrder>,
+    dst: &mut LineEvaluation<B, SecureField, BitReversedOrder>,
     src: &CircleEvaluation<B, F, BitReversedOrder>,
     alpha: SecureField,
 ) where
@@ -838,7 +842,7 @@ fn fold_circle_into_line<F: Field>(
     let domain = src.domain;
     let alpha_sq = alpha * alpha;
 
-    zip(&mut **dst, src.array_chunks())
+    zip(&mut dst.values, src.array_chunks())
         .enumerate()
         .for_each(|(i, (dst, &[f_p, f_neg_p]))| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
@@ -893,9 +897,9 @@ mod tests {
         // Coefficients are bit-reversed.
         let even_coeffs: [BaseField; DEGREE / 2] = [1, 2, 1, 3].map(BaseField::from_u32_unchecked);
         let odd_coeffs: [BaseField; DEGREE / 2] = [3, 5, 4, 1].map(BaseField::from_u32_unchecked);
-        let poly = LinePoly::new([even_coeffs, odd_coeffs].concat());
-        let even_poly = LinePoly::new(even_coeffs.to_vec());
-        let odd_poly = LinePoly::new(odd_coeffs.to_vec());
+        let poly = LinePoly::<B, _>::new([even_coeffs, odd_coeffs].concat());
+        let even_poly = LinePoly::<B, _>::new(even_coeffs.to_vec());
+        let odd_poly = LinePoly::<B, _>::new(odd_coeffs.to_vec());
         let alpha = BaseField::from_u32_unchecked(19283);
         let domain = LineDomain::new(Coset::half_odds(DEGREE.ilog2()));
         let drp_domain = domain.double();
@@ -906,7 +910,7 @@ mod tests {
 
         assert_eq!(drp_evals.len(), DEGREE / 2);
         let drp_evals = drp_evals.bit_reverse();
-        for (i, (&drp_eval, x)) in zip(&*drp_evals, drp_domain).enumerate() {
+        for (i, (&drp_eval, x)) in zip(&drp_evals.values, drp_domain).enumerate() {
             let f_e = even_poly.eval_at_point(x);
             let f_o = odd_poly.eval_at_point(x);
             assert_eq!(drp_eval, two * (f_e + alpha * f_o), "mismatch at {i}");
@@ -1109,7 +1113,7 @@ mod tests {
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit(&queries);
         // Compromise the last layer polynomial's first coefficient.
-        proof.last_layer_poly[0] += BaseField::one();
+        proof.last_layer_poly.coeffs[0] += BaseField::one();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
         let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
@@ -1155,7 +1159,7 @@ mod tests {
 
     /// Returns the log degree bound of a polynomial.
     fn log_degree_bound<F: ExtensionOf<BaseField>>(
-        polynomial: LineEvaluation<F, BitReversedOrder>,
+        polynomial: LineEvaluation<B, F, BitReversedOrder>,
     ) -> u32 {
         let polynomial = polynomial.bit_reverse();
         let coeffs = polynomial.interpolate().into_ordered_coefficients();
@@ -1167,7 +1171,7 @@ mod tests {
     fn query_polynomial<F: ExtensionOf<BaseField>>(
         polynomial: &CircleEvaluation<B, F, BitReversedOrder>,
         queries: &Queries,
-    ) -> SparseCircleEvaluation<F> {
+    ) -> SparseCircleEvaluation<B, F> {
         let domain = polynomial.domain;
         let polynomial = polynomial.clone().bit_reverse();
         let oracle = EvalByEvaluation::new(CirclePointIndex::zero(), &polynomial);
