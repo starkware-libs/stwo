@@ -4,6 +4,7 @@ use self::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
+use super::fri::CirclePolyDegreeBound;
 use super::poly::circle::CirclePoly;
 
 pub mod evaluation;
@@ -25,6 +26,9 @@ pub trait ComponentVisitor {
 /// constraints on them.
 pub trait Component {
     fn max_constraint_log_degree_bound(&self) -> u32;
+
+    /// Returns the degree bounds of each trace column.
+    fn trace_log_degree_bounds(&self) -> Vec<u32>;
 
     /// Evaluates the constraint quotients of the component on constraint evaluation domains.
     /// See [`super::poly::circle::CircleDomain::constraint_evaluation_domain`].
@@ -73,6 +77,24 @@ pub trait Component {
 
     // TODO(spapini): Extra functions for FRI and decommitment.
 }
+
+pub trait ComponentExt: Component {
+    fn get_quotient_log_bounds(&self) -> Vec<CirclePolyDegreeBound> {
+        zip(
+            self.mask_points(CirclePoint::default()),
+            &self.trace_log_degree_bounds(),
+        )
+        .flat_map(|(trace_points, trace_bound)| {
+            trace_points
+                .iter()
+                .map(|_| CirclePolyDegreeBound::new(*trace_bound))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+    }
+}
+
+impl<C: Component> ComponentExt for C {}
 
 pub struct ComponentTrace<'a> {
     pub columns: Vec<&'a CirclePoly<BaseField>>,

@@ -71,6 +71,10 @@ impl Component for FibonacciComponent {
         self.log_size + 1
     }
 
+    fn trace_log_degree_bounds(&self) -> Vec<u32> {
+        vec![self.log_size]
+    }
+
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &ComponentTrace<'_>,

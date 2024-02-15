@@ -7,7 +7,7 @@ use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Component, ComponentTrace};
+use crate::core::air::{Component, ComponentExt, ComponentTrace};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
@@ -241,13 +241,12 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let composition_polynomial_oods_value = evaluation_accumulator.finalize();
 
     let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR);
-    // TODO(AlonH): Get bounds from component.
-    let bounds = vec![
-        CirclePolyDegreeBound::new(fib.component.max_constraint_log_degree_bound()),
-        CirclePolyDegreeBound::new(fib.component.log_size),
-        CirclePolyDegreeBound::new(fib.component.log_size),
-        CirclePolyDegreeBound::new(fib.component.log_size),
-    ];
+
+    // TODO(AlonH): Get bounds from air.
+    let mut bounds = vec![CirclePolyDegreeBound::new(
+        fib.component.max_constraint_log_degree_bound(),
+    )];
+    bounds.append(&mut fib.component.get_quotient_log_bounds());
     let fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
 
     ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work);
