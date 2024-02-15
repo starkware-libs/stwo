@@ -142,7 +142,7 @@ mod tests {
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::M31;
-    use crate::core::fields::qm31::QM31;
+    use crate::core::fields::qm31::SecureField;
     use crate::m31;
 
     #[test]
@@ -223,7 +223,9 @@ mod tests {
     pub fn test_mix_felts() {
         let initial_digest = Blake2sHash::from(vec![0; 32]);
         let mut channel = Blake2sChannel::new(initial_digest);
-        let felts: Vec<QM31> = (0..2).map(|i| QM31::from(m31!(i + 1923782))).collect();
+        let felts: Vec<SecureField> = (0..2)
+            .map(|i| SecureField::from(m31!(i + 1923782)))
+            .collect();
 
         channel.mix_felts(felts.as_slice());
 
