@@ -1,3 +1,4 @@
+use std::iter::zip;
 use std::ops::Deref;
 
 use self::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -39,12 +40,32 @@ pub trait Component {
         evaluation_accumulator: &mut DomainEvaluationAccumulator,
     );
 
-    /// Evaluates the mask values for the constraints at a point.
-    fn mask_values_at_point(
+    /// Calculates the mask points at each column.
+    /// Returns a vector with an entry for each column. Each entry holds the points
+    /// of the mask at that column.
+    fn mask_points(&self, point: CirclePoint<SecureField>) -> Vec<Vec<CirclePoint<SecureField>>>;
+
+    /// Calculates the mask points and evaluates them at each column.
+    /// The mask values are used to evaluate the composition polynomial at a certain point.
+    /// Returns two vectors with an entry for each column. Each entry holds the points/values
+    /// of the mask at that column.
+    fn mask_points_and_values(
         &self,
         point: CirclePoint<SecureField>,
-        component_trace: &ComponentTrace<'_>,
-    ) -> Vec<SecureField>;
+        trace: &ComponentTrace<'_>,
+    ) -> (Vec<Vec<CirclePoint<SecureField>>>, Vec<Vec<SecureField>>) {
+        let points = self.mask_points(point);
+        let values = zip(&points, &trace.columns)
+            .map(|(col_points, col)| {
+                col_points
+                    .iter()
+                    .map(|point| col.eval_at_point(*point))
+                    .collect()
+            })
+            .collect();
+
+        (points, values)
+    }
 
     /// Evaluates the constraint quotients combination of the component, given the mask values.
     fn evaluate_quotients_by_mask(
