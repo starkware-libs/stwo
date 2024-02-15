@@ -1,13 +1,8 @@
-use std::ops::Deref;
-
 use self::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use super::circle::{CirclePoint, CirclePointIndex};
+use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::ExtensionOf;
-use super::poly::circle::{CirclePoly, PointMapping};
-use crate::core::constraints::PolyOracle;
-use crate::core::poly::circle::CanonicCoset;
+use super::poly::circle::CirclePoly;
 
 pub mod evaluation;
 
@@ -67,111 +62,5 @@ pub struct ComponentTrace<'a> {
 impl<'a> ComponentTrace<'a> {
     pub fn new(columns: Vec<&'a CirclePoly<BaseField>>) -> Self {
         Self { columns }
-    }
-}
-
-pub struct MaskItem {
-    pub column_index: usize,
-    pub offset: usize,
-}
-
-pub struct Mask {
-    pub items: Vec<MaskItem>,
-}
-
-impl Mask {
-    pub fn new(items: Vec<MaskItem>) -> Self {
-        Self { items }
-    }
-
-    // TODO (ShaharS), Consider moving this functions to somewhere else and change the API.
-    pub fn get_evaluation<F: ExtensionOf<BaseField>>(
-        &self,
-        cosets: &[CanonicCoset],
-        poly_oracles: &[impl PolyOracle<F>],
-    ) -> PointMapping<F> {
-        let mut points = Vec::with_capacity(self.items.len());
-        let mut values = Vec::with_capacity(self.items.len());
-        let mask_offsets = self.get_point_indices(cosets);
-        for (mask_item, mask_offset) in self.items.iter().zip(mask_offsets) {
-            points.push(
-                poly_oracles[mask_item.column_index].point() + mask_offset.to_point().into_ef(),
-            );
-            values.push(poly_oracles[mask_item.column_index].get_at(mask_offset));
-        }
-        PointMapping::new(points, values)
-    }
-
-    pub fn get_point_indices(&self, cosets: &[CanonicCoset]) -> Vec<CirclePointIndex> {
-        let mut res = Vec::with_capacity(self.items.len());
-        for item in &self.items {
-            res.push(cosets[item.column_index].index_at(item.offset));
-        }
-        res
-    }
-}
-
-impl Deref for Mask {
-    type Target = Vec<MaskItem>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.items
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::core::air::{Mask, MaskItem};
-    use crate::core::constraints::EvalByPoly;
-    use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
-
-    #[test]
-    fn test_mask() {
-        const N_TRACE_COLUMNS: u32 = 4;
-        const COSET_SIZE: u32 = 16;
-        let coset = CanonicCoset::new(4);
-        let trace_domains = [coset; N_TRACE_COLUMNS as usize];
-        let trace: Vec<CircleEvaluation<BaseField>> = (0..N_TRACE_COLUMNS)
-            .map(|i| {
-                CircleEvaluation::new_canonical_ordered(
-                    coset,
-                    (COSET_SIZE * i..COSET_SIZE * (i + 1))
-                        .map(BaseField::from_u32_unchecked)
-                        .collect(),
-                )
-            })
-            .collect();
-        let trace_polys = trace
-            .iter()
-            .map(|column| column.clone().interpolate())
-            .collect::<Vec<_>>();
-        let mask = Mask::new(
-            (0..3)
-                .map(|i| MaskItem {
-                    column_index: i,
-                    offset: i,
-                })
-                .collect(),
-        );
-        let mask_point_indices = mask.get_point_indices(&trace_domains);
-        let oracle_point_index = coset.step_size() * 3;
-        let oracle_point = oracle_point_index.to_point();
-        let poly_oracles = (0..N_TRACE_COLUMNS)
-            .map(|i| EvalByPoly {
-                point: oracle_point,
-                poly: &trace_polys[i as usize],
-            })
-            .collect::<Vec<_>>();
-        // Mask evaluations on the original trace coset.
-        let mask_evaluation = mask.get_evaluation(&trace_domains, &poly_oracles);
-
-        assert_eq!(mask_point_indices.len(), mask_evaluation.len());
-        for (mask_item, mask_point_index) in mask.items.iter().zip(mask_point_indices) {
-            let point_index = oracle_point_index + mask_point_index;
-            let point = point_index.to_point();
-            let value = mask_evaluation.get_at(point);
-            assert_eq!(value, trace[mask_item.column_index].get_at(point_index));
-        }
     }
 }

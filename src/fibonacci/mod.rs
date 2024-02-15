@@ -7,7 +7,7 @@ use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Component, ComponentTrace, Mask, MaskItem};
+use crate::core::air::{Component, ComponentTrace};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
@@ -107,17 +107,6 @@ impl Fibonacci {
         CircleEvaluation::new_canonical_ordered(self.trace_domain, trace)
     }
 
-    pub fn get_mask(&self) -> Mask {
-        Mask::new(
-            (0..3)
-                .map(|offset| MaskItem {
-                    column_index: 0,
-                    offset,
-                })
-                .collect(),
-        )
-    }
-
     /// Returns the composition polynomial evaluations using the trace and a random coefficient.
     fn compute_composition_polynomial(
         &self,
@@ -158,7 +147,6 @@ impl Fibonacci {
 
         // Evaluate the trace mask and the composition polynomial on the OODS point.
         let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-        let mask = self.get_mask();
         let (trace_oods_points, trace_oods_values) = self
             .component
             .mask_values_at_point(oods_point, &component_trace);
@@ -167,7 +155,7 @@ impl Fibonacci {
 
         // Calculate a quotient polynomial for each trace mask item and one for the composition
         // polynomial.
-        let mut oods_quotients = Vec::with_capacity(mask.len() + 1);
+        let mut oods_quotients = Vec::with_capacity(trace_oods_points.len() + 1);
         oods_quotients.push(
             get_oods_quotient(
                 oods_point,
@@ -251,7 +239,6 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let composition_polynomial_commitment_scheme =
         CommitmentSchemeVerifier::new(proof.composition_polynomial_commitment, channel);
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-    let mask = fib.get_mask();
     let trace_oods_points = fib.component.mask_points(oods_point);
 
     let mut evaluation_accumulator = PointEvaluationAccumulator::new(
@@ -308,7 +295,7 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     ));
 
     // An evaluation for each mask item and one for the composition_polynomial.
-    let mut sparse_circle_evaluations = Vec::with_capacity(mask.len() + 1);
+    let mut sparse_circle_evaluations = Vec::with_capacity(trace_oods_points.len() + 1);
     let mut evaluation = Vec::with_capacity(composition_polynomial_opening_positions.len());
     let mut opened_values = proof.composition_polynomial_opened_values.into_iter();
     for sub_circle_domain in composition_polynomial_opening_positions.iter() {
