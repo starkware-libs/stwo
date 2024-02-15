@@ -1,3 +1,6 @@
+use std::iter::zip;
+
+use super::air::Component;
 use super::circle::{CirclePoint, CirclePointIndex};
 use super::constraints::{
     complex_conjugate_line, pair_vanishing, point_vanishing, EvalByEvaluation, PolyOracle,
@@ -5,6 +8,7 @@ use super::constraints::{
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::ComplexConjugate;
+use super::fri::CirclePolyDegreeBound;
 use super::poly::circle::CircleEvaluation;
 use super::poly::{BitReversedOrder, NaturalOrder};
 
@@ -72,4 +76,18 @@ pub fn get_pair_oods_quotient(
         ));
     }
     CircleEvaluation::new(eval.domain, values)
+}
+
+pub fn quotient_log_bounds(component: impl Component) -> Vec<CirclePolyDegreeBound> {
+    zip(
+        component.mask().iter(),
+        &component.trace_log_degree_bounds(),
+    )
+    .flat_map(|(trace_points, trace_bound)| {
+        trace_points
+            .iter()
+            .map(|_| CirclePolyDegreeBound::new(*trace_bound))
+            .collect::<Vec<_>>()
+    })
+    .collect()
 }
