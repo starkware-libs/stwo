@@ -14,9 +14,7 @@ use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVer
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, IntoSlice};
-use crate::core::fri::{
-    CirclePolyDegreeBound, FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation,
-};
+use crate::core::fri::{FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation};
 use crate::core::oods::{get_oods_quotient, get_pair_oods_quotient};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
 use crate::core::poly::BitReversedOrder;
@@ -241,13 +239,7 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let composition_polynomial_oods_value = evaluation_accumulator.finalize();
 
     let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR);
-    // TODO(AlonH): Get bounds from component.
-    let bounds = vec![
-        CirclePolyDegreeBound::new(fib.component.max_constraint_log_degree_bound()),
-        CirclePolyDegreeBound::new(fib.component.log_size),
-        CirclePolyDegreeBound::new(fib.component.log_size),
-        CirclePolyDegreeBound::new(fib.component.log_size),
-    ];
+    let bounds = fib.component.log_degree_bounds();
     let fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
 
     ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work);
