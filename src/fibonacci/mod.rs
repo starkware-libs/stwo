@@ -10,7 +10,7 @@ use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationA
 use crate::core::air::{Component, ComponentTrace, Mask, MaskItem};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::{CirclePoint, Coset};
-use crate::core::commitment_scheme::CommitmentSchemeProver;
+use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, IntoSlice};
@@ -246,9 +246,11 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(&[
         proof.public_input
     ])));
-    channel.mix_digest(proof.trace_commitments[0]);
+    let trace_commitment_scheme =
+        CommitmentSchemeVerifier::new(proof.trace_commitments[0], channel);
     let random_coeff = channel.draw_random_secure_felts()[0];
-    channel.mix_digest(proof.composition_polynomial_commitment);
+    let composition_polynomial_commitment_scheme =
+        CommitmentSchemeVerifier::new(proof.composition_polynomial_commitment, channel);
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
     let mask = fib.get_mask();
     let trace_oods_points = get_oods_points(&mask, oods_point, &[fib.trace_domain]);
@@ -297,12 +299,12 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
         composition_polynomial_opening_positions.len(),
         proof.composition_polynomial_opened_values.len() >> FRI_STEP_SIZE
     );
-    assert!(proof.trace_decommitments[0].verify(
-        proof.trace_commitments[0],
+    assert!(trace_commitment_scheme.verify(
+        &proof.trace_decommitments[0],
         &trace_opening_positions.flatten()
     ));
-    assert!(proof.composition_polynomial_decommitment.verify(
-        proof.composition_polynomial_commitment,
+    assert!(composition_polynomial_commitment_scheme.verify(
+        &proof.composition_polynomial_decommitment,
         &composition_polynomial_opening_positions.flatten()
     ));
 

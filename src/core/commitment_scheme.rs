@@ -8,7 +8,8 @@ use super::fields::m31::BaseField;
 use super::fields::ExtensionOf;
 use super::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
-use crate::commitment_scheme::blake2_hash::Blake2sHasher;
+use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
+use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::channel::Channel;
 
@@ -50,5 +51,24 @@ impl<F: ExtensionOf<BaseField>> Deref for CommitmentSchemeProver<F> {
 
     fn deref(&self) -> &Self::Target {
         &self.commitment
+    }
+}
+
+pub struct CommitmentSchemeVerifier {
+    pub commitment: Blake2sHash,
+}
+
+impl CommitmentSchemeVerifier {
+    pub fn new(commitment: Blake2sHash, channel: &mut Blake2sChannel) -> Self {
+        channel.mix_digest(commitment);
+        CommitmentSchemeVerifier { commitment }
+    }
+
+    pub fn verify<F: ExtensionOf<BaseField>>(
+        &self,
+        decommitment: &MerkleDecommitment<F, Blake2sHasher>,
+        positions: &[usize],
+    ) -> bool {
+        decommitment.verify(self.commitment, positions)
     }
 }
