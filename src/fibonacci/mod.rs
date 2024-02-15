@@ -17,9 +17,7 @@ use crate::core::fields::{Field, IntoSlice};
 use crate::core::fri::{
     CirclePolyDegreeBound, FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation,
 };
-use crate::core::oods::{
-    get_oods_points, get_oods_quotient, get_oods_values, get_pair_oods_quotient,
-};
+use crate::core::oods::{get_oods_quotient, get_pair_oods_quotient};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
@@ -60,7 +58,7 @@ pub struct FibonacciProof {
     pub trace_decommitments: Vec<MerkleDecommitment<BaseField, MerkleHasher>>,
     pub composition_polynomial_commitment: <MerkleHasher as Hasher>::Hash,
     pub composition_polynomial_decommitment: MerkleDecommitment<SecureField, MerkleHasher>,
-    pub trace_oods_values: Vec<SecureField>,
+    pub trace_oods_values: Vec<Vec<SecureField>>,
     pub composition_polynomial_opened_values: Vec<SecureField>,
     pub trace_opened_values: Vec<BaseField>,
     pub proof_of_work: ProofOfWorkProof,
@@ -161,8 +159,9 @@ impl Fibonacci {
         // Evaluate the trace mask and the composition polynomial on the OODS point.
         let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
         let mask = self.get_mask();
-        let trace_oods_evaluation =
-            get_oods_values(&mask, oods_point, &trace_commitment_scheme.polynomials);
+        let (trace_oods_points, trace_oods_values) = self
+            .component
+            .mask_points_and_values(oods_point, &component_trace);
         let composition_polynomial_oods_value =
             composition_polynomial_commitment_scheme.polynomials[0].eval_at_point(oods_point);
 
@@ -177,7 +176,7 @@ impl Fibonacci {
             )
             .bit_reverse(),
         );
-        for (point, value) in zip(&trace_oods_evaluation.points, &trace_oods_evaluation.values) {
+        for (point, value) in zip(&trace_oods_points[0], &trace_oods_values[0]) {
             oods_quotients.push(
                 get_pair_oods_quotient(*point, *value, &trace_commitment_scheme.evaluations[0])
                     .bit_reverse(),
@@ -226,7 +225,7 @@ impl Fibonacci {
             trace_decommitments: vec![trace_decommitment],
             composition_polynomial_commitment: composition_polynomial_commitment_scheme.root(),
             composition_polynomial_decommitment,
-            trace_oods_values: trace_oods_evaluation.values,
+            trace_oods_values,
             composition_polynomial_opened_values,
             trace_opened_values,
             proof_of_work,
@@ -253,7 +252,7 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
         CommitmentSchemeVerifier::new(proof.composition_polynomial_commitment, channel);
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
     let mask = fib.get_mask();
-    let trace_oods_points = get_oods_points(&mask, oods_point, &[fib.trace_domain]);
+    let trace_oods_points = fib.component.mask_points(oods_point);
 
     let mut evaluation_accumulator = PointEvaluationAccumulator::new(
         random_coeff,
@@ -261,7 +260,7 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     );
     fib.component.evaluate_quotients_by_mask(
         oods_point,
-        &proof.trace_oods_values,
+        &proof.trace_oods_values[0],
         &mut evaluation_accumulator,
     );
     let composition_polynomial_oods_value = evaluation_accumulator.finalize();
@@ -332,7 +331,7 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     }
     assert!(opened_values.next().is_none(), "Not all values were used.");
     sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
-    for (oods_point, oods_value) in zip(&trace_oods_points, &proof.trace_oods_values) {
+    for (oods_point, oods_value) in zip(&trace_oods_points[0], &proof.trace_oods_values[0]) {
         let mut evaluation = Vec::with_capacity(trace_opening_positions.len());
         let mut opened_values = proof.trace_opened_values.iter().copied();
         for sub_circle_domain in trace_opening_positions.iter() {
@@ -393,13 +392,16 @@ mod tests {
         // we expect.
         let point = CirclePoint::<SecureField>::get_point(98989892);
 
-        let mask_values = fib.component.mask_values_at_point(point, &trace);
+        let (_, mask_values) = fib.component.mask_points_and_values(point, &trace);
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(
             random_coeff,
             fib.component.max_constraint_log_degree_bound(),
         );
-        fib.component
-            .evaluate_quotients_by_mask(point, &mask_values, &mut evaluation_accumulator);
+        fib.component.evaluate_quotients_by_mask(
+            point,
+            &mask_values[0],
+            &mut evaluation_accumulator,
+        );
         let oods_value = evaluation_accumulator.finalize();
         assert_eq!(oods_value, composition_polynomial_poly.eval_at_point(point));
     }
@@ -474,7 +476,7 @@ mod tests {
         let proof = fib.prove();
         let oods_point = proof.additional_proof_data.oods_point;
 
-        let mask_values = fib.component.mask_values_at_point(oods_point, &trace);
+        let (_, mask_values) = fib.component.mask_points_and_values(oods_point, &trace);
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(
             proof
                 .additional_proof_data
@@ -483,7 +485,7 @@ mod tests {
         );
         fib.component.evaluate_quotients_by_mask(
             oods_point,
-            &mask_values,
+            &mask_values[0],
             &mut evaluation_accumulator,
         );
         let hz = evaluation_accumulator.finalize();
