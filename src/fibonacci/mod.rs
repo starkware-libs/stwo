@@ -123,7 +123,7 @@ impl Fibonacci {
         );
 
         // Evaluate and commit on composition polynomial.
-        let random_coeff = channel.draw_random_secure_felts()[0];
+        let random_coeff = channel.draw_felt();
         let component_trace = ComponentTrace::new(vec![&trace_commitment_scheme.polynomials[0]]);
         let composition_polynomial_poly =
             self.compute_composition_polynomial(random_coeff, &component_trace);
@@ -223,7 +223,7 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     ])));
     let trace_commitment_scheme =
         CommitmentSchemeVerifier::new(proof.trace_commitments[0], channel);
-    let random_coeff = channel.draw_random_secure_felts()[0];
+    let random_coeff = channel.draw_felt();
     let composition_polynomial_commitment_scheme =
         CommitmentSchemeVerifier::new(proof.composition_polynomial_commitment, channel);
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
