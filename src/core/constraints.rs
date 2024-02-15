@@ -4,7 +4,7 @@ use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::ExtensionOf;
-use super::poly::circle::{CircleEvaluation, CirclePoly, PointMapping};
+use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::{BitReversedOrder, NaturalOrder};
 use crate::core::fields::ComplexConjugate;
 
@@ -154,27 +154,6 @@ impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByEvaluation<'a, F, Bi
         self.eval.get_at(index + self.offset)
     }
 }
-
-#[derive(Clone)]
-pub struct EvalByPointMapping<'a, F: ExtensionOf<BaseField>> {
-    pub point: CirclePoint<F>,
-    pub point_mapping: &'a PointMapping<F>,
-}
-
-impl<'a, F: ExtensionOf<BaseField>> PolyOracle<F> for EvalByPointMapping<'a, F> {
-    fn point(&self) -> CirclePoint<F> {
-        // TODO(AlonH): Separate the point field generality from the evaluation field generality and
-        // remove the `into_ef` here.
-        self.point
-    }
-
-    fn get_at(&self, index: CirclePointIndex) -> F {
-        self.point_mapping
-            .get_at(self.point + index.to_point().into_ef())
-    }
-}
-
-impl<'a, F: ExtensionOf<BaseField>> Copy for EvalByPointMapping<'a, F> {}
 
 #[cfg(test)]
 mod tests {
