@@ -2,17 +2,14 @@ use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::iter::Map;
 use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
 
 use num_traits::Zero;
 
-use super::utils::{fold, repeat_value};
 use super::{BitReversedOrder, NaturalOrder};
+use crate::core::backend::{Column, ColumnTrait, FieldOps};
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
-use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, Field};
-use crate::core::utils::bit_reverse;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///
@@ -95,53 +92,44 @@ impl IntoIterator for LineDomain {
 type LineDomainIterator =
     Map<CosetIterator<CirclePoint<BaseField>>, fn(CirclePoint<BaseField>) -> BaseField>;
 
+pub trait LinePolyOps<F: Field>: FieldOps<F> + Sized {
+    fn eval_at_point<E: ExtensionOf<F>>(poly: &LinePoly<Self, F>, x: E) -> E;
+    fn evaluate(poly: LinePoly<Self, F>, domain: LineDomain) -> LineEvaluation<Self, F>;
+    fn interpolate(eval: LineEvaluation<Self, F>) -> LinePoly<Self, F>;
+}
+
+// TODO(spapini): Remove pub from fields when FRI is generalized with a backend.
 /// A univariate polynomial defined on a [LineDomain].
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct LinePoly<F> {
+#[derive(Clone, Debug)]
+pub struct LinePoly<B: LinePolyOps<F>, F: Field> {
     /// Coefficients of the polynomial in [line_ifft] algorithm's basis.
     ///
     /// The coefficients are stored in bit-reversed order.
-    coeffs: Vec<F>,
+    pub coeffs: Column<B, F>,
     /// The number of coefficients stored as `log2(len(coeffs))`.
-    log_size: u32,
+    pub log_size: u32,
 }
 
-impl<F: ExtensionOf<BaseField>> LinePoly<F> {
+impl<B: LinePolyOps<F>, F: Field> LinePoly<B, F> {
     /// Creates a new line polynomial from bit reversed coefficients.
     ///
     /// # Panics
     ///
     /// Panics if the number of coefficients is not a power of two.
-    pub fn new(coeffs: Vec<F>) -> Self {
+    pub fn new(coeffs: Column<B, F>) -> Self {
         assert!(coeffs.len().is_power_of_two());
         let log_size = coeffs.len().ilog2();
         Self { coeffs, log_size }
     }
 
     /// Evaluates the polynomial at a single point.
-    pub fn eval_at_point<E: ExtensionOf<F>>(&self, mut x: E) -> E {
-        // TODO(Andrew): Allocation here expensive for small polynomials.
-        let mut doublings = vec![x];
-        for _ in 1..self.log_size {
-            x = CirclePoint::double_x(x);
-            doublings.push(x);
-        }
-        fold(&self.coeffs, &doublings)
+    pub fn eval_at_point<E: ExtensionOf<F>>(&self, x: E) -> E {
+        B::eval_at_point(self, x)
     }
 
     /// Evaluates the polynomial at all points in the domain.
-    pub fn evaluate(mut self, domain: LineDomain) -> LineEvaluation<F> {
-        assert!(domain.size() >= self.coeffs.len());
-
-        // The first few FFT layers may just copy coefficients so we do it directly.
-        // See the docs for `n_skipped_layers` in [line_fft].
-        let log_degree_bound = self.log_size;
-        let n_skipped_layers = (domain.log_size() - log_degree_bound) as usize;
-        let duplicity = 1 << n_skipped_layers;
-        self.coeffs = repeat_value(&self.coeffs, duplicity);
-
-        line_fft(&mut self.coeffs, domain, n_skipped_layers);
-        LineEvaluation::new(domain, self.coeffs)
+    pub fn evaluate(self, domain: LineDomain) -> LineEvaluation<B, F> {
+        B::evaluate(self, domain)
     }
 
     /// Returns the number of coefficients.
@@ -154,8 +142,8 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     }
 
     /// Returns the polynomial's coefficients in their natural order.
-    pub fn into_ordered_coefficients(self) -> Vec<F> {
-        bit_reverse(self.coeffs)
+    pub fn into_ordered_coefficients(self) -> Column<B, F> {
+        B::bit_reverse_column(self.coeffs)
     }
 
     /// Creates a new line polynomial from coefficients in their natural order.
@@ -163,53 +151,40 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// # Panics
     ///
     /// Panics if the number of coefficients is not a power of two.
-    pub fn from_ordered_coefficients(coeffs: Vec<F>) -> Self {
-        Self::new(bit_reverse(coeffs))
-    }
-}
-
-impl<F: ExtensionOf<BaseField>> Deref for LinePoly<F> {
-    type Target = [F];
-
-    fn deref(&self) -> &[F] {
-        &self.coeffs
-    }
-}
-
-impl<F: ExtensionOf<BaseField>> DerefMut for LinePoly<F> {
-    fn deref_mut(&mut self) -> &mut [F] {
-        &mut self.coeffs
+    pub fn from_ordered_coefficients(coeffs: Column<B, F>) -> Self {
+        Self::new(B::bit_reverse_column(coeffs))
     }
 }
 
 /// Evaluations of a univariate polynomial on a [LineDomain].
 // TODO(andrew): Remove EvalOrder. Bit-reversed evals are only necessary since LineEvaluation is
 // only used by FRI where evaluations are in bit-reversed order.
+// TODO(spapini): Remove pub.
 #[derive(Clone, Debug)]
-pub struct LineEvaluation<F, EvalOrder = NaturalOrder> {
+pub struct LineEvaluation<B: LinePolyOps<F>, F: Field, EvalOrder = NaturalOrder> {
     /// Evaluations of a univariate polynomial on `domain`.
-    evals: Vec<F>,
+    pub values: Column<B, F>,
     domain: LineDomain,
     _eval_order: PhantomData<EvalOrder>,
 }
 
-impl<F: ExtensionOf<BaseField>, EvalOrder> LineEvaluation<F, EvalOrder> {
+impl<B: LinePolyOps<F>, F: Field, EvalOrder> LineEvaluation<B, F, EvalOrder> {
     /// Creates new [LineEvaluation] from a set of polynomial evaluations over a [LineDomain].
     ///
     /// # Panics
     ///
     /// Panics if the number of evaluations does not match the size of the domain.
-    pub fn new(domain: LineDomain, evals: Vec<F>) -> Self {
-        assert_eq!(evals.len(), domain.size());
+    pub fn new(domain: LineDomain, values: Column<B, F>) -> Self {
+        assert_eq!(values.len(), domain.size());
         Self {
-            evals,
+            values,
             domain,
             _eval_order: PhantomData,
         }
     }
 
     pub fn new_zero(domain: LineDomain) -> Self {
-        Self::new(domain, vec![F::zero(); domain.size()])
+        Self::new(domain, Column::<B, F>::zeros(domain.size()))
     }
 
     /// Returns the number of evaluations.
@@ -223,140 +198,37 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> LineEvaluation<F, EvalOrder> {
     }
 }
 
-impl<F: ExtensionOf<BaseField>> LineEvaluation<F> {
+impl<B: LinePolyOps<F>, F: Field> LineEvaluation<B, F> {
     /// Interpolates the polynomial as evaluations on `domain`.
-    pub fn interpolate(mut self) -> LinePoly<F> {
-        line_ifft(&mut self.evals, self.domain);
-        // Normalize the coefficients.
-        let len_inv = BaseField::from(self.evals.len()).inverse();
-        self.evals.iter_mut().for_each(|v| *v *= len_inv);
-        LinePoly::new(self.evals)
+    pub fn interpolate(self) -> LinePoly<B, F> {
+        B::interpolate(self)
     }
 
-    pub fn bit_reverse(self) -> LineEvaluation<F, BitReversedOrder> {
+    pub fn bit_reverse(self) -> LineEvaluation<B, F, BitReversedOrder> {
         LineEvaluation {
-            evals: bit_reverse(self.evals),
+            values: B::bit_reverse_column(self.values),
             domain: self.domain,
             _eval_order: PhantomData,
         }
     }
 }
 
-impl<F: ExtensionOf<BaseField>> LineEvaluation<F, BitReversedOrder> {
-    pub fn bit_reverse(self) -> LineEvaluation<F, NaturalOrder> {
+impl<B: LinePolyOps<F>, F: Field> LineEvaluation<B, F, BitReversedOrder> {
+    pub fn bit_reverse(self) -> LineEvaluation<B, F, NaturalOrder> {
         LineEvaluation {
-            evals: bit_reverse(self.evals),
+            values: B::bit_reverse_column(self.values),
             domain: self.domain,
             _eval_order: PhantomData,
-        }
-    }
-}
-
-impl<F: ExtensionOf<BaseField>, EvalOrder> Deref for LineEvaluation<F, EvalOrder> {
-    type Target = [F];
-
-    fn deref(&self) -> &[F] {
-        &self.evals
-    }
-}
-
-impl<F: ExtensionOf<BaseField>, EvalOrder> DerefMut for LineEvaluation<F, EvalOrder> {
-    fn deref_mut(&mut self) -> &mut [F] {
-        &mut self.evals
-    }
-}
-
-impl<F: ExtensionOf<BaseField>, EvalOrder> IntoIterator for LineEvaluation<F, EvalOrder> {
-    type Item = F;
-    type IntoIter = std::vec::IntoIter<F>;
-
-    /// Creates a consuming iterator over the evaluations.
-    ///
-    /// Evaluations are returned in the same order as elements of the domain.
-    fn into_iter(self) -> Self::IntoIter {
-        self.evals.into_iter()
-    }
-}
-
-/// Performs a univariate IFFT on a polynomial's evaluation over a [LineDomain].
-///
-/// This is not the standard univariate IFFT, because [LineDomain] is not a cyclic group.
-///
-/// The transform happens in-place. `values` should be the evaluations of a polynomial over `domain`
-/// in their natural order. After the transformation `values` becomes the coefficients of the
-/// polynomial stored in bit-reversed order.
-///
-/// For performance reasons and flexibility the normalization of the coefficients is omitted. The
-/// normalized coefficients can be obtained by scaling all coefficients by `1 / len(values)`.
-///
-/// This algorithm does not return coefficients in the standard monomial basis but rather returns
-/// coefficients in a basis relating to the circle's x-coordinate doubling map `pi(x) = 2x^2 - 1`
-/// i.e.
-///
-/// ```text
-/// B = { 1 } * { x } * { pi(x) } * { pi(pi(x)) } * ...
-///   = { 1, x, pi(x), pi(x) * x, pi(pi(x)), pi(pi(x)) * x, pi(pi(x)) * pi(x), ... }
-/// ```
-///
-/// # Panics
-///
-/// Panics if the number of values doesn't match the size of the domain.
-fn line_ifft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain: LineDomain) {
-    assert_eq!(values.len(), domain.size());
-    while domain.size() > 1 {
-        for chunk in values.chunks_exact_mut(domain.size()) {
-            let (l, r) = chunk.split_at_mut(domain.size() / 2);
-            for (i, x) in domain.iter().take(domain.size() / 2).enumerate() {
-                ibutterfly(&mut l[i], &mut r[i], x.inverse());
-            }
-        }
-        domain = domain.double();
-    }
-}
-
-/// Performs a univariate FFT of a polynomial over a [LineDomain].
-///
-/// The transform happens in-place. `values` consist of coefficients in [line_ifft] algorithm's
-/// basis need to be stored in bit-reversed order. After the transformation `values` becomes
-/// evaluations of the polynomial over `domain` stored in natural order.
-///
-/// The `n_skipped_layers` argument allows specifying how many of the initial butterfly layers of
-/// the FFT to skip. This is useful when doing more efficient degree aware FFTs as the butterflies
-/// in the first layers of the FFT only involve copying coefficients to different locations (because
-/// one or more of the coefficients is zero). This new algorithm is `O(n log d)` vs `O(n log n)`
-/// where `n` is the domain size and `d` is the number of coefficients.
-///
-/// # Panics
-///
-/// Panics if the number of values doesn't match the size of the domain.
-fn line_fft<F: ExtensionOf<BaseField>>(
-    values: &mut [F],
-    mut domain: LineDomain,
-    n_skipped_layers: usize,
-) {
-    assert_eq!(values.len(), domain.size());
-
-    // Construct the domains we need.
-    let mut domains = vec![];
-    while domain.size() > 1 << n_skipped_layers {
-        domains.push(domain);
-        domain = domain.double();
-    }
-
-    // Execute the butterfly layers.
-    for domain in domains.iter().rev() {
-        for chunk in values.chunks_exact_mut(domain.size()) {
-            let (l, r) = chunk.split_at_mut(domain.size() / 2);
-            for (i, x) in domain.iter().take(domain.size() / 2).enumerate() {
-                butterfly(&mut l[i], &mut r[i], x);
-            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    type B = CPUBackend;
+
     use super::LineDomain;
+    use crate::core::backend::CPUBackend;
     use crate::core::circle::{CirclePoint, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::line::{LineEvaluation, LinePoly};
@@ -434,7 +306,7 @@ mod tests {
 
     #[test]
     fn line_polynomial_evaluation() {
-        let poly = LinePoly::new(vec![
+        let poly = LinePoly::<B, _>::new(vec![
             BaseField::from(7), // 7 * 1
             BaseField::from(9), // 9 * pi(x)
             BaseField::from(5), // 5 * x
@@ -446,18 +318,21 @@ mod tests {
             .iter()
             .map(|x| {
                 let pi_x = CirclePoint::double_x(x);
-                poly[0] + poly[1] * pi_x + poly[2] * x + poly[3] * pi_x * x
+                poly.coeffs[0]
+                    + poly.coeffs[1] * pi_x
+                    + poly.coeffs[2] * x
+                    + poly.coeffs[3] * pi_x * x
             })
             .collect::<Vec<BaseField>>();
 
         let actual_evals = poly.evaluate(domain);
 
-        assert_eq!(*actual_evals, expected_evals);
+        assert_eq!(actual_evals.values, expected_evals);
     }
 
     #[test]
     fn line_polynomial_evaluation_on_larger_domain() {
-        let poly = LinePoly::new(vec![
+        let poly = LinePoly::<B, _>::new(vec![
             BaseField::from(7), // 7 * 1
             BaseField::from(9), // 9 * pi(x)
             BaseField::from(5), // 5 * x
@@ -469,18 +344,21 @@ mod tests {
             .iter()
             .map(|x| {
                 let pi_x = CirclePoint::double_x(x);
-                poly[0] + poly[1] * pi_x + poly[2] * x + poly[3] * pi_x * x
+                poly.coeffs[0]
+                    + poly.coeffs[1] * pi_x
+                    + poly.coeffs[2] * x
+                    + poly.coeffs[3] * pi_x * x
             })
             .collect::<Vec<BaseField>>();
 
         let actual_evals = poly.evaluate(domain);
 
-        assert_eq!(*actual_evals, expected_evals);
+        assert_eq!(actual_evals.values, expected_evals);
     }
 
     #[test]
     fn line_evaluation_interpolation() {
-        let poly = LinePoly::new(vec![
+        let poly = LinePoly::<B, _>::new(vec![
             BaseField::from(7), // 7 * 1
             BaseField::from(9), // 9 * pi(x)
             BaseField::from(5), // 5 * x
@@ -488,20 +366,23 @@ mod tests {
         ]);
         let coset = Coset::half_odds(poly.len().ilog2());
         let domain = LineDomain::new(coset);
-        let evals = LineEvaluation::new(
+        let evals = LineEvaluation::<B, _>::new(
             domain,
             domain
                 .iter()
                 .map(|x| {
                     let pi_x = CirclePoint::double_x(x);
-                    poly[0] + poly[1] * pi_x + poly[2] * x + poly[3] * pi_x * x
+                    poly.coeffs[0]
+                        + poly.coeffs[1] * pi_x
+                        + poly.coeffs[2] * x
+                        + poly.coeffs[3] * pi_x * x
                 })
                 .collect::<Vec<BaseField>>(),
         );
 
         let interpolated_poly = evals.interpolate();
 
-        assert_eq!(interpolated_poly, poly);
+        assert_eq!(interpolated_poly.coeffs, poly.coeffs);
     }
 
     #[test]
@@ -509,11 +390,12 @@ mod tests {
         const LOG_SIZE: u32 = 2;
         let coset = Coset::half_odds(LOG_SIZE);
         let domain = LineDomain::new(coset);
-        let evals = LineEvaluation::new(domain, (0..1 << LOG_SIZE).map(BaseField::from).collect());
+        let evals =
+            LineEvaluation::<B, _>::new(domain, (0..1 << LOG_SIZE).map(BaseField::from).collect());
         let poly = evals.clone().interpolate();
 
         for (i, x) in domain.iter().enumerate() {
-            assert_eq!(poly.eval_at_point(x), evals[i], "mismatch at {i}");
+            assert_eq!(poly.eval_at_point(x), evals.values[i], "mismatch at {i}");
         }
     }
 }

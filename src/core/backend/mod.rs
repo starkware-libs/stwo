@@ -23,11 +23,14 @@ pub trait Backend:
 
 pub trait FieldOps<F: Field> {
     type Column: ColumnTrait<F>;
+    fn bit_reverse_column(column: Self::Column) -> Self::Column;
 }
 
 pub type Column<B, F> = <B as FieldOps<F>>::Column;
 
 pub trait ColumnTrait<F>: Clone + Debug + Index<usize, Output = F> + FromIterator<F> {
+    fn zeros(len: usize) -> Self;
+    fn to_vec(&self) -> Vec<F>;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
