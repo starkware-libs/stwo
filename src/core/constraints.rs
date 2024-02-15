@@ -2,7 +2,7 @@ use num_traits::One;
 
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fields::m31::BaseField;
-use super::fields::qm31::QM31;
+use super::fields::qm31::SecureField;
 use super::fields::ExtensionOf;
 use super::poly::circle::{CircleEvaluation, CirclePoly, PointMapping};
 use super::poly::{BitReversedOrder, NaturalOrder};
@@ -77,10 +77,10 @@ pub fn point_vanishing<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
 /// Relies on the fact that every polynomial F over the base field holds:
 /// F(p*) == F(p)* (* being the complex conjugate).
 pub fn complex_conjugate_line(
-    point: CirclePoint<QM31>,
-    value: QM31,
+    point: CirclePoint<SecureField>,
+    value: SecureField,
     p: CirclePoint<BaseField>,
-) -> QM31 {
+) -> SecureField {
     // TODO(AlonH): This assertion will fail at a probability of 1 to 2^62. Use a better solution.
     assert_ne!(
         point.y,
@@ -184,7 +184,7 @@ mod tests {
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
     use crate::core::fields::m31::{BaseField, M31};
-    use crate::core::fields::qm31::QM31;
+    use crate::core::fields::qm31::SecureField;
     use crate::core::fields::{ComplexConjugate, Field};
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
     use crate::m31;
@@ -298,7 +298,7 @@ mod tests {
             quotient_polynomial_values.push(value);
         }
         let quotient_evaluation =
-            CircleEvaluation::<QM31>::new(large_domain, quotient_polynomial_values);
+            CircleEvaluation::<SecureField>::new(large_domain, quotient_polynomial_values);
         let quotient_polynomial = quotient_evaluation.interpolate();
 
         // Check that the quotient polynomial is indeed in the wanted fft space.
