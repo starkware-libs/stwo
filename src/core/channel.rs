@@ -3,6 +3,7 @@ use super::fields::qm31::{SecureField, SECURE_FIELD_EXTENSION_DEGREE};
 use super::fields::IntoSlice;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
+use crate::math::utils::usize_div_ceil;
 
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
@@ -39,17 +40,11 @@ pub trait Channel {
     fn mix_nonce(&mut self, nonce: u64);
 
     // Draw functions.
-    fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH];
+    fn draw_felt(&mut self) -> SecureField;
+    /// Generates a uniform random vector of SecureField elements.
+    fn draw_felts(&mut self, n_felts: usize) -> Vec<SecureField>;
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
-    /// Generates a uniform random vector of SecureField elements.
-    fn draw_random_secure_felts(&mut self) -> [SecureField; EXTENSION_FELTS_PER_HASH] {
-        let felts: [BaseField; FELTS_PER_HASH] = self.draw_random_felts();
-        [
-            SecureField::from_m31_array(felts[..SECURE_FIELD_EXTENSION_DEGREE].try_into().unwrap()),
-            SecureField::from_m31_array(felts[SECURE_FIELD_EXTENSION_DEGREE..].try_into().unwrap()),
-        ]
-    }
 }
 
 /// A channel that can be used to draw random elements from a [Blake2sHash] digest.
@@ -58,28 +53,9 @@ pub struct Blake2sChannel {
     channel_time: ChannelTime,
 }
 
-impl Channel for Blake2sChannel {
-    type Digest = Blake2sHash;
-    const BYTES_PER_HASH: usize = BLAKE_BYTES_PER_HASH;
-
-    fn new(digest: Self::Digest) -> Self {
-        Blake2sChannel {
-            digest,
-            channel_time: ChannelTime::default(),
-        }
-    }
-
-    fn get_digest(&self) -> Self::Digest {
-        self.digest
-    }
-
-    fn mix_digest(&mut self, digest: Self::Digest) {
-        self.digest = Blake2sHasher::concat_and_hash(&self.digest, &digest);
-        self.channel_time.inc_challenges();
-    }
-
+impl Blake2sChannel {
     /// Generates a uniform random vector of BaseField elements.
-    fn draw_random_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
+    fn draw_base_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
         // Repeats hashing with an increasing counter until getting a good result.
         // Retry probability for each round is ~ 2^(-28).
         loop {
@@ -102,6 +78,27 @@ impl Channel for Blake2sChannel {
             }
         }
     }
+}
+
+impl Channel for Blake2sChannel {
+    type Digest = Blake2sHash;
+    const BYTES_PER_HASH: usize = BLAKE_BYTES_PER_HASH;
+
+    fn new(digest: Self::Digest) -> Self {
+        Blake2sChannel {
+            digest,
+            channel_time: ChannelTime::default(),
+        }
+    }
+
+    fn get_digest(&self) -> Self::Digest {
+        self.digest
+    }
+
+    fn mix_digest(&mut self, digest: Self::Digest) {
+        self.digest = Blake2sHasher::concat_and_hash(&self.digest, &digest);
+        self.channel_time.inc_challenges();
+    }
 
     fn mix_felts(&mut self, felts: &[SecureField]) {
         let mut hasher = Blake2sHasher::new();
@@ -122,6 +119,18 @@ impl Channel for Blake2sChannel {
         self.channel_time.inc_challenges();
     }
 
+    fn draw_felt(&mut self) -> SecureField {
+        let felts: [BaseField; FELTS_PER_HASH] = self.draw_base_felts();
+        SecureField::from_m31_array(felts[..SECURE_FIELD_EXTENSION_DEGREE].try_into().unwrap())
+    }
+
+    fn draw_felts(&mut self, n_felts: usize) -> Vec<SecureField> {
+        let mut felts: Vec<BaseField> = (0..usize_div_ceil(n_felts, EXTENSION_FELTS_PER_HASH))
+            .flat_map(|_| self.draw_base_felts())
+            .collect();
+        felts.drain(..).map(SecureField::from).collect::<Vec<_>>()
+    }
+
     fn draw_random_bytes(&mut self) -> Vec<u8> {
         let mut hash_input = self.digest.as_ref().to_vec();
 
@@ -139,6 +148,8 @@ impl Channel for Blake2sChannel {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::M31;
@@ -168,15 +179,15 @@ mod tests {
         assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 1);
 
-        channel.draw_random_felts();
+        channel.draw_felts(9);
         assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 2);
+        assert_eq!(channel.channel_time.n_sent, 6);
 
         channel.mix_digest(Blake2sHash::from(vec![1; 32]));
         assert_eq!(channel.channel_time.n_challenges, 1);
         assert_eq!(channel.channel_time.n_sent, 0);
 
-        channel.draw_random_felts();
+        channel.draw_felt();
         assert_eq!(channel.channel_time.n_challenges, 1);
         assert_eq!(channel.channel_time.n_sent, 1);
         assert_ne!(channel.digest, initial_digest);
@@ -198,10 +209,14 @@ mod tests {
         let initial_digest = Blake2sHash::from(vec![2; 32]);
         let mut channel = Blake2sChannel::new(initial_digest);
 
-        let first_random_felts = channel.draw_random_felts();
+        let mut random_felts = channel.draw_felts(5);
+        random_felts.push(channel.draw_felt());
 
-        // Assert that the next random felts are different.
-        assert_ne!(first_random_felts, channel.draw_random_felts());
+        // Assert that all the random felts are unique.
+        assert_eq!(
+            random_felts.len(),
+            random_felts.iter().collect::<BTreeSet<_>>().len()
+        );
     }
 
     #[test]
@@ -211,7 +226,7 @@ mod tests {
 
         for _ in 0..10 {
             channel.draw_random_bytes();
-            channel.draw_random_felts();
+            channel.draw_felt();
         }
 
         // Reseed channel and check the digest was changed.
