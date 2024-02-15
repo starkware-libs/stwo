@@ -4,6 +4,7 @@ use self::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
+use super::fri::CirclePolyDegreeBound;
 use super::poly::circle::CirclePoly;
 
 pub mod evaluation;
@@ -25,6 +26,10 @@ pub trait ComponentVisitor {
 /// constraints on them.
 pub trait Component {
     fn max_constraint_log_degree_bound(&self) -> u32;
+
+    /// Returns the degree bounds of the component quotients in descending order.
+    /// Contains one degree bound for the composition polynomial and one for each mask item.
+    fn log_degree_bounds(&self) -> Vec<CirclePolyDegreeBound>;
 
     /// Evaluates the constraint quotients of the component on constraint evaluation domains.
     /// See [`super::poly::circle::CircleDomain::constraint_evaluation_domain`].

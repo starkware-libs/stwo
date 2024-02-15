@@ -9,6 +9,7 @@ use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
+use crate::core::fri::CirclePolyDegreeBound;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 
 pub struct FibonacciComponent {
@@ -69,6 +70,15 @@ impl Component for FibonacciComponent {
     fn max_constraint_log_degree_bound(&self) -> u32 {
         // Step constraint is of degree 2.
         self.log_size + 1
+    }
+
+    fn log_degree_bounds(&self) -> Vec<CirclePolyDegreeBound> {
+        vec![
+            CirclePolyDegreeBound::new(self.max_constraint_log_degree_bound()),
+            CirclePolyDegreeBound::new(self.log_size),
+            CirclePolyDegreeBound::new(self.log_size),
+            CirclePolyDegreeBound::new(self.log_size),
+        ]
     }
 
     fn evaluate_constraint_quotients_on_domain(
