@@ -9,7 +9,7 @@ use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentTrace};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
-use crate::core::circle::{CirclePoint, Coset};
+use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -18,7 +18,7 @@ use crate::core::fri::{
     CirclePolyDegreeBound, FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation,
 };
 use crate::core::oods::{get_oods_quotient, get_pair_oods_quotient};
-use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
 use crate::core::queries::Queries;
@@ -36,11 +36,7 @@ const N_QUERIES: usize = 3;
 
 pub struct Fibonacci {
     pub component: FibonacciComponent,
-    pub trace_domain: CanonicCoset,
-    pub trace_eval_domain: CircleDomain,
     pub trace_commitment_domain: CanonicCoset,
-    pub constraint_zero_domain: Coset,
-    pub composition_polynomial_eval_domain: CircleDomain,
     pub composition_polynomial_commitment_domain: CanonicCoset,
     pub claim: BaseField,
 }
@@ -68,21 +64,12 @@ pub struct FibonacciProof {
 
 impl Fibonacci {
     pub fn new(log_size: u32, claim: BaseField) -> Self {
-        let trace_domain = CanonicCoset::new(log_size);
-        let trace_eval_domain = trace_domain.evaluation_domain(log_size + 1);
         let trace_commitment_domain = CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR);
-        let constraint_zero_domain = Coset::subgroup(log_size);
-        let composition_polynomial_eval_domain =
-            CircleDomain::constraint_evaluation_domain(log_size + 1);
         let composition_polynomial_commitment_domain =
             CanonicCoset::new(log_size + 1 + LOG_BLOWUP_FACTOR);
         Self {
             component: FibonacciComponent { log_size, claim },
-            trace_domain,
-            trace_eval_domain,
             trace_commitment_domain,
-            constraint_zero_domain,
-            composition_polynomial_eval_domain,
             composition_polynomial_commitment_domain,
             claim,
         }
@@ -90,13 +77,14 @@ impl Fibonacci {
 
     fn get_trace(&self) -> CircleEvaluation<BaseField> {
         // Trace.
-        // TODO(AlonH): Consider usin Vec::new instead of Vec::with_capacity throughout file.
-        let mut trace = Vec::with_capacity(self.trace_domain.size());
+        let trace_domain = CanonicCoset::new(self.component.log_size);
+        // TODO(AlonH): Consider using Vec::new instead of Vec::with_capacity throughout file.
+        let mut trace = Vec::with_capacity(trace_domain.size());
 
         // Fill trace with fibonacci squared.
         let mut a = BaseField::one();
         let mut b = BaseField::one();
-        for _ in 0..self.trace_domain.size() {
+        for _ in 0..trace_domain.size() {
             trace.push(a);
             let tmp = a.square() + b.square();
             a = b;
@@ -104,7 +92,7 @@ impl Fibonacci {
         }
 
         // Returns as a CircleEvaluation.
-        CircleEvaluation::new_canonical_ordered(self.trace_domain, trace)
+        CircleEvaluation::new_canonical_ordered(trace_domain, trace)
     }
 
     /// Returns the composition polynomial evaluations using the trace and a random coefficient.
@@ -255,10 +243,10 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR);
     // TODO(AlonH): Get bounds as public params of the proof.
     let bounds = vec![
-        CirclePolyDegreeBound::new(fib.composition_polynomial_eval_domain.log_size()),
-        CirclePolyDegreeBound::new(fib.trace_domain.log_size()),
-        CirclePolyDegreeBound::new(fib.trace_domain.log_size()),
-        CirclePolyDegreeBound::new(fib.trace_domain.log_size()),
+        CirclePolyDegreeBound::new(fib.component.max_constraint_log_degree_bound()),
+        CirclePolyDegreeBound::new(fib.component.log_size),
+        CirclePolyDegreeBound::new(fib.component.log_size),
+        CirclePolyDegreeBound::new(fib.component.log_size),
     ];
     let fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
 
@@ -375,8 +363,8 @@ mod tests {
         let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
         let composition_polynomial_poly = fib.compute_composition_polynomial(random_coeff, &trace);
 
-        // Evaluate this polynomial at another point, out of trace_eval_domain and compare to what
-        // we expect.
+        // Evaluate this polynomial at another point out of the evaluation domain and compare to
+        // what we expect.
         let point = CirclePoint::<SecureField>::get_point(98989892);
 
         let (_, mask_values) = fib.component.mask_points_and_values(point, &trace);
