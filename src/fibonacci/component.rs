@@ -123,18 +123,28 @@ impl Component for FibonacciComponent {
         }
     }
 
-    fn mask_values_at_point(
+    fn mask_points(&self, point: CirclePoint<SecureField>) -> Vec<CirclePoint<SecureField>> {
+        let trace_domain = CanonicCoset::new(self.log_size);
+        vec![
+            point + trace_domain.at(0).into_ef(),
+            point + trace_domain.at(1).into_ef(),
+            point + trace_domain.at(2).into_ef(),
+        ]
+    }
+
+    fn mask_points_and_values(
         &self,
         point: CirclePoint<SecureField>,
         trace: &ComponentTrace<'_>,
-    ) -> Vec<SecureField> {
+    ) -> (Vec<CirclePoint<SecureField>>, Vec<SecureField>) {
         let poly = &trace.columns[0];
-        let trace_domain = CanonicCoset::new(self.log_size);
-        vec![
-            poly.eval_at_point(point + trace_domain.at(0).into_ef()),
-            poly.eval_at_point(point + trace_domain.at(1).into_ef()),
-            poly.eval_at_point(point + trace_domain.at(2).into_ef()),
-        ]
+        let points = self.mask_points(point);
+        let values = points
+            .iter()
+            .map(|point| poly.eval_at_point(*point))
+            .collect();
+
+        (points, values)
     }
 
     fn evaluate_quotients_by_mask(
