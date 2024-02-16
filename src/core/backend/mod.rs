@@ -1,4 +1,6 @@
+pub mod avx512;
 pub mod cpu;
+
 use std::ops::Index;
 
 pub use cpu::CPUBackend;

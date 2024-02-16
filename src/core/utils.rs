@@ -9,7 +9,7 @@ pub(crate) fn bit_reverse_index(i: usize, log_size: u32) -> usize {
 /// Panics if the length of the slice is not a power of two.
 // TODO(AlonH): Consider benchmarking this function.
 // TODO: Implement cache friendly implementation.
-pub(crate) fn bit_reverse<T, U: AsMut<[T]>>(mut v: U) -> U {
+pub fn bit_reverse<T, U: AsMut<[T]>>(mut v: U) -> U {
     let n = v.as_mut().len();
     assert!(n.is_power_of_two());
     let log_n = n.ilog2();
