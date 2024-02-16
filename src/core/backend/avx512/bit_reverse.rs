@@ -1,16 +1,15 @@
 use std::arch::x86_64::{__m512i, _mm512_permutex2var_epi32};
 
-use crate::core::fields::m31::BaseField;
+use super::PackedBaseField;
 use crate::core::utils::{bit_reverse_index, IteratorMutExt};
 
 const VEC_BITS: u32 = 4;
 const W_BITS: u32 = 3;
-const MIN_LOG_SIZE: u32 = 2 * W_BITS + VEC_BITS;
+pub const MIN_LOG_SIZE: u32 = 2 * W_BITS + VEC_BITS;
 
-// TODO(spapini): Use  PackedBaseField type.
 /// Bit reverses packed M31 values.
-/// Given an array A[0..2^n), computes B[i] = A[bit_reverse(i)].
-pub fn bit_reverse_m31(data: &mut [[BaseField; 16]]) {
+/// Given an array `A[0..2^n)`, computes `B[i] = A[bit_reverse(i)]`.
+pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
     assert!(data.len().is_power_of_two());
     assert!(data.len().ilog2() >= MIN_LOG_SIZE);
 
@@ -67,7 +66,7 @@ pub fn bit_reverse_m31(data: &mut [[BaseField; 16]]) {
 }
 
 /// Bit reverses 16 packed M31 values.
-fn bit_reverse16(data: [[BaseField; 16]; 16]) -> [[BaseField; 16]; 16] {
+fn bit_reverse16(data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
     let mut data: [__m512i; 16] = unsafe { std::mem::transmute(data) };
     // L is an input to _mm512_permutex2var_epi32, and it is used to
     // interleave the first half of a with the first half of b.
@@ -152,7 +151,8 @@ mod tests {
         let data: Vec<_> = (0..SIZE as u32)
             .map(BaseField::from_u32_unchecked)
             .collect();
-        let expected = bit_reverse(data.clone());
+        let mut expected = data.clone();
+        bit_reverse(&mut expected);
         let mut data: Vec<_> = data.into_iter().array_chunks::<16>().collect();
         let expected: Vec<_> = expected.into_iter().array_chunks::<16>().collect();
 

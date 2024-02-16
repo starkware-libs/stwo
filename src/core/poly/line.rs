@@ -156,8 +156,9 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     }
 
     /// Returns the polynomial's coefficients in their natural order.
-    pub fn into_ordered_coefficients(self) -> Vec<F> {
-        bit_reverse(self.coeffs)
+    pub fn into_ordered_coefficients(mut self) -> Vec<F> {
+        bit_reverse(&mut self.coeffs);
+        self.coeffs
     }
 
     /// Creates a new line polynomial from coefficients in their natural order.
@@ -165,8 +166,9 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     /// # Panics
     ///
     /// Panics if the number of coefficients is not a power of two.
-    pub fn from_ordered_coefficients(coeffs: Vec<F>) -> Self {
-        Self::new(bit_reverse(coeffs))
+    pub fn from_ordered_coefficients(mut coeffs: Vec<F>) -> Self {
+        bit_reverse(&mut coeffs);
+        Self::new(coeffs)
     }
 }
 
@@ -242,9 +244,10 @@ impl<F: ExtensionOf<BaseField>> CPULineEvaluation<F> {
 }
 
 impl<B: FieldOps<F>, F: Field> LineEvaluation<B, F> {
-    pub fn bit_reverse(self) -> LineEvaluation<B, F, BitReversedOrder> {
+    pub fn bit_reverse(mut self) -> LineEvaluation<B, F, BitReversedOrder> {
+        B::bit_reverse_column(&mut self.values);
         LineEvaluation {
-            values: B::bit_reverse_column(self.values),
+            values: self.values,
             domain: self.domain,
             _eval_order: PhantomData,
         }
@@ -252,9 +255,10 @@ impl<B: FieldOps<F>, F: Field> LineEvaluation<B, F> {
 }
 
 impl<B: FieldOps<F>, F: Field> LineEvaluation<B, F, BitReversedOrder> {
-    pub fn bit_reverse(self) -> LineEvaluation<B, F, NaturalOrder> {
+    pub fn bit_reverse(mut self) -> LineEvaluation<B, F, NaturalOrder> {
+        B::bit_reverse_column(&mut self.values);
         LineEvaluation {
-            values: B::bit_reverse_column(self.values),
+            values: self.values,
             domain: self.domain,
             _eval_order: PhantomData,
         }
