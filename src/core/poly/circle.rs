@@ -254,8 +254,9 @@ impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CircleEvaluation<B, F> {
         self.values[self.domain.find(point_index).expect("Not in domain")]
     }
 
-    pub fn bit_reverse(self) -> CircleEvaluation<B, F, BitReversedOrder> {
-        CircleEvaluation::new(self.domain, B::bit_reverse_column(self.values))
+    pub fn bit_reverse(mut self) -> CircleEvaluation<B, F, BitReversedOrder> {
+        B::bit_reverse_column(&mut self.values);
+        CircleEvaluation::new(self.domain, self.values)
     }
 }
 
@@ -281,8 +282,9 @@ impl<F: ExtensionOf<BaseField>> CPUCircleEvaluation<F> {
 }
 
 impl<B: PolyOps<F>, F: ExtensionOf<BaseField>> CircleEvaluation<B, F, BitReversedOrder> {
-    pub fn bit_reverse(self) -> CircleEvaluation<B, F, NaturalOrder> {
-        CircleEvaluation::new(self.domain, B::bit_reverse_column(self.values))
+    pub fn bit_reverse(mut self) -> CircleEvaluation<B, F, NaturalOrder> {
+        B::bit_reverse_column(&mut self.values);
+        CircleEvaluation::new(self.domain, self.values)
     }
 
     pub fn get_at(&self, point_index: CirclePointIndex) -> F {
@@ -389,7 +391,8 @@ impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CirclePoly<B, F> {
 #[cfg(test)]
 impl<F: ExtensionOf<BaseField>> crate::core::backend::cpu::CPUCirclePoly<F> {
     pub fn is_in_fft_space(&self, log_fft_size: u32) -> bool {
-        let mut coeffs = crate::core::utils::bit_reverse(self.coeffs.clone());
+        let mut coeffs = self.coeffs.clone();
+        crate::core::utils::bit_reverse(&mut coeffs);
         while coeffs.last() == Some(&F::zero()) {
             coeffs.pop();
         }
