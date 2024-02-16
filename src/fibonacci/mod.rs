@@ -274,7 +274,8 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
         CirclePolyDegreeBound::new(fib.trace_domain.log_size()),
         CirclePolyDegreeBound::new(fib.trace_domain.log_size()),
     ];
-    let fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
+    let fri_verifier =
+        FriVerifier::<CPUBackend, _>::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
 
     ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work);
     let composition_polynomial_queries = Queries::generate(
