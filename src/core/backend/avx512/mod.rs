@@ -1,4 +1,5 @@
 pub mod bit_reverse;
+pub mod circle;
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
@@ -75,6 +76,17 @@ impl Column<BaseField> for BaseFieldVec {
     }
     fn at(&self, index: usize) -> BaseField {
         self.data[index / K_ELEMENTS].to_array()[index % K_ELEMENTS]
+    }
+}
+
+fn as_cpu_vec(values: BaseFieldVec) -> Vec<BaseField> {
+    let capacity = values.len() * 16;
+    unsafe {
+        Vec::from_raw_parts(
+            values.data.as_ptr() as *mut BaseField,
+            values.length,
+            capacity,
+        )
     }
 }
 
