@@ -1,4 +1,5 @@
 pub mod bit_reverse;
+pub mod circle;
 
 use std::ops::Index;
 
@@ -73,6 +74,17 @@ impl Column<BaseField> for BaseFieldVec {
     }
     fn len(&self) -> usize {
         self.length
+    }
+}
+
+fn as_cpu_vec(values: BaseFieldVec) -> Vec<BaseField> {
+    let capacity = values.len() * 16;
+    unsafe {
+        Vec::from_raw_parts(
+            values.data.as_ptr() as *mut BaseField,
+            values.length,
+            capacity,
+        )
     }
 }
 
