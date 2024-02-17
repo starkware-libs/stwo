@@ -72,7 +72,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
     }
 }
 
-/// Bit reverses 16 packed M31 values.
+/// Bit reverses 256 M31 values, packed in 16 words of 16 elements each.
 fn bit_reverse16(data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
     let mut data: [__m512i; 16] = unsafe { std::mem::transmute(data) };
     // L is an input to _mm512_permutex2var_epi32, and it is used to
