@@ -1,4 +1,5 @@
 pub mod bit_reverse;
+pub mod circle;
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
@@ -78,6 +79,19 @@ impl Column<BaseField> for BaseFieldVec {
     }
 }
 
+fn as_cpu_vec(values: BaseFieldVec) -> Vec<BaseField> {
+    let capacity = values.data.capacity() * 16;
+    unsafe {
+        let res = Vec::from_raw_parts(
+            values.data.as_ptr() as *mut BaseField,
+            values.length,
+            capacity,
+        );
+        std::mem::forget(values);
+        res
+    }
+}
+
 impl FromIterator<BaseField> for BaseFieldVec {
     fn from_iter<I: IntoIterator<Item = BaseField>>(iter: I) -> Self {
         let mut chunks = iter.into_iter().array_chunks();
@@ -137,5 +151,12 @@ mod tests {
                     .collect::<Vec<_>>()
             );
         }
+    }
+
+    #[test]
+    fn test_as_cpu_vec() {
+        let col = Col::<B, BaseField>::from_iter((0..100).map(BaseField::from));
+        let vec = as_cpu_vec(col);
+        assert_eq!(vec, (0..100).map(BaseField::from).collect::<Vec<_>>());
     }
 }
