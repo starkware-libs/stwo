@@ -1,4 +1,5 @@
 pub mod bit_reverse;
+pub mod circle;
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
@@ -7,17 +8,15 @@ use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
 use num_traits::Zero;
 
 use self::bit_reverse::bit_reverse_m31;
-use self::m31::PackedBaseField;
+pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Column, FieldOps};
 use crate::core::utils;
-
 #[derive(Copy, Clone, Debug)]
 pub struct AVX512Backend;
 
 // BaseField.
 // TODO(spapini): Unite with the M31AVX512 type.
-pub const K_ELEMENTS: usize = 16;
 
 unsafe impl Pod for PackedBaseField {}
 unsafe impl Zeroable for PackedBaseField {
@@ -59,7 +58,7 @@ impl FieldOps<BaseField> for AVX512Backend {
 impl Column<BaseField> for BaseFieldVec {
     fn zeros(len: usize) -> Self {
         Self {
-            data: vec![PackedBaseField::zeroed(); len.div_ceil(K_ELEMENTS)],
+            data: vec![PackedBaseField::zeroed(); len.div_ceil(K_BLOCK_SIZE)],
             length: len,
         }
     }
@@ -74,7 +73,20 @@ impl Column<BaseField> for BaseFieldVec {
         self.length
     }
     fn at(&self, index: usize) -> BaseField {
-        self.data[index / K_ELEMENTS].to_array()[index % K_ELEMENTS]
+        self.data[index / K_BLOCK_SIZE].to_array()[index % K_BLOCK_SIZE]
+    }
+}
+
+fn as_cpu_vec(values: BaseFieldVec) -> Vec<BaseField> {
+    let capacity = values.data.capacity() * K_BLOCK_SIZE;
+    unsafe {
+        let res = Vec::from_raw_parts(
+            values.data.as_ptr() as *mut BaseField,
+            values.length,
+            capacity,
+        );
+        std::mem::forget(values);
+        res
     }
 }
 
@@ -82,7 +94,7 @@ impl FromIterator<BaseField> for BaseFieldVec {
     fn from_iter<I: IntoIterator<Item = BaseField>>(iter: I) -> Self {
         let mut chunks = iter.into_iter().array_chunks();
         let mut res: Vec<_> = (&mut chunks).map(PackedBaseField::from_array).collect();
-        let mut length = res.len() * K_ELEMENTS;
+        let mut length = res.len() * K_BLOCK_SIZE;
 
         if let Some(remainder) = chunks.into_remainder() {
             if !remainder.is_empty() {
@@ -137,5 +149,13 @@ mod tests {
                     .collect::<Vec<_>>()
             );
         }
+    }
+
+    #[test]
+    fn test_as_cpu_vec() {
+        let original_vec = (1000..1100).map(BaseField::from).collect::<Vec<_>>();
+        let col = Col::<B, BaseField>::from_iter(original_vec.clone());
+        let vec = as_cpu_vec(col);
+        assert_eq!(vec, original_vec);
     }
 }
