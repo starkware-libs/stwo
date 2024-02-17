@@ -13,7 +13,7 @@ pub fn cpu_bit_rev(c: &mut criterion::Criterion) {
 
     c.bench_function("cpu bit_rev", |b| {
         b.iter(|| {
-            data = prover_research::core::utils::bit_reverse(std::mem::take(&mut data));
+            prover_research::core::utils::bit_reverse(&mut data);
         })
     });
 }
