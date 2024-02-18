@@ -291,6 +291,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gkr"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "prover-research",
+]
+
+[[package]]
 name = "half"
 version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
