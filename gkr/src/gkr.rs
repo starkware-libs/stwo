@@ -350,9 +350,9 @@ mod tests {
         let proof = prove2(&mut test_channel(), &layers);
         let (assignment, p3_claim, q3_claim) =
             partially_verify(&proof, &mut test_channel()).unwrap();
+
         assert_eq!(p3.eval(&assignment), p3_claim);
         assert_eq!(q3.eval(&assignment), q3_claim);
-        println!("res: {:?}", "dasdsd");
     }
 
     fn test_channel() -> Blake2sChannel {

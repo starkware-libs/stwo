@@ -81,7 +81,6 @@ pub fn prove(
 
         let round_polynomial =
             Polynomial::interpolate_lagrange(&[x0, x1, x2, x3, x4], &[y0, y1, y2, y3, y4]);
-        println!("RP degree: {}", round_polynomial.degree());
         channel.mix_felts(&round_polynomial);
         round_polynomials.push(round_polynomial);
 

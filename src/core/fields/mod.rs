@@ -166,6 +166,8 @@ macro_rules! impl_field {
 #[macro_export]
 macro_rules! impl_extension_field {
     ($field_name: ty, $extended_field_name: ty) => {
+        use std::iter::{Product, Sum};
+
         use $crate::core::fields::ExtensionOf;
 
         impl ExtensionOf<M31> for $field_name {}
@@ -331,6 +333,26 @@ macro_rules! impl_extension_field {
                     "RemAssign is not implemented for {}",
                     stringify!($field_name)
                 );
+            }
+        }
+
+        impl Sum for $field_name {
+            fn sum<I>(mut iter: I) -> Self
+            where
+                I: Iterator<Item = Self>,
+            {
+                let first = iter.next().unwrap_or_else(<$field_name>::zero);
+                iter.fold(first, |a, b| a + b)
+            }
+        }
+
+        impl Product for $field_name {
+            fn product<I>(mut iter: I) -> Self
+            where
+                I: Iterator<Item = Self>,
+            {
+                let first = iter.next().unwrap_or_else(<$field_name>::one);
+                iter.fold(first, |a, b| a * b)
             }
         }
     };
