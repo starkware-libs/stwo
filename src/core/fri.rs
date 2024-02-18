@@ -110,7 +110,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
             Self::commit_inner_layers(channel, config, columns);
         let last_layer_poly = Self::commit_last_layer(channel, config, last_layer_evaluation);
 
-        let column_log_sizes = columns.iter().map(|e| e.domain.log_size()).collect_vec();
+        let column_log_sizes = columns.iter().map(|e| e.domain.log_size()).collect();
         Self {
             config,
             inner_layers,
@@ -206,7 +206,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         channel: &mut impl Channel<Digest = H::Hash>,
     ) -> (FriProof<H>, Vec<SparseSubCircleDomain>) {
         let queries = Queries::generate(channel, self.column_log_sizes[0], self.config.n_queries);
-        let positions = opening_positions(&queries, &self.column_log_sizes);
+        let positions = get_opening_positions(&queries, &self.column_log_sizes);
         let proof = self.decommit_on_queries(&queries);
         (proof, positions)
     }
@@ -236,6 +236,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
 }
 
 pub struct FriVerifier<H: Hasher> {
+    config: FriConfig,
     /// Alpha used to fold all circle polynomials to univariate polynomials.
     circle_poly_alpha: SecureField,
     /// Domain size queries should be sampled from.
@@ -245,6 +246,7 @@ pub struct FriVerifier<H: Hasher> {
     inner_layers: Vec<FriLayerVerifier<H>>,
     last_layer_domain: LineDomain,
     last_layer_poly: LinePoly<SecureField>,
+    queries: Option<Queries>,
 }
 
 impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
@@ -318,12 +320,14 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         channel.mix_felts(&last_layer_poly);
 
         Ok(Self {
+            config,
             circle_poly_alpha,
             column_bounds,
             expected_query_log_domain_size,
             inner_layers,
             last_layer_domain,
             last_layer_poly,
+            queries: None,
         })
     }
 
@@ -335,22 +339,30 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     ///
     /// Panics if:
     /// * The queries were sampled on the wrong domain size.
-    /// * There aren't the same number of decommited values as degree bounds.
+    /// * There aren't the same number of decommitted values as degree bounds.
     // TODO(andrew): Finish docs.
-    pub fn decommit<F>(
+    pub fn decommit(
+        self,
+        decommitted_values: Vec<SparseCircleEvaluation<SecureField>>,
+    ) -> Result<(), VerificationError> {
+        let queries = self.queries.clone().unwrap();
+        self.decommit_on_queries(&queries, decommitted_values)
+    }
+
+    fn decommit_on_queries<F>(
         self,
         queries: &Queries,
-        decommited_values: Vec<SparseCircleEvaluation<F>>,
+        decommitted_values: Vec<SparseCircleEvaluation<F>>,
     ) -> Result<(), VerificationError>
     where
         F: ExtensionOf<BaseField>,
         SecureField: ExtensionOf<F>,
     {
         assert_eq!(queries.log_domain_size, self.expected_query_log_domain_size);
-        assert_eq!(decommited_values.len(), self.column_bounds.len());
+        assert_eq!(decommitted_values.len(), self.column_bounds.len());
 
         let (last_layer_queries, last_layer_query_evals) =
-            self.decommit_inner_layers(queries, decommited_values)?;
+            self.decommit_inner_layers(queries, decommitted_values)?;
 
         self.decommit_last_layer(last_layer_queries, last_layer_query_evals)
     }
@@ -361,7 +373,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     fn decommit_inner_layers<F>(
         &self,
         queries: &Queries,
-        decommited_values: Vec<SparseCircleEvaluation<F>>,
+        decommitted_values: Vec<SparseCircleEvaluation<F>>,
     ) -> Result<(Queries, Vec<SecureField>), VerificationError>
     where
         F: ExtensionOf<BaseField>,
@@ -370,7 +382,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         let circle_poly_alpha = self.circle_poly_alpha;
         let circle_poly_alpha_sq = circle_poly_alpha * circle_poly_alpha;
 
-        let mut decommited_values = decommited_values.into_iter();
+        let mut decommitted_values = decommitted_values.into_iter();
         let mut column_bounds = self.column_bounds.iter().copied().peekable();
         let mut layer_queries = queries.fold(CIRCLE_TO_LINE_FOLD_STEP);
         let mut layer_query_evals = vec![SecureField::zero(); layer_queries.len()];
@@ -381,7 +393,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
                 .next_if(|b| b.fold_to_line() == layer.degree_bound)
                 .is_some()
             {
-                let sparse_evaluation = decommited_values.next().unwrap();
+                let sparse_evaluation = decommitted_values.next().unwrap();
                 let folded_evals = sparse_evaluation.fold(circle_poly_alpha);
                 assert_eq!(folded_evals.len(), layer_query_evals.len());
 
@@ -396,7 +408,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
 
         // Check all values have been consumed.
         assert!(column_bounds.is_empty());
-        assert!(decommited_values.is_empty());
+        assert!(decommitted_values.is_empty());
 
         Ok((layer_queries, layer_query_evals))
     }
@@ -423,9 +435,26 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
 
         Ok(())
     }
+
+    pub fn opening_positions(
+        &mut self,
+        channel: &mut impl Channel<Digest = H::Hash>,
+    ) -> Vec<SparseSubCircleDomain> {
+        let column_log_sizes = self
+            .column_bounds
+            .iter()
+            .map(|b| b.log_degree_bound + self.config.log_blowup_factor)
+            .collect_vec();
+        let queries = Queries::generate(channel, column_log_sizes[0], self.config.n_queries);
+        self.queries = Some(queries.clone());
+        get_opening_positions(&queries, &column_log_sizes)
+    }
 }
 
-fn opening_positions(queries: &Queries, domain_log_sizes: &[u32]) -> Vec<SparseSubCircleDomain> {
+fn get_opening_positions(
+    queries: &Queries,
+    domain_log_sizes: &[u32],
+) -> Vec<SparseSubCircleDomain> {
     let mut prev_log_size = domain_log_sizes[0];
     let mut prev_queries = queries.clone();
     let mut positions = vec![prev_queries.opening_positions(FOLD_STEP)];
@@ -982,7 +1011,7 @@ mod tests {
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        verifier.decommit(&queries, vec![decommitment_value])
+        verifier.decommit_on_queries(&queries, vec![decommitment_value])
     }
 
     #[test]
@@ -999,7 +1028,7 @@ mod tests {
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
 
-        verifier.decommit(&queries, decommitment_values)
+        verifier.decommit_on_queries(&queries, decommitment_values)
     }
 
     #[test]
@@ -1061,7 +1090,7 @@ mod tests {
         proof.inner_layers[1].evals_subset.pop();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
 
         assert!(matches!(
             verification_result,
@@ -1084,7 +1113,7 @@ mod tests {
         proof.inner_layers[1].evals_subset[0] += BaseField::one();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
 
         assert!(matches!(
             verification_result,
@@ -1129,7 +1158,7 @@ mod tests {
         proof.last_layer_poly[0] += BaseField::one();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
 
         assert!(matches!(
             verification_result,
@@ -1154,7 +1183,7 @@ mod tests {
         let mut invalid_queries = queries.clone();
         invalid_queries.log_domain_size -= 1;
 
-        let _ = verifier.decommit(&invalid_queries, vec![decommitment_value]);
+        let _ = verifier.decommit_on_queries(&invalid_queries, vec![decommitment_value]);
     }
 
     /// Returns an evaluation of a random polynomial with degree `2^log_degree`.
