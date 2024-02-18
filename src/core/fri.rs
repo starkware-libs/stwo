@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::iter::zip;
 use std::ops::RangeInclusive;
 
+use itertools::Itertools;
 use num_traits::Zero;
 use thiserror::Error;
 
@@ -14,7 +15,7 @@ use super::poly::circle::CircleEvaluation;
 use super::poly::line::{LineEvaluation, LinePoly};
 use super::poly::BitReversedOrder;
 // TODO(andrew): Create fri/ directory, move queries.rs there and split this file up.
-use super::queries::Queries;
+use super::queries::{Queries, SparseSubCircleDomain};
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
@@ -29,7 +30,8 @@ use crate::core::utils::bit_reverse_index;
 pub struct FriConfig {
     log_blowup_factor: u32,
     log_last_layer_degree_bound: u32,
-    // TODO(andrew): Add num_queries, fold_steps.
+    n_queries: usize,
+    // TODO(andrew): fold_steps.
 }
 
 impl FriConfig {
@@ -50,12 +52,13 @@ impl FriConfig {
     /// Panics if:
     /// * `log_last_layer_degree_bound` is greater than 10.
     /// * `log_blowup_factor` is equal to zero or greater than 16.
-    pub fn new(log_last_layer_degree_bound: u32, log_blowup_factor: u32) -> Self {
+    pub fn new(log_last_layer_degree_bound: u32, log_blowup_factor: u32, n_queries: usize) -> Self {
         assert!(Self::LOG_LAST_LAYER_DEGREE_BOUND_RANGE.contains(&log_last_layer_degree_bound));
         assert!(Self::LOG_BLOWUP_FACTOR_RANGE.contains(&log_blowup_factor));
         Self {
             log_blowup_factor,
             log_last_layer_degree_bound,
+            n_queries,
         }
     }
 
@@ -66,14 +69,17 @@ impl FriConfig {
 
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
 pub struct FriProver<H: Hasher> {
+    config: FriConfig,
     inner_layers: Vec<FriLayerProver<H>>,
     last_layer_poly: LinePoly<SecureField>,
+    /// Unique sizes of committed columns sorted in descending order.
+    column_log_sizes: Vec<u32>,
 }
 
 impl<H: Hasher<NativeType = u8>> FriProver<H> {
     /// Commits to multiple [CircleEvaluation]s.
     ///
-    /// `evals` must be provided in descending order by size.
+    /// `columns` must be provided in descending order by size.
     ///
     /// Mixed degree STARKs involve polynomials evaluated on multiple domains of different size.
     /// Combining evaluations on different sized domains into an evaluation of a single polynomial
@@ -84,7 +90,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
     /// # Panics
     ///
     /// Panics if:
-    /// * `evals` is empty or not sorted in ascending order by domain size.
+    /// * `columns` is empty or not sorted in ascending order by domain size.
     /// * An evaluation is not from a sufficiently low degree circle polynomial.
     /// * An evaluation's domain is smaller than the last layer.
     /// * An evaluation's domain is not a canonic circle domain.
@@ -98,14 +104,23 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         F: ExtensionOf<BaseField>,
         SecureField: ExtensionOf<F>,
     {
+        assert!(!columns.is_empty(), "no columns");
         assert!(columns.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
         assert!(columns.iter().all(|e| e.domain.is_canonic()), "not canonic");
         let (inner_layers, last_layer_evaluation) =
             Self::commit_inner_layers(channel, config, columns);
         let last_layer_poly = Self::commit_last_layer(channel, config, last_layer_evaluation);
+
+        let column_log_sizes = columns
+            .iter()
+            .map(|e| e.domain.log_size())
+            .dedup()
+            .collect();
         Self {
+            config,
             inner_layers,
             last_layer_poly,
+            column_log_sizes,
         }
     }
 
@@ -191,10 +206,25 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         last_layer_poly
     }
 
+    /// Samples queries and decommits on them. Returns the FRI proof and the positions of the value
+    /// positions needed for verification.
+    pub fn decommit(
+        self,
+        channel: &mut impl Channel<Digest = H::Hash>,
+    ) -> (FriProof<H>, Vec<SparseSubCircleDomain>) {
+        let max_column_log_size = self.column_log_sizes[0];
+        let queries = Queries::generate(channel, max_column_log_size, self.config.n_queries);
+        let positions = get_opening_positions(&queries, &self.column_log_sizes);
+        let proof = self.decommit_on_queries(&queries);
+        (proof, positions)
+    }
+
     /// # Panics
     ///
     /// Panics if the queries were sampled on the wrong domain size.
-    pub fn decommit(self, queries: &Queries) -> FriProof<H> {
+    fn decommit_on_queries(self, queries: &Queries) -> FriProof<H> {
+        let max_column_log_size = self.column_log_sizes[0];
+        assert_eq!(queries.log_domain_size, max_column_log_size);
         let first_layer_queries = queries.fold(CIRCLE_TO_LINE_FOLD_STEP);
         let inner_layers = self
             .inner_layers
@@ -403,6 +433,25 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
 
         Ok(())
     }
+}
+
+/// Returns the column opening positions needed for verification.
+fn get_opening_positions(
+    queries: &Queries,
+    domain_log_sizes: &[u32],
+) -> Vec<SparseSubCircleDomain> {
+    let mut prev_log_size = domain_log_sizes[0];
+    assert!(prev_log_size == queries.log_domain_size);
+    let mut prev_queries = queries.clone();
+    let mut positions = vec![prev_queries.opening_positions(FOLD_STEP)];
+    for log_size in domain_log_sizes.iter().skip(1) {
+        let n_folds = prev_log_size - log_size;
+        let queries = prev_queries.fold(n_folds);
+        positions.push(queries.opening_positions(FOLD_STEP));
+        prev_log_size = *log_size;
+        prev_queries = queries;
+    }
+    positions
 }
 
 pub trait FriChannel {
@@ -919,7 +968,7 @@ mod tests {
     fn committing_high_degree_polynomial_fails() {
         const LOG_EXPECTED_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR;
         const LOG_INVALID_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR - 1;
-        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR);
+        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3);
         let evaluation = polynomial_evaluation::<BaseField>(6, LOG_INVALID_BLOWUP_FACTOR);
 
         FriProver::commit(&mut test_channel(), config, &[evaluation]);
@@ -932,19 +981,19 @@ mod tests {
         assert!(!invalid_domain.is_canonic(), "must be an invalid domain");
         let evaluation = CircleEvaluation::new(invalid_domain, vec![BaseField::one(); 1 << 4]);
 
-        FriProver::commit(&mut test_channel(), FriConfig::new(2, 2), &[evaluation]);
+        FriProver::commit(&mut test_channel(), FriConfig::new(2, 2, 3), &[evaluation]);
     }
 
     #[test]
     fn valid_proof_passes_verification() -> Result<(), VerificationError> {
         const LOG_DEGREE: u32 = 3;
-        let config = FriConfig::new(1, LOG_BLOWUP_FACTOR);
         let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
+        let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len());
         let decommitment_value = query_polynomial(&polynomial, &queries);
         let prover = FriProver::commit(&mut test_channel(), config, &[polynomial]);
-        let proof = prover.decommit(&queries);
+        let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
@@ -954,14 +1003,31 @@ mod tests {
     #[test]
     fn valid_mixed_degree_proof_passes_verification() -> Result<(), VerificationError> {
         const LOG_DEGREES: [u32; 3] = [6, 5, 4];
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
         let polynomials =
             LOG_DEGREES.map(|log_d| polynomial_evaluation::<BaseField>(log_d, LOG_BLOWUP_FACTOR));
         let log_domain_size = polynomials[0].domain.log_size();
         let queries = Queries::from_positions(vec![7, 70], log_domain_size);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
         let prover = FriProver::commit(&mut test_channel(), config, &polynomials);
         let decommitment_values = polynomials.map(|p| query_polynomial(&p, &queries)).to_vec();
-        let proof = prover.decommit(&queries);
+        let proof = prover.decommit_on_queries(&queries);
+        let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
+        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
+
+        verifier.decommit(&queries, decommitment_values)
+    }
+
+    #[test]
+    fn valid_mixed_degree_end_to_end_proof_passes_verification() -> Result<(), VerificationError> {
+        const LOG_DEGREES: [u32; 3] = [6, 5, 4];
+        let polynomials =
+            LOG_DEGREES.map(|log_d| polynomial_evaluation::<BaseField>(log_d, LOG_BLOWUP_FACTOR));
+        let max_column_log_size = polynomials[0].domain.log_size();
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
+        let queries = Queries::generate(&mut test_channel(), max_column_log_size, config.n_queries);
+        let prover = FriProver::commit(&mut test_channel(), config, &polynomials);
+        let decommitment_values = polynomials.map(|p| query_polynomial(&p, &queries)).to_vec();
+        let (proof, _) = prover.decommit(&mut test_channel());
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
 
@@ -971,12 +1037,12 @@ mod tests {
     #[test]
     fn proof_with_removed_layer_fails_verification() {
         const LOG_DEGREE: u32 = 6;
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
         let polynomial = polynomial_evaluation::<BaseField>(6, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1], log_domain_size);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
         let prover = FriProver::commit(&mut test_channel(), config, &[polynomial]);
-        let proof = prover.decommit(&queries);
+        let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         // Set verifier's config to expect one extra layer than prover config.
         let mut invalid_config = config;
@@ -993,12 +1059,12 @@ mod tests {
     #[test]
     fn proof_with_added_layer_fails_verification() {
         const LOG_DEGREE: u32 = 6;
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
         let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1], log_domain_size);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
         let prover = FriProver::commit(&mut test_channel(), config, &[polynomial]);
-        let proof = prover.decommit(&queries);
+        let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         // Set verifier's config to expect one less layer than prover config.
         let mut invalid_config = config;
@@ -1015,14 +1081,14 @@ mod tests {
     #[test]
     fn proof_with_invalid_inner_layer_evaluation_fails_verification() {
         const LOG_DEGREE: u32 = 6;
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
         let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
         let decommitment_value = query_polynomial(&polynomial, &queries);
         let prover = FriProver::commit(&mut test_channel(), config, &[polynomial]);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
-        let mut proof = prover.decommit(&queries);
+        let mut proof = prover.decommit_on_queries(&queries);
         // Remove an evaluation from the second layer's proof.
         proof.inner_layers[1].evals_subset.pop();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
@@ -1038,14 +1104,14 @@ mod tests {
     #[test]
     fn proof_with_invalid_inner_layer_decommitment_fails_verification() {
         const LOG_DEGREE: u32 = 6;
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
         let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
         let decommitment_value = query_polynomial(&polynomial, &queries);
         let prover = FriProver::commit(&mut test_channel(), config, &[polynomial]);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
-        let mut proof = prover.decommit(&queries);
+        let mut proof = prover.decommit_on_queries(&queries);
         // Modify the committed values in the second layer.
         proof.inner_layers[1].evals_subset[0] += BaseField::one();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
@@ -1062,13 +1128,13 @@ mod tests {
     fn proof_with_invalid_last_layer_degree_fails_verification() {
         const LOG_DEGREE: u32 = 6;
         const LOG_MAX_LAST_LAYER_DEGREE: u32 = 2;
-        let config = FriConfig::new(LOG_MAX_LAST_LAYER_DEGREE, LOG_BLOWUP_FACTOR);
         let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
+        let config = FriConfig::new(LOG_MAX_LAST_LAYER_DEGREE, LOG_BLOWUP_FACTOR, queries.len());
         let prover = FriProver::commit(&mut test_channel(), config, &[polynomial]);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
-        let mut proof = prover.decommit(&queries);
+        let mut proof = prover.decommit_on_queries(&queries);
         let bad_last_layer_coeffs = vec![One::one(); 1 << (LOG_MAX_LAST_LAYER_DEGREE + 1)];
         proof.last_layer_poly = LinePoly::new(bad_last_layer_coeffs);
 
@@ -1083,14 +1149,14 @@ mod tests {
     #[test]
     fn proof_with_invalid_last_layer_fails_verification() {
         const LOG_DEGREE: u32 = 6;
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR);
         let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
         let decommitment_value = query_polynomial(&polynomial, &queries);
         let prover = FriProver::commit(&mut test_channel(), config, &[polynomial]);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
-        let mut proof = prover.decommit(&queries);
+        let mut proof = prover.decommit_on_queries(&queries);
         // Compromise the last layer polynomial's first coefficient.
         proof.last_layer_poly[0] += BaseField::one();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
@@ -1107,13 +1173,13 @@ mod tests {
     #[should_panic]
     fn decommit_queries_on_invalid_domain_fails_verification() {
         const LOG_DEGREE: u32 = 3;
-        let config = FriConfig::new(1, LOG_BLOWUP_FACTOR);
         let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
+        let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len());
         let decommitment_value = query_polynomial(&polynomial, &queries);
         let prover = FriProver::commit(&mut test_channel(), config, &[polynomial]);
-        let proof = prover.decommit(&queries);
+        let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
         // Simulate the verifier sampling queries on a smaller domain.

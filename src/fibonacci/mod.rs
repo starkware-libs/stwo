@@ -159,27 +159,14 @@ impl Fibonacci {
             );
         }
 
-        let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR);
+        let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
         let fri_prover = FriProver::commit(channel, fri_config, &oods_quotients);
 
         let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
-        // TODO(AlonH): Get opening positions from FRI.
-        let composition_polynomial_queries = Queries::generate(
-            channel,
-            self.composition_polynomial_commitment_domain.log_size(),
-            N_QUERIES,
-        );
-        let trace_queries = composition_polynomial_queries.fold(
-            self.composition_polynomial_commitment_domain.log_size()
-                - self.trace_commitment_domain.log_size(),
-        );
-        let fri_proof = fri_prover.decommit(&composition_polynomial_queries);
+        let (fri_proof, fri_opening_positions) = fri_prover.decommit(channel);
 
-        const FRI_STEP_SIZE: u32 = 1;
-        let composition_polynomial_decommitment_positions = composition_polynomial_queries
-            .opening_positions(FRI_STEP_SIZE)
-            .flatten();
-        let trace_decommitment_positions = trace_queries.opening_positions(FRI_STEP_SIZE).flatten();
+        let composition_polynomial_decommitment_positions = fri_opening_positions[0].flatten();
+        let trace_decommitment_positions = fri_opening_positions[1].flatten();
 
         // Decommit and get the values in the opening positions.
         let composition_polynomial_opened_values = composition_polynomial_decommitment_positions
@@ -244,13 +231,12 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     );
     let composition_polynomial_oods_value = evaluation_accumulator.finalize();
 
-    let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR);
-
     // TODO(AlonH): Get bounds from air.
     let mut bounds = vec![CirclePolyDegreeBound::new(
         fib.component.max_constraint_log_degree_bound(),
     )];
     bounds.append(&mut fib.component.get_quotient_log_bounds());
+    let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
     let fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
 
     ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work);
