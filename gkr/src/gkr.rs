@@ -41,7 +41,7 @@ pub fn eq(x_assignments: &[SecureField], y_assignments: &[SecureField]) -> Secur
 }
 
 // <https://people.cs.georgetown.edu/jthaler/ProofsArgsAndZK.pdf> (page 65)
-pub fn prove2(channel: &mut impl Channel, layers: &[Layer]) -> GkrProof {
+pub fn prove(channel: &mut impl Channel, layers: &[Layer]) -> GkrProof {
     let zero = SecureField::zero();
     let one = SecureField::one();
 
@@ -245,7 +245,7 @@ mod tests {
     use prover_research::core::fields::m31::BaseField;
     use prover_research::core::fields::qm31::SecureField;
 
-    use crate::gkr::{eq, partially_verify, prove2, Layer};
+    use crate::gkr::{eq, partially_verify, prove, Layer};
     use crate::multivariate::{self, MultivariatePolynomial};
     use crate::utils::Fraction;
 
@@ -347,7 +347,7 @@ mod tests {
             Layer::new(&p3, &q3),
         ];
 
-        let proof = prove2(&mut test_channel(), &layers);
+        let proof = prove(&mut test_channel(), &layers);
         let (assignment, p3_claim, q3_claim) =
             partially_verify(&proof, &mut test_channel()).unwrap();
 
