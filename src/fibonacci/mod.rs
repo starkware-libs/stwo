@@ -21,7 +21,6 @@ use crate::core::oods::{get_oods_quotient, get_pair_oods_quotient};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
-use crate::core::queries::Queries;
 
 type Channel = Blake2sChannel;
 type MerkleHasher = Blake2sHasher;
@@ -237,31 +236,13 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     )];
     bounds.append(&mut fib.component.get_quotient_log_bounds());
     let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-    let fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
+    let mut fri_verifier =
+        FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
 
     ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work);
-    let composition_polynomial_queries = Queries::generate(
-        channel,
-        fib.composition_polynomial_commitment_domain.log_size(),
-        N_QUERIES,
-    );
-    let trace_queries = composition_polynomial_queries.fold(
-        fib.composition_polynomial_commitment_domain.log_size()
-            - fib.trace_commitment_domain.log_size(),
-    );
-    // TODO(AlonH): Get sub circle domains from FRI.
-    const FRI_STEP_SIZE: u32 = 1;
-    let composition_polynomial_opening_positions =
-        composition_polynomial_queries.opening_positions(FRI_STEP_SIZE);
-    let trace_opening_positions = trace_queries.opening_positions(FRI_STEP_SIZE);
-    assert_eq!(
-        trace_opening_positions.len(),
-        proof.trace_opened_values.len() >> FRI_STEP_SIZE
-    );
-    assert_eq!(
-        composition_polynomial_opening_positions.len(),
-        proof.composition_polynomial_opened_values.len() >> FRI_STEP_SIZE
-    );
+    let opening_positions = fri_verifier.column_opening_positions(channel);
+    let composition_polynomial_opening_positions = &opening_positions[0];
+    let trace_opening_positions = &opening_positions[1];
     assert!(trace_commitment_scheme.verify(
         &proof.trace_decommitments[0],
         &trace_opening_positions.flatten()
@@ -315,9 +296,7 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
         sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
     }
 
-    fri_verifier
-        .decommit(&composition_polynomial_queries, sparse_circle_evaluations)
-        .unwrap();
+    fri_verifier.decommit(sparse_circle_evaluations).unwrap();
 
     true
 }
