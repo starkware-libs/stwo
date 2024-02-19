@@ -4,7 +4,7 @@ use itertools::Itertools;
 use merging_iterator::MergeIter;
 
 use super::hasher::Hasher;
-use super::merkle_input::MerkleTreeInput;
+use super::merkle_input::{MerkleTreeConfig, MerkleTreeInput};
 use super::merkle_multilayer::MerkleMultiLayer;
 use super::mixed_degree_decommitment::MixedDecommitment;
 use crate::commitment_scheme::merkle_multilayer::MerkleMultiLayerConfig;
@@ -188,7 +188,6 @@ where
     // Generates the witness of a single layer and adds it to the decommitment.
     // 'previous_layer_indices' - node indices that are part of the witness for a query below .
     // 'queries_to_layer'- queries to columns at this layer.
-    #[allow(dead_code)]
     fn decommit_single_layer(
         &self,
         layer_depth: usize,
@@ -196,8 +195,11 @@ where
         mut previous_layers_indices: Peekable<impl ExactSizeIterator<Item = usize> + Clone>,
         decommitment: &mut MixedDecommitment<F, H>,
     ) -> Vec<usize> {
-        let directly_queried_node_indices =
-            queried_nodes_in_layer(queries_to_layer.iter(), &self.input, layer_depth);
+        let directly_queried_node_indices = queried_nodes_in_layer(
+            queries_to_layer.iter(),
+            &self.input.configuration(),
+            layer_depth,
+        );
         let mut index_value_iterator = directly_queried_node_indices
             .iter()
             .copied()
@@ -283,12 +285,10 @@ where
         witnesses_and_queried_values_by_node
     }
 
-    #[allow(dead_code)]
     fn sibling_hash(&self, query: usize, layer_depth: usize) -> H::Hash {
         self.get_hash_at(layer_depth, query ^ 1)
     }
 
-    #[allow(dead_code)]
     fn child_hashes(&self, node_index: usize, layer_depth: usize) -> (H::Hash, H::Hash) {
         (
             self.get_hash_at(layer_depth, node_index * 2),
@@ -297,17 +297,16 @@ where
     }
 }
 
-// Translates queries of the form <column, entry_index> to the form <layer, node_index>
-// Input queries are per column, i.e queries[0] is a vector of queries for the first column that was
-// inserted to the tree's input in that layer.
-#[allow(dead_code)]
-fn queried_nodes_in_layer<'a>(
+/// Translates queries of the form <column, entry_index> to the form <layer, node_index>
+/// Input queries are per column, i.e queries[0] is a vector of queries for the first column that
+/// was inserted to the tree's input in that layer.
+pub fn queried_nodes_in_layer<'a>(
     queries: impl Iterator<Item = &'a Vec<usize>>,
-    input: &MerkleTreeInput<'_, impl Field>,
+    config: &MerkleTreeConfig,
     layer_depth: usize,
 ) -> Vec<usize> {
-    let columns = input.get_columns(layer_depth);
-    let column_log_lengths = columns.iter().map(|c| c.len().ilog2() as usize);
+    let columns_lengths = config.column_lengths_at_depth(layer_depth);
+    let column_log_lengths = columns_lengths.iter().map(|c_len| c_len.ilog2() as usize);
     let mut node_queries = queries
         .into_iter()
         .zip(column_log_lengths)
@@ -485,7 +484,11 @@ mod tests {
                 let column_queries_at_depth = queries
                     .drain(..n_columns_injected_at_depth)
                     .collect::<Vec<_>>();
-                super::queried_nodes_in_layer(column_queries_at_depth.iter(), input, i)
+                super::queried_nodes_in_layer(
+                    column_queries_at_depth.iter(),
+                    &input.configuration(),
+                    i,
+                )
             })
             .collect::<Vec<Vec<usize>>>()
     }
@@ -557,13 +560,15 @@ mod tests {
             third_column_queries,
         ];
 
-        let node_indices = queried_nodes_in_layer(queries.iter().take(2), &tree.input, 4);
+        let node_indices =
+            queried_nodes_in_layer(queries.iter().take(2), &tree.input.configuration(), 4);
         let w4 = tree.layer_felt_witnesses_and_queried_elements(
             4,
             queries[..2].iter(),
             node_indices.iter().copied(),
         );
-        let node_indices = queried_nodes_in_layer(queries.iter().skip(2), &tree.input, 3);
+        let node_indices =
+            queried_nodes_in_layer(queries.iter().skip(2), &tree.input.configuration(), 3);
         let w3 = tree.layer_felt_witnesses_and_queried_elements(
             4,
             queries[2..4].iter(),
