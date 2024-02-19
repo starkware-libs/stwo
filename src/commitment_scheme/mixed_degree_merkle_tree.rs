@@ -330,6 +330,10 @@ pub fn queried_nodes_in_layer<'a>(
 mod tests {
     use std::vec;
 
+    use itertools::Itertools;
+    use rand::seq::SliceRandom;
+    use rand::{thread_rng, Rng};
+
     use super::{queried_nodes_in_layer, MixedDegreeMerkleTree, MixedDegreeMerkleTreeConfig};
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
@@ -588,10 +592,8 @@ mod tests {
         );
     }
 
-    // TODO(Ohad): move to less explicit assertions and randomized tests once a verify function is
-    // implemented.
     #[test]
-    fn decommit_witness_elements_test() {
+    fn decommit_deterministic_test() {
         const TREE_HEIGHT: usize = 4;
         let mut input = MerkleTreeInput::<M31>::new();
         let column_length_8 = (80..88).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
@@ -599,24 +601,57 @@ mod tests {
         input.insert_column(TREE_HEIGHT - 1, &column_length_4);
         input.insert_column(TREE_HEIGHT, &column_length_8);
         input.insert_column(TREE_HEIGHT - 1, &column_length_8);
+        let configuration = input.configuration();
         let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
             input,
             MixedDegreeMerkleTreeConfig {
                 multi_layer_sizes: [3, 1].to_vec(),
             },
         );
-        tree.commit();
+        let commitment = tree.commit();
         let queries: Vec<Vec<usize>> = vec![vec![2], vec![0], vec![4, 7]];
 
         let test_decommitment = tree.decommit(queries.as_ref());
+        assert!(test_decommitment.verify(
+            commitment,
+            &configuration,
+            &queries,
+            test_decommitment.queried_values.iter().copied()
+        ));
+    }
 
-        assert_eq!(
-            test_decommitment.witness_elements,
-            vec![m31!(40), m31!(80), m31!(81), m31!(85), m31!(43), m31!(86)]
+    #[test]
+    fn decommit_random_test() {
+        let mut input = MerkleTreeInput::<M31>::new();
+        let column_0 = [m31!(1); 1024];
+        let column_1 = [m31!(1); 512];
+        let column_2 = [m31!(2); 256];
+        let columns = [&column_0[..], &column_1[..], &column_2[..]];
+
+        let queries = (0..10)
+            .map(|_| {
+                let column = columns.choose(&mut rand::thread_rng()).unwrap();
+                let injection_depth = thread_rng().gen_range(1..8);
+                input.insert_column(injection_depth, column);
+                vec![thread_rng().gen_range(0..column.len()); 3]
+            })
+            .collect_vec();
+        let configuration = input.configuration();
+
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [configuration.height()].to_vec(),
+            },
         );
-        assert_eq!(
-            test_decommitment.queried_values,
-            vec![m31!(80), m31!(42), m31!(84), m31!(87)]
-        );
+        let commitment = tree.commit();
+        let test_decommitment = tree.decommit(queries.as_ref());
+
+        assert!(test_decommitment.verify(
+            commitment,
+            &configuration,
+            &queries,
+            test_decommitment.queried_values.iter().copied()
+        ));
     }
 }
