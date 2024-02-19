@@ -327,6 +327,8 @@ pub fn queried_nodes_in_layer<'a>(
 mod tests {
     use std::vec;
 
+    use itertools::Itertools;
+
     use super::{queried_nodes_in_layer, MixedDegreeMerkleTree, MixedDegreeMerkleTreeConfig};
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
@@ -585,35 +587,46 @@ mod tests {
         );
     }
 
-    // TODO(Ohad): move to less explicit assertions and randomized tests once a verify function is
-    // implemented.
     #[test]
-    fn decommit_witness_elements_test() {
-        const TREE_HEIGHT: usize = 4;
+    fn decommit_test() {
         let mut input = MerkleTreeInput::<M31>::new();
-        let column_length_8 = (80..88).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
-        let column_length_4 = (40..44).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
-        input.insert_column(TREE_HEIGHT - 1, &column_length_4);
-        input.insert_column(TREE_HEIGHT, &column_length_8);
-        input.insert_column(TREE_HEIGHT - 1, &column_length_8);
+        let column_0 = (1600..1616).map(M31::from_u32_unchecked).collect_vec();
+        let column_1 = (800..808).map(M31::from_u32_unchecked).collect_vec();
+        let column_2 = (400..404).map(M31::from_u32_unchecked).collect_vec();
+        let column_3 = (0..4096).map(M31::from_u32_unchecked).collect_vec();
+
+        const TREE_HEIGHT: usize = 8;
+        input.insert_column(TREE_HEIGHT, &column_3);
+        input.insert_column(TREE_HEIGHT - 5, &column_1);
+        input.insert_column(TREE_HEIGHT, &column_3);
+        input.insert_column(TREE_HEIGHT - 4, &column_0);
+        input.insert_column(TREE_HEIGHT - 6, &column_2);
+        input.insert_column(TREE_HEIGHT - 4, &column_1);
+        input.insert_column(TREE_HEIGHT, &column_3);
+        let configuration = input.configuration();
         let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
             input,
             MixedDegreeMerkleTreeConfig {
-                multi_layer_sizes: [3, 1].to_vec(),
+                multi_layer_sizes: vec![8],
             },
         );
-        tree.commit();
-        let queries: Vec<Vec<usize>> = vec![vec![2], vec![0], vec![4, 7]];
+        let commitment = tree.commit();
+        let queries: Vec<Vec<usize>> = vec![
+            vec![2],
+            vec![0],
+            vec![],
+            vec![3],
+            vec![0, 1, 2, 3],
+            vec![4, 7],
+            vec![0, 1, 1000, 4095],
+        ];
 
-        let test_decommitment = tree.decommit(queries.as_ref());
-
-        assert_eq!(
-            test_decommitment.witness_elements,
-            vec![m31!(40), m31!(80), m31!(81), m31!(85), m31!(43), m31!(86)]
-        );
-        assert_eq!(
-            test_decommitment.queried_values,
-            vec![m31!(80), m31!(42), m31!(84), m31!(87)]
-        );
+        let test_decommitment = tree.decommit(&queries);
+        assert!(test_decommitment.verify(
+            commitment,
+            &configuration,
+            &queries,
+            test_decommitment.queried_values.iter().copied()
+        ));
     }
 }
