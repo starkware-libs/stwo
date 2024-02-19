@@ -585,35 +585,40 @@ mod tests {
         );
     }
 
-    // TODO(Ohad): move to less explicit assertions and randomized tests once a verify function is
-    // implemented.
     #[test]
-    fn decommit_witness_elements_test() {
-        const TREE_HEIGHT: usize = 4;
+    fn decommit_test() {
         let mut input = MerkleTreeInput::<M31>::new();
-        let column_length_8 = (80..88).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
-        let column_length_4 = (40..44).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
-        input.insert_column(TREE_HEIGHT - 1, &column_length_4);
-        input.insert_column(TREE_HEIGHT, &column_length_8);
-        input.insert_column(TREE_HEIGHT - 1, &column_length_8);
+        let column_0 = (1600..1616)
+            .map(M31::from_u32_unchecked)
+            .collect::<Vec<M31>>();
+        let column_1 = (800..808)
+            .map(M31::from_u32_unchecked)
+            .collect::<Vec<M31>>();
+        let column_2 = (400..404)
+            .map(M31::from_u32_unchecked)
+            .collect::<Vec<M31>>();
+        const TREE_HEIGHT: usize = 5;
+        input.insert_column(TREE_HEIGHT - 2, &column_1);
+        input.insert_column(TREE_HEIGHT, &column_0);
+        input.insert_column(TREE_HEIGHT - 1, &column_0);
+        input.insert_column(TREE_HEIGHT - 3, &column_2);
+        input.insert_column(TREE_HEIGHT - 1, &column_1);
+        let configuration = input.configuration();
         let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
             input,
             MixedDegreeMerkleTreeConfig {
-                multi_layer_sizes: [3, 1].to_vec(),
+                multi_layer_sizes: vec![5],
             },
         );
-        tree.commit();
-        let queries: Vec<Vec<usize>> = vec![vec![2], vec![0], vec![4, 7]];
+        let commitment = tree.commit();
+        let queries: Vec<Vec<usize>> = vec![vec![2], vec![0], vec![0, 15, 12], vec![3], vec![4, 7]];
 
         let test_decommitment = tree.decommit(queries.as_ref());
-
-        assert_eq!(
-            test_decommitment.witness_elements,
-            vec![m31!(40), m31!(80), m31!(81), m31!(85), m31!(43), m31!(86)]
-        );
-        assert_eq!(
-            test_decommitment.queried_values,
-            vec![m31!(80), m31!(42), m31!(84), m31!(87)]
-        );
+        assert!(test_decommitment.verify(
+            commitment,
+            &configuration,
+            &queries,
+            test_decommitment.queried_values.iter().copied()
+        ));
     }
 }
