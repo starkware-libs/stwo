@@ -22,14 +22,9 @@ use crate::core::fields::Field;
 /// assert_eq!(input.get_columns(3).len(), 2);
 /// assert_eq!(input.max_injected_depth(), 3);
 /// ````
-// `columns_to_inject` - A vector of columns to be injected to the merkle tree, ordered as
-//  inserted.
-// `injected_depths_map` - A mapping from a depth of the tree to the columns injected at that
-//  depth, ordered as inserted.
 #[derive(Default)]
 pub struct MerkleTreeInput<'a, F: Field> {
-    columns_to_inject: Vec<&'a [F]>,
-    injected_depths_map: Vec<Vec<usize>>,
+    columns_to_inject: Vec<LayerColumns<'a, F>>,
 }
 
 pub type LayerColumns<'a, F> = Vec<&'a [F]>;
@@ -38,7 +33,6 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
     pub fn new() -> Self {
         Self {
             columns_to_inject: vec![],
-            injected_depths_map: vec![],
         }
     }
 
@@ -59,19 +53,15 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
             depth
         );
 
-        if self.injected_depths_map.len() < depth {
-            self.injected_depths_map.resize(depth, vec![]);
+        if self.columns_to_inject.len() < depth {
+            self.columns_to_inject.resize(depth, vec![]);
         }
-        self.injected_depths_map[depth - 1].push(self.columns_to_inject.len());
-        self.columns_to_inject.push(column);
+        self.columns_to_inject[depth - 1].push(column);
     }
 
-    pub fn get_columns(&'a self, depth: usize) -> Vec<&[F]> {
-        match self.injected_depths_map.get(depth - 1) {
-            Some(injected_column_indices) => injected_column_indices
-                .iter()
-                .map(|&index| self.columns_to_inject[index])
-                .collect::<Vec<&[F]>>(),
+    pub fn get_columns(&'a self, depth: usize) -> &'a [&[F]] {
+        match self.columns_to_inject.get(depth - 1) {
+            Some(v) => &v[..],
             _ => panic!(
                 "Attempted extraction of columns from depth: {}, but max injected depth is: {}",
                 depth,
@@ -81,7 +71,21 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
     }
 
     pub fn max_injected_depth(&self) -> usize {
-        self.injected_depths_map.len()
+        self.columns_to_inject.len()
+    }
+
+    /// Splits the input into two parts, the first part is the input for the first layer, the second
+    /// part is the input for the deeper layers.
+    pub fn split(&mut self, split_at: usize) -> Self {
+        assert!(split_at > 0);
+        assert!(split_at <= self.max_injected_depth());
+        Self {
+            columns_to_inject: self.columns_to_inject.split_off(split_at - 1),
+        }
+    }
+
+    pub fn prepend(&mut self, other: Self) {
+        self.columns_to_inject.splice(0..0, other.columns_to_inject);
     }
 
     pub fn get_injected_elements(&self, depth: usize, bag_index: usize) -> Vec<F> {
@@ -95,7 +99,9 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
     }
 
     pub fn n_injected_columns(&self) -> usize {
-        self.columns_to_inject.len()
+        self.columns_to_inject
+            .iter()
+            .fold(0, |sum, layer| sum + layer.len())
     }
 }
 
@@ -162,6 +168,33 @@ mod tests {
         let not_pow_2_column = vec![M31::from_u32_unchecked(0); 1023];
 
         input.insert_column(2, &not_pow_2_column);
+    }
+
+    #[test]
+    pub fn test_split() {
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let column = vec![M31::from_u32_unchecked(0); 1024];
+        input.insert_column(3, column.as_ref());
+        let input_for_deeper_layers = input.split(2);
+        assert_eq!(input.max_injected_depth(), 1);
+        assert_eq!(input_for_deeper_layers.max_injected_depth(), 2);
+    }
+
+    #[test]
+    pub fn test_prepend() {
+        let mut input = super::MerkleTreeInput::<M31>::new();
+        let mut identical_input = super::MerkleTreeInput::<M31>::new();
+        let column = vec![M31::from_u32_unchecked(0); 1024];
+        input.insert_column(3, column.as_ref());
+        identical_input.insert_column(3, column.as_ref());
+
+        let mut splitted_input = input.split(2);
+        splitted_input.prepend(input);
+
+        assert_eq!(
+            splitted_input.columns_to_inject,
+            identical_input.columns_to_inject
+        );
     }
 
     #[test]

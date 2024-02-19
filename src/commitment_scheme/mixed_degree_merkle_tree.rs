@@ -256,8 +256,10 @@ fn queried_nodes_in_layer<'a>(
     input: &MerkleTreeInput<'_, impl Field>,
     layer_depth: usize,
 ) -> Vec<usize> {
-    let columns = input.get_columns(layer_depth);
-    let column_log_lengths = columns.iter().map(|c| c.len().ilog2() as usize);
+    let column_log_lengths = input
+        .get_columns(layer_depth)
+        .iter()
+        .map(|c| c.len().ilog2() as usize);
     let mut node_queries = queries
         .into_iter()
         .zip(column_log_lengths)
