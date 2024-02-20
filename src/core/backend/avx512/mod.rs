@@ -1,5 +1,6 @@
 pub mod bit_reverse;
 pub mod circle;
+pub mod fft;
 pub mod m31;
 
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
