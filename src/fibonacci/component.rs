@@ -3,7 +3,7 @@ use std::ops::Div;
 use num_traits::One;
 
 use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Component, ComponentTrace};
+use crate::core::air::{Component, ComponentTrace, Mask};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
@@ -71,6 +71,10 @@ impl Component for FibonacciComponent {
         self.log_size + 1
     }
 
+    fn trace_log_degree_bounds(&self) -> Vec<u32> {
+        vec![self.log_size]
+    }
+
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &ComponentTrace<'_>,
@@ -123,13 +127,8 @@ impl Component for FibonacciComponent {
         }
     }
 
-    fn mask_points(&self, point: CirclePoint<SecureField>) -> Vec<Vec<CirclePoint<SecureField>>> {
-        let trace_domain = CanonicCoset::new(self.log_size);
-        vec![vec![
-            point + trace_domain.at(0).into_ef(),
-            point + trace_domain.at(1).into_ef(),
-            point + trace_domain.at(2).into_ef(),
-        ]]
+    fn mask(&self) -> Mask {
+        Mask(vec![vec![0, 1, 2]])
     }
 
     fn evaluate_quotients_by_mask(
