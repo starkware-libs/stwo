@@ -246,6 +246,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
 }
 
 pub struct FriVerifier<H: Hasher> {
+    config: FriConfig,
     /// Alpha used to fold all circle polynomials to univariate polynomials.
     circle_poly_alpha: SecureField,
     /// Domain size queries should be sampled from.
@@ -255,6 +256,9 @@ pub struct FriVerifier<H: Hasher> {
     inner_layers: Vec<FriLayerVerifier<H>>,
     last_layer_domain: LineDomain,
     last_layer_poly: LinePoly<SecureField>,
+    /// The queries used for decommitment. Initialized when calling
+    /// [`FriVerifier::column_opening_positions`].
+    queries: Option<Queries>,
 }
 
 impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
@@ -328,12 +332,14 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         channel.mix_felts(&last_layer_poly);
 
         Ok(Self {
+            config,
             circle_poly_alpha,
             column_bounds,
             expected_query_log_domain_size,
             inner_layers,
             last_layer_domain,
             last_layer_poly,
+            queries: None,
         })
     }
 
@@ -344,23 +350,36 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     /// # Panics
     ///
     /// Panics if:
+    /// * The queries were not yet sampled.
     /// * The queries were sampled on the wrong domain size.
-    /// * There aren't the same number of decommited values as degree bounds.
+    /// * There aren't the same number of decommitted values as degree bounds.
     // TODO(andrew): Finish docs.
     pub fn decommit<F>(
+        mut self,
+        decommitted_values: Vec<SparseCircleEvaluation<F>>,
+    ) -> Result<(), VerificationError>
+    where
+        F: ExtensionOf<BaseField>,
+        SecureField: ExtensionOf<F>,
+    {
+        let queries = self.queries.take().expect("queries not sampled");
+        self.decommit_on_queries(&queries, decommitted_values)
+    }
+
+    fn decommit_on_queries<F>(
         self,
         queries: &Queries,
-        decommited_values: Vec<SparseCircleEvaluation<F>>,
+        decommitted_values: Vec<SparseCircleEvaluation<F>>,
     ) -> Result<(), VerificationError>
     where
         F: ExtensionOf<BaseField>,
         SecureField: ExtensionOf<F>,
     {
         assert_eq!(queries.log_domain_size, self.expected_query_log_domain_size);
-        assert_eq!(decommited_values.len(), self.column_bounds.len());
+        assert_eq!(decommitted_values.len(), self.column_bounds.len());
 
         let (last_layer_queries, last_layer_query_evals) =
-            self.decommit_inner_layers(queries, decommited_values)?;
+            self.decommit_inner_layers(queries, decommitted_values)?;
 
         self.decommit_last_layer(last_layer_queries, last_layer_query_evals)
     }
@@ -371,7 +390,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     fn decommit_inner_layers<F>(
         &self,
         queries: &Queries,
-        decommited_values: Vec<SparseCircleEvaluation<F>>,
+        decommitted_values: Vec<SparseCircleEvaluation<F>>,
     ) -> Result<(Queries, Vec<SecureField>), VerificationError>
     where
         F: ExtensionOf<BaseField>,
@@ -380,7 +399,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         let circle_poly_alpha = self.circle_poly_alpha;
         let circle_poly_alpha_sq = circle_poly_alpha * circle_poly_alpha;
 
-        let mut decommited_values = decommited_values.into_iter();
+        let mut decommitted_values = decommitted_values.into_iter();
         let mut column_bounds = self.column_bounds.iter().copied().peekable();
         let mut layer_queries = queries.fold(CIRCLE_TO_LINE_FOLD_STEP);
         let mut layer_query_evals = vec![SecureField::zero(); layer_queries.len()];
@@ -391,7 +410,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
                 .next_if(|b| b.fold_to_line() == layer.degree_bound)
                 .is_some()
             {
-                let sparse_evaluation = decommited_values.next().unwrap();
+                let sparse_evaluation = decommitted_values.next().unwrap();
                 let folded_evals = sparse_evaluation.fold(circle_poly_alpha);
                 assert_eq!(folded_evals.len(), layer_query_evals.len());
 
@@ -406,7 +425,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
 
         // Check all values have been consumed.
         assert!(column_bounds.is_empty());
-        assert!(decommited_values.is_empty());
+        assert!(decommitted_values.is_empty());
 
         Ok((layer_queries, layer_query_evals))
     }
@@ -433,9 +452,31 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
 
         Ok(())
     }
+
+    /// Samples queries and returns the opening positions for each unique column size.
+    ///
+    /// The order of the opening positions corresponds to the order of the column commitment.
+    pub fn column_opening_positions(
+        &mut self,
+        channel: &mut impl Channel<Digest = H::Hash>,
+    ) -> Vec<SparseSubCircleDomain> {
+        let column_log_sizes = self
+            .column_bounds
+            .iter()
+            .dedup()
+            .map(|b| b.log_degree_bound + self.config.log_blowup_factor)
+            .collect_vec();
+        let queries = Queries::generate(channel, column_log_sizes[0], self.config.n_queries);
+        let positions = get_opening_positions(&queries, &column_log_sizes);
+        self.queries = Some(queries);
+        positions
+    }
 }
 
 /// Returns the column opening positions needed for verification.
+///
+/// The domain log sizes must be unique and in descending order.
+// TODO(AlonH): Consider returning a mapping instead of a vector.
 fn get_opening_positions(
     queries: &Queries,
     domain_log_sizes: &[u32],
@@ -897,7 +938,7 @@ mod tests {
 
     use num_traits::{One, Zero};
 
-    use super::{SparseCircleEvaluation, VerificationError};
+    use super::{get_opening_positions, SparseCircleEvaluation, VerificationError};
     use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::{CirclePointIndex, Coset};
@@ -912,8 +953,7 @@ mod tests {
     use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
-    use crate::core::queries::Queries;
-    use crate::core::utils::bit_reverse_index;
+    use crate::core::queries::{Queries, SparseSubCircleDomain};
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
@@ -997,7 +1037,7 @@ mod tests {
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        verifier.decommit(&queries, vec![decommitment_value])
+        verifier.decommit_on_queries(&queries, vec![decommitment_value])
     }
 
     #[test]
@@ -1014,7 +1054,7 @@ mod tests {
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
 
-        verifier.decommit(&queries, decommitment_values)
+        verifier.decommit_on_queries(&queries, decommitment_values)
     }
 
     #[test]
@@ -1022,16 +1062,19 @@ mod tests {
         const LOG_DEGREES: [u32; 3] = [6, 5, 4];
         let polynomials =
             LOG_DEGREES.map(|log_d| polynomial_evaluation::<BaseField>(log_d, LOG_BLOWUP_FACTOR));
-        let max_column_log_size = polynomials[0].domain.log_size();
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
-        let queries = Queries::generate(&mut test_channel(), max_column_log_size, config.n_queries);
         let prover = FriProver::commit(&mut test_channel(), config, &polynomials);
-        let decommitment_values = polynomials.map(|p| query_polynomial(&p, &queries)).to_vec();
-        let (proof, _) = prover.decommit(&mut test_channel());
+        let (proof, prover_opening_positions) = prover.decommit(&mut test_channel());
+        let decommitment_values = zip(&polynomials, &prover_opening_positions)
+            .map(|(poly, positions)| open_polynomial(poly, positions))
+            .collect();
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
-        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
 
-        verifier.decommit(&queries, decommitment_values)
+        let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
+        let verifier_opening_positions = verifier.column_opening_positions(&mut test_channel());
+
+        assert_eq!(prover_opening_positions, verifier_opening_positions);
+        verifier.decommit(decommitment_values)
     }
 
     #[test]
@@ -1093,7 +1136,7 @@ mod tests {
         proof.inner_layers[1].evals_subset.pop();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
 
         assert!(matches!(
             verification_result,
@@ -1116,7 +1159,7 @@ mod tests {
         proof.inner_layers[1].evals_subset[0] += BaseField::one();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
 
         assert!(matches!(
             verification_result,
@@ -1161,7 +1204,7 @@ mod tests {
         proof.last_layer_poly[0] += BaseField::one();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        let verification_result = verifier.decommit(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
 
         assert!(matches!(
             verification_result,
@@ -1186,7 +1229,7 @@ mod tests {
         let mut invalid_queries = queries.clone();
         invalid_queries.log_domain_size -= 1;
 
-        let _ = verifier.decommit(&invalid_queries, vec![decommitment_value]);
+        let _ = verifier.decommit_on_queries(&invalid_queries, vec![decommitment_value]);
     }
 
     /// Returns an evaluation of a random polynomial with degree `2^log_degree`.
@@ -1217,19 +1260,24 @@ mod tests {
         polynomial: &CircleEvaluation<F, BitReversedOrder>,
         queries: &Queries,
     ) -> SparseCircleEvaluation<F> {
-        let domain = polynomial.domain;
+        let positions = get_opening_positions(
+            queries,
+            &[queries.log_domain_size, polynomial.domain.log_size()],
+        );
+        open_polynomial(polynomial, &positions[1])
+    }
+
+    fn open_polynomial<F: ExtensionOf<BaseField>>(
+        polynomial: &CircleEvaluation<F, BitReversedOrder>,
+        positions: &SparseSubCircleDomain,
+    ) -> SparseCircleEvaluation<F> {
         let polynomial = polynomial.clone().bit_reverse();
         let oracle = EvalByEvaluation::new(CirclePointIndex::zero(), &polynomial);
 
-        // Get queries on the polynomial
-        let polynomial_queries = queries.fold(queries.log_domain_size - domain.log_size());
-
-        let coset_evals = polynomial_queries
+        let coset_evals = positions
             .iter()
-            .map(|&query| {
-                let position = bit_reverse_index(query, domain.log_size());
-                let p = domain.index_at(position);
-                let coset_domain = CircleDomain::new(Coset::new(p, 0));
+            .map(|position| {
+                let coset_domain = position.to_circle_domain(&polynomial.domain);
                 let evals = coset_domain
                     .iter_indices()
                     .map(|p| oracle.get_at(p))
