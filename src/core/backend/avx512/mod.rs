@@ -1,5 +1,6 @@
 pub mod bit_reverse;
 pub mod circle;
+pub mod fft;
 
 use std::ops::Index;
 
