@@ -18,6 +18,7 @@ pub mod evaluation;
 pub trait Air {
     fn visit_components<V: ComponentVisitor>(&self, v: &mut V);
 }
+
 pub trait ComponentVisitor {
     fn visit<C: Component>(&mut self, component: &C);
 }

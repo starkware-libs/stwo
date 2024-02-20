@@ -3,6 +3,9 @@
 //! Given a random alpha, the combined polynomial is defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i (P).
 
+use core::slice;
+
+use super::{ComponentTrace, ComponentVisitor};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;
@@ -155,6 +158,33 @@ impl<'a> ColumnAccumulator<'a> {
     pub fn accumulate(&mut self, index: usize, evaluation: BaseField) {
         let accum = &mut self.col[index];
         *accum = *accum * self.random_coeff + evaluation;
+    }
+}
+
+pub struct ConstraintEvaluator<'a> {
+    pub traces: slice::Iter<'a, &'a ComponentTrace<'a>>,
+    pub evaluation_accumulator: DomainEvaluationAccumulator,
+}
+
+impl<'a> ConstraintEvaluator<'a> {
+    pub fn new(traces: &'a [&ComponentTrace<'a>], max_log_size: u32, random_coeff: SecureField) -> Self {
+        Self {
+            traces: traces.iter(),
+            evaluation_accumulator: DomainEvaluationAccumulator::new(random_coeff, max_log_size),
+        }
+    }
+
+    pub fn finalize(self) -> CirclePoly<SecureField> {
+        self.evaluation_accumulator.finalize()
+    }
+}
+
+impl<'a> ComponentVisitor for ConstraintEvaluator<'a> {
+    fn visit<C: crate::core::air::Component>(&mut self, component: &C) {
+        component.evaluate_constraint_quotients_on_domain(
+            self.traces.next().expect("no more component traces"),
+            &mut self.evaluation_accumulator,
+        )
     }
 }
 
