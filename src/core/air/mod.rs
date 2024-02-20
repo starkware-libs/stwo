@@ -17,6 +17,8 @@ pub mod evaluation;
 // TODO(spapini): consider renaming this struct.
 pub trait Air {
     fn visit_components<V: ComponentVisitor>(&self, v: &mut V);
+
+    fn max_constraint_log_degree_bound(&self) -> u32;
 }
 
 pub trait ComponentVisitor {
