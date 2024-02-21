@@ -5,7 +5,7 @@
 
 use core::slice;
 
-use super::{ComponentTrace, ComponentVisitor};
+use super::{Component, ComponentTrace, ComponentVisitor};
 use crate::core::backend::{Backend, CPUBackend, Col};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -187,7 +187,7 @@ impl<'a> ConstraintEvaluator<'a, CPUBackend> {
 }
 
 impl<'a, B: Backend> ComponentVisitor<B> for ConstraintEvaluator<'a, B> {
-    fn visit<C: crate::core::air::Component<B>>(&mut self, component: &C) {
+    fn visit<C: Component<B>>(&mut self, component: &C) {
         component.evaluate_constraint_quotients_on_domain(
             self.traces.next().expect("no more component traces"),
             &mut self.evaluation_accumulator,
