@@ -6,8 +6,12 @@ use std::arch::x86_64::{
 };
 
 use crate::core::backend::avx512::{MIN_FFT_LOG_SIZE, VECS_LOG_SIZE};
+use crate::core::fields::Field;
+use crate::core::poly::circle::CircleDomain;
+use crate::core::utils::bit_reverse;
 
 /// An input to _mm512_permutex2var_epi32, and is used to interleave the even words of a
+/// L is an input to _mm512_permutex2var_epi32, and is used to interleave the even words of a
 /// with the even words of b.
 const EVENS_INTERLEAVE_EVENS: __m512i = unsafe {
     core::mem::transmute([
@@ -556,6 +560,32 @@ unsafe fn compute_first_twiddles(twiddle1_dbl: [i32; 8]) -> (__m512i, __m512i) {
     };
     let t0 = _mm512_xor_epi32(_mm512_permutexvar_epi32(INDICES_FROM_T1, t1), NEGATION_MASK);
     (t0, t1)
+}
+
+pub fn get_itwiddle_dbls(domain: CircleDomain) -> Vec<Vec<i32>> {
+    let mut coset = domain.half_coset;
+
+    let mut res = vec![];
+    res.push(
+        coset
+            .iter()
+            .map(|p| (p.y.inverse().0 * 2) as i32)
+            .collect::<Vec<_>>(),
+    );
+    bit_reverse(res.last_mut().unwrap());
+    for _ in 0..coset.log_size() {
+        res.push(
+            coset
+                .iter()
+                .take(coset.size() / 2)
+                .map(|p| (p.x.inverse().0 * 2) as i32)
+                .collect::<Vec<_>>(),
+        );
+        bit_reverse(res.last_mut().unwrap());
+        coset = coset.double();
+    }
+
+    res
 }
 
 /// Applies 3 butterfly layers on 8 vectors of 16 M31 elements.
