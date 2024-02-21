@@ -7,10 +7,8 @@ use self::component::FibonacciComponent;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
-use crate::core::air::evaluation::{
-    ConstraintEvaluator, DomainEvaluationAccumulator, PointEvaluationAccumulator,
-};
-use crate::core::air::{Air, Component, ComponentTrace};
+use crate::core::air::evaluation::PointEvaluationAccumulator;
+use crate::core::air::{Air, AirExt, Component, ComponentTrace};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
@@ -21,7 +19,7 @@ use crate::core::fri::{
     CirclePolyDegreeBound, FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation,
 };
 use crate::core::oods::{get_oods_quotient, get_pair_oods_quotient, quotient_log_bounds};
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
 use crate::core::ColumnVec;
@@ -100,15 +98,6 @@ impl Fibonacci {
         CircleEvaluation::new_canonical_ordered(trace_domain, trace)
     }
 
-    /// Returns the composition polynomial evaluations using the trace and a random coefficient.
-    fn compute_composition_polynomial(
-        &self,
-        mut evaluator: ConstraintEvaluator<'_>,
-    ) -> CirclePoly<SecureField> {
-        self.air.visit_components(&mut evaluator);
-        evaluator.finalize()
-    }
-
     pub fn prove(&self) -> FibonacciProof {
         let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(&[self.claim])));
 
@@ -125,14 +114,9 @@ impl Fibonacci {
         let random_coeff = channel.draw_felt();
         let component_trace = ComponentTrace::new(vec![&trace_commitment_scheme.polynomials[0]]);
         let component_traces = vec![component_trace];
-        let evaluator = ConstraintEvaluator {
-            traces: component_traces.iter(),
-            evaluation_accumulator: DomainEvaluationAccumulator::new(
-                random_coeff,
-                self.air.max_constraint_log_degree_bound(),
-            ),
-        };
-        let composition_polynomial_poly = self.compute_composition_polynomial(evaluator);
+        let composition_polynomial_poly = self
+            .air
+            .compute_composition_polynomial(random_coeff, &component_traces);
         let composition_polynomial_commitment_scheme = CommitmentSchemeProver::new(
             vec![composition_polynomial_poly],
             vec![self.composition_polynomial_commitment_domain],
@@ -315,10 +299,8 @@ mod tests {
 
     use super::Fibonacci;
     use crate::commitment_scheme::utils::tests::generate_test_queries;
-    use crate::core::air::evaluation::{
-        ConstraintEvaluator, DomainEvaluationAccumulator, PointEvaluationAccumulator,
-    };
-    use crate::core::air::{Air, Component, ComponentTrace};
+    use crate::core::air::evaluation::PointEvaluationAccumulator;
+    use crate::core::air::{Air, AirExt, Component, ComponentTrace};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::SecureField;
@@ -338,15 +320,10 @@ mod tests {
         // TODO(ShaharS), Change to a channel implementation to retrieve the random
         // coefficients from extension field.
         let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
-        let component_traces = [trace];
-        let evaluator = ConstraintEvaluator {
-            traces: component_traces.iter(),
-            evaluation_accumulator: DomainEvaluationAccumulator::new(
-                random_coeff,
-                fib.air.max_constraint_log_degree_bound(),
-            ),
-        };
-        let composition_polynomial_poly = fib.compute_composition_polynomial(evaluator);
+        let component_traces = vec![trace];
+        let composition_polynomial_poly = fib
+            .air
+            .compute_composition_polynomial(random_coeff, &component_traces);
 
         // Evaluate this polynomial at another point out of the evaluation domain and compare to
         // what we expect.
