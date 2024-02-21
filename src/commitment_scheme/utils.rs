@@ -200,6 +200,8 @@ pub fn inject_hash_in_pairs<'a: 'b, 'b, H: Hasher>(
 /// in a layer hinders performance greatly. Hence, the input is traversed in small chunks,
 /// and the refrences are discarded upon use.
 ///
+/// [MerkleTree]: crate::commitment_scheme::merkle_tree::MerkleTree
+///
 /// # Arguments
 ///
 ///    * `columns` - an array of injection element columns.
