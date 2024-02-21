@@ -108,6 +108,7 @@ fn bit_reverse16(data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
 mod tests {
     use super::bit_reverse16;
     use crate::core::backend::avx512::bit_reverse::bit_reverse_m31;
+    use crate::core::backend::avx512::BaseFieldVec;
     use crate::core::fields::m31::BaseField;
     use crate::core::utils::bit_reverse;
 
@@ -129,10 +130,10 @@ mod tests {
             .collect();
         let mut expected = data.clone();
         bit_reverse(&mut expected);
-        let mut data: Vec<_> = data.into_iter().array_chunks::<16>().collect();
-        let expected: Vec<_> = expected.into_iter().array_chunks::<16>().collect();
+        let mut data: BaseFieldVec = data.into_iter().collect();
+        let expected: BaseFieldVec = expected.into_iter().collect();
 
-        bit_reverse_m31(&mut data);
+        bit_reverse_m31(&mut data.data[..]);
         assert_eq!(data, expected);
     }
 }

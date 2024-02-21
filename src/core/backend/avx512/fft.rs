@@ -5,6 +5,10 @@ use std::arch::x86_64::{
     _mm512_xor_epi32,
 };
 
+use crate::core::fields::Field;
+use crate::core::poly::circle::CircleDomain;
+use crate::core::utils::bit_reverse;
+
 const L: __m512i = unsafe {
     core::mem::transmute([
         0b00000, 0b10000, 0b00010, 0b10010, 0b00100, 0b10100, 0b00110, 0b10110, 0b01000, 0b11000,
@@ -332,6 +336,32 @@ pub unsafe fn vecwise_ibutterflies(
     )
 }
 
+pub fn get_itwiddle_dbls(domain: CircleDomain) -> Vec<Vec<i32>> {
+    let mut coset = domain.half_coset;
+
+    let mut res = vec![];
+    res.push(
+        coset
+            .iter()
+            .map(|p| (p.y.inverse().0 * 2) as i32)
+            .collect::<Vec<_>>(),
+    );
+    bit_reverse(res.last_mut().unwrap());
+    for _ in 0..coset.log_size() {
+        res.push(
+            coset
+                .iter()
+                .take(coset.size() / 2)
+                .map(|p| (p.x.inverse().0 * 2) as i32)
+                .collect::<Vec<_>>(),
+        );
+        bit_reverse(res.last_mut().unwrap());
+        coset = coset.double();
+    }
+
+    res
+}
+
 /// # Safety
 pub unsafe fn ifft3(
     values: *mut i32,
@@ -384,10 +414,9 @@ mod tests {
 
     use super::*;
     use crate::core::backend::avx512::BaseFieldVec;
-    use crate::core::backend::{CPUBackend, ColumnTrait};
+    use crate::core::backend::CPUBackend;
     use crate::core::fft::{butterfly, ibutterfly};
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::Field;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
     use crate::core::utils::bit_reverse;
 
@@ -594,32 +623,6 @@ mod tests {
         }
     }
 
-    fn get_itwiddle_dbls(domain: CircleDomain) -> Vec<Vec<i32>> {
-        let mut coset = domain.half_coset;
-
-        let mut res = vec![];
-        res.push(
-            coset
-                .iter()
-                .map(|p| (p.y.inverse().0 * 2) as i32)
-                .collect::<Vec<_>>(),
-        );
-        bit_reverse(res.last_mut().unwrap());
-        for _ in 0..coset.log_size() {
-            res.push(
-                coset
-                    .iter()
-                    .take(coset.size() / 2)
-                    .map(|p| (p.x.inverse().0 * 2) as i32)
-                    .collect::<Vec<_>>(),
-            );
-            bit_reverse(res.last_mut().unwrap());
-            coset = coset.double();
-        }
-
-        res
-    }
-
     #[test]
     fn test_twiddle_relation() {
         let ts = get_itwiddle_dbls(CanonicCoset::new(5).circle_domain());
@@ -693,7 +696,7 @@ mod tests {
         let expected_coeffs = ref_ifft(domain, values.clone());
 
         // Compute.
-        let mut values = BaseFieldVec::from_vec(values);
+        let mut values = BaseFieldVec::from_iter(values);
         let twiddle_dbls = get_itwiddle_dbls(domain);
 
         unsafe {
@@ -720,7 +723,7 @@ mod tests {
         let expected_coeffs = ref_ifft(domain, values.clone());
 
         // Compute.
-        let mut values = BaseFieldVec::from_vec(values);
+        let mut values = BaseFieldVec::from_iter(values);
         let twiddle_dbls = get_itwiddle_dbls(domain);
 
         unsafe {

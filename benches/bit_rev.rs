@@ -20,6 +20,7 @@ pub fn cpu_bit_rev(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
+    use bytemuck::cast_slice_mut;
     use prover_research::core::backend::avx512::bit_reverse::bit_reverse_m31;
     use prover_research::core::fields::m31::BaseField;
     use prover_research::platform;
@@ -35,7 +36,7 @@ pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
 
     c.bench_function("avx bit_rev", |b| {
         b.iter(|| {
-            bit_reverse_m31(&mut data);
+            bit_reverse_m31(cast_slice_mut(&mut data[..]));
         })
     });
 }

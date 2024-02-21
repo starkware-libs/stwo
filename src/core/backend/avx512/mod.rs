@@ -5,6 +5,7 @@ pub mod fft;
 use std::ops::Index;
 
 use bytemuck::checked::cast_slice_mut;
+use bytemuck::{Pod, Zeroable};
 use num_traits::Zero;
 
 use self::bit_reverse::bit_reverse_m31;
@@ -16,10 +17,19 @@ use crate::core::utils;
 pub struct AVX512Backend;
 
 // BaseField.
-type PackedBaseField = [BaseField; 16];
-#[derive(Clone, Debug)]
+#[repr(align(64))]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct PackedBaseField([BaseField; 16]);
+unsafe impl Pod for PackedBaseField {}
+unsafe impl Zeroable for PackedBaseField {
+    fn zeroed() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BaseFieldVec {
-    data: Vec<PackedBaseField>,
+    pub data: Vec<PackedBaseField>,
     length: usize,
 }
 impl FieldOps<BaseField> for AVX512Backend {
@@ -45,8 +55,7 @@ impl Column<BaseField> for BaseFieldVec {
     fn to_vec(&self) -> Vec<BaseField> {
         self.data
             .iter()
-            .flatten()
-            .copied()
+            .flat_map(|x| x.0)
             .take(self.length)
             .collect()
     }
@@ -69,25 +78,27 @@ fn as_cpu_vec(values: BaseFieldVec) -> Vec<BaseField> {
 impl Index<usize> for BaseFieldVec {
     type Output = BaseField;
     fn index(&self, index: usize) -> &Self::Output {
-        &self.data[index / 16][index % 16]
+        &self.data[index / 16].0[index % 16]
     }
 }
 
 impl FromIterator<BaseField> for BaseFieldVec {
     fn from_iter<I: IntoIterator<Item = BaseField>>(iter: I) -> Self {
         let mut chunks = iter.into_iter().array_chunks();
-        let mut res: Vec<_> = (&mut chunks).collect();
+        let mut res: Vec<_> = (&mut chunks).map(PackedBaseField).collect();
         let mut length = res.len() * 16;
 
         if let Some(remainder) = chunks.into_remainder() {
             if !remainder.is_empty() {
                 length += remainder.len();
                 let pad_len = 16 - remainder.len();
-                let last: PackedBaseField = remainder
-                    .chain(std::iter::repeat(BaseField::zero()).take(pad_len))
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap();
+                let last = PackedBaseField(
+                    remainder
+                        .chain(std::iter::repeat(BaseField::zero()).take(pad_len))
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .unwrap(),
+                );
                 res.push(last);
             }
         }

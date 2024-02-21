@@ -31,6 +31,10 @@ name = "bit_rev"
 harness = false
 
 [[bench]]
+name = "fft"
+harness = false
+
+[[bench]]
 harness = false
 name = "field"
 
