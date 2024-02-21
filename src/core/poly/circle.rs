@@ -82,7 +82,8 @@ impl CircleDomain {
     /// Returns true if the domain is canonic.
     ///
     /// Canonic domains are domains with elements that are the entire set of points defined by
-    /// `G_2n + <G_n>` where `G_n` and `G_2n` are obtained by repeatedly doubling [M31_CIRCLE_GEN].
+    /// `G_2n + <G_n>` where `G_n` and `G_2n` are obtained by repeatedly doubling
+    /// [crate::core::circle::M31_CIRCLE_GEN].
     pub fn is_canonic(&self) -> bool {
         self.half_coset.initial_index * 4 == self.half_coset.step_size
     }
