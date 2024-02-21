@@ -20,11 +20,15 @@ pub mod evaluation;
 // TODO(spapini): consider renaming this struct.
 pub trait Air {
     fn visit_components<V: ComponentVisitor>(&self, v: &mut V);
-
-    fn max_constraint_log_degree_bound(&self) -> u32;
 }
 
 pub trait AirExt: Air {
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        let mut visitor = MaxConstraintLogDegreeBoundVisitor::new();
+        self.visit_components(&mut visitor);
+        visitor.finalize()
+    }
+
     fn compute_composition_polynomial(
         &self,
         random_coeff: SecureField,
@@ -44,6 +48,27 @@ impl<A: Air> AirExt for A {}
 
 pub trait ComponentVisitor {
     fn visit<C: Component>(&mut self, component: &C);
+}
+
+struct MaxConstraintLogDegreeBoundVisitor(u32);
+
+impl MaxConstraintLogDegreeBoundVisitor {
+    pub fn new() -> Self {
+        Self(0)
+    }
+
+    pub fn finalize(self) -> u32 {
+        self.0
+    }
+}
+
+impl ComponentVisitor for MaxConstraintLogDegreeBoundVisitor {
+    fn visit<C: Component>(&mut self, component: &C) {
+        let bound = component.max_constraint_log_degree_bound();
+        if bound > self.0 {
+            self.0 = bound;
+        }
+    }
 }
 
 /// Holds the mask offsets at each column.
