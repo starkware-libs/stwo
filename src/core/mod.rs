@@ -13,3 +13,4 @@ pub mod queries;
 pub mod utils;
 
 pub type ColumnVec<T> = Vec<Vec<T>>;
+pub type ComponentVec<T> = Vec<ColumnVec<T>>;

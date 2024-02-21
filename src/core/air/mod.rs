@@ -1,3 +1,4 @@
+use core::slice;
 use std::iter::zip;
 use std::ops::Deref;
 
@@ -8,7 +9,7 @@ use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::poly::circle::{CanonicCoset, CirclePoly};
-use super::ColumnVec;
+use super::{ColumnVec, ComponentVec};
 
 pub mod evaluation;
 
@@ -42,6 +43,19 @@ pub trait AirExt: Air {
         self.visit_components(&mut evaluator);
         evaluator.finalize()
     }
+
+    fn mask_points_and_values(
+        &self,
+        point: CirclePoint<SecureField>,
+        component_traces: &[ComponentTrace<'_>],
+    ) -> (
+        ComponentVec<CirclePoint<SecureField>>,
+        ComponentVec<SecureField>,
+    ) {
+        let mut visitor = MaskEvaluator::new(point, component_traces);
+        self.visit_components(&mut visitor);
+        visitor.finalize()
+    }
 }
 
 impl<A: Air> AirExt for A {}
@@ -65,6 +79,45 @@ impl MaxConstraintLogDegreeBoundVisitor {
 impl ComponentVisitor for MaxConstraintLogDegreeBoundVisitor {
     fn visit<C: Component>(&mut self, component: &C) {
         self.0 = self.0.max(component.max_constraint_log_degree_bound());
+    }
+}
+
+struct MaskEvaluator<'a> {
+    point: CirclePoint<SecureField>,
+    component_traces: slice::Iter<'a, ComponentTrace<'a>>,
+    component_points: ComponentVec<CirclePoint<SecureField>>,
+    component_values: ComponentVec<SecureField>,
+}
+
+impl<'a> MaskEvaluator<'a> {
+    pub fn new(
+        point: CirclePoint<SecureField>,
+        component_traces: &'a [ComponentTrace<'a>],
+    ) -> Self {
+        Self {
+            point,
+            component_traces: component_traces.iter(),
+            component_points: Vec::new(),
+            component_values: Vec::new(),
+        }
+    }
+
+    pub fn finalize(
+        self,
+    ) -> (
+        ComponentVec<CirclePoint<SecureField>>,
+        ComponentVec<SecureField>,
+    ) {
+        (self.component_points, self.component_values)
+    }
+}
+
+impl<'a> ComponentVisitor for MaskEvaluator<'a> {
+    fn visit<C: Component>(&mut self, component: &C) {
+        let trace = self.component_traces.next().unwrap();
+        let (points, values) = component.mask_points_and_values(self.point, trace);
+        self.component_points.push(points);
+        self.component_values.push(values);
     }
 }
 
