@@ -7,9 +7,10 @@ use super::hasher::Hasher;
 use super::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::utils::{
     allocate_balanced_tree, column_to_row_major, hash_merkle_tree_from_bottom_layer,
-    tree_data_as_mut_ref, ColumnArray, TreeData,
+    tree_data_as_mut_ref, TreeData,
 };
 use crate::core::fields::{Field, IntoSlice};
+use crate::core::ColumnVec;
 use crate::math::utils::{prev_pow_two, usize_div_ceil};
 
 pub struct MerkleTree<T: Field + Sized + Debug + Display, H: Hasher> {
@@ -26,7 +27,7 @@ where
     T: IntoSlice<H::NativeType>,
 {
     /// Commits on a given trace(matrix).
-    pub fn commit(trace: ColumnArray<T>) -> Self {
+    pub fn commit(trace: ColumnVec<T>) -> Self {
         let mut tree = Self::init_from_column_array(trace);
 
         hash_merkle_tree_from_bottom_layer::<T, H>(
@@ -41,7 +42,7 @@ where
     /// Builds the base layer of the tree from the given trace.
     /// Allocates the rest of the tree.
     // TODO(Ohad): add support for columns of different lengths.
-    fn init_from_column_array(trace: ColumnArray<T>) -> Self {
+    fn init_from_column_array(trace: ColumnVec<T>) -> Self {
         assert!(!trace.is_empty());
         assert!(trace[0].len().is_power_of_two());
         trace.iter().for_each(|column| {
