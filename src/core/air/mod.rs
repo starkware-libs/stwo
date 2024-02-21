@@ -2,6 +2,8 @@ use core::slice;
 use std::iter::zip;
 use std::ops::Deref;
 
+use itertools::Itertools;
+
 use self::evaluation::{
     ConstraintEvaluator, DomainEvaluationAccumulator, PointEvaluationAccumulator,
 };
@@ -54,6 +56,15 @@ pub trait AirExt: Air<CPUBackend> {
         ComponentVec<Vec<SecureField>>,
     ) {
         let mut visitor = MaskEvaluator::new(point, component_traces);
+        self.visit_components(&mut visitor);
+        visitor.finalize()
+    }
+
+    fn mask_points(
+        &self,
+        point: CirclePoint<SecureField>,
+    ) -> ComponentVec<Vec<CirclePoint<SecureField>>> {
+        let mut visitor = MaskPointsEvaluator::new(point);
         self.visit_components(&mut visitor);
         visitor.finalize()
     }
@@ -122,6 +133,36 @@ impl<'a, B: Backend> ComponentVisitor<B> for MaskEvaluator<'a, B> {
     }
 }
 
+struct MaskPointsEvaluator {
+    point: CirclePoint<SecureField>,
+    points: ComponentVec<Vec<CirclePoint<SecureField>>>,
+}
+
+impl MaskPointsEvaluator {
+    pub fn new(point: CirclePoint<SecureField>) -> Self {
+        Self {
+            point,
+            points: Vec::new(),
+        }
+    }
+
+    pub fn finalize(self) -> ComponentVec<Vec<CirclePoint<SecureField>>> {
+        self.points
+    }
+}
+
+impl<B: Backend> ComponentVisitor<B> for MaskPointsEvaluator {
+    fn visit<C: Component<B>>(&mut self, component: &C) {
+        let domains = component
+            .trace_log_degree_bounds()
+            .iter()
+            .map(|&log_size| CanonicCoset::new(log_size))
+            .collect_vec();
+        self.points
+            .push(component.mask().to_points(&domains, self.point));
+    }
+}
+
 /// Holds the mask offsets at each column.
 /// Holds a vector with an entry for each column. Each entry holds the offsets
 /// of the mask at that column.
@@ -130,7 +171,7 @@ pub struct Mask(pub ColumnVec<Vec<usize>>);
 impl Mask {
     pub fn to_points(
         &self,
-        domains: Vec<CanonicCoset>,
+        domains: &[CanonicCoset],
         point: CirclePoint<SecureField>,
     ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
         self.iter()
@@ -188,8 +229,8 @@ pub trait Component<B: Backend> {
             .columns
             .iter()
             .map(|col| CanonicCoset::new(col.log_size()))
-            .collect();
-        let points = self.mask().to_points(domains, point);
+            .collect_vec();
+        let points = self.mask().to_points(&domains, point);
         let values = zip(&points, &trace.columns)
             .map(|(col_points, col)| {
                 col_points
