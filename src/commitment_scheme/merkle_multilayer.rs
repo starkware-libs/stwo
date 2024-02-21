@@ -1,5 +1,7 @@
 use std::fmt::{self, Display};
 
+use itertools::Itertools;
+
 use super::hasher::Hasher;
 use super::merkle_input::MerkleTreeInput;
 use super::utils::{get_column_chunk, inject_and_hash_layer};
@@ -51,28 +53,42 @@ impl<H: Hasher> MerkleMultiLayer<H> {
             .step_by(self.config.sub_tree_size)
     }
 
-    pub fn commit_layer<F: Field + Sync + IntoSlice<H::NativeType>, const IS_INTERMEDIATE: bool>(
+    pub fn commit_layer<
+        'a,
+        F: Field + Sync + IntoSlice<H::NativeType>,
+        const IS_INTERMEDIATE: bool,
+    >(
         &mut self,
         input: &MerkleTreeInput<'_, F>,
-        prev_hashes: &[H::Hash],
+        prev_hashes: impl Iterator<Item = &'a H::Hash>,
     ) {
+        let sub_layer_size = 1 << self.config.sub_tree_height;
+        let prev_hashes_chunks = prev_hashes.chunks(sub_layer_size);
+        let mut prev_hashes_chunks = prev_hashes_chunks.into_iter();
+
         // TODO(Ohad): implement multithreading (rayon par iter).
         let tree_iter = self.data.chunks_mut(self.config.sub_tree_size);
         tree_iter.enumerate().for_each(|(i, tree_data)| {
-            let prev_hashes = if IS_INTERMEDIATE {
-                let sub_layer_size = 1 << self.config.sub_tree_height;
-                &prev_hashes[i * sub_layer_size..(i + 1) * sub_layer_size]
+            if IS_INTERMEDIATE {
+                let prev_hashes_chunk = prev_hashes_chunks.next().unwrap();
+                hash_subtree::<F, H, IS_INTERMEDIATE>(
+                    tree_data,
+                    input,
+                    self.config.n_sub_trees.ilog2() as usize,
+                    prev_hashes_chunk,
+                    &self.config,
+                    i,
+                );
             } else {
-                &[]
+                hash_subtree::<F, H, IS_INTERMEDIATE>(
+                    tree_data,
+                    input,
+                    self.config.n_sub_trees.ilog2() as usize,
+                    [].iter(),
+                    &self.config,
+                    i,
+                );
             };
-            hash_subtree::<F, H, IS_INTERMEDIATE>(
-                tree_data,
-                input,
-                self.config.n_sub_trees.ilog2() as usize,
-                prev_hashes,
-                &self.config,
-                i,
-            );
         });
     }
 
@@ -94,11 +110,11 @@ impl<H: Hasher> MerkleMultiLayer<H> {
 }
 
 // Hashes a single sub-tree.
-fn hash_subtree<F: Field, H: Hasher, const IS_INTERMEDIATE: bool>(
+fn hash_subtree<'a, F: Field, H: Hasher, const IS_INTERMEDIATE: bool>(
     sub_tree_data: &mut [H::Hash],
     input: &MerkleTreeInput<'_, F>,
     relative_depth: usize,
-    prev_hashes: &[H::Hash],
+    prev_hashes: impl Iterator<Item = &'a H::Hash>,
     config: &MerkleMultiLayerConfig,
     index_in_layer: usize,
 ) where
@@ -130,7 +146,7 @@ fn hash_subtree<F: Field, H: Hasher, const IS_INTERMEDIATE: bool>(
         offset_idx += hashed_layer_len;
 
         inject_and_hash_layer::<H, F, true>(
-            prev_hashes,
+            prev_hashes.iter(),
             dst,
             &input
                 .get_columns(hashed_layer_idx + relative_depth)
@@ -268,7 +284,7 @@ mod tests {
             &mut multi_layer.data[..multi_layer.config.sub_tree_size],
             &input,
             0,
-            &[],
+            [].iter(),
             &multi_layer.config,
             0,
         );
@@ -276,7 +292,7 @@ mod tests {
             &mut multi_layer.data[multi_layer.config.sub_tree_size..],
             &input,
             0,
-            &[],
+            [].iter(),
             &multi_layer.config,
             1,
         );
@@ -307,7 +323,7 @@ mod tests {
             &mut multi_layer.data[..multi_layer.config.sub_tree_size],
             &input,
             0,
-            &prev_hash_values[..prev_hash_values.len() / 2],
+            prev_hash_values[..prev_hash_values.len() / 2].iter(),
             &multi_layer.config,
             0,
         );
@@ -315,7 +331,7 @@ mod tests {
             &mut multi_layer.data[multi_layer.config.sub_tree_size..],
             &input,
             0,
-            &prev_hash_values[prev_hash_values.len() / 2..],
+            prev_hash_values[prev_hash_values.len() / 2..].iter(),
             &multi_layer.config,
             1,
         );
@@ -343,7 +359,7 @@ mod tests {
         let config = super::MerkleMultiLayerConfig::new(sub_trees_height, n_sub_trees);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
 
-        multi_layer.commit_layer::<M31, false>(&input, &[]);
+        multi_layer.commit_layer::<M31, false>(&input, [].iter());
         let roots = multi_layer.get_roots();
 
         assert_correct_roots::<Blake3Hasher>(
@@ -371,7 +387,7 @@ mod tests {
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
         let (leaf_0_input, leaf_1_input) = prepare_intermediate_initial_values();
 
-        multi_layer.commit_layer::<M31, true>(&input, &prev_hash_values);
+        multi_layer.commit_layer::<M31, true>(&input, prev_hash_values.iter());
         let roots = multi_layer.get_roots();
 
         assert_correct_roots::<Blake3Hasher>(
@@ -394,7 +410,7 @@ mod tests {
         );
         let config = super::MerkleMultiLayerConfig::new(sub_trees_height, 2);
         let mut multi_layer = super::MerkleMultiLayer::<Blake3Hasher>::new(config);
-        multi_layer.commit_layer::<M31, false>(&input, &[]);
+        multi_layer.commit_layer::<M31, false>(&input, [].iter());
 
         let mut hasher = Blake3Hasher::new();
         hasher.update(&0_u32.to_le_bytes());

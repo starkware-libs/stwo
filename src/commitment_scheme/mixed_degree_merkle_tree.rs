@@ -68,17 +68,16 @@ where
     pub fn commit(&mut self) -> H::Hash {
         let mut curr_layer = self.height() - self.multi_layer_height(0);
         // Bottom layer.
-        self.multi_layers[0].commit_layer::<F, false>(&self.input, &[]);
+        self.multi_layers[0].commit_layer::<F, false>(&self.input, [].iter());
         // Rest of the tree.
         for i in 1..self.multi_layers.len() {
             // TODO(Ohad): implement Hash oracle and avoid these copies.
-            let prev_hashes = self.multi_layers[i - 1]
-                .get_roots()
-                .copied()
-                .collect::<Vec<H::Hash>>();
+            let multi_layer_height = self.multi_layer_height(i);
+            let (prev_multi_layers, next_multi_layers) = self.multi_layers.split_at_mut(i);
+            let prev_hashes = prev_multi_layers[i - 1].get_roots();
             debug_assert_eq!(prev_hashes.len(), 1 << (curr_layer));
-            curr_layer -= self.multi_layer_height(i);
-            self.multi_layers[i].commit_layer::<F, true>(&self.input, &prev_hashes);
+            curr_layer -= multi_layer_height;
+            next_multi_layers[0].commit_layer::<F, true>(&self.input, prev_hashes);
         }
         let mut top_layer_roots = self.multi_layers.last().unwrap().get_roots();
         let root = top_layer_roots
@@ -628,5 +627,24 @@ mod tests {
             &queries,
             test_decommitment.queried_values.iter().copied()
         ));
+    }
+
+    #[test]
+    fn dummy_test() {
+        const TREE_HEIGHT: usize = 4;
+        let mut input = MerkleTreeInput::<M31>::new();
+        let column_length_8 = (80..88).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        let column_length_4 = (40..44).map(M31::from_u32_unchecked).collect::<Vec<M31>>();
+        input.insert_column(TREE_HEIGHT, &column_length_8);
+        input.insert_column(TREE_HEIGHT - 1, &column_length_4);
+        input.insert_column(TREE_HEIGHT - 1, &column_length_8);
+        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
+            input,
+            MixedDegreeMerkleTreeConfig {
+                multi_layer_sizes: [3, 1].to_vec(),
+            },
+        );
+        let commitment = tree.commit();
+        print!("{}", commitment);
     }
 }
