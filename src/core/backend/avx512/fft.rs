@@ -6,6 +6,9 @@ use std::arch::x86_64::{
 };
 
 use crate::core::backend::avx512::{MIN_FFT_LOG_SIZE, VECS_LOG_SIZE};
+use crate::core::fields::Field;
+use crate::core::poly::circle::CircleDomain;
+use crate::core::utils::bit_reverse;
 
 /// An input to _mm512_permutex2var_epi32, and is used to interleave the even words of a
 /// with the even words of b.
@@ -553,6 +556,32 @@ unsafe fn compute_first_twiddles(twiddle1_dbl: [i32; 8]) -> (__m512i, __m512i) {
     (t0, t1)
 }
 
+pub fn get_itwiddle_dbls(domain: CircleDomain) -> Vec<Vec<i32>> {
+    let mut coset = domain.half_coset;
+
+    let mut res = vec![];
+    res.push(
+        coset
+            .iter()
+            .map(|p| (p.y.inverse().0 * 2) as i32)
+            .collect::<Vec<_>>(),
+    );
+    bit_reverse(res.last_mut().unwrap());
+    for _ in 0..coset.log_size() {
+        res.push(
+            coset
+                .iter()
+                .take(coset.size() / 2)
+                .map(|p| (p.x.inverse().0 * 2) as i32)
+                .collect::<Vec<_>>(),
+        );
+        bit_reverse(res.last_mut().unwrap());
+        coset = coset.double();
+    }
+
+    res
+}
+
 /// Applies 3 butterfly layers on 8 vectors of 16 M31 elements.
 /// Vectorized over the 16 elements of the vectors.
 /// Used for radix-8 ifft.
@@ -652,7 +681,7 @@ mod tests {
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
     use crate::core::fft::{butterfly, ibutterfly};
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::{Column, Field};
+    use crate::core::fields::Column;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
     use crate::core::utils::bit_reverse;
 
@@ -825,32 +854,6 @@ mod tests {
                     .iter()
                     .take(coset.size() / 2)
                     .map(|p| (p.x.0 * 2) as i32)
-                    .collect::<Vec<_>>(),
-            );
-            bit_reverse(res.last_mut().unwrap());
-            coset = coset.double();
-        }
-
-        res
-    }
-
-    fn get_itwiddle_dbls(domain: CircleDomain) -> Vec<Vec<i32>> {
-        let mut coset = domain.half_coset;
-
-        let mut res = vec![];
-        res.push(
-            coset
-                .iter()
-                .map(|p| (p.y.inverse().0 * 2) as i32)
-                .collect::<Vec<_>>(),
-        );
-        bit_reverse(res.last_mut().unwrap());
-        for _ in 0..coset.log_size() {
-            res.push(
-                coset
-                    .iter()
-                    .take(coset.size() / 2)
-                    .map(|p| (p.x.inverse().0 * 2) as i32)
                     .collect::<Vec<_>>(),
             );
             bit_reverse(res.last_mut().unwrap());
