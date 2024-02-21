@@ -5,7 +5,12 @@ use std::arch::x86_64::{
     _mm512_xor_epi32,
 };
 
+use crate::core::fields::Field;
+use crate::core::poly::circle::CircleDomain;
+use crate::core::utils::bit_reverse;
+
 /// An input to _mm512_permutex2var_epi32, and is used to interleave the even words of a
+/// L is an input to _mm512_permutex2var_epi32, and is used to interleave the even words of a
 /// with the even words of b.
 const EVENS_INTERLEAVE_EVENS: __m512i = unsafe {
     core::mem::transmute([
@@ -459,6 +464,32 @@ pub unsafe fn vecwise_ibutterflies(
     )
 }
 
+pub fn get_itwiddle_dbls(domain: CircleDomain) -> Vec<Vec<i32>> {
+    let mut coset = domain.half_coset;
+
+    let mut res = vec![];
+    res.push(
+        coset
+            .iter()
+            .map(|p| (p.y.inverse().0 * 2) as i32)
+            .collect::<Vec<_>>(),
+    );
+    bit_reverse(res.last_mut().unwrap());
+    for _ in 0..coset.log_size() {
+        res.push(
+            coset
+                .iter()
+                .take(coset.size() / 2)
+                .map(|p| (p.x.inverse().0 * 2) as i32)
+                .collect::<Vec<_>>(),
+        );
+        bit_reverse(res.last_mut().unwrap());
+        coset = coset.double();
+    }
+
+    res
+}
+
 /// Applies 3 butterfly layers on 8 vectors of 16 M31 elements.
 /// Vectorized over the 16 elements of the vectors.
 /// Used for radix-8 ifft.
@@ -471,7 +502,6 @@ pub unsafe fn vecwise_ibutterflies(
 ///     values that need to be transformed. For layer i this is i - 4.
 ///   twiddles_dbl0/1/2 - The double of the twiddles for the 3 layers of butterflies.
 ///   Each layer has 4/2/1 twiddles.
-///     
 /// # Safety
 pub unsafe fn ifft3(
     values: *mut i32,
@@ -887,9 +917,7 @@ mod tests {
             );
 
             // Compare.
-            for i in 0..expected_coeffs.len() {
-                assert_eq!(values[i], expected_coeffs[i]);
-            }
+            assert_eq!(values.to_vec(), expected_coeffs);
         }
     }
 
