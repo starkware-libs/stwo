@@ -205,12 +205,8 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let composition_polynomial_commitment_scheme =
         CommitmentSchemeVerifier::new(proof.composition_polynomial_commitment, channel);
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-    let trace_domain = CanonicCoset::new(fib.air.component.log_size);
-    let trace_oods_points = fib
-        .air
-        .component
-        .mask()
-        .to_points(vec![trace_domain], oods_point);
+    let trace_domain = &fib.air.column_domains()[0];
+    let trace_oods_points = fib.air.component.mask().to_points(trace_domain, oods_point);
 
     let mut evaluation_accumulator =
         PointEvaluationAccumulator::new(random_coeff, fib.air.max_constraint_log_degree_bound());

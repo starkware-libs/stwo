@@ -2,6 +2,8 @@ use core::slice;
 use std::iter::zip;
 use std::ops::Deref;
 
+use itertools::Itertools;
+
 use self::evaluation::{
     ConstraintEvaluator, DomainEvaluationAccumulator, PointEvaluationAccumulator,
 };
@@ -54,6 +56,12 @@ pub trait AirExt: Air<CPUBackend> {
         ComponentVec<Vec<SecureField>>,
     ) {
         let mut visitor = MaskEvaluator::new(point, component_traces);
+        self.visit_components(&mut visitor);
+        visitor.finalize()
+    }
+
+    fn column_domains(&self) -> ComponentVec<CanonicCoset> {
+        let mut visitor = ColumnDomainsVisitor::new();
         self.visit_components(&mut visitor);
         visitor.finalize()
     }
@@ -122,6 +130,34 @@ impl<'a, B: Backend> ComponentVisitor<B> for MaskEvaluator<'a, B> {
     }
 }
 
+struct ColumnDomainsVisitor {
+    domains: ComponentVec<CanonicCoset>,
+}
+
+impl ColumnDomainsVisitor {
+    pub fn new() -> Self {
+        Self {
+            domains: Vec::new(),
+        }
+    }
+
+    pub fn finalize(self) -> ComponentVec<CanonicCoset> {
+        self.domains
+    }
+}
+
+impl<B: Backend> ComponentVisitor<B> for ColumnDomainsVisitor {
+    fn visit<C: Component<B>>(&mut self, component: &C) {
+        self.domains.push(
+            component
+                .trace_log_degree_bounds()
+                .iter()
+                .map(|&log_size| CanonicCoset::new(log_size))
+                .collect(),
+        );
+    }
+}
+
 /// Holds the mask offsets at each column.
 /// Holds a vector with an entry for each column. Each entry holds the offsets
 /// of the mask at that column.
@@ -130,7 +166,7 @@ pub struct Mask(pub ColumnVec<Vec<usize>>);
 impl Mask {
     pub fn to_points(
         &self,
-        domains: Vec<CanonicCoset>,
+        domains: &[CanonicCoset],
         point: CirclePoint<SecureField>,
     ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
         self.iter()
@@ -188,8 +224,8 @@ pub trait Component<B: Backend> {
             .columns
             .iter()
             .map(|col| CanonicCoset::new(col.log_size()))
-            .collect();
-        let points = self.mask().to_points(domains, point);
+            .collect_vec();
+        let points = self.mask().to_points(&domains, point);
         let values = zip(&points, &trace.columns)
             .map(|(col_points, col)| {
                 col_points
