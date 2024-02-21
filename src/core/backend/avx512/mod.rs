@@ -69,7 +69,7 @@ fn as_cpu_vec(values: BaseFieldVec) -> Vec<BaseField> {
 impl Index<usize> for BaseFieldVec {
     type Output = BaseField;
     fn index(&self, index: usize) -> &Self::Output {
-        &self.data[index / 8][index % 8]
+        &self.data[index / 16][index % 16]
     }
 }
 

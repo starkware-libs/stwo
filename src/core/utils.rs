@@ -10,6 +10,9 @@ pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
 impl<'a, T: 'a, I: Iterator<Item = &'a mut T>> IteratorMutExt<'a, T> for I {}
 
 pub(crate) fn bit_reverse_index(i: usize, log_size: u32) -> usize {
+    if log_size == 0 {
+        return i;
+    }
     i.reverse_bits() >> (usize::BITS - log_size)
 }
 
