@@ -2,12 +2,13 @@ use std::iter::zip;
 
 use num_traits::One;
 
+use self::air::FibonacciAir;
 use self::component::FibonacciComponent;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
-use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Component, ComponentTrace};
+use crate::core::air::evaluation::{ConstraintEvaluator, PointEvaluationAccumulator};
+use crate::core::air::{Air, Component, ComponentTrace};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
@@ -25,6 +26,7 @@ use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
 type Channel = Blake2sChannel;
 type MerkleHasher = Blake2sHasher;
 
+mod air;
 mod component;
 
 const LOG_BLOWUP_FACTOR: u32 = 1;
@@ -34,7 +36,7 @@ const PROOF_OF_WORK_BITS: u32 = 12;
 const N_QUERIES: usize = 3;
 
 pub struct Fibonacci {
-    pub component: FibonacciComponent,
+    pub air: FibonacciAir,
     pub trace_commitment_domain: CanonicCoset,
     pub composition_polynomial_commitment_domain: CanonicCoset,
     pub claim: BaseField,
@@ -66,8 +68,9 @@ impl Fibonacci {
         let trace_commitment_domain = CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR);
         let composition_polynomial_commitment_domain =
             CanonicCoset::new(log_size + 1 + LOG_BLOWUP_FACTOR);
+        let component = FibonacciComponent::new(log_size, claim);
         Self {
-            component: FibonacciComponent { log_size, claim },
+            air: FibonacciAir::new(component),
             trace_commitment_domain,
             composition_polynomial_commitment_domain,
             claim,
@@ -76,7 +79,7 @@ impl Fibonacci {
 
     fn get_trace(&self) -> CircleEvaluation<BaseField> {
         // Trace.
-        let trace_domain = CanonicCoset::new(self.component.log_size);
+        let trace_domain = CanonicCoset::new(self.air.component.log_size);
         // TODO(AlonH): Consider using Vec::new instead of Vec::with_capacity throughout file.
         let mut trace = Vec::with_capacity(trace_domain.size());
 
@@ -97,16 +100,10 @@ impl Fibonacci {
     /// Returns the composition polynomial evaluations using the trace and a random coefficient.
     fn compute_composition_polynomial(
         &self,
-        random_coeff: SecureField,
-        trace: &ComponentTrace<'_>,
+        mut evaluator: ConstraintEvaluator<'_>,
     ) -> CirclePoly<SecureField> {
-        let mut accumulator = DomainEvaluationAccumulator::new(
-            random_coeff,
-            self.component.max_constraint_log_degree_bound(),
-        );
-        self.component
-            .evaluate_constraint_quotients_on_domain(trace, &mut accumulator);
-        accumulator.finalize()
+        self.air.visit_components(&mut evaluator);
+        evaluator.finalize()
     }
 
     pub fn prove(&self) -> FibonacciProof {
@@ -124,8 +121,13 @@ impl Fibonacci {
         // Evaluate and commit on composition polynomial.
         let random_coeff = channel.draw_felt();
         let component_trace = ComponentTrace::new(vec![&trace_commitment_scheme.polynomials[0]]);
-        let composition_polynomial_poly =
-            self.compute_composition_polynomial(random_coeff, &component_trace);
+        let component_traces = vec![component_trace];
+        let evaluator = ConstraintEvaluator::new(
+            &component_traces,
+            self.air.component.max_constraint_log_degree_bound(),
+            random_coeff,
+        );
+        let composition_polynomial_poly = self.compute_composition_polynomial(evaluator);
         let composition_polynomial_commitment_scheme = CommitmentSchemeProver::new(
             vec![composition_polynomial_poly],
             vec![self.composition_polynomial_commitment_domain],
@@ -135,8 +137,9 @@ impl Fibonacci {
         // Evaluate the trace mask and the composition polynomial on the OODS point.
         let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
         let (trace_oods_points, trace_oods_values) = self
+            .air
             .component
-            .mask_points_and_values(oods_point, &component_trace);
+            .mask_points_and_values(oods_point, &component_traces[0]);
         let composition_polynomial_oods_value =
             composition_polynomial_commitment_scheme.polynomials[0].eval_at_point(oods_point);
 
@@ -213,17 +216,18 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let composition_polynomial_commitment_scheme =
         CommitmentSchemeVerifier::new(proof.composition_polynomial_commitment, channel);
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-    let trace_domain = CanonicCoset::new(fib.component.log_size);
+    let trace_domain = CanonicCoset::new(fib.air.component.log_size);
     let trace_oods_points = fib
+        .air
         .component
         .mask()
         .to_points(vec![trace_domain], oods_point);
 
     let mut evaluation_accumulator = PointEvaluationAccumulator::new(
         random_coeff,
-        fib.component.max_constraint_log_degree_bound(),
+        fib.air.component.max_constraint_log_degree_bound(),
     );
-    fib.component.evaluate_quotients_by_mask(
+    fib.air.component.evaluate_quotients_by_mask(
         oods_point,
         &proof.trace_oods_values[0],
         &mut evaluation_accumulator,
@@ -232,9 +236,9 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
 
     // TODO(AlonH): Get bounds from air.
     let mut bounds = vec![CirclePolyDegreeBound::new(
-        fib.component.max_constraint_log_degree_bound(),
+        fib.air.component.max_constraint_log_degree_bound(),
     )];
-    bounds.append(&mut quotient_log_bounds(fib.component));
+    bounds.append(&mut quotient_log_bounds(fib.air.component));
     let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
     let mut fri_verifier =
         FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
@@ -308,7 +312,7 @@ mod tests {
 
     use super::Fibonacci;
     use crate::commitment_scheme::utils::tests::generate_test_queries;
-    use crate::core::air::evaluation::PointEvaluationAccumulator;
+    use crate::core::air::evaluation::{ConstraintEvaluator, PointEvaluationAccumulator};
     use crate::core::air::{Component, ComponentTrace};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::{BaseField, M31};
@@ -329,18 +333,27 @@ mod tests {
         // TODO(ShaharS), Change to a channel implementation to retrieve the random
         // coefficients from extension field.
         let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
-        let composition_polynomial_poly = fib.compute_composition_polynomial(random_coeff, &trace);
+        let component_traces = [trace];
+        let evaluator = ConstraintEvaluator::new(
+            &component_traces,
+            fib.air.component.max_constraint_log_degree_bound(),
+            random_coeff,
+        );
+        let composition_polynomial_poly = fib.compute_composition_polynomial(evaluator);
 
         // Evaluate this polynomial at another point out of the evaluation domain and compare to
         // what we expect.
         let point = CirclePoint::<SecureField>::get_point(98989892);
 
-        let (_, mask_values) = fib.component.mask_points_and_values(point, &trace);
+        let (_, mask_values) = fib
+            .air
+            .component
+            .mask_points_and_values(point, &component_traces[0]);
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(
             random_coeff,
-            fib.component.max_constraint_log_degree_bound(),
+            fib.air.component.max_constraint_log_degree_bound(),
         );
-        fib.component.evaluate_quotients_by_mask(
+        fib.air.component.evaluate_quotients_by_mask(
             point,
             &mask_values[0],
             &mut evaluation_accumulator,
@@ -419,14 +432,14 @@ mod tests {
         let proof = fib.prove();
         let oods_point = proof.additional_proof_data.oods_point;
 
-        let (_, mask_values) = fib.component.mask_points_and_values(oods_point, &trace);
+        let (_, mask_values) = fib.air.component.mask_points_and_values(oods_point, &trace);
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(
             proof
                 .additional_proof_data
                 .composition_polynomial_random_coeff,
-            fib.component.max_constraint_log_degree_bound(),
+            fib.air.component.max_constraint_log_degree_bound(),
         );
-        fib.component.evaluate_quotients_by_mask(
+        fib.air.component.evaluate_quotients_by_mask(
             oods_point,
             &mask_values[0],
             &mut evaluation_accumulator,
