@@ -124,7 +124,7 @@ impl Fibonacci {
         let component_traces = vec![component_trace];
         let evaluator = ConstraintEvaluator::new(
             &component_traces,
-            self.air.component.max_constraint_log_degree_bound(),
+            self.air.max_constraint_log_degree_bound(),
             random_coeff,
         );
         let composition_polynomial_poly = self.compute_composition_polynomial(evaluator);
@@ -223,10 +223,8 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
         .mask()
         .to_points(vec![trace_domain], oods_point);
 
-    let mut evaluation_accumulator = PointEvaluationAccumulator::new(
-        random_coeff,
-        fib.air.component.max_constraint_log_degree_bound(),
-    );
+    let mut evaluation_accumulator =
+        PointEvaluationAccumulator::new(random_coeff, fib.air.max_constraint_log_degree_bound());
     fib.air.component.evaluate_quotients_by_mask(
         oods_point,
         &proof.trace_oods_values[0],
@@ -236,7 +234,7 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
 
     // TODO(AlonH): Get bounds from air.
     let mut bounds = vec![CirclePolyDegreeBound::new(
-        fib.air.component.max_constraint_log_degree_bound(),
+        fib.air.max_constraint_log_degree_bound(),
     )];
     bounds.append(&mut quotient_log_bounds(fib.air.component));
     let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
@@ -313,7 +311,7 @@ mod tests {
     use super::Fibonacci;
     use crate::commitment_scheme::utils::tests::generate_test_queries;
     use crate::core::air::evaluation::{ConstraintEvaluator, PointEvaluationAccumulator};
-    use crate::core::air::{Component, ComponentTrace};
+    use crate::core::air::{Air, Component, ComponentTrace};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::SecureField;
@@ -336,7 +334,7 @@ mod tests {
         let component_traces = [trace];
         let evaluator = ConstraintEvaluator::new(
             &component_traces,
-            fib.air.component.max_constraint_log_degree_bound(),
+            fib.air.max_constraint_log_degree_bound(),
             random_coeff,
         );
         let composition_polynomial_poly = fib.compute_composition_polynomial(evaluator);
@@ -351,7 +349,7 @@ mod tests {
             .mask_points_and_values(point, &component_traces[0]);
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(
             random_coeff,
-            fib.air.component.max_constraint_log_degree_bound(),
+            fib.air.max_constraint_log_degree_bound(),
         );
         fib.air.component.evaluate_quotients_by_mask(
             point,
@@ -437,7 +435,7 @@ mod tests {
             proof
                 .additional_proof_data
                 .composition_polynomial_random_coeff,
-            fib.air.component.max_constraint_log_degree_bound(),
+            fib.air.max_constraint_log_degree_bound(),
         );
         fib.air.component.evaluate_quotients_by_mask(
             oods_point,
