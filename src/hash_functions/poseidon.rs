@@ -12,7 +12,7 @@ const POSEIDON_CAPACITY: usize = 8; // in BaseField elements.
 const POSEIDON_POWER: usize = 5;
 
 /// Parameters for the Poseidon hash function.
-/// For more info, see https://eprint.iacr.org/2019/458.pdf
+/// For more info, see `<https://eprint.iacr.org/2019/458.pdf>`
 pub struct PoseidonParams {
     pub rate: usize,
     pub capacity: usize,

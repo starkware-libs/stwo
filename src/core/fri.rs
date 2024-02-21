@@ -85,7 +85,8 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
     /// Combining evaluations on different sized domains into an evaluation of a single polynomial
     /// on a single domain for the purpose of commitment is inefficient. Instead, commit to multiple
     /// polynomials so combining of evaluations can be taken care of efficiently at the appropriate
-    /// FRI layer. All evaluations must be taken over canonic [CircleDomain]s.
+    /// FRI layer. All evaluations must be taken over canonic
+    /// [crate::core::poly::circle::CircleDomain]s.
     ///
     /// # Panics
     ///
@@ -585,7 +586,8 @@ const FOLD_STEP: u32 = 1;
 /// Number of folds when folding a circle polynomial to univariate polynomial.
 const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
 
-/// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
+/// Stores a subset of evaluations in a [FriLayerProof] with their corresponding merkle
+/// decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
 pub struct FriLayerProof<H: Hasher> {
