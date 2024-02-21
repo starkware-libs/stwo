@@ -8,7 +8,7 @@ use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::core::air::evaluation::PointEvaluationAccumulator;
-use crate::core::air::{Air, AirExt, Component, ComponentTrace};
+use crate::core::air::{AirExt, Component, ComponentTrace};
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
@@ -300,7 +300,7 @@ mod tests {
     use super::Fibonacci;
     use crate::commitment_scheme::utils::tests::generate_test_queries;
     use crate::core::air::evaluation::PointEvaluationAccumulator;
-    use crate::core::air::{Air, AirExt, Component, ComponentTrace};
+    use crate::core::air::{AirExt, Component, ComponentTrace};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::SecureField;
