@@ -11,3 +11,5 @@ pub mod poly;
 pub mod proof_of_work;
 pub mod queries;
 pub mod utils;
+
+pub type ColumnVec<T> = Vec<Vec<T>>;

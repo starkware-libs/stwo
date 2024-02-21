@@ -6,6 +6,7 @@ use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::poly::circle::{CanonicCoset, CirclePoly};
+use super::ColumnVec;
 
 pub mod evaluation;
 
@@ -28,14 +29,14 @@ pub trait ComponentVisitor {
 /// Holds the mask offsets at each column.
 /// Holds a vector with an entry for each column. Each entry holds the offsets
 /// of the mask at that column.
-pub struct Mask(pub Vec<Vec<usize>>);
+pub struct Mask(pub ColumnVec<usize>);
 
 impl Mask {
     pub fn to_points(
         &self,
         domains: Vec<CanonicCoset>,
         point: CirclePoint<SecureField>,
-    ) -> Vec<Vec<CirclePoint<SecureField>>> {
+    ) -> ColumnVec<CirclePoint<SecureField>> {
         self.iter()
             .zip(domains.iter())
             .map(|(col, domain)| {
@@ -48,7 +49,7 @@ impl Mask {
 }
 
 impl Deref for Mask {
-    type Target = Vec<Vec<usize>>;
+    type Target = ColumnVec<usize>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -83,7 +84,7 @@ pub trait Component {
         &self,
         point: CirclePoint<SecureField>,
         trace: &ComponentTrace<'_>,
-    ) -> (Vec<Vec<CirclePoint<SecureField>>>, Vec<Vec<SecureField>>) {
+    ) -> (ColumnVec<CirclePoint<SecureField>>, ColumnVec<SecureField>) {
         let domains = trace
             .columns
             .iter()

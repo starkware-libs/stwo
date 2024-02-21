@@ -22,6 +22,7 @@ use crate::core::oods::{get_oods_quotient, get_pair_oods_quotient, quotient_log_
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
+use crate::core::ColumnVec;
 
 type Channel = Blake2sChannel;
 type MerkleHasher = Blake2sHasher;
@@ -55,7 +56,7 @@ pub struct FibonacciProof {
     pub trace_decommitments: Vec<MerkleDecommitment<BaseField, MerkleHasher>>,
     pub composition_polynomial_commitment: <MerkleHasher as Hasher>::Hash,
     pub composition_polynomial_decommitment: MerkleDecommitment<SecureField, MerkleHasher>,
-    pub trace_oods_values: Vec<Vec<SecureField>>,
+    pub trace_oods_values: ColumnVec<SecureField>,
     pub composition_polynomial_opened_values: Vec<SecureField>,
     pub trace_opened_values: Vec<BaseField>,
     pub proof_of_work: ProofOfWorkProof,
