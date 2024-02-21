@@ -165,18 +165,18 @@ impl<'a> ColumnAccumulator<'a, CPUBackend> {
 
 /// Evaluates components' constraint polynomials and aggregates them into a composition polynomial.
 pub struct ConstraintEvaluator<'a, B: Backend> {
-    traces: slice::Iter<'a, ComponentTrace<'a, B>>,
+    component_traces: slice::Iter<'a, ComponentTrace<'a, B>>,
     evaluation_accumulator: DomainEvaluationAccumulator<B>,
 }
 
 impl<'a> ConstraintEvaluator<'a, CPUBackend> {
     pub fn new(
-        traces: &'a [ComponentTrace<'a, CPUBackend>],
+        component_traces: &'a [ComponentTrace<'a, CPUBackend>],
         max_log_size: u32,
         random_coeff: SecureField,
     ) -> Self {
         Self {
-            traces: traces.iter(),
+            component_traces: component_traces.iter(),
             evaluation_accumulator: DomainEvaluationAccumulator::new(random_coeff, max_log_size),
         }
     }
@@ -189,7 +189,9 @@ impl<'a> ConstraintEvaluator<'a, CPUBackend> {
 impl<'a, B: Backend> ComponentVisitor<B> for ConstraintEvaluator<'a, B> {
     fn visit<C: Component<B>>(&mut self, component: &C) {
         component.evaluate_constraint_quotients_on_domain(
-            self.traces.next().expect("no more component traces"),
+            self.component_traces
+                .next()
+                .expect("no more component traces"),
             &mut self.evaluation_accumulator,
         )
     }
