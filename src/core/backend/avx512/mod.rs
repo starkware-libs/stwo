@@ -13,6 +13,9 @@ pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Column, FieldOps};
 use crate::core::utils;
+
+const VECS_LOG_SIZE: usize = 4;
+
 #[derive(Copy, Clone, Debug)]
 pub struct AVX512Backend;
 
