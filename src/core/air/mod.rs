@@ -1,7 +1,9 @@
 use std::iter::zip;
 use std::ops::Deref;
 
-use self::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
+use self::evaluation::{
+    ConstraintEvaluator, DomainEvaluationAccumulator, PointEvaluationAccumulator,
+};
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
@@ -21,6 +23,26 @@ pub trait Air {
 
     fn max_constraint_log_degree_bound(&self) -> u32;
 }
+
+pub trait AirExt: Air {
+    fn compute_composition_polynomial(
+        &self,
+        random_coeff: SecureField,
+        component_traces: &[ComponentTrace<'_>],
+    ) -> CirclePoly<SecureField> {
+        let mut evaluator = ConstraintEvaluator {
+            traces: component_traces.iter(),
+            evaluation_accumulator: DomainEvaluationAccumulator::new(
+                random_coeff,
+                self.max_constraint_log_degree_bound(),
+            ),
+        };
+        self.visit_components(&mut evaluator);
+        evaluator.finalize()
+    }
+}
+
+impl<A: Air> AirExt for A {}
 
 pub trait ComponentVisitor {
     fn visit<C: Component>(&mut self, component: &C);
