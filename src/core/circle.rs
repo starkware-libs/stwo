@@ -31,8 +31,8 @@ impl<F: Field> CirclePoint<F> {
     /// # Examples
     ///
     /// ```
-    /// use prover_research::core::circle::{CirclePoint, M31_CIRCLE_GEN};
-    /// use prover_research::core::fields::m31::M31;
+    /// use stwo::core::circle::{CirclePoint, M31_CIRCLE_GEN};
+    /// use stwo::core::fields::m31::M31;
     /// let p = M31_CIRCLE_GEN.mul(17);
     /// assert_eq!(CirclePoint::double_x(p.x), (p + p).x);
     /// ```
@@ -47,8 +47,8 @@ impl<F: Field> CirclePoint<F> {
     /// # Examples
     ///
     /// ```
-    /// use prover_research::core::circle::{CirclePoint, M31_CIRCLE_GEN, M31_CIRCLE_LOG_ORDER};
-    /// use prover_research::core::fields::m31::M31;
+    /// use stwo::core::circle::{CirclePoint, M31_CIRCLE_GEN, M31_CIRCLE_LOG_ORDER};
+    /// use stwo::core::fields::m31::M31;
     /// assert_eq!(M31_CIRCLE_GEN.log_order(), M31_CIRCLE_LOG_ORDER);
     /// ```
     pub fn log_order(&self) -> u32 {
@@ -176,8 +176,8 @@ impl CirclePoint<SecureField> {
 /// # Examples
 ///
 /// ```
-/// use prover_research::core::circle::{CirclePoint, M31_CIRCLE_GEN};
-/// use prover_research::core::fields::m31::M31;
+/// use stwo::core::circle::{CirclePoint, M31_CIRCLE_GEN};
+/// use stwo::core::fields::m31::M31;
 ///
 /// // Adding a generator to itself (2^30) times should NOT yield the identity.
 /// let circle_point = M31_CIRCLE_GEN.repeated_double(30);

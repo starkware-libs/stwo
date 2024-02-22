@@ -1,8 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use prover_research::core::fields::m31::BaseField;
-use prover_research::core::fri::fold_line;
-use prover_research::core::poly::circle::CanonicCoset;
-use prover_research::core::poly::line::{LineDomain, LineEvaluation};
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fri::fold_line;
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::poly::line::{LineDomain, LineEvaluation};
 
 fn folding_benchmark(c: &mut Criterion) {
     const LOG_SIZE: u32 = 12;

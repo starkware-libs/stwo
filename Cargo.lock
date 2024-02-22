@@ -456,21 +456,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prover-research"
-version = "0.1.1"
-dependencies = [
- "blake2",
- "blake3",
- "criterion",
- "hex",
- "itertools 0.12.0",
- "merging-iterator",
- "num-traits",
- "rand",
- "thiserror",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -621,6 +606,21 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "stwo"
+version = "0.1.1"
+dependencies = [
+ "blake2",
+ "blake3",
+ "criterion",
+ "hex",
+ "itertools 0.12.0",
+ "merging-iterator",
+ "num-traits",
+ "rand",
+ "thiserror",
 ]
 
 [[package]]

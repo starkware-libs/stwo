@@ -9,8 +9,8 @@ use crate::core::fields::Field;
 /// # Example
 ///
 /// ```rust
-/// use prover_research::commitment_scheme::merkle_input::MerkleTreeInput;
-/// use prover_research::core::fields::m31::M31;
+/// use stwo::commitment_scheme::merkle_input::MerkleTreeInput;
+/// use stwo::core::fields::m31::M31;
 ///
 /// let mut input = MerkleTreeInput::<M31>::new();
 /// let column = vec![M31::from_u32_unchecked(0); 1024];
