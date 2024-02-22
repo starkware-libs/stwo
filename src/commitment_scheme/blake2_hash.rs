@@ -4,7 +4,7 @@ use blake2::digest::{Update, VariableOutput};
 use blake2::{Blake2s256, Blake2sVar, Digest};
 
 // Wrapper for the blake2s hash type.
-#[derive(Clone, Copy, PartialEq, Debug, Default, Eq)]
+#[derive(Clone, Copy, PartialEq, Default, Eq)]
 pub struct Blake2sHash([u8; 32]);
 
 impl From<Blake2sHash> for Vec<u8> {
@@ -48,6 +48,12 @@ impl From<Blake2sHash> for [u8; 32] {
 impl fmt::Display for Blake2sHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&hex::encode(self.0))
+    }
+}
+
+impl fmt::Debug for Blake2sHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <Blake2sHash as fmt::Display>::fmt(self, f)
     }
 }
 

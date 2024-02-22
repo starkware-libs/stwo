@@ -3,7 +3,7 @@ use std::fmt;
 use super::hasher::Name;
 
 // Wrapper for the blake3 hash type.
-#[derive(Clone, Copy, PartialEq, Debug, Default, Eq)]
+#[derive(Clone, Copy, PartialEq, Default, Eq)]
 pub struct Blake3Hash([u8; 32]);
 
 impl From<Blake3Hash> for Vec<u8> {
@@ -41,6 +41,12 @@ impl AsRef<[u8]> for Blake3Hash {
 impl fmt::Display for Blake3Hash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&hex::encode(self.0))
+    }
+}
+
+impl fmt::Debug for Blake3Hash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <Blake3Hash as fmt::Display>::fmt(self, f)
     }
 }
 
