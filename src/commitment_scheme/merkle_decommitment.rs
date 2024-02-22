@@ -178,12 +178,12 @@ mod tests {
     use crate::commitment_scheme::hasher::Hasher;
     use crate::commitment_scheme::merkle_tree::MerkleTree;
     use crate::commitment_scheme::utils::tests::generate_test_queries;
+    use crate::commitment_scheme::utils::ColumnArray;
     use crate::core::fields::m31::M31;
-    use crate::core::ColumnVec;
 
     #[test]
     pub fn verify_test() {
-        let trace: ColumnVec<M31> = vec![(0..4096).map(M31::from_u32_unchecked).collect(); 7];
+        let trace: ColumnArray<M31> = vec![(0..4096).map(M31::from_u32_unchecked).collect(); 7];
         let tree = MerkleTree::<M31, Blake3Hasher>::commit(trace);
         let queries = generate_test_queries(100, 4096);
         let decommitment = tree.generate_decommitment(queries.clone());
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     pub fn verify_false_proof_test() {
         let trace_column_length = 1 << 12;
-        let trace: ColumnVec<M31> = vec![
+        let trace: ColumnArray<M31> = vec![
             (0..trace_column_length)
                 .map(M31::from_u32_unchecked)
                 .collect();
@@ -225,7 +225,7 @@ mod tests {
             .map(M31::from_u32_unchecked)
             .collect::<Vec<M31>>();
         let reversed_trace_column = trace_column.iter().rev().cloned().collect::<Vec<M31>>();
-        let trace: ColumnVec<M31> = vec![trace_column, reversed_trace_column];
+        let trace: ColumnArray<M31> = vec![trace_column, reversed_trace_column];
         let tree = MerkleTree::<M31, Blake3Hasher>::commit(trace.clone());
         let random_queries = generate_test_queries(10, trace_column_length as usize);
         let test_skip_queries = vec![17, 50];
