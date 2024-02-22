@@ -23,6 +23,9 @@ pub trait Backend:
 
 pub trait FieldOps<F: Field> {
     type Column: Column<F>;
+
+    /// Batch inversion of elements.
+    fn batch_inverse(elements: &Self::Column, dst: &mut Self::Column);
 }
 
 pub type Col<B, F> = <B as FieldOps<F>>::Column;
