@@ -6,7 +6,6 @@ use criterion::Criterion;
 pub fn avx512_ifft(c: &mut criterion::Criterion) {
     use prover_research::core::backend::avx512::fft::ifft;
     use prover_research::core::backend::avx512::BaseFieldVec;
-    use prover_research::core::backend::ColumnTrait;
     use prover_research::core::fields::m31::BaseField;
     use prover_research::core::poly::circle::CanonicCoset;
     use prover_research::platform;
@@ -21,7 +20,7 @@ pub fn avx512_ifft(c: &mut criterion::Criterion) {
         .collect::<Vec<_>>();
 
     // Compute.
-    let mut values = BaseFieldVec::from_vec(values);
+    let mut values = BaseFieldVec::from_iter(values);
     let twiddle_dbls = (0..(LOG_SIZE as i32 - 1))
         .map(|log_n| (0..(1 << log_n)).collect::<Vec<_>>())
         .rev()
@@ -31,7 +30,7 @@ pub fn avx512_ifft(c: &mut criterion::Criterion) {
 
     c.bench_function("avx ifft", |b| {
         b.iter(|| unsafe {
-            ifft(
+            ifft::ifft(
                 std::mem::transmute(values.data.as_mut_ptr()),
                 &twiddle_dbls[..],
                 LOG_SIZE as usize,

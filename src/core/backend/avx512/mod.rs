@@ -64,17 +64,6 @@ impl Column<BaseField> for BaseFieldVec {
     }
 }
 
-fn as_cpu_vec(values: BaseFieldVec) -> Vec<BaseField> {
-    let capacity = values.len() * 16;
-    unsafe {
-        Vec::from_raw_parts(
-            values.data.as_ptr() as *mut BaseField,
-            values.length,
-            capacity,
-        )
-    }
-}
-
 impl Index<usize> for BaseFieldVec {
     type Output = BaseField;
     fn index(&self, index: usize) -> &Self::Output {

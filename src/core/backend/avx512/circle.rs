@@ -1,6 +1,9 @@
-use super::{as_cpu_vec, AVX512Backend};
-use crate::core::backend::{CPUBackend, Col};
+use super::fft::ifft;
+use super::AVX512Backend;
+use crate::core::backend::avx512::fft::rfft;
+use crate::core::backend::{CPUBackend, Col, Column, FieldOps};
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::Field;
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
@@ -10,41 +13,95 @@ impl PolyOps<BaseField> for AVX512Backend {
         coset: CanonicCoset,
         values: Col<Self, BaseField>,
     ) -> CircleEvaluation<Self, BaseField> {
-        let eval = CPUBackend::new_canonical_ordered(coset, as_cpu_vec(values));
+        // TODO(spapini): Optimize.
+        let eval = CPUBackend::new_canonical_ordered(coset, values.to_vec());
         CircleEvaluation::new(eval.domain, Col::<AVX512Backend, _>::from_iter(eval.values))
     }
 
     fn interpolate(eval: CircleEvaluation<Self, BaseField>) -> CirclePoly<Self, BaseField> {
-        let cpu_eval = CircleEvaluation::<CPUBackend, _>::new(eval.domain, as_cpu_vec(eval.values));
-        let cpu_poly = cpu_eval.interpolate();
-        CirclePoly::new(Col::<AVX512Backend, _>::from_iter(cpu_poly.coeffs))
+        let mut values = eval.values;
+
+        // TODO(spapini): Precompute twiddles.
+        let twiddles = ifft::get_itwiddle_dbls(eval.domain);
+        // TODO(spapini): Remove.
+        AVX512Backend::bit_reverse_column(&mut values);
+        // TODO(spapini): Handle small cases.
+        let log_size = values.length.ilog2();
+
+        unsafe {
+            ifft::ifft(
+                std::mem::transmute(values.data.as_mut_ptr()),
+                &twiddles[1..],
+                log_size as usize,
+            );
+        }
+
+        // TODO(spapini): Fuse this multiplication / rotation.
+        let inv = BaseField::from_u32_unchecked(eval.domain.size() as u32).inverse();
+        for x in values.data.iter_mut() {
+            for y in x.0.iter_mut() {
+                *y = BaseField::from(y.0) * inv;
+            }
+        }
+
+        CirclePoly::new(values)
     }
 
     fn eval_at_point<E: crate::core::fields::ExtensionOf<BaseField>>(
-        poly: &CirclePoly<Self, BaseField>,
-        point: crate::core::circle::CirclePoint<E>,
+        _poly: &CirclePoly<Self, BaseField>,
+        _point: crate::core::circle::CirclePoint<E>,
     ) -> E {
-        // TODO(spapini): Unnecessary allocation here.
-        let cpu_poly = CirclePoly::<CPUBackend, _>::new(as_cpu_vec(poly.coeffs.clone()));
-        cpu_poly.eval_at_point(point)
+        todo!()
     }
 
     fn evaluate(
         poly: &CirclePoly<Self, BaseField>,
         domain: CircleDomain,
     ) -> CircleEvaluation<Self, BaseField> {
-        let cpu_poly = CirclePoly::<CPUBackend, _>::new(as_cpu_vec(poly.coeffs.clone()));
-        let cpu_eval = cpu_poly.evaluate(domain);
-        CircleEvaluation::new(
-            cpu_eval.domain,
-            Col::<AVX512Backend, _>::from_iter(cpu_eval.values),
-        )
+        let mut values = poly.coeffs.clone();
+
+        // TODO(spapini): Precompute twiddles.
+        let twiddles = rfft::get_twiddle_dbls(domain);
+        // TODO(spapini): Handle small cases.
+        let log_size = values.length.ilog2();
+
+        unsafe {
+            rfft::fft(
+                std::mem::transmute(values.data.as_mut_ptr()),
+                &twiddles[1..],
+                log_size as usize,
+            );
+        }
+
+        // TODO(spapini): Remove.
+        AVX512Backend::bit_reverse_column(&mut values);
+
+        CircleEvaluation::new(domain, values)
     }
 
-    fn extend(poly: &CirclePoly<Self, BaseField>, log_size: u32) -> CirclePoly<Self, BaseField> {
-        let cpu_poly = CirclePoly::<CPUBackend, _>::new(as_cpu_vec(poly.coeffs.clone()));
-        CirclePoly::new(Col::<AVX512Backend, _>::from_iter(
-            cpu_poly.extend(log_size).coeffs,
-        ))
+    fn extend(_poly: &CirclePoly<Self, BaseField>, _log_size: u32) -> CirclePoly<Self, BaseField> {
+        todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::core::backend::avx512::AVX512Backend;
+    use crate::core::fields::m31::BaseField;
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+
+    #[test]
+    fn test_interpolate_and_eval() {
+        const LOG_SIZE: u32 = 6;
+        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+        let evaluation = CircleEvaluation::<AVX512Backend, _>::new(
+            domain,
+            (0..(1 << LOG_SIZE))
+                .map(BaseField::from_u32_unchecked)
+                .collect(),
+        );
+        let poly = evaluation.clone().interpolate();
+        let evaluation2 = poly.evaluate(domain);
+        assert_eq!(evaluation.values, evaluation2.values);
     }
 }
