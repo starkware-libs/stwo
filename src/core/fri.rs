@@ -20,7 +20,7 @@ use super::queries::{Queries, SparseSubCircleDomain};
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
-use crate::core::backend::{Col, Column};
+use crate::core::backend::Column;
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
 use crate::core::poly::line::LineDomain;
@@ -76,7 +76,9 @@ impl FriConfig {
 pub struct FriProver<H: Hasher> {
     config: FriConfig,
     inner_layers: Vec<FriLayerProver<H>>,
-    last_layer_poly: LinePoly<B, SecureField>,
+    /// The coefficients ordered in natural order.
+    /// See [LinePoly::from_ordered_coefficients()].
+    last_layer_coeffs: Vec<SecureField>,
     /// Unique sizes of committed columns sorted in descending order.
     column_log_sizes: Vec<u32>,
 }
@@ -115,7 +117,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         assert!(columns.iter().all(|e| e.domain.is_canonic()), "not canonic");
         let (inner_layers, last_layer_evaluation) =
             Self::commit_inner_layers(channel, config, columns);
-        let last_layer_poly = Self::commit_last_layer(channel, config, last_layer_evaluation);
+        let last_layer_coeffs = Self::commit_last_layer(channel, config, last_layer_evaluation);
 
         let column_log_sizes = columns
             .iter()
@@ -125,7 +127,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         Self {
             config,
             inner_layers,
-            last_layer_poly,
+            last_layer_coeffs,
             column_log_sizes,
         }
     }
@@ -187,6 +189,8 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
     /// The layer is committed to by sending the verifier all the coefficients of the remaining
     /// polynomial.
     ///
+    /// Returns the last layer coefficients in natural order.
+    ///
     /// # Panics
     ///
     /// Panics if:
@@ -196,21 +200,22 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         channel: &mut impl Channel<Digest = H::Hash>,
         config: FriConfig,
         evaluation: LineEvaluation<B, SecureField, BitReversedOrder>,
-    ) -> LinePoly<B, SecureField> {
+    ) -> Vec<SecureField> {
         assert_eq!(evaluation.len(), config.last_layer_domain_size());
 
         let evaluation = evaluation.bit_reverse();
-        let mut coeffs = evaluation.interpolate().into_ordered_coefficients();
+        let mut coeffs = evaluation
+            .interpolate()
+            .into_ordered_coefficients()
+            .to_vec();
 
         let last_layer_degree_bound = 1 << config.log_last_layer_degree_bound;
         let zeros = coeffs.split_off(last_layer_degree_bound);
         assert!(zeros.iter().all(SecureField::is_zero), "invalid degree");
 
-        let last_layer_poly = LinePoly::from_ordered_coefficients(coeffs);
-        let last_layer_coeffs: &Col<B, SecureField> = &last_layer_poly.coeffs;
-        channel.mix_felts(&last_layer_coeffs.to_vec());
+        channel.mix_felts(&coeffs);
 
-        last_layer_poly
+        coeffs
     }
 
     /// Samples queries and decommits on them. Returns the FRI proof and the positions of the value
@@ -243,11 +248,9 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
             })
             .collect();
 
-        let last_layer_poly = self.last_layer_poly;
-
         FriProof {
             inner_layers,
-            last_layer_poly,
+            last_layer_coeffs: self.last_layer_coeffs,
         }
     }
 }
@@ -330,13 +333,13 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         }
 
         let last_layer_domain = layer_domain;
-        let last_layer_poly = proof.last_layer_poly;
+        let last_layer_coeffs = proof.last_layer_coeffs;
 
-        if last_layer_poly.len() > (1 << config.log_last_layer_degree_bound) {
+        if last_layer_coeffs.len() > (1 << config.log_last_layer_degree_bound) {
             return Err(VerificationError::LastLayerDegreeInvalid);
         }
 
-        channel.mix_felts(&last_layer_poly.coeffs);
+        channel.mix_felts(&last_layer_coeffs);
 
         Ok(Self {
             config,
@@ -345,7 +348,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
             expected_query_log_domain_size,
             inner_layers,
             last_layer_domain,
-            last_layer_poly,
+            last_layer_poly: LinePoly::from_ordered_coefficients(last_layer_coeffs),
             queries: None,
         })
     }
@@ -511,7 +514,7 @@ pub trait FriChannel {
     fn reseed_with_inner_layer(&mut self, commitment: &Self::Digest);
 
     /// Reseeds the channel with the FRI last layer polynomial.
-    fn reseed_with_last_layer(&mut self, last_layer: &LinePoly<B, Self::Field>);
+    fn reseed_with_last_layer(&mut self, last_layer: &[Self::Field]);
 
     /// Draws a random field element.
     fn draw(&mut self) -> Self::Field;
@@ -582,7 +585,9 @@ impl LinePolyDegreeBound {
 /// A FRI proof.
 pub struct FriProof<H: Hasher> {
     pub inner_layers: Vec<FriLayerProof<H>>,
-    pub last_layer_poly: LinePoly<B, SecureField>,
+    /// The coefficients ordered in natural order.
+    /// See [LinePoly::from_ordered_coefficients()].
+    pub last_layer_coeffs: Vec<SecureField>,
 }
 
 /// Number of folds for univariate polynomials.
@@ -964,7 +969,7 @@ mod tests {
         CIRCLE_TO_LINE_FOLD_STEP,
     };
     use crate::core::poly::circle::{CircleDomain, CircleEvaluation};
-    use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
+    use crate::core::poly::line::{LineDomain, LineEvaluation};
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
     use crate::core::queries::{Queries, SparseSubCircleDomain};
 
@@ -1192,7 +1197,7 @@ mod tests {
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
         let bad_last_layer_coeffs = vec![One::one(); 1 << (LOG_MAX_LAST_LAYER_DEGREE + 1)];
-        proof.last_layer_poly = LinePoly::new(bad_last_layer_coeffs);
+        proof.last_layer_coeffs = bad_last_layer_coeffs;
 
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound);
 
@@ -1214,7 +1219,7 @@ mod tests {
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
         // Compromise the last layer polynomial's first coefficient.
-        proof.last_layer_poly.coeffs[0] += BaseField::one();
+        proof.last_layer_coeffs[0] += BaseField::one();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
         let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
