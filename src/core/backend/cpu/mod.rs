@@ -1,4 +1,5 @@
 mod circle;
+mod fri;
 
 use std::fmt::Debug;
 
