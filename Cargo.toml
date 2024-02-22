@@ -40,3 +40,7 @@ harness = false
 [[bench]]
 name = "fri"
 harness = false
+
+[[bench]]
+name = "cpu"
+harness = false
