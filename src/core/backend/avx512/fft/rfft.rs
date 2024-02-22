@@ -432,6 +432,7 @@ mod tests {
     use crate::core::backend::CPUBackend;
     use crate::core::fft::butterfly;
     use crate::core::fields::m31::BaseField;
+    use crate::core::fields::Column;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain, CirclePoly};
     use crate::core::utils::bit_reverse;
 
@@ -587,9 +588,7 @@ mod tests {
                 );
 
                 // Compare.
-                for i in 0..expected_coeffs.len() {
-                    assert_eq!(values[i], expected_coeffs[i]);
-                }
+                assert_eq!(values.to_vec(), expected_coeffs);
             }
         }
     }
@@ -617,9 +616,7 @@ mod tests {
             );
 
             // Compare.
-            for i in 0..expected_coeffs.len() {
-                assert_eq!(values[i], expected_coeffs[i]);
-            }
+            assert_eq!(values.to_vec(), expected_coeffs);
         }
     }
 
