@@ -3,10 +3,11 @@ use std::ops::Deref;
 
 use itertools::Itertools;
 
+use super::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
 use super::channel::Blake2sChannel;
 use super::fields::m31::BaseField;
 use super::fields::ExtensionOf;
-use super::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
+use super::poly::circle::CanonicCoset;
 use super::poly::BitReversedOrder;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
@@ -14,15 +15,15 @@ use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::channel::Channel;
 
 pub struct CommitmentSchemeProver<F: ExtensionOf<BaseField>> {
-    pub polynomials: Vec<CirclePoly<F>>,
-    pub evaluations: Vec<CircleEvaluation<F, BitReversedOrder>>,
+    pub polynomials: Vec<CPUCirclePoly<F>>,
+    pub evaluations: Vec<CPUCircleEvaluation<F, BitReversedOrder>>,
     // TODO(AlonH): Change to mixed degree merkle and remove values clone.
     pub commitment: MerkleTree<F, Blake2sHasher>,
 }
 
 impl<F: ExtensionOf<BaseField>> CommitmentSchemeProver<F> {
     pub fn new(
-        polynomials: Vec<CirclePoly<F>>,
+        polynomials: Vec<CPUCirclePoly<F>>,
         domains: Vec<CanonicCoset>,
         channel: &mut Blake2sChannel,
     ) -> Self {
