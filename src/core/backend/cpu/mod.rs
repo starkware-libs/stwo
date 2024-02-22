@@ -13,25 +13,17 @@ use crate::core::utils::bit_reverse;
 #[derive(Copy, Clone, Debug)]
 pub struct CPUBackend;
 
-impl Backend for CPUBackend {}
-
-impl<F: Field> FieldOps<F> for CPUBackend {
-    type Column = Vec<F>;
-
-    fn bit_reverse_column(column: &mut Self::Column) {
-        bit_reverse(column)
-    }
-
-    /// Batch inversion using the Montgomery's trick.
-    // TODO(Ohad): Benchmark this function.
-    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
+impl CPUBackend {
+    /// Batch inversion of up to 4 elements using Montgomery's trick.
+    // TODO(Ohad): Consider manual loop unrolling here (generic).
+    fn inverse_4_elements<F: Field>(column: &[F], dst: &mut [F]) {
         let n = column.len();
-        dst.clear();
+        assert_eq!(n, dst.len());
 
-        dst.push(column[0]);
+        dst[0] = column[0];
         // First pass.
         for i in 1..n {
-            dst.push(dst[i - 1] * column[i]);
+            dst[i] = dst[i - 1] * column[i];
         }
 
         // Inverse cumulative product.
@@ -43,6 +35,47 @@ impl<F: Field> FieldOps<F> for CPUBackend {
             curr_inverse *= column[i];
         }
         dst[0] = curr_inverse;
+    }
+}
+
+impl Backend for CPUBackend {}
+
+impl<F: Field> FieldOps<F> for CPUBackend {
+    type Column = Vec<F>;
+
+    fn bit_reverse_column(column: &mut Self::Column) {
+        bit_reverse(column)
+    }
+
+    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
+        const W: usize = 4;
+        let n = column.len();
+        debug_assert!(n.is_power_of_two());
+        if n < W {
+            Self::inverse_4_elements(column, dst);
+            return;
+        }
+
+        // First pass.
+        let mut cum_prod: [F; W] = column[..W].try_into().unwrap();
+        dst[..W].copy_from_slice(&cum_prod);
+        for i in W..n {
+            cum_prod[i % W] *= column[i];
+            dst[i] = cum_prod[i % W];
+        }
+        debug_assert_eq!(dst.len(), n);
+
+        // Inverse cumulative products.
+        // Use classic batch inversion.
+        let mut tail_inverses = [F::one(); W];
+        Self::inverse_4_elements(&dst[n - W..], &mut tail_inverses);
+
+        // Second pass.
+        for i in (W..n).rev() {
+            dst[i] = dst[i - W] * tail_inverses[i % W];
+            tail_inverses[i % W] *= column[i];
+        }
+        dst[0..W].copy_from_slice(&tail_inverses);
     }
 }
 
@@ -81,7 +114,7 @@ mod tests {
     #[test]
     fn batch_inverse_test() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let elements: Vec<QM31> = (0..10)
+        let elements: Vec<QM31> = (0..16)
             .map(|_| {
                 QM31::from_u32_unchecked(
                     rng.gen::<u32>(),
@@ -92,28 +125,7 @@ mod tests {
             })
             .collect();
         let expected = elements.iter().map(|e| e.inverse()).collect_vec();
-        let mut dst = vec![];
-
-        CPUBackend::batch_inverse(&elements, &mut dst);
-
-        assert_eq!(expected, dst);
-    }
-
-    #[test]
-    fn batch_inverse_reused_vec_test() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let elements: Vec<QM31> = (0..10)
-            .map(|_| {
-                QM31::from_u32_unchecked(
-                    rng.gen::<u32>(),
-                    rng.gen::<u32>(),
-                    rng.gen::<u32>(),
-                    rng.gen::<u32>(),
-                )
-            })
-            .collect();
-        let expected = elements.iter().map(|e| e.inverse()).collect_vec();
-        let mut dst = vec![QM31::one(); elements.len()];
+        let mut dst = vec![QM31::one(); 16];
 
         CPUBackend::batch_inverse(&elements, &mut dst);
 
