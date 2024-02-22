@@ -950,7 +950,6 @@ mod tests {
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::{CirclePointIndex, Coset};
-    use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::ExtensionOf;
@@ -1280,7 +1279,6 @@ mod tests {
         positions: &SparseSubCircleDomain,
     ) -> SparseCircleEvaluation<F> {
         let polynomial = polynomial.clone().bit_reverse();
-        let oracle = EvalByEvaluation::new(CirclePointIndex::zero(), &polynomial);
 
         let coset_evals = positions
             .iter()
@@ -1288,7 +1286,7 @@ mod tests {
                 let coset_domain = position.to_circle_domain(&polynomial.domain);
                 let evals = coset_domain
                     .iter_indices()
-                    .map(|p| oracle.get_at(p))
+                    .map(|p| polynomial.get_at(p))
                     .collect();
                 let coset_eval = CPUCircleEvaluation::<F, NaturalOrder>::new(coset_domain, evals);
                 coset_eval.bit_reverse()
