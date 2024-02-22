@@ -1,44 +1,42 @@
 use std::iter::zip;
 
+use itertools::enumerate;
+
 use super::air::Component;
 use super::backend::cpu::CPUCircleEvaluation;
 use super::backend::Backend;
-use super::circle::{CirclePoint, CirclePointIndex};
-use super::constraints::{
-    complex_conjugate_line, pair_vanishing, point_vanishing, EvalByEvaluation, PolyOracle,
-};
+use super::circle::CirclePoint;
+use super::constraints::{complex_conjugate_line, pair_vanishing, point_vanishing};
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::ComplexConjugate;
 use super::fri::CirclePolyDegreeBound;
 use super::poly::circle::CircleEvaluation;
 use super::poly::{BitReversedOrder, NaturalOrder};
+use super::utils::bit_reverse_index;
 
 /// Evaluates the OODS quotient polynomial on a single point.
-pub fn eval_oods_quotient_point(
+pub fn eval_oods_quotient_at_point(
+    point: CirclePoint<BaseField>,
+    value: SecureField,
     oods_point: CirclePoint<SecureField>,
     oods_value: SecureField,
-    eval: impl PolyOracle<SecureField>,
 ) -> SecureField {
-    let num = eval.get_at(CirclePointIndex(0)) - oods_value;
-    let denom: SecureField = point_vanishing(oods_point, eval.point());
+    let num = value - oods_value;
+    let denom: SecureField = point_vanishing(oods_point, point);
     num / denom
 }
 
 /// Evaluates the pair OODS quotient polynomial on a single point.
 /// See `get_pair_oods_quotient` for more details.
-pub fn eval_pair_oods_quotient_point(
+pub fn eval_pair_oods_quotient_at_point(
+    point: CirclePoint<BaseField>,
+    value: BaseField,
     oods_point: CirclePoint<SecureField>,
     oods_value: SecureField,
-    eval: impl PolyOracle<BaseField>,
 ) -> SecureField {
-    let num = eval.get_at(CirclePointIndex(0))
-        - complex_conjugate_line(oods_point, oods_value, eval.point());
-    let denom = pair_vanishing(
-        oods_point,
-        oods_point.complex_conjugate(),
-        eval.point().into_ef(),
-    );
+    let num = value - complex_conjugate_line(oods_point, oods_value, point);
+    let denom = pair_vanishing(oods_point, oods_point.complex_conjugate(), point.into_ef());
     num / denom
 }
 
@@ -50,11 +48,13 @@ pub fn get_oods_quotient(
     eval: &CPUCircleEvaluation<SecureField, BitReversedOrder>,
 ) -> CPUCircleEvaluation<SecureField, NaturalOrder> {
     let mut values = Vec::with_capacity(eval.domain.size());
-    for p_ind in eval.domain.iter_indices() {
-        values.push(eval_oods_quotient_point(
+    for (i, point) in enumerate(eval.domain.iter()) {
+        let index = bit_reverse_index(i, eval.domain.log_size());
+        values.push(eval_oods_quotient_at_point(
+            point,
+            eval.values[index],
             oods_point,
             oods_value,
-            EvalByEvaluation::new(p_ind, eval),
         ));
     }
     CircleEvaluation::new(eval.domain, values)
@@ -70,11 +70,13 @@ pub fn get_pair_oods_quotient(
     eval: &CPUCircleEvaluation<BaseField, BitReversedOrder>,
 ) -> CPUCircleEvaluation<SecureField, NaturalOrder> {
     let mut values = Vec::with_capacity(eval.domain.size());
-    for p_ind in eval.domain.iter_indices() {
-        values.push(eval_pair_oods_quotient_point(
+    for (i, point) in enumerate(eval.domain.iter()) {
+        let index = bit_reverse_index(i, eval.domain.log_size());
+        values.push(eval_pair_oods_quotient_at_point(
+            point,
+            eval.values[index],
             oods_point,
             oods_value,
-            EvalByEvaluation::new(p_ind, eval),
         ));
     }
     CircleEvaluation::new(eval.domain, values)
