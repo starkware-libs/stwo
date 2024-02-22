@@ -7,6 +7,7 @@ use super::fields::qm31::SecureField;
 use super::fields::FieldOps;
 use super::poly::circle::PolyOps;
 
+pub mod avx512;
 pub mod cpu;
 
 pub trait Backend:

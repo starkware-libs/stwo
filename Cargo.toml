@@ -26,6 +26,10 @@ codegen-units = 1
 lto = true
 
 [[bench]]
+name = "bit_rev"
+harness = false
+
+[[bench]]
 harness = false
 name = "field"
 
