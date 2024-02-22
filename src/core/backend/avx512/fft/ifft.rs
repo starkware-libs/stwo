@@ -217,8 +217,10 @@ pub unsafe fn vecwise_ibutterflies(
     const M: __m512i = unsafe {
         core::mem::transmute([0i32, -2, -2, 0, 0, -2, -2, 0, 0, -2, -2, 0, 0, -2, -2, 0])
     };
-    let t = _mm512_permutexvar_epi32(A, t1);
-    let t = _mm512_xor_epi32(t, M);
+    let t0 = _mm512_permutexvar_epi32(A, t1);
+    let t0 = _mm512_xor_epi32(t0, M);
+
+    let t = t0;
     (val0, val1) = (
         _mm512_permutex2var_epi32(val0, L1, val1),
         _mm512_permutex2var_epi32(val0, H1, val1),
