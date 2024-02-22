@@ -3,10 +3,10 @@ use std::slice::Iter;
 
 use super::hasher::Hasher;
 use crate::core::fields::{Field, IntoSlice};
-use crate::core::ColumnVec;
 use crate::math::utils::{log2_ceil, usize_safe_div};
 
-pub type ColumnLengthMap<T> = BTreeMap<usize, ColumnVec<T>>;
+pub type ColumnArray<T> = Vec<Vec<T>>;
+pub type ColumnLengthMap<T> = BTreeMap<usize, ColumnArray<T>>;
 pub type TreeLayer<T> = Box<[T]>;
 pub type TreeData<T> = Box<[TreeLayer<T>]>;
 
@@ -87,7 +87,7 @@ pub fn hash_merkle_tree_from_bottom_layer<'a, F: Field, H: Hasher>(
 
 /// Maps columns by length.
 /// Mappings are sorted by length. i.e the first entry is a matrix of the shortest columns.
-pub fn map_columns_sorted<T: Sized>(cols: ColumnVec<T>) -> ColumnLengthMap<T> {
+pub fn map_columns_sorted<T: Sized>(cols: ColumnArray<T>) -> ColumnLengthMap<T> {
     let mut columns_length_map: ColumnLengthMap<T> = BTreeMap::new();
     for c in cols {
         let length_index_entry = columns_length_map.entry(c.len()).or_default();
@@ -104,7 +104,7 @@ pub fn map_columns_sorted<T: Sized>(cols: ColumnVec<T>) -> ColumnLengthMap<T> {
 /// Pointers in 'dst' should point to pre-allocated memory with enough space to store
 /// column_array.len() amount of u32 elements.
 // TODO(Ohad): Change tree impl and remove.
-pub unsafe fn transpose_to_bytes<T: Sized>(column_array: &ColumnVec<T>, dst: &[*mut u8]) {
+pub unsafe fn transpose_to_bytes<T: Sized>(column_array: &ColumnArray<T>, dst: &[*mut u8]) {
     let column_length = column_array[0].len();
 
     for (i, ptr) in dst.iter().enumerate().take(column_length) {
@@ -138,7 +138,7 @@ pub fn tree_data_as_mut_ref<T: Sized>(tree_data: &mut TreeData<T>) -> Vec<&mut [
 /// offset*(n_rows/n_rows_in_node) amount of T elements.
 // TODO(Ohad): Change tree impl and remove.
 pub unsafe fn inject<T: Sized>(
-    column_array: &ColumnVec<T>,
+    column_array: &ColumnArray<T>,
     dst: &mut [u8],
     n_rows_in_node: usize,
     gap_offset: usize,
@@ -154,7 +154,7 @@ pub unsafe fn inject<T: Sized>(
 /// Given a matrix, returns a vector of the matrix elements in row-major order.
 /// Assumes all columns are of the same length and non-zero.
 // TODO(Ohad): Change tree impl and remove.
-pub fn column_to_row_major<T>(mut mat: ColumnVec<T>) -> Vec<T> {
+pub fn column_to_row_major<T>(mut mat: ColumnArray<T>) -> Vec<T> {
     if mat.len() == 1 {
         return mat.remove(0);
     };
@@ -318,7 +318,7 @@ pub mod tests {
 
     use super::{
         allocate_balanced_tree, inject_and_hash_layer, inject_column_chunks, map_columns_sorted,
-        ColumnVec,
+        ColumnArray,
     };
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
@@ -339,22 +339,22 @@ pub mod tests {
         queries
     }
 
-    fn init_test_trace() -> ColumnVec<u32> {
+    fn init_test_trace() -> ColumnArray<u32> {
         let col0 = std::iter::repeat(0).take(8).collect();
         let col1 = vec![1, 2, 3, 4];
         let col2 = vec![5, 6];
         let col3 = vec![7, 8];
         let col4 = vec![9];
-        let cols: ColumnVec<u32> = vec![col0, col1, col2, col3, col4];
+        let cols: ColumnArray<u32> = vec![col0, col1, col2, col3, col4];
         cols
     }
 
-    fn init_transpose_test_trace() -> ColumnVec<u32> {
+    fn init_transpose_test_trace() -> ColumnArray<u32> {
         let col1 = vec![1, 2, 3, 4];
         let col2 = vec![5, 6, 7, 8];
         let col3 = vec![9, 10];
         let col4 = vec![11];
-        let cols: ColumnVec<u32> = vec![col1, col2, col3, col4];
+        let cols: ColumnArray<u32> = vec![col1, col2, col3, col4];
         cols
     }
 
