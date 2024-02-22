@@ -13,7 +13,7 @@ use super::channel::Channel;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::{ExtensionOf, Field, FieldOps};
-use super::poly::circle::CircleEvaluation;
+use super::poly::circle::{CircleEvaluation, PolyOps};
 use super::poly::line::{LineEvaluation, LinePoly};
 use super::poly::BitReversedOrder;
 // TODO(andrew): Create fri/ directory, move queries.rs there and split this file up.
@@ -22,13 +22,9 @@ use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::circle::Coset;
-use crate::core::fft::ibutterfly;
 use crate::core::fields::Column;
 use crate::core::poly::line::LineDomain;
 use crate::core::utils::bit_reverse_index;
-
-// TODO(spapini): Support more backends.
-type B = CPUBackend;
 
 /// FRI proof config
 // TODO(andrew): Support different step sizes.
@@ -73,16 +69,55 @@ impl FriConfig {
     }
 }
 
+pub trait FriOps: FieldOps<SecureField> + Sized {
+    /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
+    ///
+    /// Let `eval` be a polynomial evaluated on a [LineDomain] `E`, `alpha` be a random field
+    /// element and `pi(x) = 2x^2 - 1` be the circle's x-coordinate doubling map. This function
+    /// returns `f' = f0 + alpha * f1` evaluated on `pi(E)` such that `2f(x) = f0(pi(x)) + x *
+    /// f1(pi(x))`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are less than two evaluations.
+    fn fold_line(
+        eval: &LineEvaluation<Self, SecureField, BitReversedOrder>,
+        alpha: SecureField,
+    ) -> LineEvaluation<Self, SecureField, BitReversedOrder>;
+
+    /// Folds and accumulates a degree `d` circle polynomial into a degree `d/2` univariate
+    /// polynomial.
+    ///
+    /// Let `src` be the evaluation of a circle polynomial `f` on a [CircleDomain] `E`. This
+    /// function computes evaluations of `f' = f0 + alpha * f1` on the x-coordinates of `E` such
+    /// that `2f(p) = f0(px) + py * f1(px)`. The evaluations of `f'` are accumulated into `dst`
+    /// by the formula `dst = dst * alpha^2 + f'`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `src` is not double the length of `dst`.
+    // TODO(andrew): Make folding factor generic.
+    // TODO(andrew): Fold directly into FRI layer to prevent allocation.
+    fn fold_circle_into_line<F: Field>(
+        dst: &mut LineEvaluation<Self, SecureField, BitReversedOrder>,
+        src: &CircleEvaluation<Self, F, BitReversedOrder>,
+        alpha: SecureField,
+    ) where
+        F: ExtensionOf<BaseField>,
+        SecureField: ExtensionOf<F> + Field,
+        Self: PolyOps<F>;
+}
+
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
-pub struct FriProver<H: Hasher> {
+pub struct FriProver<B: FriOps, H: Hasher> {
     config: FriConfig,
-    inner_layers: Vec<FriLayerProver<H>>,
+    inner_layers: Vec<FriLayerProver<B, H>>,
     last_layer_poly: LinePoly<SecureField>,
     /// Unique sizes of committed columns sorted in descending order.
     column_log_sizes: Vec<u32>,
 }
 
-impl<H: Hasher<NativeType = u8>> FriProver<H> {
+impl<B: FriOps, H: Hasher<NativeType = u8>> FriProver<B, H> {
     /// Commits to multiple [CircleEvaluation]s.
     ///
     /// `columns` must be provided in descending order by size.
@@ -109,7 +144,7 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
     where
         F: ExtensionOf<BaseField>,
         SecureField: ExtensionOf<F>,
-        B: FieldOps<F>,
+        B: PolyOps<F>,
     {
         assert!(!columns.is_empty(), "no columns");
         assert!(columns.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
@@ -141,12 +176,13 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         config: FriConfig,
         columns: &[CircleEvaluation<B, F, BitReversedOrder>],
     ) -> (
-        Vec<FriLayerProver<H>>,
+        Vec<FriLayerProver<B, H>>,
         LineEvaluation<B, SecureField, BitReversedOrder>,
     )
     where
         F: ExtensionOf<BaseField>,
         SecureField: ExtensionOf<F>,
+        B: FriOps + PolyOps<F>,
     {
         // Returns the length of the [LineEvaluation] a [CircleEvaluation] gets folded into.
         let folded_len = |e: &CircleEvaluation<B, F, _>| e.len() >> CIRCLE_TO_LINE_FOLD_STEP;
@@ -165,13 +201,13 @@ impl<H: Hasher<NativeType = u8>> FriProver<H> {
         while layer_evaluation.len() > config.last_layer_domain_size() {
             // Check for any columns (circle poly evaluations) that should be combined.
             while let Some(column) = columns.next_if(|c| folded_len(c) == layer_evaluation.len()) {
-                fold_circle_into_line(&mut layer_evaluation, column, circle_poly_alpha);
+                B::fold_circle_into_line(&mut layer_evaluation, column, circle_poly_alpha);
             }
 
             let layer = FriLayerProver::new(layer_evaluation);
             channel.mix_digest(layer.merkle_tree.root());
             let folding_alpha = channel.draw_felt();
-            let folded_layer_evaluation = fold_line(&layer.evaluation, folding_alpha);
+            let folded_layer_evaluation = B::fold_line(&layer.evaluation, folding_alpha);
 
             layer_evaluation = folded_layer_evaluation;
             layers.push(layer);
@@ -587,10 +623,10 @@ pub struct FriProof<H: Hasher> {
 
 /// Number of folds for univariate polynomials.
 // TODO(andrew): Support different step sizes.
-const FOLD_STEP: u32 = 1;
+pub const FOLD_STEP: u32 = 1;
 
 /// Number of folds when folding a circle polynomial to univariate polynomial.
-const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
+pub const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
 
 /// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
 ///
@@ -697,7 +733,7 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
         &self,
         queries: &Queries,
         evals_at_queries: &[SecureField],
-    ) -> Result<SparseLineEvaluation<SecureField>, VerificationError> {
+    ) -> Result<SparseLineEvaluation, VerificationError> {
         // Evals provided by the verifier.
         let mut evals_at_queries = evals_at_queries.iter().copied();
 
@@ -753,14 +789,15 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
 /// The polynomial evaluations are viewed as evaluation of a polynomial on multiple distinct cosets
 /// of size two. Each leaf of the merkle tree commits to a single coset evaluation.
 // TODO(andrew): Support different step sizes.
-struct FriLayerProver<H: Hasher> {
+struct FriLayerProver<B: FriOps, H: Hasher> {
     evaluation: LineEvaluation<B, SecureField, BitReversedOrder>,
     merkle_tree: MerkleTree<SecureField, H>,
 }
 
-impl<H: Hasher<NativeType = u8>> FriLayerProver<H> {
+impl<B: FriOps, H: Hasher<NativeType = u8>> FriLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B, SecureField, BitReversedOrder>) -> Self {
-        // TODO: Commit on slice.
+        // TODO(spapini): Commit on slice.
+        // TODO(spapini): Merkle tree in backend.
         let merkle_tree = MerkleTree::commit(vec![evaluation.values.to_vec()]);
         #[allow(unreachable_code)]
         FriLayerProver {
@@ -810,14 +847,14 @@ impl<H: Hasher<NativeType = u8>> FriLayerProver<H> {
 /// Holds a foldable subset of circle polynomial evaluations.
 #[derive(Debug, Clone)]
 pub struct SparseCircleEvaluation<F: ExtensionOf<BaseField>> {
-    subcircle_evals: Vec<CircleEvaluation<B, F, BitReversedOrder>>,
+    subcircle_evals: Vec<CircleEvaluation<CPUBackend, F, BitReversedOrder>>,
 }
 
 impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F> {
     /// # Panics
     ///
     /// Panics if the evaluation domain sizes don't equal the folding factor.
-    pub fn new(subcircle_evals: Vec<CircleEvaluation<B, F, BitReversedOrder>>) -> Self {
+    pub fn new(subcircle_evals: Vec<CircleEvaluation<CPUBackend, F, BitReversedOrder>>) -> Self {
         let folding_factor = 1 << CIRCLE_TO_LINE_FOLD_STEP;
         assert!(subcircle_evals.iter().all(|e| e.len() == folding_factor));
         Self { subcircle_evals }
@@ -832,113 +869,36 @@ impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F> {
             .map(|e| {
                 let buffer_domain = LineDomain::new(e.domain.half_coset);
                 let mut buffer = LineEvaluation::new(buffer_domain, vec![SecureField::zero()]);
-                fold_circle_into_line(&mut buffer, &e, alpha);
+                CPUBackend::fold_circle_into_line(&mut buffer, &e, alpha);
                 buffer.values[0]
             })
             .collect()
     }
 }
 
-/// Holds a foldable subset of univariate polynomial evaluations.
+/// Holds a small foldable subset of univariate SecureField polynomial evaluations.
+/// Evaluation is held at the CPU backend.
 #[derive(Debug, Clone)]
-struct SparseLineEvaluation<F: ExtensionOf<BaseField>> {
-    subline_evals: Vec<CPULineEvaluation<F, BitReversedOrder>>,
+struct SparseLineEvaluation {
+    subline_evals: Vec<CPULineEvaluation<SecureField, BitReversedOrder>>,
 }
 
-impl<F: ExtensionOf<BaseField>> SparseLineEvaluation<F> {
+impl SparseLineEvaluation {
     /// # Panics
     ///
     /// Panics if the evaluation domain sizes don't equal the folding factor.
-    fn new(subline_evals: Vec<CPULineEvaluation<F, BitReversedOrder>>) -> Self {
+    fn new(subline_evals: Vec<CPULineEvaluation<SecureField, BitReversedOrder>>) -> Self {
         let folding_factor = 1 << FOLD_STEP;
         assert!(subline_evals.iter().all(|e| e.len() == folding_factor));
         Self { subline_evals }
     }
 
-    fn fold(self, alpha: F) -> Vec<F> {
+    fn fold(self, alpha: SecureField) -> Vec<SecureField> {
         self.subline_evals
             .into_iter()
-            .map(|e| fold_line(&e, alpha).values[0])
+            .map(|e| CPUBackend::fold_line(&e, alpha).values[0])
             .collect()
     }
-}
-
-/// Folds a degree `d` polynomial into a degree `d/2` polynomial.
-///
-/// Let `eval` be a polynomial evaluated on a [LineDomain] `E`, `alpha` be a random field element
-/// and `pi(x) = 2x^2 - 1` be the circle's x-coordinate doubling map. This function returns
-/// `f' = f0 + alpha * f1` evaluated on `pi(E)` such that `2f(x) = f0(pi(x)) + x * f1(pi(x))`.
-///
-/// # Panics
-///
-/// Panics if there are less than two evaluations.
-pub fn fold_line<F: ExtensionOf<BaseField>>(
-    eval: &LineEvaluation<B, F, BitReversedOrder>,
-    alpha: F,
-) -> LineEvaluation<B, F, BitReversedOrder> {
-    let n = eval.len();
-    assert!(n >= 2, "Evaluation too small");
-
-    let domain = eval.domain();
-
-    let folded_values = eval
-        .values
-        .array_chunks()
-        .enumerate()
-        .map(|(i, &[f_x, f_neg_x])| {
-            // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
-            let x = domain.at(bit_reverse_index(i << FOLD_STEP, domain.log_size()));
-
-            let (mut f0, mut f1) = (f_x, f_neg_x);
-            ibutterfly(&mut f0, &mut f1, x.inverse());
-            f0 + alpha * f1
-        })
-        .collect();
-
-    LineEvaluation::new(domain.double(), folded_values)
-}
-
-/// Folds and accumulates a degree `d` circle polynomial into a degree `d/2` univariate polynomial.
-///
-/// Let `src` be the evaluation of a circle polynomial `f` on a [CircleDomain] `E`. This function
-/// computes evaluations of `f' = f0 + alpha * f1` on the x-coordinates of `E` such that
-/// `2f(p) = f0(px) + py * f1(px)`. The evaluations of `f'` are accumulated into `dst` by the
-/// formula `dst = dst * alpha^2 + f'`.
-///
-/// # Panics
-///
-/// Panics if `src` is not double the length of `dst`.
-// TODO(andrew): Make folding factor generic.
-// TODO(andrew): Fold directly into FRI layer to prevent allocation.
-fn fold_circle_into_line<F>(
-    dst: &mut LineEvaluation<B, SecureField, BitReversedOrder>,
-    src: &CircleEvaluation<B, F, BitReversedOrder>,
-    alpha: SecureField,
-) where
-    F: ExtensionOf<BaseField>,
-    SecureField: ExtensionOf<F> + Field,
-{
-    assert_eq!(src.len() >> CIRCLE_TO_LINE_FOLD_STEP, dst.len());
-
-    let domain = src.domain;
-    let alpha_sq = alpha * alpha;
-
-    zip(&mut dst.values, src.array_chunks())
-        .enumerate()
-        .for_each(|(i, (dst, &[f_p, f_neg_p]))| {
-            // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
-            let p = domain.at(bit_reverse_index(
-                i << CIRCLE_TO_LINE_FOLD_STEP,
-                domain.log_size(),
-            ));
-
-            // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
-            let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
-            ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
-            let f_prime = alpha * f1_px + f0_px;
-
-            *dst = *dst * alpha_sq + f_prime;
-        });
 }
 
 #[cfg(test)]
@@ -950,15 +910,15 @@ mod tests {
     use super::{get_opening_positions, SparseCircleEvaluation, VerificationError};
     use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly, CPULineEvaluation};
+    use crate::core::backend::CPUBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::ExtensionOf;
+    use crate::core::fields::{ExtensionOf, Field};
     use crate::core::fri::{
-        fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig, FriVerifier,
-        CIRCLE_TO_LINE_FOLD_STEP,
+        CirclePolyDegreeBound, FriConfig, FriOps, FriVerifier, CIRCLE_TO_LINE_FOLD_STEP,
     };
     use crate::core::poly::circle::{CircleDomain, CircleEvaluation};
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
@@ -967,31 +927,35 @@ mod tests {
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
-    type FriProver = super::FriProver<Blake2sHasher>;
+
+    type FriProver = super::FriProver<CPUBackend, Blake2sHasher>;
 
     #[test]
     fn fold_line_works() {
         const DEGREE: usize = 8;
         // Coefficients are bit-reversed.
-        let even_coeffs: [BaseField; DEGREE / 2] = [1, 2, 1, 3].map(BaseField::from_u32_unchecked);
-        let odd_coeffs: [BaseField; DEGREE / 2] = [3, 5, 4, 1].map(BaseField::from_u32_unchecked);
+        let even_coeffs: [SecureField; DEGREE / 2] = [1, 2, 1, 3]
+            .map(BaseField::from_u32_unchecked)
+            .map(SecureField::from);
+        let odd_coeffs: [SecureField; DEGREE / 2] = [3, 5, 4, 1]
+            .map(BaseField::from_u32_unchecked)
+            .map(SecureField::from);
         let poly = LinePoly::new([even_coeffs, odd_coeffs].concat());
         let even_poly = LinePoly::new(even_coeffs.to_vec());
         let odd_poly = LinePoly::new(odd_coeffs.to_vec());
-        let alpha = BaseField::from_u32_unchecked(19283);
+        let alpha = BaseField::from_u32_unchecked(19283).into();
         let domain = LineDomain::new(Coset::half_odds(DEGREE.ilog2()));
         let drp_domain = domain.double();
         let evals = poly.evaluate(domain).bit_reverse();
-        let two = BaseField::from_u32_unchecked(2);
 
-        let drp_evals = fold_line(&evals, alpha);
+        let drp_evals = CPUBackend::fold_line(&evals, alpha);
 
         assert_eq!(drp_evals.len(), DEGREE / 2);
         let drp_evals = drp_evals.bit_reverse();
         for (i, (&drp_eval, x)) in zip(&drp_evals.values, drp_domain).enumerate() {
-            let f_e = even_poly.eval_at_point(x);
-            let f_o = odd_poly.eval_at_point(x);
-            assert_eq!(drp_eval, two * (f_e + alpha * f_o), "mismatch at {i}");
+            let f_e: SecureField = even_poly.eval_at_point(x.into());
+            let f_o: SecureField = odd_poly.eval_at_point(x.into());
+            assert_eq!(drp_eval, (f_e + alpha * f_o).double(), "mismatch at {i}");
         }
     }
 
@@ -1005,7 +969,7 @@ mod tests {
 
         let mut folded_evaluation =
             LineEvaluation::new(folded_domain, vec![Zero::zero(); num_folded_evals]);
-        fold_circle_into_line(&mut folded_evaluation, &circle_evaluation, alpha);
+        CPUBackend::fold_circle_into_line(&mut folded_evaluation, &circle_evaluation, alpha);
 
         assert_eq!(
             log_degree_bound(folded_evaluation),
