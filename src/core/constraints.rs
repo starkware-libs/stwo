@@ -5,7 +5,7 @@ use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::ExtensionOf;
-use super::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
+use super::poly::circle::{CircleEvaluation, PolyOps};
 use super::poly::{BitReversedOrder, NaturalOrder};
 use crate::core::fields::ComplexConjugate;
 
@@ -98,25 +98,6 @@ pub fn complex_conjugate_line(
 pub trait PolyOracle<F: ExtensionOf<BaseField>>: Copy {
     fn get_at(&self, index: CirclePointIndex) -> F;
     fn point(&self) -> CirclePoint<F>;
-}
-
-#[derive(Copy, Clone)]
-pub struct EvalByPoly<'a, B: FieldOps<F> + PolyOps<BaseField>, F: ExtensionOf<BaseField>> {
-    pub point: CirclePoint<F>,
-    pub poly: &'a CirclePoly<B, BaseField>,
-}
-
-impl<'a, B: FieldOps<F> + Backend, F: ExtensionOf<BaseField>> PolyOracle<F>
-    for EvalByPoly<'a, B, F>
-{
-    fn point(&self) -> CirclePoint<F> {
-        self.point
-    }
-
-    fn get_at(&self, index: CirclePointIndex) -> F {
-        let eval_point = self.point + index.to_point().into_ef();
-        self.poly.eval_at_point(eval_point)
-    }
 }
 
 // TODO(spapini): make an iterator instead, so we do all computations beforehand.
