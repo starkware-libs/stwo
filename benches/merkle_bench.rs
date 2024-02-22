@@ -4,11 +4,11 @@ use criterion::measurement::WallTime;
 use criterion::{
     criterion_group, criterion_main, BatchSize, BenchmarkGroup, BenchmarkId, Criterion, Throughput,
 };
-use prover_research::commitment_scheme::blake2_hash::Blake2sHasher;
-use prover_research::commitment_scheme::blake3_hash::Blake3Hasher;
-use prover_research::commitment_scheme::hasher::{Hasher, Name};
-use prover_research::commitment_scheme::merkle_tree::MerkleTree;
-use prover_research::core::fields::m31::M31;
+use stwo::commitment_scheme::blake2_hash::Blake2sHasher;
+use stwo::commitment_scheme::blake3_hash::Blake3Hasher;
+use stwo::commitment_scheme::hasher::{Hasher, Name};
+use stwo::commitment_scheme::merkle_tree::MerkleTree;
+use stwo::core::fields::m31::M31;
 
 static N_BYTES_U32: usize = 4;
 
