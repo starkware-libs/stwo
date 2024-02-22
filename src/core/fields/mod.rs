@@ -12,6 +12,9 @@ pub mod qm31;
 pub trait FieldOps<F: Field> {
     type Column: Column<F>;
     fn bit_reverse_column(column: Self::Column) -> Self::Column;
+
+    // TODO(Ohad): change to use a mutable slice.
+    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column);
 }
 pub type Col<B, F> = <B as FieldOps<F>>::Column;
 pub trait Column<F>: Clone + Debug + Index<usize, Output = F> + FromIterator<F> {
