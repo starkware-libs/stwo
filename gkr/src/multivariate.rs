@@ -55,7 +55,7 @@ pub fn hypercube_sum(
                 *assignment = if (point >> i) & 1 == 1 {
                     SecureField::one()
                 } else {
-                    -SecureField::one()
+                    SecureField::zero()
                 };
             });
 

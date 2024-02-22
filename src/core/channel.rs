@@ -10,7 +10,7 @@ pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
 pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ChannelTime {
     n_challenges: usize,
     n_sent: usize,
@@ -49,6 +49,7 @@ pub trait Channel {
 }
 
 /// A channel that can be used to draw random elements from a [Blake2sHash] digest.
+#[derive(Clone)]
 pub struct Blake2sChannel {
     digest: Blake2sHash,
     channel_time: ChannelTime,

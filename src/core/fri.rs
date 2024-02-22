@@ -756,6 +756,12 @@ impl<F: ExtensionOf<BaseField>> SparseLineEvaluation<F> {
         Self { subline_evals }
     }
 
+    /// An iterator where each iteration calls the provided closure `F: FnMut() -> Option<T>`.
+    ///
+    /// This `struct` is created by the [`iter::from_fn()`] function.
+    /// See its documentation for more.
+    ///
+    /// [`iter::from_fn()`]: std::iter::from_fn
     #[allow(dead_code)]
     fn fold(self, alpha: F) -> Vec<F> {
         self.subline_evals
@@ -801,7 +807,7 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
 
 /// Folds and accumulates a degree `d` circle polynomial into a degree `d/2` univariate polynomial.
 ///
-/// Let `src` be the evaluation of a circle polynomial `f` on a [CircleDomain] `E`. This function
+/// Let `src` be the evaluation of a circle polynomial `f` on a [`CircleDomain`] `E`. This function
 /// computes evaluations of `f' = f0 + alpha * f1` on the x-coordinates of `E` such that
 /// `2f(p) = f0(px) + py * f1(px)`. The evaluations of `f'` are accumulated into `dst` by the
 /// formula `dst = dst * alpha^2 + f'`.
@@ -809,8 +815,11 @@ pub fn fold_line<F: ExtensionOf<BaseField>>(
 /// # Panics
 ///
 /// Panics if `src` is not double the length of `dst`.
+///
+/// [`CircleDomain`]: crate::core::poly::circle::CircleDomain
 // TODO(andrew): Make folding factor generic.
 // TODO(andrew): Fold directly into FRI layer to prevent allocation.
+//
 fn fold_circle_into_line<F>(
     dst: &mut LineEvaluation<SecureField, BitReversedOrder>,
     src: &CircleEvaluation<F, BitReversedOrder>,

@@ -355,5 +355,25 @@ macro_rules! impl_extension_field {
                 iter.fold(first, |a, b| a * b)
             }
         }
+
+        impl<'a> Sum<&'a $field_name> for $field_name {
+            fn sum<I>(mut iter: I) -> Self
+            where
+                I: Iterator<Item = &'a Self>,
+            {
+                let first = iter.next().copied().unwrap_or_else(<$field_name>::zero);
+                iter.fold(first, |a, &b| a + b)
+            }
+        }
+
+        impl<'a> Product<&'a $field_name> for $field_name {
+            fn product<I>(mut iter: I) -> Self
+            where
+                I: Iterator<Item = &'a Self>,
+            {
+                let first = iter.next().copied().unwrap_or_else(<$field_name>::one);
+                iter.fold(first, |a, &b| a * b)
+            }
+        }
     };
 }

@@ -214,3 +214,9 @@ impl<F: Field> Sum for Fraction<F> {
         iter.fold(Self::zero(), |a, b| a + b)
     }
 }
+
+impl<'a, F: Field> Sum<&'a Self> for Fraction<F> {
+    fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
+        iter.fold(Self::zero(), |a, &b| a + b)
+    }
+}
