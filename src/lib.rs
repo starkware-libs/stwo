@@ -6,7 +6,8 @@
     new_uninit,
     slice_group_by,
     stdsimd,
-    get_many_mut
+    get_many_mut,
+    int_roundings
 )]
 pub mod commitment_scheme;
 pub mod core;

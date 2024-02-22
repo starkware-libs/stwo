@@ -55,6 +55,10 @@ impl FieldOps<BaseField> for AVX512Backend {
         }
         bit_reverse_m31(&mut column.data);
     }
+
+    fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {
+        todo!()
+    }
 }
 
 impl Column<BaseField> for BaseFieldVec {
