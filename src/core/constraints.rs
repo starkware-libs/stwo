@@ -1,12 +1,9 @@
 use num_traits::One;
 
-use super::backend::Backend;
-use super::circle::{CirclePoint, CirclePointIndex, Coset};
+use super::circle::{CirclePoint, Coset};
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::{ExtensionOf, FieldOps};
-use super::poly::circle::{CircleEvaluation, PolyOps};
-use super::poly::{BitReversedOrder, NaturalOrder};
+use super::fields::ExtensionOf;
 use crate::core::fields::ComplexConjugate;
 
 /// Evaluates a vanishing polynomial of the coset at a point.
@@ -91,59 +88,6 @@ pub fn complex_conjugate_line(
     value
         + (value.complex_conjugate() - value) * (-point.y + p.y)
             / (point.complex_conjugate().y - point.y)
-}
-
-/// Utils for computing constraints.
-/// Oracle to a polynomial constrained to a coset.
-pub trait PolyOracle<F: ExtensionOf<BaseField>>: Copy {
-    fn get_at(&self, index: CirclePointIndex) -> F;
-    fn point(&self) -> CirclePoint<F>;
-}
-
-// TODO(spapini): make an iterator instead, so we do all computations beforehand.
-/// Polynomial evaluation over the base circle domain. The evaluation could be over an extension of
-/// the base field.
-#[derive(Copy, Clone)]
-pub struct EvalByEvaluation<'a, B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder = NaturalOrder>
-{
-    pub offset: CirclePointIndex,
-    pub eval: &'a CircleEvaluation<B, F, EvalOrder>,
-}
-
-impl<'a, B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder>
-    EvalByEvaluation<'a, B, F, EvalOrder>
-{
-    pub fn new(offset: CirclePointIndex, eval: &'a CircleEvaluation<B, F, EvalOrder>) -> Self {
-        Self { offset, eval }
-    }
-}
-
-impl<'a, B: PolyOps<F> + Backend, F: ExtensionOf<BaseField>> PolyOracle<F>
-    for EvalByEvaluation<'a, B, F>
-{
-    fn point(&self) -> CirclePoint<F> {
-        // TODO(AlonH): Separate the point field generality from the evaluation field generality and
-        // remove the `into_ef` here.
-        self.offset.to_point().into_ef()
-    }
-
-    fn get_at(&self, index: CirclePointIndex) -> F {
-        self.eval.get_at(index + self.offset)
-    }
-}
-
-impl<'a, B: PolyOps<F> + Backend, F: ExtensionOf<BaseField>> PolyOracle<F>
-    for EvalByEvaluation<'a, B, F, BitReversedOrder>
-{
-    fn point(&self) -> CirclePoint<F> {
-        // TODO(AlonH): Separate the point field generality from the evaluation field generality and
-        // remove the `into_ef` here.
-        self.offset.to_point().into_ef()
-    }
-
-    fn get_at(&self, index: CirclePointIndex) -> F {
-        self.eval.get_at(index + self.offset)
-    }
 }
 
 #[cfg(test)]

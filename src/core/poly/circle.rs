@@ -432,7 +432,6 @@ mod tests {
     use super::{CanonicCoset, CircleDomain, Coset};
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
     use crate::core::circle::{CirclePoint, CirclePointIndex};
-    use crate::core::constraints::{EvalByEvaluation, PolyOracle};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::Field;
     use crate::core::poly::NaturalOrder;
@@ -525,12 +524,7 @@ mod tests {
                 .iter_indices()
                 .map(|ind| {
                     // The constraint is poly0(x+off0)^2 = poly1(x+off1).
-                    EvalByEvaluation::new(domain0.initial_index(), &eval0)
-                        .get_at(ind)
-                        .square()
-                        - EvalByEvaluation::new(domain1.index_at(1), &eval1)
-                            .get_at(ind)
-                            .square()
+                    eval0.get_at(ind).square() - eval1.get_at(domain1.index_at(1) + ind).square()
                 })
                 .collect(),
         );
