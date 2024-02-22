@@ -1,8 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use prover_research::core::fields::m31::{M31, P};
-use prover_research::core::fields::qm31::QM31;
-use prover_research::math::matrix::{RowMajorMatrix, SquareMatrix};
 use rand::Rng;
+use stwo::core::fields::m31::{M31, P};
+use stwo::core::fields::qm31::QM31;
+use stwo::math::matrix::{RowMajorMatrix, SquareMatrix};
 
 const MATRIX_SIZE: usize = 24;
 const QM31_MATRIX_SIZE: usize = 6;

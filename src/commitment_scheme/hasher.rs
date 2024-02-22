@@ -11,8 +11,8 @@ pub trait Name {
 /// # Example
 ///
 /// ```
-/// use prover_research::commitment_scheme::blake3_hash::Blake3Hasher;
-/// use prover_research::commitment_scheme::hasher::Hasher;
+/// use stwo::commitment_scheme::blake3_hash::Blake3Hasher;
+/// use stwo::commitment_scheme::hasher::Hasher;
 ///
 /// let mut hasher = Blake3Hasher::new();
 /// hasher.update(&[1, 2, 3]);

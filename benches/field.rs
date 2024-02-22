@@ -1,8 +1,8 @@
-use prover_research::core::fields::cm31::CM31;
-use prover_research::core::fields::m31::{M31, P};
-use prover_research::core::fields::qm31::SecureField;
 use rand::rngs::ThreadRng;
 use rand::Rng;
+use stwo::core::fields::cm31::CM31;
+use stwo::core::fields::m31::{M31, P};
+use stwo::core::fields::qm31::SecureField;
 pub const N_ELEMENTS: usize = 1 << 16;
 pub const N_STATE_ELEMENTS: usize = 8;
 
@@ -130,13 +130,13 @@ pub fn qm31_operations_bench(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
-    use prover_research::platform;
+    use stwo::platform;
     if !platform::avx512_detected() {
         return;
     }
 
     // AVX512 is supported by the platform.
-    use prover_research::core::fields::avx512_m31::{K_BLOCK_SIZE, M31AVX512, M512ONE};
+    use stwo::core::fields::avx512_m31::{K_BLOCK_SIZE, M31AVX512, M512ONE};
 
     let mut rng = rand::thread_rng();
     let mut elements: Vec<M31AVX512> = Vec::new();

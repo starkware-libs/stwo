@@ -16,10 +16,10 @@ use crate::core::fields::{Field, IntoSlice};
 /// # Example
 ///
 /// ```rust
-/// use prover_research::commitment_scheme::merkle_input::MerkleTreeInput;
-/// use prover_research::commitment_scheme::mixed_degree_merkle_tree::*;
-/// use prover_research::commitment_scheme::blake3_hash::Blake3Hasher;
-/// use prover_research::core::fields::m31::M31;
+/// use stwo::commitment_scheme::merkle_input::MerkleTreeInput;
+/// use stwo::commitment_scheme::mixed_degree_merkle_tree::*;
+/// use stwo::commitment_scheme::blake3_hash::Blake3Hasher;
+/// use stwo::core::fields::m31::M31;
 ///
 /// let mut input = MerkleTreeInput::<M31>::new();
 /// let column = vec![M31::from_u32_unchecked(0); 1024];
@@ -99,12 +99,12 @@ where
     /// # Example
     ///
     /// ```rust
-    /// use prover_research::commitment_scheme::blake3_hash::Blake3Hasher;
-    /// use prover_research::commitment_scheme::merkle_input::MerkleTreeInput;
-    /// use prover_research::commitment_scheme::mixed_degree_merkle_tree::{
+    /// use stwo::commitment_scheme::blake3_hash::Blake3Hasher;
+    /// use stwo::commitment_scheme::merkle_input::MerkleTreeInput;
+    /// use stwo::commitment_scheme::mixed_degree_merkle_tree::{
     ///     MixedDegreeMerkleTree, MixedDegreeMerkleTreeConfig,
     /// };
-    /// use prover_research::core::fields::m31::M31;
+    /// use stwo::core::fields::m31::M31;
     ///
     /// let mut input = MerkleTreeInput::<M31>::new();
     /// let column_0 = vec![M31::from_u32_unchecked(0); 1024];
