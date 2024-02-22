@@ -64,7 +64,7 @@ impl FieldOps<BaseField> for AVX512Backend {
 impl Column<BaseField> for BaseFieldVec {
     fn zeros(len: usize) -> Self {
         Self {
-            data: vec![PackedBaseField::default(); len.div_ceil(K_ELEMENTS)],
+            data: vec![PackedBaseField::default(); 0],
             length: len,
         }
     }
