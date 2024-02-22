@@ -50,14 +50,14 @@ pub trait ComponentVisitor<B: Backend> {
 /// Holds the mask offsets at each column.
 /// Holds a vector with an entry for each column. Each entry holds the offsets
 /// of the mask at that column.
-pub struct Mask(pub ColumnVec<usize>);
+pub struct Mask(pub ColumnVec<Vec<usize>>);
 
 impl Mask {
     pub fn to_points(
         &self,
         domains: Vec<CanonicCoset>,
         point: CirclePoint<SecureField>,
-    ) -> ColumnVec<CirclePoint<SecureField>> {
+    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
         self.iter()
             .zip(domains.iter())
             .map(|(col, domain)| {
@@ -70,7 +70,7 @@ impl Mask {
 }
 
 impl Deref for Mask {
-    type Target = ColumnVec<usize>;
+    type Target = ColumnVec<Vec<usize>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -105,7 +105,10 @@ pub trait Component<B: Backend> {
         &self,
         point: CirclePoint<SecureField>,
         trace: &ComponentTrace<'_, B>,
-    ) -> (ColumnVec<CirclePoint<SecureField>>, ColumnVec<SecureField>) {
+    ) -> (
+        ColumnVec<Vec<CirclePoint<SecureField>>>,
+        ColumnVec<Vec<SecureField>>,
+    ) {
         let domains = trace
             .columns
             .iter()

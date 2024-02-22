@@ -57,7 +57,7 @@ pub struct FibonacciProof {
     pub trace_decommitments: Vec<MerkleDecommitment<BaseField, MerkleHasher>>,
     pub composition_polynomial_commitment: <MerkleHasher as Hasher>::Hash,
     pub composition_polynomial_decommitment: MerkleDecommitment<SecureField, MerkleHasher>,
-    pub trace_oods_values: ColumnVec<SecureField>,
+    pub trace_oods_values: ColumnVec<Vec<SecureField>>,
     pub composition_polynomial_opened_values: Vec<SecureField>,
     pub trace_opened_values: Vec<BaseField>,
     pub proof_of_work: ProofOfWorkProof,
