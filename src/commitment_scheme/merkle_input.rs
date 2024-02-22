@@ -124,8 +124,8 @@ pub struct MerkleTreeConfig {
 
 impl MerkleTreeConfig {
     pub fn sort_queries_by_layer(&self, queries: &[Vec<usize>]) -> Vec<Vec<Vec<usize>>> {
-        let mut queries_to_layers = vec![vec![]; self.injected_depths_map.len()];
-        (1..=queries_to_layers.len()).for_each(|i| {
+        let mut queries_to_layers = vec![vec![]; self.height()];
+        (1..=self.height()).for_each(|i| {
             let columns_in_layer = self.column_indices_at(i);
             columns_in_layer.iter().for_each(|&column_index| {
                 queries_to_layers[i - 1].push(queries[column_index].clone());
@@ -139,6 +139,10 @@ impl MerkleTreeConfig {
             .iter()
             .map(|&index| self.column_sizes[index])
             .collect::<Vec<usize>>()
+    }
+
+    pub fn height(&self) -> usize {
+        self.injected_depths_map.len()
     }
 
     fn column_indices_at(&self, depth: usize) -> &[usize] {
