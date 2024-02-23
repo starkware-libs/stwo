@@ -2,6 +2,7 @@ use super::fft::ifft;
 use super::m31::PackedBaseField;
 use super::{as_cpu_vec, AVX512Backend};
 use crate::core::backend::avx512::fft::rfft;
+use crate::core::backend::avx512::BaseFieldVec;
 use crate::core::backend::CPUBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Col, Field};
@@ -59,22 +60,43 @@ impl PolyOps<BaseField> for AVX512Backend {
         poly: &CirclePoly<Self, BaseField>,
         domain: CircleDomain,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
-        let mut values = poly.coeffs.clone();
-
         // TODO(spapini): Precompute twiddles.
-        let twiddles = rfft::get_twiddle_dbls(domain);
         // TODO(spapini): Handle small cases.
-        let log_size = values.length.ilog2();
+        let log_size = domain.log_size() as usize;
+        let fft_log_size = poly.log_size() as usize;
+        assert!(log_size >= fft_log_size);
 
-        unsafe {
-            rfft::fft(
-                std::mem::transmute(values.data.as_mut_ptr()),
-                &twiddles[1..],
-                log_size as usize,
-            );
+        let log_jump = log_size - fft_log_size;
+        let twiddles = rfft::get_twiddle_dbls(domain);
+
+        let mut values = Vec::with_capacity(domain.size() >> 4);
+        for i in 0..(1 << log_jump) {
+            let twiddles = (1..fft_log_size)
+                .map(|layer_i| {
+                    &twiddles[layer_i]
+                        [i << (fft_log_size - 1 - layer_i)..(i + 1) << (fft_log_size - 1 - layer_i)]
+                })
+                .collect::<Vec<_>>();
+            values.extend_from_slice(&poly.coeffs.data);
+
+            unsafe {
+                rfft::fft(
+                    std::mem::transmute(
+                        values[i << (fft_log_size - 4)..(i + 1) << (fft_log_size - 4)].as_mut_ptr(),
+                    ),
+                    &twiddles,
+                    fft_log_size,
+                );
+            }
         }
 
-        CircleEvaluation::new(domain, values)
+        CircleEvaluation::new(
+            domain,
+            BaseFieldVec {
+                data: values,
+                length: domain.size(),
+            },
+        )
     }
 
     fn extend(_poly: &CirclePoly<Self, BaseField>, _log_size: u32) -> CirclePoly<Self, BaseField> {
@@ -87,7 +109,7 @@ mod tests {
     use crate::core::backend::avx512::AVX512Backend;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::Column;
-    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+    use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
     use crate::core::poly::BitReversedOrder;
 
     #[test]
@@ -103,5 +125,23 @@ mod tests {
         let poly = evaluation.clone().interpolate();
         let evaluation2 = poly.evaluate(domain);
         assert_eq!(evaluation.values.to_vec(), evaluation2.values.to_vec());
+    }
+
+    #[test]
+    fn test_eval_extension() {
+        const LOG_SIZE: u32 = 6;
+        let domain = CircleDomain::constraint_evaluation_domain(LOG_SIZE);
+        let domain_ext = CircleDomain::constraint_evaluation_domain(LOG_SIZE + 3);
+        let evaluation = CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(
+            domain,
+            (0..(1 << LOG_SIZE))
+                .map(BaseField::from_u32_unchecked)
+                .collect(),
+        );
+        let poly = evaluation.clone().interpolate();
+        let evaluation2 = poly.evaluate(domain_ext);
+        for i in 0..(1 << LOG_SIZE) {
+            assert_eq!(evaluation2.values.at(i), evaluation.values.at(i));
+        }
     }
 }
