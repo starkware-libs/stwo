@@ -11,6 +11,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;
 
 pub struct FibonacciComponent {
@@ -85,7 +86,7 @@ impl Component<CPUBackend> for FibonacciComponent {
         let poly = &trace.columns[0];
         let trace_domain = CanonicCoset::new(self.log_size);
         let trace_eval_domain = trace_domain.evaluation_domain(self.log_size + 1);
-        let trace_eval = poly.evaluate(trace_eval_domain);
+        let trace_eval = poly.evaluate(trace_eval_domain).bit_reverse();
 
         // Step constraint.
         let constraint_log_degree_bound = trace_domain.log_size() + 1;
@@ -104,7 +105,7 @@ impl Component<CPUBackend> for FibonacciComponent {
             for (i, point) in point_coset.iter().enumerate() {
                 let mask = [eval[i], eval[i as isize + mul], eval[i as isize + 2 * mul]];
                 let res = self.step_constraint_eval_quotient_by_mask(point, &mask);
-                accum.accumulate(i + off, res);
+                accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
             }
         }
 
@@ -124,7 +125,7 @@ impl Component<CPUBackend> for FibonacciComponent {
             for (i, point) in point_coset.iter().enumerate() {
                 let mask = [eval[i]];
                 let res = self.boundary_constraint_eval_quotient_by_mask(point, &mask);
-                accum.accumulate(i + off, res);
+                accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
             }
         }
     }

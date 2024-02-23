@@ -1218,7 +1218,7 @@ mod tests {
         let poly = CPUCirclePoly::<F>::new(vec![F::one(); 1 << log_degree]);
         let coset = Coset::half_odds(log_degree + log_blowup_factor - 1);
         let domain = CircleDomain::new(coset);
-        poly.evaluate(domain).bit_reverse()
+        poly.evaluate(domain)
     }
 
     /// Returns the log degree bound of a polynomial.

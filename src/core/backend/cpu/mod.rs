@@ -7,7 +7,6 @@ use super::{Backend, FieldOps};
 use crate::core::fields::{Column, Field};
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::poly::line::LineEvaluation;
-use crate::core::poly::NaturalOrder;
 use crate::core::utils::bit_reverse;
 
 #[derive(Copy, Clone, Debug)]
@@ -39,7 +38,6 @@ impl<F: Field> Column<F> for Vec<F> {
 }
 
 pub type CPUCirclePoly<F> = CirclePoly<CPUBackend, F>;
-pub type CPUCircleEvaluation<F, EvalOrder = NaturalOrder> =
-    CircleEvaluation<CPUBackend, F, EvalOrder>;
+pub type CPUCircleEvaluation<F, EvalOrder> = CircleEvaluation<CPUBackend, F, EvalOrder>;
 // TODO(spapini): Remove the EvalOrder on LineEvaluation.
-pub type CPULineEvaluation<F, EvalOrder = NaturalOrder> = LineEvaluation<CPUBackend, F, EvalOrder>;
+pub type CPULineEvaluation<F, EvalOrder> = LineEvaluation<CPUBackend, F, EvalOrder>;

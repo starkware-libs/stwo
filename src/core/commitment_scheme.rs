@@ -29,7 +29,7 @@ impl<F: ExtensionOf<BaseField>> CommitmentSchemeProver<F> {
     ) -> Self {
         assert_eq!(polynomials.len(), domains.len(),);
         let evaluations = zip(&polynomials, domains)
-            .map(|(poly, domain)| poly.evaluate(domain.circle_domain()).bit_reverse())
+            .map(|(poly, domain)| poly.evaluate(domain.circle_domain()))
             .collect_vec();
         let commitment = MerkleTree::<F, Blake2sHasher>::commit(
             evaluations
