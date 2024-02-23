@@ -4,7 +4,10 @@ use std::ops::{Add, Deref, Mul, Neg, Sub};
 use num_traits::Zero;
 use prover_research::core::fields::Field;
 
-#[derive(Debug, Clone)]
+use crate::m31::FastBaseField as BaseField;
+use crate::q31::FastSecureField as SecureField;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Polynomial<F: Field>(Vec<F>);
 
 impl<F: Field> Polynomial<F> {

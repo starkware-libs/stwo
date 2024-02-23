@@ -5,12 +5,12 @@ use std::ops::{Deref, DerefMut};
 
 use num_traits::{One, Zero};
 use prover_research::core::channel::Channel;
-use prover_research::core::fields::m31::BaseField;
-use prover_research::core::fields::qm31::SecureField;
 use prover_research::core::fields::{ExtensionOf, Field};
 use prover_research::core::poly::NaturalOrder;
 
+use crate::m31::FastBaseField as BaseField;
 use crate::multivariate::{hypercube_sum, MultivariatePolynomial};
+use crate::q31::FastSecureField as SecureField;
 use crate::utils::Polynomial;
 
 /// Multi-Linear Extension.
@@ -49,6 +49,10 @@ impl<F: Field> MultiLinearExtension<F> {
         assert_eq!(point.len(), self.num_variables);
         eval_part(&self.evals, point)
     }
+
+    pub fn into_evals(self) -> Vec<F> {
+        self.evals
+    }
 }
 
 // impl<F: Field> HypercubeEvaluation<F> {
@@ -82,7 +86,7 @@ impl<F> DerefMut for MultiLinearExtension<F> {
 // /// All even point evaluations are in the LHS and all odd point evaluations are in the RHS.
 // #[derive(Copy, Clone, Debug)]
 // pub struct EvenOddOrder;
-
+#[derive(Debug, Clone)]
 pub struct SumcheckProof {
     pub round_polynomials: Vec<Polynomial<SecureField>>,
 }
@@ -109,8 +113,11 @@ pub fn partially_verify(
                 return None;
             }
 
-            channel.mix_felts(round_poly);
-            let challenge = channel.draw_felt();
+            {
+                let coeffs = round_poly.iter().map(|&v| v.into()).collect::<Vec<_>>();
+                channel.mix_felts(&coeffs);
+            }
+            let challenge = channel.draw_felt().into();
             challenges.push(challenge);
             Some((challenges, round_poly.eval(challenge)))
         },
@@ -143,8 +150,8 @@ pub fn prove(
         let x0 = BaseField::zero().into();
         let x1 = BaseField::one().into();
         let x2 = (-BaseField::one()).into();
-        let x3 = BaseField::from(2).into();
-        let x4 = BaseField::from(4).into();
+        let x3 = BaseField(2).into();
+        let x4 = BaseField(4).into();
 
         let y0 = eval_at(x0);
         let y1 = eval_at(x1);
@@ -152,16 +159,18 @@ pub fn prove(
         let y3 = eval_at(x3);
         let y4 = eval_at(x4);
 
-        println!("eval at 0: {y0}");
-        println!("eval at 1: {y1}");
-
         let round_polynomial =
             Polynomial::interpolate_lagrange(&[x0, x1, x2, x3, x4], &[y0, y1, y2, y3, y4]);
-        // println!("yo:d:{} ", round_polynomial.degree());
-        channel.mix_felts(&round_polynomial);
+        {
+            let coeffs = round_polynomial
+                .iter()
+                .map(|&v| v.into())
+                .collect::<Vec<_>>();
+            channel.mix_felts(&coeffs);
+        }
         round_polynomials.push(round_polynomial);
 
-        challenges.push(channel.draw_felt());
+        challenges.push(channel.draw_felt().into());
     }
 
     (SumcheckProof { round_polynomials }, challenges)
@@ -174,9 +183,9 @@ pub fn prove(
 ///
 /// [`sumcheck::prove()`]: prove
 pub trait SumcheckOracle {
-    /// Oracle for the next round of the protocol.
-    // TODO: Consider removing. Currently here so the first round can operate on smaller fields.
-    type NextRoundOracle: SumcheckOracle<NextRoundOracle = Self::NextRoundOracle>;
+    // /// Oracle for the next round of the protocol.
+    // // TODO: Consider removing. Currently here so the first round can operate on smaller fields.
+    // type NextRoundOracle: SumcheckOracle<NextRoundOracle = Self::NextRoundOracle>;
 
     /// Returns the number of variables in `g` (determines the number of rounds in the protocol).
     fn num_variables(&self) -> u32;
@@ -186,36 +195,30 @@ pub trait SumcheckOracle {
     fn univariate_sum(&self) -> Polynomial<SecureField>;
 
     /// Returns a new oracle where the first variable of `g` is fixed to `challenge`.
-    fn fix_first(self, challenge: SecureField) -> Self::NextRoundOracle;
+    fn fix_first(self, challenge: SecureField) -> Self;
 }
 
 // TODO: docs
 pub fn prove3<O: SumcheckOracle>(
-    oracle: O,
+    mut oracle: O,
     channel: &mut impl Channel,
-) -> (SumcheckProof, Vec<SecureField>, O::NextRoundOracle) {
-    let num_rounds = oracle.num_variables();
+) -> (SumcheckProof, Vec<SecureField>, O) {
     let mut round_polynomials = Vec::new();
     let mut challenges = Vec::new();
 
-    // Handle first round.
-    let mut oracle = {
+    for _round in 0..oracle.num_variables() {
         let round_polynomial = oracle.univariate_sum();
-        channel.mix_felts(&round_polynomial);
+        {
+            let coeffs = round_polynomial
+                .iter()
+                .map(|&v| v.into())
+                .collect::<Vec<_>>();
+            channel.mix_felts(&coeffs);
+        }
         let challenge = channel.draw_felt();
         round_polynomials.push(round_polynomial);
-        challenges.push(challenge);
-        oracle.fix_first(challenge)
-    };
-
-    // Handle remaining rounds.
-    for round in 1..num_rounds {
-        let round_polynomial = oracle.univariate_sum();
-        channel.mix_felts(&round_polynomial);
-        let challenge = channel.draw_felt();
-        round_polynomials.push(round_polynomial);
-        challenges.push(challenge);
-        oracle = oracle.fix_first(challenge);
+        challenges.push(challenge.into());
+        oracle = oracle.fix_first(challenge.into());
     }
 
     (SumcheckProof { round_polynomials }, challenges, oracle)
@@ -236,7 +239,13 @@ where
     // Handle first round.
     let mut t = {
         let (t, round_polynomial, challenge) = collapse(g, channel);
-        channel.mix_felts(&round_polynomial);
+        {
+            let coeffs = round_polynomial
+                .iter()
+                .map(|&v| v.into())
+                .collect::<Vec<_>>();
+            channel.mix_felts(&coeffs);
+        }
         round_polynomials.push(round_polynomial);
         challenges.push(challenge);
         t
@@ -244,7 +253,13 @@ where
 
     for round in 1..g.num_variables {
         let (t_next, round_polynomial, challenge) = collapse::<SecureField>(&t, channel);
-        channel.mix_felts(&round_polynomial);
+        {
+            let coeffs = round_polynomial
+                .iter()
+                .map(|&v| v.into())
+                .collect::<Vec<_>>();
+            channel.mix_felts(&coeffs);
+        }
         round_polynomials.push(round_polynomial);
         challenges.push(challenge);
         t = t_next;
@@ -284,8 +299,11 @@ where
         &[SecureField::zero(), SecureField::one()],
         &[r0.into(), r1.into()],
     );
-    channel.mix_felts(&r);
-    let challenge = channel.draw_felt();
+    {
+        let coeffs = r.iter().map(|&v| v.into()).collect::<Vec<_>>();
+        channel.mix_felts(&coeffs);
+    }
+    let challenge = channel.draw_felt().into();
 
     let collapsed_mle = MultiLinearExtension::new(
         mle.array_chunks()
@@ -311,15 +329,15 @@ mod tests {
     use prover_research::commitment_scheme::blake2_hash::Blake2sHasher;
     use prover_research::commitment_scheme::hasher::Hasher;
     use prover_research::core::channel::{Blake2sChannel, Channel};
-    use prover_research::core::fields::m31::BaseField;
-    use prover_research::core::fields::qm31::SecureField;
     use prover_research::core::fields::Field;
     use prover_research::core::poly::NaturalOrder;
     use prover_research::fibonacci::verify_proof;
 
     use super::{collapse, prove};
     use crate::gkr::eq;
+    use crate::m31::FastBaseField as BaseField;
     use crate::multivariate::{self, hypercube_sum, MultivariatePolynomial};
+    use crate::q31::FastSecureField as SecureField;
     use crate::sumcheck::{partially_verify, prove2, MultiLinearExtension};
 
     #[test]
@@ -353,7 +371,7 @@ mod tests {
     fn collapse_test() {
         let one = SecureField::one();
         let zero = SecureField::zero();
-        let random = test_channel().draw_felt();
+        let random = SecureField::from(test_channel().draw_felt());
         let mle = MultiLinearExtension::new(vec![random; 1 << 26]);
 
         let g = multivariate::from_const_fn(|[random]| {
@@ -367,8 +385,7 @@ mod tests {
                 + eq(&[one, one, random], &[one, one, one]) * mle[7]
         });
 
-        let random = BaseField::from(123).into();
-        println!("yo: {}", g.eval(&[random]));
+        let random = SecureField::from(BaseField(123));
 
         // while res.len() > 8 {
         //     res = collapse(&res, &mut test_channel());

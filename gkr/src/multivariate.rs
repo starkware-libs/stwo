@@ -1,5 +1,6 @@
 use num_traits::{One, Zero};
-use prover_research::core::fields::qm31::SecureField;
+
+use crate::q31::FastSecureField as SecureField;
 
 pub trait MultivariatePolynomial {
     fn eval(&self, assigments: &[SecureField]) -> SecureField;

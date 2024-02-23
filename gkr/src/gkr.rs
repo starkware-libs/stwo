@@ -1,13 +1,17 @@
+use std::array;
 use std::borrow::Cow;
 use std::iter::zip;
+use std::time::Instant;
 
 use num_traits::{One, Zero};
 use prover_research::core::channel::Channel;
-use prover_research::core::fields::m31::{BaseField, P};
-use prover_research::core::fields::qm31::SecureField;
 use prover_research::core::fields::Field;
 
+// use prover_research::core::fields::m31::{BaseField, P};
+// use prover_research::core::fields::qm31::SecureField;
+use crate::m31::FastBaseField as BaseField;
 use crate::multivariate::{self, MultivariatePolynomial};
+use crate::q31::FastSecureField as SecureField;
 use crate::sumcheck::{self, MultiLinearExtension, SumcheckOracle, SumcheckProof};
 use crate::utils::{Fraction, Polynomial};
 
@@ -24,7 +28,7 @@ impl<'a, 'b> Layer<'a, 'b> {
 }
 
 pub struct MleLayer {
-    num_variables: usize,
+    n_vars: usize,
     p: MultiLinearExtension<SecureField>,
     q: MultiLinearExtension<SecureField>,
 }
@@ -43,7 +47,7 @@ impl MleLayer {
             .unzip();
 
         Self {
-            num_variables: f.len().ilog2() as usize,
+            n_vars: f.len().ilog2() as usize,
             p: MultiLinearExtension::new(p),
             q: MultiLinearExtension::new(q),
         }
@@ -85,15 +89,27 @@ pub fn prove(channel: &mut impl Channel, layers: &[Layer]) -> GkrProof {
         Polynomial::interpolate_lagrange(&[x0, x1], &[y0, y1])
     };
 
-    channel.mix_felts(&p1_eval_encoding);
-    channel.mix_felts(&q1_eval_encoding);
+    {
+        let coeffs = p1_eval_encoding
+            .iter()
+            .map(|&v| v.into())
+            .collect::<Vec<_>>();
+        channel.mix_felts(&coeffs);
+    }
+    {
+        let coeffs = q1_eval_encoding
+            .iter()
+            .map(|&v| v.into())
+            .collect::<Vec<_>>();
+        channel.mix_felts(&coeffs);
+    }
 
-    let r0 = channel.draw_felt();
+    let r0 = channel.draw_felt().into();
 
     let layer_proofs = layers
         .array_windows()
         .scan(vec![r0], |r, [prev_layer, Layer { p, q }]| {
-            let lambda = channel.draw_felt();
+            let lambda = SecureField::from(channel.draw_felt());
 
             let g = multivariate::from_fn(prev_layer.p.num_variables(), |y| {
                 let y_zero = [y, &[zero]].concat();
@@ -122,10 +138,22 @@ pub fn prove(channel: &mut impl Channel, layers: &[Layer]) -> GkrProof {
             let q_eval_encoding =
                 Polynomial::interpolate_lagrange(&[zero, one], &[q.eval(&b_star), q.eval(&c_star)]);
 
-            channel.mix_felts(&p_eval_encoding);
-            channel.mix_felts(&q_eval_encoding);
+            {
+                let coeffs = p1_eval_encoding
+                    .iter()
+                    .map(|&v| v.into())
+                    .collect::<Vec<_>>();
+                channel.mix_felts(&coeffs);
+            }
+            {
+                let coeffs = q1_eval_encoding
+                    .iter()
+                    .map(|&v| v.into())
+                    .collect::<Vec<_>>();
+                channel.mix_felts(&coeffs);
+            }
 
-            let r_star = channel.draw_felt();
+            let r_star = SecureField::from(channel.draw_felt());
             *r = [&*eval_point, &[r_star]].concat();
 
             Some(GkrLayerProof {
@@ -178,19 +206,28 @@ pub fn partially_verify(
         denominator: q1_eval_encoding.eval(one),
     };
 
-    println!("made it yo");
-
     if !(v0 + v1).is_zero() {
         return None;
     }
 
-    channel.mix_felts(p1_eval_encoding);
-    channel.mix_felts(q1_eval_encoding);
+    {
+        let coeffs = p1_eval_encoding
+            .iter()
+            .map(|&v| v.into())
+            .collect::<Vec<_>>();
+        channel.mix_felts(&coeffs);
+    }
+    {
+        let coeffs = q1_eval_encoding
+            .iter()
+            .map(|&v| v.into())
+            .collect::<Vec<_>>();
+        channel.mix_felts(&coeffs);
+    }
 
-    let r0 = channel.draw_felt();
+    let r0 = channel.draw_felt().into();
     let p_m0 = p1_eval_encoding.eval(r0);
     let q_m0 = q1_eval_encoding.eval(r0);
-    println!("made it yo1");
 
     layer_proofs
         .iter()
@@ -200,16 +237,13 @@ pub fn partially_verify(
                 p_eval_encoding,
                 q_eval_encoding,
             } = layer_proof;
-            println!("made it yo2");
 
-            let lambda = channel.draw_felt();
+            let lambda = SecureField::from(channel.draw_felt());
 
             // The sumcheck claim.
             let m = p_m + lambda * q_m;
 
             let (eval_point, eval) = sumcheck::partially_verify(m, sumcheck_proof, channel)?;
-
-            println!("OY HERE::: EXPECTED EVAL: {}", eval);
 
             let v0 = Fraction {
                 numerator: p_eval_encoding.eval(zero),
@@ -227,12 +261,24 @@ pub fn partially_verify(
                 return None;
             }
 
-            channel.mix_felts(p_eval_encoding);
-            channel.mix_felts(q_eval_encoding);
+            {
+                let coeffs = p1_eval_encoding
+                    .iter()
+                    .map(|&v| v.into())
+                    .collect::<Vec<_>>();
+                channel.mix_felts(&coeffs);
+            }
+            {
+                let coeffs = q1_eval_encoding
+                    .iter()
+                    .map(|&v| v.into())
+                    .collect::<Vec<_>>();
+                channel.mix_felts(&coeffs);
+            }
 
             let b_star = [&*eval_point, &[zero]].concat();
             let c_star = [&*eval_point, &[one]].concat();
-            let r_star = channel.draw_felt();
+            let r_star = channel.draw_felt().into();
 
             Some((
                 [&*eval_point, &[r_star]].concat(),
@@ -242,12 +288,14 @@ pub fn partially_verify(
         })
 }
 
+#[derive(Debug, Clone)]
 pub struct GkrProof {
     layer_proofs: Vec<GkrLayerProof>,
     p1_eval_encoding: Polynomial<SecureField>,
     q1_eval_encoding: Polynomial<SecureField>,
 }
 
+#[derive(Debug, Clone)]
 struct GkrLayerProof {
     sumcheck_proof: SumcheckProof,
     p_eval_encoding: Polynomial<SecureField>,
@@ -268,15 +316,23 @@ struct Oracle<F: Field> {
 }
 
 impl Oracle<SecureField> {
-    fn new(z: &[SecureField], p: &[SecureField], q: &[SecureField], lambda: SecureField) -> Self {
+    fn new(
+        z: &[SecureField],
+        p: Vec<SecureField>,
+        q: Vec<SecureField>,
+        lambda: SecureField,
+    ) -> Self {
         let num_variables = z.len() as u32;
         assert_eq!(p.len(), 2 << num_variables);
         assert_eq!(q.len(), 2 << num_variables);
+        // let now = Instant::now();
+        let c = c0(z);
+        // println!("c gen time: {:?}", now.elapsed());
         Self {
-            p: p.to_vec(),
-            q: q.to_vec(),
+            p,
+            q,
             num_variables,
-            c: c0(z),
+            c,
             z: z.to_vec(),
             lambda,
         }
@@ -284,14 +340,231 @@ impl Oracle<SecureField> {
 }
 
 impl SumcheckOracle for Oracle<SecureField> {
-    type NextRoundOracle = Self;
-
     fn num_variables(&self) -> u32 {
         self.num_variables
     }
 
     fn univariate_sum(&self) -> Polynomial<SecureField> {
-        let eval_at_t = |t: SecureField| {
+        let eval_fast = || {
+            let zero = SecureField::zero();
+            let one = SecureField::one();
+
+            // let t_bar = one - t;
+            let z = self.z[0];
+            let z_bar = one - z;
+            let z_bar_inv = z_bar.inverse();
+            // let eq_shift = z_bar_inv * (t * z + t_bar * z_bar);
+            // z / (1 - z) * (1/z)/(1/z)
+            // 1 / (1/z - 1)
+
+            let eq_shift1 = {
+                let t = one;
+                let t_bar = one - t;
+                z_bar_inv * (t * z + t_bar * z_bar)
+            };
+
+            let eq_shift_neg1 = {
+                let t = -one;
+                let t_bar = one - t;
+                z_bar_inv * (t * z + t_bar * z_bar)
+            };
+
+            let eq_shift2 = {
+                let t = one + one;
+                let t_bar = one - t;
+                z_bar_inv * (t * z + t_bar * z_bar)
+            };
+
+            let n_terms = self.c.len() / 2;
+            let c_vals = &self.c[0..n_terms];
+            let (p_lhs_pairs, p_rhs_pairs) = self.p.as_chunks().0.split_at(n_terms);
+            let (q_lhs_pairs, q_rhs_pairs) = self.q.as_chunks().0.split_at(n_terms);
+
+            zip(
+                c_vals,
+                zip(zip(p_lhs_pairs, p_rhs_pairs), zip(q_lhs_pairs, q_rhs_pairs)),
+            )
+            .fold(
+                [SecureField::zero(); 4],
+                |acc,
+                 (
+                    &c,
+                    (
+                        (&[p0_lhs, p1_lhs], &[p0_rhs, p1_rhs]),
+                        (&[q0_lhs, q1_lhs], &[q0_rhs, q1_rhs]),
+                    ),
+                )| {
+                    // eval at 0:
+                    let eval0 = {
+                        let a = Fraction::new(p0_lhs, q0_lhs);
+                        let b = Fraction::new(p1_lhs, q1_lhs);
+                        let res = a + b;
+                        c * (res.numerator + self.lambda * res.denominator)
+
+                        // have: p0_lhs * q1_lhs + p1_lhs * q0_lhs
+                        // have: q0_lhs * q1_lhs
+                        //
+                        // have: p0_rhs * q1_rhs + p1_rhs * q0_rhs
+                        // have: p1_rhs * q1_rhs
+
+                        // (2 * p0_lhs - p0_rhs) * (2 * q1_lhs - q1_rhs) + (2 * p1_lhs - p1_rhs) *
+                        // (2 * q0_lhs - q0_rhs) 4 * p0_lhs * q1_lhs - 2 *
+                        // p0_lhs * q1_lhs - 2 * p1_lhs * q0_lhs + p0_rhs * q1_rhs
+                    };
+
+                    // eval at 1:
+                    let eval1 = {
+                        let a = Fraction::new(p0_rhs, q0_rhs);
+                        let b = Fraction::new(p1_rhs, q1_rhs);
+                        let res = a + b;
+                        c * eq_shift1 * (res.numerator + self.lambda * res.denominator)
+                    };
+
+                    // eval at -1:
+                    let evaln1 = {
+                        let p0_eval = p0_lhs.double() - p0_rhs;
+                        let p1_eval = p1_lhs.double() - p1_rhs;
+                        let q0_eval = q0_lhs.double() - q0_rhs;
+                        let q1_eval = q1_lhs.double() - q1_rhs;
+                        let a = Fraction::new(p0_eval, q0_eval);
+                        let b = Fraction::new(p1_eval, q1_eval);
+                        let res = a + b;
+                        c * eq_shift_neg1 * (res.numerator + self.lambda * res.denominator)
+                    };
+
+                    // eval at 2:
+                    let eval2 = {
+                        let p0_eval = p0_rhs.double() - p0_lhs;
+                        let p1_eval = p1_rhs.double() - p1_lhs;
+                        let q0_eval = q0_rhs.double() - q0_lhs;
+                        let q1_eval = q1_rhs.double() - q1_lhs;
+                        let a = Fraction::new(p0_eval, q0_eval);
+                        let b = Fraction::new(p1_eval, q1_eval);
+                        let res = a + b;
+                        c * eq_shift2 * (res.numerator + self.lambda * res.denominator)
+                    };
+
+                    // // TODO: `z_bar_inv * (t * z + t_bar * z_bar)` is a constant. Compute
+                    // outside. let eq_eval = c * eq_shift;
+
+                    // // let p0_eval = p0_lhs * t_bar + p0_rhs * t;
+                    // // let p1_eval = p1_lhs * t_bar + p1_rhs * t;
+                    // // let q0_eval = q0_lhs * t_bar + q0_rhs * t;
+                    // // let q1_eval = q1_lhs * t_bar + q1_rhs * t;
+                    // let p0_eval = t * (p0_rhs - p0_lhs) + p0_lhs;
+                    // let p1_eval = t * (p1_rhs - p1_lhs) + p1_lhs;
+                    // let q0_eval = t * (q0_rhs - q0_lhs) + q0_lhs;
+                    // let q1_eval = t * (q1_rhs - q1_lhs) + q1_lhs;
+
+                    // let a = Fraction::new(p0_eval, q0_eval);
+                    // let b = Fraction::new(p1_eval, q1_eval);
+                    // let c = a + b;
+
+                    // acc + eq_eval * (c.numerator + self.lambda * c.denominator)
+                    [
+                        acc[0] + eval0,
+                        acc[1] + eval1,
+                        acc[2] + evaln1,
+                        acc[3] + eval2,
+                    ]
+                },
+            )
+        };
+
+        let eval_at_multi = || {
+            let zero = SecureField::zero();
+            let one = SecureField::one();
+
+            let ts = [
+                BaseField::zero(),
+                BaseField::one(),
+                BaseField(2),
+                BaseField(3),
+            ];
+
+            let z = self.z[0];
+            let z_bar = one - z;
+            let z_bar_inv = z_bar.inverse();
+            let eq_shifts = ts.map(|t| z_bar_inv * (t * z + (one - t) * z_bar));
+
+            let ts_and_eq_shifts: [(BaseField, SecureField); 4] =
+                array::from_fn(|i| (ts[i], eq_shifts[i]));
+
+            // let t_bar = one - t;
+            // let z = self.z[0];
+            // let z_bar = one - z;
+            // let z_bar_inv = z_bar.inverse();
+            // let eq_shift = z_bar_inv * (t * z + t_bar * z_bar);
+
+            let n_terms = self.c.len() / 2;
+            let c_vals = &self.c[0..n_terms];
+            let (p_lhs_pairs, p_rhs_pairs) = self.p.as_chunks().0.split_at(n_terms);
+            let (q_lhs_pairs, q_rhs_pairs) = self.q.as_chunks().0.split_at(n_terms);
+
+            zip(
+                c_vals,
+                zip(zip(p_lhs_pairs, p_rhs_pairs), zip(q_lhs_pairs, q_rhs_pairs)),
+            )
+            .fold(
+                [SecureField::zero(); 4],
+                |acc,
+                 (
+                    &c,
+                    (
+                        (&[p0_lhs, p1_lhs], &[p0_rhs, p1_rhs]),
+                        (&[q0_lhs, q1_lhs], &[q0_rhs, q1_rhs]),
+                    ),
+                )| {
+                    // // TODO: `z_bar_inv * (t * z + t_bar * z_bar)` is a constant. Compute
+                    // outside. let eq_eval = c * eq_shift;
+
+                    // // let p0_eval = p0_lhs * t_bar + p0_rhs * t;
+                    // // let p1_eval = p1_lhs * t_bar + p1_rhs * t;
+                    // // let q0_eval = q0_lhs * t_bar + q0_rhs * t;
+                    // // let q1_eval = q1_lhs * t_bar + q1_rhs * t;
+                    // let p0_eval = t * (p0_rhs - p0_lhs) + p0_lhs;
+                    // let p1_eval = t * (p1_rhs - p1_lhs) + p1_lhs;
+                    // let q0_eval = t * (q0_rhs - q0_lhs) + q0_lhs;
+                    // let q1_eval = t * (q1_rhs - q1_lhs) + q1_lhs;
+
+                    // let a = Fraction::new(p0_eval, q0_eval);
+                    // let b = Fraction::new(p1_eval, q1_eval);
+                    // let c = a + b;
+
+                    // acc + eq_eval * (c.numerator + self.lambda * c.denominator)
+
+                    // eq_shifts
+                    // let res = ts_and_eq_shifts.map(|(t, eq_shift)| {
+                    //     let p0_eval = t * (p0_rhs - p0_lhs) + p0_lhs;
+                    //     let p1_eval = t * (p1_rhs - p1_lhs) + p1_lhs;
+                    //     let q0_eval = t * (q0_rhs - q0_lhs) + q0_lhs;
+                    //     let q1_eval = t * (q1_rhs - q1_lhs) + q1_lhs;
+
+                    //     let a = Fraction::new(p0_eval, q0_eval);
+                    //     let b = Fraction::new(p1_eval, q1_eval);
+                    //     let res = a + b;
+                    //     c * eq_shift * (res.numerator + self.lambda * res.denominator)
+                    // });
+
+                    array::from_fn(|i| {
+                        let (t, eq_shift) = ts_and_eq_shifts[i];
+
+                        let p0_eval = t * (p0_rhs - p0_lhs) + p0_lhs;
+                        let p1_eval = t * (p1_rhs - p1_lhs) + p1_lhs;
+                        let q0_eval = t * (q0_rhs - q0_lhs) + q0_lhs;
+                        let q1_eval = t * (q1_rhs - q1_lhs) + q1_lhs;
+
+                        let a = Fraction::new(p0_eval, q0_eval);
+                        let b = Fraction::new(p1_eval, q1_eval);
+                        let res = a + b;
+
+                        acc[i] + c * eq_shift * (res.numerator + self.lambda * res.denominator)
+                    })
+                },
+            )
+        };
+
+        let eval_at_t = |t: BaseField| {
             let zero = SecureField::zero();
             let one = SecureField::one();
 
@@ -299,6 +572,7 @@ impl SumcheckOracle for Oracle<SecureField> {
             let z = self.z[0];
             let z_bar = one - z;
             let z_bar_inv = z_bar.inverse();
+            let eq_shift = z_bar_inv * (t * z + t_bar * z_bar);
 
             let n_terms = self.c.len() / 2;
             let c_vals = &self.c[0..n_terms];
@@ -320,11 +594,16 @@ impl SumcheckOracle for Oracle<SecureField> {
                     ),
                 )| {
                     // TODO: `z_bar_inv * (t * z + t_bar * z_bar)` is a constant. Compute outside.
-                    let eq_eval = c * z_bar_inv * (t * z + t_bar * z_bar);
-                    let p0_eval = p0_lhs * t_bar + p0_rhs * t;
-                    let p1_eval = p1_lhs * t_bar + p1_rhs * t;
-                    let q0_eval = q0_lhs * t_bar + q0_rhs * t;
-                    let q1_eval = q1_lhs * t_bar + q1_rhs * t;
+                    let eq_eval = c * eq_shift;
+
+                    // let p0_eval = p0_lhs * t_bar + p0_rhs * t;
+                    // let p1_eval = p1_lhs * t_bar + p1_rhs * t;
+                    // let q0_eval = q0_lhs * t_bar + q0_rhs * t;
+                    // let q1_eval = q1_lhs * t_bar + q1_rhs * t;
+                    let p0_eval = t * (p0_rhs - p0_lhs) + p0_lhs;
+                    let p1_eval = t * (p1_rhs - p1_lhs) + p1_lhs;
+                    let q0_eval = t * (q0_rhs - q0_lhs) + q0_lhs;
+                    let q1_eval = t * (q1_rhs - q1_lhs) + q1_lhs;
 
                     let a = Fraction::new(p0_eval, q0_eval);
                     let b = Fraction::new(p1_eval, q1_eval);
@@ -335,41 +614,104 @@ impl SumcheckOracle for Oracle<SecureField> {
             )
         };
 
-        let x0 = SecureField::zero();
-        let x1 = SecureField::one();
-        let x2 = BaseField::from(2).into();
-        let x3 = BaseField::from(3).into();
-        let x4 = BaseField::from(4).into();
+        // let poly = {
+        //     let x0 = BaseField::zero();
+        //     let x1 = BaseField::one();
+        //     let x2 = BaseField::from(2);
+        //     let x3 = BaseField::from(3);
 
-        let y0 = eval_at_t(x0);
-        let y1 = eval_at_t(x1);
-        let y2 = eval_at_t(x2);
-        let y3 = eval_at_t(x3);
-        let y4 = eval_at_t(x4);
+        //     let y0 = eval_at_t(x0);
+        //     let y1 = eval_at_t(x1);
+        //     let y2 = eval_at_t(x2);
+        //     let y3 = eval_at_t(x3);
 
-        println!("eval at 0: {y0}");
-        println!("eval at 1: {y1}");
+        //     Polynomial::interpolate_lagrange(
+        //         &[x0.into(), x1.into(), x2.into(), x3.into()],
+        //         &[y0, y1, y2, y3],
+        //     )
+        // };
 
-        let poly = Polynomial::interpolate_lagrange(&[x0, x1, x2, x3, x4], &[y0, y1, y2, y3, y4]);
+        // let poly = {
+        //     let x0 = BaseField::zero();
+        //     let x1 = BaseField::one();
+        //     let x2 = BaseField::from(2);
+        //     let x3 = BaseField::from(3);
 
-        println!("degree YO is: {}", poly.degree());
+        //     let [y0, y1, y2, y3] = eval_at_multi();
+
+        //     Polynomial::interpolate_lagrange(
+        //         &[x0.into(), x1.into(), x2.into(), x3.into()],
+        //         &[y0, y1, y2, y3],
+        //     )
+        // };
+
+        let x0 = BaseField::zero();
+        let x1 = BaseField::one();
+        let x2 = -x1;
+        let x3 = BaseField(2);
+
+        let [y0, y1, y2, y3] = eval_fast();
+
+        let poly = Polynomial::interpolate_lagrange(
+            &[x0.into(), x1.into(), x2.into(), x3.into()],
+            &[y0, y1, y2, y3],
+        );
+
+        // println!("are eq: {}", poly == expected_poly);
 
         poly
     }
 
     fn fix_first(self, challenge: SecureField) -> Self {
-        let c = collapse_c(self.c, self.z[0], challenge);
+        let collapse_p_or_q = |mut v: Vec<SecureField>| {
+            // const CHUNK_SIZE: usize = 16;
 
-        let collapse_p_or_q = |v: Vec<SecureField>| {
-            let one = SecureField::one();
-            let (v_lhs, v_rhs) = v.split_at(v.len() / 2);
-            zip(v_lhs, v_rhs)
-                .map(|(&lhs, &rhs)| lhs * (one - challenge) + rhs * challenge)
-                .collect()
+            // let n = v.len();
+            // let (lhs, rhs) = v.split_at_mut(n / 2);
+
+            // let mut lhs_chunks = lhs.array_chunks_mut::<CHUNK_SIZE>();
+            // let mut rhs_chunks = rhs.array_chunks_mut::<CHUNK_SIZE>();
+
+            // for (lhs_chunk, rhs_chunk) in zip(&mut lhs_chunks, &mut rhs_chunks) {
+            //     for (lhs_val, rhs_val) in zip(lhs_chunk, rhs_chunk) {
+            //         // v[i] += challenge * (rhs - lhs);
+            //         *lhs_val += challenge * (*rhs_val - *lhs_val);
+            //     }
+            // }
+
+            // let lhs_remainder = lhs_chunks.into_remainder();
+            // let rhs_remainder = rhs_chunks.into_remainder();
+
+            // for (lhs_val, rhs_val) in zip(lhs_remainder, rhs_remainder) {
+            //     // v[i] += challenge * (rhs - lhs);
+            //     *lhs_val += challenge * (*rhs_val - *lhs_val);
+            // }
+
+            // v.truncate(n / 2);
+
+            // let one = SecureField::one();
+            // let (v_lhs, v_rhs) = v.split_at(v.len() / 2);
+            // zip(v_lhs, v_rhs)
+            //     // .map(|(&lhs, &rhs)| lhs * (one - challenge) + rhs * challenge)
+            //     .map(|(&lhs, &rhs)| challenge * (rhs - lhs) + lhs)
+            //     .collect()
+
+            let collapsed_len = v.len() / 2;
+            for i in 0..collapsed_len {
+                let lhs = v[i];
+                let rhs = v[i + collapsed_len];
+                v[i] += challenge * (rhs - lhs);
+            }
+
+            v.truncate(collapsed_len);
+            v
         };
 
+        let c = collapse_c(self.c, self.z[0], challenge);
+        let now = Instant::now();
         let p = collapse_p_or_q(self.p);
         let q = collapse_p_or_q(self.q);
+        println!("collapsing time: {:?}", now.elapsed());
 
         Self {
             p,
@@ -421,8 +763,10 @@ fn collapse_c(mut c: Vec<SecureField>, z: SecureField, r: SecureField) -> Vec<Se
 }
 
 // <https://people.cs.georgetown.edu/jthaler/ProofsArgsAndZK.pdf> (page 65)
-pub fn prove2(channel: &mut (impl Channel + Clone), layers: &[MleLayer]) -> GkrProof {
-    let MleLayer { p: p1, q: q1, .. } = &layers[0];
+pub fn prove2(channel: &mut (impl Channel + Clone), layers: Vec<MleLayer>) -> GkrProof {
+    let mut layers = layers.into_iter();
+
+    let MleLayer { p: p1, q: q1, .. } = layers.next().expect("must contain a layer");
 
     let zero = SecureField::zero();
     let one = SecureField::one();
@@ -439,29 +783,30 @@ pub fn prove2(channel: &mut (impl Channel + Clone), layers: &[MleLayer]) -> GkrP
         Polynomial::interpolate_lagrange(&[x0, x1], &[y0, y1])
     };
 
-    channel.mix_felts(&p1_eval_encoding);
-    channel.mix_felts(&q1_eval_encoding);
+    {
+        let coeffs = p1_eval_encoding
+            .iter()
+            .map(|&v| v.into())
+            .collect::<Vec<_>>();
+        channel.mix_felts(&coeffs);
+    }
+    {
+        let coeffs = q1_eval_encoding
+            .iter()
+            .map(|&v| v.into())
+            .collect::<Vec<_>>();
+        channel.mix_felts(&coeffs);
+    }
 
-    let r0 = channel.draw_felt();
+    let r0 = channel.draw_felt().into();
 
     let layer_proofs = layers
-        .array_windows()
-        .scan(vec![r0], |r, [prev_layer, MleLayer { p, q, .. }]| {
-            let lambda = channel.draw_felt();
-            println!("lambda: {}", lambda);
+        .scan(vec![r0], |r, MleLayer { p, q, n_vars }| {
+            let lambda = channel.draw_felt().into();
 
-            let oracle = Oracle::new(r, p, q, lambda);
+            let oracle = Oracle::new(r, p.into_evals(), q.into_evals(), lambda);
 
-            let mut chanel_clone = channel.clone();
             let (sumcheck_proof, eval_point, oracle) = sumcheck::prove3(oracle, channel);
-
-            println!("eval point: {:?}", eval_point);
-
-            let claim = sumcheck_proof.round_polynomials[0].eval(SecureField::zero())
-                + sumcheck_proof.round_polynomials[0].eval(SecureField::one());
-            let (eval_point, eval) =
-                sumcheck::partially_verify(claim, &sumcheck_proof, &mut chanel_clone).unwrap();
-            println!("verify res: YES",);
 
             // b* and c*
             let b_star = [&*eval_point, &[zero]].concat();
@@ -470,47 +815,35 @@ pub fn prove2(channel: &mut (impl Channel + Clone), layers: &[MleLayer]) -> GkrP
             let p_eval_encoding = {
                 let [x0, x1] = [SecureField::zero(), SecureField::one()];
                 // TODO: Note, can eval both evals efficiently in single pass.
-                let [y0, y1] = [p.eval(&b_star), p.eval(&c_star)];
+                // let [y0, y1] = [p.eval(&b_star), p.eval(&c_star)];
+                let [y0, y1] = [oracle.p[0], oracle.p[1]];
                 Polynomial::interpolate_lagrange(&[x0, x1], &[y0, y1])
             };
 
             let q_eval_encoding = {
                 let [x0, x1] = [SecureField::zero(), SecureField::one()];
                 // TODO: Note, can eval both evals efficiently in single pass.
-                let [y0, y1] = [q.eval(&b_star), q.eval(&c_star)];
+                // let [y0, y1] = [q.eval(&b_star), q.eval(&c_star)];
+                let [y0, y1] = [oracle.q[0], oracle.q[1]];
                 Polynomial::interpolate_lagrange(&[x0, x1], &[y0, y1])
             };
 
             {
-                println!("- claim is: {}", claim);
-                let p0 = p_eval_encoding.eval(SecureField::zero());
-                println!("yo (p0): {}", oracle.p[0]);
-                println!("yo (p0): {}", p0);
-                let p1 = p_eval_encoding.eval(SecureField::one());
-                println!("yo (p1): {}", oracle.p[1]);
-                println!("yo (p1): {}", p1);
-                let q0 = q_eval_encoding.eval(SecureField::zero());
-                println!("yo (q0): {}", oracle.q[0]);
-                println!("yo (q0): {}", q0);
-                let q1 = q_eval_encoding.eval(SecureField::one());
-                println!("yo (q1): {}", oracle.q[1]);
-                println!("yo (q1): {}", q1);
-                let a = Fraction::new(p0, q0);
-                let b = Fraction::new(p1, q1);
-                println!("my EQ: {}", oracle.c[0]);
-                println!("my EQ: {}", eq(r, &eval_point));
-                let c = a + b;
-                println!("- expected: {}", eval);
-                println!(
-                    "- actual: {}",
-                    eq(r, &eval_point) * (c.numerator + lambda * c.denominator)
-                );
+                let coeffs = p1_eval_encoding
+                    .iter()
+                    .map(|&v| v.into())
+                    .collect::<Vec<_>>();
+                channel.mix_felts(&coeffs);
+            }
+            {
+                let coeffs = q1_eval_encoding
+                    .iter()
+                    .map(|&v| v.into())
+                    .collect::<Vec<_>>();
+                channel.mix_felts(&coeffs);
             }
 
-            channel.mix_felts(&p_eval_encoding);
-            channel.mix_felts(&q_eval_encoding);
-
-            let r_star = channel.draw_felt();
+            let r_star = channel.draw_felt().into();
             *r = [&*eval_point, &[r_star]].concat();
 
             Some(GkrLayerProof {
@@ -577,12 +910,12 @@ mod tests {
     use prover_research::commitment_scheme::blake2_hash::Blake2sHasher;
     use prover_research::commitment_scheme::hasher::Hasher;
     use prover_research::core::channel::{Blake2sChannel, Channel};
-    use prover_research::core::fields::m31::BaseField;
-    use prover_research::core::fields::qm31::SecureField;
     use prover_research::core::fields::{ExtensionOf, Field};
 
     use crate::gkr::{c0, collapse_c, eq, partially_verify, prove, prove2, Layer, MleLayer};
+    use crate::m31::FastBaseField as BaseField;
     use crate::multivariate::{self, MultivariatePolynomial};
+    use crate::q31::FastSecureField as SecureField;
     use crate::sumcheck::MultiLinearExtension;
     use crate::utils::{Fraction, Polynomial};
 
@@ -592,9 +925,9 @@ mod tests {
         let one = SecureField::one();
 
         // Random fractions.
-        let a = Fraction::new(BaseField::one(), BaseField::from(123));
-        let b = Fraction::new(BaseField::one(), BaseField::from(1));
-        let c = Fraction::new(BaseField::one(), BaseField::from(9999999));
+        let a = Fraction::new(BaseField::one(), BaseField(123));
+        let b = Fraction::new(BaseField::one(), BaseField(1));
+        let c = Fraction::new(BaseField::one(), BaseField(9999999));
 
         // List of fractions that sum to zero.
         let fractions = [
@@ -732,28 +1065,28 @@ mod tests {
 
         // println!("yo: {}" )
 
-        let proof = prove2(&mut test_channel(), &layers);
+        let proof = prove2(&mut test_channel(), layers);
         // let (assignment, p3_claim, q3_claim) =
         //     partially_verify(&proof, &mut test_channel()).unwrap();
         let res = partially_verify(&proof, &mut test_channel());
         println!("result: {:?}", res)
     }
 
-    #[test]
-    fn fooling_around() {
-        let one = SecureField::one();
-        let zero = SecureField::zero();
+    // #[test]
+    // fn fooling_around() {
+    //     let one = SecureField::one();
+    //     let zero = SecureField::zero();
 
-        let random = SecureField::from_m31(
-            BaseField::from(1238),
-            BaseField::from(4305),
-            BaseField::from(899120),
-            BaseField::from(987),
-        );
+    //     let random = SecureField::from_m31(
+    //         BaseField::from(1238),
+    //         BaseField::from(4305),
+    //         BaseField::from(899120),
+    //         BaseField::from(987),
+    //     );
 
-        println!("YO: {}", eq(&[random, random], &[one, zero]));
-        println!("YO: {}", eq_one_zero(&[random, random], &[one, zero]));
-    }
+    //     println!("YO: {}", eq(&[random, random], &[one, zero]));
+    //     println!("YO: {}", eq_one_zero(&[random, random], &[one, zero]));
+    // }
 
     pub fn eq_one_zero(
         x_assignments: &[SecureField],
@@ -772,19 +1105,24 @@ mod tests {
     #[test]
     fn mle_bench() {
         // Random fractions.
-        let a = Fraction::new(BaseField::one(), BaseField::from(123));
-        let b = Fraction::new(BaseField::one(), BaseField::from(1));
-        let c = Fraction::new(BaseField::one(), BaseField::from(9999999));
+        let a = Fraction::new(BaseField::one(), BaseField(123));
+        let b = Fraction::new(BaseField::one(), BaseField(1));
+        let c = Fraction::new(BaseField::one(), BaseField(9999999));
 
-        const N: usize = 1 << 3;
+        const N: usize = 1 << 18;
 
         let mut channel = test_channel();
-        let mut random_fractions = zip(channel.draw_felts(N), channel.draw_felts(N))
-            .map(|(numerator, denominator)| Fraction::new(numerator, denominator))
-            .collect::<Vec<Fraction<SecureField>>>();
+        let mut random_fractions = zip(
+            channel.draw_felts(N).into_iter().map(SecureField::from),
+            channel.draw_felts(N).into_iter().map(SecureField::from),
+        )
+        .map(|(numerator, denominator)| Fraction::new(numerator, denominator))
+        .collect::<Vec<Fraction<SecureField>>>();
 
         // Make the fractions sum to zero.
+        let now = Instant::now();
         let sum = random_fractions.iter().sum::<Fraction<SecureField>>();
+        println!("layer sum time: {:?}", now.elapsed());
         random_fractions[0] = random_fractions[0] - sum;
 
         let now = Instant::now();
@@ -802,11 +1140,16 @@ mod tests {
 
         // println!("yo: {}" )
 
-        let proof = prove2(&mut test_channel(), &layers);
+        let now = Instant::now();
+        let proof = prove2(&mut test_channel(), layers);
+        println!("proof gen time: {:?}", now.elapsed());
+
         // let (assignment, p3_claim, q3_claim) =
         //     partially_verify(&proof, &mut test_channel()).unwrap();
+        let now = Instant::now();
         let res = partially_verify(&proof, &mut test_channel());
-        println!("result: {:?}", res)
+        println!("verify time: {:?}", now.elapsed());
+        assert!(res.is_some());
 
         // // List of fractions that sum to zero.
         // let fractions = [
@@ -827,11 +1170,11 @@ mod tests {
         let zero = SecureField::zero();
 
         let mut channel = test_channel();
-        let random = channel.draw_felt();
-        let random2 = channel.draw_felt();
-        let random3 = channel.draw_felt();
+        let random = channel.draw_felt().into();
+        let random2 = channel.draw_felt().into();
+        let random3 = channel.draw_felt().into();
         let mle = MultiLinearExtension::<SecureField>::new(
-            (0..8).map(|i| BaseField::from(i).into()).collect(),
+            (0..8).map(|i| BaseField(i as u32).into()).collect(),
         );
 
         let g = multivariate::from_const_fn(|[random]| {

@@ -11,7 +11,7 @@ pub const N_BYTES_FELT: usize = 4;
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct M31(u32);
+pub struct M31(pub u32);
 pub type BaseField = M31;
 
 impl_field!(M31, P);
