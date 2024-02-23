@@ -411,7 +411,7 @@ mod tests {
     use crate::core::fft::ibutterfly;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
-    use crate::core::utils::bit_reverse;
+    use crate::core::poly::BitReversedOrder;
 
     #[test]
     fn test_ibutterfly() {
@@ -501,14 +501,12 @@ mod tests {
         }
     }
 
-    fn ref_ifft(domain: CircleDomain, mut values: Vec<BaseField>) -> Vec<BaseField> {
-        bit_reverse(&mut values);
-        let eval = CircleEvaluation::<CPUBackend, _>::new(domain, values);
+    fn ref_ifft(domain: CircleDomain, values: Vec<BaseField>) -> Vec<BaseField> {
+        let eval = CircleEvaluation::<CPUBackend, _, BitReversedOrder>::new(domain, values);
         let mut expected_coeffs = eval.interpolate().coeffs;
         for x in expected_coeffs.iter_mut() {
             *x *= BaseField::from_u32_unchecked(domain.size() as u32);
         }
-        bit_reverse(&mut expected_coeffs);
         expected_coeffs
     }
 

@@ -11,6 +11,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Col, Field};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
+use crate::core::poly::BitReversedOrder;
 
 /// Accumulates evaluations of u_i(P0) at a single point.
 /// Computes f(P0), the combined polynomial at that point.
@@ -127,7 +128,7 @@ impl DomainEvaluationAccumulator<CPUBackend> {
                 if log_size == 0 {
                     return values;
                 }
-                CircleEvaluation::<CPUBackend, SecureField>::new(
+                CircleEvaluation::<CPUBackend, SecureField, BitReversedOrder>::new(
                     CircleDomain::constraint_evaluation_domain(log_size as u32),
                     values,
                 )

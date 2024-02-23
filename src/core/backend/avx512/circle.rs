@@ -1,30 +1,31 @@
 use super::fft::ifft;
 use super::AVX512Backend;
 use crate::core::backend::avx512::fft::rfft;
-use crate::core::backend::{CPUBackend, Col, Column, FieldOps};
+use crate::core::backend::CPUBackend;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::Field;
+use crate::core::fields::{Col, Column, Field};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
+use crate::core::poly::BitReversedOrder;
 
 impl PolyOps<BaseField> for AVX512Backend {
     fn new_canonical_ordered(
         coset: CanonicCoset,
         values: Col<Self, BaseField>,
-    ) -> CircleEvaluation<Self, BaseField> {
+    ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(spapini): Optimize.
         let eval = CPUBackend::new_canonical_ordered(coset, values.to_vec());
         CircleEvaluation::new(eval.domain, Col::<AVX512Backend, _>::from_iter(eval.values))
     }
 
-    fn interpolate(eval: CircleEvaluation<Self, BaseField>) -> CirclePoly<Self, BaseField> {
+    fn interpolate(
+        eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
+    ) -> CirclePoly<Self, BaseField> {
         let mut values = eval.values;
 
         // TODO(spapini): Precompute twiddles.
         let twiddles = ifft::get_itwiddle_dbls(eval.domain);
-        // TODO(spapini): Remove.
-        AVX512Backend::bit_reverse_column(&mut values);
         // TODO(spapini): Handle small cases.
         let log_size = values.length.ilog2();
 
@@ -57,7 +58,7 @@ impl PolyOps<BaseField> for AVX512Backend {
     fn evaluate(
         poly: &CirclePoly<Self, BaseField>,
         domain: CircleDomain,
-    ) -> CircleEvaluation<Self, BaseField> {
+    ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         let mut values = poly.coeffs.clone();
 
         // TODO(spapini): Precompute twiddles.
@@ -73,9 +74,6 @@ impl PolyOps<BaseField> for AVX512Backend {
             );
         }
 
-        // TODO(spapini): Remove.
-        AVX512Backend::bit_reverse_column(&mut values);
-
         CircleEvaluation::new(domain, values)
     }
 
@@ -89,12 +87,13 @@ mod tests {
     use crate::core::backend::avx512::AVX512Backend;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+    use crate::core::poly::BitReversedOrder;
 
     #[test]
     fn test_interpolate_and_eval() {
         const LOG_SIZE: u32 = 6;
         let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let evaluation = CircleEvaluation::<AVX512Backend, _>::new(
+        let evaluation = CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(
             domain,
             (0..(1 << LOG_SIZE))
                 .map(BaseField::from_u32_unchecked)

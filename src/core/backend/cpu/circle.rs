@@ -2,17 +2,40 @@ use super::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{Col, ExtensionOf, Field};
+use crate::core::fields::{Col, ExtensionOf, Field, FieldOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
 use crate::core::poly::utils::fold;
+use crate::core::poly::BitReversedOrder;
+use crate::core::utils::bit_reverse;
+
+fn get_twiddles(domain: CircleDomain) -> Vec<Vec<BaseField>> {
+    let mut coset = domain.half_coset;
+
+    let mut res = vec![];
+    res.push(coset.iter().map(|p| (p.y)).collect::<Vec<_>>());
+    bit_reverse(res.last_mut().unwrap());
+    for _ in 0..coset.log_size() {
+        res.push(
+            coset
+                .iter()
+                .take(coset.size() / 2)
+                .map(|p| (p.x))
+                .collect::<Vec<_>>(),
+        );
+        bit_reverse(res.last_mut().unwrap());
+        coset = coset.double();
+    }
+
+    res
+}
 
 impl<F: ExtensionOf<BaseField>> PolyOps<F> for CPUBackend {
     fn new_canonical_ordered(
         coset: CanonicCoset,
         values: Col<Self, F>,
-    ) -> CircleEvaluation<Self, F> {
+    ) -> CircleEvaluation<Self, F, BitReversedOrder> {
         let domain = coset.circle_domain();
         assert_eq!(values.len(), domain.size());
         let mut new_values = Vec::with_capacity(values.len());
@@ -23,25 +46,24 @@ impl<F: ExtensionOf<BaseField>> PolyOps<F> for CPUBackend {
         for i in 0..half_len {
             new_values.push(values[domain.size() - 1 - (i << 1)]);
         }
+        CPUBackend::bit_reverse_column(&mut new_values);
         CircleEvaluation::new(domain, new_values)
     }
 
-    fn interpolate(eval: CircleEvaluation<Self, F>) -> CirclePoly<Self, F> {
-        // Use CFFT to interpolate.
-        let mut coset = eval.domain.half_coset;
+    fn interpolate(eval: CircleEvaluation<Self, F, BitReversedOrder>) -> CirclePoly<Self, F> {
+        let twiddles = get_twiddles(eval.domain);
+
         let mut values = eval.values;
-        let (l, r) = values.split_at_mut(coset.size());
-        for (i, p) in coset.iter().enumerate() {
-            ibutterfly(&mut l[i], &mut r[i], p.y.inverse());
-        }
-        while coset.size() > 1 {
-            for chunk in values.chunks_exact_mut(coset.size()) {
-                let (l, r) = chunk.split_at_mut(coset.size() / 2);
-                for (i, p) in coset.iter().take(coset.size() / 2).enumerate() {
-                    ibutterfly(&mut l[i], &mut r[i], p.x.inverse());
+        for (i, layer_twiddles) in twiddles.iter().enumerate() {
+            for (h, &t) in layer_twiddles.iter().enumerate() {
+                for l in 0..(1 << i) {
+                    let idx0 = (h << (i + 1)) + l;
+                    let idx1 = idx0 + (1 << i);
+                    let (mut val0, mut val1) = (values[idx0], values[idx1]);
+                    ibutterfly(&mut val0, &mut val1, t.inverse());
+                    (values[idx0], values[idx1]) = (val0, val1);
                 }
             }
-            coset = coset.double();
         }
 
         // Divide all values by 2^log_size.
@@ -61,44 +83,35 @@ impl<F: ExtensionOf<BaseField>> PolyOps<F> for CPUBackend {
             x = CirclePoint::double_x(x);
             mappings.push(x);
         }
+        mappings.reverse();
         fold(&poly.coeffs, &mappings)
     }
 
     fn extend(poly: &CirclePoly<Self, F>, log_size: u32) -> CirclePoly<Self, F> {
         assert!(log_size >= poly.log_size());
-        let mut coeffs = vec![F::zero(); 1 << log_size];
-        let log_jump = log_size - poly.log_size();
-        for (i, val) in poly.coeffs.iter().enumerate() {
-            coeffs[i << log_jump] = *val;
-        }
+        let mut coeffs = Vec::with_capacity(1 << log_size);
+        coeffs.extend_from_slice(&poly.coeffs);
+        coeffs.resize(1 << log_size, F::zero());
         CirclePoly::new(coeffs)
     }
 
-    fn evaluate(poly: &CirclePoly<Self, F>, domain: CircleDomain) -> CircleEvaluation<Self, F> {
-        // Use CFFT to evaluate.
-        let mut coset = domain.half_coset;
-        let mut cosets = vec![];
+    fn evaluate(
+        poly: &CirclePoly<Self, F>,
+        domain: CircleDomain,
+    ) -> CircleEvaluation<Self, F, BitReversedOrder> {
+        let twiddles = get_twiddles(domain);
 
-        // TODO(spapini): extend better.
-        assert!(domain.log_size() >= poly.log_size());
-        let mut values = poly.clone().extend(domain.log_size()).coeffs;
-
-        while coset.size() > 1 {
-            cosets.push(coset);
-            coset = coset.double();
-        }
-        for coset in cosets.iter().rev() {
-            for chunk in values.chunks_exact_mut(coset.size()) {
-                let (l, r) = chunk.split_at_mut(coset.size() / 2);
-                for (i, p) in coset.iter().take(coset.size() / 2).enumerate() {
-                    butterfly(&mut l[i], &mut r[i], p.x);
+        let mut values = poly.extend(domain.log_size()).coeffs;
+        for (i, layer_twiddles) in twiddles.iter().enumerate().rev() {
+            for (h, &t) in layer_twiddles.iter().enumerate() {
+                for l in 0..(1 << i) {
+                    let idx0 = (h << (i + 1)) + l;
+                    let idx1 = idx0 + (1 << i);
+                    let (mut val0, mut val1) = (values[idx0], values[idx1]);
+                    butterfly(&mut val0, &mut val1, t);
+                    (values[idx0], values[idx1]) = (val0, val1);
                 }
             }
-        }
-        let coset = domain.half_coset;
-        let (l, r) = values.split_at_mut(coset.size());
-        for (i, p) in coset.iter().enumerate() {
-            butterfly(&mut l[i], &mut r[i], p.y);
         }
         CircleEvaluation::new(domain, values)
     }
@@ -117,5 +130,3 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> IntoIterator
         self.values.into_iter()
     }
 }
-
-// impl<F: ExtensionOf<BaseField>> PolyOps<CPUBackend, F>

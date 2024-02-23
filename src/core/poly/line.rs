@@ -132,7 +132,7 @@ impl<F: ExtensionOf<BaseField>> LinePoly<F> {
     }
 
     /// Evaluates the polynomial at all points in the domain.
-    pub fn evaluate(mut self, domain: LineDomain) -> CPULineEvaluation<F> {
+    pub fn evaluate(mut self, domain: LineDomain) -> CPULineEvaluation<F, NaturalOrder> {
         assert!(domain.size() >= self.coeffs.len());
 
         // The first few FFT layers may just copy coefficients so we do it directly.
@@ -227,12 +227,12 @@ impl<B: FieldOps<F>, F: Field, EvalOrder> LineEvaluation<B, F, EvalOrder> {
         self.domain
     }
 
-    pub fn to_cpu(&self) -> CPULineEvaluation<F> {
+    pub fn to_cpu(&self) -> CPULineEvaluation<F, EvalOrder> {
         CPULineEvaluation::new(self.domain, self.values.to_vec())
     }
 }
 
-impl<F: ExtensionOf<BaseField>> CPULineEvaluation<F> {
+impl<F: ExtensionOf<BaseField>> CPULineEvaluation<F, NaturalOrder> {
     /// Interpolates the polynomial as evaluations on `domain`.
     pub fn interpolate(mut self) -> LinePoly<F> {
         line_ifft(&mut self.values, self.domain);
