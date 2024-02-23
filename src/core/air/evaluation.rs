@@ -13,6 +13,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Col, Column, ExtensionOf, FieldExpOps};
 use crate::core::poly::circle::{CircleDomain, CirclePoly, SecureCirclePoly};
+use crate::core::poly::BitReversedOrder;
 use crate::core::utils::IteratorMutExt;
 use crate::core::{ColumnVec, ComponentVec};
 
@@ -173,7 +174,7 @@ impl DomainEvaluationAccumulator<CPUBackend> {
         {
             let coeffs = SecureColumn {
                 cols: values.cols.map(|c| {
-                    CPUCircleEvaluation::new(
+                    CPUCircleEvaluation::<_, BitReversedOrder>::new(
                         CircleDomain::constraint_evaluation_domain(log_size as u32),
                         c,
                     )

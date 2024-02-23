@@ -76,7 +76,7 @@ impl Fibonacci {
         }
     }
 
-    fn get_trace(&self) -> CircleEvaluation<CPUBackend, BaseField> {
+    fn get_trace(&self) -> CircleEvaluation<CPUBackend, BaseField, BitReversedOrder> {
         // Trace.
         let trace_domain = CanonicCoset::new(self.air.component.log_size);
         // TODO(AlonH): Consider using Vec::new instead of Vec::with_capacity throughout file.
@@ -130,13 +130,11 @@ impl Fibonacci {
         // polynomial.
         let mut oods_quotients = Vec::with_capacity(trace_oods_points.len() + 1);
         // TODO(AlonH): Remove this and use efficient evaluation.
-        let composition_polynomial_evaluation = composition_polynomial_poly
-            .to_circle_poly()
-            .evaluate(
+        let composition_polynomial_evaluation =
+            composition_polynomial_poly.to_circle_poly().evaluate(
                 self.composition_polynomial_commitment_domain
                     .circle_domain(),
-            )
-            .bit_reverse();
+            );
         oods_quotients.push(
             get_oods_quotient(
                 oods_point,
@@ -354,15 +352,12 @@ mod tests {
 
         // Assert that the trace quotients are low degree.
         for quotient in trace_quotients.iter() {
-            let interpolated_quotient_poly = quotient.clone().bit_reverse().interpolate();
+            let interpolated_quotient_poly = quotient.clone().interpolate();
             assert!(interpolated_quotient_poly.is_in_fft_space(FIB_LOG_SIZE));
         }
 
         // Assert that the composition polynomial quotient is low degree.
-        let interpolated_quotient_poly = composition_polynomial_quotient
-            .clone()
-            .bit_reverse()
-            .interpolate();
+        let interpolated_quotient_poly = composition_polynomial_quotient.clone().interpolate();
         assert!(interpolated_quotient_poly.is_in_fft_space(FIB_LOG_SIZE + 1));
     }
 
