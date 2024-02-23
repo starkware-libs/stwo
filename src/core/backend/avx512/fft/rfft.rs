@@ -11,7 +11,7 @@ use crate::core::poly::circle::CircleDomain;
 use crate::core::utils::bit_reverse;
 
 /// # Safety
-pub unsafe fn fft(values: *mut i32, twiddle_dbl: &[Vec<i32>], log_n_elements: usize) {
+pub unsafe fn fft(values: *mut i32, twiddle_dbl: &[&[i32]], log_n_elements: usize) {
     assert!(log_n_elements >= 4);
     if log_n_elements <= 1 {
         // 16 {
@@ -39,7 +39,7 @@ pub unsafe fn fft(values: *mut i32, twiddle_dbl: &[Vec<i32>], log_n_elements: us
 /// # Safety
 pub unsafe fn fft_lower_with_vecwise(
     values: *mut i32,
-    twiddle_dbl: &[Vec<i32>],
+    twiddle_dbl: &[&[i32]],
     log_n_vecs: usize,
     fft_bits: usize,
 ) {
@@ -66,7 +66,7 @@ pub unsafe fn fft_lower_with_vecwise(
 /// # Safety
 pub unsafe fn fft_lower_without_vecwise(
     values: *mut i32,
-    twiddle_dbl: &[Vec<i32>],
+    twiddle_dbl: &[&[i32]],
     log_n_vecs: usize,
     fft_bits: usize,
 ) {
@@ -89,7 +89,7 @@ pub unsafe fn fft_lower_without_vecwise(
 }
 
 /// # Safety
-unsafe fn fft_vecwise_loop(values: *mut i32, twiddle_dbl: &[Vec<i32>], fft_bits: usize, h: usize) {
+unsafe fn fft_vecwise_loop(values: *mut i32, twiddle_dbl: &[&[i32]], fft_bits: usize, h: usize) {
     for l in 0..(1 << (fft_bits - 1)) {
         let index = (h << (fft_bits - 1)) + l;
         let mut val0 = _mm512_load_epi32(values.add(index * 32).cast_const());
@@ -114,7 +114,7 @@ unsafe fn fft_vecwise_loop(values: *mut i32, twiddle_dbl: &[Vec<i32>], fft_bits:
 /// # Safety
 unsafe fn fft3_loop(
     values: *mut i32,
-    twiddle_dbl: &[Vec<i32>],
+    twiddle_dbl: &[&[i32]],
     fft_bits: usize,
     bit_i: usize,
     index: usize,
@@ -147,7 +147,7 @@ unsafe fn fft3_loop(
 /// # Safety
 unsafe fn fft2_loop(
     values: *mut i32,
-    twiddle_dbl: &[Vec<i32>],
+    twiddle_dbl: &[&[i32]],
     fft_bits: usize,
     bit_i: usize,
     index: usize,
@@ -176,7 +176,7 @@ unsafe fn fft2_loop(
 /// # Safety
 unsafe fn fft1_loop(
     values: *mut i32,
-    twiddle_dbl: &[Vec<i32>],
+    twiddle_dbl: &[&[i32]],
     fft_bits: usize,
     bit_i: usize,
     index: usize,
@@ -546,7 +546,10 @@ mod tests {
             unsafe {
                 fft_lower_with_vecwise(
                     std::mem::transmute(values.data.as_mut_ptr()),
-                    &twiddle_dbls[1..],
+                    &twiddle_dbls[1..]
+                        .iter()
+                        .map(|x| x.as_ref())
+                        .collect::<Vec<_>>(),
                     (log_size - 4) as usize,
                     (log_size - 4) as usize,
                 );
@@ -577,7 +580,10 @@ mod tests {
             );
             fft(
                 std::mem::transmute(values.data.as_mut_ptr()),
-                &twiddle_dbls[1..],
+                &twiddle_dbls[1..]
+                    .iter()
+                    .map(|x| x.as_ref())
+                    .collect::<Vec<_>>(),
                 log_size as usize,
             );
 
