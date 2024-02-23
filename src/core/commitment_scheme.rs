@@ -33,7 +33,7 @@ impl CommitmentTreeProver {
             .map(|poly| CanonicCoset::new(poly.log_size() + log_blowup_factor))
             .collect_vec();
         let evaluations = zip(&polynomials, domains)
-            .map(|(poly, domain)| poly.evaluate(domain.circle_domain()).bit_reverse())
+            .map(|(poly, domain)| poly.evaluate(domain.circle_domain()))
             .collect_vec();
         let commitment = MerkleTree::<BaseField, Blake2sHasher>::commit(
             evaluations

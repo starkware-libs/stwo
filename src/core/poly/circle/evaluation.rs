@@ -31,21 +31,7 @@ impl<B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<B, F
 
 // Note: The concrete implementation of the poly operations is in the specific backend used.
 // For example, the CPU backend implementation is in `src/core/backend/cpu/poly.rs`.
-impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CircleEvaluation<B, F> {
-    /// Creates a [CircleEvaluation] from values ordered according to
-    /// [CanonicCoset]. For example, the canonic coset might look like this:
-    ///   G_8, G_8 + G_4, G_8 + 2G_4, G_8 + 3G_4.
-    /// The circle domain will be ordered like this:
-    ///   G_8, G_8 + 2G_4, -G_8, -G_8 - 2G_4.
-    pub fn new_canonical_ordered(coset: CanonicCoset, values: Col<B, F>) -> Self {
-        B::new_canonical_ordered(coset, values)
-    }
-
-    /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
-    pub fn interpolate(self) -> CirclePoly<B, F> {
-        B::interpolate(self)
-    }
-
+impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CircleEvaluation<B, F, NaturalOrder> {
     pub fn get_at(&self, point_index: CirclePointIndex) -> F {
         self.values
             .at(self.domain.find(point_index).expect("Not in domain"))
@@ -57,7 +43,7 @@ impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CircleEvaluation<B, F> {
     }
 }
 
-impl<F: ExtensionOf<BaseField>> CPUCircleEvaluation<F> {
+impl<F: ExtensionOf<BaseField>> CPUCircleEvaluation<F, NaturalOrder> {
     pub fn fetch_eval_on_coset(&self, coset: Coset) -> CosetSubEvaluation<'_, F> {
         assert!(coset.log_size() <= self.domain.half_coset.log_size());
         if let Some(offset) = self.domain.half_coset.find(coset.initial_index) {
@@ -79,6 +65,20 @@ impl<F: ExtensionOf<BaseField>> CPUCircleEvaluation<F> {
 }
 
 impl<B: PolyOps<F>, F: ExtensionOf<BaseField>> CircleEvaluation<B, F, BitReversedOrder> {
+    /// Creates a [CircleEvaluation] from values ordered according to
+    /// [CanonicCoset]. For example, the canonic coset might look like this:
+    ///   G_8, G_8 + G_4, G_8 + 2G_4, G_8 + 3G_4.
+    /// The circle domain will be ordered like this:
+    ///   G_8, G_8 + 2G_4, -G_8, -G_8 - 2G_4.
+    pub fn new_canonical_ordered(coset: CanonicCoset, values: Col<B, F>) -> Self {
+        B::new_canonical_ordered(coset, values)
+    }
+
+    /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
+    pub fn interpolate(self) -> CirclePoly<B, F> {
+        B::interpolate(self)
+    }
+
     pub fn bit_reverse(mut self) -> CircleEvaluation<B, F, NaturalOrder> {
         B::bit_reverse_column(&mut self.values);
         CircleEvaluation::new(self.domain, self.values)
@@ -144,14 +144,18 @@ mod tests {
     use crate::core::circle::Coset;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+    use crate::core::poly::NaturalOrder;
     use crate::m31;
 
     #[test]
     fn test_interpolate_non_canonic() {
         let domain = CircleDomain::constraint_evaluation_domain(3);
         assert_eq!(domain.log_size(), 3);
-        let evaluation =
-            CPUCircleEvaluation::new(domain, (0..8).map(BaseField::from_u32_unchecked).collect());
+        let evaluation = CPUCircleEvaluation::<_, NaturalOrder>::new(
+            domain,
+            (0..8).map(BaseField::from_u32_unchecked).collect(),
+        )
+        .bit_reverse();
         let poly = evaluation.interpolate();
         for (i, point) in domain.iter().enumerate() {
             assert_eq!(poly.eval_at_point(point), m31!(i as u32));
@@ -175,7 +179,7 @@ mod tests {
     pub fn test_get_at_circle_evaluation() {
         let domain = CanonicCoset::new(7).circle_domain();
         let values = (0..domain.size()).map(|i| m31!(i as u32)).collect();
-        let circle_evaluation = CPUCircleEvaluation::<_>::new(domain, values);
+        let circle_evaluation = CPUCircleEvaluation::<_, NaturalOrder>::new(domain, values);
         let bit_reversed_circle_evaluation = circle_evaluation.clone().bit_reverse();
         for index in domain.iter_indices() {
             assert_eq!(
