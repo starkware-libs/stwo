@@ -11,6 +11,8 @@ use crate::core::poly::circle::{
 };
 use crate::core::poly::BitReversedOrder;
 
+// TODO(spapini): Everything is returned in redundant representation, where values can also be P.
+// Decide if and when it's ok and what to do if it's not.
 impl PolyOps<BaseField> for AVX512Backend {
     fn new_canonical_ordered(
         coset: CanonicCoset,
@@ -113,8 +115,10 @@ impl PolyOps<BaseField> for AVX512Backend {
         )
     }
 
-    fn extend(_poly: &CirclePoly<Self, BaseField>, _log_size: u32) -> CirclePoly<Self, BaseField> {
-        todo!()
+    fn extend(poly: &CirclePoly<Self, BaseField>, log_size: u32) -> CirclePoly<Self, BaseField> {
+        // TODO(spapini): Optimize or get rid of extend.
+        poly.evaluate(CanonicCoset::new(log_size).circle_domain())
+            .interpolate()
     }
 }
 
@@ -124,7 +128,7 @@ mod tests {
     use crate::core::backend::avx512::AVX512Backend;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::Column;
-    use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
+    use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
     use crate::core::poly::BitReversedOrder;
 
     #[test]
@@ -157,6 +161,22 @@ mod tests {
         let evaluation2 = poly.evaluate(domain_ext);
         for i in 0..(1 << LOG_SIZE) {
             assert_eq!(evaluation2.values.at(i), evaluation.values.at(i));
+        }
+    }
+
+    #[test]
+    fn test_circle_poly_extend() {
+        let poly = CirclePoly::<AVX512Backend, _>::new(
+            (0..(1 << 6)).map(BaseField::from_u32_unchecked).collect(),
+        );
+        let eval0 = poly.evaluate(CanonicCoset::new(8).circle_domain());
+        let eval1 = poly
+            .extend(8)
+            .evaluate(CanonicCoset::new(8).circle_domain());
+
+        // Compare.
+        for i in 0..eval0.values.len() {
+            assert_eq!(eval0.values.at(i), eval1.values.at(i));
         }
     }
 }
