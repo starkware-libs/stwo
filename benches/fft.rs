@@ -1,6 +1,7 @@
 #![feature(iter_array_chunks)]
 
 use criterion::Criterion;
+use stwo::core::backend::avx512::fft::ifft::get_itwiddle_dbls;
 
 pub fn avx512_ifft(c: &mut criterion::Criterion) {
     use stwo::core::backend::avx512::fft::ifft;
@@ -20,18 +21,16 @@ pub fn avx512_ifft(c: &mut criterion::Criterion) {
 
     // Compute.
     let mut values = BaseFieldVec::from_iter(values);
-    let twiddle_dbls = (0..(LOG_SIZE as i32 - 1))
-        .map(|log_n| (0..(1 << log_n)).collect::<Vec<_>>())
-        .rev()
-        .collect::<Vec<_>>();
-    // TODO(spapini): When batch inverse is implemented, replace with real twiddles.
-    // let twiddle_dbls = get_itwiddle_dbls(domain);
+    let twiddle_dbls = get_itwiddle_dbls(domain);
 
     c.bench_function("avx ifft", |b| {
         b.iter(|| unsafe {
             ifft::ifft(
                 std::mem::transmute(values.data.as_mut_ptr()),
-                &twiddle_dbls[..],
+                &twiddle_dbls[1..]
+                    .iter()
+                    .map(|x| x.as_slice())
+                    .collect::<Vec<_>>(),
                 LOG_SIZE as usize,
             );
         })

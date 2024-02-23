@@ -29,7 +29,7 @@ use crate::core::utils::bit_reverse;
 ///
 /// # Panics
 /// This function will panic if `log_n_elements` is less than `MIN_FFT_LOG_SIZE`.
-pub unsafe fn ifft(values: *mut i32, twiddle_dbl: &[Vec<i32>], log_n_elements: usize) {
+pub unsafe fn ifft(values: *mut i32, twiddle_dbl: &[&[i32]], log_n_elements: usize) {
     assert!(log_n_elements >= MIN_FFT_LOG_SIZE);
     let log_n_vecs = log_n_elements - VECS_LOG_SIZE;
     // TODO(spapini): Use CACHED_FFT_LOG_SIZE instead.
@@ -68,7 +68,7 @@ pub unsafe fn ifft(values: *mut i32, twiddle_dbl: &[Vec<i32>], log_n_elements: u
 /// `fft_layers` must be at least 5.
 pub unsafe fn ifft_lower_with_vecwise(
     values: *mut i32,
-    twiddle_dbl: &[Vec<i32>],
+    twiddle_dbl: &[&[i32]],
     log_size: usize,
     fft_layers: usize,
 ) {
@@ -115,7 +115,7 @@ pub unsafe fn ifft_lower_with_vecwise(
 /// `fft_layers` must be at least 4.
 pub unsafe fn ifft_lower_without_vecwise(
     values: *mut i32,
-    twiddle_dbl: &[Vec<i32>],
+    twiddle_dbl: &[&[i32]],
     log_size: usize,
     fft_layers: usize,
 ) {
@@ -154,7 +154,7 @@ pub unsafe fn ifft_lower_without_vecwise(
 /// # Safety
 unsafe fn ifft_vecwise_loop(
     values: *mut i32,
-    twiddle_dbl: &[Vec<i32>],
+    twiddle_dbl: &[&[i32]],
     loop_bits: usize,
     index_h: usize,
 ) {
@@ -190,7 +190,7 @@ unsafe fn ifft_vecwise_loop(
 /// # Safety
 unsafe fn ifft3_loop(
     values: *mut i32,
-    twiddle_dbl: &[Vec<i32>],
+    twiddle_dbl: &[&[i32]],
     loop_bits: usize,
     layer: usize,
     index_h: usize,
@@ -226,7 +226,7 @@ unsafe fn ifft3_loop(
 ///     The layers `layer`, `layer + 1` are applied.
 ///   index - The index, iterated by the caller.
 /// # Safety
-unsafe fn ifft2_loop(values: *mut i32, twiddle_dbl: &[Vec<i32>], layer: usize, index: usize) {
+unsafe fn ifft2_loop(values: *mut i32, twiddle_dbl: &[&[i32]], layer: usize, index: usize) {
     let offset = index << (layer + 2);
     for l in (0..(1 << layer)).step_by(1 << VECS_LOG_SIZE) {
         ifft2(
@@ -250,7 +250,7 @@ unsafe fn ifft2_loop(values: *mut i32, twiddle_dbl: &[Vec<i32>], layer: usize, i
 ///   layer - The layer number of the ifft layer to apply.
 ///   index_h - The higher part of the index, iterated by the caller.
 /// # Safety
-unsafe fn ifft1_loop(values: *mut i32, twiddle_dbl: &[Vec<i32>], layer: usize, index: usize) {
+unsafe fn ifft1_loop(values: *mut i32, twiddle_dbl: &[&[i32]], layer: usize, index: usize) {
     let offset = index << (layer + 1);
     for l in (0..(1 << layer)).step_by(1 << VECS_LOG_SIZE) {
         ifft1(
@@ -704,7 +704,10 @@ mod tests {
             unsafe {
                 ifft_lower_with_vecwise(
                     std::mem::transmute(values.data.as_mut_ptr()),
-                    &twiddle_dbls[1..],
+                    &twiddle_dbls[1..]
+                        .iter()
+                        .map(|x| x.as_slice())
+                        .collect::<Vec<_>>(),
                     log_size as usize,
                     log_size as usize,
                 );
@@ -729,7 +732,10 @@ mod tests {
         unsafe {
             ifft(
                 std::mem::transmute(values.data.as_mut_ptr()),
-                &twiddle_dbls[1..],
+                &twiddle_dbls[1..]
+                    .iter()
+                    .map(|x| x.as_slice())
+                    .collect::<Vec<_>>(),
                 log_size as usize,
             );
             transpose_vecs(
