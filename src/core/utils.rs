@@ -1,3 +1,7 @@
+use super::backend::cpu::CPUCircleEvaluation;
+use super::fields::m31::BaseField;
+use super::fields::qm31::SecureField;
+
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
     fn assign(self, other: impl IntoIterator<Item = T>)
     where
@@ -33,6 +37,12 @@ pub fn bit_reverse<T>(v: &mut [T]) {
             v.swap(i, j);
         }
     }
+}
+
+pub fn project_secure_eval<EvalOrder>(
+    eval: &CPUCircleEvaluation<SecureField, EvalOrder>,
+) -> CPUCircleEvaluation<BaseField, EvalOrder> {
+    CPUCircleEvaluation::new(eval.domain, eval.values.iter().map(|x| x.0 .0).collect())
 }
 
 #[cfg(test)]

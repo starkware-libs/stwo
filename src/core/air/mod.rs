@@ -6,7 +6,6 @@ use itertools::Itertools;
 use self::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
 use super::circle::CirclePoint;
-use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::poly::circle::{CanonicCoset, CirclePoly};
 use super::ColumnVec;
@@ -122,11 +121,11 @@ pub trait Component<B: Backend> {
 }
 
 pub struct ComponentTrace<'a, B: Backend> {
-    pub columns: Vec<&'a CirclePoly<B, BaseField>>,
+    pub columns: Vec<&'a CirclePoly<B>>,
 }
 
 impl<'a, B: Backend> ComponentTrace<'a, B> {
-    pub fn new(columns: Vec<&'a CirclePoly<B, BaseField>>) -> Self {
+    pub fn new(columns: Vec<&'a CirclePoly<B>>) -> Self {
         Self { columns }
     }
 }

@@ -43,7 +43,7 @@ impl<F: Field> Column<F> for Vec<F> {
     }
 }
 
-pub type CPUCirclePoly<F> = CirclePoly<CPUBackend, F>;
+pub type CPUCirclePoly = CirclePoly<CPUBackend>;
 pub type CPUCircleEvaluation<F, EvalOrder> = CircleEvaluation<CPUBackend, F, EvalOrder>;
 // TODO(spapini): Remove the EvalOrder on LineEvaluation.
 pub type CPULineEvaluation<F, EvalOrder> = LineEvaluation<CPUBackend, F, EvalOrder>;
