@@ -14,7 +14,7 @@ use super::channel::Channel;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::{ExtensionOf, Field, FieldOps};
-use super::poly::circle::{CircleEvaluation, PolyOps};
+use super::poly::circle::CircleEvaluation;
 use super::poly::line::{LineEvaluation, LinePoly};
 use super::poly::BitReversedOrder;
 // TODO(andrew): Create fri/ directory, move queries.rs there and split this file up.
@@ -106,7 +106,7 @@ pub trait FriOps: FieldOps<SecureField> + Sized {
     ) where
         F: ExtensionOf<BaseField>,
         SecureField: ExtensionOf<F> + Field,
-        Self: PolyOps<F>;
+        Self: FieldOps<F>;
 }
 
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
@@ -145,7 +145,7 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriProver<B, H> {
     where
         F: ExtensionOf<BaseField>,
         SecureField: ExtensionOf<F>,
-        B: PolyOps<F>,
+        B: FieldOps<F>,
     {
         assert!(!columns.is_empty(), "no columns");
         assert!(columns.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
@@ -183,7 +183,7 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriProver<B, H> {
     where
         F: ExtensionOf<BaseField>,
         SecureField: ExtensionOf<F>,
-        B: FriOps + PolyOps<F>,
+        B: FriOps + FieldOps<F>,
     {
         // Returns the length of the [LineEvaluation] a [CircleEvaluation] gets folded into.
         let folded_len = |e: &CircleEvaluation<B, F, _>| e.len() >> CIRCLE_TO_LINE_FOLD_STEP;
@@ -964,7 +964,7 @@ mod tests {
     #[test]
     fn fold_circle_to_line_works() {
         const LOG_DEGREE: u32 = 4;
-        let circle_evaluation = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let circle_evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let num_folded_evals = circle_evaluation.domain.size() >> CIRCLE_TO_LINE_FOLD_STEP;
         let alpha = SecureField::one();
         let folded_domain = LineDomain::new(circle_evaluation.domain.half_coset);
@@ -985,7 +985,7 @@ mod tests {
         const LOG_EXPECTED_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR;
         const LOG_INVALID_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR - 1;
         let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3);
-        let evaluation = polynomial_evaluation::<BaseField>(6, LOG_INVALID_BLOWUP_FACTOR);
+        let evaluation = polynomial_evaluation(6, LOG_INVALID_BLOWUP_FACTOR);
 
         FriProver::commit(&mut test_channel(), config, &[evaluation]);
     }
@@ -1003,7 +1003,7 @@ mod tests {
     #[test]
     fn valid_proof_passes_verification() -> Result<(), VerificationError> {
         const LOG_DEGREE: u32 = 3;
-        let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len());
@@ -1019,8 +1019,7 @@ mod tests {
     #[test]
     fn valid_mixed_degree_proof_passes_verification() -> Result<(), VerificationError> {
         const LOG_DEGREES: [u32; 3] = [6, 5, 4];
-        let polynomials =
-            LOG_DEGREES.map(|log_d| polynomial_evaluation::<BaseField>(log_d, LOG_BLOWUP_FACTOR));
+        let polynomials = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
         let log_domain_size = polynomials[0].domain.log_size();
         let queries = Queries::from_positions(vec![7, 70], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
@@ -1036,8 +1035,7 @@ mod tests {
     #[test]
     fn valid_mixed_degree_end_to_end_proof_passes_verification() -> Result<(), VerificationError> {
         const LOG_DEGREES: [u32; 3] = [6, 5, 4];
-        let polynomials =
-            LOG_DEGREES.map(|log_d| polynomial_evaluation::<BaseField>(log_d, LOG_BLOWUP_FACTOR));
+        let polynomials = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
         let prover = FriProver::commit(&mut test_channel(), config, &polynomials);
         let (proof, prover_opening_positions) = prover.decommit(&mut test_channel());
@@ -1056,7 +1054,7 @@ mod tests {
     #[test]
     fn proof_with_removed_layer_fails_verification() {
         const LOG_DEGREE: u32 = 6;
-        let polynomial = polynomial_evaluation::<BaseField>(6, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
@@ -1078,7 +1076,7 @@ mod tests {
     #[test]
     fn proof_with_added_layer_fails_verification() {
         const LOG_DEGREE: u32 = 6;
-        let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
@@ -1100,7 +1098,7 @@ mod tests {
     #[test]
     fn proof_with_invalid_inner_layer_evaluation_fails_verification() {
         const LOG_DEGREE: u32 = 6;
-        let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
@@ -1123,7 +1121,7 @@ mod tests {
     #[test]
     fn proof_with_invalid_inner_layer_decommitment_fails_verification() {
         const LOG_DEGREE: u32 = 6;
-        let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
@@ -1147,7 +1145,7 @@ mod tests {
     fn proof_with_invalid_last_layer_degree_fails_verification() {
         const LOG_DEGREE: u32 = 6;
         const LOG_MAX_LAST_LAYER_DEGREE: u32 = 2;
-        let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
         let config = FriConfig::new(LOG_MAX_LAST_LAYER_DEGREE, LOG_BLOWUP_FACTOR, queries.len());
@@ -1168,7 +1166,7 @@ mod tests {
     #[test]
     fn proof_with_invalid_last_layer_fails_verification() {
         const LOG_DEGREE: u32 = 6;
-        let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
@@ -1192,7 +1190,7 @@ mod tests {
     #[should_panic]
     fn decommit_queries_on_invalid_domain_fails_verification() {
         const LOG_DEGREE: u32 = 3;
-        let polynomial = polynomial_evaluation::<BaseField>(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len());
@@ -1211,11 +1209,11 @@ mod tests {
     /// Returns an evaluation of a random polynomial with degree `2^log_degree`.
     ///
     /// The evaluation domain size is `2^(log_degree + log_blowup_factor)`.
-    fn polynomial_evaluation<F: ExtensionOf<BaseField>>(
+    fn polynomial_evaluation(
         log_degree: u32,
         log_blowup_factor: u32,
-    ) -> CPUCircleEvaluation<F, BitReversedOrder> {
-        let poly = CPUCirclePoly::<F>::new(vec![F::one(); 1 << log_degree]);
+    ) -> CPUCircleEvaluation<BaseField, BitReversedOrder> {
+        let poly = CPUCirclePoly::new(vec![BaseField::one(); 1 << log_degree]);
         let coset = Coset::half_odds(log_degree + log_blowup_factor - 1);
         let domain = CircleDomain::new(coset);
         poly.evaluate(domain)

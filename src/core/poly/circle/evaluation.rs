@@ -31,7 +31,7 @@ impl<B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<B, F
 
 // Note: The concrete implementation of the poly operations is in the specific backend used.
 // For example, the CPU backend implementation is in `src/core/backend/cpu/poly.rs`.
-impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CircleEvaluation<B, F, NaturalOrder> {
+impl<F: ExtensionOf<BaseField>, B: FieldOps<F>> CircleEvaluation<B, F, NaturalOrder> {
     pub fn get_at(&self, point_index: CirclePointIndex) -> F {
         self.values
             .at(self.domain.find(point_index).expect("Not in domain"))
@@ -64,21 +64,23 @@ impl<F: ExtensionOf<BaseField>> CPUCircleEvaluation<F, NaturalOrder> {
     }
 }
 
-impl<B: PolyOps<F>, F: ExtensionOf<BaseField>> CircleEvaluation<B, F, BitReversedOrder> {
+impl<B: PolyOps> CircleEvaluation<B, BaseField, BitReversedOrder> {
     /// Creates a [CircleEvaluation] from values ordered according to
     /// [CanonicCoset]. For example, the canonic coset might look like this:
     ///   G_8, G_8 + G_4, G_8 + 2G_4, G_8 + 3G_4.
     /// The circle domain will be ordered like this:
     ///   G_8, G_8 + 2G_4, -G_8, -G_8 - 2G_4.
-    pub fn new_canonical_ordered(coset: CanonicCoset, values: Col<B, F>) -> Self {
+    pub fn new_canonical_ordered(coset: CanonicCoset, values: Col<B, BaseField>) -> Self {
         B::new_canonical_ordered(coset, values)
     }
 
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
-    pub fn interpolate(self) -> CirclePoly<B, F> {
+    pub fn interpolate(self) -> CirclePoly<B> {
         B::interpolate(self)
     }
+}
 
+impl<B: FieldOps<F>, F: ExtensionOf<BaseField>> CircleEvaluation<B, F, BitReversedOrder> {
     pub fn bit_reverse(mut self) -> CircleEvaluation<B, F, NaturalOrder> {
         B::bit_reverse_column(&mut self.values);
         CircleEvaluation::new(self.domain, self.values)

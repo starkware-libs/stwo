@@ -82,7 +82,7 @@ impl CommitmentSchemeProver {
 }
 
 pub struct CommitmentTreeProver {
-    pub polynomials: ColumnVec<CPUCirclePoly<BaseField>>,
+    pub polynomials: ColumnVec<CPUCirclePoly>,
     pub evaluations: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
     // TODO(AlonH): Change to mixed degree merkle and remove values clone.
     pub commitment: MerkleTree<BaseField, Blake2sHasher>,
@@ -90,7 +90,7 @@ pub struct CommitmentTreeProver {
 
 impl CommitmentTreeProver {
     pub fn new(
-        polynomials: Vec<CPUCirclePoly<BaseField>>,
+        polynomials: Vec<CPUCirclePoly>,
         log_blowup_factor: u32,
         channel: &mut Blake2sChannel,
     ) -> Self {
