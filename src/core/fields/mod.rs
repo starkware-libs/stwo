@@ -1,5 +1,5 @@
 use std::fmt::{Debug, Display};
-use std::ops::Neg;
+use std::ops::{Index, Neg};
 
 use num_traits::{NumAssign, NumAssignOps, NumOps};
 
@@ -8,6 +8,20 @@ pub mod avx512_m31;
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
+
+pub trait FieldOps<F: Field> {
+    type Column: Column<F>;
+    fn bit_reverse_column(column: Self::Column) -> Self::Column;
+}
+pub type Col<B, F> = <B as FieldOps<F>>::Column;
+pub trait Column<F>: Clone + Debug + Index<usize, Output = F> + FromIterator<F> {
+    fn zeros(len: usize) -> Self;
+    fn to_vec(&self) -> Vec<F>;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
 
 pub trait Field:
     NumAssign
