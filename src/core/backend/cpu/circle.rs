@@ -8,8 +8,6 @@ use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
 use crate::core::poly::utils::fold;
-use crate::core::poly::{BitReversedOrder, NaturalOrder};
-use crate::core::utils::bit_reverse;
 
 impl<F: ExtensionOf<BaseField>> PolyOps<F> for CPUBackend {
     fn new_canonical_ordered(
@@ -54,19 +52,6 @@ impl<F: ExtensionOf<BaseField>> PolyOps<F> for CPUBackend {
         }
 
         CirclePoly::new(values)
-    }
-
-    // TODO(spapini): Remove
-    fn bit_reverse_natural(
-        eval: CircleEvaluation<Self, F, NaturalOrder>,
-    ) -> CircleEvaluation<Self, F, BitReversedOrder> {
-        CircleEvaluation::new(eval.domain, bit_reverse(eval.values))
-    }
-
-    fn bit_reverse_reversed(
-        eval: CircleEvaluation<Self, F, BitReversedOrder>,
-    ) -> CircleEvaluation<Self, F, NaturalOrder> {
-        CircleEvaluation::new(eval.domain, bit_reverse(eval.values))
     }
 
     fn eval_at_point<E: ExtensionOf<F>>(poly: &CirclePoly<Self, F>, point: CirclePoint<E>) -> E {
