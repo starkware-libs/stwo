@@ -17,7 +17,7 @@ use crate::core::poly::BitReversedOrder;
 
 // TODO(spapini): Everything is returned in redundant representation, where values can also be P.
 // Decide if and when it's ok and what to do if it's not.
-impl PolyOps<BaseField> for AVX512Backend {
+impl PolyOps for AVX512Backend {
     fn new_canonical_ordered(
         coset: CanonicCoset,
         values: Col<Self, BaseField>,
@@ -27,9 +27,7 @@ impl PolyOps<BaseField> for AVX512Backend {
         CircleEvaluation::new(eval.domain, Col::<AVX512Backend, _>::from_iter(eval.values))
     }
 
-    fn interpolate(
-        eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
-    ) -> CirclePoly<Self, BaseField> {
+    fn interpolate(eval: CircleEvaluation<Self, BaseField, BitReversedOrder>) -> CirclePoly<Self> {
         let mut values = eval.values;
         let log_size = values.length.ilog2();
 
@@ -60,7 +58,7 @@ impl PolyOps<BaseField> for AVX512Backend {
     }
 
     fn eval_at_point<E: ExtensionOf<BaseField>>(
-        poly: &CirclePoly<Self, BaseField>,
+        poly: &CirclePoly<Self>,
         point: CirclePoint<E>,
     ) -> E {
         // TODO(spapini): Optimize.
@@ -84,14 +82,14 @@ impl PolyOps<BaseField> for AVX512Backend {
         fold(cast_slice(&poly.coeffs.data), &mappings)
     }
 
-    fn extend(poly: &CirclePoly<Self, BaseField>, log_size: u32) -> CirclePoly<Self, BaseField> {
+    fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
         // TODO(spapini): Optimize or get rid of extend.
         poly.evaluate(CanonicCoset::new(log_size).circle_domain())
             .interpolate()
     }
 
     fn evaluate(
-        poly: &CirclePoly<Self, BaseField>,
+        poly: &CirclePoly<Self>,
         domain: CircleDomain,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(spapini): Precompute twiddles.
@@ -217,7 +215,7 @@ mod tests {
     fn test_circle_poly_extend() {
         for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 2) {
             let log_size = log_size as u32;
-            let poly = CirclePoly::<AVX512Backend, _>::new(
+            let poly = CirclePoly::<AVX512Backend>::new(
                 (0..(1 << log_size))
                     .map(BaseField::from_u32_unchecked)
                     .collect(),

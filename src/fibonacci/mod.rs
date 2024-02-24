@@ -77,7 +77,7 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::queries::Queries;
-    use crate::core::utils::bit_reverse;
+    use crate::core::utils::{bit_reverse, secure_eval_to_base_eval};
     use crate::fibonacci::verify_proof;
     use crate::{m31, qm31};
 
@@ -131,12 +131,13 @@ mod tests {
 
         // Assert that the trace quotients are low degree.
         for quotient in trace_quotients.iter() {
-            let interpolated_quotient_poly = quotient.clone().interpolate();
+            let interpolated_quotient_poly = secure_eval_to_base_eval(quotient).interpolate();
             assert!(interpolated_quotient_poly.is_in_fft_space(FIB_LOG_SIZE));
         }
 
         // Assert that the composition polynomial quotient is low degree.
-        let interpolated_quotient_poly = composition_polynomial_quotient.clone().interpolate();
+        let interpolated_quotient_poly =
+            secure_eval_to_base_eval(composition_polynomial_quotient).interpolate();
         assert!(interpolated_quotient_poly.is_in_fft_space(FIB_LOG_SIZE + 1));
     }
 
