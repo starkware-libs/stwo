@@ -11,12 +11,6 @@ pub mod avx512;
 pub mod cpu;
 
 pub trait Backend:
-    Copy
-    + Clone
-    + Debug
-    + FieldOps<BaseField>
-    + FieldOps<SecureField>
-    + PolyOps<BaseField>
-    + PolyOps<SecureField>
+    Copy + Clone + Debug + FieldOps<BaseField> + FieldOps<SecureField> + PolyOps<BaseField>
 {
 }

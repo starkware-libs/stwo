@@ -158,6 +158,8 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     }
 }
 
+// TODO(spapini): Remove dependency on PolyOps<SecureField>.
+//   This will also remove the dependency on extend(), which is currently not efficient on AVX.
 impl DomainEvaluationAccumulator<CPUBackend> {
     /// Computes f(P) as coefficients.
     pub fn finalize(self) -> SecureCirclePoly {
