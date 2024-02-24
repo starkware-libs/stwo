@@ -4,7 +4,7 @@ version = "0.1.1"
 edition = "2021"
 
 [workspace]
-members = ["gkr"]
+members = ["gkr", "gkr2"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -23,6 +23,9 @@ rand = "0.8.3"
 
 [features]
 avx512 = []
+
+[profile.release]
+debug = true
 
 [profile.bench]
 codegen-units = 1

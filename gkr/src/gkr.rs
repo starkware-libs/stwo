@@ -708,10 +708,10 @@ impl SumcheckOracle for Oracle<SecureField> {
         };
 
         let c = collapse_c(self.c, self.z[0], challenge);
-        let now = Instant::now();
+        // let now = Instant::now();
         let p = collapse_p_or_q(self.p);
         let q = collapse_p_or_q(self.q);
-        println!("collapsing time: {:?}", now.elapsed());
+        // println!("collapsing time: {:?}", now.elapsed());
 
         Self {
             p,
