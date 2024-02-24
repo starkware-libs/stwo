@@ -58,6 +58,9 @@ const HHALF_INTERLEAVE_HHALF: __m512i = unsafe {
 };
 const P: __m512i = unsafe { core::mem::transmute([(1u32 << 31) - 1; 16]) };
 
+pub const CACHED_FFT_LOG_SIZE: usize = 16;
+pub const MIN_FFT_LOG_SIZE: usize = 5;
+
 // TODO(spapini): FFTs return a redundant representation, that can get the value P. need to reduce
 // it somewhere.
 

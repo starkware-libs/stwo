@@ -4,35 +4,36 @@ use std::arch::x86_64::{
     _mm512_srli_epi64, _mm512_store_epi32, _mm512_xor_epi32,
 };
 
-use super::{add_mod_p, sub_mod_p, EVENS_INTERLEAVE_EVENS, ODDS_INTERLEAVE_ODDS};
-use crate::core::backend::avx512::fft::{
-    transpose_vecs, HHALF_INTERLEAVE_HHALF, LHALF_INTERLEAVE_LHALF,
+use super::{
+    add_mod_p, sub_mod_p, transpose_vecs, CACHED_FFT_LOG_SIZE, EVENS_INTERLEAVE_EVENS,
+    HHALF_INTERLEAVE_HHALF, LHALF_INTERLEAVE_LHALF, MIN_FFT_LOG_SIZE, ODDS_INTERLEAVE_ODDS,
 };
+use crate::core::backend::avx512::VECS_LOG_SIZE;
 use crate::core::poly::circle::CircleDomain;
 use crate::core::utils::bit_reverse;
 
 /// # Safety
 pub unsafe fn fft(values: *mut i32, twiddle_dbl: &[&[i32]], log_n_elements: usize) {
-    assert!(log_n_elements >= 4);
-    if log_n_elements <= 1 {
+    assert!(log_n_elements >= MIN_FFT_LOG_SIZE);
+    let log_n_vecs = log_n_elements - VECS_LOG_SIZE;
+    if log_n_elements <= CACHED_FFT_LOG_SIZE {
         // 16 {
-        fft_lower_with_vecwise(values, twiddle_dbl, log_n_elements - 4, log_n_elements - 4);
+        fft_lower_with_vecwise(values, twiddle_dbl, log_n_vecs, log_n_vecs);
         return;
     }
-    let log_n_vecs = log_n_elements - 4;
     let log_n_fft_vecs0 = log_n_vecs / 2;
     let log_n_fft_vecs1 = (log_n_vecs + 1) / 2;
     fft_lower_without_vecwise(
         values,
         &twiddle_dbl[(3 + log_n_fft_vecs1)..],
-        log_n_elements - 4,
+        log_n_vecs,
         log_n_fft_vecs0,
     );
-    transpose_vecs(values, log_n_elements - 4);
+    transpose_vecs(values, log_n_vecs);
     fft_lower_with_vecwise(
         values,
         &twiddle_dbl[..(3 + log_n_fft_vecs1)],
-        log_n_elements - 4,
+        log_n_vecs,
         log_n_fft_vecs1,
     );
 }
@@ -582,8 +583,8 @@ mod tests {
                         .iter()
                         .map(|x| x.as_ref())
                         .collect::<Vec<_>>(),
-                    (log_size - 4) as usize,
-                    (log_size - 4) as usize,
+                    (log_size) as usize - VECS_LOG_SIZE,
+                    (log_size) as usize - VECS_LOG_SIZE,
                 );
 
                 // Compare.
@@ -592,38 +593,36 @@ mod tests {
         }
     }
 
-    fn run_fft_full_test(log_size: u32) {
-        let domain = CanonicCoset::new(log_size).circle_domain();
-        let values = (0..domain.size())
-            .map(|i| BaseField::from_u32_unchecked(i as u32))
-            .collect::<Vec<_>>();
-        let expected_coeffs = ref_fft(domain, values.clone());
+    #[test]
+    fn test_transposed_fft() {
+        for log_size in (CACHED_FFT_LOG_SIZE + 1)..(CACHED_FFT_LOG_SIZE + 4) {
+            let domain = CanonicCoset::new(log_size as u32).circle_domain();
+            let values = (0..domain.size())
+                .map(|i| BaseField::from_u32_unchecked(i as u32))
+                .collect::<Vec<_>>();
+            let expected_coeffs = ref_fft(domain, values.clone());
 
-        // Compute.
-        let mut values = BaseFieldVec::from_iter(values);
-        let twiddle_dbls = get_twiddle_dbls(domain);
+            // Compute.
+            let mut values = BaseFieldVec::from_iter(values);
+            let twiddle_dbls = get_twiddle_dbls(domain);
 
-        unsafe {
-            transpose_vecs(
-                std::mem::transmute(values.data.as_mut_ptr()),
-                (log_size - 4) as usize,
-            );
-            fft(
-                std::mem::transmute(values.data.as_mut_ptr()),
-                &twiddle_dbls[1..]
-                    .iter()
-                    .map(|x| x.as_ref())
-                    .collect::<Vec<_>>(),
-                log_size as usize,
-            );
+            unsafe {
+                transpose_vecs(
+                    std::mem::transmute(values.data.as_mut_ptr()),
+                    log_size - VECS_LOG_SIZE,
+                );
+                fft(
+                    std::mem::transmute(values.data.as_mut_ptr()),
+                    &twiddle_dbls[1..]
+                        .iter()
+                        .map(|x| x.as_ref())
+                        .collect::<Vec<_>>(),
+                    log_size,
+                );
+            }
 
             // Compare.
             assert_eq!(values.to_vec(), expected_coeffs);
         }
-    }
-
-    #[test]
-    fn test_fft_full_10() {
-        run_fft_full_test(3 + 3 + 4);
     }
 }
