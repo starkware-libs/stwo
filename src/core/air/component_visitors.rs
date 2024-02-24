@@ -9,7 +9,6 @@ use super::{Air, Component, ComponentTrace, ComponentVisitor};
 use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::backend::{Backend, CPUBackend};
 use crate::core::circle::CirclePoint;
-use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fri::CirclePolyDegreeBound;
 use crate::core::poly::circle::{CanonicCoset, CirclePoly, SecureCirclePoly};
@@ -205,10 +204,10 @@ pub trait AirExt: Air<CPUBackend> {
 
     fn component_traces<'a>(
         &'a self,
-        polynomials: &'a [CirclePoly<CPUBackend, BaseField>],
+        polynomials: &'a [CirclePoly<CPUBackend>],
     ) -> Vec<ComponentTrace<'_, CPUBackend>> {
         struct ComponentTracesVisitor<'a, B: Backend> {
-            polynomials: slice::Iter<'a, CirclePoly<B, BaseField>>,
+            polynomials: slice::Iter<'a, CirclePoly<B>>,
             component_traces: Vec<ComponentTrace<'a, B>>,
         }
 
