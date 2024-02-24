@@ -1,13 +1,17 @@
-use super::fft::ifft;
-use super::AVX512Backend;
+use bytemuck::cast_slice;
+
+use super::fft::{ifft, CACHED_FFT_LOG_SIZE};
+use super::{AVX512Backend, VECS_LOG_SIZE};
 use crate::core::backend::avx512::fft::rfft;
 use crate::core::backend::avx512::BaseFieldVec;
 use crate::core::backend::CPUBackend;
+use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{Col, Column, Field};
+use crate::core::fields::{Col, Column, ExtensionOf, Field};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
+use crate::core::poly::utils::fold;
 use crate::core::poly::BitReversedOrder;
 
 // TODO(spapini): Everything is returned in redundant representation, where values can also be P.
@@ -51,11 +55,28 @@ impl PolyOps<BaseField> for AVX512Backend {
         CirclePoly::new(values)
     }
 
-    fn eval_at_point<E: crate::core::fields::ExtensionOf<BaseField>>(
-        _poly: &CirclePoly<Self, BaseField>,
-        _point: crate::core::circle::CirclePoint<E>,
+    fn eval_at_point<E: ExtensionOf<BaseField>>(
+        poly: &CirclePoly<Self, BaseField>,
+        point: CirclePoint<E>,
     ) -> E {
-        todo!()
+        // TODO(spapini): Optimize.
+        let mut mappings = vec![point.y, point.x];
+        let mut x = point.x;
+        for _ in 2..poly.log_size() {
+            x = CirclePoint::double_x(x);
+            mappings.push(x);
+        }
+        mappings.reverse();
+        let n = mappings.len();
+        let n0 = (n - VECS_LOG_SIZE) / 2;
+        let n1 = (n - VECS_LOG_SIZE + 1) / 2;
+        if poly.log_size() as usize > CACHED_FFT_LOG_SIZE {
+            let (ab, c) = mappings.split_at_mut(n1);
+            let (a, _b) = ab.split_at_mut(n0);
+            // Swap content of a,c.
+            a.swap_with_slice(&mut c[0..n0]);
+        }
+        fold(cast_slice(&poly.coeffs.data), &mappings)
     }
 
     fn evaluate(
@@ -110,54 +131,85 @@ impl PolyOps<BaseField> for AVX512Backend {
 
 #[cfg(test)]
 mod tests {
+    use crate::core::backend::avx512::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
     use crate::core::backend::avx512::AVX512Backend;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
-    use crate::core::poly::BitReversedOrder;
+    use crate::core::poly::{BitReversedOrder, NaturalOrder};
 
     #[test]
     fn test_interpolate_and_eval() {
-        const LOG_SIZE: u32 = 6;
-        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let evaluation = CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(
-            domain,
-            (0..(1 << LOG_SIZE))
-                .map(BaseField::from_u32_unchecked)
-                .collect(),
-        );
-        let poly = evaluation.clone().interpolate();
-        let evaluation2 = poly.evaluate(domain);
-        assert_eq!(evaluation.values, evaluation2.values);
+        for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 4) {
+            let domain = CanonicCoset::new(log_size as u32).circle_domain();
+            let evaluation = CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(
+                domain,
+                (0..(1 << log_size))
+                    .map(BaseField::from_u32_unchecked)
+                    .collect(),
+            );
+            let poly = evaluation.clone().interpolate();
+            let evaluation2 = poly.evaluate(domain);
+            assert_eq!(evaluation.values, evaluation2.values);
+        }
     }
 
     #[test]
     fn test_eval_extension() {
-        const LOG_SIZE: u32 = 6;
-        let domain = CircleDomain::constraint_evaluation_domain(LOG_SIZE);
-        let domain_ext = CircleDomain::constraint_evaluation_domain(LOG_SIZE + 3);
-        let evaluation = CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(
-            domain,
-            (0..(1 << LOG_SIZE))
-                .map(BaseField::from_u32_unchecked)
-                .collect(),
-        );
-        let poly = evaluation.clone().interpolate();
-        let evaluation2 = poly.evaluate(domain_ext);
-        for i in 0..(1 << LOG_SIZE) {
-            assert_eq!(evaluation2.values[i], evaluation.values[i]);
+        for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 4) {
+            let log_size = log_size as u32;
+            let domain = CircleDomain::constraint_evaluation_domain(log_size);
+            let domain_ext = CircleDomain::constraint_evaluation_domain(log_size + 3);
+            let evaluation = CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(
+                domain,
+                (0..(1 << log_size))
+                    .map(BaseField::from_u32_unchecked)
+                    .collect(),
+            );
+            let poly = evaluation.clone().interpolate();
+            let evaluation2 = poly.evaluate(domain_ext);
+            for i in 0..(1 << log_size) {
+                assert_eq!(evaluation2.values[i], evaluation.values[i]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_eval_at_point() {
+        for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 4) {
+            let domain = CanonicCoset::new(log_size as u32).circle_domain();
+            let evaluation = CircleEvaluation::<AVX512Backend, _, NaturalOrder>::new(
+                domain,
+                (0..(1 << log_size))
+                    .map(BaseField::from_u32_unchecked)
+                    .collect(),
+            );
+            let poly = evaluation.bit_reverse().interpolate();
+            for i in [0, 1, 3, 1 << (log_size - 1), 1 << (log_size - 2)] {
+                let p = domain.at(i);
+                assert_eq!(
+                    poly.eval_at_point(p),
+                    BaseField::from_u32_unchecked(i as u32),
+                    "log_size = {log_size} i = {i}"
+                );
+            }
         }
     }
 
     #[test]
     fn test_circle_poly_extend() {
-        let poly = CirclePoly::<AVX512Backend, _>::new(
-            (0..(1 << 6)).map(BaseField::from_u32_unchecked).collect(),
-        );
-        let eval0 = poly.evaluate(CanonicCoset::new(8).circle_domain());
-        let eval1 = poly
-            .extend(8)
-            .evaluate(CanonicCoset::new(8).circle_domain());
+        for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 2) {
+            let log_size = log_size as u32;
+            let poly = CirclePoly::<AVX512Backend, _>::new(
+                (0..(1 << log_size))
+                    .map(BaseField::from_u32_unchecked)
+                    .collect(),
+            );
+            let eval0 = poly.evaluate(CanonicCoset::new(log_size + 2).circle_domain());
+            let eval1 = poly
+                .extend(log_size + 2)
+                .evaluate(CanonicCoset::new(log_size + 2).circle_domain());
 
-        assert_eq!(eval0.values, eval1.values);
+            assert_eq!(eval0.values, eval1.values);
+        }
     }
 }

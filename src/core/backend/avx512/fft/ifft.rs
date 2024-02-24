@@ -6,33 +6,36 @@ use std::arch::x86_64::{
 };
 
 use super::{H, L, P};
-use crate::core::backend::avx512::fft::{transpose_vecs, H1, L1};
+use crate::core::backend::avx512::fft::{
+    transpose_vecs, CACHED_FFT_LOG_SIZE, H1, L1, MIN_FFT_LOG_SIZE,
+};
+use crate::core::backend::avx512::VECS_LOG_SIZE;
 use crate::core::fields::Field;
 use crate::core::poly::circle::CircleDomain;
 use crate::core::utils::bit_reverse;
 
 /// # Safety
 pub unsafe fn ifft(values: *mut i32, twiddle_dbl: &[Vec<i32>], log_n_elements: usize) {
-    assert!(log_n_elements >= 4);
-    if log_n_elements <= 1 {
+    assert!(log_n_elements >= MIN_FFT_LOG_SIZE);
+    let log_n_vecs = log_n_elements - VECS_LOG_SIZE;
+    if log_n_elements <= CACHED_FFT_LOG_SIZE {
         // 16 {
-        ifft_lower_with_vecwise(values, twiddle_dbl, log_n_elements - 4, log_n_elements - 4);
+        ifft_lower_with_vecwise(values, twiddle_dbl, log_n_vecs, log_n_vecs);
         return;
     }
-    let log_n_vecs = log_n_elements - 4;
     let log_n_fft_vecs0 = log_n_vecs / 2;
     let log_n_fft_vecs1 = (log_n_vecs + 1) / 2;
     ifft_lower_with_vecwise(
         values,
         &twiddle_dbl[..(3 + log_n_fft_vecs1)],
-        log_n_elements - 4,
+        log_n_vecs,
         log_n_fft_vecs1,
     );
-    transpose_vecs(values, log_n_elements - 4);
+    transpose_vecs(values, log_n_vecs);
     ifft_lower_without_vecwise(
         values,
         &twiddle_dbl[(3 + log_n_fft_vecs1)..],
-        log_n_elements - 4,
+        log_n_vecs,
         log_n_fft_vecs0,
     );
 }
@@ -557,8 +560,8 @@ mod tests {
                 ifft_lower_with_vecwise(
                     std::mem::transmute(values.data.as_mut_ptr()),
                     &twiddle_dbls[1..],
-                    (log_size - 4) as usize,
-                    (log_size - 4) as usize,
+                    (log_size) as usize - VECS_LOG_SIZE,
+                    (log_size) as usize - VECS_LOG_SIZE,
                 );
 
                 // Compare.
@@ -569,37 +572,35 @@ mod tests {
         }
     }
 
-    fn run_ifft_full_test(log_size: u32) {
-        let domain = CanonicCoset::new(log_size).circle_domain();
-        let values = (0..domain.size())
-            .map(|i| BaseField::from_u32_unchecked(i as u32))
-            .collect::<Vec<_>>();
-        let expected_coeffs = ref_ifft(domain, values.clone());
+    #[test]
+    fn test_transposed_fft() {
+        for log_size in (CACHED_FFT_LOG_SIZE + 1)..(CACHED_FFT_LOG_SIZE + 4) {
+            let domain = CanonicCoset::new(log_size as u32).circle_domain();
+            let values = (0..domain.size())
+                .map(|i| BaseField::from_u32_unchecked(i as u32))
+                .collect::<Vec<_>>();
+            let expected_coeffs = ref_ifft(domain, values.clone());
 
-        // Compute.
-        let mut values = BaseFieldVec::from_iter(values);
-        let twiddle_dbls = get_itwiddle_dbls(domain);
+            // Compute.
+            let mut values = BaseFieldVec::from_iter(values);
+            let twiddle_dbls = get_itwiddle_dbls(domain);
 
-        unsafe {
-            ifft(
-                std::mem::transmute(values.data.as_mut_ptr()),
-                &twiddle_dbls[1..],
-                log_size as usize,
-            );
-            transpose_vecs(
-                std::mem::transmute(values.data.as_mut_ptr()),
-                (log_size - 4) as usize,
-            );
+            unsafe {
+                ifft(
+                    std::mem::transmute(values.data.as_mut_ptr()),
+                    &twiddle_dbls[1..],
+                    log_size,
+                );
+                transpose_vecs(
+                    std::mem::transmute(values.data.as_mut_ptr()),
+                    log_size - VECS_LOG_SIZE,
+                );
 
-            // Compare.
-            for i in 0..expected_coeffs.len() {
-                assert_eq!(values[i], expected_coeffs[i]);
+                // Compare.
+                for i in 0..expected_coeffs.len() {
+                    assert_eq!(values[i], expected_coeffs[i]);
+                }
             }
         }
-    }
-
-    #[test]
-    fn test_ifft_full_10() {
-        run_ifft_full_test(3 + 3 + 4);
     }
 }
