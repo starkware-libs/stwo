@@ -1,10 +1,10 @@
 use num_traits::One;
 
-use super::backend::{Backend, FieldOps};
+use super::backend::Backend;
 use super::circle::{CirclePoint, CirclePointIndex, Coset};
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::ExtensionOf;
+use super::fields::{ExtensionOf, FieldOps};
 use super::poly::circle::{CircleEvaluation, PolyOps};
 use super::poly::{BitReversedOrder, NaturalOrder};
 use crate::core::fields::ComplexConjugate;

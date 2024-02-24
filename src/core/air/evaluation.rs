@@ -6,10 +6,10 @@
 use core::slice;
 
 use super::{ComponentTrace, ComponentVisitor};
-use crate::core::backend::{Backend, CPUBackend, Col};
+use crate::core::backend::{Backend, CPUBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::Field;
+use crate::core::fields::{Col, Field};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
 
 /// Accumulates evaluations of u_i(P0) at a single point.
