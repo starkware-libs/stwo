@@ -23,7 +23,7 @@ impl<F: Field> FieldOps<F> for CPUBackend {
     }
 }
 
-impl<F: Clone + Debug + Field> Column<F> for Vec<F> {
+impl<F: Field> Column<F> for Vec<F> {
     fn zeros(len: usize) -> Self {
         vec![F::zero(); len]
     }

@@ -13,7 +13,7 @@ pub const P2: u64 = 4611686014132420609; // (2 ** 31 - 1) ** 2
 /// Equivalent to M31\[x\] over (x^2 + 1) as the irreducible polynomial.
 /// Represented as (a, b) of a + bi.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CM31(M31, M31);
+pub struct CM31(pub M31, pub M31);
 
 impl_field!(CM31, P2);
 impl_extension_field!(CM31, M31);
