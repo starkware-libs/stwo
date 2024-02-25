@@ -1,37 +1,17 @@
 use num_traits::Zero;
 
 use super::CPUBackend;
-use crate::core::circle::CirclePoint;
+use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Col, ExtensionOf, FieldExpOps, FieldOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
+use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::fold;
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse;
-
-fn get_twiddles(domain: CircleDomain) -> Vec<Vec<BaseField>> {
-    let mut coset = domain.half_coset;
-
-    let mut res = vec![];
-    res.push(coset.iter().map(|p| (p.y)).collect::<Vec<_>>());
-    bit_reverse(res.last_mut().unwrap());
-    for _ in 0..coset.log_size() {
-        res.push(
-            coset
-                .iter()
-                .take(coset.size() / 2)
-                .map(|p| (p.x))
-                .collect::<Vec<_>>(),
-        );
-        bit_reverse(res.last_mut().unwrap());
-        coset = coset.double();
-    }
-
-    res
-}
 
 impl PolyOps for CPUBackend {
     fn new_canonical_ordered(
@@ -52,19 +32,56 @@ impl PolyOps for CPUBackend {
         CircleEvaluation::new(domain, new_values)
     }
 
-    fn interpolate(eval: CircleEvaluation<Self, BaseField, BitReversedOrder>) -> CirclePoly<Self> {
-        let twiddles = get_twiddles(eval.domain);
-
+    fn interpolate(
+        eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
+        twiddles: &TwiddleTree<Self>,
+    ) -> CirclePoly<Self> {
         let mut values = eval.values;
-        for (i, layer_twiddles) in twiddles.iter().enumerate() {
+
+        let itwiddle_buffer = &twiddles.itwiddles;
+        let mut x_twiddles = (0..eval.domain.half_coset.log_size())
+            .map(|i| {
+                let len = 1 << i;
+                &itwiddle_buffer[itwiddle_buffer.len() - len * 2..itwiddle_buffer.len() - len]
+            })
+            .rev()
+            .peekable();
+
+        if eval.domain.log_size() == 1 {
+            let (mut val0, mut val1) = (values[0], values[1]);
+            ibutterfly(
+                &mut val0,
+                &mut val1,
+                eval.domain.half_coset.initial.y.inverse(),
+            );
+            let inv = BaseField::from_u32_unchecked(2).inverse();
+            (values[0], values[1]) = (val0 * inv, val1 * inv);
+            return CirclePoly::new(values);
+        };
+
+        // [x,y] => [y,-y,-x,x]
+        let y_twiddles = x_twiddles
+            .peek()
+            .unwrap()
+            .array_chunks()
+            .flat_map(|&[x, y]| [y, -y, -x, x]);
+
+        let ifft_loop = |values: &mut [BaseField], i: usize, h: usize, t: BaseField| {
+            for l in 0..(1 << i) {
+                let idx0 = (h << (i + 1)) + l;
+                let idx1 = idx0 + (1 << i);
+                let (mut val0, mut val1) = (values[idx0], values[idx1]);
+                ibutterfly(&mut val0, &mut val1, t);
+                (values[idx0], values[idx1]) = (val0, val1);
+            }
+        };
+
+        for (h, t) in y_twiddles.enumerate() {
+            ifft_loop(&mut values, 0, h, t);
+        }
+        for (i, layer_twiddles) in x_twiddles.enumerate() {
             for (h, &t) in layer_twiddles.iter().enumerate() {
-                for l in 0..(1 << i) {
-                    let idx0 = (h << (i + 1)) + l;
-                    let idx1 = idx0 + (1 << i);
-                    let (mut val0, mut val1) = (values[idx0], values[idx1]);
-                    ibutterfly(&mut val0, &mut val1, t.inverse());
-                    (values[idx0], values[idx1]) = (val0, val1);
-                }
+                ifft_loop(&mut values, i + 1, h, t);
             }
         }
 
@@ -103,22 +120,79 @@ impl PolyOps for CPUBackend {
     fn evaluate(
         poly: &CirclePoly<Self>,
         domain: CircleDomain,
+        twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
-        let twiddles = get_twiddles(domain);
-
         let mut values = poly.extend(domain.log_size()).coeffs;
-        for (i, layer_twiddles) in twiddles.iter().enumerate().rev() {
+
+        let twiddle_buffer = &twiddles.twiddles;
+        let mut x_twiddles = (0..domain.half_coset.log_size())
+            .map(|i| {
+                let len = 1 << i;
+                &twiddle_buffer[twiddle_buffer.len() - len * 2..twiddle_buffer.len() - len]
+            })
+            .rev()
+            .peekable();
+
+        if domain.log_size() == 1 {
+            let (mut val0, mut val1) = (values[0], values[1]);
+            butterfly(&mut val0, &mut val1, domain.half_coset.initial.y.inverse());
+            return CircleEvaluation::new(domain, values);
+        };
+
+        // [x,y] => [y,-y,-x,x]
+        let y_twiddles = x_twiddles
+            .peek()
+            .unwrap()
+            .array_chunks()
+            .flat_map(|&[x, y]| [y, -y, -x, x]);
+
+        let fft_loop = |values: &mut [BaseField], i: usize, h: usize, t: BaseField| {
+            for l in 0..(1 << i) {
+                let idx0 = (h << (i + 1)) + l;
+                let idx1 = idx0 + (1 << i);
+                let (mut val0, mut val1) = (values[idx0], values[idx1]);
+                butterfly(&mut val0, &mut val1, t);
+                (values[idx0], values[idx1]) = (val0, val1);
+            }
+        };
+
+        for (i, layer_twiddles) in x_twiddles.enumerate().rev() {
             for (h, &t) in layer_twiddles.iter().enumerate() {
-                for l in 0..(1 << i) {
-                    let idx0 = (h << (i + 1)) + l;
-                    let idx1 = idx0 + (1 << i);
-                    let (mut val0, mut val1) = (values[idx0], values[idx1]);
-                    butterfly(&mut val0, &mut val1, t);
-                    (values[idx0], values[idx1]) = (val0, val1);
-                }
+                fft_loop(&mut values, i + 1, h, t);
             }
         }
+        for (h, t) in y_twiddles.enumerate() {
+            fft_loop(&mut values, 0, h, t);
+        }
+
         CircleEvaluation::new(domain, values)
+    }
+
+    type Twiddles = Vec<BaseField>;
+    fn precompute_twiddles(mut coset: Coset) -> TwiddleTree<Self> {
+        let mut twiddles = Vec::with_capacity(coset.size());
+        for _ in 0..coset.log_size() {
+            let i0 = twiddles.len();
+            twiddles.extend(
+                coset
+                    .iter()
+                    .take(coset.size() / 2)
+                    .map(|p| p.x)
+                    .collect::<Vec<_>>(),
+            );
+            bit_reverse(&mut twiddles[i0..]);
+            coset = coset.double();
+        }
+        twiddles.push(1.into());
+
+        // TODO(spapini): Batch inverse.
+        let itwiddles = twiddles.iter().map(|&t| t.inverse()).collect();
+
+        TwiddleTree {
+            root_coset: coset,
+            twiddles,
+            itwiddles,
+        }
     }
 }
 
