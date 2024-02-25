@@ -130,7 +130,7 @@ pub fn qm31_operations_bench(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
-    use stwo::core::fields::avx512_m31::{K_BLOCK_SIZE, M31AVX512, M512ONE};
+    use stwo::core::fields::avx512_m31::{K_BLOCK_SIZE, M31AVX512};
     use stwo::platform;
 
     if !platform::avx512_detected() {
@@ -140,11 +140,11 @@ pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
     let mut rng = rand::thread_rng();
     let mut elements: Vec<M31AVX512> = Vec::new();
     let mut states: Vec<M31AVX512> =
-        vec![M31AVX512::from_m512_unchecked(M512ONE); N_STATE_ELEMENTS];
+        vec![M31AVX512::from_array([1.into(); K_BLOCK_SIZE]); N_STATE_ELEMENTS];
 
     for _ in 0..(N_ELEMENTS / K_BLOCK_SIZE) {
-        elements.push(M31AVX512::from_slice(
-            &[get_random_m31_element(&mut rng); K_BLOCK_SIZE],
+        elements.push(M31AVX512::from_array(
+            [get_random_m31_element(&mut rng); K_BLOCK_SIZE],
         ));
     }
 
@@ -200,4 +200,4 @@ criterion::criterion_group!(
     cm31_operations_bench,
     qm31_operations_bench
 );
-criterion::criterion_main!(field_comparison);
+criterion::criterion_main!(field_comparison, m31_benches);

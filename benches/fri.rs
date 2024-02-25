@@ -6,7 +6,7 @@ use stwo::core::poly::line::{LineDomain, LineEvaluation};
 
 fn folding_benchmark(c: &mut Criterion) {
     const LOG_SIZE: u32 = 12;
-    let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE).coset());
+    let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE + 1).half_coset());
     let evals = LineEvaluation::new(
         domain,
         vec![BaseField::from_u32_unchecked(712837213); 1 << LOG_SIZE],
