@@ -69,11 +69,13 @@ unsafe fn compute_first_twiddles(twiddle1_dbl: [i32; 8]) -> (__m512i, __m512i) {
     //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
     let t1 = _mm512_broadcast_i64x4(std::mem::transmute(twiddle1_dbl));
 
-    // The twiddles for layer 0 can be computed from the twiddles for layer 1:
+    // The twiddles for layer 0 can be computed from the twiddles for layer 1.
+    // Since the twiddles are bit reversed, we consider the circle domain in bit reversed order.
+    // Each consecutive 4 points in the bit reversed order of a coset form a circle coset of size 4.
     // A circle coset of size 4 in bit reversed order looks like this:
     //   [(x, y), (-x, -y), (y, -x), (-y, x)]
     // Note: This is related to the choice of M31_CIRCLE_GEN, and the fact the a quarter rotation
-    //   is (0,-1) and not (0,1). This would cause another relation.
+    //   is (0,-1) and not (0,1). (0,1) would yield another relation.
     // The twiddles for layer 0 are the y coordinates:
     //   [y, -y, -x, x]
     // The twiddles for layer 1 in bit reversed order are the x coordinates:
