@@ -1,7 +1,8 @@
 use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
-use crate::core::circle::CirclePoint;
+use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Col, ExtensionOf, FieldOps};
+use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 
 pub trait PolyOps<F: ExtensionOf<BaseField>>: FieldOps<F> + Sized {
@@ -14,7 +15,10 @@ pub trait PolyOps<F: ExtensionOf<BaseField>>: FieldOps<F> + Sized {
 
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
     /// Used by the [`CircleEvaluation::interpolate()`] function.
-    fn interpolate(eval: CircleEvaluation<Self, F, BitReversedOrder>) -> CirclePoly<Self, F>;
+    fn interpolate(
+        eval: CircleEvaluation<Self, F, BitReversedOrder>,
+        itwiddles: &TwiddleTree<Self, F>,
+    ) -> CirclePoly<Self, F>;
 
     /// Evaluates the polynomial at a single point.
     /// Used by the [`CirclePoly::eval_at_point()`] function.
@@ -29,5 +33,10 @@ pub trait PolyOps<F: ExtensionOf<BaseField>>: FieldOps<F> + Sized {
     fn evaluate(
         poly: &CirclePoly<Self, F>,
         domain: CircleDomain,
+        twiddles: &TwiddleTree<Self, F>,
     ) -> CircleEvaluation<Self, F, BitReversedOrder>;
+
+    type Twiddles;
+    /// Precomputes twiddles for a given coset.
+    fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self, F>;
 }
