@@ -6,22 +6,16 @@ use prover_research::core::fields::Field;
 
 use crate::sumcheck::SumcheckOracle;
 use crate::utils::Polynomial;
-/// Multi-Linear Extension.
-// TODO: "Values are assumed to be in lagrange basis" - Is that correct wording?
+/// Multi-Linear extension with values represented in the lagrange basis.
 #[derive(Debug, Clone)]
 pub struct MultiLinearExtension<F> {
-    num_variables: usize,
     evals: Vec<F>,
 }
 
 impl<F: Field> MultiLinearExtension<F> {
     pub fn new(evals: Vec<F>) -> Self {
         assert!(evals.len().is_power_of_two());
-        let num_variables = evals.len().ilog2() as usize;
-        Self {
-            num_variables,
-            evals,
-        }
+        Self { evals }
     }
 
     pub fn eval(&self, point: &[F]) -> F {
@@ -38,7 +32,7 @@ impl<F: Field> MultiLinearExtension<F> {
             lhs_eval * (F::one() - coordinate) + rhs_eval * coordinate
         }
 
-        assert_eq!(point.len(), self.num_variables);
+        assert_eq!(point.len(), self.num_variables());
         eval_impl(&self.evals, point)
     }
 
@@ -56,11 +50,13 @@ impl<F: Field> MultiLinearExtension<F> {
         }
 
         self.evals.truncate(n_fixed_evals);
-        self.num_variables -= 1;
 
         self
     }
-    // pub fn fix_first(self) -> Self {}
+
+    fn num_variables(&self) -> usize {
+        self.evals.len().ilog2() as usize
+    }
 }
 
 impl<F> Deref for MultiLinearExtension<F> {
@@ -78,8 +74,8 @@ impl<F> DerefMut for MultiLinearExtension<F> {
 }
 
 impl SumcheckOracle for MultiLinearExtension<SecureField> {
-    fn num_variables(&self) -> u32 {
-        self.num_variables as u32
+    fn num_variables(&self) -> usize {
+        self.num_variables()
     }
 
     fn univariate_sum(&self) -> Polynomial<SecureField> {

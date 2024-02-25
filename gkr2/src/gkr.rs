@@ -1,4 +1,5 @@
 use std::iter::zip;
+use std::time::{Duration, Instant};
 
 use num_traits::{One, Zero};
 use prover_research::core::channel::Channel;
@@ -63,8 +64,9 @@ pub fn eq(x_assignments: &[SecureField], y_assignments: &[SecureField]) -> Secur
 
 /// Partially verifies a GKR proof.
 ///
-/// Returns the variable assignment and claimed evaluation in the top layer. This claim and  is left
-/// to the verifier to check - hence partial verification.
+/// Returns the variable assignment and claimed evaluation in the top layer. The top layer
+/// evaluation claim and checks on the output layer is left to the verifier to check - hence partial
+/// verification.
 ///
 /// Output of the form `(variable_assignment, p_claimed_eval, q_claimed_eval)`.
 pub fn partially_verify(
@@ -176,7 +178,7 @@ struct Oracle {
     q: MultiLinearExtension<FastSecureField>,
     // TODO: docs.
     c: Vec<FastSecureField>,
-    num_variables: u32,
+    num_variables: usize,
     z: Vec<FastSecureField>,
     lambda: FastSecureField,
 }
@@ -188,7 +190,7 @@ impl Oracle {
         q: MultiLinearExtension<SecureField>,
         lambda: SecureField,
     ) -> Self {
-        let num_variables = z.len() as u32;
+        let num_variables = z.len();
         assert_eq!(p.len(), 2 << num_variables);
         assert_eq!(q.len(), 2 << num_variables);
         // let now = Instant::now();
@@ -205,13 +207,19 @@ impl Oracle {
     }
 }
 
+static mut UNIVARIATE_SUM_DUR: Duration = Duration::ZERO;
+static mut COLLAPSE_PQ_DURATION: Duration = Duration::ZERO;
+static mut COLLAPSE_C_DURATION: Duration = Duration::ZERO;
+static mut SUMCHECK_DURATION: Duration = Duration::ZERO;
+
 impl SumcheckOracle for Oracle {
-    fn num_variables(&self) -> u32 {
+    fn num_variables(&self) -> usize {
         self.num_variables
     }
 
     #[no_mangle]
     fn univariate_sum(&self) -> Polynomial<SecureField> {
+        let now = Instant::now();
         let zero = FastSecureField::zero();
         let one = FastSecureField::one();
 
@@ -246,7 +254,8 @@ impl SumcheckOracle for Oracle {
         let (p_lhs_pairs, p_rhs_pairs) = self.p.as_chunks().0.split_at(n_terms);
         let (q_lhs_pairs, q_rhs_pairs) = self.q.as_chunks().0.split_at(n_terms);
 
-        let [y0, y1, y2, y3] = zip(
+        #[allow(unused_mut)]
+        let [y0, mut y1, mut y2, mut y3] = zip(
             c_vals,
             zip(zip(p_lhs_pairs, p_rhs_pairs), zip(q_lhs_pairs, q_rhs_pairs)),
         )
@@ -262,7 +271,7 @@ impl SumcheckOracle for Oracle {
                     let a = Fraction::new(p0_lhs, q0_lhs);
                     let b = Fraction::new(p1_lhs, q1_lhs);
                     let res = a + b;
-                    c * (res.numerator + self.lambda * res.denominator)
+                    res.numerator + self.lambda * res.denominator
                 };
 
                 // eval at 1:
@@ -270,7 +279,7 @@ impl SumcheckOracle for Oracle {
                     let a = Fraction::new(p0_rhs, q0_rhs);
                     let b = Fraction::new(p1_rhs, q1_rhs);
                     let res = a + b;
-                    c * eq_shift1 * (res.numerator + self.lambda * res.denominator)
+                    res.numerator + self.lambda * res.denominator
                 };
 
                 // eval at -1:
@@ -282,7 +291,7 @@ impl SumcheckOracle for Oracle {
                     let a = Fraction::new(p0_eval, q0_eval);
                     let b = Fraction::new(p1_eval, q1_eval);
                     let res = a + b;
-                    c * eq_shift_neg1 * (res.numerator + self.lambda * res.denominator)
+                    res.numerator + self.lambda * res.denominator
                 };
 
                 // eval at 2:
@@ -294,14 +303,14 @@ impl SumcheckOracle for Oracle {
                     let a = Fraction::new(p0_eval, q0_eval);
                     let b = Fraction::new(p1_eval, q1_eval);
                     let res = a + b;
-                    c * eq_shift2 * (res.numerator + self.lambda * res.denominator)
+                    res.numerator + self.lambda * res.denominator
                 };
 
                 [
-                    acc[0] + eval0,
-                    acc[1] + eval1,
-                    acc[2] + evaln1,
-                    acc[3] + eval2,
+                    c * eval0 + acc[0],
+                    c * eval1 + acc[1],
+                    c * evaln1 + acc[2],
+                    c * eval2 + acc[3],
                 ]
             },
         );
@@ -310,6 +319,12 @@ impl SumcheckOracle for Oracle {
         let x1 = BaseField::one();
         let x2 = -BaseField::one();
         let x3 = BaseField::from(2);
+
+        unsafe { UNIVARIATE_SUM_DUR += now.elapsed() }
+
+        y1 *= eq_shift1;
+        y2 *= eq_shift_neg1;
+        y3 *= eq_shift2;
 
         Polynomial::interpolate_lagrange(
             &[x0.into(), x1.into(), x2.into(), x3.into()],
@@ -321,13 +336,20 @@ impl SumcheckOracle for Oracle {
     fn fix_first(self, challenge: SecureField) -> Self {
         let challenge: FastSecureField = challenge.into();
 
+        let now = Instant::now();
         let c = collapse_c(self.c, self.z[0], challenge);
+        unsafe { COLLAPSE_C_DURATION += now.elapsed() };
         // let now = Instant::now();
         // println!("collapsing time: {:?}", now.elapsed());
 
+        let now = Instant::now();
+        let p = self.p.fix_first(challenge);
+        let q = self.q.fix_first(challenge);
+        unsafe { COLLAPSE_PQ_DURATION += now.elapsed() };
+
         Self {
-            p: self.p.fix_first(challenge),
-            q: self.q.fix_first(challenge),
+            p,
+            q,
             c,
             num_variables: self.num_variables - 1,
             z: self.z[1..].to_vec(),
@@ -353,15 +375,28 @@ fn c0(z: &[FastSecureField]) -> Vec<FastSecureField> {
     }
 }
 
+// /// Evaluations of the polynomial `eq(x_1, ..., x_n) = (z_1 * x_1 + (1 - z_1) * (1 - x_1)) * ...
+// * /// (z_n * x_n + (1 - z_n) * (1 - x_n))` over the boolean hypercube `{0, 1}^n`.
+// struct EqEvaluation {
+//     evals: Vec<SecureField>,
+//     r: Vec<SecureField>,
+// }
+
+// impl EqEvaluation {
+//     fn new(r: &[SecureField]) -> Self {
+//         // let num_
+//     }
+// }
+
 /// Source: <https://eprint.iacr.org/2013/351.pdf> (Section 5.4.1)
 fn collapse_c(
     mut c: Vec<FastSecureField>,
     z: FastSecureField,
     r: FastSecureField,
 ) -> Vec<FastSecureField> {
-    // TODO: `z` can be zero! Just divide out (1 - z) instead and take even values of `c`. Don't
-    // want to implement this just noting here.
-    assert!(!z.is_zero());
+    // TODO: `z` can be one! Just divide out z (instead of `(1 - z)`) and take rhs values of `c`.
+    // Don't want to implement this just noting here.
+    assert!(!z.is_one());
 
     let z_bar = FastSecureField::one() - z;
     let r_bar = FastSecureField::one() - r;
@@ -389,7 +424,11 @@ pub fn prove(channel: &mut (impl Channel + Clone), layers: Vec<MleLayer>) -> Gkr
             let lambda = channel.draw_felt();
 
             let oracle = Oracle::new(&r, p, q, lambda);
+            let now = Instant::now();
             let (sumcheck_proof, variable_assignment, oracle) = sumcheck::prove(oracle, channel);
+            unsafe {
+                SUMCHECK_DURATION += now.elapsed();
+            }
 
             let p_eval_encoding = {
                 let [x0, x1] = [SecureField::zero(), SecureField::one()];
@@ -433,7 +472,10 @@ mod tests {
     use prover_research::core::channel::{Blake2sChannel, Channel};
     use prover_research::core::fields::qm31::SecureField;
 
-    use crate::gkr::{partially_verify, prove, MleLayer};
+    use crate::gkr::{
+        partially_verify, prove, MleLayer, COLLAPSE_C_DURATION, COLLAPSE_PQ_DURATION,
+        SUMCHECK_DURATION, UNIVARIATE_SUM_DUR,
+    };
     use crate::utils::Fraction;
 
     #[test]
@@ -472,6 +514,17 @@ mod tests {
         let now = Instant::now();
         let proof = prove(&mut test_channel(), layers);
         println!("proof gen time: {:?}", now.elapsed());
+
+        println!("total collapsing c time: {:?}", unsafe {
+            COLLAPSE_C_DURATION
+        });
+        println!("collapse pq duration: {:?}", unsafe {
+            COLLAPSE_PQ_DURATION
+        });
+        println!("univariate eval duration: {:?}", unsafe {
+            UNIVARIATE_SUM_DUR
+        });
+        println!("sumcheck duration: {:?}", unsafe { SUMCHECK_DURATION });
 
         // let (assignment, p3_claim, q3_claim) =
         //     partially_verify(&proof, &mut test_channel()).unwrap();

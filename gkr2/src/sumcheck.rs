@@ -13,7 +13,7 @@ use crate::utils::Polynomial;
 /// [`sumcheck::prove()`]: prove
 pub trait SumcheckOracle {
     /// Returns the number of variables in `g` (determines the number of rounds in the protocol).
-    fn num_variables(&self) -> u32;
+    fn num_variables(&self) -> usize;
 
     /// Computes the sum of `g(x_1, x_2, ..., x_n)` over all possible values `(x_2, ..., x_n)` in
     /// `{0, 1}^{n-1}`, effectively reducing the sum over `g` to a univariate polynomial in `x_1`.
@@ -90,6 +90,7 @@ pub fn partially_verify(
 /// Error encountered during sum-check protocol verification.
 ///
 /// Round 1 corresponds to the first round.
+// TODO: Change to enum and add error for round polynomial degree.
 #[derive(Error, Debug)]
 #[error("sum does not match the claim in round {round} (sum {sum}, claim {claim})")]
 pub struct SumcheckError {
