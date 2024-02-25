@@ -11,6 +11,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+use crate::core::ColumnVec;
 
 pub struct FibonacciComponent {
     pub log_size: u32,
@@ -135,14 +136,15 @@ impl Component<CPUBackend> for FibonacciComponent {
     fn evaluate_quotients_by_mask(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &[SecureField],
+        mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     ) {
-        let res = self.step_constraint_eval_quotient_by_mask(point, mask.try_into().unwrap());
+        let res =
+            self.step_constraint_eval_quotient_by_mask(point, &mask[0][..].try_into().unwrap());
         let constraint_log_degree_bound = self.log_size + 1;
         evaluation_accumulator.accumulate(constraint_log_degree_bound, res);
-        let res =
-            self.boundary_constraint_eval_quotient_by_mask(point, &mask[..1].try_into().unwrap());
+        let res = self
+            .boundary_constraint_eval_quotient_by_mask(point, &mask[0][..1].try_into().unwrap());
         let constraint_log_degree_bound = self.log_size;
         evaluation_accumulator.accumulate(constraint_log_degree_bound, res);
     }

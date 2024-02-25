@@ -7,10 +7,12 @@ use core::slice;
 
 use super::{Component, ComponentTrace, ComponentVisitor};
 use crate::core::backend::{Backend, CPUBackend, Col};
+use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
+use crate::core::{ColumnVec, ComponentVec};
 
 /// Accumulates evaluations of u_i(P0) at a single point.
 /// Computes f(P0), the combined polynomial at that point.
@@ -192,6 +194,44 @@ impl<'a, B: Backend> ComponentVisitor<B> for ConstraintEvaluator<'a, B> {
             self.component_traces
                 .next()
                 .expect("no more component traces"),
+            &mut self.evaluation_accumulator,
+        )
+    }
+}
+
+/// Evaluates components' constraint polynomials and aggregates them into a composition polynomial.
+pub struct ConstraintPointEvaluator<'a> {
+    point: CirclePoint<SecureField>,
+    mask_values: slice::Iter<'a, ColumnVec<Vec<SecureField>>>,
+    evaluation_accumulator: PointEvaluationAccumulator,
+}
+
+impl<'a> ConstraintPointEvaluator<'a> {
+    pub fn new(
+        point: CirclePoint<SecureField>,
+        mask_values: &'a ComponentVec<Vec<SecureField>>,
+        max_log_size: u32,
+        random_coeff: SecureField,
+    ) -> Self {
+        Self {
+            point,
+            mask_values: mask_values.iter(),
+            evaluation_accumulator: PointEvaluationAccumulator::new(random_coeff, max_log_size),
+        }
+    }
+
+    pub fn finalize(self) -> SecureField {
+        self.evaluation_accumulator.finalize()
+    }
+}
+
+impl<'a, B: Backend> ComponentVisitor<B> for ConstraintPointEvaluator<'a> {
+    fn visit<C: Component<B>>(&mut self, component: &C) {
+        component.evaluate_quotients_by_mask(
+            self.point,
+            self.mask_values
+                .next()
+                .expect("no more component mask values"),
             &mut self.evaluation_accumulator,
         )
     }
