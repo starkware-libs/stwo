@@ -37,6 +37,10 @@ impl QM31 {
     pub fn from_m31_array(array: [M31; 4]) -> Self {
         Self::from_m31(array[0], array[1], array[2], array[3])
     }
+
+    pub fn to_m31_array(self) -> [M31; 4] {
+        [self.0 .0, self.0 .1, self.1 .0, self.1 .1]
+    }
 }
 
 impl Display for QM31 {

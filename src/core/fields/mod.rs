@@ -82,9 +82,13 @@ pub trait ComplexConjugate {
     fn complex_conjugate(&self) -> Self;
 }
 
-pub trait ExtensionOf<F: Field>: Field + From<F> + NumOps<F> + NumAssignOps<F> {}
+pub trait ExtensionOf<F: Field>: Field + From<F> + NumOps<F> + NumAssignOps<F> {
+    const EXTENSION_DEGREE: usize;
+}
 
-impl<F: Field> ExtensionOf<F> for F {}
+impl<F: Field> ExtensionOf<F> for F {
+    const EXTENSION_DEGREE: usize = 1;
+}
 
 #[macro_export]
 macro_rules! impl_field {
@@ -168,7 +172,10 @@ macro_rules! impl_extension_field {
     ($field_name: ty, $extended_field_name: ty) => {
         use $crate::core::fields::ExtensionOf;
 
-        impl ExtensionOf<M31> for $field_name {}
+        impl ExtensionOf<M31> for $field_name {
+            const EXTENSION_DEGREE: usize =
+                <$extended_field_name as ExtensionOf<M31>>::EXTENSION_DEGREE * 2;
+        }
 
         impl Add for $field_name {
             type Output = Self;

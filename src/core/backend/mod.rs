@@ -28,6 +28,7 @@ pub trait FieldOps<F: Field> {
 pub type Col<B, F> = <B as FieldOps<F>>::Column;
 
 pub trait Column<F>: Clone + Debug + Index<usize, Output = F> + FromIterator<F> {
+    fn zeros(len: usize) -> Self;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
