@@ -5,7 +5,8 @@ use std::ops::Deref;
 use itertools::Itertools;
 
 use self::evaluation::{
-    ConstraintEvaluator, DomainEvaluationAccumulator, PointEvaluationAccumulator,
+    ConstraintEvaluator, ConstraintPointEvaluator, DomainEvaluationAccumulator,
+    PointEvaluationAccumulator,
 };
 use super::backend::{Backend, CPUBackend};
 use super::circle::CirclePoint;
@@ -67,6 +68,22 @@ pub trait AirExt: Air<CPUBackend> {
         let mut visitor = MaskPointsEvaluator::new(point);
         self.visit_components(&mut visitor);
         visitor.finalize()
+    }
+
+    fn eval_composition_polynomial_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask_values: &ComponentVec<Vec<SecureField>>,
+        random_coeff: SecureField,
+    ) -> SecureField {
+        let mut evaluator = ConstraintPointEvaluator::new(
+            point,
+            mask_values,
+            self.max_constraint_log_degree_bound(),
+            random_coeff,
+        );
+        self.visit_components(&mut evaluator);
+        evaluator.finalize()
     }
 }
 
@@ -247,7 +264,7 @@ pub trait Component<B: Backend> {
     fn evaluate_quotients_by_mask(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &[SecureField],
+        mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     );
 
