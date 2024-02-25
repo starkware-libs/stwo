@@ -369,6 +369,15 @@ impl Coset {
         }
     }
 
+    pub fn repeated_double(&self, n_doubles: u32) -> Self {
+        (0..n_doubles).fold(*self, |coset, _| coset.double())
+    }
+
+    pub fn is_doubling_of(&self, other: Self) -> bool {
+        self.log_size <= other.log_size
+            && *self == other.repeated_double(other.log_size - self.log_size)
+    }
+
     pub fn initial(&self) -> CirclePoint<M31> {
         self.initial
     }

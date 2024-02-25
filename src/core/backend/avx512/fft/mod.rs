@@ -73,7 +73,7 @@ unsafe fn compute_first_twiddles(twiddle1_dbl: [i32; 8]) -> (__m512i, __m512i) {
     // A circle coset of size 4 in bit reversed order looks like this:
     //   [(x, y), (-x, -y), (y, -x), (-y, x)]
     // Note: This is related to the choice of M31_CIRCLE_GEN, and the fact the a quarter rotation
-    //   is (0,-1) and not (0,1). This would cause another relation.
+    //   is (0,-1) and not (0,1). (0,1) would yield another relation.
     // The twiddles for layer 0 are the y coordinates:
     //   [y, -y, -x, x]
     // The twiddles for layer 1 in bit reversed order are the x coordinates:

@@ -51,11 +51,7 @@ impl CommitmentSchemeProver {
         }
     }
 
-    pub fn commit(
-        &mut self,
-        polynomials: ColumnVec<CPUCirclePoly<BaseField>>,
-        channel: &mut Blake2sChannel,
-    ) {
+    pub fn commit(&mut self, polynomials: ColumnVec<CPUCirclePoly>, channel: &mut Blake2sChannel) {
         let tree = CommitmentTreeProver::new(polynomials, self.log_blowup_factor, channel);
         self.trees.push(tree);
     }
