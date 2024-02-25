@@ -3,6 +3,7 @@ use std::iter::Chain;
 use std::marker::PhantomData;
 use std::ops::{Deref, Index};
 
+use super::twiddles::{TwiddleBank, TwiddleTree};
 use super::{BitReversedOrder, NaturalOrder};
 use crate::core::air::evaluation::SECURE_EXTENSION_DEGREE;
 use crate::core::backend::cpu::CPUCircleEvaluation;
@@ -221,7 +222,10 @@ pub trait PolyOps<F: ExtensionOf<BaseField>>: FieldOps<F> + Sized {
 
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
     /// Used by the [`CircleEvaluation::interpolate()`] function.
-    fn interpolate(eval: CircleEvaluation<Self, F, BitReversedOrder>) -> CirclePoly<Self, F>;
+    fn interpolate(
+        eval: CircleEvaluation<Self, F, BitReversedOrder>,
+        itwiddles: &TwiddleTree<Self, F>,
+    ) -> CirclePoly<Self, F>;
 
     /// Evaluates the polynomial at a single point.
     /// Used by the [`CirclePoly::eval_at_point()`] function.
@@ -236,7 +240,11 @@ pub trait PolyOps<F: ExtensionOf<BaseField>>: FieldOps<F> + Sized {
     fn evaluate(
         poly: &CirclePoly<Self, F>,
         domain: CircleDomain,
+        twiddles: &TwiddleTree<Self, F>,
     ) -> CircleEvaluation<Self, F, BitReversedOrder>;
+
+    type Twiddles;
+    fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self, F>;
 }
 
 // Note: The concrete implementation of the poly operations is in the specific backend used.
@@ -286,7 +294,13 @@ impl<B: PolyOps<F>, F: ExtensionOf<BaseField>> CircleEvaluation<B, F, BitReverse
 
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
     pub fn interpolate(self) -> CirclePoly<B, F> {
-        B::interpolate(self)
+        let coset = self.domain.half_coset;
+        B::interpolate(self, &B::precompute_twiddles(coset))
+    }
+
+    pub fn interpolate_with_twiddles(self, twiddles: &TwiddleBank<B, F>) -> CirclePoly<B, F> {
+        let coset = self.domain.half_coset;
+        B::interpolate(self, twiddles.get_tree(coset))
     }
 
     pub fn bit_reverse(mut self) -> CircleEvaluation<B, F, NaturalOrder> {
@@ -391,7 +405,15 @@ impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CirclePoly<B, F> {
 
     /// Evaluates the polynomial at all points in the domain.
     pub fn evaluate(&self, domain: CircleDomain) -> CircleEvaluation<B, F, BitReversedOrder> {
-        B::evaluate(self, domain)
+        B::evaluate(self, domain, &B::precompute_twiddles(domain.half_coset))
+    }
+
+    pub fn evaluate_with_twiddles(
+        &self,
+        domain: CircleDomain,
+        twiddles: &TwiddleBank<B, F>,
+    ) -> CircleEvaluation<B, F, BitReversedOrder> {
+        B::evaluate(self, domain, twiddles.get_tree(domain.half_coset))
     }
 }
 

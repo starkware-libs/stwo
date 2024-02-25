@@ -6,12 +6,13 @@ use super::{as_cpu_vec, AVX512Backend, VECS_LOG_SIZE};
 use crate::core::backend::avx512::fft::rfft;
 use crate::core::backend::avx512::BaseFieldVec;
 use crate::core::backend::CPUBackend;
-use crate::core::circle::CirclePoint;
+use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Col, ExtensionOf, Field};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
+use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::fold;
 use crate::core::poly::BitReversedOrder;
 
@@ -29,6 +30,7 @@ impl PolyOps<BaseField> for AVX512Backend {
 
     fn interpolate(
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
+        _itwiddles: &TwiddleTree<Self, BaseField>,
     ) -> CirclePoly<Self, BaseField> {
         let mut values = eval.values;
 
@@ -82,6 +84,7 @@ impl PolyOps<BaseField> for AVX512Backend {
     fn evaluate(
         poly: &CirclePoly<Self, BaseField>,
         domain: CircleDomain,
+        _twiddles: &TwiddleTree<Self, BaseField>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(spapini): Precompute twiddles.
         // TODO(spapini): Handle small cases.
@@ -126,6 +129,16 @@ impl PolyOps<BaseField> for AVX512Backend {
         // TODO(spapini): Optimize or get rid of extend.
         poly.evaluate(CanonicCoset::new(log_size).circle_domain())
             .interpolate()
+    }
+
+    type Twiddles = ();
+
+    fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self, BaseField> {
+        TwiddleTree {
+            coset,
+            twiddles: (),
+            itwiddles: (),
+        }
     }
 }
 
