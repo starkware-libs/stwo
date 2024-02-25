@@ -144,7 +144,7 @@ pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
         vec![M31AVX512::from_m512_unchecked(M512ONE); N_STATE_ELEMENTS];
 
     for _ in 0..(N_ELEMENTS / K_BLOCK_SIZE) {
-        elements.push(M31AVX512::from_slice(
+        elements.push(M31AVX512::from_array(
             &[get_random_m31_element(&mut rng); K_BLOCK_SIZE],
         ));
     }
