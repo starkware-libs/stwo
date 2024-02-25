@@ -6,6 +6,7 @@ use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::circle::{CirclePointIndex, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Col, Column, ExtensionOf, FieldOps};
+use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::{BitReversedOrder, NaturalOrder};
 use crate::core::utils::bit_reverse_index;
 
@@ -76,7 +77,14 @@ impl<B: PolyOps> CircleEvaluation<B, BaseField, BitReversedOrder> {
 
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
     pub fn interpolate(self) -> CirclePoly<B> {
-        B::interpolate(self)
+        let coset = self.domain.half_coset;
+        B::interpolate(self, &B::precompute_twiddles(coset))
+    }
+
+    /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation, using
+    /// preconditioned twiddles.
+    pub fn interpolate_with_twiddles(self, twiddles: &TwiddleTree<B>) -> CirclePoly<B> {
+        B::interpolate(self, twiddles)
     }
 }
 
