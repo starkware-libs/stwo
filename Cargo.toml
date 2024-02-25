@@ -18,6 +18,13 @@ merging-iterator = "1.3.0"
 criterion = { version = "0.5.1", features = ["html_reports"] }
 rand = "0.8.3"
 
+[lints.rust]
+warnings = "deny"
+future-incompatible = "deny"
+nonstandard-style = "deny"
+rust-2018-idioms = "deny"
+unused = "deny"
+
 [features]
 avx512 = []
 
