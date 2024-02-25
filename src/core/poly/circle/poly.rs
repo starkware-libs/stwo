@@ -2,6 +2,7 @@ use super::{CircleDomain, CircleEvaluation, PolyOps};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Col, Column, ExtensionOf, FieldOps};
+use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 
 /// A polynomial defined on a [CircleDomain].
@@ -50,7 +51,16 @@ impl<B: PolyOps> CirclePoly<B> {
         &self,
         domain: CircleDomain,
     ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
-        B::evaluate(self, domain)
+        B::evaluate(self, domain, &B::precompute_twiddles(domain.half_coset))
+    }
+
+    /// Evaluates the polynomial at all points in the domain, using precomputed twiddles.
+    pub fn evaluate_with_twiddles(
+        &self,
+        domain: CircleDomain,
+        twiddles: &TwiddleTree<B>,
+    ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
+        B::evaluate(self, domain, twiddles)
     }
 }
 
