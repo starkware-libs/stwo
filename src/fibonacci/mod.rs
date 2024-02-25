@@ -7,8 +7,7 @@ use self::component::FibonacciComponent;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
-use crate::core::air::evaluation::PointEvaluationAccumulator;
-use crate::core::air::{AirExt, Component, ComponentTrace};
+use crate::core::air::{AirExt, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
@@ -207,14 +206,11 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
     let trace_oods_points = &fib.air.mask_points(oods_point)[0];
 
-    let mut evaluation_accumulator =
-        PointEvaluationAccumulator::new(random_coeff, fib.air.max_constraint_log_degree_bound());
-    fib.air.component.evaluate_quotients_by_mask(
+    let composition_polynomial_oods_value = fib.air.eval_composition_polynomial_at_point(
         oods_point,
-        &proof.trace_oods_values[0][0],
-        &mut evaluation_accumulator,
+        &proof.trace_oods_values,
+        random_coeff,
     );
-    let composition_polynomial_oods_value = evaluation_accumulator.finalize();
 
     // TODO(AlonH): Get bounds from air.
     let mut bounds = vec![CirclePolyDegreeBound::new(
@@ -334,7 +330,7 @@ mod tests {
         );
         fib.air.component.evaluate_quotients_by_mask(
             point,
-            &mask_values[0],
+            &mask_values,
             &mut evaluation_accumulator,
         );
         let oods_value = evaluation_accumulator.finalize();
@@ -420,7 +416,7 @@ mod tests {
         );
         fib.air.component.evaluate_quotients_by_mask(
             oods_point,
-            &mask_values[0],
+            &mask_values,
             &mut evaluation_accumulator,
         );
         let hz = evaluation_accumulator.finalize();
