@@ -83,9 +83,9 @@ pub trait ComplexConjugate {
     /// # Example
     ///
     /// ```
-    /// use prover_research::core::fields::m31::P;
-    /// use prover_research::core::fields::qm31::QM31;
-    /// use prover_research::core::fields::ComplexConjugate;
+    /// use stwo::core::fields::m31::P;
+    /// use stwo::core::fields::qm31::QM31;
+    /// use stwo::core::fields::ComplexConjugate;
     ///
     /// let x = QM31::from_u32_unchecked(1, 2, 3, 4);
     /// assert_eq!(
