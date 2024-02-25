@@ -1,3 +1,14 @@
+pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
+    fn assign(self, other: impl IntoIterator<Item = T>)
+    where
+        Self: Sized,
+    {
+        self.zip(other).for_each(|(a, b)| *a = b);
+    }
+}
+
+impl<'a, T: 'a, I: Iterator<Item = &'a mut T>> IteratorMutExt<'a, T> for I {}
+
 pub(crate) fn bit_reverse_index(i: usize, log_size: u32) -> usize {
     i.reverse_bits() >> (usize::BITS - log_size)
 }

@@ -6,11 +6,44 @@
 use core::slice;
 
 use super::{ComponentTrace, ComponentVisitor};
+use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::backend::{Backend, CPUBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{Col, Field};
-use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
+use crate::core::fields::{Col, Column, ExtensionOf, Field};
+use crate::core::poly::circle::{CircleDomain, CirclePoly};
+use crate::core::utils::IteratorMutExt;
+
+// TODO(spapini): find a better place for this
+pub struct SecureColumn<B: Backend> {
+    pub cols: [Col<B, BaseField>; <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE],
+}
+
+impl SecureColumn<CPUBackend> {
+    fn at(&self, index: usize) -> SecureField {
+        SecureField::from_m31_array(std::array::from_fn(|i| self.cols[i][index]))
+    }
+    fn set(&mut self, index: usize, value: SecureField) {
+        self.cols
+            .iter_mut()
+            .map(|c| &mut c[index])
+            .assign(value.to_m31_array());
+    }
+}
+
+impl<B: Backend> SecureColumn<B> {
+    pub fn zeros(len: usize) -> Self {
+        Self {
+            cols: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)),
+        }
+    }
+    pub fn len(&self) -> usize {
+        self.cols[0].len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.cols[0].is_empty()
+    }
+}
 
 /// Accumulates evaluations of u_i(P0) at a single point.
 /// Computes f(P0), the combined polynomial at that point.
@@ -39,6 +72,7 @@ impl PointEvaluationAccumulator {
 
     /// Accumulates u_i(P0), a polynomial evaluation at a P0.
     pub fn accumulate(&mut self, log_size: u32, evaluation: SecureField) {
+        assert!(log_size > 0 && log_size < self.sub_accumulations.len() as u32);
         let sub_accumulation = &mut self.sub_accumulations[log_size as usize];
         *sub_accumulation = *sub_accumulation * self.random_coeff + evaluation;
 
@@ -67,7 +101,7 @@ pub struct DomainEvaluationAccumulator<B: Backend> {
     /// Accumulated evaluations for each log_size.
     /// Each `sub_accumulation` holds `sum_{i=0}^{n-1} evaluation_i * alpha^(n-1-i)`,
     /// where `n` is the number of accumulated evaluations for this log_size.
-    sub_accumulations: Vec<Col<B, SecureField>>,
+    sub_accumulations: Vec<SecureColumn<B>>,
     /// Number of accumulated evaluations for each log_size.
     n_cols_per_size: Vec<usize>,
 }
@@ -81,7 +115,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         Self {
             random_coeff,
             sub_accumulations: (0..(max_log_size + 1))
-                .map(|n| Col::<B, SecureField>::from_iter(vec![SecureField::default(); 1 << n]))
+                .map(|n| SecureColumn::zeros(1 << n))
                 .collect(),
             n_cols_per_size: vec![0; max_log_size + 1],
         }
@@ -97,6 +131,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         n_cols_per_size: [(u32, usize); N],
     ) -> [ColumnAccumulator<'_, B>; N] {
         n_cols_per_size.iter().for_each(|(log_size, n_col)| {
+            assert!(*log_size > 0 && *log_size < self.sub_accumulations.len() as u32);
             self.n_cols_per_size[*log_size as usize] += n_col;
         });
         self.sub_accumulations
@@ -117,49 +152,53 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
 impl DomainEvaluationAccumulator<CPUBackend> {
     /// Computes f(P) as coefficients.
     pub fn finalize(self) -> CirclePoly<CPUBackend, SecureField> {
-        let mut res_coeffs = vec![SecureField::default(); 1 << self.log_size()];
+        let mut res_coeffs = SecureColumn::<CPUBackend>::zeros(1 << self.log_size());
         let res_log_size = self.log_size();
-        for (coeffs, n_cols) in self
+
+        for ((log_size, values), n_cols) in self
             .sub_accumulations
             .into_iter()
             .enumerate()
-            .map(|(log_size, values)| {
-                if log_size == 0 {
-                    return values;
-                }
-                CircleEvaluation::<CPUBackend, SecureField>::new(
-                    CircleDomain::constraint_evaluation_domain(log_size as u32),
-                    values,
-                )
-                .interpolate()
-                .extend(res_log_size)
-                .coeffs
-            })
             .zip(self.n_cols_per_size.iter())
+            .skip(1)
         {
+            let coeffs = SecureColumn {
+                cols: values.cols.map(|c| {
+                    CPUCircleEvaluation::new(
+                        CircleDomain::constraint_evaluation_domain(log_size as u32),
+                        c,
+                    )
+                    .interpolate()
+                    .extend(res_log_size)
+                    .coeffs
+                }),
+            };
             // Add poly.coeffs into coeffs, elementwise, inplace.
             let multiplier = self.random_coeff.pow(*n_cols as u128);
-            res_coeffs
-                .iter_mut()
-                .zip(coeffs.iter())
-                .for_each(|(res_coeff, current_coeff)| {
-                    *res_coeff = *res_coeff * multiplier + *current_coeff
-                });
+            for i in 0..(1 << res_log_size) {
+                let res_coeff = res_coeffs.at(i) * multiplier + coeffs.at(i);
+                res_coeffs.set(i, res_coeff);
+            }
         }
 
-        CirclePoly::new(res_coeffs)
+        // TODO(spapini): Return multiple polys instead.
+        CirclePoly::new(
+            (0..(1 << res_log_size))
+                .map(|i| res_coeffs.at(i))
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
 /// An domain accumulator for polynomials of a single size.
 pub struct ColumnAccumulator<'a, B: Backend> {
     random_coeff: SecureField,
-    col: &'a mut Col<B, SecureField>,
+    col: &'a mut SecureColumn<B>,
 }
 impl<'a> ColumnAccumulator<'a, CPUBackend> {
     pub fn accumulate(&mut self, index: usize, evaluation: BaseField) {
-        let accum = &mut self.col[index];
-        *accum = *accum * self.random_coeff + evaluation;
+        let val = self.col.at(index) * self.random_coeff + evaluation;
+        self.col.set(index, val);
     }
 }
 
