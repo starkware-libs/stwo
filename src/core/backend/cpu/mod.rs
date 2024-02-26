@@ -23,6 +23,22 @@ impl<F: Field> FieldOps<F> for CPUBackend {
 }
 
 impl<F: Clone + Debug + Field> Column<F> for Vec<F> {
+    type Ref<'a> = &'a [F]
+    where
+        Self: 'a;
+
+    type Mut<'a> = &'a mut [F]
+    where
+        Self: 'a;
+
+    fn as_ref(&self) -> Self::Ref<'_> {
+        self.as_slice()
+    }
+
+    fn as_mut(&mut self) -> Self::Mut<'_> {
+        self.as_mut_slice()
+    }
+
     fn zeros(len: usize) -> Self {
         vec![F::zero(); len]
     }

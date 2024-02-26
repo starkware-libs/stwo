@@ -15,6 +15,15 @@ pub trait FieldOps<F: Field> {
 }
 pub type Col<B, F> = <B as FieldOps<F>>::Column;
 pub trait Column<F>: Clone + Debug + Index<usize, Output = F> + FromIterator<F> {
+    type Ref<'a>
+    where
+        Self: 'a;
+    type Mut<'a>
+    where
+        Self: 'a;
+    fn as_ref(&self) -> Self::Ref<'_>;
+    fn as_mut(&mut self) -> Self::Mut<'_>;
+
     fn zeros(len: usize) -> Self;
     fn to_vec(&self) -> Vec<F>;
     fn len(&self) -> usize;
