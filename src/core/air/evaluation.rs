@@ -199,7 +199,8 @@ impl<'a, B: Backend> ComponentVisitor<B> for ConstraintEvaluator<'a, B> {
     }
 }
 
-/// Evaluates components' constraint polynomials and aggregates them into a composition polynomial.
+/// Evaluates components' constraint polynomials at a single point and aggregates them into a
+/// composition polynomial value.
 pub struct ConstraintPointEvaluator<'a> {
     point: CirclePoint<SecureField>,
     mask_values: slice::Iter<'a, ColumnVec<Vec<SecureField>>>,

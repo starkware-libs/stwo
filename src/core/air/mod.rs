@@ -1,4 +1,5 @@
 use core::slice;
+use std::collections::BTreeSet;
 use std::iter::zip;
 use std::ops::Deref;
 
@@ -12,6 +13,7 @@ use super::backend::{Backend, CPUBackend};
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
+use super::fri::CirclePolyDegreeBound;
 use super::poly::circle::{CanonicCoset, CirclePoly};
 use super::{ColumnVec, ComponentVec};
 
@@ -84,6 +86,19 @@ pub trait AirExt: Air<CPUBackend> {
         );
         self.visit_components(&mut evaluator);
         evaluator.finalize()
+    }
+
+    /// Returns the log degree bounds of the quotient polynomials in descending order.
+    fn quotient_log_bounds(&self) -> Vec<CirclePolyDegreeBound> {
+        let mut bounds_visitor = QuotientLogBoundsVisitor::new();
+        self.visit_components(&mut bounds_visitor);
+        let mut bounds = bounds_visitor.finalize();
+        bounds.push(self.max_constraint_log_degree_bound());
+        bounds
+            .into_iter()
+            .rev()
+            .map(CirclePolyDegreeBound::new)
+            .collect()
     }
 }
 
@@ -177,6 +192,39 @@ impl<B: Backend> ComponentVisitor<B> for MaskPointsEvaluator {
             .collect_vec();
         self.points
             .push(component.mask().to_points(&domains, self.point));
+    }
+}
+
+struct QuotientLogBoundsVisitor {
+    bounds: BTreeSet<u32>,
+}
+
+impl QuotientLogBoundsVisitor {
+    pub fn new() -> Self {
+        Self {
+            bounds: BTreeSet::new(),
+        }
+    }
+
+    pub fn finalize(self) -> Vec<u32> {
+        self.bounds.into_iter().collect()
+    }
+}
+
+impl<B: Backend> ComponentVisitor<B> for QuotientLogBoundsVisitor {
+    fn visit<C: Component<B>>(&mut self, component: &C) {
+        let bounds = zip(
+            component.mask().iter(),
+            &component.trace_log_degree_bounds(),
+        )
+        .flat_map(|(trace_points, trace_bound)| {
+            trace_points
+                .iter()
+                .map(|_| *trace_bound)
+                .collect::<Vec<_>>()
+        })
+        .collect_vec();
+        self.bounds.extend(bounds);
     }
 }
 
