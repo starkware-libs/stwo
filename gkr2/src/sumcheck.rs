@@ -3,6 +3,7 @@ use prover_research::core::channel::Channel;
 use prover_research::core::fields::qm31::SecureField;
 use thiserror::Error;
 
+use crate::gkr::{SUMCHECK_ADDS, SUMCHECK_MULTS};
 use crate::utils::Polynomial;
 
 /// The sum-check protocol enables proving claims about the sum of a multivariate polynomial
@@ -20,7 +21,7 @@ pub trait SumcheckOracle {
     fn univariate_sum(&self) -> Polynomial<SecureField>;
 
     /// Returns a new oracle where the first variable of `g` is fixed to `challenge`.
-    fn fix_first(self, challenge: SecureField) -> Self;
+    fn fix_first(self, challenge: SecureField, claim: SecureField) -> Self;
 }
 
 /// Generates a proof of the sum-check protocol.
@@ -39,12 +40,18 @@ pub fn prove<O: SumcheckOracle>(
     let mut challenges = Vec::new();
 
     for _round in 0..oracle.num_variables() {
+        let _adds_snapshot = unsafe { SUMCHECK_ADDS };
+        let _mults_snapshot = unsafe { SUMCHECK_MULTS };
         let round_polynomial = oracle.univariate_sum();
         channel.mix_felts(&round_polynomial);
         let challenge = channel.draw_felt();
+        oracle = oracle.fix_first(challenge, round_polynomial.eval(challenge));
         round_polynomials.push(round_polynomial);
         challenges.push(challenge);
-        oracle = oracle.fix_first(challenge);
+        println!("-round adds: {}", unsafe { SUMCHECK_ADDS - _adds_snapshot });
+        println!("-round muls: {}", unsafe {
+            SUMCHECK_MULTS - _mults_snapshot
+        });
     }
 
     (SumcheckProof { round_polynomials }, challenges, oracle)

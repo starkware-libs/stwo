@@ -1,15 +1,16 @@
+#![allow(clippy::useless_transmute, clippy::useless_conversion)]
+
 use std::iter::zip;
 use std::time::{Duration, Instant};
 
 use num_traits::{One, Zero};
 use prover_research::core::channel::Channel;
 use prover_research::core::fields::m31::BaseField;
-use prover_research::core::fields::qm31::SecureField;
+use prover_research::core::fields::qm31::{SecureField, SecureField as FastSecureField};
 use prover_research::core::fields::Field;
 use thiserror::Error;
 
 use crate::mle::MultiLinearExtension;
-use crate::q31::FastSecureField;
 use crate::sumcheck::{self, SumcheckError, SumcheckOracle, SumcheckProof};
 use crate::utils::{Fraction, Polynomial};
 
@@ -181,6 +182,7 @@ struct Oracle {
     num_variables: usize,
     z: Vec<FastSecureField>,
     lambda: FastSecureField,
+    claim: SecureField,
 }
 
 impl Oracle {
@@ -189,12 +191,15 @@ impl Oracle {
         p: MultiLinearExtension<SecureField>,
         q: MultiLinearExtension<SecureField>,
         lambda: SecureField,
+        claim: SecureField,
     ) -> Self {
         let num_variables = z.len();
         assert_eq!(p.len(), 2 << num_variables);
         assert_eq!(q.len(), 2 << num_variables);
         // let now = Instant::now();
-        let c = c0(unsafe { std::mem::transmute(z) });
+        let mut c = c0(unsafe { std::mem::transmute(z) });
+        // TODO: Only require LHS evaluations (i.e. where the first variable assignment equals `0`).
+        c.truncate(c.len() / 2);
         // println!("c gen time: {:?}", now.elapsed());
         Self {
             p: unsafe { std::mem::transmute(p) },
@@ -203,6 +208,7 @@ impl Oracle {
             c,
             z: unsafe { std::mem::transmute(z.to_vec()) },
             lambda: lambda.into(),
+            claim,
         }
     }
 }
@@ -211,6 +217,9 @@ static mut UNIVARIATE_SUM_DUR: Duration = Duration::ZERO;
 static mut COLLAPSE_PQ_DURATION: Duration = Duration::ZERO;
 static mut COLLAPSE_C_DURATION: Duration = Duration::ZERO;
 static mut SUMCHECK_DURATION: Duration = Duration::ZERO;
+
+pub static mut SUMCHECK_ADDS: usize = 0;
+pub static mut SUMCHECK_MULTS: usize = 0;
 
 impl SumcheckOracle for Oracle {
     fn num_variables(&self) -> usize {
@@ -249,18 +258,20 @@ impl SumcheckOracle for Oracle {
             z_bar_inv * (t * z + t_bar * z_bar)
         };
 
-        let n_terms = self.c.len() / 2;
-        let c_vals = &self.c[0..n_terms];
+        // TODO: Can be optimized since c only ever needs the first n/2 values. Note this isn't
+        // really a bottleneck though.
+        let n_terms = self.c.len();
         let (p_lhs_pairs, p_rhs_pairs) = self.p.as_chunks().0.split_at(n_terms);
         let (q_lhs_pairs, q_rhs_pairs) = self.q.as_chunks().0.split_at(n_terms);
 
+        // println!("n_TERMS: {n_terms}");
         #[allow(unused_mut)]
-        let [y0, mut y1, mut y2, mut y3] = zip(
-            c_vals,
+        let [y0, mut y2] = zip(
+            &self.c,
             zip(zip(p_lhs_pairs, p_rhs_pairs), zip(q_lhs_pairs, q_rhs_pairs)),
         )
         .fold(
-            [zero; 4],
+            [zero; 2],
             |acc,
              (
                 &c,
@@ -270,16 +281,11 @@ impl SumcheckOracle for Oracle {
                 let eval0 = {
                     let a = Fraction::new(p0_lhs, q0_lhs);
                     let b = Fraction::new(p1_lhs, q1_lhs);
-                    let res = a + b;
-                    res.numerator + self.lambda * res.denominator
-                };
-
-                // eval at 1:
-                let eval1 = {
-                    let a = Fraction::new(p0_rhs, q0_rhs);
-                    let b = Fraction::new(p1_rhs, q1_rhs);
-                    let res = a + b;
-                    res.numerator + self.lambda * res.denominator
+                    unsafe { SUMCHECK_ADDS += 1 };
+                    unsafe { SUMCHECK_MULTS += 3 };
+                    // let res = a + b;
+                    // res.numerator + self.lambda * res.denominator
+                    a + b
                 };
 
                 // eval at -1:
@@ -290,27 +296,18 @@ impl SumcheckOracle for Oracle {
                     let q1_eval = q1_lhs.double() - q1_rhs;
                     let a = Fraction::new(p0_eval, q0_eval);
                     let b = Fraction::new(p1_eval, q1_eval);
-                    let res = a + b;
-                    res.numerator + self.lambda * res.denominator
+                    unsafe { SUMCHECK_ADDS += 9 };
+                    unsafe { SUMCHECK_MULTS += 3 };
+                    // let res = a + b;
+                    // res.numerator + self.lambda * res.denominator
+                    a + b
                 };
 
-                // eval at 2:
-                let eval2 = {
-                    let p0_eval = p0_rhs.double() - p0_lhs;
-                    let p1_eval = p1_rhs.double() - p1_lhs;
-                    let q0_eval = q0_rhs.double() - q0_lhs;
-                    let q1_eval = q1_rhs.double() - q1_lhs;
-                    let a = Fraction::new(p0_eval, q0_eval);
-                    let b = Fraction::new(p1_eval, q1_eval);
-                    let res = a + b;
-                    res.numerator + self.lambda * res.denominator
-                };
-
+                unsafe { SUMCHECK_ADDS += 4 };
+                unsafe { SUMCHECK_MULTS += 4 };
                 [
-                    c * eval0 + acc[0],
-                    c * eval1 + acc[1],
-                    c * evaln1 + acc[2],
-                    c * eval2 + acc[3],
+                    c * (eval0.numerator + self.lambda * eval0.denominator) + acc[0],
+                    c * (evaln1.numerator + self.lambda * evaln1.denominator) + acc[1],
                 ]
             },
         );
@@ -322,18 +319,29 @@ impl SumcheckOracle for Oracle {
 
         unsafe { UNIVARIATE_SUM_DUR += now.elapsed() }
 
-        y1 *= eq_shift1;
+        let y1 = FastSecureField::from(self.claim) - y0;
+
+        let pre_shift_poly = Polynomial::<SecureField>::interpolate_lagrange(
+            &[x0.into(), x1.into(), x2.into()],
+            &[
+                y0.into(),
+                SecureField::from(y1 * eq_shift1.inverse()),
+                y2.into(),
+            ],
+        );
+
         y2 *= eq_shift_neg1;
-        y3 *= eq_shift2;
+        let y3 = SecureField::from(eq_shift2) * pre_shift_poly.eval(x3.into());
 
         Polynomial::interpolate_lagrange(
             &[x0.into(), x1.into(), x2.into(), x3.into()],
-            &[y0.into(), y1.into(), y2.into(), y3.into()],
+            &[y0.into(), y1.into(), y2.into(), y3],
         )
     }
 
     #[no_mangle]
-    fn fix_first(self, challenge: SecureField) -> Self {
+    fn fix_first(self, challenge: SecureField, claim: SecureField) -> Self {
+        #[allow(clippy::useless_conversion)]
         let challenge: FastSecureField = challenge.into();
 
         let now = Instant::now();
@@ -354,6 +362,7 @@ impl SumcheckOracle for Oracle {
             num_variables: self.num_variables - 1,
             z: self.z[1..].to_vec(),
             lambda: self.lambda,
+            claim,
         }
     }
 }
@@ -361,20 +370,23 @@ impl SumcheckOracle for Oracle {
 /// Computes all TODO in `O(2^|z|)`
 ///
 /// Source: <https://eprint.iacr.org/2013/351.pdf> (Section 5.4.1)
+#[allow(dead_code)]
 fn c0(z: &[FastSecureField]) -> Vec<FastSecureField> {
     match z {
-        [] => vec![],
         &[z1] => vec![FastSecureField::one() - z1, z1],
         &[zj, ref z @ ..] => {
             let c = c0(z);
             let zj_bar = FastSecureField::one() - zj;
+            // TODO: this can be reduced to single mult and addition
+            unsafe { SUMCHECK_ADDS += c.len() };
+            unsafe { SUMCHECK_MULTS += c.len() };
             let lhs = c.iter().map(|&v| zj_bar * v);
             let rhs = c.iter().map(|&v| zj * v);
             Iterator::chain(lhs, rhs).collect()
         }
+        [] => panic!(),
     }
 }
-
 // /// Evaluations of the polynomial `eq(x_1, ..., x_n) = (z_1 * x_1 + (1 - z_1) * (1 - x_1)) * ...
 // * /// (z_n * x_n + (1 - z_n) * (1 - x_n))` over the boolean hypercube `{0, 1}^n`.
 // struct EqEvaluation {
@@ -403,6 +415,8 @@ fn collapse_c(
     // TODO: Shift not right word.
     let shift = z_bar.inverse() * (r * z + r_bar * z_bar);
 
+    unsafe { SUMCHECK_MULTS += c.len() / 2 };
+
     c.truncate(c.len() / 2);
     c.iter_mut().for_each(|v| *v *= shift);
 
@@ -418,14 +432,28 @@ pub fn prove(channel: &mut (impl Channel + Clone), layers: Vec<MleLayer>) -> Gkr
     channel.mix_felts(&output_layer.q);
 
     let mut r = channel.draw_felts(output_layer.num_variables as usize);
+    let mut round_p_r = output_layer.p.eval(&r);
+    let mut round_q_r = output_layer.q.eval(&r);
 
     let layer_proofs = layers
         .map(|MleLayer { p, q, .. }| {
             let lambda = channel.draw_felt();
 
-            let oracle = Oracle::new(&r, p, q, lambda);
+            let claim = round_p_r + lambda * round_q_r;
+
+            let oracle = Oracle::new(&r, p, q, lambda, claim);
             let now = Instant::now();
+
+            let _adds_snapshot = unsafe { SUMCHECK_ADDS };
+            let _mults_snapshot = unsafe { SUMCHECK_MULTS };
             let (sumcheck_proof, variable_assignment, oracle) = sumcheck::prove(oracle, channel);
+            // println!("==sumcheck adds: {}", unsafe {
+            //     SUMCHECK_ADDS - adds_snapshot
+            // });
+            // println!("==sumcheck muls: {}", unsafe {
+            //     SUMCHECK_MULTS - mults_snapshot
+            // });
+
             unsafe {
                 SUMCHECK_DURATION += now.elapsed();
             }
@@ -445,8 +473,12 @@ pub fn prove(channel: &mut (impl Channel + Clone), layers: Vec<MleLayer>) -> Gkr
             channel.mix_felts(&p_eval_encoding);
             channel.mix_felts(&q_eval_encoding);
 
+            let r_star = channel.draw_felt();
             r = variable_assignment;
-            r.push(channel.draw_felt());
+            r.push(r_star);
+
+            round_p_r = p_eval_encoding.eval(r_star);
+            round_q_r = q_eval_encoding.eval(r_star);
 
             GkrLayerProof {
                 sumcheck_proof,
@@ -480,7 +512,7 @@ mod tests {
 
     #[test]
     fn mle_bench() {
-        const N: usize = 1 << 21;
+        const N: usize = 1 << 20;
 
         let mut channel = test_channel();
         let mut random_fractions = zip(
@@ -500,10 +532,18 @@ mod tests {
         let mut layers = Vec::new();
         while random_fractions.len() > 1 {
             layers.push(MleLayer::new(&random_fractions));
-            random_fractions = random_fractions
+            let mut chunks = random_fractions.array_chunks();
+
+            let mut res = (&mut chunks)
+                .flat_map(|&[a, b, c, d, e, f, g, h]| [a + b, c + d, e + f, g + h])
+                .collect::<Vec<_>>();
+
+            chunks
+                .remainder()
                 .array_chunks()
-                .map(|&[a, b]| a + b)
-                .collect();
+                .for_each(|&[a, b]| res.push(a + b));
+
+            random_fractions = res;
         }
         layers.reverse();
 

@@ -4,6 +4,7 @@ use num_traits::{One, Zero};
 use prover_research::core::fields::qm31::SecureField;
 use prover_research::core::fields::Field;
 
+use crate::gkr::{SUMCHECK_ADDS, SUMCHECK_MULTS};
 use crate::sumcheck::SumcheckOracle;
 use crate::utils::Polynomial;
 /// Multi-Linear extension with values represented in the lagrange basis.
@@ -43,6 +44,8 @@ impl<F: Field> MultiLinearExtension<F> {
     pub fn fix_first(mut self, assignment: F) -> Self {
         let n_fixed_evals = self.evals.len() / 2;
 
+        unsafe { SUMCHECK_ADDS += n_fixed_evals * 2 };
+        unsafe { SUMCHECK_MULTS += n_fixed_evals };
         for i in 0..n_fixed_evals {
             let lhs = self.evals[i];
             let rhs = self.evals[i + n_fixed_evals];
@@ -90,7 +93,7 @@ impl SumcheckOracle for MultiLinearExtension<SecureField> {
         Polynomial::interpolate_lagrange(&[x0, x1], &[y0, y1])
     }
 
-    fn fix_first(self, challenge: SecureField) -> Self {
+    fn fix_first(self, challenge: SecureField, _claim: SecureField) -> Self {
         self.fix_first(challenge)
     }
 }
