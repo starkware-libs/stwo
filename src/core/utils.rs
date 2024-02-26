@@ -13,23 +13,24 @@ pub(crate) fn bit_reverse_index(i: usize, log_size: u32) -> usize {
     i.reverse_bits() >> (usize::BITS - log_size)
 }
 
-/// Performs a naive bit-reversal permutation inplace.
+/// Performs a naive bit-reversal permutation.
 ///
 /// # Panics
 ///
 /// Panics if the length of the slice is not a power of two.
+// TODO(AlonH): Consider benchmarking this function.
 // TODO: Implement cache friendly implementation.
-// TODO(spapini): Move this to the cpu backend.
-pub fn bit_reverse<T>(v: &mut [T]) {
-    let n = v.len();
+pub fn bit_reverse<T, U: AsMut<[T]>>(mut v: U) -> U {
+    let n = v.as_mut().len();
     assert!(n.is_power_of_two());
     let log_n = n.ilog2();
     for i in 0..n {
         let j = bit_reverse_index(i, log_n);
         if j > i {
-            v.swap(i, j);
+            v.as_mut().swap(i, j);
         }
     }
+    v
 }
 
 #[cfg(test)]
@@ -38,15 +39,15 @@ mod tests {
 
     #[test]
     fn bit_reverse_works() {
-        let mut data = [0, 1, 2, 3, 4, 5, 6, 7];
-        bit_reverse(&mut data);
-        assert_eq!(data, [0, 4, 2, 6, 1, 5, 3, 7]);
+        assert_eq!(
+            bit_reverse([0, 1, 2, 3, 4, 5, 6, 7]),
+            [0, 4, 2, 6, 1, 5, 3, 7]
+        );
     }
 
     #[test]
     #[should_panic]
     fn bit_reverse_non_power_of_two_size_fails() {
-        let mut data = [0, 1, 2, 3, 4, 5];
-        bit_reverse(&mut data);
+        bit_reverse([0, 1, 2, 3, 4, 5]);
     }
 }

@@ -365,8 +365,8 @@ mod tests {
     fn test_sparse_circle_points() {
         let log_domain_size = 7;
         let domain = CanonicCoset::new(log_domain_size).circle_domain();
-        let mut trace_commitment_points = domain.iter().collect_vec();
-        bit_reverse(&mut trace_commitment_points);
+        let domain_points = domain.iter().collect_vec();
+        let trace_commitment_points = bit_reverse(domain_points);
 
         // Generate queries.
         let trace_queries = Queries {
@@ -389,8 +389,7 @@ mod tests {
                 .collect_vec();
             let circle_domain = sub_circle_domain.to_circle_domain(&domain);
             // Bit reverse the domain points to match the order of the opened points.
-            let mut domain_points = circle_domain.iter().collect_vec();
-            bit_reverse(&mut domain_points);
+            let domain_points = bit_reverse(circle_domain.iter().collect_vec());
             assert_eq!(points, domain_points);
         }
     }

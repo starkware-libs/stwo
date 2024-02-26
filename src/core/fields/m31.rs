@@ -3,8 +3,6 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
-use bytemuck::{Pod, Zeroable};
-
 use super::ComplexConjugate;
 use crate::impl_field;
 
@@ -12,8 +10,7 @@ pub const MODULUS_BITS: u32 = 31;
 pub const N_BYTES_FELT: usize = 4;
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
 
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Pod, Zeroable)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct M31(u32);
 pub type BaseField = M31;
 

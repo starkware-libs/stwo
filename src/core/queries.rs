@@ -158,13 +158,13 @@ mod tests {
     pub fn test_folded_queries() {
         let log_domain_size = 7;
         let domain = CanonicCoset::new(log_domain_size).circle_domain();
-        let mut values = domain.iter().collect::<Vec<_>>();
-        bit_reverse(&mut values);
+        let values = domain.iter().collect::<Vec<_>>();
+        let values = bit_reverse(values.clone());
 
         let log_folded_domain_size = 5;
         let folded_domain = CanonicCoset::new(log_folded_domain_size).circle_domain();
-        let mut folded_values = folded_domain.iter().collect::<Vec<_>>();
-        bit_reverse(&mut folded_values);
+        let folded_values = folded_domain.iter().collect::<Vec<_>>();
+        let folded_values = bit_reverse(folded_values.clone());
 
         // Generate all possible queries.
         let queries = Queries {
@@ -192,8 +192,8 @@ mod tests {
         let channel = &mut Blake2sChannel::new(Blake2sHash::default());
         let log_domain_size = 7;
         let domain = CanonicCoset::new(log_domain_size).circle_domain();
-        let mut values = domain.iter().collect::<Vec<_>>();
-        bit_reverse(&mut values);
+        let values = domain.iter().collect::<Vec<_>>();
+        let values = bit_reverse(values.clone());
 
         // Test random queries one by one because the conjugate queries are sorted.
         for _ in 0..100 {

@@ -18,7 +18,7 @@ impl Backend for CPUBackend {}
 impl<F: Field> FieldOps<F> for CPUBackend {
     type Column = Vec<F>;
 
-    fn bit_reverse_column(column: &mut Self::Column) {
+    fn bit_reverse_column(column: Self::Column) -> Self::Column {
         bit_reverse(column)
     }
 }
