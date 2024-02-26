@@ -13,13 +13,14 @@ pub fn cpu_bit_rev(c: &mut criterion::Criterion) {
 
     c.bench_function("cpu bit_rev", |b| {
         b.iter(|| {
-            data = stwo::core::utils::bit_reverse(std::mem::take(&mut data));
+            stwo::core::utils::bit_reverse(&mut data);
         })
     });
 }
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
+    use bytemuck::cast_slice_mut;
     use stwo::core::backend::avx512::bit_reverse::bit_reverse_m31;
     use stwo::core::fields::m31::BaseField;
     use stwo::platform;
@@ -35,7 +36,7 @@ pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
 
     c.bench_function("avx bit_rev", |b| {
         b.iter(|| {
-            bit_reverse_m31(&mut data);
+            bit_reverse_m31(cast_slice_mut(&mut data[..]));
         })
     });
 }
