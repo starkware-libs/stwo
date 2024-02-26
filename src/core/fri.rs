@@ -1,4 +1,5 @@
 use std::cmp::Reverse;
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::iter::zip;
 use std::ops::RangeInclusive;
@@ -254,7 +255,7 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriProver<B, H> {
     pub fn decommit(
         self,
         channel: &mut impl Channel<Digest = H::Hash>,
-    ) -> (FriProof<H>, Vec<SparseSubCircleDomain>) {
+    ) -> (FriProof<H>, BTreeMap<u32, SparseSubCircleDomain>) {
         let max_column_log_size = self.column_log_sizes[0];
         let queries = Queries::generate(channel, max_column_log_size, self.config.n_queries);
         let positions = get_opening_positions(&queries, &self.column_log_sizes);
@@ -502,7 +503,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     pub fn column_opening_positions(
         &mut self,
         channel: &mut impl Channel<Digest = H::Hash>,
-    ) -> Vec<SparseSubCircleDomain> {
+    ) -> BTreeMap<u32, SparseSubCircleDomain> {
         let column_log_sizes = self
             .column_bounds
             .iter()
@@ -519,19 +520,19 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
 /// Returns the column opening positions needed for verification.
 ///
 /// The domain log sizes must be unique and in descending order.
-// TODO(AlonH): Consider returning a mapping instead of a vector.
 fn get_opening_positions(
     queries: &Queries,
     domain_log_sizes: &[u32],
-) -> Vec<SparseSubCircleDomain> {
+) -> BTreeMap<u32, SparseSubCircleDomain> {
     let mut prev_log_size = domain_log_sizes[0];
     assert!(prev_log_size == queries.log_domain_size);
     let mut prev_queries = queries.clone();
-    let mut positions = vec![prev_queries.opening_positions(FOLD_STEP)];
+    let mut positions = BTreeMap::new();
+    positions.insert(prev_log_size, prev_queries.opening_positions(FOLD_STEP));
     for log_size in domain_log_sizes.iter().skip(1) {
         let n_folds = prev_log_size - log_size;
         let queries = prev_queries.fold(n_folds);
-        positions.push(queries.opening_positions(FOLD_STEP));
+        positions.insert(*log_size, queries.opening_positions(FOLD_STEP));
         prev_log_size = *log_size;
         prev_queries = queries;
     }
@@ -1038,7 +1039,7 @@ mod tests {
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
         let prover = FriProver::commit(&mut test_channel(), config, &polynomials);
         let (proof, prover_opening_positions) = prover.decommit(&mut test_channel());
-        let decommitment_values = zip(&polynomials, &prover_opening_positions)
+        let decommitment_values = zip(&polynomials, prover_opening_positions.values().rev())
             .map(|(poly, positions)| open_polynomial(poly, positions))
             .collect();
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
@@ -1233,11 +1234,10 @@ mod tests {
         polynomial: &CPUCircleEvaluation<F, BitReversedOrder>,
         queries: &Queries,
     ) -> SparseCircleEvaluation<F> {
-        let positions = get_opening_positions(
-            queries,
-            &[queries.log_domain_size, polynomial.domain.log_size()],
-        );
-        open_polynomial(polynomial, &positions[1])
+        let polynomial_log_size = polynomial.domain.log_size();
+        let positions =
+            get_opening_positions(queries, &[queries.log_domain_size, polynomial_log_size]);
+        open_polynomial(polynomial, &positions[&polynomial_log_size])
     }
 
     fn open_polynomial<F: ExtensionOf<BaseField>>(
