@@ -21,6 +21,12 @@ impl<F: Field> FieldOps<F> for CPUBackend {
     fn bit_reverse_column(column: &mut Self::Column) {
         bit_reverse(&mut column[..])
     }
+
+    fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {
+        todo!()
+    }
+    
+    
 }
 
 impl<F: Clone + Debug + Field> Column<F> for Vec<F> {

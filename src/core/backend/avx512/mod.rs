@@ -3,21 +3,33 @@ pub mod bit_reverse;
 use std::ops::Index;
 
 use bytemuck::checked::cast_slice_mut;
+use bytemuck::{cast_slice, Pod, Zeroable};
 use num_traits::Zero;
 
 use self::bit_reverse::bit_reverse_m31;
+use crate::core::fields::avx512_m31::M31AVX512;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Column, FieldOps};
 use crate::core::utils;
+
 
 #[derive(Copy, Clone, Debug)]
 pub struct AVX512Backend;
 
 // BaseField.
-type PackedBaseField = [BaseField; 16];
-#[derive(Clone, Debug)]
+#[repr(align(64))]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct PackedBaseField([BaseField; 16]);
+unsafe impl Pod for PackedBaseField {}
+unsafe impl Zeroable for PackedBaseField {
+    fn zeroed() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BaseFieldVec {
-    data: Vec<PackedBaseField>,
+    pub data: Vec<PackedBaseField>,
     length: usize,
 }
 impl FieldOps<BaseField> for AVX512Backend {
@@ -31,6 +43,34 @@ impl FieldOps<BaseField> for AVX512Backend {
         }
         bit_reverse_m31(&mut column.data);
     }
+
+    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
+        Self::inverse_unoptimised(&column.data[..], &mut dst.data[..])
+    }
+}
+
+impl AVX512Backend {
+    pub fn inverse_unoptimised(column: &[PackedBaseField], dst: &mut [PackedBaseField]) {
+        let n = column.len();
+        let column: &[M31AVX512] = cast_slice(column);
+        let dst: &mut [M31AVX512] = cast_slice_mut(dst);
+
+        dst[0] = column[0];
+        // First pass.
+        for i in 1..n {
+            dst[i] = dst[i - 1] * column[i];
+        }
+
+        // Inverse cumulative product.
+        let mut curr_inverse = dst[n - 1];
+
+        // Second pass.
+        for i in (1..n).rev() {
+            dst[i] = dst[i - 1] * curr_inverse;
+            curr_inverse *= column[i];
+        }
+        dst[0] = curr_inverse;
+    }
 }
 
 impl Column<BaseField> for BaseFieldVec {
@@ -43,8 +83,7 @@ impl Column<BaseField> for BaseFieldVec {
     fn to_vec(&self) -> Vec<BaseField> {
         self.data
             .iter()
-            .flatten()
-            .copied()
+            .flat_map(|x| x.0)
             .take(self.length)
             .collect()
     }
@@ -56,25 +95,27 @@ impl Column<BaseField> for BaseFieldVec {
 impl Index<usize> for BaseFieldVec {
     type Output = BaseField;
     fn index(&self, index: usize) -> &Self::Output {
-        &self.data[index / 8][index % 8]
+        &self.data[index / 16].0[index % 16]
     }
 }
 
 impl FromIterator<BaseField> for BaseFieldVec {
     fn from_iter<I: IntoIterator<Item = BaseField>>(iter: I) -> Self {
         let mut chunks = iter.into_iter().array_chunks();
-        let mut res: Vec<_> = (&mut chunks).collect();
+        let mut res: Vec<_> = (&mut chunks).map(PackedBaseField).collect();
         let mut length = res.len() * 16;
 
         if let Some(remainder) = chunks.into_remainder() {
             if !remainder.is_empty() {
                 length += remainder.len();
                 let pad_len = 16 - remainder.len();
-                let last: PackedBaseField = remainder
-                    .chain(std::iter::repeat(BaseField::zero()).take(pad_len))
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap();
+                let last = PackedBaseField(
+                    remainder
+                        .chain(std::iter::repeat(BaseField::zero()).take(pad_len))
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .unwrap(),
+                );
                 res.push(last);
             }
         }
@@ -86,7 +127,7 @@ impl FromIterator<BaseField> for BaseFieldVec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::fields::{Col, Column};
+    use crate::core::fields::{Col, Column, Field};
 
     type B = AVX512Backend;
 
@@ -114,5 +155,14 @@ mod tests {
                     .collect::<Vec<_>>()
             );
         }
+    }
+
+    #[test]
+    fn test_inverse_unoptimized() {
+        let len = 1 << 10;
+        let col = Col::<B, BaseField>::from_iter((1..len+1).map(BaseField::from));
+        let mut dst = Col::<B, BaseField>::zeros(len);
+        B::batch_inverse(&col, &mut dst);
+        assert_eq!(dst.to_vec(), (0..len).map(|i|BaseField::from(i).inverse()).collect::<Vec<_>>());
     }
 }
