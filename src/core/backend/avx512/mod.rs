@@ -55,8 +55,66 @@ impl FieldOps<BaseField> for AVX512Backend {
         bit_reverse_m31(&mut column.data);
     }
 
-    fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {
-        todo!()
+    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
+        const W: usize = 4;
+        let n = column.len() / K_BLOCK_SIZE;
+        debug_assert!(n.is_power_of_two());
+        if n < W {
+            Self::inverse_unoptimised(&column.data, &mut dst.data);
+            return;
+        }
+
+        let column: &[PackedBaseField] = cast_slice(&column.data);
+        let dst: &mut [PackedBaseField] = cast_slice_mut(&mut dst.data);
+
+        // First pass.
+        let mut cum_prod: [PackedBaseField; W] = column[..W].try_into().unwrap();
+        dst[..W].copy_from_slice(&cum_prod);
+        for i in W..n {
+            cum_prod[i % W] *= column[i];
+            dst[i] = cum_prod[i % W];
+        }
+        debug_assert_eq!(dst.len(), n);
+
+        // Inverse cumulative products.
+        // Use classic batch inversion.
+        let mut tail_inverses = [PackedBaseField::zeroed(); W];
+        Self::inverse_unoptimised(
+            cast_slice(&dst[n - W..]),
+            cast_slice_mut(&mut tail_inverses),
+        );
+
+        // Second pass.
+        for i in (W..n).rev() {
+            dst[i] = dst[i - W] * tail_inverses[i % W];
+            tail_inverses[i % W] *= column[i];
+        }
+        dst[0..W].copy_from_slice(&tail_inverses);
+    }
+}
+
+impl AVX512Backend {
+    // TODO(Ohad): unroll.
+    pub fn inverse_unoptimised(column: &[PackedBaseField], dst: &mut [PackedBaseField]) {
+        let n = column.len();
+        let column: &[PackedBaseField] = cast_slice(column);
+        let dst: &mut [PackedBaseField] = cast_slice_mut(dst);
+
+        dst[0] = column[0];
+        // First pass.
+        for i in 1..n {
+            dst[i] = dst[i - 1] * column[i];
+        }
+
+        // Inverse cumulative product.
+        let mut curr_inverse = dst[n - 1].inverse();
+
+        // Second pass.
+        for i in (1..n).rev() {
+            dst[i] = dst[i - 1] * curr_inverse;
+            curr_inverse *= column[i];
+        }
+        dst[0] = curr_inverse;
     }
 }
 
@@ -123,7 +181,7 @@ impl FromIterator<BaseField> for BaseFieldVec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::fields::{Col, Column};
+    use crate::core::fields::{Col, Column, Field};
 
     type B = AVX512Backend;
 
@@ -162,5 +220,19 @@ mod tests {
         let col = Col::<B, BaseField>::from_iter(original_vec.clone());
         let vec = as_cpu_vec(col);
         assert_eq!(vec, original_vec);
+    }
+
+    #[test]
+    fn test_inverse_unoptimized() {
+        let len = 1 << 10;
+        let col = Col::<B, BaseField>::from_iter((1..len + 1).map(BaseField::from));
+        let mut dst = Col::<B, BaseField>::zeros(len);
+        B::batch_inverse(&col, &mut dst);
+        assert_eq!(
+            dst.to_vec(),
+            (1..len + 1)
+                .map(|i| BaseField::from(i).inverse())
+                .collect::<Vec<_>>()
+        );
     }
 }

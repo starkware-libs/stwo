@@ -2,9 +2,11 @@ use core::arch::x86_64::{
     __m512i, _mm512_add_epi32, _mm512_min_epu32, _mm512_mul_epu32, _mm512_srli_epi64,
     _mm512_sub_epi32,
 };
-use std::arch::x86_64::_mm512_permutex2var_epi32;
+use std::arch::x86_64::{_mm512_permutex2var_epi32, _mm512_set1_epi32};
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+
+use num_traits::One;
 
 use crate::core::fields::m31::{M31, P};
 
@@ -34,6 +36,28 @@ impl PackedBaseField {
     pub fn reduce(self) -> PackedBaseField {
         Self(unsafe { _mm512_min_epu32(self.0, _mm512_sub_epi32(self.0, M512P)) })
     }
+
+    fn square(&self) -> Self {
+        (*self) * (*self)
+    }
+
+    fn pow(&self, exp: u128) -> Self {
+        let mut res = Self::one();
+        let mut base = *self;
+        let mut exp = exp;
+        while exp > 0 {
+            if exp & 1 == 1 {
+                res *= base;
+            }
+            base = base.square();
+            exp >>= 1;
+        }
+        res
+    }
+
+    pub fn inverse(&self) -> Self {
+        self.pow(P as u128 - 2)
+    }
 }
 
 impl Display for PackedBaseField {
@@ -43,6 +67,12 @@ impl Display for PackedBaseField {
             write!(f, "{} ", elem)?;
         }
         Ok(())
+    }
+}
+
+impl One for PackedBaseField {
+    fn one() -> Self {
+        Self(unsafe { _mm512_set1_epi32(1) })
     }
 }
 
