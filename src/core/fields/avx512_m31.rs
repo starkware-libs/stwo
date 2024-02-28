@@ -3,6 +3,7 @@ use core::arch::x86_64::{
     _mm512_and_epi64, _mm512_cvtepi64_epi32, _mm512_cvtepu32_epi64, _mm512_min_epu32,
     _mm512_mul_epu32, _mm512_srli_epi64, _mm512_sub_epi32, _mm512_sub_epi64, _mm512_set1_epi32,
 };
+use std::arch::x86_64::{ _mm512_and_si512, _mm512_castps_si512, _mm512_castsi512_ps, _mm512_mask_blend_epi32, _mm512_movehdup_ps, _mm512_slli_epi64};
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -27,6 +28,7 @@ unsafe impl Zeroable for M31AVX512 {
 
 unsafe impl NoUninit for M31AVX512 {}
 
+const P_BRODCAST: __m512i = unsafe { core::mem::transmute([P; 16]) };
 impl M31AVX512 {
     /// Given x1,...,x\[K_BLOCK_SIZE\] values, each in [0, 2*\[P\]), packed in
     /// x, returns packed xi % \[P\].
@@ -49,7 +51,7 @@ impl M31AVX512 {
     /// representations. [0, \[P\]^2) -> [0, \[P\]), [0, \[P\]^2] -> [0,
     /// \[P\]].
     #[inline(always)]
-    fn reduce(x: __m512i) -> Self {
+    pub fn reduce(x: __m512i) -> Self {
         unsafe {
             let x_plus_one: __m512i = _mm512_add_epi64(x, M512ONE);
 
@@ -108,6 +110,14 @@ impl M31AVX512 {
     pub fn inverse(&self) -> Self {
         self.pow(P as u128 - 2)
     }
+
+    fn movehdup_epi32(x: __m512i) -> __m512i {
+        // The instruction is only available in the floating-point flavor; this distinction is only for
+        // historical reasons and no longer matters. We cast to floats, duplicate, and cast back.
+        unsafe {
+            _mm512_castps_si512(_mm512_movehdup_ps(_mm512_castsi512_ps(x)))
+        }
+    }
 }
 
 impl One for M31AVX512 {
@@ -147,7 +157,47 @@ impl Mul for M31AVX512 {
 
     #[inline(always)]
     fn mul(self, rhs: Self) -> Self::Output {
-        unsafe { Self::reduce(_mm512_mul_epu32(self.0, rhs.0)) }
+        unsafe {
+            // vpmuludq only reads the bottom 32 bits of every 64-bit quadword.
+            // The even indices are already in the bottom 32 bits of a quadword, so we can leave them.
+            let lhs_evn = self.0;
+            let rhs_evn = rhs.0;
+            // Right shift by 31 is equivalent to moving the high 32 bits down to the low 32, and then
+            // doubling it. So these are the odd indices in lhs, but doubled.
+            let lhs_odd_dbl = _mm512_srli_epi64::<31>(self.0);
+            // Copy the high 32 bits in each quadword of rhs down to the low 32.
+            let rhs_odd = Self::movehdup_epi32(rhs.0);
+    
+            // Multiply odd indices; since lhs_odd_dbl is doubled, these products are also doubled.
+            // prod_odd_dbl.quadword[i] = 2 * lsh.doubleword[2 * i + 1] * rhs.doubleword[2 * i + 1]
+            let prod_odd_dbl = _mm512_mul_epu32(rhs_odd, lhs_odd_dbl);
+            // Multiply even indices.
+            // prod_evn.quadword[i] = lsh.doubleword[2 * i] * rhs.doubleword[2 * i]
+            let prod_evn = _mm512_mul_epu32(rhs_evn, lhs_evn);
+    
+            // We now need to extract the low 31 bits and the high 31 bits of each 62 bit product and
+            // prepare to add them.
+            // Put the low 31 bits of the product (recall that it is shifted left by 1) in an odd
+            // doubleword. (Notice that the high 31 bits are already in an odd doubleword in
+            // prod_odd_dbl.) We will still need to clear the sign bit, hence we mark it _dirty.
+            let prod_odd_lo_dirty = _mm512_slli_epi64::<31>(prod_odd_dbl);
+            // Put the high 31 bits in an even doubleword, again noting that in prod_evn the even
+            // doublewords contain the low 31 bits (with a dirty sign bit).
+            let prod_evn_hi = _mm512_srli_epi64::<31>(prod_evn);
+    
+            // Put all the low halves of all the products into one vector. Take the even values from
+            // prod_evn and odd values from prod_odd_lo_dirty. Note that the sign bits still need
+            // clearing.
+            let prod_lo_dirty = _mm512_mask_blend_epi32(0b101010100101010,prod_evn, prod_odd_lo_dirty);
+            // Now put all the high halves into one vector. The even values come from prod_evn_hi and
+            // the odd values come from prod_odd_dbl.
+            let prod_hi = _mm512_mask_blend_epi32(0b101010100101010,prod_evn_hi, prod_odd_dbl);
+            // Clear the most significant bit.
+            let prod_lo = _mm512_and_si512(prod_lo_dirty, P_BRODCAST);
+    
+            // Standard addition of two 31-bit values.
+            M31AVX512(prod_lo) + M31AVX512(prod_hi)
+        }
     }
 }
 
