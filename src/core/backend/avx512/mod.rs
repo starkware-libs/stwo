@@ -58,7 +58,7 @@ impl FieldOps<BaseField> for AVX512Backend {
     }
 
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
-        const W: usize = 4;
+        const W: usize = 2;
         let n = column.len() / K_ELEMENTS;
         debug_assert!(n.is_power_of_two());
         if n < W {

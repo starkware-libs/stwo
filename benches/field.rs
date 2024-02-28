@@ -200,4 +200,4 @@ criterion::criterion_group!(
     cm31_operations_bench,
     qm31_operations_bench
 );
-criterion::criterion_main!(field_comparison, m31_benches);
+criterion::criterion_main!(m31_benches);
