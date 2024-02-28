@@ -23,7 +23,7 @@ jobs:
   format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
           components: rustfmt
@@ -34,7 +34,7 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
           components: clippy
@@ -45,18 +45,18 @@ jobs:
   run-tests:
     runs-on: avx
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test --features avx512 
+      - run: cargo +nightly-2024-01-04 test --features avx512
       - run: cargo +nightly-2024-01-04 test --features avx512 --release
+
   udeps:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         name: "Rust Toolchain Setup"
         with:
@@ -70,3 +70,17 @@ jobs:
           cargo-udeps-*/cargo-udeps udeps
         env:
           RUSTUP_TOOLCHAIN: nightly-2024-01-04
+
+
+  all-tests:
+    runs-on: ubuntu-latest
+    needs:
+    - clippy
+    - format
+    - run-tests
+    - udeps
+    steps:
+    - name: Decide whether all the needed jobs succeeded or failed
+      uses: re-actors/alls-green@v1.2.2
+      with:
+        jobs: ${{ toJSON(needs) }}
