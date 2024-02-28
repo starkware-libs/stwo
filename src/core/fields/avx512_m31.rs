@@ -1,10 +1,13 @@
 use core::arch::x86_64::{
     __m256i, __m512i, _mm256_loadu_si256, _mm256_storeu_si256, _mm512_add_epi32, _mm512_add_epi64,
     _mm512_and_epi64, _mm512_cvtepi64_epi32, _mm512_cvtepu32_epi64, _mm512_min_epu32,
-    _mm512_mul_epu32, _mm512_srli_epi64, _mm512_sub_epi32, _mm512_sub_epi64,
+    _mm512_mul_epu32, _mm512_srli_epi64, _mm512_sub_epi32, _mm512_sub_epi64, _mm512_set1_epi32,
 };
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+
+use bytemuck::{AnyBitPattern, NoUninit, Zeroable};
+use num_traits::One;
 
 use super::m31::{M31, MODULUS_BITS, P};
 pub const K_BLOCK_SIZE: usize = 8;
@@ -12,7 +15,17 @@ pub const M512P: __m512i = unsafe { core::mem::transmute([P as u64; K_BLOCK_SIZE
 pub const M512ONE: __m512i = unsafe { core::mem::transmute([1u64; K_BLOCK_SIZE]) };
 
 #[derive(Copy, Clone, Debug)]
-pub struct M31AVX512(__m512i);
+pub struct M31AVX512(pub(crate)__m512i);
+
+unsafe impl AnyBitPattern for M31AVX512 {}
+
+unsafe impl Zeroable for M31AVX512 {
+    fn zeroed() -> Self{
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+unsafe impl NoUninit for M31AVX512 {}
 
 impl M31AVX512 {
     /// Given x1,...,x\[K_BLOCK_SIZE\] values, each in [0, 2*\[P\]), packed in
@@ -72,6 +85,34 @@ impl M31AVX512 {
             v.set_len(K_BLOCK_SIZE);
             v
         }
+    }
+
+    fn square(&self) -> Self {
+        (*self) * (*self)
+    }
+
+    fn pow(&self, exp: u128) -> Self {
+        let mut res = Self::one();
+        let mut base = *self;
+        let mut exp = exp;
+        while exp > 0 {
+            if exp & 1 == 1 {
+                res *= base;
+            }
+            base = base.square();
+            exp >>= 1;
+        }
+        res
+    }
+
+    pub fn inverse(&self) -> Self {
+        self.pow(P as u128 - 2)
+    }
+}
+
+impl One for M31AVX512 {
+    fn one() -> Self {
+        Self(unsafe { _mm512_set1_epi32(1) })
     }
 }
 
@@ -140,6 +181,7 @@ impl Sub for M31AVX512 {
         }
     }
 }
+
 
 impl SubAssign for M31AVX512 {
     #[inline(always)]

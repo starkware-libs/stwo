@@ -12,6 +12,7 @@ pub mod qm31;
 pub trait FieldOps<F: Field> {
     type Column: Column<F>;
     fn bit_reverse_column(column: &mut Self::Column);
+    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column);
 }
 
 pub type Col<B, F> = <B as FieldOps<F>>::Column;
