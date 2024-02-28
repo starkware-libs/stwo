@@ -1,11 +1,11 @@
 pub mod bit_reverse;
-
-use std::ops::Index;
+pub mod m31;
 
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
 use num_traits::Zero;
 
 use self::bit_reverse::bit_reverse_m31;
+use self::m31::PackedBaseField;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Column, FieldOps};
 use crate::core::utils;
@@ -17,9 +17,6 @@ pub struct AVX512Backend;
 // TODO(spapini): Unite with the M31AVX512 type.
 pub const K_ELEMENTS: usize = 16;
 
-#[repr(align(64))]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct PackedBaseField([BaseField; K_ELEMENTS]);
 unsafe impl Pod for PackedBaseField {}
 unsafe impl Zeroable for PackedBaseField {
     fn zeroed() -> Self {
@@ -27,7 +24,7 @@ unsafe impl Zeroable for PackedBaseField {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct BaseFieldVec {
     pub data: Vec<PackedBaseField>,
     length: usize,
@@ -60,40 +57,36 @@ impl FieldOps<BaseField> for AVX512Backend {
 impl Column<BaseField> for BaseFieldVec {
     fn zeros(len: usize) -> Self {
         Self {
-            data: vec![PackedBaseField::default(); len.div_ceil(K_ELEMENTS)],
+            data: vec![PackedBaseField::zeroed(); len.div_ceil(K_ELEMENTS)],
             length: len,
         }
     }
     fn to_vec(&self) -> Vec<BaseField> {
         self.data
             .iter()
-            .flat_map(|x| x.0)
+            .flat_map(|x| x.to_array())
             .take(self.length)
             .collect()
     }
     fn len(&self) -> usize {
         self.length
     }
-}
-
-impl Index<usize> for BaseFieldVec {
-    type Output = BaseField;
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.data[index / K_ELEMENTS].0[index % K_ELEMENTS]
+    fn at(&self, index: usize) -> BaseField {
+        self.data[index / K_ELEMENTS].to_array()[index % K_ELEMENTS]
     }
 }
 
 impl FromIterator<BaseField> for BaseFieldVec {
     fn from_iter<I: IntoIterator<Item = BaseField>>(iter: I) -> Self {
         let mut chunks = iter.into_iter().array_chunks();
-        let mut res: Vec<_> = (&mut chunks).map(PackedBaseField).collect();
+        let mut res: Vec<_> = (&mut chunks).map(PackedBaseField::from_array).collect();
         let mut length = res.len() * K_ELEMENTS;
 
         if let Some(remainder) = chunks.into_remainder() {
             if !remainder.is_empty() {
                 length += remainder.len();
                 let pad_len = 16 - remainder.len();
-                let last = PackedBaseField(
+                let last = PackedBaseField::from_array(
                     remainder
                         .chain(std::iter::repeat(BaseField::zero()).take(pad_len))
                         .collect::<Vec<_>>()
@@ -124,7 +117,7 @@ mod tests {
                 (0..i).map(BaseField::from).collect::<Vec<_>>()
             );
             for j in 0..i {
-                assert_eq!(col[j], BaseField::from(j));
+                assert_eq!(col.at(j), BaseField::from(j));
             }
         }
     }

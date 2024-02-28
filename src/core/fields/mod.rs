@@ -1,10 +1,9 @@
 use std::fmt::{Debug, Display};
-use std::ops::{Index, Neg};
+use std::ops::Neg;
 
 use num_traits::{NumAssign, NumAssignOps, NumOps};
 
 #[cfg(target_arch = "x86_64")]
-pub mod avx512_m31;
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
@@ -17,13 +16,14 @@ pub trait FieldOps<F: Field> {
 pub type Col<B, F> = <B as FieldOps<F>>::Column;
 
 // TODO(spapini): Consider removing the generic parameter and only support BaseField.
-pub trait Column<F: Field>: Clone + Debug + Index<usize, Output = F> + FromIterator<F> {
+pub trait Column<F: Field>: Clone + Debug + FromIterator<F> {
     fn zeros(len: usize) -> Self;
     fn to_vec(&self) -> Vec<F>;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    fn at(&self, index: usize) -> F;
 }
 
 pub trait Field:

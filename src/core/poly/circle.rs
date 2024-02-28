@@ -251,7 +251,8 @@ impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CircleEvaluation<B, F> {
     }
 
     pub fn get_at(&self, point_index: CirclePointIndex) -> F {
-        self.values[self.domain.find(point_index).expect("Not in domain")]
+        self.values
+            .at(self.domain.find(point_index).expect("Not in domain"))
     }
 
     pub fn bit_reverse(mut self) -> CircleEvaluation<B, F, BitReversedOrder> {
@@ -288,10 +289,10 @@ impl<B: PolyOps<F>, F: ExtensionOf<BaseField>> CircleEvaluation<B, F, BitReverse
     }
 
     pub fn get_at(&self, point_index: CirclePointIndex) -> F {
-        self.values[bit_reverse_index(
+        self.values.at(bit_reverse_index(
             self.domain.find(point_index).expect("Not in domain"),
             self.domain.log_size(),
-        )]
+        ))
     }
 }
 

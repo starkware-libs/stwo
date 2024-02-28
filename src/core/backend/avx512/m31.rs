@@ -6,7 +6,8 @@ use std::arch::x86_64::_mm512_permutex2var_epi32;
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use super::m31::{M31, P};
+use crate::core::fields::m31::{M31, P};
+
 pub const K_BLOCK_SIZE: usize = 16;
 pub const M512P: __m512i = unsafe { core::mem::transmute([P; K_BLOCK_SIZE]) };
 
@@ -14,10 +15,10 @@ pub const M512P: __m512i = unsafe { core::mem::transmute([P; K_BLOCK_SIZE]) };
 /// Stores 16 M31 elements in a single 512-bit register.
 /// Each M31 element is unreduced in the range [0, P].
 #[derive(Copy, Clone, Debug)]
-pub struct M31AVX512(__m512i);
+pub struct PackedBaseField(__m512i);
 
-impl M31AVX512 {
-    pub fn from_array(v: [M31; K_BLOCK_SIZE]) -> M31AVX512 {
+impl PackedBaseField {
+    pub fn from_array(v: [M31; K_BLOCK_SIZE]) -> PackedBaseField {
         unsafe { Self(std::mem::transmute(v)) }
     }
 
@@ -30,12 +31,12 @@ impl M31AVX512 {
     }
 
     /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
-    pub fn reduce(self) -> M31AVX512 {
+    pub fn reduce(self) -> PackedBaseField {
         Self(unsafe { _mm512_min_epu32(self.0, _mm512_sub_epi32(self.0, M512P)) })
     }
 }
 
-impl Display for M31AVX512 {
+impl Display for PackedBaseField {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let v = self.to_array();
         for elem in v.iter() {
@@ -45,7 +46,7 @@ impl Display for M31AVX512 {
     }
 }
 
-impl Add for M31AVX512 {
+impl Add for PackedBaseField {
     type Output = Self;
 
     /// Adds two packed M31 elements, and reduces the result to the range [0,P].
@@ -63,14 +64,14 @@ impl Add for M31AVX512 {
     }
 }
 
-impl AddAssign for M31AVX512 {
+impl AddAssign for PackedBaseField {
     #[inline(always)]
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
 }
 
-impl Mul for M31AVX512 {
+impl Mul for PackedBaseField {
     type Output = Self;
 
     /// Computes the product of two packed M31 elements
@@ -140,14 +141,14 @@ impl Mul for M31AVX512 {
     }
 }
 
-impl MulAssign for M31AVX512 {
+impl MulAssign for PackedBaseField {
     #[inline(always)]
     fn mul_assign(&mut self, rhs: Self) {
         *self = *self * rhs;
     }
 }
 
-impl Neg for M31AVX512 {
+impl Neg for PackedBaseField {
     type Output = Self;
 
     #[inline(always)]
@@ -158,7 +159,7 @@ impl Neg for M31AVX512 {
 
 /// Subtracts two packed M31 elements, and reduces the result to the range [0,P].
 /// Each value is assumed to be in unreduced form, [0, P] including P.
-impl Sub for M31AVX512 {
+impl Sub for PackedBaseField {
     type Output = Self;
 
     #[inline(always)]
@@ -175,7 +176,7 @@ impl Sub for M31AVX512 {
     }
 }
 
-impl SubAssign for M31AVX512 {
+impl SubAssign for PackedBaseField {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
@@ -187,7 +188,7 @@ mod tests {
 
     use itertools::Itertools;
 
-    use super::M31AVX512;
+    use super::PackedBaseField;
     use crate::core::fields::m31::{M31, P};
     use crate::core::fields::Field;
 
@@ -217,7 +218,7 @@ mod tests {
             P - 1,
         ]
         .map(M31::from_u32_unchecked);
-        let avx_values = M31AVX512::from_array(values);
+        let avx_values = PackedBaseField::from_array(values);
 
         assert_eq!(
             (avx_values + avx_values)
