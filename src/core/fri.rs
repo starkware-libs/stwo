@@ -831,7 +831,7 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriLayerProver<B, H> {
                     continue;
                 }
 
-                let eval = self.evaluation.values[eval_position];
+                let eval = self.evaluation.values.at(eval_position);
                 evals_subset.push(eval);
             }
         }

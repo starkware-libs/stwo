@@ -141,6 +141,7 @@ mod tests {
     use crate::core::backend::avx512::bit_reverse::bit_reverse_m31;
     use crate::core::backend::avx512::BaseFieldVec;
     use crate::core::fields::m31::BaseField;
+    use crate::core::fields::Column;
     use crate::core::utils::bit_reverse;
 
     #[test]
@@ -162,9 +163,8 @@ mod tests {
         let mut expected = data.clone();
         bit_reverse(&mut expected);
         let mut data: BaseFieldVec = data.into_iter().collect();
-        let expected: BaseFieldVec = expected.into_iter().collect();
 
         bit_reverse_m31(&mut data.data[..]);
-        assert_eq!(data, expected);
+        assert_eq!(data.to_vec(), expected);
     }
 }

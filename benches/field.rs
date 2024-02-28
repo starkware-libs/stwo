@@ -130,7 +130,7 @@ pub fn qm31_operations_bench(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
-    use stwo::core::fields::avx512_m31::{K_BLOCK_SIZE, M31AVX512};
+    use stwo::core::backend::avx512::m31::{PackedBaseField, K_BLOCK_SIZE};
     use stwo::platform;
 
     if !platform::avx512_detected() {
@@ -138,12 +138,12 @@ pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
     }
 
     let mut rng = rand::thread_rng();
-    let mut elements: Vec<M31AVX512> = Vec::new();
-    let mut states: Vec<M31AVX512> =
-        vec![M31AVX512::from_array([1.into(); K_BLOCK_SIZE]); N_STATE_ELEMENTS];
+    let mut elements: Vec<PackedBaseField> = Vec::new();
+    let mut states: Vec<PackedBaseField> =
+        vec![PackedBaseField::from_array([1.into(); K_BLOCK_SIZE]); N_STATE_ELEMENTS];
 
     for _ in 0..(N_ELEMENTS / K_BLOCK_SIZE) {
-        elements.push(M31AVX512::from_array(
+        elements.push(PackedBaseField::from_array(
             [get_random_m31_element(&mut rng); K_BLOCK_SIZE],
         ));
     }
