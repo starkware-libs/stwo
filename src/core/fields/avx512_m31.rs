@@ -2,13 +2,26 @@ use core::arch::x86_64::{
     __m512i, _mm512_add_epi32, _mm512_min_epu32, _mm512_mul_epu32, _mm512_srli_epi64,
     _mm512_sub_epi32,
 };
-use std::arch::x86_64::_mm512_permutex2var_epi32;
+use std::arch::x86_64::{_mm512_permutex2var_epi32, _mm512_set1_epi32};
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+
+use bytemuck::{AnyBitPattern, NoUninit, Zeroable};
+use num_traits::One;
 
 use super::m31::{M31, P};
 pub const K_BLOCK_SIZE: usize = 16;
 pub const M512P: __m512i = unsafe { core::mem::transmute([P; K_BLOCK_SIZE]) };
+
+unsafe impl AnyBitPattern for M31AVX512 {}
+
+unsafe impl Zeroable for M31AVX512 {
+    fn zeroed() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+unsafe impl NoUninit for M31AVX512 {}
 
 /// AVX512 implementation of M31.
 /// Stores 16 M31 elements in a single 512-bit register.
@@ -32,6 +45,34 @@ impl M31AVX512 {
     /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
     pub fn reduce(self) -> M31AVX512 {
         Self(unsafe { _mm512_min_epu32(self.0, _mm512_sub_epi32(self.0, M512P)) })
+    }
+
+    fn square(&self) -> Self {
+        (*self) * (*self)
+    }
+
+    fn pow(&self, exp: u128) -> Self {
+        let mut res = Self::one();
+        let mut base = *self;
+        let mut exp = exp;
+        while exp > 0 {
+            if exp & 1 == 1 {
+                res *= base;
+            }
+            base = base.square();
+            exp >>= 1;
+        }
+        res
+    }
+
+    pub fn inverse(&self) -> Self {
+        self.pow(P as u128 - 2)
+    }
+}
+
+impl One for M31AVX512 {
+    fn one() -> Self {
+        Self(unsafe { _mm512_set1_epi32(1) })
     }
 }
 
@@ -237,5 +278,40 @@ mod tests {
             (-avx_values).to_array().into_iter().collect_vec(),
             values.iter().map(|x| -*x).collect_vec()
         );
+    }
+
+    #[test]
+    fn test_avx512_inverse() {
+        if !crate::platform::avx512_detected() {
+            return;
+        }
+
+        let values = [
+            5,
+            1,
+            2,
+            10,
+            (P - 1) / 2,
+            (P + 1) / 2,
+            P - 2,
+            P - 1,
+            400,
+            1,
+            2,
+            10,
+            (P - 1) / 2,
+            (P + 1) / 2,
+            P - 2,
+            P - 1,
+        ]
+        .map(M31::from_u32_unchecked);
+        let avx_values = M31AVX512::from_array(values);
+
+        let avx_inv = avx_values.inverse().to_array();
+
+        for i in 0..16 {
+            let inv = values[i].inverse();
+            assert_eq!(inv, avx_inv[i]);
+        }
     }
 }
