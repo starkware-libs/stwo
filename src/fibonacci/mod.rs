@@ -153,8 +153,11 @@ impl Fibonacci {
         let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
         let (fri_proof, fri_opening_positions) = fri_prover.decommit(channel);
 
-        let composition_polynomial_decommitment_positions = fri_opening_positions[0].flatten();
-        let trace_decommitment_positions = fri_opening_positions[1].flatten();
+        let composition_polynomial_decommitment_positions = fri_opening_positions
+            [&self.composition_polynomial_commitment_domain.log_size()]
+            .flatten();
+        let trace_decommitment_positions =
+            fri_opening_positions[&self.trace_commitment_domain.log_size()].flatten();
 
         // Decommit and get the values in the opening positions.
         let composition_polynomial_opened_values = composition_polynomial_decommitment_positions
@@ -217,15 +220,16 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
 
     ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work);
     let opening_positions = fri_verifier.column_opening_positions(channel);
-    let composition_polynomial_opening_positions = &opening_positions[0];
-    let trace_opening_positions = &opening_positions[1];
-    assert!(trace_commitment_scheme.verify(
-        &proof.trace_decommitments[0],
-        &trace_opening_positions.flatten()
-    ));
+    let composition_polynomial_opening_positions =
+        &opening_positions[&fib.composition_polynomial_commitment_domain.log_size()];
+    let trace_opening_positions = &opening_positions[&fib.trace_commitment_domain.log_size()];
     assert!(composition_polynomial_commitment_scheme.verify(
         &proof.composition_polynomial_decommitment,
         &composition_polynomial_opening_positions.flatten()
+    ));
+    assert!(trace_commitment_scheme.verify(
+        &proof.trace_decommitments[0],
+        &trace_opening_positions.flatten()
     ));
 
     // An evaluation for each mask item and one for the composition_polynomial.
