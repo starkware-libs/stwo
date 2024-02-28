@@ -1,4 +1,5 @@
 pub mod bit_reverse;
+pub mod cm31;
 pub mod m31;
 
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
