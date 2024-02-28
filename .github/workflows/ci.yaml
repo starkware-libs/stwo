@@ -50,9 +50,11 @@ jobs:
         with:
           profile: minimal
           toolchain: nightly-2024-01-04
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test --features avx512 
+      # - uses: Swatinem/rust-cache@v2
+      - run: hostname;
+      - run: cargo +nightly-2024-01-04 test --features avx512
       - run: cargo +nightly-2024-01-04 test --features avx512 --release
+
   udeps:
     runs-on: ubuntu-latest
     steps:
