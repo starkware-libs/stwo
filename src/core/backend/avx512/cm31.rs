@@ -25,6 +25,8 @@ impl Sub for PackedCM31 {
 impl Mul for PackedCM31 {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self::Output {
+        // (a+ib)*(c+id) = (ac-bd)+(ad+bc)i
+        // Use karatsuba to compute multiplication.
         let ac = self.0[0] * rhs.0[0];
         let bd = self.0[1] * rhs.0[1];
         let m = (self.0[0] + self.0[1]) * (rhs.0[0] + rhs.0[1]);
