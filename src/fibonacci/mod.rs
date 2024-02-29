@@ -7,6 +7,7 @@ use self::component::FibonacciComponent;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
+use crate::core::air::evaluation::SECURE_EXTENSION_DEGREE;
 use crate::core::air::{AirExt, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
@@ -53,7 +54,7 @@ pub struct FibonacciProof {
     pub trace_commitments: Vec<<MerkleHasher as Hasher>::Hash>,
     pub trace_decommitments: Vec<MerkleDecommitment<BaseField, MerkleHasher>>,
     pub composition_polynomial_commitment: <MerkleHasher as Hasher>::Hash,
-    pub composition_polynomial_decommitment: MerkleDecommitment<SecureField, MerkleHasher>,
+    pub composition_polynomial_decommitment: MerkleDecommitment<BaseField, MerkleHasher>,
     pub trace_oods_values: ComponentVec<Vec<SecureField>>,
     pub composition_polynomial_opened_values: Vec<SecureField>,
     pub trace_opened_values: Vec<BaseField>,
@@ -116,8 +117,8 @@ impl Fibonacci {
             .air
             .compute_composition_polynomial(random_coeff, &component_traces);
         let composition_polynomial_commitment_scheme = CommitmentSchemeProver::new(
-            vec![composition_polynomial_poly],
-            vec![self.composition_polynomial_commitment_domain],
+            composition_polynomial_poly.to_vec(),
+            [self.composition_polynomial_commitment_domain; SECURE_EXTENSION_DEGREE].to_vec(),
             channel,
         );
 
@@ -127,16 +128,24 @@ impl Fibonacci {
             .air
             .mask_points_and_values(oods_point, &component_traces);
         let composition_polynomial_oods_value =
-            composition_polynomial_commitment_scheme.polynomials[0].eval_at_point(oods_point);
+            composition_polynomial_poly.eval_at_point(oods_point);
 
         // Calculate a quotient polynomial for each trace mask item and one for the composition
         // polynomial.
         let mut oods_quotients = Vec::with_capacity(trace_oods_points.len() + 1);
+        // TODO(AlonH): Remove this and use efficient evaluation.
+        let composition_polynomial_evaluation = composition_polynomial_poly
+            .to_circle_poly()
+            .evaluate(
+                self.composition_polynomial_commitment_domain
+                    .circle_domain(),
+            )
+            .bit_reverse();
         oods_quotients.push(
             get_oods_quotient(
                 oods_point,
                 composition_polynomial_oods_value,
-                &composition_polynomial_commitment_scheme.evaluations[0],
+                &composition_polynomial_evaluation,
             )
             .bit_reverse(),
         );
@@ -162,7 +171,7 @@ impl Fibonacci {
         // Decommit and get the values in the opening positions.
         let composition_polynomial_opened_values = composition_polynomial_decommitment_positions
             .iter()
-            .map(|p| composition_polynomial_commitment_scheme.evaluations[0].values[*p])
+            .map(|p| composition_polynomial_evaluation.values[*p])
             .collect();
         let trace_opened_values = trace_decommitment_positions
             .iter()

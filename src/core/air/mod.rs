@@ -14,7 +14,7 @@ use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fri::CirclePolyDegreeBound;
-use super::poly::circle::{CanonicCoset, CirclePoly};
+use super::poly::circle::{CanonicCoset, CirclePoly, SecureCirclePoly};
 use super::{ColumnVec, ComponentVec};
 
 pub mod evaluation;
@@ -40,7 +40,7 @@ pub trait AirExt: Air<CPUBackend> {
         &self,
         random_coeff: SecureField,
         component_traces: &[ComponentTrace<'_, CPUBackend>],
-    ) -> CirclePoly<CPUBackend, SecureField> {
+    ) -> SecureCirclePoly {
         let mut evaluator = ConstraintEvaluator::new(
             component_traces,
             self.max_constraint_log_degree_bound(),
