@@ -1,6 +1,8 @@
 mod canonic;
 mod domain;
 mod evaluation;
+mod group;
+mod group_eval;
 mod ops;
 mod poly;
 mod secure_poly;
@@ -8,6 +10,8 @@ mod secure_poly;
 pub use canonic::CanonicCoset;
 pub use domain::CircleDomain;
 pub use evaluation::{CircleEvaluation, CosetSubEvaluation};
+pub use group::Group;
+pub use group_eval::CircleGroupEvaluation;
 pub use ops::PolyOps;
 pub use poly::CirclePoly;
 pub use secure_poly::{combine_secure_value, SecureCirclePoly};
