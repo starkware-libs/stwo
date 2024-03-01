@@ -1,0 +1,82 @@
+use super::{CircleDomain, CircleEvaluation, PolyOps};
+use crate::core::circle::CirclePoint;
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::{Col, Column, ExtensionOf, FieldOps};
+
+/// A polynomial defined on a [CircleDomain].
+#[derive(Clone, Debug)]
+pub struct CirclePoly<B: FieldOps<F>, F: ExtensionOf<BaseField>> {
+    /// Coefficients of the polynomial in the FFT basis.
+    /// Note: These are not the coefficients of the polynomial in the standard
+    /// monomial basis. The FFT basis is a tensor product of the twiddles:
+    /// y, x, pi(x), pi^2(x), ..., pi^{log_size-2}(x).
+    /// pi(x) := 2x^2 - 1.
+    pub coeffs: Col<B, F>,
+    /// The number of coefficients stored as `log2(len(coeffs))`.
+    log_size: u32,
+}
+
+impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CirclePoly<B, F> {
+    /// Creates a new circle polynomial.
+    ///
+    /// Coefficients must be in the circle IFFT algorithm's basis stored in bit-reversed order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the number of coefficients isn't a power of two.
+    pub fn new(coeffs: Col<B, F>) -> Self {
+        assert!(coeffs.len().is_power_of_two());
+        let log_size = coeffs.len().ilog2();
+        Self { log_size, coeffs }
+    }
+
+    pub fn log_size(&self) -> u32 {
+        self.log_size
+    }
+
+    /// Evaluates the polynomial at a single point.
+    pub fn eval_at_point<E: ExtensionOf<F>>(&self, point: CirclePoint<E>) -> E {
+        B::eval_at_point(self, point)
+    }
+
+    /// Extends the polynomial to a larger degree bound.
+    pub fn extend(&self, log_size: u32) -> Self {
+        B::extend(self, log_size)
+    }
+
+    /// Evaluates the polynomial at all points in the domain.
+    pub fn evaluate(&self, domain: CircleDomain) -> CircleEvaluation<B, F> {
+        B::evaluate(self, domain)
+    }
+}
+
+#[cfg(test)]
+impl<F: ExtensionOf<BaseField>> crate::core::backend::cpu::CPUCirclePoly<F> {
+    pub fn is_in_fft_space(&self, log_fft_size: u32) -> bool {
+        let mut coeffs = self.coeffs.clone();
+        crate::core::utils::bit_reverse(&mut coeffs);
+        while coeffs.last() == Some(&F::zero()) {
+            coeffs.pop();
+        }
+        coeffs.len() <= 1 << log_fft_size
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::core::backend::cpu::CPUCirclePoly;
+    use crate::core::circle::CirclePoint;
+    use crate::core::fields::m31::BaseField;
+
+    #[test]
+    fn test_circle_poly_extend() {
+        let poly = CPUCirclePoly::new((0..16).map(BaseField::from_u32_unchecked).collect());
+        let extended = poly.clone().extend(8);
+        let random_point = CirclePoint::get_point(21903);
+
+        assert_eq!(
+            poly.eval_at_point(random_point),
+            extended.eval_at_point(random_point)
+        );
+    }
+}

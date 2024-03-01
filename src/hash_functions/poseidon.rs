@@ -231,7 +231,7 @@ impl Hasher for PoseidonHasher {
 mod tests {
     use super::{PoseidonHasher, POSEIDON_CAPACITY};
     use crate::commitment_scheme::hasher::Hasher;
-    use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::m31::BaseField;
     use crate::hash_functions::poseidon::PoseidonHash;
     use crate::m31;
 

@@ -122,7 +122,7 @@ impl From<i32> for M31 {
 #[macro_export]
 macro_rules! m31 {
     ($m:expr) => {
-        M31::from_u32_unchecked($m)
+        $crate::core::fields::m31::M31::from_u32_unchecked($m)
     };
 }
 
