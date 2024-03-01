@@ -287,7 +287,7 @@ mod tests {
     use crate::core::air::evaluation::PointEvaluationAccumulator;
     use crate::core::air::{AirExt, Component, ComponentTrace};
     use crate::core::circle::CirclePoint;
-    use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::queries::Queries;
