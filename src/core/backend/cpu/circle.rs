@@ -1,12 +1,15 @@
+use itertools::Itertools;
+
 use super::CPUBackend;
-use crate::core::circle::CirclePoint;
+use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Col, ExtensionOf, Field};
 use crate::core::poly::circle::{
-    CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
+    CanonicCoset, CircleDomain, CircleEvaluation, CircleGroupEvaluation, CirclePoly, Group, PolyOps,
 };
 use crate::core::poly::utils::fold;
+use crate::core::utils::bit_reverse;
 
 impl<F: ExtensionOf<BaseField>> PolyOps<F> for CPUBackend {
     fn new_canonical_ordered(
@@ -118,4 +121,116 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> IntoIterator
     }
 }
 
-// impl<F: ExtensionOf<BaseField>> PolyOps<CPUBackend, F>
+// TODO(spapini): Document.
+
+#[allow(dead_code)]
+pub fn get_tower_points(log_size: u32) -> Vec<CirclePoint<BaseField>> {
+    let mut points = vec![CirclePointIndex::zero().to_point()];
+    for log_size in 0..log_size {
+        let mut a = Coset::half_odds(log_size).iter().collect_vec();
+        bit_reverse(&mut a);
+        points.extend(a);
+    }
+    assert_eq!(points.len(), 1 << log_size);
+    points
+}
+
+#[allow(dead_code)]
+pub fn get_double_tower_points(log_size: u32) -> Vec<CirclePoint<BaseField>> {
+    let mut points = vec![
+        CirclePointIndex::zero().to_point(),
+        CirclePointIndex::subgroup_gen(1).to_point(),
+    ];
+    for log_size in 0..(log_size - 1) {
+        let mut a = Coset::half_odds(log_size).iter().collect_vec();
+        bit_reverse(&mut a);
+        points.extend(a.into_iter().flat_map(|p| [p, -p]));
+    }
+    assert_eq!(points.len(), 1 << log_size);
+    points
+}
+
+#[allow(dead_code)]
+pub fn evaluate_on_group(
+    poly: &CirclePoly<CPUBackend, BaseField>,
+    group: Group,
+) -> CircleGroupEvaluation<CPUBackend> {
+    let log_size = poly.log_size();
+    assert_eq!(group.log_size(), log_size);
+    let log_size_line = log_size - 1;
+
+    // Get twiddles.
+    let twiddles = get_tower_points(log_size_line)
+        .iter()
+        .map(|p| p.x)
+        .collect_vec();
+    assert_eq!(twiddles.len(), 1 << log_size_line);
+
+    let mut values = poly.coeffs.clone();
+    // TODO(spapini): Remove this bit_reverse when poly and eval are bit reversed.
+    bit_reverse(&mut values);
+    let mut eval_at_minus1 = values[..1 << log_size_line].to_vec();
+    for i in (1..log_size).rev() {
+        for h_point in 0..(1 << (log_size - i - 1)) {
+            for l_poly in 0..(1 << i) {
+                let idx = (h_point << (i + 1)) + l_poly;
+                let (mut x, mut y) = (values[idx], values[idx + (1 << i)]);
+                let twid = twiddles[h_point << 1];
+                butterfly(&mut x, &mut y, twid);
+                (values[idx], values[idx + (1 << i)]) = (x, y);
+            }
+        }
+        for l_poly in 0..(1 << i) {
+            std::mem::swap(&mut eval_at_minus1[l_poly], &mut values[l_poly + (1 << i)]);
+        }
+    }
+
+    // Last layer.
+    let twiddles = get_tower_points(log_size_line)
+        .iter()
+        .map(|p| p.y)
+        .collect_vec();
+    #[allow(clippy::needless_range_loop)]
+    for h_point in 0..(1 << log_size_line) {
+        let idx = h_point << 1;
+        let (mut x, mut y) = (values[idx], values[idx + 1]);
+        let twid = twiddles[h_point];
+        butterfly(&mut x, &mut y, twid);
+        (values[idx], values[idx + 1]) = (x, y);
+    }
+    values[1] = eval_at_minus1[0];
+
+    CircleGroupEvaluation::new(group, values)
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
+
+    use crate::core::backend::cpu::circle::{evaluate_on_group, get_double_tower_points};
+    use crate::core::backend::cpu::CPUCirclePoly;
+    use crate::core::fields::m31::{BaseField, P};
+    use crate::core::poly::circle::Group;
+    use crate::core::utils::bit_reverse;
+
+    #[test]
+    fn test_evaluate_on_group() {
+        const LOG_SIZE: usize = 4;
+        let rng = &mut StdRng::seed_from_u64(0);
+        let coeffs = (0..(1 << LOG_SIZE))
+            .map(|_| BaseField::from(rng.gen::<u32>() % P))
+            .collect::<Vec<_>>();
+        let mut poly_coeffs = coeffs.clone();
+        bit_reverse(&mut poly_coeffs);
+        let poly = CPUCirclePoly::new(poly_coeffs);
+        let eval = evaluate_on_group(&poly, Group::new(LOG_SIZE as u32));
+        let points = get_double_tower_points(LOG_SIZE as u32);
+
+        let expected = points
+            .iter()
+            .map(|p| poly.eval_at_point(*p))
+            .collect::<Vec<_>>();
+        assert_eq!(eval.values, expected);
+    }
+}
