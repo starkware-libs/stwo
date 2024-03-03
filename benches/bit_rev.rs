@@ -22,6 +22,7 @@ pub fn cpu_bit_rev(c: &mut criterion::Criterion) {
 pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
     use bytemuck::cast_slice_mut;
     use stwo::core::backend::avx512::bit_reverse::bit_reverse_m31;
+    use stwo::core::backend::avx512::m31::PackedBaseField;
     use stwo::core::fields::m31::BaseField;
     use stwo::platform;
     if !platform::avx512_detected() {
@@ -32,7 +33,11 @@ pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
     let data: Vec<_> = (0..SIZE as u32)
         .map(BaseField::from_u32_unchecked)
         .collect();
-    let mut data: Vec<_> = data.into_iter().array_chunks::<16>().collect();
+    let mut data: Vec<_> = data
+        .into_iter()
+        .array_chunks::<16>()
+        .map(PackedBaseField::from_array)
+        .collect();
 
     c.bench_function("avx bit_rev", |b| {
         b.iter(|| {

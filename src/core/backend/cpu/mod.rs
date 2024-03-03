@@ -33,6 +33,9 @@ impl<F: Field> Column<F> for Vec<F> {
     fn len(&self) -> usize {
         self.len()
     }
+    fn at(&self, index: usize) -> F {
+        self[index]
+    }
 }
 
 pub type CPUCirclePoly<F> = CirclePoly<CPUBackend, F>;
