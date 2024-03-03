@@ -12,13 +12,16 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Col, Column, ExtensionOf, Field};
-use crate::core::poly::circle::{CircleDomain, CirclePoly};
+use crate::core::poly::circle::{CircleDomain, CirclePoly, SecureCirclePoly};
 use crate::core::utils::IteratorMutExt;
 use crate::core::{ColumnVec, ComponentVec};
 
+pub const SECURE_EXTENSION_DEGREE: usize =
+    <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE;
+
 // TODO(spapini): find a better place for this
 pub struct SecureColumn<B: Backend> {
-    pub cols: [Col<B, BaseField>; <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE],
+    pub cols: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
 
 impl SecureColumn<CPUBackend> {
@@ -156,7 +159,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
 
 impl DomainEvaluationAccumulator<CPUBackend> {
     /// Computes f(P) as coefficients.
-    pub fn finalize(self) -> CirclePoly<CPUBackend, SecureField> {
+    pub fn finalize(self) -> SecureCirclePoly {
         let mut res_coeffs = SecureColumn::<CPUBackend>::zeros(1 << self.log_size());
         let res_log_size = self.log_size();
         let res_size = 1 << res_log_size;
@@ -179,7 +182,7 @@ impl DomainEvaluationAccumulator<CPUBackend> {
                     .coeffs
                 }),
             };
-            // Add poly.coeffs into coeffs, elementwise, inplace.
+            // Add column coefficients into result coefficients, element-wise, in-place.
             let multiplier = self.random_coeff.pow(*n_cols as u128);
             for i in 0..res_size {
                 let res_coeff = res_coeffs.at(i) * multiplier + coeffs.at(i);
@@ -187,8 +190,7 @@ impl DomainEvaluationAccumulator<CPUBackend> {
             }
         }
 
-        // TODO(spapini): Return multiple polys instead.
-        CirclePoly::new((0..res_size).map(|i| res_coeffs.at(i)).collect::<Vec<_>>())
+        SecureCirclePoly(res_coeffs.cols.map(CirclePoly::new))
     }
 }
 
@@ -222,7 +224,7 @@ impl<'a> ConstraintEvaluator<'a, CPUBackend> {
         }
     }
 
-    pub fn finalize(self) -> CirclePoly<CPUBackend, SecureField> {
+    pub fn finalize(self) -> SecureCirclePoly {
         self.evaluation_accumulator.finalize()
     }
 }
