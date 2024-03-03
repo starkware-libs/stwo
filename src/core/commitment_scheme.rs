@@ -24,10 +24,13 @@ pub struct CommitmentSchemeProver<F: ExtensionOf<BaseField>> {
 impl<F: ExtensionOf<BaseField>> CommitmentSchemeProver<F> {
     pub fn new(
         polynomials: Vec<CPUCirclePoly<F>>,
-        domains: Vec<CanonicCoset>,
+        log_blowup_factor: u32,
         channel: &mut Blake2sChannel,
     ) -> Self {
-        assert_eq!(polynomials.len(), domains.len(),);
+        let domains = polynomials
+            .iter()
+            .map(|poly| CanonicCoset::new(poly.log_size() + log_blowup_factor))
+            .collect_vec();
         let evaluations = zip(&polynomials, domains)
             .map(|(poly, domain)| poly.evaluate(domain.circle_domain()).bit_reverse())
             .collect_vec();
