@@ -11,7 +11,7 @@ use crate::core::backend::{Backend, CPUBackend};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{Col, Column, ExtensionOf, Field};
+use crate::core::fields::{Col, Column, ExtensionOf, FieldExpOps};
 use crate::core::poly::circle::{CircleDomain, CirclePoly, SecureCirclePoly};
 use crate::core::utils::IteratorMutExt;
 use crate::core::{ColumnVec, ComponentVec};

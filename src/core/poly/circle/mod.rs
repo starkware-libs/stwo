@@ -17,7 +17,7 @@ mod tests {
     use super::{CanonicCoset, CircleDomain};
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::Field;
+    use crate::core::fields::FieldExpOps;
     use crate::core::poly::NaturalOrder;
     use crate::core::utils::bit_reverse_index;
 
