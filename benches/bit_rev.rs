@@ -18,7 +18,7 @@ pub fn cpu_bit_rev(c: &mut criterion::Criterion) {
     });
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
     use bytemuck::cast_slice_mut;
     use stwo::core::backend::avx512::bit_reverse::bit_reverse_m31;
@@ -46,9 +46,15 @@ pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
     });
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 criterion::criterion_group!(
     name=avx_bit_rev;
     config = Criterion::default().sample_size(10);
     targets=avx512_bit_rev, cpu_bit_rev);
+
+criterion::criterion_group!(
+        name=avx_bit_rev;
+        config = Criterion::default().sample_size(10);
+        targets= cpu_bit_rev);
+
 criterion::criterion_main!(avx_bit_rev);

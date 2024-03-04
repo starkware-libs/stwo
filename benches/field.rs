@@ -128,7 +128,7 @@ pub fn qm31_operations_bench(c: &mut criterion::Criterion) {
     });
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
     use stwo::core::backend::avx512::m31::{PackedBaseField, K_BLOCK_SIZE};
     use stwo::platform;
@@ -185,13 +185,13 @@ pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
     });
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 criterion::criterion_group!(
     m31_benches,
     m31_operations_bench,
     avx512_m31_operations_bench
 );
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(target_feature = "avx512f"))]
 criterion::criterion_group!(m31_benches, m31_operations_bench);
 
 criterion::criterion_group!(
