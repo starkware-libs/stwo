@@ -7,7 +7,6 @@ use self::component::FibonacciComponent;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
-use crate::core::air::evaluation::SECURE_EXTENSION_DEGREE;
 use crate::core::air::{AirExt, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
@@ -103,11 +102,8 @@ impl Fibonacci {
         // Evaluate and commit on trace.
         let trace = self.get_trace();
         let trace_poly = trace.interpolate();
-        let trace_commitment_scheme = CommitmentSchemeProver::new(
-            vec![trace_poly],
-            vec![self.trace_commitment_domain],
-            channel,
-        );
+        let trace_commitment_scheme =
+            CommitmentSchemeProver::new(vec![trace_poly], LOG_BLOWUP_FACTOR, channel);
 
         // Evaluate and commit on composition polynomial.
         let random_coeff = channel.draw_felt();
@@ -118,7 +114,7 @@ impl Fibonacci {
             .compute_composition_polynomial(random_coeff, &component_traces);
         let composition_polynomial_commitment_scheme = CommitmentSchemeProver::new(
             composition_polynomial_poly.to_vec(),
-            [self.composition_polynomial_commitment_domain; SECURE_EXTENSION_DEGREE].to_vec(),
+            LOG_BLOWUP_FACTOR,
             channel,
         );
 
