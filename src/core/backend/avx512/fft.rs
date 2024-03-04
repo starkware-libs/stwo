@@ -641,6 +641,7 @@ pub unsafe fn sub_mod_p(a: __m512i, b: __m512i) -> __m512i {
     _mm512_min_epu32(_mm512_add_epi32(c, P), c)
 }
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
     use std::arch::x86_64::_mm512_setr_epi32;
