@@ -9,7 +9,7 @@ use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{ExtensionOf, Field};
+use crate::core::fields::{ExtensionOf, FieldExpOps};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::ColumnVec;
 

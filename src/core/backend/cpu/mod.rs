@@ -76,7 +76,7 @@ mod tests {
 
     use crate::core::backend::{CPUBackend, FieldOps};
     use crate::core::fields::qm31::QM31;
-    use crate::core::fields::Field;
+    use crate::core::fields::FieldExpOps;
 
     #[test]
     fn batch_inverse_test() {
