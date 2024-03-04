@@ -183,6 +183,7 @@ impl SubAssign for PackedBaseField {
     }
 }
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
 
