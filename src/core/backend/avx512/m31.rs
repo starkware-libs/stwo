@@ -6,7 +6,10 @@ use std::arch::x86_64::_mm512_permutex2var_epi32;
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
+use num_traits::One;
+
 use crate::core::fields::m31::{M31, P};
+use crate::core::fields::FieldExpOps;
 
 pub const K_BLOCK_SIZE: usize = 16;
 pub const M512P: __m512i = unsafe { core::mem::transmute([P; K_BLOCK_SIZE]) };
@@ -180,6 +183,18 @@ impl SubAssign for PackedBaseField {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
+    }
+}
+
+impl One for PackedBaseField {
+    fn one() -> Self {
+        Self(unsafe { core::mem::transmute([M31::one(); K_BLOCK_SIZE]) })
+    }
+}
+
+impl FieldExpOps for PackedBaseField {
+    fn inverse(&self) -> Self {
+        self.pow((P - 2) as u128)
     }
 }
 

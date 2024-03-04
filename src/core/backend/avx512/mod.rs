@@ -11,7 +11,7 @@ use num_traits::Zero;
 use self::bit_reverse::bit_reverse_m31;
 pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{Column, FieldOps};
+use crate::core::fields::{Column, FieldExpOps, FieldOps};
 use crate::core::utils;
 
 const VECS_LOG_SIZE: usize = 4;
@@ -60,8 +60,8 @@ impl FieldOps<BaseField> for AVX512Backend {
         bit_reverse_m31(&mut column.data);
     }
 
-    fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {
-        todo!()
+    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
+        PackedBaseField::slice_batch_inverse(&column.data, &mut dst.data);
     }
 }
 
@@ -128,7 +128,11 @@ impl FromIterator<BaseField> for BaseFieldVec {
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
+
     use super::*;
+    use crate::core::fields::m31::P;
     use crate::core::fields::{Col, Column};
 
     type B = AVX512Backend;
@@ -168,5 +172,21 @@ mod tests {
         let col = Col::<B, BaseField>::from_iter(original_vec.clone());
         let vec = as_cpu_vec(col);
         assert_eq!(vec, original_vec);
+    }
+
+    #[test]
+    fn test_packed_basefield_batch_inverse() {
+        let mut rng = StdRng::seed_from_u64(0);
+        let column = BaseFieldVec::from_iter(
+            (0..64).map(|_| BaseField::from_u32_unchecked(rng.gen::<u32>() % P)),
+        );
+        let expected = column.data.iter().map(|e| e.inverse()).collect::<Vec<_>>();
+        let mut dst = BaseFieldVec::from_iter((0..64).map(|_| BaseField::zero()));
+
+        AVX512Backend::batch_inverse(&column, &mut dst);
+
+        dst.data.iter().zip(expected.iter()).for_each(|(a, b)| {
+            assert_eq!(a.to_array(), b.to_array());
+        });
     }
 }
