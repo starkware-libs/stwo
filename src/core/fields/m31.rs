@@ -128,10 +128,12 @@ macro_rules! m31 {
 
 #[cfg(test)]
 mod tests {
-    use rand::Rng;
+    use num_traits::One;
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
 
     use super::{M31, P};
-    use crate::core::fields::IntoSlice;
+    use crate::core::fields::{FieldExpOps, IntoSlice};
 
     fn mul_p(a: u32, b: u32) -> u32 {
         ((a as u64 * b as u64) % P as u64) as u32
@@ -178,5 +180,19 @@ mod tests {
                 ))
             );
         }
+    }
+
+    #[test]
+    fn test_batch_inverse() {
+        let mut rng = StdRng::seed_from_u64(0);
+        let elements: Vec<M31> = (0..16)
+            .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() % P))
+            .collect();
+        let expected = elements.iter().map(|e| e.inverse()).collect::<Vec<_>>();
+        let mut dst = vec![M31::one(); elements.len()];
+
+        M31::slice_batch_inverse(&elements, &mut dst);
+
+        assert_eq!(expected, dst);
     }
 }

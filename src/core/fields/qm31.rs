@@ -72,11 +72,13 @@ macro_rules! qm31 {
 
 #[cfg(test)]
 mod tests {
-    use rand::Rng;
+    use num_traits::One;
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
 
     use super::QM31;
     use crate::core::fields::m31::P;
-    use crate::core::fields::IntoSlice;
+    use crate::core::fields::{FieldExpOps, IntoSlice};
     use crate::m31;
 
     #[test]
@@ -126,5 +128,26 @@ mod tests {
                 )
             )
         }
+    }
+
+    #[test]
+    fn test_batch_inverse() {
+        let mut rng = StdRng::seed_from_u64(0);
+        let elements: Vec<QM31> = (0..16)
+            .map(|_| {
+                QM31::from_u32_unchecked(
+                    rng.gen::<u32>() % P,
+                    rng.gen::<u32>() % P,
+                    rng.gen::<u32>() % P,
+                    rng.gen::<u32>() % P,
+                )
+            })
+            .collect();
+        let expected = elements.iter().map(|e| e.inverse()).collect::<Vec<_>>();
+        let mut dst = vec![QM31::one(); elements.len()];
+
+        QM31::slice_batch_inverse(&elements, &mut dst);
+
+        assert_eq!(expected, dst);
     }
 }

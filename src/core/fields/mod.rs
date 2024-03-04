@@ -36,6 +36,29 @@ pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
     }
 
     fn inverse(&self) -> Self;
+
+    // TODO(Ohad): Optimize (remove dependencies).
+    fn slice_batch_inverse(column: &[Self], dst: &mut [Self]) {
+        let n = column.len();
+        debug_assert!(n.is_power_of_two());
+        debug_assert!(dst.len() >= n);
+
+        dst[0] = column[0];
+        // First pass.
+        for i in 1..n {
+            dst[i] = dst[i - 1] * column[i];
+        }
+
+        // Inverse cumulative product.
+        let mut curr_inverse = dst[n - 1].inverse();
+
+        // Second pass.
+        for i in (1..n).rev() {
+            dst[i] = dst[i - 1] * curr_inverse;
+            curr_inverse *= column[i];
+        }
+        dst[0] = curr_inverse;
+    }
 }
 
 pub type Col<B, F> = <B as FieldOps<F>>::Column;
