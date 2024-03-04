@@ -42,7 +42,7 @@ impl Mul for PackedCM31 {
         Self([ac - bd, ab_t_cd - ac - bd])
     }
 }
-
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
     use rand::rngs::StdRng;

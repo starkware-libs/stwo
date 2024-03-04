@@ -135,6 +135,7 @@ fn bit_reverse16(data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
     unsafe { std::mem::transmute(data) }
 }
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
     use super::bit_reverse16;

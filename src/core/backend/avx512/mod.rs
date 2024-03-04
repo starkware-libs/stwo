@@ -123,6 +123,7 @@ impl FromIterator<BaseField> for BaseFieldVec {
     }
 }
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
     use super::*;
