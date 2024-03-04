@@ -159,7 +159,6 @@ mod tests {
 
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::{Blake2sChannel, Channel};
-    use crate::core::fields::m31::M31;
     use crate::core::fields::qm31::SecureField;
     use crate::m31;
 

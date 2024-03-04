@@ -59,7 +59,7 @@ mod tests {
     use rand::Rng;
 
     use super::CM31;
-    use crate::core::fields::m31::{M31, P};
+    use crate::core::fields::m31::P;
     use crate::core::fields::IntoSlice;
     use crate::m31;
 
