@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display};
-use std::ops::Neg;
+use std::ops::{Mul, MulAssign, Neg};
 
-use num_traits::{NumAssign, NumAssignOps, NumOps};
+use num_traits::{NumAssign, NumAssignOps, NumOps, One};
 
 #[cfg(target_arch = "x86_64")]
 pub mod cm31;
@@ -14,6 +14,28 @@ pub trait FieldOps<F: Field> {
 
     // TODO(Ohad): change to use a mutable slice.
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column);
+}
+
+pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
+    fn square(&self) -> Self {
+        (*self) * (*self)
+    }
+
+    fn pow(&self, exp: u128) -> Self {
+        let mut res = Self::one();
+        let mut base = *self;
+        let mut exp = exp;
+        while exp > 0 {
+            if exp & 1 == 1 {
+                res *= base;
+            }
+            base = base.square();
+            exp >>= 1;
+        }
+        res
+    }
+
+    fn inverse(&self) -> Self;
 }
 
 pub type Col<B, F> = <B as FieldOps<F>>::Column;
@@ -46,30 +68,11 @@ pub trait Field:
     + Send
     + Sync
     + Sized
+    + FieldExpOps
 {
-    fn square(&self) -> Self {
-        (*self) * (*self)
-    }
-
     fn double(&self) -> Self {
         (*self) + (*self)
     }
-
-    fn pow(&self, exp: u128) -> Self {
-        let mut res = Self::one();
-        let mut base = *self;
-        let mut exp = exp;
-        while exp > 0 {
-            if exp & 1 == 1 {
-                res *= base;
-            }
-            base = base.square();
-            exp >>= 1;
-        }
-        res
-    }
-
-    fn inverse(&self) -> Self;
 }
 
 /// # Safety
@@ -132,12 +135,7 @@ macro_rules! impl_field {
             }
         }
 
-        impl Field for $field_name {
-            fn inverse(&self) -> Self {
-                assert!(*self != Self::zero(), "0 has no inverse");
-                self.pow(($field_size - 2) as u128)
-            }
-        }
+        impl Field for $field_name {}
 
         impl AddAssign for $field_name {
             fn add_assign(&mut self, rhs: Self) {
@@ -186,6 +184,13 @@ macro_rules! impl_field {
                     "RemAssign is not implemented for {}",
                     stringify!($field_name)
                 );
+            }
+        }
+
+        impl FieldExpOps for $field_name {
+            fn inverse(&self) -> Self {
+                assert!(!self.is_zero(), "0 has no inverse");
+                self.pow(($field_size - 2) as u128)
             }
         }
     };

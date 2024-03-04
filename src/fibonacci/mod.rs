@@ -14,7 +14,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{Field, IntoSlice};
+use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::fri::{FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation};
 use crate::core::oods::{get_oods_quotient, get_pair_oods_quotient};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};

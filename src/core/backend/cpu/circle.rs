@@ -2,7 +2,7 @@ use super::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{Col, ExtensionOf, Field};
+use crate::core::fields::{Col, ExtensionOf, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };

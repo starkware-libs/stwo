@@ -191,7 +191,7 @@ mod tests {
 
     use super::PackedBaseField;
     use crate::core::fields::m31::{M31, P};
-    use crate::core::fields::Field;
+    use crate::core::fields::{Field, FieldExpOps};
 
     /// Tests field operations where field elements are in reduced form.
     #[test]

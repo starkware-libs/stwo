@@ -100,7 +100,7 @@ mod tests {
     use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::{ComplexConjugate, Field};
+    use crate::core::fields::{ComplexConjugate, FieldExpOps};
     use crate::core::poly::circle::CanonicCoset;
     use crate::m31;
 

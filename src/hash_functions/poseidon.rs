@@ -4,7 +4,7 @@ use num_traits::{One, Zero};
 
 use crate::commitment_scheme::hasher::{self, Hasher, Name};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::Field;
+use crate::core::fields::FieldExpOps;
 use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
 
 const POSEIDON_WIDTH: usize = 24; // in BaseField elements.
