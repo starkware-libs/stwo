@@ -5,7 +5,7 @@ use std::arch::x86_64::{
     _mm512_xor_epi32,
 };
 
-use crate::core::backend::avx512::VECS_LOG_SIZE;
+use crate::core::backend::avx512::{MIN_FFT_LOG_SIZE, VECS_LOG_SIZE};
 
 /// An input to _mm512_permutex2var_epi32, and is used to interleave the even words of a
 /// with the even words of b.
@@ -61,6 +61,76 @@ const P: __m512i = unsafe { core::mem::transmute([(1u32 << 31) - 1; 16]) };
 // TODO(spapini): FFTs return a redundant representation, that can get the value P. need to reduce
 // it somewhere.
 
+/// Performs an Inverse Circle Fast Fourier Transform (ICFFT) on the given values.
+///
+/// # Safety
+/// This function is unsafe because it takes a raw pointer to i32 values.
+/// `values` must be aligned to 64 bytes.
+///
+/// # Arguments
+/// * `values`: A mutable pointer to the values on which the ICFFT is to be performed.
+/// * `twiddle_dbl`: A reference to the doubles of the twiddle factors.
+/// * `log_n_elements`: The log of the number of elements in the `values` array.
+///
+/// # Panics
+/// This function will panic if `log_n_elements` is less than `MIN_FFT_LOG_SIZE`.
+pub unsafe fn ifft(values: *mut i32, twiddle_dbl: &[Vec<i32>], log_n_elements: usize) {
+    assert!(log_n_elements >= MIN_FFT_LOG_SIZE);
+    let log_n_vecs = log_n_elements - VECS_LOG_SIZE;
+    // TODO(spapini): Use CACHED_FFT_LOG_SIZE instead.
+    if log_n_elements <= 1 {
+        ifft_lower_with_vecwise(values, twiddle_dbl, log_n_elements, log_n_elements);
+        return;
+    }
+
+    let fft_layers_pre_transpose = log_n_vecs.div_ceil(2);
+    let fft_layers_post_transpose = log_n_vecs / 2;
+    ifft_lower_with_vecwise(
+        values,
+        &twiddle_dbl[..(3 + fft_layers_pre_transpose)],
+        log_n_elements,
+        fft_layers_pre_transpose + VECS_LOG_SIZE,
+    );
+    transpose_vecs(values, log_n_vecs);
+    ifft_lower_without_vecwise(
+        values,
+        &twiddle_dbl[(3 + fft_layers_pre_transpose)..],
+        log_n_elements,
+        fft_layers_post_transpose,
+    );
+}
+
+/// Transposes the AVX vectors in the given array.
+/// Swaps the bit index abc <-> cba, where |a|=|c| and |b| = 0 or 1, according to the parity of
+/// `log_n_vecs`.
+/// When log_n_vecs is odd, transforms the index abc <-> cba, w
+///
+/// # Safety
+/// This function is unsafe because it takes a raw pointer to i32 values.
+/// `values` must be aligned to 64 bytes.
+///
+/// # Arguments
+/// * `values`: A mutable pointer to the values that are to be transposed.
+/// * `log_n_vecs`: The log of the number of AVX vectors in the `values` array.
+pub unsafe fn transpose_vecs(values: *mut i32, log_n_vecs: usize) {
+    let half = log_n_vecs / 2;
+    for b in 0..(1 << (log_n_vecs & 1)) {
+        for a in 0..(1 << half) {
+            for c in 0..(1 << half) {
+                let i = (a << (log_n_vecs - half)) | (b << half) | c;
+                let j = (c << (log_n_vecs - half)) | (b << half) | a;
+                if i >= j {
+                    continue;
+                }
+                let val0 = _mm512_load_epi32(values.add(i << 4).cast_const());
+                let val1 = _mm512_load_epi32(values.add(j << 4).cast_const());
+                _mm512_store_epi32(values.add(i << 4), val1);
+                _mm512_store_epi32(values.add(j << 4), val0);
+            }
+        }
+    }
+}
+
 /// Computes partial ifft on `2^log_size` M31 elements.
 /// Parameters:
 ///   values - Pointer to the entire value array, aligned to 64 bytes.
@@ -92,6 +162,44 @@ pub unsafe fn ifft_lower_with_vecwise(
                 &twiddle_dbl[(layer - 1)..],
                 fft_layers - layer - 3,
                 layer,
+                index_h,
+            );
+            layer += 3;
+        }
+        if fft_layers - layer != 0 {
+            todo!()
+        }
+    }
+}
+
+/// Computes partial ifft on `2^log_size` M31 elements, skipping the vecwise layers (lower 4 bits
+///   of the index).
+/// Parameters:
+///   values - Pointer to the entire value array, aligned to 64 bytes.
+///   twiddle_dbl - The doubles of the twiddle factors for each layer of the the ifft.
+///   log_size - The log of the number of number of M31 elements in the array.
+///   fft_layers - The number of ifft layers to apply, out of log_size - VEC_LOG_SIZE.
+///
+/// # Safety
+/// `values` must be aligned to 64 bytes.
+/// `log_size` must be at least 4.
+/// `fft_layers` must be at least 4.
+pub unsafe fn ifft_lower_without_vecwise(
+    values: *mut i32,
+    twiddle_dbl: &[Vec<i32>],
+    log_size: usize,
+    fft_layers: usize,
+) {
+    assert!(log_size >= VECS_LOG_SIZE);
+
+    for index_h in 0..(1 << (log_size - fft_layers - VECS_LOG_SIZE)) {
+        let mut layer = 0;
+        while fft_layers - layer >= 3 {
+            ifft3_loop(
+                values,
+                &twiddle_dbl[layer..],
+                fft_layers - layer - 3,
+                layer + VECS_LOG_SIZE,
                 index_h,
             );
             layer += 3;
@@ -846,5 +954,37 @@ mod tests {
             // Compare.
             assert_eq!(values.to_vec(), expected_coeffs);
         }
+    }
+
+    fn run_ifft_full_test(log_size: u32) {
+        let domain = CanonicCoset::new(log_size).circle_domain();
+        let values = (0..domain.size())
+            .map(|i| BaseField::from_u32_unchecked(i as u32))
+            .collect::<Vec<_>>();
+        let expected_coeffs = ref_ifft(domain, values.clone());
+
+        // Compute.
+        let mut values = BaseFieldVec::from_iter(values);
+        let twiddle_dbls = get_itwiddle_dbls(domain);
+
+        unsafe {
+            ifft(
+                std::mem::transmute(values.data.as_mut_ptr()),
+                &twiddle_dbls[1..],
+                log_size as usize,
+            );
+            transpose_vecs(
+                std::mem::transmute(values.data.as_mut_ptr()),
+                (log_size - 4) as usize,
+            );
+
+            // Compare.
+            assert_eq!(values.to_vec(), expected_coeffs);
+        }
+    }
+
+    #[test]
+    fn test_ifft_full_11() {
+        run_ifft_full_test(3 + 3 + 5);
     }
 }
