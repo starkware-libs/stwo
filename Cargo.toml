@@ -17,7 +17,7 @@ bytemuck = { version = "1.14.3", features = ["derive"] }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
-rand = "0.8.3"
+rand = { version = "0.8.5", features = ["small_rng"] }
 
 [lints.rust]
 warnings = "deny"
