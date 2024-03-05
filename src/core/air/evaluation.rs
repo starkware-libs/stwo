@@ -25,7 +25,7 @@ pub struct SecureColumn<B: Backend> {
 }
 
 impl SecureColumn<CPUBackend> {
-    fn at(&self, index: usize) -> SecureField {
+    pub fn at(&self, index: usize) -> SecureField {
         SecureField::from_m31_array(std::array::from_fn(|i| self.cols[i][index]))
     }
 
@@ -50,6 +50,19 @@ impl<B: Backend> SecureColumn<B> {
 
     pub fn is_empty(&self) -> bool {
         self.cols[0].is_empty()
+    }
+}
+
+impl FromIterator<SecureField> for SecureColumn<CPUBackend> {
+    fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
+        let values = iter.into_iter().collect::<Vec<_>>();
+        let mut res = SecureColumn {
+            cols: std::array::from_fn(|_| Col::<CPUBackend, BaseField>::zeros(values.len())),
+        };
+        for (i, value) in values.into_iter().enumerate() {
+            res.set(i, value);
+        }
+        res
     }
 }
 

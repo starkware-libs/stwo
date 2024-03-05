@@ -7,6 +7,7 @@ use self::component::FibonacciComponent;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
+use crate::core::air::evaluation::SecureColumn;
 use crate::core::air::{AirExt, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
@@ -17,7 +18,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, IntoSlice};
 use crate::core::fri::{FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation};
 use crate::core::oods::{get_oods_quotient, get_pair_oods_quotient};
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureCircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
 use crate::core::ComponentVec;
@@ -129,14 +130,9 @@ impl Fibonacci {
         // Calculate a quotient polynomial for each trace mask item and one for the composition
         // polynomial.
         let mut oods_quotients = Vec::with_capacity(trace_oods_points.len() + 1);
-        // TODO(AlonH): Remove this and use efficient evaluation.
-        let composition_polynomial_evaluation = composition_polynomial_poly
-            .to_circle_poly()
-            .evaluate(
-                self.composition_polynomial_commitment_domain
-                    .circle_domain(),
-            )
-            .bit_reverse();
+        let composition_polynomial_evaluation = SecureCircleEvaluation::from_evaluations(
+            &composition_polynomial_commitment_scheme.evaluations,
+        );
         oods_quotients.push(
             get_oods_quotient(
                 oods_point,
@@ -167,7 +163,7 @@ impl Fibonacci {
         // Decommit and get the values in the opening positions.
         let composition_polynomial_opened_values = composition_polynomial_decommitment_positions
             .iter()
-            .map(|p| composition_polynomial_evaluation.values[*p])
+            .map(|p| composition_polynomial_evaluation.values.at(*p))
             .collect();
         let trace_opened_values = trace_decommitment_positions
             .iter()
@@ -242,10 +238,9 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let mut evaluation = Vec::with_capacity(composition_polynomial_opening_positions.len());
     let mut opened_values = proof.composition_polynomial_opened_values.into_iter();
     for sub_circle_domain in composition_polynomial_opening_positions.iter() {
-        let values = (&mut opened_values)
-            .take(1 << sub_circle_domain.log_size)
-            .collect();
-        let sub_circle_evaluation = CircleEvaluation::new(
+        let values =
+            SecureColumn::from_iter((&mut opened_values).take(1 << sub_circle_domain.log_size));
+        let sub_circle_evaluation = SecureCircleEvaluation::new(
             sub_circle_domain
                 .to_circle_domain(&fib.composition_polynomial_commitment_domain.circle_domain()),
             values,

@@ -6,7 +6,7 @@ use super::constraints::{complex_conjugate_line, pair_vanishing, point_vanishing
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::ComplexConjugate;
-use super::poly::circle::CircleEvaluation;
+use super::poly::circle::{CircleEvaluation, SecureCircleEvaluation};
 use super::poly::{BitReversedOrder, NaturalOrder};
 use super::utils::bit_reverse_index;
 
@@ -40,14 +40,14 @@ pub fn eval_pair_oods_quotient_at_point(
 pub fn get_oods_quotient(
     oods_point: CirclePoint<SecureField>,
     oods_value: SecureField,
-    eval: &CPUCircleEvaluation<SecureField, BitReversedOrder>,
+    eval: &SecureCircleEvaluation<BitReversedOrder>,
 ) -> CPUCircleEvaluation<SecureField, NaturalOrder> {
     let mut values = Vec::with_capacity(eval.domain.size());
     for (i, point) in enumerate(eval.domain.iter()) {
         let index = bit_reverse_index(i, eval.domain.log_size());
         values.push(eval_oods_quotient_at_point(
             point,
-            eval.values[index],
+            eval.values.at(index),
             oods_point,
             oods_value,
         ));
