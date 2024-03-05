@@ -15,7 +15,7 @@ pub const M512P: __m512i = unsafe { core::mem::transmute([P; K_BLOCK_SIZE]) };
 /// Stores 16 M31 elements in a single 512-bit register.
 /// Each M31 element is unreduced in the range [0, P].
 #[derive(Copy, Clone, Debug)]
-pub struct PackedBaseField(__m512i);
+pub struct PackedBaseField(pub __m512i);
 
 impl PackedBaseField {
     pub fn from_array(v: [M31; K_BLOCK_SIZE]) -> PackedBaseField {
