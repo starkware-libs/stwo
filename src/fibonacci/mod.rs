@@ -130,13 +130,8 @@ impl Fibonacci {
         // polynomial.
         let mut oods_quotients = Vec::with_capacity(trace_oods_points.len() + 1);
         // TODO(AlonH): Remove this and use efficient evaluation.
-        let composition_polynomial_evaluation = composition_polynomial_poly
-            .to_circle_poly()
-            .evaluate(
-                self.composition_polynomial_commitment_domain
-                    .circle_domain(),
-            )
-            .bit_reverse();
+        let composition_polynomial_evaluation =
+            composition_polynomial_commitment_scheme.secure_field_evaluation();
         oods_quotients.push(
             get_oods_quotient(
                 oods_point,
