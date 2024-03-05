@@ -7,7 +7,7 @@ use itertools::Itertools;
 
 use self::evaluation::{
     ConstraintEvaluator, ConstraintPointEvaluator, DomainEvaluationAccumulator,
-    PointEvaluationAccumulator,
+    PointEvaluationAccumulator, SECURE_EXTENSION_DEGREE,
 };
 use super::backend::{Backend, CPUBackend};
 use super::circle::CirclePoint;
@@ -93,8 +93,8 @@ pub trait AirExt: Air<CPUBackend> {
         let mut bounds_visitor = QuotientLogBoundsVisitor::new();
         self.visit_components(&mut bounds_visitor);
         let mut bounds = bounds_visitor.finalize();
-        // Add the composition polynomial's log degree bound.
-        bounds.push(self.max_constraint_log_degree_bound());
+        // Add the composition polynomial's log degree bounds.
+        bounds.extend([self.max_constraint_log_degree_bound(); SECURE_EXTENSION_DEGREE]);
         bounds
             .into_iter()
             .rev()
