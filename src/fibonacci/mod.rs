@@ -7,6 +7,7 @@ use self::component::FibonacciComponent;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
+use crate::core::air::evaluation::SECURE_EXTENSION_DEGREE;
 use crate::core::air::{AirExt, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
@@ -16,11 +17,11 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, IntoSlice};
 use crate::core::fri::{FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation};
-use crate::core::oods::{get_oods_quotient, get_pair_oods_quotient};
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use crate::core::oods::get_pair_oods_quotient;
+use crate::core::poly::circle::{to_single_value, CanonicCoset, CircleEvaluation, SecureArray};
 use crate::core::poly::BitReversedOrder;
 use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
-use crate::core::ComponentVec;
+use crate::core::{ColumnVec, ComponentVec};
 
 type Channel = Blake2sChannel;
 type MerkleHasher = Blake2sHasher;
@@ -55,8 +56,9 @@ pub struct FibonacciProof {
     pub composition_polynomial_commitment: <MerkleHasher as Hasher>::Hash,
     pub composition_polynomial_decommitment: MerkleDecommitment<BaseField, MerkleHasher>,
     pub trace_oods_values: ComponentVec<Vec<SecureField>>,
-    pub composition_polynomial_opened_values: Vec<SecureField>,
-    pub trace_opened_values: Vec<BaseField>,
+    pub composition_polynomial_column_oods_values: SecureArray<SecureField>,
+    pub trace_opened_values: ColumnVec<Vec<BaseField>>,
+    pub composition_polynomial_opened_values: Vec<Vec<BaseField>>,
     pub proof_of_work: ProofOfWorkProof,
     pub fri_proof: FriProof<MerkleHasher>,
     pub additional_proof_data: AdditionalProofData,
@@ -128,23 +130,17 @@ impl Fibonacci {
 
         // Calculate a quotient polynomial for each trace mask item and one for the composition
         // polynomial.
-        let mut oods_quotients = Vec::with_capacity(trace_oods_points.len() + 1);
-        // TODO(AlonH): Remove this and use efficient evaluation.
-        let composition_polynomial_evaluation = composition_polynomial_poly
-            .to_circle_poly()
-            .evaluate(
-                self.composition_polynomial_commitment_domain
-                    .circle_domain(),
-            )
-            .bit_reverse();
-        oods_quotients.push(
-            get_oods_quotient(
-                oods_point,
-                composition_polynomial_oods_value,
-                &composition_polynomial_evaluation,
-            )
-            .bit_reverse(),
-        );
+        let mut oods_quotients =
+            Vec::with_capacity(trace_oods_points.len() + SECURE_EXTENSION_DEGREE);
+        let composition_polynomial_column_oods_values =
+            composition_polynomial_poly.eval_columns_at_point(oods_point);
+        for (evaluation, value) in zip(
+            &composition_polynomial_commitment_scheme.evaluations,
+            composition_polynomial_column_oods_values,
+        ) {
+            oods_quotients
+                .push(get_pair_oods_quotient(oods_point, value, evaluation).bit_reverse());
+        }
         for (point, value) in zip(&trace_oods_points[0][0], &trace_oods_values[0][0]) {
             oods_quotients.push(
                 get_pair_oods_quotient(*point, *value, &trace_commitment_scheme.evaluations[0])
@@ -165,14 +161,9 @@ impl Fibonacci {
             fri_opening_positions[&self.trace_commitment_domain.log_size()].flatten();
 
         // Decommit and get the values in the opening positions.
-        let composition_polynomial_opened_values = composition_polynomial_decommitment_positions
-            .iter()
-            .map(|p| composition_polynomial_evaluation.values[*p])
-            .collect();
-        let trace_opened_values = trace_decommitment_positions
-            .iter()
-            .map(|p| trace_commitment_scheme.evaluations[0].values[*p])
-            .collect();
+        let composition_polynomial_opened_values = composition_polynomial_commitment_scheme
+            .open(&composition_polynomial_decommitment_positions);
+        let trace_opened_values = trace_commitment_scheme.open(&trace_decommitment_positions);
         let composition_polynomial_decommitment = composition_polynomial_commitment_scheme
             .generate_decommitment(composition_polynomial_decommitment_positions);
         let trace_decommitment =
@@ -185,8 +176,9 @@ impl Fibonacci {
             composition_polynomial_commitment: composition_polynomial_commitment_scheme.root(),
             composition_polynomial_decommitment,
             trace_oods_values,
-            composition_polynomial_opened_values,
+            composition_polynomial_column_oods_values,
             trace_opened_values,
+            composition_polynomial_opened_values,
             proof_of_work,
             fri_proof,
             additional_proof_data: AdditionalProofData {
@@ -217,6 +209,10 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
         &proof.trace_oods_values,
         random_coeff,
     );
+    assert_eq!(
+        composition_polynomial_oods_value,
+        to_single_value(proof.composition_polynomial_column_oods_values)
+    );
 
     let bounds = fib.air.quotient_log_bounds();
     let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
@@ -239,31 +235,36 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
 
     // An evaluation for each mask item and one for the composition_polynomial.
     let mut sparse_circle_evaluations = Vec::with_capacity(trace_oods_points.len() + 1);
-    let mut evaluation = Vec::with_capacity(composition_polynomial_opening_positions.len());
-    let mut opened_values = proof.composition_polynomial_opened_values.into_iter();
-    for sub_circle_domain in composition_polynomial_opening_positions.iter() {
-        let values = (&mut opened_values)
-            .take(1 << sub_circle_domain.log_size)
-            .collect();
-        let sub_circle_evaluation = CircleEvaluation::new(
-            sub_circle_domain
-                .to_circle_domain(&fib.composition_polynomial_commitment_domain.circle_domain()),
-            values,
+    for (opened_values, oods_value) in zip(
+        proof.composition_polynomial_opened_values,
+        proof.composition_polynomial_column_oods_values,
+    ) {
+        let mut evaluation = Vec::with_capacity(composition_polynomial_opening_positions.len());
+        let mut opened_values_iter = opened_values.into_iter();
+        for sub_circle_domain in composition_polynomial_opening_positions.iter() {
+            let values = (&mut opened_values_iter)
+                .take(1 << sub_circle_domain.log_size)
+                .collect();
+            let sub_circle_evaluation = CircleEvaluation::new(
+                sub_circle_domain.to_circle_domain(
+                    &fib.composition_polynomial_commitment_domain.circle_domain(),
+                ),
+                values,
+            );
+            evaluation.push(
+                get_pair_oods_quotient(oods_point, oods_value, &sub_circle_evaluation)
+                    .bit_reverse(),
+            );
+        }
+        assert!(
+            opened_values_iter.next().is_none(),
+            "Not all values were used."
         );
-        evaluation.push(
-            get_oods_quotient(
-                oods_point,
-                composition_polynomial_oods_value,
-                &sub_circle_evaluation,
-            )
-            .bit_reverse(),
-        );
+        sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
     }
-    assert!(opened_values.next().is_none(), "Not all values were used.");
-    sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
     for (oods_point, oods_value) in zip(&trace_oods_points[0], &proof.trace_oods_values[0][0]) {
         let mut evaluation = Vec::with_capacity(trace_opening_positions.len());
-        let mut opened_values = proof.trace_opened_values.iter().copied();
+        let mut opened_values = proof.trace_opened_values[0].iter().copied();
         for sub_circle_domain in trace_opening_positions.iter() {
             let values = (&mut opened_values)
                 .take(1 << sub_circle_domain.log_size)
@@ -443,7 +444,7 @@ mod tests {
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
         let mut invalid_proof = fib.prove();
-        invalid_proof.trace_opened_values[4] += BaseField::one();
+        invalid_proof.trace_opened_values[0][4] += BaseField::one();
 
         verify_proof::<FIB_LOG_SIZE>(invalid_proof);
     }

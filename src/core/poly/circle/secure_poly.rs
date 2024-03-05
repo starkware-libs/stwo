@@ -14,11 +14,19 @@ pub struct SecureCirclePoly(pub SecureArray<CPUCirclePoly<BaseField>>);
 
 impl SecureCirclePoly {
     pub fn eval_at_point(&self, point: CirclePoint<SecureField>) -> SecureField {
-        let mut res = self.0[0].eval_at_point(point);
-        res += self.0[1].eval_at_point(point) * SecureField::from_u32_unchecked(0, 1, 0, 0);
-        res += self.0[2].eval_at_point(point) * SecureField::from_u32_unchecked(0, 0, 1, 0);
-        res += self.0[3].eval_at_point(point) * SecureField::from_u32_unchecked(0, 0, 0, 1);
-        res
+        to_single_value(self.eval_columns_at_point(point))
+    }
+
+    pub fn eval_columns_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+    ) -> SecureArray<SecureField> {
+        [
+            self[0].eval_at_point(point),
+            self[1].eval_at_point(point),
+            self[2].eval_at_point(point),
+            self[3].eval_at_point(point),
+        ]
     }
 
     // TODO(AlonH): Remove this temporary function.
@@ -40,4 +48,12 @@ impl Deref for SecureCirclePoly {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
+}
+
+pub fn to_single_value(values: SecureArray<SecureField>) -> SecureField {
+    let mut res = values[0];
+    res += values[1] * SecureField::from_u32_unchecked(0, 1, 0, 0);
+    res += values[2] * SecureField::from_u32_unchecked(0, 0, 1, 0);
+    res += values[3] * SecureField::from_u32_unchecked(0, 0, 0, 1);
+    res
 }
