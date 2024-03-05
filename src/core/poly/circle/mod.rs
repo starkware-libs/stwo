@@ -10,7 +10,7 @@ pub use domain::CircleDomain;
 pub use evaluation::{CircleEvaluation, CosetSubEvaluation};
 pub use ops::PolyOps;
 pub use poly::CirclePoly;
-pub use secure_poly::{SecureArray, SecureCirclePoly};
+pub use secure_poly::{SecureArray, SecureCirclePoly, SecureValue};
 
 #[cfg(test)]
 mod tests {

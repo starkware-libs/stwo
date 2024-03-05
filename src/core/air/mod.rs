@@ -93,7 +93,10 @@ pub trait AirExt: Air<CPUBackend> {
         let mut bounds_visitor = QuotientLogBoundsVisitor::new();
         self.visit_components(&mut bounds_visitor);
         let mut bounds = bounds_visitor.finalize();
-        // Add the composition polynomial's log degree bound.
+        // Add the composition polynomial's log degree bounds.
+        bounds.push(self.max_constraint_log_degree_bound());
+        bounds.push(self.max_constraint_log_degree_bound());
+        bounds.push(self.max_constraint_log_degree_bound());
         bounds.push(self.max_constraint_log_degree_bound());
         bounds
             .into_iter()
