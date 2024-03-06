@@ -27,6 +27,10 @@ impl<F: Field> FieldOps<F> for CPUBackend {
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
         F::slice_batch_inverse(column, &mut dst[..]);
     }
+    
+    fn pointwise_mul_assign(lhs: &mut Self::Column, rhs: &Self::Column) {
+        lhs.iter_mut().zip(rhs.iter()).for_each(|(l, r)| *l *= *r);
+    }
 }
 
 impl<F: Field> Column<F> for Vec<F> {
@@ -99,6 +103,37 @@ mod tests {
         let mut dst = Column::zeros(column.len());
 
         CPUBackend::batch_inverse(&column, &mut dst);
+
+        assert_eq!(expected, dst);
+    }
+
+    #[test]
+    fn pointwise_mul_assign_test() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        let column1: Vec<QM31> = (0..16)
+            .map(|_| {
+                QM31::from_u32_unchecked(
+                    rng.gen::<u32>(),
+                    rng.gen::<u32>(),
+                    rng.gen::<u32>(),
+                    rng.gen::<u32>(),
+                )
+            })
+            .collect();
+        let column2: Vec<QM31> = (0..16)
+            .map(|_| {
+                QM31::from_u32_unchecked(
+                    rng.gen::<u32>(),
+                    rng.gen::<u32>(),
+                    rng.gen::<u32>(),
+                    rng.gen::<u32>(),
+                )
+            })
+            .collect();
+        let expected = column1.iter().zip(column2.iter()).map(|(l, r)| *l * *r).collect_vec();
+        let mut dst = column1.clone();
+
+        CPUBackend::pointwise_mul_assign(&mut dst, &column2);
 
         assert_eq!(expected, dst);
     }

@@ -14,6 +14,8 @@ pub trait FieldOps<F: Field> {
 
     // TODO(Ohad): change to use a mutable slice.
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column);
+
+    fn pointwise_mul_assign(lhs: &mut Self::Column, rhs: &Self::Column);
 }
 
 pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {

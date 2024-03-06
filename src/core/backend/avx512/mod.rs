@@ -63,6 +63,13 @@ impl FieldOps<BaseField> for AVX512Backend {
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
         PackedBaseField::slice_batch_inverse(&column.data, &mut dst.data);
     }
+
+    fn pointwise_mul_assign(lhs: &mut Self::Column, rhs: &Self::Column) {
+        lhs.data
+            .iter_mut()
+            .zip(rhs.data.iter())
+            .for_each(|(l, r)| *l *= *r);
+    }
 }
 
 impl Column<BaseField> for BaseFieldVec {
@@ -188,5 +195,27 @@ mod tests {
         dst.data.iter().zip(expected.iter()).for_each(|(a, b)| {
             assert_eq!(a.to_array(), b.to_array());
         });
+    }
+
+    #[test]
+    fn test_pointwise_mul_assign() {
+        let mut rng = StdRng::seed_from_u64(0);
+        let mut column1 = BaseFieldVec::from_iter(
+            (0..64).map(|_| BaseField::from_u32_unchecked(rng.gen::<u32>() % P)),
+        );
+        let column2 = BaseFieldVec::from_iter(
+            (0..64).map(|_| BaseField::from_u32_unchecked(rng.gen::<u32>() % P)),
+        );
+        let mut expected = column1
+            .clone()
+            .to_vec()
+            .iter()
+            .zip(column2.to_vec().iter())
+            .map(|(l, r)| *l * *r)
+            .collect::<Vec<_>>();
+
+        AVX512Backend::pointwise_mul_assign(&mut column1, &column2);
+
+        assert_eq!(column1.to_vec(), expected);
     }
 }
