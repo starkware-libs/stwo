@@ -15,8 +15,8 @@ use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::channel::Channel;
 
 pub struct CommitmentSchemeProver {
-    pub polynomials: Vec<CPUCirclePoly<BaseField>>,
-    pub evaluations: Vec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
+    pub polynomials: ColumnVec<CPUCirclePoly<BaseField>>,
+    pub evaluations: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
     // TODO(AlonH): Change to mixed degree merkle and remove values clone.
     pub commitment: MerkleTree<BaseField, Blake2sHasher>,
 }
