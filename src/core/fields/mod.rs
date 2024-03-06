@@ -37,28 +37,62 @@ pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
 
     fn inverse(&self) -> Self;
 
-    // TODO(Ohad): Optimize (remove dependencies).
+    /// Inverts a batch of up to 4 elements using Montgomery's trick.
+    // Optimized over the classic batch inversion by reducing the dependency of consecutive
+    // instructions.
     fn slice_batch_inverse(column: &[Self], dst: &mut [Self]) {
+        const WIDTH: usize = 4;
         let n = column.len();
         debug_assert!(n.is_power_of_two());
         debug_assert!(dst.len() >= n);
-
-        dst[0] = column[0];
-        // First pass.
-        for i in 1..n {
-            dst[i] = dst[i - 1] * column[i];
+        if n <= WIDTH {
+            slice_batch_inverse_classic(column, dst);
+            return;
         }
 
-        // Inverse cumulative product.
-        let mut curr_inverse = dst[n - 1].inverse();
+        // First pass. Compute 'WIDTH' cumulative products in an interleaving fashion, reducing
+        // instruction dependency and allowing better pipelining.
+        let mut cum_prod: [Self; WIDTH] = [Self::one(); WIDTH];
+        dst[..WIDTH].copy_from_slice(&cum_prod);
+        for i in 0..n {
+            cum_prod[i % WIDTH] *= column[i];
+            dst[i] = cum_prod[i % WIDTH];
+        }
+
+        // Inverse cumulative products.
+        // Use classic batch inversion.
+        let mut tail_inverses = [Self::one(); WIDTH];
+        slice_batch_inverse_classic(&dst[n - WIDTH..], &mut tail_inverses);
 
         // Second pass.
-        for i in (1..n).rev() {
-            dst[i] = dst[i - 1] * curr_inverse;
-            curr_inverse *= column[i];
+        for i in (WIDTH..n).rev() {
+            dst[i] = dst[i - WIDTH] * tail_inverses[i % WIDTH];
+            tail_inverses[i % WIDTH] *= column[i];
         }
-        dst[0] = curr_inverse;
+        dst[0..WIDTH].copy_from_slice(&tail_inverses);
     }
+}
+
+fn slice_batch_inverse_classic<T: FieldExpOps>(column: &[T], dst: &mut [T]) {
+    let n = column.len();
+    debug_assert!(n.is_power_of_two());
+    debug_assert!(dst.len() >= n);
+
+    dst[0] = column[0];
+    // First pass.
+    for i in 1..n {
+        dst[i] = dst[i - 1] * column[i];
+    }
+
+    // Inverse cumulative product.
+    let mut curr_inverse = dst[n - 1].inverse();
+
+    // Second pass.
+    for i in (1..n).rev() {
+        dst[i] = dst[i - 1] * curr_inverse;
+        curr_inverse *= column[i];
+    }
+    dst[0] = curr_inverse;
 }
 
 pub type Col<B, F> = <B as FieldOps<F>>::Column;
