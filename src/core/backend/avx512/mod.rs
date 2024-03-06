@@ -15,8 +15,6 @@ use crate::core::fields::{Column, FieldExpOps, FieldOps};
 use crate::core::utils;
 
 const VECS_LOG_SIZE: usize = 4;
-pub const CACHED_FFT_LOG_SIZE: usize = 16;
-pub const MIN_FFT_LOG_SIZE: usize = 5;
 
 #[derive(Copy, Clone, Debug)]
 pub struct AVX512Backend;
