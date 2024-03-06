@@ -10,8 +10,8 @@ use super::{
     add_mod_p, compute_first_twiddles, sub_mod_p, EVENS_INTERLEAVE_EVENS, HHALF_INTERLEAVE_HHALF,
     LHALF_INTERLEAVE_LHALF, ODDS_INTERLEAVE_ODDS,
 };
-use crate::core::backend::avx512::fft::transpose_vecs;
-use crate::core::backend::avx512::{MIN_FFT_LOG_SIZE, VECS_LOG_SIZE};
+use crate::core::backend::avx512::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
+use crate::core::backend::avx512::VECS_LOG_SIZE;
 use crate::core::poly::circle::CircleDomain;
 use crate::core::utils::bit_reverse;
 
@@ -31,8 +31,7 @@ use crate::core::utils::bit_reverse;
 pub unsafe fn fft(values: *mut i32, twiddle_dbl: &[&[i32]], log_n_elements: usize) {
     assert!(log_n_elements >= MIN_FFT_LOG_SIZE);
     let log_n_vecs = log_n_elements - VECS_LOG_SIZE;
-    // TODO(spapini): Use CACHED_FFT_LOG_SIZE instead.
-    if log_n_elements <= 1 {
+    if log_n_elements <= CACHED_FFT_LOG_SIZE {
         fft_lower_with_vecwise(values, twiddle_dbl, log_n_elements, log_n_elements);
         return;
     }
@@ -717,8 +716,8 @@ mod tests {
 
     #[test]
     fn test_fft_full() {
-        for i in 5..12 {
-            run_fft_full_test(i);
+        for i in (CACHED_FFT_LOG_SIZE + 1)..(CACHED_FFT_LOG_SIZE + 3) {
+            run_fft_full_test(i as u32);
         }
     }
 }
