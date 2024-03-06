@@ -14,14 +14,15 @@ use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::channel::Channel;
 
-pub struct CommitmentSchemeProver {
+// TODO(AlonH): Add CommitmentScheme structs to contain multiple CommitmentTree instances.
+pub struct CommitmentTreeProver {
     pub polynomials: ColumnVec<CPUCirclePoly<BaseField>>,
     pub evaluations: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
     // TODO(AlonH): Change to mixed degree merkle and remove values clone.
     pub commitment: MerkleTree<BaseField, Blake2sHasher>,
 }
 
-impl CommitmentSchemeProver {
+impl CommitmentTreeProver {
     pub fn new(
         polynomials: Vec<CPUCirclePoly<BaseField>>,
         log_blowup_factor: u32,
@@ -42,7 +43,7 @@ impl CommitmentSchemeProver {
         );
         channel.mix_digest(commitment.root());
 
-        CommitmentSchemeProver {
+        CommitmentTreeProver {
             polynomials,
             evaluations,
             commitment,
@@ -50,15 +51,24 @@ impl CommitmentSchemeProver {
     }
 
     // TODO(AlonH): change interface after integrating mixed degree merkle.
-    pub fn open(&self, positions: &[usize]) -> ColumnVec<Vec<BaseField>> {
-        self.evaluations
+    pub fn decommit(
+        &self,
+        positions: Vec<usize>,
+    ) -> (
+        ColumnVec<Vec<BaseField>>,
+        MerkleDecommitment<BaseField, Blake2sHasher>,
+    ) {
+        let values = self
+            .evaluations
             .iter()
             .map(|c| positions.iter().map(|p| c[*p]).collect())
-            .collect()
+            .collect();
+        let decommitment = self.commitment.generate_decommitment(positions);
+        (values, decommitment)
     }
 }
 
-impl Deref for CommitmentSchemeProver {
+impl Deref for CommitmentTreeProver {
     type Target = MerkleTree<BaseField, Blake2sHasher>;
 
     fn deref(&self) -> &Self::Target {
@@ -66,14 +76,14 @@ impl Deref for CommitmentSchemeProver {
     }
 }
 
-pub struct CommitmentSchemeVerifier {
+pub struct CommitmentTreeVerifier {
     pub commitment: Blake2sHash,
 }
 
-impl CommitmentSchemeVerifier {
+impl CommitmentTreeVerifier {
     pub fn new(commitment: Blake2sHash, channel: &mut Blake2sChannel) -> Self {
         channel.mix_digest(commitment);
-        CommitmentSchemeVerifier { commitment }
+        CommitmentTreeVerifier { commitment }
     }
 
     pub fn verify(
