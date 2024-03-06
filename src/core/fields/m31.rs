@@ -5,7 +5,7 @@ use std::ops::{
 
 use bytemuck::{Pod, Zeroable};
 
-use super::ComplexConjugate;
+use super::{ComplexConjugate, FieldExpOps};
 use crate::impl_field;
 
 pub const MODULUS_BITS: u32 = 31;

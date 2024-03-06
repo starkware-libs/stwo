@@ -4,7 +4,7 @@ use super::CPUBackend;
 use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{ExtensionOf, Field};
+use crate::core::fields::{ExtensionOf, Field, FieldExpOps};
 use crate::core::fri::{FriOps, CIRCLE_TO_LINE_FOLD_STEP, FOLD_STEP};
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::line::LineEvaluation;

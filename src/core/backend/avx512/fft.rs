@@ -6,7 +6,7 @@ use std::arch::x86_64::{
 };
 
 use crate::core::backend::avx512::{MIN_FFT_LOG_SIZE, VECS_LOG_SIZE};
-use crate::core::fields::Field;
+use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CircleDomain;
 use crate::core::utils::bit_reverse;
 
