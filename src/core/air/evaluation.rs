@@ -12,7 +12,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Col, Column, ExtensionOf, Field};
-use crate::core::poly::circle::{CircleDomain, CirclePoly, SecureCirclePoly};
+use crate::core::poly::circle::{CircleDomain, CirclePoly, SecureArray, SecureCirclePoly};
 use crate::core::utils::IteratorMutExt;
 use crate::core::{ColumnVec, ComponentVec};
 
@@ -21,7 +21,7 @@ pub const SECURE_EXTENSION_DEGREE: usize =
 
 // TODO(spapini): find a better place for this
 pub struct SecureColumn<B: Backend> {
-    pub cols: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
+    pub cols: SecureArray<Col<B, BaseField>>,
 }
 
 impl SecureColumn<CPUBackend> {

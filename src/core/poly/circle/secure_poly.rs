@@ -8,7 +8,9 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Column;
 
-pub struct SecureCirclePoly(pub [CPUCirclePoly<BaseField>; SECURE_EXTENSION_DEGREE]);
+pub type SecureArray<T> = [T; SECURE_EXTENSION_DEGREE];
+
+pub struct SecureCirclePoly(pub SecureArray<CPUCirclePoly<BaseField>>);
 
 impl SecureCirclePoly {
     pub fn eval_at_point(&self, point: CirclePoint<SecureField>) -> SecureField {
@@ -33,7 +35,7 @@ impl SecureCirclePoly {
 }
 
 impl Deref for SecureCirclePoly {
-    type Target = [CPUCirclePoly<BaseField>; SECURE_EXTENSION_DEGREE];
+    type Target = SecureArray<CPUCirclePoly<BaseField>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
