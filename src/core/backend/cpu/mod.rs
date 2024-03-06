@@ -25,24 +25,7 @@ impl<F: Field> FieldOps<F> for CPUBackend {
     /// Batch inversion using the Montgomery's trick.
     // TODO(Ohad): Benchmark this function.
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
-        let n = column.len();
-        dst.clear();
-
-        dst.push(column[0]);
-        // First pass.
-        for i in 1..n {
-            dst.push(dst[i - 1] * column[i]);
-        }
-
-        // Inverse cumulative product.
-        let mut curr_inverse = dst[n - 1].inverse();
-
-        // Second pass.
-        for i in (1..n).rev() {
-            dst[i] = dst[i - 1] * curr_inverse;
-            curr_inverse *= column[i];
-        }
-        dst[0] = curr_inverse;
+        F::slice_batch_inverse(column, &mut dst[..]);
     }
 }
 
@@ -70,18 +53,17 @@ pub type CPULineEvaluation<F, EvalOrder = NaturalOrder> = LineEvaluation<CPUBack
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use num_traits::One;
     use rand::prelude::*;
     use rand::rngs::SmallRng;
 
     use crate::core::backend::{CPUBackend, FieldOps};
     use crate::core::fields::qm31::QM31;
-    use crate::core::fields::FieldExpOps;
+    use crate::core::fields::{Column, FieldExpOps};
 
     #[test]
     fn batch_inverse_test() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let elements: Vec<QM31> = (0..10)
+        let column: Vec<QM31> = (0..16)
             .map(|_| {
                 QM31::from_u32_unchecked(
                     rng.gen::<u32>(),
@@ -91,18 +73,19 @@ mod tests {
                 )
             })
             .collect();
-        let expected = elements.iter().map(|e| e.inverse()).collect_vec();
-        let mut dst = vec![];
+        let expected = column.iter().map(|e| e.inverse()).collect_vec();
+        let mut dst = Column::zeros(column.len());
 
-        CPUBackend::batch_inverse(&elements, &mut dst);
+        CPUBackend::batch_inverse(&column, &mut dst);
 
         assert_eq!(expected, dst);
     }
 
+    // TODO(Ohad): remove this test.
     #[test]
     fn batch_inverse_reused_vec_test() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let elements: Vec<QM31> = (0..10)
+        let column: Vec<QM31> = (0..16)
             .map(|_| {
                 QM31::from_u32_unchecked(
                     rng.gen::<u32>(),
@@ -112,10 +95,10 @@ mod tests {
                 )
             })
             .collect();
-        let expected = elements.iter().map(|e| e.inverse()).collect_vec();
-        let mut dst = vec![QM31::one(); elements.len()];
+        let expected = column.iter().map(|e| e.inverse()).collect_vec();
+        let mut dst = Column::zeros(column.len());
 
-        CPUBackend::batch_inverse(&elements, &mut dst);
+        CPUBackend::batch_inverse(&column, &mut dst);
 
         assert_eq!(expected, dst);
     }
