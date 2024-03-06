@@ -49,11 +49,20 @@ impl CommitmentSchemeProver {
         }
     }
 
-    pub fn open(&self, positions: &[usize]) -> ColumnVec<Vec<BaseField>> {
-        self.evaluations
+    pub fn decommit(
+        &self,
+        positions: Vec<usize>,
+    ) -> (
+        ColumnVec<Vec<BaseField>>,
+        MerkleDecommitment<BaseField, Blake2sHasher>,
+    ) {
+        let values = self
+            .evaluations
             .iter()
             .map(|c| positions.iter().map(|p| c[*p]).collect())
-            .collect()
+            .collect();
+        let decommitment = self.commitment.generate_decommitment(positions);
+        (values, decommitment)
     }
 }
 

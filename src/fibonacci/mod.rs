@@ -172,13 +172,11 @@ impl Fibonacci {
             fri_opening_positions[&self.trace_commitment_domain.log_size()].flatten();
 
         // Decommit and get the values in the opening positions.
-        let composition_polynomial_opened_values = composition_polynomial_commitment_scheme
-            .open(&composition_polynomial_decommitment_positions);
-        let trace_opened_values = trace_commitment_scheme.open(&trace_decommitment_positions);
-        let composition_polynomial_decommitment = composition_polynomial_commitment_scheme
-            .generate_decommitment(composition_polynomial_decommitment_positions);
-        let trace_decommitment =
-            trace_commitment_scheme.generate_decommitment(trace_decommitment_positions);
+        let (composition_polynomial_opened_values, composition_polynomial_decommitment) =
+            composition_polynomial_commitment_scheme
+                .decommit(composition_polynomial_decommitment_positions);
+        let (trace_opened_values, trace_decommitment) =
+            trace_commitment_scheme.decommit(trace_decommitment_positions);
 
         FibonacciProof {
             public_input: self.claim,
