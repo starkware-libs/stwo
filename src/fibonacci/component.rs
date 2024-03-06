@@ -148,4 +148,8 @@ impl Component<CPUBackend> for FibonacciComponent {
         let constraint_log_degree_bound = self.log_size;
         evaluation_accumulator.accumulate(constraint_log_degree_bound, res);
     }
+
+    fn public_input(&self) -> Vec<BaseField> {
+        vec![self.claim]
+    }
 }

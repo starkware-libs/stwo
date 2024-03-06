@@ -97,7 +97,9 @@ impl Fibonacci {
     }
 
     pub fn prove(&self) -> FibonacciProof {
-        let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(&[self.claim])));
+        let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(
+            &self.air.public_input(),
+        )));
 
         // Evaluate and commit on trace.
         let trace = self.get_trace();

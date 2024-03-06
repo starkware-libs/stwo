@@ -101,6 +101,12 @@ pub trait AirExt: Air<CPUBackend> {
             .map(CirclePolyDegreeBound::new)
             .collect()
     }
+
+    fn public_input(&self) -> Vec<BaseField> {
+        let mut public_input_visitor = PublicInputVisitor::new();
+        self.visit_components(&mut public_input_visitor);
+        public_input_visitor.finalize()
+    }
 }
 
 impl<A: Air<CPUBackend>> AirExt for A {}
@@ -228,6 +234,28 @@ impl<B: Backend> ComponentVisitor<B> for QuotientLogBoundsVisitor {
     }
 }
 
+struct PublicInputVisitor {
+    public_input: Vec<BaseField>,
+}
+
+impl PublicInputVisitor {
+    pub fn new() -> Self {
+        Self {
+            public_input: Vec::new(),
+        }
+    }
+
+    pub fn finalize(self) -> Vec<BaseField> {
+        self.public_input
+    }
+}
+
+impl<B: Backend> ComponentVisitor<B> for PublicInputVisitor {
+    fn visit<C: Component<B>>(&mut self, component: &C) {
+        self.public_input.extend(component.public_input());
+    }
+}
+
 /// Holds the mask offsets at each column.
 /// Holds a vector with an entry for each column. Each entry holds the offsets
 /// of the mask at that column.
@@ -315,6 +343,8 @@ pub trait Component<B: Backend> {
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     );
+
+    fn public_input(&self) -> Vec<BaseField>;
 
     // TODO(spapini): Extra functions for FRI and decommitment.
 }
