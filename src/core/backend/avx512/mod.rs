@@ -61,7 +61,7 @@ impl FieldOps<BaseField> for AVX512Backend {
     }
 
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
-        PackedBaseField::slice_batch_inverse(&column.data, &mut dst.data);
+        PackedBaseField::batch_inverse(&column.data, &mut dst.data);
     }
 }
 
