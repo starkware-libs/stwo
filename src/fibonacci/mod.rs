@@ -1,5 +1,6 @@
 use std::iter::zip;
 
+use itertools::enumerate;
 use num_traits::One;
 
 use self::air::FibonacciAir;
@@ -142,11 +143,21 @@ impl Fibonacci {
             oods_quotients
                 .push(get_pair_oods_quotient(oods_point, value, evaluation).bit_reverse());
         }
-        for (point, value) in zip(&trace_oods_points[0][0], &trace_oods_values[0][0]) {
-            oods_quotients.push(
-                get_pair_oods_quotient(*point, *value, &trace_commitment_scheme.evaluations[0])
-                    .bit_reverse(),
-            );
+        for (component_points, component_values) in zip(&trace_oods_points, &trace_oods_values) {
+            for (i, (column_points, column_values)) in
+                enumerate(zip(component_points, component_values))
+            {
+                for (point, value) in zip(column_points, column_values) {
+                    oods_quotients.push(
+                        get_pair_oods_quotient(
+                            *point,
+                            *value,
+                            &trace_commitment_scheme.evaluations[i],
+                        )
+                        .bit_reverse(),
+                    );
+                }
+            }
         }
 
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
