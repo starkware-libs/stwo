@@ -29,7 +29,7 @@ pub fn avx512_ifft(c: &mut criterion::Criterion) {
 
     c.bench_function("avx ifft", |b| {
         b.iter(|| unsafe {
-            ifft(
+            ifft::ifft(
                 std::mem::transmute(values.data.as_mut_ptr()),
                 &twiddle_dbls[..],
                 LOG_SIZE as usize,
