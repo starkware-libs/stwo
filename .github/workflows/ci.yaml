@@ -87,6 +87,7 @@ jobs:
     - clippy
     - format
     - run-tests
+    - run-avx-tests
     - udeps
     steps:
     - name: Decide whether all the needed jobs succeeded or failed
