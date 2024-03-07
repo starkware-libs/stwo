@@ -13,13 +13,13 @@ use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
 use crate::core::poly::twiddles::TwiddleTree;
-use crate::core::poly::utils::fold;
+use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
 
 // TODO(spapini): Everything is returned in redundant representation, where values can also be P.
 // Decide if and when it's ok and what to do if it's not.
 impl PolyOps for AVX512Backend {
-    type Twiddles = ();
+    type Twiddles = Vec<i32>;
 
     fn new_canonical_ordered(
         coset: CanonicCoset,
@@ -32,23 +32,18 @@ impl PolyOps for AVX512Backend {
 
     fn interpolate(
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
-        _itwiddles: &TwiddleTree<Self>,
+        twiddles: &TwiddleTree<Self>,
     ) -> CirclePoly<Self> {
         let mut values = eval.values;
         let log_size = values.length.ilog2();
 
-        // TODO(spapini): Precompute twiddles.
-        let twiddle_dbls = ifft::get_itwiddle_dbls(eval.domain);
-        // TODO(spapini): Handle small cases.
+        let twiddles = domain_line_twiddles_from_tree(eval.domain, &twiddles.itwiddles);
 
         // Safe because [PackedBaseField] is aligned on 64 bytes.
         unsafe {
             ifft::ifft(
                 std::mem::transmute(values.data.as_mut_ptr()),
-                &twiddle_dbls[1..]
-                    .iter()
-                    .map(|x| x.as_slice())
-                    .collect::<Vec<_>>(),
+                &twiddles,
                 log_size as usize,
             );
         }
@@ -98,7 +93,7 @@ impl PolyOps for AVX512Backend {
     fn evaluate(
         poly: &CirclePoly<Self>,
         domain: CircleDomain,
-        _twiddles: &TwiddleTree<Self>,
+        twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(spapini): Precompute twiddles.
         // TODO(spapini): Handle small cases.
@@ -109,17 +104,17 @@ impl PolyOps for AVX512Backend {
             "Can only evaluate on larger domains"
         );
 
-        let twiddles = rfft::get_twiddle_dbls(domain);
+        let twiddles = domain_line_twiddles_from_tree(domain, &twiddles.twiddles);
 
         // Evaluate on a big domains by evaluating on several subdomains.
         let log_subdomains = log_size - fft_log_size;
         let mut values = Vec::with_capacity(domain.size() >> VECS_LOG_SIZE);
         for i in 0..(1 << log_subdomains) {
             // The subdomain twiddles are a slice of the large domain twiddles.
-            let subdomain_twiddles = (1..fft_log_size)
+            let subdomain_twiddles = (0..(fft_log_size - 1))
                 .map(|layer_i| {
                     &twiddles[layer_i]
-                        [i << (fft_log_size - 1 - layer_i)..(i + 1) << (fft_log_size - 1 - layer_i)]
+                        [i << (fft_log_size - 2 - layer_i)..(i + 1) << (fft_log_size - 2 - layer_i)]
                 })
                 .collect::<Vec<_>>();
 
@@ -150,10 +145,25 @@ impl PolyOps for AVX512Backend {
     }
 
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self> {
+        let mut twiddles = Vec::with_capacity(coset.size());
+        let mut itwiddles = Vec::with_capacity(coset.size());
+
+        // TODO(spapini): Optimize.
+        for layer in &rfft::get_twiddle_dbls(coset)[1..] {
+            twiddles.extend(layer);
+        }
+        twiddles.push(2);
+        assert_eq!(twiddles.len(), coset.size());
+        for layer in &ifft::get_itwiddle_dbls(coset)[1..] {
+            itwiddles.extend(layer);
+        }
+        itwiddles.push(2);
+        assert_eq!(itwiddles.len(), coset.size());
+
         TwiddleTree {
             root_coset: coset,
-            twiddles: (),
-            itwiddles: (),
+            twiddles,
+            itwiddles,
         }
     }
 }
