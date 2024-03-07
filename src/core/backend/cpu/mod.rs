@@ -25,7 +25,7 @@ impl<F: Field> FieldOps<F> for CPUBackend {
     /// Batch inversion using the Montgomery's trick.
     // TODO(Ohad): Benchmark this function.
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
-        F::slice_batch_inverse(column, &mut dst[..]);
+        F::batch_inverse(column, &mut dst[..]);
     }
 }
 
