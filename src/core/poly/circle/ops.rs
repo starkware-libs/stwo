@@ -2,6 +2,7 @@ use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Col, ExtensionOf, FieldOps};
+use crate::core::poly::BitReversedOrder;
 
 pub trait PolyOps<F: ExtensionOf<BaseField>>: FieldOps<F> + Sized {
     /// Creates a [CircleEvaluation] from values ordered according to [CanonicCoset].
@@ -9,11 +10,11 @@ pub trait PolyOps<F: ExtensionOf<BaseField>>: FieldOps<F> + Sized {
     fn new_canonical_ordered(
         coset: CanonicCoset,
         values: Col<Self, F>,
-    ) -> CircleEvaluation<Self, F>;
+    ) -> CircleEvaluation<Self, F, BitReversedOrder>;
 
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
     /// Used by the [`CircleEvaluation::interpolate()`] function.
-    fn interpolate(eval: CircleEvaluation<Self, F>) -> CirclePoly<Self, F>;
+    fn interpolate(eval: CircleEvaluation<Self, F, BitReversedOrder>) -> CirclePoly<Self, F>;
 
     /// Evaluates the polynomial at a single point.
     /// Used by the [`CirclePoly::eval_at_point()`] function.
@@ -25,5 +26,8 @@ pub trait PolyOps<F: ExtensionOf<BaseField>>: FieldOps<F> + Sized {
 
     /// Evaluates the polynomial at all points in the domain.
     /// Used by the [`CirclePoly::evaluate()`] function.
-    fn evaluate(poly: &CirclePoly<Self, F>, domain: CircleDomain) -> CircleEvaluation<Self, F>;
+    fn evaluate(
+        poly: &CirclePoly<Self, F>,
+        domain: CircleDomain,
+    ) -> CircleEvaluation<Self, F, BitReversedOrder>;
 }

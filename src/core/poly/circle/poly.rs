@@ -2,6 +2,7 @@ use super::{CircleDomain, CircleEvaluation, PolyOps};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{Col, Column, ExtensionOf, FieldOps};
+use crate::core::poly::BitReversedOrder;
 
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
@@ -45,7 +46,7 @@ impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CirclePoly<B, F> {
     }
 
     /// Evaluates the polynomial at all points in the domain.
-    pub fn evaluate(&self, domain: CircleDomain) -> CircleEvaluation<B, F> {
+    pub fn evaluate(&self, domain: CircleDomain) -> CircleEvaluation<B, F, BitReversedOrder> {
         B::evaluate(self, domain)
     }
 }
@@ -54,7 +55,6 @@ impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CirclePoly<B, F> {
 impl<F: ExtensionOf<BaseField>> crate::core::backend::cpu::CPUCirclePoly<F> {
     pub fn is_in_fft_space(&self, log_fft_size: u32) -> bool {
         let mut coeffs = self.coeffs.clone();
-        crate::core::utils::bit_reverse(&mut coeffs);
         while coeffs.last() == Some(&F::zero()) {
             coeffs.pop();
         }
