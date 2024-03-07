@@ -2,19 +2,13 @@
 //! Given N polynomials, sort them by size: u_0(P), ... u_{N-1}(P).
 //! Given a random alpha, the combined polynomial is defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i (P).
-
-use core::slice;
-
-use super::{Component, ComponentTrace, ComponentVisitor};
 use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::backend::{Backend, CPUBackend};
-use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Col, Column, ExtensionOf, FieldExpOps};
 use crate::core::poly::circle::{CircleDomain, CirclePoly, SecureCirclePoly};
 use crate::core::utils::IteratorMutExt;
-use crate::core::{ColumnVec, ComponentVec};
 
 pub const SECURE_EXTENSION_DEGREE: usize =
     <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE;
@@ -203,79 +197,6 @@ impl<'a> ColumnAccumulator<'a, CPUBackend> {
     pub fn accumulate(&mut self, index: usize, evaluation: BaseField) {
         let val = self.col.at(index) * self.random_coeff + evaluation;
         self.col.set(index, val);
-    }
-}
-
-/// Evaluates components' constraint polynomials and aggregates them into a composition polynomial.
-pub struct ConstraintEvaluator<'a, B: Backend> {
-    component_traces: slice::Iter<'a, ComponentTrace<'a, B>>,
-    evaluation_accumulator: DomainEvaluationAccumulator<B>,
-}
-
-impl<'a> ConstraintEvaluator<'a, CPUBackend> {
-    pub fn new(
-        component_traces: &'a [ComponentTrace<'a, CPUBackend>],
-        max_log_size: u32,
-        random_coeff: SecureField,
-    ) -> Self {
-        Self {
-            component_traces: component_traces.iter(),
-            evaluation_accumulator: DomainEvaluationAccumulator::new(random_coeff, max_log_size),
-        }
-    }
-
-    pub fn finalize(self) -> SecureCirclePoly {
-        self.evaluation_accumulator.finalize()
-    }
-}
-
-impl<'a, B: Backend> ComponentVisitor<B> for ConstraintEvaluator<'a, B> {
-    fn visit<C: Component<B>>(&mut self, component: &C) {
-        component.evaluate_constraint_quotients_on_domain(
-            self.component_traces
-                .next()
-                .expect("no more component traces"),
-            &mut self.evaluation_accumulator,
-        )
-    }
-}
-
-/// Evaluates components' constraint polynomials at a single point and aggregates them into a
-/// composition polynomial value.
-pub struct ConstraintPointEvaluator<'a> {
-    point: CirclePoint<SecureField>,
-    mask_values: slice::Iter<'a, ColumnVec<Vec<SecureField>>>,
-    evaluation_accumulator: PointEvaluationAccumulator,
-}
-
-impl<'a> ConstraintPointEvaluator<'a> {
-    pub fn new(
-        point: CirclePoint<SecureField>,
-        mask_values: &'a ComponentVec<Vec<SecureField>>,
-        max_log_size: u32,
-        random_coeff: SecureField,
-    ) -> Self {
-        Self {
-            point,
-            mask_values: mask_values.iter(),
-            evaluation_accumulator: PointEvaluationAccumulator::new(random_coeff, max_log_size),
-        }
-    }
-
-    pub fn finalize(self) -> SecureField {
-        self.evaluation_accumulator.finalize()
-    }
-}
-
-impl<'a, B: Backend> ComponentVisitor<B> for ConstraintPointEvaluator<'a> {
-    fn visit<C: Component<B>>(&mut self, component: &C) {
-        component.evaluate_quotients_by_mask(
-            self.point,
-            self.mask_values
-                .next()
-                .expect("no more component mask values"),
-            &mut self.evaluation_accumulator,
-        )
     }
 }
 
