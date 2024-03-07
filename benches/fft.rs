@@ -21,7 +21,7 @@ pub fn avx512_ifft(c: &mut criterion::Criterion) {
 
     // Compute.
     let mut values = BaseFieldVec::from_iter(values);
-    let twiddle_dbls = get_itwiddle_dbls(domain);
+    let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
 
     c.bench_function("avx ifft", |b| {
         b.iter(|| unsafe {

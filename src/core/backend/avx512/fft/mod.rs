@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_twiddle_relation() {
-        let ts = get_itwiddle_dbls(CanonicCoset::new(5).circle_domain());
+        let ts = get_itwiddle_dbls(CanonicCoset::new(5).half_coset());
         let t0 = ts[0]
             .iter()
             .copied()
