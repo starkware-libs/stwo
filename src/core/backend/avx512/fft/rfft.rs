@@ -8,7 +8,7 @@ use std::arch::x86_64::{
 use super::{compute_first_twiddles, EVENS_INTERLEAVE_EVENS, ODDS_INTERLEAVE_ODDS};
 use crate::core::backend::avx512::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
 use crate::core::backend::avx512::{PackedBaseField, VECS_LOG_SIZE};
-use crate::core::poly::circle::CircleDomain;
+use crate::core::circle::Coset;
 use crate::core::utils::bit_reverse;
 
 /// Performs a Circle Fast Fourier Transform (ICFFT) on the given values.
@@ -347,12 +347,8 @@ pub unsafe fn vecwise_butterflies(
     val0.interleave_with(val1)
 }
 
-pub fn get_twiddle_dbls(domain: CircleDomain) -> Vec<Vec<i32>> {
-    let mut coset = domain.half_coset;
-
+pub fn get_twiddle_dbls(mut coset: Coset) -> Vec<Vec<i32>> {
     let mut res = vec![];
-    res.push(coset.iter().map(|p| (p.y.0 * 2) as i32).collect::<Vec<_>>());
-    bit_reverse(res.last_mut().unwrap());
     for _ in 0..coset.log_size() {
         res.push(
             coset
@@ -606,22 +602,22 @@ mod tests {
     #[test]
     fn test_vecwise_butterflies() {
         let domain = CanonicCoset::new(5).circle_domain();
-        let twiddle_dbls = get_twiddle_dbls(domain);
-        assert_eq!(twiddle_dbls.len(), 5);
+        let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
+        assert_eq!(twiddle_dbls.len(), 4);
         let values0: [i32; 16] = std::array::from_fn(|i| i as i32);
         let values1: [i32; 16] = std::array::from_fn(|i| (i + 16) as i32);
         let result: [BaseField; 32] = unsafe {
             let (val0, val1) = avx_butterfly(
                 std::mem::transmute(values0),
                 std::mem::transmute(values1),
-                _mm512_set1_epi32(twiddle_dbls[4][0]),
+                _mm512_set1_epi32(twiddle_dbls[3][0]),
             );
             let (val0, val1) = vecwise_butterflies(
                 val0,
                 val1,
+                twiddle_dbls[0].clone().try_into().unwrap(),
                 twiddle_dbls[1].clone().try_into().unwrap(),
                 twiddle_dbls[2].clone().try_into().unwrap(),
-                twiddle_dbls[3].clone().try_into().unwrap(),
             );
             std::mem::transmute([val0, val1])
         };
@@ -648,12 +644,12 @@ mod tests {
 
             // Compute.
             let mut values = BaseFieldVec::from_iter(values);
-            let twiddle_dbls = get_twiddle_dbls(domain);
+            let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
 
             unsafe {
                 fft_lower_with_vecwise(
                     std::mem::transmute(values.data.as_mut_ptr()),
-                    &twiddle_dbls[1..]
+                    &twiddle_dbls
                         .iter()
                         .map(|x| x.as_slice())
                         .collect::<Vec<_>>(),
@@ -676,7 +672,7 @@ mod tests {
 
         // Compute.
         let mut values = BaseFieldVec::from_iter(values);
-        let twiddle_dbls = get_twiddle_dbls(domain);
+        let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
 
         unsafe {
             transpose_vecs(
@@ -685,7 +681,7 @@ mod tests {
             );
             fft(
                 std::mem::transmute(values.data.as_mut_ptr()),
-                &twiddle_dbls[1..]
+                &twiddle_dbls
                     .iter()
                     .map(|x| x.as_slice())
                     .collect::<Vec<_>>(),
