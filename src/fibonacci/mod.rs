@@ -13,7 +13,7 @@ use crate::core::air::AirExt;
 use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
-use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
+use crate::core::commitment_scheme::{CommitmentTreeProver, CommitmentTreeVerifier};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
@@ -105,18 +105,18 @@ impl Fibonacci {
         // Evaluate and commit on trace.
         let trace = self.get_trace();
         let trace_poly = trace.interpolate();
-        let trace_commitment_scheme =
-            CommitmentSchemeProver::new(vec![trace_poly], LOG_BLOWUP_FACTOR, channel);
+        let trace_commitment_tree =
+            CommitmentTreeProver::new(vec![trace_poly], LOG_BLOWUP_FACTOR, channel);
 
         // Evaluate and commit on composition polynomial.
         let random_coeff = channel.draw_felt();
         let component_traces = self
             .air
-            .component_traces(&trace_commitment_scheme.polynomials);
+            .component_traces(&trace_commitment_tree.polynomials);
         let composition_polynomial_poly = self
             .air
             .compute_composition_polynomial(random_coeff, &component_traces);
-        let composition_polynomial_commitment_scheme = CommitmentSchemeProver::new(
+        let composition_polynomial_commitment_tree = CommitmentTreeProver::new(
             composition_polynomial_poly.to_vec(),
             LOG_BLOWUP_FACTOR,
             channel,
@@ -137,7 +137,7 @@ impl Fibonacci {
         let composition_polynomial_column_oods_values =
             composition_polynomial_poly.eval_columns_at_point(oods_point);
         for (evaluation, value) in zip(
-            &composition_polynomial_commitment_scheme.evaluations,
+            &composition_polynomial_commitment_tree.evaluations,
             composition_polynomial_column_oods_values,
         ) {
             oods_quotients
@@ -152,7 +152,7 @@ impl Fibonacci {
                         get_pair_oods_quotient(
                             *point,
                             *value,
-                            &trace_commitment_scheme.evaluations[i],
+                            &trace_commitment_tree.evaluations[i],
                         )
                         .bit_reverse(),
                     );
@@ -173,19 +173,17 @@ impl Fibonacci {
             fri_opening_positions[&self.trace_commitment_domain.log_size()].flatten();
 
         // Decommit and get the values in the opening positions.
-        let composition_polynomial_opened_values = composition_polynomial_commitment_scheme
-            .open(&composition_polynomial_decommitment_positions);
-        let trace_opened_values = trace_commitment_scheme.open(&trace_decommitment_positions);
-        let composition_polynomial_decommitment = composition_polynomial_commitment_scheme
-            .generate_decommitment(composition_polynomial_decommitment_positions);
-        let trace_decommitment =
-            trace_commitment_scheme.generate_decommitment(trace_decommitment_positions);
+        let (composition_polynomial_opened_values, composition_polynomial_decommitment) =
+            composition_polynomial_commitment_tree
+                .decommit(composition_polynomial_decommitment_positions);
+        let (trace_opened_values, trace_decommitment) =
+            trace_commitment_tree.decommit(trace_decommitment_positions);
 
         FibonacciProof {
             public_input: self.claim,
-            trace_commitments: vec![trace_commitment_scheme.root()],
+            trace_commitments: vec![trace_commitment_tree.root()],
             trace_decommitments: vec![trace_decommitment],
-            composition_polynomial_commitment: composition_polynomial_commitment_scheme.root(),
+            composition_polynomial_commitment: composition_polynomial_commitment_tree.root(),
             composition_polynomial_decommitment,
             trace_oods_values,
             composition_polynomial_column_oods_values,
@@ -208,11 +206,10 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(&[
         proof.public_input
     ])));
-    let trace_commitment_scheme =
-        CommitmentSchemeVerifier::new(proof.trace_commitments[0], channel);
+    let trace_commitment_tree = CommitmentTreeVerifier::new(proof.trace_commitments[0], channel);
     let random_coeff = channel.draw_felt();
-    let composition_polynomial_commitment_scheme =
-        CommitmentSchemeVerifier::new(proof.composition_polynomial_commitment, channel);
+    let composition_polynomial_commitment_tree =
+        CommitmentTreeVerifier::new(proof.composition_polynomial_commitment, channel);
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
     let trace_oods_points = &fib.air.mask_points(oods_point)[0];
 
@@ -236,11 +233,11 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let composition_polynomial_opening_positions =
         &opening_positions[&fib.composition_polynomial_commitment_domain.log_size()];
     let trace_opening_positions = &opening_positions[&fib.trace_commitment_domain.log_size()];
-    assert!(composition_polynomial_commitment_scheme.verify(
+    assert!(composition_polynomial_commitment_tree.verify(
         &proof.composition_polynomial_decommitment,
         &composition_polynomial_opening_positions.flatten()
     ));
-    assert!(trace_commitment_scheme.verify(
+    assert!(trace_commitment_tree.verify(
         &proof.trace_decommitments[0],
         &trace_opening_positions.flatten()
     ));
