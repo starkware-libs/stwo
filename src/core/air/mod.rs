@@ -107,6 +107,15 @@ pub trait AirExt: Air<CPUBackend> {
         self.visit_components(&mut public_input_visitor);
         public_input_visitor.finalize()
     }
+
+    fn component_traces<'a>(
+        &'a self,
+        polynomials: &'a [CirclePoly<CPUBackend, BaseField>],
+    ) -> Vec<ComponentTrace<'_, CPUBackend>> {
+        let mut component_traces_visitor = ComponentTracesVisitor::new(polynomials);
+        self.visit_components(&mut component_traces_visitor);
+        component_traces_visitor.finalize()
+    }
 }
 
 impl<A: Air<CPUBackend>> AirExt for A {}
@@ -253,6 +262,32 @@ impl PublicInputVisitor {
 impl<B: Backend> ComponentVisitor<B> for PublicInputVisitor {
     fn visit<C: Component<B>>(&mut self, component: &C) {
         self.public_input.extend(component.public_input());
+    }
+}
+
+struct ComponentTracesVisitor<'a, B: Backend> {
+    polynomials: slice::Iter<'a, CirclePoly<B, BaseField>>,
+    component_traces: Vec<ComponentTrace<'a, B>>,
+}
+
+impl<'a, B: Backend> ComponentTracesVisitor<'a, B> {
+    pub fn new(polynomials: &'a [CirclePoly<B, BaseField>]) -> Self {
+        Self {
+            polynomials: polynomials.iter(),
+            component_traces: Vec::new(),
+        }
+    }
+
+    pub fn finalize(self) -> Vec<ComponentTrace<'a, B>> {
+        self.component_traces
+    }
+}
+
+impl<'a, B: Backend> ComponentVisitor<B> for ComponentTracesVisitor<'a, B> {
+    fn visit<C: Component<B>>(&mut self, component: &C) {
+        let n_columns = component.trace_log_degree_bounds().len();
+        let columns = (&mut self.polynomials).take(n_columns).collect();
+        self.component_traces.push(ComponentTrace::new(columns));
     }
 }
 
