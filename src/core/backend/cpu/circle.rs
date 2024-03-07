@@ -9,7 +9,7 @@ use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
 use crate::core::poly::twiddles::TwiddleTree;
-use crate::core::poly::utils::fold;
+use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse;
 
@@ -154,20 +154,6 @@ impl PolyOps for CPUBackend {
             itwiddles,
         }
     }
-}
-
-/// Computes the line twiddles for a [CircleDomain] from the precomputed twiddles tree.
-fn domain_line_twiddles_from_tree(
-    domain: CircleDomain,
-    twiddle_buffer: &[BaseField],
-) -> Vec<&[BaseField]> {
-    (0..domain.half_coset.log_size())
-        .map(|i| {
-            let len = 1 << i;
-            &twiddle_buffer[twiddle_buffer.len() - len * 2..twiddle_buffer.len() - len]
-        })
-        .rev()
-        .collect()
 }
 
 fn fft_layer_loop(

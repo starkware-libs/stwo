@@ -21,13 +21,13 @@ pub fn avx512_ifft(c: &mut criterion::Criterion) {
 
     // Compute.
     let mut values = BaseFieldVec::from_iter(values);
-    let twiddle_dbls = get_itwiddle_dbls(domain);
+    let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
 
     c.bench_function("avx ifft", |b| {
         b.iter(|| unsafe {
             ifft::ifft(
                 std::mem::transmute(values.data.as_mut_ptr()),
-                &twiddle_dbls[1..]
+                &twiddle_dbls
                     .iter()
                     .map(|x| x.as_slice())
                     .collect::<Vec<_>>(),
