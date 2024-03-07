@@ -12,8 +12,8 @@ use super::{
 };
 use crate::core::backend::avx512::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
 use crate::core::backend::avx512::VECS_LOG_SIZE;
+use crate::core::circle::Coset;
 use crate::core::fields::FieldExpOps;
-use crate::core::poly::circle::CircleDomain;
 use crate::core::utils::bit_reverse;
 
 /// Performs an Inverse Circle Fast Fourier Transform (ICFFT) on the given values.
@@ -393,9 +393,7 @@ pub unsafe fn vecwise_ibutterflies(
     )
 }
 
-pub fn get_itwiddle_dbls(domain: CircleDomain) -> Vec<Vec<i32>> {
-    let mut coset = domain.half_coset;
-
+pub fn get_itwiddle_dbls(mut coset: Coset) -> Vec<Vec<i32>> {
     let mut res = vec![];
     res.push(
         coset
@@ -660,7 +658,7 @@ mod tests {
     #[test]
     fn test_vecwise_ibutterflies() {
         let domain = CanonicCoset::new(5).circle_domain();
-        let twiddle_dbls = get_itwiddle_dbls(domain);
+        let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
         assert_eq!(twiddle_dbls.len(), 5);
         let values0: [i32; 16] = std::array::from_fn(|i| i as i32);
         let values1: [i32; 16] = std::array::from_fn(|i| (i + 16) as i32);
@@ -698,7 +696,7 @@ mod tests {
 
             // Compute.
             let mut values = BaseFieldVec::from_iter(values);
-            let twiddle_dbls = get_itwiddle_dbls(domain);
+            let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
 
             unsafe {
                 ifft_lower_with_vecwise(
@@ -726,7 +724,7 @@ mod tests {
 
         // Compute.
         let mut values = BaseFieldVec::from_iter(values);
-        let twiddle_dbls = get_itwiddle_dbls(domain);
+        let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
 
         unsafe {
             ifft(
