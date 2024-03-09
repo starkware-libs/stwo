@@ -39,9 +39,7 @@ impl<F: Field> Polynomial<F> {
     }
 
     pub fn eval(&self, x: F) -> F {
-        self.0
-            .iter()
-            .rfold(F::zero(), |acc, &coeff| acc * x + coeff)
+        horner_eval(&self.0, x)
     }
 
     // https://en.wikibooks.org/wiki/Algorithm_Implementation/Mathematics/Polynomial_interpolation
@@ -137,6 +135,13 @@ impl<F: Field> Neg for Polynomial<F> {
     fn neg(self) -> Self {
         Self(self.0.into_iter().map(|v| -v).collect())
     }
+}
+
+/// Evaluates univariate polynomial using Horner's method.
+pub fn horner_eval<F: Field>(coeffs: &[F], x: F) -> F {
+    coeffs
+        .iter()
+        .rfold(F::zero(), |acc, &coeff| acc * x + coeff)
 }
 
 #[derive(Debug, Clone, Copy)]

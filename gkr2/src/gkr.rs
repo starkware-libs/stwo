@@ -10,20 +10,26 @@ use prover_research::core::fields::qm31::{SecureField, SecureField as FastSecure
 use prover_research::core::fields::Field;
 use thiserror::Error;
 
-use crate::mle::MultiLinearExtension;
+use crate::mle::Mle;
 use crate::sumcheck::{self, SumcheckError, SumcheckOracle, SumcheckProof};
 use crate::utils::{Fraction, Polynomial};
 
-/// Multi-linear extension trace.
-// TODO: Implement.
-pub struct MleTrace<F: Field> {
-    _columns: Vec<MultiLinearExtension<F>>,
-}
+// struct Layers<TopLayer, InternalLayers, OutputLayer> {
+//     top_layer: TopLayer,
+//     internal_layers: Vec<InternalLayers>,
+// }
+
+// trait GkrLayer: SumcheckOracle {
+//     /// Turns the layer into a [MleTrace].
+//     ///
+//     /// This is used by the GKR prover to
+//     fn into_mle(self) -> MleTrace<SecureField>;
+// }
 
 #[derive(Debug, Clone)]
 pub struct MleLayer {
-    p: MultiLinearExtension<SecureField>,
-    q: MultiLinearExtension<SecureField>,
+    p: Mle<SecureField>,
+    q: Mle<SecureField>,
     num_variables: u32,
 }
 
@@ -42,8 +48,8 @@ impl MleLayer {
 
         Self {
             // n_vars: f.len().ilog2() as usize,
-            p: MultiLinearExtension::new(p),
-            q: MultiLinearExtension::new(q),
+            p: Mle::new(p),
+            q: Mle::new(q),
             num_variables: f.len().ilog2(),
         }
     }
@@ -174,9 +180,9 @@ struct GkrLayerProof {
 struct Oracle {
     /// p_{i + 1}
     // TODO: Consider `Cow<Vec<F>>`
-    p: MultiLinearExtension<FastSecureField>,
+    p: Mle<FastSecureField>,
     /// q_{i + 1}
-    q: MultiLinearExtension<FastSecureField>,
+    q: Mle<FastSecureField>,
     // TODO: docs.
     c: Vec<FastSecureField>,
     num_variables: usize,
@@ -188,8 +194,8 @@ struct Oracle {
 impl Oracle {
     fn new(
         z: &[SecureField],
-        p: MultiLinearExtension<SecureField>,
-        q: MultiLinearExtension<SecureField>,
+        p: Mle<SecureField>,
+        q: Mle<SecureField>,
         lambda: SecureField,
         claim: SecureField,
     ) -> Self {
@@ -227,7 +233,7 @@ impl SumcheckOracle for Oracle {
     }
 
     #[no_mangle]
-    fn univariate_sum(&self) -> Polynomial<SecureField> {
+    fn univariate_sum(&self, claim: SecureField) -> Polynomial<SecureField> {
         let now = Instant::now();
         let zero = FastSecureField::zero();
         let one = FastSecureField::one();
@@ -288,6 +294,15 @@ impl SumcheckOracle for Oracle {
                     a + b
                 };
 
+                // 2(q0_lhs + q1_lhs) - (q0_rhs + q1_rhs)
+
+                // 1/q0_lhs + 1/q1_lhs = (q0_lhs + q1_lhs) / (q0_lhs * q1_lhs)
+                // 1/(2*q0_lhs - q0_rhs) + 1/(2*q1_lhs - q1_rhs) =
+                //   2(q0_lhs + q1_lhs) - (q0_rhs + q1_rhs) /
+                //
+                // (2*q0_lhs - q0_rhs)(2*q1_lhs - q1_rhs) = 4*q0_lhs*q1_lhs - 2*q0_lhs*q1_rhs -
+                // 2*q1_lhs*q0_rhs + q0_rhs*q1_rhs (q0)
+
                 // eval at -1:
                 let evaln1 = {
                     let p0_eval = p0_lhs.double() - p0_rhs;
@@ -340,7 +355,7 @@ impl SumcheckOracle for Oracle {
     }
 
     #[no_mangle]
-    fn fix_first(self, challenge: SecureField, claim: SecureField) -> Self {
+    fn fix_first(self, challenge: SecureField) -> Self {
         #[allow(clippy::useless_conversion)]
         let challenge: FastSecureField = challenge.into();
 
@@ -424,7 +439,7 @@ fn collapse_c(
 }
 
 // <https://people.cs.georgetown.edu/jthaler/ProofsArgsAndZK.pdf> (page 65)
-pub fn prove(channel: &mut (impl Channel + Clone), layers: Vec<MleLayer>) -> GkrProof {
+pub fn prove(channel: &mut impl Channel, layers: Vec<MleLayer>) -> GkrProof {
     let mut layers = layers.into_iter();
 
     let output_layer = layers.next().expect("must contain a layer");

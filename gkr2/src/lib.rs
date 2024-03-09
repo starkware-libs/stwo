@@ -2,6 +2,8 @@
 
 pub mod c31;
 pub mod gkr;
+pub mod gkr_generic;
+pub mod gkr_logup;
 pub mod m31;
 pub mod mle;
 pub mod q31;

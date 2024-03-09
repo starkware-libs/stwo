@@ -302,6 +302,7 @@ dependencies = [
 name = "gkr2"
 version = "0.1.0"
 dependencies = [
+ "itertools 0.12.0",
  "num-traits",
  "prover-research",
  "thiserror",

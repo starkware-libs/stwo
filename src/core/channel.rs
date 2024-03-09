@@ -33,17 +33,23 @@ pub trait Channel {
     const BYTES_PER_HASH: usize;
 
     fn new(digest: Self::Digest) -> Self;
+
     fn get_digest(&self) -> Self::Digest;
 
-    // Mix functions.
     fn mix_digest(&mut self, digest: Self::Digest);
+
     fn mix_felts(&mut self, felts: &[SecureField]);
+
+    // TODO: fn mix_felt_chunks<'a>(&mut self, felts: impl Iterator<Item = &'a [SecureField]>);
+
     fn mix_nonce(&mut self, nonce: u64);
 
     // Draw functions.
     fn draw_felt(&mut self) -> SecureField;
+
     /// Generates a uniform random vector of SecureField elements.
     fn draw_felts(&mut self, n_felts: usize) -> Vec<SecureField>;
+
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
 }

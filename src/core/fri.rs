@@ -280,12 +280,12 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
 
             layer_bound = layer_bound
                 .fold(FOLD_STEP)
-                .ok_or(VerificationError::InvalidNumFriLayers)?;
+                .ok_or(VerificationError::NumFriLayersInvalid)?;
             layer_domain = layer_domain.double();
         }
 
         if layer_bound.log_degree_bound != config.log_last_layer_degree_bound {
-            return Err(VerificationError::InvalidNumFriLayers);
+            return Err(VerificationError::NumFriLayersInvalid);
         }
 
         let last_layer_domain = layer_domain;
@@ -423,7 +423,7 @@ pub trait FriChannel {
 #[derive(Error, Debug)]
 pub enum VerificationError {
     #[error("proof contains an invalid number of FRI layers")]
-    InvalidNumFriLayers,
+    NumFriLayersInvalid,
     #[error("queries do not resolve to their commitment in layer {layer}")]
     InnerLayerCommitmentInvalid { layer: usize },
     #[error("evaluations are invalid in layer {layer}")]
@@ -995,7 +995,7 @@ mod tests {
 
         assert!(matches!(
             verifier,
-            Err(VerificationError::InvalidNumFriLayers)
+            Err(VerificationError::NumFriLayersInvalid)
         ));
     }
 
@@ -1017,7 +1017,7 @@ mod tests {
 
         assert!(matches!(
             verifier,
-            Err(VerificationError::InvalidNumFriLayers)
+            Err(VerificationError::NumFriLayersInvalid)
         ));
     }
 
