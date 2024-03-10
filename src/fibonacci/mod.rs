@@ -211,7 +211,7 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
     let composition_polynomial_commitment_tree =
         CommitmentTreeVerifier::new(proof.composition_polynomial_commitment, channel);
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-    let trace_oods_points = &fib.air.mask_points(oods_point)[0];
+    let trace_oods_points = fib.air.mask_points(oods_point);
 
     let composition_polynomial_oods_value = fib.air.eval_composition_polynomial_at_point(
         oods_point,
@@ -271,24 +271,31 @@ pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
         );
         sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
     }
-    for (oods_point, oods_value) in zip(&trace_oods_points[0], &proof.trace_oods_values[0][0]) {
-        let mut evaluation = Vec::with_capacity(trace_opening_positions.len());
-        let mut opened_values = proof.trace_opened_values[0].iter().copied();
-        for sub_circle_domain in trace_opening_positions.iter() {
-            let values = (&mut opened_values)
-                .take(1 << sub_circle_domain.log_size)
-                .collect();
-            let sub_circle_evaluation = CircleEvaluation::new(
-                sub_circle_domain.to_circle_domain(&fib.trace_commitment_domain.circle_domain()),
-                values,
-            );
-            evaluation.push(
-                get_pair_oods_quotient(*oods_point, *oods_value, &sub_circle_evaluation)
-                    .bit_reverse(),
-            );
+    for (component_points, component_values) in zip(&trace_oods_points, &proof.trace_oods_values) {
+        for (i, (column_points, column_values)) in
+            enumerate(zip(component_points, component_values))
+        {
+            for (oods_point, oods_value) in zip(column_points, column_values) {
+                let mut evaluation = Vec::with_capacity(trace_opening_positions.len());
+                let mut opened_values = proof.trace_opened_values[i].iter().copied();
+                for sub_circle_domain in trace_opening_positions.iter() {
+                    let values = (&mut opened_values)
+                        .take(1 << sub_circle_domain.log_size)
+                        .collect();
+                    let sub_circle_evaluation = CircleEvaluation::new(
+                        sub_circle_domain
+                            .to_circle_domain(&fib.trace_commitment_domain.circle_domain()),
+                        values,
+                    );
+                    evaluation.push(
+                        get_pair_oods_quotient(*oods_point, *oods_value, &sub_circle_evaluation)
+                            .bit_reverse(),
+                    );
+                }
+                assert!(opened_values.next().is_none(), "Not all values were used.");
+                sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
+            }
         }
-        assert!(opened_values.next().is_none(), "Not all values were used.");
-        sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
     }
 
     fri_verifier.decommit(sparse_circle_evaluations).unwrap();
