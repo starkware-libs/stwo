@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::iter::zip;
 use std::ops::Deref;
 
@@ -8,13 +9,78 @@ use super::channel::Blake2sChannel;
 use super::fields::m31::BaseField;
 use super::poly::circle::CanonicCoset;
 use super::poly::BitReversedOrder;
+use super::queries::SparseSubCircleDomain;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::channel::Channel;
 
-// TODO(AlonH): Add CommitmentScheme structs to contain multiple CommitmentTree instances.
+/// Holds a vector for each tree, which holds a vector for each column, which holds its respective
+/// opened values.
+pub struct OpenedValues(pub Vec<ColumnVec<Vec<BaseField>>>);
+
+impl Deref for OpenedValues {
+    type Target = Vec<Vec<Vec<BaseField>>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub struct Decommitments(Vec<MerkleDecommitment<BaseField, Blake2sHasher>>);
+
+impl Deref for Decommitments {
+    type Target = Vec<MerkleDecommitment<BaseField, Blake2sHasher>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub struct CommitmentSchemeProver {
+    pub trees: Vec<CommitmentTreeProver>,
+    pub log_blowup_factor: u32,
+}
+
+impl CommitmentSchemeProver {
+    pub fn new(log_blowup_factor: u32) -> Self {
+        CommitmentSchemeProver {
+            trees: Vec::new(),
+            log_blowup_factor,
+        }
+    }
+
+    pub fn commit(
+        &mut self,
+        polynomials: ColumnVec<CPUCirclePoly<BaseField>>,
+        channel: &mut Blake2sChannel,
+    ) {
+        let tree = CommitmentTreeProver::new(polynomials, self.log_blowup_factor, channel);
+        self.trees.push(tree);
+    }
+
+    pub fn roots(&self) -> Vec<Blake2sHash> {
+        self.trees.iter().map(|tree| tree.root()).collect()
+    }
+
+    pub fn decommit(
+        &self,
+        positions: BTreeMap<u32, SparseSubCircleDomain>,
+    ) -> (OpenedValues, Decommitments) {
+        let (values, decommitments) = self
+            .trees
+            .iter()
+            .map(|tree| {
+                tree.decommit(
+                    positions[&(tree.polynomials[0].log_size() + self.log_blowup_factor)].flatten(),
+                )
+            })
+            .unzip();
+        (OpenedValues(values), Decommitments(decommitments))
+    }
+}
+
 pub struct CommitmentTreeProver {
     pub polynomials: ColumnVec<CPUCirclePoly<BaseField>>,
     pub evaluations: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
@@ -73,6 +139,38 @@ impl Deref for CommitmentTreeProver {
 
     fn deref(&self) -> &Self::Target {
         &self.commitment
+    }
+}
+
+#[derive(Default)]
+pub struct CommitmentSchemeVerifier {
+    pub commitments: Vec<CommitmentTreeVerifier>,
+}
+
+impl CommitmentSchemeVerifier {
+    pub fn new() -> Self {
+        CommitmentSchemeVerifier {
+            commitments: Vec::new(),
+        }
+    }
+
+    pub fn commit(&mut self, commitment: Blake2sHash, channel: &mut Blake2sChannel) {
+        let verifier = CommitmentTreeVerifier::new(commitment, channel);
+        self.commitments.push(verifier);
+    }
+
+    pub fn verify(
+        &self,
+        decommitments: &[MerkleDecommitment<BaseField, Blake2sHasher>],
+        positions: &[SparseSubCircleDomain],
+    ) -> bool {
+        self.commitments
+            .iter()
+            .zip(decommitments)
+            .zip(positions)
+            .all(|((commitment, decommitment), positions)| {
+                commitment.verify(decommitment, &positions.flatten())
+            })
     }
 }
 
