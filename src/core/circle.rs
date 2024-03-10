@@ -444,10 +444,13 @@ impl<T: Add<Output = T> + Copy> Iterator for CosetIterator<T> {
 mod tests {
     use std::collections::BTreeSet;
 
+    use num_traits::Pow;
+
     use super::{CirclePointIndex, Coset};
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::{Blake2sChannel, Channel};
-    use crate::core::circle::CirclePoint;
+    use crate::core::circle::{CirclePoint, SECURE_FIELD_CIRCLE_GEN};
+    use crate::core::fields::qm31::P4;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 
     #[test]
@@ -518,5 +521,37 @@ mod tests {
             first_random_circle_point,
             CirclePoint::get_random_point(&mut channel)
         );
+    }
+
+    #[test]
+    pub fn test_secure_field_circle_gen() {
+        let prime_factors = [
+            (2, 33),
+            (3, 2),
+            (5, 1),
+            (7, 1),
+            (11, 1),
+            (31, 1),
+            (151, 1),
+            (331, 1),
+            (733, 1),
+            (1709, 1),
+            (368140581013, 1),
+        ];
+
+        assert_eq!(
+            prime_factors
+                .iter()
+                .map(|(p, e)| p.pow(*e as u32))
+                .product::<u128>(),
+            P4 - 1
+        );
+        assert_eq!(SECURE_FIELD_CIRCLE_GEN.mul(P4 - 1), CirclePoint::zero());
+        for (p, _) in prime_factors.iter() {
+            assert_ne!(
+                SECURE_FIELD_CIRCLE_GEN.mul((P4 - 1) / *p),
+                CirclePoint::zero()
+            );
+        }
     }
 }
