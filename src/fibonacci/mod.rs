@@ -7,60 +7,32 @@ use self::air::FibonacciAir;
 use self::component::FibonacciComponent;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
-use crate::core::air::evaluation::SECURE_EXTENSION_DEGREE;
 use crate::core::air::AirExt;
-use crate::core::backend::CPUBackend;
-use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
+use crate::core::backend::cpu::CPUCircleEvaluation;
+use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::circle::CirclePoint;
-use crate::core::commitment_scheme::{
-    CommitmentSchemeProver, CommitmentSchemeVerifier, Decommitments, OpenedValues,
-};
+use crate::core::commitment_scheme::CommitmentSchemeVerifier;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
-use crate::core::fri::{FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation};
+use crate::core::fri::{FriConfig, FriVerifier, SparseCircleEvaluation};
 use crate::core::oods::get_pair_oods_quotient;
 use crate::core::poly::circle::{combine_secure_value, CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
-use crate::core::ComponentVec;
-
-type Channel = Blake2sChannel;
-type MerkleHasher = Blake2sHasher;
+use crate::core::proof_of_work::ProofOfWork;
+use crate::core::prover::{
+    prove, StarkProof, LOG_BLOWUP_FACTOR, LOG_LAST_LAYER_DEGREE_BOUND, N_QUERIES,
+    PROOF_OF_WORK_BITS,
+};
 
 mod air;
 mod component;
-
-const LOG_BLOWUP_FACTOR: u32 = 1;
-// TODO(Andrew): Change to 0 once related bug is fixed.
-const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 1;
-const PROOF_OF_WORK_BITS: u32 = 12;
-const N_QUERIES: usize = 3;
 
 pub struct Fibonacci {
     pub air: FibonacciAir,
     pub trace_commitment_domain: CanonicCoset,
     pub composition_polynomial_commitment_domain: CanonicCoset,
     pub claim: BaseField,
-}
-
-pub struct AdditionalProofData {
-    pub composition_polynomial_oods_value: SecureField,
-    pub composition_polynomial_random_coeff: SecureField,
-    pub oods_point: CirclePoint<SecureField>,
-    pub oods_quotients: Vec<CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>,
-}
-
-pub struct FibonacciProof {
-    pub public_input: BaseField,
-    pub commitments: Vec<<MerkleHasher as Hasher>::Hash>,
-    pub decommitments: Decommitments,
-    pub trace_oods_values: ComponentVec<Vec<SecureField>>,
-    pub composition_polynomial_column_oods_values: [SecureField; SECURE_EXTENSION_DEGREE],
-    pub opened_values: OpenedValues,
-    pub proof_of_work: ProofOfWorkProof,
-    pub fri_proof: FriProof<MerkleHasher>,
-    pub additional_proof_data: AdditionalProofData,
 }
 
 impl Fibonacci {
@@ -77,7 +49,7 @@ impl Fibonacci {
         }
     }
 
-    fn get_trace(&self) -> CircleEvaluation<CPUBackend, BaseField, BitReversedOrder> {
+    fn get_trace(&self) -> CPUCircleEvaluation<BaseField, BitReversedOrder> {
         // Trace.
         let trace_domain = CanonicCoset::new(self.air.component.log_size);
         // TODO(AlonH): Consider using Vec::new instead of Vec::with_capacity throughout file.
@@ -97,98 +69,17 @@ impl Fibonacci {
         CircleEvaluation::new_canonical_ordered(trace_domain, trace)
     }
 
-    pub fn prove(&self) -> FibonacciProof {
-        let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(&[self.claim])));
-
-        // Evaluate and commit on trace.
+    pub fn prove(&self) -> StarkProof {
         let trace = self.get_trace();
-        let trace_poly = trace.interpolate();
-        let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
-        commitment_scheme.commit(vec![trace_poly], channel);
-
-        // Evaluate and commit on composition polynomial.
-        let random_coeff = channel.draw_felt();
-        let composition_polynomial_poly = self.air.compute_composition_polynomial(
-            random_coeff,
-            &self
-                .air
-                .component_traces(&commitment_scheme.trees[0].polynomials),
-        );
-        commitment_scheme.commit(composition_polynomial_poly.to_vec(), channel);
-
-        // Evaluate the trace mask and the composition polynomial on the OODS point.
-        let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-        let (trace_oods_points, trace_oods_values) = self.air.mask_points_and_values(
-            oods_point,
-            &self
-                .air
-                .component_traces(&commitment_scheme.trees[0].polynomials),
-        );
-        let composition_polynomial_oods_value =
-            composition_polynomial_poly.eval_at_point(oods_point);
-
-        // Calculate a quotient polynomial for each trace mask item and one for the composition
-        // polynomial.
-        let mut oods_quotients =
-            Vec::with_capacity(trace_oods_points.len() + SECURE_EXTENSION_DEGREE);
-        let composition_polynomial_column_oods_values =
-            composition_polynomial_poly.eval_columns_at_point(oods_point);
-        for (evaluation, value) in zip(
-            &commitment_scheme.trees[1].evaluations,
-            composition_polynomial_column_oods_values,
-        ) {
-            oods_quotients
-                .push(get_pair_oods_quotient(oods_point, value, evaluation).bit_reverse());
-        }
-        for (component_points, component_values) in zip(&trace_oods_points, &trace_oods_values) {
-            for (i, (column_points, column_values)) in
-                enumerate(zip(component_points, component_values))
-            {
-                for (point, value) in zip(column_points, column_values) {
-                    oods_quotients.push(
-                        get_pair_oods_quotient(
-                            *point,
-                            *value,
-                            &commitment_scheme.trees[0].evaluations[i],
-                        )
-                        .bit_reverse(),
-                    );
-                }
-            }
-        }
-
-        let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-        let fri_prover = FriProver::commit(channel, fri_config, &oods_quotients);
-
-        let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
-        let (fri_proof, fri_opening_positions) = fri_prover.decommit(channel);
-
-        let (opened_values, decommitments) = commitment_scheme.decommit(fri_opening_positions);
-
-        FibonacciProof {
-            public_input: self.claim,
-            commitments: commitment_scheme.roots(),
-            decommitments,
-            trace_oods_values,
-            composition_polynomial_column_oods_values,
-            opened_values,
-            proof_of_work,
-            fri_proof,
-            additional_proof_data: AdditionalProofData {
-                composition_polynomial_oods_value,
-                composition_polynomial_random_coeff: random_coeff,
-                oods_point,
-                oods_quotients,
-            },
-        }
+        let channel =
+            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self.claim])));
+        prove(&self.air, channel, trace)
     }
 }
 
-pub fn verify_proof<const N_BITS: u32>(proof: FibonacciProof) -> bool {
-    let fib = Fibonacci::new(N_BITS, proof.public_input);
-    let channel = &mut Channel::new(Blake2sHasher::hash(BaseField::into_slice(&[
-        proof.public_input
-    ])));
+pub fn verify_proof<const N_BITS: u32>(proof: StarkProof, claim: BaseField) -> bool {
+    let fib = Fibonacci::new(N_BITS, claim);
+    let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[claim])));
     let mut commitment_scheme = CommitmentSchemeVerifier::new();
     commitment_scheme.commit(proof.commitments[0], channel);
     let random_coeff = channel.draw_felt();
@@ -422,7 +313,7 @@ mod tests {
                 .composition_polynomial_oods_value,
             hz
         );
-        assert!(verify_proof::<FIB_LOG_SIZE>(proof));
+        assert!(verify_proof::<FIB_LOG_SIZE>(proof, fib.claim));
     }
 
     // TODO(AlonH): Check the correct error occurs after introducing errors instead of
@@ -436,7 +327,7 @@ mod tests {
         let mut invalid_proof = fib.prove();
         invalid_proof.opened_values[0][0][4] += BaseField::one();
 
-        verify_proof::<FIB_LOG_SIZE>(invalid_proof);
+        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim);
     }
 
     // TODO(AlonH): Check the correct error occurs after introducing errors instead of
@@ -450,7 +341,7 @@ mod tests {
         let mut invalid_proof = fib.prove();
         invalid_proof.trace_oods_values.swap(0, 1);
 
-        verify_proof::<FIB_LOG_SIZE>(invalid_proof);
+        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim);
     }
 
     // TODO(AlonH): Check the correct error occurs after introducing errors instead of
@@ -464,6 +355,6 @@ mod tests {
         let mut invalid_proof = fib.prove();
         invalid_proof.opened_values[0][0].pop();
 
-        verify_proof::<FIB_LOG_SIZE>(invalid_proof);
+        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim);
     }
 }
