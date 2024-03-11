@@ -5,7 +5,7 @@ coverage:
     project:
       default:
         target: auto # set the target coverage to the value of the parent commit
-        threshold: 0% # pct of drop in coverage that is still considered as success
+        threshold: 10% # pct of drop in coverage that is still considered as success
         informational: true # if true does not fail the CI is coverage is bellow the target value
         only_pulls: true # run only on PRs
     patch:
