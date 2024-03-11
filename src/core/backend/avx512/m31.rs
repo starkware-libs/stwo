@@ -2,7 +2,7 @@ use core::arch::x86_64::{
     __m512i, _mm512_add_epi32, _mm512_min_epu32, _mm512_mul_epu32, _mm512_srli_epi64,
     _mm512_sub_epi32,
 };
-use std::arch::x86_64::_mm512_permutex2var_epi32;
+use std::arch::x86_64::{_mm512_load_epi32, _mm512_permutex2var_epi32, _mm512_store_epi32};
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -14,11 +14,45 @@ use crate::core::fields::FieldExpOps;
 pub const K_BLOCK_SIZE: usize = 16;
 pub const M512P: __m512i = unsafe { core::mem::transmute([P; K_BLOCK_SIZE]) };
 
+/// An input to _mm512_permutex2var_epi32, and is used to interleave the low half of a
+/// with the low half of b.
+pub const LHALF_INTERLEAVE_LHALF: __m512i = unsafe {
+    core::mem::transmute([
+        0b00000, 0b10000, 0b00001, 0b10001, 0b00010, 0b10010, 0b00011, 0b10011, 0b00100, 0b10100,
+        0b00101, 0b10101, 0b00110, 0b10110, 0b00111, 0b10111,
+    ])
+};
+/// An input to _mm512_permutex2var_epi32, and is used to interleave the high half of a
+/// with the high half of b.
+pub const HHALF_INTERLEAVE_HHALF: __m512i = unsafe {
+    core::mem::transmute([
+        0b01000, 0b11000, 0b01001, 0b11001, 0b01010, 0b11010, 0b01011, 0b11011, 0b01100, 0b11100,
+        0b01101, 0b11101, 0b01110, 0b11110, 0b01111, 0b11111,
+    ])
+};
+
+/// An input to _mm512_permutex2var_epi32, and is used to concat the even words of a
+/// with the even words of b.
+pub const EVENS_CONCAT_EVENS: __m512i = unsafe {
+    core::mem::transmute([
+        0b00000, 0b00010, 0b00100, 0b00110, 0b01000, 0b01010, 0b01100, 0b01110, 0b10000, 0b10010,
+        0b10100, 0b10110, 0b11000, 0b11010, 0b11100, 0b11110,
+    ])
+};
+/// An input to _mm512_permutex2var_epi32, and is used to concat the odd words of a
+/// with the odd words of b.
+pub const ODDS_CONCAT_ODDS: __m512i = unsafe {
+    core::mem::transmute([
+        0b00001, 0b00011, 0b00101, 0b00111, 0b01001, 0b01011, 0b01101, 0b01111, 0b10001, 0b10011,
+        0b10101, 0b10111, 0b11001, 0b11011, 0b11101, 0b11111,
+    ])
+};
+
 /// AVX512 implementation of M31.
 /// Stores 16 M31 elements in a single 512-bit register.
 /// Each M31 element is unreduced in the range [0, P].
 #[derive(Copy, Clone, Debug)]
-pub struct PackedBaseField(__m512i);
+pub struct PackedBaseField(pub __m512i);
 
 impl PackedBaseField {
     pub fn from_array(v: [M31; K_BLOCK_SIZE]) -> PackedBaseField {
@@ -36,6 +70,46 @@ impl PackedBaseField {
     /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
     pub fn reduce(self) -> PackedBaseField {
         Self(unsafe { _mm512_min_epu32(self.0, _mm512_sub_epi32(self.0, M512P)) })
+    }
+
+    /// Interleaves self with other.
+    /// Returns the result as two packed M31 elements.
+    pub fn interleave_with(self, other: Self) -> (Self, Self) {
+        (
+            Self(unsafe { _mm512_permutex2var_epi32(self.0, LHALF_INTERLEAVE_LHALF, other.0) }),
+            Self(unsafe { _mm512_permutex2var_epi32(self.0, HHALF_INTERLEAVE_HHALF, other.0) }),
+        )
+    }
+
+    /// Deinterleaves self with other.
+    /// Done by concatenating the even words of self with the even words of other, and the odd words
+    /// The inverse of [Self::interleave_with].
+    /// Returns the result as two packed M31 elements.
+    pub fn deinterleave_with(self, other: Self) -> (Self, Self) {
+        (
+            Self(unsafe { _mm512_permutex2var_epi32(self.0, EVENS_CONCAT_EVENS, other.0) }),
+            Self(unsafe { _mm512_permutex2var_epi32(self.0, ODDS_CONCAT_ODDS, other.0) }),
+        )
+    }
+
+    pub fn permute_with(self, idx: __m512i, other: Self) -> Self {
+        Self(unsafe { _mm512_permutex2var_epi32(self.0, idx, other.0) })
+    }
+
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs a load from a raw pointer. The pointer must be
+    /// valid and aligned to 64 bytes.
+    pub unsafe fn load(ptr: *const i32) -> Self {
+        Self(_mm512_load_epi32(ptr))
+    }
+
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs a load from a raw pointer. The pointer must be
+    /// valid and aligned to 64 bytes.
+    pub unsafe fn store(self, ptr: *mut i32) {
+        _mm512_store_epi32(ptr, self.0);
     }
 }
 
