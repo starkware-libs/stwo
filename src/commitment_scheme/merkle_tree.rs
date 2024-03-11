@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::BTreeSet;
 use std::fmt::{Debug, Display};
 
@@ -49,7 +50,10 @@ where
         });
 
         let n_rows_in_node = std::cmp::min(
-            prev_pow_two(H::BLOCK_SIZE / (trace.len() * std::mem::size_of::<T>())),
+            prev_pow_two(max(
+                H::BLOCK_SIZE / (trace.len() * std::mem::size_of::<T>()),
+                1,
+            )),
             trace[0].len(),
         );
 

@@ -69,6 +69,8 @@ pub struct Blake2sHasher {
     state: Blake2s256,
 }
 
+pub static mut HASH_COUNTER: u64 = 0;
+
 impl super::hasher::Hasher for Blake2sHasher {
     type Hash = Blake2sHash;
     const BLOCK_SIZE: usize = 64;
@@ -95,6 +97,26 @@ impl super::hasher::Hasher for Blake2sHasher {
 
     fn finalize_reset(&mut self) -> Blake2sHash {
         Blake2sHash(self.state.finalize_reset().into())
+    }
+
+    fn concat_and_hash(v1: &Self::Hash, v2: &Self::Hash) -> Self::Hash {
+        let mut hasher = Self::new();
+        hasher.update(v1.as_ref());
+        hasher.update(v2.as_ref());
+        unsafe {
+            HASH_COUNTER += 1;
+        }
+        hasher.finalize()
+    }
+
+    fn hash(data: &[Self::NativeType]) -> Self::Hash {
+        let mut hasher = Self::new();
+        hasher.update(data);
+        let n_hashes = data.len().div_ceil(Self::BLOCK_SIZE) as u64;
+        unsafe {
+            HASH_COUNTER += n_hashes;
+        }
+        hasher.finalize()
     }
 
     unsafe fn hash_many_in_place(
