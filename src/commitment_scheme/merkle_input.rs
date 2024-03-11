@@ -98,31 +98,31 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
         self.columns_to_inject.len()
     }
 
-    // Returns the structure of the merkle tree. i.e. for each depth, the length of the columns
+    // Returns the column layout of the merkle tree. i.e. for each depth, the length of the columns
     // assigned to it.
     // TODO(Ohad): implement this logic for the verifier.
-    pub fn configuration(&self) -> MerkleTreeConfig {
+    pub fn column_layout(&self) -> MerkleTreeColumnLayout {
         let column_sizes = self
             .columns_to_inject
             .iter()
             .map(|col| col.len())
             .collect::<Vec<usize>>();
-        MerkleTreeConfig {
+        MerkleTreeColumnLayout {
             column_sizes,
             injected_depths_map: self.injected_depths_map.clone(),
         }
     }
 }
 
-/// The structure of a mixed degree merkle tree.
+/// The column layout of a mixed degree merkle tree.
 /// The sizes of columns assigned to every layer, ordered as they were inserted & injected into hash
 /// blocks.
-pub struct MerkleTreeConfig {
+pub struct MerkleTreeColumnLayout {
     column_sizes: Vec<usize>,
     injected_depths_map: Vec<Vec<usize>>,
 }
 
-impl MerkleTreeConfig {
+impl MerkleTreeColumnLayout {
     pub fn sort_queries_by_layer(&self, queries: &[Vec<usize>]) -> Vec<Vec<Vec<usize>>> {
         let mut queries_to_layers = vec![vec![]; self.height()];
         (1..=self.height()).for_each(|i| {
@@ -261,7 +261,7 @@ mod tests {
         merkle_input.insert_column(2, &column_length_4);
         merkle_input.insert_column(3, &column_length_16);
 
-        let merkle_config = merkle_input.configuration();
+        let merkle_config = merkle_input.column_layout();
 
         assert_eq!(merkle_config.column_lengths_at_depth(3), vec![4, 16]);
         assert_eq!(merkle_config.column_lengths_at_depth(2), vec![8, 4]);
@@ -280,7 +280,7 @@ mod tests {
 
         let queries = vec![vec![0], vec![1], vec![2], vec![3], vec![4], vec![5]];
 
-        let merkle_config = merkle_input.configuration();
+        let merkle_config = merkle_input.column_layout();
         let sorted_queries = merkle_config.sort_queries_by_layer(&queries);
 
         assert_eq!(
