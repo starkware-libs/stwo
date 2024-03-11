@@ -1,50 +1,30 @@
-use std::iter::zip;
-
-use itertools::{enumerate, Itertools};
 use num_traits::One;
 
 use self::air::FibonacciAir;
 use self::component::FibonacciComponent;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
-use crate::core::air::AirExt;
 use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::channel::{Blake2sChannel, Channel};
-use crate::core::circle::CirclePoint;
-use crate::core::commitment_scheme::CommitmentSchemeVerifier;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
-use crate::core::fri::{FriConfig, FriVerifier, SparseCircleEvaluation};
-use crate::core::oods::get_pair_oods_quotient;
-use crate::core::poly::circle::{combine_secure_value, CanonicCoset, CircleEvaluation};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::proof_of_work::ProofOfWork;
-use crate::core::prover::{
-    prove, StarkProof, LOG_BLOWUP_FACTOR, LOG_LAST_LAYER_DEGREE_BOUND, N_QUERIES,
-    PROOF_OF_WORK_BITS,
-};
+use crate::core::prover::{prove, verify, StarkProof};
 
 mod air;
 mod component;
 
 pub struct Fibonacci {
     pub air: FibonacciAir,
-    pub trace_commitment_domain: CanonicCoset,
-    pub composition_polynomial_commitment_domain: CanonicCoset,
     pub claim: BaseField,
 }
 
 impl Fibonacci {
     pub fn new(log_size: u32, claim: BaseField) -> Self {
-        let trace_commitment_domain = CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR);
-        let composition_polynomial_commitment_domain =
-            CanonicCoset::new(log_size + 1 + LOG_BLOWUP_FACTOR);
         let component = FibonacciComponent::new(log_size, claim);
         Self {
             air: FibonacciAir::new(component),
-            trace_commitment_domain,
-            composition_polynomial_commitment_domain,
             claim,
         }
     }
@@ -80,95 +60,7 @@ impl Fibonacci {
 pub fn verify_proof<const N_BITS: u32>(proof: StarkProof, claim: BaseField) -> bool {
     let fib = Fibonacci::new(N_BITS, claim);
     let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[claim])));
-    let mut commitment_scheme = CommitmentSchemeVerifier::new();
-    commitment_scheme.commit(proof.commitments[0], channel);
-    let random_coeff = channel.draw_felt();
-    commitment_scheme.commit(proof.commitments[1], channel);
-    let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-    let trace_oods_points = fib.air.mask_points(oods_point);
-
-    let composition_polynomial_oods_value = fib.air.eval_composition_polynomial_at_point(
-        oods_point,
-        &proof.trace_oods_values,
-        random_coeff,
-    );
-    assert_eq!(
-        composition_polynomial_oods_value,
-        combine_secure_value(proof.composition_polynomial_column_oods_values)
-    );
-
-    let bounds = fib.air.quotient_log_bounds();
-    let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-    let mut fri_verifier =
-        FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
-
-    ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work);
-    let opening_positions = fri_verifier
-        .column_opening_positions(channel)
-        .into_values()
-        .collect_vec();
-    commitment_scheme.verify(&proof.decommitments, &opening_positions);
-
-    // An evaluation for each mask item and one for the composition_polynomial.
-    let mut sparse_circle_evaluations = Vec::with_capacity(trace_oods_points.len() + 1);
-    for (opened_values, oods_value) in zip(
-        &proof.opened_values[1],
-        proof.composition_polynomial_column_oods_values,
-    ) {
-        let mut evaluation = Vec::with_capacity(opening_positions[1].len());
-        let mut opened_values_iter = opened_values.iter();
-        for sub_circle_domain in opening_positions[1].iter() {
-            let values = (&mut opened_values_iter)
-                .take(1 << sub_circle_domain.log_size)
-                .copied()
-                .collect();
-            let sub_circle_evaluation = CircleEvaluation::new(
-                sub_circle_domain.to_circle_domain(
-                    &fib.composition_polynomial_commitment_domain.circle_domain(),
-                ),
-                values,
-            );
-            evaluation.push(
-                get_pair_oods_quotient(oods_point, oods_value, &sub_circle_evaluation)
-                    .bit_reverse(),
-            );
-        }
-        assert!(
-            opened_values_iter.next().is_none(),
-            "Not all values were used."
-        );
-        sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
-    }
-    for (component_points, component_values) in zip(&trace_oods_points, &proof.trace_oods_values) {
-        for (i, (column_points, column_values)) in
-            enumerate(zip(component_points, component_values))
-        {
-            for (oods_point, oods_value) in zip(column_points, column_values) {
-                let mut evaluation = Vec::with_capacity(opening_positions[0].len());
-                let mut opened_values = proof.opened_values[0][i].iter().copied();
-                for sub_circle_domain in opening_positions[0].iter() {
-                    let values = (&mut opened_values)
-                        .take(1 << sub_circle_domain.log_size)
-                        .collect();
-                    let sub_circle_evaluation = CircleEvaluation::new(
-                        sub_circle_domain
-                            .to_circle_domain(&fib.trace_commitment_domain.circle_domain()),
-                        values,
-                    );
-                    evaluation.push(
-                        get_pair_oods_quotient(*oods_point, *oods_value, &sub_circle_evaluation)
-                            .bit_reverse(),
-                    );
-                }
-                assert!(opened_values.next().is_none(), "Not all values were used.");
-                sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
-            }
-        }
-    }
-
-    fri_verifier.decommit(sparse_circle_evaluations).unwrap();
-
-    true
+    verify(proof, &fib.air, channel, N_BITS)
 }
 
 #[cfg(test)]
