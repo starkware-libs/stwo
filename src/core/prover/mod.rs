@@ -30,7 +30,7 @@ pub const LOG_BLOWUP_FACTOR: u32 = 1;
 // TODO(Andrew): Change to 0 once related bug is fixed.
 pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 1;
 pub const PROOF_OF_WORK_BITS: u32 = 12;
-pub const N_QUERIES: usize = 3;
+pub const N_QUERIES: usize = 100;
 
 pub struct StarkProof {
     pub commitments: Vec<<MerkleHasher as Hasher>::Hash>,

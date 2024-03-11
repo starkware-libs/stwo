@@ -14,6 +14,7 @@ use crate::core::prover::{prove, verify, StarkProof};
 
 mod air;
 mod component;
+pub mod multiple_component_air;
 
 pub struct Fibonacci {
     pub air: FibonacciAir,
