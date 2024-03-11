@@ -1,6 +1,6 @@
 use std::arch::x86_64::{
-    __m512i, _mm512_add_epi32, _mm512_broadcast_i64x4, _mm512_load_epi32, _mm512_min_epu32,
-    _mm512_permutexvar_epi32, _mm512_store_epi32, _mm512_sub_epi32, _mm512_xor_epi32,
+    __m512i, _mm512_broadcast_i64x4, _mm512_load_epi32, _mm512_permutexvar_epi32,
+    _mm512_store_epi32, _mm512_xor_epi32,
 };
 
 pub mod ifft;
@@ -55,7 +55,6 @@ const HHALF_INTERLEAVE_HHALF: __m512i = unsafe {
         0b01101, 0b11101, 0b01110, 0b11110, 0b01111, 0b11111,
     ])
 };
-const P: __m512i = unsafe { core::mem::transmute([(1u32 << 31) - 1; 16]) };
 
 pub const CACHED_FFT_LOG_SIZE: usize = 16;
 pub const MIN_FFT_LOG_SIZE: usize = 5;
@@ -129,34 +128,6 @@ unsafe fn compute_first_twiddles(twiddle1_dbl: [i32; 8]) -> (__m512i, __m512i) {
     };
     let t0 = _mm512_xor_epi32(_mm512_permutexvar_epi32(INDICES_FROM_T1, t1), NEGATION_MASK);
     (t0, t1)
-}
-
-// TODO(spapini): Move these to M31 AVX.
-
-/// Adds two packed M31 elements, and reduces the result to the range [0,P].
-/// Each value is assumed to be in unreduced form, [0, P] including P.
-/// # Safety
-/// This function is safe.
-pub unsafe fn add_mod_p(a: __m512i, b: __m512i) -> __m512i {
-    // Add word by word. Each word is in the range [0, 2P].
-    let c = _mm512_add_epi32(a, b);
-    // Apply min(c, c-P) to each word.
-    // When c in [P,2P], then c-P in [0,P] which is always less than [P,2P].
-    // When c in [0,P-1], then c-P in [2^32-P,2^32-1] which is always greater than [0,P-1].
-    _mm512_min_epu32(c, _mm512_sub_epi32(c, P))
-}
-
-/// Subtracts two packed M31 elements, and reduces the result to the range [0,P].
-/// Each value is assumed to be in unreduced form, [0, P] including P.
-/// # Safety
-/// This function is safe.
-pub unsafe fn sub_mod_p(a: __m512i, b: __m512i) -> __m512i {
-    // Subtract word by word. Each word is in the range [-P, P].
-    let c = _mm512_sub_epi32(a, b);
-    // Apply min(c, c+P) to each word.
-    // When c in [0,P], then c+P in [P,2P] which is always greater than [0,P].
-    // When c in [2^32-P,2^32-1], then c+P in [0,P-1] which is always less than [2^32-P,2^32-1].
-    _mm512_min_epu32(_mm512_add_epi32(c, P), c)
 }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
