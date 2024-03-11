@@ -4,14 +4,14 @@ use itertools::Itertools;
 use merging_iterator::MergeIter;
 
 use super::hasher::Hasher;
-use super::merkle_input::MerkleTreeConfig;
+use super::merkle_input::MerkleTreeColumnLayout;
 use super::mixed_degree_merkle_tree::queried_nodes_in_layer;
 use crate::core::fields::{Field, IntoSlice};
 
 /// A Merkle proof of queried indices.
 /// Used for storing a all the paths from the query leaves to the root.
 /// A correctly generated decommitment should hold all the information needed to generate the root
-/// of the tree, proving the queried values and the tree's structure.
+/// of the tree, proving the queried values and the tree's column layout.
 // TODO(Ohad): write printing functions.
 pub struct MixedDecommitment<F: Field, H: Hasher> {
     pub hashes: Vec<H::Hash>,
@@ -34,7 +34,7 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
     pub fn verify(
         &self,
         root: H::Hash,
-        structure: &MerkleTreeConfig,
+        column_layout: &MerkleTreeColumnLayout,
         queries: &[Vec<usize>],
         mut queried_values: impl Iterator<Item = F>,
     ) -> bool
@@ -42,16 +42,16 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
         F: IntoSlice<H::NativeType>,
     {
         let mut witness_hashes = self.hashes.iter();
-        let sorted_queries_by_layer = structure.sort_queries_by_layer(queries);
+        let sorted_queries_by_layer = column_layout.sort_queries_by_layer(queries);
 
         let mut next_layer_hashes = vec![];
         let mut ancestor_indices = vec![];
         let mut witness_elements = self.witness_elements.iter().copied();
-        for i in (1..=structure.height()).rev() {
+        for i in (1..=column_layout.height()).rev() {
             (next_layer_hashes, ancestor_indices) = Self::verify_single_layer(
                 i,
                 &sorted_queries_by_layer[i - 1],
-                structure,
+                column_layout,
                 ancestor_indices.iter().copied().peekable(),
                 queried_values.by_ref(),
                 &mut witness_elements,
@@ -67,7 +67,7 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
     fn verify_single_layer<'a>(
         layer_depth: usize,
         queries_to_layer: &[Vec<usize>],
-        structure: &MerkleTreeConfig,
+        column_layout: &MerkleTreeColumnLayout,
         mut previous_layers_indices: Peekable<impl ExactSizeIterator<Item = usize> + Clone>,
         mut queried_values: impl Iterator<Item = F>,
         mut witness_elements: impl Iterator<Item = F>,
@@ -78,7 +78,7 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
         F: IntoSlice<H::NativeType>,
     {
         let directly_queried_node_indices =
-            queried_nodes_in_layer(queries_to_layer.iter(), structure, layer_depth);
+            queried_nodes_in_layer(queries_to_layer.iter(), column_layout, layer_depth);
         let mut node_indices = MergeIter::new(
             directly_queried_node_indices.iter().copied(),
             previous_layers_indices.clone().map(|q| q / 2),
@@ -97,7 +97,7 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
         for &node_index in &node_indices {
             // Push correct child hashes to the hasher.
             match previous_layers_indices.next_if(|hash_index| *hash_index / 2 == node_index) {
-                None if layer_depth < structure.height() => {
+                None if layer_depth < column_layout.height() => {
                     hasher.update(witness_hashes_iter.next().unwrap().as_ref());
                     hasher.update(witness_hashes_iter.next().unwrap().as_ref());
                 }
@@ -129,7 +129,7 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
 
             // Chunk size - according to the column's length and the current depth, we calculate the
             // number of elements from that column 'injected' to the current node.
-            for (chunk_size, column_queries) in structure
+            for (chunk_size, column_queries) in column_layout
                 .column_lengths_at_depth(layer_depth)
                 .iter()
                 .map(|&column_length| column_length >> (layer_depth - 1))
@@ -154,9 +154,7 @@ mod tests {
     use crate::commitment_scheme::blake3_hash::Blake3Hasher;
     use crate::commitment_scheme::hasher::Hasher;
     use crate::commitment_scheme::merkle_input::MerkleTreeInput;
-    use crate::commitment_scheme::mixed_degree_merkle_tree::{
-        MixedDegreeMerkleTree, MixedDegreeMerkleTreeConfig,
-    };
+    use crate::commitment_scheme::mixed_degree_merkle_tree::MixedDegreeMerkleTree;
     use crate::core::fields::m31::M31;
 
     #[test]
@@ -168,17 +166,11 @@ mod tests {
         input.insert_column(TREE_HEIGHT, &column_length_8);
         input.insert_column(TREE_HEIGHT - 1, &column_length_4);
         input.insert_column(TREE_HEIGHT - 1, &column_length_8);
-        let config = input.configuration();
-        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
-            input,
-            MixedDegreeMerkleTreeConfig {
-                multi_layer_sizes: [3, 1].to_vec(),
-            },
-        );
-        let commitment = tree.commit();
+        let config = input.column_layout();
+        let (tree, commitment) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(&input);
         let queries: Vec<Vec<usize>> = vec![vec![2], vec![0_usize], vec![4, 7]];
 
-        let decommitment = tree.decommit(&queries);
+        let decommitment = tree.decommit(&input, &queries);
         assert!(decommitment.verify(
             commitment,
             &config,
@@ -197,18 +189,12 @@ mod tests {
         input.insert_column(TREE_HEIGHT, &column_length_8);
         input.insert_column(TREE_HEIGHT - 1, &column_length_4);
         input.insert_column(TREE_HEIGHT - 1, &column_length_8);
-        let config = input.configuration();
-        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
-            input,
-            MixedDegreeMerkleTreeConfig {
-                multi_layer_sizes: [3, 1].to_vec(),
-            },
-        );
-        tree.commit();
+        let config = input.column_layout();
+        let (tree, _) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(&input);
         let false_commitment = Blake3Hasher::hash(b"false_commitment");
 
         let queries: Vec<Vec<usize>> = vec![vec![2], vec![0_usize], vec![4, 7]];
-        let decommitment = tree.decommit(&queries);
+        let decommitment = tree.decommit(&input, &queries);
 
         assert!(decommitment.verify(
             false_commitment,
@@ -228,17 +214,11 @@ mod tests {
         input.insert_column(TREE_HEIGHT, &column_length_8);
         input.insert_column(TREE_HEIGHT - 1, &column_length_4);
         input.insert_column(TREE_HEIGHT - 1, &column_length_8);
-        let config = input.configuration();
-        let mut tree = MixedDegreeMerkleTree::<M31, Blake3Hasher>::new(
-            input,
-            MixedDegreeMerkleTreeConfig {
-                multi_layer_sizes: vec![3, 1],
-            },
-        );
-        let commitment = tree.commit();
+        let config = input.column_layout();
+        let (tree, commitment) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(&input);
 
         let queries: Vec<Vec<usize>> = vec![vec![2], vec![0_usize], vec![4, 7]];
-        let mut decommitment = tree.decommit(&queries);
+        let mut decommitment = tree.decommit(&input, &queries);
         decommitment.hashes[0] = Blake3Hasher::hash(b"false_hash");
 
         assert!(decommitment.verify(
