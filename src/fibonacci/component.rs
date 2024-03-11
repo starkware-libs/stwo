@@ -1,6 +1,6 @@
 use std::ops::Div;
 
-use num_traits::One;
+use num_traits::{One, Zero};
 
 use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentTrace, Mask};
@@ -32,6 +32,21 @@ impl FibonacciComponent {
         point: CirclePoint<F>,
         mask: &[F; 3],
     ) -> F {
+        let num = self.step_consnstraint_nominator(point, mask);
+        let denom = self.step_constraint_denominator(point);
+        num / denom
+    }
+
+    fn step_constraint_denominator<F: ExtensionOf<BaseField>>(&self, point: CirclePoint<F>) -> F {
+        let constraint_zero_domain = Coset::subgroup(self.log_size);
+        coset_vanishing(constraint_zero_domain, point)
+    }
+
+    fn step_consnstraint_nominator<F: ExtensionOf<BaseField>>(
+        &self,
+        point: CirclePoint<F>,
+        mask: &[F; 3],
+    ) -> F {
         let constraint_zero_domain = Coset::subgroup(self.log_size);
         let constraint_value = mask[0].square() + mask[1].square() - mask[2];
         let selector = pair_vanishing(
@@ -43,9 +58,7 @@ impl FibonacciComponent {
                 .into_ef(),
             point,
         );
-        let num = constraint_value * selector;
-        let denom = coset_vanishing(constraint_zero_domain, point);
-        num / denom
+        constraint_value * selector
     }
 
     /// Evaluates the boundary constraint quotient polynomial on a single point.
@@ -54,19 +67,40 @@ impl FibonacciComponent {
         point: CirclePoint<F>,
         mask: &[F; 1],
     ) -> F {
+        let num = self.boundary_constraint_nominator(point, mask);
+        let denom = self.boundary_constraint_denominator(point);
+        num / denom
+    }
+
+    fn boundary_constraint_nominator<F: ExtensionOf<BaseField>>(
+        &self,
+        point: CirclePoint<F>,
+        mask: &[F; 1],
+    ) -> F {
         let constraint_zero_domain = Coset::subgroup(self.log_size);
         let p = constraint_zero_domain.at(constraint_zero_domain.size() - 1);
+
         // On (1,0), we should get 1.
         // On p, we should get self.claim.
         // 1 + y * (self.claim - 1) * p.y^-1
         // TODO(spapini): Cache the constant.
         let linear = F::one() + point.y * (self.claim - BaseField::one()) * p.y.inverse();
 
-        let num = mask[0] - linear;
-        let denom = pair_vanishing(p.into_ef(), CirclePoint::zero(), point);
-        num / denom
+        mask[0] - linear
+    }
+
+    fn boundary_constraint_denominator<F: ExtensionOf<BaseField>>(
+        &self,
+        point: CirclePoint<F>,
+    ) -> F {
+        let constraint_zero_domain = Coset::subgroup(self.log_size);
+        let p = constraint_zero_domain.at(constraint_zero_domain.size() - 1);
+        pair_vanishing(p.into_ef(), CirclePoint::zero(), point)
     }
 }
+
+const CPU_CHUNK_LOG_SIZE: usize = 2;
+const CPU_CHUNK_SIZE: usize = 1 << CPU_CHUNK_LOG_SIZE;
 
 impl Component<CPUBackend> for FibonacciComponent {
     fn max_constraint_log_degree_bound(&self) -> u32 {
@@ -102,10 +136,44 @@ impl Component<CPUBackend> for FibonacciComponent {
         ] {
             let eval = trace_eval.fetch_eval_on_coset(point_coset.shift(trace_domain.index_at(0)));
             let mul = trace_domain.step_size().div(point_coset.step_size);
-            for (i, point) in point_coset.iter().enumerate() {
-                let mask = [eval[i], eval[i as isize + mul], eval[i as isize + 2 * mul]];
-                let res = self.step_constraint_eval_quotient_by_mask(point, &mask);
-                accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
+
+            // if the job is smaller than the chunk size, fallback to unoptimized version.
+            if point_coset.size() < CPU_CHUNK_SIZE {
+                for (i, point) in point_coset.iter().enumerate() {
+                    let mask = [eval[i], eval[i as isize + mul], eval[i as isize + 2 * mul]];
+                    let res = self.step_constraint_eval_quotient_by_mask(point, &mask);
+                    accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
+                }
+            } else {
+                for chunk in point_coset
+                    .iter()
+                    .enumerate()
+                    .array_chunks::<CPU_CHUNK_SIZE>()
+                {
+                    // Collect denominators and inverse.
+                    let mut buff1: [BaseField; CPU_CHUNK_SIZE] =
+                        std::array::from_fn(|i| self.step_constraint_denominator(chunk[i].1));
+                    let mut buff2 = [BaseField::zero(); CPU_CHUNK_SIZE];
+                    BaseField::batch_inverse(&buff1, &mut buff2);
+                    // Collect nominators.
+                    buff1 = std::array::from_fn(|i| {
+                        self.step_consnstraint_nominator(
+                            chunk[i].1,
+                            &[
+                                eval[chunk[i].0],
+                                eval[chunk[i].0 as isize + mul],
+                                eval[chunk[i].0 as isize + 2 * mul],
+                            ],
+                        )
+                    });
+
+                    for (i, (num, inv_denom)) in buff1.iter().zip(buff2.iter()).enumerate() {
+                        accum.accumulate(
+                            bit_reverse_index(chunk[i].0 + off, constraint_log_degree_bound),
+                            *num * *inv_denom,
+                        );
+                    }
+                }
             }
         }
 
@@ -122,10 +190,39 @@ impl Component<CPUBackend> for FibonacciComponent {
             ),
         ] {
             let eval = trace_eval.fetch_eval_on_coset(point_coset.shift(trace_domain.index_at(0)));
-            for (i, point) in point_coset.iter().enumerate() {
-                let mask = [eval[i]];
-                let res = self.boundary_constraint_eval_quotient_by_mask(point, &mask);
-                accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
+            // if the job is smaller than the chunk size, fallback to unoptimized version.
+            // TODO(Ohad): turn the entire thing to a generic function and call f::<1>() in that
+            // case.
+            if point_coset.size() < CPU_CHUNK_SIZE {
+                for (i, point) in point_coset.iter().enumerate() {
+                    let mask = [eval[i]];
+                    let res = self.boundary_constraint_eval_quotient_by_mask(point, &mask);
+                    accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
+                }
+            } else {
+                for chunk in point_coset
+                    .iter()
+                    .enumerate()
+                    .array_chunks::<CPU_CHUNK_SIZE>()
+                {
+                    // Collect denominators and inverse.
+                    let mut buff1: [BaseField; CPU_CHUNK_SIZE] = std::array::from_fn(|i| {
+                        Self::boundary_constraint_denominator(self, chunk[i].1)
+                    });
+                    let mut buff2 = [BaseField::zero(); CPU_CHUNK_SIZE];
+                    BaseField::batch_inverse(&buff1, &mut buff2);
+                    // Collect nominators.
+                    buff1 = std::array::from_fn(|i| {
+                        Self::boundary_constraint_nominator(self, chunk[i].1, &[eval[chunk[i].0]])
+                    });
+
+                    for (i, (num, inv_denom)) in buff1.iter().zip(buff2.iter()).enumerate() {
+                        accum.accumulate(
+                            bit_reverse_index(chunk[i].0 + off, constraint_log_degree_bound),
+                            *num * *inv_denom,
+                        );
+                    }
+                }
             }
         }
     }
