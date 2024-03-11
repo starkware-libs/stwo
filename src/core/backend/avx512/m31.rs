@@ -2,7 +2,7 @@ use core::arch::x86_64::{
     __m512i, _mm512_add_epi32, _mm512_min_epu32, _mm512_mul_epu32, _mm512_srli_epi64,
     _mm512_sub_epi32,
 };
-use std::arch::x86_64::_mm512_permutex2var_epi32;
+use std::arch::x86_64::{_mm512_load_epi32, _mm512_permutex2var_epi32, _mm512_store_epi32};
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -18,7 +18,7 @@ pub const M512P: __m512i = unsafe { core::mem::transmute([P; K_BLOCK_SIZE]) };
 /// Stores 16 M31 elements in a single 512-bit register.
 /// Each M31 element is unreduced in the range [0, P].
 #[derive(Copy, Clone, Debug)]
-pub struct PackedBaseField(__m512i);
+pub struct PackedBaseField(pub __m512i);
 
 impl PackedBaseField {
     pub fn from_array(v: [M31; K_BLOCK_SIZE]) -> PackedBaseField {
@@ -36,6 +36,26 @@ impl PackedBaseField {
     /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
     pub fn reduce(self) -> PackedBaseField {
         Self(unsafe { _mm512_min_epu32(self.0, _mm512_sub_epi32(self.0, M512P)) })
+    }
+
+    pub fn permute_with(self, idx: __m512i, other: Self) -> Self {
+        Self(unsafe { _mm512_permutex2var_epi32(self.0, idx, other.0) })
+    }
+
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs a load from a raw pointer. The pointer must be
+    /// valid and aligned to 64 bytes.
+    pub unsafe fn load(ptr: *const i32) -> Self {
+        Self(_mm512_load_epi32(ptr))
+    }
+
+    /// # Safety
+    ///
+    /// This function is unsafe because it performs a load from a raw pointer. The pointer must be
+    /// valid and aligned to 64 bytes.
+    pub unsafe fn store(self, ptr: *mut i32) {
+        _mm512_store_epi32(ptr, self.0);
     }
 }
 
