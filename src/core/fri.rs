@@ -22,8 +22,8 @@ use super::queries::{Queries, SparseSubCircleDomain};
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
+use crate::core::backend::Column;
 use crate::core::circle::Coset;
-use crate::core::fields::Column;
 use crate::core::poly::line::LineDomain;
 use crate::core::utils::bit_reverse_index;
 

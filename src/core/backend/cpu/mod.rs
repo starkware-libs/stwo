@@ -3,8 +3,8 @@ mod fri;
 
 use std::fmt::Debug;
 
-use super::{Backend, FieldOps};
-use crate::core::fields::{Column, Field};
+use super::{Backend, Column, ColumnOps, FieldOps};
+use crate::core::fields::Field;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::poly::line::LineEvaluation;
 use crate::core::utils::bit_reverse;
@@ -14,13 +14,15 @@ pub struct CPUBackend;
 
 impl Backend for CPUBackend {}
 
-impl<F: Field> FieldOps<F> for CPUBackend {
-    type Column = Vec<F>;
+impl<T: Debug + Clone + Default> ColumnOps<T> for CPUBackend {
+    type Column = Vec<T>;
 
     fn bit_reverse_column(column: &mut Self::Column) {
         bit_reverse(column)
     }
+}
 
+impl<F: Field> FieldOps<F> for CPUBackend {
     /// Batch inversion using the Montgomery's trick.
     // TODO(Ohad): Benchmark this function.
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
@@ -28,18 +30,18 @@ impl<F: Field> FieldOps<F> for CPUBackend {
     }
 }
 
-impl<F: Field> Column<F> for Vec<F> {
+impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
     fn zeros(len: usize) -> Self {
-        vec![F::zero(); len]
+        vec![T::default(); len]
     }
-    fn to_vec(&self) -> Vec<F> {
+    fn to_vec(&self) -> Vec<T> {
         self.clone()
     }
     fn len(&self) -> usize {
         self.len()
     }
-    fn at(&self, index: usize) -> F {
-        self[index]
+    fn at(&self, index: usize) -> T {
+        self[index].clone()
     }
 }
 
@@ -54,9 +56,9 @@ mod tests {
     use rand::prelude::*;
     use rand::rngs::SmallRng;
 
-    use crate::core::backend::{CPUBackend, FieldOps};
+    use crate::core::backend::{CPUBackend, Column, FieldOps};
     use crate::core::fields::qm31::QM31;
-    use crate::core::fields::{Column, FieldExpOps};
+    use crate::core::fields::FieldExpOps;
 
     #[test]
     fn batch_inverse_test() {

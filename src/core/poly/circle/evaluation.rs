@@ -3,9 +3,10 @@ use std::ops::{Deref, Index};
 
 use super::{CanonicCoset, CircleDomain, CirclePoly, PolyOps};
 use crate::core::backend::cpu::CPUCircleEvaluation;
+use crate::core::backend::{Col, Column};
 use crate::core::circle::{CirclePointIndex, Coset};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{Col, Column, ExtensionOf, FieldOps};
+use crate::core::fields::{ExtensionOf, FieldOps};
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::{BitReversedOrder, NaturalOrder};
 use crate::core::utils::bit_reverse_index;
