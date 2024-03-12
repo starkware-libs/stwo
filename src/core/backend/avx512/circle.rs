@@ -6,10 +6,10 @@ use super::m31::PackedBaseField;
 use super::{as_cpu_vec, AVX512Backend, VECS_LOG_SIZE};
 use crate::core::backend::avx512::fft::rfft;
 use crate::core::backend::avx512::BaseFieldVec;
-use crate::core::backend::CPUBackend;
+use crate::core::backend::{CPUBackend, Col};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{Col, ExtensionOf, FieldExpOps};
+use crate::core::fields::{ExtensionOf, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };

@@ -1,7 +1,8 @@
 use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
+use crate::core::backend::Col;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{Col, ExtensionOf, FieldOps};
+use crate::core::fields::{ExtensionOf, FieldOps};
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 
