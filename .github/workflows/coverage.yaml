@@ -4,7 +4,7 @@ on: [pull_request, push]
 
 jobs:
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: avx
     env:
       CARGO_TERM_COLOR: always
     steps:
@@ -18,6 +18,8 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
       - name: Generate code coverage
         run: cargo +nightly-2024-01-04 llvm-cov --codecov --output-path codecov.json
+        env:
+          RUSTFLAGS: "-C target-feature=+avx512f"
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
