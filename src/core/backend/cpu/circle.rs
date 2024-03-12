@@ -1,10 +1,11 @@
 use num_traits::Zero;
 
 use super::CPUBackend;
+use crate::core::backend::{Col, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{Col, ExtensionOf, FieldExpOps, FieldOps};
+use crate::core::fields::{ExtensionOf, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };

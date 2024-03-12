@@ -3,15 +3,14 @@ use std::ops::{Mul, MulAssign, Neg};
 
 use num_traits::{NumAssign, NumAssignOps, NumOps, One};
 
+use super::backend::ColumnOps;
+
 #[cfg(target_arch = "x86_64")]
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
 
-pub trait FieldOps<F: Field> {
-    type Column: Column<F>;
-    fn bit_reverse_column(column: &mut Self::Column);
-
+pub trait FieldOps<F: Field>: ColumnOps<F> {
     // TODO(Ohad): change to use a mutable slice.
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column);
 }
@@ -95,29 +94,12 @@ fn batch_inverse_classic<T: FieldExpOps>(column: &[T], dst: &mut [T]) {
     dst[0] = curr_inverse;
 }
 
-pub type Col<B, F> = <B as FieldOps<F>>::Column;
-
-// TODO(spapini): Consider removing the generic parameter and only support BaseField.
-pub trait Column<F: Field>: Clone + Debug + FromIterator<F> {
-    /// Creates a new column of zeros with the given length.
-    fn zeros(len: usize) -> Self;
-    /// Returns a cpu vector of the column.
-    fn to_vec(&self) -> Vec<F>;
-    /// Returns the length of the column.
-    fn len(&self) -> usize;
-    /// Returns true if the column is empty.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    /// Retrieves the element at the given index.
-    fn at(&self, index: usize) -> F;
-}
-
 pub trait Field:
     NumAssign
     + Neg<Output = Self>
     + ComplexConjugate
     + Copy
+    + Default
     + Debug
     + Display
     + PartialOrd
