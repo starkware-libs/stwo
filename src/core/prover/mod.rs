@@ -2,6 +2,8 @@ use std::iter::zip;
 
 use itertools::{enumerate, Itertools};
 
+use super::poly::circle::CanonicCoset;
+use super::queries::SparseSubCircleDomain;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
@@ -165,16 +167,39 @@ pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Chann
     commitment_scheme.verify(&proof.decommitments, &opening_positions);
 
     let commitment_domains = air.commitment_domains();
+    // Prepare the quotient evaluations needed for the FRI verifier.
+    let sparse_circle_evaluations = prepare_fri_evaluations(
+        opening_positions,
+        proof.opened_values,
+        trace_oods_points,
+        proof.trace_oods_values,
+        proof.composition_polynomial_column_oods_values,
+        commitment_domains,
+        oods_point,
+    );
+
+    fri_verifier.decommit(sparse_circle_evaluations).unwrap();
+
+    true
+}
+
+fn prepare_fri_evaluations(
+    opening_positions: Vec<SparseSubCircleDomain>,
+    opened_values: OpenedValues,
+    trace_oods_points: ComponentVec<Vec<CirclePoint<SecureField>>>,
+    trace_oods_values: ComponentVec<Vec<SecureField>>,
+    composition_polynomial_column_oods_values: [SecureField; SECURE_EXTENSION_DEGREE],
+    commitment_domains: Vec<CanonicCoset>,
+    oods_point: CirclePoint<SecureField>,
+) -> Vec<SparseCircleEvaluation<SecureField>> {
     // TODO(AlonH): Generalize when introducing mixed degree.
     let trace_commitment_domain = commitment_domains[0];
     let composition_polynomial_commitment_domain = commitment_domains[1];
-    // Prepare the quotient evaluations needed for the FRI verifier.
-    let mut sparse_circle_evaluations = Vec::with_capacity(trace_oods_points.len() + 1);
-    for (opened_values, oods_value) in zip(
-        &proof.opened_values[1],
-        proof.composition_polynomial_column_oods_values,
-    ) {
-        let mut evaluation = Vec::with_capacity(opening_positions[1].len());
+    let mut sparse_circle_evaluations = Vec::new();
+    for (opened_values, oods_value) in
+        zip(&opened_values[1], composition_polynomial_column_oods_values)
+    {
+        let mut evaluation = Vec::new();
         let mut opened_values_iter = opened_values.iter();
         for sub_circle_domain in opening_positions[1].iter() {
             let values = (&mut opened_values_iter)
@@ -197,13 +222,13 @@ pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Chann
         );
         sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
     }
-    for (component_points, component_values) in zip(&trace_oods_points, &proof.trace_oods_values) {
+    for (component_points, component_values) in zip(&trace_oods_points, &trace_oods_values) {
         for (i, (column_points, column_values)) in
             enumerate(zip(component_points, component_values))
         {
             for (oods_point, oods_value) in zip(column_points, column_values) {
-                let mut evaluation = Vec::with_capacity(opening_positions[0].len());
-                let mut opened_values = proof.opened_values[0][i].iter().copied();
+                let mut evaluation = Vec::new();
+                let mut opened_values = opened_values[0][i].iter().copied();
                 for sub_circle_domain in opening_positions[0].iter() {
                     let values = (&mut opened_values)
                         .take(1 << sub_circle_domain.log_size)
@@ -223,8 +248,5 @@ pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Chann
             }
         }
     }
-
-    fri_verifier.decommit(sparse_circle_evaluations).unwrap();
-
-    true
+    sparse_circle_evaluations
 }
