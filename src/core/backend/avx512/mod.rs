@@ -10,8 +10,9 @@ use num_traits::Zero;
 
 use self::bit_reverse::bit_reverse_m31;
 pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
+use super::{Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{Column, FieldExpOps, FieldOps};
+use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::utils;
 
 const VECS_LOG_SIZE: usize = 4;
@@ -46,7 +47,7 @@ impl BaseFieldVec {
     }
 }
 
-impl FieldOps<BaseField> for AVX512Backend {
+impl ColumnOps<BaseField> for AVX512Backend {
     type Column = BaseFieldVec;
 
     fn bit_reverse_column(column: &mut Self::Column) {
@@ -57,7 +58,9 @@ impl FieldOps<BaseField> for AVX512Backend {
         }
         bit_reverse_m31(&mut column.data);
     }
+}
 
+impl FieldOps<BaseField> for AVX512Backend {
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
         PackedBaseField::batch_inverse(&column.data, &mut dst.data);
     }
