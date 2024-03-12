@@ -496,9 +496,9 @@ mod tests {
     use super::*;
     use crate::core::backend::avx512::{BaseFieldVec, PackedBaseField};
     use crate::core::backend::cpu::CPUCirclePoly;
+    use crate::core::backend::Column;
     use crate::core::fft::butterfly;
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::Column;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 
     #[test]

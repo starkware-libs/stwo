@@ -3,10 +3,10 @@
 //! Given a random alpha, the combined polynomial is defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i (P).
 use crate::core::backend::cpu::CPUCircleEvaluation;
-use crate::core::backend::{Backend, CPUBackend};
+use crate::core::backend::{Backend, CPUBackend, Col, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{Col, Column, ExtensionOf, FieldExpOps};
+use crate::core::fields::{ExtensionOf, FieldExpOps};
 use crate::core::poly::circle::{CircleDomain, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::IteratorMutExt;
