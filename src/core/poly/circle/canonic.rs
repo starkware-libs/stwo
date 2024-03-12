@@ -2,11 +2,11 @@ use super::CircleDomain;
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
 use crate::core::fields::m31::BaseField;
 
-/// A coset of the form G_{2n} + <G_n>, where G_n is the generator of the
-/// subgroup of order n. The ordering on this coset is G_2n + i * G_n.
+/// A coset of the form G_{n+1} + <G_n>, where G_n is a generator of the
+/// subgroup of order 2^n. The ordering on this coset is G_{n+1} + i * G_n.
 /// These cosets can be used as a [CircleDomain], and be interpolated on.
 /// Note that this changes the ordering on the coset to be like [CircleDomain],
-/// which is G_2n + i * G_n/2 and then -G_2n -i * G_n/2.
+/// which is G_{n+1} + i * G_{n-1} and then -G_{n+1} -i * G_{n-1}.
 /// For example, the Xs below are a canonic coset with n=8.
 /// ```text
 ///    X O X
@@ -30,12 +30,12 @@ impl CanonicCoset {
         }
     }
 
-    /// Gets the full coset represented G_{2n} + <G_n>.
+    /// Gets the full coset represented G_{n+1} + <G_n>.
     pub fn coset(&self) -> Coset {
         self.coset
     }
 
-    /// Gets half of the coset (its conjugate complements to the whole coset), G_{2n} + <G_{n/2}>
+    /// Gets half of the coset (its conjugate complements to the whole coset), G_{n+1} + <G_{n-1}>
     pub fn half_coset(&self) -> Coset {
         Coset::half_odds(self.log_size() - 1)
     }
