@@ -18,7 +18,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fri::{FriConfig, FriProof, FriProver, FriVerifier, SparseCircleEvaluation};
 use crate::core::oods::get_pair_oods_quotient;
-use crate::core::poly::circle::{combine_secure_value, CanonicCoset, CircleEvaluation};
+use crate::core::poly::circle::{combine_secure_value, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
 use crate::core::ComponentVec;
@@ -129,12 +129,7 @@ pub fn prove(
     }
 }
 
-pub fn verify(
-    proof: StarkProof,
-    air: &impl Air<CPUBackend>,
-    channel: &mut Channel,
-    trace_domain_log_size: u32,
-) -> bool {
+pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Channel) -> bool {
     // Read trace commitment.
     let mut commitment_scheme = CommitmentSchemeVerifier::new();
     commitment_scheme.commit(proof.commitments[0], channel);
@@ -169,10 +164,10 @@ pub fn verify(
         .collect_vec();
     commitment_scheme.verify(&proof.decommitments, &opening_positions);
 
-    // TODO(AlonH): Get domains from air/public input.
-    let trace_commitment_domain = CanonicCoset::new(trace_domain_log_size + LOG_BLOWUP_FACTOR);
-    let composition_polynomial_commitment_domain =
-        CanonicCoset::new(trace_domain_log_size + 1 + LOG_BLOWUP_FACTOR);
+    let commitment_domains = air.commitment_domains();
+    // TODO(AlonH): Generalize when introducing mixed degree.
+    let trace_commitment_domain = commitment_domains[0];
+    let composition_polynomial_commitment_domain = commitment_domains[1];
     // Prepare the quotient evaluations needed for the FRI verifier.
     let mut sparse_circle_evaluations = Vec::with_capacity(trace_oods_points.len() + 1);
     for (opened_values, oods_value) in zip(
