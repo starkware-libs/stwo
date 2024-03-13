@@ -60,7 +60,7 @@ impl Fibonacci {
 pub fn verify_proof<const N_BITS: u32>(proof: StarkProof, claim: BaseField) -> bool {
     let fib = Fibonacci::new(N_BITS, claim);
     let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[claim])));
-    verify(proof, &fib.air, channel, N_BITS)
+    verify(proof, &fib.air, channel)
 }
 
 #[cfg(test)]
