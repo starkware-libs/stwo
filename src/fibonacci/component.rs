@@ -1,6 +1,6 @@
 use std::ops::Div;
 
-use num_traits::One;
+use num_traits::{One, Zero};
 
 use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentTrace, Mask};
@@ -10,7 +10,7 @@ use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, FieldExpOps};
-use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;
 
@@ -32,6 +32,21 @@ impl FibonacciComponent {
         point: CirclePoint<F>,
         mask: &[F; 3],
     ) -> F {
+        let num = self.step_constraint_numerator(point, mask);
+        let denom = self.step_constraint_denominator(point);
+        num / denom
+    }
+
+    fn step_constraint_denominator<F: ExtensionOf<BaseField>>(&self, point: CirclePoint<F>) -> F {
+        let constraint_zero_domain = Coset::subgroup(self.log_size);
+        coset_vanishing(constraint_zero_domain, point)
+    }
+
+    fn step_constraint_numerator<F: ExtensionOf<BaseField>>(
+        &self,
+        point: CirclePoint<F>,
+        mask: &[F; 3],
+    ) -> F {
         let constraint_zero_domain = Coset::subgroup(self.log_size);
         let constraint_value = mask[0].square() + mask[1].square() - mask[2];
         let selector = pair_vanishing(
@@ -43,9 +58,7 @@ impl FibonacciComponent {
                 .into_ef(),
             point,
         );
-        let num = constraint_value * selector;
-        let denom = coset_vanishing(constraint_zero_domain, point);
-        num / denom
+        constraint_value * selector
     }
 
     /// Evaluates the boundary constraint quotient polynomial on a single point.
@@ -54,19 +67,172 @@ impl FibonacciComponent {
         point: CirclePoint<F>,
         mask: &[F; 1],
     ) -> F {
+        let num = self.boundary_constraint_numerator(point, mask);
+        let denom = self.boundary_constraint_denominator(point);
+        num / denom
+    }
+
+    fn boundary_constraint_numerator<F: ExtensionOf<BaseField>>(
+        &self,
+        point: CirclePoint<F>,
+        mask: &[F; 1],
+    ) -> F {
         let constraint_zero_domain = Coset::subgroup(self.log_size);
         let p = constraint_zero_domain.at(constraint_zero_domain.size() - 1);
+
         // On (1,0), we should get 1.
         // On p, we should get self.claim.
         // 1 + y * (self.claim - 1) * p.y^-1
         // TODO(spapini): Cache the constant.
         let linear = F::one() + point.y * (self.claim - BaseField::one()) * p.y.inverse();
 
-        let num = mask[0] - linear;
-        let denom = pair_vanishing(p.into_ef(), CirclePoint::zero(), point);
-        num / denom
+        mask[0] - linear
+    }
+
+    fn boundary_constraint_denominator<F: ExtensionOf<BaseField>>(
+        &self,
+        point: CirclePoint<F>,
+    ) -> F {
+        let constraint_zero_domain = Coset::subgroup(self.log_size);
+        let p = constraint_zero_domain.at(constraint_zero_domain.size() - 1);
+        pair_vanishing(p.into_ef(), CirclePoint::zero(), point)
     }
 }
+
+// TODO(Ohad): extract some of the routine to trait functions.
+impl FibonacciComponent
+where
+    FibonacciComponent: Component<CPUBackend>,
+{
+    fn accumulate_step_constraint(
+        &self,
+        trace_domain: CanonicCoset,
+        trace_eval: &CircleEvaluation<CPUBackend, BaseField>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
+    ) {
+        let constraint_log_degree_bound = trace_domain.log_size() + 1;
+        let [mut accum] = evaluation_accumulator.columns([(constraint_log_degree_bound, 1)]);
+        let constraint_eval_domain =
+            CircleDomain::constraint_evaluation_domain(constraint_log_degree_bound);
+        for (off, point_coset) in [
+            (0, constraint_eval_domain.half_coset),
+            (
+                constraint_eval_domain.half_coset.size(),
+                constraint_eval_domain.half_coset.conjugate(),
+            ),
+        ] {
+            let eval = trace_eval.fetch_eval_on_coset(point_coset.shift(trace_domain.index_at(0)));
+            let mul = trace_domain.step_size().div(point_coset.step_size);
+
+            // if the job is smaller than the chunk size, fallback to unoptimized version.
+            if point_coset.size() < CPU_CHUNK_SIZE {
+                for (i, point) in point_coset.iter().enumerate() {
+                    let mask = [eval[i], eval[i as isize + mul], eval[i as isize + 2 * mul]];
+                    let res = self.step_constraint_eval_quotient_by_mask(point, &mask);
+                    accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
+                }
+            } else {
+                for chunk in point_coset
+                    .iter()
+                    .enumerate()
+                    .array_chunks::<CPU_CHUNK_SIZE>()
+                {
+                    // Collect denominators and inverse.
+                    let mut buff: [BaseField; CPU_CHUNK_SIZE] = std::array::from_fn(|i| {
+                        let point = chunk[i].1;
+                        self.step_constraint_denominator(point)
+                    });
+                    let mut inverses_buff = [BaseField::zero(); CPU_CHUNK_SIZE];
+                    BaseField::batch_inverse(&buff, &mut inverses_buff);
+
+                    // Collect numerators.
+                    buff = std::array::from_fn(|i| {
+                        let (idx, point) = chunk[i];
+                        self.step_constraint_numerator(
+                            point,
+                            &[
+                                eval[idx],
+                                eval[idx as isize + mul],
+                                eval[idx as isize + 2 * mul],
+                            ],
+                        )
+                    });
+
+                    for (i, (num, inv_denom)) in buff.iter().zip(inverses_buff.iter()).enumerate() {
+                        let idx = chunk[i].0 + off;
+                        accum.accumulate(
+                            bit_reverse_index(idx, constraint_log_degree_bound),
+                            *num * *inv_denom,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn accumulate_boundary_constraint(
+        &self,
+        trace_domain: CanonicCoset,
+        trace_eval: &CircleEvaluation<CPUBackend, BaseField>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
+    ) {
+        let constraint_log_degree_bound = trace_domain.log_size();
+        let [mut accum] = evaluation_accumulator.columns([(constraint_log_degree_bound, 1)]);
+        let constraint_eval_domain =
+            CircleDomain::constraint_evaluation_domain(constraint_log_degree_bound);
+        for (off, point_coset) in [
+            (0, constraint_eval_domain.half_coset),
+            (
+                constraint_eval_domain.half_coset.size(),
+                constraint_eval_domain.half_coset.conjugate(),
+            ),
+        ] {
+            let eval = trace_eval.fetch_eval_on_coset(point_coset.shift(trace_domain.index_at(0)));
+            // if the job is smaller than the chunk size, fallback to unoptimized version.
+            // TODO(Ohad): turn the entire thing to a generic function and call f::<1>() in that
+            // case.
+            if point_coset.size() < CPU_CHUNK_SIZE {
+                for (i, point) in point_coset.iter().enumerate() {
+                    let mask = [eval[i]];
+                    let res = self.boundary_constraint_eval_quotient_by_mask(point, &mask);
+                    accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
+                }
+            } else {
+                for chunk in point_coset
+                    .iter()
+                    .enumerate()
+                    .array_chunks::<CPU_CHUNK_SIZE>()
+                {
+                    // Collect denominators and inverse.
+                    let mut buff: [BaseField; CPU_CHUNK_SIZE] = std::array::from_fn(|i| {
+                        let (_, point) = chunk[i];
+                        Self::boundary_constraint_denominator(self, point)
+                    });
+                    let mut inversed_buff = [BaseField::zero(); CPU_CHUNK_SIZE];
+                    BaseField::batch_inverse(&buff, &mut inversed_buff);
+
+                    // Collect numerators.
+                    buff = std::array::from_fn(|i| {
+                        let (idx, point) = chunk[i];
+                        Self::boundary_constraint_numerator(self, point, &[eval[idx]])
+                    });
+
+                    for (i, (num, inv_denom)) in buff.iter().zip(inversed_buff.iter()).enumerate() {
+                        let idx = chunk[i].0 + off;
+                        accum.accumulate(
+                            bit_reverse_index(idx, constraint_log_degree_bound),
+                            *num * *inv_denom,
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+// TODO(Ohad): figure out optimal chunk size.
+const CPU_CHUNK_LOG_SIZE: usize = 8;
+const CPU_CHUNK_SIZE: usize = 1 << CPU_CHUNK_LOG_SIZE;
 
 impl Component<CPUBackend> for FibonacciComponent {
     fn max_constraint_log_degree_bound(&self) -> u32 {
@@ -89,45 +255,10 @@ impl Component<CPUBackend> for FibonacciComponent {
         let trace_eval = poly.evaluate(trace_eval_domain).bit_reverse();
 
         // Step constraint.
-        let constraint_log_degree_bound = trace_domain.log_size() + 1;
-        let [mut accum] = evaluation_accumulator.columns([(constraint_log_degree_bound, 1)]);
-        let constraint_eval_domain =
-            CircleDomain::constraint_evaluation_domain(constraint_log_degree_bound);
-        for (off, point_coset) in [
-            (0, constraint_eval_domain.half_coset),
-            (
-                constraint_eval_domain.half_coset.size(),
-                constraint_eval_domain.half_coset.conjugate(),
-            ),
-        ] {
-            let eval = trace_eval.fetch_eval_on_coset(point_coset.shift(trace_domain.index_at(0)));
-            let mul = trace_domain.step_size().div(point_coset.step_size);
-            for (i, point) in point_coset.iter().enumerate() {
-                let mask = [eval[i], eval[i as isize + mul], eval[i as isize + 2 * mul]];
-                let res = self.step_constraint_eval_quotient_by_mask(point, &mask);
-                accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
-            }
-        }
+        self.accumulate_step_constraint(trace_domain, &trace_eval, evaluation_accumulator);
 
         // Boundary constraint.
-        let constraint_log_degree_bound = trace_domain.log_size();
-        let [mut accum] = evaluation_accumulator.columns([(constraint_log_degree_bound, 1)]);
-        let constraint_eval_domain =
-            CircleDomain::constraint_evaluation_domain(constraint_log_degree_bound);
-        for (off, point_coset) in [
-            (0, constraint_eval_domain.half_coset),
-            (
-                constraint_eval_domain.half_coset.size(),
-                constraint_eval_domain.half_coset.conjugate(),
-            ),
-        ] {
-            let eval = trace_eval.fetch_eval_on_coset(point_coset.shift(trace_domain.index_at(0)));
-            for (i, point) in point_coset.iter().enumerate() {
-                let mask = [eval[i]];
-                let res = self.boundary_constraint_eval_quotient_by_mask(point, &mask);
-                accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
-            }
-        }
+        self.accumulate_boundary_constraint(trace_domain, &trace_eval, evaluation_accumulator);
     }
 
     fn mask(&self) -> Mask {
