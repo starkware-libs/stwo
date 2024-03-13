@@ -94,16 +94,14 @@ impl<H: Hasher> MerkleMultiLayer<H> {
 }
 
 // Hashes a single sub-tree.
-fn hash_subtree<F: Field, H: Hasher, const IS_INTERMEDIATE: bool>(
+fn hash_subtree<F: Field + IntoSlice<H::NativeType>, H: Hasher, const IS_INTERMEDIATE: bool>(
     sub_tree_data: &mut [H::Hash],
     input: &MerkleTreeInput<'_, F>,
     relative_depth: usize,
     prev_hashes: &[H::Hash],
     config: &MerkleMultiLayerConfig,
     index_in_layer: usize,
-) where
-    F: IntoSlice<H::NativeType>,
-{
+) {
     // First layer is special, as it is the only layer that might have inputs from the previous
     // MultiLayer, and does not need to look at the current sub_tree for previous hash values.
     let dst = sub_tree_data

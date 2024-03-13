@@ -67,14 +67,11 @@ pub fn hash_merkle_tree<H: Hasher>(data: &mut [&mut [H::NativeType]]) {
 /// Given a data of a tree, and a bottom layer of 'bottom_layer_node_size_bytes' sized nodes, hashes
 /// the entire tree. Nodes are hashed individually at the bottom layer.
 // TODO(Ohad): Write a similiar function for when F does not implement IntoSlice(Non le platforms).
-pub fn hash_merkle_tree_from_bottom_layer<'a, F: Field, H: Hasher>(
+pub fn hash_merkle_tree_from_bottom_layer<F: Field + IntoSlice<H::NativeType>, H: Hasher>(
     bottom_layer: &[F],
     bottom_layer_node_size_bytes: usize,
     data: &mut [&mut [H::NativeType]],
-) where
-    F: IntoSlice<H::NativeType>,
-    H::NativeType: 'a,
-{
+) {
     // Hash bottom layer.
     let dst_slice = data.get_mut(0).expect("Empty tree!");
     let bottom_layer_data: &[H::NativeType] =
@@ -206,13 +203,13 @@ pub fn inject_hash_in_pairs<'a: 'b, 'b, H: Hasher>(
 ///    * `hash_inputs` - The hash inputs to inject into.
 ///    * `chunk_idx` - The index of the chunk to inject.
 ///    * `n_chunks_in_column` - The number of chunks every column is divided into.
-pub fn inject_column_chunks<'b, 'a: 'b, H: Hasher, F: Field>(
+pub fn inject_column_chunks<'b, 'a: 'b, H: Hasher, F>(
     columns: &'a [&'a [F]],
     hash_inputs: &'b mut [Vec<&'a [H::NativeType]>],
     chunk_idx: usize,
     n_chunks_in_column: usize,
 ) where
-    F: IntoSlice<H::NativeType>,
+    F: Field + IntoSlice<H::NativeType>,
 {
     for column in columns {
         let column_slice = get_column_chunk(column, chunk_idx, n_chunks_in_column);
@@ -247,13 +244,15 @@ pub fn get_column_chunk<F>(column: &[F], index_to_view: usize, n_total_chunks: u
 /// Hashes a layer of a Merkle tree. Nodes are injected with child hashes and chunks from the input
 /// columns (if any).
 // TODO(Ohad): Consider renaming after current hash_layer function is deprecated.
-pub fn inject_and_hash_layer<H: Hasher, F: Field, const IS_INTERMEDIATE: bool>(
+pub fn inject_and_hash_layer<
+    H: Hasher,
+    F: Field + IntoSlice<H::NativeType>,
+    const IS_INTERMEDIATE: bool,
+>(
     child_hashes: &[H::Hash],
     dst: &mut [H::Hash],
     input_columns: &Iter<'_, &[F]>,
-) where
-    F: IntoSlice<H::NativeType>,
-{
+) {
     let produced_layer_length = dst.len();
     if IS_INTERMEDIATE {
         assert_eq!(

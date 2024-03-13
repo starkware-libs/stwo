@@ -555,7 +555,7 @@ mod tests {
         let first_column_queries = vec![0, 7];
         let second_column_queries = vec![3, 7];
         let third_column_queries = vec![1, 2];
-        let queries = vec![
+        let queries = [
             zero_column_queries,
             first_column_queries,
             second_column_queries,
