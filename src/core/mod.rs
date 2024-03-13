@@ -14,12 +14,15 @@ pub mod poly;
 pub mod proof_of_work;
 pub mod prover;
 pub mod queries;
+#[cfg(test)]
+pub mod test_utils;
 pub mod utils;
 
 /// A vector in which each element relates (by index) to a column in the trace.
 pub type ColumnVec<T> = Vec<T>;
 
 /// A vector of [ColumnVec]s. Each [ColumnVec] relates (by index) to a component in the air.
+#[derive(Debug)]
 pub struct ComponentVec<T>(pub Vec<ColumnVec<T>>);
 
 impl<T: Copy> ComponentVec<ColumnVec<T>> {

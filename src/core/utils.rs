@@ -36,16 +36,6 @@ pub fn bit_reverse<T>(v: &mut [T]) {
 }
 
 #[cfg(test)]
-pub fn secure_eval_to_base_eval<EvalOrder>(
-    eval: &super::backend::cpu::CPUCircleEvaluation<super::fields::qm31::SecureField, EvalOrder>,
-) -> super::backend::cpu::CPUCircleEvaluation<super::fields::m31::BaseField, EvalOrder> {
-    super::backend::cpu::CPUCircleEvaluation::new(
-        eval.domain,
-        eval.values.iter().map(|x| x.to_m31_array()[0]).collect(),
-    )
-}
-
-#[cfg(test)]
 mod tests {
     use crate::core::utils::bit_reverse;
 

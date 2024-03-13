@@ -103,7 +103,7 @@ mod tests {
     use crate::core::fields::{ComplexConjugate, FieldExpOps};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
-    use crate::core::utils::secure_eval_to_base_eval;
+    use crate::core::test_utils::secure_eval_to_base_eval;
     use crate::m31;
 
     #[test]

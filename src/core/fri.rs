@@ -619,6 +619,7 @@ impl LinePolyDegreeBound {
 }
 
 /// A FRI proof.
+#[derive(Debug)]
 pub struct FriProof<H: Hasher> {
     pub inner_layers: Vec<FriLayerProof<H>>,
     pub last_layer_poly: LinePoly<SecureField>,
@@ -634,6 +635,7 @@ pub const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
 /// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
+#[derive(Debug)]
 pub struct FriLayerProof<H: Hasher> {
     /// The subset stored corresponds to the set of evaluations the verifier doesn't have but needs
     /// to fold and verify the merkle decommitment.
@@ -911,10 +913,9 @@ mod tests {
     use num_traits::{One, Zero};
 
     use super::{get_opening_positions, SparseCircleEvaluation, VerificationError};
-    use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
+    use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly, CPULineEvaluation};
     use crate::core::backend::CPUBackend;
-    use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -926,6 +927,7 @@ mod tests {
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
     use crate::core::queries::{Queries, SparseSubCircleDomain};
+    use crate::core::test_utils::test_channel;
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
@@ -1277,10 +1279,5 @@ mod tests {
             .collect();
 
         SparseCircleEvaluation::new(coset_evals)
-    }
-
-    fn test_channel() -> Blake2sChannel {
-        let seed = Blake2sHash::from(vec![0; 32]);
-        Blake2sChannel::new(seed)
     }
 }
