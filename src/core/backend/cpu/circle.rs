@@ -129,6 +129,9 @@ impl PolyOps for CPUBackend {
     }
 
     fn precompute_twiddles(mut coset: Coset) -> TwiddleTree<Self> {
+        const CHUNK_LOG_SIZE: usize = 12;
+        const CHUNK_SIZE: usize = 1 << CHUNK_LOG_SIZE;
+
         let root_coset = coset;
         let mut twiddles = Vec::with_capacity(coset.size());
         for _ in 0..coset.log_size() {
@@ -145,8 +148,21 @@ impl PolyOps for CPUBackend {
         }
         twiddles.push(1.into());
 
-        // TODO(spapini): Batch inverse.
-        let itwiddles = twiddles.iter().map(|&t| t.inverse()).collect();
+        // Inverse twiddles.
+        // Fallback to the non-chunked version if the domain is not big enough.
+        if CHUNK_SIZE > coset.size() {
+            let itwiddles = twiddles.iter().map(|&t| t.inverse()).collect();
+            return TwiddleTree {
+                root_coset,
+                twiddles,
+                itwiddles
+            };
+        }
+
+        let mut itwiddles = vec![BaseField::zero(); twiddles.len()];
+        twiddles.array_chunks::<CHUNK_SIZE>().zip(itwiddles.array_chunks_mut::<CHUNK_SIZE>()).for_each(|(src, dst)|{
+            BaseField::batch_inverse(src, dst);
+        });
 
         TwiddleTree {
             root_coset,
