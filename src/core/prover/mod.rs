@@ -83,6 +83,11 @@ pub fn prove(
     let mut oods_quotients = Vec::with_capacity(trace_oods_points.len() + SECURE_EXTENSION_DEGREE);
     let composition_polynomial_column_oods_values =
         composition_polynomial_poly.eval_columns_at_point(oods_point);
+    mix_oods_values(
+        channel,
+        &trace_oods_values,
+        &composition_polynomial_column_oods_values,
+    );
     for (evaluation, value) in zip(
         &commitment_scheme.trees[1].evaluations,
         composition_polynomial_column_oods_values,
@@ -152,6 +157,11 @@ pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Chann
     assert_eq!(
         composition_polynomial_oods_value,
         combine_secure_value(proof.composition_polynomial_column_oods_values)
+    );
+    mix_oods_values(
+        channel,
+        &proof.trace_oods_values,
+        &proof.composition_polynomial_column_oods_values,
     );
 
     let bounds = air.quotient_log_bounds();
@@ -249,4 +259,20 @@ fn prepare_fri_evaluations(
         }
     }
     sparse_circle_evaluations
+}
+
+fn mix_oods_values(
+    channel: &mut Channel,
+    trace_oods_values: &ComponentVec<Vec<SecureField>>,
+    composition_polynomial_column_oods_values: &[SecureField; SECURE_EXTENSION_DEGREE],
+) {
+    channel.mix_felts(
+        &trace_oods_values
+            .iter()
+            .flatten()
+            .flatten()
+            .copied()
+            .collect_vec(),
+    );
+    channel.mix_felts(composition_polynomial_column_oods_values);
 }
