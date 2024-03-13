@@ -18,6 +18,7 @@ use crate::core::channel::Channel;
 
 /// Holds a vector for each tree, which holds a vector for each column, which holds its respective
 /// opened values.
+#[derive(Debug)]
 pub struct OpenedValues(pub Vec<ColumnVec<Vec<BaseField>>>);
 
 impl Deref for OpenedValues {
@@ -28,6 +29,7 @@ impl Deref for OpenedValues {
     }
 }
 
+#[derive(Debug)]
 pub struct Decommitments(Vec<MerkleDecommitment<BaseField, Blake2sHasher>>);
 
 impl Deref for Decommitments {
