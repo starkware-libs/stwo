@@ -183,6 +183,7 @@ pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Chann
     true
 }
 
+#[inline(never)]
 fn prepare_fri_evaluations(
     opening_positions: Vec<SparseSubCircleDomain>,
     opened_values: OpenedValues,
