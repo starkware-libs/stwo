@@ -15,11 +15,6 @@ pub fn log2_floor(n: usize) -> usize {
 }
 
 #[inline]
-pub fn next_pow_two(n: usize) -> usize {
-    2_usize.pow(log2_ceil(n) as u32)
-}
-
-#[inline]
 pub fn prev_pow_two(n: usize) -> usize {
     2_usize.pow(log2_floor(n) as u32)
 }
@@ -52,9 +47,7 @@ pub fn egcd(x: isize, y: isize) -> (isize, isize, isize) {
 
 #[cfg(test)]
 mod tests {
-    use crate::math::utils::{
-        egcd, log2_ceil, log2_floor, next_pow_two, prev_pow_two, usize_div_ceil,
-    };
+    use crate::math::utils::{egcd, log2_ceil, log2_floor, prev_pow_two, usize_div_ceil};
 
     #[test]
     fn log2_ceil_test() {
@@ -70,13 +63,6 @@ mod tests {
         assert_eq!(log2_floor(63), 5);
         assert_eq!(log2_floor(64), 6);
         assert_eq!(log2_floor(65), 6);
-    }
-
-    #[test]
-    fn next_power_of_two_test() {
-        assert_eq!(next_pow_two(1), 1);
-        assert_eq!(next_pow_two(2), 2);
-        assert_eq!(next_pow_two(3), 4);
     }
 
     #[test]
