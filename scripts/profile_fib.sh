@@ -1,0 +1,1 @@
+cargo bench --bench fibonacci -- --profile-time=20 && ~/go/bin/pprof -svg ./target/criterion/fibonacci/prove/profile/profile.pb 

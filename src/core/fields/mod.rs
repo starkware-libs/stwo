@@ -370,6 +370,7 @@ macro_rules! impl_extension_field {
         impl Mul<M31> for $field_name {
             type Output = Self;
 
+            #[inline(never)]
             fn mul(self, rhs: M31) -> Self::Output {
                 Self(self.0 * rhs, self.1 * rhs)
             }

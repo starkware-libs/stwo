@@ -219,6 +219,7 @@ pub fn verify(
     Ok(fri_verifier.decommit(sparse_circle_evaluations)?)
 }
 
+#[inline(never)]
 fn prepare_fri_evaluations(
     opening_positions: Vec<SparseSubCircleDomain>,
     opened_values: OpenedValues,
