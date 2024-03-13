@@ -45,17 +45,6 @@ impl CanonicCoset {
         CircleDomain::new(Coset::half_odds(self.coset.log_size - 1))
     }
 
-    /// Gets a good [CircleDomain] for extension of a poly defined on this coset.
-    /// The reason the domain looks like this is a bit more intricate, and not covered here.
-    pub fn evaluation_domain(&self, log_size: u32) -> CircleDomain {
-        assert!(log_size > self.coset.log_size);
-        // TODO(spapini): Document why this is like this.
-        CircleDomain::new(Coset::new(
-            CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(self.coset.log_size + 1),
-            log_size - 1,
-        ))
-    }
-
     /// Returns the log size of the coset.
     pub fn log_size(&self) -> u32 {
         self.coset.log_size
