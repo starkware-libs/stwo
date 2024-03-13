@@ -1,8 +1,9 @@
 use std::iter::zip;
 
 use itertools::{enumerate, Itertools};
+use thiserror::Error;
 
-use super::poly::circle::CanonicCoset;
+use super::poly::circle::{CanonicCoset, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::queries::SparseSubCircleDomain;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
@@ -33,6 +34,7 @@ pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 0;
 pub const PROOF_OF_WORK_BITS: u32 = 12;
 pub const N_QUERIES: usize = 3;
 
+#[derive(Debug)]
 pub struct StarkProof {
     pub commitments: Vec<<MerkleHasher as Hasher>::Hash>,
     pub decommitments: Decommitments,
@@ -44,6 +46,7 @@ pub struct StarkProof {
     pub additional_proof_data: AdditionalProofData,
 }
 
+#[derive(Debug)]
 pub struct AdditionalProofData {
     pub composition_polynomial_oods_value: SecureField,
     pub composition_polynomial_random_coeff: SecureField,
@@ -55,7 +58,25 @@ pub fn prove(
     air: &impl Air<CPUBackend>,
     channel: &mut Channel,
     trace: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
-) -> StarkProof {
+) -> Result<StarkProof, ProvingError> {
+    // Check that traces are not too big.
+    for (i, trace) in trace.iter().enumerate() {
+        if trace.domain.log_size() + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
+            return Err(ProvingError::MaxTraceDegreeExceeded {
+                trace_index: i,
+                degree: trace.domain.log_size(),
+            });
+        }
+    }
+
+    // Check that the composition polynomial is not too big.
+    let composition_polynomial_log_degree_bound = air.max_constraint_log_degree_bound();
+    if composition_polynomial_log_degree_bound + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
+        return Err(ProvingError::MaxCompositionDegreeExceeded {
+            degree: composition_polynomial_log_degree_bound,
+        });
+    }
+
     // Evaluate and commit on trace.
     let trace_polys = trace.into_iter().map(|poly| poly.interpolate()).collect();
     let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
@@ -113,7 +134,7 @@ pub fn prove(
 
     let (opened_values, decommitments) = commitment_scheme.decommit(fri_opening_positions);
 
-    StarkProof {
+    Ok(StarkProof {
         commitments: commitment_scheme.roots(),
         decommitments,
         trace_oods_values,
@@ -127,7 +148,7 @@ pub fn prove(
             oods_point,
             oods_quotients,
         },
-    }
+    })
 }
 
 pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Channel) -> bool {
@@ -248,4 +269,130 @@ fn prepare_fri_evaluations(
         }
     }
     sparse_circle_evaluations
+}
+
+#[derive(Clone, Copy, Debug, Error)]
+pub enum ProvingError {
+    #[error(
+        "Trace column {trace_index} log degree bound ({degree}) exceeded max log degree ({}).",
+        30 - LOG_BLOWUP_FACTOR
+    )]
+    MaxTraceDegreeExceeded { trace_index: usize, degree: u32 },
+    #[error(
+        "Composition polynomial log degree bound ({degree}) exceeded max log degree ({}).",
+        30 - LOG_BLOWUP_FACTOR
+    )]
+    MaxCompositionDegreeExceeded { degree: u32 },
+}
+
+#[cfg(test)]
+pub fn test_channel() -> Blake2sChannel {
+    use crate::commitment_scheme::blake2_hash::Blake2sHash;
+
+    let seed = Blake2sHash::from(vec![0; 32]);
+    Blake2sChannel::new(seed)
+}
+
+#[cfg(test)]
+mod tests {
+    use num_traits::Zero;
+
+    use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
+    use crate::core::air::{Air, Component, ComponentTrace, ComponentVisitor, Mask};
+    use crate::core::backend::cpu::CPUCircleEvaluation;
+    use crate::core::backend::CPUBackend;
+    use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
+    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::qm31::SecureField;
+    use crate::core::poly::circle::CircleDomain;
+    use crate::core::prover::{prove, test_channel, ProvingError, LOG_BLOWUP_FACTOR};
+
+    struct TestAir<C: Component<CPUBackend>>(C);
+
+    impl Air<CPUBackend> for TestAir<TestComponent> {
+        fn visit_components<V: ComponentVisitor<CPUBackend>>(&self, v: &mut V) {
+            v.visit(&self.0)
+        }
+    }
+
+    struct TestComponent {
+        max_constraint_log_degree_bound: u32,
+    }
+
+    impl Component<CPUBackend> for TestComponent {
+        fn max_constraint_log_degree_bound(&self) -> u32 {
+            self.max_constraint_log_degree_bound
+        }
+
+        fn trace_log_degree_bounds(&self) -> Vec<u32> {
+            todo!()
+        }
+
+        fn evaluate_constraint_quotients_on_domain(
+            &self,
+            _trace: &ComponentTrace<'_, CPUBackend>,
+            _evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
+        ) {
+            todo!()
+        }
+
+        fn mask(&self) -> Mask {
+            todo!()
+        }
+
+        fn evaluate_constraint_quotients_at_point(
+            &self,
+            _point: CirclePoint<SecureField>,
+            _mask: &crate::core::ColumnVec<Vec<SecureField>>,
+            _evaluation_accumulator: &mut PointEvaluationAccumulator,
+        ) {
+            todo!()
+        }
+    }
+
+    #[test]
+    fn test_trace_too_big() {
+        const LOG_DOMAIN_SIZE: u32 = 31 - LOG_BLOWUP_FACTOR;
+        let air = TestAir(TestComponent {
+            max_constraint_log_degree_bound: LOG_DOMAIN_SIZE,
+        });
+        let domain = CircleDomain::new(Coset::new(
+            CirclePointIndex::generator(),
+            LOG_DOMAIN_SIZE - 1,
+        ));
+        let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
+        let trace = vec![CPUCircleEvaluation::new(domain, values)];
+
+        let proof_error = prove(&air, &mut test_channel(), trace).unwrap_err();
+        assert!(matches!(
+            proof_error,
+            ProvingError::MaxTraceDegreeExceeded {
+                trace_index: 0,
+                degree: LOG_DOMAIN_SIZE
+            }
+        ));
+    }
+
+    #[test]
+    fn test_composition_polynomial_too_big() {
+        const COMPOSITION_POLYNOMIAL_DEGREE: u32 = 31 - LOG_BLOWUP_FACTOR;
+        let air = TestAir(TestComponent {
+            max_constraint_log_degree_bound: COMPOSITION_POLYNOMIAL_DEGREE,
+        });
+        const LOG_DOMAIN_SIZE: u32 = 5;
+        let domain = CircleDomain::new(Coset::new(
+            CirclePointIndex::generator(),
+            LOG_DOMAIN_SIZE - 1,
+        ));
+        let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
+        let trace = vec![CPUCircleEvaluation::new(domain, values)];
+
+        let proof_error = prove(&air, &mut test_channel(), trace).unwrap_err();
+        assert!(matches!(
+            proof_error,
+            ProvingError::MaxCompositionDegreeExceeded {
+                degree: COMPOSITION_POLYNOMIAL_DEGREE
+            }
+        ));
+    }
 }
