@@ -7,7 +7,7 @@ use crate::core::backend::{Backend, CPUBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Col, Column, ExtensionOf, FieldExpOps};
-use crate::core::poly::circle::{CircleDomain, CirclePoly, SecureCirclePoly};
+use crate::core::poly::circle::{CanonicCoset, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::IteratorMutExt;
 
@@ -169,7 +169,7 @@ impl DomainEvaluationAccumulator<CPUBackend> {
             let coeffs = SecureColumn {
                 cols: values.cols.map(|c| {
                     CPUCircleEvaluation::<_, BitReversedOrder>::new(
-                        CircleDomain::constraint_evaluation_domain(log_size as u32),
+                        CanonicCoset::new(log_size as u32).circle_domain(),
                         c,
                     )
                     .interpolate()
@@ -304,12 +304,9 @@ mod tests {
         let mut res = SecureField::default();
         for (log_size, values) in pairs.into_iter() {
             res = res * alpha
-                + CPUCircleEvaluation::new(
-                    CircleDomain::constraint_evaluation_domain(log_size),
-                    values,
-                )
-                .interpolate()
-                .eval_at_point(point);
+                + CPUCircleEvaluation::new(CanonicCoset::new(log_size).circle_domain(), values)
+                    .interpolate()
+                    .eval_at_point(point);
         }
 
         assert_eq!(accumulator_res, res);
