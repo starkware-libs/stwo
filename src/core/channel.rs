@@ -1,8 +1,12 @@
 use std::iter;
 
+use itertools::Itertools;
+
+use super::air::evaluation::SECURE_EXTENSION_DEGREE;
 use super::fields::m31::{BaseField, N_BYTES_FELT, P};
 use super::fields::qm31::{SecureField, SECURE_FIELD_EXTENSION_DEGREE};
 use super::fields::IntoSlice;
+use super::ComponentVec;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
 
@@ -47,6 +51,26 @@ pub trait Channel {
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
 }
+
+pub trait ChannelExt: Channel {
+    fn mix_oods_values(
+        &mut self,
+        trace_oods_values: &ComponentVec<Vec<SecureField>>,
+        composition_polynomial_column_oods_values: &[SecureField; SECURE_EXTENSION_DEGREE],
+    ) {
+        self.mix_felts(
+            &trace_oods_values
+                .iter()
+                .flatten()
+                .flatten()
+                .copied()
+                .collect_vec(),
+        );
+        self.mix_felts(composition_polynomial_column_oods_values);
+    }
+}
+
+impl<T: Channel> ChannelExt for T {}
 
 /// A channel that can be used to draw random elements from a [Blake2sHash] digest.
 pub struct Blake2sChannel {

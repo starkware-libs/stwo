@@ -2,6 +2,7 @@ use std::iter::zip;
 
 use itertools::{enumerate, Itertools};
 
+use super::channel::ChannelExt;
 use super::poly::circle::CanonicCoset;
 use super::queries::SparseSubCircleDomain;
 use super::ColumnVec;
@@ -83,6 +84,10 @@ pub fn prove(
     let mut oods_quotients = Vec::with_capacity(trace_oods_points.len() + SECURE_EXTENSION_DEGREE);
     let composition_polynomial_column_oods_values =
         composition_polynomial_poly.eval_columns_at_point(oods_point);
+    channel.mix_oods_values(
+        &trace_oods_values,
+        &composition_polynomial_column_oods_values,
+    );
     for (evaluation, value) in zip(
         &commitment_scheme.trees[1].evaluations,
         composition_polynomial_column_oods_values,
@@ -152,6 +157,10 @@ pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Chann
     assert_eq!(
         composition_polynomial_oods_value,
         combine_secure_value(proof.composition_polynomial_column_oods_values)
+    );
+    channel.mix_oods_values(
+        &proof.trace_oods_values,
+        &proof.composition_polynomial_column_oods_values,
     );
 
     let bounds = air.quotient_log_bounds();
