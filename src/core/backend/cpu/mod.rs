@@ -9,6 +9,14 @@ use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::poly::line::LineEvaluation;
 use crate::core::utils::bit_reverse;
 
+// Assuming |L1| = 2^(17)B, |SecureField| = 16B, |BaseField| = 4B.
+// TODO(Ohad): figure out exact numbers.
+pub(crate) const LOG_N_BASE_FIELD_IN_CACHE: usize = 12;
+pub(crate) const N_BASE_FIELD_IN_CACHE: usize = 1 << LOG_N_BASE_FIELD_IN_CACHE;
+
+pub(crate) const LOG_N_SECURE_FIELD_IN_CACHE: usize = 10;
+pub(crate) const N_SECURE_FIELD_IN_CACHE: usize = 1 << LOG_N_SECURE_FIELD_IN_CACHE;
+
 #[derive(Copy, Clone, Debug)]
 pub struct CPUBackend;
 

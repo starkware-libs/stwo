@@ -1,11 +1,14 @@
 use itertools::enumerate;
+use num_traits::Zero;
 
-use super::backend::cpu::CPUCircleEvaluation;
+use super::backend::cpu::{
+    CPUCircleEvaluation, LOG_N_SECURE_FIELD_IN_CACHE, N_SECURE_FIELD_IN_CACHE,
+};
 use super::circle::CirclePoint;
 use super::constraints::{complex_conjugate_line, pair_vanishing, point_vanishing};
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::ComplexConjugate;
+use super::fields::{ComplexConjugate, FieldExpOps};
 use super::poly::circle::CircleEvaluation;
 use super::poly::{BitReversedOrder, NaturalOrder};
 use super::utils::bit_reverse_index;
@@ -65,14 +68,49 @@ pub fn get_pair_oods_quotient(
     eval: &CPUCircleEvaluation<BaseField, BitReversedOrder>,
 ) -> CPUCircleEvaluation<SecureField, NaturalOrder> {
     let mut values = Vec::with_capacity(eval.domain.size());
-    for (i, point) in enumerate(eval.domain.iter()) {
-        let index = bit_reverse_index(i, eval.domain.log_size());
-        values.push(eval_pair_oods_quotient_at_point(
-            point,
-            eval.values[index],
-            oods_point,
-            oods_value,
-        ));
+
+    // Fallback to the non-chunked version if the domain is not big enough.
+    if eval.domain.log_size() < LOG_N_SECURE_FIELD_IN_CACHE as u32 {
+        for (i, point) in enumerate(eval.domain.iter()) {
+            let index = bit_reverse_index(i, eval.domain.log_size());
+            values.push(eval_pair_oods_quotient_at_point(
+                point,
+                eval.values[index],
+                oods_point,
+                oods_value,
+            ));
+        }
+        return CircleEvaluation::new(eval.domain, values);
+    }
+    let denom = oods_point.complex_conjugate().y - oods_point.y;
+    let denom_inv = denom.inverse();
+    for chunk in eval
+        .domain
+        .iter()
+        .enumerate()
+        .array_chunks::<N_SECURE_FIELD_IN_CACHE>()
+    {
+        // Cached values for complex conjugate lines calculation.
+        let v_0 = (oods_value.complex_conjugate() - oods_value) * denom_inv;
+        let v_1 = oods_value + v_0 * (-oods_point.y);
+
+        let numerators: [SecureField; N_SECURE_FIELD_IN_CACHE] = std::array::from_fn(|i| {
+            let (i, point) = chunk[i];
+            let idx = bit_reverse_index(i, eval.domain.log_size());
+            let value = eval.values[idx];
+            let complex_conjugate_line = v_1 + (v_0 * (point.y));
+            value - complex_conjugate_line
+        });
+        let denominators: [SecureField; N_SECURE_FIELD_IN_CACHE] = std::array::from_fn(|i| {
+            let point = chunk[i].1;
+            pair_vanishing(oods_point, oods_point.complex_conjugate(), point.into_ef())
+        });
+        let mut inversed_denominators = [SecureField::zero(); N_SECURE_FIELD_IN_CACHE];
+        SecureField::batch_inverse(&denominators, &mut inversed_denominators);
+
+        for i in 0..N_SECURE_FIELD_IN_CACHE {
+            values.push(numerators[i] * inversed_denominators[i]);
+        }
     }
     CircleEvaluation::new(eval.domain, values)
 }
