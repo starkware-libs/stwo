@@ -22,12 +22,6 @@ impl CircleDomain {
         Self { half_coset }
     }
 
-    /// Constructs a domain for constraint evaluation.
-    pub fn constraint_evaluation_domain(log_size: u32) -> Self {
-        assert!(log_size > 0);
-        CircleDomain::new(Coset::new(CirclePointIndex::generator(), log_size - 1))
-    }
-
     pub fn iter(&self) -> CircleDomainIterator {
         self.half_coset
             .iter()
@@ -112,7 +106,7 @@ mod tests {
 
     #[test]
     fn test_circle_domain_iterator() {
-        let domain = CircleDomain::constraint_evaluation_domain(3);
+        let domain = CircleDomain::new(Coset::new(CirclePointIndex::generator(), 2));
         for (i, point) in domain.iter().enumerate() {
             if i < 4 {
                 assert_eq!(

@@ -333,9 +333,7 @@ mod tests {
     use crate::core::backend::Column;
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::{
-        CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
-    };
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PolyOps};
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
     use crate::qm31;
 
@@ -359,8 +357,8 @@ mod tests {
     fn test_eval_extension() {
         for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 4) {
             let log_size = log_size as u32;
-            let domain = CircleDomain::constraint_evaluation_domain(log_size);
-            let domain_ext = CircleDomain::constraint_evaluation_domain(log_size + 3);
+            let domain = CanonicCoset::new(log_size).circle_domain();
+            let domain_ext = CanonicCoset::new(log_size + 3).circle_domain();
             let evaluation = CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(
                 domain,
                 (0..(1 << log_size))
@@ -369,9 +367,10 @@ mod tests {
             );
             let poly = evaluation.clone().interpolate();
             let evaluation2 = poly.evaluate(domain_ext);
+            let poly2 = evaluation2.interpolate();
             assert_eq!(
-                evaluation2.values.to_vec()[..(1 << log_size)],
-                evaluation.values.to_vec()
+                poly.extend(log_size + 3).coeffs.to_vec(),
+                poly2.coeffs.to_vec()
             );
         }
     }
