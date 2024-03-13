@@ -97,6 +97,11 @@ pub fn prove(
         &air.component_traces(&commitment_scheme.trees[0].polynomials),
     );
     let composition_polynomial_oods_value = composition_polynomial_poly.eval_at_point(oods_point);
+    if composition_polynomial_oods_value
+        != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
+    {
+        return Err(ProvingError::ConstraintsNotSatisfied);
+    }
 
     // Calculate a quotient polynomial for each trace mask item and one for the composition
     // polynomial.
@@ -287,6 +292,8 @@ pub enum ProvingError {
         30 - LOG_BLOWUP_FACTOR
     )]
     MaxCompositionDegreeExceeded { degree: u32 },
+    #[error("Constraints not satisfied.")]
+    ConstraintsNotSatisfied,
 }
 
 #[cfg(test)]
@@ -310,6 +317,7 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::{CircleDomain, MAX_CIRCLE_DOMAIN_LOG_SIZE};
     use crate::core::prover::{prove, test_channel, ProvingError};
+    use crate::qm31;
 
     struct TestAir<C: Component<CPUBackend>>(C);
 
@@ -329,7 +337,7 @@ mod tests {
         }
 
         fn trace_log_degree_bounds(&self) -> Vec<u32> {
-            todo!()
+            vec![]
         }
 
         fn evaluate_constraint_quotients_on_domain(
@@ -337,20 +345,20 @@ mod tests {
             _trace: &ComponentTrace<'_, CPUBackend>,
             _evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
         ) {
-            todo!()
+            // Does nothing.
         }
 
         fn mask(&self) -> Mask {
-            todo!()
+            Mask(vec![])
         }
 
         fn evaluate_constraint_quotients_at_point(
             &self,
             _point: CirclePoint<SecureField>,
             _mask: &crate::core::ColumnVec<Vec<SecureField>>,
-            _evaluation_accumulator: &mut PointEvaluationAccumulator,
+            evaluation_accumulator: &mut PointEvaluationAccumulator,
         ) {
-            todo!()
+            evaluation_accumulator.accumulate(1, qm31!(0, 0, 0, 1))
         }
     }
 
@@ -399,5 +407,22 @@ mod tests {
                 degree: COMPOSITION_POLYNOMIAL_DEGREE
             }
         ));
+    }
+
+    #[test]
+    fn test_constraints_not_satisfied() {
+        const LOG_DOMAIN_SIZE: u32 = 5;
+        let air = TestAir(TestComponent {
+            max_constraint_log_degree_bound: LOG_DOMAIN_SIZE,
+        });
+        let domain = CircleDomain::new(Coset::new(
+            CirclePointIndex::generator(),
+            LOG_DOMAIN_SIZE - 1,
+        ));
+        let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
+        let trace = vec![CPUCircleEvaluation::new(domain, values)];
+
+        let proof = prove(&air, &mut test_channel(), trace).unwrap_err();
+        assert!(matches!(proof, ProvingError::ConstraintsNotSatisfied));
     }
 }
