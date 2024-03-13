@@ -30,6 +30,7 @@ pub trait AirExt: Air<CPUBackend> {
         visitor.0
     }
 
+    #[inline(never)]
     fn compute_composition_polynomial(
         &self,
         random_coeff: SecureField,

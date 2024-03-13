@@ -104,6 +104,7 @@ impl FibonacciComponent
 where
     FibonacciComponent: Component<CPUBackend>,
 {
+    #[inline(never)]
     fn accumulate_step_constraint(
         &self,
         trace_domain: CanonicCoset,
@@ -170,6 +171,7 @@ where
         }
     }
 
+    #[inline(never)]
     fn accumulate_boundary_constraint(
         &self,
         trace_domain: CanonicCoset,
@@ -244,6 +246,7 @@ impl Component<CPUBackend> for FibonacciComponent {
         vec![self.log_size]
     }
 
+    #[inline(never)]
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &ComponentTrace<'_, CPUBackend>,
