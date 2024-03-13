@@ -452,26 +452,7 @@ mod tests {
     use crate::core::circle::{CirclePoint, SECURE_FIELD_CIRCLE_GEN};
     use crate::core::fields::qm31::{SecureField, P4};
     use crate::core::fields::FieldExpOps;
-    use crate::core::poly::circle::{CanonicCoset, CircleDomain};
-
-    #[test]
-    fn test_domains() {
-        let log_size = 4;
-        let canonic_cosets_extensions = [
-            CanonicCoset::new(2).evaluation_domain(log_size + 1),
-            CanonicCoset::new(2).evaluation_domain(log_size + 2),
-            CanonicCoset::new(log_size - 1).evaluation_domain(log_size),
-        ];
-
-        let subgroup_gen = CirclePointIndex::subgroup_gen(log_size);
-        let constraint_evaluation_domain = CircleDomain::constraint_evaluation_domain(log_size - 1);
-
-        for point_index in constraint_evaluation_domain.iter_indices() {
-            for eval in &canonic_cosets_extensions {
-                assert!(eval.find(point_index - subgroup_gen).is_some());
-            }
-        }
-    }
+    use crate::core::poly::circle::CanonicCoset;
 
     #[test]
     fn test_iterator() {

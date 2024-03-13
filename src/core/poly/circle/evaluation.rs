@@ -145,13 +145,13 @@ mod tests {
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::circle::Coset;
     use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+    use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
     use crate::m31;
 
     #[test]
     fn test_interpolate_non_canonic() {
-        let domain = CircleDomain::constraint_evaluation_domain(3);
+        let domain = CanonicCoset::new(3).circle_domain();
         assert_eq!(domain.log_size(), 3);
         let evaluation = CPUCircleEvaluation::<_, NaturalOrder>::new(
             domain,

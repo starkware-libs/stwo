@@ -67,8 +67,7 @@ pub trait Component<B: Backend> {
     /// Returns the degree bounds of each trace column.
     fn trace_log_degree_bounds(&self) -> Vec<u32>;
 
-    /// Evaluates the constraint quotients of the component on constraint evaluation domains.
-    /// See [`super::poly::circle::CircleDomain::constraint_evaluation_domain`].
+    /// Evaluates the constraint quotients of the component on the evaluation domain.
     /// Accumulates quotients in `evaluation_accumulator`.
     // Note: This will be computed using a MaterializedGraph.
     fn evaluate_constraint_quotients_on_domain(

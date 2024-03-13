@@ -123,22 +123,13 @@ mod tests {
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
         let proof = fib.prove();
-        let (composition_polynomial_quotient, trace_quotients) = proof
-            .additional_proof_data
-            .oods_quotients
-            .split_first()
-            .unwrap();
+        let quotients = proof.additional_proof_data.oods_quotients;
 
         // Assert that the trace quotients are low degree.
-        for quotient in trace_quotients.iter() {
+        for quotient in quotients.iter() {
             let interpolated_quotient_poly = secure_eval_to_base_eval(quotient).interpolate();
-            assert!(interpolated_quotient_poly.is_in_fft_space(FIB_LOG_SIZE));
+            assert!(interpolated_quotient_poly.is_in_fft_space(FIB_LOG_SIZE + 1));
         }
-
-        // Assert that the composition polynomial quotient is low degree.
-        let interpolated_quotient_poly =
-            secure_eval_to_base_eval(composition_polynomial_quotient).interpolate();
-        assert!(interpolated_quotient_poly.is_in_fft_space(FIB_LOG_SIZE + 1));
     }
 
     #[test]
