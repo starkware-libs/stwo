@@ -4,8 +4,6 @@
     exact_size_is_empty,
     is_sorted,
     new_uninit,
-    slice_group_by,
-    stdsimd,
     get_many_mut,
     int_roundings
 )]
