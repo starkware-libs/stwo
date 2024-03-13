@@ -53,7 +53,7 @@ impl Fibonacci {
         let trace = self.get_trace();
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self.claim])));
-        prove(&self.air, channel, vec![trace])
+        prove(&self.air, channel, vec![trace]).unwrap()
     }
 }
 

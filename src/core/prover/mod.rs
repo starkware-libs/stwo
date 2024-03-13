@@ -1,6 +1,7 @@
 use std::iter::zip;
 
 use itertools::{enumerate, Itertools};
+use thiserror::Error;
 
 use super::poly::circle::CanonicCoset;
 use super::queries::SparseSubCircleDomain;
@@ -56,7 +57,25 @@ pub fn prove(
     air: &impl Air<CPUBackend>,
     channel: &mut Channel,
     trace: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
-) -> StarkProof {
+) -> Result<StarkProof, ProvingError> {
+    // Check that traces are not too big.
+    for (i, trace) in trace.iter().enumerate() {
+        if trace.domain.log_size() > 30 - LOG_BLOWUP_FACTOR {
+            return Err(ProvingError::MaxTraceDegreeExceeded {
+                trace_index: i,
+                degree: trace.domain.log_size(),
+            });
+        }
+    }
+
+    // Check that the composition polynomial is not too big.
+    let composition_polynomial_log_degree_bound = air.max_constraint_log_degree_bound();
+    if composition_polynomial_log_degree_bound > 30 - LOG_BLOWUP_FACTOR {
+        return Err(ProvingError::MaxCompositionDegreeExceeded {
+            degree: composition_polynomial_log_degree_bound,
+        });
+    }
+
     // Evaluate and commit on trace.
     let trace_polys = trace.into_iter().map(|poly| poly.interpolate()).collect();
     let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
@@ -114,7 +133,7 @@ pub fn prove(
 
     let (opened_values, decommitments) = commitment_scheme.decommit(fri_opening_positions);
 
-    StarkProof {
+    Ok(StarkProof {
         commitments: commitment_scheme.roots(),
         decommitments,
         trace_oods_values,
@@ -128,7 +147,7 @@ pub fn prove(
             oods_point,
             oods_quotients,
         },
-    }
+    })
 }
 
 pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Channel) -> bool {
@@ -249,4 +268,18 @@ fn prepare_fri_evaluations(
         }
     }
     sparse_circle_evaluations
+}
+
+#[derive(Clone, Copy, Debug, Error)]
+pub enum ProvingError {
+    #[error(
+        "Trace column {trace_index} log degree bound ({degree}) exceeded max log degree ({}).",
+        30 - LOG_BLOWUP_FACTOR
+    )]
+    MaxTraceDegreeExceeded { trace_index: usize, degree: u32 },
+    #[error(
+        "Composition polynomial log degree bound ({degree}) exceeded max log degree ({}).",
+        30 - LOG_BLOWUP_FACTOR
+    )]
+    MaxCompositionDegreeExceeded { degree: u32 },
 }
