@@ -9,6 +9,10 @@ use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::poly::line::LineEvaluation;
 use crate::core::utils::bit_reverse;
 
+// TODO(Ohad): figure out exact numbers.
+pub(crate) const LOG_N_SECUREFIELD_IN_CACHE: usize = 10;
+pub(crate) const N_SECUREFIELD_IN_CACHE: usize = 1 << LOG_N_SECUREFIELD_IN_CACHE;
+
 #[derive(Copy, Clone, Debug)]
 pub struct CPUBackend;
 
