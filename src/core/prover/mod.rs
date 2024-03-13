@@ -96,6 +96,11 @@ pub fn prove(
         &air.component_traces(&commitment_scheme.trees[0].polynomials),
     );
     let composition_polynomial_oods_value = composition_polynomial_poly.eval_at_point(oods_point);
+    if composition_polynomial_oods_value
+        != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
+    {
+        return Err(ProvingError::ConstraintsNotSatisfied);
+    }
 
     // Calculate a quotient polynomial for each trace mask item and one for the composition
     // polynomial.
@@ -282,4 +287,6 @@ pub enum ProvingError {
         30 - LOG_BLOWUP_FACTOR
     )]
     MaxCompositionDegreeExceeded { degree: u32 },
+    #[error("Constraints not satisfied.")]
+    ConstraintsNotSatisfied,
 }
