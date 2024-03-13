@@ -20,6 +20,7 @@ pub mod utils;
 pub type ColumnVec<T> = Vec<T>;
 
 /// A vector of [ColumnVec]s. Each [ColumnVec] relates (by index) to a component in the air.
+#[derive(Debug)]
 pub struct ComponentVec<T>(pub Vec<ColumnVec<T>>);
 
 impl<T: Copy> ComponentVec<ColumnVec<T>> {
