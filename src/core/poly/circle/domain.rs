@@ -18,12 +18,6 @@ impl CircleDomain {
         Self { half_coset }
     }
 
-    /// Constructs a domain for constraint evaluation.
-    pub fn constraint_evaluation_domain(log_size: u32) -> Self {
-        assert!(log_size > 0);
-        CircleDomain::new(Coset::new(CirclePointIndex::generator(), log_size - 1))
-    }
-
     pub fn iter(&self) -> CircleDomainIterator {
         self.half_coset
             .iter()
@@ -105,26 +99,6 @@ mod tests {
     use super::CircleDomain;
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::poly::circle::CanonicCoset;
-
-    #[test]
-    fn test_circle_domain_iterator() {
-        let domain = CircleDomain::constraint_evaluation_domain(3);
-        for (i, point) in domain.iter().enumerate() {
-            if i < 4 {
-                assert_eq!(
-                    point,
-                    (CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(2) * i)
-                        .to_point()
-                );
-            } else {
-                assert_eq!(
-                    point,
-                    (-(CirclePointIndex::generator() + CirclePointIndex::subgroup_gen(2) * i))
-                        .to_point()
-                );
-            }
-        }
-    }
 
     #[test]
     fn is_canonic_invalid_domain() {
