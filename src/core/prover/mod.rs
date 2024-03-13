@@ -82,13 +82,15 @@ pub fn prove(
     let mut oods_quotients = Vec::with_capacity(trace_oods_points.len() + SECURE_EXTENSION_DEGREE);
     let composition_polynomial_column_oods_values =
         composition_polynomial_poly.eval_columns_at_point(oods_point);
+    channel.mix_felts(&trace_oods_values.flatten());
+    channel.mix_felts(&composition_polynomial_column_oods_values);
     for (evaluation, value) in zip(
         &commitment_scheme.trees[1].evaluations,
         composition_polynomial_column_oods_values,
     ) {
         oods_quotients.push(get_pair_oods_quotient(oods_point, value, evaluation).bit_reverse());
     }
-    for (component_points, component_values) in zip(&trace_oods_points, &trace_oods_values) {
+    for (component_points, component_values) in zip(&trace_oods_points.0, &trace_oods_values.0) {
         for (i, (column_points, column_values)) in
             enumerate(zip(component_points, component_values))
         {
@@ -152,6 +154,8 @@ pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Chann
         composition_polynomial_oods_value,
         combine_secure_value(proof.composition_polynomial_column_oods_values)
     );
+    channel.mix_felts(&proof.trace_oods_values.flatten());
+    channel.mix_felts(&proof.composition_polynomial_column_oods_values);
 
     let bounds = air.quotient_log_bounds();
     let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
@@ -221,7 +225,7 @@ fn prepare_fri_evaluations(
         );
         sparse_circle_evaluations.push(SparseCircleEvaluation::new(evaluation));
     }
-    for (component_points, component_values) in zip(&trace_oods_points, &trace_oods_values) {
+    for (component_points, component_values) in zip(&trace_oods_points.0, &trace_oods_values.0) {
         for (i, (column_points, column_values)) in
             enumerate(zip(component_points, component_values))
         {

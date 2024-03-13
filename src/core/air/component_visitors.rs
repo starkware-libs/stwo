@@ -92,8 +92,8 @@ pub trait AirExt: Air<CPUBackend> {
         let mut visitor = MaskEvaluator::<CPUBackend> {
             point,
             component_traces: component_traces.iter(),
-            component_points: Vec::new(),
-            component_values: Vec::new(),
+            component_points: ComponentVec(Vec::new()),
+            component_values: ComponentVec(Vec::new()),
         };
         self.visit_components(&mut visitor);
         (visitor.component_points, visitor.component_values)
@@ -122,7 +122,7 @@ pub trait AirExt: Air<CPUBackend> {
 
         let mut visitor = MaskPointsEvaluator {
             point,
-            points: Vec::new(),
+            points: ComponentVec(Vec::new()),
         };
         self.visit_components(&mut visitor);
         visitor.points
