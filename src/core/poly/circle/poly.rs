@@ -6,18 +6,18 @@ use crate::core::poly::BitReversedOrder;
 
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
-pub struct CirclePoly<B: FieldOps<F>, F: ExtensionOf<BaseField>> {
+pub struct CirclePoly<B: FieldOps<BaseField>> {
     /// Coefficients of the polynomial in the FFT basis.
     /// Note: These are not the coefficients of the polynomial in the standard
     /// monomial basis. The FFT basis is a tensor product of the twiddles:
     /// y, x, pi(x), pi^2(x), ..., pi^{log_size-2}(x).
     /// pi(x) := 2x^2 - 1.
-    pub coeffs: Col<B, F>,
+    pub coeffs: Col<B, BaseField>,
     /// The number of coefficients stored as `log2(len(coeffs))`.
     log_size: u32,
 }
 
-impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CirclePoly<B, F> {
+impl<B: PolyOps> CirclePoly<B> {
     /// Creates a new circle polynomial.
     ///
     /// Coefficients must be in the circle IFFT algorithm's basis stored in bit-reversed order.
@@ -25,7 +25,7 @@ impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CirclePoly<B, F> {
     /// # Panics
     ///
     /// Panics if the number of coefficients isn't a power of two.
-    pub fn new(coeffs: Col<B, F>) -> Self {
+    pub fn new(coeffs: Col<B, BaseField>) -> Self {
         assert!(coeffs.len().is_power_of_two());
         let log_size = coeffs.len().ilog2();
         Self { log_size, coeffs }
@@ -36,7 +36,7 @@ impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CirclePoly<B, F> {
     }
 
     /// Evaluates the polynomial at a single point.
-    pub fn eval_at_point<E: ExtensionOf<F>>(&self, point: CirclePoint<E>) -> E {
+    pub fn eval_at_point<E: ExtensionOf<BaseField>>(&self, point: CirclePoint<E>) -> E {
         B::eval_at_point(self, point)
     }
 
@@ -46,16 +46,21 @@ impl<F: ExtensionOf<BaseField>, B: PolyOps<F>> CirclePoly<B, F> {
     }
 
     /// Evaluates the polynomial at all points in the domain.
-    pub fn evaluate(&self, domain: CircleDomain) -> CircleEvaluation<B, F, BitReversedOrder> {
+    pub fn evaluate(
+        &self,
+        domain: CircleDomain,
+    ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
         B::evaluate(self, domain)
     }
 }
 
 #[cfg(test)]
-impl<F: ExtensionOf<BaseField>> crate::core::backend::cpu::CPUCirclePoly<F> {
+impl crate::core::backend::cpu::CPUCirclePoly {
     pub fn is_in_fft_space(&self, log_fft_size: u32) -> bool {
+        use num_traits::Zero;
+
         let mut coeffs = self.coeffs.clone();
-        while coeffs.last() == Some(&F::zero()) {
+        while coeffs.last() == Some(&BaseField::zero()) {
             coeffs.pop();
         }
         coeffs.len() <= 1 << log_fft_size

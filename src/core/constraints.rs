@@ -103,6 +103,7 @@ mod tests {
     use crate::core::fields::{ComplexConjugate, FieldExpOps};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
+    use crate::core::utils::secure_eval_to_base_eval;
     use crate::m31;
 
     #[test]
@@ -217,7 +218,9 @@ mod tests {
             large_domain,
             quotient_polynomial_values,
         );
-        let quotient_polynomial = quotient_evaluation.bit_reverse().interpolate();
+        let quotient_polynomial = secure_eval_to_base_eval(&quotient_evaluation)
+            .bit_reverse()
+            .interpolate();
 
         // Check that the quotient polynomial is indeed in the wanted fft space.
         assert!(quotient_polynomial.is_in_fft_space(log_domain_size));

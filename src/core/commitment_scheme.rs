@@ -51,11 +51,7 @@ impl CommitmentSchemeProver {
         }
     }
 
-    pub fn commit(
-        &mut self,
-        polynomials: ColumnVec<CPUCirclePoly<BaseField>>,
-        channel: &mut Blake2sChannel,
-    ) {
+    pub fn commit(&mut self, polynomials: ColumnVec<CPUCirclePoly>, channel: &mut Blake2sChannel) {
         let tree = CommitmentTreeProver::new(polynomials, self.log_blowup_factor, channel);
         self.trees.push(tree);
     }
@@ -82,7 +78,7 @@ impl CommitmentSchemeProver {
 }
 
 pub struct CommitmentTreeProver {
-    pub polynomials: ColumnVec<CPUCirclePoly<BaseField>>,
+    pub polynomials: ColumnVec<CPUCirclePoly>,
     pub evaluations: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
     // TODO(AlonH): Change to mixed degree merkle and remove values clone.
     pub commitment: MerkleTree<BaseField, Blake2sHasher>,
@@ -90,7 +86,7 @@ pub struct CommitmentTreeProver {
 
 impl CommitmentTreeProver {
     pub fn new(
-        polynomials: Vec<CPUCirclePoly<BaseField>>,
+        polynomials: Vec<CPUCirclePoly>,
         log_blowup_factor: u32,
         channel: &mut Blake2sChannel,
     ) -> Self {

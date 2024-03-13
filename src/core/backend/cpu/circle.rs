@@ -1,3 +1,5 @@
+use num_traits::Zero;
+
 use super::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fft::{butterfly, ibutterfly};
@@ -31,11 +33,11 @@ fn get_twiddles(domain: CircleDomain) -> Vec<Vec<BaseField>> {
     res
 }
 
-impl<F: ExtensionOf<BaseField>> PolyOps<F> for CPUBackend {
+impl PolyOps for CPUBackend {
     fn new_canonical_ordered(
         coset: CanonicCoset,
-        values: Col<Self, F>,
-    ) -> CircleEvaluation<Self, F, BitReversedOrder> {
+        values: Col<Self, BaseField>,
+    ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         let domain = coset.circle_domain();
         assert_eq!(values.len(), domain.size());
         let mut new_values = Vec::with_capacity(values.len());
@@ -50,7 +52,7 @@ impl<F: ExtensionOf<BaseField>> PolyOps<F> for CPUBackend {
         CircleEvaluation::new(domain, new_values)
     }
 
-    fn interpolate(eval: CircleEvaluation<Self, F, BitReversedOrder>) -> CirclePoly<Self, F> {
+    fn interpolate(eval: CircleEvaluation<Self, BaseField, BitReversedOrder>) -> CirclePoly<Self> {
         let twiddles = get_twiddles(eval.domain);
 
         let mut values = eval.values;
@@ -75,7 +77,10 @@ impl<F: ExtensionOf<BaseField>> PolyOps<F> for CPUBackend {
         CirclePoly::new(values)
     }
 
-    fn eval_at_point<E: ExtensionOf<F>>(poly: &CirclePoly<Self, F>, point: CirclePoint<E>) -> E {
+    fn eval_at_point<E: ExtensionOf<BaseField>>(
+        poly: &CirclePoly<Self>,
+        point: CirclePoint<E>,
+    ) -> E {
         // TODO(Andrew): Allocation here expensive for small polynomials.
         let mut mappings = vec![point.y, point.x];
         let mut x = point.x;
@@ -87,18 +92,18 @@ impl<F: ExtensionOf<BaseField>> PolyOps<F> for CPUBackend {
         fold(&poly.coeffs, &mappings)
     }
 
-    fn extend(poly: &CirclePoly<Self, F>, log_size: u32) -> CirclePoly<Self, F> {
+    fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
         assert!(log_size >= poly.log_size());
         let mut coeffs = Vec::with_capacity(1 << log_size);
         coeffs.extend_from_slice(&poly.coeffs);
-        coeffs.resize(1 << log_size, F::zero());
+        coeffs.resize(1 << log_size, BaseField::zero());
         CirclePoly::new(coeffs)
     }
 
     fn evaluate(
-        poly: &CirclePoly<Self, F>,
+        poly: &CirclePoly<Self>,
         domain: CircleDomain,
-    ) -> CircleEvaluation<Self, F, BitReversedOrder> {
+    ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         let twiddles = get_twiddles(domain);
 
         let mut values = poly.extend(domain.log_size()).coeffs;
