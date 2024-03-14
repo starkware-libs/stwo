@@ -17,4 +17,10 @@ pub mod utils;
 /// A vector in which each element relates (by index) to a column in the trace.
 pub type ColumnVec<T> = Vec<T>;
 /// A vector of [ColumnVec]s. Each [ColumnVec] relates (by index) to a component in the air.
-pub type ComponentVec<T> = Vec<ColumnVec<T>>;
+#[derive(Debug, Clone)]
+pub struct ComponentVec<T>(pub Vec<ColumnVec<T>>);
+impl<T> Default for ComponentVec<T> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}

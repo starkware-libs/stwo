@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
@@ -15,7 +15,7 @@ pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
 /// Extension field of CM31.
 /// Equivalent to CM31\[x\] over (x^2 - 1 - 2i) as the irreducible polynomial.
 /// Represented as ((a, b), (c, d)) of (a + bi) + (c + di)u.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct QM31(pub CM31, pub CM31);
 pub type SecureField = QM31;
 
@@ -44,6 +44,12 @@ impl QM31 {
 }
 
 impl Display for QM31 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}) + ({})u", self.0, self.1)
+    }
+}
+
+impl Debug for QM31 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}) + ({})u", self.0, self.1)
     }
