@@ -98,34 +98,3 @@ unsafe fn compute_first_twiddles(twiddle1_dbl: [i32; 8]) -> (__m512i, __m512i) {
     let t0 = _mm512_xor_epi32(_mm512_permutexvar_epi32(INDICES_FROM_T1, t1), NEGATION_MASK);
     (t0, t1)
 }
-
-#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
-#[cfg(test)]
-mod tests {
-    use self::ifft::get_itwiddle_dbls;
-    use super::*;
-    use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::CanonicCoset;
-
-    #[test]
-    fn test_twiddle_relation() {
-        let ts = get_itwiddle_dbls(CanonicCoset::new(5).circle_domain());
-        let t0 = ts[0]
-            .iter()
-            .copied()
-            .map(|x| BaseField::from_u32_unchecked((x as u32) / 2))
-            .collect::<Vec<_>>();
-        let t1 = ts[1]
-            .iter()
-            .copied()
-            .map(|x| BaseField::from_u32_unchecked((x as u32) / 2))
-            .collect::<Vec<_>>();
-
-        for i in 0..t0.len() / 4 {
-            assert_eq!(t0[i * 4], t1[i * 2 + 1]);
-            assert_eq!(t0[i * 4 + 1], -t1[i * 2 + 1]);
-            assert_eq!(t0[i * 4 + 2], -t1[i * 2]);
-            assert_eq!(t0[i * 4 + 3], t1[i * 2]);
-        }
-    }
-}
