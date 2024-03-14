@@ -12,7 +12,6 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fri::CirclePolyDegreeBound;
 use crate::core::poly::circle::{CanonicCoset, CirclePoly, SecureCirclePoly};
-use crate::core::prover::LOG_BLOWUP_FACTOR;
 use crate::core::{ColumnVec, ComponentVec};
 
 pub trait AirExt: Air<CPUBackend> {
@@ -203,31 +202,22 @@ pub trait AirExt: Air<CPUBackend> {
     }
 
     /// Returns the log degree bounds of the quotient polynomials in descending order.
-    fn commitment_domains(&self) -> Vec<CanonicCoset> {
+    fn column_log_sizes(&self) -> Vec<u32> {
         struct DomainsVisitor {
-            domains: Vec<CanonicCoset>,
+            log_sizes: Vec<u32>,
         }
 
         impl<B: Backend> ComponentVisitor<B> for DomainsVisitor {
             fn visit<C: Component<B>>(&mut self, component: &C) {
-                self.domains.extend(
-                    component
-                        .trace_log_degree_bounds()
-                        .iter()
-                        .map(|&log_size| CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR)),
-                );
+                self.log_sizes.extend(component.trace_log_degree_bounds());
             }
         }
 
         let mut domains_visitor = DomainsVisitor {
-            domains: Vec::new(),
+            log_sizes: Vec::new(),
         };
         self.visit_components(&mut domains_visitor);
-        // Add the composition polynomial's domain.
-        domains_visitor.domains.push(CanonicCoset::new(
-            self.max_constraint_log_degree_bound() + LOG_BLOWUP_FACTOR,
-        ));
-        domains_visitor.domains
+        domains_visitor.log_sizes
     }
 
     fn component_traces<'a>(
