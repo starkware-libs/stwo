@@ -142,7 +142,7 @@ pub trait AirExt: Air<CPUBackend> {
 
         impl<'a, B: Backend> ComponentVisitor<B> for ConstraintPointEvaluator<'a> {
             fn visit<C: Component<B>>(&mut self, component: &C) {
-                component.evaluate_quotients_by_mask(
+                component.evaluate_constraint_quotients_at_point(
                     self.point,
                     self.mask_values
                         .next()

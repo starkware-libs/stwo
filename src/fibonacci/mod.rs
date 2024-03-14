@@ -108,7 +108,7 @@ mod tests {
             random_coeff,
             fib.air.max_constraint_log_degree_bound(),
         );
-        fib.air.component.evaluate_quotients_by_mask(
+        fib.air.component.evaluate_constraint_quotients_at_point(
             point,
             &mask_values,
             &mut evaluation_accumulator,
@@ -193,7 +193,7 @@ mod tests {
                 .composition_polynomial_random_coeff,
             fib.air.max_constraint_log_degree_bound(),
         );
-        fib.air.component.evaluate_quotients_by_mask(
+        fib.air.component.evaluate_constraint_quotients_at_point(
             oods_point,
             &mask_values,
             &mut evaluation_accumulator,
