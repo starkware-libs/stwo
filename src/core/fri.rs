@@ -1017,6 +1017,23 @@ mod tests {
     }
 
     #[test]
+    fn valid_proof_with_constant_last_layer_passes_verification() -> Result<(), VerificationError> {
+        const LOG_DEGREE: u32 = 3;
+        const LAST_LAYER_LOG_BOUND: u32 = 0;
+        let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
+        let log_domain_size = polynomial.domain.log_size();
+        let queries = Queries::from_positions(vec![5], log_domain_size);
+        let config = FriConfig::new(LAST_LAYER_LOG_BOUND, LOG_BLOWUP_FACTOR, queries.len());
+        let decommitment_value = query_polynomial(&polynomial, &queries);
+        let prover = FriProver::commit(&mut test_channel(), config, &[polynomial]);
+        let proof = prover.decommit_on_queries(&queries);
+        let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
+        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+
+        verifier.decommit_on_queries(&queries, vec![decommitment_value])
+    }
+
+    #[test]
     fn valid_mixed_degree_proof_passes_verification() -> Result<(), VerificationError> {
         const LOG_DEGREES: [u32; 3] = [6, 5, 4];
         let polynomials = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
