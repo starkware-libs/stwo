@@ -12,7 +12,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, verify, StarkProof};
 
-mod air;
+pub mod air;
 mod component;
 
 pub struct Fibonacci {
@@ -69,15 +69,21 @@ mod tests {
     use num_traits::One;
 
     use super::Fibonacci;
+    use crate::commitment_scheme::blake2_hash::Blake2sHasher;
+    use crate::commitment_scheme::hasher::Hasher;
     use crate::commitment_scheme::utils::tests::generate_test_queries;
     use crate::core::air::evaluation::PointEvaluationAccumulator;
     use crate::core::air::{AirExt, Component, ComponentTrace};
+    use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::fields::IntoSlice;
     use crate::core::poly::circle::CanonicCoset;
+    use crate::core::prover::{prove, verify};
     use crate::core::queries::Queries;
     use crate::core::utils::{bit_reverse, secure_eval_to_base_eval};
+    use crate::fibonacci::air::MultiFibonacciAir;
     use crate::fibonacci::verify_proof;
     use crate::{m31, qm31};
 
@@ -249,5 +255,19 @@ mod tests {
         invalid_proof.opened_values.0[0][0].pop();
 
         verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim);
+    }
+
+    #[test]
+    fn test_multi_fibonacci() {
+        let log_size = 5;
+        let (n_components, fib) = (16, Fibonacci::new(log_size, m31!(443693538)));
+        let air = MultiFibonacciAir::new(n_components, log_size, fib.claim);
+        let prover_channel =
+            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[fib.claim])));
+        let trace = vec![fib.get_trace(); n_components];
+        let proof = prove(&air, prover_channel, trace);
+        let verifier_channel =
+            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[fib.claim])));
+        assert!(verify(proof, &air, verifier_channel));
     }
 }

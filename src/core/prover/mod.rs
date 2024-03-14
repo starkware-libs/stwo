@@ -194,7 +194,7 @@ fn prepare_fri_evaluations(
 ) -> Vec<SparseCircleEvaluation<SecureField>> {
     // TODO(AlonH): Generalize when introducing mixed degree.
     let trace_commitment_domain = commitment_domains[0];
-    let composition_polynomial_commitment_domain = commitment_domains[1];
+    let composition_polynomial_commitment_domain = commitment_domains.last().unwrap();
     let mut sparse_circle_evaluations = Vec::new();
     for (opened_values, oods_value) in
         zip(&opened_values[1], composition_polynomial_column_oods_values)
