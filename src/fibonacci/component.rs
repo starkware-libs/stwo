@@ -265,7 +265,7 @@ impl Component<CPUBackend> for FibonacciComponent {
         Mask(vec![vec![0, 1, 2]])
     }
 
-    fn evaluate_quotients_by_mask(
+    fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
         mask: &ColumnVec<Vec<SecureField>>,

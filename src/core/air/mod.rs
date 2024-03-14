@@ -110,7 +110,7 @@ pub trait Component<B: Backend> {
     }
 
     /// Evaluates the constraint quotients combination of the component, given the mask values.
-    fn evaluate_quotients_by_mask(
+    fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
         mask: &ColumnVec<Vec<SecureField>>,
