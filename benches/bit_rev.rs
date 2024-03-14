@@ -2,7 +2,6 @@
 
 use criterion::Criterion;
 
-#[cfg(target_arch = "x86_64")]
 pub fn cpu_bit_rev(c: &mut criterion::Criterion) {
     use stwo::core::fields::m31::BaseField;
 
@@ -51,4 +50,9 @@ criterion::criterion_group!(
     name=avx_bit_rev;
     config = Criterion::default().sample_size(10);
     targets=avx512_bit_rev, cpu_bit_rev);
+#[cfg(not(target_arch = "x86_64"))]
+criterion::criterion_group!(
+    name=avx_bit_rev;
+    config = Criterion::default().sample_size(10);
+    targets=cpu_bit_rev);
 criterion::criterion_main!(avx_bit_rev);

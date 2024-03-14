@@ -1,10 +1,11 @@
 #![feature(iter_array_chunks)]
 
 use criterion::Criterion;
-use stwo::core::backend::avx512::fft::ifft::get_itwiddle_dbls;
 
+#[cfg(target_arch = "x86_64")]
 pub fn avx512_ifft(c: &mut criterion::Criterion) {
     use stwo::core::backend::avx512::fft::ifft;
+    use stwo::core::backend::avx512::fft::ifft::get_itwiddle_dbls;
     use stwo::core::backend::avx512::BaseFieldVec;
     use stwo::core::fields::m31::BaseField;
     use stwo::core::poly::circle::CanonicCoset;
@@ -37,6 +38,14 @@ pub fn avx512_ifft(c: &mut criterion::Criterion) {
     });
 }
 
+
+
+#[cfg(not(target_arch = "x86_64"))]
+pub fn avx512_ifft(_: &mut criterion::Criterion) {
+    // todo: add benchmark for cpu backend?
+    // ifft code needs to separated out of the CPUBackend's implementation of PolyOps.interpolate
+    return;
+}
 criterion::criterion_group!(
     name=avx_ifft;
     config = Criterion::default().sample_size(10);

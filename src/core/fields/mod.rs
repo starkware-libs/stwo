@@ -3,7 +3,6 @@ use std::ops::{Mul, MulAssign, Neg};
 
 use num_traits::{NumAssign, NumAssignOps, NumOps, One};
 
-#[cfg(target_arch = "x86_64")]
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
