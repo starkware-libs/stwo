@@ -29,8 +29,7 @@ type Channel = Blake2sChannel;
 type MerkleHasher = Blake2sHasher;
 
 pub const LOG_BLOWUP_FACTOR: u32 = 1;
-// TODO(Andrew): Change to 0 once related bug is fixed.
-pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 1;
+pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 0;
 pub const PROOF_OF_WORK_BITS: u32 = 12;
 pub const N_QUERIES: usize = 3;
 
