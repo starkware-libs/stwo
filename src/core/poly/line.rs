@@ -9,10 +9,11 @@ use num_traits::Zero;
 use super::utils::fold;
 use super::{BitReversedOrder, NaturalOrder};
 use crate::core::backend::cpu::CPULineEvaluation;
+use crate::core::backend::{Col, Column};
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{Col, Column, ExtensionOf, Field, FieldExpOps, FieldOps};
+use crate::core::fields::{ExtensionOf, Field, FieldExpOps, FieldOps};
 use crate::core::poly::utils::repeat_value;
 use crate::core::utils::bit_reverse;
 

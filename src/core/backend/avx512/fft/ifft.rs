@@ -523,9 +523,9 @@ mod tests {
     use crate::core::backend::avx512::m31::PackedBaseField;
     use crate::core::backend::avx512::BaseFieldVec;
     use crate::core::backend::cpu::CPUCircleEvaluation;
+    use crate::core::backend::Column;
     use crate::core::fft::ibutterfly;
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::Column;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 
     #[test]

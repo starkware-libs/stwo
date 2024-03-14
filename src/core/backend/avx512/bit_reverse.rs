@@ -141,8 +141,8 @@ mod tests {
     use super::bit_reverse16;
     use crate::core::backend::avx512::bit_reverse::bit_reverse_m31;
     use crate::core::backend::avx512::BaseFieldVec;
+    use crate::core::backend::Column;
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::Column;
     use crate::core::utils::bit_reverse;
 
     #[test]
