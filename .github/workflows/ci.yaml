@@ -51,6 +51,31 @@ jobs:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
       - run: ./scripts/test_avx.sh
+  
+  run-avx-bench:
+    runs-on: avx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2024-01-04
+      - name: Run benchmark
+        run: cargo +nightly-2024-01-04 bench | tee output.txt
+      - name: Download previous benchmark data
+        uses: actions/cache@v4
+        with:
+          path: ./cache
+          key: ${{ runner.os }}-benchmark
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'cargo'
+          output-file-path: output.txt
+          external-data-json-path: ./cache/benchmark-data.json
+          fail-on-alert: true
+          summary-always: true
+          comment-on-alert: true
+          alert-comment-cc-users: '@spapinistarkware'
 
   run-tests:
     runs-on: ubuntu-latest
