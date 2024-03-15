@@ -6,19 +6,25 @@ pub mod cm31;
 pub mod fft;
 pub mod m31;
 pub mod qm31;
+pub mod quotients;
 pub mod tranpose_utils;
 
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
+use itertools::izip;
 use num_traits::Zero;
 
 use self::bit_reverse::bit_reverse_m31;
+use self::cm31::PackedCM31;
 pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
+use self::qm31::PackedQM31;
 use super::{Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::utils;
 
-const VECS_LOG_SIZE: usize = 4;
+pub const VECS_LOG_SIZE: usize = 4;
 
 #[derive(Copy, Clone, Debug)]
 pub struct AVX512Backend;
@@ -126,6 +132,43 @@ impl FromIterator<BaseField> for BaseFieldVec {
         }
 
         Self { data: res, length }
+    }
+}
+
+impl SecureColumn<AVX512Backend> {
+    pub fn packed_at(&self, vec_index: usize) -> PackedQM31 {
+        unsafe {
+            PackedQM31([
+                PackedCM31([
+                    *self.columns[0].data.get_unchecked(vec_index),
+                    *self.columns[1].data.get_unchecked(vec_index),
+                ]),
+                PackedCM31([
+                    *self.columns[2].data.get_unchecked(vec_index),
+                    *self.columns[3].data.get_unchecked(vec_index),
+                ]),
+            ])
+        }
+    }
+
+    pub fn set_packed(&mut self, vec_index: usize, value: PackedQM31) {
+        unsafe {
+            *self.columns[0].data.get_unchecked_mut(vec_index) = value.a().a();
+            *self.columns[1].data.get_unchecked_mut(vec_index) = value.a().b();
+            *self.columns[2].data.get_unchecked_mut(vec_index) = value.b().a();
+            *self.columns[3].data.get_unchecked_mut(vec_index) = value.b().b();
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<SecureField> {
+        izip!(
+            self.columns[0].to_vec(),
+            self.columns[1].to_vec(),
+            self.columns[2].to_vec(),
+            self.columns[3].to_vec(),
+        )
+        .map(|(a, b, c, d)| SecureField::from_m31_array([a, b, c, d]))
+        .collect()
     }
 }
 
