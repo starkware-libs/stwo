@@ -83,6 +83,7 @@ impl Component<CPUBackend> for FibonacciComponent {
         trace: &ComponentTrace<'_, CPUBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
     ) {
+        let random_coeff = evaluation_accumulator.random_coeff;
         let poly = &trace.columns[0];
         let trace_domain = CanonicCoset::new(self.log_size);
         let trace_eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
@@ -90,7 +91,7 @@ impl Component<CPUBackend> for FibonacciComponent {
 
         // Step constraint.
         let constraint_log_degree_bound = trace_domain.log_size() + 1;
-        let [mut accum] = evaluation_accumulator.columns([(constraint_log_degree_bound, 1)]);
+        let [mut accum] = evaluation_accumulator.columns([(constraint_log_degree_bound, 2)]);
         let constraint_eval_domain = trace_eval_domain;
         for (off, point_coset) in [
             (0, constraint_eval_domain.half_coset),
@@ -103,14 +104,10 @@ impl Component<CPUBackend> for FibonacciComponent {
             let mul = trace_domain.step_size().div(point_coset.step_size);
             for (i, point) in point_coset.iter().enumerate() {
                 let mask = [eval[i], eval[i as isize + mul], eval[i as isize + 2 * mul]];
-                accum.accumulate(
-                    bit_reverse_index(i + off, constraint_log_degree_bound),
-                    self.step_constraint_eval_quotient_by_mask(point, &mask),
-                );
-                accum.accumulate(
-                    bit_reverse_index(i + off, constraint_log_degree_bound),
-                    self.boundary_constraint_eval_quotient_by_mask(point, &[mask[0]]),
-                );
+                let res = self.step_constraint_eval_quotient_by_mask(point, &mask);
+                let res = res * random_coeff
+                    + self.boundary_constraint_eval_quotient_by_mask(point, &[mask[0]]);
+                accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
             }
         }
     }
