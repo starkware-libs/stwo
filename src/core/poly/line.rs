@@ -230,7 +230,7 @@ impl<B: FieldOps<F>, F: Field, EvalOrder> LineEvaluation<B, F, EvalOrder> {
 
     /// Clones the values into a new line evaluation in the CPU.
     pub fn to_cpu(&self) -> CPULineEvaluation<F, EvalOrder> {
-        CPULineEvaluation::new(self.domain, self.values.to_vec())
+        CPULineEvaluation::new(self.domain, self.values.to_cpu())
     }
 }
 
