@@ -422,6 +422,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     {
         assert_eq!(queries.log_domain_size, self.expected_query_log_domain_size);
         assert_eq!(decommitted_values.len(), self.column_bounds.len());
+        println!("decommitted_values: {decommitted_values:#?}");
 
         let (last_layer_queries, last_layer_query_evals) =
             self.decommit_inner_layers(queries, decommitted_values)?;
@@ -876,6 +877,15 @@ impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F> {
                 buffer.values[0]
             })
             .collect()
+    }
+}
+
+impl<'a, F: ExtensionOf<BaseField>> IntoIterator for &'a mut SparseCircleEvaluation<F> {
+    type Item = &'a mut CircleEvaluation<CPUBackend, F, BitReversedOrder>;
+    type IntoIter = std::slice::IterMut<'a, CircleEvaluation<CPUBackend, F, BitReversedOrder>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.subcircle_evals.iter_mut()
     }
 }
 

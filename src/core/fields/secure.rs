@@ -3,9 +3,11 @@ use std::ops::Deref;
 use super::m31::BaseField;
 use super::qm31::SecureField;
 use super::ExtensionOf;
-use crate::core::backend::cpu::CPUCirclePoly;
+use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
 use crate::core::backend::{Backend, CPUBackend, Col, Column};
 use crate::core::circle::CirclePoint;
+use crate::core::poly::circle::CircleDomain;
+use crate::core::poly::BitReversedOrder;
 use crate::core::utils::IteratorMutExt;
 
 pub const SECURE_EXTENSION_DEGREE: usize =
@@ -24,6 +26,11 @@ impl SecureColumn<CPUBackend> {
             .iter_mut()
             .map(|c| &mut c[index])
             .assign(value.to_m31_array());
+    }
+
+    // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
+    pub fn to_cpu(&self) -> Vec<SecureField> {
+        (0..self.len()).map(|i| self.at(i)).collect()
     }
 }
 impl<B: Backend> SecureColumn<B> {
@@ -59,12 +66,27 @@ impl SecureCirclePoly {
             self[3].eval_at_point(point),
         ]
     }
+
+    pub fn log_size(&self) -> u32 {
+        self[0].log_size()
+    }
 }
 impl Deref for SecureCirclePoly {
     type Target = [CPUCirclePoly; SECURE_EXTENSION_DEGREE];
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+pub struct SecureEvaluation<B: Backend> {
+    pub domain: CircleDomain,
+    pub values: SecureColumn<B>,
+}
+impl SecureEvaluation<CPUBackend> {
+    // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
+    pub fn to_cpu(self) -> CPUCircleEvaluation<SecureField, BitReversedOrder> {
+        CPUCircleEvaluation::new(self.domain, self.values.to_cpu())
     }
 }
 
