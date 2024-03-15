@@ -7,7 +7,6 @@ pub mod constraints;
 pub mod fft;
 pub mod fields;
 pub mod fri;
-pub mod oods;
 pub mod poly;
 pub mod proof_of_work;
 pub mod prover;
