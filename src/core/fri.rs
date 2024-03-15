@@ -802,7 +802,7 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B, SecureField, BitReversedOrder>) -> Self {
         // TODO(spapini): Commit on slice.
         // TODO(spapini): Merkle tree in backend.
-        let merkle_tree = MerkleTree::commit(vec![evaluation.values.to_vec()]);
+        let merkle_tree = MerkleTree::commit(vec![evaluation.values.to_cpu()]);
         #[allow(unreachable_code)]
         FriLayerProver {
             evaluation,

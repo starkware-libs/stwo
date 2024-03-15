@@ -9,7 +9,6 @@ use std::ops::Deref;
 
 use itertools::Itertools;
 
-use super::super::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
 use super::super::backend::CPUBackend;
 use super::super::channel::Blake2sChannel;
 use super::super::circle::CirclePoint;
@@ -28,27 +27,29 @@ use super::utils::TreeVec;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
+use crate::core::backend::{Backend, Column};
 use crate::core::channel::Channel;
 use crate::core::fields::secure::SecureEvaluation;
+use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 
 type MerkleHasher = Blake2sHasher;
 type ProofChannel = Blake2sChannel;
 
 /// The prover size of a FRI polynomial commitment scheme. See [self].
-pub struct CommitmentSchemeProver {
-    pub trees: TreeVec<CommitmentTreeProver>,
+pub struct CommitmentSchemeProver<B: Backend> {
+    pub trees: TreeVec<CommitmentTreeProver<B>>,
     pub log_blowup_factor: u32,
 }
 
-impl CommitmentSchemeProver {
+impl<B: Backend> CommitmentSchemeProver<B> {
     pub fn new(log_blowup_factor: u32) -> Self {
         CommitmentSchemeProver {
-            trees: TreeVec::<CommitmentTreeProver>::default(),
+            trees: TreeVec::default(),
             log_blowup_factor,
         }
     }
 
-    pub fn commit(&mut self, polynomials: ColumnVec<CPUCirclePoly>, channel: &mut ProofChannel) {
+    pub fn commit(&mut self, polynomials: ColumnVec<CirclePoly<B>>, channel: &mut ProofChannel) {
         let tree = CommitmentTreeProver::new(polynomials, self.log_blowup_factor, channel);
         self.trees.push(tree);
     }
@@ -57,13 +58,13 @@ impl CommitmentSchemeProver {
         self.trees.as_ref().map(|tree| tree.root())
     }
 
-    pub fn polys(&self) -> TreeVec<ColumnVec<&CPUCirclePoly>> {
+    pub fn polys(&self) -> TreeVec<ColumnVec<&CirclePoly<B>>> {
         self.trees
             .as_ref()
             .map(|tree| tree.polynomials.iter().collect())
     }
 
-    fn evaluations(&self) -> TreeVec<ColumnVec<&CPUCircleEvaluation<BaseField, BitReversedOrder>>> {
+    fn evaluations(&self) -> TreeVec<ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>> {
         self.trees
             .as_ref()
             .map(|tree| tree.evaluations.iter().collect())
@@ -100,7 +101,7 @@ impl CommitmentSchemeProver {
         // SecureColumn.
         let quotients = quotients
             .into_iter()
-            .map(SecureEvaluation::to_cpu)
+            .map(SecureEvaluation::to_cpu_circle_eval)
             .collect_vec();
 
         // Run FRI commitment phase on the oods quotients.
@@ -144,16 +145,16 @@ pub struct CommitmentSchemeProof {
 
 /// Prover data for a single commitment tree in a commitment scheme. The commitment scheme allows to
 /// commit on a set polynomials at a time. This corresponds to such a set.
-pub struct CommitmentTreeProver {
-    pub polynomials: ColumnVec<CPUCirclePoly>,
-    pub evaluations: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
+pub struct CommitmentTreeProver<B: Backend> {
+    pub polynomials: ColumnVec<CirclePoly<B>>,
+    pub evaluations: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
     // TODO(AlonH): Change to mixed degree merkle and remove values clone.
     commitment: MerkleTree<BaseField, MerkleHasher>,
 }
 
-impl CommitmentTreeProver {
+impl<B: Backend> CommitmentTreeProver<B> {
     fn new(
-        polynomials: ColumnVec<CPUCirclePoly>,
+        polynomials: ColumnVec<CirclePoly<B>>,
         log_blowup_factor: u32,
         channel: &mut ProofChannel,
     ) -> Self {
@@ -165,10 +166,11 @@ impl CommitmentTreeProver {
                 )
             })
             .collect_vec();
+        // TODO(spapini): Remove to_cpu() when Merkle support different backends.
         let commitment = MerkleTree::<BaseField, MerkleHasher>::commit(
             evaluations
                 .iter()
-                .map(|eval| eval.values.clone())
+                .map(|eval| eval.values.to_cpu())
                 .collect_vec(),
         );
         channel.mix_digest(commitment.root());
@@ -192,14 +194,14 @@ impl CommitmentTreeProver {
         let values = self
             .evaluations
             .iter()
-            .map(|c| queries.iter().map(|p| c[*p]).collect())
+            .map(|c| queries.iter().map(|p| c.at(*p)).collect())
             .collect();
         let decommitment = self.commitment.generate_decommitment(queries);
         (values, decommitment)
     }
 }
 
-impl Deref for CommitmentTreeProver {
+impl<B: Backend> Deref for CommitmentTreeProver<B> {
     type Target = MerkleTree<BaseField, MerkleHasher>;
 
     fn deref(&self) -> &Self::Target {

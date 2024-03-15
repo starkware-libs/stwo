@@ -7,16 +7,13 @@ pub mod qm31;
 pub mod quotients;
 
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
-use itertools::izip;
 use num_traits::Zero;
 
 use self::bit_reverse::bit_reverse_m31;
-use self::cm31::PackedCM31;
 pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
 use self::qm31::PackedQM31;
 use super::{Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure::SecureColumn;
 use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::utils;
@@ -79,7 +76,7 @@ impl Column<BaseField> for BaseFieldVec {
             length: len,
         }
     }
-    fn to_vec(&self) -> Vec<BaseField> {
+    fn to_cpu(&self) -> Vec<BaseField> {
         self.data
             .iter()
             .flat_map(|x| x.to_array())
@@ -133,21 +130,6 @@ impl FromIterator<BaseField> for BaseFieldVec {
 }
 
 impl SecureColumn<AVX512Backend> {
-    pub fn at(&self, vec_index: usize) -> PackedQM31 {
-        unsafe {
-            PackedQM31([
-                PackedCM31([
-                    *self.cols[0].data.get_unchecked(vec_index),
-                    *self.cols[1].data.get_unchecked(vec_index),
-                ]),
-                PackedCM31([
-                    *self.cols[2].data.get_unchecked(vec_index),
-                    *self.cols[3].data.get_unchecked(vec_index),
-                ]),
-            ])
-        }
-    }
-
     pub fn set(&mut self, vec_index: usize, value: PackedQM31) {
         unsafe {
             *self.cols[0].data.get_unchecked_mut(vec_index) = value.a().a();
@@ -155,17 +137,6 @@ impl SecureColumn<AVX512Backend> {
             *self.cols[2].data.get_unchecked_mut(vec_index) = value.b().a();
             *self.cols[3].data.get_unchecked_mut(vec_index) = value.b().b();
         }
-    }
-
-    pub fn to_cpu(&self) -> Vec<SecureField> {
-        izip!(
-            self.cols[0].to_vec(),
-            self.cols[1].to_vec(),
-            self.cols[2].to_vec(),
-            self.cols[3].to_vec(),
-        )
-        .map(|(a, b, c, d)| SecureField::from_m31_array([a, b, c, d]))
-        .collect()
     }
 }
 
@@ -186,7 +157,7 @@ mod tests {
         for i in 0..100 {
             let col = Col::<B, BaseField>::from_iter((0..i).map(BaseField::from));
             assert_eq!(
-                col.to_vec(),
+                col.to_cpu(),
                 (0..i).map(BaseField::from).collect::<Vec<_>>()
             );
             for j in 0..i {
@@ -202,7 +173,7 @@ mod tests {
             let mut col = Col::<B, BaseField>::from_iter((0..len).map(BaseField::from));
             B::bit_reverse_column(&mut col);
             assert_eq!(
-                col.to_vec(),
+                col.to_cpu(),
                 (0..len)
                     .map(|x| BaseField::from(utils::bit_reverse_index(x, i as u32)))
                     .collect::<Vec<_>>()
