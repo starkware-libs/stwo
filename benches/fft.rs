@@ -13,7 +13,7 @@ pub fn avx512_ifft(c: &mut criterion::Criterion) {
         return;
     }
 
-    const LOG_SIZE: u32 = 28;
+    const LOG_SIZE: u32 = 26;
     let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
     let values = (0..domain.size())
         .map(|i| BaseField::from_u32_unchecked(i as u32))
@@ -23,7 +23,7 @@ pub fn avx512_ifft(c: &mut criterion::Criterion) {
     let mut values = BaseFieldVec::from_iter(values);
     let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
 
-    c.bench_function("avx ifft", |b| {
+    c.bench_function("avx ifft 26bit", |b| {
         b.iter(|| unsafe {
             ifft::ifft(
                 std::mem::transmute(values.data.as_mut_ptr()),
