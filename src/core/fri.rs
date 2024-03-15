@@ -8,11 +8,13 @@ use itertools::Itertools;
 use num_traits::Zero;
 use thiserror::Error;
 
-use super::backend::{Backend, CPUBackend};
+use super::backend::CPUBackend;
 use super::channel::Channel;
+use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
-use super::poly::circle::{CircleEvaluation, SecureEvaluation};
+use super::fields::FieldOps;
+use super::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
 use super::poly::line::{LineEvaluation, LinePoly};
 use super::poly::twiddles::TwiddleTree;
 use super::poly::BitReversedOrder;
@@ -70,7 +72,7 @@ impl FriConfig {
     }
 }
 
-pub trait FriOps: Backend + Sized {
+pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized {
     /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
     ///
     /// Let `eval` be a polynomial evaluated on a [LineDomain] `E`, `alpha` be a random field
