@@ -8,7 +8,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fields::{ComplexConjugate, FieldExpOps};
-use crate::core::poly::circle::{CircleDomain, CircleEvaluation};
+use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
 
@@ -18,16 +18,17 @@ impl QuotientOps for CPUBackend {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
         samples: &[ColumnSampleBatch],
-    ) -> SecureColumn<Self> {
-        let mut res = SecureColumn::zeros(domain.size());
+    ) -> SecureEvaluation<Self> {
+        let mut values = SecureColumn::zeros(domain.size());
+        // TODO(spapini): bit reverse iterator.
         for row in 0..domain.size() {
             // TODO(alonh): Make an efficient bit reverse domain iterator, possibly for AVX backend.
             let domain_point = domain.at(bit_reverse_index(row, domain.log_size()));
             let row_value =
                 accumulate_row_quotients(samples, columns, row, random_coeff, domain_point);
-            res.set(row, row_value);
+            values.set(row, row_value);
         }
-        res
+        SecureEvaluation { domain, values }
     }
 }
 
@@ -88,7 +89,8 @@ mod tests {
             }],
         );
         let quot_poly_base_field =
-            CPUCircleEvaluation::new(eval_domain, quot_eval.columns[0].clone()).interpolate();
+            CPUCircleEvaluation::new(eval_domain, quot_eval.values.columns[0].clone())
+                .interpolate();
         assert!(quot_poly_base_field.is_in_fft_space(LOG_SIZE));
     }
 }

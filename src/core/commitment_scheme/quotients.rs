@@ -4,18 +4,15 @@ use std::iter::zip;
 
 use itertools::{izip, multiunzip, Itertools};
 
-use crate::core::backend::cpu::quotients::accumulate_row_quotients;
-use crate::core::backend::Backend;
+use crate::core::backend::{Backend, CPUBackend};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fri::SparseCircleEvaluation;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::VerificationError;
 use crate::core::queries::SparseSubCircleDomain;
-use crate::core::utils::bit_reverse_index;
 
 pub trait QuotientOps: Backend {
     /// Accumulates the quotients of the columns at the given domain.
@@ -29,7 +26,7 @@ pub trait QuotientOps: Backend {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
         samples: &[ColumnSampleBatch],
-    ) -> SecureColumn<Self>;
+    ) -> SecureEvaluation<Self>;
 }
 
 /// A batch of column samplings at a point.
@@ -84,8 +81,7 @@ pub fn compute_fri_quotients<B: QuotientOps>(
             let domain = CanonicCoset::new(log_size).circle_domain();
             // TODO: slice.
             let batched_samples = ColumnSampleBatch::new(&samples);
-            let values = B::accumulate_quotients(domain, &columns, random_coeff, &batched_samples);
-            SecureEvaluation { domain, values }
+            B::accumulate_quotients(domain, &columns, random_coeff, &batched_samples)
         })
         .collect()
 }
@@ -136,35 +132,27 @@ pub fn fri_answers_for_log_size(
         .map(|q| q.iter())
         .collect_vec();
 
-    let mut evals = Vec::new();
-    for subdomain in query_domain.iter() {
-        let domain = subdomain.to_circle_domain(&commitment_domain);
-        let mut column_evals = Vec::new();
-        for queried_values in queried_values_per_column.iter_mut() {
-            let eval = CircleEvaluation::new(
-                domain,
-                queried_values.take(domain.size()).copied().collect_vec(),
-            );
-            column_evals.push(eval);
-        }
-        // TODO(spapini): bit reverse iterator.
-        let mut values = Vec::new();
-        for row in 0..domain.size() {
-            let domain_point = domain.at(bit_reverse_index(row, log_size));
-            let value = accumulate_row_quotients(
-                &batched_samples,
-                &column_evals.iter().collect_vec(),
-                row,
-                random_coeff,
-                domain_point,
-            );
-            values.push(value);
-        }
-        let eval = CircleEvaluation::new(domain, values);
-        evals.push(eval);
-    }
-
-    let res = SparseCircleEvaluation::new(evals);
+    let res = SparseCircleEvaluation::new(
+        query_domain
+            .iter()
+            .map(|subdomain| {
+                let domain = subdomain.to_circle_domain(&commitment_domain);
+                let column_evals = queried_values_per_column
+                    .iter_mut()
+                    .map(|q| {
+                        CircleEvaluation::new(domain, q.take(domain.size()).copied().collect_vec())
+                    })
+                    .collect_vec();
+                CPUBackend::accumulate_quotients(
+                    domain,
+                    &column_evals.iter().collect_vec(),
+                    random_coeff,
+                    &batched_samples,
+                )
+                .to_cpu()
+            })
+            .collect(),
+    );
     if !queried_values_per_column.iter().all(|x| x.is_empty()) {
         return Err(VerificationError::InvalidStructure(
             "Too many queried values".to_string(),
