@@ -2,7 +2,7 @@ use std::ops::Div;
 
 use num_traits::One;
 
-use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
+use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentTrace, Mask};
 use crate::core::backend::CPUBackend;
 use crate::core::circle::{CirclePoint, Coset};
