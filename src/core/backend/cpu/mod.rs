@@ -1,5 +1,6 @@
 mod circle;
 mod fri;
+pub mod quotients;
 
 use std::fmt::Debug;
 
