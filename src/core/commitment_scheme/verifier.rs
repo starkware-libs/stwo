@@ -6,14 +6,12 @@ use super::super::channel::Blake2sChannel;
 use super::super::circle::CirclePoint;
 use super::super::fields::m31::BaseField;
 use super::super::fields::qm31::SecureField;
-use super::super::fri::{CirclePolyDegreeBound, FriConfig, FriVerifier, SparseCircleEvaluation};
-use super::super::oods::get_pair_oods_quotient;
-use super::super::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
+use super::super::fri::{CirclePolyDegreeBound, FriConfig, FriVerifier};
 use super::super::proof_of_work::ProofOfWork;
 use super::super::prover::{
     LOG_BLOWUP_FACTOR, LOG_LAST_LAYER_DEGREE_BOUND, N_QUERIES, PROOF_OF_WORK_BITS,
 };
-use super::super::queries::SparseSubCircleDomain;
+use super::quotients::{fri_answers, PointOpening};
 use super::utils::{TreeColumns, TreeVec};
 use super::CommitmentSchemeProof;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
@@ -56,6 +54,8 @@ impl CommitmentSchemeVerifier {
         proof: CommitmentSchemeProof,
         channel: &mut ProofChannel,
     ) -> bool {
+        let random_coeff = channel.draw_felt();
+
         // Compute degree bounds for oods quotients without looking at the proof.
         let bounds = self
             .column_log_sizes()
@@ -63,7 +63,12 @@ impl CommitmentSchemeVerifier {
             .map(|(log_size, open_points)| {
                 vec![CirclePolyDegreeBound::new(log_size); open_points.len()]
             })
-            .flatten_all_rev();
+            .flatten_all()
+            .into_iter()
+            .sorted()
+            .rev()
+            .dedup()
+            .collect_vec();
 
         // FRI commitment phase on oods quotients.
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
@@ -85,7 +90,7 @@ impl CommitmentSchemeVerifier {
                 // TODO(spapini): Also very opened_value here.
                 tree.verify(
                     decommitment,
-                    &fri_query_domains[&(tree.log_sizes[0] + 1)].flatten(),
+                    &fri_query_domains[&(tree.log_sizes[0] + LOG_BLOWUP_FACTOR)].flatten(),
                 )
             })
             .0
@@ -96,58 +101,31 @@ impl CommitmentSchemeVerifier {
         }
 
         // Answer FRI queries.
-        let mut fri_answers = self
-            .column_log_sizes()
+        let openings = open_points
             .zip_cols(proof.opened_values)
-            .zip_cols(open_points)
-            .zip_cols(proof.queried_values)
-            .map(
-                // For each column.
-                |(((log_size, opened_values), opened_points), queried_values)| {
-                    zip(opened_points, opened_values)
-                        .map(|(point, value)| {
-                            // For each opening point of that column.
-                            eval_quotients_on_sparse_domain(
-                                queried_values.clone(),
-                                &fri_query_domains[&(log_size + 1)],
-                                CanonicCoset::new(log_size + 1).circle_domain(),
-                                point,
-                                value,
-                            )
-                        })
-                        .collect_vec()
-                },
-            )
-            .flatten_all();
+            .map(|(open_points, opened_values)| {
+                zip(open_points, opened_values)
+                    .map(|(point, value)| PointOpening { point, value })
+                    .collect_vec()
+            })
+            .flatten();
 
-        // TODO(spapini): Remove reverse.
-        fri_answers.reverse();
+        // TODO(spapini): Properly defined column log size and dinstinguish between poly and
+        // commitment.
+        let fri_answers = fri_answers(
+            self.column_log_sizes()
+                .flatten()
+                .into_iter()
+                .map(|x| x + LOG_BLOWUP_FACTOR)
+                .collect(),
+            &openings,
+            random_coeff,
+            fri_query_domains,
+            &proof.queried_values.flatten(),
+        );
+
         fri_verifier.decommit(fri_answers).is_ok()
     }
-}
-
-fn eval_quotients_on_sparse_domain(
-    queried_values: Vec<BaseField>,
-    query_domains: &SparseSubCircleDomain,
-    commitment_domain: CircleDomain,
-    point: CirclePoint<SecureField>,
-    value: SecureField,
-) -> SparseCircleEvaluation<SecureField> {
-    let queried_values = &mut queried_values.clone().into_iter();
-    let res = SparseCircleEvaluation::new(
-        query_domains
-            .iter()
-            .map(|subdomain| {
-                let subeval = CircleEvaluation::new(
-                    subdomain.to_circle_domain(&commitment_domain),
-                    queried_values.take(1 << subdomain.log_size).collect(),
-                );
-                get_pair_oods_quotient(point, value, &subeval).bit_reverse()
-            })
-            .collect(),
-    );
-    assert!(queried_values.is_empty());
-    res
 }
 
 /// Verifier data for a single commitment tree in a commitment scheme.

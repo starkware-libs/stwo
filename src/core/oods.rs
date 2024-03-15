@@ -54,25 +54,3 @@ pub fn get_oods_quotient(
     }
     CircleEvaluation::new(eval.domain, values)
 }
-
-/// Returns the pair OODS quotient (i.e quotienting out both the oods point and its complex
-/// conjugate) polynomial evaluation over the whole domain. Used in case we don't want the highest
-/// monomial of the resulting quotient polynomial to increase which might take it out of the fft
-/// space.
-pub fn get_pair_oods_quotient(
-    oods_point: CirclePoint<SecureField>,
-    oods_value: SecureField,
-    eval: &CPUCircleEvaluation<BaseField, BitReversedOrder>,
-) -> CPUCircleEvaluation<SecureField, NaturalOrder> {
-    let mut values = Vec::with_capacity(eval.domain.size());
-    for (i, point) in enumerate(eval.domain.iter()) {
-        let index = bit_reverse_index(i, eval.domain.log_size());
-        values.push(eval_pair_oods_quotient_at_point(
-            point,
-            eval.values[index],
-            oods_point,
-            oods_value,
-        ));
-    }
-    CircleEvaluation::new(eval.domain, values)
-}
