@@ -71,23 +71,23 @@ pub fn point_vanishing<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
     h.y / (EF::one() + h.x)
 }
 
-/// Evaluates a point on a line between a point and its complex conjugate.
-/// Relies on the fact that every polynomial F over the base field holds:
-/// F(p*) == F(p)* (* being the complex conjugate).
+/// Evaluates a linear function in (domain_point.y, domain_value).
+/// This function vanishes on the points
+///   (complex_point.y, complex_value),
+///   (complex_point.y.conjugate(), complex_value.conjugate()),
 pub fn complex_conjugate_line(
-    point: CirclePoint<SecureField>,
-    value: SecureField,
-    p: CirclePoint<BaseField>,
+    domain_point: CirclePoint<BaseField>,
+    domain_value: BaseField,
+    complex_point: CirclePoint<SecureField>,
+    complex_value: SecureField,
 ) -> SecureField {
-    // TODO(AlonH): This assertion will fail at a probability of 1 to 2^62. Use a better solution.
-    assert_ne!(
-        point.y,
-        point.y.complex_conjugate(),
-        "Cannot evaluate a line with a single point ({point:?})."
+    let (x0, y0) = (domain_point.y, domain_value);
+    let (x1, y1) = (complex_point.y, complex_value);
+    let (x2, y2) = (
+        complex_point.y.complex_conjugate(),
+        complex_value.complex_conjugate(),
     );
-    value
-        + (value.complex_conjugate() - value) * (-point.y + p.y)
-            / (point.complex_conjugate().y - point.y)
+    x0 * (y1 - y2) + x1 * (y2 - y0) + x2 * (y0 - y1)
 }
 
 #[cfg(test)]
@@ -205,7 +205,12 @@ mod tests {
         // Compute the quotient polynomial.
         let mut quotient_polynomial_values = Vec::with_capacity(large_domain_size as usize);
         for point in large_domain.iter() {
-            let line = complex_conjugate_line(vanish_point, vanish_point_value, point);
+            let line = complex_conjugate_line(
+                point,
+                polynomial.eval_at_point(point),
+                vanish_point,
+                vanish_point_value,
+            );
             let mut value = polynomial.eval_at_point(point) - line;
             value /= pair_vanishing(
                 vanish_point,
