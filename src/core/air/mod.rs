@@ -10,23 +10,19 @@ use super::fields::qm31::SecureField;
 use super::poly::circle::{CanonicCoset, CirclePoly};
 use super::ColumnVec;
 
-mod component_visitors;
+mod air_ext;
 pub mod evaluation;
 
-pub use component_visitors::AirExt;
+pub use air_ext::AirExt;
 
-/// Arithmetic Intermediate Representation (AIR).
+/// Aritair_exte Representation (AIR).
 /// An Air instance is assumed to already contain all the information needed to
 /// evaluate the constraints.
 /// For instance, all interaction elements are assumed to be present in it.
 /// Therefore, an AIR is generated only after the initial trace commitment phase.
 // TODO(spapini): consider renaming this struct.
 pub trait Air<B: Backend> {
-    fn visit_components<V: ComponentVisitor<B>>(&self, v: &mut V);
-}
-
-pub trait ComponentVisitor<B: Backend> {
-    fn visit<C: Component<B>>(&mut self, component: &C);
+    fn components(&self) -> Vec<&dyn Component<B>>;
 }
 
 /// Holds the mask offsets at each column.
