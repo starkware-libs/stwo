@@ -5,7 +5,7 @@ use std::iter::zip;
 use itertools::Itertools;
 
 use super::{Air, Component, ComponentTrace, ComponentVisitor};
-use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
+use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::backend::{Backend, CPUBackend};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
