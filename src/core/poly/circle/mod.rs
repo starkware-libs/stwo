@@ -3,14 +3,12 @@ mod domain;
 mod evaluation;
 mod ops;
 mod poly;
-mod secure_poly;
 
 pub use canonic::CanonicCoset;
 pub use domain::{CircleDomain, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 pub use evaluation::{CircleEvaluation, CosetSubEvaluation};
 pub use ops::PolyOps;
 pub use poly::CirclePoly;
-pub use secure_poly::{combine_secure_value, SecureCirclePoly};
 
 #[cfg(test)]
 mod tests {

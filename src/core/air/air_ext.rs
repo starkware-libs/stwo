@@ -7,7 +7,8 @@ use super::{Air, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
-use crate::core::poly::circle::{CanonicCoset, CirclePoly, SecureCirclePoly};
+use crate::core::fields::secure::SecureCirclePoly;
+use crate::core::poly::circle::{CanonicCoset, CirclePoly};
 use crate::core::prover::LOG_BLOWUP_FACTOR;
 use crate::core::ComponentVec;
 
