@@ -136,7 +136,7 @@ pub fn fri_answers_for_log_size(
                     random_coeff,
                     &batched_openings,
                 )
-                .to_cpu()
+                .to_cpu_circle_eval()
             })
             .collect(),
     );

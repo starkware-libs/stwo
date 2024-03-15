@@ -2,7 +2,6 @@ use std::ops::Deref;
 
 use super::CircleDomain;
 use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
-use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -56,9 +55,9 @@ pub struct SecureEvaluation<B: FieldOps<BaseField>> {
     pub domain: CircleDomain,
     pub values: SecureColumn<B>,
 }
-impl SecureEvaluation<CPUBackend> {
+impl<B: FieldOps<BaseField>> SecureEvaluation<B> {
     // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
-    pub fn to_cpu(self) -> CPUCircleEvaluation<SecureField, BitReversedOrder> {
+    pub fn to_cpu_circle_eval(self) -> CPUCircleEvaluation<SecureField, BitReversedOrder> {
         CPUCircleEvaluation::new(self.domain, self.values.to_cpu())
     }
 }
