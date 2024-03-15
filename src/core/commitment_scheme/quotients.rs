@@ -3,18 +3,18 @@ use std::collections::BTreeMap;
 
 use itertools::{izip, multiunzip, Itertools};
 
-use crate::core::backend::{Backend, CPUBackend};
+use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure::SecureEvaluation;
 use crate::core::fri::SparseCircleEvaluation;
-use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::VerificationError;
 use crate::core::queries::SparseSubCircleDomain;
 
-pub trait QuotientOps: Backend {
+pub trait QuotientOps: PolyOps {
     fn accumulate_quotients(
         domain: CircleDomain,
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
