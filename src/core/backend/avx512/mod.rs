@@ -82,7 +82,7 @@ impl Column<BaseField> for BaseFieldVec {
             length: len,
         }
     }
-    fn to_vec(&self) -> Vec<BaseField> {
+    fn to_cpu(&self) -> Vec<BaseField> {
         self.data
             .iter()
             .flat_map(|x| x.to_array())
@@ -162,10 +162,10 @@ impl SecureColumn<AVX512Backend> {
 
     pub fn to_vec(&self) -> Vec<SecureField> {
         izip!(
-            self.columns[0].to_vec(),
-            self.columns[1].to_vec(),
-            self.columns[2].to_vec(),
-            self.columns[3].to_vec(),
+            self.columns[0].to_cpu(),
+            self.columns[1].to_cpu(),
+            self.columns[2].to_cpu(),
+            self.columns[3].to_cpu(),
         )
         .map(|(a, b, c, d)| SecureField::from_m31_array([a, b, c, d]))
         .collect()
@@ -189,7 +189,7 @@ mod tests {
         for i in 0..100 {
             let col = Col::<B, BaseField>::from_iter((0..i).map(BaseField::from));
             assert_eq!(
-                col.to_vec(),
+                col.to_cpu(),
                 (0..i).map(BaseField::from).collect::<Vec<_>>()
             );
             for j in 0..i {
@@ -205,7 +205,7 @@ mod tests {
             let mut col = Col::<B, BaseField>::from_iter((0..len).map(BaseField::from));
             <B as ColumnOps<BaseField>>::bit_reverse_column(&mut col);
             assert_eq!(
-                col.to_vec(),
+                col.to_cpu(),
                 (0..len)
                     .map(|x| BaseField::from(utils::bit_reverse_index(x, i as u32)))
                     .collect::<Vec<_>>()
