@@ -4,7 +4,8 @@ USER root
 RUN apt update && \
     apt install -y \
     build-essential \
-    curl
+    curl \
+    git
 
 USER runner
 CMD /bin/bash
