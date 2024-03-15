@@ -4,14 +4,14 @@ use std::iter::zip;
 
 use itertools::Itertools;
 
-use super::evaluation::SECURE_EXTENSION_DEGREE;
 use super::{Air, Component, ComponentTrace, ComponentVisitor};
 use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::backend::{Backend, CPUBackend};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure::{SecureCirclePoly, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::CirclePolyDegreeBound;
-use crate::core::poly::circle::{CanonicCoset, CirclePoly, SecureCirclePoly};
+use crate::core::poly::circle::{CanonicCoset, CirclePoly};
 use crate::core::{ColumnVec, ComponentVec};
 
 pub trait AirExt: Air<CPUBackend> {

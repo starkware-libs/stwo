@@ -7,6 +7,7 @@ use num_traits::{NumAssign, NumAssignOps, NumOps, One};
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
+pub mod secure;
 
 pub trait FieldOps<F: Field> {
     type Column: Column<F>;

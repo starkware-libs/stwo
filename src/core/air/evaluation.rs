@@ -6,47 +6,10 @@ use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::backend::{Backend, CPUBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{Col, Column, ExtensionOf, FieldExpOps};
-use crate::core::poly::circle::{CanonicCoset, CirclePoly, SecureCirclePoly};
+use crate::core::fields::secure::{SecureCirclePoly, SecureColumn};
+use crate::core::fields::FieldExpOps;
+use crate::core::poly::circle::{CanonicCoset, CirclePoly};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::IteratorMutExt;
-
-pub const SECURE_EXTENSION_DEGREE: usize =
-    <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE;
-
-// TODO(spapini): find a better place for this
-pub struct SecureColumn<B: Backend> {
-    pub cols: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
-}
-
-impl SecureColumn<CPUBackend> {
-    fn at(&self, index: usize) -> SecureField {
-        SecureField::from_m31_array(std::array::from_fn(|i| self.cols[i][index]))
-    }
-
-    fn set(&mut self, index: usize, value: SecureField) {
-        self.cols
-            .iter_mut()
-            .map(|c| &mut c[index])
-            .assign(value.to_m31_array());
-    }
-}
-
-impl<B: Backend> SecureColumn<B> {
-    pub fn zeros(len: usize) -> Self {
-        Self {
-            cols: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)),
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.cols[0].len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.cols[0].is_empty()
-    }
-}
 
 /// Accumulates evaluations of u_i(P0) at a single point.
 /// Computes f(P0), the combined polynomial at that point.

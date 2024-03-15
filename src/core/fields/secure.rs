@@ -1,0 +1,78 @@
+use std::ops::Deref;
+
+use super::m31::BaseField;
+use super::qm31::SecureField;
+use super::{Col, ExtensionOf};
+use crate::core::backend::cpu::CPUCirclePoly;
+use crate::core::backend::{Backend, CPUBackend};
+use crate::core::circle::CirclePoint;
+use crate::core::fields::Column;
+use crate::core::utils::IteratorMutExt;
+
+pub const SECURE_EXTENSION_DEGREE: usize =
+    <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE;
+
+pub struct SecureColumn<B: Backend> {
+    pub cols: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
+}
+impl SecureColumn<CPUBackend> {
+    pub fn at(&self, index: usize) -> SecureField {
+        SecureField::from_m31_array(std::array::from_fn(|i| self.cols[i][index]))
+    }
+
+    pub fn set(&mut self, index: usize, value: SecureField) {
+        self.cols
+            .iter_mut()
+            .map(|c| &mut c[index])
+            .assign(value.to_m31_array());
+    }
+}
+impl<B: Backend> SecureColumn<B> {
+    pub fn zeros(len: usize) -> Self {
+        Self {
+            cols: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.cols[0].len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cols[0].is_empty()
+    }
+}
+
+pub struct SecureCirclePoly(pub [CPUCirclePoly; SECURE_EXTENSION_DEGREE]);
+impl SecureCirclePoly {
+    pub fn eval_at_point(&self, point: CirclePoint<SecureField>) -> SecureField {
+        combine_secure_value(self.eval_columns_at_point(point))
+    }
+
+    pub fn eval_columns_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+    ) -> [SecureField; SECURE_EXTENSION_DEGREE] {
+        [
+            self[0].eval_at_point(point),
+            self[1].eval_at_point(point),
+            self[2].eval_at_point(point),
+            self[3].eval_at_point(point),
+        ]
+    }
+}
+impl Deref for SecureCirclePoly {
+    type Target = [CPUCirclePoly; SECURE_EXTENSION_DEGREE];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub fn combine_secure_value(value: [SecureField; SECURE_EXTENSION_DEGREE]) -> SecureField {
+    let mut res = value[0];
+    res += value[1] * SecureField::from_u32_unchecked(0, 1, 0, 0);
+    res += value[2] * SecureField::from_u32_unchecked(0, 0, 1, 0);
+    res += value[3] * SecureField::from_u32_unchecked(0, 0, 0, 1);
+    res
+}
