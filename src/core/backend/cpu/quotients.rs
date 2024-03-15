@@ -43,8 +43,9 @@ pub fn accumulate_row_quotients(
         for (column_index, open_value) in &opening.column_indices_and_values {
             let column = &columns[*column_index];
             let value = column[row];
-            let linear_term = complex_conjugate_line(opening.point, *open_value, domain_point);
-            numerator = numerator * random_coeff + value - linear_term;
+            let current_numerator =
+                complex_conjugate_line(domain_point, value, opening.point, *open_value);
+            numerator = numerator * random_coeff + current_numerator;
         }
 
         let denominator = pair_vanishing(
