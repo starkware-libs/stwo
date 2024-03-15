@@ -83,6 +83,7 @@ impl Component<CPUBackend> for FibonacciComponent {
         trace: &ComponentTrace<'_, CPUBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
     ) {
+        let random_coeff = evaluation_accumulator.random_coeff;
         let poly = &trace.columns[0];
         let trace_domain = CanonicCoset::new(self.log_size);
         let trace_eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
@@ -104,8 +105,8 @@ impl Component<CPUBackend> for FibonacciComponent {
             for (i, point) in point_coset.iter().enumerate() {
                 let mask = [eval[i], eval[i as isize + mul], eval[i as isize + 2 * mul]];
                 let res = self.step_constraint_eval_quotient_by_mask(point, &mask);
-                accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
-                let res = self.boundary_constraint_eval_quotient_by_mask(point, &[mask[0]]);
+                let res = res * random_coeff
+                    + self.boundary_constraint_eval_quotient_by_mask(point, &[mask[0]]);
                 accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
             }
         }
