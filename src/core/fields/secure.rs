@@ -2,9 +2,9 @@ use std::ops::Deref;
 
 use super::m31::BaseField;
 use super::qm31::SecureField;
-use super::ExtensionOf;
+use super::{ExtensionOf, FieldOps};
 use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
-use crate::core::backend::{Backend, CPUBackend, Col, Column};
+use crate::core::backend::{CPUBackend, Col, Column};
 use crate::core::circle::CirclePoint;
 use crate::core::poly::circle::CircleDomain;
 use crate::core::poly::BitReversedOrder;
@@ -13,7 +13,7 @@ use crate::core::utils::IteratorMutExt;
 pub const SECURE_EXTENSION_DEGREE: usize =
     <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE;
 
-pub struct SecureColumn<B: Backend> {
+pub struct SecureColumn<B: FieldOps<BaseField>> {
     pub cols: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
 impl SecureColumn<CPUBackend> {
@@ -33,7 +33,7 @@ impl SecureColumn<CPUBackend> {
         (0..self.len()).map(|i| self.at(i)).collect()
     }
 }
-impl<B: Backend> SecureColumn<B> {
+impl<B: FieldOps<BaseField>> SecureColumn<B> {
     pub fn zeros(len: usize) -> Self {
         Self {
             cols: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)),
@@ -79,7 +79,7 @@ impl Deref for SecureCirclePoly {
     }
 }
 
-pub struct SecureEvaluation<B: Backend> {
+pub struct SecureEvaluation<B: FieldOps<BaseField>> {
     pub domain: CircleDomain,
     pub values: SecureColumn<B>,
 }

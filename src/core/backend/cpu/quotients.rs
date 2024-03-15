@@ -19,7 +19,7 @@ impl QuotientOps for CPUBackend {
         random_coeff: SecureField,
         openings: &[BatchedColumnOpenings],
     ) -> SecureEvaluation<Self> {
-        let mut values = SecureColumn::zeros(domain.size());
+        let mut values = SecureColumn::<CPUBackend>::zeros(domain.size());
         // TODO(spapini): bit reverse iterator.
         for row in 0..domain.size() {
             let domain_point = domain.at(bit_reverse_index(row, domain.log_size()));
