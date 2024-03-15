@@ -8,7 +8,6 @@ use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
 
-pub const SECURE_FIELD_EXTENSION_DEGREE: usize = 4;
 pub const P4: u128 = 21267647892944572736998860269687930881; // (2 ** 31 - 1) ** 4
 pub const R: CM31 = CM31::from_u32_unchecked(2, 1);
 
