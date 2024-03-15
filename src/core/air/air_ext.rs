@@ -3,15 +3,14 @@ use std::iter::zip;
 
 use itertools::Itertools;
 
-use super::evaluation::{
-    DomainEvaluationAccumulator, PointEvaluationAccumulator, SECURE_EXTENSION_DEGREE,
-};
+use super::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Air, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure::{SecureCirclePoly, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::CirclePolyDegreeBound;
-use crate::core::poly::circle::{CanonicCoset, CirclePoly, SecureCirclePoly};
+use crate::core::poly::circle::{CanonicCoset, CirclePoly};
 use crate::core::prover::LOG_BLOWUP_FACTOR;
 use crate::core::ComponentVec;
 
