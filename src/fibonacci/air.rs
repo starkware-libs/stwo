@@ -1,5 +1,7 @@
+use itertools::Itertools;
+
 use super::component::FibonacciComponent;
-use crate::core::air::{Air, ComponentVisitor};
+use crate::core::air::{Air, Component};
 use crate::core::backend::CPUBackend;
 use crate::core::fields::m31::BaseField;
 
@@ -14,8 +16,8 @@ impl FibonacciAir {
 }
 
 impl Air<CPUBackend> for FibonacciAir {
-    fn visit_components<V: ComponentVisitor<CPUBackend>>(&self, v: &mut V) {
-        v.visit(&self.component);
+    fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
+        vec![&self.component]
     }
 }
 
@@ -34,9 +36,10 @@ impl MultiFibonacciAir {
 }
 
 impl Air<CPUBackend> for MultiFibonacciAir {
-    fn visit_components<V: ComponentVisitor<CPUBackend>>(&self, v: &mut V) {
-        for component in self.components.iter() {
-            v.visit(component);
-        }
+    fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
+        self.components
+            .iter()
+            .map(|c| c as &dyn Component<CPUBackend>)
+            .collect_vec()
     }
 }
