@@ -3,15 +3,15 @@ use std::ops::Deref;
 
 use itertools::Itertools;
 
-use self::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
+use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
 use super::circle::CirclePoint;
 use super::fields::qm31::SecureField;
 use super::poly::circle::{CanonicCoset, CirclePoly};
 use super::ColumnVec;
 
+pub mod accumulation;
 mod component_visitors;
-pub mod evaluation;
 
 pub use component_visitors::AirExt;
 
