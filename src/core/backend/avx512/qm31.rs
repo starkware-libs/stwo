@@ -1,14 +1,30 @@
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, Mul, MulAssign, Sub};
+
+use num_traits::{One, Zero};
 
 use super::cm31::PackedCM31;
 use super::m31::K_BLOCK_SIZE;
-use crate::core::fields::qm31::QM31;
+use super::PackedBaseField;
+use crate::core::fields::qm31::{P4, QM31};
+use crate::core::fields::FieldExpOps;
 
 /// AVX implementation for an extension of CM31.
 /// See [crate::core::fields::qm31::QM31] for more information.
 #[derive(Copy, Clone)]
 pub struct PackedQM31(pub [PackedCM31; 2]);
 impl PackedQM31 {
+    pub fn zero() -> Self {
+        Self([
+            PackedCM31([PackedBaseField::zero(); 2]),
+            PackedCM31([PackedBaseField::zero(); 2]),
+        ])
+    }
+    pub fn broadcast(value: QM31) -> Self {
+        Self([
+            PackedCM31::broadcast(value.0),
+            PackedCM31::broadcast(value.1),
+        ])
+    }
     pub fn a(&self) -> PackedCM31 {
         self.0[0]
     }
@@ -52,6 +68,48 @@ impl Mul for PackedQM31 {
             ac_p_bd.b() + bd_times_1_plus_i.b(),
         ]);
         Self([l, ad_p_bc])
+    }
+}
+impl Zero for PackedQM31 {
+    fn zero() -> Self {
+        Self([PackedCM31::zero(), PackedCM31::zero()])
+    }
+    fn is_zero(&self) -> bool {
+        self.a().is_zero() && self.b().is_zero()
+    }
+}
+impl One for PackedQM31 {
+    fn one() -> Self {
+        Self([PackedCM31::one(), PackedCM31::zero()])
+    }
+}
+impl MulAssign for PackedQM31 {
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = *self * rhs;
+    }
+}
+impl FieldExpOps for PackedQM31 {
+    fn inverse(&self) -> Self {
+        self.pow(P4 - 2)
+    }
+}
+
+impl Add<PackedBaseField> for PackedQM31 {
+    type Output = Self;
+    fn add(self, rhs: PackedBaseField) -> Self::Output {
+        Self([self.a() + rhs, self.b()])
+    }
+}
+impl Sub<PackedBaseField> for PackedQM31 {
+    type Output = Self;
+    fn sub(self, rhs: PackedBaseField) -> Self::Output {
+        Self([self.a() - rhs, self.b()])
+    }
+}
+impl Mul<PackedBaseField> for PackedQM31 {
+    type Output = Self;
+    fn mul(self, rhs: PackedBaseField) -> Self::Output {
+        Self([self.a() * rhs, self.b() * rhs])
     }
 }
 
