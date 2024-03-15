@@ -169,7 +169,10 @@ pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Chann
         .collect_vec();
     commitment_scheme.verify(&proof.decommitments, &opening_positions);
 
-    let commitment_domains = air.commitment_domains();
+    let mut commitment_domains = air.trace_commitment_domains();
+    commitment_domains.push(CanonicCoset::new(
+        air.composition_log_degree_bound() + LOG_BLOWUP_FACTOR,
+    ));
     // Prepare the quotient evaluations needed for the FRI verifier.
     let sparse_circle_evaluations = prepare_fri_evaluations(
         opening_positions,
