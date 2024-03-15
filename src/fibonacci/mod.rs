@@ -74,7 +74,7 @@ mod tests {
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::hasher::Hasher;
     use crate::commitment_scheme::utils::tests::generate_test_queries;
-    use crate::core::air::evaluation::PointEvaluationAccumulator;
+    use crate::core::air::accumulation::PointEvaluationAccumulator;
     use crate::core::air::{AirExt, Component, ComponentTrace};
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::CirclePoint;
