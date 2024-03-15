@@ -193,7 +193,8 @@ mod tests {
             }],
         );
         let quot_poly_base_field =
-            CPUCircleEvaluation::new(eval_domain, quot_eval.columns[0].clone()).interpolate();
+            CPUCircleEvaluation::new(eval_domain, quot_eval.values.columns[0].clone())
+                .interpolate();
         assert!(quot_poly_base_field.is_in_fft_space(LOG_SIZE));
     }
 }
