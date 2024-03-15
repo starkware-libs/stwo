@@ -113,7 +113,7 @@ mod tests {
 
     use super::{Fibonacci, MultiFibonacci};
     use crate::commitment_scheme::utils::tests::generate_test_queries;
-    use crate::core::air::evaluation::PointEvaluationAccumulator;
+    use crate::core::air::accumulation::PointEvaluationAccumulator;
     use crate::core::air::{AirExt, Component, ComponentTrace};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;

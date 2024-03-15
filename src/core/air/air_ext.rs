@@ -2,7 +2,7 @@ use std::iter::zip;
 
 use itertools::Itertools;
 
-use super::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
+use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Air, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
