@@ -19,7 +19,7 @@ impl QuotientOps for CPUBackend {
         random_coeff: SecureField,
         samples: &[ColumnSampleBatch],
     ) -> SecureEvaluation<Self> {
-        let mut values = SecureColumn::zeros(domain.size());
+        let mut values = SecureColumn::<Self>::zeros(domain.size());
         // TODO(spapini): bit reverse iterator.
         for row in 0..domain.size() {
             // TODO(alonh): Make an efficient bit reverse domain iterator, possibly for AVX backend.
