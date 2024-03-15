@@ -1,8 +1,8 @@
 use std::iter;
 
 use super::fields::m31::{BaseField, N_BYTES_FELT, P};
-use super::fields::qm31::{SecureField, SECURE_FIELD_EXTENSION_DEGREE};
-use super::fields::IntoSlice;
+use super::fields::qm31::SecureField;
+use super::fields::{ExtensionOf, IntoSlice};
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
 
@@ -122,7 +122,11 @@ impl Channel for Blake2sChannel {
 
     fn draw_felt(&mut self) -> SecureField {
         let felts: [BaseField; FELTS_PER_HASH] = self.draw_base_felts();
-        SecureField::from_m31_array(felts[..SECURE_FIELD_EXTENSION_DEGREE].try_into().unwrap())
+        SecureField::from_m31_array(
+            felts[..<SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE]
+                .try_into()
+                .unwrap(),
+        )
     }
 
     fn draw_felts(&mut self, n_felts: usize) -> Vec<SecureField> {
