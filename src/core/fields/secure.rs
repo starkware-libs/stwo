@@ -17,20 +17,11 @@ pub struct SecureColumn<B: FieldOps<BaseField>> {
     pub cols: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
 impl SecureColumn<CPUBackend> {
-    pub fn at(&self, index: usize) -> SecureField {
-        SecureField::from_m31_array(std::array::from_fn(|i| self.cols[i][index]))
-    }
-
     pub fn set(&mut self, index: usize, value: SecureField) {
         self.cols
             .iter_mut()
             .map(|c| &mut c[index])
             .assign(value.to_m31_array());
-    }
-
-    // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
-    pub fn to_cpu(&self) -> Vec<SecureField> {
-        (0..self.len()).map(|i| self.at(i)).collect()
     }
 }
 impl<B: FieldOps<BaseField>> SecureColumn<B> {
@@ -46,6 +37,15 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
 
     pub fn is_empty(&self) -> bool {
         self.cols[0].is_empty()
+    }
+
+    pub fn at(&self, index: usize) -> SecureField {
+        SecureField::from_m31_array(std::array::from_fn(|i| self.cols[i].at(index)))
+    }
+
+    // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
+    pub fn to_cpu(&self) -> Vec<SecureField> {
+        (0..self.len()).map(|i| self.at(i)).collect()
     }
 }
 
@@ -83,9 +83,9 @@ pub struct SecureEvaluation<B: FieldOps<BaseField>> {
     pub domain: CircleDomain,
     pub values: SecureColumn<B>,
 }
-impl SecureEvaluation<CPUBackend> {
+impl<B: FieldOps<BaseField>> SecureEvaluation<B> {
     // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
-    pub fn to_cpu(self) -> CPUCircleEvaluation<SecureField, BitReversedOrder> {
+    pub fn to_cpu_circle_eval(self) -> CPUCircleEvaluation<SecureField, BitReversedOrder> {
         CPUCircleEvaluation::new(self.domain, self.values.to_cpu())
     }
 }
