@@ -2,11 +2,14 @@ use core::arch::x86_64::{
     __m512i, _mm512_add_epi32, _mm512_min_epu32, _mm512_mul_epu32, _mm512_srli_epi64,
     _mm512_sub_epi32,
 };
-use std::arch::x86_64::{_mm512_load_epi32, _mm512_permutex2var_epi32, _mm512_store_epi32};
+use std::arch::x86_64::{
+    _mm512_load_epi32, _mm512_permutex2var_epi32, _mm512_set1_epi32, _mm512_setzero_si512,
+    _mm512_store_epi32,
+};
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use num_traits::One;
+use num_traits::{One, Zero};
 
 use crate::core::fields::m31::{M31, P};
 use crate::core::fields::FieldExpOps;
@@ -55,6 +58,10 @@ pub const ODDS_CONCAT_ODDS: __m512i = unsafe {
 pub struct PackedBaseField(pub __m512i);
 
 impl PackedBaseField {
+    pub fn broadcast(value: M31) -> Self {
+        Self(unsafe { _mm512_set1_epi32(value.0 as i32) })
+    }
+
     pub fn from_array(v: [M31; K_BLOCK_SIZE]) -> PackedBaseField {
         unsafe { Self(std::mem::transmute(v)) }
     }
@@ -111,10 +118,6 @@ impl PackedBaseField {
     /// Sums all the elements in the packed M31 element.
     pub fn pointwise_sum(self) -> M31 {
         self.to_array().into_iter().sum()
-    }
-
-    pub fn broadcast(x: M31) -> Self {
-        Self(unsafe { std::arch::x86_64::_mm512_set1_epi32(x.0 as i32) })
     }
 }
 
@@ -262,6 +265,15 @@ impl SubAssign for PackedBaseField {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
+    }
+}
+
+impl Zero for PackedBaseField {
+    fn zero() -> Self {
+        Self(unsafe { _mm512_setzero_si512() })
+    }
+    fn is_zero(&self) -> bool {
+        self.to_array().iter().all(|x| x.is_zero())
     }
 }
 
