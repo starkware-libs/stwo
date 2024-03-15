@@ -6,7 +6,7 @@ use crate::core::commitment_scheme::quotients::{BatchedColumnOpenings, QuotientO
 use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure::SecureColumn;
+use crate::core::fields::secure::{SecureColumn, SecureEvaluation};
 use crate::core::fields::{ComplexConjugate, FieldExpOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -18,15 +18,16 @@ impl QuotientOps for CPUBackend {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
         openings: &[BatchedColumnOpenings],
-    ) -> SecureColumn<Self> {
-        let mut res = SecureColumn::zeros(domain.size());
+    ) -> SecureEvaluation<Self> {
+        let mut values = SecureColumn::zeros(domain.size());
+        // TODO(spapini): bit reverse iterator.
         for row in 0..domain.size() {
             let domain_point = domain.at(bit_reverse_index(row, domain.log_size()));
             let row_accumlator =
                 accumulate_row_quotients(openings, columns, row, random_coeff, domain_point);
-            res.set(row, row_accumlator);
+            values.set(row, row_accumlator);
         }
-        res
+        SecureEvaluation { domain, values }
     }
 }
 
