@@ -24,6 +24,7 @@ impl QuotientOps for CPUBackend {
         let mut values = SecureColumn::zeros(domain.size());
         let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
 
+        // TODO(spapini): bit reverse iterator.
         for row in 0..domain.size() {
             // TODO(alonh): Make an efficient bit reverse domain iterator, possibly for AVX backend.
             let domain_point = domain.at(bit_reverse_index(row, domain.log_size()));
