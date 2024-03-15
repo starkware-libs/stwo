@@ -203,7 +203,7 @@ mod tests {
             .map(|c| {
                 CircleEvaluation::<CPUBackend, _, BitReversedOrder>::new(
                     c.domain,
-                    c.values.to_vec(),
+                    c.values.to_cpu(),
                 )
             })
             .collect::<Vec<_>>();
