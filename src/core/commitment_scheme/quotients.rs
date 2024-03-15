@@ -3,18 +3,16 @@ use std::collections::BTreeMap;
 
 use itertools::{izip, multiunzip, Itertools};
 
-use crate::core::backend::cpu::quotients::accumulate_row_quotients;
-use crate::core::backend::Backend;
+use crate::core::backend::{Backend, CPUBackend};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure::{SecureColumn, SecureEvaluation};
+use crate::core::fields::secure::SecureEvaluation;
 use crate::core::fri::SparseCircleEvaluation;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::VerificationError;
 use crate::core::queries::SparseSubCircleDomain;
-use crate::core::utils::bit_reverse_index;
 
 pub trait QuotientOps: Backend {
     fn accumulate_quotients(
@@ -22,7 +20,7 @@ pub trait QuotientOps: Backend {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
         openings: &[BatchedColumnOpenings],
-    ) -> SecureColumn<Self>;
+    ) -> SecureEvaluation<Self>;
 }
 
 pub struct BatchedColumnOpenings {
@@ -71,8 +69,7 @@ pub fn compute_fri_quotients<B: QuotientOps>(
             let domain = CanonicCoset::new(log_size).circle_domain();
             // TODO: slice.
             let batched_openings = BatchedColumnOpenings::new(&openings);
-            let values = B::accumulate_quotients(domain, &columns, random_coeff, &batched_openings);
-            SecureEvaluation { domain, values }
+            B::accumulate_quotients(domain, &columns, random_coeff, &batched_openings)
         })
         .collect()
 }
@@ -132,20 +129,13 @@ pub fn fri_answers_for_log_size(
                         CircleEvaluation::new(domain, q.take(domain.size()).copied().collect_vec())
                     })
                     .collect_vec();
-                // TODO(spapini): bit reverse iterator.
-                let values = (0..domain.size())
-                    .map(|row| {
-                        let domain_point = domain.at(bit_reverse_index(row, log_size));
-                        accumulate_row_quotients(
-                            &batched_openings,
-                            &column_evals.iter().collect_vec(),
-                            row,
-                            random_coeff,
-                            domain_point,
-                        )
-                    })
-                    .collect();
-                CircleEvaluation::new(domain, values)
+                CPUBackend::accumulate_quotients(
+                    domain,
+                    &column_evals.iter().collect_vec(),
+                    random_coeff,
+                    &batched_openings,
+                )
+                .to_cpu()
             })
             .collect(),
     );
