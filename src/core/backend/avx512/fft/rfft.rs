@@ -712,7 +712,7 @@ mod tests {
                 );
 
                 // Compare.
-                assert_eq!(values.to_vec(), expected_coeffs);
+                assert_eq!(values.to_cpu(), expected_coeffs);
             }
         }
     }
@@ -744,7 +744,7 @@ mod tests {
             );
 
             // Compare.
-            assert_eq!(values.to_vec(), expected_coeffs);
+            assert_eq!(values.to_cpu(), expected_coeffs);
         }
     }
 
