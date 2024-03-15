@@ -5,6 +5,7 @@
 //! the unique decoding regime. This is enough for a STARK proof though, where we onyl want to imply
 //! the existence of such polynomials, and re ok with having a small decoding list.
 
+pub mod quotients;
 pub mod utils;
 
 use std::iter::zip;
