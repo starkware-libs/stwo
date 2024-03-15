@@ -349,7 +349,7 @@ mod tests {
             );
             let poly = evaluation.clone().interpolate();
             let evaluation2 = poly.evaluate(domain);
-            assert_eq!(evaluation.values.to_vec(), evaluation2.values.to_vec());
+            assert_eq!(evaluation.values.to_cpu(), evaluation2.values.to_cpu());
         }
     }
 
@@ -369,8 +369,8 @@ mod tests {
             let evaluation2 = poly.evaluate(domain_ext);
             let poly2 = evaluation2.interpolate();
             assert_eq!(
-                poly.extend(log_size + 3).coeffs.to_vec(),
-                poly2.coeffs.to_vec()
+                poly.extend(log_size + 3).coeffs.to_cpu(),
+                poly2.coeffs.to_cpu()
             );
         }
     }
@@ -411,7 +411,7 @@ mod tests {
                 .extend(log_size + 2)
                 .evaluate(CanonicCoset::new(log_size + 2).circle_domain());
 
-            assert_eq!(eval0.values.to_vec(), eval1.values.to_vec());
+            assert_eq!(eval0.values.to_cpu(), eval1.values.to_cpu());
         }
     }
 
