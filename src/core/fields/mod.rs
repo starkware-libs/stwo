@@ -112,6 +112,7 @@ pub trait Field:
     + for<'a> Product<&'a Self>
     + Sum
     + for<'a> Sum<&'a Self>
+    + 'static
 {
     fn double(&self) -> Self {
         (*self) + (*self)

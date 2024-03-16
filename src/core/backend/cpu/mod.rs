@@ -1,10 +1,12 @@
 mod circle;
 mod fri;
+mod lookups;
 
 use std::fmt::Debug;
 
 use super::{Backend, Column, ColumnOps, FieldOps};
 use crate::core::fields::Field;
+use crate::core::lookups::mle::{Mle, MleTrace};
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::poly::line::LineEvaluation;
 use crate::core::utils::bit_reverse;
@@ -14,7 +16,7 @@ pub struct CPUBackend;
 
 impl Backend for CPUBackend {}
 
-impl<T: Debug + Clone + Default> ColumnOps<T> for CPUBackend {
+impl<T: Debug + Clone + Default + 'static> ColumnOps<T> for CPUBackend {
     type Column = Vec<T>;
 
     fn bit_reverse_column(column: &mut Self::Column) {
@@ -30,7 +32,7 @@ impl<F: Field> FieldOps<F> for CPUBackend {
     }
 }
 
-impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
+impl<T: Debug + Clone + Default + 'static> Column<T> for Vec<T> {
     fn zeros(len: usize) -> Self {
         vec![T::default(); len]
     }
@@ -45,10 +47,14 @@ impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
     }
 }
 
+// TODO: Change names from 'CPU' to 'Cpu' as per rust naming conventions:
+// <https://rust-lang.github.io/api-guidelines/naming.html#casing-conforms-to-rfc-430-c-case>
 pub type CPUCirclePoly = CirclePoly<CPUBackend>;
 pub type CPUCircleEvaluation<F, EvalOrder> = CircleEvaluation<CPUBackend, F, EvalOrder>;
 // TODO(spapini): Remove the EvalOrder on LineEvaluation.
 pub type CPULineEvaluation<F, EvalOrder> = LineEvaluation<CPUBackend, F, EvalOrder>;
+pub type CpuMle<F> = Mle<CPUBackend, F>;
+pub type CpuMleTrace<F> = MleTrace<CPUBackend, F>;
 
 #[cfg(test)]
 mod tests {
