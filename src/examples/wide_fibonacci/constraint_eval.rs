@@ -1,4 +1,4 @@
-use num_traits::Zero;
+use num_traits::{One, Zero};
 
 use super::structs::WideFibComponent;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -43,12 +43,13 @@ impl Component<CPUBackend> for WideFibComponent {
         trace: &ComponentTrace<'_, CPUBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
     ) {
+        let constraint_log_degree = Component::<CPUBackend>::max_constraint_log_degree_bound(self);
+        let n_constraints = Component::<CPUBackend>::n_constraints(self);
         let mut trace_evals = vec![];
         // TODO(ShaharS), Share this LDE with the commitment LDE.
         for poly_index in 0..64 {
             let poly = &trace.columns[poly_index];
-            let trace_eval_domain =
-                CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
+            let trace_eval_domain = CanonicCoset::new(constraint_log_degree).circle_domain();
             trace_evals.push(poly.evaluate(trace_eval_domain).bit_reverse());
         }
         let zero_domain = CanonicCoset::new(self.log_size).coset;
@@ -57,13 +58,10 @@ impl Component<CPUBackend> for WideFibComponent {
         for point in eval_domain.iter() {
             denoms.push(coset_vanishing(zero_domain, point));
         }
-        let mut denom_inverses =
-            vec![BaseField::zero(); 1 << (self.max_constraint_log_degree_bound())];
+        let mut denom_inverses = vec![BaseField::zero(); 1 << (constraint_log_degree)];
         BaseField::batch_inverse(&denoms, &mut denom_inverses);
-        let mut numerators =
-            vec![SecureField::zero(); 1 << (self.max_constraint_log_degree_bound())];
-        let [mut accum] = evaluation_accumulator
-            .columns([(self.max_constraint_log_degree_bound(), self.n_constraints())]);
+        let mut numerators = vec![SecureField::zero(); 1 << constraint_log_degree];
+        let [mut accum] = evaluation_accumulator.columns([(constraint_log_degree, n_constraints)]);
         // TODO (ShaharS) Change to get the correct power of random coeff inside the loop.
         let random_coeff = accum.random_coeff_powers[1];
         for (i, point_index) in eval_domain.iter_indices().enumerate() {
@@ -431,19 +429,22 @@ impl Component<CPUBackend> for WideFibComponent {
                             * trace_evals[62].get_at(point_index))));
         }
         for (i, (num, denom)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
-            accum.accumulate(
-                bit_reverse_index(i, self.max_constraint_log_degree_bound()),
-                *num * *denom,
-            );
+            accum.accumulate(bit_reverse_index(i, constraint_log_degree), *num * *denom);
         }
     }
 
     fn evaluate_constraint_quotients_at_point(
         &self,
-        _point: CirclePoint<SecureField>,
-        _mask: &ColumnVec<Vec<SecureField>>,
-        _evaluation_accumulator: &mut PointEvaluationAccumulator,
+        point: CirclePoint<SecureField>,
+        mask: &ColumnVec<Vec<SecureField>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
     ) {
-        unimplemented!("not implemented")
+        let zero_domain = CanonicCoset::new(self.log_size).coset;
+        let denominator = coset_vanishing(zero_domain, point);
+        evaluation_accumulator.accumulate((mask[0][0] - SecureField::one()) / denominator);
+        for i in 0..(256 - 2) {
+            let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
+            evaluation_accumulator.accumulate(numerator / denominator);
+        }
     }
 }
