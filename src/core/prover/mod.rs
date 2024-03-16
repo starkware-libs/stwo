@@ -98,7 +98,10 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     let span = span!(Level::INFO, "Composition generation").entered();
     let composition_polynomial_poly = air.compute_composition_polynomial(
         random_coeff,
-        &air.component_traces(&commitment_scheme.trees[0].polynomials),
+        &air.component_traces(
+            &commitment_scheme.trees[0].polynomials,
+            &commitment_scheme.trees[0].evaluations,
+        ),
     );
     span.exit();
 
