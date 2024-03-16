@@ -98,8 +98,12 @@ mod tests {
         }
     }
 
-    #[test]
+    #[test_log::test]
     fn test_prove() {
+        // Note: To see time measurement, run test with
+        //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 cargo test
+        //   test_prove -- --nocapture
+
         let wide_fib = WideFibComponent { log_size: 7 };
         let wide_fib_air = WideFibAir {
             component: wide_fib,

@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use thiserror::Error;
+use tracing::{span, Level};
 
 use super::backend::Backend;
 use super::commitment_scheme::{CommitmentSchemeProof, TreeVec};
@@ -71,17 +72,28 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
 
     // Evaluate and commit on trace.
     // TODO(spapini): Commit on trace outside.
+    let span = span!(Level::INFO, "Trace interpolation").entered();
     let trace_polys = trace.into_iter().map(|poly| poly.interpolate()).collect();
+    span.exit();
+
     let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
+    let span = span!(Level::INFO, "Trace commitment").entered();
     commitment_scheme.commit(trace_polys, channel);
+    span.exit();
 
     // Evaluate and commit on composition polynomial.
     let random_coeff = channel.draw_felt();
+
+    let span = span!(Level::INFO, "Composition generation").entered();
     let composition_polynomial_poly = air.compute_composition_polynomial(
         random_coeff,
         &air.component_traces(&commitment_scheme.trees[0].polynomials),
     );
+    span.exit();
+
+    let span = span!(Level::INFO, "Composition commitment").entered();
     commitment_scheme.commit(composition_polynomial_poly.to_vec(), channel);
+    span.exit();
 
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
