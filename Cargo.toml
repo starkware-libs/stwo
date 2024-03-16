@@ -14,10 +14,13 @@ num-traits = "0.2.17"
 thiserror = "1.0.56"
 merging-iterator = "1.3.0"
 bytemuck = { version = "1.14.3", features = ["derive"] }
+tracing = "0.1.40"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
 rand = { version = "0.8.5", features = ["small_rng"] }
+tracing-subscriber = "0.3.18"
+test-log = { version = "0.2.15", features = ["trace"] }
 
 [lib]
 bench = false

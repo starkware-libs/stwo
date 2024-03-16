@@ -2,6 +2,7 @@ use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 use itertools::{izip, multiunzip, Itertools};
+use tracing::{span, Level};
 
 use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
@@ -61,6 +62,7 @@ pub fn compute_fri_quotients<B: QuotientOps>(
     openings: &[Vec<PointOpening>],
     random_coeff: SecureField,
 ) -> Vec<SecureEvaluation<B>> {
+    let _span = span!(Level::INFO, "Compute FRI quotients").entered();
     izip!(columns, openings)
         .group_by(|(c, _)| c.domain.log_size())
         .into_iter()
