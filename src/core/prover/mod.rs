@@ -92,7 +92,10 @@ pub fn prove<B: Backend>(
     let random_coeff = channel.draw_felt();
     let composition_polynomial_poly = air.compute_composition_polynomial(
         random_coeff,
-        &air.component_traces(&commitment_scheme.trees[0].polynomials),
+        &air.component_traces(
+            &commitment_scheme.trees[0].polynomials,
+            &commitment_scheme.trees[0].evaluations,
+        ),
     );
 
     let span = span!(Level::INFO, "Composition commitment").entered();
