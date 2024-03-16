@@ -70,17 +70,13 @@ impl Component<AVX512Backend> for WideFibComponent {
         trace: &ComponentTrace<'_, AVX512Backend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<AVX512Backend>,
     ) {
-        let span = span!(Level::INFO, "Constraint eval extension").entered();
-        assert_eq!(trace.columns.len(), N_COLS);
+        assert_eq!(trace.polys.len(), N_COLS);
         // TODO(spapini): Steal evaluation from commitment.
         let eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
-        let trace_eval = trace
-            .columns
-            .iter()
-            .map(|poly| poly.evaluate(eval_domain))
-            .collect_vec();
+        let trace_eval = &trace.evals;
 
         // Denoms.
+        let span = span!(Level::INFO, "Constraint eval denominators").entered();
         // TODO(spapini): Make this prettier.
         let zero_domain = CanonicCoset::new(self.log_size).coset;
         let mut denoms =
@@ -88,7 +84,6 @@ impl Component<AVX512Backend> for WideFibComponent {
         <AVX512Backend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
         let mut denom_inverses = BaseFieldVec::zeros(denoms.len());
         <AVX512Backend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inverses);
-
         span.exit();
 
         let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
