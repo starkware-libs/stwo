@@ -131,6 +131,10 @@ impl FromIterator<BaseField> for BaseFieldVec {
 }
 
 impl SecureColumn<AVX512Backend> {
+    pub fn n_packs(&self) -> usize {
+        self.columns[0].data.len()
+    }
+
     /// # Safety
     ///
     /// Calling this method with an out-of-bounds index is undefined behavior.
