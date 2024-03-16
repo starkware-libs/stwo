@@ -34,13 +34,7 @@ impl Component<CPUBackend> for WideFibComponent {
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
     ) {
         let constraint_log_degree = Component::<CPUBackend>::max_constraint_log_degree_bound(self);
-        let mut trace_evals = vec![];
-        // TODO(ShaharS), Share this LDE with the commitment LDE.
-        for poly_index in 0..64 {
-            let poly = &trace.columns[poly_index];
-            let trace_eval_domain = CanonicCoset::new(constraint_log_degree).circle_domain();
-            trace_evals.push(poly.evaluate(trace_eval_domain).bit_reverse());
-        }
+        let trace_evals = &trace.evals;
         let zero_domain = CanonicCoset::new(self.log_size).coset;
         let eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
         let mut denoms = vec![];
