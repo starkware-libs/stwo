@@ -20,11 +20,11 @@ impl QuotientOps for AVX512Backend {
         assert!(domain.log_size() >= VECS_LOG_SIZE as u32);
         let mut values = SecureColumn::<AVX512Backend>::zeros(domain.size());
         // TODO(spapini): bit reverse iterator.
-        for vec_row in 0..(1 << (domain.log_size() - VECS_LOG_SIZE as u32)) {
-            // TODO(spapini): Optimize this, for the small number of columns case.
+        for pack_index in 0..(1 << (domain.log_size() - VECS_LOG_SIZE as u32)) {
+            // TODO(spapini): Optimized this, for the small number of columns case.
             let points = std::array::from_fn(|i| {
                 domain.at(bit_reverse_index(
-                    (vec_row << VECS_LOG_SIZE) + i,
+                    (pack_index << VECS_LOG_SIZE) + i,
                     domain.log_size(),
                 ))
             });
@@ -33,11 +33,11 @@ impl QuotientOps for AVX512Backend {
             let row_accumlator = accumulate_row_quotients(
                 samples,
                 columns,
-                vec_row,
+                pack_index,
                 random_coeff,
                 (domain_points_x, domain_points_y),
             );
-            values.set_packed(vec_row, row_accumlator);
+            values.set_packed(pack_index, row_accumlator);
         }
         SecureEvaluation { domain, values }
     }
