@@ -2,6 +2,7 @@ use std::fmt::Debug;
 
 pub use cpu::CPUBackend;
 
+use super::air::accumulation::AccumulationOps;
 use super::commitment_scheme::quotients::QuotientOps;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
@@ -13,7 +14,15 @@ pub mod avx512;
 pub mod cpu;
 
 pub trait Backend:
-    Copy + Clone + Debug + FieldOps<BaseField> + FieldOps<SecureField> + PolyOps + QuotientOps + FriOps
+    Copy
+    + Clone
+    + Debug
+    + FieldOps<BaseField>
+    + FieldOps<SecureField>
+    + PolyOps
+    + QuotientOps
+    + FriOps
+    + AccumulationOps
 {
 }
 

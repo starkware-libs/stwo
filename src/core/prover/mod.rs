@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use thiserror::Error;
 
+use super::backend::Backend;
 use super::commitment_scheme::{CommitmentSchemeProof, TreeVec};
 use super::fri::FriVerificationError;
 use super::poly::circle::MAX_CIRCLE_DOMAIN_LOG_SIZE;
@@ -9,7 +10,6 @@ use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::core::air::{Air, AirExt};
-use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
@@ -43,29 +43,11 @@ pub struct AdditionalProofData {
     pub oods_quotients: Vec<CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>,
 }
 
-pub fn prove(
-    air: &impl Air<CPUBackend>,
+pub fn prove<B: Backend>(
+    air: &impl Air<B>,
     channel: &mut Channel,
-    trace: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
+    trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> Result<StarkProof, ProvingError> {
-    // Check that traces are not too big.
-    for (i, trace) in trace.iter().enumerate() {
-        if trace.domain.log_size() + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
-            return Err(ProvingError::MaxTraceDegreeExceeded {
-                trace_index: i,
-                degree: trace.domain.log_size(),
-            });
-        }
-    }
-
-    // Check that the composition polynomial is not too big.
-    let composition_polynomial_log_degree_bound = air.composition_log_degree_bound();
-    if composition_polynomial_log_degree_bound + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
-        return Err(ProvingError::MaxCompositionDegreeExceeded {
-            degree: composition_polynomial_log_degree_bound,
-        });
-    }
-
     // Evaluate and commit on trace.
     // TODO(spapini): Commit on trace outside.
     let trace_polys = trace.into_iter().map(|poly| poly.interpolate()).collect();
@@ -155,8 +137,8 @@ pub fn verify(
     commitment_scheme.verify_values(open_points, proof.commitment_scheme_proof, channel)
 }
 
-fn opened_values_to_mask(
-    air: &impl Air<CPUBackend>,
+fn opened_values_to_mask<B: Backend>(
+    air: &impl Air<B>,
     mut opened_values: TreeVec<ColumnVec<Vec<SecureField>>>,
 ) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), ()> {
     let composition_oods_values = combine_secure_value(
