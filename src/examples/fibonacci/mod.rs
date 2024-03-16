@@ -85,8 +85,8 @@ mod tests {
     use crate::core::prover::{prove, verify};
     use crate::core::queries::Queries;
     use crate::core::utils::{bit_reverse, secure_eval_to_base_eval};
-    use crate::fibonacci::air::MultiFibonacciAir;
-    use crate::fibonacci::verify_proof;
+    use crate::examples::fibonacci::air::MultiFibonacciAir;
+    use crate::examples::fibonacci::verify_proof;
     use crate::{m31, qm31};
 
     #[test]

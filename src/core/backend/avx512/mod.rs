@@ -131,6 +131,9 @@ impl FromIterator<BaseField> for BaseFieldVec {
 }
 
 impl SecureColumn<AVX512Backend> {
+    pub fn vec_len(&self) -> usize {
+        self.cols[0].data.len()
+    }
     pub fn set_vec(&mut self, vec_index: usize, value: PackedQM31) {
         unsafe {
             *self.cols[0].data.get_unchecked_mut(vec_index) = value.a().a();
