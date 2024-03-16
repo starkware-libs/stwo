@@ -136,6 +136,10 @@ impl FromIterator<BaseField> for BaseFieldVec {
 }
 
 impl SecureColumn<AVX512Backend> {
+    pub fn n_packs(&self) -> usize {
+        self.columns[0].data.len()
+    }
+
     pub fn packed_at(&self, vec_index: usize) -> PackedQM31 {
         unsafe {
             PackedQM31([
