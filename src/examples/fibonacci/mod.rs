@@ -94,7 +94,7 @@ mod tests {
         let fib = Fibonacci::new(5, m31!(443693538));
         let trace = fib.get_trace();
         let trace_poly = trace.interpolate();
-        let trace = ComponentTrace::new(vec![&trace_poly]);
+        let trace = ComponentTrace::new(vec![&trace_poly], vec![]);
 
         // TODO(ShaharS), Change to a channel implementation to retrieve the random
         // coefficients from extension field.
@@ -130,7 +130,7 @@ mod tests {
         const FIB_LOG_SIZE: u32 = 5;
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
         let poly = fib.get_trace().interpolate();
-        let trace = [ComponentTrace::new(vec![&poly])];
+        let trace = [ComponentTrace::new(vec![&poly], vec![])];
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         let coeff = channel.draw_felt();
         let point = CirclePoint::<SecureField>::get_random_point(channel);
@@ -187,7 +187,7 @@ mod tests {
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
         let trace = fib.get_trace();
         let trace_poly = trace.interpolate();
-        let _trace = ComponentTrace::new(vec![&trace_poly]);
+        let _trace = ComponentTrace::new(vec![&trace_poly], vec![]);
 
         let proof = fib.prove();
         assert!(verify_proof::<FIB_LOG_SIZE>(proof, fib.claim));

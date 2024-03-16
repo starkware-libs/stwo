@@ -73,7 +73,10 @@ pub fn prove<B: Backend>(
     let random_coeff = channel.draw_felt();
     let composition_polynomial_poly = air.compute_composition_polynomial(
         random_coeff,
-        &air.component_traces(&commitment_scheme.trees[0].polynomials),
+        &air.component_traces(
+            &commitment_scheme.trees[0].polynomials,
+            &commitment_scheme.trees[0].evaluations,
+        ),
     );
 
     let span = span!(Level::INFO, "Composition commitment").entered();
@@ -85,7 +88,10 @@ pub fn prove<B: Backend>(
     // TODO(spapini): This values are evaluted twice right now.
     let (open_points, _trace_oods_values) = air.mask_points_and_values(
         oods_point,
-        &air.component_traces(&commitment_scheme.trees[0].polynomials),
+        &air.component_traces(
+            &commitment_scheme.trees[0].polynomials,
+            &commitment_scheme.trees[0].evaluations,
+        ),
     );
 
     // Add composiion poly points.

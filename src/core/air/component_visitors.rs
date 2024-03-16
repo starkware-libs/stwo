@@ -2,15 +2,18 @@ use std::collections::BTreeMap;
 use std::iter::zip;
 
 use itertools::Itertools;
+use tracing::{span, Level};
 
 use super::{Air, ComponentTrace};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure::{SecureCirclePoly, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::CirclePolyDegreeBound;
-use crate::core::poly::circle::{CanonicCoset, CirclePoly};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
+use crate::core::poly::BitReversedOrder;
 use crate::core::ComponentVec;
 
 pub trait AirExt<B: Backend>: Air<B> {
@@ -43,6 +46,7 @@ pub trait AirExt<B: Backend>: Air<B> {
         ComponentVec<Vec<CirclePoint<SecureField>>>,
         ComponentVec<Vec<SecureField>>,
     ) {
+        let _span = span!(Level::INFO, "Eval columns ood").entered();
         let mut component_points = ComponentVec(Vec::new());
         let mut component_values = ComponentVec(Vec::new());
         zip(self.components(), component_traces).for_each(|(component, trace)| {
@@ -122,13 +126,15 @@ pub trait AirExt<B: Backend>: Air<B> {
     fn component_traces<'a>(
         &'a self,
         polynomials: &'a [CirclePoly<B>],
+        evals: &'a [CircleEvaluation<B, BaseField, BitReversedOrder>],
     ) -> Vec<ComponentTrace<'_, B>> {
         self.components()
             .iter()
             .map(|component| {
                 let n_columns = component.trace_log_degree_bounds().len();
-                let columns = polynomials.iter().take(n_columns).collect();
-                ComponentTrace::new(columns)
+                let polys = polynomials.iter().take(n_columns).collect();
+                let evals = evals.iter().take(n_columns).collect();
+                ComponentTrace::new(polys, evals)
             })
             .collect()
     }
