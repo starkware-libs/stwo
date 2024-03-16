@@ -22,8 +22,8 @@ use crate::commitment_scheme::ops::MerkleOps;
 use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
 use crate::core::backend::Backend;
 use crate::core::channel::Channel;
-use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
+use crate::core::poly::twiddles::TwiddleTree;
 
 type MerkleHasher = Blake2sMerkleHasher;
 type ProofChannel = Blake2sChannel;
@@ -93,7 +93,8 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
 
         // Run FRI commitment phase on the oods quotients.
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-        let fri_prover = FriProver::<B, MerkleHasher>::commit(channel, fri_config, &quotients, twiddles);
+        let fri_prover =
+            FriProver::<B, MerkleHasher>::commit(channel, fri_config, &quotients, twiddles);
 
         // Proof of work.
         let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
