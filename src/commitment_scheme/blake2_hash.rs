@@ -3,6 +3,7 @@ use std::fmt;
 use blake2::{Blake2s256, Digest};
 
 // Wrapper for the blake2s hash type.
+#[repr(align(32))]
 #[derive(Clone, Copy, PartialEq, Default, Eq)]
 pub struct Blake2sHash([u8; 32]);
 

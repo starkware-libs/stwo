@@ -51,7 +51,7 @@ pub struct DomainEvaluationAccumulator<B: Backend> {
     /// Each `sub_accumulation` holds the sum over all columns i of that log_size, of
     /// `evaluation_i * alpha^(N - 1 - i)`
     /// where `N` is the total number of evaluations.
-    sub_accumulations: Vec<SecureColumn<B>>,
+    sub_accumulations: Vec<Option<SecureColumn<B>>>,
 }
 
 impl<B: Backend> DomainEvaluationAccumulator<B> {
@@ -62,9 +62,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         let max_log_size = max_log_size as usize;
         Self {
             random_coeff_powers: generate_secure_powers(random_coeff, total_columns),
-            sub_accumulations: (0..(max_log_size + 1))
-                .map(|n| SecureColumn::zeros(1 << n))
-                .collect(),
+            sub_accumulations: (0..(max_log_size + 1)).map(|_| None).collect(),
         }
     }
 
@@ -82,13 +80,13 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             .unwrap_or_else(|e| panic!("invalid log_sizes: {}", e))
             .into_iter()
             .zip(n_cols_per_size)
-            .map(|(col, (_, n_cols))| {
+            .map(|(col, (log_size, n_cols))| {
                 let random_coeffs = self
                     .random_coeff_powers
                     .split_off(self.random_coeff_powers.len() - n_cols);
                 ColumnAccumulator {
                     random_coeff_powers: random_coeffs,
-                    col,
+                    col: col.get_or_insert_with(|| SecureColumn::zeros(1 << log_size)),
                 }
             })
             .collect_vec()
@@ -120,6 +118,9 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         let res_log_size = self.log_size();
 
         for (log_size, values) in self.sub_accumulations.into_iter().enumerate().skip(1) {
+            let Some(values) = values else {
+                continue;
+            };
             let coeffs = SecureColumn::<B> {
                 columns: values.columns.map(|c| {
                     CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
@@ -142,7 +143,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
 /// A domain accumulator for polynomials of a single size.
 pub struct ColumnAccumulator<'a, B: Backend> {
     pub random_coeff_powers: Vec<SecureField>,
-    col: &'a mut SecureColumn<B>,
+    pub col: &'a mut SecureColumn<B>,
 }
 impl<'a> ColumnAccumulator<'a, CPUBackend> {
     pub fn accumulate(&mut self, index: usize, evaluation: SecureField) {
