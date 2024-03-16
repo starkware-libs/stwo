@@ -1,11 +1,11 @@
 use itertools::Itertools;
 
+use super::backend::Backend;
 use super::commitment_scheme::{CommitmentSchemeProof, TreeVec};
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::core::air::{Air, AirExt};
-use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
@@ -37,10 +37,10 @@ pub struct AdditionalProofData {
     pub oods_quotients: Vec<CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>,
 }
 
-pub fn prove(
-    air: &impl Air<CPUBackend>,
+pub fn prove<B: Backend>(
+    air: &impl Air<B>,
     channel: &mut Channel,
-    trace: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
+    trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> StarkProof {
     // Evaluate and commit on trace.
     // TODO(spapini): Commit on trace outside.

@@ -7,7 +7,7 @@
 
 mod prover;
 pub mod quotients;
-pub mod utils;
+mod utils;
 mod verifier;
 
 pub use self::prover::{CommitmentSchemeProof, CommitmentSchemeProver};
