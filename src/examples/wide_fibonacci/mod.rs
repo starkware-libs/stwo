@@ -1,3 +1,4 @@
+pub mod avx;
 pub mod constraint_eval;
 pub mod structs;
 pub mod trace_asserts;
@@ -14,6 +15,7 @@ mod tests {
     use crate::core::air::accumulation::DomainEvaluationAccumulator;
     use crate::core::air::{Component, ComponentTrace};
     use crate::core::backend::cpu::CPUCircleEvaluation;
+    use crate::core::backend::CPUBackend;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::QM31;
     use crate::core::poly::circle::CanonicCoset;
@@ -45,7 +47,7 @@ mod tests {
         let mut acc = DomainEvaluationAccumulator::new(
             QM31::from_u32_unchecked(1, 2, 3, 4),
             wide_fib.log_size + 1,
-            wide_fib.n_constraints(),
+            Component::<CPUBackend>::n_constraints(&wide_fib),
         );
         let inputs = (0..1 << wide_fib.log_size)
             .map(|i| Input {
@@ -74,8 +76,9 @@ mod tests {
 
         let res = acc.finalize();
         let poly = res.0[0].clone();
-        for coeff in
-            poly.coeffs[(1 << (wide_fib.max_constraint_log_degree_bound() - 1)) + 1..].iter()
+        for coeff in poly.coeffs
+            [(1 << (Component::<CPUBackend>::max_constraint_log_degree_bound(&wide_fib) - 1)) + 1..]
+            .iter()
         {
             assert_eq!(*coeff, BaseField::zero());
         }
