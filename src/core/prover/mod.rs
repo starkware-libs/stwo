@@ -258,7 +258,7 @@ mod tests {
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::poly::circle::{CircleDomain, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+    use crate::core::poly::circle::{CanonicCoset, CircleDomain, MAX_CIRCLE_DOMAIN_LOG_SIZE};
     use crate::core::prover::{prove, ProvingError};
     use crate::core::test_utils::test_channel;
     use crate::qm31;
@@ -372,10 +372,7 @@ mod tests {
                 max_constraint_log_degree_bound: LOG_DOMAIN_SIZE,
             },
         };
-        let domain = CircleDomain::new(Coset::new(
-            CirclePointIndex::generator(),
-            LOG_DOMAIN_SIZE - 1,
-        ));
+        let domain = CanonicCoset::new(LOG_DOMAIN_SIZE).circle_domain();
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CPUCircleEvaluation::new(domain, values)];
 
