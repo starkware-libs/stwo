@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use tracing::{span, Level};
 
 use super::component::{WideFibAir, WideFibComponent};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -69,6 +70,7 @@ impl Component<AVX512Backend> for WideFibComponent {
         trace: &ComponentTrace<'_, AVX512Backend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<AVX512Backend>,
     ) {
+        let span = span!(Level::INFO, "Constraint eval extension").entered();
         assert_eq!(trace.columns.len(), N_COLS);
         // TODO(spapini): Steal evaluation from commitment.
         let eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
@@ -77,8 +79,10 @@ impl Component<AVX512Backend> for WideFibComponent {
             .iter()
             .map(|poly| poly.evaluate(eval_domain))
             .collect_vec();
+        span.exit();
 
         // Denoms.
+        let span = span!(Level::INFO, "Constraint eval denominators").entered();
         // TODO(spapini): Make this prettier.
         let zero_domain = CanonicCoset::new(self.log_size).coset;
         let mut denoms =
@@ -86,6 +90,9 @@ impl Component<AVX512Backend> for WideFibComponent {
         <AVX512Backend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
         let mut denom_inverses = BaseFieldVec::zeros(denoms.len());
         <AVX512Backend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inverses);
+        span.exit();
+
+        let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
 
         let constraint_log_degree_bound = self.log_size + 1;
         let [accum] = evaluation_accumulator.columns([(constraint_log_degree_bound, N_COLS - 1)]);
@@ -147,6 +154,8 @@ impl Component<AVX512Backend> for WideFibComponent {
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
+    use tracing::{span, Level};
+
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::hasher::Hasher;
     use crate::core::channel::{Blake2sChannel, Channel};
@@ -156,13 +165,20 @@ mod tests {
     use crate::examples::wide_fibonacci::avx::{gen_trace, WideFibAir};
     use crate::examples::wide_fibonacci::component::WideFibComponent;
 
-    #[test]
+    #[test_log::test]
     fn test_avx_wide_fib_prove() {
-        // Note: For benchmarks, increase to 17, to get 128MB of trace.
-        const LOG_SIZE: u32 = 12;
+        // Note: To see time measurement, run test with
+        //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="
+        //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=2" cargo test
+        //   test_avx_wide_fib_prove -- --nocapture
+
+        // Note: 17 means 128MB of trace.
+        const LOG_SIZE: u32 = 17;
         let component = WideFibComponent { log_size: LOG_SIZE };
         let air = WideFibAir { component };
+        let span = span!(Level::INFO, "Trace generation").entered();
         let trace = gen_trace(LOG_SIZE as usize);
+        span.exit();
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         let proof = prove(&air, channel, trace).unwrap();
 

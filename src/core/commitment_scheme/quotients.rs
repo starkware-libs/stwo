@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::iter::zip;
 
 use itertools::{izip, multiunzip, Itertools};
+use tracing::{span, Level};
 
 use crate::core::backend::cpu::quotients::{accumulate_row_quotients, quotient_constants};
 use crate::core::circle::CirclePoint;
@@ -76,6 +77,7 @@ pub fn compute_fri_quotients<B: QuotientOps>(
     samples: &[Vec<PointSample>],
     random_coeff: SecureField,
 ) -> Vec<SecureEvaluation<B>> {
+    let _span = span!(Level::INFO, "Compute FRI quotients").entered();
     zip(columns, samples)
         .sorted_by_key(|(c, _)| Reverse(c.domain.log_size()))
         .group_by(|(c, _)| c.domain.log_size())
