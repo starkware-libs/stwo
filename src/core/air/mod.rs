@@ -1,5 +1,3 @@
-use std::iter::zip;
-
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
 use super::circle::CirclePoint;
@@ -48,31 +46,6 @@ pub trait Component<B: Backend> {
         &self,
         point: CirclePoint<SecureField>,
     ) -> ColumnVec<Vec<CirclePoint<SecureField>>>;
-
-    /// Calculates the mask points and evaluates them at each column.
-    /// The mask values are used to evaluate the composition polynomial at a certain point.
-    /// Returns two vectors with an entry for each column. Each entry holds the points/values
-    /// of the mask at that column.
-    fn mask_points_and_values(
-        &self,
-        point: CirclePoint<SecureField>,
-        trace: &ComponentTrace<'_, B>,
-    ) -> (
-        ColumnVec<Vec<CirclePoint<SecureField>>>,
-        ColumnVec<Vec<SecureField>>,
-    ) {
-        let points = self.mask_points(point);
-        let values = zip(&points, &trace.polys)
-            .map(|(col_points, col)| {
-                col_points
-                    .iter()
-                    .map(|point| col.eval_at_point(*point))
-                    .collect()
-            })
-            .collect();
-
-        (points, values)
-    }
 
     /// Evaluates the constraint quotients combination of the component, given the mask values.
     fn evaluate_constraint_quotients_at_point(
