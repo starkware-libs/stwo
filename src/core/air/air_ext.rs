@@ -5,7 +5,7 @@ use itertools::Itertools;
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Air, ComponentTrace};
-use crate::core::backend::CPUBackend;
+use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure::{SecureCirclePoly, SECURE_EXTENSION_DEGREE};
@@ -14,7 +14,7 @@ use crate::core::poly::circle::{CanonicCoset, CirclePoly};
 use crate::core::prover::LOG_BLOWUP_FACTOR;
 use crate::core::ComponentVec;
 
-pub trait AirExt: Air<CPUBackend> {
+pub trait AirExt<B: Backend>: Air<B> {
     fn composition_log_degree_bound(&self) -> u32 {
         self.components()
             .iter()
@@ -33,8 +33,8 @@ pub trait AirExt: Air<CPUBackend> {
     fn compute_composition_polynomial(
         &self,
         random_coeff: SecureField,
-        component_traces: &[ComponentTrace<'_, CPUBackend>],
-    ) -> SecureCirclePoly {
+        component_traces: &[ComponentTrace<'_, B>],
+    ) -> SecureCirclePoly<B> {
         let mut accumulator =
             DomainEvaluationAccumulator::new(random_coeff, self.composition_log_degree_bound());
         zip(self.components(), component_traces).for_each(|(component, trace)| {
@@ -46,7 +46,7 @@ pub trait AirExt: Air<CPUBackend> {
     fn mask_points_and_values(
         &self,
         point: CirclePoint<SecureField>,
-        component_traces: &[ComponentTrace<'_, CPUBackend>],
+        component_traces: &[ComponentTrace<'_, B>],
     ) -> (
         ComponentVec<Vec<CirclePoint<SecureField>>>,
         ComponentVec<Vec<SecureField>>,
@@ -129,8 +129,8 @@ pub trait AirExt: Air<CPUBackend> {
 
     fn component_traces<'a>(
         &'a self,
-        polynomials: &'a [CirclePoly<CPUBackend>],
-    ) -> Vec<ComponentTrace<'_, CPUBackend>> {
+        polynomials: &'a [CirclePoly<B>],
+    ) -> Vec<ComponentTrace<'_, B>> {
         let poly_iter = &mut polynomials.iter();
         self.components()
             .iter()
@@ -143,4 +143,4 @@ pub trait AirExt: Air<CPUBackend> {
     }
 }
 
-impl<A: Air<CPUBackend>> AirExt for A {}
+impl<B: Backend, A: Air<B>> AirExt<B> for A {}
