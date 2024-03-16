@@ -37,7 +37,7 @@ impl QuotientOps for AVX512Backend {
                 random_coeff,
                 (domain_points_x, domain_points_y),
             );
-            values.set(vec_row, row_accumlator);
+            values.set_vec(vec_row, row_accumlator);
         }
         SecureEvaluation { domain, values }
     }
