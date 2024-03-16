@@ -83,6 +83,7 @@ impl<B: Backend> CommitmentSchemeProver<B> {
         channel: &mut ProofChannel,
     ) -> CommitmentSchemeProof {
         // Evaluate polynomials on open points.
+        let span = span!(Level::INFO, "Eval columns ood").entered();
         let openings = self
             .polynomials()
             .zip_cols(&prove_points)
@@ -95,6 +96,7 @@ impl<B: Backend> CommitmentSchemeProver<B> {
                     })
                     .collect_vec()
             });
+        span.exit();
         let proved_values = openings
             .as_cols_ref()
             .map_cols(|x| x.iter().map(|o| o.value).collect());
