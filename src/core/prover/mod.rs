@@ -6,6 +6,7 @@ use tracing::{span, Level};
 use self::utils::component_wise_to_tree_wise;
 use super::backend::Backend;
 use super::commitment_scheme::{CommitmentSchemeProof, TreeVec};
+use super::poly::circle::CanonicCoset;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
@@ -46,15 +47,26 @@ pub fn prove<B: Backend>(
     channel: &mut Channel,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> StarkProof {
+    let span = span!(Level::INFO, "Precompute twiddle").entered();
+    let twiddles = B::precompute_twiddles(
+        CanonicCoset::new(air.max_constraint_log_degree_bound() + 1)
+            .circle_domain()
+            .half_coset,
+    );
+    span.exit();
+
     // Evaluate and commit on trace.
     // TODO(spapini): Commit on trace outside.
     let span = span!(Level::INFO, "Trace interpolation").entered();
-    let trace_polys = trace.into_iter().map(|poly| poly.interpolate()).collect();
+    let trace_polys = trace
+        .into_iter()
+        .map(|poly| poly.interpolate_with_twiddles(&twiddles))
+        .collect();
     span.exit();
 
     let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
     let span = span!(Level::INFO, "Trace commitment").entered();
-    commitment_scheme.commit(trace_polys, channel);
+    commitment_scheme.commit(trace_polys, channel, &twiddles);
     span.exit();
 
     // Evaluate and commit on composition polynomial.
@@ -65,7 +77,7 @@ pub fn prove<B: Backend>(
     );
 
     let span = span!(Level::INFO, "Composition commitment").entered();
-    commitment_scheme.commit(composition_polynomial_poly.to_vec(), channel);
+    commitment_scheme.commit(composition_polynomial_poly.to_vec(), channel, &twiddles);
     span.exit();
 
     // Evaluate the trace mask and the composition polynomial on the OODS point.
