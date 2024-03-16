@@ -1,3 +1,4 @@
+mod accumulation;
 pub mod bit_reverse;
 mod blake2s;
 pub mod blake2s_avx;
@@ -217,6 +218,10 @@ impl FromIterator<PackedSecureField> for SecureFieldVec {
 }
 
 impl SecureColumn<AVX512Backend> {
+    pub fn n_packs(&self) -> usize {
+        self.columns[0].data.len()
+    }
+
     pub fn packed_at(&self, vec_index: usize) -> PackedSecureField {
         unsafe {
             PackedSecureField([
