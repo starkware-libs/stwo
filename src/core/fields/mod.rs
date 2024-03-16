@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Display};
+use std::iter::{Product, Sum};
 use std::ops::{Mul, MulAssign, Neg};
 
 use num_traits::{NumAssign, NumAssignOps, NumOps, One};
@@ -108,6 +109,10 @@ pub trait Field:
     + Sync
     + Sized
     + FieldExpOps
+    + Product
+    + for<'a> Product<&'a Self>
+    + Sum
+    + for<'a> Sum<&'a Self>
 {
     fn double(&self) -> Self {
         (*self) + (*self)
@@ -160,6 +165,8 @@ impl<F: Field> ExtensionOf<F> for F {
 #[macro_export]
 macro_rules! impl_field {
     ($field_name: ty, $field_size: ident) => {
+        use std::iter::{Product, Sum};
+
         use num_traits::{Num, One, Zero};
         use $crate::core::fields::Field;
 
@@ -230,6 +237,44 @@ macro_rules! impl_field {
             fn inverse(&self) -> Self {
                 assert!(!self.is_zero(), "0 has no inverse");
                 self.pow(($field_size - 2) as u128)
+            }
+        }
+
+        impl Product for $field_name {
+            fn product<I>(mut iter: I) -> Self
+            where
+                I: Iterator<Item = Self>,
+            {
+                let first = iter.next().unwrap_or_else(Self::one);
+                iter.fold(first, |a, b| a * b)
+            }
+        }
+
+        impl<'a> Product<&'a Self> for $field_name {
+            fn product<I>(iter: I) -> Self
+            where
+                I: Iterator<Item = &'a Self>,
+            {
+                iter.map(|&v| v).product()
+            }
+        }
+
+        impl Sum for $field_name {
+            fn sum<I>(mut iter: I) -> Self
+            where
+                I: Iterator<Item = Self>,
+            {
+                let first = iter.next().unwrap_or_else(Self::zero);
+                iter.fold(first, |a, b| a + b)
+            }
+        }
+
+        impl<'a> Sum<&'a Self> for $field_name {
+            fn sum<I>(iter: I) -> Self
+            where
+                I: Iterator<Item = &'a Self>,
+            {
+                iter.map(|&v| v).sum()
             }
         }
     };
