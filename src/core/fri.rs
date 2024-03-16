@@ -7,6 +7,7 @@ use std::ops::RangeInclusive;
 use itertools::Itertools;
 use num_traits::Zero;
 use thiserror::Error;
+use tracing::{span, Level};
 
 use super::backend::CPUBackend;
 use super::channel::Channel;
@@ -140,6 +141,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
         config: FriConfig,
         columns: &[SecureEvaluation<B>],
     ) -> Self {
+        let _span = span!(Level::INFO, "FRI commitment").entered();
         assert!(!columns.is_empty(), "no columns");
         assert!(columns.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
         assert!(columns.iter().all(|e| e.domain.is_canonic()), "not canonic");
