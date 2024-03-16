@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use tracing::{span, Level};
 
 use super::structs::WideFibComponent;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -35,6 +36,7 @@ impl Air<CPUBackend> for WideFibAir {
 pub fn gen_trace(
     log_size: usize,
 ) -> ColumnVec<CircleEvaluation<AVX512Backend, BaseField, BitReversedOrder>> {
+    let _span = span!(Level::INFO, "Trace generation").entered();
     assert!(log_size >= VECS_LOG_SIZE);
     let mut trace = (0..N_COLS)
         .map(|_| Col::<AVX512Backend, BaseField>::zeros(1 << log_size))
@@ -76,6 +78,7 @@ impl Component<AVX512Backend> for WideFibComponent {
         trace: &ComponentTrace<'_, AVX512Backend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<AVX512Backend>,
     ) {
+        let span = span!(Level::INFO, "Constraint eval extension").entered();
         assert_eq!(trace.columns.len(), N_COLS);
         // TODO(spapini): Steal evaluation from commitment.
         let eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
@@ -93,6 +96,10 @@ impl Component<AVX512Backend> for WideFibComponent {
         <AVX512Backend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
         let mut denom_inverses = BaseFieldVec::zeros(denoms.len());
         <AVX512Backend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inverses);
+
+        span.exit();
+
+        let _span = span!(Level::INFO, "Constraint eval evaluation").entered();
 
         let constraint_log_degree_bound = self.log_size + 1;
         let [accum] = evaluation_accumulator.columns([(constraint_log_degree_bound, N_COLS - 1)]);
@@ -166,8 +173,13 @@ mod tests {
     use crate::examples::wide_fibonacci::avx::{gen_trace, WideFibAir};
     use crate::examples::wide_fibonacci::structs::WideFibComponent;
 
-    #[test]
+    #[test_log::test]
     fn test_avx_wide_fib_prove() {
+        // Note: To see time measurement, run test with
+        //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="-Awarnings
+        //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=2" cargo test
+        //   test_avx_wide_fib_prove -- --nocapture
+
         // Note: For benchmarks, increase to 17, to get 128MB of trace.
         const LOG_SIZE: u32 = 12;
         let component = WideFibComponent { log_size: LOG_SIZE };
