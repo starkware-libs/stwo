@@ -2,12 +2,12 @@
 //! Given N polynomials, sort them by size: u_0(P), ... u_{N-1}(P).
 //! Given a random alpha, the combined polynomial is defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i (P).
-use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::backend::{Backend, CPUBackend};
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure::{SecureCirclePoly, SecureColumn};
-use crate::core::fields::FieldExpOps;
-use crate::core::poly::circle::{CanonicCoset, CirclePoly};
+use crate::core::fields::{FieldExpOps, FieldOps};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
 use crate::core::poly::BitReversedOrder;
 
 /// Accumulates evaluations of u_i(P0) at a single point.
@@ -119,12 +119,17 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     }
 }
 
-impl DomainEvaluationAccumulator<CPUBackend> {
+pub trait AccumulationOps: FieldOps<BaseField> + Sized {
+    /// Accumulates other into colum:
+    ///   column = column * alpha + other.
+    fn accumulate(column: &mut SecureColumn<Self>, alpha: SecureField, other: &SecureColumn<Self>);
+}
+
+impl<B: Backend> DomainEvaluationAccumulator<B> {
     /// Computes f(P) as coefficients.
-    pub fn finalize(self) -> SecureCirclePoly {
-        let mut res_coeffs = SecureColumn::<CPUBackend>::zeros(1 << self.log_size());
+    pub fn finalize(self) -> SecureCirclePoly<B> {
+        let mut res_coeffs = SecureColumn::<B>::zeros(1 << self.log_size());
         let res_log_size = self.log_size();
-        let res_size = 1 << res_log_size;
 
         for ((log_size, values), n_cols) in self
             .sub_accumulations
@@ -133,9 +138,9 @@ impl DomainEvaluationAccumulator<CPUBackend> {
             .zip(self.n_cols_per_size.iter())
             .skip(1)
         {
-            let coeffs = SecureColumn::<CPUBackend> {
+            let coeffs = SecureColumn::<B> {
                 cols: values.cols.map(|c| {
-                    CPUCircleEvaluation::<_, BitReversedOrder>::new(
+                    CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
                         CanonicCoset::new(log_size as u32).circle_domain(),
                         c,
                     )
@@ -146,10 +151,7 @@ impl DomainEvaluationAccumulator<CPUBackend> {
             };
             // Add column coefficients into result coefficients, element-wise, in-place.
             let multiplier = self.random_coeff.pow(*n_cols as u128);
-            for i in 0..res_size {
-                let res_coeff = res_coeffs.at(i) * multiplier + coeffs.at(i);
-                res_coeffs.set(i, res_coeff);
-            }
+            B::accumulate(&mut res_coeffs, multiplier, &coeffs);
         }
 
         SecureCirclePoly(res_coeffs.cols.map(CirclePoly::new))
@@ -163,6 +165,9 @@ pub struct ColumnAccumulator<'a, B: Backend> {
 }
 impl<'a> ColumnAccumulator<'a, CPUBackend> {
     pub fn accumulate(&mut self, index: usize, evaluation: SecureField) {
+        // TODO(spapini): Multiplying QM31 by QM31 is not the best way to do this.
+        // It's probably better to cache all the coefficient powers and multiply QM31 by M31,
+        // and only add in QM31.
         let val = self.col.at(index) * self.random_coeff_pow + evaluation;
         self.col.set(index, val);
     }

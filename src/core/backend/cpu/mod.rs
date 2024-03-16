@@ -1,3 +1,4 @@
+pub mod accumulation;
 mod circle;
 mod fri;
 pub mod quotients;
