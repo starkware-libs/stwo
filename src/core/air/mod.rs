@@ -3,8 +3,10 @@ use std::iter::zip;
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
 use super::circle::CirclePoint;
+use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::poly::circle::CirclePoly;
+use super::poly::circle::{CircleEvaluation, CirclePoly};
+use super::poly::BitReversedOrder;
 use super::ColumnVec;
 
 pub mod accumulation;
@@ -60,7 +62,7 @@ pub trait Component<B: Backend> {
         ColumnVec<Vec<SecureField>>,
     ) {
         let points = self.mask_points(point);
-        let values = zip(&points, &trace.columns)
+        let values = zip(&points, &trace.polys)
             .map(|(col_points, col)| {
                 col_points
                     .iter()
@@ -83,12 +85,21 @@ pub trait Component<B: Backend> {
     // TODO(spapini): Extra functions for FRI and decommitment.
 }
 
+/// A component trace is a set of polynomials for each column on that component.
+/// Each polynomial is stored both in a coefficients, and evaluations form (for efficiency)
 pub struct ComponentTrace<'a, B: Backend> {
-    pub columns: Vec<&'a CirclePoly<B>>,
+    /// Polynomials for each column.
+    pub polys: Vec<&'a CirclePoly<B>>,
+    /// Evaluations for each column. The evaluation domain is the commitment domain for that column
+    /// obtained from [AirExt::trace_commitment_domains()].
+    pub evals: Vec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>,
 }
 
 impl<'a, B: Backend> ComponentTrace<'a, B> {
-    pub fn new(columns: Vec<&'a CirclePoly<B>>) -> Self {
-        Self { columns }
+    pub fn new(
+        polys: Vec<&'a CirclePoly<B>>,
+        evals: Vec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    ) -> Self {
+        Self { polys, evals }
     }
 }
