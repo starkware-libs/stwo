@@ -110,6 +110,7 @@ impl MultiFibonacci {
 #[cfg(test)]
 mod tests {
     use std::assert_matches::assert_matches;
+    use std::iter::zip;
 
     use itertools::Itertools;
     use num_traits::One;
@@ -159,10 +160,16 @@ mod tests {
         // what we expect.
         let point = CirclePoint::<SecureField>::get_point(98989892);
 
-        let (_, mask_values) = fib
-            .air
-            .component
-            .mask_points_and_values(point, &component_traces[0]);
+        let points = fib.air.mask_points(point);
+        let mask_values = zip(&component_traces[0].polys, &points[0])
+            .map(|(poly, points)| {
+                points
+                    .iter()
+                    .map(|point| poly.eval_at_point(*point))
+                    .collect_vec()
+            })
+            .collect_vec();
+
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         fib.air.component.evaluate_constraint_quotients_at_point(
             point,
