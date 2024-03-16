@@ -43,7 +43,7 @@ impl Component<CPUBackend> for WideFibComponent {
         let trace_eval_domain = CanonicCoset::new(max_constraint_degree).circle_domain();
         let mut trace_evals = vec![];
         for poly_index in 0..256 {
-            let poly = &trace.columns[poly_index];
+            let poly = &trace.polys[poly_index];
             trace_evals.push(poly.evaluate(trace_eval_domain));
         }
         let zero_domain = CanonicCoset::new(self.log_size).coset;

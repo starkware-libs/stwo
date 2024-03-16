@@ -81,9 +81,15 @@ mod tests {
             .into_iter()
             .map(|eval| eval.interpolate())
             .collect_vec();
+        let eval_domain = CanonicCoset::new(wide_fib.log_size + 1).circle_domain();
+        let trace_evals = trace_polys
+            .iter()
+            .map(|poly| poly.evaluate(eval_domain))
+            .collect_vec();
 
         let trace = ComponentTrace {
-            columns: trace_polys.iter().collect(),
+            polys: trace_polys.iter().collect(),
+            evals: trace_evals.iter().collect(),
         };
 
         wide_fib.evaluate_constraint_quotients_on_domain(&trace, &mut acc);
