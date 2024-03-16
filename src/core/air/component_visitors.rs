@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::iter::zip;
 
 use itertools::Itertools;
-use tracing::{span, Level};
 
 use super::{Air, ComponentTrace};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -38,6 +37,7 @@ pub trait AirExt<B: Backend>: Air<B> {
         accumulator.finalize()
     }
 
+    // TODO(spapini): Remove.
     fn mask_points_and_values(
         &self,
         point: CirclePoint<SecureField>,
@@ -46,7 +46,6 @@ pub trait AirExt<B: Backend>: Air<B> {
         ComponentVec<Vec<CirclePoint<SecureField>>>,
         ComponentVec<Vec<SecureField>>,
     ) {
-        let _span = span!(Level::INFO, "Eval columns ood").entered();
         let mut component_points = ComponentVec(Vec::new());
         let mut component_values = ComponentVec(Vec::new());
         zip(self.components(), component_traces).for_each(|(component, trace)| {

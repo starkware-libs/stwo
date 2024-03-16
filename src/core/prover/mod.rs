@@ -86,13 +86,7 @@ pub fn prove<B: Backend>(
     // Evaluate the trace mask and the composition polynomial on the OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
     // TODO(spapini): This values are evaluted twice right now.
-    let (open_points, _trace_oods_values) = air.mask_points_and_values(
-        oods_point,
-        &air.component_traces(
-            &commitment_scheme.trees[0].polynomials,
-            &commitment_scheme.trees[0].evaluations,
-        ),
-    );
+    let open_points = air.mask_points(oods_point);
 
     // Add composiion poly points.
     let mut open_points = component_wise_to_tree_wise(air, open_points);
