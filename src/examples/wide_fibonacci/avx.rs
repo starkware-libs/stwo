@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use num_traits::One;
+use tracing::{span, Level};
 
 use super::structs::WideFibComponent;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -31,6 +32,7 @@ impl Air<AVX512Backend> for WideFibAir {
 pub fn gen_trace(
     log_size: usize,
 ) -> ColumnVec<CircleEvaluation<AVX512Backend, BaseField, BitReversedOrder>> {
+    let _span = span!(Level::INFO, "Trace generation").entered();
     assert!(log_size >= VECS_LOG_SIZE);
     let mut trace = (0..N_COLS)
         .map(|_| Col::<AVX512Backend, BaseField>::zeros(1 << log_size))
@@ -66,6 +68,7 @@ impl Component<AVX512Backend> for WideFibComponent {
         trace: &ComponentTrace<'_, AVX512Backend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<AVX512Backend>,
     ) {
+        let span = span!(Level::INFO, "Constraint eval extension").entered();
         assert_eq!(trace.columns.len(), N_COLS);
         // TODO(spapini): Steal evaluation from commitment.
         let eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
@@ -74,6 +77,9 @@ impl Component<AVX512Backend> for WideFibComponent {
             .iter()
             .map(|poly| poly.evaluate(eval_domain))
             .collect_vec();
+        span.exit();
+
+        let _span = span!(Level::INFO, "Constraint eval evaluation").entered();
         let random_coeff = PackedQM31::broadcast(evaluation_accumulator.random_coeff);
         let column_coeffs = (0..N_COLS)
             .scan(PackedQM31::one(), |state, _| {
@@ -153,9 +159,14 @@ mod tests {
     use crate::examples::wide_fibonacci::avx::{gen_trace, WideFibAir};
     use crate::examples::wide_fibonacci::structs::WideFibComponent;
 
-    #[test]
+    #[test_log::test]
     fn test_avx_wide_fib_prove() {
-        // TODO(spapini): Increase to 20, to get 1GB of trace.
+        // Note: To see time measurement, run test with
+        //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="-Awarnings
+        //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=2" cargo test
+        //   test_avx_wide_fib_prove -- --nocapture
+
+        // TODO(spapini): Increase to 20, to get 1GB.
         const LOG_SIZE: u32 = 12;
         let component = WideFibComponent { log_size: LOG_SIZE };
         let air = WideFibAir { component };

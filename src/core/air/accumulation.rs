@@ -3,6 +3,7 @@
 //! Given a random alpha, the combined polynomial is defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i (P).
 use itertools::Itertools;
+use tracing::{span, Level};
 
 use crate::core::backend::{Backend, CPUBackend};
 use crate::core::fields::m31::BaseField;
@@ -130,6 +131,7 @@ pub trait AccumulationOps: FieldOps<BaseField> + Sized {
 impl<B: Backend> DomainEvaluationAccumulator<B> {
     /// Computes f(P) as coefficients.
     pub fn finalize(self) -> SecureCirclePoly<B> {
+        let _span = span!(Level::INFO, "Constraints interpolation").entered();
         let mut res_coeffs = SecureColumn::<B>::zeros(1 << self.log_size());
         let res_log_size = self.log_size();
 
