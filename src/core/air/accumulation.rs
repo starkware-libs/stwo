@@ -2,6 +2,8 @@
 //! Given N polynomials, sort them by size: u_0(P), ... u_{N-1}(P).
 //! Given a random alpha, the combined polynomial is defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i (P).
+use tracing::{span, Level};
+
 use crate::core::backend::{Backend, CPUBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -128,6 +130,7 @@ pub trait AccumulationOps: FieldOps<BaseField> + Sized {
 impl<B: Backend> DomainEvaluationAccumulator<B> {
     /// Computes f(P) as coefficients.
     pub fn finalize(self) -> SecureCirclePoly<B> {
+        let _span = span!(Level::INFO, "Constraints interpolation").entered();
         let mut res_coeffs = SecureColumn::<B>::zeros(1 << self.log_size());
         let res_log_size = self.log_size();
 

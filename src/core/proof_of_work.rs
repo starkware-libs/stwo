@@ -1,3 +1,5 @@
+use tracing::{span, Level};
+
 use super::channel::Blake2sChannel;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
@@ -20,6 +22,7 @@ impl ProofOfWork {
     }
 
     pub fn prove(&self, channel: &mut Blake2sChannel) -> ProofOfWorkProof {
+        let _span = span!(Level::INFO, "Proof of work").entered();
         let seed = channel.get_digest().as_ref().to_vec();
         let proof = self.grind(seed);
         channel.mix_nonce(proof.nonce);

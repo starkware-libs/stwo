@@ -7,6 +7,7 @@ use std::ops::RangeInclusive;
 use itertools::Itertools;
 use num_traits::Zero;
 use thiserror::Error;
+use tracing::{span, Level};
 
 use super::backend::cpu::CPULineEvaluation;
 use super::backend::CPUBackend;
@@ -147,6 +148,7 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriProver<B, H> {
         SecureField: ExtensionOf<F>,
         B: FieldOps<F>,
     {
+        let _span = span!(Level::INFO, "FRI commitment").entered();
         assert!(!columns.is_empty(), "no columns");
         assert!(columns.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
         assert!(columns.iter().all(|e| e.domain.is_canonic()), "not canonic");

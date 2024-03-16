@@ -8,6 +8,7 @@
 use std::ops::Deref;
 
 use itertools::Itertools;
+use tracing::{span, Level};
 
 use super::super::backend::CPUBackend;
 use super::super::channel::Blake2sChannel;
@@ -151,6 +152,7 @@ impl<B: Backend> CommitmentTreeProver<B> {
         log_blowup_factor: u32,
         channel: &mut ProofChannel,
     ) -> Self {
+        let span = span!(Level::INFO, "Commitment evaluation").entered();
         let evaluations = polynomials
             .iter()
             .map(|poly| {
@@ -159,7 +161,10 @@ impl<B: Backend> CommitmentTreeProver<B> {
                 )
             })
             .collect_vec();
+        span.exit();
+
         // TODO(spapini): Remove to_cpu() when Merkle support different backends.
+        let _span = span!(Level::INFO, "Commitment merkle").entered();
         let commitment = MerkleTree::<BaseField, MerkleHasher>::commit(
             evaluations
                 .iter()
