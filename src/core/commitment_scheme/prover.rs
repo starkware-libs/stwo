@@ -31,6 +31,7 @@ use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::backend::{Backend, Column};
 use crate::core::channel::Channel;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly, SecureEvaluation};
+use crate::core::poly::twiddles::TwiddleTree;
 
 type MerkleHasher = Blake2sHasher;
 type ProofChannel = Blake2sChannel;
@@ -49,8 +50,14 @@ impl<B: Backend> CommitmentSchemeProver<B> {
         }
     }
 
-    pub fn commit(&mut self, polynomials: ColumnVec<CirclePoly<B>>, channel: &mut ProofChannel) {
-        let tree = CommitmentTreeProver::new(polynomials, self.log_blowup_factor, channel);
+    pub fn commit(
+        &mut self,
+        polynomials: ColumnVec<CirclePoly<B>>,
+        channel: &mut ProofChannel,
+        twiddles: &TwiddleTree<B>,
+    ) {
+        let tree =
+            CommitmentTreeProver::new(polynomials, self.log_blowup_factor, channel, twiddles);
         self.trees.push(tree);
     }
 
@@ -159,13 +166,15 @@ impl<B: Backend> CommitmentTreeProver<B> {
         polynomials: ColumnVec<CirclePoly<B>>,
         log_blowup_factor: u32,
         channel: &mut ProofChannel,
+        twiddles: &TwiddleTree<B>,
     ) -> Self {
         let span = span!(Level::INFO, "Commitment evaluation").entered();
         let evaluations = polynomials
             .iter()
             .map(|poly| {
-                poly.evaluate(
+                poly.evaluate_with_twiddles(
                     CanonicCoset::new(poly.log_size() + log_blowup_factor).circle_domain(),
+                    twiddles,
                 )
             })
             .collect_vec();
