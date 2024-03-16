@@ -1,3 +1,4 @@
+pub mod accumulation;
 pub mod bit_reverse;
 pub mod circle;
 pub mod cm31;
@@ -10,9 +11,10 @@ use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
 use num_traits::Zero;
 
 use self::bit_reverse::bit_reverse_m31;
+use self::cm31::PackedCM31;
 pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
 use self::qm31::PackedQM31;
-use super::{Column, ColumnOps};
+use super::{Backend, Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fields::{FieldExpOps, FieldOps};
@@ -23,8 +25,7 @@ pub const VECS_LOG_SIZE: usize = 4;
 #[derive(Copy, Clone, Debug)]
 pub struct AVX512Backend;
 
-// BaseField.
-// TODO(spapini): Unite with the M31AVX512 type.
+impl Backend for AVX512Backend {}
 
 unsafe impl Pod for PackedBaseField {}
 unsafe impl Zeroable for PackedBaseField {
@@ -130,13 +131,30 @@ impl FromIterator<BaseField> for BaseFieldVec {
 }
 
 impl SecureColumn<AVX512Backend> {
-    pub fn set(&mut self, vec_index: usize, value: PackedQM31) {
-        unsafe {
-            *self.columns[0].data.get_unchecked_mut(vec_index) = value.a().a();
-            *self.columns[1].data.get_unchecked_mut(vec_index) = value.a().b();
-            *self.columns[2].data.get_unchecked_mut(vec_index) = value.b().a();
-            *self.columns[3].data.get_unchecked_mut(vec_index) = value.b().b();
-        }
+    /// # Safety
+    ///
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    pub unsafe fn set_packed(&mut self, pack_index: usize, value: PackedQM31) {
+        *self.columns[0].data.get_unchecked_mut(pack_index) = value.a().a();
+        *self.columns[1].data.get_unchecked_mut(pack_index) = value.a().b();
+        *self.columns[2].data.get_unchecked_mut(pack_index) = value.b().a();
+        *self.columns[3].data.get_unchecked_mut(pack_index) = value.b().b();
+    }
+
+    /// # Safety
+    ///
+    /// Calling this method with an out-of-bounds index is undefined behavior.
+    pub unsafe fn get_packed(&self, pack_index: usize) -> PackedQM31 {
+        PackedQM31([
+            PackedCM31([
+                *self.columns[0].data.get_unchecked(pack_index),
+                *self.columns[1].data.get_unchecked(pack_index),
+            ]),
+            PackedCM31([
+                *self.columns[2].data.get_unchecked(pack_index),
+                *self.columns[3].data.get_unchecked(pack_index),
+            ]),
+        ])
     }
 }
 
