@@ -1,16 +1,12 @@
-use std::collections::BTreeMap;
 use std::iter::zip;
 
 use itertools::Itertools;
 
-use super::evaluation::{
-    DomainEvaluationAccumulator, PointEvaluationAccumulator, SECURE_EXTENSION_DEGREE,
-};
+use super::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Air, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fri::CirclePolyDegreeBound;
 use crate::core::poly::circle::{CanonicCoset, CirclePoly, SecureCirclePoly};
 use crate::core::prover::LOG_BLOWUP_FACTOR;
 use crate::core::ComponentVec;
@@ -94,31 +90,6 @@ pub trait AirExt: Air<CPUBackend> {
             )
         });
         evaluation_accumulator.finalize()
-    }
-
-    /// Returns the log degree bounds of the quotient polynomials in descending order.
-    fn quotient_log_bounds(&self) -> Vec<CirclePolyDegreeBound> {
-        let mut bounds = BTreeMap::new();
-        self.components().iter().for_each(|component| {
-            for (mask_points, trace_bound) in zip(
-                component.mask().iter(),
-                &component.trace_log_degree_bounds(),
-            ) {
-                let n = bounds.entry(*trace_bound);
-                *n.or_default() += mask_points.len();
-            }
-        });
-        let mut bounds = bounds
-            .into_iter()
-            .flat_map(|(bound, n)| (0..n).map(|_| bound).collect_vec())
-            .collect_vec();
-        // Add the composition polynomial's log degree bounds.
-        bounds.extend([self.composition_log_degree_bound(); SECURE_EXTENSION_DEGREE]);
-        bounds
-            .into_iter()
-            .rev()
-            .map(CirclePolyDegreeBound::new)
-            .collect()
     }
 
     fn column_log_sizes(&self) -> Vec<u32> {

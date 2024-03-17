@@ -76,3 +76,29 @@ pub fn get_pair_oods_quotient(
     }
     CircleEvaluation::new(eval.domain, values)
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
+    use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
+    use crate::core::oods::get_pair_oods_quotient;
+    use crate::core::poly::circle::CanonicCoset;
+    use crate::m31;
+
+    #[test]
+    fn test_oods_quotients_are_low_degree() {
+        const LOG_SIZE: u32 = 7;
+        let polynomial = CPUCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
+        let eval_domain = CanonicCoset::new(LOG_SIZE + 1).circle_domain();
+        let eval = polynomial.evaluate(eval_domain);
+        let oods_point = SECURE_FIELD_CIRCLE_GEN;
+        let oods_value = polynomial.eval_at_point(oods_point);
+        let quot_eval = get_pair_oods_quotient(oods_point, oods_value, &eval).bit_reverse();
+        let quot_eval_base_field = CPUCircleEvaluation::new(
+            eval_domain,
+            quot_eval.values.iter().map(|v| v.0 .0).collect(),
+        );
+        let quot_poly_base_field = quot_eval_base_field.interpolate();
+        assert!(quot_poly_base_field.is_in_fft_space(LOG_SIZE));
+    }
+}
