@@ -55,7 +55,7 @@ impl<T> Default for TreeVec<T> {
 #[derive(Debug, Clone)]
 pub struct TreeColumns<T>(pub TreeVec<ColumnVec<T>>);
 impl<T> TreeColumns<T> {
-    pub fn new(values: Vec<Vec<T>>) -> Self {
+    pub fn new(values: Vec<ColumnVec<T>>) -> Self {
         TreeColumns(TreeVec(values))
     }
     pub fn map<U, F: FnMut(T) -> U>(self, mut f: F) -> TreeColumns<U> {
