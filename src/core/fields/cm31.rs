@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
@@ -12,7 +12,7 @@ pub const P2: u64 = 4611686014132420609; // (2 ** 31 - 1) ** 2
 /// Complex extension field of M31.
 /// Equivalent to M31\[x\] over (x^2 + 1) as the irreducible polynomial.
 /// Represented as (a, b) of a + bi.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CM31(pub M31, pub M31);
 
 impl_field!(CM31, P2);
@@ -29,6 +29,12 @@ impl CM31 {
 }
 
 impl Display for CM31 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} + {}i", self.0, self.1)
+    }
+}
+
+impl Debug for CM31 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} + {}i", self.0, self.1)
     }
