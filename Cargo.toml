@@ -19,6 +19,9 @@ bytemuck = { version = "1.14.3", features = ["derive"] }
 criterion = { version = "0.5.1", features = ["html_reports"] }
 rand = { version = "0.8.5", features = ["small_rng"] }
 
+[lib]
+bench = false
+
 [lints.rust]
 warnings = "deny"
 future-incompatible = "deny"

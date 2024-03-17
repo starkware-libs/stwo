@@ -6,12 +6,12 @@ use criterion::Criterion;
 pub fn cpu_bit_rev(c: &mut criterion::Criterion) {
     use stwo::core::fields::m31::BaseField;
 
-    const SIZE: usize = 1 << 28;
+    const SIZE: usize = 1 << 24;
     let mut data: Vec<_> = (0..SIZE as u32)
         .map(BaseField::from_u32_unchecked)
         .collect();
 
-    c.bench_function("cpu bit_rev", |b| {
+    c.bench_function("cpu bit_rev 24bit", |b| {
         b.iter(|| {
             stwo::core::utils::bit_reverse(&mut data);
         })
@@ -29,7 +29,7 @@ pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
         return;
     }
 
-    const SIZE: usize = 1 << 28;
+    const SIZE: usize = 1 << 26;
     let data: Vec<_> = (0..SIZE as u32)
         .map(BaseField::from_u32_unchecked)
         .collect();
@@ -39,7 +39,7 @@ pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
         .map(PackedBaseField::from_array)
         .collect();
 
-    c.bench_function("avx bit_rev", |b| {
+    c.bench_function("avx bit_rev 26bit", |b| {
         b.iter(|| {
             bit_reverse_m31(cast_slice_mut(&mut data[..]));
         })

@@ -1,3 +1,4 @@
+use criterion::Criterion;
 use rand::rngs::ThreadRng;
 use rand::Rng;
 use stwo::core::fields::cm31::CM31;
@@ -187,17 +188,21 @@ pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 criterion::criterion_group!(
-    m31_benches,
-    m31_operations_bench,
-    avx512_m31_operations_bench
+    name=m31_benches;
+    config = Criterion::default().sample_size(10);
+    targets=
+        m31_operations_bench,
+        avx512_m31_operations_bench
 );
 #[cfg(not(target_arch = "x86_64"))]
 criterion::criterion_group!(m31_benches, m31_operations_bench);
 
 criterion::criterion_group!(
-    field_comparison,
-    m31_operations_bench,
-    cm31_operations_bench,
-    qm31_operations_bench
+    name=field_comparison;
+    config = Criterion::default().sample_size(10);
+    targets=
+        m31_operations_bench,
+        cm31_operations_bench,
+        qm31_operations_bench
 );
 criterion::criterion_main!(field_comparison, m31_benches);
