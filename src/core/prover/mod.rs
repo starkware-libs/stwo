@@ -3,6 +3,7 @@ use std::iter::zip;
 use itertools::{enumerate, Itertools};
 use thiserror::Error;
 
+use super::fri::FriVerificationError;
 use super::poly::circle::{CanonicCoset, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::queries::SparseSubCircleDomain;
 use super::ColumnVec;
@@ -158,7 +159,11 @@ pub fn prove(
     })
 }
 
-pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Channel) -> bool {
+pub fn verify(
+    proof: StarkProof,
+    air: &impl Air<CPUBackend>,
+    channel: &mut Channel,
+) -> Result<(), VerificationError> {
     // Read trace commitment.
     let mut commitment_scheme = CommitmentSchemeVerifier::new();
     commitment_scheme.commit(proof.commitments[0], channel);
@@ -185,8 +190,7 @@ pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Chann
 
     let bounds = air.quotient_log_bounds();
     let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-    let mut fri_verifier =
-        FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
+    let mut fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds)?;
 
     ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work);
     let opening_positions = fri_verifier
@@ -210,9 +214,7 @@ pub fn verify(proof: StarkProof, air: &impl Air<CPUBackend>, channel: &mut Chann
         oods_point,
     );
 
-    fri_verifier.decommit(sparse_circle_evaluations).unwrap();
-
-    true
+    Ok(fri_verifier.decommit(sparse_circle_evaluations)?)
 }
 
 fn prepare_fri_evaluations(
@@ -297,6 +299,12 @@ pub enum ProvingError {
     MaxCompositionDegreeExceeded { degree: u32 },
     #[error("Constraints not satisfied.")]
     ConstraintsNotSatisfied,
+}
+
+#[derive(Clone, Copy, Debug, Error)]
+pub enum VerificationError {
+    #[error(transparent)]
+    Fri(#[from] FriVerificationError),
 }
 
 #[cfg(test)]

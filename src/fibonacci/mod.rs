@@ -10,7 +10,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{prove, verify, ProvingError, StarkProof};
+use crate::core::prover::{prove, verify, ProvingError, StarkProof, VerificationError};
 
 pub mod air;
 mod component;
@@ -57,7 +57,10 @@ impl Fibonacci {
     }
 }
 
-pub fn verify_proof<const N_BITS: u32>(proof: StarkProof, claim: BaseField) -> bool {
+pub fn verify_proof<const N_BITS: u32>(
+    proof: StarkProof,
+    claim: BaseField,
+) -> Result<(), VerificationError> {
     let fib = Fibonacci::new(N_BITS, claim);
     let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[claim])));
     verify(proof, &fib.air, channel)
@@ -211,7 +214,7 @@ mod tests {
                 .composition_polynomial_oods_value,
             hz
         );
-        assert!(verify_proof::<FIB_LOG_SIZE>(proof, fib.claim));
+        verify_proof::<FIB_LOG_SIZE>(proof, fib.claim).unwrap();
     }
 
     // TODO(AlonH): Check the correct error occurs after introducing errors instead of
@@ -225,7 +228,7 @@ mod tests {
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.opened_values.0[0][0][4] += BaseField::one();
 
-        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim);
+        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim).unwrap();
     }
 
     // TODO(AlonH): Check the correct error occurs after introducing errors instead of
@@ -239,7 +242,7 @@ mod tests {
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.trace_oods_values.swap(0, 1);
 
-        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim);
+        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim).unwrap();
     }
 
     // TODO(AlonH): Check the correct error occurs after introducing errors instead of
@@ -253,7 +256,7 @@ mod tests {
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.opened_values.0[0][0].pop();
 
-        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim);
+        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim).unwrap();
     }
 
     #[test]
@@ -267,6 +270,6 @@ mod tests {
         let proof = prove(&air, prover_channel, trace).unwrap();
         let verifier_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[fib.claim])));
-        assert!(verify(proof, &air, verifier_channel));
+        verify(proof, &air, verifier_channel).unwrap();
     }
 }
