@@ -28,6 +28,12 @@ impl<T: Copy> ComponentVec<ColumnVec<T>> {
     }
 }
 
+impl<T> Default for ComponentVec<T> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
 impl<T> Deref for ComponentVec<T> {
     type Target = Vec<ColumnVec<T>>;
 
