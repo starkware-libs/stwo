@@ -1,3 +1,5 @@
+use thiserror::Error;
+
 use super::channel::Blake2sChannel;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
@@ -26,17 +28,23 @@ impl ProofOfWork {
         proof
     }
 
-    pub fn verify(&self, channel: &mut Blake2sChannel, proof: &ProofOfWorkProof) -> bool {
+    pub fn verify(
+        &self,
+        channel: &mut Blake2sChannel,
+        proof: &ProofOfWorkProof,
+    ) -> Result<(), ProofOfWorkVerificationError> {
         let seed = channel.get_digest().as_ref().to_vec();
         let verified = check_leading_zeros(
             self.hash_with_nonce(&seed, proof.nonce).as_ref(),
             self.n_bits,
         );
 
-        if verified {
-            channel.mix_nonce(proof.nonce);
+        if !verified {
+            return Err(ProofOfWorkVerificationError::ProofOfWorkVerificationFailed);
         }
-        verified
+
+        channel.mix_nonce(proof.nonce);
+        Ok(())
     }
 
     fn grind(&self, seed: Vec<u8>) -> ProofOfWorkProof {
@@ -76,6 +84,12 @@ fn check_leading_zeros(bytes: &[u8], bound_bits: u32) -> bool {
     n_bits >= bound_bits
 }
 
+#[derive(Clone, Copy, Debug, Error)]
+pub enum ProofOfWorkVerificationError {
+    #[error("Proof of work verification failed.")]
+    ProofOfWorkVerificationFailed,
+}
+
 #[cfg(test)]
 mod tests {
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
@@ -88,7 +102,7 @@ mod tests {
         let proof_of_work_prover = ProofOfWork { n_bits: 11 };
         let proof = ProofOfWorkProof { nonce: 133 };
 
-        assert!(proof_of_work_prover.verify(&mut channel, &proof));
+        proof_of_work_prover.verify(&mut channel, &proof).unwrap();
     }
 
     #[test]
@@ -97,7 +111,9 @@ mod tests {
         let proof_of_work_prover = ProofOfWork { n_bits: 1 };
         let invalid_proof = ProofOfWorkProof { nonce: 0 };
 
-        assert!(!proof_of_work_prover.verify(&mut channel, &invalid_proof));
+        proof_of_work_prover
+            .verify(&mut channel, &invalid_proof)
+            .unwrap_err();
     }
 
     #[test]
@@ -109,9 +125,8 @@ mod tests {
         let verifier = ProofOfWork::new(n_bits);
 
         let proof = prover.prove(&mut prover_channel);
-        let verified = verifier.verify(&mut verifier_channel, &proof);
+        verifier.verify(&mut verifier_channel, &proof).unwrap();
 
-        assert!(verified);
         assert_eq!(prover_channel.get_digest(), verifier_channel.get_digest());
     }
 }
