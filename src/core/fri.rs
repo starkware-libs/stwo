@@ -328,7 +328,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         config: FriConfig,
         proof: FriProof<H>,
         column_bounds: Vec<CirclePolyDegreeBound>,
-    ) -> Result<Self, VerificationError> {
+    ) -> Result<Self, FriVerificationError> {
         assert!(column_bounds.is_sorted_by_key(|b| Reverse(*b)));
 
         let max_column_bound = column_bounds[0];
@@ -359,19 +359,19 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
 
             layer_bound = layer_bound
                 .fold(FOLD_STEP)
-                .ok_or(VerificationError::InvalidNumFriLayers)?;
+                .ok_or(FriVerificationError::InvalidNumFriLayers)?;
             layer_domain = layer_domain.double();
         }
 
         if layer_bound.log_degree_bound != config.log_last_layer_degree_bound {
-            return Err(VerificationError::InvalidNumFriLayers);
+            return Err(FriVerificationError::InvalidNumFriLayers);
         }
 
         let last_layer_domain = layer_domain;
         let last_layer_poly = proof.last_layer_poly;
 
         if last_layer_poly.len() > (1 << config.log_last_layer_degree_bound) {
-            return Err(VerificationError::LastLayerDegreeInvalid);
+            return Err(FriVerificationError::LastLayerDegreeInvalid);
         }
 
         channel.mix_felts(&last_layer_poly);
@@ -402,7 +402,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     pub fn decommit<F>(
         mut self,
         decommitted_values: Vec<SparseCircleEvaluation<F>>,
-    ) -> Result<(), VerificationError>
+    ) -> Result<(), FriVerificationError>
     where
         F: ExtensionOf<BaseField>,
         SecureField: ExtensionOf<F>,
@@ -415,7 +415,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         self,
         queries: &Queries,
         decommitted_values: Vec<SparseCircleEvaluation<F>>,
-    ) -> Result<(), VerificationError>
+    ) -> Result<(), FriVerificationError>
     where
         F: ExtensionOf<BaseField>,
         SecureField: ExtensionOf<F>,
@@ -436,7 +436,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         &self,
         queries: &Queries,
         decommitted_values: Vec<SparseCircleEvaluation<F>>,
-    ) -> Result<(Queries, Vec<SecureField>), VerificationError>
+    ) -> Result<(Queries, Vec<SecureField>), FriVerificationError>
     where
         F: ExtensionOf<BaseField>,
         SecureField: ExtensionOf<F> + Field,
@@ -480,7 +480,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
         self,
         queries: Queries,
         query_evals: Vec<SecureField>,
-    ) -> Result<(), VerificationError> {
+    ) -> Result<(), FriVerificationError> {
         let Self {
             last_layer_domain: domain,
             last_layer_poly,
@@ -491,7 +491,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
             let x = domain.at(bit_reverse_index(query, domain.log_size()));
 
             if query_eval != last_layer_poly.eval_at_point(x.into()) {
-                return Err(VerificationError::LastLayerEvaluationsInvalid);
+                return Err(FriVerificationError::LastLayerEvaluationsInvalid);
             }
         }
 
@@ -556,8 +556,8 @@ pub trait FriChannel {
     fn draw(&mut self) -> Self::Field;
 }
 
-#[derive(Error, Debug)]
-pub enum VerificationError {
+#[derive(Clone, Copy, Debug, Error)]
+pub enum FriVerificationError {
     #[error("proof contains an invalid number of FRI layers")]
     InvalidNumFriLayers,
     #[error("queries do not resolve to their commitment in layer {layer}")]
@@ -668,7 +668,7 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
         &self,
         queries: Queries,
         evals_at_queries: Vec<SecureField>,
-    ) -> Result<(Queries, Vec<SecureField>), VerificationError> {
+    ) -> Result<(Queries, Vec<SecureField>), FriVerificationError> {
         let decommitment = &self.proof.decommitment;
         let commitment = self.proof.commitment;
 
@@ -684,7 +684,7 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
                 if let [eval] = *leaf {
                     expected_decommitment_evals.push(eval);
                 } else {
-                    return Err(VerificationError::InnerLayerCommitmentInvalid {
+                    return Err(FriVerificationError::InnerLayerCommitmentInvalid {
                         layer: self.layer_index,
                     });
                 }
@@ -696,7 +696,7 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
                 .flat_map(|e| &e.values);
 
             if !actual_decommitment_evals.eq(&expected_decommitment_evals) {
-                return Err(VerificationError::InnerLayerCommitmentInvalid {
+                return Err(FriVerificationError::InnerLayerCommitmentInvalid {
                     layer: self.layer_index,
                 });
             }
@@ -715,7 +715,7 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
             .collect::<Vec<usize>>();
 
         if !decommitment.verify(commitment, &decommitment_positions) {
-            return Err(VerificationError::InnerLayerCommitmentInvalid {
+            return Err(FriVerificationError::InnerLayerCommitmentInvalid {
                 layer: self.layer_index,
             });
         }
@@ -738,7 +738,7 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
         &self,
         queries: &Queries,
         evals_at_queries: &[SecureField],
-    ) -> Result<SparseLineEvaluation, VerificationError> {
+    ) -> Result<SparseLineEvaluation, FriVerificationError> {
         // Evals provided by the verifier.
         let mut evals_at_queries = evals_at_queries.iter().copied();
 
@@ -760,7 +760,7 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
                 let eval = match subline_queries.next_if_eq(&&eval_position) {
                     Some(_) => evals_at_queries.next().unwrap(),
                     None => proof_evals.next().ok_or(
-                        VerificationError::InnerLayerEvaluationsInvalid {
+                        FriVerificationError::InnerLayerEvaluationsInvalid {
                             layer: self.layer_index,
                         },
                     )?,
@@ -780,7 +780,7 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
 
         // Check all proof evals have been consumed.
         if !proof_evals.is_empty() {
-            return Err(VerificationError::InnerLayerEvaluationsInvalid {
+            return Err(FriVerificationError::InnerLayerEvaluationsInvalid {
                 layer: self.layer_index,
             });
         }
@@ -912,7 +912,7 @@ mod tests {
 
     use num_traits::{One, Zero};
 
-    use super::{get_opening_positions, SparseCircleEvaluation, VerificationError};
+    use super::{get_opening_positions, FriVerificationError, SparseCircleEvaluation};
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly, CPULineEvaluation};
     use crate::core::backend::CPUBackend;
@@ -1003,7 +1003,7 @@ mod tests {
     }
 
     #[test]
-    fn valid_proof_passes_verification() -> Result<(), VerificationError> {
+    fn valid_proof_passes_verification() -> Result<(), FriVerificationError> {
         const LOG_DEGREE: u32 = 3;
         let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let log_domain_size = polynomial.domain.log_size();
@@ -1019,7 +1019,8 @@ mod tests {
     }
 
     #[test]
-    fn valid_proof_with_constant_last_layer_passes_verification() -> Result<(), VerificationError> {
+    fn valid_proof_with_constant_last_layer_passes_verification() -> Result<(), FriVerificationError>
+    {
         const LOG_DEGREE: u32 = 3;
         const LAST_LAYER_LOG_BOUND: u32 = 0;
         let polynomial = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
@@ -1036,7 +1037,7 @@ mod tests {
     }
 
     #[test]
-    fn valid_mixed_degree_proof_passes_verification() -> Result<(), VerificationError> {
+    fn valid_mixed_degree_proof_passes_verification() -> Result<(), FriVerificationError> {
         const LOG_DEGREES: [u32; 3] = [6, 5, 4];
         let polynomials = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
         let log_domain_size = polynomials[0].domain.log_size();
@@ -1052,7 +1053,8 @@ mod tests {
     }
 
     #[test]
-    fn valid_mixed_degree_end_to_end_proof_passes_verification() -> Result<(), VerificationError> {
+    fn valid_mixed_degree_end_to_end_proof_passes_verification() -> Result<(), FriVerificationError>
+    {
         const LOG_DEGREES: [u32; 3] = [6, 5, 4];
         let polynomials = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
@@ -1088,7 +1090,7 @@ mod tests {
 
         assert!(matches!(
             verifier,
-            Err(VerificationError::InvalidNumFriLayers)
+            Err(FriVerificationError::InvalidNumFriLayers)
         ));
     }
 
@@ -1110,7 +1112,7 @@ mod tests {
 
         assert!(matches!(
             verifier,
-            Err(VerificationError::InvalidNumFriLayers)
+            Err(FriVerificationError::InvalidNumFriLayers)
         ));
     }
 
@@ -1133,7 +1135,7 @@ mod tests {
 
         assert!(matches!(
             verification_result,
-            Err(VerificationError::InnerLayerEvaluationsInvalid { layer: 1 })
+            Err(FriVerificationError::InnerLayerEvaluationsInvalid { layer: 1 })
         ));
     }
 
@@ -1156,7 +1158,7 @@ mod tests {
 
         assert!(matches!(
             verification_result,
-            Err(VerificationError::InnerLayerCommitmentInvalid { layer: 1 })
+            Err(FriVerificationError::InnerLayerCommitmentInvalid { layer: 1 })
         ));
     }
 
@@ -1178,7 +1180,7 @@ mod tests {
 
         assert!(matches!(
             verifier,
-            Err(VerificationError::LastLayerDegreeInvalid)
+            Err(FriVerificationError::LastLayerDegreeInvalid)
         ));
     }
 
@@ -1201,7 +1203,7 @@ mod tests {
 
         assert!(matches!(
             verification_result,
-            Err(VerificationError::LastLayerEvaluationsInvalid)
+            Err(FriVerificationError::LastLayerEvaluationsInvalid)
         ));
     }
 
