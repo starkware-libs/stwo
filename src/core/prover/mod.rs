@@ -181,10 +181,11 @@ pub fn verify(
         &proof.trace_oods_values,
         random_coeff,
     );
-    assert_eq!(
-        composition_polynomial_oods_value,
-        combine_secure_value(proof.composition_polynomial_column_oods_values)
-    );
+    if composition_polynomial_oods_value
+        != combine_secure_value(proof.composition_polynomial_column_oods_values)
+    {
+        return Err(VerificationError::OodsNotMatching);
+    }
     channel.mix_felts(&proof.trace_oods_values.flatten());
     channel.mix_felts(&proof.composition_polynomial_column_oods_values);
 
@@ -303,6 +304,11 @@ pub enum ProvingError {
 
 #[derive(Clone, Copy, Debug, Error)]
 pub enum VerificationError {
+    #[error(
+        "The composition polynomial OODS value does not match the trace OODS values
+    (DEEP-ALI failure)."
+    )]
+    OodsNotMatching,
     #[error(transparent)]
     Fri(#[from] FriVerificationError),
 }
