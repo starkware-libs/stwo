@@ -16,6 +16,8 @@ use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
 use crate::commitment_scheme::merkle_tree::MerkleTree;
 use crate::core::channel::Channel;
 
+pub mod utils;
+
 /// Holds a vector for each tree, which holds a vector for each column, which holds its respective
 /// opened values.
 pub struct OpenedValues(pub Vec<ColumnVec<Vec<BaseField>>>);
