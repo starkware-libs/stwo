@@ -6,7 +6,7 @@ use std::arch::x86_64::{_mm512_load_epi32, _mm512_permutex2var_epi32, _mm512_sto
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use num_traits::One;
+use num_traits::{One, Zero};
 
 use crate::core::fields::m31::{M31, P};
 use crate::core::fields::FieldExpOps;
@@ -106,6 +106,12 @@ impl PackedBaseField {
     /// valid and aligned to 64 bytes.
     pub unsafe fn store(self, ptr: *mut i32) {
         _mm512_store_epi32(ptr, self.0);
+    }
+
+    /// Sums all the elements in the packed M31 element.
+    pub fn pointwise_sum(self) -> M31 {
+        let v = self.to_array();
+        v.iter().fold(M31::zero(), |acc, x| acc + *x)
     }
 }
 

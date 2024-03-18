@@ -1,4 +1,7 @@
-use bytemuck::cast_slice;
+use std::arch::x86_64::_mm512_set1_epi32;
+
+use bytemuck::{cast_slice, Zeroable};
+use num_traits::{One, Zero};
 
 use super::fft::{ifft, CACHED_FFT_LOG_SIZE};
 use super::m31::PackedBaseField;
@@ -8,13 +11,64 @@ use crate::core::backend::avx512::BaseFieldVec;
 use crate::core::backend::{CPUBackend, Col};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{ExtensionOf, FieldExpOps};
+use crate::core::fields::{ExtensionOf, Field, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
+
+impl AVX512Backend {
+    fn twiddle_lows(low_mappings: &[BaseField; 4]) -> PackedBaseField {
+        let mut res = [BaseField::zero(); 16];
+        let t0 = low_mappings[0];
+        let t1 = low_mappings[1];
+        let t2 = low_mappings[2];
+        let t3 = low_mappings[3];
+
+        res[0] = BaseField::one();
+        res[1] = t0;
+        res[2] = t1;
+        res[3] = t0 * t1;
+        res[4] = t2;
+        res[5] = t0 * t2;
+        res[6] = t1 * t2;
+        res[7] = t0 * t1 * t2;
+        res[8] = t3;
+        res[9] = t0 * t3;
+        res[10] = t1 * t3;
+        res[11] = t0 * t1 * t3;
+        res[12] = t2 * t3;
+        res[13] = t0 * t2 * t3;
+        res[14] = t1 * t2 * t3;
+        res[15] = t0 * t1 * t2 * t3;
+
+        PackedBaseField::from_array(res)
+    }
+
+    // TODO(Ohad): optimize.
+    fn twiddle_at<F: Field>(mappings: &[F], mut index: usize) -> F {
+        debug_assert!(
+            (1 << mappings.len()) as usize >= index,
+            "Index out of bounds. mappings log len = {}, index = {index}",
+            mappings.len().ilog2()
+        );
+
+        let mut product = F::one();
+        for &num in mappings.iter() {
+            if index & 1 == 1 {
+                product *= num;
+            }
+            index >>= 1;
+            if index == 0 {
+                break;
+            }
+        }
+
+        product
+    }
+}
 
 // TODO(spapini): Everything is returned in redundant representation, where values can also be P.
 // Decide if and when it's ok and what to do if it's not.
@@ -171,6 +225,51 @@ impl PolyOps for AVX512Backend {
             itwiddles,
         }
     }
+
+    fn eval_at_basefield_point(
+        poly: &CirclePoly<Self>,
+        point: CirclePoint<BaseField>,
+    ) -> BaseField {
+        let mut mappings = vec![point.y, point.x];
+        let mut x = point.x;
+        for _ in 2..poly.log_size() {
+            x = CirclePoint::double_x(x);
+            mappings.push(x);
+        }
+
+        // If the polynomial is large, the fft does a transpose in the middle.
+        // TODO(Ohad): to avoid complexity for now, we just reverse the mappings, transpose, then
+        // reverse back so the original transpose works. Optimize.
+        if poly.log_size() as usize > CACHED_FFT_LOG_SIZE {
+            mappings.reverse();
+            let n = mappings.len();
+            let n0 = (n - VECS_LOG_SIZE) / 2;
+            let n1 = (n - VECS_LOG_SIZE + 1) / 2;
+            let (ab, c) = mappings.split_at_mut(n1);
+            let (a, _b) = ab.split_at_mut(n0);
+            // Swap content of a,c.
+            a.swap_with_slice(&mut c[0..n0]);
+            mappings.reverse();
+        }
+
+        // 4 lowest mappings produce the first 2^4 twiddles.
+        let (map_low, map_high) = mappings.split_at(4);
+        let twiddle_lows = AVX512Backend::twiddle_lows(map_low.try_into().unwrap());
+
+        // Every twiddle is a product of mappings that correspond to '1's in the bit representation
+        // of the current index. For every 2^n alligned chunk of 2^n elements, the twiddle
+        // array is the same, denoted twiddle_low. Use this to compute sums of (coeff *
+        // twiddle_high) mod 2^n, then multiply by twiddle_low, and sum to get the final result.
+        let mut sum = PackedBaseField::zeroed();
+        for (i, &coeff_chunk) in poly.coeffs.data.iter().enumerate() {
+            let cur_twiddle_high = AVX512Backend::twiddle_at(map_high, i);
+            let curr_twiddle_broadcast =
+                PackedBaseField(unsafe { _mm512_set1_epi32(cur_twiddle_high.0 as i32) });
+            sum += coeff_chunk * curr_twiddle_broadcast;
+        }
+
+        (sum * twiddle_lows).pointwise_sum()
+    }
 }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
@@ -180,7 +279,9 @@ mod tests {
     use crate::core::backend::avx512::AVX512Backend;
     use crate::core::backend::Column;
     use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
+    use crate::core::poly::circle::{
+        CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
+    };
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
 
     #[test]
@@ -257,6 +358,30 @@ mod tests {
                 .evaluate(CanonicCoset::new(log_size + 2).circle_domain());
 
             assert_eq!(eval0.values.to_vec(), eval1.values.to_vec());
+        }
+    }
+
+    #[test]
+    fn test_eval_basefield() {
+        use crate::core::backend::avx512::fft::MIN_FFT_LOG_SIZE;
+
+        for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 4) {
+            let domain = CanonicCoset::new(log_size as u32).circle_domain();
+            let evaluation = CircleEvaluation::<AVX512Backend, _, NaturalOrder>::new(
+                domain,
+                (0..(1 << log_size))
+                    .map(BaseField::from_u32_unchecked)
+                    .collect(),
+            );
+            let poly = evaluation.bit_reverse().interpolate();
+            for i in [0, 1, 3, 1 << (log_size - 1), 1 << (log_size - 2)] {
+                let p = domain.at(i);
+                assert_eq!(
+                    <AVX512Backend as PolyOps>::eval_at_basefield_point(&poly, p),
+                    BaseField::from_u32_unchecked(i as u32),
+                    "log_size = {log_size} i = {i}"
+                );
+            }
         }
     }
 }
