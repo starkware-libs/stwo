@@ -2,6 +2,7 @@ use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
 use crate::core::backend::Col;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, FieldOps};
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
@@ -28,6 +29,7 @@ pub trait PolyOps: FieldOps<BaseField> + Sized {
 
     /// Evaluates the polynomial at a single point.
     /// Used by the [`CirclePoly::eval_at_point()`] function.
+    // TODO: Consider deprecating if/when not in use.
     fn eval_at_point<E: ExtensionOf<BaseField>>(
         poly: &CirclePoly<Self>,
         point: CirclePoint<E>,
@@ -47,4 +49,9 @@ pub trait PolyOps: FieldOps<BaseField> + Sized {
 
     /// Precomputes twiddles for a given coset.
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self>;
+
+    fn eval_at_securefield_point(
+        poly: &CirclePoly<Self>,
+        point: CirclePoint<SecureField>,
+    ) -> SecureField;
 }
