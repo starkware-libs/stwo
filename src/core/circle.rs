@@ -199,8 +199,8 @@ pub const M31_CIRCLE_LOG_ORDER: u32 = 31;
 
 /// A generator for the circle group over [SecureField].
 pub const SECURE_FIELD_CIRCLE_GEN: CirclePoint<SecureField> = CirclePoint {
-    x: SecureField::from_u32_unchecked(1, 0, 478637715, 513582961),
-    y: SecureField::from_u32_unchecked(568722919, 616616927, 0, 74382916),
+    x: SecureField::from_u32_unchecked(1, 0, 478637715, 513582971),
+    y: SecureField::from_u32_unchecked(992285211, 649143431, 740191619, 1186584352),
 };
 
 /// Order of [SECURE_FIELD_CIRCLE_GEN].
