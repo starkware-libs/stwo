@@ -148,6 +148,8 @@ impl Component<AVX512Backend> for WideFibComponent {
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
+    use rayon::prelude::*;
+
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::hasher::Hasher;
     use crate::core::channel::{Blake2sChannel, Channel};
@@ -165,11 +167,13 @@ mod tests {
 
         // TODO(spapini): Increase to 20, to get 1GB.
         const LOG_SIZE: u32 = 12;
-        let component = WideFibComponent { log_size: LOG_SIZE };
-        let air = WideFibAir { component };
-        let trace = gen_trace(LOG_SIZE as usize);
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        // TODO(spapini): Fix the constraints.
-        prove(&air, channel, trace).unwrap_err();
+        (0..8).into_par_iter().for_each(|_| {
+            let component = WideFibComponent { log_size: LOG_SIZE };
+            let air = WideFibAir { component };
+            let trace = gen_trace(LOG_SIZE as usize);
+            let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+            // TODO(spapini): Fix the constraints.
+            prove(&air, channel, trace).unwrap_err();
+        });
     }
 }

@@ -676,6 +676,7 @@ dependencies = [
  "merging-iterator",
  "num-traits",
  "rand",
+ "rayon",
  "test-log",
  "thiserror",
  "tracing",
