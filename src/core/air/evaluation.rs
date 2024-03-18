@@ -2,6 +2,9 @@
 //! Given N polynomials, sort them by size: u_0(P), ... u_{N-1}(P).
 //! Given a random alpha, the combined polynomial is defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i (P).
+use std::fmt::Debug;
+use std::iter::zip;
+
 use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::backend::{Backend, CPUBackend, Col, Column};
 use crate::core::fields::m31::BaseField;
@@ -19,16 +22,36 @@ pub struct SecureColumn<B: Backend> {
     pub cols: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
 
+impl<B: Backend> Debug for SecureColumn<B> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecureColumn")
+            .field("cols", &self.cols)
+            .finish()
+    }
+}
+
+impl<B: Backend> Clone for SecureColumn<B> {
+    fn clone(&self) -> Self {
+        Self {
+            cols: self.cols.clone(),
+        }
+    }
+}
+
 impl SecureColumn<CPUBackend> {
-    fn at(&self, index: usize) -> SecureField {
+    pub fn at(&self, index: usize) -> SecureField {
         SecureField::from_m31_array(std::array::from_fn(|i| self.cols[i][index]))
     }
 
-    fn set(&mut self, index: usize, value: SecureField) {
+    pub fn set(&mut self, index: usize, value: SecureField) {
         self.cols
             .iter_mut()
             .map(|c| &mut c[index])
             .assign(value.to_m31_array());
+    }
+
+    pub fn push(&mut self, value: SecureField) {
+        zip(&mut self.cols, value.to_m31_array()).for_each(|(col, v)| col.push(v));
     }
 }
 

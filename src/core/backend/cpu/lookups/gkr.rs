@@ -5,7 +5,9 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::gkr::GkrOps;
 
 impl GkrOps for CPUBackend {
-    fn gen_eq_evals(y: &[SecureField]) -> Self::Column {
+    type EqEvals = Vec<SecureField>;
+
+    fn gen_eq_evals(y: &[SecureField]) -> Vec<SecureField> {
         match y {
             [] => vec![SecureField::one()],
             &[y_1] => vec![SecureField::one() - y_1, y_1],

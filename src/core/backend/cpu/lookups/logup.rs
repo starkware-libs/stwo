@@ -1,66 +1,74 @@
 use num_traits::{One, Zero};
 
-use crate::core::backend::cpu::CpuMle;
+use crate::core::air::evaluation::SecureColumn;
 use crate::core::backend::CPUBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{ExtensionOf, Field};
+use crate::core::fields::Field;
 use crate::core::lookups::logup::{Fraction, LogupOps, LogupOracle, LogupTrace};
-use crate::core::lookups::mle::{Mle, MleOps};
+use crate::core::lookups::mle::Mle;
 use crate::core::lookups::sumcheck::SumcheckOracle;
 use crate::core::lookups::utils::{eq, Polynomial};
 
 impl LogupOps for CPUBackend {
     fn next_layer(layer: &LogupTrace<Self>) -> LogupTrace<Self> {
-        /// Computes the values in the next layer of the circuit.
-        ///
-        /// Created as a generic function to handle all [`LogupTrace`] variants with a single
-        /// implementation. [`None`] is passed to `numerators` for [`LogupTrace::Singles`] - the
-        /// idea is that the compiler will inline the function and flatten the `numerator` match
-        /// blocks that occur in the inner loop.
-        fn _next_layer<F>(
-            numerators: Option<&CpuMle<F>>,
-            denominators: &CpuMle<SecureField>,
-        ) -> LogupTrace<CPUBackend>
-        where
-            F: Field,
-            SecureField: ExtensionOf<F> + Field,
-            CPUBackend: MleOps<F, Column = Vec<F>>,
-        {
-            let mut next_numerators = Vec::new();
-            let mut next_denominators = Vec::new();
+        let mut next_numerators = SecureColumn::default();
+        let mut next_denominators = SecureColumn::default();
 
-            let mut numerator_pairs = numerators.map(|n| n.array_chunks()).into_iter().flatten();
-            let denominator_pairs = denominators.array_chunks();
-
-            let one = BaseField::one();
-
-            for &[d0, d1] in denominator_pairs {
-                let res = match numerator_pairs.next() {
-                    Some(&[n0, n1]) => Fraction::new(n0, d0) + Fraction::new(n1, d1),
-                    None => Fraction::new(one, d0) + Fraction::new(one, d1),
-                };
-
-                next_numerators.push(res.numerator);
-                next_denominators.push(res.denominator);
-            }
-
-            LogupTrace::Generic {
-                numerators: Mle::new(next_numerators),
-                denominators: Mle::new(next_denominators),
-            }
-        }
+        let half_layer_len = layer.len() / 2;
+        let one = BaseField::one();
 
         match layer {
-            LogupTrace::Singles { denominators } => _next_layer::<SecureField>(None, denominators),
+            LogupTrace::Singles { denominators } => {
+                for i in 0..half_layer_len {
+                    let d0 = denominators.at(i * 2);
+                    let d1 = denominators.at(i * 2 + 1);
+
+                    let res = Fraction::new(one, d0) + Fraction::new(one, d1);
+
+                    next_numerators.push(res.numerator);
+                    next_denominators.push(res.denominator);
+                }
+            }
             LogupTrace::Multiplicities {
                 numerators,
                 denominators,
-            } => _next_layer(Some(numerators), denominators),
+            } => {
+                for i in 0..half_layer_len {
+                    let n0 = numerators[i * 2];
+                    let d0 = denominators.at(i * 2);
+
+                    let n1 = numerators[i * 2 + 1];
+                    let d1 = denominators.at(i * 2 + 1);
+
+                    let res = Fraction::new(n0, d0) + Fraction::new(n1, d1);
+
+                    next_numerators.push(res.numerator);
+                    next_denominators.push(res.denominator);
+                }
+            }
             LogupTrace::Generic {
-                numerators: n,
-                denominators: d,
-            } => _next_layer(Some(n), d),
+                numerators,
+                denominators,
+            } => {
+                for i in 0..half_layer_len {
+                    let n0 = numerators.at(i * 2);
+                    let d0 = denominators.at(i * 2);
+
+                    let n1 = numerators.at(i * 2 + 1);
+                    let d1 = denominators.at(i * 2 + 1);
+
+                    let res = Fraction::new(n0, d0) + Fraction::new(n1, d1);
+
+                    next_numerators.push(res.numerator);
+                    next_denominators.push(res.denominator);
+                }
+            }
+        }
+
+        LogupTrace::Generic {
+            numerators: Mle::new(next_numerators),
+            denominators: Mle::new(next_denominators),
         }
     }
 
@@ -68,95 +76,114 @@ impl LogupOps for CPUBackend {
         oracle: &LogupOracle<'_, Self>,
         claim: SecureField,
     ) -> Polynomial<SecureField> {
-        /// Evaluates the univariate sum at `0` and `2`. (TODO improve doc)
-        ///
-        /// Created as a generic function to handle all [`LogupTrace`] variants with a single
-        /// implementation. [`None`] is passed to `numerators` for [`LogupTrace::Singles`] - the
-        /// idea is that the compiler will inline the function and flatten the `numerator` match
-        /// blocks that occur in the inner loop.
-        fn univariate_sum_evals<F>(
-            numerators: Option<&CpuMle<F>>,
-            denominators: &CpuMle<SecureField>,
-            eq_evals: &[SecureField],
-            lambda: SecureField,
-            num_terms: usize,
-        ) -> (SecureField, SecureField)
-        where
-            F: Field,
-            SecureField: ExtensionOf<F> + Field,
-            CPUBackend: MleOps<F, Column = Vec<F>>,
-        {
-            let mut eval_at_0 = SecureField::zero();
-            let mut eval_at_2 = SecureField::zero();
-
-            let numerator_pairs = numerators.map(|n| n.as_chunks().0);
-            let denominator_pairs = denominators.as_chunks().0;
-
-            for i in 0..num_terms {
-                let [denominator_lhs0, denominator_lhs1] = denominator_pairs[i];
-
-                let fraction0 = match numerator_pairs.map(|v| v[i]) {
-                    Some([numerator_lhs0, numerator_lhs1]) => {
-                        let a = Fraction::new(numerator_lhs0, denominator_lhs0);
-                        let b = Fraction::new(numerator_lhs1, denominator_lhs1);
-                        a + b
-                    }
-                    None => Fraction::new(
-                        denominator_lhs0 + denominator_lhs1,
-                        denominator_lhs0 * denominator_lhs1,
-                    ),
-                };
-
-                let [denominator_rhs0, denominator_rhs1] = denominator_pairs[num_terms + i];
-
-                let fraction2 = {
-                    let d0 = denominator_rhs0.double() - denominator_lhs0;
-                    let d1 = denominator_rhs1.double() - denominator_lhs1;
-
-                    match numerator_pairs.map(|v| (v[i], v[num_terms + i])) {
-                        Some((
-                            [numerator_lhs0, numerator_lhs1],
-                            [numerator_rhs0, numerator_rhs1],
-                        )) => {
-                            let n0 = numerator_rhs0.double() - numerator_lhs0;
-                            let n1 = numerator_rhs1.double() - numerator_lhs1;
-
-                            let a = Fraction::new(n0, d0);
-                            let b = Fraction::new(n1, d1);
-                            a + b
-                        }
-                        None => Fraction::new(d0 + d1, d0 * d1),
-                    }
-                };
-
-                let eq_eval = eq_evals[i];
-                eval_at_0 += eq_eval * (fraction0.numerator + lambda * fraction0.denominator);
-                eval_at_2 += eq_eval * (fraction2.numerator + lambda * fraction2.denominator);
-            }
-
-            (eval_at_0, eval_at_2)
-        }
-
-        let num_terms = (1 << oracle.num_variables()) / 2;
+        let num_terms = 1 << (oracle.num_variables() - 1);
         let lambda = oracle.lambda();
         let eq_evals = oracle.eq_evals();
+        let trace = oracle.trace();
         let z = oracle.z();
         let r = oracle.r();
 
         // Obtain the evaluations at `0` and `2`.
-        let (mut eval_at_0, mut eval_at_2) = match oracle.trace() {
-            LogupTrace::Generic {
-                numerators,
-                denominators,
-            } => univariate_sum_evals(Some(numerators), denominators, eq_evals, lambda, num_terms),
-            LogupTrace::Multiplicities {
-                numerators,
-                denominators,
-            } => univariate_sum_evals(Some(numerators), denominators, eq_evals, lambda, num_terms),
-            LogupTrace::Singles { denominators } => {
-                univariate_sum_evals::<SecureField>(None, denominators, eq_evals, lambda, num_terms)
-            }
-        };
+        let mut eval_at_0 = SecureField::zero();
+        let mut eval_at_2 = SecureField::zero();
+
+        for i in 0..num_terms {
+            let (fraction0, fraction2) = match trace {
+                LogupTrace::Singles { denominators } => {
+                    let d0_lhs = denominators.at(i * 2);
+                    let d1_lhs = denominators.at(i * 2 + 1);
+
+                    let fraction0 = Fraction::new(d0_lhs + d1_lhs, d0_lhs * d1_lhs);
+
+                    let d0_rhs = denominators.at((num_terms + i) * 2);
+                    let d1_rhs = denominators.at((num_terms + i) * 2 + 1);
+
+                    let fraction2 = {
+                        let d0 = d0_rhs.double() - d0_lhs;
+                        let d1 = d1_rhs.double() - d1_lhs;
+                        Fraction::new(d0 + d1, d0 * d1)
+                    };
+
+                    (fraction0, fraction2)
+                }
+                LogupTrace::Multiplicities {
+                    numerators,
+                    denominators,
+                } => {
+                    let n0_lhs = numerators[i * 2];
+                    let n1_lhs = numerators[i * 2 + 1];
+
+                    let d0_lhs = denominators.at(i * 2);
+                    let d1_lhs = denominators.at(i * 2 + 1);
+
+                    let fraction0 = {
+                        let a = Fraction::new(n0_lhs, d0_lhs);
+                        let b = Fraction::new(n1_lhs, d1_lhs);
+                        a + b
+                    };
+
+                    let n0_rhs = numerators[(num_terms + i) * 2];
+                    let n1_rhs = numerators[(num_terms + i) * 2 + 1];
+
+                    let d0_rhs = denominators.at((num_terms + i) * 2);
+                    let d1_rhs = denominators.at((num_terms + i) * 2 + 1);
+
+                    let fraction2 = {
+                        let n0 = n0_rhs.double() - n0_lhs;
+                        let n1 = n1_rhs.double() - n1_lhs;
+
+                        let d0 = d0_rhs.double() - d0_lhs;
+                        let d1 = d1_rhs.double() - d1_lhs;
+
+                        let a = Fraction::new(n0, d0);
+                        let b = Fraction::new(n1, d1);
+                        a + b
+                    };
+
+                    (fraction0, fraction2)
+                }
+                LogupTrace::Generic {
+                    numerators,
+                    denominators,
+                } => {
+                    let n0_lhs = numerators.at(i * 2);
+                    let n1_lhs = numerators.at(i * 2 + 1);
+
+                    let d0_lhs = denominators.at(i * 2);
+                    let d1_lhs = denominators.at(i * 2 + 1);
+
+                    let fraction0 = {
+                        let a = Fraction::new(n0_lhs, d0_lhs);
+                        let b = Fraction::new(n1_lhs, d1_lhs);
+                        a + b
+                    };
+
+                    let n0_rhs = numerators.at((num_terms + i) * 2);
+                    let n1_rhs = numerators.at((num_terms + i) * 2 + 1);
+
+                    let d0_rhs = denominators.at((num_terms + i) * 2);
+                    let d1_rhs = denominators.at((num_terms + i) * 2 + 1);
+
+                    let fraction2 = {
+                        let n0 = n0_rhs.double() - n0_lhs;
+                        let n1 = n1_rhs.double() - n1_lhs;
+
+                        let d0 = d0_rhs.double() - d0_lhs;
+                        let d1 = d1_rhs.double() - d1_lhs;
+
+                        let a = Fraction::new(n0, d0);
+                        let b = Fraction::new(n1, d1);
+                        a + b
+                    };
+
+                    (fraction0, fraction2)
+                }
+            };
+
+            let eq_eval = eq_evals[i];
+            eval_at_0 += eq_eval * (fraction0.numerator + lambda * fraction0.denominator);
+            eval_at_2 += eq_eval * (fraction2.numerator + lambda * fraction2.denominator);
+        }
 
         // We wanted to compute a sum of a multivariate polynomial
         // `eq((0^(k-1), x_k, .., x_n), (z_1, .., z_n)) * (..)` over

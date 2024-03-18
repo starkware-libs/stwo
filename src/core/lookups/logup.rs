@@ -5,10 +5,9 @@ use std::ops::Add;
 use num_traits::{One, Zero};
 
 use super::gkr::{BinaryTreeCircuit, GkrLayer, GkrOps, GkrSumcheckOracle};
-use super::mle::{Mle, MleOps, MleTrace};
+use super::mle::{ColumnV2, Mle, MleOps, MleTrace};
 use super::sumcheck::SumcheckOracle;
 use super::utils::Polynomial;
-use crate::core::backend::{Col, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
@@ -39,7 +38,8 @@ pub enum LogupTrace<B: LogupOps> {
 }
 
 impl<B: LogupOps> LogupTrace<B> {
-    fn len(&self) -> usize {
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
         1 << self.num_variables()
     }
 
@@ -52,7 +52,7 @@ impl<B: LogupOps> LogupTrace<B> {
     }
 }
 
-impl<B: GkrOps + LogupOps> GkrLayer for LogupTrace<B> {
+impl<B: LogupOps> GkrLayer for LogupTrace<B> {
     type Backend = B;
     type SumcheckOracle<'a> = LogupOracle<'a, B>;
 
@@ -68,7 +68,7 @@ impl<B: GkrOps + LogupOps> GkrLayer for LogupTrace<B> {
         self,
         lambda: SecureField,
         layer_assignment: &[SecureField],
-        eq_evals: &'a Col<B, SecureField>,
+        eq_evals: &'a B::EqEvals,
     ) -> LogupOracle<'a, B> {
         let num_variables = self.num_variables() - 1;
 
@@ -106,7 +106,7 @@ pub struct LogupOracle<'a, B: LogupOps> {
     /// Multi-linear extension of the numerators and denominators
     trace: LogupTrace<B>,
     /// Evaluations of `eq_z(x_1, ..., x_n)` (see [`gen_eq_evals`] docs).
-    eq_evals: Cow<'a, Col<B, SecureField>>,
+    eq_evals: Cow<'a, B::EqEvals>,
     /// The random point sampled during the GKR protocol for the sumcheck.
     // TODO: Better docs.
     z: Vec<SecureField>,
@@ -131,7 +131,7 @@ impl<'a, B: LogupOps> LogupOracle<'a, B> {
         &self.z
     }
 
-    pub fn eq_evals(&self) -> &Col<B, SecureField> {
+    pub fn eq_evals(&self) -> &B::EqEvals {
         self.eq_evals.as_ref()
     }
 

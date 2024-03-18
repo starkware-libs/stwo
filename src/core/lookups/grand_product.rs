@@ -1,12 +1,13 @@
 use std::borrow::Cow;
+use std::fmt::Debug;
 use std::ops::Deref;
 
 use super::gkr::{BinaryTreeCircuit, GkrLayer, GkrOps, GkrSumcheckOracle};
-use super::mle::{Mle, MleOps, MleTrace};
+use super::mle::{ColumnOpsV2, Mle, MleOps, MleTrace};
 use super::sumcheck::SumcheckOracle;
 use super::utils::Polynomial;
-use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::fields::qm31::SecureField;
+use crate::core::lookups::mle::ColumnV2;
 
 // TODO: Consider removing these super traits (especially GkrOps).
 pub trait GrandProductOps: MleOps<SecureField> + GkrOps + Sized {
@@ -21,8 +22,19 @@ pub trait GrandProductOps: MleOps<SecureField> + GkrOps + Sized {
 }
 
 // TODO: Docs and consider naming the variants better.
-#[derive(Debug, Clone)]
-pub struct GrandProductTrace<B: ColumnOps<SecureField>>(Mle<B, SecureField>);
+pub struct GrandProductTrace<B: ColumnOpsV2<SecureField>>(Mle<B, SecureField>);
+
+impl<B: ColumnOpsV2<SecureField>> Clone for GrandProductTrace<B> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<B: ColumnOpsV2<SecureField>> Debug for GrandProductTrace<B> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("GrandProductTrace").field(&self.0).finish()
+    }
+}
 
 impl<B: MleOps<SecureField>> GrandProductTrace<B> {
     pub fn new(column: Mle<B, SecureField>) -> Self {
@@ -34,7 +46,7 @@ impl<B: MleOps<SecureField>> GrandProductTrace<B> {
     }
 }
 
-impl<B: ColumnOps<SecureField>> Deref for GrandProductTrace<B> {
+impl<B: ColumnOpsV2<SecureField>> Deref for GrandProductTrace<B> {
     type Target = Mle<B, SecureField>;
 
     fn deref(&self) -> &Mle<B, SecureField> {
@@ -58,7 +70,7 @@ impl<B: GrandProductOps> GkrLayer for GrandProductTrace<B> {
         self,
         _lambda: SecureField,
         layer_assignment: &[SecureField],
-        eq_evals: &'a Col<B, SecureField>,
+        eq_evals: &'a B::EqEvals,
     ) -> GrandProductOracle<'a, B> {
         let num_variables = self.num_variables() - 1;
 
@@ -80,7 +92,7 @@ impl<B: GrandProductOps> GkrLayer for GrandProductTrace<B> {
 pub struct GrandProductOracle<'a, B: GrandProductOps> {
     trace: GrandProductTrace<B>,
     /// Evaluations of `eq_z(x_1, ..., x_n)` (see [`gen_eq_evals`] docs).
-    eq_evals: Cow<'a, Col<B, SecureField>>,
+    eq_evals: Cow<'a, B::EqEvals>,
     /// The random point sampled during the GKR protocol for the sumcheck.
     // TODO: Better docs.
     z: Vec<SecureField>,
@@ -98,7 +110,7 @@ impl<'a, B: GrandProductOps> GrandProductOracle<'a, B> {
         &self.z
     }
 
-    pub fn eq_evals(&self) -> &Col<B, SecureField> {
+    pub fn eq_evals(&self) -> &B::EqEvals {
         self.eq_evals.as_ref()
     }
 

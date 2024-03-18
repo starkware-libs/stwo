@@ -8,18 +8,20 @@ use super::grand_product::{
     GrandProductCircuit, GrandProductOps, GrandProductOracle, GrandProductTrace,
 };
 use super::logup::{LogupCircuit, LogupOps, LogupOracle, LogupTrace};
-use super::mle::{MleOps, MleTrace};
+use super::mle::{ColumnOpsV2, MleOps, MleTrace};
 use super::sumcheck::{self, SumcheckError, SumcheckOracle, SumcheckProof};
 use super::utils::{eq, horner_eval, Polynomial};
-use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::channel::Channel;
 use crate::core::fields::qm31::SecureField;
+use crate::core::lookups::mle::ColumnV2;
 
-pub trait GkrOps: ColumnOps<SecureField> {
+pub trait GkrOps: ColumnOpsV2<SecureField> {
+    type EqEvals: ToOwned + 'static;
+
     /// Returns the evaluations of [`eq(x, y)`] for all values of `x` in `{0, 1}^n`.
     ///
     /// `y` has length `n`.
-    fn gen_eq_evals(y: &[SecureField]) -> Self::Column;
+    fn gen_eq_evals(y: &[SecureField]) -> Self::EqEvals;
 }
 
 pub trait GkrLayer: Sized {
@@ -34,7 +36,7 @@ pub trait GkrLayer: Sized {
         self,
         lambda: SecureField,
         layer_assignment: &[SecureField],
-        eq_evals: &'a Col<Self::Backend, SecureField>,
+        eq_evals: &'a <Self::Backend as GkrOps>::EqEvals,
     ) -> Self::SumcheckOracle<'a>;
 
     /// Returns this layer as a [`MleTrace`].
@@ -83,14 +85,14 @@ pub enum GkrError {
 
 // TODO(Andrew): Remove generic on proof structs. Consider using `Vec` instead of `MleTrace`.
 #[derive(Debug, Clone)]
-pub struct GkrProof<B: ColumnOps<SecureField>> {
+pub struct GkrProof<B: ColumnOpsV2<SecureField>> {
     layer_proofs: Vec<GkrLayerProof<B>>,
     output_layer: MleTrace<B, SecureField>,
 }
 
 // TODO(Andrew): Remove generic on proof structs. Consider using `Vec` instead of `MleTrace`.
 #[derive(Debug, Clone)]
-struct GkrLayerProof<B: ColumnOps<SecureField>> {
+struct GkrLayerProof<B: ColumnOpsV2<SecureField>> {
     sumcheck_proof: SumcheckProof,
     input_encoding: MleTrace<B, SecureField>,
 }
@@ -127,7 +129,7 @@ impl<B: LogupOps + GrandProductOps> GkrLayer for GkrTraceInstance<B> {
         self,
         lambda: SecureField,
         layer_assignment: &[SecureField],
-        eq_evals: &'a Col<B, SecureField>,
+        eq_evals: &'a B::EqEvals,
     ) -> GkrOracleInstance<'a, B> {
         use GkrOracleInstance::*;
         match self {
@@ -393,9 +395,11 @@ mod tests {
 
     #[test]
     fn grand_product_works() -> Result<(), GkrError> {
-        const N: usize = 1 << 16;
-        let top_layer = GrandProductTrace::new(CpuMle::new(test_channel().draw_felts(N)));
-        let product = top_layer.iter().product();
+        const N: usize = 1 << 26;
+        let values = test_channel().draw_felts(N);
+        let product = values.iter().product();
+        let top_layer =
+            GrandProductTrace::new(CpuMle::<SecureField>::new(values.into_iter().collect()));
         let proof = prove(&mut test_channel(), top_layer.clone().into());
 
         let GkrVerificationArtifact {
@@ -415,13 +419,15 @@ mod tests {
 
     #[test]
     fn logup_works() -> Result<(), GkrError> {
-        const N: usize = 1 << 18;
+        const N: usize = 1 << 26;
         let two = BaseField::from(2).into();
-        let numerators = CpuMle::new(repeat(two).take(N).collect());
-        let denominators = CpuMle::new(test_channel().draw_felts(N));
-        let sum = zip(&*numerators, &*denominators)
+        let numerator_values = repeat(two).take(N).collect::<Vec<SecureField>>();
+        let denominator_values = test_channel().draw_felts(N);
+        let sum = zip(&numerator_values, &denominator_values)
             .map(|(&n, &d)| Fraction::new(n, d))
             .sum::<Fraction<SecureField>>();
+        let numerators = CpuMle::<SecureField>::new(numerator_values.into_iter().collect());
+        let denominators = CpuMle::<SecureField>::new(denominator_values.into_iter().collect());
         let top_layer = LogupTrace::Generic {
             numerators: numerators.clone(),
             denominators: denominators.clone(),

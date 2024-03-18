@@ -168,7 +168,7 @@ mod tests {
     fn sumcheck_works() {
         let values = [1, 2, 3, 4, 5, 6, 7, 8].map(|v| BaseField::from(v).into());
         let claim = values.iter().copied().sum::<SecureField>();
-        let mle = CpuMle::new(values.to_vec());
+        let mle = CpuMle::<SecureField>::new(values.into_iter().collect());
         let (proof, ..) = prove(claim, mle.clone(), &mut test_channel());
 
         let (assignment, eval) = partially_verify(claim, &proof, &mut test_channel()).unwrap();
@@ -183,8 +183,8 @@ mod tests {
         // Compromise the first value.
         let mut invalid_values = values.to_vec();
         invalid_values[0] += SecureField::one();
-        let invalid_mle = CpuMle::new(invalid_values.to_vec());
         let invalid_claim = invalid_values.iter().sum::<SecureField>();
+        let invalid_mle = CpuMle::new(invalid_values.into_iter().collect());
         let (invalid_proof, ..) = prove(invalid_claim, invalid_mle, &mut test_channel());
 
         assert!(partially_verify(claim, &invalid_proof, &mut test_channel()).is_err());

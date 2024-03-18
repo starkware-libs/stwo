@@ -1,10 +1,23 @@
+use std::fmt::Debug;
 use std::ops::Deref;
 
-use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{Field, FieldOps};
+use crate::core::fields::Field;
 
-pub trait MleOps<F: Field>: FieldOps<F> + Sized {
+pub trait ColumnOpsV2<F: Field> {
+    type Column: ColumnV2<F>;
+}
+
+#[allow(clippy::len_without_is_empty)]
+pub trait ColumnV2<T>: Debug + Clone + 'static + FromIterator<T> {
+    fn to_vec(&self) -> Vec<T>;
+
+    fn len(&self) -> usize;
+}
+
+pub type ColV2<B, F> = <B as ColumnOpsV2<F>>::Column;
+
+pub trait MleOps<F: Field>: ColumnOpsV2<F> + Sized {
     fn eval_at_point(mle: &Mle<Self, F>, point: &[F]) -> F;
 
     fn fix_first(mle: Mle<Self, F>, assignment: SecureField) -> Mle<Self, SecureField>
@@ -14,22 +27,36 @@ pub trait MleOps<F: Field>: FieldOps<F> + Sized {
 
 /// Multi-Linear extension with values represented in the lagrange basis.
 // TODO: Fix docs
-#[derive(Debug, Clone)]
-pub struct Mle<B: ColumnOps<F>, F> {
-    evals: Col<B, F>,
+pub struct Mle<B: ColumnOpsV2<F>, F: Field> {
+    evals: ColV2<B, F>,
+}
+
+impl<B: ColumnOpsV2<F>, F: Field> Clone for Mle<B, F> {
+    fn clone(&self) -> Self {
+        Self {
+            evals: self.evals.clone(),
+        }
+    }
+}
+
+impl<B: ColumnOpsV2<F>, F: Field> Debug for Mle<B, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Mle").field("evals", &self.evals).finish()
+    }
 }
 
 impl<B: MleOps<F>, F: Field> Mle<B, F> {
-    pub fn new(evals: Col<B, F>) -> Self {
+    pub fn new(evals: ColV2<B, F>) -> Self {
         assert!(evals.len().is_power_of_two());
         Self { evals }
     }
 
     pub fn eval_at_point(&self, point: &[F]) -> F {
+        assert_eq!(self.evals.len(), 1 << point.len());
         B::eval_at_point(self, point)
     }
 
-    pub fn into_evals(self) -> Col<B, F> {
+    pub fn into_evals(self) -> ColV2<B, F> {
         self.evals
     }
 
@@ -45,8 +72,8 @@ impl<B: MleOps<F>, F: Field> Mle<B, F> {
     }
 }
 
-impl<B: MleOps<F>, F: Field> Deref for Mle<B, F> {
-    type Target = Col<B, F>;
+impl<B: ColumnOpsV2<F>, F: Field> Deref for Mle<B, F> {
+    type Target = ColV2<B, F>;
 
     fn deref(&self) -> &Self::Target {
         &self.evals
@@ -54,9 +81,24 @@ impl<B: MleOps<F>, F: Field> Deref for Mle<B, F> {
 }
 
 /// Rectangular trace where columns are [`Mle`]s
-#[derive(Debug, Clone)]
-pub struct MleTrace<B: ColumnOps<F>, F> {
+pub struct MleTrace<B: ColumnOpsV2<F>, F: Field> {
     columns: Vec<Mle<B, F>>,
+}
+
+impl<B: ColumnOpsV2<F>, F: Field> Clone for MleTrace<B, F> {
+    fn clone(&self) -> Self {
+        Self {
+            columns: self.columns.clone(),
+        }
+    }
+}
+
+impl<B: ColumnOpsV2<F>, F: Field> Debug for MleTrace<B, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MleTrace")
+            .field("columns", &self.columns)
+            .finish()
+    }
 }
 
 impl<B: MleOps<F>, F: Field> MleTrace<B, F> {
@@ -87,7 +129,7 @@ impl<B: MleOps<F>, F: Field> MleTrace<B, F> {
     }
 }
 
-impl<B: ColumnOps<F>, F: Field> Deref for MleTrace<B, F> {
+impl<B: ColumnOpsV2<F>, F: Field> Deref for MleTrace<B, F> {
     type Target = [Mle<B, F>];
 
     fn deref(&self) -> &Self::Target {
