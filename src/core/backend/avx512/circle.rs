@@ -1,4 +1,6 @@
-use bytemuck::cast_slice;
+use std::arch::x86_64::_mm512_set1_epi32;
+
+use bytemuck::{cast_slice, Zeroable};
 
 use super::fft::{ifft, CACHED_FFT_LOG_SIZE};
 use super::m31::PackedBaseField;
@@ -8,13 +10,76 @@ use crate::core::backend::avx512::BaseFieldVec;
 use crate::core::backend::{CPUBackend, Col};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{ExtensionOf, FieldExpOps};
+use crate::core::fields::{ExtensionOf, Field, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
+
+impl AVX512Backend {
+    // TODO(Ohad): optimize.
+    fn twiddle_at<F: Field>(mappings: &[F], mut index: usize) -> F {
+        debug_assert!(
+            (1 << mappings.len()) as usize >= index,
+            "Index out of bounds. mappings log len = {}, index = {index}",
+            mappings.len().ilog2()
+        );
+
+        let mut product = F::one();
+        for &num in mappings.iter() {
+            if index & 1 == 1 {
+                product *= num;
+            }
+            index >>= 1;
+            if index == 0 {
+                break;
+            }
+        }
+
+        product
+    }
+
+    // TODO(Ohad): consider moving this to to a more general place.
+    // Note: CACHED_FFT_LOG_SIZE is specific to the backend.
+    fn generate_evaluation_mappings<F: Field>(point: CirclePoint<F>, log_size: u32) -> Vec<F> {
+        // Mappings are the factors used to compute the evaluation twiddle.
+        // Every twiddle (i) is of the form (m[0])^b_0 * (m[1])^b_1 * ... * (m[log_size -
+        // 1])^b_log_size.
+        // Where (m)_j are the mappings, and b_i is the j'th bit of i.
+        let mut mappings = vec![point.y, point.x];
+        let mut x = point.x;
+        for _ in 2..log_size {
+            x = CirclePoint::double_x(x);
+            mappings.push(x);
+        }
+
+        // The caller function expects the mapping in natural order. i.e. (y,x,h(x),h(h(x)),...).
+        // If the polynomial is large, the fft does a transpose in the middle in a granularity of 16
+        // (avx512). The coefficients would then be in tranposed order of 16-sized chunks.
+        // i.e. (a_(n-15), a_(n-14), ..., a_(n-1), a_(n-31), ..., a_(n-16), a_(n-32), ...).
+        // To compute the twiddles in the correct order, we need to transpose the coprresponding
+        // 'transposed bits' in the mappings. The result order of the mappings would then be
+        // (y, x, h(x), h^2(x), h^(log_n-1)(x), h^(log_n-2)(x) ...). To avoid code
+        // complexity for now, we just reverse the mappings, transpose, then reverse back.
+        // TODO(Ohad): optimize. consider changing the caller to expect the mappings in
+        // reversed-tranposed order.
+        if log_size as usize > CACHED_FFT_LOG_SIZE {
+            mappings.reverse();
+            let n = mappings.len();
+            let n0 = (n - VECS_LOG_SIZE) / 2;
+            let n1 = (n - VECS_LOG_SIZE + 1) / 2;
+            let (ab, c) = mappings.split_at_mut(n1);
+            let (a, _b) = ab.split_at_mut(n0);
+            // Swap content of a,c.
+            a.swap_with_slice(&mut c[0..n0]);
+            mappings.reverse();
+        }
+
+        mappings
+    }
+}
 
 // TODO(spapini): Everything is returned in redundant representation, where values can also be P.
 // Decide if and when it's ok and what to do if it's not.
@@ -171,6 +236,33 @@ impl PolyOps for AVX512Backend {
             itwiddles,
         }
     }
+
+    fn eval_at_basefield_point(
+        poly: &CirclePoly<Self>,
+        point: CirclePoint<BaseField>,
+    ) -> BaseField {
+        let mappings = Self::generate_evaluation_mappings(point, poly.log_size());
+
+        // 4 lowest mappings produce the first 2^4 twiddles.
+        let (map_low, map_high) = mappings.split_at(4);
+        let twiddle_lows =
+            PackedBaseField::from_array(std::array::from_fn(|i| Self::twiddle_at(map_low, i)));
+
+        // Every twiddle is a product of mappings that correspond to '1's in the bit representation
+        // of the current index. For every 2^n alligned chunk of 2^n elements, the twiddle
+        // array is the same, denoted twiddle_low. Use this to compute sums of (coeff *
+        // twiddle_high) mod 2^n, then multiply by twiddle_low, and sum to get the final result.
+        // TODO(Ohad): optimize twiddle_high calculateion.
+        let mut sum = PackedBaseField::zeroed();
+        for (i, &coeff_chunk) in poly.coeffs.data.iter().enumerate() {
+            let cur_twiddle_high = AVX512Backend::twiddle_at(map_high, i);
+            let curr_twiddle_broadcast =
+                PackedBaseField(unsafe { _mm512_set1_epi32(cur_twiddle_high.0 as i32) });
+            sum += coeff_chunk * curr_twiddle_broadcast;
+        }
+
+        (sum * twiddle_lows).pointwise_sum()
+    }
 }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
@@ -180,7 +272,9 @@ mod tests {
     use crate::core::backend::avx512::AVX512Backend;
     use crate::core::backend::Column;
     use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
+    use crate::core::poly::circle::{
+        CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
+    };
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
 
     #[test]
@@ -257,6 +351,30 @@ mod tests {
                 .evaluate(CanonicCoset::new(log_size + 2).circle_domain());
 
             assert_eq!(eval0.values.to_vec(), eval1.values.to_vec());
+        }
+    }
+
+    #[test]
+    fn test_eval_basefield() {
+        use crate::core::backend::avx512::fft::MIN_FFT_LOG_SIZE;
+
+        for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 4) {
+            let domain = CanonicCoset::new(log_size as u32).circle_domain();
+            let evaluation = CircleEvaluation::<AVX512Backend, _, NaturalOrder>::new(
+                domain,
+                (0..(1 << log_size))
+                    .map(BaseField::from_u32_unchecked)
+                    .collect(),
+            );
+            let poly = evaluation.bit_reverse().interpolate();
+            for i in [0, 1, 3, 1 << (log_size - 1), 1 << (log_size - 2)] {
+                let p = domain.at(i);
+                assert_eq!(
+                    <AVX512Backend as PolyOps>::eval_at_basefield_point(&poly, p),
+                    BaseField::from_u32_unchecked(i as u32),
+                    "log_size = {log_size} i = {i}"
+                );
+            }
         }
     }
 }

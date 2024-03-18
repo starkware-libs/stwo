@@ -107,6 +107,11 @@ impl PackedBaseField {
     pub unsafe fn store(self, ptr: *mut i32) {
         _mm512_store_epi32(ptr, self.0);
     }
+
+    /// Sums all the elements in the packed M31 element.
+    pub fn pointwise_sum(self) -> M31 {
+        self.to_array().into_iter().sum()
+    }
 }
 
 impl Display for PackedBaseField {
