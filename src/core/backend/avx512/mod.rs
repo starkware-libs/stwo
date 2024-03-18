@@ -2,6 +2,7 @@ pub mod bit_reverse;
 pub mod circle;
 pub mod cm31;
 pub mod fft;
+mod lookups;
 pub mod m31;
 pub mod qm31;
 
@@ -41,6 +42,7 @@ impl BaseFieldVec {
         let data: &[BaseField] = cast_slice(&self.data[..]);
         &data[..self.length]
     }
+
     pub fn as_mut_slice(&mut self) -> &mut [BaseField] {
         let data: &mut [BaseField] = cast_slice_mut(&mut self.data[..]);
         &mut data[..self.length]

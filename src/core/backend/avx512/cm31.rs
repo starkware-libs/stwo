@@ -43,6 +43,22 @@ impl Mul for PackedCM31 {
     }
 }
 
+impl Mul<PackedBaseField> for PackedCM31 {
+    type Output = Self;
+
+    fn mul(self, rhs: PackedBaseField) -> Self {
+        Self([self.0[0] * rhs, self.0[1] * rhs])
+    }
+}
+
+impl Add<PackedBaseField> for PackedCM31 {
+    type Output = Self;
+
+    fn add(self, rhs: PackedBaseField) -> Self {
+        Self([self.0[0] + rhs, self.0[1]])
+    }
+}
+
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {

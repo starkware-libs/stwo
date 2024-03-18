@@ -7,7 +7,7 @@ use crate::core::lookups::mle::{ColumnOpsV2, ColumnV2};
 mod gkr;
 mod grand_product;
 mod logup;
-mod mle;
+pub mod mle;
 
 impl ColumnOpsV2<BaseField> for CPUBackend {
     type Column = Vec<BaseField>;

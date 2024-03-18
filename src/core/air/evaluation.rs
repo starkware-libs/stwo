@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use std::iter::zip;
 
 use crate::core::backend::cpu::CPUCircleEvaluation;
-use crate::core::backend::{Backend, CPUBackend, Col, Column};
+use crate::core::backend::{Backend, CPUBackend, Col, Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, FieldExpOps};
@@ -18,11 +18,11 @@ pub const SECURE_EXTENSION_DEGREE: usize =
     <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE;
 
 // TODO(spapini): find a better place for this
-pub struct SecureColumn<B: Backend> {
+pub struct SecureColumn<B: ColumnOps<BaseField>> {
     pub cols: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
 
-impl<B: Backend> Debug for SecureColumn<B> {
+impl<B: ColumnOps<BaseField>> Debug for SecureColumn<B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SecureColumn")
             .field("cols", &self.cols)
@@ -30,7 +30,7 @@ impl<B: Backend> Debug for SecureColumn<B> {
     }
 }
 
-impl<B: Backend> Clone for SecureColumn<B> {
+impl<B: ColumnOps<BaseField>> Clone for SecureColumn<B> {
     fn clone(&self) -> Self {
         Self {
             cols: self.cols.clone(),
@@ -55,7 +55,7 @@ impl SecureColumn<CPUBackend> {
     }
 }
 
-impl<B: Backend> SecureColumn<B> {
+impl<B: ColumnOps<BaseField>> SecureColumn<B> {
     pub fn zeros(len: usize) -> Self {
         Self {
             cols: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)),

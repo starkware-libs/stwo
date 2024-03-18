@@ -1,6 +1,6 @@
 mod circle;
 mod fri;
-mod lookups;
+pub mod lookups;
 
 use std::fmt::Debug;
 

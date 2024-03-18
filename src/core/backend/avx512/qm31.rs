@@ -2,6 +2,7 @@ use std::ops::{Add, Mul, Sub};
 
 use super::cm31::PackedCM31;
 use super::m31::K_BLOCK_SIZE;
+use super::PackedBaseField;
 use crate::core::fields::qm31::QM31;
 
 /// AVX implementation for an extension of CM31.
@@ -49,6 +50,22 @@ impl Mul for PackedQM31 {
         // ac + bd -Im(2bd) + iRe(2bd)
         let l = PackedCM31([ac_p_bd.a() - bd2.b(), ac_p_bd.b() + bd2.a()]);
         Self([l, ad_p_bc])
+    }
+}
+
+impl Mul<PackedBaseField> for PackedQM31 {
+    type Output = Self;
+
+    fn mul(self, rhs: PackedBaseField) -> Self {
+        Self([self.0[0] * rhs, self.0[1] * rhs])
+    }
+}
+
+impl Add<PackedBaseField> for PackedQM31 {
+    type Output = Self;
+
+    fn add(self, rhs: PackedBaseField) -> Self {
+        Self([self.0[0] + rhs, self.0[1]])
     }
 }
 

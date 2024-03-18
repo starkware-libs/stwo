@@ -11,22 +11,22 @@ use crate::core::lookups::mle::{Mle, MleOps};
 use crate::core::lookups::sumcheck::SumcheckOracle;
 use crate::core::lookups::utils::Polynomial;
 
+/// Evaluates the multi-linear extension `mle` at point `p`.
+pub(crate) fn eval_mle_at_point<F: Field>(mle: &[F], p: &[F]) -> F {
+    match p {
+        [] => mle[0],
+        [p_i, p @ ..] => {
+            let (lhs, rhs) = mle.split_at(mle.len() / 2);
+            let lhs_eval = eval_mle_at_point(lhs, p);
+            let rhs_eval = eval_mle_at_point(rhs, p);
+            // `= eq(0, p_i) * lhs + eq(1, p_i) * rhs`
+            *p_i * (rhs_eval - lhs_eval) + lhs_eval
+        }
+    }
+}
+
 impl MleOps<BaseField> for CPUBackend {
     fn eval_at_point(mle: &Mle<Self, BaseField>, point: &[BaseField]) -> BaseField {
-        /// Evaluates the multi-linear extension `mle` at point `p`.
-        fn eval_mle_at_point<F: Field>(mle: &[F], p: &[F]) -> F {
-            match p {
-                [] => mle[0],
-                [p_i, p @ ..] => {
-                    let (lhs, rhs) = mle.split_at(mle.len() / 2);
-                    let lhs_eval = eval_mle_at_point(lhs, p);
-                    let rhs_eval = eval_mle_at_point(rhs, p);
-                    // `= eq(0, p_i) * lhs + eq(1, p_i) * rhs`
-                    *p_i * (rhs_eval - lhs_eval) + lhs_eval
-                }
-            }
-        }
-
         assert_eq!(point.len(), mle.num_variables());
         eval_mle_at_point(mle, point)
     }
