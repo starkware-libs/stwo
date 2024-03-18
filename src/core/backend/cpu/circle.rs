@@ -174,6 +174,10 @@ impl PolyOps for CPUBackend {
             itwiddles,
         }
     }
+    
+    fn eval_at_basefield_point(_poly: &CirclePoly<Self>, _point: CirclePoint<BaseField>) -> BaseField {
+        todo!()
+    }
 }
 
 fn fft_layer_loop(
