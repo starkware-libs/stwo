@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1710746587389,
+  "lastUpdate": 1710761939079,
   "repoUrl": "https://github.com/starkware-libs/stwo",
   "entries": {
     "Benchmark": [
@@ -557,6 +557,192 @@ window.BENCHMARK_DATA = {
             "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/524288",
             "value": 4451973,
             "range": "± 40645",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "w.k@berkeley.edu",
+            "name": "Weikeng Chen",
+            "username": "weikengchen"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b806150fccfc8f8a3e535ea85f2727e973699e4f",
+          "message": "Reconcile the CM31 -> QM31 field extension polynomial with Plonky3 (#505)\n\n* replace the field extension polynomial\n\n* Merge branch 'dev' of github.com:weikengchen/stwo into dev",
+          "timestamp": "2024-03-18T13:30:14+02:00",
+          "tree_id": "467c36cdd91c53b267ec314cdbb6397cfcc597fb",
+          "url": "https://github.com/starkware-libs/stwo/commit/b806150fccfc8f8a3e535ea85f2727e973699e4f"
+        },
+        "date": 1710761938322,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "avx bit_rev 26bit",
+            "value": 68488524,
+            "range": "± 1207604",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu bit_rev 24bit",
+            "value": 217342655,
+            "range": "± 1638441",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "avx ifft 26bit",
+            "value": 237744569,
+            "range": "± 3027817",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 45608852,
+            "range": "± 333977",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 20734344,
+            "range": "± 201916",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 mul",
+            "value": 203946313,
+            "range": "± 4597816",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 add",
+            "value": 46708805,
+            "range": "± 1438701",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField mul",
+            "value": 1252043939,
+            "range": "± 72132513",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField add",
+            "value": 105775210,
+            "range": "± 2327300",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 45849361,
+            "range": "± 1070982",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 20832954,
+            "range": "± 398968",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "mul_avx512",
+            "value": 7752442,
+            "range": "± 108481",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "add_avx512",
+            "value": 4773204,
+            "range": "± 36303",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sub_avx512",
+            "value": 4755468,
+            "range": "± 38388",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "fold_line",
+            "value": 577814,
+            "range": "± 8333",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "RowMajorMatrix M31 24x24 mul",
+            "value": 623,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "QM31 RowMajorMatrix 6x6 mul",
+            "value": 760,
+            "range": "± 25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/32768",
+            "value": 277128,
+            "range": "± 3491",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/32768",
+            "value": 277680,
+            "range": "± 8518",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/65536",
+            "value": 565770,
+            "range": "± 8259",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/65536",
+            "value": 556442,
+            "range": "± 5987",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/131072",
+            "value": 1213898,
+            "range": "± 16739",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/131072",
+            "value": 1218086,
+            "range": "± 22024",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/262144",
+            "value": 2330805,
+            "range": "± 31287",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/262144",
+            "value": 2300225,
+            "range": "± 19301",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/524288",
+            "value": 4712387,
+            "range": "± 56582",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/524288",
+            "value": 4674772,
+            "range": "± 44922",
             "unit": "ns/iter"
           }
         ]
