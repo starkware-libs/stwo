@@ -1,7 +1,10 @@
 use std::ops::{Add, Mul, Sub};
 
+use bytemuck::{Pod, Zeroable};
+
 use super::cm31::PackedCM31;
 use super::m31::K_BLOCK_SIZE;
+use super::PackedBaseField;
 use crate::core::fields::qm31::QM31;
 
 /// AVX implementation for an extension of CM31.
@@ -17,6 +20,36 @@ impl PackedQM31 {
     }
     pub fn to_array(&self) -> [QM31; K_BLOCK_SIZE] {
         std::array::from_fn(|i| QM31(self.a().to_array()[i], self.b().to_array()[i]))
+    }
+
+    pub fn from_array(array: &[QM31; K_BLOCK_SIZE]) -> Self {
+        let a = PackedBaseField::from_array(std::array::from_fn(|i| array[i].0 .0));
+        let b = PackedBaseField::from_array(std::array::from_fn(|i| array[i].0 .1));
+        let c = PackedBaseField::from_array(std::array::from_fn(|i| array[i].1 .0));
+        let d = PackedBaseField::from_array(std::array::from_fn(|i| array[i].1 .1));
+        Self([PackedCM31([a, b]), PackedCM31([c, d])])
+    }
+
+    pub fn broadcast(value: QM31) -> Self {
+        let a = PackedBaseField::broadcast(value.0 .0);
+        let b = PackedBaseField::broadcast(value.0 .1);
+        let c = PackedBaseField::broadcast(value.1 .0);
+        let d = PackedBaseField::broadcast(value.1 .1);
+        Self([PackedCM31([a, b]), PackedCM31([c, d])])
+    }
+
+    // Multiply packed QM31 by packed M31.
+    pub fn mul_packed_m31(&self, rhs: PackedBaseField) -> PackedQM31 {
+        let a = self.0[0].0[0] * rhs;
+        let b = self.0[0].0[1] * rhs;
+        let c = self.0[1].0[0] * rhs;
+        let d = self.0[1].0[1] * rhs;
+        PackedQM31([PackedCM31([a, b]), PackedCM31([c, d])])
+    }
+
+    /// Sums all the elements in the packed M31 element.
+    pub fn pointwise_sum(self) -> QM31 {
+        self.to_array().into_iter().sum()
     }
 }
 impl Add for PackedQM31 {
@@ -55,7 +88,14 @@ impl Mul for PackedQM31 {
     }
 }
 
-#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+unsafe impl Pod for PackedQM31 {}
+unsafe impl Zeroable for PackedQM31 {
+    fn zeroed() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
+
+// #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
     use rand::rngs::StdRng;
@@ -63,6 +103,7 @@ mod tests {
 
     use super::*;
     use crate::core::backend::avx512::m31::PackedBaseField;
+    use crate::core::fields::cm31::CM31;
     use crate::core::fields::m31::{M31, P};
 
     #[test]
@@ -112,5 +153,27 @@ mod tests {
             assert_eq!(diff.to_array()[i], x.to_array()[i] - y.to_array()[i]);
             assert_eq!(prod.to_array()[i], x.to_array()[i] * y.to_array()[i]);
         }
+    }
+
+    #[test]
+    fn test_from_array() {
+        let rng = &mut StdRng::seed_from_u64(0);
+        let x_arr = std::array::from_fn(|_| {
+            QM31(
+                CM31(
+                    M31::from(rng.gen::<u32>() % P),
+                    M31::from(rng.gen::<u32>() % P),
+                ),
+                CM31(
+                    M31::from(rng.gen::<u32>() % P),
+                    M31::from(rng.gen::<u32>() % P),
+                ),
+            )
+        });
+
+        let packed = PackedQM31::from_array(&x_arr);
+        let to_arr = packed.to_array();
+
+        assert_eq!(to_arr, x_arr);
     }
 }
