@@ -10,10 +10,10 @@ use crate::{impl_extension_field, impl_field};
 
 pub const SECURE_FIELD_EXTENSION_DEGREE: usize = 4;
 pub const P4: u128 = 21267647892944572736998860269687930881; // (2 ** 31 - 1) ** 4
-pub const R: CM31 = CM31::from_u32_unchecked(1, 2);
+pub const R: CM31 = CM31::from_u32_unchecked(2, 1);
 
 /// Extension field of CM31.
-/// Equivalent to CM31\[x\] over (x^2 - 1 - 2i) as the irreducible polynomial.
+/// Equivalent to CM31\[x\] over (x^2 - 2 - i) as the irreducible polynomial.
 /// Represented as ((a, b), (c, d)) of (a + bi) + (c + di)u.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct QM31(pub CM31, pub CM31);
@@ -85,7 +85,7 @@ mod tests {
         let qm1 = qm31!(4, 5, 6, 7);
         let m = m31!(8);
         let qm = QM31::from(m);
-        let qm0_x_qm1 = qm31!(P - 106, 38, P - 16, 50);
+        let qm0_x_qm1 = qm31!(P - 71, 93, P - 16, 50);
 
         assert_eq!(qm0 + qm1, qm31!(5, 7, 9, 11));
         assert_eq!(qm1 + m, qm1 + qm);

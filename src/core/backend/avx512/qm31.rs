@@ -36,18 +36,21 @@ impl Mul for PackedQM31 {
     fn mul(self, rhs: Self) -> Self::Output {
         // Compute using Karatsuba.
         //   (a + ub) * (c + ud) =
-        //   (ac + (1+2i)bd) + (ad + bc)u =
-        //   ac + bd + 2ibd + (ad + bc)u.
+        //   (ac + (2+i)bd) + (ad + bc)u =
+        //   ac + 2bd + ibd + (ad + bc)u.
         let ac = self.a() * rhs.a();
         let bd = self.b() * rhs.b();
-        let bd2 = bd + bd;
+        let bd_times_1_plus_i = PackedCM31([bd.a() - bd.b(), bd.a() + bd.b()]);
         // Computes ac + bd.
         let ac_p_bd = ac + bd;
         // Computes ad + bc.
         let ad_p_bc = (self.a() + self.b()) * (rhs.a() + rhs.b()) - ac_p_bd;
-        // ac + bd + 2ibd =
-        // ac + bd -Im(2bd) + iRe(2bd)
-        let l = PackedCM31([ac_p_bd.a() - bd2.b(), ac_p_bd.b() + bd2.a()]);
+        // ac + 2bd + ibd =
+        // ac + bd + bd + ibd
+        let l = PackedCM31([
+            ac_p_bd.a() + bd_times_1_plus_i.a(),
+            ac_p_bd.b() + bd_times_1_plus_i.b(),
+        ]);
         Self([l, ad_p_bc])
     }
 }
