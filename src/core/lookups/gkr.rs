@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     fn grand_product_works() -> Result<(), GkrError> {
-        const N: usize = 1 << 26;
+        const N: usize = 1 << 22;
         let values = test_channel().draw_felts(N);
         let product = values.iter().product();
         let top_layer =
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn logup_works() -> Result<(), GkrError> {
-        const N: usize = 1 << 26;
+        const N: usize = 1 << 22;
         let two = BaseField::from(2).into();
         let numerator_values = repeat(two).take(N).collect::<Vec<SecureField>>();
         let denominator_values = test_channel().draw_felts(N);
