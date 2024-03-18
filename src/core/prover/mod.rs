@@ -253,3 +253,11 @@ fn prepare_fri_evaluations(
     }
     sparse_circle_evaluations
 }
+
+#[cfg(test)]
+pub fn test_channel() -> Blake2sChannel {
+    use crate::commitment_scheme::blake2_hash::Blake2sHash;
+
+    let seed = Blake2sHash::from(vec![0; 32]);
+    Blake2sChannel::new(seed)
+}

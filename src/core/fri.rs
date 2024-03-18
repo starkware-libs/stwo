@@ -911,10 +911,9 @@ mod tests {
     use num_traits::{One, Zero};
 
     use super::{get_opening_positions, SparseCircleEvaluation, VerificationError};
-    use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
+    use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly, CPULineEvaluation};
     use crate::core::backend::CPUBackend;
-    use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -925,6 +924,7 @@ mod tests {
     use crate::core::poly::circle::{CircleDomain, CircleEvaluation};
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
+    use crate::core::prover::test_channel;
     use crate::core::queries::{Queries, SparseSubCircleDomain};
 
     /// Default blowup factor used for tests.
@@ -1277,10 +1277,5 @@ mod tests {
             .collect();
 
         SparseCircleEvaluation::new(coset_evals)
-    }
-
-    fn test_channel() -> Blake2sChannel {
-        let seed = Blake2sHash::from(vec![0; 32]);
-        Blake2sChannel::new(seed)
     }
 }
