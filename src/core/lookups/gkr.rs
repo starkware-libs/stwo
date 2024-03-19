@@ -382,9 +382,11 @@ pub trait BinaryTreeCircuit {
 #[cfg(test)]
 mod tests {
     use std::iter::{repeat, zip};
+    use std::time::Instant;
 
     use super::{partially_verify, prove, GkrCircuitInstance, GkrError};
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
+    use crate::core::backend::avx512::AVX512Backend;
     use crate::core::backend::cpu::CpuMle;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
@@ -392,15 +394,45 @@ mod tests {
     use crate::core::lookups::gkr::GkrVerificationArtifact;
     use crate::core::lookups::grand_product::GrandProductTrace;
     use crate::core::lookups::logup::{Fraction, LogupTrace};
+    use crate::core::lookups::mle::Mle;
 
     #[test]
-    fn grand_product_works() -> Result<(), GkrError> {
-        const N: usize = 1 << 22;
+    fn cpu_grand_product_works() -> Result<(), GkrError> {
+        const N: usize = 1 << 24;
         let values = test_channel().draw_felts(N);
         let product = values.iter().product();
         let top_layer =
             GrandProductTrace::new(CpuMle::<SecureField>::new(values.into_iter().collect()));
+        let now = Instant::now();
         let proof = prove(&mut test_channel(), top_layer.clone().into());
+        println!("CPU took: {:?}", now.elapsed());
+
+        let GkrVerificationArtifact {
+            eval_point,
+            eval_claim,
+            circuit_output_row,
+        } = partially_verify(
+            GkrCircuitInstance::GrandProduct,
+            &proof,
+            &mut test_channel(),
+        )?;
+
+        assert_eq!(circuit_output_row, &[product]);
+        assert_eq!(eval_claim, &[top_layer.eval_at_point(&eval_point)]);
+        Ok(())
+    }
+
+    #[test]
+    fn avx_grand_product_works() -> Result<(), GkrError> {
+        const N: usize = 1 << 24;
+        let values = test_channel().draw_felts(N);
+        let product = values.iter().product();
+        let top_layer = GrandProductTrace::new(Mle::<AVX512Backend, SecureField>::new(
+            values.into_iter().collect(),
+        ));
+        let now = Instant::now();
+        let proof = prove(&mut test_channel(), top_layer.clone().into());
+        println!("AVX took: {:?}", now.elapsed());
 
         let GkrVerificationArtifact {
             eval_point,

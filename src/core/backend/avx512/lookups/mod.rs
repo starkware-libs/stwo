@@ -7,9 +7,9 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::mle::{ColumnOpsV2, ColumnV2};
 
-// mod gkr;
-// mod grand_product;
-// mod logup;
+mod gkr;
+mod grand_product;
+mod logup;
 mod mle;
 
 impl ColumnOpsV2<BaseField> for AVX512Backend {
@@ -77,9 +77,9 @@ impl FromIterator<SecureField> for SecureColumn<AVX512Backend> {
             });
 
             col0.push(PackedBaseField::from_array(v0));
-            col1.push(PackedBaseField::from_array(v0));
-            col2.push(PackedBaseField::from_array(v0));
-            col3.push(PackedBaseField::from_array(v0));
+            col1.push(PackedBaseField::from_array(v1));
+            col2.push(PackedBaseField::from_array(v2));
+            col3.push(PackedBaseField::from_array(v3));
         }
 
         let mut length = col0.len() * avx512::m31::K_BLOCK_SIZE;
@@ -102,10 +102,12 @@ impl FromIterator<SecureField> for SecureColumn<AVX512Backend> {
             });
 
             col0.push(PackedBaseField::from_array(v0));
-            col1.push(PackedBaseField::from_array(v0));
-            col2.push(PackedBaseField::from_array(v0));
-            col3.push(PackedBaseField::from_array(v0));
+            col1.push(PackedBaseField::from_array(v1));
+            col2.push(PackedBaseField::from_array(v2));
+            col3.push(PackedBaseField::from_array(v3));
         }
+
+        println!("length: {length}");
 
         SecureColumn {
             cols: [

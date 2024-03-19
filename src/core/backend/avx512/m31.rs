@@ -4,8 +4,10 @@ use core::arch::x86_64::{
 };
 use std::arch::x86_64::{_mm512_load_epi32, _mm512_permutex2var_epi32, _mm512_store_epi32};
 use std::fmt::Display;
+use std::iter::{Product, Sum};
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
+use bytemuck::Zeroable;
 use num_traits::One;
 
 use crate::core::fields::m31::{M31, P};
@@ -52,6 +54,7 @@ pub const ODDS_CONCAT_ODDS: __m512i = unsafe {
 /// Stores 16 M31 elements in a single 512-bit register.
 /// Each M31 element is unreduced in the range [0, P].
 #[derive(Copy, Clone, Debug)]
+#[repr(transparent)]
 pub struct PackedBaseField(pub __m512i);
 
 impl PackedBaseField {
@@ -106,6 +109,14 @@ impl PackedBaseField {
     /// valid and aligned to 64 bytes.
     pub unsafe fn store(self, ptr: *mut i32) {
         _mm512_store_epi32(ptr, self.0);
+    }
+
+    pub fn double(self) -> Self {
+        unsafe {
+            // TODO: Make more optimal.
+            let c = _mm512_add_epi32(self.0, self.0);
+            Self(_mm512_min_epu32(c, _mm512_sub_epi32(c, M512P)))
+        }
     }
 }
 
@@ -265,6 +276,46 @@ impl One for PackedBaseField {
 impl FieldExpOps for PackedBaseField {
     fn inverse(&self) -> Self {
         self.pow((P - 2) as u128)
+    }
+}
+
+impl Product for PackedBaseField {
+    fn product<I>(mut iter: I) -> Self
+    where
+        I: Iterator<Item = Self>,
+    {
+        let first = iter.next().unwrap_or_else(Self::one);
+        iter.fold(first, |a, b| a * b)
+    }
+}
+
+impl<'a> Product<&'a Self> for PackedBaseField {
+    fn product<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = &'a Self>,
+    {
+        iter.copied().product()
+    }
+}
+
+impl Sum for PackedBaseField {
+    fn sum<I>(mut iter: I) -> Self
+    where
+        I: Iterator<Item = Self>,
+    {
+        let first = iter.next().unwrap_or_else(Self::zeroed);
+        iter.fold(first, |a, b| a + b)
+    }
+}
+
+impl<'a> Sum<&'a Self> for PackedBaseField {
+    #[inline(always)]
+    fn sum<I>(mut iter: I) -> Self
+    where
+        I: Iterator<Item = &'a Self>,
+    {
+        let first = iter.next().copied().unwrap_or_else(Self::zeroed);
+        iter.fold(first, |a, &b| a + b)
     }
 }
 

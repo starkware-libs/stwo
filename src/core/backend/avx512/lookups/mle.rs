@@ -1,3 +1,4 @@
+// use std::hint::black_box;
 use std::iter::zip;
 
 use bytemuck::Zeroable;
@@ -159,11 +160,6 @@ impl MleOps<SecureField> for AVX512Backend {
             return mle;
         }
 
-        let mut col0 = Vec::new();
-        let mut col1 = Vec::new();
-        let mut col2 = Vec::new();
-        let mut col3 = Vec::new();
-
         let [a0, a1, a2, a3] = assignment.to_m31_array();
         let assignment0 = PackedBaseField::from_array([a0; K_BLOCK_SIZE]);
         let assignment1 = PackedBaseField::from_array([a1; K_BLOCK_SIZE]);
@@ -175,7 +171,7 @@ impl MleOps<SecureField> for AVX512Backend {
             PackedCM31([assignment2, assignment3]),
         ]);
 
-        let (evals_col0, evals_col1, evals_col2, evals_col3) = if length >= 2 * K_BLOCK_SIZE {
+        let (mut col0, mut col1, mut col2, mut col3) = if length >= 2 * K_BLOCK_SIZE {
             let evals = mle.into_evals();
             let [col0, col1, col2, col3] = evals.cols;
             (col0.data, col1.data, col2.data, col3.data)
@@ -205,28 +201,37 @@ impl MleOps<SecureField> for AVX512Backend {
             )
         };
 
-        let half_n = evals_col0.len() / 2;
+        let packed_midpoint = col0.len() / 2;
 
-        for i in 0..half_n {
+        for i in 0..packed_midpoint {
             let lhs_eval = PackedQM31([
-                PackedCM31([evals_col0[i], evals_col1[i]]),
-                PackedCM31([evals_col2[i], evals_col3[i]]),
+                PackedCM31([col0[i], col1[i]]),
+                PackedCM31([col2[i], col3[i]]),
             ]);
 
             let rhs_eval = PackedQM31([
-                PackedCM31([evals_col0[i + half_n], evals_col1[i + half_n]]),
-                PackedCM31([evals_col2[i + half_n], evals_col3[i + half_n]]),
+                PackedCM31([col0[i + packed_midpoint], col1[i + packed_midpoint]]),
+                PackedCM31([col2[i + packed_midpoint], col3[i + packed_midpoint]]),
             ]);
 
             // `= eq(0, assignment) * lhs + eq(1, assignment) * rhs`
             let PackedQM31([PackedCM31([c0, c1]), PackedCM31([c2, c3])]) =
+            // assignment * (rhs_eval - lhs_eval);
                 assignment * (rhs_eval - lhs_eval) + lhs_eval;
 
-            col0.push(c0);
-            col1.push(c1);
-            col2.push(c2);
-            col3.push(c3);
+            // TODO: do in place
+            col0[i] = c0;
+            col1[i] = c1;
+            col2[i] = c2;
+            col3[i] = c3;
         }
+
+        col0.truncate(packed_midpoint);
+        col1.truncate(packed_midpoint);
+        col2.truncate(packed_midpoint);
+        col3.truncate(packed_midpoint);
+
+        let length = length / 2;
 
         Mle::new(SecureColumn {
             cols: [
@@ -250,7 +255,7 @@ impl SumcheckOracle for Mle<AVX512Backend, SecureField> {
 
         let midpoint = self.len() / 2;
 
-        let y0 = if midpoint < K_BLOCK_SIZE {
+        let y0 = if midpoint < 8 * K_BLOCK_SIZE {
             let c0 = self.cols[0].as_slice()[0..midpoint].iter().sum();
             let c1 = self.cols[1].as_slice()[0..midpoint].iter().sum();
             let c2 = self.cols[2].as_slice()[0..midpoint].iter().sum();
@@ -258,18 +263,34 @@ impl SumcheckOracle for Mle<AVX512Backend, SecureField> {
 
             SecureField::from_m31_array([c0, c1, c2, c3])
         } else {
+            fn sum(values: &[PackedBaseField]) -> PackedBaseField {
+                // let mut acc = PackedBaseField::zeroed();
+
+                // for &v0 in values {
+                //     acc += v0;
+                // }
+
+                // acc
+
+                let mut acc0 = PackedBaseField::zeroed();
+                let mut acc1 = PackedBaseField::zeroed();
+
+                for &[v0, v1] in values.array_chunks() {
+                    acc0 += v0;
+                    acc1 += v1;
+                }
+
+                acc0 + acc1
+            }
+
             // Sums a slice of [PackedBaseField] elements.
-            let sum = |column: &[PackedBaseField]| {
-                let sums = column.iter().fold(PackedBaseField::zeroed(), |a, &b| a + b);
-                sums.to_array().into_iter().sum()
-            };
+            let sum_packed = |packed: PackedBaseField| packed.to_array().into_iter().sum();
 
             let packed_midpoint = midpoint / K_BLOCK_SIZE;
-
-            let c0 = sum(&self.cols[0].data[0..packed_midpoint]);
-            let c1 = sum(&self.cols[1].data[0..packed_midpoint]);
-            let c2 = sum(&self.cols[2].data[0..packed_midpoint]);
-            let c3 = sum(&self.cols[3].data[0..packed_midpoint]);
+            let c0 = sum_packed(sum(&self.cols[0].data[0..packed_midpoint]));
+            let c1 = sum_packed(sum(&self.cols[1].data[0..packed_midpoint]));
+            let c2 = sum_packed(sum(&self.cols[2].data[0..packed_midpoint]));
+            let c3 = sum_packed(sum(&self.cols[3].data[0..packed_midpoint]));
 
             SecureField::from_m31_array([c0, c1, c2, c3])
         };

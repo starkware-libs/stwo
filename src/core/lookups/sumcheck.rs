@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use num_traits::{One, Zero};
 use thiserror::Error;
 
@@ -56,11 +58,15 @@ pub fn prove<O: SumcheckOracle>(
     let mut round_claim = claim;
 
     for _round in 0..round_oracle.num_variables() {
+        let now = Instant::now();
         let round_polynomial = round_oracle.univariate_sum(round_claim);
+        println!("univariate sum took {:?}", now.elapsed());
         channel.mix_felts(&round_polynomial);
 
         let challenge = channel.draw_felt();
+        let now = Instant::now();
         round_oracle = round_oracle.fix_first(challenge);
+        println!("fixing took {:?}", now.elapsed());
         round_claim = round_polynomial.eval(challenge);
         round_polynomials.push(round_polynomial);
         challenges.push(challenge);
@@ -154,22 +160,47 @@ pub struct SumcheckProof {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::{AddAssign, MulAssign};
+    use std::time::Instant;
+
+    // use criterion::black_box;
     use num_traits::One;
 
     use super::{partially_verify, prove};
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::hasher::Hasher;
+    use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, K_BLOCK_SIZE};
+    // use crate::core::backend::avx512::AVX512Backend;
     use crate::core::backend::cpu::CpuMle;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::lookups::mle::Mle;
 
     #[test]
-    fn sumcheck_works() {
-        let values = [1, 2, 3, 4, 5, 6, 7, 8].map(|v| BaseField::from(v).into());
+    fn cpu_sumcheck_works() {
+        const SIZE: usize = 1 << 24;
+        let values = test_channel().draw_felts(SIZE);
         let claim = values.iter().copied().sum::<SecureField>();
         let mle = CpuMle::<SecureField>::new(values.into_iter().collect());
+        let now = Instant::now();
         let (proof, ..) = prove(claim, mle.clone(), &mut test_channel());
+        println!("CPU gen: {:?}", now.elapsed());
+
+        let (assignment, eval) = partially_verify(claim, &proof, &mut test_channel()).unwrap();
+
+        assert_eq!(eval, mle.eval_at_point(&assignment));
+    }
+
+    #[test]
+    fn avx_sumcheck_works() {
+        const SIZE: usize = 1 << 24;
+        let values = test_channel().draw_felts(SIZE);
+        let claim = values.iter().copied().sum::<SecureField>();
+        let mle = Mle::<AVX512Backend, SecureField>::new(values.into_iter().collect());
+        let now = Instant::now();
+        let (proof, ..) = prove(claim, mle.clone(), &mut test_channel());
+        println!("AVX gen: {:?}", now.elapsed());
 
         let (assignment, eval) = partially_verify(claim, &proof, &mut test_channel()).unwrap();
 
@@ -188,6 +219,32 @@ mod tests {
         let (invalid_proof, ..) = prove(invalid_claim, invalid_mle, &mut test_channel());
 
         assert!(partially_verify(claim, &invalid_proof, &mut test_channel()).is_err());
+    }
+
+    #[test]
+    fn avx_sum_vs_cpu_sum() {
+        fn _product<T: MulAssign + Copy>(values: &[T]) -> T {
+            let mut acc = values[0];
+            values[1..].iter().for_each(|&v| acc *= v);
+            acc
+        }
+
+        fn _sum<T: AddAssign + Copy>(values: &[T]) -> T {
+            let mut acc = values[0];
+            values[1..].iter().for_each(|&v| acc += v);
+            acc
+        }
+
+        let data = std::iter::repeat(BaseField::one()).take(K_BLOCK_SIZE << 20);
+        let column = data.collect::<BaseFieldVec>();
+
+        let now = Instant::now();
+        let p = _sum(&column.data);
+        println!("AVX sum took {:?} {p:?}", now.elapsed());
+
+        let now = Instant::now();
+        let p = _sum(column.as_slice());
+        println!("CPU sum took {:?} {p:?}", now.elapsed());
     }
 
     fn test_channel() -> Blake2sChannel {

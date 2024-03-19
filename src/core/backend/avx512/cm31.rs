@@ -1,12 +1,16 @@
 use std::ops::{Add, Mul, Sub};
 
+use bytemuck::Zeroable;
+
 use super::m31::{PackedBaseField, K_BLOCK_SIZE};
 use crate::core::fields::cm31::CM31;
 
 /// AVX implementation for the complex extension field of M31.
 /// See [crate::core::fields::cm31::CM31] for more information.
 #[derive(Copy, Clone)]
+#[repr(transparent)]
 pub struct PackedCM31(pub [PackedBaseField; 2]);
+
 impl PackedCM31 {
     pub fn a(&self) -> PackedBaseField {
         self.0[0]
@@ -16,6 +20,10 @@ impl PackedCM31 {
     }
     pub fn to_array(&self) -> [CM31; K_BLOCK_SIZE] {
         std::array::from_fn(|i| CM31(self.0[0].to_array()[i], self.0[1].to_array()[i]))
+    }
+
+    pub fn double(self) -> Self {
+        Self([self.0[0].double(), self.0[1].double()])
     }
 }
 impl Add for PackedCM31 {
@@ -56,6 +64,12 @@ impl Add<PackedBaseField> for PackedCM31 {
 
     fn add(self, rhs: PackedBaseField) -> Self {
         Self([self.0[0] + rhs, self.0[1]])
+    }
+}
+
+unsafe impl Zeroable for PackedCM31 {
+    fn zeroed() -> Self {
+        unsafe { core::mem::zeroed() }
     }
 }
 

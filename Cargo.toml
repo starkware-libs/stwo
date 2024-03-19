@@ -1,3 +1,5 @@
+cargo-features = ["profile-rustflags"]
+
 [package]
 name = "stwo"
 version = "0.1.1"
@@ -31,6 +33,13 @@ unused = "deny"
 
 [features]
 avx512 = []
+
+#[build]
+#rustflags = ["-Awarnings", "-C", "target-cpu=native", "-C", "target-feature=+avx512f", "-C", "opt-level=2"]
+
+[profile.release]
+rustflags = ["-Awarnings", "-C", "target-cpu=native", "-C", "target-feature=+avx512f", "-C", "opt-level=2"]
+# opt-level = 2
 
 [profile.bench]
 codegen-units = 1

@@ -1,4 +1,6 @@
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, AddAssign, Mul, Sub};
+
+use bytemuck::Zeroable;
 
 use super::cm31::PackedCM31;
 use super::m31::K_BLOCK_SIZE;
@@ -8,7 +10,9 @@ use crate::core::fields::qm31::QM31;
 /// AVX implementation for an extension of CM31.
 /// See [crate::core::fields::qm31::QM31] for more information.
 #[derive(Copy, Clone)]
+#[repr(transparent)]
 pub struct PackedQM31(pub [PackedCM31; 2]);
+
 impl PackedQM31 {
     pub fn a(&self) -> PackedCM31 {
         self.0[0]
@@ -19,13 +23,25 @@ impl PackedQM31 {
     pub fn to_array(&self) -> [QM31; K_BLOCK_SIZE] {
         std::array::from_fn(|i| QM31(self.a().to_array()[i], self.b().to_array()[i]))
     }
+
+    pub fn double(self) -> Self {
+        Self([self.0[0].double(), self.0[1].double()])
+    }
 }
+
 impl Add for PackedQM31 {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
         Self([self.a() + rhs.a(), self.b() + rhs.b()])
     }
 }
+
+impl AddAssign for PackedQM31 {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs
+    }
+}
+
 impl Sub for PackedQM31 {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self::Output {
@@ -66,6 +82,12 @@ impl Add<PackedBaseField> for PackedQM31 {
 
     fn add(self, rhs: PackedBaseField) -> Self {
         Self([self.0[0] + rhs, self.0[1]])
+    }
+}
+
+unsafe impl Zeroable for PackedQM31 {
+    fn zeroed() -> Self {
+        unsafe { core::mem::zeroed() }
     }
 }
 
