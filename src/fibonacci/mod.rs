@@ -1,6 +1,6 @@
 use num_traits::One;
 
-use self::air::FibonacciAir;
+use self::air::{FibonacciAir, MultiFibonacciAir};
 use self::component::FibonacciComponent;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
@@ -17,6 +17,7 @@ mod component;
 
 pub struct Fibonacci {
     pub air: FibonacciAir,
+    pub log_size: u32,
     pub claim: BaseField,
 }
 
@@ -25,13 +26,14 @@ impl Fibonacci {
         let component = FibonacciComponent::new(log_size, claim);
         Self {
             air: FibonacciAir::new(component),
+            log_size,
             claim,
         }
     }
 
-    fn get_trace(&self) -> CPUCircleEvaluation<BaseField, BitReversedOrder> {
+    pub fn get_trace(&self) -> CPUCircleEvaluation<BaseField, BitReversedOrder> {
         // Trace.
-        let trace_domain = CanonicCoset::new(self.air.component.log_size);
+        let trace_domain = CanonicCoset::new(self.log_size);
         // TODO(AlonH): Consider using Vec::new instead of Vec::with_capacity throughout file.
         let mut trace = Vec::with_capacity(trace_domain.size());
 
@@ -55,15 +57,49 @@ impl Fibonacci {
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self.claim])));
         prove(&self.air, channel, vec![trace])
     }
+
+    pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
+        let channel =
+            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self.claim])));
+        verify(proof, &self.air, channel)
+    }
 }
 
-pub fn verify_proof<const N_BITS: u32>(
-    proof: StarkProof,
-    claim: BaseField,
-) -> Result<(), VerificationError> {
-    let fib = Fibonacci::new(N_BITS, claim);
-    let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[claim])));
-    verify(proof, &fib.air, channel)
+pub struct MultiFibonacci {
+    pub air: MultiFibonacciAir,
+    single_fib: Fibonacci,
+    n_components: usize,
+}
+
+impl MultiFibonacci {
+    pub fn new(n_components: usize, log_size: u32, claim: BaseField) -> Self {
+        assert!(n_components > 0);
+        let single_fib = Fibonacci::new(log_size, claim);
+        let air = MultiFibonacciAir::new(n_components, log_size, claim);
+        Self {
+            air,
+            single_fib,
+            n_components,
+        }
+    }
+
+    pub fn get_trace(&self) -> Vec<CPUCircleEvaluation<BaseField, BitReversedOrder>> {
+        vec![self.single_fib.get_trace(); self.n_components]
+    }
+
+    pub fn prove(&self) -> Result<StarkProof, ProvingError> {
+        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self
+            .single_fib
+            .claim])));
+        prove(&self.air, channel, self.get_trace())
+    }
+
+    pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
+        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self
+            .single_fib
+            .claim])));
+        verify(proof, &self.air, channel)
+    }
 }
 
 #[cfg(test)]
@@ -71,24 +107,17 @@ mod tests {
     use itertools::Itertools;
     use num_traits::One;
 
-    use super::Fibonacci;
-    use crate::commitment_scheme::blake2_hash::Blake2sHasher;
-    use crate::commitment_scheme::hasher::Hasher;
+    use super::{Fibonacci, MultiFibonacci};
     use crate::commitment_scheme::utils::tests::generate_test_queries;
     use crate::core::air::evaluation::PointEvaluationAccumulator;
     use crate::core::air::{AirExt, Component, ComponentTrace};
-    use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::IntoSlice;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::{prove, verify};
     use crate::core::queries::Queries;
     use crate::core::test_utils::secure_eval_to_base_eval;
     use crate::core::utils::bit_reverse;
-    use crate::fibonacci::air::MultiFibonacciAir;
-    use crate::fibonacci::verify_proof;
     use crate::{m31, qm31};
 
     #[test]
@@ -214,7 +243,7 @@ mod tests {
                 .composition_polynomial_oods_value,
             hz
         );
-        verify_proof::<FIB_LOG_SIZE>(proof, fib.claim).unwrap();
+        fib.verify(proof).unwrap();
     }
 
     // TODO(AlonH): Check the correct error occurs after introducing errors instead of
@@ -228,7 +257,7 @@ mod tests {
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.opened_values.0[0][0][4] += BaseField::one();
 
-        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim).unwrap();
+        fib.verify(invalid_proof).unwrap();
     }
 
     // TODO(AlonH): Check the correct error occurs after introducing errors instead of
@@ -242,7 +271,7 @@ mod tests {
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.trace_oods_values.swap(0, 1);
 
-        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim).unwrap();
+        fib.verify(invalid_proof).unwrap();
     }
 
     // TODO(AlonH): Check the correct error occurs after introducing errors instead of
@@ -256,20 +285,13 @@ mod tests {
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.opened_values.0[0][0].pop();
 
-        verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim).unwrap();
+        fib.verify(invalid_proof).unwrap();
     }
 
     #[test]
     fn test_multi_fibonacci() {
-        let log_size = 5;
-        let (n_components, fib) = (16, Fibonacci::new(log_size, m31!(443693538)));
-        let air = MultiFibonacciAir::new(n_components, log_size, fib.claim);
-        let prover_channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[fib.claim])));
-        let trace = vec![fib.get_trace(); n_components];
-        let proof = prove(&air, prover_channel, trace).unwrap();
-        let verifier_channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[fib.claim])));
-        verify(proof, &air, verifier_channel).unwrap();
+        let multi_fib = MultiFibonacci::new(16, 5, m31!(443693538));
+        let proof = multi_fib.prove().unwrap();
+        multi_fib.verify(proof).unwrap();
     }
 }
