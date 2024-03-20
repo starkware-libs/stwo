@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1710862230834,
+  "lastUpdate": 1710920001919,
   "repoUrl": "https://github.com/starkware-libs/stwo",
   "entries": {
     "Benchmark": [
@@ -1301,6 +1301,192 @@ window.BENCHMARK_DATA = {
             "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/524288",
             "value": 4814802,
             "range": "± 170594",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "andrewmilson@users.noreply.github.com",
+            "name": "Andrew Milson",
+            "username": "andrewmilson"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "b89a453c0764816218dff0208944666f025324c2",
+          "message": "Implement 'Sum' and 'Product' on field types (#497)",
+          "timestamp": "2024-03-20T09:22:47+02:00",
+          "tree_id": "7ce13cdb1511189d634f614d0f07eeea186bc231",
+          "url": "https://github.com/starkware-libs/stwo/commit/b89a453c0764816218dff0208944666f025324c2"
+        },
+        "date": 1710920001215,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "avx bit_rev 26bit",
+            "value": 73230832,
+            "range": "± 1145654",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu bit_rev 24bit",
+            "value": 206995720,
+            "range": "± 3445186",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "avx ifft 26bit",
+            "value": 256225348,
+            "range": "± 2790932",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 45662957,
+            "range": "± 740152",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 20873506,
+            "range": "± 177680",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 mul",
+            "value": 203995004,
+            "range": "± 1158050",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 add",
+            "value": 46015959,
+            "range": "± 928696",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField mul",
+            "value": 1226784934,
+            "range": "± 10789966",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField add",
+            "value": 104736923,
+            "range": "± 1032180",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 45813186,
+            "range": "± 528018",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 20844973,
+            "range": "± 2487967",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "mul_avx512",
+            "value": 7755873,
+            "range": "± 53746",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "add_avx512",
+            "value": 4744196,
+            "range": "± 14364",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sub_avx512",
+            "value": 4734090,
+            "range": "± 14590",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "fold_line",
+            "value": 578774,
+            "range": "± 15457",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "RowMajorMatrix M31 24x24 mul",
+            "value": 625,
+            "range": "± 23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "QM31 RowMajorMatrix 6x6 mul",
+            "value": 756,
+            "range": "± 39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/32768",
+            "value": 277974,
+            "range": "± 2051",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/32768",
+            "value": 275088,
+            "range": "± 2909",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/65536",
+            "value": 551075,
+            "range": "± 9156",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/65536",
+            "value": 557391,
+            "range": "± 12001",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/131072",
+            "value": 1201928,
+            "range": "± 13177",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/131072",
+            "value": 1204957,
+            "range": "± 14994",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/262144",
+            "value": 2294664,
+            "range": "± 16793",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/262144",
+            "value": 2281664,
+            "range": "± 26028",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/524288",
+            "value": 4499859,
+            "range": "± 87769",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/524288",
+            "value": 4463227,
+            "range": "± 26752",
             "unit": "ns/iter"
           }
         ]
