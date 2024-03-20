@@ -179,6 +179,7 @@ where
                 &mut decommitment,
             );
         });
+        decommitment.column_layout = input.column_layout();
         decommitment
     }
 
@@ -642,7 +643,6 @@ mod tests {
         input.insert_column(TREE_HEIGHT - 6, &column_2);
         input.insert_column(TREE_HEIGHT - 4, &column_1);
         input.insert_column(TREE_HEIGHT, &column_3);
-        let configuration = input.column_layout();
         let (tree, commitment) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit_default(&input);
         let queries: Vec<Vec<usize>> = vec![
             vec![2],
@@ -657,7 +657,6 @@ mod tests {
         let test_decommitment = tree.decommit(&input, &queries);
         assert!(test_decommitment.verify(
             commitment,
-            &configuration,
             &queries,
             test_decommitment.queried_values.iter().copied()
         ));
