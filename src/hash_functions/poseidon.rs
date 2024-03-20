@@ -112,6 +112,7 @@ impl From<PoseidonHash> for [BaseField; POSEIDON_CAPACITY] {
 
 impl hasher::Hash<BaseField> for PoseidonHash {}
 
+#[derive(Default)]
 pub struct PoseidonHasher {
     params: PoseidonParams,
     state: [BaseField; POSEIDON_WIDTH],
