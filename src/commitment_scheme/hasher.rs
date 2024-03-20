@@ -24,7 +24,7 @@ pub trait Name {
 
 pub trait Hasher: Sized {
     type Hash: Hash<Self::NativeType>;
-    type NativeType: Sized + Eq;
+    type NativeType: Sized + Eq + Clone;
 
     // Input size of the compression function.
     const BLOCK_SIZE: usize;
@@ -65,7 +65,19 @@ pub trait Hasher: Sized {
         data: &[*const Self::NativeType],
         single_input_length_bytes: usize,
         dst: &[*mut Self::NativeType],
-    );
+    ) {
+        data.iter()
+            .map(|p| std::slice::from_raw_parts(*p, single_input_length_bytes))
+            .zip(
+                dst.iter()
+                    .map(|p| std::slice::from_raw_parts_mut(*p, Self::OUTPUT_SIZE)),
+            )
+            .for_each(|(input, out)| {
+                let mut hasher = Self::new();
+                hasher.update(input);
+                out.clone_from_slice(&hasher.finalize().into());
+            })
+    }
 }
 
 pub trait Hash<NativeType: Sized + Eq>:
