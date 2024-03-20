@@ -10,7 +10,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{prove, verify, StarkProof};
+use crate::core::prover::{prove, verify, ProvingError, StarkProof};
 
 pub mod air;
 mod component;
@@ -49,7 +49,7 @@ impl Fibonacci {
         CircleEvaluation::new_canonical_ordered(trace_domain, trace)
     }
 
-    pub fn prove(&self) -> StarkProof {
+    pub fn prove(&self) -> Result<StarkProof, ProvingError> {
         let trace = self.get_trace();
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self.claim])));
@@ -82,7 +82,8 @@ mod tests {
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::{prove, verify};
     use crate::core::queries::Queries;
-    use crate::core::utils::{bit_reverse, secure_eval_to_base_eval};
+    use crate::core::test_utils::secure_eval_to_base_eval;
+    use crate::core::utils::bit_reverse;
     use crate::fibonacci::air::MultiFibonacciAir;
     use crate::fibonacci::verify_proof;
     use crate::{m31, qm31};
@@ -126,7 +127,7 @@ mod tests {
         const FIB_LOG_SIZE: u32 = 5;
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
-        let proof = fib.prove();
+        let proof = fib.prove().unwrap();
         let (composition_polynomial_quotient, trace_quotients) = proof
             .additional_proof_data
             .oods_quotients
@@ -187,7 +188,7 @@ mod tests {
         let trace_poly = trace.interpolate();
         let trace = ComponentTrace::new(vec![&trace_poly]);
 
-        let proof = fib.prove();
+        let proof = fib.prove().unwrap();
         let oods_point = proof.additional_proof_data.oods_point;
 
         let (_, mask_values) = fib.air.component.mask_points_and_values(oods_point, &trace);
@@ -221,7 +222,7 @@ mod tests {
         const FIB_LOG_SIZE: u32 = 5;
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
-        let mut invalid_proof = fib.prove();
+        let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.opened_values.0[0][0][4] += BaseField::one();
 
         verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim);
@@ -235,7 +236,7 @@ mod tests {
         const FIB_LOG_SIZE: u32 = 5;
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
-        let mut invalid_proof = fib.prove();
+        let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.trace_oods_values.swap(0, 1);
 
         verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim);
@@ -249,7 +250,7 @@ mod tests {
         const FIB_LOG_SIZE: u32 = 5;
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
-        let mut invalid_proof = fib.prove();
+        let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.opened_values.0[0][0].pop();
 
         verify_proof::<FIB_LOG_SIZE>(invalid_proof, fib.claim);
@@ -263,7 +264,7 @@ mod tests {
         let prover_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[fib.claim])));
         let trace = vec![fib.get_trace(); n_components];
-        let proof = prove(&air, prover_channel, trace);
+        let proof = prove(&air, prover_channel, trace).unwrap();
         let verifier_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[fib.claim])));
         assert!(verify(proof, &air, verifier_channel));
