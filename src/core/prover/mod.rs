@@ -5,6 +5,7 @@ use thiserror::Error;
 
 use super::fri::FriVerificationError;
 use super::poly::circle::{CanonicCoset, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+use super::proof_of_work::ProofOfWorkVerificationError;
 use super::queries::SparseSubCircleDomain;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
@@ -193,7 +194,7 @@ pub fn verify(
     let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
     let mut fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds)?;
 
-    ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work);
+    ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work)?;
     let opening_positions = fri_verifier
         .column_opening_positions(channel)
         .into_values()
@@ -311,6 +312,8 @@ pub enum VerificationError {
     OodsNotMatching,
     #[error(transparent)]
     Fri(#[from] FriVerificationError),
+    #[error(transparent)]
+    ProofOfWork(#[from] ProofOfWorkVerificationError),
 }
 
 #[cfg(test)]
