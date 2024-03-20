@@ -64,7 +64,7 @@ impl super::hasher::Name for Blake2sHash {
 impl super::hasher::Hash<u8> for Blake2sHash {}
 
 // Wrapper for the blake2s Hashing functionalities.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Blake2sHasher {
     state: Blake2s256,
 }
