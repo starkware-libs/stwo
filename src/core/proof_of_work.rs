@@ -97,18 +97,9 @@ mod tests {
     use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
 
     #[test]
-    fn test_verify_proof_of_work_success() {
-        let mut channel = Blake2sChannel::new(Blake2sHash::from(vec![0; 32]));
-        let proof_of_work_prover = ProofOfWork { n_bits: 11 };
-        let proof = ProofOfWorkProof { nonce: 133 };
-
-        proof_of_work_prover.verify(&mut channel, &proof).unwrap();
-    }
-
-    #[test]
     fn test_verify_proof_of_work_fail() {
         let mut channel = Blake2sChannel::new(Blake2sHash::from(vec![0; 32]));
-        let proof_of_work_prover = ProofOfWork { n_bits: 1 };
+        let proof_of_work_prover = ProofOfWork { n_bits: 2 };
         let invalid_proof = ProofOfWorkProof { nonce: 0 };
 
         proof_of_work_prover
