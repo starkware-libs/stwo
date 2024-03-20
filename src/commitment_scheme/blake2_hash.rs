@@ -1,7 +1,7 @@
 use std::fmt;
 
-use blake2::digest::{Update, VariableOutput};
-use blake2::{Blake2s256, Blake2sVar, Digest};
+use super::blake2s_ref;
+use super::hasher::Hasher;
 
 // Wrapper for the blake2s hash type.
 #[derive(Clone, Copy, PartialEq, Default, Eq)]
@@ -63,13 +63,24 @@ impl super::hasher::Name for Blake2sHash {
 
 impl super::hasher::Hash<u8> for Blake2sHash {}
 
-// Wrapper for the blake2s Hashing functionalities.
-#[derive(Clone, Debug, Default)]
+/// Wrapper for the blake2s Hashing functionalities.
+/// This blake2s hasher is intended to be sued only when the structure of the input is agreed upon.
+/// Otherwise, it is not secure.
+/// The blake2s permutation is used as a hash chain, with no counts, flags or proper padding.
+#[derive(Clone, Debug)]
 pub struct Blake2sHasher {
-    state: Blake2s256,
+    state: [u32; 8],
+    pending_buffer: [u8; 64],
+    pending_len: usize,
 }
 
-impl super::hasher::Hasher for Blake2sHasher {
+impl Default for Blake2sHasher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Hasher for Blake2sHasher {
     type Hash = Blake2sHash;
     const BLOCK_SIZE: usize = 64;
     const OUTPUT_SIZE: usize = 32;
@@ -77,42 +88,42 @@ impl super::hasher::Hasher for Blake2sHasher {
 
     fn new() -> Self {
         Self {
-            state: Blake2s256::new(),
+            state: [0; 8],
+            pending_buffer: [0; 64],
+            pending_len: 0,
         }
     }
 
     fn reset(&mut self) {
-        blake2::Digest::reset(&mut self.state);
+        *self = Self::new();
     }
 
-    fn update(&mut self, data: &[u8]) {
-        blake2::Digest::update(&mut self.state, data);
+    fn update(&mut self, mut data: &[u8]) {
+        while self.pending_len + data.len() >= Self::BLOCK_SIZE {
+            // Fill the buffer and compress.
+            let (prefix, rest) = data.split_at(Self::BLOCK_SIZE - self.pending_len);
+            self.pending_buffer[self.pending_len..].copy_from_slice(prefix);
+            data = rest;
+            let words = unsafe { std::mem::transmute::<_, &[u32; 16]>(&self.pending_buffer) };
+            self.state = blake2s_ref::compress(self.state, *words, 0, 0, 0, 0);
+            self.pending_len = 0;
+        }
+        // Copy the remaining data into the buffer.
+        self.pending_buffer[self.pending_len..self.pending_len + data.len()].copy_from_slice(data);
+        self.pending_len += data.len();
     }
 
-    fn finalize(self) -> Blake2sHash {
-        Blake2sHash(self.state.finalize().into())
+    fn finalize(mut self) -> Blake2sHash {
+        if self.pending_len != 0 {
+            self.update(&[0; Self::BLOCK_SIZE]);
+        }
+        Blake2sHash(unsafe { std::mem::transmute(self.state) })
     }
 
     fn finalize_reset(&mut self) -> Blake2sHash {
-        Blake2sHash(self.state.finalize_reset().into())
-    }
-
-    unsafe fn hash_many_in_place(
-        data: &[*const u8],
-        single_input_length_bytes: usize,
-        dst: &[*mut u8],
-    ) {
-        data.iter()
-            .map(|p| std::slice::from_raw_parts(*p, single_input_length_bytes))
-            .zip(
-                dst.iter()
-                    .map(|p| std::slice::from_raw_parts_mut(*p, Self::OUTPUT_SIZE)),
-            )
-            .for_each(|(input, out)| {
-                let mut hasher = Blake2sVar::new(Self::OUTPUT_SIZE).unwrap();
-                hasher.update(input);
-                hasher.finalize_variable(out).unwrap();
-            })
+        let hash = self.clone().finalize();
+        self.reset();
+        hash
     }
 }
 
@@ -127,8 +138,17 @@ mod tests {
         let hash_a = blake2_hash::Blake2sHasher::hash(b"a");
         assert_eq!(
             hash_a.to_string(),
-            "4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e90"
+            "f2ab64ae6530f3a5d19369752cd30eadf455153c29dbf2cb70f00f73d5b41c50"
         );
+    }
+
+    #[test]
+    fn hash_many_vs_single() {
+        let hash_a = blake2_hash::Blake2sHasher::hash(b"a");
+        let mut out = [0_u8; 32];
+        let out_ptrs = [out.as_mut_ptr()];
+        unsafe { Blake2sHasher::hash_many_in_place(&[b"a".as_ptr()], 1, &out_ptrs) };
+        assert_eq!(hash_a.to_string(), hex::encode(out));
     }
 
     #[test]
@@ -138,10 +158,10 @@ mod tests {
         let input_arr = [input1.as_ptr(), input2.as_ptr()];
 
         let mut out = [0_u8; 96];
-        let out_ptrs = [out.as_mut_ptr(), unsafe { out.as_mut_ptr().add(42) }];
+        let out_ptrs = [out.as_mut_ptr(), unsafe { out.as_mut_ptr().add(32) }];
         unsafe { Blake2sHasher::hash_many_in_place(&input_arr, 1, &out_ptrs) };
 
-        assert_eq!("4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e900000000000000000000004449e92c9a7657ef2d677b8ef9da46c088f13575ea887e4818fc455a2bca50000000000000000000000000000000000000000000000", hex::encode(out));
+        assert_eq!("f2ab64ae6530f3a5d19369752cd30eadf455153c29dbf2cb70f00f73d5b41c504383e3109201cbbb59233961bb55f5fe0c49f444751dc782080fe1d9780bfded0000000000000000000000000000000000000000000000000000000000000000", hex::encode(out));
     }
 
     #[test]
