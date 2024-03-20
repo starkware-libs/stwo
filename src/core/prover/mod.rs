@@ -72,7 +72,7 @@ pub fn prove(
     }
 
     // Check that the composition polynomial is not too big.
-    let composition_polynomial_log_degree_bound = air.max_constraint_log_degree_bound();
+    let composition_polynomial_log_degree_bound = air.composition_log_degree_bound();
     if composition_polynomial_log_degree_bound + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
         return Err(ProvingError::MaxCompositionDegreeExceeded {
             degree: composition_polynomial_log_degree_bound,
@@ -321,7 +321,7 @@ mod tests {
     use num_traits::Zero;
 
     use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-    use crate::core::air::{Air, Component, ComponentTrace, ComponentVisitor, Mask};
+    use crate::core::air::{Air, Component, ComponentTrace, Mask};
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::backend::CPUBackend;
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
@@ -332,11 +332,13 @@ mod tests {
     use crate::core::test_utils::test_channel;
     use crate::qm31;
 
-    struct TestAir<C: Component<CPUBackend>>(C);
+    struct TestAir<C: Component<CPUBackend>> {
+        component: C,
+    }
 
     impl Air<CPUBackend> for TestAir<TestComponent> {
-        fn visit_components<V: ComponentVisitor<CPUBackend>>(&self, v: &mut V) {
-            v.visit(&self.0)
+        fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
+            vec![&self.component]
         }
     }
 
