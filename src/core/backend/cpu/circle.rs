@@ -174,6 +174,13 @@ impl PolyOps for CPUBackend {
             itwiddles,
         }
     }
+
+    fn eval_at_securefield_point(
+        poly: &CirclePoly<Self>,
+        point: CirclePoint<crate::core::fields::qm31::SecureField>,
+    ) -> crate::core::fields::qm31::SecureField {
+        Self::eval_at_point(poly, point)
+    }
 }
 
 fn fft_layer_loop(
