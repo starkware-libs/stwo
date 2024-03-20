@@ -13,28 +13,25 @@ use crate::core::fields::{Field, IntoSlice};
 /// A correctly generated decommitment should hold all the information needed to generate the root
 /// of the tree, proving the queried values and the tree's column layout.
 // TODO(Ohad): write printing functions.
+#[derive(Debug, Default)]
 pub struct MixedDecommitment<F: Field, H: Hasher> {
     pub hashes: Vec<H::Hash>,
     pub witness_elements: Vec<F>,
 
-    // TODO(Ohad): remove this in non-debug builds.
+    // TODO(Ohad): remove these in non-debug builds.
     pub queried_values: Vec<F>,
+    pub column_layout: MerkleTreeColumnLayout,
 }
 
 #[allow(clippy::new_without_default)]
 impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
     pub fn new() -> Self {
-        Self {
-            hashes: vec![],
-            witness_elements: vec![],
-            queried_values: vec![],
-        }
+        Self::default()
     }
 
     pub fn verify(
         &self,
         root: H::Hash,
-        column_layout: &MerkleTreeColumnLayout,
         queries: &[Vec<usize>],
         mut queried_values: impl Iterator<Item = F>,
     ) -> bool
@@ -42,16 +39,16 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
         F: IntoSlice<H::NativeType>,
     {
         let mut witness_hashes = self.hashes.iter();
-        let sorted_queries_by_layer = column_layout.sort_queries_by_layer(queries);
+        let sorted_queries_by_layer = self.column_layout.sort_queries_by_layer(queries);
 
         let mut next_layer_hashes = vec![];
         let mut ancestor_indices = vec![];
         let mut witness_elements = self.witness_elements.iter().copied();
-        for i in (1..=column_layout.height()).rev() {
+        for i in (1..=self.column_layout.height()).rev() {
             (next_layer_hashes, ancestor_indices) = Self::verify_single_layer(
                 i,
                 &sorted_queries_by_layer[i - 1],
-                column_layout,
+                &self.column_layout,
                 ancestor_indices.iter().copied().peekable(),
                 queried_values.by_ref(),
                 &mut witness_elements,
@@ -166,14 +163,12 @@ mod tests {
         input.insert_column(TREE_HEIGHT, &column_length_8);
         input.insert_column(TREE_HEIGHT - 1, &column_length_4);
         input.insert_column(TREE_HEIGHT - 1, &column_length_8);
-        let config = input.column_layout();
         let (tree, commitment) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(&input);
         let queries: Vec<Vec<usize>> = vec![vec![2], vec![0_usize], vec![4, 7]];
 
         let decommitment = tree.decommit(&input, &queries);
         assert!(decommitment.verify(
             commitment,
-            &config,
             &queries,
             decommitment.queried_values.iter().copied(),
         ));
@@ -189,7 +184,6 @@ mod tests {
         input.insert_column(TREE_HEIGHT, &column_length_8);
         input.insert_column(TREE_HEIGHT - 1, &column_length_4);
         input.insert_column(TREE_HEIGHT - 1, &column_length_8);
-        let config = input.column_layout();
         let (tree, _) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(&input);
         let false_commitment = Blake3Hasher::hash(b"false_commitment");
 
@@ -198,7 +192,6 @@ mod tests {
 
         assert!(decommitment.verify(
             false_commitment,
-            &config,
             &queries,
             decommitment.queried_values.iter().copied(),
         ));
@@ -214,7 +207,6 @@ mod tests {
         input.insert_column(TREE_HEIGHT, &column_length_8);
         input.insert_column(TREE_HEIGHT - 1, &column_length_4);
         input.insert_column(TREE_HEIGHT - 1, &column_length_8);
-        let config = input.column_layout();
         let (tree, commitment) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(&input);
 
         let queries: Vec<Vec<usize>> = vec![vec![2], vec![0_usize], vec![4, 7]];
@@ -223,7 +215,6 @@ mod tests {
 
         assert!(decommitment.verify(
             commitment,
-            &config,
             &queries,
             decommitment.queried_values.iter().copied(),
         ));
