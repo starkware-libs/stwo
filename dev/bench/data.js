@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1710927156459,
+  "lastUpdate": 1710937437042,
   "repoUrl": "https://github.com/starkware-libs/stwo",
   "entries": {
     "Benchmark": [
@@ -1673,6 +1673,192 @@ window.BENCHMARK_DATA = {
             "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/524288",
             "value": 4437161,
             "range": "± 53556",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "91828241+alonh5@users.noreply.github.com",
+            "name": "Alon Haramati",
+            "username": "alonh5"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "3bc4c79140c72a1beb244c919076868e2135abba",
+          "message": "Create MultiFibonacci. (#509)",
+          "timestamp": "2024-03-20T14:13:21+02:00",
+          "tree_id": "bee14e384df7c4600d7f1aac224d749cea135827",
+          "url": "https://github.com/starkware-libs/stwo/commit/3bc4c79140c72a1beb244c919076868e2135abba"
+        },
+        "date": 1710937436314,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "avx bit_rev 26bit",
+            "value": 78399087,
+            "range": "± 3078205",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu bit_rev 24bit",
+            "value": 228070697,
+            "range": "± 11779614",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "avx ifft 26bit",
+            "value": 274309391,
+            "range": "± 9081892",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 45653334,
+            "range": "± 931978",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 20720752,
+            "range": "± 197721",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 mul",
+            "value": 204490126,
+            "range": "± 1985903",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 add",
+            "value": 46373002,
+            "range": "± 1444388",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField mul",
+            "value": 1220912103,
+            "range": "± 18558112",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField add",
+            "value": 104823086,
+            "range": "± 722168",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 45749880,
+            "range": "± 464614",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 20739999,
+            "range": "± 173667",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "mul_avx512",
+            "value": 7747196,
+            "range": "± 126850",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "add_avx512",
+            "value": 4734071,
+            "range": "± 11519",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sub_avx512",
+            "value": 4733145,
+            "range": "± 19012",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "fold_line",
+            "value": 576818,
+            "range": "± 20038",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "RowMajorMatrix M31 24x24 mul",
+            "value": 624,
+            "range": "± 16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "QM31 RowMajorMatrix 6x6 mul",
+            "value": 754,
+            "range": "± 18",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/32768",
+            "value": 276022,
+            "range": "± 5176",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/32768",
+            "value": 277517,
+            "range": "± 3499",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/65536",
+            "value": 559871,
+            "range": "± 9180",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/65536",
+            "value": 554644,
+            "range": "± 3360",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/131072",
+            "value": 1203308,
+            "range": "± 10072",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/131072",
+            "value": 1207997,
+            "range": "± 9689",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/262144",
+            "value": 2286546,
+            "range": "± 15632",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/262144",
+            "value": 2314317,
+            "range": "± 25378",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/524288",
+            "value": 4500928,
+            "range": "± 75138",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/524288",
+            "value": 4508393,
+            "range": "± 52369",
             "unit": "ns/iter"
           }
         ]
