@@ -12,8 +12,9 @@ use super::poly::BitReversedOrder;
 use super::queries::SparseSubCircleDomain;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
-use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
-use crate::commitment_scheme::merkle_tree::MerkleTree;
+use crate::commitment_scheme::merkle_input::{MerkleTreeInput, MerkleTreeStructure};
+use crate::commitment_scheme::mixed_degree_decommitment::MixedDecommitment;
+use crate::commitment_scheme::mixed_degree_merkle_tree::MixedDegreeMerkleTree;
 use crate::core::channel::Channel;
 
 pub mod utils;
@@ -32,10 +33,10 @@ impl Deref for OpenedValues {
 }
 
 #[derive(Debug)]
-pub struct Decommitments(Vec<MerkleDecommitment<BaseField, Blake2sHasher>>);
+pub struct Decommitments(Vec<MixedDecommitment<BaseField, Blake2sHasher>>);
 
 impl Deref for Decommitments {
-    type Target = Vec<MerkleDecommitment<BaseField, Blake2sHasher>>;
+    type Target = Vec<MixedDecommitment<BaseField, Blake2sHasher>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -85,7 +86,8 @@ pub struct CommitmentTreeProver {
     pub polynomials: ColumnVec<CPUCirclePoly>,
     pub evaluations: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
     // TODO(AlonH): Change to mixed degree merkle and remove values clone.
-    pub commitment: MerkleTree<BaseField, Blake2sHasher>,
+    pub commitment: MixedDegreeMerkleTree<BaseField, Blake2sHasher>,
+    pub structure: MerkleTreeStructure,
 }
 
 impl CommitmentTreeProver {
@@ -101,18 +103,22 @@ impl CommitmentTreeProver {
         let evaluations = zip(&polynomials, domains)
             .map(|(poly, domain)| poly.evaluate(domain.circle_domain()))
             .collect_vec();
-        let commitment = MerkleTree::<BaseField, Blake2sHasher>::commit(
-            evaluations
-                .iter()
-                .map(|eval| eval.values.clone())
-                .collect_vec(),
-        );
-        channel.mix_digest(commitment.root());
+        let mut merkle_input = MerkleTreeInput::new();
+        const LOG_N_BASEFIELD_ELEMENTS_IN_SACK: u32 = 4;
+        for column in evaluations.iter().map(|eval| &eval.values) {
+            let inject_depth = column.len().ilog2() - (LOG_N_BASEFIELD_ELEMENTS_IN_SACK - 1);
+            merkle_input.insert_column(inject_depth as usize, column);
+        }
+        let (tree, root) = MixedDegreeMerkleTree::<BaseField, Blake2sHasher>::commit(&merkle_input);
+        channel.mix_digest(root);
+
+        let structure = merkle_input.structure();
 
         CommitmentTreeProver {
             polynomials,
             evaluations,
-            commitment,
+            commitment: tree,
+            structure,
         }
     }
 
@@ -122,20 +128,32 @@ impl CommitmentTreeProver {
         positions: Vec<usize>,
     ) -> (
         ColumnVec<Vec<BaseField>>,
-        MerkleDecommitment<BaseField, Blake2sHasher>,
+        MixedDecommitment<BaseField, Blake2sHasher>,
     ) {
         let values = self
             .evaluations
             .iter()
             .map(|c| positions.iter().map(|p| c[*p]).collect())
             .collect();
-        let decommitment = self.commitment.generate_decommitment(positions);
+        // Assuming rectangle trace, queries should be similar for all columns.
+        let queries = std::iter::repeat(positions.to_vec())
+            .take(self.evaluations.len())
+            .collect_vec();
+
+        // Rebuild the merkle input for now. TODO(Ohad): change after tree refactor.
+        let eval_vec = self
+            .evaluations
+            .iter()
+            .map(|eval| &eval.values[..])
+            .collect_vec();
+        let input = self.structure.build_input(&eval_vec);
+        let decommitment = self.commitment.decommit(&input, &queries);
         (values, decommitment)
     }
 }
 
 impl Deref for CommitmentTreeProver {
-    type Target = MerkleTree<BaseField, Blake2sHasher>;
+    type Target = MixedDegreeMerkleTree<BaseField, Blake2sHasher>;
 
     fn deref(&self) -> &Self::Target {
         &self.commitment
@@ -161,7 +179,7 @@ impl CommitmentSchemeVerifier {
 
     pub fn verify(
         &self,
-        decommitments: &[MerkleDecommitment<BaseField, Blake2sHasher>],
+        decommitments: &[MixedDecommitment<BaseField, Blake2sHasher>],
         positions: &[SparseSubCircleDomain],
     ) -> bool {
         self.commitments
@@ -169,7 +187,10 @@ impl CommitmentSchemeVerifier {
             .zip(decommitments)
             .zip(positions)
             .all(|((commitment, decommitment), positions)| {
-                commitment.verify(decommitment, &positions.flatten())
+                let positions = std::iter::repeat(positions.flatten())
+                    .take(decommitment.queried_values.len())
+                    .collect_vec();
+                commitment.verify(decommitment, &positions)
             })
     }
 }
@@ -186,9 +207,13 @@ impl CommitmentTreeVerifier {
 
     pub fn verify(
         &self,
-        decommitment: &MerkleDecommitment<BaseField, Blake2sHasher>,
-        positions: &[usize],
+        decommitment: &MixedDecommitment<BaseField, Blake2sHasher>,
+        queries: &[Vec<usize>],
     ) -> bool {
-        decommitment.verify(self.commitment, positions)
+        decommitment.verify(
+            self.commitment,
+            queries,
+            decommitment.queried_values.iter().copied(),
+        )
     }
 }

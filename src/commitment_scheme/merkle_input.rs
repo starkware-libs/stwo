@@ -117,6 +117,7 @@ impl<'a, F: Field> MerkleTreeInput<'a, F> {
 /// The structure of a mixed degree merkle tree.
 /// The sizes of columns assigned to every layer, ordered as they were inserted & injected into hash
 /// blocks.
+#[derive(Debug, Default)]
 pub struct MerkleTreeStructure {
     column_sizes: Vec<usize>,
     injected_depths_map: Vec<Vec<usize>>,
@@ -147,6 +148,13 @@ impl MerkleTreeStructure {
 
     fn column_indices_at(&self, depth: usize) -> &[usize] {
         &self.injected_depths_map[depth - 1]
+    }
+
+    pub fn build_input<'a, F: Field>(&self, columns: &[&'a [F]]) -> MerkleTreeInput<'a, F> {
+        MerkleTreeInput {
+            columns_to_inject: columns.to_vec(),
+            injected_depths_map: self.injected_depths_map.clone(),
+        }
     }
 }
 

@@ -13,12 +13,14 @@ use crate::core::fields::{Field, IntoSlice};
 /// A correctly generated decommitment should hold all the information needed to generate the root
 /// of the tree, proving the queried values and the tree's structure.
 // TODO(Ohad): write printing functions.
+#[derive(Debug)]
 pub struct MixedDecommitment<F: Field, H: Hasher> {
     pub hashes: Vec<H::Hash>,
     pub witness_elements: Vec<F>,
 
-    // TODO(Ohad): remove this in non-debug builds.
+    // TODO(Ohad): remove these in non-debug builds.
     pub queried_values: Vec<F>,
+    pub structure: MerkleTreeStructure,
 }
 
 #[allow(clippy::new_without_default)]
@@ -28,13 +30,13 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
             hashes: vec![],
             witness_elements: vec![],
             queried_values: vec![],
+            structure: MerkleTreeStructure::default(),
         }
     }
 
     pub fn verify(
         &self,
         root: H::Hash,
-        structure: &MerkleTreeStructure,
         queries: &[Vec<usize>],
         mut queried_values: impl Iterator<Item = F>,
     ) -> bool
@@ -42,16 +44,16 @@ impl<F: Field, H: Hasher> MixedDecommitment<F, H> {
         F: IntoSlice<H::NativeType>,
     {
         let mut witness_hashes = self.hashes.iter();
-        let sorted_queries_by_layer = structure.sort_queries_by_layer(queries);
+        let sorted_queries_by_layer = self.structure.sort_queries_by_layer(queries);
 
         let mut next_layer_hashes = vec![];
         let mut ancestor_indices = vec![];
         let mut witness_elements = self.witness_elements.iter().copied();
-        for i in (1..=structure.height()).rev() {
+        for i in (1..=self.structure.height()).rev() {
             (next_layer_hashes, ancestor_indices) = Self::verify_single_layer(
                 i,
                 &sorted_queries_by_layer[i - 1],
-                structure,
+                &self.structure,
                 ancestor_indices.iter().copied().peekable(),
                 queried_values.by_ref(),
                 &mut witness_elements,
@@ -166,17 +168,12 @@ mod tests {
         input.insert_column(TREE_HEIGHT, &column_length_8);
         input.insert_column(TREE_HEIGHT - 1, &column_length_4);
         input.insert_column(TREE_HEIGHT - 1, &column_length_8);
-        let config = input.structure();
-        let (tree, commitment) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(
-            &input,
-
-        );
+        let (tree, commitment) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(&input);
         let queries: Vec<Vec<usize>> = vec![vec![2], vec![0_usize], vec![4, 7]];
 
         let decommitment = tree.decommit(&input, &queries);
         assert!(decommitment.verify(
             commitment,
-            &config,
             &queries,
             decommitment.queried_values.iter().copied(),
         ));
@@ -192,10 +189,7 @@ mod tests {
         input.insert_column(TREE_HEIGHT, &column_length_8);
         input.insert_column(TREE_HEIGHT - 1, &column_length_4);
         input.insert_column(TREE_HEIGHT - 1, &column_length_8);
-        let config = input.structure();
-        let (tree,_) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(
-            &input,
-        );
+        let (tree, _) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(&input);
         let false_commitment = Blake3Hasher::hash(b"false_commitment");
 
         let queries: Vec<Vec<usize>> = vec![vec![2], vec![0_usize], vec![4, 7]];
@@ -203,7 +197,6 @@ mod tests {
 
         assert!(decommitment.verify(
             false_commitment,
-            &config,
             &queries,
             decommitment.queried_values.iter().copied(),
         ));
@@ -219,10 +212,7 @@ mod tests {
         input.insert_column(TREE_HEIGHT, &column_length_8);
         input.insert_column(TREE_HEIGHT - 1, &column_length_4);
         input.insert_column(TREE_HEIGHT - 1, &column_length_8);
-        let config = input.structure();
-        let (tree,commitment) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(
-            &input,
-        );
+        let (tree, commitment) = MixedDegreeMerkleTree::<M31, Blake3Hasher>::commit(&input);
 
         let queries: Vec<Vec<usize>> = vec![vec![2], vec![0_usize], vec![4, 7]];
         let mut decommitment = tree.decommit(&input, &queries);
@@ -230,7 +220,6 @@ mod tests {
 
         assert!(decommitment.verify(
             commitment,
-            &config,
             &queries,
             decommitment.queried_values.iter().copied(),
         ));
