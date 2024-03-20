@@ -22,7 +22,7 @@ pub trait Name {
 /// assert_eq!(hash, Blake3Hasher::hash(&[1, 2, 3, 4, 5, 6]));
 /// ```
 
-pub trait Hasher: Sized {
+pub trait Hasher: Sized + Default {
     type Hash: Hash<Self::NativeType>;
     type NativeType: Sized + Eq;
 

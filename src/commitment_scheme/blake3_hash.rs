@@ -57,7 +57,7 @@ impl Name for Blake3Hash {
 impl super::hasher::Hash<u8> for Blake3Hash {}
 
 // Wrapper for the blake3 Hashing functionalities.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Blake3Hasher {
     state: blake3::Hasher,
 }
