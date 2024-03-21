@@ -476,7 +476,6 @@ mod tests {
         M31::batch_inverse(&elements, &mut dst);
         assert_eq!(expected, dst);
     }
-
     #[test]
     #[should_panic]
     fn test_slice_batch_inverse_wrong_dst_size() {
