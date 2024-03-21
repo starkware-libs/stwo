@@ -7,6 +7,7 @@ use super::fields::qm31::SecureField;
 use super::fields::FieldOps;
 use super::poly::circle::PolyOps;
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 pub mod avx512;
 pub mod cpu;
 
