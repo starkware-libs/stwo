@@ -25,9 +25,15 @@ pub type ColumnVec<T> = Vec<T>;
 #[derive(Debug)]
 pub struct ComponentVec<T>(pub Vec<ColumnVec<T>>);
 
-impl<T: Copy> ComponentVec<ColumnVec<T>> {
-    pub fn flatten(&self) -> Vec<T> {
-        self.iter().flatten().flatten().copied().collect()
+impl<T> ComponentVec<T> {
+    pub fn flatten(self) -> ColumnVec<T> {
+        self.0.into_iter().flatten().collect()
+    }
+}
+
+impl<T> ComponentVec<ColumnVec<T>> {
+    pub fn flatten_cols(self) -> Vec<T> {
+        self.0.into_iter().flatten().flatten().collect()
     }
 }
 

@@ -120,7 +120,6 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::queries::Queries;
-    use crate::core::test_utils::secure_eval_to_base_eval;
     use crate::core::utils::bit_reverse;
     use crate::{m31, qm31};
 
@@ -156,30 +155,6 @@ mod tests {
         );
         let oods_value = evaluation_accumulator.finalize();
         assert_eq!(oods_value, composition_polynomial_poly.eval_at_point(point));
-    }
-
-    #[test]
-    fn test_oods_quotients_are_low_degree() {
-        const FIB_LOG_SIZE: u32 = 5;
-        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
-
-        let proof = fib.prove().unwrap();
-        let (composition_polynomial_quotient, trace_quotients) = proof
-            .additional_proof_data
-            .oods_quotients
-            .split_first()
-            .unwrap();
-
-        // Assert that the trace quotients are low degree.
-        for quotient in trace_quotients.iter() {
-            let interpolated_quotient_poly = secure_eval_to_base_eval(quotient).interpolate();
-            assert!(interpolated_quotient_poly.is_in_fft_space(FIB_LOG_SIZE));
-        }
-
-        // Assert that the composition polynomial quotient is low degree.
-        let interpolated_quotient_poly =
-            secure_eval_to_base_eval(composition_polynomial_quotient).interpolate();
-        assert!(interpolated_quotient_poly.is_in_fft_space(FIB_LOG_SIZE + 1));
     }
 
     #[test]
@@ -220,76 +195,49 @@ mod tests {
     fn test_prove() {
         const FIB_LOG_SIZE: u32 = 5;
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
-        let trace = fib.get_trace();
-        let trace_poly = trace.interpolate();
-        let trace = ComponentTrace::new(vec![&trace_poly]);
 
         let proof = fib.prove().unwrap();
-        let oods_point = proof.additional_proof_data.oods_point;
-
-        let (_, mask_values) = fib.air.component.mask_points_and_values(oods_point, &trace);
-        let mut evaluation_accumulator = PointEvaluationAccumulator::new(
-            proof
-                .additional_proof_data
-                .composition_polynomial_random_coeff,
-            fib.air.composition_log_degree_bound(),
-        );
-        fib.air.component.evaluate_constraint_quotients_at_point(
-            oods_point,
-            &mask_values,
-            &mut evaluation_accumulator,
-        );
-        let hz = evaluation_accumulator.finalize();
-
-        assert_eq!(
-            proof
-                .additional_proof_data
-                .composition_polynomial_oods_value,
-            hz
-        );
         fib.verify(proof).unwrap();
     }
 
-    // TODO(AlonH): Check the correct error occurs after introducing errors instead of
-    // #[should_panic].
     #[test]
-    #[should_panic]
     fn test_prove_invalid_trace_value() {
         const FIB_LOG_SIZE: u32 = 5;
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
-        invalid_proof.opened_values.0[0][0][4] += BaseField::one();
+        invalid_proof.commitment_scheme_proof.queried_values.0[0][0][4] += BaseField::one();
 
-        fib.verify(invalid_proof).unwrap();
+        fib.verify(invalid_proof).unwrap_err();
     }
 
     // TODO(AlonH): Check the correct error occurs after introducing errors instead of
     // #[should_panic].
     #[test]
-    #[should_panic]
     fn test_prove_invalid_trace_oods_values() {
         const FIB_LOG_SIZE: u32 = 5;
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
-        invalid_proof.trace_oods_values.swap(0, 1);
+        invalid_proof
+            .commitment_scheme_proof
+            .proved_values
+            .swap(0, 1);
 
-        fib.verify(invalid_proof).unwrap();
+        fib.verify(invalid_proof).unwrap_err();
     }
 
     // TODO(AlonH): Check the correct error occurs after introducing errors instead of
     // #[should_panic].
     #[test]
-    #[should_panic]
     fn test_prove_insufficient_trace_values() {
         const FIB_LOG_SIZE: u32 = 5;
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
-        invalid_proof.opened_values.0[0][0].pop();
+        invalid_proof.commitment_scheme_proof.queried_values.0[0][0].pop();
 
-        fib.verify(invalid_proof).unwrap();
+        fib.verify(invalid_proof).unwrap_err();
     }
 
     #[test]

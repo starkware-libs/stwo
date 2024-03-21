@@ -9,8 +9,8 @@ use crate::core::ColumnVec;
 pub struct TreeVec<T>(pub Vec<T>);
 
 impl<T> TreeVec<T> {
-    pub fn new() -> TreeVec<T> {
-        TreeVec(Vec::new())
+    pub fn new(vec: Vec<T>) -> TreeVec<T> {
+        TreeVec(vec)
     }
     pub fn map<U, F: Fn(T) -> U>(self, f: F) -> TreeVec<U> {
         TreeVec(self.0.into_iter().map(f).collect())
