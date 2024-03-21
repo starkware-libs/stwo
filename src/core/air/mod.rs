@@ -97,7 +97,7 @@ pub trait Component<B: Backend> {
             .map(|(col_points, col)| {
                 col_points
                     .iter()
-                    .map(|point| col.eval_at_point(*point))
+                    .map(|point| B::eval_at_securefield_point(col, *point))
                     .collect()
             })
             .collect();
