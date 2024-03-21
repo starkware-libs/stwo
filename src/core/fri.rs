@@ -20,8 +20,9 @@ use super::poly::BitReversedOrder;
 // TODO(andrew): Create fri/ directory, move queries.rs there and split this file up.
 use super::queries::{Queries, SparseSubCircleDomain};
 use crate::commitment_scheme::hasher::Hasher;
-use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
-use crate::commitment_scheme::merkle_tree::MerkleTree;
+use crate::commitment_scheme::merkle_input::MerkleTreeInput;
+use crate::commitment_scheme::mixed_degree_decommitment::MixedDecommitment;
+use crate::commitment_scheme::mixed_degree_merkle_tree::MixedDegreeMerkleTree;
 use crate::core::backend::Column;
 use crate::core::circle::Coset;
 use crate::core::poly::line::LineDomain;
@@ -640,7 +641,7 @@ pub struct FriLayerProof<H: Hasher> {
     /// The subset stored corresponds to the set of evaluations the verifier doesn't have but needs
     /// to fold and verify the merkle decommitment.
     pub evals_subset: Vec<SecureField>,
-    pub decommitment: MerkleDecommitment<SecureField, H>,
+    pub decommitment: MixedDecommitment<SecureField, H>,
     pub commitment: H::Hash,
 }
 
@@ -676,26 +677,17 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
         let sparse_evaluation = self.extract_evaluation(&queries, &evals_at_queries)?;
 
         // TODO: When leaf values are removed from the decommitment, also remove this block.
+        // TODO: "proof_with_invalid_inner_layer_decommitment_fails_verification" is expecting this
+        //      block to throw, discuss removing it, then removing the block.
         {
-            let mut expected_decommitment_evals = Vec::new();
-
-            for leaf in decommitment.values() {
-                // Ensure each leaf is a single value.
-                if let [eval] = *leaf {
-                    expected_decommitment_evals.push(eval);
-                } else {
-                    return Err(FriVerificationError::InnerLayerCommitmentInvalid {
-                        layer: self.layer_index,
-                    });
-                }
-            }
+            let expected_decommitment_evals = &decommitment.queried_values;
 
             let actual_decommitment_evals = sparse_evaluation
                 .subline_evals
                 .iter()
                 .flat_map(|e| &e.values);
 
-            if !actual_decommitment_evals.eq(&expected_decommitment_evals) {
+            if !actual_decommitment_evals.eq(expected_decommitment_evals) {
                 return Err(FriVerificationError::InnerLayerCommitmentInvalid {
                     layer: self.layer_index,
                 });
@@ -714,7 +706,11 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
             })
             .collect::<Vec<usize>>();
 
-        if !decommitment.verify(commitment, &decommitment_positions) {
+        if !decommitment.verify(
+            commitment,
+            &[decommitment_positions],
+            decommitment.queried_values.iter().copied(),
+        ) {
             return Err(FriVerificationError::InnerLayerCommitmentInvalid {
                 layer: self.layer_index,
             });
@@ -796,15 +792,28 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
 // TODO(andrew): Support different step sizes.
 struct FriLayerProver<B: FriOps, H: Hasher> {
     evaluation: LineEvaluation<B, SecureField, BitReversedOrder>,
-    merkle_tree: MerkleTree<SecureField, H>,
+    merkle_tree: MixedDegreeMerkleTree<SecureField, H>,
 }
 
 impl<B: FriOps, H: Hasher<NativeType = u8>> FriLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B, SecureField, BitReversedOrder>) -> Self {
         // TODO(spapini): Commit on slice.
         // TODO(spapini): Merkle tree in backend.
-        let merkle_tree = MerkleTree::commit(vec![evaluation.values.to_vec()]);
-        #[allow(unreachable_code)]
+        let mut merkle_input = MerkleTreeInput::new();
+        let column = evaluation.values.to_vec();
+
+        // At depth 'injection_depth' every sack would fill exactly one hash block. e.g.
+        // 2^2 SecureField elements fit in one blake hash block, There are 2^(d-1)  hash 'sacks' at
+        // depth d, hence,  2^(d-1) = 2^n / 2^2, => d-1 = n-2 => d = n-1.
+        let log_n_elements_in_block = (H::BLOCK_SIZE * std::mem::size_of::<H::NativeType>()
+            / std::mem::size_of::<SecureField>())
+        .ilog2();
+        let injection_depth = column.len().ilog2() - (log_n_elements_in_block - 1);
+
+        merkle_input.insert_column(injection_depth as usize, &column);
+
+        let (merkle_tree, _) = MixedDegreeMerkleTree::commit_default(&merkle_input);
+
         FriLayerProver {
             evaluation,
             merkle_tree,
@@ -839,7 +848,21 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriLayerProver<B, H> {
         }
 
         let commitment = self.merkle_tree.root();
-        let decommitment = self.merkle_tree.generate_decommitment(decommit_positions);
+
+        // Rebuild the merkle input for now.
+        // TODO(Ohad): change after tree refactor. Consider removing the input struct and have the
+        //      decommitment take queries and columns only.
+        let mut merkle_input = MerkleTreeInput::new();
+        let column = self.evaluation.values.to_vec();
+        let log_n_elements_in_block = (H::BLOCK_SIZE * std::mem::size_of::<H::NativeType>()
+            / std::mem::size_of::<SecureField>())
+        .ilog2();
+        let injection_depth = column.len().ilog2() - (log_n_elements_in_block - 1);
+        merkle_input.insert_column(injection_depth as usize, &column);
+
+        let decommitment = self
+            .merkle_tree
+            .decommit(&merkle_input, &[decommit_positions]);
 
         FriLayerProof {
             evals_subset,
