@@ -19,14 +19,6 @@ pub fn prev_pow_two(n: usize) -> usize {
     2_usize.pow(log2_floor(n) as u32)
 }
 
-/// Get the ceiling value of an unsigned integer division.
-// TODO(Ohad): Consider removing assertion.
-#[inline]
-pub fn usize_div_ceil(a: usize, b: usize) -> usize {
-    assert_ne!(b, 0, "Attempt division by 0!");
-    (a + b - 1) / b
-}
-
 #[inline]
 pub fn usize_safe_div(a: usize, b: usize) -> usize {
     assert_ne!(b, 0, "Attempt division by 0!");
@@ -47,7 +39,7 @@ pub fn egcd(x: isize, y: isize) -> (isize, isize, isize) {
 
 #[cfg(test)]
 mod tests {
-    use crate::math::utils::{egcd, log2_ceil, log2_floor, prev_pow_two, usize_div_ceil};
+    use crate::math::utils::{egcd, log2_ceil, log2_floor, prev_pow_two};
 
     #[test]
     fn log2_ceil_test() {
@@ -70,18 +62,6 @@ mod tests {
         assert_eq!(prev_pow_two(1), 1);
         assert_eq!(prev_pow_two(2), 2);
         assert_eq!(prev_pow_two(3), 2);
-    }
-
-    #[test]
-    fn div_ceil_test() {
-        assert_eq!(usize_div_ceil(6, 4), 2);
-        assert_eq!(usize_div_ceil(6, 3), 2);
-    }
-
-    #[test]
-    #[should_panic(expected = "Attempt division by 0!")]
-    fn div_ceil_by_zero_test() {
-        usize_div_ceil(6, 0);
     }
 
     #[test]
