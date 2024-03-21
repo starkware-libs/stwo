@@ -100,6 +100,7 @@ type LineDomainIterator =
 
 /// A univariate polynomial defined on a [LineDomain].
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LinePoly<F> {
     /// Coefficients of the polynomial in [line_ifft] algorithm's basis.
     ///

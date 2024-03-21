@@ -620,6 +620,14 @@ impl LinePolyDegreeBound {
 
 /// A FRI proof.
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound(
+        deserialize = "<H as Hasher>::Hash: serde::Deserialize<'de>",
+        serialize = "<H as Hasher>::Hash: serde::Serialize"
+    ))
+)]
 pub struct FriProof<H: Hasher> {
     pub inner_layers: Vec<FriLayerProof<H>>,
     pub last_layer_poly: LinePoly<SecureField>,
@@ -636,6 +644,14 @@ pub const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound(
+        deserialize = "<H as Hasher>::Hash: serde::Deserialize<'de>",
+        serialize = "<H as Hasher>::Hash: serde::Serialize"
+    ))
+)]
 pub struct FriLayerProof<H: Hasher> {
     /// The subset stored corresponds to the set of evaluations the verifier doesn't have but needs
     /// to fold and verify the merkle decommitment.

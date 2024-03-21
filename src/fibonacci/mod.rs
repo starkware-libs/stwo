@@ -15,6 +15,7 @@ use crate::core::prover::{prove, verify, ProvingError, StarkProof, VerificationE
 pub mod air;
 mod component;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Fibonacci {
     pub air: FibonacciAir,
 }

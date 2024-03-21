@@ -5,6 +5,7 @@ use crate::core::air::{Air, Component};
 use crate::core::backend::CPUBackend;
 use crate::core::fields::m31::BaseField;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FibonacciAir {
     pub component: FibonacciComponent,
 }

@@ -12,6 +12,7 @@ pub struct ProofOfWork {
 }
 
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ProofOfWorkProof {
     pub nonce: u64,
 }

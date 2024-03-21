@@ -14,6 +14,7 @@ use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FibonacciComponent {
     pub log_size: u32,
     pub claim: BaseField,

@@ -5,6 +5,7 @@ use blake2::{Blake2s256, Blake2sVar, Digest};
 
 // Wrapper for the blake2s hash type.
 #[derive(Clone, Copy, PartialEq, Default, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Blake2sHash([u8; 32]);
 
 impl From<Blake2sHash> for Vec<u8> {

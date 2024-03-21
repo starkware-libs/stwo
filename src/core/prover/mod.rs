@@ -29,12 +29,14 @@ pub const PROOF_OF_WORK_BITS: u32 = 12;
 pub const N_QUERIES: usize = 3;
 
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StarkProof {
     pub commitments: TreeVec<<MerkleHasher as Hasher>::Hash>,
     pub commitment_scheme_proof: CommitmentSchemeProof,
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AdditionalProofData {
     pub composition_polynomial_oods_value: SecureField,
     pub composition_polynomial_random_coeff: SecureField,
