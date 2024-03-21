@@ -83,7 +83,10 @@ impl AVX512Backend {
 
     // Generates twiddle steps for efficiently computing the twiddles.
     // steps[i] = t_i/(t_0*t_1*...*t_i-1).
-    fn twiddle_steps<F: Field>(mappings: &[F]) -> Vec<F> {
+    fn twiddle_steps<F: Field>(mappings: &[F]) -> Vec<F>
+    where
+        F: FieldExpOps,
+    {
         let mut denominators: Vec<F> = vec![mappings[0]];
 
         for i in 1..mappings.len() {
@@ -91,7 +94,8 @@ impl AVX512Backend {
         }
 
         // TODO(Ohad): batch inverse.
-        let denom_inverses = denominators.iter().map(|d| d.inverse()).collect::<Vec<F>>();
+        let mut denom_inverses = vec![F::zero(); denominators.len()];
+        F::batch_inverse(&denominators, &mut denom_inverses);
 
         let mut steps = vec![mappings[0]];
 
