@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use super::commitment_scheme::{CommitmentSchemeProof, TreeVec};
 use super::fri::FriVerificationError;
-use super::poly::circle::MAX_CIRCLE_DOMAIN_LOG_SIZE;
+use super::poly::circle::{SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
@@ -16,7 +16,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::poly::circle::{combine_secure_value, CircleEvaluation};
+use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
 use crate::core::ComponentVec;
 
@@ -158,7 +158,7 @@ fn opened_values_to_mask(
     air: &impl Air<CPUBackend>,
     mut opened_values: TreeVec<ColumnVec<Vec<SecureField>>>,
 ) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), ()> {
-    let composition_oods_values = combine_secure_value(
+    let composition_oods_values = SecureCirclePoly::eval_from_partial_evals(
         opened_values
             .pop()
             .unwrap()
