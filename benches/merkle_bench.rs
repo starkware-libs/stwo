@@ -2,13 +2,15 @@
 use blake2::{Blake2s256, Digest};
 use criterion::measurement::WallTime;
 use criterion::{
-    criterion_group, criterion_main, BatchSize, BenchmarkGroup, BenchmarkId, Criterion, Throughput,
+    black_box, criterion_group, criterion_main, BatchSize, BenchmarkGroup, BenchmarkId, Criterion,
+    Throughput,
 };
 use stwo::commitment_scheme::blake2_hash::Blake2sHasher;
 use stwo::commitment_scheme::blake3_hash::Blake3Hasher;
 use stwo::commitment_scheme::hasher::{Hasher, Name};
 use stwo::commitment_scheme::merkle_tree::MerkleTree;
 use stwo::core::fields::m31::M31;
+use stwo::core::fields::IntoSlice;
 
 static N_BYTES_U32: usize = 4;
 
@@ -16,24 +18,28 @@ fn prepare_element_vector(size: usize) -> Vec<M31> {
     (0..size as u32).map(M31::from_u32_unchecked).collect()
 }
 
-fn merkle_bench<T: Hasher>(group: &mut BenchmarkGroup<'_, WallTime>, elems: &[M31]) {
+fn merkle_bench<H: Hasher>(group: &mut BenchmarkGroup<'_, WallTime>, elems: &[M31])
+where
+    M31: IntoSlice<<H as Hasher>::NativeType>,
+{
     let size = elems.len();
-    let elems = elems.to_vec();
+    const LOG_N_COLS: usize = 7;
+    let cols: Vec<_> = elems
+        .chunks(size >> LOG_N_COLS)
+        .map(|chunk| chunk.to_vec())
+        .collect();
+    assert_eq!(cols.len(), 1 << LOG_N_COLS);
     group.sample_size(10);
     group.throughput(Throughput::Bytes((size * N_BYTES_U32) as u64));
-    group.bench_with_input(
-        BenchmarkId::new(T::Hash::NAME, size),
-        &size,
-        |b: &mut criterion::Bencher<'_>, &_size| {
-            b.iter_batched(
-                || -> Vec<M31> { elems.clone() },
-                |elems| {
-                    MerkleTree::<M31, Blake3Hasher>::commit(vec![elems]);
-                },
-                BatchSize::LargeInput,
-            )
-        },
-    );
+    group.bench_function(BenchmarkId::new(H::Hash::NAME, size), |b| {
+        b.iter_batched(
+            || cols.clone(),
+            |cols| {
+                black_box(MerkleTree::<M31, H>::commit(black_box(cols)));
+            },
+            BatchSize::LargeInput,
+        )
+    });
 }
 
 fn merkle_blake3_benchmark(c: &mut Criterion) {
