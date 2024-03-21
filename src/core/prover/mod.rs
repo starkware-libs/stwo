@@ -97,7 +97,7 @@ pub fn prove(
     // values. This is a sanity check.
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) =
-        opened_values_to_mask(air, commitment_scheme_proof.proved_values.clone()).unwrap();
+        proved_values_to_mask(air, commitment_scheme_proof.proved_values.clone()).unwrap();
 
     if composition_oods_value
         != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
@@ -142,8 +142,8 @@ pub fn verify(
 
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) =
-        opened_values_to_mask(air, proof.commitment_scheme_proof.proved_values.clone())
-            .map_err(|_| VerificationError::InvalidStructure)?;
+        proved_values_to_mask(air, proof.commitment_scheme_proof.proved_values.clone())
+            .map_err(|_| VerificationError::InvalidStructure("Proved values".to_string()))?;
 
     if composition_oods_value
         != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
@@ -154,7 +154,7 @@ pub fn verify(
     commitment_scheme.verify_values(open_points, proof.commitment_scheme_proof, channel)
 }
 
-fn opened_values_to_mask(
+fn proved_values_to_mask(
     air: &impl Air<CPUBackend>,
     mut opened_values: TreeVec<ColumnVec<Vec<SecureField>>>,
 ) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), ()> {
@@ -198,10 +198,10 @@ pub enum ProvingError {
     ConstraintsNotSatisfied,
 }
 
-#[derive(Clone, Copy, Debug, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum VerificationError {
-    #[error("Proof has invalid structure.")]
-    InvalidStructure,
+    #[error("Proof has invalid structure: {0}.")]
+    InvalidStructure(String),
     #[error("Merkle verification failed.")]
     MerkleVerificationFailed,
     #[error(
