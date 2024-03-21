@@ -119,6 +119,7 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
+    use crate::core::prover::VerificationError;
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
     use crate::{m31, qm31};
@@ -208,11 +209,10 @@ mod tests {
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.commitment_scheme_proof.queried_values.0[0][0][4] += BaseField::one();
 
-        fib.verify(invalid_proof).unwrap_err();
+        let error = fib.verify(invalid_proof).unwrap_err();
+        assert!(matches!(error, VerificationError::Fri(_)));
     }
 
-    // TODO(AlonH): Check the correct error occurs after introducing errors instead of
-    // #[should_panic].
     #[test]
     fn test_prove_invalid_trace_oods_values() {
         const FIB_LOG_SIZE: u32 = 5;
@@ -224,11 +224,11 @@ mod tests {
             .proved_values
             .swap(0, 1);
 
-        fib.verify(invalid_proof).unwrap_err();
+        let error = fib.verify(invalid_proof).unwrap_err();
+        assert!(matches!(error, VerificationError::InvalidStructure(_)));
+        assert!(error.to_string().contains("Proved values"));
     }
 
-    // TODO(AlonH): Check the correct error occurs after introducing errors instead of
-    // #[should_panic].
     #[test]
     fn test_prove_insufficient_trace_values() {
         const FIB_LOG_SIZE: u32 = 5;
@@ -237,7 +237,11 @@ mod tests {
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.commitment_scheme_proof.queried_values.0[0][0].pop();
 
-        fib.verify(invalid_proof).unwrap_err();
+        let error = fib.verify(invalid_proof).unwrap_err();
+        assert!(matches!(error, VerificationError::InvalidStructure(_)));
+        assert!(error
+            .to_string()
+            .contains("Insufficient number of queried values"));
     }
 
     #[test]
