@@ -97,7 +97,7 @@ pub fn prove(
     // values. This is a sanity check.
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) =
-        opened_values_to_mask(air, commitment_scheme_proof.proved_values.clone()).unwrap();
+        proved_values_to_mask(air, commitment_scheme_proof.proved_values.clone()).unwrap();
 
     if composition_oods_value
         != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
@@ -141,9 +141,13 @@ pub fn verify(
     open_points.push(vec![vec![oods_point]; 4]);
 
     // TODO(spapini): Save clone.
-    let (trace_oods_values, composition_oods_value) =
-        opened_values_to_mask(air, proof.commitment_scheme_proof.proved_values.clone())
-            .map_err(|_| VerificationError::InvalidStructure)?;
+    let (trace_oods_values, composition_oods_value) = proved_values_to_mask(
+        air,
+        proof.commitment_scheme_proof.proved_values.clone(),
+    )
+    .map_err(|_| {
+        VerificationError::InvalidStructure("Unexpected proved values structure".to_string())
+    })?;
 
     if composition_oods_value
         != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
@@ -154,14 +158,15 @@ pub fn verify(
     commitment_scheme.verify_values(open_points, proof.commitment_scheme_proof, channel)
 }
 
-fn opened_values_to_mask(
+/// Structures the tree-wise proved values into component-wise OODS values and a composition
+/// polynomial OODS value.
+fn proved_values_to_mask(
     air: &impl Air<CPUBackend>,
-    mut opened_values: TreeVec<ColumnVec<Vec<SecureField>>>,
+    mut proved_values: TreeVec<ColumnVec<Vec<SecureField>>>,
 ) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), ()> {
-    let composition_oods_values = SecureCirclePoly::eval_from_partial_evals(
-        opened_values
-            .pop()
-            .unwrap()
+    let composition_partial_proved_values = proved_values.pop().ok_or(())?;
+    let composition_oods_value = SecureCirclePoly::eval_from_partial_evals(
+        composition_partial_proved_values
             .iter()
             .flatten()
             .cloned()
@@ -171,7 +176,7 @@ fn opened_values_to_mask(
     );
 
     // Retrieved open mask values for each component.
-    let flat_trace_values = &mut opened_values.pop().unwrap().into_iter();
+    let flat_trace_values = &mut proved_values.pop().ok_or(())?.into_iter();
     let trace_oods_values = ComponentVec(
         air.components()
             .iter()
@@ -179,7 +184,7 @@ fn opened_values_to_mask(
             .collect(),
     );
 
-    Ok((trace_oods_values, composition_oods_values))
+    Ok((trace_oods_values, composition_oods_value))
 }
 
 #[derive(Clone, Copy, Debug, Error)]
@@ -198,10 +203,10 @@ pub enum ProvingError {
     ConstraintsNotSatisfied,
 }
 
-#[derive(Clone, Copy, Debug, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum VerificationError {
-    #[error("Proof has invalid structure.")]
-    InvalidStructure,
+    #[error("Proof has invalid structure: {0}.")]
+    InvalidStructure(String),
     #[error("Merkle verification failed.")]
     MerkleVerificationFailed,
     #[error(
