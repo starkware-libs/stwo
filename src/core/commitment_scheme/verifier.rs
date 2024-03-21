@@ -70,8 +70,7 @@ impl CommitmentSchemeVerifier {
 
         // FRI commitment phase on OODS quotients.
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-        let mut fri_verifier =
-            FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
+        let mut fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds)?;
 
         // Verify proof of work.
         ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work)?;
@@ -148,7 +147,9 @@ fn eval_quotients_on_sparse_domain(
             .map(|subdomain| {
                 let values = queried_values.take(1 << subdomain.log_size).collect_vec();
                 if values.len() != 1 << subdomain.log_size {
-                    return Err(VerificationError::InvalidStructure);
+                    return Err(VerificationError::InvalidStructure(
+                        "Insufficient number of queried values".to_string(),
+                    ));
                 }
                 let subeval =
                     CircleEvaluation::new(subdomain.to_circle_domain(&commitment_domain), values);
@@ -156,10 +157,12 @@ fn eval_quotients_on_sparse_domain(
             })
             .collect::<Result<_, _>>()?,
     );
-    assert!(
-        queried_values.is_empty(),
-        "Not all queried values were used"
-    );
+    if !queried_values.is_empty() {
+        return Err(VerificationError::InvalidStructure(
+            "Too many queried values".to_string(),
+        ));
+    }
+
     Ok(res)
 }
 
