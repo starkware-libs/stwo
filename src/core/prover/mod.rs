@@ -219,7 +219,7 @@ pub enum VerificationError {
 mod tests {
     use num_traits::Zero;
 
-    use crate::core::air::evaluation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
+    use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
     use crate::core::air::{Air, Component, ComponentTrace, Mask};
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::backend::CPUBackend;
