@@ -1,4 +1,3 @@
-// use std::hint::black_box;
 use std::iter::zip;
 
 use bytemuck::Zeroable;
@@ -216,10 +215,8 @@ impl MleOps<SecureField> for AVX512Backend {
 
             // `= eq(0, assignment) * lhs + eq(1, assignment) * rhs`
             let PackedQM31([PackedCM31([c0, c1]), PackedCM31([c2, c3])]) =
-            // assignment * (rhs_eval - lhs_eval);
                 assignment * (rhs_eval - lhs_eval) + lhs_eval;
 
-            // TODO: do in place
             col0[i] = c0;
             col1[i] = c1;
             col2[i] = c2;

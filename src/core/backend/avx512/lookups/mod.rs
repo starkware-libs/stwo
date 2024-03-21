@@ -107,8 +107,6 @@ impl FromIterator<SecureField> for SecureColumn<AVX512Backend> {
             col3.push(PackedBaseField::from_array(v3));
         }
 
-        println!("length: {length}");
-
         SecureColumn {
             cols: [
                 BaseFieldVec { data: col0, length },

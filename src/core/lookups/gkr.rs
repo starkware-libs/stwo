@@ -29,6 +29,8 @@ pub trait GkrLayer: Sized {
     type SumcheckOracle<'a>: GkrSumcheckOracle<Backend = Self::Backend>;
 
     /// Generates the next GKR layer from the current one.
+    ///
+    /// Returns [`None`] if the current layer is the output layer.
     fn next(&self) -> Option<Self>;
 
     /// Create an oracle for sumcheck
@@ -214,6 +216,9 @@ pub fn prove<B: LogupOps + GrandProductOps>(
     let mut layers = layers.into_iter().rev();
     println!("building layers took: {:?}", now.elapsed());
 
+    // discard the output layer
+    _ = layers.next();
+
     let now = Instant::now();
     let output_layer = layers.next().unwrap().into_trace();
     output_layer
@@ -226,7 +231,9 @@ pub fn prove<B: LogupOps + GrandProductOps>(
     let layer_proofs = layers
         .map(|layer| {
             let lambda = channel.draw_felt();
+            let now = Instant::now();
             let eq_evals = B::gen_eq_evals(&layer_assignment[1..]);
+            println!("gen eq took {:?}", now.elapsed());
             let sumcheck_oracle = layer.into_sumcheck_oracle(lambda, &layer_assignment, &eq_evals);
             let sumcheck_claim = horner_eval(&layer_evals, lambda);
             let (sumcheck_proof, sumcheck_assignment, oracle) =
@@ -381,6 +388,7 @@ pub trait BinaryTreeCircuit {
 
 #[cfg(test)]
 mod tests {
+    use std::array;
     use std::iter::{repeat, zip};
     use std::time::Instant;
 
@@ -388,17 +396,30 @@ mod tests {
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::backend::avx512::AVX512Backend;
     use crate::core::backend::cpu::CpuMle;
+    use crate::core::backend::CPUBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::lookups::gkr::GkrVerificationArtifact;
+    use crate::core::lookups::gkr::{GkrOps, GkrVerificationArtifact};
     use crate::core::lookups::grand_product::GrandProductTrace;
     use crate::core::lookups::logup::{Fraction, LogupTrace};
-    use crate::core::lookups::mle::Mle;
+    use crate::core::lookups::mle::{ColumnV2, Mle};
+
+    #[test]
+    fn avx_eq_evals_matches_cpu_eq_evals() {
+        const LOG_SIZE: usize = 6;
+        let mut rng = test_channel();
+        let assignment: [SecureField; LOG_SIZE] = array::from_fn(|_| rng.draw_felt());
+        let cpu_evals = CPUBackend::gen_eq_evals(&assignment);
+
+        let avx_evals = AVX512Backend::gen_eq_evals(&assignment);
+
+        assert_eq!(avx_evals.to_vec(), cpu_evals);
+    }
 
     #[test]
     fn cpu_grand_product_works() -> Result<(), GkrError> {
-        const N: usize = 1 << 24;
+        const N: usize = 1 << 3;
         let values = test_channel().draw_felts(N);
         let product = values.iter().product();
         let top_layer =
@@ -424,7 +445,7 @@ mod tests {
 
     #[test]
     fn avx_grand_product_works() -> Result<(), GkrError> {
-        const N: usize = 1 << 24;
+        const N: usize = 1 << 3;
         let values = test_channel().draw_felts(N);
         let product = values.iter().product();
         let top_layer = GrandProductTrace::new(Mle::<AVX512Backend, SecureField>::new(

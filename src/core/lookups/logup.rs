@@ -57,7 +57,7 @@ impl<B: LogupOps> GkrLayer for LogupTrace<B> {
     type SumcheckOracle<'a> = LogupOracle<'a, B>;
 
     fn next(&self) -> Option<Self> {
-        if self.len() == 2 {
+        if self.len() == 1 {
             return None;
         }
 

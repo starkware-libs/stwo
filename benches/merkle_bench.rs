@@ -38,7 +38,7 @@ fn merkle_bench<T: Hasher>(group: &mut BenchmarkGroup<'_, WallTime>, elems: &[M3
 
 fn merkle_blake3_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("Blake3_Tree");
-    for exp in 15u32..20u32 {
+    for exp in 28u32..29u32 {
         // Set Up.
         let elems: Vec<M31> = prepare_element_vector(2usize.pow(exp));
 
@@ -48,7 +48,7 @@ fn merkle_blake3_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
-fn merkle_blake2s_benchmark(c: &mut Criterion) {
+fn _merkle_blake2s_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("Blake2s_Tree");
     for exp in 15u32..20u32 {
         // Set up.
@@ -64,7 +64,7 @@ fn merkle_blake2s_benchmark(c: &mut Criterion) {
 // Compare Blake2s256 w. Blake3.
 fn compare_blakes(c: &mut Criterion) {
     let mut group = c.benchmark_group("Comparison of hashing algorithms and caching overhead");
-    for exp in 15u32..20u32 {
+    for exp in 28..29u32 {
         // Set up.
         let size = 2usize.pow(exp);
         let elems: Vec<M31> = (0..(size as u32)).map(M31::from_u32_unchecked).collect();
@@ -97,7 +97,7 @@ fn single_blake3_hash_benchmark(c: &mut Criterion) {
 
 criterion_group!(
     merkle_benches,
-    merkle_blake2s_benchmark,
+    // merkle_blake2s_benchmark,
     merkle_blake3_benchmark,
 );
 
@@ -109,4 +109,4 @@ criterion_group!(
     single_blake3_hash_benchmark,
 );
 
-criterion_main!(comparisons);
+criterion_main!(merkle_benches);

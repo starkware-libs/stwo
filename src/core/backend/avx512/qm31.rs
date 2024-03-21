@@ -5,7 +5,7 @@ use bytemuck::Zeroable;
 use super::cm31::PackedCM31;
 use super::m31::K_BLOCK_SIZE;
 use super::PackedBaseField;
-use crate::core::fields::qm31::QM31;
+use crate::core::fields::qm31::{SecureField, QM31};
 
 /// AVX implementation for an extension of CM31.
 /// See [crate::core::fields::qm31::QM31] for more information.
@@ -22,6 +22,21 @@ impl PackedQM31 {
     }
     pub fn to_array(&self) -> [QM31; K_BLOCK_SIZE] {
         std::array::from_fn(|i| QM31(self.a().to_array()[i], self.b().to_array()[i]))
+    }
+
+    pub fn broadcast(v: SecureField) -> Self {
+        let [v0, v1, v2, v3] = v.to_m31_array();
+
+        Self([
+            PackedCM31([
+                PackedBaseField::broadcast(v0),
+                PackedBaseField::broadcast(v1),
+            ]),
+            PackedCM31([
+                PackedBaseField::broadcast(v2),
+                PackedBaseField::broadcast(v3),
+            ]),
+        ])
     }
 
     pub fn double(self) -> Self {

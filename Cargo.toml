@@ -49,7 +49,7 @@ lto = true
 name = "bit_rev"
 harness = false
 
-[[target.'cfg(windows)'.bench]]
+[[bench]]
 name = "fft"
 harness = false
 

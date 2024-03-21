@@ -57,20 +57,22 @@ pub fn prove<O: SumcheckOracle>(
     let mut round_oracle = oracle;
     let mut round_claim = claim;
 
+    let round_now = Instant::now();
     for _round in 0..round_oracle.num_variables() {
-        let now = Instant::now();
+        // let now = Instant::now();
         let round_polynomial = round_oracle.univariate_sum(round_claim);
-        println!("univariate sum took {:?}", now.elapsed());
+        // println!("univariate sum took {:?}", now.elapsed());
         channel.mix_felts(&round_polynomial);
 
         let challenge = channel.draw_felt();
-        let now = Instant::now();
+        // let now = Instant::now();
         round_oracle = round_oracle.fix_first(challenge);
-        println!("fixing took {:?}", now.elapsed());
+        // println!("fixing took {:?}", now.elapsed());
         round_claim = round_polynomial.eval(challenge);
         round_polynomials.push(round_polynomial);
         challenges.push(challenge);
     }
+    println!("- Rounds took {:?}", round_now.elapsed());
 
     let proof = SumcheckProof { round_polynomials };
 
@@ -153,10 +155,10 @@ pub struct SumcheckProof {
 // /// implementation. [`None`] is passed to `numerators` for [`LogupTrace::Singles`] - the
 // /// idea is that the compiler will inline the function and flatten the `numerator` match
 // /// blocks that occur in the inner loop.
-// struct UnivariateEvals {
-//     eval_at_0: SecureField,
-//     eval_at_2: SecureField,
-// }
+pub struct UnivariateEvals {
+    pub eval_at_0: SecureField,
+    pub eval_at_2: SecureField,
+}
 
 #[cfg(test)]
 mod tests {
@@ -179,12 +181,13 @@ mod tests {
 
     #[test]
     fn cpu_sumcheck_works() {
-        const SIZE: usize = 1 << 24;
+        const SIZE: usize = 1 << 26;
         let values = test_channel().draw_felts(SIZE);
         let claim = values.iter().copied().sum::<SecureField>();
         let mle = CpuMle::<SecureField>::new(values.into_iter().collect());
+        let cloned_mle = mle.clone();
         let now = Instant::now();
-        let (proof, ..) = prove(claim, mle.clone(), &mut test_channel());
+        let (proof, ..) = prove(claim, cloned_mle, &mut test_channel());
         println!("CPU gen: {:?}", now.elapsed());
 
         let (assignment, eval) = partially_verify(claim, &proof, &mut test_channel()).unwrap();
@@ -194,12 +197,15 @@ mod tests {
 
     #[test]
     fn avx_sumcheck_works() {
-        const SIZE: usize = 1 << 24;
+        const SIZE: usize = 1 << 26;
         let values = test_channel().draw_felts(SIZE);
         let claim = values.iter().copied().sum::<SecureField>();
         let mle = Mle::<AVX512Backend, SecureField>::new(values.into_iter().collect());
         let now = Instant::now();
-        let (proof, ..) = prove(claim, mle.clone(), &mut test_channel());
+        let cloned_mle = mle.clone();
+        println!("Clone takes: {:?}", now.elapsed());
+        let now = Instant::now();
+        let (proof, ..) = prove(claim, cloned_mle, &mut test_channel());
         println!("AVX gen: {:?}", now.elapsed());
 
         let (assignment, eval) = partially_verify(claim, &proof, &mut test_channel()).unwrap();
