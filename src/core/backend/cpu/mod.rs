@@ -54,7 +54,6 @@ pub type CPULineEvaluation<F, EvalOrder> = LineEvaluation<CPUBackend, F, EvalOrd
 mod tests {
     use itertools::Itertools;
     use rand::prelude::*;
-    use rand::rngs::SmallRng;
 
     use crate::core::backend::{CPUBackend, Column, FieldOps};
     use crate::core::fields::qm31::QM31;

@@ -37,7 +37,7 @@ impl FriOps for CPUBackend {
 
         LineEvaluation::new(domain.double(), folded_values)
     }
-    fn fold_circle_into_line<F: Field>(
+    fn fold_circle_into_line<F>(
         dst: &mut LineEvaluation<Self, SecureField, BitReversedOrder>,
         src: &CircleEvaluation<Self, F, BitReversedOrder>,
         alpha: SecureField,

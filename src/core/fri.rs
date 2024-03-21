@@ -99,7 +99,7 @@ pub trait FriOps: FieldOps<SecureField> + Sized {
     /// Panics if `src` is not double the length of `dst`.
     // TODO(andrew): Make folding factor generic.
     // TODO(andrew): Fold directly into FRI layer to prevent allocation.
-    fn fold_circle_into_line<F: Field>(
+    fn fold_circle_into_line<F>(
         dst: &mut LineEvaluation<Self, SecureField, BitReversedOrder>,
         src: &CircleEvaluation<Self, F, BitReversedOrder>,
         alpha: SecureField,
@@ -748,7 +748,7 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
         let mut all_subline_evals = Vec::new();
 
         // Group queries by the subline they reside in.
-        for subline_queries in queries.group_by(|a, b| a >> FOLD_STEP == b >> FOLD_STEP) {
+        for subline_queries in queries.chunk_by(|a, b| a >> FOLD_STEP == b >> FOLD_STEP) {
             let subline_start = (subline_queries[0] >> FOLD_STEP) << FOLD_STEP;
             let subline_end = subline_start + (1 << FOLD_STEP);
 
@@ -818,7 +818,7 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriLayerProver<B, H> {
 
         // Group queries by the subline they reside in.
         // TODO(andrew): Explain what a "subline" is at the top of the module.
-        for query_group in queries.group_by(|a, b| a >> FOLD_STEP == b >> FOLD_STEP) {
+        for query_group in queries.chunk_by(|a, b| a >> FOLD_STEP == b >> FOLD_STEP) {
             let subline_start = (query_group[0] >> FOLD_STEP) << FOLD_STEP;
             let subline_end = subline_start + (1 << FOLD_STEP);
 

@@ -1,13 +1,12 @@
 #![feature(
     array_chunks,
-    iter_array_chunks,
     exact_size_is_empty,
-    is_sorted,
-    new_uninit,
-    slice_group_by,
-    stdsimd,
     get_many_mut,
-    int_roundings
+    int_roundings,
+    is_sorted,
+    iter_array_chunks,
+    new_uninit,
+    stdarch_x86_avx512
 )]
 pub mod commitment_scheme;
 pub mod core;

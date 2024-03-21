@@ -172,7 +172,6 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::*;
-    use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::{M31, P};
     use crate::qm31;
