@@ -82,22 +82,22 @@ pub fn prove(
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
-    // Open mask values at oods points.
-    let open_points = air.mask_points(oods_point);
+    // Get mask sample points relative to oods point.
+    let sample_points = air.mask_points(oods_point);
 
     // TODO(spapini): Change when we support multiple interactions.
     // First tree - trace.
-    let mut open_points = TreeVec::new(vec![open_points.flatten()]);
+    let mut sample_points = TreeVec::new(vec![sample_points.flatten()]);
     // Second tree - composition polynomial.
-    open_points.push(vec![vec![oods_point]; 4]);
+    sample_points.push(vec![vec![oods_point]; 4]);
 
-    let commitment_scheme_proof = commitment_scheme.prove_values(open_points, channel);
+    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
 
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) =
-        opened_values_to_mask(air, commitment_scheme_proof.sampled_values.clone()).unwrap();
+        sampled_values_to_mask(air, commitment_scheme_proof.sampled_values.clone()).unwrap();
 
     if composition_oods_value
         != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
@@ -131,19 +131,23 @@ pub fn verify(
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
-    // Open mask values at oods points.
-    let open_points = air.mask_points(oods_point);
+    // Get mask sample points relative to oods point.
+    let trace_sample_points = air.mask_points(oods_point);
 
     // TODO(spapini): Change when we support multiple interactions.
     // First tree - trace.
-    let mut open_points = TreeVec::new(vec![open_points.flatten()]);
+    let mut sample_points = TreeVec::new(vec![trace_sample_points.flatten()]);
     // Second tree - composition polynomial.
-    open_points.push(vec![vec![oods_point]; 4]);
+    sample_points.push(vec![vec![oods_point]; 4]);
 
     // TODO(spapini): Save clone.
-    let (trace_oods_values, composition_oods_value) =
-        opened_values_to_mask(air, proof.commitment_scheme_proof.sampled_values.clone())
-            .map_err(|_| VerificationError::InvalidStructure)?;
+    let (trace_oods_values, composition_oods_value) = sampled_values_to_mask(
+        air,
+        proof.commitment_scheme_proof.sampled_values.clone(),
+    )
+    .map_err(|_| {
+        VerificationError::InvalidStructure("Unexpected sampled_values structure".to_string())
+    })?;
 
     if composition_oods_value
         != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
@@ -151,17 +155,18 @@ pub fn verify(
         return Err(VerificationError::OodsNotMatching);
     }
 
-    commitment_scheme.verify_values(open_points, proof.commitment_scheme_proof, channel)
+    commitment_scheme.verify_values(sample_points, proof.commitment_scheme_proof, channel)
 }
 
-fn opened_values_to_mask(
+/// Structures the tree-wise sampled values into component-wise OODS values and a composition
+/// polynomial OODS value.
+fn sampled_values_to_mask(
     air: &impl Air<CPUBackend>,
-    mut opened_values: TreeVec<ColumnVec<Vec<SecureField>>>,
+    mut sampled_values: TreeVec<ColumnVec<Vec<SecureField>>>,
 ) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), ()> {
-    let composition_oods_values = SecureCirclePoly::eval_from_partial_evals(
-        opened_values
-            .pop()
-            .unwrap()
+    let composition_partial_sampled_values = sampled_values.pop().ok_or(())?;
+    let composition_oods_value = SecureCirclePoly::eval_from_partial_evals(
+        composition_partial_sampled_values
             .iter()
             .flatten()
             .cloned()
@@ -170,8 +175,8 @@ fn opened_values_to_mask(
             .map_err(|_| ())?,
     );
 
-    // Retrieved open mask values for each component.
-    let flat_trace_values = &mut opened_values.pop().unwrap().into_iter();
+    // Retrieve sampled mask values for each component.
+    let flat_trace_values = &mut sampled_values.pop().ok_or(())?.into_iter();
     let trace_oods_values = ComponentVec(
         air.components()
             .iter()
@@ -179,7 +184,7 @@ fn opened_values_to_mask(
             .collect(),
     );
 
-    Ok((trace_oods_values, composition_oods_values))
+    Ok((trace_oods_values, composition_oods_value))
 }
 
 #[derive(Clone, Copy, Debug, Error)]
@@ -198,10 +203,10 @@ pub enum ProvingError {
     ConstraintsNotSatisfied,
 }
 
-#[derive(Clone, Copy, Debug, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum VerificationError {
-    #[error("Proof has invalid structure.")]
-    InvalidStructure,
+    #[error("Proof has invalid structure: {0}.")]
+    InvalidStructure(String),
     #[error("Merkle verification failed.")]
     MerkleVerificationFailed,
     #[error(

@@ -124,9 +124,11 @@ pub fn fri_answers_for_log_size(
 ) -> Result<SparseCircleEvaluation<SecureField>, VerificationError> {
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
     let batched_samples = ColumnSampleBatch::new(samples);
-    for x in queried_values_per_column {
-        if x.len() != query_domain.flatten().len() {
-            return Err(VerificationError::InvalidStructure);
+    for queried_values in queried_values_per_column {
+        if queried_values.len() != query_domain.flatten().len() {
+            return Err(VerificationError::InvalidStructure(
+                "Insufficient number of queried values".to_string(),
+            ));
         }
     }
     let mut queried_values_per_column = queried_values_per_column
@@ -164,7 +166,9 @@ pub fn fri_answers_for_log_size(
 
     let res = SparseCircleEvaluation::new(evals);
     if !queried_values_per_column.iter().all(|x| x.is_empty()) {
-        return Err(VerificationError::InvalidStructure);
+        return Err(VerificationError::InvalidStructure(
+            "Too many queried values".to_string(),
+        ));
     }
     Ok(res)
 }
