@@ -41,10 +41,9 @@ pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
     fn batch_inverse(column: &[Self], dst: &mut [Self]) {
         const WIDTH: usize = 4;
         let n = column.len();
-        debug_assert!(n.is_power_of_two());
         debug_assert!(dst.len() >= n);
 
-        if n <= WIDTH {
+        if n <= WIDTH || n % WIDTH != 0 {
             batch_inverse_classic(column, dst);
             return;
         }
@@ -75,8 +74,7 @@ pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
 /// Assumes dst is initialized and of the same length as column.
 fn batch_inverse_classic<T: FieldExpOps>(column: &[T], dst: &mut [T]) {
     let n = column.len();
-    debug_assert!(n.is_power_of_two());
-    debug_assert_eq!(dst.len(), n);
+    debug_assert!(dst.len() >= n);
 
     dst[0] = column[0];
     // First pass.
