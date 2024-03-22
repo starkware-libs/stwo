@@ -8,7 +8,6 @@ use std::fmt::Debug;
 use super::{Backend, Column, ColumnOps, FieldOps};
 use crate::core::fields::Field;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
-use crate::core::poly::line::LineEvaluation;
 use crate::core::utils::bit_reverse;
 
 #[derive(Copy, Clone, Debug)]
@@ -50,7 +49,6 @@ impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
 pub type CPUCirclePoly = CirclePoly<CPUBackend>;
 pub type CPUCircleEvaluation<F, EvalOrder> = CircleEvaluation<CPUBackend, F, EvalOrder>;
 // TODO(spapini): Remove the EvalOrder on LineEvaluation.
-pub type CPULineEvaluation<F, EvalOrder> = LineEvaluation<CPUBackend, F, EvalOrder>;
 
 #[cfg(test)]
 mod tests {

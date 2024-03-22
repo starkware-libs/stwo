@@ -98,7 +98,11 @@ impl CommitmentSchemeProver {
         let fri_prover = FriProver::<CPUBackend, MerkleHasher>::commit(
             channel,
             fri_config,
-            &quotients.flatten_cols_rev(),
+            &quotients
+                .flatten_cols_rev()
+                .into_iter()
+                .map(|e| e.into())
+                .collect_vec(),
         );
 
         // Proof of work.
