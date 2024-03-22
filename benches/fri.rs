@@ -10,7 +10,9 @@ fn folding_benchmark(c: &mut Criterion) {
     let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE + 1).half_coset());
     let evals = LineEvaluation::new(
         domain,
-        vec![BaseField::from_u32_unchecked(712837213).into(); 1 << LOG_SIZE],
+        vec![BaseField::from_u32_unchecked(712837213).into(); 1 << LOG_SIZE]
+            .into_iter()
+            .collect(),
     );
     let alpha = BaseField::from_u32_unchecked(12389).into();
     c.bench_function("fold_line", |b| {
