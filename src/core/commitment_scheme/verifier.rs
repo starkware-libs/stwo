@@ -147,7 +147,7 @@ fn eval_quotients_on_sparse_domain(
     commitment_domain: CircleDomain,
     point: CirclePoint<SecureField>,
     value: SecureField,
-) -> Result<SparseCircleEvaluation<SecureField>, VerificationError> {
+) -> Result<SparseCircleEvaluation, VerificationError> {
     let queried_values = &mut queried_values.into_iter();
     let res = SparseCircleEvaluation::new(
         query_domains
