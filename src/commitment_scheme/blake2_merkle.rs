@@ -1,10 +1,8 @@
-use itertools::Itertools;
 use num_traits::Zero;
 
 use super::blake2_hash::Blake2sHash;
 use super::blake2s_ref::compress;
-use super::ops::{MerkleHasher, MerkleOps};
-use crate::core::backend::CPUBackend;
+use super::ops::MerkleHasher;
 use crate::core::fields::m31::BaseField;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
@@ -36,23 +34,6 @@ impl MerkleHasher for Blake2sMerkleHasher {
             state = compress(state, unsafe { std::mem::transmute(chunk) }, 0, 0, 0, 0);
         }
         state.map(|x| x.to_le_bytes()).flatten().into()
-    }
-}
-
-impl MerkleOps<Blake2sMerkleHasher> for CPUBackend {
-    fn commit_on_layer(
-        log_size: u32,
-        prev_layer: Option<&Vec<Blake2sHash>>,
-        columns: &[&Vec<BaseField>],
-    ) -> Vec<Blake2sHash> {
-        (0..(1 << log_size))
-            .map(|i| {
-                Blake2sMerkleHasher::hash_node(
-                    prev_layer.map(|prev_layer| (prev_layer[2 * i], prev_layer[2 * i + 1])),
-                    &columns.iter().map(|column| column[i]).collect_vec(),
-                )
-            })
-            .collect()
     }
 }
 
