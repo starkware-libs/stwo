@@ -1,5 +1,4 @@
 // TODO(Ohad): write better benchmarks. Reduce the variance in sample size.
-use blake2::{Blake2s256, Digest};
 use criterion::measurement::WallTime;
 use criterion::{
     black_box, criterion_group, criterion_main, BatchSize, BenchmarkGroup, BenchmarkId, Criterion,
@@ -82,20 +81,6 @@ fn compare_blakes(c: &mut Criterion) {
     group.finish();
 }
 
-fn single_blake2s_hash_benchmark(c: &mut Criterion) {
-    let input = [0u8; 1];
-    c.bench_function("Single blake2s hash", |b| {
-        b.iter_batched(
-            || -> Blake2s256 { Blake2s256::new() },
-            |mut h| {
-                h.update(&input[..]);
-                h.finalize()
-            },
-            BatchSize::SmallInput,
-        )
-    });
-}
-
 fn single_blake3_hash_benchmark(c: &mut Criterion) {
     let input = [0u8; 1];
     c.bench_function("Single blake3 hash", |b| b.iter(|| blake3::hash(&input)));
@@ -109,10 +94,6 @@ criterion_group!(
 
 criterion_group!(comparisons, compare_blakes,);
 
-criterion_group!(
-    single_hash,
-    single_blake2s_hash_benchmark,
-    single_blake3_hash_benchmark,
-);
+criterion_group!(single_hash, single_blake3_hash_benchmark,);
 
 criterion_main!(comparisons);
