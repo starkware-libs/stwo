@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::iter::zip;
 
 use itertools::Itertools;
@@ -17,7 +18,8 @@ use super::super::queries::SparseSubCircleDomain;
 use super::utils::TreeVec;
 use super::CommitmentSchemeProof;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
-use crate::commitment_scheme::mixed_degree_decommitment::MixedDecommitment;
+use crate::commitment_scheme::prover::MerkleDecommitment;
+use crate::commitment_scheme::verifier::MerkleTreeVerifier;
 use crate::core::channel::Channel;
 use crate::core::prover::VerificationError;
 use crate::core::ColumnVec;
@@ -83,15 +85,20 @@ impl CommitmentSchemeVerifier {
         let merkle_verification_result = self
             .trees
             .as_ref()
-            .zip(&proof.decommitments)
-            .map(|(tree, decommitment)| {
+            .zip(proof.decommitments)
+            .zip(proof.queried_values.clone())
+            .map(|((tree, decommitment), queried_values)| {
                 // TODO(spapini): Also verify proved_values here.
-                let queries = tree
-                    .log_sizes
-                    .iter()
-                    .map(|log_size| fri_query_domains[&(log_size + LOG_BLOWUP_FACTOR)].flatten())
-                    .collect_vec();
-                tree.verify(decommitment, &queries)
+                // Assuming columns are of equal lengths, replicate queries for all columns.
+                // TOOD(AlonH): remove this assumption.
+                tree.verify(
+                    decommitment,
+                    queried_values,
+                    // Queries to the largest size.
+                    fri_query_domains[&(tree.log_sizes[0] + LOG_BLOWUP_FACTOR)]
+                        .flatten()
+                        .clone(),
+                )
             })
             .iter()
             .all(|x| *x);
@@ -180,13 +187,23 @@ impl CommitmentTreeVerifier {
 
     pub fn verify(
         &self,
-        decommitment: &MixedDecommitment<BaseField, Blake2sHasher>,
-        queries: &[Vec<usize>],
+        decommitment: MerkleDecommitment<Blake2sHasher>,
+        values: Vec<Vec<BaseField>>,
+        queries: Vec<usize>,
     ) -> bool {
-        decommitment.verify(
-            self.commitment,
-            queries,
-            decommitment.queried_values.iter().copied(),
-        )
+        let values = self
+            .log_sizes
+            .iter()
+            .map(|log_size| *log_size + LOG_BLOWUP_FACTOR)
+            .zip(values)
+            .sorted_by_key(|(log_size, _)| Reverse(*log_size))
+            .collect_vec();
+
+        // TODO(spapini): Propagate error.
+        MerkleTreeVerifier {
+            root: self.commitment,
+        }
+        .verify(queries, values, decommitment)
+        .is_ok()
     }
 }

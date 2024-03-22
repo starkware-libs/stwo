@@ -33,6 +33,12 @@ impl From<&[u8]> for Blake2sHash {
     }
 }
 
+impl From<[u8; 32]> for Blake2sHash {
+    fn from(value: [u8; 32]) -> Self {
+        Self(value)
+    }
+}
+
 impl AsRef<[u8]> for Blake2sHash {
     fn as_ref(&self) -> &[u8] {
         &self.0

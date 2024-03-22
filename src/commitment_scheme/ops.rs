@@ -1,3 +1,4 @@
+use super::hasher::Hasher;
 use crate::core::backend::{Col, ColumnOps};
 use crate::core::fields::m31::BaseField;
 
@@ -8,8 +9,7 @@ use crate::core::fields::m31::BaseField;
 /// children hashes.
 /// At each layer, the tree may have multiple columns of the same length as the layer.
 /// Each node in that layer contains one value from each column.
-pub trait MerkleHasher {
-    type Hash: Clone + Eq + std::fmt::Debug;
+pub trait MerkleHasher: Hasher {
     /// Hashes a single Merkle node. See [MerkleHasher] for more details.
     fn hash_node(
         children_hashes: Option<(Self::Hash, Self::Hash)>,
