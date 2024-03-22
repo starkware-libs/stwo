@@ -1,5 +1,5 @@
-// TODO(Ohad): write better benchmarks. Reduce the variance in sample size.
 use blake2::{Blake2s256, Digest};
+// TODO(Ohad): write better benchmarks. Reduce the variance in sample size.
 use criterion::measurement::WallTime;
 use criterion::{
     black_box, criterion_group, criterion_main, BatchSize, BenchmarkGroup, BenchmarkId, Criterion,
