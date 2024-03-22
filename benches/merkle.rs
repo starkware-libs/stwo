@@ -7,11 +7,12 @@ pub fn cpu_merkle(c: &mut criterion::Criterion) {
     use itertools::Itertools;
     use num_traits::Zero;
     use stwo::commitment_scheme::ops::MerkleOps;
-    use stwo::core::backend::CPUBackend;
+    use stwo::core::backend::avx512::AVX512Backend;
+    use stwo::core::backend::{CPUBackend, Col};
     use stwo::core::fields::m31::BaseField;
 
     const N_COLS: usize = 1 << 8;
-    const LOG_SIZE: u32 = 20;
+    const LOG_SIZE: u32 = 16;
     let cols = (0..N_COLS)
         .map(|_| {
             (0..(1 << LOG_SIZE))
@@ -28,6 +29,20 @@ pub fn cpu_merkle(c: &mut criterion::Criterion) {
     group.bench_function("cpu merkle", |b| {
         b.iter(|| {
             CPUBackend::commit_on_layer(LOG_SIZE, None, &cols.iter().collect_vec());
+        })
+    });
+
+    let cols = (0..N_COLS)
+        .map(|_| {
+            (0..(1 << LOG_SIZE))
+                .map(|_| BaseField::zero())
+                .collect::<Col<AVX512Backend, BaseField>>()
+        })
+        .collect::<Vec<_>>();
+
+    group.bench_function("avx merkle", |b| {
+        b.iter(|| {
+            AVX512Backend::commit_on_layer(LOG_SIZE, None, &cols.iter().collect_vec());
         })
     });
 }
