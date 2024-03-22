@@ -220,3 +220,11 @@ impl<H: MerkleHasher> MerkleDecommitment<H> {
         }
     }
 }
+// TODO(andreW): Remove these in favor of the `derivative` crate.
+impl<H: MerkleHasher> Clone for MerkleDecommitment<H> {
+    fn clone(&self) -> Self {
+        Self {
+            witness: self.witness.clone(),
+        }
+    }
+}
