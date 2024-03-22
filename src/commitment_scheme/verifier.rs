@@ -4,6 +4,7 @@ use std::iter::Peekable;
 use itertools::Itertools;
 use thiserror::Error;
 
+use super::hasher::Hasher;
 use super::ops::MerkleHasher;
 use super::prover::Decommitment;
 use crate::core::fields::m31::BaseField;
@@ -79,7 +80,7 @@ impl<H: MerkleHasher> MerkleTreeVerifier<H> {
 /// A helper struct for verifying a [Decommitment].
 struct MerkleVerifier<H: MerkleHasher> {
     /// A queue for consuming the next hash witness from the decommitment.
-    witness: std::vec::IntoIter<<H as MerkleHasher>::Hash>,
+    witness: std::vec::IntoIter<<H as Hasher>::Hash>,
     /// A queue for consuming the next claimed values for each column.
     column_values: Peekable<std::vec::IntoIter<(u32, Vec<BaseField>)>>,
     /// A queue for consuming the next claimed values for each column in the current layer.
@@ -190,10 +191,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
     }
 }
 
-type ChildrenHashesAtQuery<H> = Option<(
-    Option<<H as MerkleHasher>::Hash>,
-    Option<<H as MerkleHasher>::Hash>,
-)>;
+type ChildrenHashesAtQuery<H> = Option<(Option<<H as Hasher>::Hash>, Option<<H as Hasher>::Hash>)>;
 
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
 pub enum MerkleVerificationError {
