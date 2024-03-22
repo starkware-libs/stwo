@@ -10,16 +10,16 @@ use thiserror::Error;
 
 use super::backend::{Backend, CPUBackend};
 use super::channel::Channel;
-use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
+use super::fields::secure_column::SecureColumn;
 use super::poly::circle::{CircleEvaluation, SecureEvaluation};
 use super::poly::line::{LineEvaluation, LinePoly};
 use super::poly::BitReversedOrder;
 // TODO(andrew): Create fri/ directory, move queries.rs there and split this file up.
 use super::queries::{Queries, SparseSubCircleDomain};
-use crate::commitment_scheme::hasher::Hasher;
-use crate::commitment_scheme::merkle_decommitment::MerkleDecommitment;
-use crate::commitment_scheme::merkle_tree::MerkleTree;
+use crate::commitment_scheme::ops::{MerkleHasher, MerkleOps};
+use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
+use crate::commitment_scheme::verifier::MerkleTreeVerifier;
 use crate::core::circle::Coset;
 use crate::core::poly::line::LineDomain;
 use crate::core::utils::bit_reverse_index;
@@ -101,7 +101,7 @@ pub trait FriOps: Backend + Sized {
 }
 
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
-pub struct FriProver<B: FriOps, H: Hasher> {
+pub struct FriProver<B: FriOps + MerkleOps<H>, H: MerkleHasher> {
     config: FriConfig,
     inner_layers: Vec<FriLayerProver<B, H>>,
     last_layer_poly: LinePoly,
@@ -109,7 +109,7 @@ pub struct FriProver<B: FriOps, H: Hasher> {
     column_log_sizes: Vec<u32>,
 }
 
-impl<B: FriOps, H: Hasher<NativeType = u8>> FriProver<B, H> {
+impl<B: FriOps + MerkleOps<H>, H: MerkleHasher<NativeType = u8>> FriProver<B, H> {
     /// Commits to multiple [CircleEvaluation]s.
     ///
     /// `columns` must be provided in descending order by size.
@@ -268,7 +268,7 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriProver<B, H> {
     }
 }
 
-pub struct FriVerifier<H: Hasher> {
+pub struct FriVerifier<H: MerkleHasher> {
     config: FriConfig,
     /// Alpha used to fold all circle polynomials to univariate polynomials.
     circle_poly_alpha: SecureField,
@@ -284,7 +284,7 @@ pub struct FriVerifier<H: Hasher> {
     queries: Option<Queries>,
 }
 
-impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
+impl<H: MerkleHasher<NativeType = u8>> FriVerifier<H> {
     /// Verifies the commitment stage of FRI.
     ///
     /// `column_bounds` should be the committed circle polynomial degree bounds in descending order.
@@ -586,7 +586,7 @@ impl LinePolyDegreeBound {
 
 /// A FRI proof.
 #[derive(Debug)]
-pub struct FriProof<H: Hasher> {
+pub struct FriProof<H: MerkleHasher> {
     pub inner_layers: Vec<FriLayerProof<H>>,
     pub last_layer_poly: LinePoly,
 }
@@ -602,15 +602,15 @@ pub const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
 #[derive(Debug)]
-pub struct FriLayerProof<H: Hasher> {
+pub struct FriLayerProof<H: MerkleHasher> {
     /// The subset stored corresponds to the set of evaluations the verifier doesn't have but needs
     /// to fold and verify the merkle decommitment.
     pub evals_subset: Vec<SecureField>,
-    pub decommitment: MerkleDecommitment<BaseField, H>,
+    pub decommitment: MerkleDecommitment<H>,
     pub commitment: H::Hash,
 }
 
-struct FriLayerVerifier<H: Hasher> {
+struct FriLayerVerifier<H: MerkleHasher> {
     degree_bound: LinePolyDegreeBound,
     domain: LineDomain,
     folding_alpha: SecureField,
@@ -618,7 +618,7 @@ struct FriLayerVerifier<H: Hasher> {
     proof: FriLayerProof<H>,
 }
 
-impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
+impl<H: MerkleHasher<NativeType = u8>> FriLayerVerifier<H> {
     /// Verifies the layer's merkle decommitment and returns the the folded queries and query evals.
     ///
     /// # Errors
@@ -635,38 +635,18 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
         queries: Queries,
         evals_at_queries: Vec<SecureField>,
     ) -> Result<(Queries, Vec<SecureField>), FriVerificationError> {
-        let decommitment = &self.proof.decommitment;
+        let decommitment = self.proof.decommitment.clone();
         let commitment = self.proof.commitment;
 
         // Extract the evals needed for decommitment and folding.
         let sparse_evaluation = self.extract_evaluation(&queries, &evals_at_queries)?;
 
         // TODO: When leaf values are removed from the decommitment, also remove this block.
-        {
-            let mut expected_decommitment_evals = Vec::new();
-
-            for leaf in decommitment.values() {
-                // Ensure each leaf is a single value.
-                if let Ok(evals) = leaf.try_into() {
-                    expected_decommitment_evals.push(SecureField::from_m31_array(evals));
-                } else {
-                    return Err(FriVerificationError::InnerLayerCommitmentInvalid {
-                        layer: self.layer_index,
-                    });
-                }
-            }
-
-            let actual_decommitment_evals = sparse_evaluation
-                .subline_evals
-                .iter()
-                .flat_map(|e| e.values.into_iter());
-
-            if !actual_decommitment_evals.eq(expected_decommitment_evals) {
-                return Err(FriVerificationError::InnerLayerCommitmentInvalid {
-                    layer: self.layer_index,
-                });
-            }
-        }
+        let actual_decommitment_evals: SecureColumn<CPUBackend> = sparse_evaluation
+            .subline_evals
+            .iter()
+            .flat_map(|e| e.values.into_iter())
+            .collect();
 
         let folded_queries = queries.fold(FOLD_STEP);
 
@@ -680,7 +660,20 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
             })
             .collect::<Vec<usize>>();
 
-        if !decommitment.verify(commitment, &decommitment_positions) {
+        let merkle_verifier = MerkleTreeVerifier { root: commitment };
+        // TODO(spapini): Propagate error.
+        if merkle_verifier
+            .verify(
+                decommitment_positions,
+                actual_decommitment_evals
+                    .columns
+                    .into_iter()
+                    .map(|e| (self.domain.log_size(), e))
+                    .collect_vec(),
+                decommitment,
+            )
+            .is_err()
+        {
             return Err(FriVerificationError::InnerLayerCommitmentInvalid {
                 layer: self.layer_index,
             });
@@ -763,16 +756,16 @@ impl<H: Hasher<NativeType = u8>> FriLayerVerifier<H> {
 /// The polynomial evaluations are viewed as evaluation of a polynomial on multiple distinct cosets
 /// of size two. Each leaf of the merkle tree commits to a single coset evaluation.
 // TODO(andrew): Support different step sizes.
-struct FriLayerProver<B: FriOps, H: Hasher> {
+struct FriLayerProver<B: FriOps + MerkleOps<H>, H: MerkleHasher> {
     evaluation: LineEvaluation<B>,
-    merkle_tree: MerkleTree<BaseField, H>,
+    merkle_tree: MerkleProver<B, H>,
 }
 
-impl<B: FriOps, H: Hasher<NativeType = u8>> FriLayerProver<B, H> {
+impl<B: FriOps + MerkleOps<H>, H: MerkleHasher<NativeType = u8>> FriLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>) -> Self {
         // TODO(spapini): Commit on slice.
         // TODO(spapini): Merkle tree in backend.
-        let merkle_tree = MerkleTree::commit(evaluation.values.to_cpu().columns.into());
+        let merkle_tree = MerkleProver::commit(evaluation.values.columns.iter().collect_vec());
         #[allow(unreachable_code)]
         FriLayerProver {
             evaluation,
@@ -808,7 +801,7 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriLayerProver<B, H> {
         }
 
         let commitment = self.merkle_tree.root();
-        let decommitment = self.merkle_tree.generate_decommitment(decommit_positions);
+        let decommitment = self.merkle_tree.decommit(decommit_positions);
 
         FriLayerProof {
             evals_subset,

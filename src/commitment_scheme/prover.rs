@@ -90,3 +90,11 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
 pub struct MerkleDecommitment<H: MerkleHasher> {
     pub witness: Vec<H::Hash>,
 }
+// TODO(andreW): Remove these in favor of the `derivative` crate.
+impl<H: MerkleHasher> Clone for MerkleDecommitment<H> {
+    fn clone(&self) -> Self {
+        Self {
+            witness: self.witness.clone(),
+        }
+    }
+}
