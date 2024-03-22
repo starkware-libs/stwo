@@ -1,8 +1,8 @@
+use super::hasher::Hasher;
 use crate::core::backend::{Col, ColumnOps};
 use crate::core::fields::m31::BaseField;
 
-pub trait MerkleHasher {
-    type Hash: Clone + Eq + std::fmt::Debug;
+pub trait MerkleHasher: Hasher {
     fn hash_node(
         children_hashes: Option<(Self::Hash, Self::Hash)>,
         node_values: &[BaseField],

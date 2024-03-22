@@ -6,8 +6,8 @@
 //! the existence of such polynomials, and are ok with having a small decoding list.
 //! Note: Opened points cannot come from the commitment domain.
 pub mod utils;
+use std::cmp::Reverse;
 use std::iter::zip;
-use std::ops::Deref;
 
 use itertools::Itertools;
 
@@ -32,9 +32,8 @@ use super::prover::{
 use super::queries::SparseSubCircleDomain;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
-use crate::commitment_scheme::merkle_input::{MerkleTreeColumnLayout, MerkleTreeInput};
-use crate::commitment_scheme::mixed_degree_decommitment::MixedDecommitment;
-use crate::commitment_scheme::mixed_degree_merkle_tree::MixedDegreeMerkleTree;
+use crate::commitment_scheme::prover::{Decommitment, MerkleProver};
+use crate::commitment_scheme::verifier::MerkleTreeVerifier;
 use crate::core::channel::Channel;
 
 type MerkleHasher = Blake2sHasher;
@@ -60,7 +59,7 @@ impl CommitmentSchemeProver {
     }
 
     pub fn roots(&self) -> TreeVec<Blake2sHash> {
-        self.trees.as_ref().map(|tree| tree.root())
+        self.trees.as_ref().map(|tree| tree.commitment.root())
     }
 
     pub fn polynomials(&self) -> TreeVec<ColumnVec<&CPUCirclePoly>> {
@@ -144,7 +143,7 @@ impl CommitmentSchemeProver {
 #[derive(Debug)]
 pub struct CommitmentSchemeProof {
     pub proved_values: TreeVec<ColumnVec<Vec<SecureField>>>,
-    pub decommitments: TreeVec<MixedDecommitment<BaseField, MerkleHasher>>,
+    pub decommitments: TreeVec<Decommitment<Blake2sHasher>>,
     pub queried_values: TreeVec<ColumnVec<Vec<BaseField>>>,
     pub proof_of_work: ProofOfWorkProof,
     pub fri_proof: FriProof<MerkleHasher>,
@@ -155,8 +154,7 @@ pub struct CommitmentSchemeProof {
 pub struct CommitmentTreeProver {
     pub polynomials: ColumnVec<CPUCirclePoly>,
     pub evaluations: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
-    pub commitment: MixedDegreeMerkleTree<BaseField, Blake2sHasher>,
-    column_layout: MerkleTreeColumnLayout,
+    pub commitment: MerkleProver<CPUBackend, Blake2sHasher>,
 }
 
 impl CommitmentTreeProver {
@@ -167,6 +165,7 @@ impl CommitmentTreeProver {
     ) -> Self {
         let evaluations = polynomials
             .iter()
+            .sorted_by_key(|eval| Reverse(eval.log_size()))
             .map(|poly| {
                 poly.evaluate(
                     CanonicCoset::new(poly.log_size() + log_blowup_factor).circle_domain(),
@@ -174,32 +173,15 @@ impl CommitmentTreeProver {
             })
             .collect_vec();
 
-        let mut merkle_input = MerkleTreeInput::new();
-        const LOG_N_BASEFIELD_ELEMENTS_IN_SACK: u32 = 4;
-
-        // The desired depth for column of log_length n is such that Blake2s hashes are filled(64B).
-        // Explicitly: There are 2^(d-1) hash 'sacks' at depth d, hence,  with elements of 4 bytes,
-        //  2^(d-1) = 2^n / 16, => d = n-3.
-        // Assuming rectangle trace, all columns go to the same depth.
-        // TOOD(AlonH): remove this assumption.
-        let inject_depth = std::cmp::max::<i32>(
-            evaluations[0].len().ilog2() as i32 - (LOG_N_BASEFIELD_ELEMENTS_IN_SACK as i32 - 1),
-            1,
+        let tree = MerkleProver::<CPUBackend, Blake2sHasher>::commit(
+            evaluations.iter().map(|e| &e.values).collect_vec(),
         );
-        for column in evaluations.iter().map(|eval| &eval.values) {
-            merkle_input.insert_column(inject_depth as usize, column);
-        }
-        let (tree, root) =
-            MixedDegreeMerkleTree::<BaseField, Blake2sHasher>::commit_default(&merkle_input);
-        channel.mix_digest(root);
-
-        let column_layout = merkle_input.column_layout();
+        channel.mix_digest(tree.root());
 
         CommitmentTreeProver {
             polynomials,
             evaluations,
             commitment: tree,
-            column_layout,
         }
     }
 
@@ -208,40 +190,17 @@ impl CommitmentTreeProver {
     fn decommit(
         &self,
         queries: Vec<usize>,
-    ) -> (
-        ColumnVec<Vec<BaseField>>,
-        MixedDecommitment<BaseField, Blake2sHasher>,
-    ) {
+    ) -> (ColumnVec<Vec<BaseField>>, Decommitment<Blake2sHasher>) {
+        // TODO(spapini): Queries should be the queries to the largest layer.
+        // When we have more than one component, we should extract the values correctly
         let values = self
             .evaluations
             .iter()
             .map(|c| queries.iter().map(|p| c[*p]).collect())
             .collect();
-        // Assuming rectangle trace, queries should be similar for all columns.
-        // TOOD(AlonH): remove this assumption.
-        let queries = std::iter::repeat(queries.to_vec())
-            .take(self.evaluations.len())
-            .collect_vec();
 
-        // Rebuild the merkle input for now.
-        // TODO(Ohad): change after tree refactor. Consider removing the input struct and have the
-        // decommitment take queries and columns only.
-        let eval_vec = self
-            .evaluations
-            .iter()
-            .map(|eval| &eval.values[..])
-            .collect_vec();
-        let input = self.column_layout.build_input(&eval_vec);
-        let decommitment = self.commitment.decommit(&input, &queries);
+        let decommitment = self.commitment.decommit(queries);
         (values, decommitment)
-    }
-}
-
-impl Deref for CommitmentTreeProver {
-    type Target = MixedDegreeMerkleTree<BaseField, Blake2sHasher>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.commitment
     }
 }
 
@@ -304,20 +263,19 @@ impl CommitmentSchemeVerifier {
         if !self
             .trees
             .as_ref()
-            .zip(&proof.decommitments)
-            .map(|(tree, decommitment)| {
+            .zip(proof.decommitments)
+            .zip(proof.queried_values.clone())
+            .map(|((tree, decommitment), queried_values)| {
                 // TODO(spapini): Also verify proved_values here.
                 // Assuming columns are of equal lengths, replicate queries for all columns.
                 // TOOD(AlonH): remove this assumption.
                 tree.verify(
                     decommitment,
-                    &std::iter::repeat(
-                        fri_query_domains[&(tree.log_sizes[0] + LOG_BLOWUP_FACTOR)]
-                            .flatten()
-                            .clone(),
-                    )
-                    .take(tree.log_sizes.len())
-                    .collect_vec(),
+                    queried_values,
+                    // Queries to the largest size.
+                    fri_query_domains[&(tree.log_sizes[0] + LOG_BLOWUP_FACTOR)]
+                        .flatten()
+                        .clone(),
                 )
             })
             .iter()
@@ -407,13 +365,23 @@ impl CommitmentTreeVerifier {
 
     pub fn verify(
         &self,
-        decommitment: &MixedDecommitment<BaseField, Blake2sHasher>,
-        queries: &[Vec<usize>],
+        decommitment: Decommitment<Blake2sHasher>,
+        values: Vec<Vec<BaseField>>,
+        queries: Vec<usize>,
     ) -> bool {
-        decommitment.verify(
-            self.commitment,
-            queries,
-            decommitment.queried_values.iter().copied(),
-        )
+        let values = self
+            .log_sizes
+            .iter()
+            .map(|log_size| *log_size + LOG_BLOWUP_FACTOR)
+            .zip(values)
+            .sorted_by_key(|(log_size, _)| Reverse(*log_size))
+            .collect_vec();
+
+        // TODO(spapini): Propagate error.
+        MerkleTreeVerifier {
+            root: self.commitment,
+        }
+        .verify(queries, values, decommitment)
+        .is_ok()
     }
 }
