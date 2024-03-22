@@ -11,7 +11,7 @@ use thiserror::Error;
 use super::backend::{Backend, CPUBackend};
 use super::channel::Channel;
 use super::fields::qm31::SecureField;
-use super::fields::secure_column::SecureColumn;
+use super::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
 use super::poly::circle::{CircleEvaluation, SecureEvaluation};
 use super::poly::line::{LineEvaluation, LinePoly};
 use super::poly::BitReversedOrder;
@@ -19,7 +19,7 @@ use super::poly::BitReversedOrder;
 use super::queries::{Queries, SparseSubCircleDomain};
 use crate::commitment_scheme::ops::{MerkleHasher, MerkleOps};
 use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
-use crate::commitment_scheme::verifier::MerkleTreeVerifier;
+use crate::commitment_scheme::verifier::{MerkleVerificationError, MerkleVerifier};
 use crate::core::circle::Coset;
 use crate::core::poly::line::LineDomain;
 use crate::core::utils::bit_reverse_index;
@@ -112,7 +112,7 @@ pub struct FriProver<B: FriOps + MerkleOps<H>, H: MerkleHasher> {
     column_log_sizes: Vec<u32>,
 }
 
-impl<B: FriOps + MerkleOps<H>, H: MerkleHasher<NativeType = u8>> FriProver<B, H> {
+impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
     /// Commits to multiple [CircleEvaluation]s.
     ///
     /// `columns` must be provided in descending order by size.
@@ -289,7 +289,7 @@ pub struct FriVerifier<H: MerkleHasher> {
     queries: Option<Queries>,
 }
 
-impl<H: MerkleHasher<NativeType = u8>> FriVerifier<H> {
+impl<H: MerkleHasher> FriVerifier<H> {
     /// Verifies the commitment stage of FRI.
     ///
     /// `column_bounds` should be the committed circle polynomial degree bounds in descending order.
@@ -532,7 +532,10 @@ pub enum FriVerificationError {
     #[error("proof contains an invalid number of FRI layers")]
     InvalidNumFriLayers,
     #[error("queries do not resolve to their commitment in layer {layer}")]
-    InnerLayerCommitmentInvalid { layer: usize },
+    InnerLayerCommitmentInvalid {
+        layer: usize,
+        error: MerkleVerificationError,
+    },
     #[error("evaluations are invalid in layer {layer}")]
     InnerLayerEvaluationsInvalid { layer: usize },
     #[error("degree of last layer is invalid")]
@@ -623,7 +626,7 @@ struct FriLayerVerifier<H: MerkleHasher> {
     proof: FriLayerProof<H>,
 }
 
-impl<H: MerkleHasher<NativeType = u8>> FriLayerVerifier<H> {
+impl<H: MerkleHasher> FriLayerVerifier<H> {
     /// Verifies the layer's merkle decommitment and returns the the folded queries and query evals.
     ///
     /// # Errors
@@ -665,24 +668,23 @@ impl<H: MerkleHasher<NativeType = u8>> FriLayerVerifier<H> {
             })
             .collect::<Vec<usize>>();
 
-        let merkle_verifier = MerkleTreeVerifier { root: commitment };
+        let merkle_verifier = MerkleVerifier::new(
+            commitment,
+            vec![self.domain.log_size(); SECURE_EXTENSION_DEGREE],
+        );
         // TODO(spapini): Propagate error.
-        if merkle_verifier
+        merkle_verifier
             .verify(
-                decommitment_positions,
-                actual_decommitment_evals
-                    .columns
+                [(self.domain.log_size(), decommitment_positions)]
                     .into_iter()
-                    .map(|e| (self.domain.log_size(), e))
-                    .collect_vec(),
+                    .collect(),
+                actual_decommitment_evals.columns.to_vec(),
                 decommitment,
             )
-            .is_err()
-        {
-            return Err(FriVerificationError::InnerLayerCommitmentInvalid {
+            .map_err(|e| FriVerificationError::InnerLayerCommitmentInvalid {
                 layer: self.layer_index,
-            });
-        }
+                error: e,
+            })?;
 
         let evals_at_folded_queries = sparse_evaluation.fold(self.folding_alpha);
 
@@ -766,7 +768,7 @@ struct FriLayerProver<B: FriOps + MerkleOps<H>, H: MerkleHasher> {
     merkle_tree: MerkleProver<B, H>,
 }
 
-impl<B: FriOps + MerkleOps<H>, H: MerkleHasher<NativeType = u8>> FriLayerProver<B, H> {
+impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>) -> Self {
         // TODO(spapini): Commit on slice.
         // TODO(spapini): Merkle tree in backend.
@@ -806,7 +808,13 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher<NativeType = u8>> FriLayerProver<
         }
 
         let commitment = self.merkle_tree.root();
-        let decommitment = self.merkle_tree.decommit(decommit_positions);
+        // TODO(spapini): Use _evals.
+        let (_evals, decommitment) = self.merkle_tree.decommit(
+            [(self.evaluation.len().ilog2(), decommit_positions)]
+                .into_iter()
+                .collect(),
+            self.evaluation.values.columns.iter().collect_vec(),
+        );
 
         FriLayerProof {
             evals_subset,
@@ -897,7 +905,7 @@ mod tests {
     use num_traits::{One, Zero};
 
     use super::{get_opening_positions, FriVerificationError, SparseCircleEvaluation};
-    use crate::commitment_scheme::blake2_hash::Blake2sHasher;
+    use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
     use crate::core::backend::{CPUBackend, Col, Column, ColumnOps};
     use crate::core::circle::{CirclePointIndex, Coset};
@@ -918,7 +926,7 @@ mod tests {
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
 
-    type FriProver = super::FriProver<CPUBackend, Blake2sHasher>;
+    type FriProver = super::FriProver<CPUBackend, Blake2sMerkleHasher>;
 
     #[test]
     fn fold_line_works() {
@@ -1151,7 +1159,7 @@ mod tests {
 
         assert!(matches!(
             verification_result,
-            Err(FriVerificationError::InnerLayerCommitmentInvalid { layer: 1 })
+            Err(FriVerificationError::InnerLayerCommitmentInvalid { layer: 1, .. })
         ));
     }
 

@@ -53,10 +53,6 @@ harness = false
 name = "matrix"
 
 [[bench]]
-name = "merkle_bench"
-harness = false
-
-[[bench]]
 name = "merkle"
 harness = false
 
