@@ -4,10 +4,12 @@ use std::iter::Peekable;
 use itertools::Itertools;
 use thiserror::Error;
 
+use super::hasher::Hasher;
 use super::ops::MerkleHasher;
 use super::prover::Decommitment;
 use crate::core::fields::m31::BaseField;
 
+// TODO(spapini): This struct is not necessary. Make it a function on decommitment?
 pub struct MerkleTreeVerifier<H: MerkleHasher> {
     pub root: H::Hash,
 }
@@ -52,7 +54,7 @@ impl<H: MerkleHasher> MerkleTreeVerifier<H> {
 }
 
 struct MerkleVerifier<H: MerkleHasher> {
-    witness: std::vec::IntoIter<<H as MerkleHasher>::Hash>,
+    witness: std::vec::IntoIter<<H as Hasher>::Hash>,
     column_values: Peekable<std::vec::IntoIter<(u32, Vec<BaseField>)>>,
     layer_column_values: Vec<std::vec::IntoIter<BaseField>>,
 }
@@ -62,6 +64,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
         queries: Vec<usize>,
     ) -> Result<H::Hash, MerkleVerificationError> {
         let max_log_size = self.column_values.peek().unwrap().0;
+        assert!(*queries.iter().max().unwrap() < 1 << max_log_size);
 
         // A sequence of queries to the current layer.
         // Each query is a pair of the query index and the known hashes of the children, if any.
@@ -144,10 +147,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
     }
 }
 
-type ChildrenHashesAtQuery<H> = Option<(
-    Option<<H as MerkleHasher>::Hash>,
-    Option<<H as MerkleHasher>::Hash>,
-)>;
+type ChildrenHashesAtQuery<H> = Option<(Option<<H as Hasher>::Hash>, Option<<H as Hasher>::Hash>)>;
 
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
 pub enum MerkleVerificationError {

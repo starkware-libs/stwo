@@ -60,6 +60,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     }
 }
 
+#[derive(Debug)]
 pub struct Decommitment<H: MerkleHasher> {
     pub witness: Vec<H::Hash>,
 }
