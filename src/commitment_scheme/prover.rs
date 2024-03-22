@@ -64,3 +64,10 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
 pub struct Decommitment<H: MerkleHasher> {
     pub witness: Vec<H::Hash>,
 }
+impl<H: MerkleHasher> Clone for Decommitment<H> {
+    fn clone(&self) -> Self {
+        Self {
+            witness: self.witness.clone(),
+        }
+    }
+}
