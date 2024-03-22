@@ -1,4 +1,5 @@
 pub mod bit_reverse;
+mod blake2s;
 pub mod blake2s_avx;
 pub mod circle;
 pub mod cm31;
