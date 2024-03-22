@@ -121,7 +121,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
                             // If the left child was not computed, read it from the witness.
                             let left_hash = prev_layer_hashes
                                 .next_if(|(index, _)| *index == 2 * node_index)
-                                .map(|(_, hash)| Ok(hash.clone()))
+                                .map(|(_, hash)| Ok(*hash))
                                 .unwrap_or_else(|| {
                                     hash_witness
                                         .next()
@@ -131,7 +131,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
                             // If the right child was not computed, read it to from the witness.
                             let right_hash = prev_layer_hashes
                                 .next_if(|(index, _)| *index == 2 * node_index + 1)
-                                .map(|(_, hash)| Ok(hash.clone()))
+                                .map(|(_, hash)| Ok(*hash))
                                 .unwrap_or_else(|| {
                                     hash_witness
                                         .next()
