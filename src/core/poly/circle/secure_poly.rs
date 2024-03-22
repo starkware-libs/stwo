@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use super::CircleDomain;
+use super::{CircleDomain, CircleEvaluation};
 use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
 use crate::core::backend::{Backend, CPUBackend};
 use crate::core::circle::CirclePoint;
@@ -54,10 +54,28 @@ pub struct SecureEvaluation<B: Backend> {
     pub domain: CircleDomain,
     pub values: SecureColumn<B>,
 }
+impl<B: Backend> Deref for SecureEvaluation<B> {
+    type Target = SecureColumn<B>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
 
 impl SecureEvaluation<CPUBackend> {
     // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
     pub fn to_cpu(self) -> CPUCircleEvaluation<SecureField, BitReversedOrder> {
-        CPUCircleEvaluation::new(self.domain, self.values.to_cpu())
+        CPUCircleEvaluation::new(self.domain, self.values.to_vec())
+    }
+}
+
+impl From<CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>
+    for SecureEvaluation<CPUBackend>
+{
+    fn from(evaluation: CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>) -> Self {
+        Self {
+            domain: evaluation.domain,
+            values: evaluation.values.into_iter().collect(),
+        }
     }
 }
