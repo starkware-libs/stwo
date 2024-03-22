@@ -129,7 +129,7 @@ impl DomainEvaluationAccumulator<CPUBackend> {
             .zip(self.n_cols_per_size.iter())
             .skip(1)
         {
-            let coeffs = SecureColumn {
+            let coeffs = SecureColumn::<CPUBackend> {
                 columns: values.columns.map(|c| {
                     CPUCircleEvaluation::<_, BitReversedOrder>::new(
                         CanonicCoset::new(log_size as u32).circle_domain(),

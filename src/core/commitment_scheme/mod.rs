@@ -111,7 +111,11 @@ impl CommitmentSchemeProver {
         let fri_prover = FriProver::<CPUBackend, MerkleHasher>::commit(
             channel,
             fri_config,
-            &quotients.flatten_cols_rev(),
+            &quotients
+                .flatten_cols_rev()
+                .into_iter()
+                .map(|e| e.into())
+                .collect_vec(),
         );
 
         // Proof of work.
@@ -325,7 +329,7 @@ fn eval_quotients_on_sparse_domain(
     commitment_domain: CircleDomain,
     point: CirclePoint<SecureField>,
     value: SecureField,
-) -> Result<SparseCircleEvaluation<SecureField>, VerificationError> {
+) -> Result<SparseCircleEvaluation, VerificationError> {
     let queried_values = &mut queried_values.into_iter();
     let res = SparseCircleEvaluation::new(
         query_domains
