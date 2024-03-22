@@ -96,7 +96,7 @@ pub fn fri_answers(
     random_coeff: SecureField,
     query_domain_per_log_size: BTreeMap<u32, SparseSubCircleDomain>,
     queried_values_per_column: &[Vec<BaseField>],
-) -> Result<Vec<SparseCircleEvaluation<SecureField>>, VerificationError> {
+) -> Result<Vec<SparseCircleEvaluation>, VerificationError> {
     izip!(column_log_sizes, samples, queried_values_per_column)
         .sorted_by_key(|(log_size, ..)| Reverse(*log_size))
         .group_by(|(log_size, ..)| *log_size)
@@ -121,7 +121,7 @@ pub fn fri_answers_for_log_size(
     random_coeff: SecureField,
     query_domain: &SparseSubCircleDomain,
     queried_values_per_column: &[&Vec<BaseField>],
-) -> Result<SparseCircleEvaluation<SecureField>, VerificationError> {
+) -> Result<SparseCircleEvaluation, VerificationError> {
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
     let batched_samples = ColumnSampleBatch::new(samples);
     for queried_values in queried_values_per_column {
