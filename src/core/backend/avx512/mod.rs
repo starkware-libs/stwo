@@ -1,4 +1,5 @@
 pub mod bit_reverse;
+mod blake2s;
 pub mod circle;
 pub mod cm31;
 pub mod fft;
@@ -157,7 +158,7 @@ mod tests {
         for i in 1..16 {
             let len = 1 << i;
             let mut col = Col::<B, BaseField>::from_iter((0..len).map(BaseField::from));
-            B::bit_reverse_column(&mut col);
+            <B as ColumnOps<BaseField>>::bit_reverse_column(&mut col);
             assert_eq!(
                 col.to_vec(),
                 (0..len)
