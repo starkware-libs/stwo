@@ -78,6 +78,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
         columns: Vec<&Col<B, BaseField>>,
     ) -> (ColumnVec<Vec<BaseField>>, MerkleDecommitment<H>) {
         // Check that queries are sorted and deduped.
+        // TODO(andrew): Consider using a Queries struct to prevent this.
         for queries in queries_per_log_size.values() {
             assert!(
                 queries.windows(2).all(|w| w[0] < w[1]),
@@ -217,6 +218,15 @@ impl<H: MerkleHasher> MerkleDecommitment<H> {
         Self {
             hash_witness: Vec::new(),
             column_witness: Vec::new(),
+        }
+    }
+}
+// TODO(andreW): Remove these in favor of the `derivative` crate.
+impl<H: MerkleHasher> Clone for MerkleDecommitment<H> {
+    fn clone(&self) -> Self {
+        Self {
+            hash_witness: self.hash_witness.clone(),
+            column_witness: self.column_witness.clone(),
         }
     }
 }
