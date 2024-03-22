@@ -1,9 +1,12 @@
 use std::ops::Deref;
 
+use super::{CircleDomain, CircleEvaluation};
 use crate::core::backend::cpu::CPUCirclePoly;
+use crate::core::backend::{Backend, CPUBackend};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
+use crate::core::poly::BitReversedOrder;
 
 pub struct SecureCirclePoly(pub [CPUCirclePoly; SECURE_EXTENSION_DEGREE]);
 
@@ -40,5 +43,28 @@ impl Deref for SecureCirclePoly {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+pub struct SecureEvaluation<B: Backend> {
+    pub domain: CircleDomain,
+    pub values: SecureColumn<B>,
+}
+impl<B: Backend> Deref for SecureEvaluation<B> {
+    type Target = SecureColumn<B>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+
+impl From<CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>
+    for SecureEvaluation<CPUBackend>
+{
+    fn from(evaluation: CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>) -> Self {
+        Self {
+            domain: evaluation.domain,
+            values: evaluation.values.into_iter().collect(),
+        }
     }
 }
