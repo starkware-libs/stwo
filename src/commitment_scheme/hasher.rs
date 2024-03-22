@@ -52,32 +52,6 @@ pub trait Hasher: Sized + Default {
         hasher.update(data);
         hasher.finalize()
     }
-
-    /// Hash many inputs of the same length.
-    /// Writes output directly to corresponding pointers in dst.
-    ///
-    /// # Safety
-    ///
-    /// Inputs must be of the same size. output locations must all point to valid, allocated and
-    /// distinct locations in memory.
-    // TODO(Ohad): make redundent and delete.
-    unsafe fn hash_many_in_place(
-        data: &[*const Self::NativeType],
-        single_input_length_bytes: usize,
-        dst: &[*mut Self::NativeType],
-    ) {
-        data.iter()
-            .map(|p| std::slice::from_raw_parts(*p, single_input_length_bytes))
-            .zip(
-                dst.iter()
-                    .map(|p| std::slice::from_raw_parts_mut(*p, Self::OUTPUT_SIZE)),
-            )
-            .for_each(|(input, out)| {
-                let mut hasher = Self::new();
-                hasher.update(input);
-                out.clone_from_slice(&hasher.finalize().into());
-            })
-    }
 }
 
 pub trait Hash<NativeType: Sized + Eq>:

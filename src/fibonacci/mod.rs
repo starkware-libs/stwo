@@ -110,9 +110,10 @@ impl MultiFibonacci {
 mod tests {
     use itertools::Itertools;
     use num_traits::One;
+    use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
 
     use super::{Fibonacci, MultiFibonacci};
-    use crate::commitment_scheme::utils::tests::generate_test_queries;
     use crate::core::air::accumulation::PointEvaluationAccumulator;
     use crate::core::air::{AirExt, Component, ComponentTrace};
     use crate::core::circle::CirclePoint;
@@ -122,6 +123,16 @@ mod tests {
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
     use crate::{m31, qm31};
+
+    pub fn generate_test_queries(n_queries: usize, trace_length: usize) -> Vec<usize> {
+        let rng = &mut StdRng::seed_from_u64(0);
+        let mut queries: Vec<usize> = (0..n_queries)
+            .map(|_| rng.gen_range(0..trace_length))
+            .collect();
+        queries.sort();
+        queries.dedup();
+        queries
+    }
 
     #[test]
     fn test_composition_polynomial_is_low_degree() {

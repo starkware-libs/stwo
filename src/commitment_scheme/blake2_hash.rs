@@ -141,28 +141,6 @@ mod tests {
     }
 
     #[test]
-    fn hash_many_vs_single() {
-        let hash_a = blake2_hash::Blake2sHasher::hash(b"a");
-        let mut out = [0_u8; 32];
-        let out_ptrs = [out.as_mut_ptr()];
-        unsafe { Blake2sHasher::hash_many_in_place(&[b"a".as_ptr()], 1, &out_ptrs) };
-        assert_eq!(hash_a.to_string(), hex::encode(out));
-    }
-
-    #[test]
-    fn hash_many_xof_test() {
-        let input1 = "a";
-        let input2 = "b";
-        let input_arr = [input1.as_ptr(), input2.as_ptr()];
-
-        let mut out = [0_u8; 96];
-        let out_ptrs = [out.as_mut_ptr(), unsafe { out.as_mut_ptr().add(32) }];
-        unsafe { Blake2sHasher::hash_many_in_place(&input_arr, 1, &out_ptrs) };
-
-        assert_eq!("f2ab64ae6530f3a5d19369752cd30eadf455153c29dbf2cb70f00f73d5b41c504383e3109201cbbb59233961bb55f5fe0c49f444751dc782080fe1d9780bfded0000000000000000000000000000000000000000000000000000000000000000", hex::encode(out));
-    }
-
-    #[test]
     fn hash_state_test() {
         let mut state = Blake2sHasher::new();
         state.update(b"a");
