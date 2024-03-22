@@ -1,8 +1,8 @@
+use super::hasher::Hasher;
 use crate::core::backend::{Col, ColumnOps};
 use crate::core::fields::m31::BaseField;
 
-pub trait MerkleHasher {
-    type Hash: Clone + Eq + std::fmt::Debug;
+pub trait MerkleHasher: Hasher {
     /// Hashes a single Merkle node.
     /// The node may or may not need to hash 2 hashes from the previous layer - depending if it is a
     /// leaf or not.
