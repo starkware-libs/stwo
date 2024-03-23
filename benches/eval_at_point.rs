@@ -10,7 +10,7 @@ pub fn cpu_eval_at_secure_point(c: &mut criterion::Criterion) {
     use stwo::core::fields::qm31::QM31;
     use stwo::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use stwo::core::poly::NaturalOrder;
-    let log_size = 23;
+    let log_size = 20;
     let rng = &mut StdRng::seed_from_u64(0);
 
     let domain = CanonicCoset::new(log_size as u32).circle_domain();
@@ -35,7 +35,7 @@ pub fn cpu_eval_at_secure_point(c: &mut criterion::Criterion) {
     );
 
     let point = CirclePoint { x, y };
-    c.bench_function("cpu eval_at_secure_field_point", |b| {
+    c.bench_function("cpu eval_at_secure_field_point 2^20", |b| {
         b.iter(|| {
             black_box(<CPUBackend as PolyOps>::eval_at_point(&poly, point));
         })
@@ -52,7 +52,7 @@ pub fn avx512_eval_at_secure_point(c: &mut criterion::Criterion) {
     use stwo::core::fields::qm31::QM31;
     use stwo::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use stwo::core::poly::NaturalOrder;
-    let log_size = 23;
+    let log_size = 20;
     let rng = &mut StdRng::seed_from_u64(0);
 
     let domain = CanonicCoset::new(log_size as u32).circle_domain();
@@ -77,7 +77,7 @@ pub fn avx512_eval_at_secure_point(c: &mut criterion::Criterion) {
     );
 
     let point = CirclePoint { x, y };
-    c.bench_function("avx eval_at_secure_field_point", |b| {
+    c.bench_function("avx eval_at_secure_field_point 2^20", |b| {
         b.iter(|| {
             black_box(<AVX512Backend as PolyOps>::eval_at_point(&poly, point));
         })
