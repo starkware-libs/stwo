@@ -501,7 +501,7 @@ impl<H: Hasher<NativeType = u8>> FriVerifier<H> {
     /// Samples queries and returns the opening positions for each unique column size.
     ///
     /// The order of the opening positions corresponds to the order of the column commitment.
-    pub fn column_opening_positions(
+    pub fn column_query_positions(
         &mut self,
         channel: &mut impl Channel<Digest = H::Hash>,
     ) -> BTreeMap<u32, SparseSubCircleDomain> {
@@ -1075,7 +1075,7 @@ mod tests {
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
 
         let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
-        let verifier_opening_positions = verifier.column_opening_positions(&mut test_channel());
+        let verifier_opening_positions = verifier.column_query_positions(&mut test_channel());
 
         assert_eq!(prover_opening_positions, verifier_opening_positions);
         verifier.decommit(decommitment_values)

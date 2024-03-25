@@ -97,7 +97,7 @@ pub fn prove(
     // values. This is a sanity check.
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) =
-        opened_values_to_mask(air, commitment_scheme_proof.proved_values.clone()).unwrap();
+        opened_values_to_mask(air, commitment_scheme_proof.sampled_values.clone()).unwrap();
 
     if composition_oods_value
         != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
@@ -142,7 +142,7 @@ pub fn verify(
 
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) =
-        opened_values_to_mask(air, proof.commitment_scheme_proof.proved_values.clone())
+        opened_values_to_mask(air, proof.commitment_scheme_proof.sampled_values.clone())
             .map_err(|_| VerificationError::InvalidStructure)?;
 
     if composition_oods_value
