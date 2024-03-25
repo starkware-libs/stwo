@@ -111,11 +111,16 @@ impl CommitmentSchemeProver {
 
         // Decommit the FRI queries on the merkle trees.
         let decommitment_results = self.trees.as_ref().map(|tree| {
-            tree.decommit(
-                fri_query_domains[&(tree.polynomials[0].log_size() + self.log_blowup_factor)]
-                    .flatten(),
-            )
+            let queries = tree
+                .polynomials
+                .iter()
+                .map(|poly| {
+                    fri_query_domains[&(poly.log_size() + self.log_blowup_factor)].flatten()
+                })
+                .collect();
+            tree.decommit(queries)
         });
+
         let queried_values = decommitment_results.as_ref().map(|(v, _)| v.clone());
         let decommitments = decommitment_results.map(|(_, d)| d);
 
@@ -163,20 +168,19 @@ impl CommitmentTreeProver {
             .collect_vec();
 
         let mut merkle_input = MerkleTreeInput::new();
-        const LOG_N_BASEFIELD_ELEMENTS_IN_SACK: u32 = 4;
+        const LOG_N_BASE_FIELD_ELEMENTS_IN_SACK: u32 = 4;
 
-        // The desired depth for column of log_length n is such that Blake2s hashes are filled(64B).
-        // Explicitly: There are 2^(d-1) hash 'sacks' at depth d, hence,  with elements of 4 bytes,
-        //  2^(d-1) = 2^n / 16, => d = n-3.
-        // Assuming rectangle trace, all columns go to the same depth.
-        // TOOD(AlonH): remove this assumption.
-        let inject_depth = std::cmp::max::<i32>(
-            evaluations[0].len().ilog2() as i32 - (LOG_N_BASEFIELD_ELEMENTS_IN_SACK as i32 - 1),
-            1,
-        );
-        for column in evaluations.iter().map(|eval| &eval.values) {
-            merkle_input.insert_column(inject_depth as usize, column);
+        for eval in evaluations.iter() {
+            // The desired depth for a column of log_length n is such that Blake2s hashes are
+            // filled(64B). Explicitly: There are 2^(d-1) hash 'sacks' at depth d,
+            // hence, with elements of 4 bytes, 2^(d-1) = 2^n / 16, => d = n-3.
+            let inject_depth = std::cmp::max::<i32>(
+                eval.domain.log_size() as i32 - (LOG_N_BASE_FIELD_ELEMENTS_IN_SACK as i32 - 1),
+                1,
+            );
+            merkle_input.insert_column(inject_depth as usize, &eval.values);
         }
+
         let (tree, root) =
             MixedDegreeMerkleTree::<BaseField, Blake2sHasher>::commit_default(&merkle_input);
         channel.mix_digest(root);
@@ -191,25 +195,17 @@ impl CommitmentTreeProver {
         }
     }
 
-    // TODO(AlonH): change interface after integrating mixed degree merkle.
     /// Decommits the merkle tree on the given query positions.
     fn decommit(
         &self,
-        queries: Vec<usize>,
+        queries: ColumnVec<Vec<usize>>,
     ) -> (
         ColumnVec<Vec<BaseField>>,
         MixedDecommitment<BaseField, Blake2sHasher>,
     ) {
-        let values = self
-            .evaluations
-            .iter()
-            .map(|c| queries.iter().map(|p| c[*p]).collect())
+        let values = zip(&self.evaluations, &queries)
+            .map(|(column, column_queries)| column_queries.iter().map(|q| column[*q]).collect())
             .collect();
-        // Assuming rectangle trace, queries should be similar for all columns.
-        // TOOD(AlonH): remove this assumption.
-        let queries = std::iter::repeat(queries.to_vec())
-            .take(self.evaluations.len())
-            .collect_vec();
 
         // Rebuild the merkle input for now.
         // TODO(Ohad): change after tree refactor. Consider removing the input struct and have the

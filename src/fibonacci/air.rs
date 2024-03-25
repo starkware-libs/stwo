@@ -1,4 +1,4 @@
-use itertools::Itertools;
+use itertools::{zip_eq, Itertools};
 
 use super::component::FibonacciComponent;
 use crate::core::air::{Air, Component};
@@ -26,10 +26,10 @@ pub struct MultiFibonacciAir {
 }
 
 impl MultiFibonacciAir {
-    pub fn new(n_components: usize, log_size: u32, claim: BaseField) -> Self {
+    pub fn new(log_sizes: &[u32], claim: &[BaseField]) -> Self {
         let mut components = Vec::new();
-        for _ in 0..n_components {
-            components.push(FibonacciComponent::new(log_size, claim));
+        for (log_size, claim) in zip_eq(log_sizes.iter(), claim.iter()) {
+            components.push(FibonacciComponent::new(*log_size, *claim));
         }
         Self { components }
     }
