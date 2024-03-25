@@ -277,34 +277,6 @@ mod tests {
         }
     }
 
-    // Ignored because it takes too long and too much memory (in the CI) to run.
-    #[test]
-    #[ignore]
-    fn test_trace_too_big() {
-        const LOG_DOMAIN_SIZE: u32 = MAX_CIRCLE_DOMAIN_LOG_SIZE;
-        let air = TestAir {
-            component: TestComponent {
-                log_size: LOG_DOMAIN_SIZE,
-                max_constraint_log_degree_bound: LOG_DOMAIN_SIZE,
-            },
-        };
-        let domain = CircleDomain::new(Coset::new(
-            CirclePointIndex::generator(),
-            LOG_DOMAIN_SIZE - 1,
-        ));
-        let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
-        let trace = vec![CPUCircleEvaluation::new(domain, values)];
-
-        let proof_error = prove(&air, &mut test_channel(), trace).unwrap_err();
-        assert!(matches!(
-            proof_error,
-            ProvingError::MaxTraceDegreeExceeded {
-                trace_index: 0,
-                degree: LOG_DOMAIN_SIZE
-            }
-        ));
-    }
-
     #[test]
     fn test_composition_polynomial_too_big() {
         const COMPOSITION_POLYNOMIAL_DEGREE: u32 = MAX_CIRCLE_DOMAIN_LOG_SIZE;
