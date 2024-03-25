@@ -6,7 +6,6 @@ use num_traits::{NumAssign, NumAssignOps, NumOps, One};
 
 use super::backend::ColumnOps;
 
-#[cfg(target_arch = "x86_64")]
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
