@@ -221,7 +221,7 @@ mod tests {
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof
             .commitment_scheme_proof
-            .proved_values
+            .sampled_values
             .swap(0, 1);
 
         fib.verify(invalid_proof).unwrap_err();

@@ -1,4 +1,3 @@
-use std::iter::zip;
 use std::ops::Deref;
 
 use itertools::Itertools;
@@ -10,7 +9,6 @@ use super::super::circle::CirclePoint;
 use super::super::fields::m31::BaseField;
 use super::super::fields::qm31::SecureField;
 use super::super::fri::{FriConfig, FriProof, FriProver};
-use super::super::oods::get_pair_oods_quotient;
 use super::super::poly::circle::CanonicCoset;
 use super::super::poly::BitReversedOrder;
 use super::super::proof_of_work::{ProofOfWork, ProofOfWorkProof};
@@ -18,12 +16,14 @@ use super::super::prover::{
     LOG_BLOWUP_FACTOR, LOG_LAST_LAYER_DEGREE_BOUND, N_QUERIES, PROOF_OF_WORK_BITS,
 };
 use super::super::ColumnVec;
+use super::quotients::{compute_fri_quotients, PointSample};
 use super::utils::TreeVec;
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::merkle_input::{MerkleTreeColumnLayout, MerkleTreeInput};
 use crate::commitment_scheme::mixed_degree_decommitment::MixedDecommitment;
 use crate::commitment_scheme::mixed_degree_merkle_tree::MixedDegreeMerkleTree;
 use crate::core::channel::Channel;
+use crate::core::poly::circle::SecureEvaluation;
 
 type MerkleHasher = Blake2sHasher;
 type ProofChannel = Blake2sChannel;
@@ -65,43 +65,43 @@ impl CommitmentSchemeProver {
 
     pub fn prove_values(
         &self,
-        prove_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
         channel: &mut ProofChannel,
     ) -> CommitmentSchemeProof {
-        // Evaluate polynomials on open points.
-        let proved_values =
-            self.polynomials()
-                .zip_cols(&prove_points)
-                .map_cols(|(poly, points)| {
-                    points
-                        .iter()
-                        .map(|point| poly.eval_at_point(*point))
-                        .collect_vec()
-                });
-        channel.mix_felts(&proved_values.clone().flatten_cols());
-
-        // Compute oods quotients for boundary constraints on prove_points.
-        let quotients = self
-            .evaluations()
-            .zip_cols(&proved_values)
-            .zip_cols(&prove_points)
-            .map_cols(|((evaluation, values), points)| {
-                zip(points, values)
-                    .map(|(&point, &value)| {
-                        get_pair_oods_quotient(point, value, evaluation).bit_reverse()
+        // Evaluate polynomials on samples points.
+        let samples = self
+            .polynomials()
+            .zip_cols(&sampled_points)
+            .map_cols(|(poly, points)| {
+                points
+                    .iter()
+                    .map(|&point| PointSample {
+                        point,
+                        value: poly.eval_at_point(point),
                     })
                     .collect_vec()
             });
+        let proved_values = samples
+            .as_cols_ref()
+            .map_cols(|x| x.iter().map(|o| o.value).collect());
+        channel.mix_felts(&proved_values.clone().flatten_cols());
+
+        // Compute oods quotients for boundary constraints on sampled_points.
+        let columns = self.evaluations().flatten();
+        let quotients =
+            compute_fri_quotients(&columns[..], &samples.flatten(), channel.draw_felt());
+
+        // TODO(spapini): Conversion to CircleEvaluation can be removed when FRI supports
+        // SecureColumn.
+        let quotients = quotients
+            .into_iter()
+            .map(SecureEvaluation::to_cpu)
+            .collect_vec();
 
         // Run FRI commitment phase on the oods quotients.
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-        // TODO(spapini): Remove rev() when we start accumulating by size.
-        //   This is only done because fri demands descending sizes.
-        let fri_prover = FriProver::<CPUBackend, MerkleHasher>::commit(
-            channel,
-            fri_config,
-            &quotients.flatten_cols_rev(),
-        );
+        let fri_prover =
+            FriProver::<CPUBackend, MerkleHasher>::commit(channel, fri_config, &quotients);
 
         // Proof of work.
         let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
@@ -120,7 +120,7 @@ impl CommitmentSchemeProver {
         let decommitments = decommitment_results.map(|(_, d)| d);
 
         CommitmentSchemeProof {
-            proved_values,
+            sampled_values: proved_values,
             decommitments,
             queried_values,
             proof_of_work,
@@ -131,7 +131,7 @@ impl CommitmentSchemeProver {
 
 #[derive(Debug)]
 pub struct CommitmentSchemeProof {
-    pub proved_values: TreeVec<ColumnVec<Vec<SecureField>>>,
+    pub sampled_values: TreeVec<ColumnVec<Vec<SecureField>>>,
     pub decommitments: TreeVec<MixedDecommitment<BaseField, MerkleHasher>>,
     pub queried_values: TreeVec<ColumnVec<Vec<BaseField>>>,
     pub proof_of_work: ProofOfWorkProof,
