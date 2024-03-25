@@ -881,6 +881,15 @@ impl<F: ExtensionOf<BaseField>> SparseCircleEvaluation<F> {
     }
 }
 
+impl<'a, F: ExtensionOf<BaseField>> IntoIterator for &'a mut SparseCircleEvaluation<F> {
+    type Item = &'a mut CircleEvaluation<CPUBackend, F, BitReversedOrder>;
+    type IntoIter = std::slice::IterMut<'a, CircleEvaluation<CPUBackend, F, BitReversedOrder>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.subcircle_evals.iter_mut()
+    }
+}
+
 /// Holds a small foldable subset of univariate SecureField polynomial evaluations.
 /// Evaluation is held at the CPU backend.
 #[derive(Debug, Clone)]

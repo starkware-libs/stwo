@@ -1,9 +1,12 @@
 use std::ops::Deref;
 
-use crate::core::backend::cpu::CPUCirclePoly;
+use super::CircleDomain;
+use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
+use crate::core::backend::{Backend, CPUBackend};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
+use crate::core::poly::BitReversedOrder;
 
 pub struct SecureCirclePoly(pub [CPUCirclePoly; SECURE_EXTENSION_DEGREE]);
 
@@ -24,6 +27,10 @@ impl SecureCirclePoly {
         ]
     }
 
+    pub fn log_size(&self) -> u32 {
+        self[0].log_size()
+    }
+
     /// Evaluates the polynomial at a point, given evaluations of its composing base field
     /// polynomials at that point.
     pub fn eval_from_partial_evals(evals: [SecureField; SECURE_EXTENSION_DEGREE]) -> SecureField {
@@ -40,5 +47,16 @@ impl Deref for SecureCirclePoly {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+pub struct SecureEvaluation<B: Backend> {
+    pub domain: CircleDomain,
+    pub values: SecureColumn<B>,
+}
+impl SecureEvaluation<CPUBackend> {
+    // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
+    pub fn to_cpu(self) -> CPUCircleEvaluation<SecureField, BitReversedOrder> {
+        CPUCircleEvaluation::new(self.domain, self.values.to_cpu())
     }
 }
