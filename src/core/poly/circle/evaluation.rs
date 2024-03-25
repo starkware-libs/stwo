@@ -169,7 +169,7 @@ mod tests {
         .bit_reverse();
         let poly = evaluation.interpolate();
         for (i, point) in domain.iter().enumerate() {
-            assert_eq!(poly.eval_at_point(point), m31!(i as u32));
+            assert_eq!(poly.eval_at_point(point.into_ef()), m31!(i as u32).into());
         }
     }
 
@@ -182,7 +182,7 @@ mod tests {
         );
         let poly = evaluation.interpolate();
         for (i, point) in Coset::odds(3).iter().enumerate() {
-            assert_eq!(poly.eval_at_point(point), m31!(i as u32));
+            assert_eq!(poly.eval_at_point(point.into_ef()), m31!(i as u32).into());
         }
     }
 

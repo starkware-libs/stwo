@@ -11,7 +11,7 @@ use crate::core::backend::{CPUBackend, Col};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{ExtensionOf, Field, FieldExpOps};
+use crate::core::fields::{Field, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
@@ -163,30 +163,52 @@ impl PolyOps for AVX512Backend {
         CirclePoly::new(values)
     }
 
-    fn eval_at_point<E: ExtensionOf<BaseField>>(
-        poly: &CirclePoly<Self>,
-        point: CirclePoint<E>,
-    ) -> E {
-        // TODO(spapini): Optimize.
-        let mut mappings = vec![point.y, point.x];
-        let mut x = point.x;
-        for _ in 2..poly.log_size() {
-            x = CirclePoint::double_x(x);
-            mappings.push(x);
+    fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField {
+        // If the polynomial is small, fallback to evaluate directly.
+        // TODO(Ohad): it's possible to avoid falling back. Consider fixing.
+        if poly.log_size() <= 8 {
+            return slow_eval_at_point(poly, point);
         }
-        mappings.reverse();
 
-        // If the polynomial is large, the fft does a transpose in the middle.
-        if poly.log_size() as usize > CACHED_FFT_LOG_SIZE {
-            let n = mappings.len();
-            let n0 = (n - VECS_LOG_SIZE) / 2;
-            let n1 = (n - VECS_LOG_SIZE + 1) / 2;
-            let (ab, c) = mappings.split_at_mut(n1);
-            let (a, _b) = ab.split_at_mut(n0);
-            // Swap content of a,c.
-            a.swap_with_slice(&mut c[0..n0]);
+        let mappings = Self::generate_evaluation_mappings(point, poly.log_size());
+
+        // 8 lowest mappings produce the first 2^8 twiddles. Separate to optimize each calculation.
+        let (map_low, map_high) = mappings.split_at(4);
+        let twiddle_lows =
+            PackedQM31::from_array(&std::array::from_fn(|i| Self::twiddle_at(map_low, i)));
+        let (map_mid, map_high) = map_high.split_at(4);
+        let twiddle_mids =
+            PackedQM31::from_array(&std::array::from_fn(|i| Self::twiddle_at(map_mid, i)));
+
+        // Compute the high twiddle steps.
+        let twiddle_steps = Self::twiddle_steps(map_high);
+
+        // Every twiddle is a product of mappings that correspond to '1's in the bit representation
+        // of the current index. For every 2^n alligned chunk of 2^n elements, the twiddle
+        // array is the same, denoted twiddle_low. Use this to compute sums of (coeff *
+        // twiddle_high) mod 2^n, then multiply by twiddle_low, and sum to get the final result.
+        let mut sum = PackedQM31::zeroed();
+        let mut twiddle_high = SecureField::one();
+        for (i, coeff_chunk) in poly.coeffs.data.array_chunks::<K_BLOCK_SIZE>().enumerate() {
+            // For every chunk of 2 ^ 4 * 2 ^ 4 = 2 ^ 8 elements, the twiddle high is the same.
+            // Multiply it by every mid twiddle factor to get the factors for the current chunk.
+            let high_twiddle_factors =
+                (PackedQM31::broadcast(twiddle_high) * twiddle_mids).to_array();
+
+            // Sum the coefficients multiplied by each corrseponsing twiddle. Result is effectivley
+            // an array[16] where the value at index 'i' is the sum of all coefficients at indices
+            // that are i mod 16.
+            for (&packed_coeffs, &mid_twiddle) in
+                coeff_chunk.iter().zip(high_twiddle_factors.iter())
+            {
+                sum = sum + PackedQM31::broadcast(mid_twiddle).mul_packed_m31(packed_coeffs);
+            }
+
+            // Advance twiddle high.
+            twiddle_high = Self::advance_twiddle(twiddle_high, &twiddle_steps, i);
         }
-        fold(cast_slice(&poly.coeffs.data), &mappings)
+
+        (sum * twiddle_lows).pointwise_sum()
     }
 
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
@@ -278,57 +300,31 @@ impl PolyOps for AVX512Backend {
             itwiddles,
         }
     }
+}
 
-    fn eval_at_securefield_point(
-        poly: &CirclePoly<Self>,
-        point: CirclePoint<SecureField>,
-    ) -> SecureField {
-        // If the polynomial is small, fallback to evaluate directly.
-        // TODO(Ohad): it's possible to avoid falling back. Consider fixing.
-        if poly.log_size() <= 8 {
-            return Self::eval_at_point(poly, point);
-        }
-
-        let mappings = Self::generate_evaluation_mappings(point, poly.log_size());
-
-        // 8 lowest mappings produce the first 2^8 twiddles. Separate to optimize each calculation.
-        let (map_low, map_high) = mappings.split_at(4);
-        let twiddle_lows =
-            PackedQM31::from_array(&std::array::from_fn(|i| Self::twiddle_at(map_low, i)));
-        let (map_mid, map_high) = map_high.split_at(4);
-        let twiddle_mids =
-            PackedQM31::from_array(&std::array::from_fn(|i| Self::twiddle_at(map_mid, i)));
-
-        // Compute the high twiddle steps.
-        let twiddle_steps = Self::twiddle_steps(map_high);
-
-        // Every twiddle is a product of mappings that correspond to '1's in the bit representation
-        // of the current index. For every 2^n alligned chunk of 2^n elements, the twiddle
-        // array is the same, denoted twiddle_low. Use this to compute sums of (coeff *
-        // twiddle_high) mod 2^n, then multiply by twiddle_low, and sum to get the final result.
-        let mut sum = PackedQM31::zeroed();
-        let mut twiddle_high = SecureField::one();
-        for (i, coeff_chunk) in poly.coeffs.data.array_chunks::<K_BLOCK_SIZE>().enumerate() {
-            // For every chunk of 2 ^ 4 * 2 ^ 4 = 2 ^ 8 elements, the twiddle high is the same.
-            // Multiply it by every mid twiddle factor to get the factors for the current chunk.
-            let high_twiddle_factors =
-                (PackedQM31::broadcast(twiddle_high) * twiddle_mids).to_array();
-
-            // Sum the coefficients multiplied by each corrseponsing twiddle. Result is effectivley
-            // an array[16] where the value at index 'i' is the sum of all coefficients at indices
-            // that are i mod 16.
-            for (&packed_coeffs, &mid_twiddle) in
-                coeff_chunk.iter().zip(high_twiddle_factors.iter())
-            {
-                sum = sum + PackedQM31::broadcast(mid_twiddle).mul_packed_m31(packed_coeffs);
-            }
-
-            // Advance twiddle high.
-            twiddle_high = Self::advance_twiddle(twiddle_high, &twiddle_steps, i);
-        }
-
-        (sum * twiddle_lows).pointwise_sum()
+fn slow_eval_at_point(
+    poly: &CirclePoly<AVX512Backend>,
+    point: CirclePoint<SecureField>,
+) -> SecureField {
+    let mut mappings = vec![point.y, point.x];
+    let mut x = point.x;
+    for _ in 2..poly.log_size() {
+        x = CirclePoint::double_x(x);
+        mappings.push(x);
     }
+    mappings.reverse();
+
+    // If the polynomial is large, the fft does a transpose in the middle.
+    if poly.log_size() as usize > CACHED_FFT_LOG_SIZE {
+        let n = mappings.len();
+        let n0 = (n - VECS_LOG_SIZE) / 2;
+        let n1 = (n - VECS_LOG_SIZE + 1) / 2;
+        let (ab, c) = mappings.split_at_mut(n1);
+        let (a, _b) = ab.split_at_mut(n0);
+        // Swap content of a,c.
+        a.swap_with_slice(&mut c[0..n0]);
+    }
+    fold(cast_slice::<_, BaseField>(&poly.coeffs.data), &mappings)
 }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
@@ -337,6 +333,7 @@ mod tests {
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
 
+    use crate::core::backend::avx512::circle::slow_eval_at_point;
     use crate::core::backend::avx512::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
     use crate::core::backend::avx512::AVX512Backend;
     use crate::core::backend::Column;
@@ -398,8 +395,8 @@ mod tests {
             for i in [0, 1, 3, 1 << (log_size - 1), 1 << (log_size - 2)] {
                 let p = domain.at(i);
                 assert_eq!(
-                    poly.eval_at_point(p),
-                    BaseField::from_u32_unchecked(i as u32),
+                    poly.eval_at_point(p.into_ef()),
+                    BaseField::from_u32_unchecked(i as u32).into(),
                     "log_size = {log_size} i = {i}"
                 );
             }
@@ -455,14 +452,14 @@ mod tests {
             let p = CirclePoint { x, y };
 
             assert_eq!(
-                <AVX512Backend as PolyOps>::eval_at_securefield_point(&poly, p),
                 <AVX512Backend as PolyOps>::eval_at_point(&poly, p),
+                slow_eval_at_point(&poly, p),
                 "log_size = {log_size}"
             );
 
             println!(
                 "log_size = {log_size} passed, eval{}",
-                <AVX512Backend as PolyOps>::eval_at_securefield_point(&poly, p)
+                <AVX512Backend as PolyOps>::eval_at_point(&poly, p)
             );
         }
     }

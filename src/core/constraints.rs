@@ -206,7 +206,7 @@ mod tests {
         let mut quotient_polynomial_values = Vec::with_capacity(large_domain_size as usize);
         for point in large_domain.iter() {
             let line = complex_conjugate_line(vanish_point, vanish_point_value, point);
-            let mut value = polynomial.eval_at_point(point) - line;
+            let mut value = polynomial.eval_at_point(point.into_ef()) - line;
             value /= pair_vanishing(
                 vanish_point,
                 vanish_point.complex_conjugate(),
