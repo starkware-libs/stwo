@@ -11,7 +11,7 @@
 )]
 pub mod commitment_scheme;
 pub mod core;
-pub mod fibonacci;
+pub mod example_airs;
 pub mod hash_functions;
 pub mod math;
 pub mod platform;
