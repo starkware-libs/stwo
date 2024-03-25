@@ -18,31 +18,34 @@ use crate::core::utils::bit_reverse;
 /// `values` must be aligned to 64 bytes.
 ///
 /// # Arguments
-/// * `values`: A mutable pointer to the values on which the CFFT is to be performed.
+/// * `src`: A pointer to the values to transform.
+/// * `dst`: A pointer to the destination array.
 /// * `twiddle_dbl`: A reference to the doubles of the twiddle factors.
 /// * `log_n_elements`: The log of the number of elements in the `values` array.
 ///
 /// # Panics
 /// This function will panic if `log_n_elements` is less than `MIN_FFT_LOG_SIZE`.
-pub unsafe fn fft(values: *mut i32, twiddle_dbl: &[&[i32]], log_n_elements: usize) {
+pub unsafe fn fft(src: *const i32, dst: *mut i32, twiddle_dbl: &[&[i32]], log_n_elements: usize) {
     assert!(log_n_elements >= MIN_FFT_LOG_SIZE);
     let log_n_vecs = log_n_elements - VECS_LOG_SIZE;
     if log_n_elements <= CACHED_FFT_LOG_SIZE {
-        fft_lower_with_vecwise(values, twiddle_dbl, log_n_elements, log_n_elements);
+        fft_lower_with_vecwise(src, dst, twiddle_dbl, log_n_elements, log_n_elements);
         return;
     }
 
     let fft_layers_pre_transpose = log_n_vecs.div_ceil(2);
     let fft_layers_post_transpose = log_n_vecs / 2;
     fft_lower_without_vecwise(
-        values,
+        src,
+        dst,
         &twiddle_dbl[(3 + fft_layers_pre_transpose)..],
         log_n_elements,
         fft_layers_post_transpose,
     );
-    transpose_vecs(values, log_n_vecs);
+    transpose_vecs(dst, log_n_vecs);
     fft_lower_with_vecwise(
-        values,
+        dst,
+        dst,
         &twiddle_dbl[..(3 + fft_layers_pre_transpose)],
         log_n_elements,
         fft_layers_pre_transpose + VECS_LOG_SIZE,
@@ -61,7 +64,8 @@ pub unsafe fn fft(values: *mut i32, twiddle_dbl: &[&[i32]], log_n_elements: usiz
 /// `log_size` must be at least 5.
 /// `fft_layers` must be at least 5.
 pub unsafe fn fft_lower_with_vecwise(
-    values: *mut i32,
+    src: *const i32,
+    dst: *mut i32,
     twiddle_dbl: &[&[i32]],
     log_size: usize,
     fft_layers: usize,
@@ -72,17 +76,19 @@ pub unsafe fn fft_lower_with_vecwise(
     assert_eq!(twiddle_dbl[0].len(), 1 << (log_size - 2));
 
     for index_h in 0..(1 << (log_size - fft_layers)) {
+        let mut src = src;
         for layer in (VECWISE_FFT_BITS..fft_layers).step_by(3).rev() {
             match fft_layers - layer {
                 1 => {
-                    fft1_loop(values, &twiddle_dbl[(layer - 1)..], layer, index_h);
+                    fft1_loop(src, dst, &twiddle_dbl[(layer - 1)..], layer, index_h);
                 }
                 2 => {
-                    fft2_loop(values, &twiddle_dbl[(layer - 1)..], layer, index_h);
+                    fft2_loop(src, dst, &twiddle_dbl[(layer - 1)..], layer, index_h);
                 }
                 _ => {
                     fft3_loop(
-                        values,
+                        src,
+                        dst,
                         &twiddle_dbl[(layer - 1)..],
                         fft_layers - layer - 3,
                         layer,
@@ -90,8 +96,15 @@ pub unsafe fn fft_lower_with_vecwise(
                     );
                 }
             }
+            src = dst;
         }
-        fft_vecwise_loop(values, twiddle_dbl, fft_layers - VECWISE_FFT_BITS, index_h);
+        fft_vecwise_loop(
+            src,
+            dst,
+            twiddle_dbl,
+            fft_layers - VECWISE_FFT_BITS,
+            index_h,
+        );
     }
 }
 
@@ -108,7 +121,8 @@ pub unsafe fn fft_lower_with_vecwise(
 /// `log_size` must be at least 4.
 /// `fft_layers` must be at least 4.
 pub unsafe fn fft_lower_without_vecwise(
-    values: *mut i32,
+    src: *const i32,
+    dst: *mut i32,
     twiddle_dbl: &[&[i32]],
     log_size: usize,
     fft_layers: usize,
@@ -116,18 +130,20 @@ pub unsafe fn fft_lower_without_vecwise(
     assert!(log_size >= VECS_LOG_SIZE);
 
     for index_h in 0..(1 << (log_size - fft_layers - VECS_LOG_SIZE)) {
+        let mut src = src;
         for layer in (0..fft_layers).step_by(3).rev() {
             let fixed_layer = layer + VECS_LOG_SIZE;
             match fft_layers - layer {
                 1 => {
-                    fft1_loop(values, &twiddle_dbl[layer..], fixed_layer, index_h);
+                    fft1_loop(src, dst, &twiddle_dbl[layer..], fixed_layer, index_h);
                 }
                 2 => {
-                    fft2_loop(values, &twiddle_dbl[layer..], fixed_layer, index_h);
+                    fft2_loop(src, dst, &twiddle_dbl[layer..], fixed_layer, index_h);
                 }
                 _ => {
                     fft3_loop(
-                        values,
+                        src,
+                        dst,
                         &twiddle_dbl[layer..],
                         fft_layers - layer - 3,
                         fixed_layer,
@@ -135,6 +151,7 @@ pub unsafe fn fft_lower_without_vecwise(
                     );
                 }
             }
+            src = dst;
         }
     }
 }
@@ -147,15 +164,16 @@ pub unsafe fn fft_lower_without_vecwise(
 ///   index_h - The higher part of the index, iterated by the caller.
 /// # Safety
 unsafe fn fft_vecwise_loop(
-    values: *mut i32,
+    src: *const i32,
+    dst: *mut i32,
     twiddle_dbl: &[&[i32]],
     loop_bits: usize,
     index_h: usize,
 ) {
     for index_l in 0..(1 << loop_bits) {
         let index = (index_h << loop_bits) + index_l;
-        let mut val0 = PackedBaseField::load(values.add(index * 32).cast_const());
-        let mut val1 = PackedBaseField::load(values.add(index * 32 + 16).cast_const());
+        let mut val0 = PackedBaseField::load(src.add(index * 32));
+        let mut val1 = PackedBaseField::load(src.add(index * 32 + 16));
         (val0, val1) = avx_butterfly(
             val0,
             val1,
@@ -168,8 +186,8 @@ unsafe fn fft_vecwise_loop(
             std::array::from_fn(|i| *twiddle_dbl[1].get_unchecked(index * 4 + i)),
             std::array::from_fn(|i| *twiddle_dbl[2].get_unchecked(index * 2 + i)),
         );
-        val0.store(values.add(index * 32));
-        val1.store(values.add(index * 32 + 16));
+        val0.store(dst.add(index * 32));
+        val1.store(dst.add(index * 32 + 16));
     }
 }
 
@@ -183,7 +201,8 @@ unsafe fn fft_vecwise_loop(
 ///   index_h - The higher part of the index, iterated by the caller.
 /// # Safety
 unsafe fn fft3_loop(
-    values: *mut i32,
+    src: *const i32,
+    dst: *mut i32,
     twiddle_dbl: &[&[i32]],
     loop_bits: usize,
     layer: usize,
@@ -194,7 +213,8 @@ unsafe fn fft3_loop(
         let offset = index << (layer + 3);
         for l in (0..(1 << layer)).step_by(1 << VECS_LOG_SIZE) {
             fft3(
-                values,
+                src,
+                dst,
                 offset + l,
                 layer,
                 std::array::from_fn(|i| {
@@ -220,11 +240,18 @@ unsafe fn fft3_loop(
 ///     The layers `layer`, `layer + 1` are applied.
 ///   index - The index, iterated by the caller.
 /// # Safety
-unsafe fn fft2_loop(values: *mut i32, twiddle_dbl: &[&[i32]], layer: usize, index: usize) {
+unsafe fn fft2_loop(
+    src: *const i32,
+    dst: *mut i32,
+    twiddle_dbl: &[&[i32]],
+    layer: usize,
+    index: usize,
+) {
     let offset = index << (layer + 2);
     for l in (0..(1 << layer)).step_by(1 << VECS_LOG_SIZE) {
         fft2(
-            values,
+            src,
+            dst,
             offset + l,
             layer,
             std::array::from_fn(|i| {
@@ -244,11 +271,18 @@ unsafe fn fft2_loop(values: *mut i32, twiddle_dbl: &[&[i32]], layer: usize, inde
 ///   layer - The layer number of the fft layer to apply.
 ///   index_h - The higher part of the index, iterated by the caller.
 /// # Safety
-unsafe fn fft1_loop(values: *mut i32, twiddle_dbl: &[&[i32]], layer: usize, index: usize) {
+unsafe fn fft1_loop(
+    src: *const i32,
+    dst: *mut i32,
+    twiddle_dbl: &[&[i32]],
+    layer: usize,
+    index: usize,
+) {
     let offset = index << (layer + 1);
     for l in (0..(1 << layer)).step_by(1 << VECS_LOG_SIZE) {
         fft1(
-            values,
+            src,
+            dst,
             offset + l,
             layer,
             std::array::from_fn(|i| {
@@ -379,7 +413,8 @@ pub fn get_twiddle_dbls(mut coset: Coset) -> Vec<Vec<i32>> {
 ///   Each layer has 4/2/1 twiddles.
 /// # Safety
 pub unsafe fn fft3(
-    values: *mut i32,
+    src: *const i32,
+    dst: *mut i32,
     offset: usize,
     log_step: usize,
     twiddles_dbl0: [i32; 4],
@@ -387,14 +422,14 @@ pub unsafe fn fft3(
     twiddles_dbl2: [i32; 1],
 ) {
     // Load the 8 AVX vectors from the array.
-    let mut val0 = PackedBaseField::load(values.add(offset + (0 << log_step)).cast_const());
-    let mut val1 = PackedBaseField::load(values.add(offset + (1 << log_step)).cast_const());
-    let mut val2 = PackedBaseField::load(values.add(offset + (2 << log_step)).cast_const());
-    let mut val3 = PackedBaseField::load(values.add(offset + (3 << log_step)).cast_const());
-    let mut val4 = PackedBaseField::load(values.add(offset + (4 << log_step)).cast_const());
-    let mut val5 = PackedBaseField::load(values.add(offset + (5 << log_step)).cast_const());
-    let mut val6 = PackedBaseField::load(values.add(offset + (6 << log_step)).cast_const());
-    let mut val7 = PackedBaseField::load(values.add(offset + (7 << log_step)).cast_const());
+    let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)));
+    let mut val1 = PackedBaseField::load(src.add(offset + (1 << log_step)));
+    let mut val2 = PackedBaseField::load(src.add(offset + (2 << log_step)));
+    let mut val3 = PackedBaseField::load(src.add(offset + (3 << log_step)));
+    let mut val4 = PackedBaseField::load(src.add(offset + (4 << log_step)));
+    let mut val5 = PackedBaseField::load(src.add(offset + (5 << log_step)));
+    let mut val6 = PackedBaseField::load(src.add(offset + (6 << log_step)));
+    let mut val7 = PackedBaseField::load(src.add(offset + (7 << log_step)));
 
     // Apply the third layer of butterflies.
     (val0, val4) = avx_butterfly(val0, val4, _mm512_set1_epi32(twiddles_dbl2[0]));
@@ -415,14 +450,14 @@ pub unsafe fn fft3(
     (val6, val7) = avx_butterfly(val6, val7, _mm512_set1_epi32(twiddles_dbl0[3]));
 
     // Store the 8 AVX vectors back to the array.
-    val0.store(values.add(offset + (0 << log_step)));
-    val1.store(values.add(offset + (1 << log_step)));
-    val2.store(values.add(offset + (2 << log_step)));
-    val3.store(values.add(offset + (3 << log_step)));
-    val4.store(values.add(offset + (4 << log_step)));
-    val5.store(values.add(offset + (5 << log_step)));
-    val6.store(values.add(offset + (6 << log_step)));
-    val7.store(values.add(offset + (7 << log_step)));
+    val0.store(dst.add(offset + (0 << log_step)));
+    val1.store(dst.add(offset + (1 << log_step)));
+    val2.store(dst.add(offset + (2 << log_step)));
+    val3.store(dst.add(offset + (3 << log_step)));
+    val4.store(dst.add(offset + (4 << log_step)));
+    val5.store(dst.add(offset + (5 << log_step)));
+    val6.store(dst.add(offset + (6 << log_step)));
+    val7.store(dst.add(offset + (7 << log_step)));
 }
 
 /// Applies 2 butterfly layers on 4 vectors of 16 M31 elements.
@@ -439,17 +474,18 @@ pub unsafe fn fft3(
 ///   Each layer has 2/1 twiddles.
 /// # Safety
 pub unsafe fn fft2(
-    values: *mut i32,
+    src: *const i32,
+    dst: *mut i32,
     offset: usize,
     log_step: usize,
     twiddles_dbl0: [i32; 2],
     twiddles_dbl1: [i32; 1],
 ) {
     // Load the 4 AVX vectors from the array.
-    let mut val0 = PackedBaseField::load(values.add(offset + (0 << log_step)).cast_const());
-    let mut val1 = PackedBaseField::load(values.add(offset + (1 << log_step)).cast_const());
-    let mut val2 = PackedBaseField::load(values.add(offset + (2 << log_step)).cast_const());
-    let mut val3 = PackedBaseField::load(values.add(offset + (3 << log_step)).cast_const());
+    let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)));
+    let mut val1 = PackedBaseField::load(src.add(offset + (1 << log_step)));
+    let mut val2 = PackedBaseField::load(src.add(offset + (2 << log_step)));
+    let mut val3 = PackedBaseField::load(src.add(offset + (3 << log_step)));
 
     // Apply the second layer of butterflies.
     (val0, val2) = avx_butterfly(val0, val2, _mm512_set1_epi32(twiddles_dbl1[0]));
@@ -460,10 +496,10 @@ pub unsafe fn fft2(
     (val2, val3) = avx_butterfly(val2, val3, _mm512_set1_epi32(twiddles_dbl0[1]));
 
     // Store the 4 AVX vectors back to the array.
-    val0.store(values.add(offset + (0 << log_step)));
-    val1.store(values.add(offset + (1 << log_step)));
-    val2.store(values.add(offset + (2 << log_step)));
-    val3.store(values.add(offset + (3 << log_step)));
+    val0.store(dst.add(offset + (0 << log_step)));
+    val1.store(dst.add(offset + (1 << log_step)));
+    val2.store(dst.add(offset + (2 << log_step)));
+    val3.store(dst.add(offset + (3 << log_step)));
 }
 
 /// Applies 1 butterfly layers on 2 vectors of 16 M31 elements.
@@ -475,16 +511,22 @@ pub unsafe fn fft2(
 ///     values that need to be transformed. For layer i this is i - 4.
 ///   twiddles_dbl0 - The double of the twiddles for the butterfly layer.
 /// # Safety
-pub unsafe fn fft1(values: *mut i32, offset: usize, log_step: usize, twiddles_dbl0: [i32; 1]) {
+pub unsafe fn fft1(
+    src: *const i32,
+    dst: *mut i32,
+    offset: usize,
+    log_step: usize,
+    twiddles_dbl0: [i32; 1],
+) {
     // Load the 2 AVX vectors from the array.
-    let mut val0 = PackedBaseField::load(values.add(offset + (0 << log_step)).cast_const());
-    let mut val1 = PackedBaseField::load(values.add(offset + (1 << log_step)).cast_const());
+    let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)));
+    let mut val1 = PackedBaseField::load(src.add(offset + (1 << log_step)));
 
     (val0, val1) = avx_butterfly(val0, val1, _mm512_set1_epi32(twiddles_dbl0[0]));
 
     // Store the 2 AVX vectors back to the array.
-    val0.store(values.add(offset + (0 << log_step)));
-    val1.store(values.add(offset + (1 << log_step)));
+    val0.store(dst.add(offset + (0 << log_step)));
+    val1.store(dst.add(offset + (1 << log_step)));
 }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
@@ -549,6 +591,7 @@ mod tests {
             let twiddles1_dbl = std::array::from_fn(|i| twiddles1[i] * 2);
             let twiddles2_dbl = std::array::from_fn(|i| twiddles2[i] * 2);
             fft3(
+                std::mem::transmute(values.as_ptr()),
                 std::mem::transmute(values.as_mut_ptr()),
                 0,
                 VECS_LOG_SIZE,
@@ -649,6 +692,7 @@ mod tests {
 
             unsafe {
                 fft_lower_with_vecwise(
+                    std::mem::transmute(values.data.as_ptr()),
                     std::mem::transmute(values.data.as_mut_ptr()),
                     &twiddle_dbls
                         .iter()
@@ -681,6 +725,7 @@ mod tests {
                 (log_size - 4) as usize,
             );
             fft(
+                std::mem::transmute(values.data.as_ptr()),
                 std::mem::transmute(values.data.as_mut_ptr()),
                 &twiddle_dbls
                     .iter()
