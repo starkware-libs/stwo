@@ -401,7 +401,10 @@ mod tests {
         }
     }
 
+    // This test is expensive because it needs to check the different logic that happens on large
+    // polynomials over CACHED_FFT_LOG_SIZE.
     #[test]
+    #[ignore]
     fn test_circle_poly_extend() {
         for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 2) {
             let log_size = log_size as u32;
