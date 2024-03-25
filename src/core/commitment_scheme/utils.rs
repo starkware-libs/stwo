@@ -94,11 +94,4 @@ impl<T> TreeVec<ColumnVec<Vec<T>>> {
     pub fn flatten_cols(self) -> Vec<T> {
         self.0.into_iter().flatten().flatten().collect()
     }
-
-    // TODO(spapini): Remove after accumulating oods quotients by size.
-    /// Flattens a [TreeVec<ColumVec<T>>] of [Vec]s into a single [Vec] with all the elements
-    /// combined, in reverse order.
-    pub fn flatten_cols_rev(self) -> Vec<T> {
-        self.0.into_iter().flatten().flatten().rev().collect()
-    }
 }
