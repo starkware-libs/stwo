@@ -2,7 +2,8 @@ use super::{CircleDomain, CircleEvaluation, PolyOps};
 use crate::core::backend::{Col, Column};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{ExtensionOf, FieldOps};
+use crate::core::fields::qm31::SecureField;
+use crate::core::fields::FieldOps;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 
@@ -38,7 +39,7 @@ impl<B: PolyOps> CirclePoly<B> {
     }
 
     /// Evaluates the polynomial at a single point.
-    pub fn eval_at_point<E: ExtensionOf<BaseField>>(&self, point: CirclePoint<E>) -> E {
+    pub fn eval_at_point(&self, point: CirclePoint<SecureField>) -> SecureField {
         B::eval_at_point(self, point)
     }
 
