@@ -80,28 +80,22 @@ impl CommitmentSchemeVerifier {
         let fri_query_domains = fri_verifier.column_opening_positions(channel);
 
         // Verify merkle decommitments.
-        if !self
+        let merkle_verification_result = self
             .trees
             .as_ref()
             .zip(&proof.decommitments)
             .map(|(tree, decommitment)| {
                 // TODO(spapini): Also verify proved_values here.
-                // Assuming columns are of equal lengths, replicate queries for all columns.
-                // TOOD(AlonH): remove this assumption.
-                tree.verify(
-                    decommitment,
-                    &std::iter::repeat(
-                        fri_query_domains[&(tree.log_sizes[0] + LOG_BLOWUP_FACTOR)]
-                            .flatten()
-                            .clone(),
-                    )
-                    .take(tree.log_sizes.len())
-                    .collect_vec(),
-                )
+                let queries = tree
+                    .log_sizes
+                    .iter()
+                    .map(|log_size| fri_query_domains[&(log_size + LOG_BLOWUP_FACTOR)].flatten())
+                    .collect_vec();
+                tree.verify(decommitment, &queries)
             })
             .iter()
-            .all(|x| *x)
-        {
+            .all(|x| *x);
+        if !merkle_verification_result {
             return Err(VerificationError::MerkleVerificationFailed);
         }
 
