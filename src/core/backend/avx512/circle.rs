@@ -213,7 +213,14 @@ impl PolyOps for AVX512Backend {
 
         // Evaluate on a big domains by evaluating on several subdomains.
         let log_subdomains = log_size - fft_log_size;
+
+        // Alllocate the destination buffer without initializing.
         let mut values = Vec::with_capacity(domain.size() >> VECS_LOG_SIZE);
+        #[allow(clippy::uninit_vec)]
+        unsafe {
+            values.set_len(domain.size() >> VECS_LOG_SIZE)
+        };
+
         for i in 0..(1 << log_subdomains) {
             // The subdomain twiddles are a slice of the large domain twiddles.
             let subdomain_twiddles = (0..(fft_log_size - 1))
@@ -223,12 +230,10 @@ impl PolyOps for AVX512Backend {
                 })
                 .collect::<Vec<_>>();
 
-            // Copy the coefficients of the polynomial to the values vector.
-            values.extend_from_slice(&poly.coeffs.data);
-
-            // FFT inplace on the values chunk.
+            // FFT from the coefficients buffer to the values chunk.
             unsafe {
                 rfft::fft(
+                    std::mem::transmute(poly.coeffs.data.as_ptr()),
                     std::mem::transmute(
                         values[i << (fft_log_size - VECS_LOG_SIZE)
                             ..(i + 1) << (fft_log_size - VECS_LOG_SIZE)]
