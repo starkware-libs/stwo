@@ -41,7 +41,7 @@ pub fn accumulate_row_quotients(
     let mut row_accumlator = SecureField::zero();
     for sample in samples {
         let mut numerator = SecureField::zero();
-        for (column_index, sampled_value) in &sample.column_indices_and_values {
+        for (column_index, sampled_value) in &sample.columns_and_values {
             let column = &columns[*column_index];
             let value = column[row];
             let linear_term = complex_conjugate_line(sample.point, *sampled_value, domain_point);
@@ -54,8 +54,7 @@ pub fn accumulate_row_quotients(
             domain_point.into_ef(),
         );
 
-        row_accumlator = row_accumlator
-            * random_coeff.pow(sample.column_indices_and_values.len() as u128)
+        row_accumlator = row_accumlator * random_coeff.pow(sample.columns_and_values.len() as u128)
             + numerator / denominator;
     }
     row_accumlator
@@ -85,7 +84,7 @@ mod tests {
             coeff,
             &[ColumnSampleBatch {
                 point,
-                column_indices_and_values: vec![(0, value)],
+                columns_and_values: vec![(0, value)],
             }],
         );
         let quot_poly_base_field =
