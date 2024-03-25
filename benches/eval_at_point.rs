@@ -79,9 +79,7 @@ pub fn avx512_eval_at_secure_point(c: &mut criterion::Criterion) {
     let point = CirclePoint { x, y };
     c.bench_function("avx eval_at_secure_field_point", |b| {
         b.iter(|| {
-            black_box(<AVX512Backend as PolyOps>::eval_at_securefield_point(
-                &poly, point,
-            ));
+            black_box(<AVX512Backend as PolyOps>::eval_at_point(&poly, point));
         })
     });
 }

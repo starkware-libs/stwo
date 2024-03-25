@@ -5,6 +5,7 @@ use crate::core::backend::{Col, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
@@ -76,10 +77,7 @@ impl PolyOps for CPUBackend {
         CirclePoly::new(values)
     }
 
-    fn eval_at_point<E: ExtensionOf<BaseField>>(
-        poly: &CirclePoly<Self>,
-        point: CirclePoint<E>,
-    ) -> E {
+    fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField {
         // TODO(Andrew): Allocation here expensive for small polynomials.
         let mut mappings = vec![point.y, point.x];
         let mut x = point.x;
@@ -173,13 +171,6 @@ impl PolyOps for CPUBackend {
             twiddles,
             itwiddles,
         }
-    }
-
-    fn eval_at_securefield_point(
-        poly: &CirclePoly<Self>,
-        point: CirclePoint<crate::core::fields::qm31::SecureField>,
-    ) -> crate::core::fields::qm31::SecureField {
-        Self::eval_at_point(poly, point)
     }
 }
 
