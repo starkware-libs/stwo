@@ -23,6 +23,11 @@ impl SecureColumn<CPUBackend> {
             .map(|c| &mut c[index])
             .assign(value.to_m31_array());
     }
+
+    // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
+    pub fn to_cpu(&self) -> Vec<SecureField> {
+        (0..self.len()).map(|i| self.at(i)).collect()
+    }
 }
 impl<B: Backend> SecureColumn<B> {
     pub fn zeros(len: usize) -> Self {
