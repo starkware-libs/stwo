@@ -196,7 +196,7 @@ pub fn inject_hash_in_pairs<'a: 'b, 'b, H: Hasher>(
 
 /// Injects Field element values into existing hash inputs.
 ///
-/// For Large [MerkleTree] constructions, holding reference-arrays for every node
+/// For Large Merkle tree constructions, holding reference-arrays for every node
 /// in a layer hinders performance greatly. Hence, the input is traversed in small chunks,
 /// and the refrences are discarded upon use.
 ///

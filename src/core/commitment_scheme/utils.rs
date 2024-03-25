@@ -24,7 +24,7 @@ impl<T> TreeVec<T> {
     }
 }
 
-/// Converts &TreeVec<T> to TreeVec<&T>.
+/// Converts `&TreeVec<T>` to `TreeVec<&T>`.
 impl<'a, T> From<&'a TreeVec<T>> for TreeVec<&'a T> {
     fn from(val: &'a TreeVec<T>) -> Self {
         val.as_ref()
@@ -59,9 +59,9 @@ impl<T> TreeVec<ColumnVec<T>> {
                 .collect(),
         )
     }
-    /// Zips two [TreeVec<ColumVec<T>>] with the same structure (number of columns in each tree).
-    /// The resulting [TreeVec<ColumVec<T>>] has the same structure, with each value being a tuple
-    /// of the corresponding values from the input [TreeVec<ColumVec<T>>].
+    /// Zips two [`TreeVec<ColumVec<T>>`] with the same structure (number of columns in each tree).
+    /// The resulting [`TreeVec<ColumVec<T>>`] has the same structure, with each value being a tuple
+    /// of the corresponding values from the input [`TreeVec<ColumVec<T>>`].
     pub fn zip_cols<U>(
         self,
         other: impl Into<TreeVec<ColumnVec<U>>>,
@@ -76,7 +76,8 @@ impl<T> TreeVec<ColumnVec<T>> {
     pub fn as_cols_ref(&self) -> TreeVec<ColumnVec<&T>> {
         TreeVec(self.iter().map(|column| column.iter().collect()).collect())
     }
-    /// Flattens the [TreeVec<ColumVec<T>>] into a single [ColumnVec] with all the columns combined.
+    /// Flattens the [`TreeVec<ColumVec<T>>`] into a single [`ColumnVec`] with all the columns
+    /// combined.
     pub fn flatten(self) -> ColumnVec<T> {
         self.0.into_iter().flatten().collect()
     }
@@ -89,14 +90,14 @@ impl<'a, T> From<&'a TreeVec<ColumnVec<T>>> for TreeVec<ColumnVec<&'a T>> {
 }
 
 impl<T> TreeVec<ColumnVec<Vec<T>>> {
-    /// Flattens a [TreeVec<ColumVec<T>>] of [Vec]s into a single [Vec] with all the elements
+    /// Flattens a [`TreeVec<ColumVec<T>>`] of [Vec]s into a single [Vec] with all the elements
     /// combined.
     pub fn flatten_cols(self) -> Vec<T> {
         self.0.into_iter().flatten().flatten().collect()
     }
 
     // TODO(spapini): Remove after accumulating oods quotients by size.
-    /// Flattens a [TreeVec<ColumVec<T>>] of [Vec]s into a single [Vec] with all the elements
+    /// Flattens a [`TreeVec<ColumVec<T>>`] of [Vec]s into a single [Vec] with all the elements
     /// combined, in reverse order.
     pub fn flatten_cols_rev(self) -> Vec<T> {
         self.0.into_iter().flatten().flatten().rev().collect()

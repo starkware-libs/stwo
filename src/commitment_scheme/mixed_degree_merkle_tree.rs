@@ -334,7 +334,7 @@ where
 }
 
 /// Translates queries of the form <column, entry_index> to the form <layer, node_index>
-/// Input queries are per column, i.e queries[0] is a vector of queries for the first column that
+/// Input queries are per column, i.e `queries[0]` is a vector of queries for the first column that
 /// was inserted to the tree's input in that layer.
 pub fn queried_nodes_in_layer<'a>(
     queries: impl Iterator<Item = &'a Vec<usize>>,
