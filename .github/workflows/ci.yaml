@@ -76,7 +76,10 @@ jobs:
           alert-comment-cc-users: '@spapinistarkware'
 
   run-tests:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest-xlarge]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
