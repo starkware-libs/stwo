@@ -73,8 +73,7 @@ impl CommitmentSchemeVerifier {
 
         // FRI commitment phase on OODS quotients.
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-        let mut fri_verifier =
-            FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds).unwrap();
+        let mut fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds)?;
 
         // Verify proof of work.
         ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work)?;
