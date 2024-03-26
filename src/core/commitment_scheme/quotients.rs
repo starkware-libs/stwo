@@ -28,7 +28,7 @@ pub trait QuotientOps: Backend {
         domain: CircleDomain,
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
-        samples: &[ColumnSampleBatch],
+        sample_batches: &[ColumnSampleBatch],
     ) -> SecureColumn<Self>;
 }
 
@@ -43,7 +43,7 @@ impl ColumnSampleBatch {
     /// Groups column samples by sampled point.
     /// # Arguments
     /// samples: For each column, a vector of samples.
-    pub fn new(samples: &[&Vec<PointSample>]) -> Vec<Self> {
+    pub fn new_vec(samples: &[&Vec<PointSample>]) -> Vec<Self> {
         // Group samples by point, and create a ColumnSampleBatch for each point.
         // This should keep a stable ordering.
         let mut grouped_samples = BTreeMap::new();
@@ -83,8 +83,8 @@ pub fn compute_fri_quotients<B: QuotientOps>(
             let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
             let domain = CanonicCoset::new(log_size).circle_domain();
             // TODO: slice.
-            let batched_samples = ColumnSampleBatch::new(&samples);
-            let values = B::accumulate_quotients(domain, &columns, random_coeff, &batched_samples);
+            let sample_batches = ColumnSampleBatch::new_vec(&samples);
+            let values = B::accumulate_quotients(domain, &columns, random_coeff, &sample_batches);
             SecureEvaluation { domain, values }
         })
         .collect()
@@ -123,7 +123,7 @@ pub fn fri_answers_for_log_size(
     queried_values_per_column: &[&Vec<BaseField>],
 ) -> Result<SparseCircleEvaluation<SecureField>, VerificationError> {
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
-    let batched_samples = ColumnSampleBatch::new(samples);
+    let sample_batches = ColumnSampleBatch::new_vec(samples);
     for queried_values in queried_values_per_column {
         if queried_values.len() != query_domain.flatten().len() {
             return Err(VerificationError::InvalidStructure(
@@ -152,7 +152,7 @@ pub fn fri_answers_for_log_size(
         for row in 0..domain.size() {
             let domain_point = domain.at(bit_reverse_index(row, log_size));
             let value = accumulate_row_quotients(
-                &batched_samples,
+                &sample_batches,
                 &column_evals.iter().collect_vec(),
                 row,
                 random_coeff,
