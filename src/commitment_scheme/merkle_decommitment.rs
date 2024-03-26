@@ -15,6 +15,14 @@ use crate::core::fields::IntoSlice;
 /// * `n_rows_in_leaf_block` - The number of trace-rows packed in each leaf block.
 // TODO(Ohad): derive Debug.
 #[derive(Default, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound(
+        deserialize = "<H as Hasher>::Hash: serde::Deserialize<'de>, T: serde::Deserialize<'de>",
+        serialize = "<H as Hasher>::Hash: serde::Serialize, T: serde::Serialize"
+    ))
+)]
 pub struct MerkleDecommitment<T: Sized + Display, H: Hasher> {
     pub leaf_blocks: Vec<Vec<T>>,
     pub layers: Vec<Vec<H::Hash>>,

@@ -590,6 +590,7 @@ dependencies = [
  "merging-iterator",
  "num-traits",
  "rand",
+ "serde",
  "thiserror",
 ]
 

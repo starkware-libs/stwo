@@ -9,6 +9,7 @@ use crate::math::utils::egcd;
 
 /// A point on the complex circle. Treaed as an additive group.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CirclePoint<F: Field> {
     pub x: F,
     pub y: F,
@@ -209,6 +210,7 @@ pub const SECURE_FIELD_CIRCLE_ORDER: u128 = P4 - 1;
 /// Integer i that represent the circle point i * CIRCLE_GEN. Treated as an
 /// additive ring modulo `1 << M31_CIRCLE_LOG_ORDER`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CirclePointIndex(pub usize);
 
 impl CirclePointIndex {
@@ -291,6 +293,7 @@ impl Neg for CirclePointIndex {
 
 /// Represents the coset initial + \<step\>.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Coset {
     pub initial_index: CirclePointIndex,
     pub initial: CirclePoint<M31>,

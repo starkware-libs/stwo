@@ -3,6 +3,8 @@ use std::ops::{Deref, Index};
 
 use super::{CanonicCoset, CircleDomain, CirclePoly, PolyOps};
 use crate::core::backend::cpu::CPUCircleEvaluation;
+#[cfg(feature = "serde")]
+use crate::core::backend::ColumnOps;
 use crate::core::backend::{Col, Column};
 use crate::core::circle::{CirclePointIndex, Coset};
 use crate::core::fields::m31::BaseField;
@@ -14,6 +16,14 @@ use crate::core::utils::bit_reverse_index;
 /// An evaluation defined on a [CircleDomain].
 /// The values are ordered according to the [CircleDomain] ordering.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound(
+        deserialize = "<B as ColumnOps<F>>::Column: serde::Deserialize<'de>",
+        serialize = "<B as ColumnOps<F>>::Column: serde::Serialize"
+    ))
+)]
 pub struct CircleEvaluation<B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder = NaturalOrder> {
     pub domain: CircleDomain,
     pub values: Col<B, F>,
