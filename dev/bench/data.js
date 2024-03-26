@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1711437981442,
+  "lastUpdate": 1711438961441,
   "repoUrl": "https://github.com/starkware-libs/stwo",
   "entries": {
     "Benchmark": [
@@ -6059,6 +6059,210 @@ window.BENCHMARK_DATA = {
             "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/524288",
             "value": 3381974,
             "range": "± 81237",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "43779613+spapinistarkware@users.noreply.github.com",
+            "name": "Shahar Papini",
+            "username": "spapinistarkware"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "dd8770d8c4d48fe61b5bf8686316504bd67d1c02",
+          "message": "Test docs in CI (#539)",
+          "timestamp": "2024-03-26T09:32:02+02:00",
+          "tree_id": "453c25b7dceb4dfd61c0614e5d8221324e37e731",
+          "url": "https://github.com/starkware-libs/stwo/commit/dd8770d8c4d48fe61b5bf8686316504bd67d1c02"
+        },
+        "date": 1711438960605,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "avx bit_rev 26bit",
+            "value": 71745835,
+            "range": "± 664747",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu bit_rev 24bit",
+            "value": 193659185,
+            "range": "± 3213178",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "avx eval_at_secure_field_point",
+            "value": 16416758,
+            "range": "± 236932",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu eval_at_secure_field_point",
+            "value": 212075326,
+            "range": "± 3459878",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "avx ifft 26bit",
+            "value": 258470926,
+            "range": "± 2375286",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "avx rfft 20bit",
+            "value": 3234510,
+            "range": "± 34874",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 45807655,
+            "range": "± 1179930",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 20753909,
+            "range": "± 434591",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 mul",
+            "value": 204655478,
+            "range": "± 3840505",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 add",
+            "value": 46263394,
+            "range": "± 1570821",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField mul",
+            "value": 1214296169,
+            "range": "± 12874660",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField add",
+            "value": 105204017,
+            "range": "± 1929181",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 45642104,
+            "range": "± 392241",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 20826094,
+            "range": "± 497629",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "mul_avx512",
+            "value": 7744736,
+            "range": "± 101958",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "add_avx512",
+            "value": 4756174,
+            "range": "± 45147",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sub_avx512",
+            "value": 4725368,
+            "range": "± 11824",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "fold_line",
+            "value": 577092,
+            "range": "± 7379",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "RowMajorMatrix M31 24x24 mul",
+            "value": 625,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "QM31 RowMajorMatrix 6x6 mul",
+            "value": 758,
+            "range": "± 45",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/32768",
+            "value": 322973,
+            "range": "± 5358",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/32768",
+            "value": 146740,
+            "range": "± 1380",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/65536",
+            "value": 640331,
+            "range": "± 15763",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/65536",
+            "value": 316774,
+            "range": "± 7618",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/131072",
+            "value": 1332083,
+            "range": "± 18034",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/131072",
+            "value": 829391,
+            "range": "± 21065",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/262144",
+            "value": 2915752,
+            "range": "± 43916",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/262144",
+            "value": 1891875,
+            "range": "± 48470",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/524288",
+            "value": 5734357,
+            "range": "± 50783",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/524288",
+            "value": 3475370,
+            "range": "± 93342",
             "unit": "ns/iter"
           }
         ]
