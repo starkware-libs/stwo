@@ -89,14 +89,17 @@ pub trait FriOps: FieldOps<SecureField> + Sized {
     /// Folds and accumulates a degree `d` circle polynomial into a degree `d/2` univariate
     /// polynomial.
     ///
-    /// Let `src` be the evaluation of a circle polynomial `f` on a [CircleDomain] `E`. This
-    /// function computes evaluations of `f' = f0 + alpha * f1` on the x-coordinates of `E` such
-    /// that `2f(p) = f0(px) + py * f1(px)`. The evaluations of `f'` are accumulated into `dst`
-    /// by the formula `dst = dst * alpha^2 + f'`.
+    /// Let `src` be the evaluation of a circle polynomial `f` on a
+    /// [`CircleDomain`] `E`. This function computes evaluations of `f' = f0
+    /// + alpha * f1` on the x-coordinates of `E` such that `2f(p) = f0(px) + py * f1(px)`. The
+    /// evaluations of `f'` are accumulated into `dst` by the formula `dst = dst * alpha^2 +
+    /// f'`.
     ///
     /// # Panics
     ///
     /// Panics if `src` is not double the length of `dst`.
+    ///
+    /// [`CircleDomain`]: super::poly::circle::CircleDomain
     // TODO(andrew): Make folding factor generic.
     // TODO(andrew): Fold directly into FRI layer to prevent allocation.
     fn fold_circle_into_line<F: Field>(
@@ -127,7 +130,7 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriProver<B, H> {
     /// Combining evaluations on different sized domains into an evaluation of a single polynomial
     /// on a single domain for the purpose of commitment is inefficient. Instead, commit to multiple
     /// polynomials so combining of evaluations can be taken care of efficiently at the appropriate
-    /// FRI layer. All evaluations must be taken over canonic [CircleDomain]s.
+    /// FRI layer. All evaluations must be taken over canonic [`CircleDomain`]s.
     ///
     /// # Panics
     ///
@@ -136,6 +139,8 @@ impl<B: FriOps, H: Hasher<NativeType = u8>> FriProver<B, H> {
     /// * An evaluation is not from a sufficiently low degree circle polynomial.
     /// * An evaluation's domain is smaller than the last layer.
     /// * An evaluation's domain is not a canonic circle domain.
+    ///
+    /// [`CircleDomain`]: super::poly::circle::CircleDomain
     // TODO(andrew): Add docs for all evaluations needing to be from canonic domains.
     pub fn commit<F>(
         channel: &mut impl Channel<Digest = H::Hash>,
@@ -632,7 +637,7 @@ pub const FOLD_STEP: u32 = 1;
 /// Number of folds when folding a circle polynomial to univariate polynomial.
 pub const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
 
-/// Stores a subset of evaluations in a [FriLayer] with their corresponding merkle decommitments.
+/// Stores a subset of evaluations in a fri layer with their corresponding merkle decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
 #[derive(Debug)]

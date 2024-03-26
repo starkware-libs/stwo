@@ -1,5 +1,5 @@
 //! An AVX512 implementation of the BLAKE2s compression function.
-//! Based on https://github.com/oconnor663/blake2_simd/blob/master/blake2s/src/avx2.rs .
+//! Based on <https://github.com/oconnor663/blake2_simd/blob/master/blake2s/src/avx2.rs>.
 
 use std::arch::x86_64::{
     __m512i, _mm512_add_epi32, _mm512_or_si512, _mm512_permutex2var_epi32, _mm512_set1_epi32,

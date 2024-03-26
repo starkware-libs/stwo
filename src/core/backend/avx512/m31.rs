@@ -100,7 +100,7 @@ impl Display for PackedBaseField {
 impl Add for PackedBaseField {
     type Output = Self;
 
-    /// Adds two packed M31 elements, and reduces the result to the range [0,P].
+    /// Adds two packed M31 elements, and reduces the result to the range `[0,P]`.
     /// Each value is assumed to be in unreduced form, [0, P] including P.
     #[inline(always)]
     fn add(self, rhs: Self) -> Self::Output {
@@ -208,7 +208,7 @@ impl Neg for PackedBaseField {
     }
 }
 
-/// Subtracts two packed M31 elements, and reduces the result to the range [0,P].
+/// Subtracts two packed M31 elements, and reduces the result to the range `[0,P]`.
 /// Each value is assumed to be in unreduced form, [0, P] including P.
 impl Sub for PackedBaseField {
     type Output = Self;
