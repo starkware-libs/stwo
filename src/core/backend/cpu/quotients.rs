@@ -1,9 +1,10 @@
-use num_traits::Zero;
+use itertools::zip_eq;
+use num_traits::{One, Zero};
 
 use super::CPUBackend;
 use crate::core::circle::CirclePoint;
-use crate::core::commitment_scheme::quotients::{ColumnSampleBatch, QuotientOps};
-use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
+use crate::core::commitment_scheme::quotients::{ColumnSampleBatch, PointSample, QuotientOps};
+use crate::core::constraints::{complex_conjugate_line_coefficients, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
@@ -20,11 +21,19 @@ impl QuotientOps for CPUBackend {
         sample_batches: &[ColumnSampleBatch],
     ) -> SecureColumn<Self> {
         let mut res = SecureColumn::zeros(domain.size());
+        let column_constants = column_constants(sample_batches, random_coeff);
+
         for row in 0..domain.size() {
             // TODO(alonh): Make an efficient bit reverse domain iterator, possibly for AVX backend.
             let domain_point = domain.at(bit_reverse_index(row, domain.log_size()));
-            let row_value =
-                accumulate_row_quotients(sample_batches, columns, row, random_coeff, domain_point);
+            let row_value = accumulate_row_quotients(
+                sample_batches,
+                columns,
+                &column_constants,
+                row,
+                random_coeff,
+                domain_point,
+            );
             res.set(row, row_value);
         }
         res
@@ -34,19 +43,21 @@ impl QuotientOps for CPUBackend {
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
     columns: &[&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>],
+    column_constants: &[Vec<(SecureField, SecureField, SecureField)>],
     row: usize,
     random_coeff: SecureField,
     domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
     let mut row_accumulator = SecureField::zero();
-    for sample_batch in sample_batches {
+    for (sample_batch, sample_constants) in zip_eq(sample_batches, column_constants) {
         let mut numerator = SecureField::zero();
-        for (column_index, sampled_value) in &sample_batch.columns_and_values {
+        for ((column_index, _sampled_value), (a, b, c)) in
+            zip_eq(&sample_batch.columns_and_values, sample_constants)
+        {
             let column = &columns[*column_index];
-            let value = column[row];
-            let linear_term =
-                complex_conjugate_line(sample_batch.point, *sampled_value, domain_point);
-            numerator = numerator * random_coeff + value - linear_term;
+            let value = column[row] * *c;
+            let linear_term = *a * domain_point.y + *b;
+            numerator += value - linear_term;
         }
 
         let denominator = pair_vanishing(
@@ -60,6 +71,33 @@ pub fn accumulate_row_quotients(
             + numerator / denominator;
     }
     row_accumulator
+}
+
+/// Precompute the complex conjugate line constants for each column in each sample batch.
+/// Specifically, for the i-th (in a sample batch) column's numerator term
+/// `alpha^i * (F(p) - (a * p.y + b))`, we precompute the constants `alpha^i * a` and alpha^i * `b`.
+pub fn column_constants(
+    sample_batches: &[ColumnSampleBatch],
+    random_coeff: SecureField,
+) -> Vec<Vec<(SecureField, SecureField, SecureField)>> {
+    sample_batches
+        .iter()
+        .map(|sample_batch| {
+            let mut alpha = SecureField::one();
+            sample_batch
+                .columns_and_values
+                .iter()
+                .map(|(_, sampled_value)| {
+                    alpha *= random_coeff;
+                    let sample = PointSample {
+                        point: sample_batch.point,
+                        value: *sampled_value,
+                    };
+                    complex_conjugate_line_coefficients(&sample, alpha)
+                })
+                .collect()
+        })
+        .collect()
 }
 
 #[cfg(test)]
