@@ -5,19 +5,19 @@ use std::iter::zip;
 use itertools::{izip, multiunzip, Itertools};
 
 use crate::core::backend::cpu::quotients::accumulate_row_quotients;
-use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fri::SparseCircleEvaluation;
-use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, SecureEvaluation};
+use crate::core::poly::circle::{
+    CanonicCoset, CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation,
+};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::VerificationError;
 use crate::core::queries::SparseSubCircleDomain;
 use crate::core::utils::bit_reverse_index;
 
-pub trait QuotientOps: Backend {
+pub trait QuotientOps: PolyOps {
     /// Accumulates the quotients of the columns at the given domain.
     /// For a column f(x), and a point sample (p,v), the quotient is
     ///   (f(x) - V0(x))/V1(x)
@@ -29,7 +29,7 @@ pub trait QuotientOps: Backend {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
         samples: &[ColumnSampleBatch],
-    ) -> SecureColumn<Self>;
+    ) -> SecureEvaluation<Self>;
 }
 
 /// A batch of column samplings at a point.
@@ -84,8 +84,7 @@ pub fn compute_fri_quotients<B: QuotientOps>(
             let domain = CanonicCoset::new(log_size).circle_domain();
             // TODO: slice.
             let batched_samples = ColumnSampleBatch::new(&samples);
-            let values = B::accumulate_quotients(domain, &columns, random_coeff, &batched_samples);
-            SecureEvaluation { domain, values }
+            B::accumulate_quotients(domain, &columns, random_coeff, &batched_samples)
         })
         .collect()
 }
