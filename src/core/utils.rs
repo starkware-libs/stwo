@@ -1,3 +1,5 @@
+use std::iter::Peekable;
+
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
     fn assign(self, other: impl IntoIterator<Item = T>)
     where
@@ -8,6 +10,41 @@ pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
 }
 
 impl<'a, T: 'a, I: Iterator<Item = &'a mut T>> IteratorMutExt<'a, T> for I {}
+
+/// An iterator that takes elements from the underlying [Peekable] while the predicate is true.
+/// Used to implement [PeekableExt::peek_take_while].
+pub struct PeekTakeWhile<'a, I: Iterator, P: FnMut(&I::Item) -> bool> {
+    iter: &'a mut Peekable<I>,
+    predicate: P,
+}
+impl<'a, I: Iterator, P: FnMut(&I::Item) -> bool> Iterator for PeekTakeWhile<'a, I, P> {
+    type Item = I::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next_if(&mut self.predicate)
+    }
+}
+pub trait PeekableExt<'a, I: Iterator> {
+    /// Returns an iterator that takes elements from the underlying [Peekable] while the predicate
+    /// is true.
+    /// Unlike [Iterator::take_while], this iterator does not consume the first element that does
+    /// not satisfy the predicate.
+    fn peek_take_while<P: FnMut(&I::Item) -> bool>(
+        &'a mut self,
+        predicate: P,
+    ) -> PeekTakeWhile<'a, I, P>;
+}
+impl<'a, I: Iterator> PeekableExt<'a, I> for Peekable<I> {
+    fn peek_take_while<P: FnMut(&I::Item) -> bool>(
+        &'a mut self,
+        predicate: P,
+    ) -> PeekTakeWhile<'a, I, P> {
+        PeekTakeWhile {
+            iter: self,
+            predicate,
+        }
+    }
+}
 
 pub(crate) fn bit_reverse_index(i: usize, log_size: u32) -> usize {
     if log_size == 0 {
