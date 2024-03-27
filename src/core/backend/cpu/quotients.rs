@@ -17,14 +17,14 @@ impl QuotientOps for CPUBackend {
         domain: CircleDomain,
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
-        samples: &[ColumnSampleBatch],
+        sample_batches: &[ColumnSampleBatch],
     ) -> SecureColumn<Self> {
         let mut res = SecureColumn::zeros(domain.size());
         for row in 0..domain.size() {
             // TODO(alonh): Make an efficient bit reverse domain iterator, possibly for AVX backend.
             let domain_point = domain.at(bit_reverse_index(row, domain.log_size()));
             let row_value =
-                accumulate_row_quotients(samples, columns, row, random_coeff, domain_point);
+                accumulate_row_quotients(sample_batches, columns, row, random_coeff, domain_point);
             res.set(row, row_value);
         }
         res
@@ -32,32 +32,34 @@ impl QuotientOps for CPUBackend {
 }
 
 pub fn accumulate_row_quotients(
-    samples: &[ColumnSampleBatch],
+    sample_batches: &[ColumnSampleBatch],
     columns: &[&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>],
     row: usize,
     random_coeff: SecureField,
     domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
-    let mut row_accumlator = SecureField::zero();
-    for sample in samples {
+    let mut row_accumulator = SecureField::zero();
+    for sample_batch in sample_batches {
         let mut numerator = SecureField::zero();
-        for (column_index, sampled_value) in &sample.columns_and_values {
+        for (column_index, sampled_value) in &sample_batch.columns_and_values {
             let column = &columns[*column_index];
             let value = column[row];
-            let linear_term = complex_conjugate_line(sample.point, *sampled_value, domain_point);
+            let linear_term =
+                complex_conjugate_line(sample_batch.point, *sampled_value, domain_point);
             numerator = numerator * random_coeff + value - linear_term;
         }
 
         let denominator = pair_vanishing(
-            sample.point,
-            sample.point.complex_conjugate(),
+            sample_batch.point,
+            sample_batch.point.complex_conjugate(),
             domain_point.into_ef(),
         );
 
-        row_accumlator = row_accumlator * random_coeff.pow(sample.columns_and_values.len() as u128)
+        row_accumulator = row_accumulator
+            * random_coeff.pow(sample_batch.columns_and_values.len() as u128)
             + numerator / denominator;
     }
-    row_accumlator
+    row_accumulator
 }
 
 #[cfg(test)]
