@@ -1,6 +1,7 @@
 use num_traits::One;
 
 use super::circle::{CirclePoint, Coset};
+use super::commitment_scheme::quotients::PointSample;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::ExtensionOf;
@@ -88,6 +89,28 @@ pub fn complex_conjugate_line(
     value
         + (value.complex_conjugate() - value) * (-point.y + p.y)
             / (point.complex_conjugate().y - point.y)
+}
+
+/// Evaluates the coefficients of a line between a point and its complex conjugate. Specifically,
+/// `a, b, and c, s.t. a*x + b -c*y = 0` for (x,y) being (sample.y, sample.value) and
+/// (conj(sample.y), conj(sample.value)).
+/// Relies on the fact that every polynomial F over the base
+/// field holds: F(p*) == F(p)* (* being the complex conjugate).
+pub fn complex_conjugate_line_coefficients(
+    sample: &PointSample,
+    alpha: SecureField,
+) -> (SecureField, SecureField, SecureField) {
+    // TODO(AlonH): This assertion will fail at a probability of 1 to 2^62. Use a better solution.
+    assert_ne!(
+        sample.point.y,
+        sample.point.y.complex_conjugate(),
+        "Cannot evaluate a line with a single point ({:?}).",
+        sample.point
+    );
+    let a = sample.value.complex_conjugate() - sample.value;
+    let c = sample.point.complex_conjugate().y - sample.point.y;
+    let b = sample.value * c - a * sample.point.y;
+    (alpha * a, alpha * b, alpha * c)
 }
 
 #[cfg(test)]
