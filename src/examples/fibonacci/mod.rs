@@ -211,7 +211,7 @@ mod tests {
         invalid_proof.commitment_scheme_proof.queried_values.0[0][0][4] += BaseField::one();
 
         let error = fib.verify(invalid_proof).unwrap_err();
-        assert!(matches!(error, VerificationError::Fri(_)));
+        assert!(matches!(error, VerificationError::MerkleError(_)));
     }
 
     #[test]
@@ -241,10 +241,7 @@ mod tests {
         invalid_proof.commitment_scheme_proof.queried_values.0[0][0].pop();
 
         let error = fib.verify(invalid_proof).unwrap_err();
-        assert!(matches!(error, VerificationError::InvalidStructure(_)));
-        assert!(error
-            .to_string()
-            .contains("Insufficient number of queried values"));
+        assert!(matches!(error, VerificationError::MerkleError(_)));
     }
 
     #[test]

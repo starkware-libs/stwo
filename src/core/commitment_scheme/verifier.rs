@@ -4,7 +4,6 @@ use itertools::Itertools;
 
 use super::super::channel::Blake2sChannel;
 use super::super::circle::CirclePoint;
-use super::super::fields::m31::BaseField;
 use super::super::fields::qm31::SecureField;
 use super::super::fri::{CirclePolyDegreeBound, FriConfig, FriVerifier};
 use super::super::proof_of_work::ProofOfWork;
@@ -14,8 +13,9 @@ use super::super::prover::{
 use super::quotients::{fri_answers, PointSample};
 use super::utils::TreeVec;
 use super::CommitmentSchemeProof;
-use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
-use crate::commitment_scheme::mixed_degree_decommitment::MixedDecommitment;
+use crate::commitment_scheme::blake2_hash::Blake2sHash;
+use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
+use crate::commitment_scheme::verifier::MerkleVerifier;
 use crate::core::channel::Channel;
 use crate::core::prover::VerificationError;
 use crate::core::ColumnVec;
@@ -25,7 +25,7 @@ type ProofChannel = Blake2sChannel;
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
 #[derive(Default)]
 pub struct CommitmentSchemeVerifier {
-    pub trees: TreeVec<CommitmentTreeVerifier>,
+    pub trees: TreeVec<MerkleVerifier<Blake2sMerkleHasher>>,
 }
 
 impl CommitmentSchemeVerifier {
@@ -35,7 +35,9 @@ impl CommitmentSchemeVerifier {
 
     /// A [TreeVec<ColumnVec>] of the log sizes of each column in each commitment tree.
     fn column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
-        self.trees.as_ref().map(|tree| tree.log_sizes.to_vec())
+        self.trees
+            .as_ref()
+            .map(|tree| tree.column_log_sizes.clone())
     }
 
     /// Reads a commitment from the prover.
@@ -45,7 +47,12 @@ impl CommitmentSchemeVerifier {
         log_sizes: Vec<u32>,
         channel: &mut ProofChannel,
     ) {
-        let verifier = CommitmentTreeVerifier::new(commitment, log_sizes, channel);
+        channel.mix_digest(commitment);
+        let extended_log_sizes = log_sizes
+            .iter()
+            .map(|&log_size| log_size + LOG_BLOWUP_FACTOR)
+            .collect();
+        let verifier = MerkleVerifier::new(commitment, extended_log_sizes);
         self.trees.push(verifier);
     }
 
@@ -62,7 +69,7 @@ impl CommitmentSchemeVerifier {
             .column_log_sizes()
             .zip_cols(&sampled_points)
             .map_cols(|(log_size, sampled_points)| {
-                vec![CirclePolyDegreeBound::new(log_size); sampled_points.len()]
+                vec![CirclePolyDegreeBound::new(log_size - LOG_BLOWUP_FACTOR); sampled_points.len()]
             })
             .flatten_cols()
             .into_iter()
@@ -82,24 +89,20 @@ impl CommitmentSchemeVerifier {
         let fri_query_domains = fri_verifier.column_query_positions(channel);
 
         // Verify merkle decommitments.
-        let merkle_verification_result = self
-            .trees
+        self.trees
             .as_ref()
-            .zip(&proof.decommitments)
-            .map(|(tree, decommitment)| {
-                // TODO(spapini): Also verify queried_values here.
-                let queries = tree
-                    .log_sizes
+            .zip(proof.decommitments)
+            .zip(proof.queried_values.clone())
+            .map(|((tree, decommitment), queried_values)| {
+                let queries = fri_query_domains
                     .iter()
-                    .map(|log_size| fri_query_domains[&(log_size + LOG_BLOWUP_FACTOR)].flatten())
-                    .collect_vec();
-                tree.verify(decommitment, &queries)
+                    .map(|(&log_size, domain)| (log_size, domain.flatten()))
+                    .collect();
+                tree.verify(queries, queried_values, decommitment)
             })
-            .iter()
-            .all(|x| *x);
-        if !merkle_verification_result {
-            return Err(VerificationError::MerkleVerificationFailed);
-        }
+            .0
+            .into_iter()
+            .collect::<Result<_, _>>()?;
 
         // Answer FRI queries.
         let samples = sampled_points
@@ -117,7 +120,7 @@ impl CommitmentSchemeVerifier {
             self.column_log_sizes()
                 .flatten()
                 .into_iter()
-                .map(|x| x + LOG_BLOWUP_FACTOR)
+                // .map(|x| x)
                 .collect(),
             &samples,
             random_coeff,
@@ -127,33 +130,5 @@ impl CommitmentSchemeVerifier {
 
         fri_verifier.decommit(fri_answers)?;
         Ok(())
-    }
-}
-
-/// Verifier data for a single commitment tree in a commitment scheme.
-pub struct CommitmentTreeVerifier {
-    pub commitment: Blake2sHash,
-    pub log_sizes: Vec<u32>,
-}
-
-impl CommitmentTreeVerifier {
-    pub fn new(commitment: Blake2sHash, log_sizes: Vec<u32>, channel: &mut ProofChannel) -> Self {
-        channel.mix_digest(commitment);
-        CommitmentTreeVerifier {
-            commitment,
-            log_sizes,
-        }
-    }
-
-    pub fn verify(
-        &self,
-        decommitment: &MixedDecommitment<BaseField, Blake2sHasher>,
-        queries: &[Vec<usize>],
-    ) -> bool {
-        decommitment.verify(
-            self.commitment,
-            queries,
-            decommitment.queried_values.iter().copied(),
-        )
     }
 }
