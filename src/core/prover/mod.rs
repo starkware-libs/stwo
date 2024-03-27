@@ -8,6 +8,7 @@ use super::proof_of_work::ProofOfWorkVerificationError;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
+use crate::commitment_scheme::verifier::MerkleVerificationError;
 use crate::core::air::{Air, AirExt};
 use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::backend::CPUBackend;
@@ -207,8 +208,8 @@ pub enum ProvingError {
 pub enum VerificationError {
     #[error("Proof has invalid structure: {0}.")]
     InvalidStructure(String),
-    #[error("Merkle verification failed.")]
-    MerkleVerificationFailed,
+    #[error(transparent)]
+    MerkleError(#[from] MerkleVerificationError),
     #[error(
         "The composition polynomial OODS value does not match the trace OODS values
     (DEEP-ALI failure)."
