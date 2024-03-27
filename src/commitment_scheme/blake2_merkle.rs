@@ -1,15 +1,15 @@
 use itertools::Itertools;
 use num_traits::Zero;
 
+use super::blake2_hash::Blake2sHash;
 use super::blake2s_ref::compress;
 use super::ops::{MerkleHasher, MerkleOps};
 use crate::core::backend::CPUBackend;
 use crate::core::fields::m31::BaseField;
 
-#[derive(Copy, Clone, PartialEq, Eq, Default)]
-pub struct Blake2sHash(pub [u32; 8]);
-pub struct Blake2Hasher;
-impl MerkleHasher for Blake2Hasher {
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub struct Blake2sMerkleHasher;
+impl MerkleHasher for Blake2sMerkleHasher {
     type Hash = Blake2sHash;
 
     fn hash_node(
@@ -35,21 +35,11 @@ impl MerkleHasher for Blake2Hasher {
         for chunk in padded_values.array_chunks::<16>() {
             state = compress(state, unsafe { std::mem::transmute(chunk) }, 0, 0, 0, 0);
         }
-        Blake2sHash(state)
+        state.map(|x| x.to_le_bytes()).flatten().into()
     }
 }
 
-impl std::fmt::Debug for Blake2sHash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Write as hex.
-        for &byte in self.0.iter() {
-            write!(f, "{:02x}", byte)?;
-        }
-        Ok(())
-    }
-}
-
-impl MerkleOps<Blake2Hasher> for CPUBackend {
+impl MerkleOps<Blake2sMerkleHasher> for CPUBackend {
     fn commit_on_layer(
         log_size: u32,
         prev_layer: Option<&Vec<Blake2sHash>>,
@@ -57,7 +47,7 @@ impl MerkleOps<Blake2Hasher> for CPUBackend {
     ) -> Vec<Blake2sHash> {
         (0..(1 << log_size))
             .map(|i| {
-                Blake2Hasher::hash_node(
+                Blake2sMerkleHasher::hash_node(
                     prev_layer.map(|prev_layer| (prev_layer[2 * i], prev_layer[2 * i + 1])),
                     &columns.iter().map(|column| column[i]).collect_vec(),
                 )
@@ -75,7 +65,7 @@ mod tests {
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::commitment_scheme::blake2_merkle::{Blake2Hasher, Blake2sHash};
+    use crate::commitment_scheme::blake2_merkle::{Blake2sHash, Blake2sMerkleHasher};
     use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
     use crate::commitment_scheme::verifier::{MerkleVerificationError, MerkleVerifier};
     use crate::core::backend::CPUBackend;
@@ -83,9 +73,9 @@ mod tests {
 
     type TestData = (
         BTreeMap<u32, Vec<usize>>,
-        MerkleDecommitment<Blake2Hasher>,
+        MerkleDecommitment<Blake2sMerkleHasher>,
         Vec<Vec<BaseField>>,
-        MerkleVerifier<Blake2Hasher>,
+        MerkleVerifier<Blake2sMerkleHasher>,
     );
     fn prepare_merkle() -> TestData {
         const N_COLS: usize = 400;
@@ -104,7 +94,8 @@ mod tests {
                     .collect_vec()
             })
             .collect_vec();
-        let merkle = MerkleProver::<CPUBackend, Blake2Hasher>::commit(cols.iter().collect_vec());
+        let merkle =
+            MerkleProver::<CPUBackend, Blake2sMerkleHasher>::commit(cols.iter().collect_vec());
 
         let mut queries = BTreeMap::<u32, Vec<usize>>::new();
         for log_size in log_size_range.rev() {
@@ -135,7 +126,7 @@ mod tests {
     #[test]
     fn test_merkle_invalid_witness() {
         let (queries, mut decommitment, values, verifier) = prepare_merkle();
-        decommitment.hash_witness[20] = Blake2sHash([0; 8]);
+        decommitment.hash_witness[20] = Blake2sHash::default();
 
         assert_eq!(
             verifier.verify(queries, values, decommitment).unwrap_err(),
@@ -190,7 +181,7 @@ mod tests {
     #[test]
     fn test_merkle_witness_too_long() {
         let (queries, mut decommitment, values, verifier) = prepare_merkle();
-        decommitment.hash_witness.push(Blake2sHash([0; 8]));
+        decommitment.hash_witness.push(Blake2sHash::default());
 
         assert_eq!(
             verifier.verify(queries, values, decommitment).unwrap_err(),
