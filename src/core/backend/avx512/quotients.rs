@@ -3,7 +3,7 @@ use itertools::zip_eq;
 use super::qm31::PackedQM31;
 use super::{AVX512Backend, VECS_LOG_SIZE};
 use crate::core::backend::avx512::PackedBaseField;
-use crate::core::backend::cpu::quotients::column_constants;
+use crate::core::backend::cpu::quotients::{column_constants, ColumnConstants};
 use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::fields::m31::BaseField;
@@ -53,13 +53,13 @@ impl QuotientOps for AVX512Backend {
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
     columns: &[&CircleEvaluation<AVX512Backend, BaseField, BitReversedOrder>],
-    column_constants: &[Vec<(SecureField, SecureField, SecureField)>],
+    column_constants: &ColumnConstants,
     vec_row: usize,
     random_coeff: SecureField,
     domain_point_vec: (PackedBaseField, PackedBaseField),
 ) -> PackedQM31 {
     let mut row_accumulator = PackedQM31::zero();
-    for (sample_batch, sample_constants) in zip_eq(sample_batches, column_constants) {
+    for (sample_batch, sample_constants) in zip_eq(sample_batches, &column_constants.line_coeffs) {
         let mut numerator = PackedQM31::zero();
         for ((column_index, _), (a, b, c)) in
             zip_eq(&sample_batch.columns_and_values, sample_constants)

@@ -95,7 +95,7 @@ pub fn complex_conjugate_line(
 /// (conj(sample.y), conj(sample.value)).
 /// Relies on the fact that every polynomial F over the base
 /// field holds: F(p*) == F(p)* (* being the complex conjugate).
-pub fn complex_conjugate_line_coefficients(
+pub fn complex_conjugate_line_coeffs(
     sample: &PointSample,
     alpha: SecureField,
 ) -> (SecureField, SecureField, SecureField) {
