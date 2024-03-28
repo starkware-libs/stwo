@@ -32,7 +32,7 @@ impl M31 {
 
     /// Assumes that `val` is in the range [0, `P`.pow(2)) and returns `val` % `P`.
     pub fn reduce(val: u64) -> Self {
-        Self((((((val >> MODULUS_BITS) + val + 1) >> MODULUS_BITS) + val) & (P as u64)) as u32)
+        Self::partial_reduce(((val >> MODULUS_BITS) + (val & (P as u64))) as u32)
     }
 
     pub const fn from_u32_unchecked(arg: u32) -> Self {
