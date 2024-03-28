@@ -73,7 +73,7 @@ impl Blake2sChannel {
             if random_bytes.iter().all(|x| *x < 2 * P) {
                 return random_bytes
                     .into_iter()
-                    .map(|x| BaseField::reduce(x as u64))
+                    .map(BaseField::partial_reduce)
                     .collect::<Vec<_>>()
                     .try_into()
                     .unwrap();
