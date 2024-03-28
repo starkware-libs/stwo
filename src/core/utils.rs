@@ -1,3 +1,5 @@
+use std::cmp::min;
+
 use num_traits::One;
 
 use super::fields::qm31::SecureField;
@@ -40,7 +42,10 @@ pub fn bit_reverse<T>(v: &mut [T]) {
 }
 
 pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField> {
-    let mut res = vec![SecureField::one()];
+    let mut res = vec![];
+    for _ in 0..min(1, n_powers) {
+        res.push(SecureField::one());
+    }
     for _ in 1..n_powers {
         res.push(*res.last().unwrap() * felt);
     }
@@ -81,5 +86,15 @@ mod tests {
         assert_eq!(powers[0], SecureField::one());
         assert_eq!(powers[1], felt);
         assert_eq!(powers[7], felt.pow(7));
+    }
+
+    #[test]
+    fn generate_empty_secure_powers_works() {
+        let felt = qm31!(1, 2, 3, 4);
+        let max_log_size = 0;
+
+        let powers = super::generate_secure_powers(felt, max_log_size);
+
+        assert_eq!(powers, vec![]);
     }
 }
