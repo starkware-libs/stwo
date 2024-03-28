@@ -52,6 +52,7 @@ impl Deref for SecureCirclePoly {
     }
 }
 
+#[derive(Clone)]
 pub struct SecureEvaluation<B: FieldOps<BaseField>> {
     pub domain: CircleDomain,
     pub values: SecureColumn<B>,

@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use super::commitment_scheme::{CommitmentSchemeProof, TreeVec};
 use super::fri::FriVerificationError;
-use super::poly::circle::{SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+use super::poly::circle::{CanonicCoset, PolyOps, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
@@ -92,7 +92,11 @@ pub fn prove(
     // Second tree - composition polynomial.
     sample_points.push(vec![vec![oods_point]; 4]);
 
-    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
+    // TODO(spapini): Precompute twiddles outside.
+    let twiddles = CPUBackend::precompute_twiddles(
+        CanonicCoset::new(composition_polynomial_log_degree_bound + 1).half_coset(),
+    );
+    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel, &twiddles);
 
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.

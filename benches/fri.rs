@@ -4,7 +4,7 @@ use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::fields::secure_column::SecureColumn;
 use stwo::core::fri::FriOps;
-use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::poly::circle::{CanonicCoset, PolyOps};
 use stwo::core::poly::line::{LineDomain, LineEvaluation};
 
 fn folding_benchmark(c: &mut Criterion) {
@@ -19,9 +19,14 @@ fn folding_benchmark(c: &mut Criterion) {
         },
     );
     let alpha = SecureField::from_u32_unchecked(2213980, 2213981, 2213982, 2213983);
+    let twiddles = CPUBackend::precompute_twiddles(domain.coset());
     c.bench_function("fold_line", |b| {
         b.iter(|| {
-            black_box(CPUBackend::fold_line(black_box(&evals), black_box(alpha)));
+            black_box(CPUBackend::fold_line(
+                black_box(&evals),
+                black_box(alpha),
+                &twiddles,
+            ));
         })
     });
 }
