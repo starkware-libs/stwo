@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, MulAssign, Sub};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Sub};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
@@ -104,6 +104,11 @@ impl Zero for PackedQM31 {
 impl One for PackedQM31 {
     fn one() -> Self {
         Self([PackedCM31::one(), PackedCM31::zero()])
+    }
+}
+impl AddAssign for PackedQM31 {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
     }
 }
 impl MulAssign for PackedQM31 {
