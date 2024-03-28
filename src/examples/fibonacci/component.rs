@@ -134,13 +134,10 @@ impl Component<CPUBackend> for FibonacciComponent {
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     ) {
-        let constraints_log_degree_bound = self.log_size + 1;
         evaluation_accumulator.accumulate(
-            constraints_log_degree_bound,
             self.step_constraint_eval_quotient_by_mask(point, &mask[0][..].try_into().unwrap()),
         );
         evaluation_accumulator.accumulate(
-            constraints_log_degree_bound,
             self.boundary_constraint_eval_quotient_by_mask(
                 point,
                 &mask[0][..1].try_into().unwrap(),

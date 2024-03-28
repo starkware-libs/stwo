@@ -32,17 +32,15 @@ pub trait AirExt: Air<CPUBackend> {
         random_coeff: SecureField,
         component_traces: &[ComponentTrace<'_, CPUBackend>],
     ) -> SecureCirclePoly {
-        let total_constraints = self.components().iter().map(|c| c.n_constraints()).sum();
+        let total_constraints: usize = self.components().iter().map(|c| c.n_constraints()).sum();
         let mut accumulator = DomainEvaluationAccumulator::new(
             random_coeff,
             self.composition_log_degree_bound(),
             total_constraints,
         );
-        zip(self.components(), component_traces)
-            .rev()
-            .for_each(|(component, trace)| {
-                component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
-            });
+        zip(self.components(), component_traces).for_each(|(component, trace)| {
+            component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
+        });
         accumulator.finalize()
     }
 
@@ -86,8 +84,7 @@ pub trait AirExt: Air<CPUBackend> {
         mask_values: &ComponentVec<Vec<SecureField>>,
         random_coeff: SecureField,
     ) -> SecureField {
-        let mut evaluation_accumulator =
-            PointEvaluationAccumulator::new(random_coeff, self.composition_log_degree_bound());
+        let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         zip(self.components(), &mask_values.0).for_each(|(component, mask)| {
             component.evaluate_constraint_quotients_at_point(
                 point,
