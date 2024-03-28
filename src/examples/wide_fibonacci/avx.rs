@@ -68,16 +68,10 @@ impl Component<AVX512Backend> for WideFibComponent {
         trace: &ComponentTrace<'_, AVX512Backend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<AVX512Backend>,
     ) {
-        let span = span!(Level::INFO, "Constraint eval extension").entered();
-        assert_eq!(trace.columns.len(), N_COLS);
+        assert_eq!(trace.polys.len(), N_COLS);
         // TODO(spapini): Steal evaluation from commitment.
         let eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
-        let trace_eval = trace
-            .columns
-            .iter()
-            .map(|poly| poly.evaluate(eval_domain))
-            .collect_vec();
-        span.exit();
+        let trace_eval = &trace.evals;
 
         let _span = span!(Level::INFO, "Constraint eval evaluation").entered();
         let random_coeff = PackedQM31::broadcast(evaluation_accumulator.random_coeff);

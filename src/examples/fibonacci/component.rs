@@ -84,7 +84,7 @@ impl Component<CPUBackend> for FibonacciComponent {
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
     ) {
         let random_coeff = evaluation_accumulator.random_coeff;
-        let poly = &trace.columns[0];
+        let poly = &trace.polys[0];
         let trace_domain = CanonicCoset::new(self.log_size);
         let trace_eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
         let trace_eval = poly.evaluate(trace_eval_domain).bit_reverse();
