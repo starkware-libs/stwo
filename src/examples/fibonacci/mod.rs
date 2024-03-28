@@ -150,8 +150,7 @@ mod tests {
             .air
             .component
             .mask_points_and_values(point, &component_traces[0]);
-        let mut evaluation_accumulator =
-            PointEvaluationAccumulator::new(random_coeff, fib.air.composition_log_degree_bound());
+        let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         fib.air.component.evaluate_constraint_quotients_at_point(
             point,
             &mask_values,
