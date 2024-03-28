@@ -6,6 +6,7 @@ use super::air::accumulation::AccumulationOps;
 use super::commitment_scheme::quotients::QuotientOps;
 use super::fields::m31::BaseField;
 use super::fields::FieldOps;
+use super::fri::FriOps;
 use super::poly::circle::PolyOps;
 
 #[cfg(target_arch = "x86_64")]
@@ -13,7 +14,7 @@ pub mod avx512;
 pub mod cpu;
 
 pub trait Backend:
-    Copy + Clone + Debug + FieldOps<BaseField> + PolyOps + QuotientOps + AccumulationOps
+    Copy + Clone + Debug + FieldOps<BaseField> + PolyOps + QuotientOps + AccumulationOps + FriOps
 {
 }
 

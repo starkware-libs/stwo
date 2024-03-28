@@ -63,7 +63,7 @@ pub unsafe fn transpose_vecs(values: *mut i32, log_n_vecs: usize) {
 /// Computes the twiddles for the first fft layer from the second, and loads both to AVX registers.
 /// Returns the twiddles for the first layer and the twiddles for the second layer.
 /// # Safety
-unsafe fn compute_first_twiddles(twiddle1_dbl: [i32; 8]) -> (__m512i, __m512i) {
+pub unsafe fn compute_first_twiddles(twiddle1_dbl: [i32; 8]) -> (__m512i, __m512i) {
     // Start by loading the twiddles for the second layer (layer 1):
     // The twiddles for layer 1 are replicated in the following pattern:
     //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7

@@ -57,6 +57,17 @@ impl PackedQM31 {
     pub fn pointwise_sum(self) -> QM31 {
         self.to_array().into_iter().sum()
     }
+
+    pub fn to_packed_m31s(&self) -> [PackedBaseField; 4] {
+        [self.a().a(), self.a().b(), self.b().a(), self.b().b()]
+    }
+
+    pub fn from_packed_m31s(array: [PackedBaseField; 4]) -> Self {
+        Self([
+            PackedCM31([array[0], array[1]]),
+            PackedCM31([array[2], array[3]]),
+        ])
+    }
 }
 impl Add for PackedQM31 {
     type Output = Self;

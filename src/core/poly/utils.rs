@@ -1,4 +1,4 @@
-use super::circle::CircleDomain;
+use super::line::LineDomain;
 use crate::core::fields::{ExtensionOf, Field};
 
 /// Folds values recursively in `O(n)` by a hierarchical application of folding factors.
@@ -55,8 +55,11 @@ pub fn repeat_value<T: Copy>(values: &[T], duplicity: usize) -> Vec<T> {
 }
 
 /// Computes the line twiddles for a [CircleDomain] from the precomputed twiddles tree.
-pub fn domain_line_twiddles_from_tree<T>(domain: CircleDomain, twiddle_buffer: &[T]) -> Vec<&[T]> {
-    (0..domain.half_coset.log_size())
+pub fn domain_line_twiddles_from_tree<T>(
+    domain: impl Into<LineDomain>,
+    twiddle_buffer: &[T],
+) -> Vec<&[T]> {
+    (0..domain.into().coset().log_size())
         .map(|i| {
             let len = 1 << i;
             &twiddle_buffer[twiddle_buffer.len() - len * 2..twiddle_buffer.len() - len]

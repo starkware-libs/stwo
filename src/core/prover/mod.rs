@@ -29,7 +29,7 @@ type ChannelHasher = Blake2sHasher;
 type MerkleHasher = Blake2sMerkleHasher;
 
 pub const LOG_BLOWUP_FACTOR: u32 = 1;
-pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 0;
+pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 5;
 pub const PROOF_OF_WORK_BITS: u32 = 12;
 pub const N_QUERIES: usize = 3;
 
@@ -118,7 +118,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     // Second tree - composition polynomial.
     sample_points.push(vec![vec![oods_point]; 4]);
 
-    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
+    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel, &twiddles);
 
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.

@@ -5,6 +5,7 @@ pub mod blake2s_avx;
 pub mod circle;
 pub mod cm31;
 pub mod fft;
+mod fri;
 pub mod m31;
 pub mod qm31;
 pub mod quotients;

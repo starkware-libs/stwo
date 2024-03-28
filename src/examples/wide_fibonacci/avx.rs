@@ -163,8 +163,8 @@ mod tests {
         //   test_avx_wide_fib_prove -- --nocapture
 
         // TODO(spapini): Increase to 20, to get 1GB.
-        const LOG_SIZE: u32 = 12;
-        (0..8).into_par_iter().for_each(|_| {
+        const LOG_SIZE: u32 = 20;
+        (0..1).into_par_iter().for_each(|_| {
             let component = WideFibComponent { log_size: LOG_SIZE };
             let air = WideFibAir { component };
             let trace = gen_trace(LOG_SIZE as usize);
