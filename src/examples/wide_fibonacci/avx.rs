@@ -6,16 +6,15 @@ use super::structs::WideFibComponent;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Air, Component, ComponentTrace, Mask};
 use crate::core::backend::avx512::qm31::PackedQM31;
-use crate::core::backend::avx512::{AVX512Backend, PackedBaseField, VECS_LOG_SIZE};
-use crate::core::backend::{Col, Column};
-use crate::core::circle::{CirclePoint, Coset};
+use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField, VECS_LOG_SIZE};
+use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
+use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;
 
 const N_COLS: usize = 1 << 8;
@@ -75,13 +74,22 @@ impl Component<AVX512Backend> for WideFibComponent {
 
         let _span = span!(Level::INFO, "Constraint eval evaluation").entered();
         let random_coeff = PackedQM31::broadcast(evaluation_accumulator.random_coeff);
-        let column_coeffs = (0..N_COLS)
+        let mut column_coeffs = (0..N_COLS)
             .scan(PackedQM31::one(), |state, _| {
                 let res = *state;
                 *state *= random_coeff;
                 Some(res)
             })
             .collect_vec();
+        column_coeffs.reverse();
+
+        // Denoms.
+        let zero_domain = CanonicCoset::new(self.log_size).coset;
+        let mut denoms =
+            BaseFieldVec::from_iter(eval_domain.iter().map(|p| coset_vanishing(zero_domain, p)));
+        <AVX512Backend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
+        let mut denom_inverses = BaseFieldVec::zeros(denoms.len());
+        AVX512Backend::batch_inverse(&denoms, &mut denom_inverses);
 
         let constraint_log_degree_bound = self.log_size + 1;
         let [accum] = evaluation_accumulator.columns([(constraint_log_degree_bound, N_COLS - 2)]);
@@ -89,34 +97,21 @@ impl Component<AVX512Backend> for WideFibComponent {
         for vec_row in 0..(1 << (eval_domain.log_size() - VECS_LOG_SIZE as u32)) {
             // Numerator.
             let mut row_res = PackedQM31::zero();
-            let mut a = trace_eval[0].data[vec_row];
-            let mut b = trace_eval[1].data[vec_row];
+            let mut a_sq = trace_eval[0].data[vec_row].square();
+            let mut b_sq = trace_eval[1].data[vec_row].square();
             #[allow(clippy::needless_range_loop)]
             for i in 0..(N_COLS - 2) {
                 unsafe {
                     let c = *trace_eval.get_unchecked(i + 2).data.get_unchecked(vec_row);
-                    row_res = row_res + column_coeffs[i] * (a.square() + b.square() - c);
-                    (a, b) = (b, c);
+                    row_res = row_res + column_coeffs[i] * (a_sq + b_sq - c);
+                    (a_sq, b_sq) = (b_sq, c.square());
                 }
-            }
-
-            // Denominator.
-            // TODO(spapini): Optimized this, for the small number of columns case.
-            let points = std::array::from_fn(|i| {
-                eval_domain.at(bit_reverse_index(
-                    (vec_row << VECS_LOG_SIZE) + i,
-                    eval_domain.log_size(),
-                ) + 1)
-            });
-            let mut shifted_xs = PackedBaseField::from_array(points.map(|p| p.x));
-            for _ in 1..self.log_size {
-                shifted_xs = shifted_xs.square() - PackedBaseField::one();
             }
 
             accum.col.set_packed(
                 vec_row,
                 accum.col.packed_at(vec_row) * PackedQM31::broadcast(accum.random_coeff_pow)
-                    + row_res,
+                    + row_res * PackedBaseField::broadcast(denom_inverses.at(vec_row)),
             )
         }
     }
@@ -131,11 +126,11 @@ impl Component<AVX512Backend> for WideFibComponent {
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     ) {
-        let constraint_zero_domain = Coset::subgroup(self.log_size);
+        let zero_domain = CanonicCoset::new(self.log_size).coset;
         let constraint_log_degree_bound = self.log_size + 1;
         for i in 0..(N_COLS - 2) {
             let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
-            let denominator = coset_vanishing(constraint_zero_domain, point);
+            let denominator = coset_vanishing(zero_domain, point);
             evaluation_accumulator.accumulate(constraint_log_degree_bound, numerator / denominator);
         }
     }
@@ -163,14 +158,14 @@ mod tests {
         //   test_avx_wide_fib_prove -- --nocapture
 
         // TODO(spapini): Increase to 20, to get 1GB.
-        const LOG_SIZE: u32 = 20;
+        const LOG_SIZE: u32 = 17;
         (0..1).into_par_iter().for_each(|_| {
             let component = WideFibComponent { log_size: LOG_SIZE };
             let air = WideFibAir { component };
             let trace = gen_trace(LOG_SIZE as usize);
             let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
             // TODO(spapini): Fix the constraints.
-            prove(&air, channel, trace).unwrap_err();
+            println!("err: {:?}", prove(&air, channel, trace).unwrap_err());
         });
     }
 }
