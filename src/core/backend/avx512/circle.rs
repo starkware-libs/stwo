@@ -1,5 +1,6 @@
 use bytemuck::{cast_slice, Zeroable};
-use num_traits::One;
+use itertools::Itertools;
+use num_traits::{One, Zero};
 
 use super::fft::{ifft, CACHED_FFT_LOG_SIZE};
 use super::m31::PackedBaseField;
@@ -7,11 +8,11 @@ use super::qm31::PackedQM31;
 use super::{as_cpu_vec, AVX512Backend, K_BLOCK_SIZE, VECS_LOG_SIZE};
 use crate::core::backend::avx512::fft::rfft;
 use crate::core::backend::avx512::BaseFieldVec;
-use crate::core::backend::{CPUBackend, Col};
+use crate::core::backend::{CPUBackend, Col, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
-use crate::core::fields::m31::BaseField;
+use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{Field, FieldExpOps};
+use crate::core::fields::{Field, FieldExpOps, FieldOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
@@ -280,27 +281,36 @@ impl PolyOps for AVX512Backend {
     }
 
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self> {
-        let mut twiddles = Vec::with_capacity(coset.size());
-        let mut itwiddles = Vec::with_capacity(coset.size());
+        let mut twiddles = vec![];
+        let mut current_coset = coset;
+        for _ in 0..coset.log_size() {
+            let mut res = current_coset
+                .iter()
+                .take(current_coset.size() / 2)
+                .map(|p| p.x)
+                .collect_vec();
+            CPUBackend::bit_reverse_column(&mut res);
+            twiddles.extend_from_slice(&res);
 
-        // TODO(spapini): Optimize.
-        for layer in &rfft::get_twiddle_dbls(coset) {
-            twiddles.extend(layer);
+            current_coset = current_coset.double();
         }
         // Pad by any value, to make the size a power of 2.
-        twiddles.push(1);
+        twiddles.push(M31::one());
         assert_eq!(twiddles.len(), coset.size());
-        for layer in &ifft::get_itwiddle_dbls(coset) {
-            itwiddles.extend(layer);
-        }
-        // Pad by any value, to make the size a power of 2.
-        itwiddles.push(1);
-        assert_eq!(itwiddles.len(), coset.size());
+
+        let mut itwiddles = vec![BaseField::zero(); twiddles.len()];
+        CPUBackend::batch_inverse(&twiddles, &mut itwiddles);
+
+        let twiddle_dbls = twiddles.into_iter().map(|x| (x.0 * 2) as i32).collect_vec();
+        let itwiddle_dbls = itwiddles
+            .into_iter()
+            .map(|x| (x.0 * 2) as i32)
+            .collect_vec();
 
         TwiddleTree {
             root_coset: coset,
-            twiddles,
-            itwiddles,
+            twiddles: twiddle_dbls,
+            itwiddles: itwiddle_dbls,
         }
     }
 }
