@@ -1,3 +1,7 @@
+use num_traits::One;
+
+use super::fields::qm31::SecureField;
+
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
     fn assign(self, other: impl IntoIterator<Item = T>)
     where
@@ -35,9 +39,22 @@ pub fn bit_reverse<T>(v: &mut [T]) {
     }
 }
 
+pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField> {
+    let mut res = vec![SecureField::one()];
+    for _ in 1..n_powers {
+        res.push(*res.last().unwrap() * felt);
+    }
+    res
+}
+
 #[cfg(test)]
 mod tests {
+    use num_traits::One;
+
+    use crate::core::fields::qm31::SecureField;
+    use crate::core::fields::FieldExpOps;
     use crate::core::utils::bit_reverse;
+    use crate::qm31;
 
     #[test]
     fn bit_reverse_works() {
@@ -51,5 +68,18 @@ mod tests {
     fn bit_reverse_non_power_of_two_size_fails() {
         let mut data = [0, 1, 2, 3, 4, 5];
         bit_reverse(&mut data);
+    }
+
+    #[test]
+    fn generate_secure_powers_works() {
+        let felt = qm31!(1, 2, 3, 4);
+        let n_powers = 10;
+
+        let powers = super::generate_secure_powers(felt, n_powers);
+
+        assert_eq!(powers.len(), n_powers);
+        assert_eq!(powers[0], SecureField::one());
+        assert_eq!(powers[1], felt);
+        assert_eq!(powers[7], felt.pow(7));
     }
 }
