@@ -252,6 +252,10 @@ mod tests {
     }
 
     impl Component<CPUBackend> for TestComponent {
+        fn n_constraints(&self) -> usize {
+            0
+        }
+
         fn max_constraint_log_degree_bound(&self) -> u32 {
             self.max_constraint_log_degree_bound
         }
