@@ -5,7 +5,7 @@ use tracing::{span, Level};
 use super::backend::Backend;
 use super::commitment_scheme::{CommitmentSchemeProof, TreeVec};
 use super::fri::FriVerificationError;
-use super::poly::circle::{SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+use super::poly::circle::{CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
@@ -70,15 +70,26 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
         });
     }
 
+    let span = span!(Level::INFO, "Precompute twiddle").entered();
+    let twiddles = B::precompute_twiddles(
+        CanonicCoset::new(air.composition_log_degree_bound() + 1)
+            .circle_domain()
+            .half_coset,
+    );
+    span.exit();
+
     // Evaluate and commit on trace.
     // TODO(spapini): Commit on trace outside.
     let span = span!(Level::INFO, "Trace interpolation").entered();
-    let trace_polys = trace.into_iter().map(|poly| poly.interpolate()).collect();
+    let trace_polys = trace
+        .into_iter()
+        .map(|poly| poly.interpolate_with_twiddles(&twiddles))
+        .collect();
     span.exit();
 
     let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
     let span = span!(Level::INFO, "Trace commitment").entered();
-    commitment_scheme.commit(trace_polys, channel);
+    commitment_scheme.commit(trace_polys, channel, &twiddles);
     span.exit();
 
     // Evaluate and commit on composition polynomial.
@@ -89,7 +100,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     );
 
     let span = span!(Level::INFO, "Composition commitment").entered();
-    commitment_scheme.commit(composition_polynomial_poly.to_vec(), channel);
+    commitment_scheme.commit(composition_polynomial_poly.to_vec(), channel, &twiddles);
     span.exit();
 
     // Draw OODS point.
