@@ -47,7 +47,7 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
 
     pub fn to_cpu(&self) -> SecureColumn<CPUBackend> {
         SecureColumn {
-            columns: self.columns.clone().map(|c| c.to_vec()),
+            columns: self.columns.clone().map(|c| c.to_cpu()),
         }
     }
 }

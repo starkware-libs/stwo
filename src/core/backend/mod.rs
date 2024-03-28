@@ -2,9 +2,11 @@ use std::fmt::Debug;
 
 pub use cpu::CPUBackend;
 
+use super::commitment_scheme::quotients::QuotientOps;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::FieldOps;
+use super::fri::FriOps;
 use super::poly::circle::PolyOps;
 
 #[cfg(target_arch = "x86_64")]
@@ -12,7 +14,7 @@ pub mod avx512;
 pub mod cpu;
 
 pub trait Backend:
-    Copy + Clone + Debug + FieldOps<BaseField> + FieldOps<SecureField> + PolyOps
+    Copy + Clone + Debug + FieldOps<BaseField> + FieldOps<SecureField> + PolyOps + QuotientOps + FriOps
 {
 }
 
@@ -28,7 +30,7 @@ pub trait Column<T>: Clone + Debug + FromIterator<T> {
     /// Creates a new column of zeros with the given length.
     fn zeros(len: usize) -> Self;
     /// Returns a cpu vector of the column.
-    fn to_vec(&self) -> Vec<T>;
+    fn to_cpu(&self) -> Vec<T>;
     /// Returns the length of the column.
     fn len(&self) -> usize;
     /// Returns true if the column is empty.

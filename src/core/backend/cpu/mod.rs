@@ -35,7 +35,7 @@ impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
     fn zeros(len: usize) -> Self {
         vec![T::default(); len]
     }
-    fn to_vec(&self) -> Vec<T> {
+    fn to_cpu(&self) -> Vec<T> {
         self.clone()
     }
     fn len(&self) -> usize {

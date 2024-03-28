@@ -2,8 +2,6 @@ use std::collections::BTreeMap;
 
 use itertools::Itertools;
 
-use super::super::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
-use super::super::backend::CPUBackend;
 use super::super::channel::Blake2sChannel;
 use super::super::circle::CirclePoint;
 use super::super::fields::m31::BaseField;
@@ -20,27 +18,30 @@ use super::quotients::{compute_fri_quotients, PointSample};
 use super::utils::TreeVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHash;
 use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
+use crate::commitment_scheme::ops::MerkleOps;
 use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
+use crate::core::backend::Backend;
 use crate::core::channel::Channel;
+use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 
 type MerkleHasher = Blake2sMerkleHasher;
 type ProofChannel = Blake2sChannel;
 
 /// The prover side of a FRI polynomial commitment scheme. See [super].
-pub struct CommitmentSchemeProver {
-    pub trees: TreeVec<CommitmentTreeProver>,
+pub struct CommitmentSchemeProver<B: Backend + MerkleOps<MerkleHasher>> {
+    pub trees: TreeVec<CommitmentTreeProver<B>>,
     pub log_blowup_factor: u32,
 }
 
-impl CommitmentSchemeProver {
+impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
     pub fn new(log_blowup_factor: u32) -> Self {
         CommitmentSchemeProver {
-            trees: TreeVec::<CommitmentTreeProver>::default(),
+            trees: TreeVec::default(),
             log_blowup_factor,
         }
     }
 
-    pub fn commit(&mut self, polynomials: ColumnVec<CPUCirclePoly>, channel: &mut ProofChannel) {
+    pub fn commit(&mut self, polynomials: ColumnVec<CirclePoly<B>>, channel: &mut ProofChannel) {
         let tree = CommitmentTreeProver::new(polynomials, self.log_blowup_factor, channel);
         self.trees.push(tree);
     }
@@ -49,13 +50,13 @@ impl CommitmentSchemeProver {
         self.trees.as_ref().map(|tree| tree.commitment.root())
     }
 
-    pub fn polynomials(&self) -> TreeVec<ColumnVec<&CPUCirclePoly>> {
+    pub fn polynomials(&self) -> TreeVec<ColumnVec<&CirclePoly<B>>> {
         self.trees
             .as_ref()
             .map(|tree| tree.polynomials.iter().collect())
     }
 
-    fn evaluations(&self) -> TreeVec<ColumnVec<&CPUCircleEvaluation<BaseField, BitReversedOrder>>> {
+    fn evaluations(&self) -> TreeVec<ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>> {
         self.trees
             .as_ref()
             .map(|tree| tree.evaluations.iter().collect())
@@ -90,8 +91,7 @@ impl CommitmentSchemeProver {
 
         // Run FRI commitment phase on the oods quotients.
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-        let fri_prover =
-            FriProver::<CPUBackend, MerkleHasher>::commit(channel, fri_config, &quotients);
+        let fri_prover = FriProver::<B, MerkleHasher>::commit(channel, fri_config, &quotients);
 
         // Proof of work.
         let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
@@ -132,15 +132,15 @@ pub struct CommitmentSchemeProof {
 
 /// Prover data for a single commitment tree in a commitment scheme. The commitment scheme allows to
 /// commit on a set of polynomials at a time. This corresponds to such a set.
-pub struct CommitmentTreeProver {
-    pub polynomials: ColumnVec<CPUCirclePoly>,
-    pub evaluations: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
-    pub commitment: MerkleProver<CPUBackend, MerkleHasher>,
+pub struct CommitmentTreeProver<B: Backend + MerkleOps<MerkleHasher>> {
+    pub polynomials: ColumnVec<CirclePoly<B>>,
+    pub evaluations: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    pub commitment: MerkleProver<B, MerkleHasher>,
 }
 
-impl CommitmentTreeProver {
+impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentTreeProver<B> {
     fn new(
-        polynomials: ColumnVec<CPUCirclePoly>,
+        polynomials: ColumnVec<CirclePoly<B>>,
         log_blowup_factor: u32,
         channel: &mut ProofChannel,
     ) -> Self {

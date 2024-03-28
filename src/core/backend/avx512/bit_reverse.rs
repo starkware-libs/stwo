@@ -166,6 +166,6 @@ mod tests {
         let mut data: BaseFieldVec = data.into_iter().collect();
 
         bit_reverse_m31(&mut data.data[..]);
-        assert_eq!(data.to_vec(), expected);
+        assert_eq!(data.to_cpu(), expected);
     }
 }
