@@ -51,7 +51,7 @@ pub fn accumulate_row_quotients(
     let mut row_accumulator = SecureField::zero();
     for (sample_batch, sample_constants) in zip_eq(sample_batches, column_constants) {
         let mut numerator = SecureField::zero();
-        for ((column_index, _sampled_value), (a, b, c)) in
+        for ((column_index, _), (a, b, c)) in
             zip_eq(&sample_batch.columns_and_values, sample_constants)
         {
             let column = &columns[*column_index];
