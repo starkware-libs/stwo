@@ -201,7 +201,7 @@ impl PolyOps for AVX512Backend {
             for (&packed_coeffs, &mid_twiddle) in
                 coeff_chunk.iter().zip(high_twiddle_factors.iter())
             {
-                sum = sum + PackedQM31::broadcast(mid_twiddle).mul_packed_m31(packed_coeffs);
+                sum += PackedQM31::broadcast(mid_twiddle).mul_packed_m31(packed_coeffs);
             }
 
             // Advance twiddle high.
