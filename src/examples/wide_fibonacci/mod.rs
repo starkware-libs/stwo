@@ -45,6 +45,7 @@ mod tests {
         let mut acc = DomainEvaluationAccumulator::new(
             QM31::from_u32_unchecked(1, 2, 3, 4),
             wide_fib.log_size + 1,
+            wide_fib.n_constraints(),
         );
         let inputs = (0..1 << wide_fib.log_size)
             .map(|i| Input {

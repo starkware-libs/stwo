@@ -58,6 +58,8 @@ impl Deref for Mask {
 /// A component is a set of trace columns of various sizes along with a set of
 /// constraints on them.
 pub trait Component<B: Backend> {
+    fn n_constraints(&self) -> usize;
+
     fn max_constraint_log_degree_bound(&self) -> u32;
 
     /// Returns the degree bounds of each trace column.

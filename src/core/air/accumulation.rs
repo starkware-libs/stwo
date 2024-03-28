@@ -11,6 +11,7 @@ use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::{CanonicCoset, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
+use crate::core::utils::generate_secure_powers;
 
 /// Accumulates evaluations of u_i(P0) at a single point.
 /// Computes f(P0), the combined polynomial at that point.
@@ -64,7 +65,8 @@ impl PointEvaluationAccumulator {
 /// Accumulates evaluations of u_i(P), each at an evaluation domain of the size of that polynomial.
 /// Computes the coefficients of f(P).
 pub struct DomainEvaluationAccumulator<B: Backend> {
-    pub random_coeff: SecureField,
+    // TODO(ShaharS), remove pub from this attribute.
+    pub random_coeff_powers: Vec<SecureField>,
     /// Accumulated evaluations for each log_size.
     /// Each `sub_accumulation` holds `sum_{i=0}^{n-1} evaluation_i * alpha^(n-1-i)`,
     /// where `n` is the number of accumulated evaluations for this log_size.
@@ -77,10 +79,10 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     /// Creates a new accumulator.
     /// `random_coeff` should be a secure random field element, drawn from the channel.
     /// `max_log_size` is the maximum log_size of the accumulated evaluations.
-    pub fn new(random_coeff: SecureField, max_log_size: u32) -> Self {
+    pub fn new(random_coeff: SecureField, max_log_size: u32, total_columns: usize) -> Self {
         let max_log_size = max_log_size as usize;
         Self {
-            random_coeff,
+            random_coeff_powers: generate_secure_powers(random_coeff, total_columns),
             sub_accumulations: (0..(max_log_size + 1))
                 .map(|n| SecureColumn::zeros(1 << n))
                 .collect(),
@@ -106,8 +108,9 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             .unwrap_or_else(|e| panic!("invalid log_sizes: {}", e))
             .into_iter()
             .zip(n_cols_per_size)
-            .map(|(col, (_, count))| ColumnAccumulator {
-                random_coeff_pow: self.random_coeff.pow(count as u128),
+            .map(|(col, (log_size, _))| ColumnAccumulator {
+                curr_power_offset: self.n_cols_per_size[log_size as usize],
+                random_coeff_powers: &self.random_coeff_powers,
                 col,
             })
             .collect_vec()
@@ -147,7 +150,7 @@ impl DomainEvaluationAccumulator<CPUBackend> {
                 }),
             };
             // Add column coefficients into result coefficients, element-wise, in-place.
-            let multiplier = self.random_coeff.pow(*n_cols as u128);
+            let multiplier = self.random_coeff_powers[*n_cols];
             for i in 0..res_size {
                 let res_coeff = res_coeffs.at(i) * multiplier + coeffs.at(i);
                 res_coeffs.set(i, res_coeff);
@@ -160,13 +163,17 @@ impl DomainEvaluationAccumulator<CPUBackend> {
 
 /// An domain accumulator for polynomials of a single size.
 pub struct ColumnAccumulator<'a, B: Backend> {
-    random_coeff_pow: SecureField,
+    // Offset of the random coefficient power need for the columns that are accumulated.
+    pub curr_power_offset: usize,
+    random_coeff_powers: &'a [SecureField],
     col: &'a mut SecureColumn<B>,
 }
 impl<'a> ColumnAccumulator<'a, CPUBackend> {
-    pub fn accumulate(&mut self, index: usize, evaluation: SecureField) {
-        let val = self.col.at(index) * self.random_coeff_pow + evaluation;
-        self.col.set(index, val);
+    // `col_index` is the local index of the column in the component.
+    pub fn accumulate(&mut self, col_index: usize, row_index: usize, evaluation: SecureField) {
+        let random_coeff_pow = self.random_coeff_powers[self.curr_power_offset - 1 - col_index];
+        let val = self.col.at(row_index) + random_coeff_pow * evaluation;
+        self.col.set(row_index, val);
     }
 }
 
@@ -174,7 +181,6 @@ impl<'a> ColumnAccumulator<'a, CPUBackend> {
 mod tests {
     use std::array;
 
-    use num_traits::Zero;
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
 
@@ -243,7 +249,11 @@ mod tests {
         let alpha = qm31!(2, 3, 4, 5);
 
         // Use accumulator.
-        let mut accumulator = DomainEvaluationAccumulator::<CPUBackend>::new(alpha, LOG_SIZE_BOUND);
+        let mut accumulator = DomainEvaluationAccumulator::<CPUBackend>::new(
+            alpha,
+            LOG_SIZE_BOUND,
+            log_sizes.iter().copied().count(),
+        );
         let n_cols_per_size: [(u32, usize); (LOG_SIZE_BOUND - LOG_SIZE_MIN) as usize] =
             array::from_fn(|i| {
                 let current_log_size = LOG_SIZE_MIN + i as u32;
@@ -255,16 +265,20 @@ mod tests {
                 (current_log_size, n_cols)
             });
         let mut cols = accumulator.columns(n_cols_per_size);
-        for log_size in n_cols_per_size.iter().map(|(log_size, _)| *log_size) {
-            for index in 0..(1 << log_size) {
-                let mut val = SecureField::zero();
-                for (col_log_size, evaluation) in log_sizes.iter().zip(evaluations.iter()) {
-                    if log_size != *col_log_size {
-                        continue;
-                    }
-                    val = val * alpha + evaluation[index];
+        for (log_size, _) in n_cols_per_size.into_iter() {
+            let mut constraint_index = 0;
+            for evaluation in evaluations.iter() {
+                if evaluation.len() != 1 << log_size {
+                    continue;
                 }
-                cols[(log_size - LOG_SIZE_MIN) as usize].accumulate(index, val);
+                for (index, value) in evaluation.iter().enumerate() {
+                    cols[(log_size - LOG_SIZE_MIN) as usize].accumulate(
+                        constraint_index,
+                        index,
+                        (*value).into(),
+                    );
+                }
+                constraint_index += 1;
             }
         }
         let accumulator_poly = accumulator.finalize();
