@@ -33,12 +33,12 @@ impl Component<CPUBackend> for WideFibComponent {
         trace: &ComponentTrace<'_, CPUBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
     ) {
+        let constraint_log_degree = Component::<CPUBackend>::max_constraint_log_degree_bound(self);
         let mut trace_evals = vec![];
         // TODO(ShaharS), Share this LDE with the commitment LDE.
         for poly_index in 0..64 {
             let poly = &trace.columns[poly_index];
-            let trace_eval_domain =
-                CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
+            let trace_eval_domain = CanonicCoset::new(constraint_log_degree).circle_domain();
             trace_evals.push(poly.evaluate(trace_eval_domain).bit_reverse());
         }
         let zero_domain = CanonicCoset::new(self.log_size).coset;
@@ -47,14 +47,11 @@ impl Component<CPUBackend> for WideFibComponent {
         for point in eval_domain.iter() {
             denoms.push(coset_vanishing(zero_domain, point));
         }
-        let mut denom_inverses =
-            vec![BaseField::zero(); 1 << (self.max_constraint_log_degree_bound())];
+        let mut denom_inverses = vec![BaseField::zero(); 1 << (constraint_log_degree)];
         BaseField::batch_inverse(&denoms, &mut denom_inverses);
-        let mut numerators =
-            vec![SecureField::zero(); 1 << (self.max_constraint_log_degree_bound())];
+        let mut numerators = vec![SecureField::zero(); 1 << (constraint_log_degree)];
         let random_coeff = evaluation_accumulator.random_coeff;
-        let [mut accum] =
-            evaluation_accumulator.columns([(self.max_constraint_log_degree_bound(), 64)]);
+        let [mut accum] = evaluation_accumulator.columns([(constraint_log_degree, 64)]);
         for (i, point_index) in eval_domain.iter_indices().enumerate() {
             numerators[i] = numerators[i] * random_coeff
                 + (trace_evals[2].get_at(point_index)
@@ -420,10 +417,7 @@ impl Component<CPUBackend> for WideFibComponent {
                             * trace_evals[62].get_at(point_index))));
         }
         for (i, (num, denom)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
-            accum.accumulate(
-                bit_reverse_index(i, self.max_constraint_log_degree_bound()),
-                *num * *denom,
-            );
+            accum.accumulate(bit_reverse_index(i, constraint_log_degree), *num * *denom);
         }
     }
 

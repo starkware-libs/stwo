@@ -140,6 +140,9 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             .zip(self.n_cols_per_size.iter())
             .skip(1)
         {
+            if *n_cols == 0 {
+                continue;
+            }
             let coeffs = SecureColumn::<B> {
                 columns: values.columns.map(|c| {
                     CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
@@ -162,8 +165,8 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
 
 /// An domain accumulator for polynomials of a single size.
 pub struct ColumnAccumulator<'a, B: Backend> {
-    random_coeff_pow: SecureField,
-    col: &'a mut SecureColumn<B>,
+    pub random_coeff_pow: SecureField,
+    pub col: &'a mut SecureColumn<B>,
 }
 impl<'a> ColumnAccumulator<'a, CPUBackend> {
     pub fn accumulate(&mut self, index: usize, evaluation: SecureField) {

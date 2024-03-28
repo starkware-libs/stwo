@@ -1,4 +1,4 @@
-use std::arch::x86_64::__m512i;
+use std::arch::x86_64::{__m512i, _mm512_loadu_si512};
 
 use itertools::Itertools;
 
@@ -6,8 +6,8 @@ use super::blake2s_avx::{compress16, set1, transpose_msgs, untranspose_states};
 use super::{AVX512Backend, VECS_LOG_SIZE};
 use crate::commitment_scheme::blake2_hash::Blake2sHash;
 use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
-use crate::commitment_scheme::ops::MerkleOps;
-use crate::core::backend::{Col, ColumnOps};
+use crate::commitment_scheme::ops::{MerkleHasher, MerkleOps};
+use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
 
 impl ColumnOps<Blake2sHash> for AVX512Backend {
@@ -25,19 +25,20 @@ impl MerkleOps<Blake2sMerkleHasher> for AVX512Backend {
         columns: &[&Col<AVX512Backend, BaseField>],
     ) -> Vec<Blake2sHash> {
         // Pad prev_layer if too small.
-        let mut padded_buffer = vec![];
-        let prev_layer = if log_size < 4 {
-            prev_layer.map(|prev_layer| {
-                padded_buffer = prev_layer
-                    .iter()
-                    .copied()
-                    .chain(std::iter::repeat(Blake2sHash::default()))
-                    .collect_vec();
-                &padded_buffer
-            })
-        } else {
-            prev_layer
-        };
+        if log_size < 4 {
+            return (0..(1 << log_size))
+                .map(|i| {
+                    Blake2sMerkleHasher::hash_node(
+                        prev_layer.map(|prev_layer| (prev_layer[2 * i], prev_layer[2 * i + 1])),
+                        &columns.iter().map(|column| column.at(i)).collect_vec(),
+                    )
+                })
+                .collect();
+        }
+
+        if let Some(prev_layer) = prev_layer {
+            assert_eq!(prev_layer.len(), 1 << (log_size + 1));
+        }
 
         // Commit to columns.
         let mut res = Vec::with_capacity(1 << log_size);
@@ -46,7 +47,9 @@ impl MerkleOps<Blake2sMerkleHasher> for AVX512Backend {
             // Hash prev_layer.
             if let Some(prev_layer) = prev_layer {
                 let ptr = prev_layer[(i << 5)..(i << 5) + 32].as_ptr() as *const __m512i;
-                let msgs: [__m512i; 16] = std::array::from_fn(|j| unsafe { *ptr.add(j) });
+                let msgs: [__m512i; 16] = std::array::from_fn(|j| unsafe {
+                    _mm512_loadu_si512(ptr.add(j) as *const i32)
+                });
                 state = unsafe {
                     compress16(
                         state,
