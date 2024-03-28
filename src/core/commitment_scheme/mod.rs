@@ -13,4 +13,4 @@ mod verifier;
 
 pub use self::prover::{CommitmentSchemeProof, CommitmentSchemeProver};
 pub use self::utils::TreeVec;
-pub use self::verifier::{CommitmentSchemeVerifier, CommitmentTreeVerifier};
+pub use self::verifier::CommitmentSchemeVerifier;
