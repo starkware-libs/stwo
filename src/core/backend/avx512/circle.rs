@@ -132,7 +132,10 @@ impl PolyOps for AVX512Backend {
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(spapini): Optimize.
         let eval = CPUBackend::new_canonical_ordered(coset, as_cpu_vec(values));
-        CircleEvaluation::new(eval.domain, Col::<AVX512Backend, _>::from_iter(eval.values))
+        CircleEvaluation::new(
+            eval.domain,
+            Col::<AVX512Backend, BaseField>::from_iter(eval.values),
+        )
     }
 
     fn interpolate(
