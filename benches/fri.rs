@@ -1,6 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use stwo::core::backend::CPUBackend;
 use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
+use stwo::core::fields::secure_column::SecureColumn;
 use stwo::core::fri::FriOps;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::poly::line::{LineDomain, LineEvaluation};
@@ -10,9 +12,13 @@ fn folding_benchmark(c: &mut Criterion) {
     let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE + 1).half_coset());
     let evals = LineEvaluation::new(
         domain,
-        vec![BaseField::from_u32_unchecked(712837213).into(); 1 << LOG_SIZE],
+        SecureColumn {
+            columns: std::array::from_fn(|i| {
+                vec![BaseField::from_u32_unchecked(i as u32); 1 << LOG_SIZE]
+            }),
+        },
     );
-    let alpha = BaseField::from_u32_unchecked(12389).into();
+    let alpha = SecureField::from_u32_unchecked(2213980, 2213981, 2213982, 2213983);
     c.bench_function("fold_line", |b| {
         b.iter(|| {
             black_box(CPUBackend::fold_line(black_box(&evals), black_box(alpha)));
