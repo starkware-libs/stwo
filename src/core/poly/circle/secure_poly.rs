@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
-use super::{CircleDomain, CircleEvaluation};
-use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
+use super::{CircleDomain, CircleEvaluation, CirclePoly, PolyOps};
+use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
@@ -10,9 +10,9 @@ use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldOps;
 use crate::core::poly::BitReversedOrder;
 
-pub struct SecureCirclePoly(pub [CPUCirclePoly; SECURE_EXTENSION_DEGREE]);
+pub struct SecureCirclePoly<B: FieldOps<BaseField>>(pub [CirclePoly<B>; SECURE_EXTENSION_DEGREE]);
 
-impl SecureCirclePoly {
+impl<B: PolyOps> SecureCirclePoly<B> {
     pub fn eval_at_point(&self, point: CirclePoint<SecureField>) -> SecureField {
         Self::eval_from_partial_evals(self.eval_columns_at_point(point))
     }
@@ -44,8 +44,8 @@ impl SecureCirclePoly {
     }
 }
 
-impl Deref for SecureCirclePoly {
-    type Target = [CPUCirclePoly; SECURE_EXTENSION_DEGREE];
+impl<B: FieldOps<BaseField>> Deref for SecureCirclePoly<B> {
+    type Target = [CirclePoly<B>; SECURE_EXTENSION_DEGREE];
 
     fn deref(&self) -> &Self::Target {
         &self.0

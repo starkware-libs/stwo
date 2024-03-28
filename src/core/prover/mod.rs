@@ -1,16 +1,18 @@
 use itertools::Itertools;
 use thiserror::Error;
 
+use super::backend::Backend;
 use super::commitment_scheme::{CommitmentSchemeProof, TreeVec};
 use super::fri::FriVerificationError;
 use super::poly::circle::{SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::ColumnVec;
 use crate::commitment_scheme::blake2_hash::Blake2sHasher;
+use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
 use crate::commitment_scheme::hasher::Hasher;
+use crate::commitment_scheme::ops::MerkleOps;
 use crate::commitment_scheme::verifier::MerkleVerificationError;
 use crate::core::air::{Air, AirExt};
-use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
@@ -22,7 +24,8 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::ComponentVec;
 
 type Channel = Blake2sChannel;
-type MerkleHasher = Blake2sHasher;
+type ChannelHasher = Blake2sHasher;
+type MerkleHasher = Blake2sMerkleHasher;
 
 pub const LOG_BLOWUP_FACTOR: u32 = 1;
 pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 0;
@@ -31,7 +34,7 @@ pub const N_QUERIES: usize = 3;
 
 #[derive(Debug)]
 pub struct StarkProof {
-    pub commitments: TreeVec<<MerkleHasher as Hasher>::Hash>,
+    pub commitments: TreeVec<<ChannelHasher as Hasher>::Hash>,
     pub commitment_scheme_proof: CommitmentSchemeProof,
 }
 
@@ -43,10 +46,10 @@ pub struct AdditionalProofData {
     pub oods_quotients: Vec<CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>,
 }
 
-pub fn prove(
-    air: &impl Air<CPUBackend>,
+pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
+    air: &impl Air<B>,
     channel: &mut Channel,
-    trace: ColumnVec<CPUCircleEvaluation<BaseField, BitReversedOrder>>,
+    trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> Result<StarkProof, ProvingError> {
     // Check that traces are not too big.
     for (i, trace) in trace.iter().enumerate() {
@@ -161,12 +164,12 @@ pub fn verify(
 
 /// Structures the tree-wise sampled values into component-wise OODS values and a composition
 /// polynomial OODS value.
-fn sampled_values_to_mask(
-    air: &impl Air<CPUBackend>,
+fn sampled_values_to_mask<B: Backend>(
+    air: &impl Air<B>,
     mut sampled_values: TreeVec<ColumnVec<Vec<SecureField>>>,
 ) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), ()> {
     let composition_partial_sampled_values = sampled_values.pop().ok_or(())?;
-    let composition_oods_value = SecureCirclePoly::eval_from_partial_evals(
+    let composition_oods_value = SecureCirclePoly::<B>::eval_from_partial_evals(
         composition_partial_sampled_values
             .iter()
             .flatten()
