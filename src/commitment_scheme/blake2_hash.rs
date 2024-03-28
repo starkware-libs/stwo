@@ -1,7 +1,6 @@
 use std::fmt;
 
-use blake2::digest::{Update, VariableOutput};
-use blake2::{Blake2s256, Blake2sVar, Digest};
+use blake2::{Blake2s256, Digest};
 
 // Wrapper for the blake2s hash type.
 #[derive(Clone, Copy, PartialEq, Default, Eq)]
@@ -96,24 +95,6 @@ impl super::hasher::Hasher for Blake2sHasher {
     fn finalize_reset(&mut self) -> Blake2sHash {
         Blake2sHash(self.state.finalize_reset().into())
     }
-
-    unsafe fn hash_many_in_place(
-        data: &[*const u8],
-        single_input_length_bytes: usize,
-        dst: &[*mut u8],
-    ) {
-        data.iter()
-            .map(|p| std::slice::from_raw_parts(*p, single_input_length_bytes))
-            .zip(
-                dst.iter()
-                    .map(|p| std::slice::from_raw_parts_mut(*p, Self::OUTPUT_SIZE)),
-            )
-            .for_each(|(input, out)| {
-                let mut hasher = Blake2sVar::new(Self::OUTPUT_SIZE).unwrap();
-                hasher.update(input);
-                hasher.finalize_variable(out).unwrap();
-            })
-    }
 }
 
 #[cfg(test)]
@@ -129,19 +110,6 @@ mod tests {
             hash_a.to_string(),
             "4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e90"
         );
-    }
-
-    #[test]
-    fn hash_many_xof_test() {
-        let input1 = "a";
-        let input2 = "b";
-        let input_arr = [input1.as_ptr(), input2.as_ptr()];
-
-        let mut out = [0_u8; 96];
-        let out_ptrs = [out.as_mut_ptr(), unsafe { out.as_mut_ptr().add(42) }];
-        unsafe { Blake2sHasher::hash_many_in_place(&input_arr, 1, &out_ptrs) };
-
-        assert_eq!("4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e900000000000000000000004449e92c9a7657ef2d677b8ef9da46c088f13575ea887e4818fc455a2bca50000000000000000000000000000000000000000000000", hex::encode(out));
     }
 
     #[test]

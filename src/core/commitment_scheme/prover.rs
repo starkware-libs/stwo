@@ -18,7 +18,7 @@ use super::super::prover::{
 use super::super::ColumnVec;
 use super::quotients::{compute_fri_quotients, PointSample};
 use super::utils::TreeVec;
-use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
+use crate::commitment_scheme::blake2_hash::Blake2sHash;
 use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
 use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
 use crate::core::channel::Channel;
@@ -91,7 +91,7 @@ impl CommitmentSchemeProver {
         // Run FRI commitment phase on the oods quotients.
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
         let fri_prover =
-            FriProver::<CPUBackend, Blake2sHasher>::commit(channel, fri_config, &quotients);
+            FriProver::<CPUBackend, MerkleHasher>::commit(channel, fri_config, &quotients);
 
         // Proof of work.
         let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
@@ -127,7 +127,7 @@ pub struct CommitmentSchemeProof {
     pub decommitments: TreeVec<MerkleDecommitment<MerkleHasher>>,
     pub queried_values: TreeVec<ColumnVec<Vec<BaseField>>>,
     pub proof_of_work: ProofOfWorkProof,
-    pub fri_proof: FriProof<Blake2sHasher>,
+    pub fri_proof: FriProof<MerkleHasher>,
 }
 
 /// Prover data for a single commitment tree in a commitment scheme. The commitment scheme allows to

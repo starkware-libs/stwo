@@ -215,14 +215,6 @@ impl Hasher for PoseidonHasher {
         res
     }
 
-    unsafe fn hash_many_in_place(
-        _data: &[*const Self::NativeType],
-        _single_input_length_bytes: usize,
-        _dst: &[*mut Self::NativeType],
-    ) {
-        unimplemented!("hash_many_in_place for PoseidonHasher")
-    }
-
     fn concat_and_hash(_v1: &PoseidonHash, _v2: &PoseidonHash) -> PoseidonHash {
         unimplemented!("concat_and_hash for PoseidonHasher")
     }

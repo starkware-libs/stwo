@@ -91,26 +91,6 @@ impl super::hasher::Hasher for Blake3Hasher {
         self.state.reset();
         res
     }
-
-    unsafe fn hash_many_in_place(
-        data: &[*const u8],
-        single_input_length_bytes: usize,
-        dst: &[*mut u8],
-    ) {
-        let mut hasher = blake3::Hasher::new();
-        data.iter()
-            .map(|p| std::slice::from_raw_parts(*p, single_input_length_bytes))
-            .zip(
-                dst.iter()
-                    .map(|p| std::slice::from_raw_parts_mut(*p, Self::OUTPUT_SIZE)),
-            )
-            .for_each(|(input, out)| {
-                hasher.update(input);
-                let mut output_reader = hasher.finalize_xof();
-                output_reader.fill(&mut out[..Self::OUTPUT_SIZE]);
-                hasher.reset();
-            })
-    }
 }
 
 #[cfg(test)]
@@ -125,19 +105,6 @@ mod tests {
             hash_a.to_string(),
             "17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f"
         );
-    }
-
-    #[test]
-    fn hash_many_xof_test() {
-        let input1 = "a";
-        let input2 = "b";
-        let input_arr = [input1.as_ptr(), input2.as_ptr()];
-
-        let mut out = [0_u8; 96];
-        let out_ptrs = [out.as_mut_ptr(), unsafe { out.as_mut_ptr().add(42) }];
-        unsafe { Blake3Hasher::hash_many_in_place(&input_arr, 1, &out_ptrs) };
-
-        assert_eq!("17762fddd969a453925d65717ac3eea21320b66b54342fde15128d6caf21215f0000000000000000000010e5cf3d3c8a4f9f3468c8cc58eea84892a22fdadbc1acb22410190044c1d55300000000000000000000000000000000000000000000", hex::encode(out));
     }
 
     #[test]

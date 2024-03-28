@@ -209,7 +209,8 @@ impl<H: MerkleHasher> MerkleDecommitment<H> {
 impl<H: MerkleHasher> Clone for MerkleDecommitment<H> {
     fn clone(&self) -> Self {
         Self {
-            witness: self.witness.clone(),
+            hash_witness: self.hash_witness.clone(),
+            column_witness: self.column_witness.clone(),
         }
     }
 }
