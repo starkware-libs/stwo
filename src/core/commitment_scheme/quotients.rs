@@ -4,7 +4,7 @@ use std::iter::zip;
 
 use itertools::{izip, multiunzip, Itertools};
 
-use crate::core::backend::cpu::quotients::{accumulate_row_quotients, column_constants};
+use crate::core::backend::cpu::quotients::{accumulate_row_quotients, quotient_constants};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -124,7 +124,7 @@ pub fn fri_answers_for_log_size(
 ) -> Result<SparseCircleEvaluation<SecureField>, VerificationError> {
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
     let sample_batches = ColumnSampleBatch::new_vec(samples);
-    let column_constants = column_constants(&sample_batches, random_coeff);
+    let quotient_constants = quotient_constants(&sample_batches, random_coeff);
     for queried_values in queried_values_per_column {
         if queried_values.len() != query_domain.flatten().len() {
             return Err(VerificationError::InvalidStructure(
@@ -155,7 +155,7 @@ pub fn fri_answers_for_log_size(
             let value = accumulate_row_quotients(
                 &sample_batches,
                 &column_evals.iter().collect_vec(),
-                &column_constants,
+                &quotient_constants,
                 row,
                 random_coeff,
                 domain_point,
