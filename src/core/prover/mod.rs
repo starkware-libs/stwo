@@ -252,6 +252,10 @@ mod tests {
     }
 
     impl Component<CPUBackend> for TestComponent {
+        fn n_constraints(&self) -> usize {
+            0
+        }
+
         fn max_constraint_log_degree_bound(&self) -> u32 {
             self.max_constraint_log_degree_bound
         }
@@ -278,7 +282,7 @@ mod tests {
             _mask: &crate::core::ColumnVec<Vec<SecureField>>,
             evaluation_accumulator: &mut PointEvaluationAccumulator,
         ) {
-            evaluation_accumulator.accumulate(1, qm31!(0, 0, 0, 1))
+            evaluation_accumulator.accumulate(qm31!(0, 0, 0, 1))
         }
     }
 
