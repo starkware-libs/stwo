@@ -46,16 +46,23 @@ impl PackedSecureField {
 
     // Multiply packed QM31 by packed M31.
     pub fn mul_packed_m31(&self, rhs: PackedBaseField) -> PackedSecureField {
-        let a = self.0[0].0[0] * rhs;
-        let b = self.0[0].0[1] * rhs;
-        let c = self.0[1].0[0] * rhs;
-        let d = self.0[1].0[1] * rhs;
-        PackedSecureField([PackedCM31([a, b]), PackedCM31([c, d])])
+        Self::from_packed_m31s(self.to_packed_m31s().map(|m31| m31 * rhs))
     }
 
     /// Sums all the elements in the packed M31 element.
     pub fn pointwise_sum(self) -> QM31 {
         self.to_array().into_iter().sum()
+    }
+
+    pub fn to_packed_m31s(&self) -> [PackedBaseField; 4] {
+        [self.a().a(), self.a().b(), self.b().a(), self.b().b()]
+    }
+
+    pub fn from_packed_m31s(array: [PackedBaseField; 4]) -> Self {
+        Self([
+            PackedCM31([array[0], array[1]]),
+            PackedCM31([array[2], array[3]]),
+        ])
     }
 }
 impl Add for PackedSecureField {
