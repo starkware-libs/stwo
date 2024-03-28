@@ -4,6 +4,7 @@ pub mod blake2s_avx;
 pub mod circle;
 pub mod cm31;
 pub mod fft;
+mod fri;
 pub mod m31;
 pub mod qm31;
 pub mod quotients;
@@ -17,7 +18,7 @@ use self::bit_reverse::bit_reverse_m31;
 use self::cm31::PackedCM31;
 pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
 use self::qm31::PackedSecureField;
-use super::{Backend, Column, ColumnOps};
+use super::{Backend, CPUBackend, Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
@@ -249,6 +250,15 @@ impl SecureColumn<AVX512Backend> {
         )
         .map(|(a, b, c, d)| SecureField::from_m31_array([a, b, c, d]))
         .collect()
+    }
+}
+
+impl FromIterator<SecureField> for SecureColumn<AVX512Backend> {
+    fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
+        let cpu_col = SecureColumn::<CPUBackend>::from_iter(iter);
+        SecureColumn {
+            columns: cpu_col.columns.map(|col| col.into_iter().collect()),
+        }
     }
 }
 
