@@ -417,10 +417,16 @@ impl Component<CPUBackend> for WideFibComponent {
 
     fn evaluate_constraint_quotients_at_point(
         &self,
-        _point: CirclePoint<SecureField>,
-        _mask: &ColumnVec<Vec<SecureField>>,
-        _evaluation_accumulator: &mut PointEvaluationAccumulator,
+        point: CirclePoint<SecureField>,
+        mask: &ColumnVec<Vec<SecureField>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
     ) {
-        unimplemented!("not implemented")
+        let zero_domain = CanonicCoset::new(self.log_size).coset;
+        let constraint_log_degree_bound = self.log_size + 1;
+        for i in 0..254 {
+            let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
+            let denominator = coset_vanishing(zero_domain, point);
+            evaluation_accumulator.accumulate(constraint_log_degree_bound, numerator / denominator);
+        }
     }
 }

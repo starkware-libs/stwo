@@ -7,7 +7,7 @@ use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluatio
 use crate::core::air::{Air, Component, ComponentTrace, Mask};
 use crate::core::backend::avx512::qm31::PackedQM31;
 use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField, VECS_LOG_SIZE};
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{CPUBackend, Col, Column, ColumnOps};
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
@@ -27,6 +27,11 @@ impl Air<AVX512Backend> for WideFibAir {
         vec![&self.component]
     }
 }
+impl Air<CPUBackend> for WideFibAir {
+    fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
+        vec![&self.component]
+    }
+}
 
 pub fn gen_trace(
     log_size: usize,
@@ -41,7 +46,7 @@ pub fn gen_trace(
         let mut b = PackedBaseField::one();
         trace[0].data[vec_index] = a;
         trace[1].data[vec_index] = b;
-        trace.iter_mut().take(log_size).skip(2).for_each(|col| {
+        trace.iter_mut().skip(2).for_each(|col| {
             (a, b) = (b, a.square() + b.square());
             col.data[vec_index] = b;
         });
@@ -73,9 +78,9 @@ impl Component<AVX512Backend> for WideFibComponent {
         let trace_eval = &trace.evals;
 
         let _span = span!(Level::INFO, "Constraint eval evaluation").entered();
-        let random_coeff = PackedQM31::broadcast(evaluation_accumulator.random_coeff);
-        let mut column_coeffs = (0..N_COLS)
-            .scan(PackedQM31::one(), |state, _| {
+        let random_coeff = evaluation_accumulator.random_coeff;
+        let mut column_coeffs = (0..(N_COLS - 2))
+            .scan(SecureField::one(), |state, _| {
                 let res = *state;
                 *state *= random_coeff;
                 Some(res)
@@ -103,7 +108,7 @@ impl Component<AVX512Backend> for WideFibComponent {
             for i in 0..(N_COLS - 2) {
                 unsafe {
                     let c = *trace_eval.get_unchecked(i + 2).data.get_unchecked(vec_row);
-                    row_res = row_res + column_coeffs[i] * (a_sq + b_sq - c);
+                    row_res = row_res + PackedQM31::broadcast(column_coeffs[i]) * (a_sq + b_sq - c);
                     (a_sq, b_sq) = (b_sq, c.square());
                 }
             }
@@ -120,6 +125,7 @@ impl Component<AVX512Backend> for WideFibComponent {
         Mask(vec![vec![0]; N_COLS])
     }
 
+    // TODO(spapini): Share with CPU.
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
@@ -146,7 +152,7 @@ mod tests {
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
-    use crate::core::prover::prove;
+    use crate::core::prover::{prove, verify};
     use crate::examples::wide_fibonacci::avx::{gen_trace, WideFibAir};
     use crate::examples::wide_fibonacci::structs::WideFibComponent;
 
@@ -162,10 +168,16 @@ mod tests {
         (0..1).into_par_iter().for_each(|_| {
             let component = WideFibComponent { log_size: LOG_SIZE };
             let air = WideFibAir { component };
+
+            let span = tracing::span!(tracing::Level::INFO, "Prove").entered();
             let trace = gen_trace(LOG_SIZE as usize);
             let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-            // TODO(spapini): Fix the constraints.
-            println!("err: {:?}", prove(&air, channel, trace).unwrap_err());
+            let proof = prove(&air, channel, trace).unwrap();
+            span.exit();
+
+            let _span = tracing::span!(tracing::Level::INFO, "Verify").entered();
+            let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+            verify(proof, &air, channel).unwrap();
         });
     }
 }
