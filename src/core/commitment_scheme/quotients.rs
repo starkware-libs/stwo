@@ -146,13 +146,17 @@ pub fn fri_answers_for_log_size(
                         CircleEvaluation::new(domain, q.take(domain.size()).copied().collect_vec())
                     })
                     .collect_vec();
-                CPUBackend::accumulate_quotients(
+                CircleEvaluation::new(
                     domain,
-                    &column_evals.iter().collect_vec(),
-                    random_coeff,
-                    &batched_samples,
+                    CPUBackend::accumulate_quotients(
+                        domain,
+                        &column_evals.iter().collect_vec(),
+                        random_coeff,
+                        &batched_samples,
+                    )
+                    .into_iter()
+                    .collect(),
                 )
-                .to_cpu()
             })
             .collect(),
     );

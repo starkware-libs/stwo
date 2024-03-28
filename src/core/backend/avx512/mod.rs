@@ -1,3 +1,4 @@
+pub mod accumulation;
 pub mod bit_reverse;
 mod blake2s;
 pub mod blake2s_avx;
@@ -17,7 +18,7 @@ use self::bit_reverse::bit_reverse_m31;
 use self::cm31::PackedCM31;
 pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
 use self::qm31::PackedQM31;
-use super::{Column, ColumnOps};
+use super::{Backend, Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
@@ -29,8 +30,7 @@ pub const VECS_LOG_SIZE: usize = 4;
 #[derive(Copy, Clone, Debug)]
 pub struct AVX512Backend;
 
-// BaseField.
-// TODO(spapini): Unite with the M31AVX512 type.
+impl Backend for AVX512Backend {}
 
 unsafe impl Pod for PackedBaseField {}
 unsafe impl Zeroable for PackedBaseField {

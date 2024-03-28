@@ -20,9 +20,9 @@ use crate::commitment_scheme::blake2_hash::Blake2sHash;
 use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
 use crate::commitment_scheme::ops::MerkleOps;
 use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
-use crate::core::backend::Backend;
+use crate::core::backend::{Backend, CPUBackend};
 use crate::core::channel::Channel;
-use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
+use crate::core::poly::circle::{CircleEvaluation, CirclePoly, SecureEvaluation};
 
 type MerkleHasher = Blake2sMerkleHasher;
 type ProofChannel = Blake2sChannel;
@@ -89,9 +89,17 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
         let columns = self.evaluations().flatten();
         let quotients = compute_fri_quotients(&columns, &samples.flatten(), channel.draw_felt());
 
+        // TODO(spapini): Conversion to CircleEvaluation can be removed when FRI supports
+        // SecureColumn.
+        let quotients = quotients
+            .into_iter()
+            .map(SecureEvaluation::to_cpu)
+            .collect_vec();
+
         // Run FRI commitment phase on the oods quotients.
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-        let fri_prover = FriProver::<B, MerkleHasher>::commit(channel, fri_config, &quotients);
+        let fri_prover =
+            FriProver::<CPUBackend, MerkleHasher>::commit(channel, fri_config, &quotients);
 
         // Proof of work.
         let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
