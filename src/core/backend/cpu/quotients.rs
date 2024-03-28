@@ -1,5 +1,5 @@
 use itertools::zip_eq;
-use num_traits::{One, Zero};
+use num_traits::Zero;
 
 use super::CPUBackend;
 use crate::core::circle::CirclePoint;
@@ -11,7 +11,7 @@ use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fields::{ComplexConjugate, FieldExpOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::bit_reverse_index;
+use crate::core::utils::{bit_reverse_index, generate_secure_powers};
 
 impl QuotientOps for CPUBackend {
     fn accumulate_quotients(
@@ -80,20 +80,20 @@ pub fn column_constants(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
 ) -> Vec<Vec<(SecureField, SecureField, SecureField)>> {
+    let random_coeff_powers = generate_secure_powers(random_coeff, sample_batches.len());
     sample_batches
         .iter()
-        .map(|sample_batch| {
-            let mut alpha = SecureField::one();
+        .zip(random_coeff_powers.iter())
+        .map(|(sample_batch, random_coeff_pow)| {
             sample_batch
                 .columns_and_values
                 .iter()
                 .map(|(_, sampled_value)| {
-                    alpha *= random_coeff;
                     let sample = PointSample {
                         point: sample_batch.point,
                         value: *sampled_value,
                     };
-                    complex_conjugate_line_coefficients(&sample, alpha)
+                    complex_conjugate_line_coefficients(&sample, *random_coeff_pow)
                 })
                 .collect()
         })
