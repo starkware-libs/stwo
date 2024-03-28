@@ -22,6 +22,7 @@ use crate::commitment_scheme::blake2_hash::Blake2sHash;
 use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
 use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
 use crate::core::channel::Channel;
+use crate::core::poly::twiddles::TwiddleTree;
 
 type MerkleHasher = Blake2sMerkleHasher;
 type ProofChannel = Blake2sChannel;
@@ -65,6 +66,7 @@ impl CommitmentSchemeProver {
         &self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
         channel: &mut ProofChannel,
+        twiddles: &TwiddleTree<CPUBackend>,
     ) -> CommitmentSchemeProof {
         // Evaluate polynomials on samples points.
         let samples = self
@@ -90,8 +92,9 @@ impl CommitmentSchemeProver {
 
         // Run FRI commitment phase on the oods quotients.
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-        let fri_prover =
-            FriProver::<CPUBackend, MerkleHasher>::commit(channel, fri_config, &quotients);
+        let fri_prover = FriProver::<CPUBackend, MerkleHasher>::commit(
+            channel, fri_config, &quotients, twiddles,
+        );
 
         // Proof of work.
         let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
