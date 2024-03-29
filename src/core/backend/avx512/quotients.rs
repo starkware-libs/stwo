@@ -1,18 +1,18 @@
-use itertools::zip_eq;
+use itertools::{izip, zip_eq, Itertools};
 
 use super::qm31::PackedQM31;
 use super::{AVX512Backend, VECS_LOG_SIZE};
 use crate::core::backend::avx512::PackedBaseField;
 use crate::core::backend::cpu::quotients::column_constants;
-use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::quotients::{ColumnSampleBatch, QuotientOps};
+use crate::core::constraints::pair_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fields::{ComplexConjugate, FieldExpOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::bit_reverse_index;
+use crate::core::utils::{bit_reverse, bit_reverse_index};
 
 impl QuotientOps for AVX512Backend {
     fn accumulate_quotients(
@@ -25,14 +25,39 @@ impl QuotientOps for AVX512Backend {
         let mut values = SecureColumn::<AVX512Backend>::zeros(domain.size());
         let column_constants = column_constants(sample_batches, random_coeff);
 
+        // Denominators.
+        let denom_inverses = sample_batches
+            .iter()
+            .map(|sample_batch| {
+                let mut denoms = domain
+                    .iter()
+                    .map(|p| {
+                        pair_vanishing(
+                            sample_batch.point,
+                            sample_batch.point.complex_conjugate(),
+                            p.into_ef(),
+                        )
+                    })
+                    .array_chunks::<16>()
+                    .map(|a| PackedQM31::from_array(&a))
+                    .collect_vec();
+                bit_reverse(&mut denoms);
+                // <AVX512Backend as ColumnOps<SecureField>>::bit_reverse_column(&mut denoms);
+                let mut denom_inverses = vec![PackedQM31::zero(); denoms.len()];
+                PackedQM31::batch_inverse(&denoms, &mut denom_inverses);
+                denom_inverses
+                // vec![PackedQM31::zero(); domain.size()/16]
+            })
+            .collect_vec();
+
+        let mut domain_points = domain.iter().collect_vec();
+        bit_reverse(&mut domain_points);
+
         // TODO(spapini): bit reverse iterator.
         for pack_index in 0..(1 << (domain.log_size() - VECS_LOG_SIZE as u32)) {
             // TODO(spapini): Optimized this, for the small number of columns case.
             let points = std::array::from_fn(|i| {
-                domain.at(bit_reverse_index(
-                    (pack_index << VECS_LOG_SIZE) + i,
-                    domain.log_size(),
-                ))
+                domain_points[pack_index << VECS_LOG_SIZE | i]
             });
             let domain_points_x = PackedBaseField::from_array(points.map(|p| p.x));
             let domain_points_y = PackedBaseField::from_array(points.map(|p| p.y));
@@ -41,8 +66,8 @@ impl QuotientOps for AVX512Backend {
                 columns,
                 &column_constants,
                 pack_index,
-                random_coeff,
                 (domain_points_x, domain_points_y),
+                &denom_inverses,
             );
             values.set_packed(pack_index, row_accumulator);
         }
@@ -53,13 +78,15 @@ impl QuotientOps for AVX512Backend {
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
     columns: &[&CircleEvaluation<AVX512Backend, BaseField, BitReversedOrder>],
-    column_constants: &[Vec<(SecureField, SecureField, SecureField)>],
+    column_constants: &[(SecureField, Vec<(SecureField, SecureField, SecureField)>)],
     vec_row: usize,
-    random_coeff: SecureField,
     domain_point_vec: (PackedBaseField, PackedBaseField),
+    denom_inverses: &[Vec<PackedQM31>],
 ) -> PackedQM31 {
     let mut row_accumulator = PackedQM31::zero();
-    for (sample_batch, sample_constants) in zip_eq(sample_batches, column_constants) {
+    for (sample_batch, (shift, sample_constants), denom_inverses) in
+        izip!(sample_batches, column_constants, denom_inverses)
+    {
         let mut numerator = PackedQM31::zero();
         for ((column_index, _), (a, b, c)) in
             zip_eq(&sample_batch.columns_and_values, sample_constants)
@@ -78,32 +105,22 @@ pub fn accumulate_row_quotients(
             numerator += value - linear_term;
         }
 
-        let denominator = packed_pair_vanishing(
-            sample_batch.point,
-            sample_batch.point.complex_conjugate(),
-            domain_point_vec,
-        );
-
-        row_accumulator = row_accumulator
-            * PackedQM31::broadcast(
-                random_coeff.pow(sample_batch.columns_and_values.len() as u128),
-            )
-            + numerator * denominator.inverse();
+        row_accumulator =
+            row_accumulator * PackedQM31::broadcast(*shift) + numerator * denom_inverses[vec_row];
     }
     row_accumulator
 }
 
-/// Pair vanishing for the packed representation of the points. See
-/// [crate::core::constraints::pair_vanishing] for more details.
-fn packed_pair_vanishing(
-    excluded0: CirclePoint<SecureField>,
-    excluded1: CirclePoint<SecureField>,
-    packed_p: (PackedBaseField, PackedBaseField),
-) -> PackedQM31 {
-    PackedQM31::broadcast(excluded0.y - excluded1.y) * packed_p.0
-        + PackedQM31::broadcast(excluded1.x - excluded0.x) * packed_p.1
-        + PackedQM31::broadcast(excluded0.x * excluded1.y - excluded0.y * excluded1.x)
-}
+// /// Pair vanishing for the packed representation of the points. See
+// /// [crate::core::constraints::pair_vanishing] for more details.
+// fn packed_pair_vanishing(
+//     excluded0: CirclePoint<SecureField>,
+//     excluded1: CirclePoint<SecureField>,
+//     packed_p: (PackedBaseField, PackedBaseField),
+// ) -> PackedQM31 { PackedQM31::broadcast(excluded0.y - excluded1.y) * packed_p.0
+//         + PackedQM31::broadcast(excluded1.x - excluded0.x) * packed_p.1
+//         + PackedQM31::broadcast(excluded0.x * excluded1.y - excluded0.y * excluded1.x)
+// }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]

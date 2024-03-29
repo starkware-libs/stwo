@@ -32,7 +32,6 @@ impl QuotientOps for CPUBackend {
                 columns,
                 &column_constants,
                 row,
-                random_coeff,
                 domain_point,
             );
             values.set(row, row_value);
@@ -44,13 +43,12 @@ impl QuotientOps for CPUBackend {
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
     columns: &[&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>],
-    column_constants: &[Vec<(SecureField, SecureField, SecureField)>],
+    column_constants: &[(SecureField, Vec<(SecureField, SecureField, SecureField)>)],
     row: usize,
-    random_coeff: SecureField,
     domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
     let mut row_accumulator = SecureField::zero();
-    for (sample_batch, sample_constants) in zip_eq(sample_batches, column_constants) {
+    for (sample_batch, (shift, sample_constants)) in zip_eq(sample_batches, column_constants) {
         let mut numerator = SecureField::zero();
         for ((column_index, _), (a, b, c)) in
             zip_eq(&sample_batch.columns_and_values, sample_constants)
@@ -67,9 +65,7 @@ pub fn accumulate_row_quotients(
             domain_point.into_ef(),
         );
 
-        row_accumulator = row_accumulator
-            * random_coeff.pow(sample_batch.columns_and_values.len() as u128)
-            + numerator / denominator;
+        row_accumulator = row_accumulator * *shift + numerator / denominator;
     }
     row_accumulator
 }
@@ -80,23 +76,28 @@ pub fn accumulate_row_quotients(
 pub fn column_constants(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
-) -> Vec<Vec<(SecureField, SecureField, SecureField)>> {
+) -> Vec<(SecureField, Vec<(SecureField, SecureField, SecureField)>)> {
     sample_batches
         .iter()
         .map(|sample_batch| {
+            let shift = random_coeff.pow(sample_batch.columns_and_values.len() as u128);
+
             let mut alpha = SecureField::one();
-            sample_batch
-                .columns_and_values
-                .iter()
-                .map(|(_, sampled_value)| {
-                    alpha *= random_coeff;
-                    let sample = PointSample {
-                        point: sample_batch.point,
-                        value: *sampled_value,
-                    };
-                    complex_conjugate_line_coefficients(&sample, alpha)
-                })
-                .collect()
+            (
+                shift,
+                sample_batch
+                    .columns_and_values
+                    .iter()
+                    .map(|(_, sampled_value)| {
+                        alpha *= random_coeff;
+                        let sample = PointSample {
+                            point: sample_batch.point,
+                            value: *sampled_value,
+                        };
+                        complex_conjugate_line_coefficients(&sample, alpha)
+                    })
+                    .collect(),
+            )
         })
         .collect()
 }
