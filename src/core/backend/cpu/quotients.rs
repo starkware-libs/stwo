@@ -21,7 +21,7 @@ impl QuotientOps for CPUBackend {
         sample_batches: &[ColumnSampleBatch],
     ) -> SecureEvaluation<Self> {
         let mut values = SecureColumn::zeros(domain.size());
-        let quotient_constants = quotient_constants(sample_batches, random_coeff);
+        let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
 
         for row in 0..domain.size() {
             // TODO(alonh): Make an efficient bit reverse domain iterator, possibly for AVX backend.
@@ -47,10 +47,11 @@ pub fn accumulate_row_quotients(
     domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
     let mut row_accumulator = SecureField::zero();
-    for (sample_batch, line_coeffs, alpha) in izip!(
+    for (sample_batch, line_coeffs, alpha, denominator_inverses) in izip!(
         sample_batches,
         &quotient_constants.line_coeffs,
-        &quotient_constants.alphas
+        &quotient_constants.alphas,
+        &quotient_constants.denominator_inverses
     ) {
         let mut numerator = SecureField::zero();
         for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
@@ -61,13 +62,9 @@ pub fn accumulate_row_quotients(
             numerator += value - linear_term;
         }
 
-        let denominator = pair_vanishing(
-            sample_batch.point,
-            sample_batch.point.complex_conjugate(),
-            domain_point.into_ef(),
-        );
+        let denominator_inverse = denominator_inverses[row];
 
-        row_accumulator = row_accumulator * *alpha + numerator / denominator;
+        row_accumulator = row_accumulator * *alpha + numerator * denominator_inverse;
     }
     row_accumulator
 }
@@ -107,15 +104,50 @@ fn alphas(sample_batches: &[ColumnSampleBatch], random_coeff: SecureField) -> Ve
         .collect()
 }
 
+// TODO(AlonH): Make generic over backend.
+fn denominator_inverses(
+    sample_batches: &[ColumnSampleBatch],
+    domain: CircleDomain,
+) -> Vec<Vec<SecureField>> {
+    let mut flat_denominators = Vec::new();
+    for sample_batch in sample_batches {
+        for row in 0..domain.size() {
+            let domain_point = domain.at(bit_reverse_index(row, domain.log_size()));
+            let denominator = pair_vanishing(
+                sample_batch.point,
+                sample_batch.point.complex_conjugate(),
+                domain_point.into_ef(),
+            );
+            flat_denominators.push(denominator);
+        }
+    }
+
+    let mut flat_denominator_inverses = vec![SecureField::zero(); flat_denominators.len()];
+    SecureField::batch_inverse(&flat_denominators, &mut flat_denominator_inverses);
+    let mut flat_denominator_inverses = flat_denominator_inverses.into_iter();
+
+    sample_batches
+        .iter()
+        .map(|_| {
+            (0..domain.size())
+                .map(|_| flat_denominator_inverses.next().unwrap())
+                .collect()
+        })
+        .collect()
+}
+
 pub fn quotient_constants(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
+    domain: CircleDomain,
 ) -> QuotientConstants {
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
     let alphas = alphas(sample_batches, random_coeff);
+    let denominator_inverses = denominator_inverses(sample_batches, domain);
     QuotientConstants {
         line_coeffs,
         alphas,
+        denominator_inverses,
     }
 }
 
@@ -125,6 +157,8 @@ pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
     /// The random coefficients used to linearly combine the quotients.
     pub alphas: Vec<SecureField>,
+    /// The inverses of the denominators of the quotients.
+    pub denominator_inverses: Vec<Vec<SecureField>>,
 }
 
 #[cfg(test)]
