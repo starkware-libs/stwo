@@ -1,4 +1,4 @@
-use itertools::zip_eq;
+use itertools::{izip, zip_eq};
 use num_traits::{One, Zero};
 
 use super::CPUBackend;
@@ -31,7 +31,6 @@ impl QuotientOps for CPUBackend {
                 columns,
                 &quotient_constants,
                 row,
-                random_coeff,
                 domain_point,
             );
             values.set(row, row_value);
@@ -45,15 +44,16 @@ pub fn accumulate_row_quotients(
     columns: &[&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>],
     quotient_constants: &QuotientConstants,
     row: usize,
-    random_coeff: SecureField,
     domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
     let mut row_accumulator = SecureField::zero();
-    for (sample_batch, sample_constants) in zip_eq(sample_batches, &quotient_constants.line_coeffs)
-    {
+    for (sample_batch, line_coeffs, alpha) in izip!(
+        sample_batches,
+        &quotient_constants.line_coeffs,
+        &quotient_constants.alphas
+    ) {
         let mut numerator = SecureField::zero();
-        for ((column_index, _), (a, b, c)) in
-            zip_eq(&sample_batch.columns_and_values, sample_constants)
+        for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
         {
             let column = &columns[*column_index];
             let value = column[row] * *c;
@@ -67,9 +67,7 @@ pub fn accumulate_row_quotients(
             domain_point.into_ef(),
         );
 
-        row_accumulator = row_accumulator
-            * random_coeff.pow(sample_batch.columns_and_values.len() as u128)
-            + numerator / denominator;
+        row_accumulator = row_accumulator * *alpha + numerator / denominator;
     }
     row_accumulator
 }
@@ -78,7 +76,7 @@ pub fn accumulate_row_quotients(
 /// Specifically, for the i-th (in a sample batch) column's numerator term
 /// `alpha^i * (c * F(p) - (a * p.y + b))`, we precompute the constants `alpha^i * a`, alpha^i * `b`
 /// and alpha^i * `c`.
-pub fn column_line_coeffs(
+fn column_line_coeffs(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
 ) -> Vec<Vec<(SecureField, SecureField, SecureField)>> {
@@ -102,18 +100,31 @@ pub fn column_line_coeffs(
         .collect()
 }
 
+fn alphas(sample_batches: &[ColumnSampleBatch], random_coeff: SecureField) -> Vec<SecureField> {
+    sample_batches
+        .iter()
+        .map(|sb| random_coeff.pow(sb.columns_and_values.len() as u128))
+        .collect()
+}
+
 pub fn quotient_constants(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
 ) -> QuotientConstants {
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
-    QuotientConstants { line_coeffs }
+    let alphas = alphas(sample_batches, random_coeff);
+    QuotientConstants {
+        line_coeffs,
+        alphas,
+    }
 }
 
 /// Holds the precomputed constant values used in each quotient evaluation.
 pub struct QuotientConstants {
     /// The line coefficients for each quotient numerator term.
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
+    /// The random coefficients used to linearly combine the quotients.
+    pub alphas: Vec<SecureField>,
 }
 
 #[cfg(test)]
