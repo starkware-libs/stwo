@@ -93,7 +93,6 @@ impl AVX512Backend {
             denominators.push(denominators[i - 1] * mappings[i]);
         }
 
-        // TODO(Ohad): batch inverse.
         let mut denom_inverses = vec![F::zero(); denominators.len()];
         F::batch_inverse(&denominators, &mut denom_inverses);
 

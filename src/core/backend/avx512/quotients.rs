@@ -23,7 +23,7 @@ impl QuotientOps for AVX512Backend {
     ) -> SecureEvaluation<Self> {
         assert!(domain.log_size() >= VECS_LOG_SIZE as u32);
         let mut values = SecureColumn::<AVX512Backend>::zeros(domain.size());
-        let quotient_constants = quotient_constants(sample_batches, random_coeff);
+        let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
 
         // TODO(spapini): bit reverse iterator.
         for vec_row in 0..(1 << (domain.log_size() - VECS_LOG_SIZE as u32)) {
