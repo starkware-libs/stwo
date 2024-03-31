@@ -147,7 +147,7 @@ pub unsafe fn ifft_lower_without_vecwise(
 ///   high_bits - The number of bits this loops needs to run on.
 ///   index_h - The higher part of the index, iterated by the caller.
 /// # Safety
-unsafe fn ifft_vecwise_loop(
+pub unsafe fn ifft_vecwise_loop(
     values: *mut i32,
     twiddle_dbl: &[&[i32]],
     loop_bits: usize,
@@ -183,7 +183,7 @@ unsafe fn ifft_vecwise_loop(
 ///     The layers `layer`, `layer + 1`, `layer + 2` are applied.
 ///   index_h - The higher part of the index, iterated by the caller.
 /// # Safety
-unsafe fn ifft3_loop(
+pub unsafe fn ifft3_loop(
     values: *mut i32,
     twiddle_dbl: &[&[i32]],
     loop_bits: usize,
