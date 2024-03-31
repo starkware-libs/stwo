@@ -124,7 +124,6 @@ pub fn fri_answers_for_log_size(
 ) -> Result<SparseCircleEvaluation<SecureField>, VerificationError> {
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
     let sample_batches = ColumnSampleBatch::new_vec(samples);
-    let quotient_constants = quotient_constants(&sample_batches, random_coeff);
     for queried_values in queried_values_per_column {
         if queried_values.len() != query_domain.flatten().len() {
             return Err(VerificationError::InvalidStructure(
@@ -140,6 +139,7 @@ pub fn fri_answers_for_log_size(
     let mut evals = Vec::new();
     for subdomain in query_domain.iter() {
         let domain = subdomain.to_circle_domain(&commitment_domain);
+        let quotient_constants = quotient_constants(&sample_batches, random_coeff, domain);
         let mut column_evals = Vec::new();
         for queried_values in queried_values_per_column.iter_mut() {
             let eval = CircleEvaluation::new(
