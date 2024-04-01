@@ -8,7 +8,7 @@ use crate::core::fields::FieldExpOps;
 
 /// AVX implementation for the complex extension field of M31.
 /// See [crate::core::fields::cm31::CM31] for more information.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct PackedCM31(pub [PackedBaseField; 2]);
 impl PackedCM31 {
     pub fn broadcast(value: CM31) -> Self {
