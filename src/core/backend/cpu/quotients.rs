@@ -2,7 +2,7 @@ use itertools::{izip, zip_eq};
 use num_traits::{One, Zero};
 
 use super::CPUBackend;
-use crate::core::backend::Col;
+use crate::core::backend::{Backend, Col};
 use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::quotients::{ColumnSampleBatch, PointSample, QuotientOps};
 use crate::core::constraints::{complex_conjugate_line_coeffs, pair_vanishing};
@@ -43,7 +43,7 @@ impl QuotientOps for CPUBackend {
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
     columns: &[&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>],
-    quotient_constants: &QuotientConstants,
+    quotient_constants: &QuotientConstants<CPUBackend>,
     row: usize,
     domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
@@ -106,7 +106,6 @@ pub fn alphas(sample_batches: &[ColumnSampleBatch], random_coeff: SecureField) -
         .collect()
 }
 
-// TODO(AlonH): Make generic over backend.
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
@@ -142,7 +141,7 @@ pub fn quotient_constants(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
     domain: CircleDomain,
-) -> QuotientConstants {
+) -> QuotientConstants<CPUBackend> {
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
     let alphas = alphas(sample_batches, random_coeff);
     let denominator_inverses = denominator_inverses(sample_batches, domain);
@@ -154,7 +153,7 @@ pub fn quotient_constants(
 }
 
 /// Holds the precomputed constant values used in each quotient evaluation.
-pub struct QuotientConstants {
+pub struct QuotientConstants<B: Backend> {
     /// The line coefficients for each quotient numerator term. For more details see
     /// [self::column_line_coeffs].
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
@@ -162,7 +161,7 @@ pub struct QuotientConstants {
     /// [self::alphas].
     pub alphas: Vec<SecureField>,
     /// The inverses of the denominators of the quotients.
-    pub denominator_inverses: Vec<Col<CPUBackend, SecureField>>,
+    pub denominator_inverses: Vec<Col<B, SecureField>>,
 }
 
 #[cfg(test)]

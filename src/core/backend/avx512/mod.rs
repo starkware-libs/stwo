@@ -9,14 +9,14 @@ pub mod quotients;
 pub mod tranpose_utils;
 
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
-use itertools::izip;
+use itertools::{izip, Itertools};
 use num_traits::Zero;
 
 use self::bit_reverse::bit_reverse_m31;
 use self::cm31::PackedCM31;
 pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
-use self::qm31::PackedQM31;
-use super::{Column, ColumnOps};
+use self::qm31::PackedSecureField;
+use super::{Backend, Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
@@ -27,6 +27,8 @@ pub const VECS_LOG_SIZE: usize = 4;
 
 #[derive(Copy, Clone, Debug)]
 pub struct AVX512Backend;
+
+impl Backend for AVX512Backend {}
 
 // BaseField.
 // TODO(spapini): Unite with the M31AVX512 type.
@@ -134,10 +136,88 @@ impl FromIterator<BaseField> for BaseFieldVec {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct SecureFieldVec {
+    pub data: Vec<PackedSecureField>,
+    length: usize,
+}
+
+impl ColumnOps<SecureField> for AVX512Backend {
+    type Column = SecureFieldVec;
+
+    fn bit_reverse_column(column: &mut Self::Column) {
+        // Fallback to cpu bit_reverse.
+        // TODO(AlonH): Implement AVX512 bit_reverse for SecureField.
+        utils::bit_reverse(column.to_vec().as_mut_slice());
+    }
+}
+
+impl FieldOps<SecureField> for AVX512Backend {
+    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
+        PackedSecureField::batch_inverse(&column.data, &mut dst.data);
+    }
+}
+
+impl Column<SecureField> for SecureFieldVec {
+    fn zeros(len: usize) -> Self {
+        Self {
+            data: vec![PackedSecureField::zeroed(); len.div_ceil(K_BLOCK_SIZE)],
+            length: len,
+        }
+    }
+    fn to_vec(&self) -> Vec<SecureField> {
+        self.data
+            .iter()
+            .flat_map(|x| x.to_array())
+            .take(self.length)
+            .collect()
+    }
+    fn len(&self) -> usize {
+        self.length
+    }
+    fn at(&self, index: usize) -> SecureField {
+        self.data[index / K_BLOCK_SIZE].to_array()[index % K_BLOCK_SIZE]
+    }
+}
+
+impl FromIterator<SecureField> for SecureFieldVec {
+    fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
+        let mut chunks = iter.into_iter().array_chunks();
+        let mut res: Vec<_> = (&mut chunks).map(PackedSecureField::from_array).collect();
+        let mut length = res.len() * K_BLOCK_SIZE;
+
+        if let Some(remainder) = chunks.into_remainder() {
+            if !remainder.is_empty() {
+                length += remainder.len();
+                let pad_len = 16 - remainder.len();
+                let last = PackedSecureField::from_array(
+                    remainder
+                        .chain(std::iter::repeat(SecureField::zero()).take(pad_len))
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .unwrap(),
+                );
+                res.push(last);
+            }
+        }
+
+        Self { data: res, length }
+    }
+}
+
+impl FromIterator<PackedSecureField> for SecureFieldVec {
+    fn from_iter<I: IntoIterator<Item = PackedSecureField>>(iter: I) -> Self {
+        let data = (&mut iter.into_iter()).collect_vec();
+        let length = data.len() * K_BLOCK_SIZE;
+
+        Self { data, length }
+    }
+}
+
 impl SecureColumn<AVX512Backend> {
-    pub fn packed_at(&self, vec_index: usize) -> PackedQM31 {
+    pub fn packed_at(&self, vec_index: usize) -> PackedSecureField {
         unsafe {
-            PackedQM31([
+            PackedSecureField([
                 PackedCM31([
                     *self.columns[0].data.get_unchecked(vec_index),
                     *self.columns[1].data.get_unchecked(vec_index),
@@ -150,7 +230,7 @@ impl SecureColumn<AVX512Backend> {
         }
     }
 
-    pub fn set_packed(&mut self, vec_index: usize, value: PackedQM31) {
+    pub fn set_packed(&mut self, vec_index: usize, value: PackedSecureField) {
         unsafe {
             *self.columns[0].data.get_unchecked_mut(vec_index) = value.a().a();
             *self.columns[1].data.get_unchecked_mut(vec_index) = value.a().b();
@@ -202,7 +282,7 @@ mod tests {
         for i in 1..16 {
             let len = 1 << i;
             let mut col = Col::<B, BaseField>::from_iter((0..len).map(BaseField::from));
-            B::bit_reverse_column(&mut col);
+            <B as ColumnOps<BaseField>>::bit_reverse_column(&mut col);
             assert_eq!(
                 col.to_vec(),
                 (0..len)
@@ -229,7 +309,7 @@ mod tests {
         let expected = column.data.iter().map(|e| e.inverse()).collect::<Vec<_>>();
         let mut dst = BaseFieldVec::from_iter((0..64).map(|_| BaseField::zero()));
 
-        AVX512Backend::batch_inverse(&column, &mut dst);
+        <AVX512Backend as FieldOps<BaseField>>::batch_inverse(&column, &mut dst);
 
         dst.data.iter().zip(expected.iter()).for_each(|(a, b)| {
             assert_eq!(a.to_array(), b.to_array());
