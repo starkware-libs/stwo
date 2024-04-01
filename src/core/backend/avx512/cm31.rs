@@ -1,9 +1,9 @@
-use std::ops::{Add, Mul, MulAssign, Sub};
+use std::ops::{Add, Mul, MulAssign, Neg, Sub};
 
 use num_traits::{One, Zero};
 
 use super::m31::{PackedBaseField, K_BLOCK_SIZE};
-use crate::core::fields::cm31::{CM31, P2};
+use crate::core::fields::cm31::CM31;
 use crate::core::fields::FieldExpOps;
 
 /// AVX implementation for the complex extension field of M31.
@@ -69,10 +69,17 @@ impl MulAssign for PackedCM31 {
         *self = *self * rhs;
     }
 }
+impl Neg for PackedCM31 {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        Self([-self.a(), -self.b()])
+    }
+}
 impl FieldExpOps for PackedCM31 {
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");
-        self.pow((P2 - 2) as u128)
+        // 1 / (a + bi) = (a - bi) / (a^2 + b^2).
+        Self([self.a(), -self.b()]) * (self.a().square() + self.b().square()).inverse()
     }
 }
 

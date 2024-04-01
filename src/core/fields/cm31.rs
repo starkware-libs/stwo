@@ -52,6 +52,14 @@ impl Mul for CM31 {
     }
 }
 
+impl FieldExpOps for CM31 {
+    fn inverse(&self) -> Self {
+        assert!(!self.is_zero(), "0 has no inverse");
+        // 1 / (a + bi) = (a - bi) / (a^2 + b^2).
+        Self(self.0, -self.1) * (self.0.square() + self.1.square()).inverse()
+    }
+}
+
 #[cfg(test)]
 #[macro_export]
 macro_rules! cm31 {
@@ -66,8 +74,15 @@ mod tests {
 
     use super::CM31;
     use crate::core::fields::m31::P;
-    use crate::core::fields::IntoSlice;
+    use crate::core::fields::{FieldExpOps, IntoSlice};
     use crate::m31;
+
+    #[test]
+    fn test_inverse() {
+        let cm = cm31!(1, 2);
+        let cm_inv = cm.inverse();
+        assert_eq!(cm * cm_inv, cm31!(1, 0));
+    }
 
     #[test]
     fn test_ops() {

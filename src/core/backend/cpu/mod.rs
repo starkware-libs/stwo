@@ -58,6 +58,7 @@ mod tests {
     use rand::rngs::SmallRng;
 
     use crate::core::backend::{CPUBackend, Column, FieldOps};
+    use crate::core::fields::m31::P;
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::FieldExpOps;
 
@@ -67,10 +68,10 @@ mod tests {
         let column: Vec<QM31> = (0..16)
             .map(|_| {
                 QM31::from_u32_unchecked(
-                    rng.gen::<u32>(),
-                    rng.gen::<u32>(),
-                    rng.gen::<u32>(),
-                    rng.gen::<u32>(),
+                    rng.gen::<u32>() % P,
+                    rng.gen::<u32>() % P,
+                    rng.gen::<u32>() % P,
+                    rng.gen::<u32>() % P,
                 )
             })
             .collect();
@@ -89,10 +90,10 @@ mod tests {
         let column: Vec<QM31> = (0..16)
             .map(|_| {
                 QM31::from_u32_unchecked(
-                    rng.gen::<u32>(),
-                    rng.gen::<u32>(),
-                    rng.gen::<u32>(),
-                    rng.gen::<u32>(),
+                    rng.gen::<u32>() % P,
+                    rng.gen::<u32>() % P,
+                    rng.gen::<u32>() % P,
+                    rng.gen::<u32>() % P,
                 )
             })
             .collect();

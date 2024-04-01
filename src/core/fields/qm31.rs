@@ -66,6 +66,18 @@ impl Mul for QM31 {
     }
 }
 
+impl FieldExpOps for QM31 {
+    fn inverse(&self) -> Self {
+        assert!(!self.is_zero(), "0 has no inverse");
+        // (a + bu)^-1 = (a - bu) / (a^2 - (2+i)b^2).
+        let b2 = self.1.square();
+        let ib2 = CM31(-b2.1, b2.0);
+        let denom = self.0.square() - (b2 + b2 + ib2);
+        let denom_inverse = denom.inverse();
+        Self(self.0 * denom_inverse, -self.1 * denom_inverse)
+    }
+}
+
 #[cfg(test)]
 #[macro_export]
 macro_rules! qm31 {
@@ -77,12 +89,20 @@ macro_rules! qm31 {
 
 #[cfg(test)]
 mod tests {
+    use num_traits::One;
     use rand::Rng;
 
     use super::QM31;
     use crate::core::fields::m31::P;
-    use crate::core::fields::IntoSlice;
+    use crate::core::fields::{FieldExpOps, IntoSlice};
     use crate::m31;
+
+    #[test]
+    fn test_inverse() {
+        let qm = qm31!(1, 2, 3, 4);
+        let qm_inv = qm.inverse();
+        assert_eq!(qm * qm_inv, QM31::one());
+    }
 
     #[test]
     fn test_ops() {

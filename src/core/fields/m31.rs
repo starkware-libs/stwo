@@ -78,6 +78,13 @@ impl Mul for M31 {
     }
 }
 
+impl FieldExpOps for M31 {
+    fn inverse(&self) -> Self {
+        assert!(!self.is_zero(), "0 has no inverse");
+        self.pow(P as u128 - 2)
+    }
+}
+
 impl ComplexConjugate for M31 {
     fn complex_conjugate(&self) -> Self {
         *self
