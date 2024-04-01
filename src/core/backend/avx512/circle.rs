@@ -3,7 +3,7 @@ use num_traits::One;
 
 use super::fft::{ifft, CACHED_FFT_LOG_SIZE};
 use super::m31::PackedBaseField;
-use super::qm31::PackedQM31;
+use super::qm31::PackedSecureField;
 use super::{as_cpu_vec, AVX512Backend, K_BLOCK_SIZE, VECS_LOG_SIZE};
 use crate::core::backend::avx512::fft::rfft;
 use crate::core::backend::avx512::BaseFieldVec;
@@ -131,7 +131,10 @@ impl PolyOps for AVX512Backend {
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(spapini): Optimize.
         let eval = CPUBackend::new_canonical_ordered(coset, as_cpu_vec(values));
-        CircleEvaluation::new(eval.domain, Col::<AVX512Backend, _>::from_iter(eval.values))
+        CircleEvaluation::new(
+            eval.domain,
+            Col::<AVX512Backend, BaseField>::from_iter(eval.values),
+        )
     }
 
     fn interpolate(
@@ -174,10 +177,10 @@ impl PolyOps for AVX512Backend {
         // 8 lowest mappings produce the first 2^8 twiddles. Separate to optimize each calculation.
         let (map_low, map_high) = mappings.split_at(4);
         let twiddle_lows =
-            PackedQM31::from_array(&std::array::from_fn(|i| Self::twiddle_at(map_low, i)));
+            PackedSecureField::from_array(std::array::from_fn(|i| Self::twiddle_at(map_low, i)));
         let (map_mid, map_high) = map_high.split_at(4);
         let twiddle_mids =
-            PackedQM31::from_array(&std::array::from_fn(|i| Self::twiddle_at(map_mid, i)));
+            PackedSecureField::from_array(std::array::from_fn(|i| Self::twiddle_at(map_mid, i)));
 
         // Compute the high twiddle steps.
         let twiddle_steps = Self::twiddle_steps(map_high);
@@ -186,13 +189,13 @@ impl PolyOps for AVX512Backend {
         // of the current index. For every 2^n alligned chunk of 2^n elements, the twiddle
         // array is the same, denoted twiddle_low. Use this to compute sums of (coeff *
         // twiddle_high) mod 2^n, then multiply by twiddle_low, and sum to get the final result.
-        let mut sum = PackedQM31::zeroed();
+        let mut sum = PackedSecureField::zeroed();
         let mut twiddle_high = SecureField::one();
         for (i, coeff_chunk) in poly.coeffs.data.array_chunks::<K_BLOCK_SIZE>().enumerate() {
             // For every chunk of 2 ^ 4 * 2 ^ 4 = 2 ^ 8 elements, the twiddle high is the same.
             // Multiply it by every mid twiddle factor to get the factors for the current chunk.
             let high_twiddle_factors =
-                (PackedQM31::broadcast(twiddle_high) * twiddle_mids).to_array();
+                (PackedSecureField::broadcast(twiddle_high) * twiddle_mids).to_array();
 
             // Sum the coefficients multiplied by each corrseponsing twiddle. Result is effectivley
             // an array[16] where the value at index 'i' is the sum of all coefficients at indices
@@ -200,7 +203,7 @@ impl PolyOps for AVX512Backend {
             for (&packed_coeffs, &mid_twiddle) in
                 coeff_chunk.iter().zip(high_twiddle_factors.iter())
             {
-                sum += PackedQM31::broadcast(mid_twiddle).mul_packed_m31(packed_coeffs);
+                sum += PackedSecureField::broadcast(mid_twiddle).mul_packed_m31(packed_coeffs);
             }
 
             // Advance twiddle high.
@@ -346,7 +349,7 @@ mod tests {
     fn test_interpolate_and_eval() {
         for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 4) {
             let domain = CanonicCoset::new(log_size as u32).circle_domain();
-            let evaluation = CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(
+            let evaluation = CircleEvaluation::<AVX512Backend, BaseField, BitReversedOrder>::new(
                 domain,
                 (0..(1 << log_size))
                     .map(BaseField::from_u32_unchecked)
@@ -364,7 +367,7 @@ mod tests {
             let log_size = log_size as u32;
             let domain = CanonicCoset::new(log_size).circle_domain();
             let domain_ext = CanonicCoset::new(log_size + 3).circle_domain();
-            let evaluation = CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(
+            let evaluation = CircleEvaluation::<AVX512Backend, BaseField, BitReversedOrder>::new(
                 domain,
                 (0..(1 << log_size))
                     .map(BaseField::from_u32_unchecked)
@@ -384,7 +387,7 @@ mod tests {
     fn test_eval_at_point() {
         for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 4) {
             let domain = CanonicCoset::new(log_size as u32).circle_domain();
-            let evaluation = CircleEvaluation::<AVX512Backend, _, NaturalOrder>::new(
+            let evaluation = CircleEvaluation::<AVX512Backend, BaseField, NaturalOrder>::new(
                 domain,
                 (0..(1 << log_size))
                     .map(BaseField::from_u32_unchecked)
@@ -427,7 +430,7 @@ mod tests {
 
         for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 2) {
             let domain = CanonicCoset::new(log_size as u32).circle_domain();
-            let evaluation = CircleEvaluation::<AVX512Backend, _, NaturalOrder>::new(
+            let evaluation = CircleEvaluation::<AVX512Backend, BaseField, NaturalOrder>::new(
                 domain,
                 (0..(1 << log_size))
                     .map(BaseField::from_u32_unchecked)
