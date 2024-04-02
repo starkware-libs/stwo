@@ -1,4 +1,4 @@
-use itertools::zip_eq;
+use itertools::{izip, zip_eq};
 
 use super::qm31::PackedQM31;
 use super::{AVX512Backend, VECS_LOG_SIZE};
@@ -41,7 +41,6 @@ impl QuotientOps for AVX512Backend {
                 columns,
                 &quotient_constants,
                 vec_row,
-                random_coeff,
                 (domain_points_x, domain_points_y),
             );
             values.set_packed(vec_row, row_accumulator);
@@ -55,15 +54,16 @@ pub fn accumulate_row_quotients(
     columns: &[&CircleEvaluation<AVX512Backend, BaseField, BitReversedOrder>],
     quotient_constants: &QuotientConstants,
     vec_row: usize,
-    random_coeff: SecureField,
     domain_point_vec: (PackedBaseField, PackedBaseField),
 ) -> PackedQM31 {
     let mut row_accumulator = PackedQM31::zero();
-    for (sample_batch, sample_constants) in zip_eq(sample_batches, &quotient_constants.line_coeffs)
-    {
+    for (sample_batch, line_coeffs, batch_coeff) in izip!(
+        sample_batches,
+        &quotient_constants.line_coeffs,
+        &quotient_constants.batch_random_coeffs
+    ) {
         let mut numerator = PackedQM31::zero();
-        for ((column_index, _), (a, b, c)) in
-            zip_eq(&sample_batch.columns_and_values, sample_constants)
+        for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
         {
             let column = &columns[*column_index];
             let value = PackedQM31::broadcast(*c) * column.data[vec_row];
@@ -85,10 +85,7 @@ pub fn accumulate_row_quotients(
             domain_point_vec,
         );
 
-        row_accumulator = row_accumulator
-            * PackedQM31::broadcast(
-                random_coeff.pow(sample_batch.columns_and_values.len() as u128),
-            )
+        row_accumulator = row_accumulator * PackedQM31::broadcast(*batch_coeff)
             + numerator * denominator.inverse();
     }
     row_accumulator

@@ -157,7 +157,6 @@ pub fn fri_answers_for_log_size(
                 &column_evals.iter().collect_vec(),
                 &quotient_constants,
                 row,
-                random_coeff,
                 domain_point,
             );
             values.push(value);
