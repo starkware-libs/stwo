@@ -93,7 +93,9 @@ impl<B: GrandProductOps> GkrLayer for GrandProductTrace<B> {
 /// Sumcheck oracle for a grand product + GKR layer.
 pub struct GrandProductOracle<'a, B: GrandProductOps> {
     trace: GrandProductTrace<B>,
-    /// Evaluations of `eq_z(x_1, ..., x_n)` (see [`gen_eq_evals`] docs).
+    /// Evaluations of `eq(x_1, .., x_n, z_1, .., z_n)` (see [`gen_eq_evals`] docs).
+    ///
+    /// [`gen_eq_evals`]: GkrOps::gen_eq_evals
     eq_evals: Cow<'a, B::EqEvals>,
     /// The random point sampled during the GKR protocol for the sumcheck.
     // TODO: Better docs.
@@ -131,8 +133,6 @@ impl<'a, B: GrandProductOps> SumcheckOracle for GrandProductOracle<'a, B> {
             mut eval_at_0,
             mut eval_at_2,
         } = B::univariate_sum_evals(self);
-
-        println!("for claim {claim} eval is: {eval_at_0}");
 
         let z = self.z();
         let r = self.r();

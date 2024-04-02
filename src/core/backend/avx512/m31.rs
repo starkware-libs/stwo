@@ -3,7 +3,7 @@ use core::arch::x86_64::{
     _mm512_sub_epi32,
 };
 use std::arch::x86_64::{
-    _mm512_load_epi32, _mm512_permutex2var_epi32, _mm512_srli_epi32, _mm512_store_epi32,
+    _mm512_load_epi32, _mm512_permutex2var_epi32, _mm512_slli_epi32, _mm512_store_epi32,
 };
 use std::fmt::Display;
 use std::iter::{Product, Sum};
@@ -116,7 +116,7 @@ impl PackedBaseField {
     pub fn double(self) -> Self {
         unsafe {
             // TODO: Make more optimal.
-            let c = _mm512_srli_epi32(self.0, 1);
+            let c = _mm512_slli_epi32(self.0, 1);
             Self(_mm512_min_epu32(c, _mm512_sub_epi32(c, M512P)))
         }
     }

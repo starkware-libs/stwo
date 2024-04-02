@@ -1,255 +1,636 @@
-use crate::core::backend::avx512::AVX512Backend;
+use bytemuck::Zeroable;
+
+use crate::core::air::evaluation::SecureColumn;
+use crate::core::backend::avx512::cm31::PackedCM31;
+use crate::core::backend::avx512::qm31::PackedQM31;
+use crate::core::backend::avx512::{AVX512Backend, AvxMle, BaseFieldVec, K_BLOCK_SIZE};
+use crate::core::backend::cpu::CpuMle;
+use crate::core::backend::CPUBackend;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::Field;
+use crate::core::lookups::gkr::GkrLayer;
 use crate::core::lookups::logup::{LogupOps, LogupOracle, LogupTrace};
-use crate::core::lookups::utils::Polynomial;
+use crate::core::lookups::mle::{ColumnV2, Mle, MleOps};
+use crate::core::lookups::sumcheck::{SumcheckOracle, UnivariateEvals};
 
 impl LogupOps for AVX512Backend {
-    fn next_layer(_layer: &LogupTrace<Self>) -> LogupTrace<Self> {
-        // let mut next_numerators = SecureColumn::default();
-        // let mut next_denominators = SecureColumn::default();
+    fn next_layer(layer: &LogupTrace<Self>) -> LogupTrace<Self> {
+        // Fallback to CPU backend for small instances to avoid complexity with packed AVX types.
+        if layer.len() < 2 * K_BLOCK_SIZE {
+            return CPUBackend::next_layer(&layer.to_cpu()).to_avx();
+        }
 
-        // let half_layer_len = layer.len() / 2;
-        // let one = BaseField::one();
+        let packed_midpoint = layer.len() / K_BLOCK_SIZE / 2;
 
-        // match layer {
-        //     LogupTrace::Singles { denominators } => {
-        //         for i in 0..half_layer_len {
-        //             let d0 = denominators.at(i * 2);
-        //             let d1 = denominators.at(i * 2 + 1);
+        let mut next_numerators_col0 = Vec::new();
+        let mut next_numerators_col1 = Vec::new();
+        let mut next_numerators_col2 = Vec::new();
+        let mut next_numerators_col3 = Vec::new();
 
-        //             let res = Fraction::new(one, d0) + Fraction::new(one, d1);
+        let mut next_denominators_col0 = Vec::new();
+        let mut next_denominators_col1 = Vec::new();
+        let mut next_denominators_col2 = Vec::new();
+        let mut next_denominators_col3 = Vec::new();
 
-        //             next_numerators.push(res.numerator);
-        //             next_denominators.push(res.denominator);
-        //         }
-        //     }
-        //     LogupTrace::Multiplicities {
-        //         numerators,
-        //         denominators,
-        //     } => {
-        //         for i in 0..half_layer_len {
-        //             let n0 = numerators[i * 2];
-        //             let d0 = denominators.at(i * 2);
+        match layer {
+            LogupTrace::Singles { denominators } => {
+                for i in 0..packed_midpoint {
+                    let (c0_evens, c0_odds) = denominators.cols[0].data[i * 2]
+                        .deinterleave_with(denominators.cols[0].data[i * 2 + 1]);
+                    let (c1_evens, c1_odds) = denominators.cols[1].data[i * 2]
+                        .deinterleave_with(denominators.cols[1].data[i * 2 + 1]);
+                    let (c2_evens, c2_odds) = denominators.cols[2].data[i * 2]
+                        .deinterleave_with(denominators.cols[2].data[i * 2 + 1]);
+                    let (c3_evens, c3_odds) = denominators.cols[3].data[i * 2]
+                        .deinterleave_with(denominators.cols[3].data[i * 2 + 1]);
 
-        //             let n1 = numerators[i * 2 + 1];
-        //             let d1 = denominators.at(i * 2 + 1);
+                    let evens = PackedQM31([
+                        PackedCM31([c0_evens, c1_evens]),
+                        PackedCM31([c2_evens, c3_evens]),
+                    ]);
 
-        //             let res = Fraction::new(n0, d0) + Fraction::new(n1, d1);
+                    let odds = PackedQM31([
+                        PackedCM31([c0_odds, c1_odds]),
+                        PackedCM31([c2_odds, c3_odds]),
+                    ]);
 
-        //             next_numerators.push(res.numerator);
-        //             next_denominators.push(res.denominator);
-        //         }
-        //     }
-        //     LogupTrace::Generic {
-        //         numerators,
-        //         denominators,
-        //     } => {
-        //         for i in 0..half_layer_len {
-        //             let n0 = numerators.at(i * 2);
-        //             let d0 = denominators.at(i * 2);
+                    let PackedQM31(
+                        [PackedCM31([numerators_c0, numerators_c1]), PackedCM31([numerators_c2, numerators_c3])],
+                    ) = evens + odds;
 
-        //             let n1 = numerators.at(i * 2 + 1);
-        //             let d1 = denominators.at(i * 2 + 1);
+                    next_numerators_col0.push(numerators_c0);
+                    next_numerators_col1.push(numerators_c1);
+                    next_numerators_col2.push(numerators_c2);
+                    next_numerators_col3.push(numerators_c3);
 
-        //             let res = Fraction::new(n0, d0) + Fraction::new(n1, d1);
+                    let PackedQM31(
+                        [PackedCM31([denominators_c0, denominators_c1]), PackedCM31([denominators_c2, denominators_c3])],
+                    ) = evens * odds;
 
-        //             next_numerators.push(res.numerator);
-        //             next_denominators.push(res.denominator);
-        //         }
-        //     }
-        // }
+                    next_denominators_col0.push(denominators_c0);
+                    next_denominators_col1.push(denominators_c1);
+                    next_denominators_col2.push(denominators_c2);
+                    next_denominators_col3.push(denominators_c3);
+                }
+            }
+            LogupTrace::Multiplicities {
+                numerators,
+                denominators,
+            } => {
+                for i in 0..packed_midpoint {
+                    let (numerator_evens, numerator_odds) =
+                        numerators.data[i * 2].deinterleave_with(numerators.data[i * 2 + 1]);
 
-        // LogupTrace::Generic {
-        //     numerators: Mle::new(next_numerators),
-        //     denominators: Mle::new(next_denominators),
-        // }
-        todo!()
+                    let (denom_c0_evens, denom_c0_odds) = denominators.cols[0].data[i * 2]
+                        .deinterleave_with(denominators.cols[0].data[i * 2 + 1]);
+                    let (denom_c1_evens, denom_c1_odds) = denominators.cols[1].data[i * 2]
+                        .deinterleave_with(denominators.cols[1].data[i * 2 + 1]);
+                    let (denom_c2_evens, denom_c2_odds) = denominators.cols[2].data[i * 2]
+                        .deinterleave_with(denominators.cols[2].data[i * 2 + 1]);
+                    let (denom_c3_evens, denom_c3_odds) = denominators.cols[3].data[i * 2]
+                        .deinterleave_with(denominators.cols[3].data[i * 2 + 1]);
+
+                    let denominator_evens = PackedQM31([
+                        PackedCM31([denom_c0_evens, denom_c1_evens]),
+                        PackedCM31([denom_c2_evens, denom_c3_evens]),
+                    ]);
+
+                    let denominator_odds = PackedQM31([
+                        PackedCM31([denom_c0_odds, denom_c1_odds]),
+                        PackedCM31([denom_c2_odds, denom_c3_odds]),
+                    ]);
+
+                    let PackedQM31(
+                        [PackedCM31([numerators_c0, numerators_c1]), PackedCM31([numerators_c2, numerators_c3])],
+                    ) = denominator_odds * numerator_evens + denominator_evens * numerator_odds;
+
+                    next_numerators_col0.push(numerators_c0);
+                    next_numerators_col1.push(numerators_c1);
+                    next_numerators_col2.push(numerators_c2);
+                    next_numerators_col3.push(numerators_c3);
+
+                    let PackedQM31(
+                        [PackedCM31([denominators_c0, denominators_c1]), PackedCM31([denominators_c2, denominators_c3])],
+                    ) = denominator_odds * denominator_evens;
+
+                    next_denominators_col0.push(denominators_c0);
+                    next_denominators_col1.push(denominators_c1);
+                    next_denominators_col2.push(denominators_c2);
+                    next_denominators_col3.push(denominators_c3);
+                }
+            }
+            LogupTrace::Generic {
+                numerators,
+                denominators,
+            } => {
+                for i in 0..packed_midpoint {
+                    let (numer_c0_evens, numer_c0_odds) = numerators.cols[0].data[i * 2]
+                        .deinterleave_with(numerators.cols[0].data[i * 2 + 1]);
+                    let (numer_c1_evens, numer_c1_odds) = numerators.cols[1].data[i * 2]
+                        .deinterleave_with(numerators.cols[1].data[i * 2 + 1]);
+                    let (numer_c2_evens, numer_c2_odds) = numerators.cols[2].data[i * 2]
+                        .deinterleave_with(numerators.cols[2].data[i * 2 + 1]);
+                    let (numer_c3_evens, numer_c3_odds) = numerators.cols[3].data[i * 2]
+                        .deinterleave_with(numerators.cols[3].data[i * 2 + 1]);
+
+                    let numerator_evens = PackedQM31([
+                        PackedCM31([numer_c0_evens, numer_c1_evens]),
+                        PackedCM31([numer_c2_evens, numer_c3_evens]),
+                    ]);
+
+                    let numerator_odds = PackedQM31([
+                        PackedCM31([numer_c0_odds, numer_c1_odds]),
+                        PackedCM31([numer_c2_odds, numer_c3_odds]),
+                    ]);
+
+                    let (denom_c0_evens, denom_c0_odds) = denominators.cols[0].data[i * 2]
+                        .deinterleave_with(denominators.cols[0].data[i * 2 + 1]);
+                    let (denom_c1_evens, denom_c1_odds) = denominators.cols[1].data[i * 2]
+                        .deinterleave_with(denominators.cols[1].data[i * 2 + 1]);
+                    let (denom_c2_evens, denom_c2_odds) = denominators.cols[2].data[i * 2]
+                        .deinterleave_with(denominators.cols[2].data[i * 2 + 1]);
+                    let (denom_c3_evens, denom_c3_odds) = denominators.cols[3].data[i * 2]
+                        .deinterleave_with(denominators.cols[3].data[i * 2 + 1]);
+
+                    let denominator_evens = PackedQM31([
+                        PackedCM31([denom_c0_evens, denom_c1_evens]),
+                        PackedCM31([denom_c2_evens, denom_c3_evens]),
+                    ]);
+
+                    let denominator_odds = PackedQM31([
+                        PackedCM31([denom_c0_odds, denom_c1_odds]),
+                        PackedCM31([denom_c2_odds, denom_c3_odds]),
+                    ]);
+
+                    let PackedQM31(
+                        [PackedCM31([numerators_c0, numerators_c1]), PackedCM31([numerators_c2, numerators_c3])],
+                    ) = numerator_evens * denominator_odds + numerator_odds * denominator_evens;
+
+                    next_numerators_col0.push(numerators_c0);
+                    next_numerators_col1.push(numerators_c1);
+                    next_numerators_col2.push(numerators_c2);
+                    next_numerators_col3.push(numerators_c3);
+
+                    let PackedQM31(
+                        [PackedCM31([denominators_c0, denominators_c1]), PackedCM31([denominators_c2, denominators_c3])],
+                    ) = denominator_odds * denominator_evens;
+
+                    next_denominators_col0.push(denominators_c0);
+                    next_denominators_col1.push(denominators_c1);
+                    next_denominators_col2.push(denominators_c2);
+                    next_denominators_col3.push(denominators_c3);
+                }
+            }
+        }
+
+        let length = packed_midpoint * K_BLOCK_SIZE;
+
+        let next_numerators = SecureColumn {
+            cols: [
+                BaseFieldVec {
+                    data: next_numerators_col0,
+                    length,
+                },
+                BaseFieldVec {
+                    data: next_numerators_col1,
+                    length,
+                },
+                BaseFieldVec {
+                    data: next_numerators_col2,
+                    length,
+                },
+                BaseFieldVec {
+                    data: next_numerators_col3,
+                    length,
+                },
+            ],
+        };
+
+        let next_denominators = SecureColumn {
+            cols: [
+                BaseFieldVec {
+                    data: next_denominators_col0,
+                    length,
+                },
+                BaseFieldVec {
+                    data: next_denominators_col1,
+                    length,
+                },
+                BaseFieldVec {
+                    data: next_denominators_col2,
+                    length,
+                },
+                BaseFieldVec {
+                    data: next_denominators_col3,
+                    length,
+                },
+            ],
+        };
+
+        LogupTrace::Generic {
+            numerators: Mle::new(next_numerators),
+            denominators: Mle::new(next_denominators),
+        }
     }
 
-    fn univariate_sum(
-        _oracle: &LogupOracle<'_, Self>,
-        _claim: SecureField,
-    ) -> Polynomial<SecureField> {
-        // let num_terms = 1 << (oracle.num_variables() - 1);
-        // let lambda = oracle.lambda();
-        // let eq_evals = oracle.eq_evals();
-        // let trace = oracle.trace();
-        // let z = oracle.z();
-        // let r = oracle.r();
+    fn univariate_sum_evals(oracle: &LogupOracle<'_, Self>) -> UnivariateEvals {
+        let num_terms = 1 << (oracle.num_variables() - 1);
+        println!("NUM TERMS: {num_terms}");
+        let lambda = oracle.lambda();
+        let eq_evals = oracle.eq_evals();
+        let trace = oracle.trace();
 
-        // // Obtain the evaluations at `0` and `2`.
-        // let mut eval_at_0 = SecureField::zero();
-        // let mut eval_at_2 = SecureField::zero();
+        // Fallback to CPU backend for small instances to avoid complexity with packed AVX types.
+        if num_terms < 2 * K_BLOCK_SIZE {
+            let eq_evals = {
+                let mut evals = Vec::new();
 
-        // for i in 0..num_terms {
-        //     let (fraction0, fraction2) = match trace {
-        //         LogupTrace::Singles { denominators } => {
-        //             let d0_lhs = denominators.at(i * 2);
-        //             let d1_lhs = denominators.at(i * 2 + 1);
+                for i in 0..usize::min(K_BLOCK_SIZE, eq_evals.len()) {
+                    let eq_eval = SecureField::from_m31_array([
+                        eq_evals.cols[0].as_slice()[i],
+                        eq_evals.cols[1].as_slice()[i],
+                        eq_evals.cols[2].as_slice()[i],
+                        eq_evals.cols[3].as_slice()[i],
+                    ]);
 
-        //             let fraction0 = Fraction::new(d0_lhs + d1_lhs, d0_lhs * d1_lhs);
+                    evals.push(eq_eval)
+                }
 
-        //             let d0_rhs = denominators.at((num_terms + i) * 2);
-        //             let d1_rhs = denominators.at((num_terms + i) * 2 + 1);
+                evals
+            };
 
-        //             let fraction2 = {
-        //                 let d0 = d0_rhs.double() - d0_lhs;
-        //                 let d1 = d1_rhs.double() - d1_lhs;
-        //                 Fraction::new(d0 + d1, d0 * d1)
-        //             };
+            let trace = trace.to_cpu();
+            let oracle = trace.into_sumcheck_oracle(lambda, oracle.z(), &eq_evals);
+            return CPUBackend::univariate_sum_evals(&oracle);
+        }
 
-        //             (fraction0, fraction2)
-        //         }
-        //         LogupTrace::Multiplicities {
-        //             numerators,
-        //             denominators,
-        //         } => {
-        //             let n0_lhs = numerators[i * 2];
-        //             let n1_lhs = numerators[i * 2 + 1];
+        let lambda = PackedQM31::broadcast(lambda);
 
-        //             let d0_lhs = denominators.at(i * 2);
-        //             let d1_lhs = denominators.at(i * 2 + 1);
+        let num_packed_terms = num_terms / K_BLOCK_SIZE;
 
-        //             let fraction0 = {
-        //                 let a = Fraction::new(n0_lhs, d0_lhs);
-        //                 let b = Fraction::new(n1_lhs, d1_lhs);
-        //                 a + b
-        //             };
+        let mut packed_eval_at_0 = PackedQM31::zeroed();
+        let mut packed_eval_at_2 = PackedQM31::zeroed();
 
-        //             let n0_rhs = numerators[(num_terms + i) * 2];
-        //             let n1_rhs = numerators[(num_terms + i) * 2 + 1];
+        match trace {
+            LogupTrace::Singles { denominators } => {
+                let col0 = &denominators.cols[0];
+                let col1 = &denominators.cols[1];
+                let col2 = &denominators.cols[2];
+                let col3 = &denominators.cols[3];
 
-        //             let d0_rhs = denominators.at((num_terms + i) * 2);
-        //             let d1_rhs = denominators.at((num_terms + i) * 2 + 1);
+                for i in 0..num_packed_terms {
+                    // NOTE: The deinterleaves can be avoided by changing the wiring of the GKR
+                    // circuit. Instead of inputs being neighbouring even and
+                    // odd pairs have LHS and RHS pairs.
+                    let (c0_lhs_evens, c0_lhs_odds) =
+                        col0.data[i * 2].deinterleave_with(col0.data[i * 2 + 1]);
+                    let (c1_lhs_evens, c1_lhs_odds) =
+                        col1.data[i * 2].deinterleave_with(col1.data[i * 2 + 1]);
+                    let (c2_lhs_evens, c2_lhs_odds) =
+                        col2.data[i * 2].deinterleave_with(col2.data[i * 2 + 1]);
+                    let (c3_lhs_evens, c3_lhs_odds) =
+                        col3.data[i * 2].deinterleave_with(col3.data[i * 2 + 1]);
 
-        //             let fraction2 = {
-        //                 let n0 = n0_rhs.double() - n0_lhs;
-        //                 let n1 = n1_rhs.double() - n1_lhs;
+                    let lhs_evens = PackedQM31([
+                        PackedCM31([c0_lhs_evens, c1_lhs_evens]),
+                        PackedCM31([c2_lhs_evens, c3_lhs_evens]),
+                    ]);
 
-        //                 let d0 = d0_rhs.double() - d0_lhs;
-        //                 let d1 = d1_rhs.double() - d1_lhs;
+                    let lhs_odds = PackedQM31([
+                        PackedCM31([c0_lhs_odds, c1_lhs_odds]),
+                        PackedCM31([c2_lhs_odds, c3_lhs_odds]),
+                    ]);
 
-        //                 let a = Fraction::new(n0, d0);
-        //                 let b = Fraction::new(n1, d1);
-        //                 a + b
-        //             };
+                    let (c0_rhs_evens, c0_rhs_odds) = col0.data[(num_packed_terms + i) * 2]
+                        .deinterleave_with(col0.data[(num_packed_terms + i) * 2 + 1]);
+                    let (c1_rhs_evens, c1_rhs_odds) = col1.data[(num_packed_terms + i) * 2]
+                        .deinterleave_with(col1.data[(num_packed_terms + i) * 2 + 1]);
+                    let (c2_rhs_evens, c2_rhs_odds) = col2.data[(num_packed_terms + i) * 2]
+                        .deinterleave_with(col2.data[(num_packed_terms + i) * 2 + 1]);
+                    let (c3_rhs_evens, c3_rhs_odds) = col3.data[(num_packed_terms + i) * 2]
+                        .deinterleave_with(col3.data[(num_packed_terms + i) * 2 + 1]);
 
-        //             (fraction0, fraction2)
-        //         }
-        //         LogupTrace::Generic {
-        //             numerators,
-        //             denominators,
-        //         } => {
-        //             let n0_lhs = numerators.at(i * 2);
-        //             let n1_lhs = numerators.at(i * 2 + 1);
+                    let rhs_evens = PackedQM31([
+                        PackedCM31([c0_rhs_evens, c1_rhs_evens]),
+                        PackedCM31([c2_rhs_evens, c3_rhs_evens]),
+                    ]);
 
-        //             let d0_lhs = denominators.at(i * 2);
-        //             let d1_lhs = denominators.at(i * 2 + 1);
+                    let rhs_odds = PackedQM31([
+                        PackedCM31([c0_rhs_odds, c1_rhs_odds]),
+                        PackedCM31([c2_rhs_odds, c3_rhs_odds]),
+                    ]);
 
-        //             let fraction0 = {
-        //                 let a = Fraction::new(n0_lhs, d0_lhs);
-        //                 let b = Fraction::new(n1_lhs, d1_lhs);
-        //                 a + b
-        //             };
+                    let product2 = {
+                        let d0 = rhs_evens.double() - lhs_evens;
+                        let d1 = rhs_odds.double() - lhs_odds;
 
-        //             let n0_rhs = numerators.at((num_terms + i) * 2);
-        //             let n1_rhs = numerators.at((num_terms + i) * 2 + 1);
+                        let numerator = d0 + d1;
+                        let denominator = d0 * d1;
 
-        //             let d0_rhs = denominators.at((num_terms + i) * 2);
-        //             let d1_rhs = denominators.at((num_terms + i) * 2 + 1);
+                        numerator + lambda * denominator
+                    };
 
-        //             let fraction2 = {
-        //                 let n0 = n0_rhs.double() - n0_lhs;
-        //                 let n1 = n1_rhs.double() - n1_lhs;
+                    let product0 = {
+                        let numerator = lhs_evens + lhs_odds;
+                        let denominator = lhs_evens * lhs_odds;
+                        numerator + lambda * denominator
+                    };
 
-        //                 let d0 = d0_rhs.double() - d0_lhs;
-        //                 let d1 = d1_rhs.double() - d1_lhs;
+                    let eq_eval = PackedQM31([
+                        PackedCM31([eq_evals.cols[0].data[i], eq_evals.cols[1].data[i]]),
+                        PackedCM31([eq_evals.cols[2].data[i], eq_evals.cols[3].data[i]]),
+                    ]);
 
-        //                 let a = Fraction::new(n0, d0);
-        //                 let b = Fraction::new(n1, d1);
-        //                 a + b
-        //             };
+                    packed_eval_at_0 += eq_eval * product0;
+                    packed_eval_at_2 += eq_eval * product2;
+                }
+            }
+            LogupTrace::Multiplicities {
+                numerators,
+                denominators,
+            } => {
+                let denom_col0 = &denominators.cols[0];
+                let denom_col1 = &denominators.cols[1];
+                let denom_col2 = &denominators.cols[2];
+                let denom_col3 = &denominators.cols[3];
 
-        //             (fraction0, fraction2)
-        //         }
-        //     };
+                for i in 0..num_packed_terms {
+                    let (numerator_lhs_evens, numerator_lhs_odds) =
+                        numerators.data[i * 2].deinterleave_with(numerators.data[i * 2 + 1]);
 
-        //     let eq_eval = eq_evals[i];
-        //     eval_at_0 += eq_eval * (fraction0.numerator + lambda * fraction0.denominator);
-        //     eval_at_2 += eq_eval * (fraction2.numerator + lambda * fraction2.denominator);
-        // }
+                    let (denom_c0_lhs_evens, denom_c0_lhs_odds) =
+                        denom_col0.data[i * 2].deinterleave_with(denom_col0.data[i * 2 + 1]);
+                    let (denom_c1_lhs_evens, denom_c1_lhs_odds) =
+                        denom_col1.data[i * 2].deinterleave_with(denom_col1.data[i * 2 + 1]);
+                    let (denom_c2_lhs_evens, denom_c2_lhs_odds) =
+                        denom_col2.data[i * 2].deinterleave_with(denom_col2.data[i * 2 + 1]);
+                    let (denom_c3_lhs_evens, denom_c3_lhs_odds) =
+                        denom_col3.data[i * 2].deinterleave_with(denom_col3.data[i * 2 + 1]);
 
-        // // We wanted to compute a sum of a multivariate polynomial
-        // // `eq((0^(k-1), x_k, .., x_n), (z_1, .., z_n)) * (..)` over
-        // // all `(x_k, ..., x_n)` in `{0, 1}^(n-k)`. Instead we computes a sum over
-        // // `eq((0^(k-2), x_k, .., x_n), (z_2, .., z_n)) * (..)`. The two multivariate sums
-        // differs // by a constant factor `eq((0), (z_1))` which is added back in here.
-        // //
-        // // The reason the factor is left out originally is for performance reasons. In the naive
-        // // version we want to precompute the evaluations of `eq((x_1, .., x_n), (z_1, .., z_n))`
-        // // ahead of time for all `(x_1, .., x_n)` in `{0, 1}^n`. Notice we only use half of
-        // // these evaluations (specifically those where `x_1` is zero). Each the term of the sum
-        // gets // multiplied by one of these evaluations. Notice all the terms of the sum
-        // contain a // constant factor `eq((x_1), (z_1))` (since x_1 equals zero). In the
-        // optimized // version we precompute the evaluations of `eq((x_2, .., x_n), (z_2,
-        // .., z_n))` which is // half the size (and takes half the work) of the original
-        // precomputation. We then add the // missing `eq((x_1), (z_1))` factor back here.
-        // //
-        // // TODO: Doc is a bit wordy it's not great have to explain all this but the optimization
-        // // is worthwhile. Consider modifying `gen_eq_evals()` so that it only returns the first
-        // // half. Would be just as optimized but prevent having to explain things here.
-        // eval_at_0 *= eq(&[SecureField::zero()], &[z[0]]);
-        // eval_at_2 *= eq(&[SecureField::zero()], &[z[0]]);
+                    let denom_lhs_evens = PackedQM31([
+                        PackedCM31([denom_c0_lhs_evens, denom_c1_lhs_evens]),
+                        PackedCM31([denom_c2_lhs_evens, denom_c3_lhs_evens]),
+                    ]);
 
-        // // The evaluations on `0` and `2` are invalid. They were obtained by summing over the
-        // poly // `eq((0^(k-1), x_k, .., x_n), (z_1, .., z_n)) * (..)` but we require the
-        // sum to be taken // on `eq((r_1, ..., r_{k-1}, x_k, .., x_n), (z_1, .., z_n)) *
-        // (..)`. Conveniently // `eq((0^(k-1), x_k, .., x_n), (z_1, .., z_n))` and
-        // `eq((r_1, ..., r_{k-1}, x_k, .., x_n), // (z_1, .., z_n))` differ only by a
-        // constant factor `eq((r_1, ..., r_{k-1}), (z_1, .., // z_{k-1})) / eq((0^(k-1)),
-        // (z_1, .., z_{k-1}))` for all values of `x`. // TODO: explain
-        // let k = r.len();
-        // let eq_correction_factor = eq(r, &z[0..k]) / eq(&vec![SecureField::zero(); k], &z[0..k]);
+                    let denom_lhs_odds = PackedQM31([
+                        PackedCM31([denom_c0_lhs_odds, denom_c1_lhs_odds]),
+                        PackedCM31([denom_c2_lhs_odds, denom_c3_lhs_odds]),
+                    ]);
 
-        // // Our goal is to compute the sum of `eq((x_k, .., x_n), (z_k, .., z_n)) * h(x_k, ..,
-        // x_n)` // over all possible values `(x_{k+1}, .., x_n)` in `{0, 1}^{n-1}`,
-        // effectively reducing the // sum to a univariate polynomial in `x_k`. Let this
-        // univariate polynomial be `f`. Our // method to is to evaluate `f` in `deg(f) + 1`
-        // points (which can be done efficiently) to // obtain the coefficient
-        // representation of `f` via interpolation. //
-        // // Although evaluating `f` is efficient, the runtime of the sumcheck prover is
-        // proportional // to how many points `f` needs to be evaluated on. To reduce the
-        // number of evaluations the // prover must perform we can reduce the degree of of
-        // the polynomial we need to interpolate. // This can be done by instead computing
-        // the sum over `eq((0, .., x_n), (z_k, .., z_n)) * // h(x_k, .., x_n)` denoted
-        // `simplified_sum` which has degree `deg(f) - 1`. We interpolate, // our lower
-        // degree polynomial, `simplified_sum` with one less evaluation and multiply it //
-        // afterwards by `eq((x_k), (z_k)) / eq((0), (z_k))` to obtain the original `f`. This idea // and algorithm is from <https://eprint.iacr.org/2024/108.pdf> (Section 3.2).
-        // let correction_factor_at = |x| eq(&[x], &[z[k]]) / eq(&[SecureField::zero()], &[z[k]]);
+                    let (numerator_rhs_evens, numerator_rhs_odds) = numerators.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(numerators.data[(num_packed_terms + i) * 2 + 1]);
 
-        // let x0: SecureField = BaseField::zero().into();
-        // let x1 = BaseField::one().into();
-        // let x2 = BaseField::from(2).into();
+                    let (denom_c0_rhs_evens, denom_c0_rhs_odds) = denom_col0.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(denom_col0.data[(num_packed_terms + i) * 2 + 1]);
+                    let (denom_c1_rhs_evens, denom_c1_rhs_odds) = denom_col1.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(denom_col1.data[(num_packed_terms + i) * 2 + 1]);
+                    let (denom_c2_rhs_evens, denom_c2_rhs_odds) = denom_col2.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(denom_col2.data[(num_packed_terms + i) * 2 + 1]);
+                    let (denom_c3_rhs_evens, denom_c3_rhs_odds) = denom_col3.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(denom_col3.data[(num_packed_terms + i) * 2 + 1]);
 
-        // let mut y0 = eq_correction_factor * eval_at_0;
-        // let mut y1 = (claim - y0) / correction_factor_at(x1);
-        // let mut y2 = eq_correction_factor * eval_at_2;
+                    let denom_rhs_evens = PackedQM31([
+                        PackedCM31([denom_c0_rhs_evens, denom_c1_rhs_evens]),
+                        PackedCM31([denom_c2_rhs_evens, denom_c3_rhs_evens]),
+                    ]);
 
-        // // We are interpolating a degree 2 function so need three evaluations.
-        // let simplified_univariate_sum =
-        //     Polynomial::interpolate_lagrange(&[x0, x1, x2], &[y0, y1, y2]);
+                    let denom_rhs_odds = PackedQM31([
+                        PackedCM31([denom_c0_rhs_odds, denom_c1_rhs_odds]),
+                        PackedCM31([denom_c2_rhs_odds, denom_c3_rhs_odds]),
+                    ]);
 
-        // let x3 = BaseField::from(3).into();
-        // let mut y3 = simplified_univariate_sum.eval(x3);
+                    let product2 = {
+                        let n0 = numerator_rhs_evens.double() - numerator_lhs_evens;
+                        let n1 = numerator_rhs_odds.double() - numerator_lhs_odds;
+                        let d0 = denom_rhs_evens.double() - denom_lhs_evens;
+                        let d1 = denom_rhs_odds.double() - denom_lhs_odds;
 
-        // // Correct all the evaluations (see comment above).
-        // y0 *= correction_factor_at(x0); // `y0 *= 1`
-        // y1 *= correction_factor_at(x1);
-        // y2 *= correction_factor_at(x2);
-        // y3 *= correction_factor_at(x3);
+                        let numerator = d1 * n0 + d0 * n1;
+                        let denominator = d0 * d1;
 
-        // Polynomial::interpolate_lagrange(&[x0, x1, x2, x3], &[y0, y1, y2, y3])
+                        numerator + lambda * denominator
+                    };
 
-        todo!()
+                    let product0 = {
+                        let numerator = denom_lhs_odds * numerator_lhs_evens
+                            + denom_lhs_evens * numerator_lhs_odds;
+                        let denominator = denom_lhs_evens * denom_lhs_odds;
+                        numerator + lambda * denominator
+                    };
+
+                    let eq_eval = PackedQM31([
+                        PackedCM31([eq_evals.cols[0].data[i], eq_evals.cols[1].data[i]]),
+                        PackedCM31([eq_evals.cols[2].data[i], eq_evals.cols[3].data[i]]),
+                    ]);
+
+                    packed_eval_at_0 += eq_eval * product0;
+                    packed_eval_at_2 += eq_eval * product2;
+                }
+            }
+            LogupTrace::Generic {
+                numerators,
+                denominators,
+            } => {
+                let numer_col0 = &numerators.cols[0];
+                let numer_col1 = &numerators.cols[1];
+                let numer_col2 = &numerators.cols[2];
+                let numer_col3 = &numerators.cols[3];
+
+                let denom_col0 = &denominators.cols[0];
+                let denom_col1 = &denominators.cols[1];
+                let denom_col2 = &denominators.cols[2];
+                let denom_col3 = &denominators.cols[3];
+
+                for i in 0..num_packed_terms {
+                    let (numer_c0_lhs_evens, numer_c0_lhs_odds) =
+                        numer_col0.data[i * 2].deinterleave_with(numer_col0.data[i * 2 + 1]);
+                    let (numer_c1_lhs_evens, numer_c1_lhs_odds) =
+                        numer_col1.data[i * 2].deinterleave_with(numer_col1.data[i * 2 + 1]);
+                    let (numer_c2_lhs_evens, numer_c2_lhs_odds) =
+                        numer_col2.data[i * 2].deinterleave_with(numer_col2.data[i * 2 + 1]);
+                    let (numer_c3_lhs_evens, numer_c3_lhs_odds) =
+                        numer_col3.data[i * 2].deinterleave_with(numer_col3.data[i * 2 + 1]);
+
+                    let numer_lhs_evens = PackedQM31([
+                        PackedCM31([numer_c0_lhs_evens, numer_c1_lhs_evens]),
+                        PackedCM31([numer_c2_lhs_evens, numer_c3_lhs_evens]),
+                    ]);
+
+                    let numer_lhs_odds = PackedQM31([
+                        PackedCM31([numer_c0_lhs_odds, numer_c1_lhs_odds]),
+                        PackedCM31([numer_c2_lhs_odds, numer_c3_lhs_odds]),
+                    ]);
+
+                    let (denom_c0_lhs_evens, denom_c0_lhs_odds) =
+                        denom_col0.data[i * 2].deinterleave_with(denom_col0.data[i * 2 + 1]);
+                    let (denom_c1_lhs_evens, denom_c1_lhs_odds) =
+                        denom_col1.data[i * 2].deinterleave_with(denom_col1.data[i * 2 + 1]);
+                    let (denom_c2_lhs_evens, denom_c2_lhs_odds) =
+                        denom_col2.data[i * 2].deinterleave_with(denom_col2.data[i * 2 + 1]);
+                    let (denom_c3_lhs_evens, denom_c3_lhs_odds) =
+                        denom_col3.data[i * 2].deinterleave_with(denom_col3.data[i * 2 + 1]);
+
+                    let denom_lhs_evens = PackedQM31([
+                        PackedCM31([denom_c0_lhs_evens, denom_c1_lhs_evens]),
+                        PackedCM31([denom_c2_lhs_evens, denom_c3_lhs_evens]),
+                    ]);
+
+                    let denom_lhs_odds = PackedQM31([
+                        PackedCM31([denom_c0_lhs_odds, denom_c1_lhs_odds]),
+                        PackedCM31([denom_c2_lhs_odds, denom_c3_lhs_odds]),
+                    ]);
+
+                    let (numer_c0_rhs_evens, numer_c0_rhs_odds) = numer_col0.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(numer_col0.data[(num_packed_terms + i) * 2 + 1]);
+                    let (numer_c1_rhs_evens, numer_c1_rhs_odds) = numer_col1.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(numer_col1.data[(num_packed_terms + i) * 2 + 1]);
+                    let (numer_c2_rhs_evens, numer_c2_rhs_odds) = numer_col2.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(numer_col2.data[(num_packed_terms + i) * 2 + 1]);
+                    let (numer_c3_rhs_evens, numer_c3_rhs_odds) = numer_col3.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(numer_col3.data[(num_packed_terms + i) * 2 + 1]);
+
+                    let numer_rhs_evens = PackedQM31([
+                        PackedCM31([numer_c0_rhs_evens, numer_c1_rhs_evens]),
+                        PackedCM31([numer_c2_rhs_evens, numer_c3_rhs_evens]),
+                    ]);
+
+                    let numer_rhs_odds = PackedQM31([
+                        PackedCM31([numer_c0_rhs_odds, numer_c1_rhs_odds]),
+                        PackedCM31([numer_c2_rhs_odds, numer_c3_rhs_odds]),
+                    ]);
+
+                    let (denom_c0_rhs_evens, denom_c0_rhs_odds) = denom_col0.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(denom_col0.data[(num_packed_terms + i) * 2 + 1]);
+                    let (denom_c1_rhs_evens, denom_c1_rhs_odds) = denom_col1.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(denom_col1.data[(num_packed_terms + i) * 2 + 1]);
+                    let (denom_c2_rhs_evens, denom_c2_rhs_odds) = denom_col2.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(denom_col2.data[(num_packed_terms + i) * 2 + 1]);
+                    let (denom_c3_rhs_evens, denom_c3_rhs_odds) = denom_col3.data
+                        [(num_packed_terms + i) * 2]
+                        .deinterleave_with(denom_col3.data[(num_packed_terms + i) * 2 + 1]);
+
+                    let denom_rhs_evens = PackedQM31([
+                        PackedCM31([denom_c0_rhs_evens, denom_c1_rhs_evens]),
+                        PackedCM31([denom_c2_rhs_evens, denom_c3_rhs_evens]),
+                    ]);
+
+                    let denom_rhs_odds = PackedQM31([
+                        PackedCM31([denom_c0_rhs_odds, denom_c1_rhs_odds]),
+                        PackedCM31([denom_c2_rhs_odds, denom_c3_rhs_odds]),
+                    ]);
+
+                    let product2 = {
+                        let n0 = numer_rhs_evens.double() - numer_lhs_evens;
+                        let n1 = numer_rhs_odds.double() - numer_lhs_odds;
+                        let d0 = denom_rhs_evens.double() - denom_lhs_evens;
+                        let d1 = denom_rhs_odds.double() - denom_lhs_odds;
+
+                        let numerator = d1 * n0 + d0 * n1;
+                        let denominator = d0 * d1;
+
+                        numerator + lambda * denominator
+                    };
+
+                    let product0 = {
+                        let numerator =
+                            denom_lhs_odds * numer_lhs_evens + denom_lhs_evens * numer_lhs_odds;
+                        let denominator = denom_lhs_evens * denom_lhs_odds;
+                        numerator + lambda * denominator
+                    };
+
+                    let eq_eval = PackedQM31([
+                        PackedCM31([eq_evals.cols[0].data[i], eq_evals.cols[1].data[i]]),
+                        PackedCM31([eq_evals.cols[2].data[i], eq_evals.cols[3].data[i]]),
+                    ]);
+
+                    packed_eval_at_0 += eq_eval * product0;
+                    packed_eval_at_2 += eq_eval * product2;
+                }
+            }
+        }
+
+        let eval_at_0 = packed_eval_at_0.to_array().into_iter().sum::<SecureField>();
+        let eval_at_2 = packed_eval_at_2.to_array().into_iter().sum::<SecureField>();
+
+        UnivariateEvals {
+            eval_at_0,
+            eval_at_2,
+        }
+    }
+}
+
+impl LogupTrace<AVX512Backend> {
+    fn to_cpu(&self) -> LogupTrace<CPUBackend> {
+        fn to_cpu_mle<F: Field>(mle: &AvxMle<F>) -> CpuMle<F>
+        where
+            AVX512Backend: MleOps<F>,
+            CPUBackend: MleOps<F>,
+        {
+            CpuMle::new(mle.to_vec().into_iter().collect())
+        }
+
+        match self {
+            LogupTrace::Singles { denominators } => LogupTrace::Singles {
+                denominators: to_cpu_mle(denominators),
+            },
+            LogupTrace::Multiplicities {
+                numerators,
+                denominators,
+            } => LogupTrace::Multiplicities {
+                numerators: to_cpu_mle(numerators),
+                denominators: to_cpu_mle(denominators),
+            },
+            LogupTrace::Generic {
+                numerators,
+                denominators,
+            } => LogupTrace::Generic {
+                numerators: to_cpu_mle(numerators),
+                denominators: to_cpu_mle(denominators),
+            },
+        }
+    }
+}
+
+impl LogupTrace<CPUBackend> {
+    fn to_avx(&self) -> LogupTrace<AVX512Backend> {
+        fn to_avx_mle<F: Field>(mle: &CpuMle<F>) -> AvxMle<F>
+        where
+            AVX512Backend: MleOps<F>,
+            CPUBackend: MleOps<F>,
+        {
+            AvxMle::new(mle.to_vec().into_iter().collect())
+        }
+
+        match self {
+            LogupTrace::Singles { denominators } => LogupTrace::Singles {
+                denominators: to_avx_mle(denominators),
+            },
+            LogupTrace::Multiplicities {
+                numerators,
+                denominators,
+            } => LogupTrace::Multiplicities {
+                numerators: to_avx_mle(numerators),
+                denominators: to_avx_mle(denominators),
+            },
+            LogupTrace::Generic {
+                numerators,
+                denominators,
+            } => LogupTrace::Generic {
+                numerators: to_avx_mle(numerators),
+                denominators: to_avx_mle(denominators),
+            },
+        }
     }
 }

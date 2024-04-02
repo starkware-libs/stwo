@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use bytemuck::Zeroable;
 use num_traits::Zero;
 
@@ -9,19 +7,15 @@ use crate::core::backend::avx512::qm31::PackedQM31;
 use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, K_BLOCK_SIZE};
 use crate::core::backend::cpu::CpuMle;
 use crate::core::backend::CPUBackend;
-use crate::core::fields::m31::BaseField;
+// use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::lookups::gkr::GkrLayer;
 use crate::core::lookups::grand_product::{GrandProductOps, GrandProductOracle, GrandProductTrace};
 use crate::core::lookups::mle::{ColumnV2, Mle};
 use crate::core::lookups::sumcheck::{SumcheckOracle, UnivariateEvals};
 
 impl GrandProductOps for AVX512Backend {
     fn next_layer(layer: &GrandProductTrace<Self>) -> GrandProductTrace<Self> {
-        let mut col0 = Vec::new();
-        let mut col1 = Vec::new();
-        let mut col2 = Vec::new();
-        let mut col3 = Vec::new();
-
         if layer.len() < 2 * K_BLOCK_SIZE {
             let layer_values = layer.to_vec();
             let next_layer = CPUBackend::next_layer(&GrandProductTrace::new(CpuMle::new(
@@ -31,6 +25,11 @@ impl GrandProductOps for AVX512Backend {
         }
 
         let packed_midpoint = layer.cols[0].data.len() / 2;
+
+        let mut col0 = Vec::with_capacity(packed_midpoint);
+        let mut col1 = Vec::with_capacity(packed_midpoint);
+        let mut col2 = Vec::with_capacity(packed_midpoint);
+        let mut col3 = Vec::with_capacity(packed_midpoint);
 
         for i in 0..packed_midpoint {
             let (c0_evens, c0_odds) =
@@ -77,48 +76,34 @@ impl GrandProductOps for AVX512Backend {
         let eq_evals = oracle.eq_evals();
         let trace = oracle.trace();
 
-        println!("Num terms: {num_terms}");
+        // Offload small instances to CPU backend to avoid complexity with packed AVX types.
+        if num_terms < 2 * K_BLOCK_SIZE {
+            let eq_evals = {
+                let mut evals = Vec::new();
 
-        let (col0, col1, col2, col3) = if num_terms >= 2 * K_BLOCK_SIZE {
-            (
-                Cow::Borrowed(&trace.cols[0]),
-                Cow::Borrowed(&trace.cols[1]),
-                Cow::Borrowed(&trace.cols[2]),
-                Cow::Borrowed(&trace.cols[3]),
-            )
-        } else {
-            let mut col0_lhs = [BaseField::zero(); 2 * K_BLOCK_SIZE];
-            let mut col0_rhs = [BaseField::zero(); 2 * K_BLOCK_SIZE];
-            let mut col1_lhs = [BaseField::zero(); 2 * K_BLOCK_SIZE];
-            let mut col1_rhs = [BaseField::zero(); 2 * K_BLOCK_SIZE];
-            let mut col2_lhs = [BaseField::zero(); 2 * K_BLOCK_SIZE];
-            let mut col2_rhs = [BaseField::zero(); 2 * K_BLOCK_SIZE];
-            let mut col3_lhs = [BaseField::zero(); 2 * K_BLOCK_SIZE];
-            let mut col3_rhs = [BaseField::zero(); 2 * K_BLOCK_SIZE];
+                for i in 0..usize::min(K_BLOCK_SIZE, eq_evals.len()) {
+                    let eq_eval = SecureField::from_m31_array([
+                        eq_evals.cols[0].as_slice()[i],
+                        eq_evals.cols[1].as_slice()[i],
+                        eq_evals.cols[2].as_slice()[i],
+                        eq_evals.cols[3].as_slice()[i],
+                    ]);
 
-            let midpoint = trace.len() / 2;
-            println!("MID {midpoint}");
-            col0_lhs[0..midpoint].copy_from_slice(&trace.cols[0].as_slice()[..midpoint]);
-            col0_rhs[0..midpoint].copy_from_slice(&trace.cols[0].as_slice()[midpoint..]);
+                    evals.push(eq_eval)
+                }
 
-            col1_lhs[0..midpoint].copy_from_slice(&trace.cols[1].as_slice()[..midpoint]);
-            col1_rhs[0..midpoint].copy_from_slice(&trace.cols[1].as_slice()[midpoint..]);
+                evals
+            };
 
-            col2_lhs[0..midpoint].copy_from_slice(&trace.cols[2].as_slice()[..midpoint]);
-            col2_rhs[0..midpoint].copy_from_slice(&trace.cols[2].as_slice()[midpoint..]);
+            let trace = GrandProductTrace::new(CpuMle::new(trace.to_vec().into_iter().collect()));
+            let oracle = trace.into_sumcheck_oracle(SecureField::zero(), oracle.z(), &eq_evals);
+            return CPUBackend::univariate_sum_evals(&oracle);
+        }
 
-            col3_lhs[0..midpoint].copy_from_slice(&trace.cols[3].as_slice()[..midpoint]);
-            col3_rhs[0..midpoint].copy_from_slice(&trace.cols[3].as_slice()[midpoint..]);
-
-            (
-                Cow::Owned([col0_lhs, col0_rhs].concat().into_iter().collect()),
-                Cow::Owned([col1_lhs, col1_rhs].concat().into_iter().collect()),
-                Cow::Owned([col2_lhs, col2_rhs].concat().into_iter().collect()),
-                Cow::Owned([col3_lhs, col3_rhs].concat().into_iter().collect()),
-            )
-        };
-
-        let (col0, col1, col2, col3) = (col0.as_ref(), col1.as_ref(), col2.as_ref(), col3.as_ref());
+        let col0 = &trace.cols[0];
+        let col1 = &trace.cols[1];
+        let col2 = &trace.cols[2];
+        let col3 = &trace.cols[3];
 
         let mut packed_eval_at_0 = PackedQM31::zeroed();
         let mut packed_eval_at_2 = PackedQM31::zeroed();
@@ -126,6 +111,8 @@ impl GrandProductOps for AVX512Backend {
         let num_packed_terms = num_terms / K_BLOCK_SIZE;
 
         for i in 0..num_packed_terms {
+            // NOTE: The deinterleaves can be avoided by changing the wiring of the GKR circuit.
+            // Instead of inputs being neighbouring even and odd pairs have LHS and RHS pairs.
             let (c0_lhs_evens, c0_lhs_odds) =
                 col0.data[i * 2].deinterleave_with(col0.data[i * 2 + 1]);
 
@@ -147,8 +134,6 @@ impl GrandProductOps for AVX512Backend {
                 PackedCM31([c0_lhs_odds, c1_lhs_odds]),
                 PackedCM31([c2_lhs_odds, c3_lhs_odds]),
             ]);
-
-            let product0 = lhs_evens * lhs_odds;
 
             let (c0_rhs_evens, c0_rhs_odds) = col0.data[(num_packed_terms + i) * 2]
                 .deinterleave_with(col0.data[(num_packed_terms + i) * 2 + 1]);
@@ -172,7 +157,11 @@ impl GrandProductOps for AVX512Backend {
                 PackedCM31([c2_rhs_odds, c3_rhs_odds]),
             ]);
 
-            let product2 = (rhs_evens.double() - lhs_evens) * (rhs_odds.double() - lhs_odds);
+            let tmp0 = rhs_evens.double() - lhs_evens;
+            let tmp1 = rhs_odds.double() - lhs_odds;
+
+            let product2 = tmp0 * tmp1;
+            let product0 = lhs_evens * lhs_odds;
 
             let eq_eval = PackedQM31([
                 PackedCM31([eq_evals.cols[0].data[i], eq_evals.cols[1].data[i]]),

@@ -1,16 +1,18 @@
 use std::iter::successors;
 use std::time::Instant;
 
-use num_traits::{One, Zero};
+use itertools::Itertools;
+use num_traits::Zero;
 use thiserror::Error;
 
 use super::grand_product::{
     GrandProductCircuit, GrandProductOps, GrandProductOracle, GrandProductTrace,
 };
 use super::logup::{LogupCircuit, LogupOps, LogupOracle, LogupTrace};
-use super::mle::{ColumnOpsV2, MleOps, MleTrace};
+use super::mle::{ColumnOpsV2, Mle, MleOps, MleTrace};
 use super::sumcheck::{self, SumcheckError, SumcheckOracle, SumcheckProof};
 use super::utils::{eq, horner_eval, Polynomial};
+use crate::core::backend::CPUBackend;
 use crate::core::channel::Channel;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::mle::ColumnV2;
@@ -87,16 +89,65 @@ pub enum GkrError {
 
 // TODO(Andrew): Remove generic on proof structs. Consider using `Vec` instead of `MleTrace`.
 #[derive(Debug, Clone)]
-pub struct GkrProof<B: ColumnOpsV2<SecureField>> {
-    layer_proofs: Vec<GkrLayerProof<B>>,
-    output_layer: MleTrace<B, SecureField>,
+pub struct GkrProof {
+    layer_proofs: Vec<GkrLayerProof>,
+    output_claims: Vec<SecureField>,
+}
+
+/// GKR layer input mask.
+///
+/// Stores two rows.
+#[derive(Debug, Clone)]
+struct GkrMask {
+    columns: Vec<[SecureField; 2]>,
+}
+
+impl GkrMask {
+    fn to_rows(&self) -> [Vec<SecureField>; 2] {
+        self.columns.iter().map(|[a, b]| (a, b)).unzip().into()
+    }
+
+    fn to_mle_trace(&self) -> MleTrace<CPUBackend, SecureField> {
+        let columns = self
+            .columns
+            .iter()
+            .map(|&column| Mle::new(column.into_iter().collect()))
+            .collect_vec();
+        MleTrace::new(columns)
+    }
+}
+
+impl<B: MleOps<SecureField>> TryFrom<MleTrace<B, SecureField>> for GkrMask {
+    type Error = InvalidNumRowsError;
+
+    fn try_from(trace: MleTrace<B, SecureField>) -> Result<Self, InvalidNumRowsError> {
+        let num_rows = 1 << trace.num_variables();
+
+        if num_rows != 2 {
+            return Err(InvalidNumRowsError { num_rows });
+        }
+
+        Ok(Self {
+            columns: trace
+                .into_columns()
+                .into_iter()
+                .map(|column| column.to_vec().try_into().unwrap())
+                .collect(),
+        })
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("trace has an invalid number of rows (given {num_rows}, expected 2)")]
+struct InvalidNumRowsError {
+    num_rows: usize,
 }
 
 // TODO(Andrew): Remove generic on proof structs. Consider using `Vec` instead of `MleTrace`.
 #[derive(Debug, Clone)]
-struct GkrLayerProof<B: ColumnOpsV2<SecureField>> {
+struct GkrLayerProof {
     sumcheck_proof: SumcheckProof,
-    input_encoding: MleTrace<B, SecureField>,
+    input_mask: GkrMask,
 }
 
 pub enum GkrTraceInstance<B: LogupOps + GrandProductOps> {
@@ -205,117 +256,93 @@ impl BinaryTreeCircuit for GkrCircuitInstance {
 }
 
 // <https://people.cs.georgetown.edu/jthaler/ProofsArgsAndZK.pdf> (page 65)
-// TODO: add a mix felts over multiple slices.
-// `channel.mix_felt_chunks(output_layer.iter().map(|mle| &mle));`
 pub fn prove<B: LogupOps + GrandProductOps>(
     channel: &mut impl Channel,
     top_layer: GkrTraceInstance<B>,
-) -> GkrProof<B> {
-    let now = Instant::now();
+) -> GkrProof {
     let layers = successors(Some(top_layer), |layer| layer.next()).collect::<Vec<_>>();
     let mut layers = layers.into_iter().rev();
-    println!("building layers took: {:?}", now.elapsed());
 
-    // discard the output layer
-    _ = layers.next();
+    let output_trace = layers.next().unwrap().into_trace();
+    assert_eq!(output_trace.num_variables(), 0);
+    let output_claims = output_trace.eval_at_point(&[]);
+
+    // TODO: First layer OOD point should be empty not zero.
+    let mut ood_point = vec![SecureField::zero()];
+    let mut claims_to_verify = output_claims.clone();
 
     let now = Instant::now();
-    let output_layer = layers.next().unwrap().into_trace();
-    output_layer
-        .iter()
-        .for_each(|c| channel.mix_felts(&c.to_vec()));
-
-    let mut layer_assignment = channel.draw_felts(output_layer.num_variables());
-    let mut layer_evals = output_layer.eval_at_point(&layer_assignment);
-
     let layer_proofs = layers
         .map(|layer| {
+            channel.mix_felts(&claims_to_verify);
             let lambda = channel.draw_felt();
-            let now = Instant::now();
-            let eq_evals = B::gen_eq_evals(&layer_assignment[1..]);
-            println!("gen eq took {:?}", now.elapsed());
-            let sumcheck_oracle = layer.into_sumcheck_oracle(lambda, &layer_assignment, &eq_evals);
-            let sumcheck_claim = horner_eval(&layer_evals, lambda);
-            let (sumcheck_proof, sumcheck_assignment, oracle) =
+            let eq_evals = B::gen_eq_evals(&ood_point[1..]);
+            let sumcheck_oracle = layer.into_sumcheck_oracle(lambda, &ood_point, &eq_evals);
+            let sumcheck_claim = horner_eval(&claims_to_verify, lambda);
+            let (sumcheck_proof, sumcheck_ood_point, oracle, sumcheck_eval) =
                 sumcheck::prove(sumcheck_claim, sumcheck_oracle, channel);
 
-            let input_encoding = oracle.into_inputs();
-            input_encoding
-                .iter()
-                .for_each(|c| channel.mix_felts(&c.to_vec()));
-
-            assert_eq!(input_encoding.num_variables(), 1);
+            channel.mix_felts(&[sumcheck_eval]);
             let r_star = channel.draw_felt();
-            layer_assignment = sumcheck_assignment;
-            layer_assignment.push(r_star);
+            ood_point = sumcheck_ood_point;
+            ood_point.push(r_star);
 
-            layer_evals = input_encoding.eval_at_point(&[r_star]);
+            let input_mle_trace = oracle.into_inputs();
+            claims_to_verify = input_mle_trace.eval_at_point(&[r_star]);
+            let input_mask = input_mle_trace.try_into().unwrap();
 
             GkrLayerProof {
                 sumcheck_proof,
-                input_encoding,
+                input_mask,
             }
         })
         .collect();
-    println!("proof gen time: {:?}", now.elapsed());
+    println!("proof gen took: {:?}", now.elapsed());
 
     GkrProof {
         layer_proofs,
-        output_layer,
+        output_claims,
     }
 }
 
 /// Partially verifies a GKR proof.
 ///
 /// On successful verification the function Returns a [`GkrVerificationArtifact`] which stores the
-/// variable assignment and claimed evaluations in the top layer's columns. These claimed
-/// evaluations are not validated by this function - hence partial verification.
-pub fn partially_verify<B: MleOps<SecureField>>(
+/// out-of-domain point and claimed evaluations in the top layer's columns at the OOD point. These
+/// claimed evaluations are not checked by this function - hence partial verification.
+pub fn partially_verify(
     circuit: GkrCircuitInstance,
-    proof: &GkrProof<B>,
+    proof: &GkrProof,
     channel: &mut impl Channel,
 ) -> Result<GkrVerificationArtifact, GkrError> {
-    let zero = SecureField::zero();
-    let one = SecureField::one();
-
     let GkrProof {
-        output_layer,
         layer_proofs,
+        output_claims,
     } = proof;
 
-    if output_layer.num_variables() != 1 {
-        todo!("Return error.")
-    }
-
-    output_layer
-        .iter()
-        .for_each(|c| channel.mix_felts(&c.to_vec()));
-
-    let mut layer_assignment = channel.draw_felts(output_layer.num_variables());
-    let mut layer_claim = output_layer.eval_at_point(&layer_assignment);
+    let mut ood_point = vec![];
+    let mut claims_to_verify = output_claims.to_vec();
 
     for (layer, layer_proof) in layer_proofs.iter().enumerate() {
         let GkrLayerProof {
             sumcheck_proof,
-            input_encoding,
+            input_mask,
         } = layer_proof;
 
+        // Say the output of the logup circuit is p=1, q=2
+        // The sumcheck claim for the next layer is
+
+        channel.mix_felts(&claims_to_verify);
         let lambda = channel.draw_felt();
-        let sumcheck_claim = horner_eval(&layer_claim, lambda);
-        let (sumcheck_assignment, sumcheck_eval) =
+        let sumcheck_claim = horner_eval(&claims_to_verify, lambda);
+        let (sumcheck_ood_point, sumcheck_eval) =
             sumcheck::partially_verify(sumcheck_claim, sumcheck_proof, channel)
                 .map_err(|source| GkrError::InvalidSumcheck { layer, source })?;
 
-        if input_encoding.num_variables() != 1 {
-            todo!("Return error.")
-        }
-
-        // TODO: Not need to eval. Just first row (0) and second row (1)
-        let input0 = input_encoding.eval_at_point(&[zero]);
-        let input1 = input_encoding.eval_at_point(&[one]);
-        let circuit_output = circuit.eval(&input0, &input1);
+        let [input_row_0, input_row_1] = input_mask.to_rows();
+        let circuit_output = circuit.eval(&input_row_0, &input_row_1);
         let folded_output = horner_eval(&circuit_output, lambda);
-        let layer_eval = eq(&layer_assignment, &sumcheck_assignment) * folded_output;
+        let layer_eval = eq(&ood_point, &sumcheck_ood_point) * folded_output;
 
         if sumcheck_eval != layer_eval {
             return Err(GkrError::CircuitCheckFailure {
@@ -325,45 +352,29 @@ pub fn partially_verify<B: MleOps<SecureField>>(
             });
         }
 
-        input_encoding
-            .iter()
-            .for_each(|c| channel.mix_felts(&c.to_vec()));
-
+        // TODO: Is seeting the channel with the sumche_eval ok? Or does it need to be reseeded with
+        // all inputs? i.e. `input_encoding.iter().for_each(|c| channel.mix_felts(&c.to_vec()));`
+        channel.mix_felts(&[sumcheck_eval]);
         let r_star = channel.draw_felt();
-        layer_assignment = sumcheck_assignment;
-        layer_assignment.push(r_star);
+        ood_point = sumcheck_ood_point;
+        ood_point.push(r_star);
 
-        layer_claim = input_encoding.eval_at_point(&[r_star]);
+        claims_to_verify = input_mask.to_mle_trace().eval_at_point(&[r_star]);
     }
 
-    let row0 = output_layer.eval_at_point(&[zero]);
-    let row1 = output_layer.eval_at_point(&[one]);
-    let circuit_output_row = circuit.eval(&row0, &row1);
-
-    // TODO: Consider naming "eval_point" "layer_assignment" more similar to be consistent. Same
-    // with "circuit_output_claim".
     Ok(GkrVerificationArtifact {
-        eval_point: layer_assignment,
-        eval_claim: layer_claim,
-        circuit_output_row,
+        ood_point,
+        claims_to_verify,
     })
 }
 
 /// GKR partial verification artifact.
 pub struct GkrVerificationArtifact {
-    /// Variable assignment for columns in the top layer.
-    pub eval_point: Vec<SecureField>,
-    /// The claimed evaluation at `variable_assignment` for each column in the top layer.
-    pub eval_claim: Vec<SecureField>,
-    pub circuit_output_row: Vec<SecureField>,
+    /// Out-of-domain (OOD) point for columns in the top layer.
+    pub ood_point: Vec<SecureField>,
+    /// The claimed evaluation at `ood_point` for each column in the top layer.
+    pub claims_to_verify: Vec<SecureField>,
 }
-
-// pub struct GkrLayerVerificationArtifact {
-//     /// Input variable assignment for columns in the layer.
-//     pub variable_assignment: Vec<SecureField>,
-//     /// The claimed evaluation at `variable_assignment` for each column in the layer.
-//     pub claimed_evals: Vec<SecureField>,
-// }
 
 /// Defines a circuit with a binary tree structure.
 ///
@@ -392,9 +403,11 @@ mod tests {
     use std::iter::{repeat, zip};
     use std::time::Instant;
 
+    use num_traits::One;
+
     use super::{partially_verify, prove, GkrCircuitInstance, GkrError};
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
-    use crate::core::backend::avx512::AVX512Backend;
+    use crate::core::backend::avx512::{AVX512Backend, AvxMle};
     use crate::core::backend::cpu::CpuMle;
     use crate::core::backend::CPUBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
@@ -403,11 +416,11 @@ mod tests {
     use crate::core::lookups::gkr::{GkrOps, GkrVerificationArtifact};
     use crate::core::lookups::grand_product::GrandProductTrace;
     use crate::core::lookups::logup::{Fraction, LogupTrace};
-    use crate::core::lookups::mle::{ColumnV2, Mle};
+    use crate::core::lookups::mle::ColumnV2;
 
     #[test]
     fn avx_eq_evals_matches_cpu_eq_evals() {
-        const LOG_SIZE: usize = 6;
+        const LOG_SIZE: usize = 8;
         let mut rng = test_channel();
         let assignment: [SecureField; LOG_SIZE] = array::from_fn(|_| rng.draw_felt());
         let cpu_evals = CPUBackend::gen_eq_evals(&assignment);
@@ -419,7 +432,7 @@ mod tests {
 
     #[test]
     fn cpu_grand_product_works() -> Result<(), GkrError> {
-        const N: usize = 1 << 3;
+        const N: usize = 1 << 7;
         let values = test_channel().draw_felts(N);
         let product = values.iter().product();
         let top_layer =
@@ -429,49 +442,46 @@ mod tests {
         println!("CPU took: {:?}", now.elapsed());
 
         let GkrVerificationArtifact {
-            eval_point,
-            eval_claim,
-            circuit_output_row,
+            ood_point,
+            claims_to_verify,
         } = partially_verify(
             GkrCircuitInstance::GrandProduct,
             &proof,
             &mut test_channel(),
         )?;
 
-        assert_eq!(circuit_output_row, &[product]);
-        assert_eq!(eval_claim, &[top_layer.eval_at_point(&eval_point)]);
+        assert_eq!(proof.output_claims, &[product]);
+        assert_eq!(claims_to_verify, &[top_layer.eval_at_point(&ood_point)]);
         Ok(())
     }
 
     #[test]
     fn avx_grand_product_works() -> Result<(), GkrError> {
-        const N: usize = 1 << 3;
+        const N: usize = 1 << 26;
         let values = test_channel().draw_felts(N);
         let product = values.iter().product();
-        let top_layer = GrandProductTrace::new(Mle::<AVX512Backend, SecureField>::new(
-            values.into_iter().collect(),
-        ));
+        let top_layer =
+            GrandProductTrace::new(AvxMle::<SecureField>::new(values.into_iter().collect()));
         let now = Instant::now();
         let proof = prove(&mut test_channel(), top_layer.clone().into());
         println!("AVX took: {:?}", now.elapsed());
 
         let GkrVerificationArtifact {
-            eval_point,
-            eval_claim,
-            circuit_output_row,
+            ood_point,
+            claims_to_verify,
         } = partially_verify(
             GkrCircuitInstance::GrandProduct,
             &proof,
             &mut test_channel(),
         )?;
 
-        assert_eq!(circuit_output_row, &[product]);
-        assert_eq!(eval_claim, &[top_layer.eval_at_point(&eval_point)]);
+        assert_eq!(proof.output_claims, &[product]);
+        assert_eq!(claims_to_verify, &[top_layer.eval_at_point(&ood_point)]);
         Ok(())
     }
 
     #[test]
-    fn logup_works() -> Result<(), GkrError> {
+    fn cpu_logup_works() -> Result<(), GkrError> {
         const N: usize = 1 << 22;
         let two = BaseField::from(2).into();
         let numerator_values = repeat(two).take(N).collect::<Vec<SecureField>>();
@@ -488,18 +498,78 @@ mod tests {
         let proof = prove(&mut test_channel(), top_layer.into());
 
         let GkrVerificationArtifact {
-            eval_point,
-            eval_claim,
-            circuit_output_row,
+            ood_point,
+            claims_to_verify,
+        } = partially_verify(GkrCircuitInstance::Logup, &proof, &mut test_channel())?;
+
+        // TODO: `eva_claim` and `circuit_output_row` being an MleTrace (doesn't explain structure)
+        // means there is a loss of context on the verification outputs (don't know what order the
+        // numerator or denominator come in).
+        assert_eq!(claims_to_verify.len(), 2);
+        assert_eq!(claims_to_verify[0], numerators.eval_at_point(&ood_point));
+        assert_eq!(claims_to_verify[1], denominators.eval_at_point(&ood_point));
+        assert_eq!(proof.output_claims, &[sum.numerator, sum.denominator]);
+        Ok(())
+    }
+
+    #[test]
+    fn avx_logup_works() -> Result<(), GkrError> {
+        const N: usize = 1 << 26;
+        let two = BaseField::from(2).into();
+        let numerator_values = repeat(two).take(N).collect::<Vec<SecureField>>();
+        let denominator_values = test_channel().draw_felts(N);
+        let sum = zip(&numerator_values, &denominator_values)
+            .map(|(&n, &d)| Fraction::new(n, d))
+            .sum::<Fraction<SecureField>>();
+        let numerators = AvxMle::<SecureField>::new(numerator_values.into_iter().collect());
+        let denominators = AvxMle::<SecureField>::new(denominator_values.into_iter().collect());
+        let top_layer = LogupTrace::Generic {
+            numerators: numerators.clone(),
+            denominators: denominators.clone(),
+        };
+        let proof = prove(&mut test_channel(), top_layer.into());
+
+        let GkrVerificationArtifact {
+            ood_point,
+            claims_to_verify,
         } = partially_verify(GkrCircuitInstance::Logup, &proof, &mut test_channel())?;
 
         // TODO: `eva_claim` and `circuit_output_row` being an MleTrace, an nondescriptive type
         // means there is a loss of context on the verification outputs (don't know what the
         // numerator or denominator is).
-        assert_eq!(eval_claim.len(), 2);
-        assert_eq!(eval_claim[0], numerators.eval_at_point(&eval_point));
-        assert_eq!(eval_claim[1], denominators.eval_at_point(&eval_point));
-        assert_eq!(circuit_output_row, &[sum.numerator, sum.denominator]);
+        assert_eq!(claims_to_verify.len(), 2);
+        assert_eq!(claims_to_verify[0], numerators.eval_at_point(&ood_point));
+        assert_eq!(claims_to_verify[1], denominators.eval_at_point(&ood_point));
+        assert_eq!(proof.output_claims, &[sum.numerator, sum.denominator]);
+        Ok(())
+    }
+
+    #[test]
+    fn avx_logup_singles_works() -> Result<(), GkrError> {
+        const N: usize = 1 << 26;
+        let denominator_values = test_channel().draw_felts(N);
+        let sum = denominator_values
+            .iter()
+            .map(|&d| Fraction::new(SecureField::one(), d))
+            .sum::<Fraction<SecureField>>();
+        let denominators = AvxMle::<SecureField>::new(denominator_values.into_iter().collect());
+        let top_layer = LogupTrace::Singles {
+            denominators: denominators.clone(),
+        };
+        let proof = prove(&mut test_channel(), top_layer.into());
+
+        let GkrVerificationArtifact {
+            ood_point,
+            claims_to_verify,
+        } = partially_verify(GkrCircuitInstance::Logup, &proof, &mut test_channel())?;
+
+        // TODO: `eva_claim` and `circuit_output_row` being an MleTrace, an nondescriptive type
+        // means there is a loss of context on the verification outputs (don't know what the
+        // numerator or denominator is).
+        assert_eq!(claims_to_verify.len(), 2);
+        assert_eq!(claims_to_verify[0], SecureField::one());
+        assert_eq!(claims_to_verify[1], denominators.eval_at_point(&ood_point));
+        assert_eq!(proof.output_claims, &[sum.numerator, sum.denominator]);
         Ok(())
     }
 

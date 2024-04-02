@@ -14,6 +14,7 @@ pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
 use super::{Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, FieldOps};
+use crate::core::lookups::mle::Mle;
 use crate::core::utils;
 
 const VECS_LOG_SIZE: usize = 4;
@@ -23,6 +24,8 @@ pub struct AVX512Backend;
 
 // BaseField.
 // TODO(spapini): Unite with the M31AVX512 type.
+
+pub type AvxMle<F> = Mle<AVX512Backend, F>;
 
 unsafe impl Pod for PackedBaseField {}
 unsafe impl Zeroable for PackedBaseField {

@@ -17,14 +17,6 @@ impl GrandProductOps for CPUBackend {
             let a = layer.at(i * 2);
             let b = layer.at(i * 2 + 1);
             next_layer.push(a * b);
-
-            // let c = a * b;
-
-            // let [c0, c1, c2, c3] = c.to_m31_array();
-            // next_layer.cols[0].push(c0);
-            // next_layer.cols[1].push(c1);
-            // next_layer.cols[2].push(c2);
-            // next_layer.cols[3].push(c3);
         }
 
         GrandProductTrace::new(Mle::new(next_layer))

@@ -45,12 +45,12 @@ pub trait SumcheckOracle: Sized {
 /// in layer `i` of a GKR circuit. Any given GKR layer is a sum over some multivariate polynomial
 /// `g_z(x_1, ..., x_n)` of the form `eq(x_1, ..., x_n, z_1, ..., z_n) * f(x_1, ..., x_n)`
 ///
-/// Output is of the form: `(proof, variable_assignment, finalized_oracle)`
+/// Output is of the form: `(proof, variable_assignment, finalized_oracle, claimed_eval)`
 pub fn prove<O: SumcheckOracle>(
     claim: SecureField,
     oracle: O,
     channel: &mut impl Channel,
-) -> (SumcheckProof, Vec<SecureField>, O) {
+) -> (SumcheckProof, Vec<SecureField>, O, SecureField) {
     let mut round_polynomials = Vec::new();
     let mut challenges = Vec::new();
 
@@ -59,15 +59,15 @@ pub fn prove<O: SumcheckOracle>(
 
     let round_now = Instant::now();
     for _round in 0..round_oracle.num_variables() {
-        // let now = Instant::now();
+        let now = Instant::now();
         let round_polynomial = round_oracle.univariate_sum(round_claim);
-        // println!("univariate sum took {:?}", now.elapsed());
+        println!("univariate sum took {:?}", now.elapsed());
         channel.mix_felts(&round_polynomial);
 
         let challenge = channel.draw_felt();
-        // let now = Instant::now();
+        let now = Instant::now();
         round_oracle = round_oracle.fix_first(challenge);
-        // println!("fixing took {:?}", now.elapsed());
+        println!("fixing took {:?}", now.elapsed());
         round_claim = round_polynomial.eval(challenge);
         round_polynomials.push(round_polynomial);
         challenges.push(challenge);
@@ -76,7 +76,7 @@ pub fn prove<O: SumcheckOracle>(
 
     let proof = SumcheckProof { round_polynomials };
 
-    (proof, challenges, round_oracle)
+    (proof, challenges, round_oracle, round_claim)
 }
 
 /// Partially verifies the sum-check protocol by validating the provided proof against the claim.
@@ -86,7 +86,7 @@ pub fn prove<O: SumcheckOracle>(
 /// claim for each round. If the proof passes these checks, the variable assignment and the prover's
 /// claimed evaluation are returned for the caller to validate otherwise [`None`] is returned.
 ///
-/// Output is of the form `(variable_assignment, claimed_eval)`.
+/// Output is of the form `(ood_variable_assignment, claimed_eval)`.
 // TODO: Is checking that each univariate round polynomial is <5 safe. I think it only impacts a
 // few bits of security but not any more? Keeping it fixed keeps the implementation a little
 // simpler.
