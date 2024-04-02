@@ -1,10 +1,25 @@
+use itertools::Itertools;
+use num_traits::Zero;
+
+use super::trace_gen::write_trace_row;
 use crate::core::air::{Air, Component};
 use crate::core::backend::CPUBackend;
 use crate::core::fields::m31::BaseField;
+use crate::core::ColumnVec;
 
-/// Component that computes fibonacci numbers over 64 columns.
+pub const LOG_N_COLUMNS: usize = 8;
+pub const N_COLUMNS: usize = 1 << LOG_N_COLUMNS;
+
+/// Component that computes fibonacci numbers over [N_COLUMNS] columns.
 pub struct WideFibComponent {
-    pub log_size: u32,
+    pub log_fibonacci_size: u32,
+    pub log_n_instances: u32,
+}
+
+impl WideFibComponent {
+    pub fn log_column_size(&self) -> u32 {
+        self.log_n_instances + self.log_fibonacci_size - LOG_N_COLUMNS as u32
+    }
 }
 
 pub struct WideFibAir {
@@ -15,6 +30,28 @@ impl Air<CPUBackend> for WideFibAir {
     fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
         vec![&self.component]
     }
+}
+
+pub fn fill_initial_trace(
+    wide_fib: &WideFibComponent,
+    private_input: Vec<Input>,
+) -> ColumnVec<Vec<BaseField>> {
+    let n_instances = 1 << wide_fib.log_n_instances;
+    assert_eq!(private_input.len(), n_instances);
+    let n_rows_per_instance = (1 << wide_fib.log_fibonacci_size) / N_COLUMNS;
+    let n_rows = n_instances * n_rows_per_instance;
+    let zero_vec = vec![BaseField::zero(); n_rows];
+    let mut dst = vec![zero_vec; N_COLUMNS];
+    (0..n_rows_per_instance).fold(private_input, |input, row| {
+        (0..n_instances)
+            .map(|instance| {
+                let (a, b) =
+                    write_trace_row(&mut dst, &input[instance], row * n_instances + instance);
+                Input { a, b }
+            })
+            .collect_vec()
+    });
+    dst
 }
 
 // Input for the fibonacci claim.
