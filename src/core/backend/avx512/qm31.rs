@@ -11,9 +11,9 @@ use crate::core::fields::FieldExpOps;
 
 /// AVX implementation for an extension of CM31.
 /// See [crate::core::fields::qm31::QM31] for more information.
-#[derive(Copy, Clone)]
-pub struct PackedQM31(pub [PackedCM31; 2]);
-impl PackedQM31 {
+#[derive(Copy, Clone, Debug)]
+pub struct PackedSecureField(pub [PackedCM31; 2]);
+impl PackedSecureField {
     pub fn zero() -> Self {
         Self([
             PackedCM31([PackedBaseField::zero(); 2]),
@@ -36,7 +36,7 @@ impl PackedQM31 {
         std::array::from_fn(|i| QM31(self.a().to_array()[i], self.b().to_array()[i]))
     }
 
-    pub fn from_array(array: &[QM31; K_BLOCK_SIZE]) -> Self {
+    pub fn from_array(array: [QM31; K_BLOCK_SIZE]) -> Self {
         let a = PackedBaseField::from_array(std::array::from_fn(|i| array[i].0 .0));
         let b = PackedBaseField::from_array(std::array::from_fn(|i| array[i].0 .1));
         let c = PackedBaseField::from_array(std::array::from_fn(|i| array[i].1 .0));
@@ -45,12 +45,12 @@ impl PackedQM31 {
     }
 
     // Multiply packed QM31 by packed M31.
-    pub fn mul_packed_m31(&self, rhs: PackedBaseField) -> PackedQM31 {
+    pub fn mul_packed_m31(&self, rhs: PackedBaseField) -> PackedSecureField {
         let a = self.0[0].0[0] * rhs;
         let b = self.0[0].0[1] * rhs;
         let c = self.0[1].0[0] * rhs;
         let d = self.0[1].0[1] * rhs;
-        PackedQM31([PackedCM31([a, b]), PackedCM31([c, d])])
+        PackedSecureField([PackedCM31([a, b]), PackedCM31([c, d])])
     }
 
     /// Sums all the elements in the packed M31 element.
@@ -58,19 +58,19 @@ impl PackedQM31 {
         self.to_array().into_iter().sum()
     }
 }
-impl Add for PackedQM31 {
+impl Add for PackedSecureField {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
         Self([self.a() + rhs.a(), self.b() + rhs.b()])
     }
 }
-impl Sub for PackedQM31 {
+impl Sub for PackedSecureField {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self::Output {
         Self([self.a() - rhs.a(), self.b() - rhs.b()])
     }
 }
-impl Mul for PackedQM31 {
+impl Mul for PackedSecureField {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self::Output {
         // Compute using Karatsuba.
@@ -93,7 +93,7 @@ impl Mul for PackedQM31 {
         Self([l, ad_p_bc])
     }
 }
-impl Zero for PackedQM31 {
+impl Zero for PackedSecureField {
     fn zero() -> Self {
         Self([PackedCM31::zero(), PackedCM31::zero()])
     }
@@ -101,22 +101,22 @@ impl Zero for PackedQM31 {
         self.a().is_zero() && self.b().is_zero()
     }
 }
-impl One for PackedQM31 {
+impl One for PackedSecureField {
     fn one() -> Self {
         Self([PackedCM31::one(), PackedCM31::zero()])
     }
 }
-impl AddAssign for PackedQM31 {
+impl AddAssign for PackedSecureField {
     fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
 }
-impl MulAssign for PackedQM31 {
+impl MulAssign for PackedSecureField {
     fn mul_assign(&mut self, rhs: Self) {
         *self = *self * rhs;
     }
 }
-impl FieldExpOps for PackedQM31 {
+impl FieldExpOps for PackedSecureField {
     fn inverse(&self) -> Self {
         // TODO(andrew): Use a better multiplication tree. Also for other constant powers in the
         // code.
@@ -125,27 +125,27 @@ impl FieldExpOps for PackedQM31 {
     }
 }
 
-impl Add<PackedBaseField> for PackedQM31 {
+impl Add<PackedBaseField> for PackedSecureField {
     type Output = Self;
     fn add(self, rhs: PackedBaseField) -> Self::Output {
         Self([self.a() + rhs, self.b()])
     }
 }
-impl Sub<PackedBaseField> for PackedQM31 {
+impl Sub<PackedBaseField> for PackedSecureField {
     type Output = Self;
     fn sub(self, rhs: PackedBaseField) -> Self::Output {
         Self([self.a() - rhs, self.b()])
     }
 }
-impl Mul<PackedBaseField> for PackedQM31 {
+impl Mul<PackedBaseField> for PackedSecureField {
     type Output = Self;
     fn mul(self, rhs: PackedBaseField) -> Self::Output {
         Self([self.a() * rhs, self.b() * rhs])
     }
 }
 
-unsafe impl Pod for PackedQM31 {}
-unsafe impl Zeroable for PackedQM31 {
+unsafe impl Pod for PackedSecureField {}
+unsafe impl Zeroable for PackedSecureField {
     fn zeroed() -> Self {
         unsafe { core::mem::zeroed() }
     }
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn test_qm31avx512_basic_ops() {
         let rng = &mut StdRng::seed_from_u64(0);
-        let x = PackedQM31([
+        let x = PackedSecureField([
             PackedCM31([
                 PackedBaseField::from_array(std::array::from_fn(|_| {
                     M31::from(rng.gen::<u32>() % P)
@@ -183,7 +183,7 @@ mod tests {
                 })),
             ]),
         ]);
-        let y = PackedQM31([
+        let y = PackedSecureField([
             PackedCM31([
                 PackedBaseField::from_array(std::array::from_fn(|_| {
                     M31::from(rng.gen::<u32>() % P)
@@ -227,7 +227,7 @@ mod tests {
             )
         });
 
-        let packed = PackedQM31::from_array(&x_arr);
+        let packed = PackedSecureField::from_array(x_arr);
         let to_arr = packed.to_array();
 
         assert_eq!(to_arr, x_arr);

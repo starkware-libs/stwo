@@ -56,7 +56,7 @@ pub fn avx512_eval_at_secure_point(c: &mut criterion::Criterion) {
     let rng = &mut StdRng::seed_from_u64(0);
 
     let domain = CanonicCoset::new(log_size as u32).circle_domain();
-    let evaluation = CircleEvaluation::<AVX512Backend, _, NaturalOrder>::new(
+    let evaluation = CircleEvaluation::<AVX512Backend, BaseField, NaturalOrder>::new(
         domain,
         (0..(1 << log_size))
             .map(BaseField::from_u32_unchecked)
