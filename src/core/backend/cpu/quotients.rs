@@ -4,7 +4,7 @@ use num_traits::{One, Zero};
 use super::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::quotients::{ColumnSampleBatch, PointSample, QuotientOps};
-use crate::core::constraints::{complex_conjugate_line_coefficients, pair_vanishing};
+use crate::core::constraints::{complex_conjugate_line_coeffs, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
@@ -21,7 +21,7 @@ impl QuotientOps for CPUBackend {
         sample_batches: &[ColumnSampleBatch],
     ) -> SecureEvaluation<Self> {
         let mut values = SecureColumn::zeros(domain.size());
-        let column_constants = column_constants(sample_batches, random_coeff);
+        let quotient_constants = quotient_constants(sample_batches, random_coeff);
 
         for row in 0..domain.size() {
             // TODO(alonh): Make an efficient bit reverse domain iterator, possibly for AVX backend.
@@ -29,7 +29,7 @@ impl QuotientOps for CPUBackend {
             let row_value = accumulate_row_quotients(
                 sample_batches,
                 columns,
-                &column_constants,
+                &quotient_constants,
                 row,
                 random_coeff,
                 domain_point,
@@ -43,13 +43,14 @@ impl QuotientOps for CPUBackend {
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
     columns: &[&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>],
-    column_constants: &[Vec<(SecureField, SecureField, SecureField)>],
+    quotient_constants: &QuotientConstants,
     row: usize,
     random_coeff: SecureField,
     domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
     let mut row_accumulator = SecureField::zero();
-    for (sample_batch, sample_constants) in zip_eq(sample_batches, column_constants) {
+    for (sample_batch, sample_constants) in zip_eq(sample_batches, &quotient_constants.line_coeffs)
+    {
         let mut numerator = SecureField::zero();
         for ((column_index, _), (a, b, c)) in
             zip_eq(&sample_batch.columns_and_values, sample_constants)
@@ -73,10 +74,11 @@ pub fn accumulate_row_quotients(
     row_accumulator
 }
 
-/// Precompute the complex conjugate line constants for each column in each sample batch.
+/// Precompute the complex conjugate line coefficients for each column in each sample batch.
 /// Specifically, for the i-th (in a sample batch) column's numerator term
-/// `alpha^i * (F(p) - (a * p.y + b))`, we precompute the constants `alpha^i * a` and alpha^i * `b`.
-pub fn column_constants(
+/// `alpha^i * (c * F(p) - (a * p.y + b))`, we precompute and return the constants:
+/// (`alpha^i * a`, `alpha^i * b`, `alpha^i * c`).
+pub fn column_line_coeffs(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
 ) -> Vec<Vec<(SecureField, SecureField, SecureField)>> {
@@ -93,11 +95,26 @@ pub fn column_constants(
                         point: sample_batch.point,
                         value: *sampled_value,
                     };
-                    complex_conjugate_line_coefficients(&sample, alpha)
+                    complex_conjugate_line_coeffs(&sample, alpha)
                 })
                 .collect()
         })
         .collect()
+}
+
+pub fn quotient_constants(
+    sample_batches: &[ColumnSampleBatch],
+    random_coeff: SecureField,
+) -> QuotientConstants {
+    let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
+    QuotientConstants { line_coeffs }
+}
+
+/// Holds the precomputed constant values used in each quotient evaluation.
+pub struct QuotientConstants {
+    /// The line coefficients for each quotient numerator term. For more details see
+    /// [self::column_line_coeffs].
+    pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
 }
 
 #[cfg(test)]
