@@ -4,7 +4,11 @@ use crate::core::fields::m31::BaseField;
 // TODO(ShaharS), try to make it into a for loop and use intermiddiate variables to save
 // computation.
 /// Given a private input, write the trace row for the wide Fibonacci example to dst.
-pub fn write_trace_row(dst: &mut [Vec<BaseField>], private_input: &Input, row_offset: usize) {
+pub fn write_trace_row(
+    dst: &mut [Vec<BaseField>],
+    private_input: &Input,
+    row_offset: usize,
+) -> (BaseField, BaseField) {
     let a = private_input.a;
     let b = private_input.b;
     let col0 = a;
@@ -135,4 +139,6 @@ pub fn write_trace_row(dst: &mut [Vec<BaseField>], private_input: &Input, row_of
     dst[62][row_offset] = col62;
     let col63 = col61 * col61 + col62 * col62;
     dst[63][row_offset] = col63;
+
+    return (dst[62][row_offset], dst[63][row_offset]);
 }

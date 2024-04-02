@@ -15,11 +15,11 @@ use crate::core::ColumnVec;
 
 impl Component<CPUBackend> for WideFibComponent {
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.log_size + 1
+        self.log_fibonacci_size + 1
     }
 
     fn trace_log_degree_bounds(&self) -> Vec<u32> {
-        vec![self.log_size; 256]
+        vec![self.log_fibonacci_size; 256]
     }
 
     fn mask(&self) -> Mask {
@@ -41,8 +41,8 @@ impl Component<CPUBackend> for WideFibComponent {
                 CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
             trace_evals.push(poly.evaluate(trace_eval_domain).bit_reverse());
         }
-        let zero_domain = CanonicCoset::new(self.log_size).coset;
-        let eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
+        let zero_domain = CanonicCoset::new(self.log_fibonacci_size).coset;
+        let eval_domain = CanonicCoset::new(self.log_fibonacci_size + 1).circle_domain();
         let mut denoms = vec![];
         for point in eval_domain.iter() {
             denoms.push(coset_vanishing(zero_domain, point));
