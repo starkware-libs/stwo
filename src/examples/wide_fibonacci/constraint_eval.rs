@@ -12,25 +12,26 @@ use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;
+use crate::examples::wide_fibonacci::structs::N_COLUMNS;
 
 impl Component<CPUBackend> for WideFibComponent {
     fn n_constraints(&self) -> usize {
-        62
+        N_COLUMNS - 1
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.log_size + 1
+        self.log_column_size() + 1
     }
 
     fn trace_log_degree_bounds(&self) -> Vec<u32> {
-        vec![self.log_size; 256]
+        vec![self.log_column_size(); N_COLUMNS]
     }
 
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
     ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        let mask = Mask(vec![vec![0_usize]; 256]);
+        let mask = Mask(vec![vec![0_usize]; N_COLUMNS]);
         mask.iter()
             .map(|col| col.iter().map(|_| point).collect())
             .collect()
@@ -52,8 +53,8 @@ impl Component<CPUBackend> for WideFibComponent {
             let trace_eval_domain = CanonicCoset::new(constraint_log_degree).circle_domain();
             trace_evals.push(poly.evaluate(trace_eval_domain).bit_reverse());
         }
-        let zero_domain = CanonicCoset::new(self.log_size).coset;
-        let eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
+        let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
+        let eval_domain = CanonicCoset::new(self.log_column_size() + 1).circle_domain();
         let mut denoms = vec![];
         for point in eval_domain.iter() {
             denoms.push(coset_vanishing(zero_domain, point));
@@ -439,10 +440,10 @@ impl Component<CPUBackend> for WideFibComponent {
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     ) {
-        let zero_domain = CanonicCoset::new(self.log_size).coset;
+        let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let denominator = coset_vanishing(zero_domain, point);
         evaluation_accumulator.accumulate((mask[0][0] - SecureField::one()) / denominator);
-        for i in 0..(256 - 2) {
+        for i in 0..(N_COLUMNS - 2) {
             let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
             evaluation_accumulator.accumulate(numerator / denominator);
         }
