@@ -26,7 +26,7 @@ impl ComponentProver<CPUBackend> for WideFibComponent {
         let max_constraint_degree = self.max_constraint_log_degree_bound();
         let trace_eval_domain = CanonicCoset::new(max_constraint_degree).circle_domain();
         let trace_evals = &trace.evals;
-        let zero_domain = CanonicCoset::new(self.log_size).coset;
+        let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let mut denoms = vec![];
         for point in trace_eval_domain.iter() {
             denoms.push(coset_vanishing(zero_domain, point));
@@ -45,8 +45,8 @@ impl ComponentProver<CPUBackend> for WideFibComponent {
                 * (trace_evals[0].values.at(i) - BaseField::from_u32_unchecked(1));
 
             // Step constraints.
-            for j in 0..254 {
-                numerators[i] += accum.random_coeff_powers[253 - j]
+            for j in 0..self.n_columns() - 2 {
+                numerators[i] += accum.random_coeff_powers[self.n_columns() - 3 - j]
                     * (trace_evals[j].values.at(i).square()
                         + trace_evals[j + 1].values.at(i).square()
                         - trace_evals[j + 2].values.at(i));
