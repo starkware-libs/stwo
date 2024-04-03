@@ -7,7 +7,9 @@
     slice_group_by,
     stdsimd,
     get_many_mut,
-    int_roundings
+    int_roundings,
+    slice_flatten,
+    assert_matches
 )]
 pub mod commitment_scheme;
 pub mod core;

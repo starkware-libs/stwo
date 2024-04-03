@@ -17,6 +17,12 @@ pub struct MerkleVerifier<H: MerkleHasher> {
     pub column_log_sizes: Vec<u32>,
 }
 impl<H: MerkleHasher> MerkleVerifier<H> {
+    pub fn new(root: H::Hash, column_log_sizes: Vec<u32>) -> Self {
+        Self {
+            root,
+            column_log_sizes,
+        }
+    }
     /// Verifies the decommitment of the columns.
     ///
     /// # Arguments
