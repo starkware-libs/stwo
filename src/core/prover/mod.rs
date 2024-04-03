@@ -197,8 +197,9 @@ pub fn verify(
 fn sampled_values_to_mask<B: Backend>(
     air: &impl Air<B>,
     mut sampled_values: TreeVec<ColumnVec<Vec<SecureField>>>,
-) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), ()> {
-    let composition_partial_sampled_values = sampled_values.pop().ok_or(())?;
+) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), InvalidOodsSampleStructure> {
+    let composition_partial_sampled_values =
+        sampled_values.pop().ok_or(InvalidOodsSampleStructure)?;
     let composition_oods_value = SecureCirclePoly::<B>::eval_from_partial_evals(
         composition_partial_sampled_values
             .iter()
@@ -206,11 +207,14 @@ fn sampled_values_to_mask<B: Backend>(
             .cloned()
             .collect_vec()
             .try_into()
-            .map_err(|_| ())?,
+            .map_err(|_| InvalidOodsSampleStructure)?,
     );
 
     // Retrieve sampled mask values for each component.
-    let flat_trace_values = &mut sampled_values.pop().ok_or(())?.into_iter();
+    let flat_trace_values = &mut sampled_values
+        .pop()
+        .ok_or(InvalidOodsSampleStructure)?
+        .into_iter();
     let trace_oods_values = ComponentVec(
         air.components()
             .iter()
@@ -224,6 +228,10 @@ fn sampled_values_to_mask<B: Backend>(
 
     Ok((trace_oods_values, composition_oods_value))
 }
+
+/// Error when the sampled values have an invalid structure.
+#[derive(Clone, Copy, Debug)]
+pub struct InvalidOodsSampleStructure;
 
 #[derive(Clone, Copy, Debug, Error)]
 pub enum ProvingError {
