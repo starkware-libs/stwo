@@ -46,7 +46,7 @@ impl QuotientOps for AVX512Backend {
                 vec_row,
                 (domain_points_x, domain_points_y),
             );
-            values.set_packed(vec_row, row_accumulator);
+            unsafe { values.set_packed(vec_row, row_accumulator) };
         }
         SecureEvaluation { domain, values }
     }
