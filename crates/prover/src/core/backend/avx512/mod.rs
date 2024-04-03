@@ -222,6 +222,9 @@ impl SecureColumn<AVX512Backend> {
         self.columns[0].data.len()
     }
 
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
     pub fn packed_at(&self, vec_index: usize) -> PackedSecureField {
         unsafe {
             PackedSecureField([
@@ -237,13 +240,14 @@ impl SecureColumn<AVX512Backend> {
         }
     }
 
-    pub fn set_packed(&mut self, vec_index: usize, value: PackedSecureField) {
-        unsafe {
-            *self.columns[0].data.get_unchecked_mut(vec_index) = value.a().a();
-            *self.columns[1].data.get_unchecked_mut(vec_index) = value.a().b();
-            *self.columns[2].data.get_unchecked_mut(vec_index) = value.b().a();
-            *self.columns[3].data.get_unchecked_mut(vec_index) = value.b().b();
-        }
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
+    pub unsafe fn set_packed(&mut self, vec_index: usize, value: PackedSecureField) {
+        *self.columns[0].data.get_unchecked_mut(vec_index) = value.a().a();
+        *self.columns[1].data.get_unchecked_mut(vec_index) = value.a().b();
+        *self.columns[2].data.get_unchecked_mut(vec_index) = value.b().a();
+        *self.columns[3].data.get_unchecked_mut(vec_index) = value.b().b();
     }
 
     pub fn to_vec(&self) -> Vec<SecureField> {
