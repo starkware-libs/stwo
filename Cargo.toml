@@ -57,6 +57,10 @@ name = "merkle_bench"
 harness = false
 
 [[bench]]
+name = "merkle"
+harness = false
+
+[[bench]]
 name = "fri"
 harness = false
 
