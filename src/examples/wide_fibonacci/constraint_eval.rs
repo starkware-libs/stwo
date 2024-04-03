@@ -14,6 +14,10 @@ use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;
 
 impl Component<CPUBackend> for WideFibComponent {
+    fn n_constraints(&self) -> usize {
+        62
+    }
+
     fn max_constraint_log_degree_bound(&self) -> u32 {
         self.log_size + 1
     }
@@ -52,9 +56,10 @@ impl Component<CPUBackend> for WideFibComponent {
         BaseField::batch_inverse(&denoms, &mut denom_inverses);
         let mut numerators =
             vec![SecureField::zero(); 1 << (self.max_constraint_log_degree_bound())];
-        let random_coeff = evaluation_accumulator.random_coeff;
-        let [mut accum] =
-            evaluation_accumulator.columns([(self.max_constraint_log_degree_bound(), 64)]);
+        let [mut accum] = evaluation_accumulator
+            .columns([(self.max_constraint_log_degree_bound(), self.n_constraints())]);
+        // TODO (ShaharS) Change to get the correct power of random coeff inside the loop.
+        let random_coeff = accum.random_coeff_powers[1];
         for (i, point_index) in eval_domain.iter_indices().enumerate() {
             numerators[i] = numerators[i] * random_coeff
                 + (trace_evals[2].get_at(point_index)
