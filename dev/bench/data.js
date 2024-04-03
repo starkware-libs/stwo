@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1712128723468,
+  "lastUpdate": 1712128945937,
   "repoUrl": "https://github.com/starkware-libs/stwo",
   "entries": {
     "Benchmark": [
@@ -11501,6 +11501,318 @@ window.BENCHMARK_DATA = {
             "name": "cpu quotients 2^8 x 2^16",
             "value": 342715293,
             "range": "± 2764675",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "70577611+shaharsamocha7@users.noreply.github.com",
+            "name": "shaharsamocha7",
+            "username": "shaharsamocha7"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "29c0ee1ee702c32852b2175ec0ebc1c500804bfe",
+          "message": "Constraint accumulator precompute random coeff powers (#554)\n\n\n\n<!-- Reviewable:start -->\nThis change is [<img src=\"https://reviewable.io/review_button.svg\" height=\"34\" align=\"absmiddle\" alt=\"Reviewable\"/>](https://reviewable.io/reviews/starkware-libs/stwo/554)\n<!-- Reviewable:end -->",
+          "timestamp": "2024-04-03T10:07:55+03:00",
+          "tree_id": "3f8543453abb6a80d455080b09df29d768d455bb",
+          "url": "https://github.com/starkware-libs/stwo/commit/29c0ee1ee702c32852b2175ec0ebc1c500804bfe"
+        },
+        "date": 1712128945064,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "avx bit_rev 26bit",
+            "value": 75476413,
+            "range": "± 862316",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu bit_rev 24bit",
+            "value": 203491770,
+            "range": "± 9730469",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "avx eval_at_secure_field_point 2^20",
+            "value": 1965113,
+            "range": "± 144680",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu eval_at_secure_field_point 2^20",
+            "value": 26376515,
+            "range": "± 244263",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/16",
+            "value": 113641,
+            "range": "± 3874",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/17",
+            "value": 269300,
+            "range": "± 1025",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/18",
+            "value": 563104,
+            "range": "± 4494",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/19",
+            "value": 1186041,
+            "range": "± 6064",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/20",
+            "value": 2467914,
+            "range": "± 30625",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/21",
+            "value": 5180982,
+            "range": "± 51085",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/22",
+            "value": 11253927,
+            "range": "± 143496",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/23",
+            "value": 25006582,
+            "range": "± 236921",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/24",
+            "value": 56965331,
+            "range": "± 581411",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/25",
+            "value": 120770658,
+            "range": "± 862028",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/26",
+            "value": 254930695,
+            "range": "± 2471068",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/27",
+            "value": 535998902,
+            "range": "± 4452886",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/avx ifft/28",
+            "value": 1245030024,
+            "range": "± 12572470",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/avx ifft_vecwise_loop 2^14",
+            "value": 12304,
+            "range": "± 207",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/avx ifft3_loop 2^14",
+            "value": 4538,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/avx transpose_vecs 2^20",
+            "value": 297899,
+            "range": "± 1258",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "avx rfft 20bit",
+            "value": 3187570,
+            "range": "± 19288",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 45807144,
+            "range": "± 1376261",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 20809380,
+            "range": "± 349466",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 mul",
+            "value": 204444859,
+            "range": "± 3586114",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 add",
+            "value": 46166014,
+            "range": "± 344684",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField mul",
+            "value": 1212973233,
+            "range": "± 8486381",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField add",
+            "value": 105579484,
+            "range": "± 1627464",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 45715217,
+            "range": "± 341685",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 20903356,
+            "range": "± 402021",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "mul_avx512",
+            "value": 7719347,
+            "range": "± 64649",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "add_avx512",
+            "value": 4731439,
+            "range": "± 11057",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sub_avx512",
+            "value": 4730003,
+            "range": "± 17818",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "fold_line",
+            "value": 578570,
+            "range": "± 10683",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "RowMajorMatrix M31 24x24 mul",
+            "value": 625,
+            "range": "± 98",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "QM31 RowMajorMatrix 6x6 mul",
+            "value": 753,
+            "range": "± 14",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "merkle throughput/cpu merkle",
+            "value": 2587585179,
+            "range": "± 18379454",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/32768",
+            "value": 321825,
+            "range": "± 8969",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/32768",
+            "value": 148553,
+            "range": "± 1728",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/65536",
+            "value": 633005,
+            "range": "± 6640",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/65536",
+            "value": 298512,
+            "range": "± 3843",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/131072",
+            "value": 1312644,
+            "range": "± 29976",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/131072",
+            "value": 782283,
+            "range": "± 54952",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/262144",
+            "value": 2878414,
+            "range": "± 97254",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/262144",
+            "value": 1270714,
+            "range": "± 11374",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE2/524288",
+            "value": 5814238,
+            "range": "± 166200",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "Comparison of hashing algorithms and caching overhead/BLAKE3/524288",
+            "value": 3290864,
+            "range": "± 29496",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "avx quotients 2^8 x 2^20",
+            "value": 1561194555,
+            "range": "± 13279612",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu quotients 2^8 x 2^16",
+            "value": 338835610,
+            "range": "± 3999637",
             "unit": "ns/iter"
           }
         ]
