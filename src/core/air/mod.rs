@@ -1,15 +1,15 @@
 use std::iter::zip;
-use std::ops::Deref;
 
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
 use super::circle::CirclePoint;
 use super::fields::qm31::SecureField;
-use super::poly::circle::{CanonicCoset, CirclePoly};
+use super::poly::circle::CirclePoly;
 use super::ColumnVec;
 
 pub mod accumulation;
 mod air_ext;
+pub mod mask;
 
 pub use air_ext::AirExt;
 
@@ -21,36 +21,6 @@ pub use air_ext::AirExt;
 // TODO(spapini): consider renaming this struct.
 pub trait Air<B: Backend> {
     fn components(&self) -> Vec<&dyn Component<B>>;
-}
-
-/// Holds the mask offsets at each column.
-/// Holds a vector with an entry for each column. Each entry holds the offsets
-/// of the mask at that column.
-pub struct Mask(pub ColumnVec<Vec<usize>>);
-
-impl Mask {
-    pub fn to_points(
-        &self,
-        domains: &[CanonicCoset],
-        point: CirclePoint<SecureField>,
-    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        self.iter()
-            .zip(domains.iter())
-            .map(|(col, domain)| {
-                col.iter()
-                    .map(|i| point + domain.at(*i).into_ef())
-                    .collect()
-            })
-            .collect()
-    }
-}
-
-impl Deref for Mask {
-    type Target = ColumnVec<Vec<usize>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
 }
 
 /// A component is a set of trace columns of various sizes along with a set of

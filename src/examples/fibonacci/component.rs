@@ -3,7 +3,8 @@ use std::ops::Div;
 use num_traits::One;
 
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Component, ComponentTrace, Mask};
+use crate::core::air::mask::shifted_mask_points;
+use crate::core::air::{Component, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
@@ -120,8 +121,11 @@ impl Component<CPUBackend> for FibonacciComponent {
         &self,
         point: CirclePoint<SecureField>,
     ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        let fib_mask = Mask(vec![vec![0, 1, 2]]);
-        fib_mask.to_points(&[CanonicCoset::new(self.log_size)], point)
+        shifted_mask_points(
+            &vec![vec![0, 1, 2]],
+            &[CanonicCoset::new(self.log_size)],
+            point,
+        )
     }
 
     fn evaluate_constraint_quotients_at_point(

@@ -2,7 +2,8 @@ use num_traits::Zero;
 
 use super::structs::WideFibComponent;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Component, ComponentTrace, Mask};
+use crate::core::air::mask::fixed_mask_points;
+use crate::core::air::{Component, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
@@ -30,10 +31,7 @@ impl Component<CPUBackend> for WideFibComponent {
         &self,
         point: CirclePoint<SecureField>,
     ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        let mask = Mask(vec![vec![0_usize]; 256]);
-        mask.iter()
-            .map(|col| col.iter().map(|_| point).collect())
-            .collect()
+        fixed_mask_points(&vec![vec![0_usize]; 256], point)
     }
 
     // TODO(ShaharS), precompute random coeff powers.
