@@ -3,7 +3,8 @@ use num_traits::{One, Zero};
 
 use super::structs::WideFibComponent;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Air, Component, ComponentTrace, Mask};
+use crate::core::air::mask::fixed_mask_points;
+use crate::core::air::{Air, Component, ComponentTrace};
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField, VECS_LOG_SIZE};
 use crate::core::backend::{CPUBackend, Col, Column, ColumnOps};
@@ -132,10 +133,7 @@ impl Component<AVX512Backend> for WideFibComponent {
         &self,
         point: CirclePoint<SecureField>,
     ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        let mask = Mask(vec![vec![0_usize]; 256]);
-        mask.iter()
-            .map(|col| col.iter().map(|_| point).collect())
-            .collect()
+        fixed_mask_points(&vec![vec![0_usize]; 256], point)
     }
 
     fn evaluate_constraint_quotients_at_point(
