@@ -5,10 +5,9 @@ use num_traits::{One, Zero};
 use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{ExtensionOf, Field};
 use crate::core::lookups::mle::{Mle, MleOps};
 use crate::core::lookups::sumcheck::MultivariatePolyOracle;
-use crate::core::lookups::utils::UnivariatePoly;
+use crate::core::lookups::utils::{fold_mle_evals, UnivariatePoly};
 
 impl MleOps<BaseField> for CpuBackend {
     fn fix_first_variable(
@@ -64,13 +63,4 @@ impl MultivariatePolyOracle for Mle<CpuBackend, SecureField> {
     fn fix_first_variable(self, challenge: SecureField) -> Self {
         self.fix_first_variable(challenge)
     }
-}
-
-/// Computes `eq(0, assignment) * eval0 + eq(1, assignment) * eval1`.
-fn fold_mle_evals<F>(assignment: SecureField, eval0: F, eval1: F) -> SecureField
-where
-    F: Field,
-    SecureField: ExtensionOf<F>,
-{
-    assignment * (eval1 - eval0) + eval0
 }

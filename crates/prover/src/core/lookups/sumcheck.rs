@@ -1,7 +1,8 @@
-//! The sum-check protocol enables proving claims about the sum of a multivariate polynomial
-//! `g(x_0, ..., x_{n-1})` over the boolean hypercube. [`MultivariatePolyOracle`] provides methods
-//! for evaluating sums and making transformations on `g` in the context of the protocol. It is
-//! intended to be used in conjunction with [`prove_batch()`] to generate proofs.
+//! Sum-check protocol that proves and verifies claims about `sum_x g(x)` for all x in `{0, 1}^n`.
+//!
+//! [`MultivariatePolyOracle`] provides methods for evaluating sums and making transformations on
+//! `g` in the context of the protocol. It is intended to be used in conjunction with
+//! [`prove_batch()`] to generate proofs.
 
 use std::iter::zip;
 
