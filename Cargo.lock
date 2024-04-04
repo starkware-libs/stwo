@@ -755,6 +755,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.52",
+<<<<<<< HEAD
 ]
 
 [[package]]
@@ -765,6 +766,8 @@ checksum = "8b9ef9bad013ada3808854ceac7b46812a6465ba368859a37e2100283d2d719c"
 dependencies = [
  "cfg-if",
  "once_cell",
+=======
+>>>>>>> 6f2ea81 (Add multilinear extension)
 ]
 
 [[package]]
