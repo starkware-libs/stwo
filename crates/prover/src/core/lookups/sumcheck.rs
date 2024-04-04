@@ -1,7 +1,8 @@
-//! The sum-check protocol enables proving claims about the sum of a multivariate polynomial
-//! `g(x_0, ..., x_{n-1})` over the boolean hypercube. [`MultivariatePolyOracle`] provides methods
-//! for evaluating sums and making transformations on `g` in the context of the protocol. It is
-//! intended to be used in conjunction with [`prove_batch()`] to generate proofs.
+//! Sum-check protocol that proves and verifies claims about `sum_x g(x)` for all x in `{0, 1}^n`.
+//!
+//! [`MultivariatePolyOracle`] provides methods for evaluating sums and making transformations on
+//! `g` in the context of the protocol. It is intended to be used in conjunction with
+//! [`prove_batch()`] to generate proofs.
 
 use std::iter::zip;
 
@@ -45,10 +46,10 @@ pub trait MultivariatePolyOracle: Sized {
 /// equal the claimed sum of `g_i(x_0, ..., x_{j-1})` over all `(x_0, ..., x_{j-1})` in `{0, 1}^j`.
 ///
 /// The degree of each `g_i` should not exceed [`MAX_DEGREE`] in any variable.  The sum-check proof
-/// of `h`, list of challenges (variable assignment) and the fixed oracles (i.e. the `g_i` with all
-/// variables fixed to the their corresponding challenges) are returned.
+/// of `h`, list of challenges (variable assignment) and the constant oracles (i.e. the `g_i` with
+/// all variables fixed to the their corresponding challenges) are returned.
 ///
-/// Output is of the form: `(proof, variable_assignment, fixed_oracles, claimed_evals)`
+/// Output is of the form: `(proof, variable_assignment, constant_poly_oracles, claimed_evals)`
 ///
 /// # Panics
 ///
@@ -57,6 +58,7 @@ pub trait MultivariatePolyOracle: Sized {
 /// - There aren't the same number of multivariate polynomials and claims.
 /// - The degree of any multivariate polynomial exceeds [`MAX_DEGREE`] in any variable.
 /// - The round polynomials are inconsistent with their corresponding claimed sum on `0` and `1`.
+// TODO: Consider returning constant oracles as separate type.
 pub fn prove_batch<O: MultivariatePolyOracle>(
     mut claims: Vec<SecureField>,
     mut multivariate_polys: Vec<O>,
