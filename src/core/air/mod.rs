@@ -72,8 +72,6 @@ pub trait Component<B: Backend> {
         evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
     );
 
-    fn mask(&self) -> Mask;
-
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,

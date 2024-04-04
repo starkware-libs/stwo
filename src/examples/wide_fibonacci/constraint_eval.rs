@@ -26,16 +26,12 @@ impl Component<CPUBackend> for WideFibComponent {
         vec![self.log_size; 256]
     }
 
-    fn mask(&self) -> Mask {
-        Mask(vec![vec![0_usize]; 256])
-    }
-
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
     ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        self.mask()
-            .iter()
+        let mask = Mask(vec![vec![0_usize]; 256]);
+        mask.iter()
             .map(|col| col.iter().map(|_| point).collect())
             .collect()
     }
