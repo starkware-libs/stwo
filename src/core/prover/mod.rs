@@ -188,7 +188,11 @@ fn sampled_values_to_mask<B: Backend>(
     let trace_oods_values = ComponentVec(
         air.components()
             .iter()
-            .map(|c| flat_trace_values.take(c.mask().len()).collect_vec())
+            .map(|c| {
+                flat_trace_values
+                    .take(c.mask_points(CirclePoint::zero()).len())
+                    .collect_vec()
+            })
             .collect(),
     );
 
@@ -233,7 +237,7 @@ mod tests {
     use num_traits::Zero;
 
     use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-    use crate::core::air::{Air, Component, ComponentTrace, Mask};
+    use crate::core::air::{Air, Component, ComponentTrace};
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::backend::CPUBackend;
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
@@ -278,10 +282,6 @@ mod tests {
             _evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
         ) {
             // Does nothing.
-        }
-
-        fn mask(&self) -> Mask {
-            Mask(vec![vec![0]])
         }
 
         fn mask_points(

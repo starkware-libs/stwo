@@ -116,16 +116,12 @@ impl Component<CPUBackend> for FibonacciComponent {
         }
     }
 
-    fn mask(&self) -> Mask {
-        Mask(vec![vec![0, 1, 2]])
-    }
-
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
     ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        self.mask()
-            .to_points(&[CanonicCoset::new(self.log_size)], point)
+        let fib_mask = Mask(vec![vec![0, 1, 2]]);
+        fib_mask.to_points(&[CanonicCoset::new(self.log_size)], point)
     }
 
     fn evaluate_constraint_quotients_at_point(
