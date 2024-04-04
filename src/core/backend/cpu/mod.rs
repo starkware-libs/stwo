@@ -1,12 +1,14 @@
 mod blake2s;
 mod circle;
 mod fri;
+mod lookups;
 pub mod quotients;
 
 use std::fmt::Debug;
 
 use super::{Backend, Column, ColumnOps, FieldOps};
 use crate::core::fields::Field;
+use crate::core::lookups::mle::Mle;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::utils::bit_reverse;
 
@@ -48,6 +50,7 @@ impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
 
 pub type CPUCirclePoly = CirclePoly<CPUBackend>;
 pub type CPUCircleEvaluation<F, EvalOrder> = CircleEvaluation<CPUBackend, F, EvalOrder>;
+pub type CPUMle<F> = Mle<CPUBackend, F>;
 
 #[cfg(test)]
 mod tests {
