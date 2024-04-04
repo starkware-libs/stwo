@@ -1,8 +1,6 @@
 use std::iter::zip;
 use std::ops::Deref;
 
-use itertools::Itertools;
-
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
 use super::circle::CirclePoint;
@@ -76,6 +74,11 @@ pub trait Component<B: Backend> {
 
     fn mask(&self) -> Mask;
 
+    fn mask_points(
+        &self,
+        point: CirclePoint<SecureField>,
+    ) -> ColumnVec<Vec<CirclePoint<SecureField>>>;
+
     /// Calculates the mask points and evaluates them at each column.
     /// The mask values are used to evaluate the composition polynomial at a certain point.
     /// Returns two vectors with an entry for each column. Each entry holds the points/values
@@ -88,12 +91,7 @@ pub trait Component<B: Backend> {
         ColumnVec<Vec<CirclePoint<SecureField>>>,
         ColumnVec<Vec<SecureField>>,
     ) {
-        let domains = trace
-            .columns
-            .iter()
-            .map(|col| CanonicCoset::new(col.log_size()))
-            .collect_vec();
-        let points = self.mask().to_points(&domains, point);
+        let points = self.mask_points(point);
         let values = zip(&points, &trace.columns)
             .map(|(col_points, col)| {
                 col_points
