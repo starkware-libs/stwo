@@ -281,6 +281,13 @@ mod tests {
             Mask(vec![vec![0]])
         }
 
+        fn mask_points(
+            &self,
+            point: CirclePoint<SecureField>,
+        ) -> crate::core::ColumnVec<Vec<CirclePoint<SecureField>>> {
+            vec![vec![point]]
+        }
+
         fn evaluate_constraint_quotients_at_point(
             &self,
             _point: CirclePoint<SecureField>,

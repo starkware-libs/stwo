@@ -66,16 +66,12 @@ pub trait AirExt: Air<CPUBackend> {
         &self,
         point: CirclePoint<SecureField>,
     ) -> ComponentVec<Vec<CirclePoint<SecureField>>> {
-        let mut points = ComponentVec(Vec::new());
-        self.components().iter().for_each(|component| {
-            let domains = component
-                .trace_log_degree_bounds()
-                .iter()
-                .map(|&log_size| CanonicCoset::new(log_size))
-                .collect_vec();
-            points.push(component.mask().to_points(&domains, point));
-        });
-        points
+        let mut component_points = ComponentVec(Vec::new());
+        for component in self.components() {
+            let points = component.mask_points(point);
+            component_points.push(points);
+        }
+        component_points
     }
 
     fn eval_composition_polynomial_at_point(
