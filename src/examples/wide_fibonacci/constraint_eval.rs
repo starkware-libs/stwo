@@ -30,6 +30,16 @@ impl Component<CPUBackend> for WideFibComponent {
         Mask(vec![vec![0_usize]; 256])
     }
 
+    fn mask_points(
+        &self,
+        point: CirclePoint<SecureField>,
+    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
+        self.mask()
+            .iter()
+            .map(|col| col.iter().map(|_| point).collect())
+            .collect()
+    }
+
     // TODO(ShaharS), precompute random coeff powers.
     // TODO(ShaharS), use intermidiate value to save the computation of the squares.
     fn evaluate_constraint_quotients_on_domain(
