@@ -3,10 +3,10 @@ use num_traits::{One, Zero};
 
 use super::structs::WideFibComponent;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Air, Component, ComponentTrace, Mask};
+use crate::core::air::{Component, ComponentTrace, Mask};
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField, VECS_LOG_SIZE};
-use crate::core::backend::{CPUBackend, Col, Column, ColumnOps};
+use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
@@ -17,20 +17,6 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 
 const N_COLS: usize = 1 << 8;
-
-pub struct WideFibAir {
-    component: WideFibComponent,
-}
-impl Air<AVX512Backend> for WideFibAir {
-    fn components(&self) -> Vec<&dyn Component<AVX512Backend>> {
-        vec![&self.component]
-    }
-}
-impl Air<CPUBackend> for WideFibAir {
-    fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
-        vec![&self.component]
-    }
-}
 
 pub fn gen_trace(
     log_size: usize,
