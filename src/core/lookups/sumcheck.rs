@@ -96,7 +96,6 @@ pub fn prove_batch<O: MultivariatePolyOracle>(
             .collect_vec();
 
         let round_poly = linear_combination(&this_round_polys, lambda);
-
         channel.mix_felts(&round_poly);
 
         let challenge = channel.draw_felt();
