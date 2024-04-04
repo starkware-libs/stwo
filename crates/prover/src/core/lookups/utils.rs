@@ -168,13 +168,28 @@ pub fn horner_eval<F: Field>(coeffs: &[F], x: F) -> F {
         .rfold(F::zero(), |acc, &coeff| acc * x + coeff)
 }
 
+/// Evaluates the lagrange kernel of the boolean hypercube.
+///
+/// The lagrange kernel of the boolean hypercube is a multilinear extension of the function that
+/// when given `x, y` in `{0, 1}^n` evaluates to 1 if `x = y`, and evaluates to 0 otherwise.
+pub fn eq<F: Field>(x: &[F], y: &[F]) -> F {
+    assert_eq!(x.len(), y.len());
+    zip(x, y)
+        .map(|(&xi, &wi)| xi * wi + (F::one() - xi) * (F::one() - wi))
+        .product::<F>()
+}
+
 #[cfg(test)]
 mod tests {
     use std::iter::zip;
 
+    use num_traits::{One, Zero};
+
     use super::{horner_eval, UnivariatePoly};
     use crate::core::fields::m31::BaseField;
+    use crate::core::fields::qm31::SecureField;
     use crate::core::fields::FieldExpOps;
+    use crate::core::lookups::utils::eq;
 
     #[test]
     fn lagrange_interpolation_works() {
@@ -196,5 +211,37 @@ mod tests {
         let eval = horner_eval(&coeffs, x);
 
         assert_eq!(eval, coeffs[0] + coeffs[1] * x + coeffs[2] * x.square());
+    }
+
+    #[test]
+    fn eq_identical_hypercube_points_returns_one() {
+        let zero = SecureField::zero();
+        let one = SecureField::one();
+        let a = &[one, zero, one];
+
+        let eq_eval = eq(a, a);
+
+        assert_eq!(eq_eval, one);
+    }
+
+    #[test]
+    fn eq_different_hypercube_points_returns_zero() {
+        let zero = SecureField::zero();
+        let one = SecureField::one();
+        let a = &[one, zero, one];
+        let b = &[one, zero, zero];
+
+        let eq_eval = eq(a, b);
+
+        assert_eq!(eq_eval, zero);
+    }
+
+    #[test]
+    #[should_panic]
+    fn eq_different_size_points() {
+        let zero = SecureField::zero();
+        let one = SecureField::one();
+
+        eq(&[zero, one], &[zero]);
     }
 }
