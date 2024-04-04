@@ -1,10 +1,14 @@
 use std::iter::zip;
 
+use num_traits::{One, Zero};
+
 use crate::core::backend::CPUBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;
 use crate::core::lookups::mle::{Mle, MleOps};
+use crate::core::lookups::sumcheck::SumcheckOracle;
+use crate::core::lookups::utils::UnivariatePolynomial;
 
 impl MleOps<BaseField> for CPUBackend {
     fn eval_at_point(mle: &Mle<Self, BaseField>, point: &[BaseField]) -> BaseField {
@@ -43,6 +47,26 @@ impl MleOps<SecureField> for CPUBackend {
         evals.truncate(midpoint);
 
         Mle::new(evals)
+    }
+}
+
+impl SumcheckOracle for Mle<CPUBackend, SecureField> {
+    fn num_variables(&self) -> usize {
+        self.num_variables()
+    }
+
+    fn univariate_sum(&self, claim: SecureField) -> UnivariatePolynomial<SecureField> {
+        let x0 = SecureField::zero();
+        let x1 = SecureField::one();
+
+        let y0 = self[0..self.len() / 2].iter().sum();
+        let y1 = claim - y0;
+
+        UnivariatePolynomial::interpolate_lagrange(&[x0, x1], &[y0, y1])
+    }
+
+    fn fix_first(self, challenge: SecureField) -> Self {
+        self.fix_first(challenge)
     }
 }
 
