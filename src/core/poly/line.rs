@@ -6,6 +6,7 @@ use std::ops::{Deref, DerefMut};
 use itertools::Itertools;
 use num_traits::Zero;
 
+use super::circle::CircleDomain;
 use super::utils::fold;
 use crate::core::backend::{Backend, CPUBackend, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
@@ -90,6 +91,14 @@ impl IntoIterator for LineDomain {
     /// Returns an iterator over elements in the domain.
     fn into_iter(self) -> LineDomainIterator {
         self.iter()
+    }
+}
+
+impl From<CircleDomain> for LineDomain {
+    fn from(domain: CircleDomain) -> Self {
+        Self {
+            coset: domain.half_coset,
+        }
     }
 }
 
