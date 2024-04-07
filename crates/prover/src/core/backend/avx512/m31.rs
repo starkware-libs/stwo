@@ -14,7 +14,7 @@ use num_traits::{One, Zero};
 use super::tranpose_utils::{
     EVENS_CONCAT_EVENS, HHALF_INTERLEAVE_HHALF, LHALF_INTERLEAVE_LHALF, ODDS_CONCAT_ODDS,
 };
-use crate::core::fields::m31::{M31, P};
+use crate::core::fields::m31::{pow2147483645, M31, P};
 use crate::core::fields::FieldExpOps;
 
 pub const K_BLOCK_SIZE: usize = 16;
@@ -254,10 +254,8 @@ impl One for PackedBaseField {
 
 impl FieldExpOps for PackedBaseField {
     fn inverse(&self) -> Self {
-        // TODO(andrew): Use a better multiplication tree. Also for other constant powers in the
-        // code.
         assert!(!self.is_zero(), "0 has no inverse");
-        self.pow((P - 2) as u128)
+        pow2147483645(*self)
     }
 }
 
