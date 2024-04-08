@@ -231,13 +231,6 @@ macro_rules! impl_field {
             }
         }
 
-        impl FieldExpOps for $field_name {
-            fn inverse(&self) -> Self {
-                assert!(!self.is_zero(), "0 has no inverse");
-                self.pow(($field_size - 2) as u128)
-            }
-        }
-
         impl Product for $field_name {
             fn product<I>(mut iter: I) -> Self
             where

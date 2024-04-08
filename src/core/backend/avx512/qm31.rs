@@ -6,7 +6,7 @@ use num_traits::{One, Zero};
 use super::cm31::PackedCM31;
 use super::m31::K_BLOCK_SIZE;
 use super::PackedBaseField;
-use crate::core::fields::qm31::{P4, QM31};
+use crate::core::fields::qm31::QM31;
 use crate::core::fields::FieldExpOps;
 
 /// AVX implementation for an extension of CM31.
@@ -125,10 +125,13 @@ impl MulAssign for PackedSecureField {
 }
 impl FieldExpOps for PackedSecureField {
     fn inverse(&self) -> Self {
-        // TODO(andrew): Use a better multiplication tree. Also for other constant powers in the
-        // code.
         assert!(!self.is_zero(), "0 has no inverse");
-        self.pow(P4 - 2)
+        // (a + bu)^-1 = (a - bu) / (a^2 - (2+i)b^2).
+        let b2 = self.b().square();
+        let ib2 = PackedCM31([-b2.b(), b2.a()]);
+        let denom = self.a().square() - (b2 + b2 + ib2);
+        let denom_inverse = denom.inverse();
+        Self([self.a() * denom_inverse, -self.b() * denom_inverse])
     }
 }
 
