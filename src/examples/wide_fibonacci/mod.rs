@@ -19,10 +19,10 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::QM31;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::m31;
+    use crate::{m31, qm31};
 
     #[test]
-    fn test_wide_fib_trace() {
+    fn test_trace_row_constraints() {
         let wide_fib = WideFibComponent {
             log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: 1,
@@ -41,7 +41,24 @@ mod tests {
     }
 
     #[test]
-    fn test_wide_fib_constraints() {
+    fn test_lookup_column_constraints() {
+        let wide_fib = WideFibComponent {
+            log_fibonacci_size: 4 + LOG_N_COLUMNS as u32,
+            log_n_instances: 0,
+        };
+        let input = Input {
+            a: m31!(1),
+            b: m31!(1),
+        };
+
+        let trace = wide_fib.fill_initial_trace(vec![input]);
+        let _lookup_trace = wide_fib.lookup_columns(trace, qm31!(1, 2, 3, 4), qm31!(2, 3, 4, 5));
+
+        // TODO(AlonH): assert constraints on lookup trace.
+    }
+
+    #[test]
+    fn test_constraints_polynomial_is_low_degree() {
         let wide_fib = WideFibComponent {
             log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: 7,
