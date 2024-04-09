@@ -1,12 +1,12 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
-use super::structs::WideFibComponent;
+use super::structs::{WideFibAir, WideFibComponent};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Air, Component, ComponentTrace, Mask};
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField, VECS_LOG_SIZE};
-use crate::core::backend::{CPUBackend, Col, Column, ColumnOps};
+use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
@@ -17,16 +17,8 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 use crate::examples::wide_fibonacci::structs::N_COLUMNS;
 
-pub struct WideFibAir {
-    component: WideFibComponent,
-}
 impl Air<AVX512Backend> for WideFibAir {
     fn components(&self) -> Vec<&dyn Component<AVX512Backend>> {
-        vec![&self.component]
-    }
-}
-impl Air<CPUBackend> for WideFibAir {
-    fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
         vec![&self.component]
     }
 }
@@ -93,9 +85,11 @@ impl Component<AVX512Backend> for WideFibComponent {
         let mut denom_inverses = BaseFieldVec::zeros(denoms.len());
         <AVX512Backend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inverses);
 
-        let constraint_log_degree_bound = self.log_column_size() + 1;
+        let constraint_log_degree_bound =
+            Component::<AVX512Backend>::max_constraint_log_degree_bound(self);
+        let n_constraints = Component::<AVX512Backend>::n_constraints(self);
         let [accum] =
-            evaluation_accumulator.columns([(constraint_log_degree_bound, N_COLUMNS - 1)]);
+            evaluation_accumulator.columns([(constraint_log_degree_bound, n_constraints)]);
 
         for vec_row in 0..(1 << (eval_domain.log_size() - VECS_LOG_SIZE as u32)) {
             // Numerator.
@@ -174,9 +168,9 @@ mod tests {
             log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: LOG_N_ROWS,
         };
-        let air = WideFibAir { component };
-        let trace = gen_trace(LOG_N_ROWS as usize);
+        let trace = gen_trace(component.log_column_size() as usize);
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+        let air = WideFibAir { component };
         let proof = prove(&air, channel, trace).unwrap();
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));

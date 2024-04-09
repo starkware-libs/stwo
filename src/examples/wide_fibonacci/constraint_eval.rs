@@ -1,8 +1,8 @@
 use num_traits::{One, Zero};
 
-use super::structs::WideFibComponent;
+use super::structs::{WideFibAir, WideFibComponent};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Component, ComponentTrace, Mask};
+use crate::core::air::{Air, Component, ComponentTrace, Mask};
 use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
@@ -13,6 +13,12 @@ use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;
 use crate::examples::wide_fibonacci::structs::N_COLUMNS;
+
+impl Air<CPUBackend> for WideFibAir {
+    fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
+        vec![&self.component]
+    }
+}
 
 impl Component<CPUBackend> for WideFibComponent {
     fn n_constraints(&self) -> usize {
