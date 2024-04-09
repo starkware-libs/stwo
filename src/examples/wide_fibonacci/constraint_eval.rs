@@ -1,8 +1,8 @@
 use num_traits::{One, Zero};
 
-use super::structs::WideFibComponent;
+use super::structs::{WideFibAir, WideFibComponent};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Component, ComponentTrace, Mask};
+use crate::core::air::{Air, Component, ComponentTrace, Mask};
 use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
@@ -13,6 +13,12 @@ use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;
 use crate::examples::wide_fibonacci::structs::N_COLUMNS;
+
+impl Air<CPUBackend> for WideFibAir {
+    fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
+        vec![&self.component]
+    }
+}
 
 impl Component<CPUBackend> for WideFibComponent {
     fn n_constraints(&self) -> usize {
@@ -54,7 +60,7 @@ impl Component<CPUBackend> for WideFibComponent {
             trace_evals.push(poly.evaluate(trace_eval_domain).bit_reverse());
         }
         let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
-        let eval_domain = CanonicCoset::new(self.log_column_size() + 1).circle_domain();
+        let eval_domain = CanonicCoset::new(constraint_log_degree).circle_domain();
         let mut denoms = vec![];
         for point in eval_domain.iter() {
             denoms.push(coset_vanishing(zero_domain, point));
@@ -66,6 +72,7 @@ impl Component<CPUBackend> for WideFibComponent {
         // TODO (ShaharS) Change to get the correct power of random coeff inside the loop.
         let random_coeff = accum.random_coeff_powers[1];
         for (i, point_index) in eval_domain.iter_indices().enumerate() {
+            numerators[i] = trace_evals[0].get_at(point_index) - SecureField::one();
             numerators[i] = numerators[i] * random_coeff
                 + (trace_evals[2].get_at(point_index)
                     - ((trace_evals[0].get_at(point_index) * trace_evals[0].get_at(point_index))
@@ -429,8 +436,11 @@ impl Component<CPUBackend> for WideFibComponent {
                         + (trace_evals[62].get_at(point_index)
                             * trace_evals[62].get_at(point_index))));
         }
-        for (i, (num, denom)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
-            accum.accumulate(bit_reverse_index(i, constraint_log_degree), *num * *denom);
+        for (i, (num, denom_inverse)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
+            accum.accumulate(
+                bit_reverse_index(i, constraint_log_degree),
+                *num * *denom_inverse,
+            );
         }
     }
 
@@ -444,7 +454,7 @@ impl Component<CPUBackend> for WideFibComponent {
         let denominator = coset_vanishing(zero_domain, point);
         evaluation_accumulator.accumulate((mask[0][0] - SecureField::one()) / denominator);
         for i in 0..(N_COLUMNS - 2) {
-            let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
+            let numerator = mask[i + 2][0] - (mask[i][0].square() + mask[i + 1][0].square());
             evaluation_accumulator.accumulate(numerator / denominator);
         }
     }
