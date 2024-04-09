@@ -1,6 +1,7 @@
 use num_traits::Zero;
 
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
 
 pub fn assert_constraints_on_row(row: &[BaseField]) {
     assert_eq!(
@@ -250,5 +251,50 @@ pub fn assert_constraints_on_row(row: &[BaseField]) {
     assert_eq!(
         (row[63] - ((row[61] * row[61]) + (row[62] * row[62]))),
         BaseField::zero()
+    );
+}
+
+pub fn assert_constraints_on_lookup_column(
+    columns: &[Vec<SecureField>],
+    input_trace: &[Vec<BaseField>],
+    alpha: SecureField,
+    z: SecureField,
+) {
+    assert_eq!(
+        (columns[0][0] - (input_trace[0][0] + alpha * input_trace[1][0] - z)),
+        SecureField::zero()
+    );
+    assert_eq!(
+        (columns[0][1] - ((input_trace[0][1] + alpha * input_trace[1][1] - z) * columns[0][0])),
+        SecureField::zero()
+    );
+    assert_eq!(
+        (columns[0][2] - ((input_trace[0][2] + alpha * input_trace[1][2] - z) * columns[0][1])),
+        SecureField::zero()
+    );
+    assert_eq!(
+        (columns[0][3] - ((input_trace[0][3] + alpha * input_trace[1][3] - z) * columns[0][2])),
+        SecureField::zero()
+    );
+    assert_eq!(
+        (columns[1][0] - (input_trace[62][0] + alpha * input_trace[63][0] - z)),
+        SecureField::zero()
+    );
+    assert_eq!(
+        (columns[1][1] - ((input_trace[62][1] + alpha * input_trace[63][1] - z) * columns[1][0])),
+        SecureField::zero()
+    );
+    assert_eq!(
+        (columns[1][2] - ((input_trace[62][2] + alpha * input_trace[63][2] - z) * columns[1][1])),
+        SecureField::zero()
+    );
+    assert_eq!(
+        (columns[1][3] - ((input_trace[62][3] + alpha * input_trace[63][3] - z) * columns[1][2])),
+        SecureField::zero()
+    );
+    assert_eq!(
+        (input_trace[0][0] + alpha * input_trace[1][0] - z) * columns[1][3]
+            - (input_trace[62][3] + alpha * input_trace[63][3] - z) * columns[0][3],
+        SecureField::zero()
     );
 }

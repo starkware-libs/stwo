@@ -1,5 +1,6 @@
 use super::structs::Input;
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
 
 // TODO(ShaharS), try to make it into a for loop and use intermiddiate variables to save
 // computation.
@@ -141,4 +142,25 @@ pub fn write_trace_row(
     dst[63][row_offset] = col63;
 
     (dst[62][row_offset], dst[63][row_offset])
+}
+
+pub fn write_lookup_column(
+    dst: &mut [SecureField],
+    input_trace: &[Vec<BaseField>],
+    column_offset: usize,
+    alpha: SecureField,
+    z: SecureField,
+) {
+    let row_0_a = input_trace[column_offset][0];
+    let row_0_b = input_trace[column_offset + 1][0];
+    dst[0] = row_0_a + alpha * row_0_b - z;
+    let row_1_a = input_trace[column_offset][1];
+    let row_1_b = input_trace[column_offset + 1][1];
+    dst[1] = (row_1_a + alpha * row_1_b - z) * dst[0];
+    let row_2_a = input_trace[column_offset][2];
+    let row_2_b = input_trace[column_offset + 1][2];
+    dst[2] = (row_2_a + alpha * row_2_b - z) * dst[1];
+    let row_3_a = input_trace[column_offset][3];
+    let row_3_b = input_trace[column_offset + 1][3];
+    dst[3] = (row_3_a + alpha * row_3_b - z) * dst[2];
 }
