@@ -7,9 +7,11 @@ pub mod trace_gen;
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use num_traits::Zero;
+    use num_traits::{One, Zero};
 
-    use super::component::{gen_trace, Input, WideFibAir, WideFibComponent, LOG_N_COLUMNS};
+    use super::component::{
+        gen_trace, lookup_columns, Input, WideFibAir, WideFibComponent, LOG_N_COLUMNS, LOG_N_ROWS,
+    };
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::hasher::Hasher;
     use crate::core::air::accumulation::DomainEvaluationAccumulator;
@@ -34,8 +36,44 @@ mod tests {
         }
     }
 
+    pub fn assert_constraints_on_lookup_column(
+        columns: &[Vec<BaseField>],
+        input_trace: &[Vec<BaseField>],
+        alpha: BaseField,
+        z: BaseField,
+    ) {
+        let n_columns = input_trace.len();
+        let column_length = columns[0].len();
+        let mut column_0_prev_value = BaseField::one();
+        let mut column_1_prev_value = BaseField::one();
+        for i in 0..column_length {
+            assert_eq!(
+                (columns[0][i]
+                    - (input_trace[0][i] + alpha * input_trace[1][i] - z) * column_0_prev_value),
+                BaseField::zero()
+            );
+            assert_eq!(
+                (columns[1][i]
+                    - (input_trace[n_columns - 2][i] + alpha * input_trace[n_columns - 1][i] - z)
+                        * column_1_prev_value),
+                BaseField::zero()
+            );
+            column_0_prev_value = columns[0][i];
+            column_1_prev_value = columns[1][i];
+        }
+
+        assert_eq!(
+            (input_trace[0][0] + alpha * input_trace[1][0] - z) * columns[1][column_length - 1]
+                - (input_trace[n_columns - 2][column_length - 1]
+                    + alpha * input_trace[n_columns - 1][column_length - 1]
+                    - z)
+                    * columns[0][column_length - 1],
+            BaseField::zero()
+        );
+    }
+
     #[test]
-    fn test_wide_fib_trace() {
+    fn test_trace_row_constraints() {
         let wide_fib = WideFibComponent {
             log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: 1,
@@ -51,6 +89,25 @@ mod tests {
 
         assert_constraints_on_row(&trace0);
         assert_constraints_on_row(&trace1);
+    }
+
+    #[test]
+    fn test_lookup_column_constraints() {
+        let wide_fib = WideFibComponent {
+            log_fibonacci_size: (LOG_N_ROWS + LOG_N_COLUMNS) as u32,
+            log_n_instances: 0,
+        };
+        let input = Input {
+            a: m31!(1),
+            b: m31!(1),
+        };
+
+        let alpha = m31!(1);
+        let z = m31!(2);
+        let trace = gen_trace(&wide_fib, vec![input]);
+        let lookup_trace = lookup_columns(&trace, alpha, z);
+
+        assert_constraints_on_lookup_column(&lookup_trace, &trace, alpha, z)
     }
 
     #[test]
