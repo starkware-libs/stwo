@@ -1,4 +1,4 @@
-use num_traits::Zero;
+use num_traits::{One, Zero};
 
 use super::component::{WideFibAir, WideFibComponent};
 use crate::core::air::accumulation::DomainEvaluationAccumulator;
@@ -41,8 +41,8 @@ impl ComponentProver<CPUBackend> for WideFibComponent {
         #[allow(clippy::needless_range_loop)]
         for i in 0..trace_eval_domain.size() {
             // Boundary constraint.
-            numerators[i] += accum.random_coeff_powers[254]
-                * (trace_evals[0].values.at(i) - BaseField::from_u32_unchecked(1));
+            numerators[i] += accum.random_coeff_powers[self.n_columns() - 2]
+                * (trace_evals[0].values.at(i) - BaseField::one());
 
             // Step constraints.
             for j in 0..self.n_columns() - 2 {

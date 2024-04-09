@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 
 use super::trace_gen::write_trace_row;
 use crate::core::air::accumulation::PointEvaluationAccumulator;
@@ -80,7 +80,7 @@ impl Component for WideFibComponent {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
-        let numerator = mask[0][0] - BaseField::from_u32_unchecked(1);
+        let numerator = mask[0][0] - BaseField::one();
         evaluation_accumulator.accumulate(numerator * denom_inverse);
 
         for i in 0..self.n_columns() - 2 {
@@ -96,7 +96,15 @@ pub fn gen_trace(
     private_input: Vec<Input>,
 ) -> ColumnVec<Vec<BaseField>> {
     let n_instances = 1 << wide_fib.log_n_instances;
-    assert_eq!(private_input.len(), n_instances);
+    assert_eq!(
+        private_input.len(),
+        n_instances,
+        "The number of inputs must match the number of instances"
+    );
+    assert!(
+        wide_fib.log_fibonacci_size >= LOG_N_COLUMNS as u32,
+        "The fibonacci size must be at least equal to the length of a row"
+    );
     let n_rows_per_instance = 1 << (wide_fib.log_fibonacci_size - wide_fib.log_n_columns() as u32);
     let n_rows = n_instances * n_rows_per_instance;
     let zero_vec = vec![BaseField::zero(); n_rows];

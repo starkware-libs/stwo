@@ -4,7 +4,7 @@ use tracing::{span, Level};
 
 use super::component::{WideFibAir, WideFibComponent};
 use crate::core::air::accumulation::DomainEvaluationAccumulator;
-use crate::core::air::{AirProver, ComponentProver, ComponentTrace};
+use crate::core::air::{AirProver, Component, ComponentProver, ComponentTrace};
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField, VECS_LOG_SIZE};
 use crate::core::backend::{Col, Column, ColumnOps};
@@ -72,9 +72,10 @@ impl ComponentProver<AVX512Backend> for WideFibComponent {
 
         let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
 
-        let constraint_log_degree_bound = self.log_column_size() + 1;
+        let constraint_log_degree_bound = self.max_constraint_log_degree_bound();
+        let n_constraints = self.n_constraints();
         let [accum] =
-            evaluation_accumulator.columns([(constraint_log_degree_bound, self.n_columns() - 1)]);
+            evaluation_accumulator.columns([(constraint_log_degree_bound, n_constraints)]);
 
         for vec_row in 0..(1 << (eval_domain.log_size() - VECS_LOG_SIZE as u32)) {
             // Numerator.
@@ -115,6 +116,7 @@ impl ComponentProver<AVX512Backend> for WideFibComponent {
 mod tests {
     use tracing::{span, Level};
 
+    use crate::core::backend::avx512::AVX512Backend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
@@ -137,12 +139,12 @@ mod tests {
             log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: LOG_N_ROWS,
         };
-        let air = WideFibAir { component };
         let span = span!(Level::INFO, "Trace generation").entered();
-        let trace = gen_trace(LOG_N_ROWS as usize);
+        let trace = gen_trace(component.log_column_size() as usize);
         span.exit();
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let proof = prove(&air, channel, trace).unwrap();
+        let air = WideFibAir { component };
+        let proof = prove::<AVX512Backend>(&air, channel, trace).unwrap();
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         verify(proof, &air, channel).unwrap();
