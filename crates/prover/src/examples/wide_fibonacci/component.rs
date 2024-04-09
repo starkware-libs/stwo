@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use num_traits::Zero;
 
-use super::trace_gen::write_trace_row;
+use super::trace_gen::{write_lookup_column, write_trace_row};
 use crate::core::air::{Air, Component};
 use crate::core::backend::CPUBackend;
 use crate::core::fields::m31::BaseField;
@@ -9,6 +9,7 @@ use crate::core::ColumnVec;
 
 pub const LOG_N_COLUMNS: usize = 8;
 pub const N_COLUMNS: usize = 1 << LOG_N_COLUMNS;
+pub const LOG_N_ROWS: usize = 4;
 
 /// Component that computes 2^`self.log_n_instances` instances of fibonacci sequences of size
 /// 2^`self.log_fibonacci_size`. The numbers are computes over [N_COLUMNS] trace columns. The
@@ -65,6 +66,20 @@ pub fn fill_initial_trace(
             })
             .collect_vec()
     });
+    dst
+}
+
+pub fn lookup_columns(
+    trace: &[Vec<BaseField>],
+    // TODO(AlonH): Change alpha and z to SecureField.
+    alpha: BaseField,
+    z: BaseField,
+) -> ColumnVec<Vec<BaseField>> {
+    let n_rows = trace[0].len();
+    let zero_vec = vec![BaseField::zero(); n_rows];
+    let mut dst = vec![zero_vec; 2];
+    write_lookup_column(&mut dst[0], trace, 0, alpha, z);
+    write_lookup_column(&mut dst[1], trace, N_COLUMNS - 2, alpha, z);
     dst
 }
 
