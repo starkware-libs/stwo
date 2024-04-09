@@ -1,3 +1,5 @@
+use num_traits::One;
+
 use super::component::Input;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::FieldExpOps;
@@ -17,4 +19,25 @@ pub fn write_trace_row(
     }
 
     (dst[n_columns - 2][row_index], dst[n_columns - 1][row_index])
+}
+
+pub fn write_lookup_column(
+    input_trace: &[Vec<BaseField>],
+    // TODO(AlonH): Change alpha and z to SecureField.
+    alpha: BaseField,
+    z: BaseField,
+) -> Vec<BaseField> {
+    let n_rows = input_trace[0].len();
+    let n_columns = input_trace.len();
+    let mut prev_value = BaseField::one();
+    (0..n_rows)
+        .map(|i| {
+            let numerator = input_trace[0][i] + alpha * input_trace[1][i] - z;
+            let denominator =
+                input_trace[n_columns - 2][i] + alpha * input_trace[n_columns - 1][i] - z;
+            let cell = (numerator / denominator) * prev_value;
+            prev_value = cell;
+            cell
+        })
+        .collect()
 }
