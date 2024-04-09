@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 
 use super::component::{Input, WideFibAir, WideFibComponent};
 use super::trace_gen::write_trace_row;
@@ -13,6 +13,7 @@ use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse;
 use crate::core::ColumnVec;
+use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
 
 // TODO(AlonH): Rename file to `cpu.rs`.
 
@@ -46,8 +47,8 @@ impl ComponentProver<CPUBackend> for WideFibComponent {
         #[allow(clippy::needless_range_loop)]
         for i in 0..trace_eval_domain.size() {
             // Boundary constraint.
-            numerators[i] += accum.random_coeff_powers[254]
-                * (trace_evals[0].values.at(i) - BaseField::from_u32_unchecked(1));
+            numerators[i] += accum.random_coeff_powers[self.n_columns() - 2]
+                * (trace_evals[0].values.at(i) - BaseField::one());
 
             // Step constraints.
             for j in 0..self.n_columns() - 2 {
@@ -69,7 +70,15 @@ pub fn gen_trace(
     private_input: Vec<Input>,
 ) -> ColumnVec<Vec<BaseField>> {
     let n_instances = 1 << wide_fib.log_n_instances;
-    assert_eq!(private_input.len(), n_instances);
+    assert_eq!(
+        private_input.len(),
+        n_instances,
+        "The number of inputs must match the number of instances"
+    );
+    assert!(
+        wide_fib.log_fibonacci_size >= LOG_N_COLUMNS as u32,
+        "The fibonacci size must be at least equal to the length of a row"
+    );
     let n_rows_per_instance = 1 << (wide_fib.log_fibonacci_size - wide_fib.log_n_columns() as u32);
     let n_rows = n_instances * n_rows_per_instance;
     let zero_vec = vec![BaseField::zero(); n_rows];
