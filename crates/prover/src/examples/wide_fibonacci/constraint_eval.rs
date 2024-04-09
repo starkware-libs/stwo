@@ -1,4 +1,4 @@
-use num_traits::Zero;
+use num_traits::{One, Zero};
 
 use super::component::WideFibComponent;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -60,8 +60,8 @@ impl Component<CPUBackend> for WideFibComponent {
         #[allow(clippy::needless_range_loop)]
         for i in 0..trace_eval_domain.size() {
             // Boundary constraint.
-            numerators[i] += accum.random_coeff_powers[254]
-                * (trace_evals[0].values.at(i) - BaseField::from_u32_unchecked(1));
+            numerators[i] += accum.random_coeff_powers[N_COLUMNS - 2]
+                * (trace_evals[0].values.at(i) - BaseField::one());
 
             // Step constraints.
             for j in 0..N_COLUMNS - 2 {
@@ -85,7 +85,7 @@ impl Component<CPUBackend> for WideFibComponent {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
-        let numerator = mask[0][0] - BaseField::from_u32_unchecked(1);
+        let numerator = mask[0][0] - BaseField::one();
         evaluation_accumulator.accumulate(numerator * denom_inverse);
 
         for i in 0..N_COLUMNS - 2 {
