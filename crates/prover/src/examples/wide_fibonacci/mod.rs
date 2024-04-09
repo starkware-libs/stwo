@@ -7,7 +7,7 @@ pub mod trace_gen;
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use num_traits::Zero;
+    use num_traits::{One, Zero};
 
     use super::component::{gen_trace, Input, WideFibAir, WideFibComponent, LOG_N_COLUMNS};
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
@@ -23,6 +23,7 @@ mod tests {
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{prove, verify};
+    use crate::examples::wide_fibonacci::trace_gen::{combine, write_lookup_column};
     use crate::m31;
 
     pub fn assert_constraints_on_row(row: &[BaseField]) {
@@ -34,8 +35,48 @@ mod tests {
         }
     }
 
+    pub fn assert_constraints_on_lookup_column(
+        column: &[BaseField],
+        input_trace: &[Vec<BaseField>],
+        alpha: BaseField,
+        z: BaseField,
+    ) {
+        let n_columns = input_trace.len();
+        let column_length = column.len();
+        assert_eq!(column_length, input_trace[0].len());
+        let mut prev_value = BaseField::one();
+        for (i, cell) in column.iter().enumerate() {
+            assert_eq!(
+                *cell,
+                ((combine(input_trace[0][i], input_trace[1][i], alpha, z))
+                    / (combine(
+                        input_trace[n_columns - 2][i],
+                        input_trace[n_columns - 1][i],
+                        alpha,
+                        z,
+                    )))
+                    * prev_value
+            );
+            prev_value = *cell;
+        }
+
+        // Assert the last cell in the column is equal to the combination of the first two values
+        // divided by the combination of the last two values in the sequence (all other values
+        // should cancel out).
+        assert_eq!(
+            column[column_length - 1],
+            (combine(input_trace[0][0], input_trace[1][0], alpha, z))
+                / (combine(
+                    input_trace[n_columns - 2][column_length - 1],
+                    input_trace[n_columns - 1][column_length - 1],
+                    alpha,
+                    z,
+                ))
+        );
+    }
+
     #[test]
-    fn test_wide_fib_trace() {
+    fn test_trace_row_constraints() {
         let wide_fib = WideFibComponent {
             log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: 1,
@@ -51,6 +92,25 @@ mod tests {
 
         assert_constraints_on_row(&row_0);
         assert_constraints_on_row(&row_1);
+    }
+
+    #[test]
+    fn test_lookup_column_constraints() {
+        let wide_fib = WideFibComponent {
+            log_fibonacci_size: 4 + LOG_N_COLUMNS as u32,
+            log_n_instances: 0,
+        };
+        let input = Input {
+            a: m31!(1),
+            b: m31!(1),
+        };
+
+        let alpha = m31!(7);
+        let z = m31!(11);
+        let trace = gen_trace(&wide_fib, vec![input]);
+        let lookup_column = write_lookup_column(&trace, alpha, z);
+
+        assert_constraints_on_lookup_column(&lookup_column, &trace, alpha, z)
     }
 
     #[test]
