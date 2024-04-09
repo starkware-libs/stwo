@@ -119,9 +119,9 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     })
 }
 
-pub fn verify(
+pub fn verify<B: Backend>(
     proof: StarkProof,
-    air: &impl Air<CPUBackend>,
+    air: &impl Air<B>,
     channel: &mut Channel,
 ) -> Result<(), VerificationError> {
     // Read trace commitment.

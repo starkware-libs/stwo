@@ -55,6 +55,10 @@ impl WideFibComponent {
     }
 }
 
+pub struct WideFibAir {
+    pub component: WideFibComponent,
+}
+
 // Input for the fibonacci claim.
 #[derive(Debug, Clone, Copy)]
 pub struct Input {
