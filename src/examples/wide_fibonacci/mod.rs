@@ -10,8 +10,8 @@ mod tests {
     use itertools::Itertools;
     use num_traits::Zero;
 
-    use super::structs::{Input, WideFibComponent, LOG_N_COLUMNS};
-    use super::trace_asserts::assert_constraints_on_row;
+    use super::structs::{Input, WideFibComponent, LOG_N_COLUMNS, LOG_N_ROWS};
+    use super::trace_asserts::{assert_constraints_on_lookup_column, assert_constraints_on_row};
     use crate::core::air::accumulation::DomainEvaluationAccumulator;
     use crate::core::air::{Component, ComponentTrace};
     use crate::core::backend::cpu::CPUCircleEvaluation;
@@ -22,7 +22,7 @@ mod tests {
     use crate::m31;
 
     #[test]
-    fn test_wide_fib_trace() {
+    fn test_trace_row_constraints() {
         let wide_fib = WideFibComponent {
             log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: 1,
@@ -41,7 +41,26 @@ mod tests {
     }
 
     #[test]
-    fn test_wide_fib_constraints() {
+    fn test_lookup_column_constraints() {
+        let wide_fib = WideFibComponent {
+            log_fibonacci_size: (LOG_N_ROWS + LOG_N_COLUMNS) as u32,
+            log_n_instances: 0,
+        };
+        let input = Input {
+            a: m31!(1),
+            b: m31!(1),
+        };
+
+        let alpha = m31!(1);
+        let z = m31!(2);
+        let trace = wide_fib.fill_initial_trace(vec![input]);
+        let lookup_trace = wide_fib.lookup_columns(&trace, alpha, z);
+
+        assert_constraints_on_lookup_column(&lookup_trace, &trace, alpha, z)
+    }
+
+    #[test]
+    fn test_constraints_polynomial_is_low_degree() {
         let wide_fib = WideFibComponent {
             log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: 7,

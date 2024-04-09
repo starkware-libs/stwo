@@ -252,3 +252,81 @@ pub fn assert_constraints_on_row(row: &[BaseField]) {
         BaseField::zero()
     );
 }
+
+pub fn assert_constraints_on_lookup_column(
+    columns: &[Vec<BaseField>],
+    input_trace: &[Vec<BaseField>],
+    alpha: BaseField,
+    z: BaseField,
+) {
+    assert_eq!(
+        (columns[0][0] - (input_trace[0][0] + alpha * input_trace[1][0] - z)),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[0][1] - ((input_trace[0][1] + alpha * input_trace[1][1] - z) * columns[0][0])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[0][2] - ((input_trace[0][2] + alpha * input_trace[1][2] - z) * columns[0][1])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[0][3] - ((input_trace[0][3] + alpha * input_trace[1][3] - z) * columns[0][2])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[0][4] - ((input_trace[0][4] + alpha * input_trace[1][4] - z) * columns[0][3])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[0][5] - ((input_trace[0][5] + alpha * input_trace[1][5] - z) * columns[0][4])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[0][6] - ((input_trace[0][6] + alpha * input_trace[1][6] - z) * columns[0][5])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[0][7] - ((input_trace[0][7] + alpha * input_trace[1][7] - z) * columns[0][6])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[1][0] - (input_trace[62][0] + alpha * input_trace[63][0] - z)),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[1][1] - ((input_trace[62][1] + alpha * input_trace[63][1] - z) * columns[1][0])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[1][2] - ((input_trace[62][2] + alpha * input_trace[63][2] - z) * columns[1][1])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[1][3] - ((input_trace[62][3] + alpha * input_trace[63][3] - z) * columns[1][2])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[1][4] - ((input_trace[62][4] + alpha * input_trace[63][4] - z) * columns[1][3])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[1][5] - ((input_trace[62][5] + alpha * input_trace[63][5] - z) * columns[1][4])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[1][6] - ((input_trace[62][6] + alpha * input_trace[63][6] - z) * columns[1][5])),
+        BaseField::zero()
+    );
+    assert_eq!(
+        (columns[1][7] - ((input_trace[62][7] + alpha * input_trace[63][7] - z) * columns[1][6])),
+        BaseField::zero()
+    );
+
+    assert_eq!(
+        (input_trace[0][0] + alpha * input_trace[1][0] - z) * columns[1][7]
+            - (input_trace[62][7] + alpha * input_trace[63][7] - z) * columns[0][7],
+        BaseField::zero()
+    );
+}
