@@ -12,13 +12,20 @@ mod tests {
 
     use super::structs::{Input, WideFibComponent, LOG_N_COLUMNS, LOG_N_ROWS};
     use super::trace_asserts::{assert_constraints_on_lookup_column, assert_constraints_on_row};
+    use crate::commitment_scheme::blake2_hash::Blake2sHasher;
+    use crate::commitment_scheme::hasher::Hasher;
     use crate::core::air::accumulation::DomainEvaluationAccumulator;
     use crate::core::air::{Component, ComponentTrace};
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::backend::CPUBackend;
+    use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::QM31;
-    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::fields::IntoSlice;
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+    use crate::core::poly::BitReversedOrder;
+    use crate::core::prover::{prove, verify};
+    use crate::examples::wide_fibonacci::structs::WideFibAir;
     use crate::{m31, qm31};
 
     #[test]
@@ -103,5 +110,33 @@ mod tests {
         {
             assert_eq!(*coeff, BaseField::zero());
         }
+    }
+
+    #[test]
+    fn test_wide_fib_prove() {
+        const LOG_N_INSTANCES: u32 = 3;
+        let component = WideFibComponent {
+            log_fibonacci_size: LOG_N_COLUMNS as u32,
+            log_n_instances: LOG_N_INSTANCES,
+        };
+        let private_input = (0..(1 << LOG_N_INSTANCES))
+            .map(|i| Input {
+                a: m31!(1),
+                b: m31!(i),
+            })
+            .collect();
+        let trace = component.fill_initial_trace(private_input);
+
+        let domain = CanonicCoset::new(component.log_column_size()).circle_domain();
+        let trace = trace
+            .into_iter()
+            .map(|eval| CircleEvaluation::<CPUBackend, _, BitReversedOrder>::new(domain, eval))
+            .collect_vec();
+        let air = WideFibAir { component };
+        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+        let proof = prove::<CPUBackend>(&air, channel, trace).unwrap();
+
+        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+        verify::<CPUBackend>(proof, &air, channel).unwrap();
     }
 }

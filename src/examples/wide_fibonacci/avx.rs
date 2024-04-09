@@ -1,12 +1,12 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
-use super::structs::WideFibComponent;
+use super::structs::{WideFibAir, WideFibComponent};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Air, Component, ComponentTrace, Mask};
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField, VECS_LOG_SIZE};
-use crate::core::backend::{CPUBackend, Col, Column, ColumnOps};
+use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
@@ -17,16 +17,8 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 use crate::examples::wide_fibonacci::structs::N_COLUMNS;
 
-pub struct WideFibAir {
-    component: WideFibComponent,
-}
 impl Air<AVX512Backend> for WideFibAir {
     fn components(&self) -> Vec<&dyn Component<AVX512Backend>> {
-        vec![&self.component]
-    }
-}
-impl Air<CPUBackend> for WideFibAir {
-    fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
         vec![&self.component]
     }
 }
@@ -93,9 +85,11 @@ impl Component<AVX512Backend> for WideFibComponent {
         let mut denom_inverses = BaseFieldVec::zeros(denoms.len());
         <AVX512Backend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inverses);
 
-        let constraint_log_degree_bound = self.log_column_size() + 1;
+        let constraint_log_degree_bound =
+            Component::<AVX512Backend>::max_constraint_log_degree_bound(self);
+        let n_constraints = Component::<AVX512Backend>::n_constraints(self);
         let [accum] =
-            evaluation_accumulator.columns([(constraint_log_degree_bound, N_COLUMNS - 1)]);
+            evaluation_accumulator.columns([(constraint_log_degree_bound, n_constraints)]);
 
         for vec_row in 0..(1 << (eval_domain.log_size() - VECS_LOG_SIZE as u32)) {
             // Numerator.
@@ -116,7 +110,7 @@ impl Component<AVX512Backend> for WideFibComponent {
                     let c = *trace_eval.get_unchecked(i + 2).data.get_unchecked(vec_row);
                     row_res +=
                         PackedSecureField::broadcast(accum.random_coeff_powers[N_COLUMNS - 3 - i])
-                            * (a_sq + b_sq - c);
+                            * (c - (a_sq + b_sq));
                     (a_sq, b_sq) = (b_sq, c.square());
                 }
             }
@@ -148,7 +142,7 @@ impl Component<AVX512Backend> for WideFibComponent {
         let denominator = coset_vanishing(zero_domain, point);
         evaluation_accumulator.accumulate((mask[0][0] - SecureField::one()) / denominator);
         for i in 0..(N_COLUMNS - 2) {
-            let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
+            let numerator = mask[i + 2][0] - (mask[i][0].square() + mask[i + 1][0].square());
             evaluation_accumulator.accumulate(numerator / denominator);
         }
     }
@@ -159,6 +153,7 @@ impl Component<AVX512Backend> for WideFibComponent {
 mod tests {
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::hasher::Hasher;
+    use crate::core::backend::avx512::AVX512Backend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
@@ -174,12 +169,12 @@ mod tests {
             log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: LOG_N_ROWS,
         };
-        let air = WideFibAir { component };
-        let trace = gen_trace(LOG_N_ROWS as usize);
+        let trace = gen_trace(component.log_column_size() as usize);
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let proof = prove(&air, channel, trace).unwrap();
+        let air = WideFibAir { component };
+        let proof = prove::<AVX512Backend>(&air, channel, trace).unwrap();
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        verify(proof, &air, channel).unwrap();
+        verify::<AVX512Backend>(proof, &air, channel).unwrap();
     }
 }
