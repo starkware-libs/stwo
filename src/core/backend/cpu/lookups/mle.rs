@@ -73,12 +73,12 @@ impl SumcheckOracle for Mle<CPUBackend, SecureField> {
 fn eval_mle_at_point<F: Field>(mle_evals: &[F], p: &[F]) -> F {
     match p {
         [] => mle_evals[0],
-        [p_i, p @ ..] => {
+        &[p_i, ref p @ ..] => {
             let (lhs, rhs) = mle_evals.split_at(mle_evals.len() / 2);
             let lhs_eval = eval_mle_at_point(lhs, p);
             let rhs_eval = eval_mle_at_point(rhs, p);
             // Equivalent to `eq(0, p_i) * lhs_eval + eq(1, p_i) * rhs_eval`.
-            *p_i * (rhs_eval - lhs_eval) + lhs_eval
+            p_i * (rhs_eval - lhs_eval) + lhs_eval
         }
     }
 }

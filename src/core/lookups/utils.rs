@@ -153,10 +153,21 @@ impl<F: Field> Deref for UnivariatePolynomial<F> {
     }
 }
 
+/// Evaluates the lagrange kernel of the boolean hypercube.
+///
+/// The lagrange kernel of the boolean hyperbube is a multilinear extension of the function that
+/// when given `x, y` in `{0, 1}^n` evaluates to 1 if `x = y`, and evaluates to 0 otherwise.
+pub fn eq<F: Field>(x: &[F], y: &[F]) -> F {
+    assert_eq!(x.len(), y.len());
+    zip(x, y)
+        .map(|(&xi, &wi)| xi * wi + (F::one() - xi) * (F::one() - wi))
+        .product::<F>()
+}
+
 /// Evaluates univariate polynomial using [Horner's method].
 ///
 /// [Horner's method]: https://en.wikipedia.org/wiki/Horner%27s_method
-fn horner_eval<F: Field>(coeffs: &[F], x: F) -> F {
+pub fn horner_eval<F: Field>(coeffs: &[F], x: F) -> F {
     coeffs
         .iter()
         .rfold(F::zero(), |acc, &coeff| acc * x + coeff)
