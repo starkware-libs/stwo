@@ -116,7 +116,7 @@ mod tests {
     fn test_wide_fib_prove() {
         const LOG_N_INSTANCES: u32 = 3;
         let component = WideFibComponent {
-            log_fibonacci_size: LOG_N_COLUMNS as u32,
+            log_fibonacci_size: 2 + LOG_N_COLUMNS as u32,
             log_n_instances: LOG_N_INSTANCES,
         };
         let private_input = (0..(1 << LOG_N_INSTANCES))
