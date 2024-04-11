@@ -18,7 +18,15 @@ pub struct WideFibComponent {
 impl WideFibComponent {
     pub fn fill_initial_trace(&self, private_input: Vec<Input>) -> ColumnVec<Vec<BaseField>> {
         let n_instances = 1 << self.log_n_instances;
-        assert_eq!(private_input.len(), n_instances);
+        assert_eq!(
+            private_input.len(),
+            n_instances,
+            "The number of inputs must match the number of instances"
+        );
+        assert!(
+            self.log_fibonacci_size >= LOG_N_COLUMNS as u32,
+            "The fibonacci size must be at least equal to the length of a row"
+        );
         let n_rows_per_instance = (1 << self.log_fibonacci_size) / N_COLUMNS;
         let n_rows = n_instances * n_rows_per_instance;
         let zero_vec = vec![BaseField::zero(); n_rows];
