@@ -12,7 +12,7 @@ use crate::core::lookups::sumcheck::SumcheckOracle;
 use crate::core::lookups::utils::Polynomial;
 
 /// Evaluates the multi-linear extension `mle` at point `p`.
-pub(crate) fn eval_mle_at_point<F: Field>(mle: &[F], p: &[F]) -> F {
+pub(crate) fn eval_mle_at_point<F: Field>(mle: &[F], eval_range: , p: &[F]) -> F {
     match p {
         [] => mle[0],
         [p_i, p @ ..] => {
@@ -24,6 +24,19 @@ pub(crate) fn eval_mle_at_point<F: Field>(mle: &[F], p: &[F]) -> F {
         }
     }
 }
+
+// fn eval_mle_at_point<F: Field>(mle: &Mle<CPUBackend, F>, eval_range: Range<usize>, p: &[F]) -> F {
+//     match p {
+//         [] => mle.at(eval_range.start),
+//         [p_i, p @ ..] => {
+//             let midpoint = (eval_range.start + eval_range.end) / 2;
+//             let lhs_eval = eval_mle_at_point(mle, eval_range.start..midpoint, p);
+//             let rhs_eval = eval_mle_at_point(mle, midpoint..eval_range.end, p);
+//             // Equivalent to `eq(0, p_i) * lhs + eq(1, p_i) * rhs`.
+//             *p_i * (rhs_eval - lhs_eval) + lhs_eval
+//         }
+//     }
+// }
 
 impl MleOps<BaseField> for CPUBackend {
     fn eval_at_point(mle: &Mle<Self, BaseField>, point: &[BaseField]) -> BaseField {
@@ -59,7 +72,8 @@ impl MleOps<SecureField> for CPUBackend {
     fn eval_at_point(mle: &Mle<Self, SecureField>, point: &[SecureField]) -> SecureField {
         /// Evaluates the multi-linear extension `mle` at point `p`.
         ///
-        /// `secure_mle` is a [`SecureField`] multi-linear extension stored as structure-of-arrays.
+        /// `secure_mle` is evaluations of a [`SecureField`] multilinear polynomial stored as
+        /// structure-of-arrays.
         fn eval_mle_at_point(secure_mle: [&[BaseField]; 4], p: &[SecureField]) -> SecureField {
             match p {
                 [] => SecureField::from_m31_array(secure_mle.map(|mle| mle[0])),
@@ -71,7 +85,7 @@ impl MleOps<SecureField> for CPUBackend {
                     let (lhs3, rhs3) = secure_mle[3].split_at(mle_midpoint);
                     let lhs_eval = eval_mle_at_point([lhs0, lhs1, lhs2, lhs3], p);
                     let rhs_eval = eval_mle_at_point([rhs0, rhs1, rhs2, rhs3], p);
-                    // `= eq(0, p_i) * lhs + eq(1, p_i) * rhs`
+                    // Equivalent to `eq(0, p_i) * lhs + eq(1, p_i) * rhs`.
                     *p_i * (rhs_eval - lhs_eval) + lhs_eval
                 }
             }

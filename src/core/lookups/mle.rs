@@ -25,8 +25,8 @@ pub trait MleOps<F: Field>: ColumnOpsV2<F> + Sized {
         Self: MleOps<SecureField>;
 }
 
-/// Multi-Linear extension with values represented in the lagrange basis.
-// TODO: Fix docs
+/// Multilinear extension stored as evaluations of a multilinear polynomial over the boolean
+/// hypercube.
 pub struct Mle<B: ColumnOpsV2<F>, F: Field> {
     evals: ColV2<B, F>,
 }

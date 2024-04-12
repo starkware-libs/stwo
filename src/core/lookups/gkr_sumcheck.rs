@@ -4,28 +4,25 @@ use num_traits::{One, Zero};
 use thiserror::Error;
 
 use crate::core::channel::Channel;
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::lookups::utils::Polynomial;
+use crate::core::lookups::utils::{eq, Polynomial};
 
 /// The sum-check protocol enables proving claims about the sum of a multivariate polynomial
 /// `g(x_1, ..., x_n)` over the boolean hypercube `{0, 1}^n`. This trait provides methods for
 /// evaluating sums and making transformations on `g` in the context of the protocol. It is
 /// indented to be used in conjunction with [`prove()`] to generate proofs.
-pub trait SumcheckOracle: Sized {
+///
+/// This oracle is designed specifically for use with the multivariate polynomials in GKR protocol
+/// which have the form `g(x_1, .., x_n) = eq(x_1, .., x_n, z_1, .., z_n) * f(x_1, .., x_n)`. These
+/// multivariate polynomials must not exceed degree 3 in any `x_i` hence 'Cubic'.
+pub trait CubicGkrSumcheckOracle: Sized {
     /// Returns the number of variables in `g`.
     fn num_variables(&self) -> usize;
 
-    /// Computes the sum of `g(x_1, x_2, ..., x_n)` over all possible values `(x_2, ..., x_n)` in
-    /// `{0, 1}^{n-1}`, effectively reducing the sum over `g` to a univariate polynomial in `x_1`.
-    ///
-    /// `claim` is a constant that equals the claimed sum of `g(x_1, x_2, ..., x_n)` over all
-    /// possible values `(x_1, ..., x_n)` in `{0, 1}^{n}`. Knowing `claim` can help optimize the
-    /// implementation: Let `f` denote the univariate polynomial we want to return. Our goal is
-    /// obtaining the coefficients of `f` in the most optimal way. Assume that `deg(f) = 1`,
-    /// therefore we need at least two evaluations to obtain `f`'s coefficients via interpolation.
-    /// We could choose to evaluate `f(0)` and then we can use the claim to get `f(1)` using only
-    /// only a single subtraction due to the fact `f(0) + f(1) = claim`.
-    fn univariate_sum(&self, claim: SecureField) -> Polynomial<SecureField>;
+    /// Evaluates the sum of `eq(x_1, ..., x_n, z_1, ..., z_n) * f(x_1, x_2, ..., x_n)` over all
+    /// possible values `(x_2, ..., x_n)` in `{0, 1}^{n-1}` at `x_1 = 0` and `x_1 = 2`.
+    fn univariate_sum_evals(&self) -> UnivariateEvals;
 
     /// Returns a transformed oracle where the first variable of `g` is fixed to `challenge`.
     ///
@@ -38,45 +35,77 @@ pub trait SumcheckOracle: Sized {
 ///
 /// The sum-check protocol enables proving claims about the sum of a multivariate polynomial
 /// `g(x_1, ..., x_n)` over the boolean hypercube `{0, 1}^n`. Operations on `g` are abstracted by
-/// [`SumcheckOracle`]. The proof, list of challenges (variable assignment) and the finalized oracle
-/// (the oracle with all challenges applied to the variables) are returned.
+/// [`CubicGkrSumcheckOracle`]. The proof, list of challenges (variable assignment) and the
+/// finalized oracle (the oracle with all challenges applied to the variables) are returned.
 ///
-/// This sumcheck is implemented specifically for proving GKR layers. Let `l_i` represent a values
-/// in layer `i` of a GKR circuit. Any given GKR layer is a sum over some multivariate polynomial
-/// `g_z(x_1, ..., x_n)` of the form `eq(x_1, ..., x_n, z_1, ..., z_n) * f(x_1, ..., x_n)`
-///
-/// Output is of the form: `(proof, variable_assignment, finalized_oracle, claimed_eval)`
-pub fn prove<O: SumcheckOracle>(
+/// Output is of the form: `(proof, variable_assignment, finalized_oracle)`
+pub fn prove<O: CubicGkrSumcheckOracle>(
     claim: SecureField,
     oracle: O,
     channel: &mut impl Channel,
-) -> (SumcheckProof, Vec<SecureField>, O, SecureField) {
-    let mut round_polynomials = Vec::new();
+    z: &[SecureField],
+) -> (SumcheckProof, Vec<SecureField>, O) {
+    let mut round_evals = Vec::new();
     let mut challenges = Vec::new();
 
     let mut round_oracle = oracle;
     let mut round_claim = claim;
 
-    let round_now = Instant::now();
-    for _round in 0..round_oracle.num_variables() {
-        let now = Instant::now();
-        let round_polynomial = round_oracle.univariate_sum(round_claim);
-        println!("univariate sum took {:?}", now.elapsed());
-        channel.mix_felts(&round_polynomial);
+    for round in 0..round_oracle.num_variables() {
+        let evals = round_oracle.univariate_sum_evals();
+        channel.mix_felts(&[evals.e0, evals.e2]);
 
         let challenge = channel.draw_felt();
-        let now = Instant::now();
         round_oracle = round_oracle.fix_first(challenge);
-        println!("fixing took {:?}", now.elapsed());
-        round_claim = round_polynomial.eval(challenge);
-        round_polynomials.push(round_polynomial);
+        round_claim = eval_round_polynomial(challenge, round_claim, z[round], evals);
+        round_evals.push(evals);
         challenges.push(challenge);
     }
-    println!("- Rounds took {:?}", round_now.elapsed());
 
-    let proof = SumcheckProof { round_polynomials };
+    let proof = SumcheckProof { round_evals };
 
-    (proof, challenges, round_oracle, round_claim)
+    (proof, challenges, round_oracle)
+}
+
+/// Evaluates the sum-check round polynomial at `x`.
+///
+/// Let `f` be the univariate sum `g(x_1, .., x_n) = eq(x_1, .., x_n, z_1, .., z_n) * h(x_1, ..,
+/// x_n)` over all possible values `(x_2, .., x_n)` in `{0, 1}^{n-1}` (the round polynomial). This
+/// function returns `f` evaluated at `x`. The verifier is able to reconstruct `f` from the values
+/// passed to this function:
+///
+/// - `claim`: the claimed sum of `g(x_1, .., x_n)` over all `(x_1, .., x_n)` in `{0, 1}^{n-1}`.
+/// - `univariate_sum_evals`: Let `t` be the sum `eq(x_2, .., x_n, z_2, .., z_n) * h(x_1, .., x_n)`
+///   over all possible values `(x_2, .., x_n)` in `{0, 1}^{n-1}`. `univariate_sum_evals` represents
+///   the evaluations `t(0)` and `t(2)`. Note that `f(x) = eq(x, z_1) * t(x)`.
+/// - `z`: randomness `z_1` needed to evaluate `eq(x_1, z_1)`.
+///
+/// Note that `claim = f(0) + f(1)`, which can be rearranged to obtain `t(1)` (since the verifier
+/// has `t(0)` and can calculate `eq(x, z_1)` effieicntly). We now have `t(0)`, `t(1)` and `t(2)`
+/// and can interpolate the quadratic polynomial `t`. Knowing `t` we can compute `f(x) = eq(x,
+/// z_1) * t(x)`. This idea and algorithm is from <https://eprint.iacr.org/2024/108.pdf> (Section 3.2).
+///
+/// By reconstructing `f` the prover and verifier are able to cut their amount of communication
+/// roughly in half vs a naive implementation. These optimizations come at the expense of slightly
+/// more calculations that need to be made by the verifier.
+fn eval_round_polynomial(
+    x: SecureField,
+    claim: SecureField,
+    z: SecureField,
+    univariate_sum_evals: UnivariateEvals,
+) -> SecureField {
+    let x0 = SecureField::zero();
+    let x1 = SecureField::one();
+    let x2 = BaseField::from(2).into();
+
+    let y0 = univariate_sum_evals.e0;
+    let y1 = (claim - eq(&[x0], &[z]) * univariate_sum_evals.e0) / eq(&[x1], &[z]);
+    let y2 = univariate_sum_evals.e2;
+
+    let t = Polynomial::interpolate_lagrange(&[x0, x1, x2], &[y0, y1, y2]);
+
+    // Add in the missing factor `eq(x_1, z_1)`.
+    eq(&[x], &[z]) * t.eval(x)
 }
 
 /// Partially verifies the sum-check protocol by validating the provided proof against the claim.
@@ -86,7 +115,7 @@ pub fn prove<O: SumcheckOracle>(
 /// claim for each round. If the proof passes these checks, the variable assignment and the prover's
 /// claimed evaluation are returned for the caller to validate otherwise [`None`] is returned.
 ///
-/// Output is of the form `(ood_variable_assignment, claimed_eval)`.
+/// Output is of the form `(variable_assignment, claimed_eval)`.
 // TODO: Is checking that each univariate round polynomial is <5 safe. I think it only impacts a
 // few bits of security but not any more? Keeping it fixed keeps the implementation a little
 // simpler.
@@ -124,7 +153,8 @@ pub fn partially_verify(
     Ok((assignment, round_claim))
 }
 
-/// Max degree of polynomials the verifier accepts in each round of the protocol.
+/// Max degree of univariate polynomials [`partially_verify()`] accepts in each round of the
+/// sum-check protocol.
 const MAX_DEGREE: usize = 3;
 
 /// Error encountered during sum-check protocol verification.
@@ -144,7 +174,7 @@ pub enum SumcheckError {
 
 #[derive(Debug, Clone)]
 pub struct SumcheckProof {
-    pub round_polynomials: Vec<Polynomial<SecureField>>,
+    pub round_evals: Vec<UnivariateEvals>,
 }
 
 // TODO: Re-integrate and document.
@@ -154,9 +184,14 @@ pub struct SumcheckProof {
 // /// implementation. [`None`] is passed to `numerators` for [`LogupTrace::Singles`] - the
 // /// idea is that the compiler will inline the function and flatten the `numerator` match
 // /// blocks that occur in the inner loop.
+
+/// Stores the evaluations of a univariate polynomial `p(x)` at `x=0` and `x=2`.
+#[derive(Debug, Clone, Copy)]
 pub struct UnivariateEvals {
-    pub eval_at_0: SecureField,
-    pub eval_at_2: SecureField,
+    /// Evaluation `p(0)`
+    pub e0: SecureField,
+    /// Evaluation `p(2)`.
+    pub e2: SecureField,
 }
 
 #[cfg(test)]
@@ -200,9 +235,7 @@ mod tests {
         let values = test_channel().draw_felts(SIZE);
         let claim = values.iter().copied().sum::<SecureField>();
         let mle = Mle::<AVX512Backend, SecureField>::new(values.into_iter().collect());
-        let now = Instant::now();
         let cloned_mle = mle.clone();
-        println!("Clone takes: {:?}", now.elapsed());
         let now = Instant::now();
         let (proof, ..) = prove(claim, cloned_mle, &mut test_channel());
         println!("AVX gen: {:?}", now.elapsed());

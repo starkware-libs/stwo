@@ -16,7 +16,7 @@ impl<F: Field> Polynomial<F> {
     }
 
     fn is_zero(&self) -> bool {
-        self.0.iter().all(|v| F::zero() == *v)
+        self.0.iter().all(F::is_zero)
     }
 
     pub fn degree(&self) -> usize {
