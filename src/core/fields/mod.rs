@@ -281,7 +281,7 @@ macro_rules! impl_field {
 /// Used to extend a field (with characteristic M31) by 2.
 #[macro_export]
 macro_rules! impl_extension_field {
-    ($field_name: ty, $extended_field_name: ty) => {
+    ($field_name: ident, $extended_field_name: ty) => {
         use $crate::core::fields::ExtensionOf;
 
         impl ExtensionOf<M31> for $field_name {
@@ -450,6 +450,13 @@ macro_rules! impl_extension_field {
                     "RemAssign is not implemented for {}",
                     stringify!($field_name)
                 );
+            }
+        }
+
+        #[cfg(test)]
+        impl rand::distributions::Distribution<$field_name> for rand::distributions::Standard {
+            fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> $field_name {
+                $field_name(rng.gen(), rng.gen())
             }
         }
     };

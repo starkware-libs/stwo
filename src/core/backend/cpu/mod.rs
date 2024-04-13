@@ -1,7 +1,7 @@
 mod blake2s;
 mod circle;
 mod fri;
-mod lookups;
+pub mod lookups;
 pub mod quotients;
 
 use std::fmt::Debug;

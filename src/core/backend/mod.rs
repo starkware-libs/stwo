@@ -7,9 +7,11 @@ use super::fields::qm31::SecureField;
 use super::fields::FieldOps;
 use super::poly::circle::PolyOps;
 
+// TODO: Add feature here instead of using avx512 feature flag for tests.
 #[cfg(target_arch = "x86_64")]
 pub mod avx512;
 pub mod cpu;
+pub mod simd;
 
 pub trait Backend:
     Copy + Clone + Debug + FieldOps<BaseField> + FieldOps<SecureField> + PolyOps

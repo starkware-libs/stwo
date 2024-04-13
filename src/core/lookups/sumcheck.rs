@@ -1,9 +1,12 @@
+use std::iter::zip;
+
 use num_traits::{One, Zero};
 use thiserror::Error;
 
 use super::utils::UnivariatePolynomial;
 use crate::core::channel::Channel;
 use crate::core::fields::qm31::SecureField;
+use crate::core::lookups::utils::horner_eval;
 
 /// The sum-check protocol enables proving claims about the sum of a multivariate polynomial
 /// `g(x_1, ..., x_n)` over the boolean hypercube. This trait provides methods for evaluating sums
@@ -60,6 +63,64 @@ pub fn prove<O: SumcheckOracle>(
     let proof = SumcheckProof { round_polynomials };
 
     (proof, assignment, oracle, claim)
+}
+
+pub fn prove_batch<O: SumcheckOracle>(
+    mut claims: Vec<SecureField>,
+    mut oracles: Vec<O>,
+    lambda: SecureField,
+    channel: &mut impl Channel,
+) -> (SumcheckProof, Vec<SecureField>, Vec<O>, Vec<SecureField>) {
+    let num_variables = oracles[0].num_variables();
+    assert!(oracles.iter().all(|o| o.num_variables() == num_variables));
+    assert_eq!(claims.len(), oracles.len());
+
+    let mut round_polynomials = Vec::new();
+    let mut assignment = Vec::new();
+
+    for _round in 0..num_variables {
+        let round_polys = zip(&oracles, &claims)
+            .map(|(oracle, &claim)| oracle.univariate_sum(claim))
+            .collect::<Vec<UnivariatePolynomial<SecureField>>>();
+
+        let round_polynomial = random_linear_combination(&round_polys, lambda);
+
+        assert_eq!(
+            round_polynomial.eval_at_point(SecureField::zero())
+                + round_polynomial.eval_at_point(SecureField::one()),
+            horner_eval(&claims, lambda)
+        );
+
+        channel.mix_felts(&round_polynomial);
+
+        let challenge = channel.draw_felt();
+
+        oracles = oracles
+            .into_iter()
+            .map(|oracle| oracle.fix_first(challenge))
+            .collect();
+
+        claims = round_polys
+            .iter()
+            .map(|round_poly| round_poly.eval_at_point(challenge))
+            .collect();
+
+        round_polynomials.push(round_polynomial);
+        assignment.push(challenge);
+    }
+
+    let proof = SumcheckProof { round_polynomials };
+
+    (proof, assignment, oracles, claims)
+}
+
+fn random_linear_combination(
+    polynomials: &[UnivariatePolynomial<SecureField>],
+    lambda: SecureField,
+) -> UnivariatePolynomial<SecureField> {
+    polynomials
+        .iter()
+        .rfold(Zero::zero(), |acc, poly| acc * lambda + poly.clone())
 }
 
 /// Partially verifies the sum-check protocol by validating the provided proof against the claim.
@@ -123,12 +184,12 @@ pub enum SumcheckError {
 
 #[cfg(test)]
 mod tests {
-
     use num_traits::One;
 
     use super::{partially_verify, prove};
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::hasher::Hasher;
+    use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::CPUBackend;
     // use crate::core::backend::avx512::AVX512Backend;
     use crate::core::channel::{Blake2sChannel, Channel};
@@ -136,10 +197,22 @@ mod tests {
     use crate::core::lookups::mle::Mle;
 
     #[test]
-    fn sumcheck_works() {
-        let values = test_channel().draw_felts(32);
+    fn cpu_sumcheck_works() {
+        let values = test_channel().draw_felts(1 << 9);
         let claim = values.iter().sum();
         let mle = Mle::<CPUBackend, SecureField>::new(values.clone());
+        let (proof, ..) = prove(claim, mle.clone(), &mut test_channel());
+
+        let (assignment, eval) = partially_verify(claim, &proof, &mut test_channel()).unwrap();
+
+        assert_eq!(eval, mle.eval_at_point(&assignment));
+    }
+
+    #[test]
+    fn simd_sumcheck_works() {
+        let values = test_channel().draw_felts(1 << 9);
+        let claim = values.iter().sum();
+        let mle = Mle::<SimdBackend, SecureField>::new(values.iter().copied().collect());
         let (proof, ..) = prove(claim, mle.clone(), &mut test_channel());
 
         let (assignment, eval) = partially_verify(claim, &proof, &mut test_channel()).unwrap();
@@ -166,3 +239,7 @@ mod tests {
         Blake2sChannel::new(seed)
     }
 }
+
+// g(x) = sum_y eq(x, y) * p(x, 0) * p(x, 1)
+// g(x) = sum_y eq(x, y) * p(x, 0) * p(x, 1)
+// g(x) = sum_y eq(x, y) * (Z - t0(x)) * (Z - t1(y))

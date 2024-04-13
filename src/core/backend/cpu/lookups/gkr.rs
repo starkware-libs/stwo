@@ -18,7 +18,7 @@ impl GkrOps for CPUBackend {
 /// Computes `eq(x, y) * v` for all `x` in `{0, 1}^n`.
 ///
 /// Values are returned in bit-reversed order.
-fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Vec<SecureField> {
+pub fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Vec<SecureField> {
     match y {
         [] => vec![v],
         &[y_i, ref y @ ..] => {

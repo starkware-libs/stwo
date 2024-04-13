@@ -70,7 +70,7 @@ impl SumcheckOracle for Mle<CPUBackend, SecureField> {
     }
 }
 
-fn eval_mle_at_point<F: Field>(mle_evals: &[F], p: &[F]) -> F {
+pub fn eval_mle_at_point<F: Field>(mle_evals: &[F], p: &[F]) -> F {
     match p {
         [] => mle_evals[0],
         &[p_i, ref p @ ..] => {

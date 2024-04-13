@@ -119,6 +119,13 @@ impl From<i32> for M31 {
 }
 
 #[cfg(test)]
+impl rand::distributions::Distribution<M31> for rand::distributions::Standard {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> M31 {
+        M31(rng.gen_range(0..P))
+    }
+}
+
+#[cfg(test)]
 #[macro_export]
 macro_rules! m31 {
     ($m:expr) => {
