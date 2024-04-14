@@ -1,8 +1,20 @@
+use crate::core::air::{Air, Component};
+use crate::core::backend::CPUBackend;
 use crate::core::fields::m31::BaseField;
 
 /// Component that computes fibonacci numbers over 64 columns.
 pub struct WideFibComponent {
     pub log_size: u32,
+}
+
+pub struct WideFibAir {
+    pub component: WideFibComponent,
+}
+
+impl Air<CPUBackend> for WideFibAir {
+    fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
+        vec![&self.component]
+    }
 }
 
 // Input for the fibonacci claim.
