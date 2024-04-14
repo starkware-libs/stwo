@@ -12,7 +12,8 @@
     assert_matches,
     portable_simd,
     slice_as_chunks,
-    slice_pattern
+    slice_pattern,
+    slice_first_last_chunk
 )]
 pub mod commitment_scheme;
 pub mod core;

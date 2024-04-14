@@ -43,7 +43,7 @@ rustflags = [
     "-C",
     "target-feature=+neon",
     "-C",
-    "opt-level=2",
+    "opt-level=3",
 ]
 
 [profile.bench]

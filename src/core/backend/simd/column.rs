@@ -67,10 +67,12 @@ impl FromIterator<BaseField> for BaseFieldVec {
         let mut length = data.len() * N_LANES;
 
         if let Some(remainder) = chunks.into_remainder() {
-            length += remainder.len();
-            let mut last = [BaseField::zero(); N_LANES];
-            last[..remainder.len()].copy_from_slice(remainder.as_slice());
-            data.push(PackedBaseField::from_array(last));
+            if !remainder.is_empty() {
+                length += remainder.len();
+                let mut last = [BaseField::zero(); N_LANES];
+                last[..remainder.len()].copy_from_slice(remainder.as_slice());
+                data.push(PackedBaseField::from_array(last));
+            }
         }
 
         Self { data, length }
@@ -117,10 +119,12 @@ impl FromIterator<SecureField> for SecureFieldVec {
         let mut length = data.len() * N_LANES;
 
         if let Some(remainder) = chunks.into_remainder() {
-            length += remainder.len();
-            let mut last = [SecureField::zero(); N_LANES];
-            last[..remainder.len()].copy_from_slice(remainder.as_slice());
-            data.push(PackedSecureField::from_array(last));
+            if !remainder.is_empty() {
+                length += remainder.len();
+                let mut last = [SecureField::zero(); N_LANES];
+                last[..remainder.len()].copy_from_slice(remainder.as_slice());
+                data.push(PackedSecureField::from_array(last));
+            }
         }
 
         Self { data, length }

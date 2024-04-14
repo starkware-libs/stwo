@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use std::mem::transmute;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::simd::cmp::SimdOrd;
@@ -10,9 +9,8 @@ use num_traits::{One, Zero};
 use crate::core::fields::m31::{M31, P};
 use crate::core::fields::FieldExpOps;
 
-pub const LOG_N_LANES: usize = 5;
+pub const LOG_N_LANES: usize = 2;
 pub const N_LANES: usize = 1 << LOG_N_LANES;
-pub const HALF_N_LANES: usize = N_LANES / 2;
 
 pub const MODULUS: Simd<u32, N_LANES> = Simd::from_array([P; N_LANES]);
 
@@ -22,11 +20,11 @@ pub struct PackedBaseField(Simd<u32, N_LANES>);
 
 impl PackedBaseField {
     pub fn broadcast(M31(value): M31) -> Self {
-        Self(Simd::<u32, N_LANES>::splat(value))
+        Self(Simd::splat(value))
     }
 
     pub fn from_array(values: [M31; N_LANES]) -> PackedBaseField {
-        Self(Simd::<u32, N_LANES>::from_array(values.map(|M31(v)| v)))
+        Self(Simd::from_array(values.map(|M31(v)| v)))
     }
 
     pub fn to_array(self) -> [M31; N_LANES] {
@@ -35,18 +33,13 @@ impl PackedBaseField {
 
     /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
     fn reduce(self) -> PackedBaseField {
-        Self(Simd::<u32, N_LANES>::simd_min(self.0, unsafe {
-            transmute::<Simd<i32, N_LANES>, Simd<u32, N_LANES>>(Simd::<i32, N_LANES>::sub(
-                transmute::<Simd<u32, N_LANES>, Simd<i32, N_LANES>>(self.0),
-                transmute::<Simd<u32, N_LANES>, Simd<i32, N_LANES>>(MODULUS),
-            ))
-        }))
+        Self(Simd::simd_min(self.0, self.0 - MODULUS))
     }
 
     /// Interleaves self with other.
     /// Returns the result as two packed M31 elements.
     pub fn interleave(self, other: Self) -> (Self, Self) {
-        let (a, b) = Simd::<u32, N_LANES>::interleave(self.0, other.0);
+        let (a, b) = self.0.interleave(other.0);
         (Self(a), Self(b))
     }
 
@@ -55,7 +48,7 @@ impl PackedBaseField {
     /// The inverse of [Self::interleave].
     /// Returns the result as two packed M31 elements.
     pub fn deinterleave(self, other: Self) -> (Self, Self) {
-        let (a, b) = Simd::<u32, N_LANES>::deinterleave(self.0, other.0);
+        let (a, b) = self.0.deinterleave(other.0);
         (Self(a), Self(b))
     }
 
@@ -71,15 +64,6 @@ impl PackedBaseField {
     }
 }
 
-impl Display for PackedBaseField {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for element in self.to_array() {
-            write!(f, "{} ", element)?
-        }
-        Ok(())
-    }
-}
-
 impl Add for PackedBaseField {
     type Output = Self;
 
@@ -87,23 +71,12 @@ impl Add for PackedBaseField {
     /// Each value is assumed to be in unreduced form, [0, P] including P.
     #[inline(always)]
     fn add(self, rhs: Self) -> Self::Output {
-        unsafe {
-            // Add word by word. Each word is in the range [0, 2P].
-            let c = Simd::<i32, N_LANES>::add(
-                transmute::<Simd<u32, N_LANES>, Simd<i32, N_LANES>>(self.0),
-                transmute::<Simd<u32, N_LANES>, Simd<i32, N_LANES>>(rhs.0),
-            );
-            // Apply min(c, c-P) to each word.
-            // When c in [P,2P], then c-P in [0,P] which is always less than [P,2P].
-            // When c in [0,P-1], then c-P in [2^32-P,2^32-1] which is always greater than [0,P-1].
-            Self(Simd::<u32, N_LANES>::simd_min(
-                transmute(c),
-                transmute(Simd::<i32, N_LANES>::sub(
-                    c,
-                    transmute::<Simd<u32, N_LANES>, Simd<i32, N_LANES>>(MODULUS),
-                )),
-            ))
-        }
+        // Add word by word. Each word is in the range [0, 2P].
+        let c = self.0 + rhs.0;
+        // Apply min(c, c-P) to each word.
+        // When c in [P,2P], then c-P in [0,P] which is always less than [P,2P].
+        // When c in [0,P-1], then c-P in [2^32-P,2^32-1] which is always greater than [0,P-1].
+        Self(Simd::simd_min(c, c - MODULUS))
     }
 }
 
@@ -122,52 +95,43 @@ impl Mul for PackedBaseField {
     /// Returned values are in unreduced form, [0, P] including P.
     #[inline(always)]
     fn mul(self, rhs: Self) -> Self::Output {
+        const fn interleave(odd: bool) -> [usize; N_LANES] {
+            let mut res = [0; N_LANES];
+            let mut i = 0;
+            while i < res.len() {
+                res[i] = (i % 2) * N_LANES + (i / 2) * 2 + if odd { 1 } else { 0 };
+                i += 1;
+            }
+            res
+        }
+
         struct InterleaveEvens;
         struct InterleaveOdds;
 
         impl Swizzle<N_LANES> for InterleaveEvens {
-            const INDEX: [usize; N_LANES] = {
-                let mut res = [0; N_LANES];
-                let mut i = 0;
-                while i < res.len() {
-                    res[i] = (i % 2) * N_LANES + (i / 2) * 2;
-                    i += 1;
-                }
-                res
-            };
+            const INDEX: [usize; N_LANES] = interleave(false);
         }
 
         impl Swizzle<N_LANES> for InterleaveOdds {
-            const INDEX: [usize; N_LANES] = {
-                let mut res = InterleaveEvens::INDEX;
-                let mut i = 0;
-                while i < res.len() {
-                    res[i] += 1;
-                    i += 1;
-                }
-                res
-            };
+            const INDEX: [usize; N_LANES] = interleave(true);
         }
 
-        const MASK_U32: Simd<u64, HALF_N_LANES> =
-            Simd::<u64, HALF_N_LANES>::from_array([0xFFFFFFFF; HALF_N_LANES]);
+        const MASK_U32: Simd<u64, { N_LANES / 2 }> =
+            Simd::from_array([0xFFFFFFFF; { N_LANES / 2 }]);
 
         unsafe {
             // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of
             // the first operand.
-            let val0_e =
-                transmute::<Simd<u32, N_LANES>, Simd<u64, HALF_N_LANES>>(self.0) & MASK_U32;
+            // let val0_e = transmute::<_, Simd<u64, { N_LANES / 2 }>>(self.0) & MASK_U32;
+            let val0_e = transmute::<_, Simd<u64, { N_LANES / 2 }>>(self.0) & MASK_U32;
             // Set up a word s.t. the lower half of each 64-bit word has the odd 32-bit words of
             // the first operand.
-            let val0_o = transmute::<Simd<u32, N_LANES>, Simd<u64, HALF_N_LANES>>(self.0) >> 32;
+            let val0_o = transmute::<_, Simd<u64, { N_LANES / 2 }>>(self.0) >> 32;
 
             // Double the second operand.
-            let val1 = Simd::<i32, N_LANES>::add(
-                transmute(rhs.0),
-                transmute::<Simd<u32, N_LANES>, Simd<i32, N_LANES>>(rhs.0),
-            );
-            let val1_e = transmute::<Simd<i32, N_LANES>, Simd<u64, HALF_N_LANES>>(val1) & MASK_U32;
-            let val1_o = transmute::<Simd<i32, N_LANES>, Simd<u64, HALF_N_LANES>>(val1) >> 32;
+            let val1 = rhs.0 << 1;
+            let val1_e = transmute::<_, Simd<u64, { N_LANES / 2 }>>(val1) & MASK_U32;
+            let val1_o = transmute::<_, Simd<u64, { N_LANES / 2 }>>(val1) >> 32;
 
             // To compute prod = val0 * val1 start by multiplying
             // val0_e/o by val1_e/o.
@@ -188,15 +152,15 @@ impl Mul for PackedBaseField {
             // prod_ls -    |0|prod_o_l|0|prod_e_l|
             let prod_lows = Self(
                 InterleaveEvens::concat_swizzle(
-                    transmute::<Simd<u64, HALF_N_LANES>, Simd<u32, N_LANES>>(prod_e_dbl),
-                    transmute::<Simd<u64, HALF_N_LANES>, Simd<u32, N_LANES>>(prod_o_dbl),
+                    transmute::<_, Simd<u32, N_LANES>>(prod_e_dbl),
+                    transmute::<_, Simd<u32, N_LANES>>(prod_o_dbl),
                 ) >> 1,
             );
 
             // Interleave the odd words of prod_e_dbl with the odd words of prod_o_dbl:
             let prod_highs = Self(InterleaveOdds::concat_swizzle(
-                transmute::<Simd<u64, HALF_N_LANES>, Simd<u32, N_LANES>>(prod_e_dbl),
-                transmute::<Simd<u64, HALF_N_LANES>, Simd<u32, N_LANES>>(prod_o_dbl),
+                transmute::<_, Simd<u32, N_LANES>>(prod_e_dbl),
+                transmute::<_, Simd<u32, N_LANES>>(prod_o_dbl),
             ));
             // prod_hs -    |0|prod_o_h|0|prod_e_h|
 
@@ -217,12 +181,7 @@ impl Neg for PackedBaseField {
 
     #[inline(always)]
     fn neg(self) -> Self::Output {
-        Self(unsafe {
-            transmute(Simd::<i32, N_LANES>::sub(
-                transmute::<Simd<u32, N_LANES>, Simd<i32, N_LANES>>(MODULUS),
-                transmute::<Simd<u32, N_LANES>, Simd<i32, N_LANES>>(self.0),
-            ))
-        })
+        Self(MODULUS - self.0)
     }
 }
 
@@ -233,24 +192,13 @@ impl Sub for PackedBaseField {
 
     #[inline(always)]
     fn sub(self, rhs: Self) -> Self::Output {
-        unsafe {
-            // Subtract word by word. Each word is in the range [-P, P].
-            let c = Simd::<i32, N_LANES>::sub(
-                transmute::<Simd<u32, N_LANES>, Simd<i32, N_LANES>>(self.0),
-                transmute::<Simd<u32, N_LANES>, Simd<i32, N_LANES>>(rhs.0),
-            );
-            // Apply min(c, c+P) to each word.
-            // When c in [0,P], then c+P in [P,2P] which is always greater than [0,P].
-            // When c in [2^32-P,2^32-1], then c+P in [0,P-1] which is always less than
-            // [2^32-P,2^32-1].
-            Self(Simd::<u32, N_LANES>::simd_min(
-                transmute(Simd::<i32, N_LANES>::add(
-                    c,
-                    transmute::<Simd<u32, N_LANES>, Simd<i32, N_LANES>>(MODULUS),
-                )),
-                transmute(c),
-            ))
-        }
+        // Subtract word by word. Each word is in the range [-P, P].
+        let c = self.0 - rhs.0;
+        // Apply min(c, c+P) to each word.
+        // When c in [0,P], then c+P in [P,2P] which is always greater than [0,P].
+        // When c in [2^32-P,2^32-1], then c+P in [0,P-1] which is always less than
+        // [2^32-P,2^32-1].
+        Self(Simd::simd_min(c + MODULUS, c))
     }
 }
 
@@ -263,7 +211,7 @@ impl SubAssign for PackedBaseField {
 
 impl Zero for PackedBaseField {
     fn zero() -> Self {
-        Self(Simd::<u32, N_LANES>::from_array([0; N_LANES]))
+        Self(Simd::from_array([0; N_LANES]))
     }
 
     fn is_zero(&self) -> bool {
@@ -303,72 +251,72 @@ mod tests {
         M31(0),
         M31(1),
         M31(2),
-        M31(10),
         M31((P - 1) / 2),
-        M31((P + 1) / 2),
-        M31(P - 2),
-        M31(P - 1),
-        M31(0),
-        M31(1),
-        M31(2),
-        M31(10),
-        M31((P - 1) / 2),
-        M31((P + 1) / 2),
-        M31(P - 2),
-        M31(P - 1),
-        // ==
-        M31(0),
-        M31(1),
-        M31(2),
-        M31(10),
-        M31((P - 1) / 2),
-        M31((P + 1) / 2),
-        M31(P - 2),
-        M31(P - 1),
-        M31(0),
-        M31(1),
-        M31(2),
-        M31(10),
-        M31((P - 1) / 2),
-        M31((P + 1) / 2),
-        M31(P - 2),
-        M31(P - 1),
+        // M31(10),
+        // M31((P + 1) / 2),
+        // M31(P - 2),
+        // M31(P - 1),
+        // M31(0),
+        // M31(1),
+        // M31(2),
+        // M31(10),
+        // M31((P - 1) / 2),
+        // M31((P + 1) / 2),
+        // M31(P - 2),
+        // M31(P - 1),
+        // // ==
+        // M31(0),
+        // M31(1),
+        // M31(2),
+        // M31(10),
+        // M31((P - 1) / 2),
+        // M31((P + 1) / 2),
+        // M31(P - 2),
+        // M31(P - 1),
+        // M31(0),
+        // M31(1),
+        // M31(2),
+        // M31(10),
+        // M31((P - 1) / 2),
+        // M31((P + 1) / 2),
+        // M31(P - 2),
+        // M31(P - 1),
     ];
 
     const RHS_VALUES: [BaseField; N_LANES] = [
         M31(0),
         M31(1),
         M31(2),
-        M31(10),
         M31((P - 1) / 2),
-        M31((P + 1) / 2),
-        M31(P - 2),
-        M31(P - 1),
-        M31(P - 1),
-        M31(P - 2),
-        M31((P + 1) / 2),
-        M31((P - 1) / 2),
-        M31(10),
-        M31(2),
-        M31(1),
-        M31(0),
-        // ==
-        M31(0),
-        M31(1),
-        M31(2),
-        M31(10),
-        M31((P - 1) / 2),
-        M31((P + 1) / 2),
-        M31(P - 2),
-        M31(P - 1),
-        M31(P - 1),
-        M31(P - 2),
-        M31((P + 1) / 2),
-        M31((P - 1) / 2),
-        M31(10),
-        M31(2),
-        M31(1),
-        M31(0),
+        // M31(10),
+        // M31((P + 1) / 2),
+        // M31(P - 2),
+        // M31(P - 1),
+        // M31(P - 1),
+        // M31(P - 2),
+        // M31((P + 1) / 2),
+        // M31((P - 1) / 2),
+        // M31(10),
+        // M31(2),
+        // M31(1),
+        // M31(0),
+        // // ==
+        // M31(0),
+        // M31(1),
+        // M31(2),
+        // M31(10),
+        // M31((P - 1) / 2),
+        // M31((P + 1) / 2),
+        // M31(P - 2),
+        // M31(P - 1),
+        // M31(P - 1),
+        // M31(P - 2),
+        // M31((P + 1) / 2),
+        // M31((P - 1) / 2),
+        // M31(10),
+        // M31(2),
+        // M31(1),
+        // M31(0),
     ];
 
     #[test]
@@ -383,8 +331,8 @@ mod tests {
 
     #[test]
     fn subtraction_works() {
-        let lhs = PackedBaseField::from_array(LHS_VALUES);
-        let rhs = PackedBaseField::from_array(RHS_VALUES);
+        let lhs = PackedBaseField::from_array(array::from_fn(|i| LHS_VALUES[i]));
+        let rhs = PackedBaseField::from_array(array::from_fn(|i| RHS_VALUES[i]));
 
         let res = (lhs - rhs).to_array();
 
