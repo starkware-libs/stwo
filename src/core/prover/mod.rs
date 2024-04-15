@@ -70,15 +70,26 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
         });
     }
 
+    let span = span!(Level::INFO, "Precompute twiddle").entered();
+    let twiddles = B::precompute_twiddles(
+        CanonicCoset::new(air.composition_log_degree_bound() + LOG_BLOWUP_FACTOR)
+            .circle_domain()
+            .half_coset,
+    );
+    span.exit();
+
     // Evaluate and commit on trace.
     // TODO(spapini): Commit on trace outside.
     let span = span!(Level::INFO, "Trace interpolation").entered();
-    let trace_polys = trace.into_iter().map(|poly| poly.interpolate()).collect();
+    let trace_polys = trace
+        .into_iter()
+        .map(|poly| poly.interpolate_with_twiddles(&twiddles))
+        .collect();
     span.exit();
 
     let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
     let span = span!(Level::INFO, "Trace commitment").entered();
-    commitment_scheme.commit(trace_polys, channel);
+    commitment_scheme.commit(trace_polys, channel, &twiddles);
     span.exit();
 
     // Evaluate and commit on composition polynomial.
@@ -92,7 +103,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     span.exit();
 
     let span = span!(Level::INFO, "Composition commitment").entered();
-    commitment_scheme.commit(composition_polynomial_poly.to_vec(), channel);
+    commitment_scheme.commit(composition_polynomial_poly.to_vec(), channel, &twiddles);
     span.exit();
 
     // Draw OODS point.
@@ -255,7 +266,7 @@ mod tests {
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::poly::circle::{CircleDomain, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+    use crate::core::poly::circle::{CanonicCoset, CircleDomain, MAX_CIRCLE_DOMAIN_LOG_SIZE};
     use crate::core::prover::{prove, ProvingError};
     use crate::core::test_utils::test_channel;
     use crate::qm31;
@@ -373,13 +384,10 @@ mod tests {
         let air = TestAir {
             component: TestComponent {
                 log_size: LOG_DOMAIN_SIZE,
-                max_constraint_log_degree_bound: LOG_DOMAIN_SIZE,
+                max_constraint_log_degree_bound: LOG_DOMAIN_SIZE + 1,
             },
         };
-        let domain = CircleDomain::new(Coset::new(
-            CirclePointIndex::generator(),
-            LOG_DOMAIN_SIZE - 1,
-        ));
+        let domain = CanonicCoset::new(LOG_DOMAIN_SIZE).circle_domain();
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CPUCircleEvaluation::new(domain, values)];
 
