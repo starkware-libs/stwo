@@ -4,6 +4,7 @@
 //!   f(p) = sum_i alpha^{N-1-i} u_i(P).
 
 use itertools::Itertools;
+use tracing::{span, Level};
 
 use crate::core::backend::{Backend, CPUBackend};
 use crate::core::fields::m31::BaseField;
@@ -114,6 +115,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             0,
             "not all random coefficients were used"
         );
+        let _span = span!(Level::INFO, "Constraints interpolation").entered();
         let mut res_coeffs = SecureColumn::<B>::zeros(1 << self.log_size());
         let res_log_size = self.log_size();
 

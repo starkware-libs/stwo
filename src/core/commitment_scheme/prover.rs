@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
+use tracing::{span, Level};
 
 use super::super::channel::Blake2sChannel;
 use super::super::circle::CirclePoint;
@@ -147,6 +148,7 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentTreeProver<B> {
         log_blowup_factor: u32,
         channel: &mut ProofChannel,
     ) -> Self {
+        let span = span!(Level::INFO, "Commitment evaluation").entered();
         let evaluations = polynomials
             .iter()
             .map(|poly| {
@@ -156,6 +158,9 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentTreeProver<B> {
             })
             .collect_vec();
 
+        span.exit();
+
+        let _span = span!(Level::INFO, "Commitment merkle").entered();
         let tree = MerkleProver::commit(evaluations.iter().map(|eval| &eval.values).collect());
         channel.mix_digest(tree.root());
 
