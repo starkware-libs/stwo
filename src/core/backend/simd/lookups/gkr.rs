@@ -29,7 +29,7 @@ fn gen_eq_evals(y: &[SecureField], v: SecureField) -> SecureFieldVec {
         return cpu_gen_eq_evals(y, v).into_iter().collect();
     }
 
-    // Start DP with base case to prevent dealing with instances smaller than [PackedSecureField].
+    // Start DP with CPU backend to prevent dealing with instances smaller than [PackedSecureField].
     let (y_initial, y_rem) = y.split_last_chunk::<LOG_N_LANES>().unwrap();
     let initial = SecureFieldVec::from_iter(cpu_gen_eq_evals(y_initial, v));
     assert_eq!(initial.len(), N_LANES);

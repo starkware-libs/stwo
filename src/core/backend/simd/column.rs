@@ -13,7 +13,6 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
 
-// impl Backend for SimdBackend {}
 #[derive(Clone, Debug)]
 pub struct BaseFieldVec {
     pub data: Vec<PackedBaseField>,
@@ -24,6 +23,7 @@ impl BaseFieldVec {
     pub fn as_slice(&self) -> &[BaseField] {
         &cast_slice(&self.data)[..self.length]
     }
+
     pub fn as_mut_slice(&mut self) -> &mut [BaseField] {
         &mut cast_slice_mut(&mut self.data)[..self.length]
     }
@@ -86,10 +86,10 @@ pub struct SecureFieldVec {
 }
 
 impl Column<SecureField> for SecureFieldVec {
-    fn zeros(len: usize) -> Self {
+    fn zeros(length: usize) -> Self {
         Self {
-            data: vec![PackedSecureField::zeroed(); len.div_ceil(N_LANES)],
-            length: len,
+            data: vec![PackedSecureField::zeroed(); length.div_ceil(N_LANES)],
+            length,
         }
     }
 

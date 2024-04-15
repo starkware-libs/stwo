@@ -9,12 +9,20 @@ use num_traits::{One, Zero};
 use crate::core::fields::m31::{M31, P};
 use crate::core::fields::FieldExpOps;
 
+// #[cfg(any(target_feature = "neon", target_feature = "simd128"))]
+// #[cfg(any(target_feature = "neon", target_feature = "simd128"))]
+#[cfg(not(target_feature = "avx512"))]
 pub const LOG_N_LANES: usize = 2;
+#[cfg(target_feature = "avx512")]
+pub const LOG_N_LANES: usize = 4;
+
 pub const N_LANES: usize = 1 << LOG_N_LANES;
 
 pub const MODULUS: Simd<u32, N_LANES> = Simd::from_array([P; N_LANES]);
 
-/// SIMD implementation of [`M31`].
+/// Holds a vector of unreduced [`M31`] elements in the range `[0, P]`.
+///
+/// Implemented with [`std::simd`] to support multiple targets (avx512, neon, etc.).
 #[derive(Copy, Clone, Debug)]
 pub struct PackedBaseField(Simd<u32, N_LANES>);
 
@@ -31,33 +39,29 @@ impl PackedBaseField {
         self.reduce().0.to_array().map(M31)
     }
 
-    /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
+    /// Reduces each element of the vector to the range `[0, P)`.
     fn reduce(self) -> PackedBaseField {
         Self(Simd::simd_min(self.0, self.0 - MODULUS))
     }
 
-    /// Interleaves self with other.
-    /// Returns the result as two packed M31 elements.
+    /// Interleaves two vectors.
     pub fn interleave(self, other: Self) -> (Self, Self) {
         let (a, b) = self.0.interleave(other.0);
         (Self(a), Self(b))
     }
 
-    /// Deinterleaves self with other.
-    /// Done by concatenating the even words of self with the even words of other, and the odd words
-    /// The inverse of [Self::interleave].
-    /// Returns the result as two packed M31 elements.
+    /// Deinterleaves two vectors.
     pub fn deinterleave(self, other: Self) -> (Self, Self) {
         let (a, b) = self.0.deinterleave(other.0);
         (Self(a), Self(b))
     }
 
-    /// Sums all the elements in the packed M31 element.
+    /// Sums all the elements in the vector.
     pub fn pointwise_sum(self) -> M31 {
         self.to_array().into_iter().sum()
     }
 
-    // TODO: Docs.
+    /// Doubles each element.
     pub fn double(self) -> Self {
         // TODO: Make more optimal.
         self + self
@@ -67,8 +71,6 @@ impl PackedBaseField {
 impl Add for PackedBaseField {
     type Output = Self;
 
-    /// Adds two packed M31 elements, and reduces the result to the range `[0,P]`.
-    /// Each value is assumed to be in unreduced form, [0, P] including P.
     #[inline(always)]
     fn add(self, rhs: Self) -> Self::Output {
         // Add word by word. Each word is in the range [0, 2P].
@@ -90,12 +92,9 @@ impl AddAssign for PackedBaseField {
 impl Mul for PackedBaseField {
     type Output = Self;
 
-    /// Computes the product of two packed M31 elements
-    /// Each value is assumed to be in unreduced form, [0, P] including P.
-    /// Returned values are in unreduced form, [0, P] including P.
     #[inline(always)]
     fn mul(self, rhs: Self) -> Self::Output {
-        const fn interleave(odd: bool) -> [usize; N_LANES] {
+        const fn lhs_interleave_rhs(odd: bool) -> [usize; N_LANES] {
             let mut res = [0; N_LANES];
             let mut i = 0;
             while i < res.len() {
@@ -105,15 +104,15 @@ impl Mul for PackedBaseField {
             res
         }
 
-        struct InterleaveEvens;
-        struct InterleaveOdds;
+        struct LoEvensInterleaveHiEvens;
+        struct LoOddsInterleaveHiOdds;
 
-        impl Swizzle<N_LANES> for InterleaveEvens {
-            const INDEX: [usize; N_LANES] = interleave(false);
+        impl Swizzle<N_LANES> for LoEvensInterleaveHiEvens {
+            const INDEX: [usize; N_LANES] = lhs_interleave_rhs(false);
         }
 
-        impl Swizzle<N_LANES> for InterleaveOdds {
-            const INDEX: [usize; N_LANES] = interleave(true);
+        impl Swizzle<N_LANES> for LoOddsInterleaveHiOdds {
+            const INDEX: [usize; N_LANES] = lhs_interleave_rhs(true);
         }
 
         const MASK_U32: Simd<u64, { N_LANES / 2 }> =
@@ -151,14 +150,14 @@ impl Mul for PackedBaseField {
             // Divide by 2:
             // prod_ls -    |0|prod_o_l|0|prod_e_l|
             let prod_lows = Self(
-                InterleaveEvens::concat_swizzle(
+                LoEvensInterleaveHiEvens::concat_swizzle(
                     transmute::<_, Simd<u32, N_LANES>>(prod_e_dbl),
                     transmute::<_, Simd<u32, N_LANES>>(prod_o_dbl),
                 ) >> 1,
             );
 
             // Interleave the odd words of prod_e_dbl with the odd words of prod_o_dbl:
-            let prod_highs = Self(InterleaveOdds::concat_swizzle(
+            let prod_highs = Self(LoOddsInterleaveHiOdds::concat_swizzle(
                 transmute::<_, Simd<u32, N_LANES>>(prod_e_dbl),
                 transmute::<_, Simd<u32, N_LANES>>(prod_o_dbl),
             ));
@@ -185,8 +184,6 @@ impl Neg for PackedBaseField {
     }
 }
 
-/// Subtracts two packed M31 elements, and reduces the result to the range `[0,P]`.
-/// Each value is assumed to be in unreduced form, [0, P] including P.
 impl Sub for PackedBaseField {
     type Output = Self;
 
@@ -243,119 +240,93 @@ unsafe impl Zeroable for PackedBaseField {
 #[cfg(test)]
 mod tests {
     use std::array;
+    use std::iter::zip;
 
-    use super::{PackedBaseField, N_LANES};
+    use super::PackedBaseField;
     use crate::core::fields::m31::{BaseField, M31, P};
 
-    const LHS_VALUES: [BaseField; N_LANES] = [
+    const LHS_VALUES: [BaseField; 16] = [
         M31(0),
         M31(1),
         M31(2),
         M31((P - 1) / 2),
-        // M31(10),
-        // M31((P + 1) / 2),
-        // M31(P - 2),
-        // M31(P - 1),
-        // M31(0),
-        // M31(1),
-        // M31(2),
-        // M31(10),
-        // M31((P - 1) / 2),
-        // M31((P + 1) / 2),
-        // M31(P - 2),
-        // M31(P - 1),
-        // // ==
-        // M31(0),
-        // M31(1),
-        // M31(2),
-        // M31(10),
-        // M31((P - 1) / 2),
-        // M31((P + 1) / 2),
-        // M31(P - 2),
-        // M31(P - 1),
-        // M31(0),
-        // M31(1),
-        // M31(2),
-        // M31(10),
-        // M31((P - 1) / 2),
-        // M31((P + 1) / 2),
-        // M31(P - 2),
-        // M31(P - 1),
+        M31(10),
+        M31((P + 1) / 2),
+        M31(P - 2),
+        M31(P - 1),
+        M31(0),
+        M31(1),
+        M31(2),
+        M31(10),
+        M31((P - 1) / 2),
+        M31((P + 1) / 2),
+        M31(P - 2),
+        M31(P - 1),
     ];
 
-    const RHS_VALUES: [BaseField; N_LANES] = [
+    const RHS_VALUES: [BaseField; 16] = [
         M31(0),
         M31(1),
         M31(2),
         M31((P - 1) / 2),
-        // M31(10),
-        // M31((P + 1) / 2),
-        // M31(P - 2),
-        // M31(P - 1),
-        // M31(P - 1),
-        // M31(P - 2),
-        // M31((P + 1) / 2),
-        // M31((P - 1) / 2),
-        // M31(10),
-        // M31(2),
-        // M31(1),
-        // M31(0),
-        // // ==
-        // M31(0),
-        // M31(1),
-        // M31(2),
-        // M31(10),
-        // M31((P - 1) / 2),
-        // M31((P + 1) / 2),
-        // M31(P - 2),
-        // M31(P - 1),
-        // M31(P - 1),
-        // M31(P - 2),
-        // M31((P + 1) / 2),
-        // M31((P - 1) / 2),
-        // M31(10),
-        // M31(2),
-        // M31(1),
-        // M31(0),
+        M31(10),
+        M31((P + 1) / 2),
+        M31(P - 2),
+        M31(P - 1),
+        M31(P - 1),
+        M31(P - 2),
+        M31((P + 1) / 2),
+        M31((P - 1) / 2),
+        M31(10),
+        M31(2),
+        M31(1),
+        M31(0),
     ];
 
     #[test]
     fn addition_works() {
-        let lhs = PackedBaseField::from_array(LHS_VALUES);
-        let rhs = PackedBaseField::from_array(RHS_VALUES);
+        for (lhs, rhs) in zip(LHS_VALUES.array_chunks(), RHS_VALUES.array_chunks()) {
+            let packed_lhs = PackedBaseField::from_array(*lhs);
+            let packed_rhs = PackedBaseField::from_array(*rhs);
 
-        let res = (lhs + rhs).to_array();
+            let res = packed_lhs + packed_rhs;
 
-        assert_eq!(res, array::from_fn(|i| LHS_VALUES[i] + RHS_VALUES[i]));
+            assert_eq!(res.to_array(), array::from_fn(|i| lhs[i] + rhs[i]));
+        }
     }
 
     #[test]
     fn subtraction_works() {
-        let lhs = PackedBaseField::from_array(array::from_fn(|i| LHS_VALUES[i]));
-        let rhs = PackedBaseField::from_array(array::from_fn(|i| RHS_VALUES[i]));
+        for (lhs, rhs) in zip(LHS_VALUES.array_chunks(), RHS_VALUES.array_chunks()) {
+            let packed_lhs = PackedBaseField::from_array(*lhs);
+            let packed_rhs = PackedBaseField::from_array(*rhs);
 
-        let res = (lhs - rhs).to_array();
+            let res = packed_lhs - packed_rhs;
 
-        assert_eq!(res, array::from_fn(|i| LHS_VALUES[i] - RHS_VALUES[i]));
+            assert_eq!(res.to_array(), array::from_fn(|i| lhs[i] - rhs[i]));
+        }
     }
 
     #[test]
     fn multiplication_works() {
-        let lhs = PackedBaseField::from_array(LHS_VALUES);
-        let rhs = PackedBaseField::from_array(RHS_VALUES);
+        for (lhs, rhs) in zip(LHS_VALUES.array_chunks(), RHS_VALUES.array_chunks()) {
+            let packed_lhs = PackedBaseField::from_array(*lhs);
+            let packed_rhs = PackedBaseField::from_array(*rhs);
 
-        let res = (lhs * rhs).to_array();
+            let res = packed_lhs - packed_rhs;
 
-        assert_eq!(res, array::from_fn(|i| LHS_VALUES[i] * RHS_VALUES[i]));
+            assert_eq!(res.to_array(), array::from_fn(|i| lhs[i] - rhs[i]));
+        }
     }
 
     #[test]
     fn negation_works() {
-        const VALUES: [BaseField; N_LANES] = LHS_VALUES;
-        let values = PackedBaseField::from_array(VALUES);
+        for value in LHS_VALUES.array_chunks() {
+            let packed_value = PackedBaseField::from_array(*value);
 
-        let res = (-values).to_array();
+            let res = -packed_value;
 
-        assert_eq!(res, VALUES.map(|v| -v));
+            assert_eq!(res.to_array(), array::from_fn(|i| -value[i]));
+        }
     }
 }

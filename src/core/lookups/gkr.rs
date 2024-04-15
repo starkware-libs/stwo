@@ -1,8 +1,8 @@
 //! GKR protocol implementation designed to prove and verify lookup arguments.
 use std::iter::{successors, zip};
 use std::ops::Deref;
-use std::time::Instant;
 
+// use std::time::Instant;
 use itertools::Itertools;
 use thiserror::Error;
 
@@ -156,6 +156,29 @@ pub fn prove<L: GkrLayer>(channel: &mut impl Channel, top_layer: L) -> GkrProof 
     }
 }
 
+// macro_rules! log {
+//     ( $( $t:tt )* ) => {
+//         web_sys::console::log_1(&format!( $( $t )* ).into());
+//     }
+// }
+
+// pub struct Timer<'a> {
+//     name: &'a str,
+// }
+
+// impl<'a> Timer<'a> {
+//     pub fn new(name: &'a str) -> Timer<'a> {
+//         web_sys::console::time_with_label(name);
+//         Timer { name }
+//     }
+// }
+
+// impl<'a> Drop for Timer<'a> {
+//     fn drop(&mut self) {
+//         web_sys::console::time_end_with_label(self.name);
+//     }
+// }
+
 pub fn prove_batch<L: GkrLayer>(channel: &mut impl Channel, top_layers: Vec<L>) -> GkrBatchProof {
     let num_components = top_layers.len();
     let component_num_layers = top_layers.iter().map(|l| l.num_variables()).collect_vec();
@@ -166,7 +189,8 @@ pub fn prove_batch<L: GkrLayer>(channel: &mut impl Channel, top_layers: Vec<L>) 
         .map(|top_layer| gen_layers(top_layer).into_iter().rev().peekable())
         .collect::<Vec<_>>();
 
-    let now = Instant::now();
+    let now = std::time::Instant::now();
+    // let timer = Timer::new("doing prove work");
     let mut components_output_claims = vec![None; num_components];
     let mut components_layer_masks = (0..num_components).map(|_| Vec::new()).collect_vec();
     let mut sumcheck_proofs = Vec::new();
@@ -243,6 +267,7 @@ pub fn prove_batch<L: GkrLayer>(channel: &mut impl Channel, top_layers: Vec<L>) 
         .map(Option::unwrap)
         .collect();
     println!("Proving took: {:?}", now.elapsed());
+    // drop(timer);
 
     GkrBatchProof {
         sumcheck_proofs,
@@ -321,11 +346,11 @@ pub fn partially_verify<C: BinaryTreeCircuit>(
     })
 }
 
-/// Partially verifies a GKR proof.
+/// Partially verifies a batch GKR proof.
 ///
-/// On successful verification the function Returns a [`GkrVerificationArtifact`] which stores the
-/// out-of-domain point and claimed evaluations in the top layer's columns at the OOD point. These
-/// claimed evaluations are not checked by this function - hence partial verification.
+/// On successful verification the function returns a [`GkrBatchVerificationArtifact`] which stores
+/// the out-of-domain point and claimed evaluations in the top layer columns for each component at
+/// the OOD point. These evaluations are not checked by this function - hence partial verification.
 pub fn partially_verify_batch<C: BinaryTreeCircuit>(
     proof: &GkrBatchProof,
     channel: &mut impl Channel,
@@ -554,20 +579,6 @@ mod tests {
     use crate::core::lookups::{GrandProductCircuit, GrandProductTrace};
 
     type CpuGrandProductTrace = GrandProductTrace<CPUBackend>;
-    // #[test]
-    // fn avx_eq_evals_matches_cpu_eq_evals() {
-    //     const LOG_SIZE: usize = 8;
-    //     let mut rng = test_channel();
-    //     let assignment: [SecureField; LOG_SIZE] = array::from_fn(|_| rng.draw_felt());
-    //     let cpu_evals = CPUBackend::gen_eq_evals(&assignment);
-
-    //     let avx_evals = AVX512Backend::gen_eq_evals(&assignment);
-
-    //     assert_eq!(avx_evals.to_vec(), cpu_evals);
-    // }
-
-    // sum on g = eq(x1, ..., xn, z1, ..., zn) * p(0, x1, ..., xn) * p(1, x1, ..., xn)
-    // sum on g = eq(x1, ..., xn, z1, ..., zn) * p(x1, ..., xn, 0) * p(1, x1, ..., xn)
 
     #[test]
     fn cpu_grand_product_works() -> Result<(), GkrError> {
@@ -589,7 +600,7 @@ mod tests {
 
     #[test]
     fn cpu_prove_batch_works() -> Result<(), GkrError> {
-        const N: usize = 1 << 22;
+        const N: usize = 1 << 10;
         let mut channel = test_channel();
         let col0 = GrandProductTrace::<CPUBackend>::new(Mle::new(channel.draw_felts(N)));
         let col1 = GrandProductTrace::<CPUBackend>::new(Mle::new(channel.draw_felts(N)));
@@ -605,10 +616,35 @@ mod tests {
 
         assert_eq!(proof.components_output_claims[0], &[product0]);
         assert_eq!(proof.components_output_claims[1], &[product1]);
-        let claim_0 = &components_claims_to_verify[0];
-        let claim_1 = &components_claims_to_verify[1];
-        assert_eq!(claim_0, &[col0.eval_at_point(&ood_point)]);
-        assert_eq!(claim_1, &[col1.eval_at_point(&ood_point)]);
+        let claim0 = &components_claims_to_verify[0];
+        let claim1 = &components_claims_to_verify[1];
+        assert_eq!(claim0, &[col0.eval_at_point(&ood_point)]);
+        assert_eq!(claim1, &[col1.eval_at_point(&ood_point)]);
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_prove_batch_works2() -> Result<(), GkrError> {
+        const N: usize = 1 << 10;
+        let mut channel = test_channel();
+        let col0 = GrandProductTrace::<CPUBackend>::new(Mle::new(channel.draw_felts(N)));
+        let col1 = GrandProductTrace::<CPUBackend>::new(Mle::new(channel.draw_felts(N / 2)));
+        let product0 = col0.iter().product::<SecureField>();
+        let product1 = col1.iter().product::<SecureField>();
+        let top_layers = vec![col0.clone(), col1.clone()];
+        let proof = prove_batch(&mut test_channel(), top_layers);
+
+        let GkrBatchVerificationArtifact {
+            ood_point,
+            components_claims_to_verify,
+        } = partially_verify_batch::<GrandProductCircuit>(&proof, &mut test_channel())?;
+
+        assert_eq!(proof.components_output_claims[0], &[product0]);
+        assert_eq!(proof.components_output_claims[1], &[product1]);
+        let claim0 = &components_claims_to_verify[0];
+        let claim1 = &components_claims_to_verify[1];
+        assert_eq!(claim0, &[col0.eval_at_point(&ood_point)]);
+        assert_eq!(claim1, &[col1.eval_at_point(&ood_point[1..])]);
         Ok(())
     }
 
@@ -623,19 +659,6 @@ mod tests {
         let product1 = col1.iter().product::<SecureField>();
         let top_layers = vec![col0.clone(), col1.clone()];
         let proof = prove_batch(&mut test_channel(), top_layers);
-
-        let mut proof_size = 0;
-        for sumcheck_proof in &proof.sumcheck_proofs {
-            for round_poly in &sumcheck_proof.round_polynomials {
-                proof_size += std::mem::size_of_val(round_poly);
-            }
-        }
-        for layer_mask in &proof.components_layer_masks {
-            for mask in layer_mask {
-                proof_size += std::mem::size_of_val(mask);
-            }
-        }
-        println!("yo {}", proof_size);
 
         let GkrBatchVerificationArtifact {
             ood_point,
@@ -682,7 +705,7 @@ mod tests {
     #[test]
     fn prove_batch_with_different_sizes_works2() -> Result<(), GkrError> {
         const LOG_N0: usize = 8;
-        const LOG_N1: usize = 2;
+        const LOG_N1: usize = 5;
         const LOG_N2: usize = 7;
         let mut channel = test_channel();
         let col0 = CpuGrandProductTrace::new(Mle::new(channel.draw_felts(1 << LOG_N0)));

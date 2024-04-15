@@ -54,7 +54,7 @@ impl MleOps<SecureField> for SimdBackend {
             p: &[PackedSecureField],
         ) -> SecureField {
             match p {
-                [] => unreachable!(),
+                [] => unreachable!("WAAAAT"),
                 &[p_1] => (p_1 * secure_mle[0]).pointwise_sum(),
                 &[p_i, ref p @ ..] => {
                     let chunks = secure_mle.chunks_exact(secure_mle.len() / N_LANES);

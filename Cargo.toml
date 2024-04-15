@@ -16,6 +16,7 @@ num-traits = "0.2.17"
 thiserror = "1.0.56"
 bytemuck = { version = "1.14.3", features = ["derive"] }
 derivative = "2.2.0"
+# web-sys = { version = "0.3", features = ["console"] }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
