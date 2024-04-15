@@ -143,7 +143,9 @@ mod tests {
         let fib = Fibonacci::new(5, m31!(443693538));
         let trace = fib.get_trace();
         let trace_poly = trace.interpolate();
-        let trace = ComponentTrace::new(vec![&trace_poly]);
+        let trace_eval =
+            trace_poly.evaluate(CanonicCoset::new(trace_poly.log_size() + 1).circle_domain());
+        let trace = ComponentTrace::new(vec![&trace_poly], vec![&trace_eval]);
 
         // TODO(ShaharS), Change to a channel implementation to retrieve the random
         // coefficients from extension field.
