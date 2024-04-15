@@ -1,13 +1,13 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
-use super::structs::WideFibComponent;
+use super::component::{WideFibAir, WideFibComponent};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, Component, ComponentTrace};
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField, VECS_LOG_SIZE};
-use crate::core::backend::{CPUBackend, Col, Column, ColumnOps};
+use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
@@ -19,16 +19,8 @@ use crate::core::ColumnVec;
 
 const N_COLS: usize = 1 << 8;
 
-pub struct WideFibAir {
-    component: WideFibComponent,
-}
 impl Air<AVX512Backend> for WideFibAir {
     fn components(&self) -> Vec<&dyn Component<AVX512Backend>> {
-        vec![&self.component]
-    }
-}
-impl Air<CPUBackend> for WideFibAir {
-    fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
         vec![&self.component]
     }
 }
@@ -162,7 +154,7 @@ mod tests {
     use crate::core::fields::IntoSlice;
     use crate::core::prover::{prove, verify};
     use crate::examples::wide_fibonacci::avx::{gen_trace, WideFibAir};
-    use crate::examples::wide_fibonacci::structs::WideFibComponent;
+    use crate::examples::wide_fibonacci::component::WideFibComponent;
 
     #[test]
     fn test_avx_wide_fib_prove() {
