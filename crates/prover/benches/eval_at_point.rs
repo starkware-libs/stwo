@@ -2,14 +2,14 @@ use criterion::{black_box, Criterion};
 
 #[cfg(target_arch = "x86_64")]
 pub fn cpu_eval_at_secure_point(c: &mut criterion::Criterion) {
+    use prover::core::backend::CPUBackend;
+    use prover::core::circle::CirclePoint;
+    use prover::core::fields::m31::BaseField;
+    use prover::core::fields::qm31::QM31;
+    use prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+    use prover::core::poly::NaturalOrder;
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
-    use stwo::core::backend::CPUBackend;
-    use stwo::core::circle::CirclePoint;
-    use stwo::core::fields::m31::BaseField;
-    use stwo::core::fields::qm31::QM31;
-    use stwo::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
-    use stwo::core::poly::NaturalOrder;
     let log_size = 20;
     let rng = &mut StdRng::seed_from_u64(0);
 
@@ -44,14 +44,14 @@ pub fn cpu_eval_at_secure_point(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_eval_at_secure_point(c: &mut criterion::Criterion) {
+    use prover::core::backend::avx512::AVX512Backend;
+    use prover::core::circle::CirclePoint;
+    use prover::core::fields::m31::BaseField;
+    use prover::core::fields::qm31::QM31;
+    use prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+    use prover::core::poly::NaturalOrder;
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
-    use stwo::core::backend::avx512::AVX512Backend;
-    use stwo::core::circle::CirclePoint;
-    use stwo::core::fields::m31::BaseField;
-    use stwo::core::fields::qm31::QM31;
-    use stwo::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
-    use stwo::core::poly::NaturalOrder;
     let log_size = 20;
     let rng = &mut StdRng::seed_from_u64(0);
 
