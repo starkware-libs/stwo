@@ -121,10 +121,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     // Second tree - composition polynomial.
     sample_points.push(vec![vec![oods_point]; 4]);
 
-    // TODO(spapini): Precompute twiddles outside.
-    let twiddles = B::precompute_twiddles(
-        CanonicCoset::new(composition_polynomial_log_degree_bound + 1).half_coset(),
-    );
+    // Prove the trace and composition OODS values, and retrieve them.
     let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel, &twiddles);
 
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS

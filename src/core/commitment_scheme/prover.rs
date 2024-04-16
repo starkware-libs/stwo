@@ -76,7 +76,8 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
         channel: &mut ProofChannel,
         twiddles: &TwiddleTree<B>,
     ) -> CommitmentSchemeProof {
-        // Evaluate polynomials on samples points.
+        // Evaluate polynomials on open points.
+        let span = span!(Level::INFO, "Evaluate columns out of domain").entered();
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
@@ -89,6 +90,7 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
                     })
                     .collect_vec()
             });
+        span.exit();
         let sampled_values = samples
             .as_cols_ref()
             .map_cols(|x| x.iter().map(|o| o.value).collect());

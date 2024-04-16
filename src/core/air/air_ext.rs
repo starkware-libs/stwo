@@ -1,7 +1,6 @@
 use std::iter::zip;
 
 use itertools::Itertools;
-use tracing::{span, Level};
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Air, ComponentTrace};
@@ -45,25 +44,6 @@ pub trait AirExt<B: Backend>: Air<B> {
             component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
         });
         accumulator.finalize()
-    }
-
-    fn mask_points_and_values(
-        &self,
-        point: CirclePoint<SecureField>,
-        component_traces: &[ComponentTrace<'_, B>],
-    ) -> (
-        ComponentVec<Vec<CirclePoint<SecureField>>>,
-        ComponentVec<Vec<SecureField>>,
-    ) {
-        let _span = span!(Level::INFO, "Evaluate columns out of domain").entered();
-        let mut component_points = ComponentVec(Vec::new());
-        let mut component_values = ComponentVec(Vec::new());
-        zip(self.components(), component_traces).for_each(|(component, trace)| {
-            let (points, values) = component.mask_points_and_values(point, trace);
-            component_points.push(points);
-            component_values.push(values);
-        });
-        (component_points, component_values)
     }
 
     fn mask_points(
