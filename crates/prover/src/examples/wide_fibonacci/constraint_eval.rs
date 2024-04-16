@@ -1,45 +1,29 @@
 use num_traits::Zero;
 
-use super::component::WideFibComponent;
-use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::mask::fixed_mask_points;
-use crate::core::air::{Component, ComponentTrace};
+use super::component::{WideFibAir, WideFibComponent};
+use crate::core::air::accumulation::DomainEvaluationAccumulator;
+use crate::core::air::{AirProver, Component, ComponentProver, ComponentTrace};
 use crate::core::backend::{CPUBackend, Column};
-use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse;
-use crate::core::ColumnVec;
 
-impl Component<CPUBackend> for WideFibComponent {
-    fn n_constraints(&self) -> usize {
-        255
+impl AirProver<CPUBackend> for WideFibAir {
+    fn prover_components(&self) -> Vec<&dyn ComponentProver<CPUBackend>> {
+        vec![&self.component]
     }
+}
 
-    fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.log_size + 1
-    }
-
-    fn trace_log_degree_bounds(&self) -> Vec<u32> {
-        vec![self.log_size; 256]
-    }
-
-    fn mask_points(
-        &self,
-        point: CirclePoint<SecureField>,
-    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        fixed_mask_points(&vec![vec![0_usize]; 256], point)
-    }
-
+impl ComponentProver<CPUBackend> for WideFibComponent {
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &ComponentTrace<'_, CPUBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
     ) {
-        let max_constraint_degree = Component::<CPUBackend>::max_constraint_log_degree_bound(self);
+        let max_constraint_degree = self.max_constraint_log_degree_bound();
         let trace_eval_domain = CanonicCoset::new(max_constraint_degree).circle_domain();
         let trace_evals = &trace.evals;
         let zero_domain = CanonicCoset::new(self.log_size).coset;
@@ -51,10 +35,8 @@ impl Component<CPUBackend> for WideFibComponent {
         let mut denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
         BaseField::batch_inverse(&denoms, &mut denom_inverses);
         let mut numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
-        let [mut accum] = evaluation_accumulator.columns([(
-            max_constraint_degree,
-            Component::<CPUBackend>::n_constraints(self),
-        )]);
+        let [mut accum] =
+            evaluation_accumulator.columns([(max_constraint_degree, self.n_constraints())]);
 
         #[allow(clippy::needless_range_loop)]
         for i in 0..trace_eval_domain.size() {
@@ -72,24 +54,6 @@ impl Component<CPUBackend> for WideFibComponent {
         }
         for (i, (num, denom)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
             accum.accumulate(i, *num * *denom);
-        }
-    }
-
-    fn evaluate_constraint_quotients_at_point(
-        &self,
-        point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
-        evaluation_accumulator: &mut PointEvaluationAccumulator,
-    ) {
-        let constraint_zero_domain = CanonicCoset::new(self.log_size).coset;
-        let denom = coset_vanishing(constraint_zero_domain, point);
-        let denom_inverse = denom.inverse();
-        let numerator = mask[0][0] - BaseField::from_u32_unchecked(1);
-        evaluation_accumulator.accumulate(numerator * denom_inverse);
-
-        for i in 0..254 {
-            let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
-            evaluation_accumulator.accumulate(numerator * denom_inverse);
         }
     }
 }

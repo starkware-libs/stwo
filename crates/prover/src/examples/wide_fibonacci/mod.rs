@@ -14,9 +14,8 @@ mod tests {
     use crate::commitment_scheme::blake2_hash::Blake2sHasher;
     use crate::commitment_scheme::hasher::Hasher;
     use crate::core::air::accumulation::DomainEvaluationAccumulator;
-    use crate::core::air::{Component, ComponentTrace};
+    use crate::core::air::{Component, ComponentProver, ComponentTrace};
     use crate::core::backend::cpu::CPUCircleEvaluation;
-    use crate::core::backend::CPUBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::QM31;
@@ -61,7 +60,7 @@ mod tests {
         let mut acc = DomainEvaluationAccumulator::new(
             QM31::from_u32_unchecked(1, 2, 3, 4),
             wide_fib.log_size + 1,
-            Component::<CPUBackend>::n_constraints(&wide_fib),
+            wide_fib.n_constraints(),
         );
         let inputs = (0..1 << wide_fib.log_size)
             .map(|i| Input {
@@ -96,9 +95,8 @@ mod tests {
 
         let res = acc.finalize();
         let poly = res.0[0].clone();
-        for coeff in poly.coeffs
-            [(1 << (Component::<CPUBackend>::max_constraint_log_degree_bound(&wide_fib) - 1)) + 1..]
-            .iter()
+        for coeff in
+            poly.coeffs[(1 << (wide_fib.max_constraint_log_degree_bound() - 1)) + 1..].iter()
         {
             assert_eq!(*coeff, BaseField::zero());
         }

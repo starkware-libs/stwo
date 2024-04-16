@@ -119,7 +119,7 @@ mod tests {
 
     use super::{Fibonacci, MultiFibonacci};
     use crate::core::air::accumulation::PointEvaluationAccumulator;
-    use crate::core::air::{AirExt, Component, ComponentTrace};
+    use crate::core::air::{AirExt, AirProverExt, Component, ComponentTrace};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
