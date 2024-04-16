@@ -4,7 +4,7 @@ use criterion::Criterion;
 
 #[cfg(target_arch = "x86_64")]
 pub fn cpu_bit_rev(c: &mut criterion::Criterion) {
-    use stwo::core::fields::m31::BaseField;
+    use prover::core::fields::m31::BaseField;
 
     const SIZE: usize = 1 << 24;
     let mut data: Vec<_> = (0..SIZE as u32)
@@ -13,7 +13,7 @@ pub fn cpu_bit_rev(c: &mut criterion::Criterion) {
 
     c.bench_function("cpu bit_rev 24bit", |b| {
         b.iter(|| {
-            stwo::core::utils::bit_reverse(&mut data);
+            prover::core::utils::bit_reverse(&mut data);
         })
     });
 }
@@ -21,10 +21,10 @@ pub fn cpu_bit_rev(c: &mut criterion::Criterion) {
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
     use bytemuck::cast_slice_mut;
-    use stwo::core::backend::avx512::bit_reverse::bit_reverse_m31;
-    use stwo::core::backend::avx512::m31::PackedBaseField;
-    use stwo::core::fields::m31::BaseField;
-    use stwo::platform;
+    use prover::core::backend::avx512::bit_reverse::bit_reverse_m31;
+    use prover::core::backend::avx512::m31::PackedBaseField;
+    use prover::core::fields::m31::BaseField;
+    use prover::platform;
     if !platform::avx512_detected() {
         return;
     }
