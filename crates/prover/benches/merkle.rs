@@ -6,11 +6,11 @@ use criterion::Criterion;
 pub fn cpu_merkle(c: &mut criterion::Criterion) {
     use itertools::Itertools;
     use num_traits::Zero;
-    use stwo::commitment_scheme::ops::MerkleOps;
-    use stwo::core::backend::avx512::AVX512Backend;
-    use stwo::core::backend::{CPUBackend, Col};
-    use stwo::core::fields::m31::BaseField;
-    use stwo::platform;
+    use prover::commitment_scheme::ops::MerkleOps;
+    use prover::core::backend::avx512::AVX512Backend;
+    use prover::core::backend::{CPUBackend, Col};
+    use prover::core::fields::m31::BaseField;
+    use prover::platform;
 
     const N_COLS: usize = 1 << 8;
     const LOG_SIZE: u32 = 16;
