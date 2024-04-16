@@ -3,16 +3,13 @@ use num_traits::{One, Zero};
 use tracing::{span, Level};
 
 use super::component::{WideFibAir, WideFibComponent};
-use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::mask::fixed_mask_points;
-use crate::core::air::{Air, Component, ComponentTrace};
+use crate::core::air::accumulation::DomainEvaluationAccumulator;
+use crate::core::air::{AirProver, ComponentProver, ComponentTrace};
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField, VECS_LOG_SIZE};
 use crate::core::backend::{Col, Column, ColumnOps};
-use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -20,8 +17,8 @@ use crate::core::ColumnVec;
 
 const N_COLS: usize = 1 << 8;
 
-impl Air<AVX512Backend> for WideFibAir {
-    fn components(&self) -> Vec<&dyn Component<AVX512Backend>> {
+impl AirProver<AVX512Backend> for WideFibAir {
+    fn prover_components(&self) -> Vec<&dyn ComponentProver<AVX512Backend>> {
         vec![&self.component]
     }
 }
@@ -52,19 +49,7 @@ pub fn gen_trace(
         .collect_vec()
 }
 
-impl Component<AVX512Backend> for WideFibComponent {
-    fn n_constraints(&self) -> usize {
-        N_COLS - 1
-    }
-
-    fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.log_size + 1
-    }
-
-    fn trace_log_degree_bounds(&self) -> Vec<u32> {
-        vec![self.log_size; N_COLS]
-    }
-
+impl ComponentProver<AVX512Backend> for WideFibComponent {
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &ComponentTrace<'_, AVX512Backend>,
@@ -121,28 +106,6 @@ impl Component<AVX512Backend> for WideFibComponent {
                     accum.col.packed_at(vec_row) + row_res * denom_inverses.data[vec_row],
                 )
             }
-        }
-    }
-
-    fn mask_points(
-        &self,
-        point: CirclePoint<SecureField>,
-    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        fixed_mask_points(&vec![vec![0_usize]; 256], point)
-    }
-
-    fn evaluate_constraint_quotients_at_point(
-        &self,
-        point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
-        evaluation_accumulator: &mut PointEvaluationAccumulator,
-    ) {
-        let zero_domain = CanonicCoset::new(self.log_size).coset;
-        let denominator = coset_vanishing(zero_domain, point);
-        evaluation_accumulator.accumulate((mask[0][0] - SecureField::one()) / denominator);
-        for i in 0..(N_COLS - 2) {
-            let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
-            evaluation_accumulator.accumulate(numerator / denominator);
         }
     }
 }
