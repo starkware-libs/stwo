@@ -20,28 +20,32 @@ pub trait PolyOps: FieldOps<BaseField> + Sized {
         values: Col<Self, BaseField>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder>;
 
-    /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
+    /// Computes a minimal [CirclePoly] for each evaluation, that evaluates to the same values as
+    /// that evaluation.
     /// Used by the [`CircleEvaluation::interpolate()`] function.
-    fn interpolate(
-        eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
+    fn interpolate_batch(
+        evals: Vec<CircleEvaluation<Self, BaseField, BitReversedOrder>>,
         itwiddles: &TwiddleTree<Self>,
-    ) -> CirclePoly<Self>;
+    ) -> Vec<CirclePoly<Self>>;
 
-    /// Evaluates the polynomial at a single point.
+    /// Evaluates each polynomial at a set of points.
     /// Used by the [`CirclePoly::eval_at_point()`] function.
-    fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField;
+    fn eval_at_points(
+        poly: &[&CirclePoly<Self>],
+        points: &[Vec<CirclePoint<SecureField>>],
+    ) -> Vec<Vec<SecureField>>;
 
     /// Extends the polynomial to a larger degree bound.
     /// Used by the [`CirclePoly::extend()`] function.
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self>;
 
-    /// Evaluates the polynomial at all points in the domain.
+    /// Evaluates each polynomial at a domain.
     /// Used by the [`CirclePoly::evaluate()`] function.
-    fn evaluate(
-        poly: &CirclePoly<Self>,
-        domain: CircleDomain,
+    fn evaluate_batch(
+        poly: &[&CirclePoly<Self>],
+        domains: &[CircleDomain],
         twiddles: &TwiddleTree<Self>,
-    ) -> CircleEvaluation<Self, BaseField, BitReversedOrder>;
+    ) -> Vec<CircleEvaluation<Self, BaseField, BitReversedOrder>>;
 
     /// Precomputes twiddles for a given coset.
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self>;

@@ -1,3 +1,5 @@
+use std::iter::zip;
+
 use num_traits::Zero;
 
 use super::CPUBackend;
@@ -36,57 +38,75 @@ impl PolyOps for CPUBackend {
         CircleEvaluation::new(domain, new_values)
     }
 
-    fn interpolate(
-        eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
+    fn interpolate_batch(
+        evals: Vec<CircleEvaluation<Self, BaseField, BitReversedOrder>>,
         twiddles: &TwiddleTree<Self>,
-    ) -> CirclePoly<Self> {
-        let mut values = eval.values;
+    ) -> Vec<CirclePoly<Self>> {
+        evals
+            .into_iter()
+            .map(|eval| {
+                let mut values = eval.values;
 
-        assert!(eval.domain.half_coset.is_doubling_of(twiddles.root_coset));
-        let line_twiddles = domain_line_twiddles_from_tree(eval.domain, &twiddles.itwiddles);
+                assert!(eval.domain.half_coset.is_doubling_of(twiddles.root_coset));
+                let line_twiddles =
+                    domain_line_twiddles_from_tree(eval.domain, &twiddles.itwiddles);
 
-        if eval.domain.log_size() == 1 {
-            let (mut val0, mut val1) = (values[0], values[1]);
-            ibutterfly(
-                &mut val0,
-                &mut val1,
-                eval.domain.half_coset.initial.y.inverse(),
-            );
-            let inv = BaseField::from_u32_unchecked(2).inverse();
-            (values[0], values[1]) = (val0 * inv, val1 * inv);
-            return CirclePoly::new(values);
-        };
+                if eval.domain.log_size() == 1 {
+                    let (mut val0, mut val1) = (values[0], values[1]);
+                    ibutterfly(
+                        &mut val0,
+                        &mut val1,
+                        eval.domain.half_coset.initial.y.inverse(),
+                    );
+                    let inv = BaseField::from_u32_unchecked(2).inverse();
+                    (values[0], values[1]) = (val0 * inv, val1 * inv);
+                    return CirclePoly::new(values);
+                };
 
-        let circle_twiddles = circle_twiddles_from_line_twiddles(line_twiddles[0]);
+                let circle_twiddles = circle_twiddles_from_line_twiddles(line_twiddles[0]);
 
-        for (h, t) in circle_twiddles.enumerate() {
-            fft_layer_loop(&mut values, 0, h, t, ibutterfly);
-        }
-        for (layer, layer_twiddles) in line_twiddles.into_iter().enumerate() {
-            for (h, &t) in layer_twiddles.iter().enumerate() {
-                fft_layer_loop(&mut values, layer + 1, h, t, ibutterfly);
-            }
-        }
+                for (h, t) in circle_twiddles.enumerate() {
+                    fft_layer_loop(&mut values, 0, h, t, ibutterfly);
+                }
+                for (layer, layer_twiddles) in line_twiddles.into_iter().enumerate() {
+                    for (h, &t) in layer_twiddles.iter().enumerate() {
+                        fft_layer_loop(&mut values, layer + 1, h, t, ibutterfly);
+                    }
+                }
 
-        // Divide all values by 2^log_size.
-        let inv = BaseField::from_u32_unchecked(eval.domain.size() as u32).inverse();
-        for val in &mut values {
-            *val *= inv;
-        }
+                // Divide all values by 2^log_size.
+                let inv = BaseField::from_u32_unchecked(eval.domain.size() as u32).inverse();
+                for val in &mut values {
+                    *val *= inv;
+                }
 
-        CirclePoly::new(values)
+                CirclePoly::new(values)
+            })
+            .collect()
     }
 
-    fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField {
-        // TODO(Andrew): Allocation here expensive for small polynomials.
-        let mut mappings = vec![point.y, point.x];
-        let mut x = point.x;
-        for _ in 2..poly.log_size() {
-            x = CirclePoint::double_x(x);
-            mappings.push(x);
-        }
-        mappings.reverse();
-        fold(&poly.coeffs, &mappings)
+    fn eval_at_points(
+        poly: &[&CirclePoly<Self>],
+        points: &[Vec<CirclePoint<SecureField>>],
+    ) -> Vec<Vec<SecureField>> {
+        zip(poly, points)
+            .map(|(poly, points)| {
+                points
+                    .iter()
+                    .map(|point| {
+                        // TODO(Andrew): Allocation here expensive for small polynomials.
+                        let mut mappings = vec![point.y, point.x];
+                        let mut x = point.x;
+                        for _ in 2..poly.log_size() {
+                            x = CirclePoint::double_x(x);
+                            mappings.push(x);
+                        }
+                        mappings.reverse();
+                        fold(&poly.coeffs, &mappings)
+                    })
+                    .collect()
+            })
+            .collect()
     }
 
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
@@ -97,34 +117,38 @@ impl PolyOps for CPUBackend {
         CirclePoly::new(coeffs)
     }
 
-    fn evaluate(
-        poly: &CirclePoly<Self>,
-        domain: CircleDomain,
+    fn evaluate_batch(
+        polys: &[&CirclePoly<Self>],
+        domains: &[CircleDomain],
         twiddles: &TwiddleTree<Self>,
-    ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
-        let mut values = poly.extend(domain.log_size()).coeffs;
+    ) -> Vec<CircleEvaluation<Self, BaseField, BitReversedOrder>> {
+        zip(polys, domains)
+            .map(|(poly, domain)| {
+                let mut values = poly.extend(domain.log_size()).coeffs;
 
-        assert!(domain.half_coset.is_doubling_of(twiddles.root_coset));
-        let line_twiddles = domain_line_twiddles_from_tree(domain, &twiddles.twiddles);
+                assert!(domain.half_coset.is_doubling_of(twiddles.root_coset));
+                let line_twiddles = domain_line_twiddles_from_tree(*domain, &twiddles.twiddles);
 
-        if domain.log_size() == 1 {
-            let (mut val0, mut val1) = (values[0], values[1]);
-            butterfly(&mut val0, &mut val1, domain.half_coset.initial.y.inverse());
-            return CircleEvaluation::new(domain, values);
-        };
+                if domain.log_size() == 1 {
+                    let (mut val0, mut val1) = (values[0], values[1]);
+                    butterfly(&mut val0, &mut val1, domain.half_coset.initial.y.inverse());
+                    return CircleEvaluation::new(*domain, values);
+                };
 
-        let circle_twiddles = circle_twiddles_from_line_twiddles(line_twiddles[0]);
+                let circle_twiddles = circle_twiddles_from_line_twiddles(line_twiddles[0]);
 
-        for (layer, layer_twiddles) in line_twiddles.iter().enumerate().rev() {
-            for (h, &t) in layer_twiddles.iter().enumerate() {
-                fft_layer_loop(&mut values, layer + 1, h, t, butterfly);
-            }
-        }
-        for (h, t) in circle_twiddles.enumerate() {
-            fft_layer_loop(&mut values, 0, h, t, butterfly);
-        }
+                for (layer, layer_twiddles) in line_twiddles.iter().enumerate().rev() {
+                    for (h, &t) in layer_twiddles.iter().enumerate() {
+                        fft_layer_loop(&mut values, layer + 1, h, t, butterfly);
+                    }
+                }
+                for (h, t) in circle_twiddles.enumerate() {
+                    fft_layer_loop(&mut values, 0, h, t, butterfly);
+                }
 
-        CircleEvaluation::new(domain, values)
+                CircleEvaluation::new(*domain, values)
+            })
+            .collect()
     }
 
     fn precompute_twiddles(mut coset: Coset) -> TwiddleTree<Self> {

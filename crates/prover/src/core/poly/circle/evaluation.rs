@@ -80,13 +80,15 @@ impl<B: PolyOps> CircleEvaluation<B, BaseField, BitReversedOrder> {
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
     pub fn interpolate(self) -> CirclePoly<B> {
         let coset = self.domain.half_coset;
-        B::interpolate(self, &B::precompute_twiddles(coset))
+        B::interpolate_batch(vec![self], &B::precompute_twiddles(coset))
+            .pop()
+            .unwrap()
     }
 
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation, using
     /// precomputed twiddles.
     pub fn interpolate_with_twiddles(self, twiddles: &TwiddleTree<B>) -> CirclePoly<B> {
-        B::interpolate(self, twiddles)
+        B::interpolate_batch(vec![self], twiddles).pop().unwrap()
     }
 }
 
