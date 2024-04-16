@@ -1,71 +1,20 @@
-[package]
+[workspace]
+# Using version 2 to avoid unifying features. For more info, read:
+#   https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
+resolver = "2"
+
+members = ["crates/prover"]
+
+[workspace.package]
 name = "stwo"
 version = "0.1.1"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
+[workspace.dependencies]
 blake2 = "0.10.6"
 blake3 = "1.5.0"
 hex = "0.4.3"
 itertools = "0.12.0"
 num-traits = "0.2.17"
 thiserror = "1.0.56"
-bytemuck = { version = "1.14.3", features = ["derive"] }
-tracing = "0.1.40"
-
-[dev-dependencies]
-criterion = { version = "0.5.1", features = ["html_reports"] }
-rand = { version = "0.8.5", features = ["small_rng"] }
-tracing-subscriber = "0.3.18"
-test-log = { version = "0.2.15", features = ["trace"] }
-
-[lib]
-bench = false
-
-[lints.rust]
-warnings = "deny"
-future-incompatible = "deny"
-nonstandard-style = "deny"
-rust-2018-idioms = "deny"
-unused = "deny"
-
-[features]
-avx512 = []
-
-[profile.bench]
-codegen-units = 1
-lto = true
-
-[[bench]]
-name = "bit_rev"
-harness = false
-
-[[bench]]
-name = "fft"
-harness = false
-
-[[bench]]
-harness = false
-name = "field"
-
-[[bench]]
-harness = false
-name = "matrix"
-
-[[bench]]
-name = "merkle"
-harness = false
-
-[[bench]]
-name = "fri"
-harness = false
-
-[[bench]]
-name = "eval_at_point"
-harness = false
-
-[[bench]]
-name = "quotients"
-harness = false
+bytemuck = "1.14.3"
