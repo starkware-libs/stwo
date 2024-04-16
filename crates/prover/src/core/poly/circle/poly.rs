@@ -40,7 +40,7 @@ impl<B: PolyOps> CirclePoly<B> {
 
     /// Evaluates the polynomial at a single point.
     pub fn eval_at_point(&self, point: CirclePoint<SecureField>) -> SecureField {
-        B::eval_at_point(self, point)
+        B::eval_at_points(&[self], &[vec![point]])[0][0]
     }
 
     /// Extends the polynomial to a larger degree bound.
@@ -53,7 +53,13 @@ impl<B: PolyOps> CirclePoly<B> {
         &self,
         domain: CircleDomain,
     ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
-        B::evaluate(self, domain, &B::precompute_twiddles(domain.half_coset))
+        B::evaluate_batch(
+            &[self],
+            &[domain],
+            &B::precompute_twiddles(domain.half_coset),
+        )
+        .pop()
+        .unwrap()
     }
 
     /// Evaluates the polynomial at all points in the domain, using precomputed twiddles.
@@ -62,7 +68,9 @@ impl<B: PolyOps> CirclePoly<B> {
         domain: CircleDomain,
         twiddles: &TwiddleTree<B>,
     ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
-        B::evaluate(self, domain, twiddles)
+        B::evaluate_batch(&[self], &[domain], twiddles)
+            .pop()
+            .unwrap()
     }
 }
 
