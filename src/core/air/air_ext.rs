@@ -3,7 +3,7 @@ use std::iter::zip;
 use itertools::Itertools;
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use super::{Air, ComponentTrace};
+use super::{Air, AirProver, ComponentTrace};
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
@@ -13,7 +13,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::prover::LOG_BLOWUP_FACTOR;
 use crate::core::ComponentVec;
 
-pub trait AirExt<B: Backend>: Air<B> {
+pub trait AirExt: Air {
     fn composition_log_degree_bound(&self) -> u32 {
         self.components()
             .iter()
@@ -27,23 +27,6 @@ pub trait AirExt<B: Backend>: Air<B> {
             .iter()
             .map(|&log_size| CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR))
             .collect_vec()
-    }
-
-    fn compute_composition_polynomial(
-        &self,
-        random_coeff: SecureField,
-        component_traces: &[ComponentTrace<'_, B>],
-    ) -> SecureCirclePoly<B> {
-        let total_constraints: usize = self.components().iter().map(|c| c.n_constraints()).sum();
-        let mut accumulator = DomainEvaluationAccumulator::new(
-            random_coeff,
-            self.composition_log_degree_bound(),
-            total_constraints,
-        );
-        zip(self.components(), component_traces).for_each(|(component, trace)| {
-            component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
-        });
-        accumulator.finalize()
     }
 
     fn mask_points(
@@ -81,6 +64,30 @@ pub trait AirExt<B: Backend>: Air<B> {
             .flat_map(|component| component.trace_log_degree_bounds())
             .collect()
     }
+}
+impl<A: Air + ?Sized> AirExt for A {}
+
+pub trait AirProverExt<B: Backend>: AirProver<B> {
+    fn compute_composition_polynomial(
+        &self,
+        random_coeff: SecureField,
+        component_traces: &[ComponentTrace<'_, B>],
+    ) -> SecureCirclePoly<B> {
+        let total_constraints: usize = self
+            .prover_components()
+            .iter()
+            .map(|c| c.n_constraints())
+            .sum();
+        let mut accumulator = DomainEvaluationAccumulator::new(
+            random_coeff,
+            self.composition_log_degree_bound(),
+            total_constraints,
+        );
+        zip(self.prover_components(), component_traces).for_each(|(component, trace)| {
+            component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
+        });
+        accumulator.finalize()
+    }
 
     fn component_traces<'a>(
         &'a self,
@@ -89,7 +96,7 @@ pub trait AirExt<B: Backend>: Air<B> {
     ) -> Vec<ComponentTrace<'_, B>> {
         let poly_iter = &mut polynomials.iter();
         let eval_iter = &mut evals.iter();
-        self.components()
+        self.prover_components()
             .iter()
             .map(|component| {
                 let n_columns = component.trace_log_degree_bounds().len();
@@ -100,5 +107,4 @@ pub trait AirExt<B: Backend>: Air<B> {
             .collect()
     }
 }
-
-impl<B: Backend, A: Air<B>> AirExt<B> for A {}
+impl<B: Backend, A: AirProver<B>> AirProverExt<B> for A {}

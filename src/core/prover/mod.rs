@@ -2,6 +2,7 @@ use itertools::Itertools;
 use thiserror::Error;
 use tracing::{span, Level};
 
+use super::air::AirProver;
 use super::backend::Backend;
 use super::commitment_scheme::{CommitmentSchemeProof, TreeVec};
 use super::fri::FriVerificationError;
@@ -13,7 +14,7 @@ use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::commitment_scheme::ops::MerkleOps;
 use crate::commitment_scheme::verifier::MerkleVerificationError;
-use crate::core::air::{Air, AirExt};
+use crate::core::air::{Air, AirExt, AirProverExt};
 use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
@@ -48,7 +49,7 @@ pub struct AdditionalProofData {
 }
 
 pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
-    air: &impl Air<B>,
+    air: &impl AirProver<B>,
     channel: &mut Channel,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> Result<StarkProof, ProvingError> {
@@ -144,7 +145,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
 
 pub fn verify(
     proof: StarkProof,
-    air: &impl Air<CPUBackend>,
+    air: &impl Air,
     channel: &mut Channel,
 ) -> Result<(), VerificationError> {
     // Read trace commitment.
@@ -191,12 +192,12 @@ pub fn verify(
 
 /// Structures the tree-wise sampled values into component-wise OODS values and a composition
 /// polynomial OODS value.
-fn sampled_values_to_mask<B: Backend>(
-    air: &impl Air<B>,
+fn sampled_values_to_mask(
+    air: &impl Air,
     mut sampled_values: TreeVec<ColumnVec<Vec<SecureField>>>,
 ) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), ()> {
     let composition_partial_sampled_values = sampled_values.pop().ok_or(())?;
-    let composition_oods_value = SecureCirclePoly::<B>::eval_from_partial_evals(
+    let composition_oods_value = SecureCirclePoly::<CPUBackend>::eval_from_partial_evals(
         composition_partial_sampled_values
             .iter()
             .flatten()
@@ -260,7 +261,7 @@ mod tests {
     use num_traits::Zero;
 
     use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-    use crate::core::air::{Air, Component, ComponentTrace};
+    use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::backend::CPUBackend;
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
@@ -271,12 +272,18 @@ mod tests {
     use crate::core::test_utils::test_channel;
     use crate::qm31;
 
-    struct TestAir<C: Component<CPUBackend>> {
+    struct TestAir<C: ComponentProver<CPUBackend>> {
         component: C,
     }
 
-    impl Air<CPUBackend> for TestAir<TestComponent> {
-        fn components(&self) -> Vec<&dyn Component<CPUBackend>> {
+    impl Air for TestAir<TestComponent> {
+        fn components(&self) -> Vec<&dyn Component> {
+            vec![&self.component]
+        }
+    }
+
+    impl AirProver<CPUBackend> for TestAir<TestComponent> {
+        fn prover_components(&self) -> Vec<&dyn ComponentProver<CPUBackend>> {
             vec![&self.component]
         }
     }
@@ -286,7 +293,7 @@ mod tests {
         max_constraint_log_degree_bound: u32,
     }
 
-    impl Component<CPUBackend> for TestComponent {
+    impl Component for TestComponent {
         fn n_constraints(&self) -> usize {
             0
         }
@@ -297,14 +304,6 @@ mod tests {
 
         fn trace_log_degree_bounds(&self) -> Vec<u32> {
             vec![self.log_size]
-        }
-
-        fn evaluate_constraint_quotients_on_domain(
-            &self,
-            _trace: &ComponentTrace<'_, CPUBackend>,
-            _evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
-        ) {
-            // Does nothing.
         }
 
         fn mask_points(
@@ -321,6 +320,16 @@ mod tests {
             evaluation_accumulator: &mut PointEvaluationAccumulator,
         ) {
             evaluation_accumulator.accumulate(qm31!(0, 0, 0, 1))
+        }
+    }
+
+    impl ComponentProver<CPUBackend> for TestComponent {
+        fn evaluate_constraint_quotients_on_domain(
+            &self,
+            _trace: &ComponentTrace<'_, CPUBackend>,
+            _evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
+        ) {
+            // Does nothing.
         }
     }
 

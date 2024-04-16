@@ -4,7 +4,7 @@ use num_traits::One;
 
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::shifted_mask_points;
-use crate::core::air::{Component, ComponentTrace};
+use crate::core::air::{Component, ComponentProver, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
@@ -69,7 +69,7 @@ impl FibonacciComponent {
     }
 }
 
-impl Component<CPUBackend> for FibonacciComponent {
+impl Component for FibonacciComponent {
     fn n_constraints(&self) -> usize {
         2
     }
@@ -83,6 +83,36 @@ impl Component<CPUBackend> for FibonacciComponent {
         vec![self.log_size]
     }
 
+    fn mask_points(
+        &self,
+        point: CirclePoint<SecureField>,
+    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
+        shifted_mask_points(
+            &vec![vec![0, 1, 2]],
+            &[CanonicCoset::new(self.log_size)],
+            point,
+        )
+    }
+
+    fn evaluate_constraint_quotients_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask: &ColumnVec<Vec<SecureField>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
+    ) {
+        evaluation_accumulator.accumulate(
+            self.step_constraint_eval_quotient_by_mask(point, &mask[0][..].try_into().unwrap()),
+        );
+        evaluation_accumulator.accumulate(
+            self.boundary_constraint_eval_quotient_by_mask(
+                point,
+                &mask[0][..1].try_into().unwrap(),
+            ),
+        );
+    }
+}
+
+impl ComponentProver<CPUBackend> for FibonacciComponent {
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &ComponentTrace<'_, CPUBackend>,
@@ -115,33 +145,5 @@ impl Component<CPUBackend> for FibonacciComponent {
                 accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
             }
         }
-    }
-
-    fn mask_points(
-        &self,
-        point: CirclePoint<SecureField>,
-    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        shifted_mask_points(
-            &vec![vec![0, 1, 2]],
-            &[CanonicCoset::new(self.log_size)],
-            point,
-        )
-    }
-
-    fn evaluate_constraint_quotients_at_point(
-        &self,
-        point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
-        evaluation_accumulator: &mut PointEvaluationAccumulator,
-    ) {
-        evaluation_accumulator.accumulate(
-            self.step_constraint_eval_quotient_by_mask(point, &mask[0][..].try_into().unwrap()),
-        );
-        evaluation_accumulator.accumulate(
-            self.boundary_constraint_eval_quotient_by_mask(
-                point,
-                &mask[0][..1].try_into().unwrap(),
-            ),
-        );
     }
 }

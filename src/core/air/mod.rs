@@ -11,7 +11,7 @@ pub mod accumulation;
 mod air_ext;
 pub mod mask;
 
-pub use air_ext::AirExt;
+pub use air_ext::{AirExt, AirProverExt};
 
 /// Arithmetic Intermediate Representation (AIR).
 /// An Air instance is assumed to already contain all the information needed to
@@ -19,28 +19,22 @@ pub use air_ext::AirExt;
 /// For instance, all interaction elements are assumed to be present in it.
 /// Therefore, an AIR is generated only after the initial trace commitment phase.
 // TODO(spapini): consider renaming this struct.
-pub trait Air<B: Backend> {
-    fn components(&self) -> Vec<&dyn Component<B>>;
+pub trait Air {
+    fn components(&self) -> Vec<&dyn Component>;
+}
+pub trait AirProver<B: Backend>: Air {
+    fn prover_components(&self) -> Vec<&dyn ComponentProver<B>>;
 }
 
 /// A component is a set of trace columns of various sizes along with a set of
 /// constraints on them.
-pub trait Component<B: Backend> {
+pub trait Component {
     fn n_constraints(&self) -> usize;
 
     fn max_constraint_log_degree_bound(&self) -> u32;
 
     /// Returns the degree bounds of each trace column.
     fn trace_log_degree_bounds(&self) -> Vec<u32>;
-
-    /// Evaluates the constraint quotients of the component on the evaluation domain.
-    /// Accumulates quotients in `evaluation_accumulator`.
-    // Note: This will be computed using a MaterializedGraph.
-    fn evaluate_constraint_quotients_on_domain(
-        &self,
-        trace: &ComponentTrace<'_, B>,
-        evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
-    );
 
     fn mask_points(
         &self,
@@ -54,8 +48,16 @@ pub trait Component<B: Backend> {
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     );
+}
 
-    // TODO(spapini): Extra functions for FRI and decommitment.
+pub trait ComponentProver<B: Backend>: Component {
+    /// Evaluates the constraint quotients of the component on the evaluation domain.
+    /// Accumulates quotients in `evaluation_accumulator`.
+    fn evaluate_constraint_quotients_on_domain(
+        &self,
+        trace: &ComponentTrace<'_, B>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
+    );
 }
 
 /// A component trace is a set of polynomials for each column on that component.
