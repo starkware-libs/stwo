@@ -1,0 +1,67 @@
+[package]
+name = "prover"
+version.workspace = true
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+blake2.workspace = true
+blake3.workspace = true
+hex.workspace = true
+itertools.workspace = true
+num-traits.workspace = true
+thiserror.workspace = true
+bytemuck = { workspace = true, features = ["derive"] }
+tracing.workspace = true
+
+[dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
+rand = { version = "0.8.5", features = ["small_rng"] }
+test-log = { version = "0.2.15", features = ["trace"] }
+tracing-subscriber = "0.3.18"
+
+[lib]
+bench = false
+
+[lints.rust]
+warnings = "deny"
+future-incompatible = "deny"
+nonstandard-style = "deny"
+rust-2018-idioms = "deny"
+unused = "deny"
+
+[features]
+avx512 = []
+
+[[bench]]
+name = "bit_rev"
+harness = false
+
+[[bench]]
+name = "fft"
+harness = false
+
+[[bench]]
+harness = false
+name = "field"
+
+[[bench]]
+harness = false
+name = "matrix"
+
+[[bench]]
+name = "merkle"
+harness = false
+
+[[bench]]
+name = "fri"
+harness = false
+
+[[bench]]
+name = "eval_at_point"
+harness = false
+
+[[bench]]
+name = "quotients"
+harness = false

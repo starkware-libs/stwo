@@ -446,9 +446,9 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "pin-project-lite"
-version = "0.2.13"
+version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8afb450f006bf6385ca15ef45d71d2288452bc3683ce2e2cacc0d18e4be60b58"
+checksum = "bda66fc9667c18cb2758a2ac84d1167245054bcf85d5d1aaa6923f45801bdd02"
 
 [[package]]
 name = "plotters"
@@ -491,6 +491,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2422ad645d89c99f8f3e6b88a9fdeca7fabeac836b1002371c4367c8f984aae"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "prover"
+version = "0.1.1"
+dependencies = [
+ "blake2",
+ "blake3",
+ "bytemuck",
+ "criterion",
+ "hex",
+ "itertools 0.12.1",
+ "num-traits",
+ "rand",
+ "test-log",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -653,27 +671,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.13.1"
+version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6ecd384b10a64542d77071bd64bd7b231f4ed5940fba55e98c3de13824cf3d7"
-
-[[package]]
-name = "stwo"
-version = "0.1.1"
-dependencies = [
- "blake2",
- "blake3",
- "bytemuck",
- "criterion",
- "hex",
- "itertools 0.12.1",
- "num-traits",
- "rand",
- "test-log",
- "thiserror",
- "tracing",
- "tracing-subscriber",
-]
+checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
 
 [[package]]
 name = "subtle"
