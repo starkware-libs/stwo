@@ -1,16 +1,16 @@
 #![feature(iter_array_chunks)]
 
 use criterion::{BenchmarkId, Criterion, Throughput};
-use stwo::core::backend::avx512::fft::ifft::get_itwiddle_dbls;
-use stwo::core::backend::avx512::fft::transpose_vecs;
-use stwo::core::backend::avx512::{BaseFieldVec, PackedBaseField};
-use stwo::core::fields::m31::BaseField;
-use stwo::core::poly::circle::CanonicCoset;
+use prover::core::backend::avx512::fft::ifft::get_itwiddle_dbls;
+use prover::core::backend::avx512::fft::transpose_vecs;
+use prover::core::backend::avx512::{BaseFieldVec, PackedBaseField};
+use prover::core::fields::m31::BaseField;
+use prover::core::poly::circle::CanonicCoset;
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_ifft(c: &mut criterion::Criterion) {
-    use stwo::core::backend::avx512::fft::ifft;
-    use stwo::platform;
+    use prover::core::backend::avx512::fft::ifft;
+    use prover::platform;
     if !platform::avx512_detected() {
         return;
     }
@@ -39,8 +39,8 @@ pub fn avx512_ifft(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_ifft_parts(c: &mut criterion::Criterion) {
-    use stwo::core::backend::avx512::fft::ifft;
-    use stwo::platform;
+    use prover::core::backend::avx512::fft::ifft;
+    use prover::platform;
     if !platform::avx512_detected() {
         return;
     }
@@ -95,8 +95,8 @@ pub fn avx512_ifft_parts(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_rfft(c: &mut criterion::Criterion) {
-    use stwo::core::backend::avx512::fft::rfft;
-    use stwo::platform;
+    use prover::core::backend::avx512::fft::rfft;
+    use prover::platform;
     if !platform::avx512_detected() {
         return;
     }
