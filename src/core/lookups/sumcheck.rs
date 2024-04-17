@@ -70,7 +70,7 @@ pub fn prove_batch<O: MultivariatePolyOracle>(
 
         let round_poly = random_linear_combination(&this_round_polys, lambda);
 
-        assert!(round_poly.degree() <= MAX_DEGREE,);
+        assert!(round_poly.degree() <= MAX_DEGREE);
 
         assert_eq!(
             round_poly.eval_at_point(Zero::zero()) + round_poly.eval_at_point(One::one()),
