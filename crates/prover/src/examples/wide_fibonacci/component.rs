@@ -1,5 +1,3 @@
-use num_traits::One;
-
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, Component};
@@ -51,7 +49,7 @@ impl Air for WideFibAir {
 
 impl Component for WideFibComponent {
     fn n_constraints(&self) -> usize {
-        self.n_columns() - 1
+        self.n_columns() - 2
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
@@ -78,9 +76,6 @@ impl Component for WideFibComponent {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
-        let numerator = mask[0][0] - BaseField::one();
-        evaluation_accumulator.accumulate(numerator * denom_inverse);
-
         for i in 0..self.n_columns() - 2 {
             let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
             evaluation_accumulator.accumulate(numerator * denom_inverse);
