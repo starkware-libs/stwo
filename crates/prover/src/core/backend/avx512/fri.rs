@@ -42,7 +42,7 @@ impl FriOps for AVX512Backend {
                 let val1 = PackedSecureField::from_packed_m31s(std::array::from_fn(|i| pairs[i].1));
                 val0 + PackedSecureField::broadcast(alpha) * val1
             };
-            folded_values.set_packed(vec_index, value);
+            unsafe { folded_values.set_packed(vec_index, value) };
         }
 
         LineEvaluation::new(domain.double(), folded_values)
@@ -78,10 +78,13 @@ impl FriOps for AVX512Backend {
                 let val1 = PackedSecureField::from_packed_m31s(std::array::from_fn(|i| pairs[i].1));
                 val0 + PackedSecureField::broadcast(alpha) * val1
             };
-            dst.values.set_packed(
-                vec_index,
-                dst.values.packed_at(vec_index) * PackedSecureField::broadcast(alpha_sq) + value,
-            );
+            unsafe {
+                dst.values.set_packed(
+                    vec_index,
+                    dst.values.packed_at(vec_index) * PackedSecureField::broadcast(alpha_sq)
+                        + value,
+                )
+            };
         }
     }
 }

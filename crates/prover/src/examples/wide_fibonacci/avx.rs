@@ -115,10 +115,12 @@ impl Component<AVX512Backend> for WideFibComponent {
                 }
             }
 
-            accum.col.set_packed(
-                vec_row,
-                accum.col.packed_at(vec_row) + row_res * denom_inverses.data[vec_row],
-            )
+            unsafe {
+                accum.col.set_packed(
+                    vec_row,
+                    accum.col.packed_at(vec_row) + row_res * denom_inverses.data[vec_row],
+                )
+            }
         }
     }
 
