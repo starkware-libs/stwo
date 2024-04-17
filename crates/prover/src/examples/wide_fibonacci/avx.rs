@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use num_traits::{One, Zero};
+use num_traits::One;
 use tracing::{span, Level};
 
 use super::component::{WideFibAir, WideFibComponent};
@@ -80,14 +80,7 @@ impl ComponentProver<AVX512Backend> for WideFibComponent {
         for vec_row in 0..(1 << (eval_domain.log_size() - VECS_LOG_SIZE as u32)) {
             // Numerator.
             let a = trace_eval[0].data[vec_row];
-            let mut row_res =
-                PackedSecureField::from_packed_m31s([
-                    a - PackedBaseField::one(),
-                    PackedBaseField::zero(),
-                    PackedBaseField::zero(),
-                    PackedBaseField::zero(),
-                ]) * PackedSecureField::broadcast(accum.random_coeff_powers[self.n_columns() - 2]);
-
+            let mut row_res = PackedSecureField::zero();
             let mut a_sq = a.square();
             let mut b_sq = trace_eval[1].data[vec_row].square();
             #[allow(clippy::needless_range_loop)]

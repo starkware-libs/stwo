@@ -167,14 +167,14 @@ mod tests {
     }
 
     #[test_log::test]
-    fn test_prove() {
+    fn test_single_instance_wide_fib_prove() {
         // Note: To see time measurement, run test with
         //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 cargo test
         //   test_prove -- --nocapture
 
-        const LOG_N_INSTANCES: u32 = 3;
+        const LOG_N_INSTANCES: u32 = 0;
         let component = WideFibComponent {
-            log_fibonacci_size: LOG_N_COLUMNS as u32,
+            log_fibonacci_size: 3 + LOG_N_COLUMNS as u32,
             log_n_instances: LOG_N_INSTANCES,
         };
         let private_input = (0..(1 << LOG_N_INSTANCES))
