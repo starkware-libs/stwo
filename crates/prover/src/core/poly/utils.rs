@@ -1,5 +1,12 @@
+use num_traits::Zero;
+
+use super::circle::CircleEvaluation;
 use super::line::LineDomain;
+use super::BitReversedOrder;
+use crate::core::backend::{Backend, Column};
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, Field};
+use crate::core::utils::bit_reverse_index;
 
 /// Folds values recursively in `O(n)` by a hierarchical application of folding factors.
 ///
@@ -54,6 +61,32 @@ pub fn repeat_value<T: Copy>(values: &[T], duplicity: usize) -> Vec<T> {
     res
 }
 
+/// Computes the difference in evaluations on the  [`CircleDomain`]'s half-coset and it's
+/// conjugate. Used to decompose a general polynomial to a polynomial inside the fft-space, and
+/// the remainder terms.
+/// A coset-diff on a [`CirclePoly`] that is in the FFT space will return zero.
+///
+/// [`CircleDomain`]: super::circle::CircleDomain
+/// [`CirclePoly`]: super::circle::CirclePoly
+pub fn coset_diff<B: Backend>(eval: CircleEvaluation<B, BaseField, BitReversedOrder>) -> BaseField {
+    let domain_log_size = eval.domain.log_size();
+    eval.values
+        .to_cpu()
+        .iter()
+        .enumerate()
+        .fold(BaseField::zero(), |acc, (i, &x)| {
+            // The wanted result is the sum of the evaluations at the first half of the domain
+            // minus the second. The evaluations are bit reversed, so we need to
+            // compare the un-bit-reversed indices against the domain size.
+            let idx = bit_reverse_index(i, domain_log_size);
+            if idx < (1 << (domain_log_size - 1)) {
+                acc + x
+            } else {
+                acc - x
+            }
+        })
+}
+
 /// Computes the line twiddles for a [`CircleDomain`] or a [`LineDomain`] from the precomputed
 /// twiddles tree.
 ///
@@ -73,7 +106,13 @@ pub fn domain_line_twiddles_from_tree<T>(
 
 #[cfg(test)]
 mod tests {
+    use num_traits::Zero;
+
     use super::repeat_value;
+    use crate::core::backend::cpu::CPUCirclePoly;
+    use crate::core::fields::m31::BaseField;
+    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::poly::utils::coset_diff;
 
     #[test]
     fn repeat_value_0_times_works() {
@@ -88,5 +127,36 @@ mod tests {
     #[test]
     fn repeat_value_3_times_works() {
         assert_eq!(repeat_value(&[1, 2], 3), vec![1, 1, 1, 2, 2, 2]);
+    }
+
+    #[test]
+    fn coset_diff_out_fft_space_test() {
+        let domain_log_size = 3;
+        let evaluation_domain = CanonicCoset::new(domain_log_size).circle_domain();
+
+        // f(x,y) = in(x,y) + out(x,y).
+        let coeffs_in_fft = [0, 1, 2, 3, 4, 5, 6, 0]
+            .into_iter()
+            .map(BaseField::from_u32_unchecked)
+            .collect();
+        let coeffs_out_fft = [0, 0, 0, 0, 0, 0, 0, 7]
+            .into_iter()
+            .map(BaseField::from_u32_unchecked)
+            .collect();
+        let combined_poly_coeffs = [0, 1, 2, 3, 4, 5, 6, 7]
+            .into_iter()
+            .map(BaseField::from_u32_unchecked)
+            .collect();
+
+        let in_fft_poly = CPUCirclePoly::new(coeffs_in_fft);
+        let out_fft_poly = CPUCirclePoly::new(coeffs_out_fft);
+        let combined_poly = CPUCirclePoly::new(combined_poly_coeffs);
+
+        let in_lambda = coset_diff(in_fft_poly.evaluate(evaluation_domain));
+        let out_lambda = coset_diff(out_fft_poly.evaluate(evaluation_domain));
+        let combined_lambda = coset_diff(combined_poly.evaluate(evaluation_domain));
+
+        assert_eq!(in_lambda, BaseField::zero());
+        assert_eq!(out_lambda, combined_lambda);
     }
 }
