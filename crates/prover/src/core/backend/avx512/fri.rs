@@ -258,7 +258,6 @@ mod tests {
         let (avx_g, avx_lambda) = AVX512Backend::decompose(&avx_eval);
 
         assert_eq!(avx_lambda, cpu_lambda);
-
         for i in 0..(1 << DOMAIN_LOG_SIZE) {
             assert_eq!(avx_g.values.at(i), cpu_g.values.at(i));
         }

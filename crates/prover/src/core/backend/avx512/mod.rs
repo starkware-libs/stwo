@@ -139,7 +139,7 @@ impl FromIterator<BaseField> for BaseFieldVec {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SecureFieldVec {
     pub data: Vec<PackedSecureField>,
     length: usize,
@@ -180,6 +180,13 @@ impl Column<SecureField> for SecureFieldVec {
     }
     fn at(&self, index: usize) -> SecureField {
         self.data[index / K_BLOCK_SIZE].to_array()[index % K_BLOCK_SIZE]
+    }
+}
+
+impl Extend<PackedSecureField> for SecureFieldVec {
+    fn extend<T: IntoIterator<Item = PackedSecureField>>(&mut self, iter: T) {
+        self.data.extend(iter);
+        self.length = self.data.len() * K_BLOCK_SIZE;
     }
 }
 
