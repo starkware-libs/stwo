@@ -7,6 +7,7 @@ use std::arch::x86_64::{
     _mm512_store_epi32,
 };
 use std::fmt::Display;
+use std::iter::Sum;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use num_traits::{One, Zero};
@@ -258,6 +259,12 @@ impl FieldExpOps for PackedBaseField {
         // code.
         assert!(!self.is_zero(), "0 has no inverse");
         self.pow((P - 2) as u128)
+    }
+}
+
+impl Sum for PackedBaseField {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::zero(), Add::add)
     }
 }
 

@@ -1,15 +1,17 @@
-use super::AVX512Backend;
+use super::{AVX512Backend, PackedBaseField};
 use crate::core::backend::avx512::fft::compute_first_twiddles;
 use crate::core::backend::avx512::fft::ifft::avx_ibutterfly;
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::VECS_LOG_SIZE;
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fri::{self, FriOps};
-use crate::core::poly::circle::SecureEvaluation;
+use crate::core::poly::circle::{CircleEvaluation, SecureEvaluation};
 use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::domain_line_twiddles_from_tree;
+use crate::core::poly::NaturalOrder;
 
 impl FriOps for AVX512Backend {
     fn fold_line(
@@ -87,19 +89,38 @@ impl FriOps for AVX512Backend {
             };
         }
     }
+
+    fn coset_diff(eval: CircleEvaluation<Self, BaseField, NaturalOrder>) -> BaseField {
+        let half_domain_size = 1 << (eval.domain.log_size() - 1);
+        let (a_values, b_values) = eval.values.data.split_at(half_domain_size / 16);
+        let a_sum = a_values
+            .iter()
+            .copied()
+            .sum::<PackedBaseField>()
+            .pointwise_sum();
+        let b_sum = b_values
+            .iter()
+            .copied()
+            .sum::<PackedBaseField>()
+            .pointwise_sum();
+        a_sum - b_sum
+    }
 }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::avx512::AVX512Backend;
+    use num_traits::Zero;
+
+    use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField};
     use crate::core::backend::CPUBackend;
+    use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::secure_column::SecureColumn;
     use crate::core::fri::FriOps;
-    use crate::core::poly::circle::{CanonicCoset, PolyOps, SecureEvaluation};
+    use crate::core::poly::circle::{CanonicCoset, CirclePoly, PolyOps, SecureEvaluation};
     use crate::core::poly::line::{LineDomain, LineEvaluation};
-    use crate::qm31;
+    use crate::{m31, qm31};
 
     #[test]
     fn test_fold_line() {
@@ -159,5 +180,50 @@ mod tests {
         );
 
         assert_eq!(cpu_fold.values.to_vec(), avx_fold.values.to_vec());
+    }
+
+    #[test]
+    fn coset_diff_out_fft_space_test() {
+        const DOMAIN_LOG_SIZE: u32 = 5;
+        const DOMAIN_SIZE: u32 = 1 << DOMAIN_LOG_SIZE;
+        let evaluation_domain = CanonicCoset::new(DOMAIN_LOG_SIZE).circle_domain();
+
+        // [0, 1, 2, ..., DOMAIN_SIZE - 2, 0]
+        let coeffs_in_fft = (0..DOMAIN_SIZE)
+            .map(|i| BaseField::from_u32_unchecked(i % (DOMAIN_SIZE - 1)))
+            .collect();
+
+        // [0, 0, 0, ..., 0, DOMAIN_SIZE - 1]
+        let mut coeffs_out_fft: BaseFieldVec = [0; DOMAIN_SIZE as usize]
+            .into_iter()
+            .map(BaseField::from_u32_unchecked)
+            .collect();
+        let mut last_coeff = [m31!(0); 16];
+        last_coeff[15] = m31!(31);
+
+        let data_len = coeffs_out_fft.data.len();
+        coeffs_out_fft.data[data_len - 1] = PackedBaseField::from_array(last_coeff);
+
+        // [0, 1, 2, ... , DOMAIN_SIZE - 1]
+        let combined_poly_coeffs = (0..DOMAIN_SIZE)
+            .map(BaseField::from_u32_unchecked)
+            .collect();
+
+        let in_fft_poly_eval = CirclePoly::<AVX512Backend>::new(coeffs_in_fft)
+            .evaluate(evaluation_domain)
+            .bit_reverse();
+        let out_fft_poly_eval = CirclePoly::<AVX512Backend>::new(coeffs_out_fft)
+            .evaluate(evaluation_domain)
+            .bit_reverse();
+        let combined_poly_eval = CirclePoly::<AVX512Backend>::new(combined_poly_coeffs)
+            .evaluate(evaluation_domain)
+            .bit_reverse();
+
+        let in_lambda = AVX512Backend::coset_diff(in_fft_poly_eval);
+        let out_lambda = AVX512Backend::coset_diff(out_fft_poly_eval);
+        let combined_lambda = AVX512Backend::coset_diff(combined_poly_eval);
+
+        assert_eq!(in_lambda, BaseField::zero());
+        assert_eq!(out_lambda, combined_lambda);
     }
 }

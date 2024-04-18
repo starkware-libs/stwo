@@ -18,7 +18,7 @@ use super::fields::FieldOps;
 use super::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
 use super::poly::line::{LineEvaluation, LinePoly};
 use super::poly::twiddles::TwiddleTree;
-use super::poly::BitReversedOrder;
+use super::poly::{BitReversedOrder, NaturalOrder};
 // TODO(andrew): Create fri/ directory, move queries.rs there and split this file up.
 use super::queries::{Queries, SparseSubCircleDomain};
 use crate::commitment_scheme::ops::{MerkleHasher, MerkleOps};
@@ -112,6 +112,15 @@ pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized {
         alpha: SecureField,
         twiddles: &TwiddleTree<Self>,
     );
+
+    /// Computes the difference in evaluations on the  [`CircleDomain`]'s half-coset and it's
+    /// conjugate. Used to decompose a general polynomial to a polynomial inside the fft-space, and
+    /// the remainder terms.
+    /// A coset-diff on a [`CirclePoly`] that is in the FFT space will return zero.
+    ///
+    /// [`CircleDomain`]: super::poly::circle::CircleDomain
+    /// [`CirclePoly`]: super::poly::circle::CirclePoly
+    fn coset_diff(eval: CircleEvaluation<Self, BaseField, NaturalOrder>) -> BaseField;
 }
 
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
