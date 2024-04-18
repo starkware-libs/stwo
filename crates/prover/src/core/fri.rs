@@ -73,7 +73,7 @@ impl FriConfig {
     }
 }
 
-pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized {
+pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized + FieldOps<SecureField> {
     /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
     ///
     /// Let `eval` be a polynomial evaluated on a [LineDomain] `E`, `alpha` be a random field
@@ -112,6 +112,15 @@ pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized {
         alpha: SecureField,
         twiddles: &TwiddleTree<Self>,
     );
+
+    /// Computes the difference in evaluations on the  [`CircleDomain`]'s half-coset and it's
+    /// conjugate. Used to decompose a general polynomial to a polynomial inside the fft-space, and
+    /// the remainder terms.
+    /// A coset-diff on a [`CirclePoly`] that is in the FFT space will return zero.
+    ///
+    /// [`CircleDomain`]: super::poly::circle::CircleDomain
+    /// [`CirclePoly`]: super::poly::circle::CirclePoly
+    fn coset_diff(eval: &SecureEvaluation<Self>) -> SecureField;
 }
 
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
