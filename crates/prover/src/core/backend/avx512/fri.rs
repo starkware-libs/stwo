@@ -259,6 +259,7 @@ mod tests {
 
         assert_eq!(avx_lambda, cpu_lambda);
 
+        assert_eq!(avx_lambda, cpu_lambda);
         for i in 0..(1 << DOMAIN_LOG_SIZE) {
             assert_eq!(avx_g.values.at(i), cpu_g.values.at(i));
         }
