@@ -1,3 +1,4 @@
+use std::iter::Sum;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub};
 
 use bytemuck::{Pod, Zeroable};
@@ -151,6 +152,12 @@ impl Mul<PackedBaseField> for PackedSecureField {
     type Output = Self;
     fn mul(self, rhs: PackedBaseField) -> Self::Output {
         Self([self.a() * rhs, self.b() * rhs])
+    }
+}
+
+impl Sum for PackedSecureField {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::zero(), Add::add)
     }
 }
 
