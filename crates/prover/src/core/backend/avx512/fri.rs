@@ -1,8 +1,12 @@
-use super::AVX512Backend;
+use num_traits::Zero;
+
+use super::{AVX512Backend, PackedBaseField, K_BLOCK_SIZE};
 use crate::core::backend::avx512::fft::compute_first_twiddles;
 use crate::core::backend::avx512::fft::ifft::avx_ibutterfly;
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::VECS_LOG_SIZE;
+use crate::core::backend::Column;
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fri::{self, FriOps};
@@ -89,17 +93,52 @@ impl FriOps for AVX512Backend {
     }
 }
 
+impl AVX512Backend {
+    /// See [`CPUBackend::decomposition_coefficient`].
+    ///
+    /// [`CPUBackend::decomposition_coefficient`]: crate::core::backend::cpu::CPUBackend::decomposition_coefficient
+    // TODO(Ohad): remove pub.
+    pub fn decomposition_coefficient(eval: &SecureEvaluation<Self>) -> SecureField {
+        let cols = &eval.values.columns;
+        let [mut x_sum, mut y_sum, mut z_sum, mut w_sum] = [PackedBaseField::zero(); 4];
+
+        let range = cols[0].len() / K_BLOCK_SIZE;
+        let (half_a, half_b) = (range / 2, range);
+
+        for i in 0..half_a {
+            x_sum += cols[0].data[i];
+            y_sum += cols[1].data[i];
+            z_sum += cols[2].data[i];
+            w_sum += cols[3].data[i];
+        }
+        for i in half_a..half_b {
+            x_sum -= cols[0].data[i];
+            y_sum -= cols[1].data[i];
+            z_sum -= cols[2].data[i];
+            w_sum -= cols[3].data[i];
+        }
+
+        let x = x_sum.pointwise_sum();
+        let y = y_sum.pointwise_sum();
+        let z = z_sum.pointwise_sum();
+        let w = w_sum.pointwise_sum();
+
+        SecureField::from_m31(x, y, z, w)
+            / BaseField::from_u32_unchecked(1 << eval.domain.log_size())
+    }
+}
+
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::avx512::AVX512Backend;
-    use crate::core::backend::CPUBackend;
+    use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec};
+    use crate::core::backend::{CPUBackend, Column};
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::secure_column::SecureColumn;
     use crate::core::fri::FriOps;
-    use crate::core::poly::circle::{CanonicCoset, PolyOps, SecureEvaluation};
+    use crate::core::poly::circle::{CanonicCoset, CirclePoly, PolyOps, SecureEvaluation};
     use crate::core::poly::line::{LineDomain, LineEvaluation};
-    use crate::qm31;
+    use crate::{m31, qm31};
 
     #[test]
     fn test_fold_line() {
@@ -159,5 +198,42 @@ mod tests {
         );
 
         assert_eq!(cpu_fold.values.to_vec(), avx_fold.values.to_vec());
+    }
+
+    #[test]
+    fn deocompose_coeff_out_fft_space_test() {
+        const DOMAIN_LOG_SIZE: u32 = 5;
+        const DOMAIN_LOG_HALF_SIZE: u32 = DOMAIN_LOG_SIZE - 1;
+        let s = CanonicCoset::new(DOMAIN_LOG_SIZE);
+        let domain = s.circle_domain();
+
+        let mut coeffs = BaseFieldVec::zeros(1 << DOMAIN_LOG_SIZE);
+
+        // Polynomial is out of FFT space.
+        coeffs.as_mut_slice()[1 << DOMAIN_LOG_HALF_SIZE] = m31!(1);
+        let poly = CirclePoly::<AVX512Backend>::new(coeffs);
+        let values = poly.evaluate(domain);
+
+        let avx_column = SecureColumn::<AVX512Backend> {
+            columns: [
+                values.values.clone(),
+                values.values.clone(),
+                values.values.clone(),
+                values.values.clone(),
+            ],
+        };
+        let avx_eval = SecureEvaluation {
+            domain,
+            values: avx_column.clone(),
+        };
+        let cpu_eval = SecureEvaluation::<CPUBackend> {
+            domain,
+            values: avx_eval.to_cpu(),
+        };
+        let cpu_lambda = CPUBackend::decomposition_coefficient(&cpu_eval);
+
+        let lambda = AVX512Backend::decomposition_coefficient(&avx_eval);
+
+        assert_eq!(lambda, cpu_lambda);
     }
 }
