@@ -73,7 +73,7 @@ impl FriConfig {
     }
 }
 
-pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized {
+pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized + FieldOps<SecureField> {
     /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
     ///
     /// Let `eval` be a polynomial evaluated on a [LineDomain] `E`, `alpha` be a random field
