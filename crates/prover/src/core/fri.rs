@@ -73,7 +73,7 @@ impl FriConfig {
     }
 }
 
-pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized {
+pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized + FieldOps<SecureField> {
     /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
     ///
     /// Let `eval` be a polynomial evaluated on a [LineDomain] `E`, `alpha` be a random field
@@ -112,6 +112,24 @@ pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized {
         alpha: SecureField,
         twiddles: &TwiddleTree<Self>,
     );
+
+    /// Used to decompose a general polynomial to a polynomial inside the fft-space, and
+    /// the remainder terms.
+    /// A coset-diff on a [`CirclePoly`] that is in the FFT space will return zero.
+    ///
+    /// Let N be the domain size, Let h be a coset size N/2. Using lemma #7 from the CircleStark
+    /// paper, <f,V_h> = lambda<V_h,V_h> = lambda\*N => lambda = f(0)\*V_h(0) + f(1)*V_h(1) + .. +
+    /// f(N-1)\*V_h(N-1). The Vanishing polynomial of a cannonic coset sized half the circle
+    /// domain,evaluated on the circle domain, is [(1, -1, -1, 1)] repeating. This becomes
+    /// alternating [+-1] in our NaturalOrder, and [(+, +, +, ... , -, -)] in bit reverse.
+    /// Explicitly, lambda\*N = sum(+f(0..N/2)) + sum(-f(N/2..)).
+    ///
+    /// # Warning
+    /// This function assumes the blowupfactor is 2
+    ///
+    /// [`CirclePoly`]: super::poly::circle::CirclePoly
+    // domain_log_half_size
+    fn coset_diff(eval: &SecureEvaluation<Self>) -> SecureField;
 }
 
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
