@@ -1,12 +1,14 @@
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, Component};
+use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::circle::CirclePoint;
-use crate::core::constraints::coset_vanishing;
+use crate::core::constraints::{coset_vanishing, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
+use crate::core::utils::combine;
 use crate::core::ColumnVec;
 
 pub const LOG_N_COLUMNS: usize = 8;
@@ -72,14 +74,31 @@ impl Component for WideFibComponent {
         point: CirclePoint<SecureField>,
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
+        interaction_elements: &[BaseField],
     ) {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
+        let (alpha, z) = (interaction_elements[0], interaction_elements[1]);
+        let lookup_numerator = (mask[self.n_columns()][0]
+            * combine(
+                &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
+                alpha,
+                z,
+            ))
+            - combine(&[mask[0][0], mask[1][0]], alpha, z);
+        let lookup_denom = point_vanishing(constraint_zero_domain.at(0), point);
+        evaluation_accumulator.accumulate(lookup_numerator / lookup_denom);
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
         for i in 0..self.n_columns() - 2 {
             let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
             evaluation_accumulator.accumulate(numerator * denom_inverse);
         }
+    }
+
+    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> Vec<BaseField> {
+        let alpha = channel.draw_felt();
+        let z = channel.draw_felt();
+        vec![alpha.0 .0, z.0 .0]
     }
 }
 

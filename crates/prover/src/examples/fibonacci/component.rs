@@ -6,12 +6,14 @@ use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluatio
 use crate::core::air::mask::shifted_mask_points;
 use crate::core::air::{Component, ComponentProver, ComponentTrace};
 use crate::core::backend::CPUBackend;
+use crate::core::channel::Blake2sChannel;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, FieldExpOps};
-use crate::core::poly::circle::CanonicCoset;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;
 
@@ -99,6 +101,7 @@ impl Component for FibonacciComponent {
         point: CirclePoint<SecureField>,
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
+        _interaction_elements: &[BaseField],
     ) {
         evaluation_accumulator.accumulate(
             self.step_constraint_eval_quotient_by_mask(point, &mask[0][..].try_into().unwrap()),
@@ -110,6 +113,10 @@ impl Component for FibonacciComponent {
             ),
         );
     }
+
+    fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> Vec<BaseField> {
+        vec![]
+    }
 }
 
 impl ComponentProver<CPUBackend> for FibonacciComponent {
@@ -117,8 +124,9 @@ impl ComponentProver<CPUBackend> for FibonacciComponent {
         &self,
         trace: &ComponentTrace<'_, CPUBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
+        _interaction_elements: &[BaseField],
     ) {
-        let poly = &trace.polys[0];
+        let poly = &trace.polys[0][0];
         let trace_domain = CanonicCoset::new(self.log_size);
         let trace_eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
         let trace_eval = poly.evaluate(trace_eval_domain).bit_reverse();
@@ -145,5 +153,14 @@ impl ComponentProver<CPUBackend> for FibonacciComponent {
                 accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
             }
         }
+    }
+
+    fn interact(
+        &self,
+        _trace: &ColumnVec<&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>>,
+        _elements: &[BaseField],
+    ) -> ColumnVec<CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>> {
+        // No interaction in Fibonacci.
+        vec![]
     }
 }
