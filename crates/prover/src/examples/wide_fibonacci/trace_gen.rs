@@ -23,7 +23,7 @@ pub fn write_trace_row(
 }
 
 pub fn write_lookup_column(
-    input_trace: &[Vec<BaseField>],
+    input_trace: &[&Vec<BaseField>],
     // TODO(AlonH): Change alpha and z to SecureField.
     alpha: BaseField,
     z: BaseField,
