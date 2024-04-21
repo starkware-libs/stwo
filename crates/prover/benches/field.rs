@@ -1,9 +1,9 @@
 use criterion::Criterion;
-use prover::core::fields::cm31::CM31;
-use prover::core::fields::m31::{M31, P};
-use prover::core::fields::qm31::SecureField;
 use rand::rngs::ThreadRng;
 use rand::Rng;
+use stwo_prover::core::fields::cm31::CM31;
+use stwo_prover::core::fields::m31::{M31, P};
+use stwo_prover::core::fields::qm31::SecureField;
 pub const N_ELEMENTS: usize = 1 << 16;
 pub const N_STATE_ELEMENTS: usize = 8;
 
@@ -131,8 +131,8 @@ pub fn qm31_operations_bench(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
-    use prover::core::backend::avx512::m31::{PackedBaseField, K_BLOCK_SIZE};
-    use prover::platform;
+    use stwo_prover::core::backend::avx512::m31::{PackedBaseField, K_BLOCK_SIZE};
+    use stwo_prover::platform;
 
     if !platform::avx512_detected() {
         return;
