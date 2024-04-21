@@ -1,5 +1,5 @@
 [package]
-name = "prover"
+name = "stwo-prover"
 version.workspace = true
 edition.workspace = true
 

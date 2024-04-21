@@ -2,13 +2,13 @@
 
 use criterion::{black_box, Criterion};
 use itertools::Itertools;
-use prover::core::backend::CPUBackend;
-use prover::core::circle::SECURE_FIELD_CIRCLE_GEN;
-use prover::core::commitment_scheme::quotients::{ColumnSampleBatch, QuotientOps};
-use prover::core::fields::m31::BaseField;
-use prover::core::fields::qm31::SecureField;
-use prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use prover::core::poly::BitReversedOrder;
+use stwo_prover::core::backend::CPUBackend;
+use stwo_prover::core::circle::SECURE_FIELD_CIRCLE_GEN;
+use stwo_prover::core::commitment_scheme::quotients::{ColumnSampleBatch, QuotientOps};
+use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::qm31::SecureField;
+use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use stwo_prover::core::poly::BitReversedOrder;
 
 pub fn cpu_quotients(c: &mut criterion::Criterion) {
     const LOG_SIZE: u32 = 16;
@@ -43,7 +43,7 @@ pub fn cpu_quotients(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_quotients(c: &mut criterion::Criterion) {
-    use prover::core::backend::avx512::AVX512Backend;
+    use stwo_prover::core::backend::avx512::AVX512Backend;
 
     const LOG_SIZE: u32 = 20;
     const SIZE: usize = 1 << LOG_SIZE;
