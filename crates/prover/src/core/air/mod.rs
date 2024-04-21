@@ -1,8 +1,10 @@
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
+use super::channel::Blake2sChannel;
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
+use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
 use super::ColumnVec;
@@ -47,7 +49,10 @@ pub trait Component {
         point: CirclePoint<SecureField>,
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
+        interaction_elements: &[BaseField],
     );
+
+    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> Vec<BaseField>;
 }
 
 pub trait ComponentProver<B: Backend>: Component {
@@ -57,23 +62,30 @@ pub trait ComponentProver<B: Backend>: Component {
         &self,
         trace: &ComponentTrace<'_, B>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
+        interaction_elements: &[BaseField],
     );
+
+    fn interact(
+        &self,
+        trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        elements: &[BaseField],
+    ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
 }
 
 /// A component trace is a set of polynomials for each column on that component.
 /// Each polynomial is stored both in a coefficients, and evaluations form (for efficiency)
 pub struct ComponentTrace<'a, B: Backend> {
     /// Polynomials for each column.
-    pub polys: Vec<&'a CirclePoly<B>>,
+    pub polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
     /// Evaluations for each column. The evaluation domain is the commitment domain for that column
     /// obtained from [AirExt::trace_commitment_domains()].
-    pub evals: Vec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    pub evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
 }
 
 impl<'a, B: Backend> ComponentTrace<'a, B> {
     pub fn new(
-        polys: Vec<&'a CirclePoly<B>>,
-        evals: Vec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
+        evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
     ) -> Self {
         Self { polys, evals }
     }
