@@ -8,7 +8,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::utils::bit_reverse as cpu_bit_reverse;
 
-mod bit_reverse;
+pub mod bit_reverse;
 mod blake2s;
 pub mod cm31;
 pub mod column;

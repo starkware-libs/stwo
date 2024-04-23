@@ -27,7 +27,7 @@ use crate::core::utils::bit_reverse;
 ///
 /// # Safety
 ///
-/// Behavior is undefined if `values` do not have the same alignment as [`PackedBaseField`].
+/// Behavior is undefined if `values` does not have the same alignment as [`PackedBaseField`].
 pub unsafe fn ifft(values: *mut u32, twiddle_dbl: &[&[u32]], log_n_elements: usize) {
     assert!(log_n_elements >= MIN_FFT_LOG_SIZE);
     let log_n_vecs = log_n_elements - LOG_N_LANES as usize;
