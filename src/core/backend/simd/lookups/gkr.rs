@@ -25,12 +25,12 @@ impl GkrOps for SimdBackend {
 /// Values are returned in bit-reversed order.
 #[allow(clippy::uninit_vec)]
 fn gen_eq_evals(y: &[SecureField], v: SecureField) -> SecureFieldVec {
-    if y.len() < LOG_N_LANES {
+    if y.len() < LOG_N_LANES as usize {
         return cpu_gen_eq_evals(y, v).into_iter().collect();
     }
 
-    // Start DP with CPU backend to prevent dealing with instances smaller than [PackedSecureField].
-    let (y_initial, y_rem) = y.split_last_chunk::<LOG_N_LANES>().unwrap();
+    // Start DP with CPU backend to prevent dealing with instances smaller than `PackedSecureField`.
+    let (y_initial, y_rem) = y.split_last_chunk::<{ LOG_N_LANES as usize }>().unwrap();
     let initial = SecureFieldVec::from_iter(cpu_gen_eq_evals(y_initial, v));
     assert_eq!(initial.len(), N_LANES);
 

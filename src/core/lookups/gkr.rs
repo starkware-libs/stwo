@@ -669,9 +669,9 @@ mod tests {
         assert_eq!(proof.components_output_claims[1], &[product1]);
         let claim0 = &components_claims_to_verify[0];
         let claim1 = &components_claims_to_verify[1];
-        let dim = ood_point.len();
-        assert_eq!(claim0, &[col0.eval_at_point(&ood_point[dim - LOG_N0..])]);
-        assert_eq!(claim1, &[col1.eval_at_point(&ood_point[dim - LOG_N1..])]);
+        let n_vars = ood_point.len();
+        assert_eq!(claim0, &[col0.eval_at_point(&ood_point[n_vars - LOG_N0..])]);
+        assert_eq!(claim1, &[col1.eval_at_point(&ood_point[n_vars - LOG_N1..])]);
         Ok(())
     }
 

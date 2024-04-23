@@ -1,20 +1,22 @@
 use std::mem::transmute;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::ptr;
 use std::simd::cmp::SimdOrd;
-use std::simd::{Simd, Swizzle};
+use std::simd::{u32x16, Simd, Swizzle};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
 
-use crate::core::fields::m31::{M31, P};
+use crate::core::backend::simd::utils::{LoEvensInterleaveHiEvens, LoOddsInterleaveHiOdds};
+use crate::core::fields::m31::{BaseField, M31, P};
 use crate::core::fields::FieldExpOps;
 
-// #[cfg(any(target_feature = "neon", target_feature = "simd128"))]
-// #[cfg(any(target_feature = "neon", target_feature = "simd128"))]
-#[cfg(not(target_feature = "avx512"))]
-pub const LOG_N_LANES: usize = 2;
-#[cfg(target_feature = "avx512")]
-pub const LOG_N_LANES: usize = 4;
+// // #[cfg(any(target_feature = "neon", target_feature = "simd128"))]
+// // #[cfg(any(target_feature = "neon", target_feature = "simd128"))]
+// #[cfg(not(target_feature = "avx512"))]
+// pub const LOG_N_LANES: u32 = 2;
+// #[cfg(target_feature = "avx512")]
+pub const LOG_N_LANES: u32 = 4;
 
 pub const N_LANES: usize = 1 << LOG_N_LANES;
 
@@ -22,8 +24,9 @@ pub const MODULUS: Simd<u32, N_LANES> = Simd::from_array([P; N_LANES]);
 
 /// Holds a vector of unreduced [`M31`] elements in the range `[0, P]`.
 ///
-/// Implemented with [`std::simd`] to support multiple targets (avx512, neon, etc.).
+/// Implemented with [`std::simd`] to support multiple targets (avx512, neon, wasm etc.).
 #[derive(Copy, Clone, Debug)]
+#[repr(transparent)]
 pub struct PackedBaseField(Simd<u32, N_LANES>);
 
 impl PackedBaseField {
@@ -66,6 +69,33 @@ impl PackedBaseField {
         // TODO: Make more optimal.
         self + self
     }
+
+    pub fn into_simd(self) -> Simd<u32, N_LANES> {
+        self.0
+    }
+
+    /// # Safety
+    ///
+    /// Vector elements must be in the range `[0, P]`.
+    pub unsafe fn from_simd(v: Simd<u32, N_LANES>) -> Self {
+        Self(v)
+    }
+
+    /// # Safety
+    ///
+    /// Behavior is undefined if the pointer does not have the same alignment as
+    /// [`PackedBaseField`]. The loaded `u32` values must be in the range `[0, P]`.
+    pub unsafe fn load(mem_addr: *const u32) -> Self {
+        Self(ptr::read(mem_addr as *const u32x16))
+    }
+
+    /// # Safety
+    ///
+    /// Behavior is undefined if the pointer does not have the same alignment as
+    /// [`PackedBaseField`].
+    pub unsafe fn store(self, dst: *mut u32) {
+        ptr::write(dst as *mut u32x16, self.0)
+    }
 }
 
 impl Add for PackedBaseField {
@@ -94,31 +124,14 @@ impl Mul for PackedBaseField {
 
     #[inline(always)]
     fn mul(self, rhs: Self) -> Self::Output {
-        const fn lhs_interleave_rhs(odd: bool) -> [usize; N_LANES] {
-            let mut res = [0; N_LANES];
-            let mut i = 0;
-            while i < res.len() {
-                res[i] = (i % 2) * N_LANES + (i / 2) * 2 + if odd { 1 } else { 0 };
-                i += 1;
-            }
-            res
-        }
-
-        struct LoEvensInterleaveHiEvens;
-        struct LoOddsInterleaveHiOdds;
-
-        impl Swizzle<N_LANES> for LoEvensInterleaveHiEvens {
-            const INDEX: [usize; N_LANES] = lhs_interleave_rhs(false);
-        }
-
-        impl Swizzle<N_LANES> for LoOddsInterleaveHiOdds {
-            const INDEX: [usize; N_LANES] = lhs_interleave_rhs(true);
-        }
-
         const MASK_U32: Simd<u64, { N_LANES / 2 }> =
             Simd::from_array([0xFFFFFFFF; { N_LANES / 2 }]);
 
         unsafe {
+            // TODO: This multiplication should be platform specific. avx512 should use
+            // `_mm512_mul_epu32` and avoid the bit masks. wasm and neon can do pairwise
+            // multiplication instruction.
+
             // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of
             // the first operand.
             // let val0_e = transmute::<_, Simd<u64, { N_LANES / 2 }>>(self.0) & MASK_U32;
@@ -162,7 +175,6 @@ impl Mul for PackedBaseField {
                 transmute::<_, Simd<u32, N_LANES>>(prod_o_dbl),
             ));
             // prod_hs -    |0|prod_o_h|0|prod_e_h|
-
             prod_lows + prod_highs
         }
     }
@@ -237,10 +249,18 @@ unsafe impl Zeroable for PackedBaseField {
     }
 }
 
+impl From<[BaseField; N_LANES]> for PackedBaseField {
+    fn from(v: [BaseField; N_LANES]) -> Self {
+        Self::from_array(v)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::array;
     use std::iter::zip;
+
+    use aligned::{Aligned, A64};
 
     use super::PackedBaseField;
     use crate::core::fields::m31::{BaseField, M31, P};
@@ -328,5 +348,24 @@ mod tests {
 
             assert_eq!(res.to_array(), array::from_fn(|i| -value[i]));
         }
+    }
+
+    #[test]
+    fn load_works() {
+        let v: Aligned<A64, [u32; 16]> = Aligned(array::from_fn(|i| i as u32));
+
+        let res = unsafe { PackedBaseField::load(v.as_ptr()) };
+
+        assert_eq!(res.to_array().map(|v| v.0), *v);
+    }
+
+    #[test]
+    fn store_works() {
+        let v = PackedBaseField::from_array(array::from_fn(BaseField::from));
+
+        let mut res: Aligned<A64, [u32; 16]> = Aligned([0; 16]);
+        unsafe { v.store(res.as_mut_ptr()) };
+
+        assert_eq!(*res, v.to_array().map(|v| v.0));
     }
 }
