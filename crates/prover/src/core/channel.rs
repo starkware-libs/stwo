@@ -1,11 +1,12 @@
 use std::iter;
 
-use super::fields::m31::{BaseField, N_BYTES_FELT, P};
-use super::fields::qm31::SecureField;
-use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
-use super::fields::IntoSlice;
+use stwo_verifier::core::fields::m31::{BaseField, N_BYTES_FELT, P};
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::IntoSlice;
+
 use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::commitment_scheme::hasher::Hasher;
+use crate::core::secure_column::SECURE_EXTENSION_DEGREE;
 
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
@@ -158,10 +159,11 @@ impl Channel for Blake2sChannel {
 mod tests {
     use std::collections::BTreeSet;
 
+    use stwo_verifier::core::fields::qm31::SecureField;
+    use stwo_verifier::m31;
+
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::{Blake2sChannel, Channel};
-    use crate::core::fields::qm31::SecureField;
-    use crate::m31;
 
     #[test]
     fn test_initialize_channel() {

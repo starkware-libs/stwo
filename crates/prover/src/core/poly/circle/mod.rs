@@ -14,9 +14,10 @@ pub use secure_poly::{SecureCirclePoly, SecureEvaluation};
 
 #[cfg(test)]
 mod tests {
+    use stwo_verifier::core::fields::m31::BaseField;
+
     use super::CanonicCoset;
     use crate::core::backend::cpu::CPUCircleEvaluation;
-    use crate::core::fields::m31::BaseField;
     use crate::core::utils::bit_reverse_index;
 
     #[test]

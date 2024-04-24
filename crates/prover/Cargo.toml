@@ -15,6 +15,7 @@ num-traits.workspace = true
 thiserror.workspace = true
 bytemuck = { workspace = true, features = ["derive"] }
 tracing.workspace = true
+stwo-verifier = { path = "../verifier", version = "0.1.1" }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

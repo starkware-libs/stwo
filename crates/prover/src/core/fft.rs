@@ -1,5 +1,5 @@
-use super::fields::m31::BaseField;
-use super::fields::ExtensionOf;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::ExtensionOf;
 
 pub fn butterfly<F: ExtensionOf<BaseField>>(v0: &mut F, v1: &mut F, twid: BaseField) {
     let tmp = *v1 * twid;

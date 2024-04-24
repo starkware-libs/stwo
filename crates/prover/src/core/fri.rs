@@ -6,15 +6,14 @@ use std::ops::RangeInclusive;
 
 use itertools::Itertools;
 use num_traits::Zero;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::MulGroup;
 use thiserror::Error;
 use tracing::{span, Level};
 
-use super::backend::CPUBackend;
+use super::backend::{CPUBackend, FieldOps};
 use super::channel::Channel;
-use super::fields::m31::BaseField;
-use super::fields::qm31::SecureField;
-use super::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
-use super::fields::FieldOps;
 use super::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
 use super::poly::line::{LineEvaluation, LinePoly};
 use super::poly::twiddles::TwiddleTree;
@@ -26,8 +25,8 @@ use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
 use crate::commitment_scheme::verifier::{MerkleVerificationError, MerkleVerifier};
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
-use crate::core::fields::FieldExpOps;
 use crate::core::poly::line::LineDomain;
+use crate::core::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
 use crate::core::utils::bit_reverse_index;
 
 /// FRI proof config
@@ -983,16 +982,15 @@ mod tests {
 
     use itertools::Itertools;
     use num_traits::{One, Zero};
+    use stwo_verifier::core::fields::m31::BaseField;
+    use stwo_verifier::core::fields::qm31::SecureField;
+    use stwo_verifier::core::fields::Field;
 
     use super::{get_opening_positions, FriVerificationError, SparseCircleEvaluation};
     use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
     use crate::core::backend::{CPUBackend, Col, Column, ColumnOps};
     use crate::core::circle::{CirclePointIndex, Coset};
-    use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::secure_column::SecureColumn;
-    use crate::core::fields::Field;
     use crate::core::fri::{
         fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig, FriVerifier,
         CIRCLE_TO_LINE_FOLD_STEP,
@@ -1001,6 +999,7 @@ mod tests {
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
     use crate::core::poly::NaturalOrder;
     use crate::core::queries::{Queries, SparseSubCircleDomain};
+    use crate::core::secure_column::SecureColumn;
     use crate::core::test_utils::test_channel;
     use crate::core::utils::bit_reverse_index;
 

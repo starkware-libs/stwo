@@ -4,19 +4,35 @@ use std::ops::{Mul, MulAssign, Neg};
 
 use num_traits::{NumAssign, NumAssignOps, NumOps, One};
 
-use super::backend::ColumnOps;
-
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
-pub mod secure_column;
 
-pub trait FieldOps<F: Field>: ColumnOps<F> {
-    // TODO(Ohad): change to use a mutable slice.
-    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column);
+pub trait Field:
+    NumAssign
+    + Neg<Output = Self>
+    + ComplexConjugate
+    + Copy
+    + Default
+    + Debug
+    + Display
+    + PartialOrd
+    + Ord
+    + Send
+    + Sync
+    + Sized
+    + MulGroup
+    + Product
+    + for<'a> Product<&'a Self>
+    + Sum
+    + for<'a> Sum<&'a Self>
+{
+    fn double(&self) -> Self {
+        (*self) + (*self)
+    }
 }
 
-pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
+pub trait MulGroup: Mul<Output = Self> + MulAssign + Sized + One + Copy {
     fn square(&self) -> Self {
         (*self) * (*self)
     }
@@ -72,7 +88,7 @@ pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
 }
 
 /// Assumes dst is initialized and of the same length as column.
-fn batch_inverse_classic<T: FieldExpOps>(column: &[T], dst: &mut [T]) {
+fn batch_inverse_classic<T: MulGroup>(column: &[T], dst: &mut [T]) {
     let n = column.len();
     debug_assert!(dst.len() >= n);
 
@@ -91,30 +107,6 @@ fn batch_inverse_classic<T: FieldExpOps>(column: &[T], dst: &mut [T]) {
         curr_inverse *= column[i];
     }
     dst[0] = curr_inverse;
-}
-
-pub trait Field:
-    NumAssign
-    + Neg<Output = Self>
-    + ComplexConjugate
-    + Copy
-    + Default
-    + Debug
-    + Display
-    + PartialOrd
-    + Ord
-    + Send
-    + Sync
-    + Sized
-    + FieldExpOps
-    + Product
-    + for<'a> Product<&'a Self>
-    + Sum
-    + for<'a> Sum<&'a Self>
-{
-    fn double(&self) -> Self {
-        (*self) + (*self)
-    }
 }
 
 /// # Safety
@@ -139,9 +131,9 @@ pub trait ComplexConjugate {
     /// # Example
     ///
     /// ```
-    /// use stwo_prover::core::fields::m31::P;
-    /// use stwo_prover::core::fields::qm31::QM31;
-    /// use stwo_prover::core::fields::ComplexConjugate;
+    /// use stwo_verifier::core::fields::m31::P;
+    /// use stwo_verifier::core::fields::qm31::QM31;
+    /// use stwo_verifier::core::fields::ComplexConjugate;
     ///
     /// let x = QM31::from_u32_unchecked(1, 2, 3, 4);
     /// assert_eq!(
@@ -455,7 +447,7 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use crate::core::fields::m31::{M31, P};
-    use crate::core::fields::FieldExpOps;
+    use crate::core::fields::MulGroup;
 
     #[test]
     fn test_slice_batch_inverse() {

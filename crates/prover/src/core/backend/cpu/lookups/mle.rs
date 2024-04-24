@@ -1,8 +1,9 @@
 use std::iter::zip;
 
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+
 use crate::core::backend::CPUBackend;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::mle::{Mle, MleOps};
 
 impl MleOps<BaseField> for CPUBackend {

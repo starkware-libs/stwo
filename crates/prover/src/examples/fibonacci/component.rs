@@ -1,6 +1,9 @@
 use std::ops::Div;
 
 use num_traits::One;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::{ExtensionOf, MulGroup};
 
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::shifted_mask_points;
@@ -8,9 +11,6 @@ use crate::core::air::{Component, ComponentProver, ComponentTrace};
 use crate::core::backend::CPUBackend;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{ExtensionOf, FieldExpOps};
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;

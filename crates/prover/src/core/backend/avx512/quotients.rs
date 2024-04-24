@@ -1,4 +1,7 @@
 use itertools::{izip, zip_eq, Itertools};
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::ComplexConjugate;
 
 use super::qm31::PackedSecureField;
 use super::{AVX512Backend, SecureFieldVec, K_BLOCK_SIZE, VECS_LOG_SIZE};
@@ -6,15 +9,12 @@ use crate::core::backend::avx512::PackedBaseField;
 use crate::core::backend::cpu::quotients::{
     batch_random_coeffs, column_line_coeffs, QuotientConstants,
 };
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Col, Column, FieldOps};
 use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::quotients::{ColumnSampleBatch, QuotientOps};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
-use crate::core::fields::{ComplexConjugate, FieldOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::secure_column::SecureColumn;
 use crate::core::utils::bit_reverse_index;
 
 impl QuotientOps for AVX512Backend {
@@ -162,15 +162,15 @@ fn quotient_constants(
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
+    use stwo_verifier::core::fields::m31::BaseField;
+    use stwo_verifier::qm31;
 
     use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec};
     use crate::core::backend::{CPUBackend, Column};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::commitment_scheme::quotients::{ColumnSampleBatch, QuotientOps};
-    use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
     use crate::core::poly::BitReversedOrder;
-    use crate::qm31;
 
     #[test]
     fn test_avx_accumulate_quotients() {

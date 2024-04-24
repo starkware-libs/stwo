@@ -7,13 +7,13 @@ pub mod circle;
 pub mod commitment_scheme;
 pub mod constraints;
 pub mod fft;
-pub mod fields;
 pub mod fri;
 pub mod lookups;
 pub mod poly;
 pub mod proof_of_work;
 pub mod prover;
 pub mod queries;
+pub mod secure_column;
 #[cfg(test)]
 pub mod test_utils;
 pub mod utils;

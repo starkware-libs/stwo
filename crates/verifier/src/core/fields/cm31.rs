@@ -3,7 +3,7 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
-use super::{ComplexConjugate, FieldExpOps};
+use super::{ComplexConjugate, MulGroup};
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
 
@@ -52,7 +52,7 @@ impl Mul for CM31 {
     }
 }
 
-impl FieldExpOps for CM31 {
+impl MulGroup for CM31 {
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");
         // 1 / (a + bi) = (a - bi) / (a^2 + b^2).
@@ -60,7 +60,6 @@ impl FieldExpOps for CM31 {
     }
 }
 
-#[cfg(test)]
 pub const fn cm31(m0: u32, m1: u32) -> CM31 {
     CM31::from_u32_unchecked(m0, m1)
 }
@@ -71,7 +70,7 @@ mod tests {
 
     use super::CM31;
     use crate::core::fields::m31::P;
-    use crate::core::fields::{FieldExpOps, IntoSlice};
+    use crate::core::fields::{IntoSlice, MulGroup};
     use crate::{cm31, m31};
 
     #[test]

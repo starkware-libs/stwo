@@ -1,4 +1,6 @@
 use itertools::Itertools;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
 use thiserror::Error;
 use tracing::{span, Level};
 
@@ -19,8 +21,6 @@ use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
 use crate::core::commitment_scheme::{CommitmentSchemeProver, CommitmentSchemeVerifier};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
 use crate::core::ComponentVec;
@@ -267,18 +267,18 @@ pub enum VerificationError {
 #[cfg(test)]
 mod tests {
     use num_traits::Zero;
+    use stwo_verifier::core::fields::m31::BaseField;
+    use stwo_verifier::core::fields::qm31::SecureField;
+    use stwo_verifier::qm31;
 
     use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
     use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::backend::CPUBackend;
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
-    use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain, MAX_CIRCLE_DOMAIN_LOG_SIZE};
     use crate::core::prover::{prove, ProvingError};
     use crate::core::test_utils::test_channel;
-    use crate::qm31;
 
     struct TestAir<C: ComponentProver<CPUBackend>> {
         component: C,

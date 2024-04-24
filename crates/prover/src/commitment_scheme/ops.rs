@@ -1,7 +1,8 @@
 use std::fmt::Debug;
 
+use stwo_verifier::core::fields::m31::BaseField;
+
 use crate::core::backend::{Col, ColumnOps};
-use crate::core::fields::m31::BaseField;
 
 /// A Merkle node hash is a hash of:
 ///   [left_child_hash, right_child_hash], column0_value, column1_value, ...
