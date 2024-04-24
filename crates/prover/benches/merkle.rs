@@ -9,8 +9,8 @@ pub fn cpu_merkle(c: &mut criterion::Criterion) {
     use stwo_prover::commitment_scheme::ops::MerkleOps;
     use stwo_prover::core::backend::avx512::AVX512Backend;
     use stwo_prover::core::backend::{CPUBackend, Col};
-    use stwo_prover::core::fields::m31::BaseField;
     use stwo_prover::platform;
+    use stwo_verifier::core::fields::m31::BaseField;
 
     const N_COLS: usize = 1 << 8;
     const LOG_SIZE: u32 = 16;

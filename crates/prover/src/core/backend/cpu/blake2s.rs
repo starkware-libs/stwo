@@ -1,10 +1,10 @@
 use itertools::Itertools;
+use stwo_verifier::core::fields::m31::BaseField;
 
 use crate::commitment_scheme::blake2_hash::Blake2sHash;
 use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
 use crate::commitment_scheme::ops::{MerkleHasher, MerkleOps};
 use crate::core::backend::CPUBackend;
-use crate::core::fields::m31::BaseField;
 
 impl MerkleOps<Blake2sMerkleHasher> for CPUBackend {
     fn commit_on_layer(

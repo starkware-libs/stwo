@@ -1,10 +1,10 @@
 use std::ops::Deref;
 
 use derivative::Derivative;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::Field;
 
 use crate::core::backend::{Col, Column, ColumnOps};
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::Field;
 
 /// TODO
 pub trait MleOps<F: Field>: ColumnOps<F> + Sized {

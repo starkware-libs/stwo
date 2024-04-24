@@ -10,12 +10,12 @@ use std::fmt::Display;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use num_traits::{One, Zero};
+use stwo_verifier::core::fields::m31::{M31, P};
+use stwo_verifier::core::fields::MulGroup;
 
 use super::tranpose_utils::{
     EVENS_CONCAT_EVENS, HHALF_INTERLEAVE_HHALF, LHALF_INTERLEAVE_LHALF, ODDS_CONCAT_ODDS,
 };
-use crate::core::fields::m31::{M31, P};
-use crate::core::fields::FieldExpOps;
 
 pub const K_BLOCK_SIZE: usize = 16;
 pub const M512P: __m512i = unsafe { core::mem::transmute([P; K_BLOCK_SIZE]) };
@@ -252,7 +252,7 @@ impl One for PackedBaseField {
     }
 }
 
-impl FieldExpOps for PackedBaseField {
+impl MulGroup for PackedBaseField {
     fn inverse(&self) -> Self {
         // TODO(andrew): Use a better multiplication tree. Also for other constant powers in the
         // code.
@@ -266,10 +266,10 @@ impl FieldExpOps for PackedBaseField {
 mod tests {
 
     use itertools::Itertools;
+    use stwo_verifier::core::fields::m31::{M31, P};
+    use stwo_verifier::core::fields::{Field, MulGroup};
 
     use super::PackedBaseField;
-    use crate::core::fields::m31::{M31, P};
-    use crate::core::fields::{Field, FieldExpOps};
 
     /// Tests field operations where field elements are in reduced form.
     #[test]

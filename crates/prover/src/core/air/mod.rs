@@ -1,8 +1,9 @@
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
 use super::circle::CirclePoint;
-use super::fields::m31::BaseField;
-use super::fields::qm31::SecureField;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
 use super::ColumnVec;

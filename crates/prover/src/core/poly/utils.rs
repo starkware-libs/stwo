@@ -1,5 +1,6 @@
+use stwo_verifier::core::fields::{ExtensionOf, Field};
+
 use super::line::LineDomain;
-use crate::core::fields::{ExtensionOf, Field};
 
 /// Folds values recursively in `O(n)` by a hierarchical application of folding factors.
 ///

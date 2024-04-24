@@ -1,9 +1,9 @@
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+
 use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
-use crate::core::backend::Col;
+use crate::core::backend::{Col, FieldOps};
 use crate::core::circle::{CirclePoint, Coset};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldOps;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 

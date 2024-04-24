@@ -1,9 +1,9 @@
 use num_traits::Zero;
+use stwo_verifier::core::fields::m31::BaseField;
 
 use super::blake2_hash::Blake2sHash;
 use super::blake2s_ref::compress;
 use super::ops::MerkleHasher;
-use crate::core::fields::m31::BaseField;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub struct Blake2sMerkleHasher;
@@ -45,12 +45,12 @@ mod tests {
     use num_traits::Zero;
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
+    use stwo_verifier::core::fields::m31::BaseField;
 
     use crate::commitment_scheme::blake2_merkle::{Blake2sHash, Blake2sMerkleHasher};
     use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
     use crate::commitment_scheme::verifier::{MerkleVerificationError, MerkleVerifier};
     use crate::core::backend::CPUBackend;
-    use crate::core::fields::m31::BaseField;
 
     type TestData = (
         BTreeMap<u32, Vec<usize>>,

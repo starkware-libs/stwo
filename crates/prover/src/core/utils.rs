@@ -1,8 +1,7 @@
 use std::iter::Peekable;
 
 use num_traits::One;
-
-use super::fields::qm31::SecureField;
+use stwo_verifier::core::fields::qm31::SecureField;
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
     fn assign(self, other: impl IntoIterator<Item = T>)
@@ -89,11 +88,11 @@ pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureF
 #[cfg(test)]
 mod tests {
     use num_traits::One;
+    use stwo_verifier::core::fields::qm31::SecureField;
+    use stwo_verifier::core::fields::MulGroup;
+    use stwo_verifier::qm31;
 
-    use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::FieldExpOps;
     use crate::core::utils::bit_reverse;
-    use crate::qm31;
 
     #[test]
     fn bit_reverse_works() {

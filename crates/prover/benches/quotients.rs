@@ -5,10 +5,10 @@ use itertools::Itertools;
 use stwo_prover::core::backend::CPUBackend;
 use stwo_prover::core::circle::SECURE_FIELD_CIRCLE_GEN;
 use stwo_prover::core::commitment_scheme::quotients::{ColumnSampleBatch, QuotientOps};
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
 
 pub fn cpu_quotients(c: &mut criterion::Criterion) {
     const LOG_SIZE: u32 = 16;

@@ -7,8 +7,9 @@ pub mod quotients;
 
 use std::fmt::Debug;
 
+use stwo_verifier::core::fields::Field;
+
 use super::{Backend, Column, ColumnOps, FieldOps};
-use crate::core::fields::Field;
 use crate::core::lookups::mle::Mle;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::utils::bit_reverse;
@@ -58,11 +59,11 @@ mod tests {
     use itertools::Itertools;
     use rand::prelude::*;
     use rand::rngs::SmallRng;
+    use stwo_verifier::core::fields::m31::P;
+    use stwo_verifier::core::fields::qm31::QM31;
+    use stwo_verifier::core::fields::MulGroup;
 
     use crate::core::backend::{CPUBackend, Column, FieldOps};
-    use crate::core::fields::m31::P;
-    use crate::core::fields::qm31::QM31;
-    use crate::core::fields::FieldExpOps;
 
     #[test]
     fn batch_inverse_test() {

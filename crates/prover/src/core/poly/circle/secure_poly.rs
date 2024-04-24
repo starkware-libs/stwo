@@ -1,14 +1,14 @@
 use std::ops::Deref;
 
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+
 use super::{CircleDomain, CircleEvaluation, CirclePoly, PolyOps};
 use crate::core::backend::cpu::CPUCircleEvaluation;
-use crate::core::backend::CPUBackend;
+use crate::core::backend::{CPUBackend, FieldOps};
 use crate::core::circle::CirclePoint;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
-use crate::core::fields::FieldOps;
 use crate::core::poly::BitReversedOrder;
+use crate::core::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
 
 pub struct SecureCirclePoly<B: FieldOps<BaseField>>(pub [CirclePoly<B>; SECURE_EXTENSION_DEGREE]);
 

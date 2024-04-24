@@ -1,6 +1,8 @@
 use std::iter::zip;
 
 use num_traits::One;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::{IntoSlice, MulGroup};
 
 use self::air::{FibonacciAir, MultiFibonacciAir};
 use self::component::FibonacciComponent;
@@ -8,8 +10,6 @@ use crate::commitment_scheme::blake2_hash::Blake2sHasher;
 use crate::commitment_scheme::hasher::Hasher;
 use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::channel::{Blake2sChannel, Channel};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, verify, ProvingError, StarkProof, VerificationError};
@@ -116,18 +116,18 @@ mod tests {
     use num_traits::One;
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
+    use stwo_verifier::core::fields::m31::BaseField;
+    use stwo_verifier::core::fields::qm31::SecureField;
+    use stwo_verifier::{m31, qm31};
 
     use super::{Fibonacci, MultiFibonacci};
     use crate::core::air::accumulation::PointEvaluationAccumulator;
     use crate::core::air::{AirExt, AirProverExt, Component, ComponentTrace};
     use crate::core::circle::CirclePoint;
-    use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::VerificationError;
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
-    use crate::{m31, qm31};
 
     pub fn generate_test_queries(n_queries: usize, trace_length: usize) -> Vec<usize> {
         let rng = &mut StdRng::seed_from_u64(0);

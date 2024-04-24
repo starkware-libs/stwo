@@ -543,12 +543,13 @@ pub unsafe fn fft1(
 mod tests {
     use std::arch::x86_64::{_mm512_add_epi32, _mm512_set1_epi32, _mm512_setr_epi32};
 
+    use stwo_verifier::core::fields::m31::BaseField;
+
     use super::*;
     use crate::core::backend::avx512::{BaseFieldVec, PackedBaseField};
     use crate::core::backend::cpu::CPUCirclePoly;
     use crate::core::backend::Column;
     use crate::core::fft::butterfly;
-    use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 
     #[test]

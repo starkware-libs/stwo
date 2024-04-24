@@ -1,11 +1,12 @@
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::MulGroup;
+
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, Component};
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::ColumnVec;
 
