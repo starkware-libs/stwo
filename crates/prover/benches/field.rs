@@ -1,9 +1,9 @@
 use criterion::Criterion;
 use rand::rngs::ThreadRng;
 use rand::Rng;
-use stwo_prover::core::fields::cm31::CM31;
-use stwo_prover::core::fields::m31::{M31, P};
-use stwo_prover::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::cm31::CM31;
+use stwo_verifier::core::fields::m31::{M31, P};
+use stwo_verifier::core::fields::qm31::SecureField;
 pub const N_ELEMENTS: usize = 1 << 16;
 pub const N_STATE_ELEMENTS: usize = 8;
 

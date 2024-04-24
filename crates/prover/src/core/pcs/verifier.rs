@@ -1,10 +1,10 @@
 use std::iter::zip;
 
 use itertools::Itertools;
+use stwo_verifier::core::fields::qm31::SecureField;
 
 use super::super::channel::Blake2sChannel;
 use super::super::circle::CirclePoint;
-use super::super::fields::qm31::SecureField;
 use super::super::fri::{CirclePolyDegreeBound, FriConfig, FriVerifier};
 use super::super::proof_of_work::ProofOfWork;
 use super::super::prover::{

@@ -1,9 +1,9 @@
 use itertools::{zip_eq, Itertools};
+use stwo_verifier::core::fields::m31::BaseField;
 
 use super::component::FibonacciComponent;
 use crate::core::air::{Air, AirProver, Component, ComponentProver};
 use crate::core::backend::CPUBackend;
-use crate::core::fields::m31::BaseField;
 
 pub struct FibonacciAir {
     pub component: FibonacciComponent,

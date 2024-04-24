@@ -1,5 +1,8 @@
-use bytemuck::{cast_slice, Zeroable};
+use bytemuck::Zeroable;
 use num_traits::One;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::{Field, MulGroup};
 
 use super::fft::{ifft, CACHED_FFT_LOG_SIZE};
 use super::m31::PackedBaseField;
@@ -9,9 +12,6 @@ use crate::core::backend::avx512::fft::rfft;
 use crate::core::backend::avx512::BaseFieldVec;
 use crate::core::backend::{CPUBackend, Col};
 use crate::core::circle::{CirclePoint, Coset};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{Field, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
@@ -85,7 +85,7 @@ impl AVX512Backend {
     // steps[i] = t_i/(t_0*t_1*...*t_i-1).
     fn twiddle_steps<F: Field>(mappings: &[F]) -> Vec<F>
     where
-        F: FieldExpOps,
+        F: MulGroup,
     {
         let mut denominators: Vec<F> = vec![mappings[0]];
 
@@ -326,7 +326,7 @@ fn slow_eval_at_point(
         // Swap content of a,c.
         a.swap_with_slice(&mut c[0..n0]);
     }
-    fold(cast_slice::<_, BaseField>(&poly.coeffs.data), &mappings)
+    fold(poly.coeffs.as_slice(), &mappings)
 }
 
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
@@ -334,16 +334,16 @@ fn slow_eval_at_point(
 mod tests {
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
+    use stwo_verifier::core::fields::m31::BaseField;
+    use stwo_verifier::qm31;
 
     use crate::core::backend::avx512::circle::slow_eval_at_point;
     use crate::core::backend::avx512::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
     use crate::core::backend::avx512::AVX512Backend;
     use crate::core::backend::Column;
     use crate::core::circle::CirclePoint;
-    use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PolyOps};
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
-    use crate::qm31;
 
     #[test]
     fn test_interpolate_and_eval() {

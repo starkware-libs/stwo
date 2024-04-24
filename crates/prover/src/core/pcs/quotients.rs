@@ -3,12 +3,12 @@ use std::collections::BTreeMap;
 use std::iter::zip;
 
 use itertools::{izip, multiunzip, Itertools};
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
 use tracing::{span, Level};
 
 use crate::core::backend::cpu::quotients::{accumulate_row_quotients, quotient_constants};
 use crate::core::circle::CirclePoint;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
 use crate::core::fri::SparseCircleEvaluation;
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation,
@@ -178,11 +178,12 @@ pub fn fri_answers_for_log_size(
 
 #[cfg(test)]
 mod tests {
+    use stwo_verifier::{m31, qm31};
+
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::pcs::quotients::{compute_fri_quotients, PointSample};
     use crate::core::poly::circle::CanonicCoset;
-    use crate::{m31, qm31};
 
     #[test]
     fn test_quotients_are_low_degree() {

@@ -1,6 +1,7 @@
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::MulGroup;
+
 use super::component::Input;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::FieldExpOps;
 
 // TODO(ShaharS), try to make it into a for loop and use intermiddiate variables to save
 // computation.

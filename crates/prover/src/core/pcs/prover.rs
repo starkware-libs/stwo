@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
 use tracing::{span, Level};
 
 use super::super::channel::Blake2sChannel;
 use super::super::circle::CirclePoint;
-use super::super::fields::m31::BaseField;
-use super::super::fields::qm31::SecureField;
 use super::super::fri::{FriConfig, FriProof, FriProver};
 use super::super::poly::circle::CanonicCoset;
 use super::super::poly::BitReversedOrder;

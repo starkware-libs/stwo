@@ -5,16 +5,16 @@ use std::ops::{Deref, DerefMut};
 
 use itertools::Itertools;
 use num_traits::Zero;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::{ExtensionOf, MulGroup};
 
 use super::circle::CircleDomain;
 use super::utils::fold;
-use crate::core::backend::{CPUBackend, ColumnOps};
+use crate::core::backend::{CPUBackend, ColumnOps, FieldOps};
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::ibutterfly;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
-use crate::core::fields::{ExtensionOf, FieldExpOps, FieldOps};
+use crate::core::secure_column::SecureColumn;
 use crate::core::utils::bit_reverse;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
@@ -276,11 +276,11 @@ mod tests {
     type B = CPUBackend;
 
     use itertools::Itertools;
+    use stwo_verifier::core::fields::m31::BaseField;
 
     use super::LineDomain;
     use crate::core::backend::{CPUBackend, ColumnOps};
     use crate::core::circle::{CirclePoint, Coset};
-    use crate::core::fields::m31::BaseField;
     use crate::core::poly::line::{LineEvaluation, LinePoly};
     use crate::core::utils::bit_reverse_index;
 

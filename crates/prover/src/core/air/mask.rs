@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::vec;
 
 use itertools::Itertools;
+use stwo_verifier::core::fields::qm31::SecureField;
 
 use crate::core::circle::CirclePoint;
-use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::ColumnVec;
 

@@ -5,11 +5,12 @@ use std::arch::x86_64::{
     _mm512_set1_epi32, _mm512_set1_epi64, _mm512_srli_epi64,
 };
 
+use stwo_verifier::core::fields::MulGroup;
+
 use super::{compute_first_twiddles, EVENS_INTERLEAVE_EVENS, ODDS_INTERLEAVE_ODDS};
 use crate::core::backend::avx512::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
 use crate::core::backend::avx512::{PackedBaseField, VECS_LOG_SIZE};
 use crate::core::circle::Coset;
-use crate::core::fields::FieldExpOps;
 use crate::core::utils::bit_reverse;
 
 /// Performs an Inverse Circle Fast Fourier Transform (ICFFT) on the given values.
@@ -519,13 +520,14 @@ pub unsafe fn ifft1(values: *mut i32, offset: usize, log_step: usize, twiddles_d
 mod tests {
     use std::arch::x86_64::{_mm512_add_epi32, _mm512_setr_epi32};
 
+    use stwo_verifier::core::fields::m31::BaseField;
+
     use super::*;
     use crate::core::backend::avx512::m31::PackedBaseField;
     use crate::core::backend::avx512::BaseFieldVec;
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::backend::Column;
     use crate::core::fft::ibutterfly;
-    use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 
     #[test]

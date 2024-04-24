@@ -4,8 +4,8 @@ use criterion::{BenchmarkId, Criterion, Throughput};
 use stwo_prover::core::backend::avx512::fft::ifft::get_itwiddle_dbls;
 use stwo_prover::core::backend::avx512::fft::transpose_vecs;
 use stwo_prover::core::backend::avx512::{BaseFieldVec, PackedBaseField};
-use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::poly::circle::CanonicCoset;
+use stwo_verifier::core::fields::m31::BaseField;
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_ifft(c: &mut criterion::Criterion) {

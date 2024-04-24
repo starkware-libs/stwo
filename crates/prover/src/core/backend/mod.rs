@@ -1,11 +1,11 @@
 use std::fmt::Debug;
 
 pub use cpu::CPUBackend;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::Field;
 
 use super::air::accumulation::AccumulationOps;
-use super::fields::m31::BaseField;
-use super::fields::qm31::SecureField;
-use super::fields::FieldOps;
 use super::fri::FriOps;
 use super::pcs::quotients::QuotientOps;
 use super::poly::circle::PolyOps;
@@ -48,4 +48,9 @@ pub trait Column<T>: Clone + Debug + FromIterator<T> {
     }
     /// Retrieves the element at the given index.
     fn at(&self, index: usize) -> T;
+}
+
+pub trait FieldOps<F: Field>: ColumnOps<F> {
+    // TODO(Ohad): change to use a mutable slice.
+    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column);
 }

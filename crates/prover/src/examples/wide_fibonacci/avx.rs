@@ -1,5 +1,7 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::MulGroup;
 use tracing::{span, Level};
 
 use super::component::{WideFibAir, WideFibComponent};
@@ -7,10 +9,8 @@ use crate::core::air::accumulation::DomainEvaluationAccumulator;
 use crate::core::air::{AirProver, ComponentProver, ComponentTrace};
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField, VECS_LOG_SIZE};
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Col, Column, ColumnOps, FieldOps};
 use crate::core::constraints::coset_vanishing;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
@@ -113,11 +113,11 @@ impl ComponentProver<AVX512Backend> for WideFibComponent {
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
+    use stwo_verifier::core::fields::m31::BaseField;
+    use stwo_verifier::core::fields::IntoSlice;
     use tracing::{span, Level};
 
     use crate::core::channel::{Blake2sChannel, Channel};
-    use crate::core::fields::m31::BaseField;
-    use crate::core::fields::IntoSlice;
     use crate::core::prover::{prove, verify};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;

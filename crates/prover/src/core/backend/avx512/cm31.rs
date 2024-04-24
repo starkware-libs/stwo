@@ -1,13 +1,13 @@
 use std::ops::{Add, Mul, MulAssign, Neg, Sub};
 
 use num_traits::{One, Zero};
+use stwo_verifier::core::fields::cm31::CM31;
+use stwo_verifier::core::fields::MulGroup;
 
 use super::m31::{PackedBaseField, K_BLOCK_SIZE};
-use crate::core::fields::cm31::CM31;
-use crate::core::fields::FieldExpOps;
 
 /// AVX implementation for the complex extension field of M31.
-/// See [crate::core::fields::cm31::CM31] for more information.
+/// See [stwo_verifier::core::fields::cm31::CM31] for more information.
 #[derive(Copy, Clone, Debug)]
 pub struct PackedCM31(pub [PackedBaseField; 2]);
 impl PackedCM31 {
@@ -75,7 +75,7 @@ impl Neg for PackedCM31 {
         Self([-self.a(), -self.b()])
     }
 }
-impl FieldExpOps for PackedCM31 {
+impl MulGroup for PackedCM31 {
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");
         // 1 / (a + bi) = (a - bi) / (a^2 + b^2).
@@ -107,9 +107,9 @@ impl Mul<PackedBaseField> for PackedCM31 {
 mod tests {
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
+    use stwo_verifier::core::fields::m31::{M31, P};
 
     use super::*;
-    use crate::core::fields::m31::{M31, P};
 
     #[test]
     fn test_cm31avx512_basic_ops() {

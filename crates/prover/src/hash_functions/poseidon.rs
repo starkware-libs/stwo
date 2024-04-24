@@ -1,9 +1,9 @@
 use core::fmt;
 
 use num_traits::{One, Zero};
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::MulGroup;
 
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::FieldExpOps;
 use crate::core::vcs::hasher::{self, Hasher, Name};
 use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
 
@@ -222,11 +222,12 @@ impl Hasher for PoseidonHasher {
 
 #[cfg(test)]
 mod tests {
+    use stwo_verifier::core::fields::m31::BaseField;
+    use stwo_verifier::m31;
+
     use super::{PoseidonHasher, POSEIDON_CAPACITY};
-    use crate::core::fields::m31::BaseField;
     use crate::core::vcs::hasher::Hasher;
     use crate::hash_functions::poseidon::PoseidonHash;
-    use crate::m31;
 
     const ZERO_HASH_RESULT: [BaseField; POSEIDON_CAPACITY] = [
         m31(1783652178),

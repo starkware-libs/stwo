@@ -1,6 +1,6 @@
 use super::CPUBackend;
 use crate::core::air::accumulation::AccumulationOps;
-use crate::core::fields::secure_column::SecureColumn;
+use crate::core::secure_column::SecureColumn;
 
 impl AccumulationOps for CPUBackend {
     fn accumulate(column: &mut SecureColumn<Self>, other: &SecureColumn<Self>) {

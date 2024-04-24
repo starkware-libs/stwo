@@ -1,7 +1,8 @@
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+
 use super::backend::cpu::CPUCircleEvaluation;
 use super::channel::Blake2sChannel;
-use super::fields::m31::BaseField;
-use super::fields::qm31::SecureField;
 use crate::core::channel::Channel;
 
 pub fn secure_eval_to_base_eval<EvalOrder>(

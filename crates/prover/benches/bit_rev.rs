@@ -4,7 +4,7 @@ use criterion::Criterion;
 
 #[cfg(target_arch = "x86_64")]
 pub fn cpu_bit_rev(c: &mut criterion::Criterion) {
-    use stwo_prover::core::fields::m31::BaseField;
+    use stwo_verifier::core::fields::m31::BaseField;
 
     const SIZE: usize = 1 << 24;
     let mut data: Vec<_> = (0..SIZE as u32)
@@ -23,8 +23,8 @@ pub fn avx512_bit_rev(c: &mut criterion::Criterion) {
     use bytemuck::cast_slice_mut;
     use stwo_prover::core::backend::avx512::bit_reverse::bit_reverse_m31;
     use stwo_prover::core::backend::avx512::m31::PackedBaseField;
-    use stwo_prover::core::fields::m31::BaseField;
     use stwo_prover::platform;
+    use stwo_verifier::core::fields::m31::BaseField;
     if !platform::avx512_detected() {
         return;
     }

@@ -1,11 +1,10 @@
 use num_traits::One;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::{ComplexConjugate, ExtensionOf};
 
 use super::circle::{CirclePoint, Coset};
-use super::fields::m31::BaseField;
-use super::fields::qm31::SecureField;
-use super::fields::ExtensionOf;
 use super::pcs::quotients::PointSample;
-use crate::core::fields::ComplexConjugate;
 
 /// Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoint<F>) -> F {
@@ -115,18 +114,18 @@ pub fn complex_conjugate_line_coeffs(
 #[cfg(test)]
 mod tests {
     use num_traits::Zero;
+    use stwo_verifier::core::fields::m31::{BaseField, M31};
+    use stwo_verifier::core::fields::qm31::SecureField;
+    use stwo_verifier::core::fields::{ComplexConjugate, MulGroup};
+    use stwo_verifier::m31;
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
-    use crate::core::fields::m31::{BaseField, M31};
-    use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::{ComplexConjugate, FieldExpOps};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
     use crate::core::test_utils::secure_eval_to_base_eval;
-    use crate::m31;
 
     #[test]
     fn test_coset_vanishing() {

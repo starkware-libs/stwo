@@ -8,6 +8,9 @@ pub mod trace_gen;
 mod tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
+    use stwo_verifier::core::fields::m31::BaseField;
+    use stwo_verifier::core::fields::qm31::QM31;
+    use stwo_verifier::core::fields::IntoSlice;
 
     use super::component::{Input, WideFibAir, WideFibComponent};
     use super::trace_gen::write_trace_row;
@@ -15,9 +18,6 @@ mod tests {
     use crate::core::air::{Component, ComponentProver, ComponentTrace};
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::channel::{Blake2sChannel, Channel};
-    use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::QM31;
-    use crate::core::fields::IntoSlice;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{prove, verify};

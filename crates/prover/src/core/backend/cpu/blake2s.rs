@@ -1,7 +1,7 @@
 use itertools::Itertools;
+use stwo_verifier::core::fields::m31::BaseField;
 
 use crate::core::backend::CPUBackend;
-use crate::core::fields::m31::BaseField;
 use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};

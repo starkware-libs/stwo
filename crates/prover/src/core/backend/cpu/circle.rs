@@ -1,12 +1,12 @@
 use num_traits::Zero;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::{ExtensionOf, MulGroup};
 
 use super::CPUBackend;
 use crate::core::backend::{Col, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{ExtensionOf, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
