@@ -126,11 +126,8 @@ impl From<i32> for M31 {
 }
 
 #[cfg(test)]
-#[macro_export]
-macro_rules! m31 {
-    ($m:expr) => {
-        $crate::core::fields::m31::M31::from_u32_unchecked($m)
-    };
+pub const fn m31(value: u32) -> M31 {
+    M31::from_u32_unchecked(value)
 }
 
 #[cfg(test)]
@@ -138,6 +135,7 @@ mod tests {
     use rand::Rng;
 
     use super::{M31, P};
+    use crate::core::fields::m31::m31;
     use crate::core::fields::IntoSlice;
 
     fn mul_p(a: u32, b: u32) -> u32 {
@@ -162,9 +160,9 @@ mod tests {
         for _ in 0..10000 {
             let x: u32 = rng.gen::<u32>() % P;
             let y: u32 = rng.gen::<u32>() % P;
-            assert_eq!(m31!(add_p(x, y)), m31!(x) + m31!(y));
-            assert_eq!(m31!(mul_p(x, y)), m31!(x) * m31!(y));
-            assert_eq!(m31!(neg_p(x)), -m31!(x));
+            assert_eq!(m31(add_p(x, y)), m31(x) + m31(y));
+            assert_eq!(m31(mul_p(x, y)), m31(x) * m31(y));
+            assert_eq!(m31(neg_p(x)), -m31(x));
         }
     }
 
@@ -172,7 +170,7 @@ mod tests {
     fn test_into_slice() {
         let mut rng = rand::thread_rng();
         let x = (0..100)
-            .map(|_| m31!(rng.gen::<u32>()))
+            .map(|_| m31(rng.gen::<u32>()))
             .collect::<Vec<M31>>();
 
         let slice = M31::into_slice(&x);
@@ -180,7 +178,7 @@ mod tests {
         for i in 0..100 {
             assert_eq!(
                 x[i],
-                m31!(u32::from_le_bytes(
+                m31(u32::from_le_bytes(
                     slice[i * 4..(i + 1) * 4].try_into().unwrap()
                 ))
             );

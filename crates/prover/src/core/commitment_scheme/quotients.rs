@@ -187,12 +187,12 @@ mod tests {
     #[test]
     fn test_quotients_are_low_degree() {
         const LOG_SIZE: u32 = 7;
-        let polynomial = CPUCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
+        let polynomial = CPUCirclePoly::new((0..1 << LOG_SIZE).map(m31).collect());
         let eval_domain = CanonicCoset::new(LOG_SIZE + 1).circle_domain();
         let eval = polynomial.evaluate(eval_domain);
         let point = SECURE_FIELD_CIRCLE_GEN;
         let value = polynomial.eval_at_point(point);
-        let coeff = qm31!(1, 2, 3, 4);
+        let coeff = qm31(1, 2, 3, 4);
         let quot_eval =
             compute_fri_quotients(&[&eval], &[vec![PointSample { point, value }]], coeff)
                 .pop()

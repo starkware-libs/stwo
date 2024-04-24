@@ -48,16 +48,16 @@ mod tests {
 
     #[test]
     fn test_matrix_multiplication() {
-        let matrix = RowMajorMatrix::<M31, 3>::new((0..9).map(|x| m31!(x + 1)).collect::<Vec<_>>());
+        let matrix = RowMajorMatrix::<M31, 3>::new((0..9).map(|x| m31(x + 1)).collect::<Vec<_>>());
         let vector = (0..3)
-            .map(|x| m31!(x + 1))
+            .map(|x| m31(x + 1))
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
         let expected_result = [
-            m31!(14), // 1 * 1 + 2 * 2 + 3 * 3
-            m31!(32), // 4 * 1 + 5 * 2 + 6 * 3
-            m31!(50), // 7 * 1 + 8 * 2 + 9 * 3
+            m31(14), // 1 * 1 + 2 * 2 + 3 * 3
+            m31(32), // 4 * 1 + 5 * 2 + 6 * 3
+            m31(50), // 7 * 1 + 8 * 2 + 9 * 3
         ];
 
         let result = matrix.mul(vector);

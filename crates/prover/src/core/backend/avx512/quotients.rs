@@ -182,9 +182,9 @@ mod tests {
             CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(domain, e0),
             CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(domain, e1),
         ];
-        let random_coeff = qm31!(1, 2, 3, 4);
-        let a = qm31!(3, 6, 9, 12);
-        let b = qm31!(4, 8, 12, 16);
+        let random_coeff = qm31(1, 2, 3, 4);
+        let a = qm31(3, 6, 9, 12);
+        let b = qm31(4, 8, 12, 16);
         let samples = vec![ColumnSampleBatch {
             point: SECURE_FIELD_CIRCLE_GEN,
             columns_and_values: vec![(0, a), (1, b)],

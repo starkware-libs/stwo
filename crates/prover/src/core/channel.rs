@@ -257,7 +257,7 @@ mod tests {
         let initial_digest = Blake2sHash::from(vec![0; 32]);
         let mut channel = Blake2sChannel::new(initial_digest);
         let felts: Vec<SecureField> = (0..2)
-            .map(|i| SecureField::from(m31!(i + 1923782)))
+            .map(|i| SecureField::from(m31(i + 1923782)))
             .collect();
 
         channel.mix_felts(felts.as_slice());

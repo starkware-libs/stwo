@@ -79,12 +79,8 @@ impl FieldExpOps for QM31 {
 }
 
 #[cfg(test)]
-#[macro_export]
-macro_rules! qm31 {
-    ($m0:expr, $m1:expr, $m2:expr, $m3:expr) => {{
-        use $crate::core::fields::qm31::QM31;
-        QM31::from_u32_unchecked($m0, $m1, $m2, $m3)
-    }};
+pub const fn qm31(m0: u32, m1: u32, m2: u32, m3: u32) -> QM31 {
+    QM31::from_u32_unchecked(m0, m1, m2, m3)
 }
 
 #[cfg(test)]
@@ -95,31 +91,31 @@ mod tests {
     use super::QM31;
     use crate::core::fields::m31::P;
     use crate::core::fields::{FieldExpOps, IntoSlice};
-    use crate::m31;
+    use crate::{m31, qm31};
 
     #[test]
     fn test_inverse() {
-        let qm = qm31!(1, 2, 3, 4);
+        let qm = qm31(1, 2, 3, 4);
         let qm_inv = qm.inverse();
         assert_eq!(qm * qm_inv, QM31::one());
     }
 
     #[test]
     fn test_ops() {
-        let qm0 = qm31!(1, 2, 3, 4);
-        let qm1 = qm31!(4, 5, 6, 7);
-        let m = m31!(8);
+        let qm0 = qm31(1, 2, 3, 4);
+        let qm1 = qm31(4, 5, 6, 7);
+        let m = m31(8);
         let qm = QM31::from(m);
-        let qm0_x_qm1 = qm31!(P - 71, 93, P - 16, 50);
+        let qm0_x_qm1 = qm31(P - 71, 93, P - 16, 50);
 
-        assert_eq!(qm0 + qm1, qm31!(5, 7, 9, 11));
+        assert_eq!(qm0 + qm1, qm31(5, 7, 9, 11));
         assert_eq!(qm1 + m, qm1 + qm);
         assert_eq!(qm0 * qm1, qm0_x_qm1);
         assert_eq!(qm1 * m, qm1 * qm);
-        assert_eq!(-qm0, qm31!(P - 1, P - 2, P - 3, P - 4));
-        assert_eq!(qm0 - qm1, qm31!(P - 3, P - 3, P - 3, P - 3));
+        assert_eq!(-qm0, qm31(P - 1, P - 2, P - 3, P - 4));
+        assert_eq!(qm0 - qm1, qm31(P - 3, P - 3, P - 3, P - 3));
         assert_eq!(qm1 - m, qm1 - qm);
-        assert_eq!(qm0_x_qm1 / qm1, qm31!(1, 2, 3, 4));
+        assert_eq!(qm0_x_qm1 / qm1, qm31(1, 2, 3, 4));
         assert_eq!(qm1 / m, qm1 / qm);
     }
 
@@ -128,11 +124,11 @@ mod tests {
         let mut rng = rand::thread_rng();
         let x = (0..100)
             .map(|_| {
-                qm31!(
+                qm31(
                     rng.gen::<u32>(),
                     rng.gen::<u32>(),
                     rng.gen::<u32>(),
-                    rng.gen::<u32>()
+                    rng.gen::<u32>(),
                 )
             })
             .collect::<Vec<QM31>>();
@@ -143,7 +139,7 @@ mod tests {
             let corresponding_sub_slice = &slice[i * 16..(i + 1) * 16];
             assert_eq!(
                 x[i],
-                qm31!(
+                qm31(
                     u32::from_le_bytes(corresponding_sub_slice[..4].try_into().unwrap()),
                     u32::from_le_bytes(corresponding_sub_slice[4..8].try_into().unwrap()),
                     u32::from_le_bytes(corresponding_sub_slice[8..12].try_into().unwrap()),

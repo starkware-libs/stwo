@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn test_complex_conjugate_symmetry() {
         // Create a polynomial over a base circle domain.
-        let polynomial = CPUCirclePoly::new((0..1 << 7).map(|i| m31!(i)).collect());
+        let polynomial = CPUCirclePoly::new((0..1 << 7).map(m31).collect());
         let oods_point = CirclePoint::get_point(9834759221);
 
         // Assert that the base field polynomial is complex conjugate symmetric.
@@ -213,7 +213,7 @@ mod tests {
         // Create a polynomial over a circle domain.
         let log_domain_size = 7;
         let domain_size = 1 << log_domain_size;
-        let polynomial = CPUCirclePoly::new((0..domain_size).map(|i| m31!(i)).collect());
+        let polynomial = CPUCirclePoly::new((0..domain_size).map(m31).collect());
 
         // Create a larger domain.
         let log_large_domain_size = log_domain_size + 1;
