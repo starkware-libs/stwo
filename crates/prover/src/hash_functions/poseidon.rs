@@ -229,20 +229,20 @@ mod tests {
     use crate::m31;
 
     const ZERO_HASH_RESULT: [BaseField; POSEIDON_CAPACITY] = [
-        m31!(1783652178),
-        m31!(1273199544),
-        m31!(762746910),
-        m31!(252294276),
-        m31!(1889325289),
-        m31!(1378872655),
-        m31!(868420021),
-        m31!(357967387),
+        m31(1783652178),
+        m31(1273199544),
+        m31(762746910),
+        m31(252294276),
+        m31(1889325289),
+        m31(1378872655),
+        m31(868420021),
+        m31(357967387),
     ];
 
     #[test]
     fn hash_debug_test() {
         let values = (0..POSEIDON_CAPACITY as u32)
-            .map(|x| m31!(x))
+            .map(m31)
             .collect::<Vec<BaseField>>();
         let poseidon_state = PoseidonHash::from(values);
 
@@ -252,30 +252,30 @@ mod tests {
     #[test]
     fn hash_iter_test() {
         let values = (0..POSEIDON_CAPACITY as u32)
-            .map(|x| m31!(x))
+            .map(m31)
             .collect::<Vec<BaseField>>();
         let poseidon_state = PoseidonHash::from(values);
 
         for (i, x) in poseidon_state.into_iter().enumerate() {
-            assert_eq!(x, m31!(i as u32));
+            assert_eq!(x, m31(i as u32));
         }
     }
 
     #[test]
     fn hasher_set_state_test() {
         let values = (0..POSEIDON_CAPACITY as u32)
-            .map(|x| m31!(x))
+            .map(m31)
             .collect::<Vec<BaseField>>();
         let mut hasher = PoseidonHasher::from_hash(PoseidonHash::from(values));
 
-        hasher.set_state_prefix(&[m31!(100)]);
+        hasher.set_state_prefix(&[m31(100)]);
         let poseidon_hash: PoseidonHash = hasher.state.into();
 
         for (i, x) in poseidon_hash.into_iter().enumerate() {
             if i == 0 {
-                assert_eq!(x, m31!(100));
+                assert_eq!(x, m31(100));
             } else {
-                assert_eq!(x, m31!(i as u32));
+                assert_eq!(x, m31(i as u32));
             }
         }
     }

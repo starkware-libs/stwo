@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn test_composition_polynomial_is_low_degree() {
-        let fib = Fibonacci::new(5, m31!(443693538));
+        let fib = Fibonacci::new(5, m31(443693538));
         let trace = fib.get_trace();
         let trace_poly = trace.interpolate();
         let trace_eval =
@@ -150,7 +150,7 @@ mod tests {
 
         // TODO(ShaharS), Change to a channel implementation to retrieve the random
         // coefficients from extension field.
-        let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
+        let random_coeff = qm31(2213980, 2213981, 2213982, 2213983);
         let component_traces = vec![trace];
         let composition_polynomial_poly = fib
             .air
@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn test_prove() {
         const FIB_LOG_SIZE: u32 = 5;
-        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
+        let fib = Fibonacci::new(FIB_LOG_SIZE, m31(443693538));
 
         let proof = fib.prove().unwrap();
         fib.verify(proof).unwrap();
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn test_prove_invalid_trace_value() {
         const FIB_LOG_SIZE: u32 = 5;
-        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
+        let fib = Fibonacci::new(FIB_LOG_SIZE, m31(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.commitment_scheme_proof.queried_values.0[0][0][4] += BaseField::one();
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn test_prove_invalid_trace_oods_values() {
         const FIB_LOG_SIZE: u32 = 5;
-        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
+        let fib = Fibonacci::new(FIB_LOG_SIZE, m31(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn test_prove_insufficient_trace_values() {
         const FIB_LOG_SIZE: u32 = 5;
-        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
+        let fib = Fibonacci::new(FIB_LOG_SIZE, m31(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
         invalid_proof.commitment_scheme_proof.queried_values.0[0][0].pop();
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn test_rectangular_multi_fibonacci() {
-        let multi_fib = MultiFibonacci::new(vec![5; 16], vec![m31!(443693538); 16]);
+        let multi_fib = MultiFibonacci::new(vec![5; 16], vec![m31(443693538); 16]);
         let proof = multi_fib.prove().unwrap();
         multi_fib.verify(proof).unwrap();
     }
@@ -277,7 +277,7 @@ mod tests {
         let multi_fib = MultiFibonacci::new(
             // TODO(spapini): Change order of log_sizes.
             vec![3, 5, 7],
-            vec![m31!(1056169651), m31!(443693538), m31!(722122436)],
+            vec![m31(1056169651), m31(443693538), m31(722122436)],
         );
         let proof = multi_fib.prove().unwrap();
         multi_fib.verify(proof).unwrap();

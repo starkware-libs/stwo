@@ -183,7 +183,7 @@ mod tests {
             .iter()
             .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() & MASK))
             .collect::<Vec<_>>();
-        let alpha = qm31!(2, 3, 4, 5);
+        let alpha = qm31(2, 3, 4, 5);
 
         // Use accumulator.
         let mut accumulator = PointEvaluationAccumulator::new(alpha);
@@ -222,7 +222,7 @@ mod tests {
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
-        let alpha = qm31!(2, 3, 4, 5);
+        let alpha = qm31(2, 3, 4, 5);
 
         // Use accumulator.
         let mut accumulator = DomainEvaluationAccumulator::<CPUBackend>::new(

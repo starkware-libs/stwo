@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn generate_secure_powers_works() {
-        let felt = qm31!(1, 2, 3, 4);
+        let felt = qm31(1, 2, 3, 4);
         let n_powers = 10;
 
         let powers = super::generate_secure_powers(felt, n_powers);
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn generate_empty_secure_powers_works() {
-        let felt = qm31!(1, 2, 3, 4);
+        let felt = qm31(1, 2, 3, 4);
         let max_log_size = 0;
 
         let powers = super::generate_secure_powers(felt, max_log_size);

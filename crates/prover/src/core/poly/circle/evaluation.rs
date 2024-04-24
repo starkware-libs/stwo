@@ -170,7 +170,7 @@ mod tests {
         .bit_reverse();
         let poly = evaluation.interpolate();
         for (i, point) in domain.iter().enumerate() {
-            assert_eq!(poly.eval_at_point(point.into_ef()), m31!(i as u32).into());
+            assert_eq!(poly.eval_at_point(point.into_ef()), m31(i as u32).into());
         }
     }
 
@@ -183,14 +183,14 @@ mod tests {
         );
         let poly = evaluation.interpolate();
         for (i, point) in Coset::odds(3).iter().enumerate() {
-            assert_eq!(poly.eval_at_point(point.into_ef()), m31!(i as u32).into());
+            assert_eq!(poly.eval_at_point(point.into_ef()), m31(i as u32).into());
         }
     }
 
     #[test]
     pub fn test_get_at_circle_evaluation() {
         let domain = CanonicCoset::new(7).circle_domain();
-        let values = (0..domain.size()).map(|i| m31!(i as u32)).collect();
+        let values = (0..domain.size()).map(|i| m31(i as u32)).collect();
         let circle_evaluation = CPUCircleEvaluation::<_, NaturalOrder>::new(domain, values);
         let bit_reversed_circle_evaluation = circle_evaluation.clone().bit_reverse();
         for index in domain.iter_indices() {
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn test_sub_evaluation() {
         let domain = CanonicCoset::new(7).circle_domain();
-        let values = (0..domain.size()).map(|i| m31!(i as u32)).collect();
+        let values = (0..domain.size()).map(|i| m31(i as u32)).collect();
         let circle_evaluation = CPUCircleEvaluation::new(domain, values);
         let coset = Coset::new(domain.index_at(17), 3);
         let sub_eval = circle_evaluation.fetch_eval_on_coset(coset);

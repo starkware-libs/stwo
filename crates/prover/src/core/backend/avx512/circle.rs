@@ -438,17 +438,17 @@ mod tests {
             );
             let poly = evaluation.bit_reverse().interpolate();
 
-            let x = qm31!(
+            let x = qm31(
                 rng.gen::<u32>(),
                 rng.gen::<u32>(),
                 rng.gen::<u32>(),
-                rng.gen::<u32>()
+                rng.gen::<u32>(),
             );
-            let y = qm31!(
+            let y = qm31(
                 rng.gen::<u32>(),
                 rng.gen::<u32>(),
                 rng.gen::<u32>(),
-                rng.gen::<u32>()
+                rng.gen::<u32>(),
             );
 
             let p = CirclePoint { x, y };

@@ -327,7 +327,7 @@ mod tests {
             _mask: &crate::core::ColumnVec<Vec<SecureField>>,
             evaluation_accumulator: &mut PointEvaluationAccumulator,
         ) {
-            evaluation_accumulator.accumulate(qm31!(0, 0, 0, 1))
+            evaluation_accumulator.accumulate(qm31(0, 0, 0, 1))
         }
     }
 

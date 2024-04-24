@@ -61,11 +61,8 @@ impl FieldExpOps for CM31 {
 }
 
 #[cfg(test)]
-#[macro_export]
-macro_rules! cm31 {
-    ($m0:expr, $m1:expr) => {
-        CM31::from_u32_unchecked($m0, $m1)
-    };
+pub const fn cm31(m0: u32, m1: u32) -> CM31 {
+    CM31::from_u32_unchecked(m0, m1)
 }
 
 #[cfg(test)]
@@ -75,31 +72,31 @@ mod tests {
     use super::CM31;
     use crate::core::fields::m31::P;
     use crate::core::fields::{FieldExpOps, IntoSlice};
-    use crate::m31;
+    use crate::{cm31, m31};
 
     #[test]
     fn test_inverse() {
-        let cm = cm31!(1, 2);
+        let cm = cm31(1, 2);
         let cm_inv = cm.inverse();
-        assert_eq!(cm * cm_inv, cm31!(1, 0));
+        assert_eq!(cm * cm_inv, cm31(1, 0));
     }
 
     #[test]
     fn test_ops() {
-        let cm0 = cm31!(1, 2);
-        let cm1 = cm31!(4, 5);
-        let m = m31!(8);
+        let cm0 = cm31(1, 2);
+        let cm1 = cm31(4, 5);
+        let m = m31(8);
         let cm = CM31::from(m);
-        let cm0_x_cm1 = cm31!(P - 6, 13);
+        let cm0_x_cm1 = cm31(P - 6, 13);
 
-        assert_eq!(cm0 + cm1, cm31!(5, 7));
+        assert_eq!(cm0 + cm1, cm31(5, 7));
         assert_eq!(cm1 + m, cm1 + cm);
         assert_eq!(cm0 * cm1, cm0_x_cm1);
         assert_eq!(cm1 * m, cm1 * cm);
-        assert_eq!(-cm0, cm31!(P - 1, P - 2));
-        assert_eq!(cm0 - cm1, cm31!(P - 3, P - 3));
+        assert_eq!(-cm0, cm31(P - 1, P - 2));
+        assert_eq!(cm0 - cm1, cm31(P - 3, P - 3));
         assert_eq!(cm1 - m, cm1 - cm);
-        assert_eq!(cm0_x_cm1 / cm1, cm31!(1, 2));
+        assert_eq!(cm0_x_cm1 / cm1, cm31(1, 2));
         assert_eq!(cm1 / m, cm1 / cm);
     }
 
@@ -107,7 +104,7 @@ mod tests {
     fn test_into_slice() {
         let mut rng = rand::thread_rng();
         let x = (0..100)
-            .map(|_| cm31!(rng.gen::<u32>(), rng.gen::<u32>()))
+            .map(|_| cm31(rng.gen::<u32>(), rng.gen::<u32>()))
             .collect::<Vec<CM31>>();
 
         let slice = CM31::into_slice(&x);
@@ -116,7 +113,7 @@ mod tests {
             let corresponding_sub_slice = &slice[i * 8..(i + 1) * 8];
             assert_eq!(
                 x[i],
-                cm31!(
+                cm31(
                     u32::from_le_bytes(corresponding_sub_slice[..4].try_into().unwrap()),
                     u32::from_le_bytes(corresponding_sub_slice[4..].try_into().unwrap())
                 )

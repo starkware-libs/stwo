@@ -105,9 +105,9 @@ mod tests {
     fn test_fold_line() {
         const LOG_SIZE: u32 = 7;
         let values: Vec<SecureField> = (0..(1 << LOG_SIZE))
-            .map(|i| qm31!(4 * i, 4 * i + 1, 4 * i + 2, 4 * i + 3))
+            .map(|i| qm31(4 * i, 4 * i + 1, 4 * i + 2, 4 * i + 3))
             .collect();
-        let alpha = qm31!(1, 3, 5, 7);
+        let alpha = qm31(1, 3, 5, 7);
         let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE + 1).half_coset());
         let cpu_fold = CPUBackend::fold_line(
             &LineEvaluation::new(domain, values.iter().copied().collect()),
@@ -128,9 +128,9 @@ mod tests {
     fn test_fold_circle_into_line() {
         const LOG_SIZE: u32 = 7;
         let values: Vec<SecureField> = (0..(1 << LOG_SIZE))
-            .map(|i| qm31!(4 * i, 4 * i + 1, 4 * i + 2, 4 * i + 3))
+            .map(|i| qm31(4 * i, 4 * i + 1, 4 * i + 2, 4 * i + 3))
             .collect();
-        let alpha = qm31!(1, 3, 5, 7);
+        let alpha = qm31(1, 3, 5, 7);
         let circle_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
         let line_domain = LineDomain::new(circle_domain.half_coset);
 
