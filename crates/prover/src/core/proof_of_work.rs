@@ -2,9 +2,9 @@ use thiserror::Error;
 use tracing::{span, Level};
 
 use super::channel::Blake2sChannel;
-use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
-use crate::commitment_scheme::hasher::Hasher;
 use crate::core::channel::Channel;
+use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
+use crate::core::vcs::hasher::Hasher;
 
 // TODO(ShaharS): generalize to more channels and create a from function in the hash traits.
 pub struct ProofOfWork {
@@ -94,9 +94,9 @@ pub enum ProofOfWorkVerificationError {
 
 #[cfg(test)]
 mod tests {
-    use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
+    use crate::core::vcs::blake2_hash::Blake2sHash;
 
     #[test]
     fn test_verify_proof_of_work_success() {

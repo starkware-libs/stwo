@@ -4,12 +4,12 @@ pub mod air;
 pub mod backend;
 pub mod channel;
 pub mod circle;
-pub mod commitment_scheme;
 pub mod constraints;
 pub mod fft;
 pub mod fields;
 pub mod fri;
 pub mod lookups;
+pub mod pcs;
 pub mod poly;
 pub mod proof_of_work;
 pub mod prover;
@@ -17,6 +17,7 @@ pub mod queries;
 #[cfg(test)]
 pub mod test_utils;
 pub mod utils;
+pub mod vcs;
 
 /// A vector in which each element relates (by index) to a column in the trace.
 pub type ColumnVec<T> = Vec<T>;

@@ -13,11 +13,11 @@ use super::super::prover::{
 use super::quotients::{fri_answers, PointSample};
 use super::utils::TreeVec;
 use super::CommitmentSchemeProof;
-use crate::commitment_scheme::blake2_hash::Blake2sHash;
-use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
-use crate::commitment_scheme::verifier::MerkleVerifier;
 use crate::core::channel::Channel;
 use crate::core::prover::VerificationError;
+use crate::core::vcs::blake2_hash::Blake2sHash;
+use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs::verifier::MerkleVerifier;
 use crate::core::ColumnVec;
 
 type ProofChannel = Blake2sChannel;

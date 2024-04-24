@@ -11,8 +11,6 @@ mod tests {
 
     use super::component::{Input, WideFibAir, WideFibComponent};
     use super::trace_gen::write_trace_row;
-    use crate::commitment_scheme::blake2_hash::Blake2sHasher;
-    use crate::commitment_scheme::hasher::Hasher;
     use crate::core::air::accumulation::DomainEvaluationAccumulator;
     use crate::core::air::{Component, ComponentProver, ComponentTrace};
     use crate::core::backend::cpu::CPUCircleEvaluation;
@@ -23,6 +21,8 @@ mod tests {
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{prove, verify};
+    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::hasher::Hasher;
 
     fn fill_trace(private_input: &[Input]) -> Vec<Vec<BaseField>> {
         let zero_vec = vec![BaseField::zero(); private_input.len()];

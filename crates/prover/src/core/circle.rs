@@ -456,12 +456,12 @@ mod tests {
     use num_traits::{One, Pow};
 
     use super::{CirclePointIndex, Coset};
-    use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::{CirclePoint, SECURE_FIELD_CIRCLE_GEN};
     use crate::core::fields::qm31::{SecureField, P4};
     use crate::core::fields::FieldExpOps;
     use crate::core::poly::circle::CanonicCoset;
+    use crate::core::vcs::blake2_hash::Blake2sHash;
 
     #[test]
     fn test_iterator() {

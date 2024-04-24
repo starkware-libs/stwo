@@ -21,14 +21,14 @@ use super::poly::twiddles::TwiddleTree;
 use super::poly::BitReversedOrder;
 // TODO(andrew): Create fri/ directory, move queries.rs there and split this file up.
 use super::queries::{Queries, SparseSubCircleDomain};
-use crate::commitment_scheme::ops::{MerkleHasher, MerkleOps};
-use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
-use crate::commitment_scheme::verifier::{MerkleVerificationError, MerkleVerifier};
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::line::LineDomain;
 use crate::core::utils::bit_reverse_index;
+use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
+use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
+use crate::core::vcs::verifier::{MerkleVerificationError, MerkleVerifier};
 
 /// FRI proof config
 // TODO(andrew): Support different step sizes.
@@ -985,7 +985,6 @@ mod tests {
     use num_traits::{One, Zero};
 
     use super::{get_opening_positions, FriVerificationError, SparseCircleEvaluation};
-    use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
     use crate::core::backend::{CPUBackend, Col, Column, ColumnOps};
     use crate::core::circle::{CirclePointIndex, Coset};
@@ -1003,6 +1002,7 @@ mod tests {
     use crate::core::queries::{Queries, SparseSubCircleDomain};
     use crate::core::test_utils::test_channel;
     use crate::core::utils::bit_reverse_index;
+    use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;

@@ -1,10 +1,10 @@
 use num_traits::One;
 
 use super::circle::{CirclePoint, Coset};
-use super::commitment_scheme::quotients::PointSample;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::ExtensionOf;
+use super::pcs::quotients::PointSample;
 use crate::core::fields::ComplexConjugate;
 
 /// Evaluates a vanishing polynomial of the coset at a point.

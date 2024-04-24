@@ -320,7 +320,7 @@ pub unsafe fn compress16(
 #[cfg(test)]
 mod tests {
     use super::{compress16, set1, transpose_msgs, transpose_states, untranspose_states};
-    use crate::commitment_scheme::blake2s_ref::compress;
+    use crate::core::vcs::blake2s_ref::compress;
 
     #[test]
     fn test_compress16() {

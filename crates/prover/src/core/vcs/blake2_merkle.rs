@@ -46,11 +46,11 @@ mod tests {
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::commitment_scheme::blake2_merkle::{Blake2sHash, Blake2sMerkleHasher};
-    use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
-    use crate::commitment_scheme::verifier::{MerkleVerificationError, MerkleVerifier};
     use crate::core::backend::CPUBackend;
     use crate::core::fields::m31::BaseField;
+    use crate::core::vcs::blake2_merkle::{Blake2sHash, Blake2sMerkleHasher};
+    use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
+    use crate::core::vcs::verifier::{MerkleVerificationError, MerkleVerifier};
 
     type TestData = (
         BTreeMap<u32, Vec<usize>>,

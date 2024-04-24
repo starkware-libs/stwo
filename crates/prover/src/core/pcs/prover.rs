@@ -17,14 +17,14 @@ use super::super::prover::{
 use super::super::ColumnVec;
 use super::quotients::{compute_fri_quotients, PointSample};
 use super::utils::TreeVec;
-use crate::commitment_scheme::blake2_hash::Blake2sHash;
-use crate::commitment_scheme::blake2_merkle::Blake2sMerkleHasher;
-use crate::commitment_scheme::ops::MerkleOps;
-use crate::commitment_scheme::prover::{MerkleDecommitment, MerkleProver};
 use crate::core::backend::Backend;
 use crate::core::channel::Channel;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::poly::twiddles::TwiddleTree;
+use crate::core::vcs::blake2_hash::Blake2sHash;
+use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs::ops::MerkleOps;
+use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
 
 type MerkleHasher = Blake2sMerkleHasher;
 type ProofChannel = Blake2sChannel;

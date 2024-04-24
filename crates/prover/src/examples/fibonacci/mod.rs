@@ -4,8 +4,6 @@ use num_traits::One;
 
 use self::air::{FibonacciAir, MultiFibonacciAir};
 use self::component::FibonacciComponent;
-use crate::commitment_scheme::blake2_hash::Blake2sHasher;
-use crate::commitment_scheme::hasher::Hasher;
 use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::fields::m31::BaseField;
@@ -13,6 +11,8 @@ use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, verify, ProvingError, StarkProof, VerificationError};
+use crate::core::vcs::blake2_hash::Blake2sHasher;
+use crate::core::vcs::hasher::Hasher;
 
 pub mod air;
 mod component;

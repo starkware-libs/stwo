@@ -14,7 +14,7 @@ pub fn secure_eval_to_base_eval<EvalOrder>(
 }
 
 pub fn test_channel() -> Blake2sChannel {
-    use crate::commitment_scheme::blake2_hash::Blake2sHash;
+    use crate::core::vcs::blake2_hash::Blake2sHash;
 
     let seed = Blake2sHash::from(vec![0; 32]);
     Blake2sChannel::new(seed)
