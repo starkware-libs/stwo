@@ -1,0 +1,20 @@
+[package]
+name = "stwo-verifier"
+version.workspace = true
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytemuck = { workspace = true, features = ["derive"] }
+num-traits.workspace = true
+
+[dev-dependencies]
+rand = { version = "0.8.5", features = ["small_rng"] }
+
+[lints.rust]
+warnings = "deny"
+future-incompatible = "deny"
+nonstandard-style = "deny"
+rust-2018-idioms = "deny"
+unused = "deny"

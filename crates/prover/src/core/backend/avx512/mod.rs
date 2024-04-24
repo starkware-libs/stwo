@@ -14,16 +14,16 @@ pub mod tranpose_utils;
 use bytemuck::{cast_slice, cast_slice_mut, Pod, Zeroable};
 use itertools::{izip, Itertools};
 use num_traits::Zero;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::MulGroup;
 
 use self::bit_reverse::bit_reverse_m31;
 use self::cm31::PackedCM31;
 pub use self::m31::{PackedBaseField, K_BLOCK_SIZE};
 use self::qm31::PackedSecureField;
-use super::{Backend, CPUBackend, Column, ColumnOps};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
-use crate::core::fields::{FieldExpOps, FieldOps};
+use super::{Backend, CPUBackend, Column, ColumnOps, FieldOps};
+use crate::core::secure_column::SecureColumn;
 use crate::core::utils;
 
 pub const VECS_LOG_SIZE: usize = 4;
@@ -276,10 +276,10 @@ impl FromIterator<SecureField> for SecureColumn<AVX512Backend> {
 mod tests {
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
+    use stwo_verifier::core::fields::m31::P;
 
     use super::*;
     use crate::core::backend::{Col, Column};
-    use crate::core::fields::m31::P;
 
     type B = AVX512Backend;
 

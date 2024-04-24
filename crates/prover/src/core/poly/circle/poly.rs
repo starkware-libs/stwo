@@ -1,9 +1,9 @@
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+
 use super::{CircleDomain, CircleEvaluation, PolyOps};
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Col, Column, FieldOps};
 use crate::core::circle::CirclePoint;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldOps;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 
@@ -81,9 +81,10 @@ impl crate::core::backend::cpu::CPUCirclePoly {
 
 #[cfg(test)]
 mod tests {
+    use stwo_verifier::core::fields::m31::BaseField;
+
     use crate::core::backend::cpu::CPUCirclePoly;
     use crate::core::circle::CirclePoint;
-    use crate::core::fields::m31::BaseField;
 
     #[test]
     fn test_circle_poly_extend() {

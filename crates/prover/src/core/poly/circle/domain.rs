@@ -1,9 +1,10 @@
 use std::iter::Chain;
 
+use stwo_verifier::core::fields::m31::BaseField;
+
 use crate::core::circle::{
     CirclePoint, CirclePointIndex, Coset, CosetIterator, M31_CIRCLE_LOG_ORDER,
 };
-use crate::core::fields::m31::BaseField;
 
 pub const MAX_CIRCLE_DOMAIN_LOG_SIZE: u32 = M31_CIRCLE_LOG_ORDER - 1;
 

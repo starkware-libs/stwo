@@ -2,15 +2,15 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Sub};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
+use stwo_verifier::core::fields::qm31::QM31;
+use stwo_verifier::core::fields::MulGroup;
 
 use super::cm31::PackedCM31;
 use super::m31::K_BLOCK_SIZE;
 use super::PackedBaseField;
-use crate::core::fields::qm31::QM31;
-use crate::core::fields::FieldExpOps;
 
 /// AVX implementation for an extension of CM31.
-/// See [crate::core::fields::qm31::QM31] for more information.
+/// See [stwo_verifier::core::fields::qm31::QM31] for more information.
 #[derive(Copy, Clone, Debug)]
 pub struct PackedSecureField(pub [PackedCM31; 2]);
 impl PackedSecureField {
@@ -123,7 +123,7 @@ impl MulAssign for PackedSecureField {
         *self = *self * rhs;
     }
 }
-impl FieldExpOps for PackedSecureField {
+impl MulGroup for PackedSecureField {
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");
         // (a + bu)^-1 = (a - bu) / (a^2 - (2+i)b^2).
@@ -166,11 +166,11 @@ unsafe impl Zeroable for PackedSecureField {
 mod tests {
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
+    use stwo_verifier::core::fields::cm31::CM31;
+    use stwo_verifier::core::fields::m31::{M31, P};
 
     use super::*;
     use crate::core::backend::avx512::m31::PackedBaseField;
-    use crate::core::fields::cm31::CM31;
-    use crate::core::fields::m31::{M31, P};
 
     #[test]
     fn test_qm31avx512_basic_ops() {

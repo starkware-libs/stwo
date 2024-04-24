@@ -4,15 +4,14 @@
 //!   f(p) = sum_i alpha^{N-1-i} u_i(P).
 
 use itertools::Itertools;
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
 use tracing::{span, Level};
 
-use crate::core::backend::{Backend, CPUBackend};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
-use crate::core::fields::FieldOps;
+use crate::core::backend::{Backend, CPUBackend, FieldOps};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
+use crate::core::secure_column::SecureColumn;
 use crate::core::utils::generate_secure_powers;
 
 /// Accumulates N evaluations of u_i(P0) at a single point.
@@ -161,12 +160,12 @@ mod tests {
     use num_traits::Zero;
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
+    use stwo_verifier::core::fields::m31::{M31, P};
+    use stwo_verifier::qm31;
 
     use super::*;
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::circle::CirclePoint;
-    use crate::core::fields::m31::{M31, P};
-    use crate::qm31;
 
     #[test]
     fn test_point_evaluation_accumulator() {

@@ -681,10 +681,20 @@ dependencies = [
  "itertools 0.12.1",
  "num-traits",
  "rand",
+ "stwo-verifier",
  "test-log",
  "thiserror",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "stwo-verifier"
+version = "0.1.1"
+dependencies = [
+ "bytemuck",
+ "num-traits",
+ "rand",
 ]
 
 [[package]]

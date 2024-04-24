@@ -1,15 +1,16 @@
+use stwo_verifier::core::fields::qm31::SecureField;
+
 use super::AVX512Backend;
 use crate::core::backend::avx512::fft::compute_first_twiddles;
 use crate::core::backend::avx512::fft::ifft::avx_ibutterfly;
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::VECS_LOG_SIZE;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fri::{self, FriOps};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::domain_line_twiddles_from_tree;
+use crate::core::secure_column::SecureColumn;
 
 impl FriOps for AVX512Backend {
     fn fold_line(
@@ -92,14 +93,15 @@ impl FriOps for AVX512Backend {
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
+    use stwo_verifier::core::fields::qm31::SecureField;
+    use stwo_verifier::qm31;
+
     use crate::core::backend::avx512::AVX512Backend;
     use crate::core::backend::CPUBackend;
-    use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::secure_column::SecureColumn;
     use crate::core::fri::FriOps;
     use crate::core::poly::circle::{CanonicCoset, PolyOps, SecureEvaluation};
     use crate::core::poly::line::{LineDomain, LineEvaluation};
-    use crate::qm31;
+    use crate::core::secure_column::SecureColumn;
 
     #[test]
     fn test_fold_line() {

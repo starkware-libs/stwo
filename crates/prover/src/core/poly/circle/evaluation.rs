@@ -1,12 +1,13 @@
 use std::marker::PhantomData;
 use std::ops::{Deref, Index};
 
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::ExtensionOf;
+
 use super::{CanonicCoset, CircleDomain, CirclePoly, PolyOps};
 use crate::core::backend::cpu::CPUCircleEvaluation;
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Col, Column, FieldOps};
 use crate::core::circle::{CirclePointIndex, Coset};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::{ExtensionOf, FieldOps};
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::{BitReversedOrder, NaturalOrder};
 use crate::core::utils::bit_reverse_index;
@@ -152,12 +153,13 @@ impl<'a, F: ExtensionOf<BaseField>> Index<usize> for CosetSubEvaluation<'a, F> {
 
 #[cfg(test)]
 mod tests {
+    use stwo_verifier::core::fields::m31::BaseField;
+    use stwo_verifier::m31;
+
     use crate::core::backend::cpu::CPUCircleEvaluation;
     use crate::core::circle::Coset;
-    use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
-    use crate::m31;
 
     #[test]
     fn test_interpolate_non_canonic() {

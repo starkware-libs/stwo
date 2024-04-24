@@ -5,7 +5,7 @@ use std::ops::{
 
 use bytemuck::{Pod, Zeroable};
 
-use super::{ComplexConjugate, FieldExpOps};
+use super::{ComplexConjugate, MulGroup};
 use crate::impl_field;
 
 pub const MODULUS_BITS: u32 = 31;
@@ -78,7 +78,7 @@ impl Mul for M31 {
     }
 }
 
-impl FieldExpOps for M31 {
+impl MulGroup for M31 {
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");
         self.pow(P as u128 - 2)
@@ -125,7 +125,6 @@ impl From<i32> for M31 {
     }
 }
 
-#[cfg(test)]
 pub const fn m31(value: u32) -> M31 {
     M31::from_u32_unchecked(value)
 }

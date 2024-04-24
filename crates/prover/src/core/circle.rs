@@ -1,10 +1,10 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
-use super::fields::m31::{BaseField, M31};
-use super::fields::qm31::SecureField;
-use super::fields::{ComplexConjugate, ExtensionOf, Field};
+use stwo_verifier::core::fields::m31::{BaseField, M31};
+use stwo_verifier::core::fields::qm31::{SecureField, P4};
+use stwo_verifier::core::fields::{ComplexConjugate, ExtensionOf, Field};
+
 use crate::core::channel::Channel;
-use crate::core::fields::qm31::P4;
 use crate::math::utils::egcd;
 
 /// A point on the complex circle. Treaed as an additive group.
@@ -32,7 +32,7 @@ impl<F: Field> CirclePoint<F> {
     ///
     /// ```
     /// use stwo_prover::core::circle::{CirclePoint, M31_CIRCLE_GEN};
-    /// use stwo_prover::core::fields::m31::M31;
+    /// use stwo_verifier::core::fields::m31::M31;
     /// let p = M31_CIRCLE_GEN.mul(17);
     /// assert_eq!(CirclePoint::double_x(p.x), (p + p).x);
     /// ```
@@ -48,7 +48,7 @@ impl<F: Field> CirclePoint<F> {
     ///
     /// ```
     /// use stwo_prover::core::circle::{CirclePoint, M31_CIRCLE_GEN, M31_CIRCLE_LOG_ORDER};
-    /// use stwo_prover::core::fields::m31::M31;
+    /// use stwo_verifier::core::fields::m31::M31;
     /// assert_eq!(M31_CIRCLE_GEN.log_order(), M31_CIRCLE_LOG_ORDER);
     /// ```
     pub fn log_order(&self) -> u32 {
@@ -177,7 +177,7 @@ impl CirclePoint<SecureField> {
 ///
 /// ```
 /// use stwo_prover::core::circle::{CirclePoint, M31_CIRCLE_GEN};
-/// use stwo_prover::core::fields::m31::M31;
+/// use stwo_verifier::core::fields::m31::M31;
 ///
 /// // Adding a generator to itself (2^30) times should NOT yield the identity.
 /// let circle_point = M31_CIRCLE_GEN.repeated_double(30);
@@ -454,13 +454,13 @@ mod tests {
     use std::collections::BTreeSet;
 
     use num_traits::{One, Pow};
+    use stwo_verifier::core::fields::qm31::{SecureField, P4};
+    use stwo_verifier::core::fields::MulGroup;
 
     use super::{CirclePointIndex, Coset};
     use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::{CirclePoint, SECURE_FIELD_CIRCLE_GEN};
-    use crate::core::fields::qm31::{SecureField, P4};
-    use crate::core::fields::FieldExpOps;
     use crate::core::poly::circle::CanonicCoset;
 
     #[test]

@@ -1,6 +1,8 @@
-use super::m31::BaseField;
-use super::qm31::SecureField;
-use super::{ExtensionOf, FieldOps};
+use stwo_verifier::core::fields::m31::BaseField;
+use stwo_verifier::core::fields::qm31::SecureField;
+use stwo_verifier::core::fields::ExtensionOf;
+
+use super::backend::FieldOps;
 use crate::core::backend::{CPUBackend, Col, Column};
 use crate::core::utils::IteratorMutExt;
 

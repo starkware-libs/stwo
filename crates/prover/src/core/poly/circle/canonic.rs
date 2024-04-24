@@ -1,6 +1,7 @@
+use stwo_verifier::core::fields::m31::BaseField;
+
 use super::CircleDomain;
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
-use crate::core::fields::m31::BaseField;
 
 /// A coset of the form G_{2n} + <G_n>, where G_n is the generator of the
 /// subgroup of order n. The ordering on this coset is G_2n + i * G_n.

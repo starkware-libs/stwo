@@ -1,5 +1,6 @@
+use stwo_verifier::core::fields::qm31::SecureField;
+
 use super::CPUBackend;
-use crate::core::fields::qm31::SecureField;
 use crate::core::fri::{fold_circle_into_line, fold_line, FriOps};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
