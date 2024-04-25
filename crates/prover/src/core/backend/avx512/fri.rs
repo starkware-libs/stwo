@@ -224,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    fn deocompose_coeff_out_fft_space_test() {
+    fn decomposition_test() {
         const DOMAIN_LOG_SIZE: u32 = 5;
         const DOMAIN_LOG_HALF_SIZE: u32 = DOMAIN_LOG_SIZE - 1;
         let s = CanonicCoset::new(DOMAIN_LOG_SIZE);
@@ -259,7 +259,7 @@ mod tests {
 
         assert_eq!(avx_lambda, cpu_lambda);
 
-        assert_eq!(lambda, cpu_lambda);
+        assert_eq!(avx_lambda, cpu_lambda);
         for i in 0..(1 << DOMAIN_LOG_SIZE) {
             assert_eq!(avx_g.values.at(i), cpu_g.values.at(i));
         }
