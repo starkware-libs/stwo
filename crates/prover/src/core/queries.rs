@@ -134,11 +134,11 @@ impl SubCircleDomain {
 
 #[cfg(test)]
 mod tests {
-    use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
+    use crate::core::vcs::blake2_hash::Blake2sHash;
 
     #[test]
     fn test_generate_queries() {

@@ -1,3 +1,5 @@
+//! Vector commitment scheme (VCS) module.
+
 pub mod blake2_hash;
 pub mod blake2_merkle;
 pub mod blake2s_ref;

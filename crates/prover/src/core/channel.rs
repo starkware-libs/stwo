@@ -4,8 +4,8 @@ use super::fields::m31::{BaseField, N_BYTES_FELT, P};
 use super::fields::qm31::SecureField;
 use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fields::IntoSlice;
-use crate::commitment_scheme::blake2_hash::{Blake2sHash, Blake2sHasher};
-use crate::commitment_scheme::hasher::Hasher;
+use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
+use crate::core::vcs::hasher::Hasher;
 
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
@@ -158,9 +158,9 @@ impl Channel for Blake2sChannel {
 mod tests {
     use std::collections::BTreeSet;
 
-    use crate::commitment_scheme::blake2_hash::Blake2sHash;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::qm31::SecureField;
+    use crate::core::vcs::blake2_hash::Blake2sHash;
     use crate::m31;
 
     #[test]

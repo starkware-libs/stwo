@@ -3,11 +3,11 @@ use std::fmt::Debug;
 pub use cpu::CPUBackend;
 
 use super::air::accumulation::AccumulationOps;
-use super::commitment_scheme::quotients::QuotientOps;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::FieldOps;
 use super::fri::FriOps;
+use super::pcs::quotients::QuotientOps;
 use super::poly::circle::PolyOps;
 
 #[cfg(target_arch = "x86_64")]

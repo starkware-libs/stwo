@@ -11,7 +11,6 @@
     slice_flatten,
     assert_matches
 )]
-pub mod commitment_scheme;
 pub mod core;
 pub mod examples;
 pub mod hash_functions;

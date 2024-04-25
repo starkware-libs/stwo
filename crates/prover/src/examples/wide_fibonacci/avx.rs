@@ -115,12 +115,12 @@ impl ComponentProver<AVX512Backend> for WideFibComponent {
 mod tests {
     use tracing::{span, Level};
 
-    use crate::commitment_scheme::blake2_hash::Blake2sHasher;
-    use crate::commitment_scheme::hasher::Hasher;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
     use crate::core::prover::{prove, verify};
+    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::hasher::Hasher;
     use crate::examples::wide_fibonacci::avx::{gen_trace, WideFibAir};
     use crate::examples::wide_fibonacci::component::WideFibComponent;
 

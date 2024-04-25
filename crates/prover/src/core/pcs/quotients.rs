@@ -180,7 +180,7 @@ pub fn fri_answers_for_log_size(
 mod tests {
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
-    use crate::core::commitment_scheme::quotients::{compute_fri_quotients, PointSample};
+    use crate::core::pcs::quotients::{compute_fri_quotients, PointSample};
     use crate::core::poly::circle::CanonicCoset;
     use crate::{m31, qm31};
 

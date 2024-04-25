@@ -95,8 +95,8 @@ impl super::hasher::Hasher for Blake3Hasher {
 
 #[cfg(test)]
 mod tests {
-    use crate::commitment_scheme::blake3_hash::Blake3Hasher;
-    use crate::commitment_scheme::hasher::Hasher;
+    use crate::core::vcs::blake3_hash::Blake3Hasher;
+    use crate::core::vcs::hasher::Hasher;
 
     #[test]
     fn single_hash_test() {

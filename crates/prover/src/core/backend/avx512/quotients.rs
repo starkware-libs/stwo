@@ -8,11 +8,11 @@ use crate::core::backend::cpu::quotients::{
 };
 use crate::core::backend::{Col, Column};
 use crate::core::circle::CirclePoint;
-use crate::core::commitment_scheme::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fields::{ComplexConjugate, FieldOps};
+use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
@@ -166,8 +166,8 @@ mod tests {
     use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec};
     use crate::core::backend::{CPUBackend, Column};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
-    use crate::core::commitment_scheme::quotients::{ColumnSampleBatch, QuotientOps};
     use crate::core::fields::m31::BaseField;
+    use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
     use crate::core::poly::BitReversedOrder;
     use crate::qm31;
