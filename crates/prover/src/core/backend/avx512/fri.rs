@@ -91,15 +91,37 @@ impl FriOps for AVX512Backend {
             };
         }
     }
+
+    fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField) {
+        let lambda = Self::decomposition_coefficient(eval);
+        let broadcasted_lambda = PackedSecureField::broadcast(lambda);
+        let mut g_values = SecureColumn::zeros(eval.len());
+
+        let range = eval.len().div_ceil(K_BLOCK_SIZE);
+        let half_range = range / 2;
+        for i in 0..half_range {
+            let val = eval.packed_at(i) - broadcasted_lambda;
+            unsafe { g_values.set_packed(i, val) }
+        }
+        for i in half_range..range {
+            let val = eval.packed_at(i) + broadcasted_lambda;
+            unsafe { g_values.set_packed(i, val) }
+        }
+
+        let g = SecureEvaluation {
+            domain: eval.domain,
+            values: g_values,
+        };
+        (g, lambda)
+    }
 }
 
 impl AVX512Backend {
-    /// See [`CPUBackend::decomposition_coefficient`].
+    /// See [`decomposition_coefficient`].
     ///
     /// [`CPUBackend::decomposition_coefficient`]:
     /// crate::core::backend::cpu::CPUBackend::decomposition_coefficient
-    // TODO(Ohad): remove pub.
-    pub fn decomposition_coefficient(eval: &SecureEvaluation<Self>) -> SecureField {
+    fn decomposition_coefficient(eval: &SecureEvaluation<Self>) -> SecureField {
         let cols = &eval.values.columns;
         let [mut x_sum, mut y_sum, mut z_sum, mut w_sum] = [PackedBaseField::zero(); 4];
 
@@ -202,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    fn deocompose_coeff_out_fft_space_test() {
+    fn decomposition_test() {
         const DOMAIN_LOG_SIZE: u32 = 5;
         const DOMAIN_LOG_HALF_SIZE: u32 = DOMAIN_LOG_SIZE - 1;
         let s = CanonicCoset::new(DOMAIN_LOG_SIZE);
@@ -231,10 +253,14 @@ mod tests {
             domain,
             values: avx_eval.to_cpu(),
         };
-        let cpu_lambda = CPUBackend::decomposition_coefficient(&cpu_eval);
+        let (cpu_g, cpu_lambda) = CPUBackend::decompose(&cpu_eval);
 
-        let lambda = AVX512Backend::decomposition_coefficient(&avx_eval);
+        let (avx_g, avx_lambda) = AVX512Backend::decompose(&avx_eval);
 
-        assert_eq!(lambda, cpu_lambda);
+        assert_eq!(avx_lambda, cpu_lambda);
+
+        for i in 0..(1 << DOMAIN_LOG_SIZE) {
+            assert_eq!(avx_g.values.at(i), cpu_g.values.at(i));
+        }
     }
 }

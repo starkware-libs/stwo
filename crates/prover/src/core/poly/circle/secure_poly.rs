@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use super::{CircleDomain, CircleEvaluation, CirclePoly, PolyOps};
 use crate::core::backend::cpu::CPUCircleEvaluation;
@@ -62,6 +62,12 @@ impl<B: FieldOps<BaseField>> Deref for SecureEvaluation<B> {
 
     fn deref(&self) -> &Self::Target {
         &self.values
+    }
+}
+
+impl<B: FieldOps<BaseField>> DerefMut for SecureEvaluation<B> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.values
     }
 }
 
