@@ -169,7 +169,7 @@ impl AVX512Backend {
     }
 }
 
-// #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
     use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec};
