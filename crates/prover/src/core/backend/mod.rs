@@ -27,7 +27,7 @@ pub trait Backend:
 {
 }
 
-pub trait ColumnOps<T> {
+pub trait ColumnOps<T>: Clone {
     type Column: Column<T>;
     fn bit_reverse_column(column: &mut Self::Column);
 }
