@@ -101,6 +101,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     }
 }
 
+// TODO(Ohad): Move out of air.
 pub trait AccumulationOps: FieldOps<BaseField> + Sized {
     /// Accumulates other into column:
     ///   column = column + other.
