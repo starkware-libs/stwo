@@ -112,8 +112,13 @@ pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized + FieldOps<SecureField> 
         alpha: SecureField,
         twiddles: &TwiddleTree<Self>,
     );
-}
 
+    /// Decomposes a polynomial of degree N/2 in 'x', into a polynomial inside the fft-space and the
+    /// remainder term. Based on lemma #12 from the CircleStark paper: f = g +
+    /// alternating(lambda), where lambda is the cosset diff of eval, and g is the polynomial
+    /// inside the fft-space.
+    fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField);
+}
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
 pub struct FriProver<B: FriOps + MerkleOps<H>, H: MerkleHasher> {
     config: FriConfig,
