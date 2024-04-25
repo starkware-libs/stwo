@@ -11,7 +11,9 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fields::FieldOps;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
+use crate::core::poly::circle::{
+    CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly, SecureEvaluation,
+};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::generate_secure_powers;
 
@@ -101,10 +103,19 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     }
 }
 
+// TODO(Ohad): Move out of air.
 pub trait AccumulationOps: FieldOps<BaseField> + Sized {
     /// Accumulates other into column:
     ///   column = column + other.
     fn accumulate(column: &mut SecureColumn<Self>, other: &SecureColumn<Self>);
+
+    /// Accumulates other into column with a factor:
+    ///  column = column * factor + other.
+    fn mul_and_accumulate(
+        column: &mut SecureEvaluation<Self>,
+        other: &SecureEvaluation<Self>,
+        factor: SecureField,
+    );
 }
 
 impl<B: Backend> DomainEvaluationAccumulator<B> {
