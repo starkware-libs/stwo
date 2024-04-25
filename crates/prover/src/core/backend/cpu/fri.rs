@@ -1,6 +1,7 @@
 use super::CPUBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fri::{fold_circle_into_line, fold_line, FriOps};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
@@ -40,6 +41,30 @@ impl FriOps for CPUBackend {
         // lambda = sum(+-f(p)) / 2N.
         (a_sum - b_sum) / BaseField::from_u32_unchecked(domain_size as u32)
     }
+
+    fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField) {
+        let domain_half_size = 1 << (eval.domain.log_size() - 1);
+        let lambda = Self::coset_diff(eval);
+
+        // g = f -+ lambda.
+        let g_values: SecureColumn<CPUBackend> = eval
+            .into_iter()
+            .enumerate()
+            .map(|(i, x)| {
+                if i < domain_half_size {
+                    x - lambda
+                } else {
+                    x + lambda
+                }
+            })
+            .collect();
+        let g = SecureEvaluation {
+            domain: eval.domain,
+            values: g_values,
+        };
+
+        (g, lambda)
+    }
 }
 
 #[cfg(test)]
@@ -55,7 +80,7 @@ mod tests {
     use crate::m31;
 
     #[test]
-    fn coset_diff_out_fft_space_test() {
+    fn decomposition_test() {
         for domain_log_size in 5..12 {
             let domain_log_half_size = domain_log_size - 1;
             let s = CanonicCoset::new(domain_log_size);

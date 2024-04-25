@@ -1,6 +1,7 @@
+use itertools::Itertools;
 use num_traits::Zero;
 
-use super::{AVX512Backend, PackedBaseField, K_BLOCK_SIZE};
+use super::{AVX512Backend, BaseFieldVec, PackedBaseField, K_BLOCK_SIZE};
 use crate::core::backend::avx512::fft::compute_first_twiddles;
 use crate::core::backend::avx512::fft::ifft::avx_ibutterfly;
 use crate::core::backend::avx512::qm31::PackedSecureField;
@@ -8,7 +9,7 @@ use crate::core::backend::avx512::VECS_LOG_SIZE;
 use crate::core::backend::Column;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
+use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::{self, FriOps};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
@@ -120,9 +121,47 @@ impl FriOps for AVX512Backend {
         SecureField::from_m31(x, y, z, w)
             / BaseField::from_u32_unchecked(1 << eval.domain.log_size())
     }
+
+    fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField) {
+        let domain_half_size = 1 << (eval.domain.log_size() - 1);
+        let lambda = Self::coset_diff(eval);
+        let x_lambda = PackedBaseField::broadcast(lambda.0 .0);
+        let y_lambda = PackedBaseField::broadcast(lambda.0 .1);
+        let z_lambda = PackedBaseField::broadcast(lambda.1 .0);
+        let w_lambda = PackedBaseField::broadcast(lambda.1 .1);
+        let broadcasted_lambda = [x_lambda, y_lambda, z_lambda, w_lambda];
+
+        let cols = &eval.values.columns;
+        let g_values: [BaseFieldVec; SECURE_EXTENSION_DEGREE] = (0..SECURE_EXTENSION_DEGREE)
+            .map(|j| {
+                // g = f -+ lambda.
+                BaseFieldVec::from(cols[j]
+                    .data
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &l)| {
+                        if i < domain_half_size / K_BLOCK_SIZE {
+                            l - broadcasted_lambda[j]
+                        } else {
+                            l + broadcasted_lambda[j]
+                        }
+                    })
+                    .collect::<Vec<PackedBaseField>>())
+            })
+            .collect_vec()
+            .try_into()
+            .unwrap();
+        let g_values = SecureColumn { columns: g_values };
+        let g = SecureEvaluation {
+            domain: eval.domain,
+            values: g_values,
+        };
+
+        (g, lambda)
+    }
 }
 
-#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+// #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
     use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec};
@@ -195,7 +234,7 @@ mod tests {
     }
 
     #[test]
-    fn coset_diff_out_fft_space_test() {
+    fn decomposition_test() {
         const DOMAIN_LOG_SIZE: u32 = 5;
         const DOMAIN_LOG_HALF_SIZE: u32 = DOMAIN_LOG_SIZE - 1;
         let s = CanonicCoset::new(DOMAIN_LOG_SIZE);
@@ -224,10 +263,14 @@ mod tests {
             domain,
             values: avx_eval.to_cpu(),
         };
-        let cpu_lambda = CPUBackend::coset_diff(&cpu_eval);
+        let (cpu_g, cpu_lambda) = CPUBackend::decompose(&cpu_eval);
 
-        let lambda = AVX512Backend::coset_diff(&avx_eval);
+        let (avx_g, avx_lambda) = AVX512Backend::decompose(&avx_eval);
 
-        assert_eq!(lambda, cpu_lambda);
+        assert_eq!(avx_lambda, cpu_lambda);
+
+        for i in 0..(1 << DOMAIN_LOG_SIZE) {
+            assert_eq!(avx_g.values.at(i), cpu_g.values.at(i));
+        }
     }
 }

@@ -114,6 +114,16 @@ fn as_cpu_vec(values: BaseFieldVec) -> Vec<BaseField> {
     }
 }
 
+impl From<Vec<PackedBaseField>> for BaseFieldVec {
+    fn from(value: Vec<PackedBaseField>) -> Self {
+        let length = value.len() * K_BLOCK_SIZE;
+        Self {
+            data: value,
+            length,
+        }
+    }
+}
+
 impl FromIterator<BaseField> for BaseFieldVec {
     fn from_iter<I: IntoIterator<Item = BaseField>>(iter: I) -> Self {
         let mut chunks = iter.into_iter().array_chunks();
