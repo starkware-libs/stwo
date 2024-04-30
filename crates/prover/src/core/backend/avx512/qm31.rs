@@ -164,7 +164,7 @@ unsafe impl Zeroable for PackedSecureField {
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::*;
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_qm31avx512_basic_ops() {
-        let rng = &mut StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let x = PackedSecureField([
             PackedCM31([
                 PackedBaseField::from_array(std::array::from_fn(|_| {
@@ -223,19 +223,8 @@ mod tests {
 
     #[test]
     fn test_from_array() {
-        let rng = &mut StdRng::seed_from_u64(0);
-        let x_arr = std::array::from_fn(|_| {
-            QM31(
-                CM31(
-                    M31::from(rng.gen::<u32>() % P),
-                    M31::from(rng.gen::<u32>() % P),
-                ),
-                CM31(
-                    M31::from(rng.gen::<u32>() % P),
-                    M31::from(rng.gen::<u32>() % P),
-                ),
-            )
-        });
+        let mut rng = SmallRng::seed_from_u64(0);
+        let x_arr = std::array::from_fn(|_| rng.gen());
 
         let packed = PackedSecureField::from_array(x_arr);
         let to_arr = packed.to_array();
