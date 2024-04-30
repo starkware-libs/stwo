@@ -453,7 +453,6 @@ macro_rules! impl_extension_field {
             }
         }
 
-        #[cfg(test)]
         impl rand::distributions::Distribution<$field_name> for rand::distributions::Standard {
             fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> $field_name {
                 $field_name(rng.gen(), rng.gen())
@@ -465,7 +464,7 @@ macro_rules! impl_extension_field {
 #[cfg(test)]
 mod tests {
     use num_traits::Zero;
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use crate::core::fields::m31::{M31, P};
@@ -473,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_slice_batch_inverse() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let elements: Vec<M31> = (0..16)
             .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() % P))
             .collect();
@@ -487,7 +486,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_slice_batch_inverse_wrong_dst_size() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let elements: Vec<M31> = (0..16)
             .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() % P))
             .collect();

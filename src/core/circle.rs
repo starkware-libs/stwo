@@ -269,7 +269,7 @@ impl Mul<usize> for CirclePointIndex {
     type Output = Self;
 
     fn mul(self, rhs: usize) -> Self::Output {
-        Self(self.0 * rhs).reduce()
+        Self(self.0.wrapping_mul(rhs)).reduce()
     }
 }
 

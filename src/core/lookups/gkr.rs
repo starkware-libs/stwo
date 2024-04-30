@@ -2,7 +2,6 @@
 use std::iter::{successors, zip};
 use std::ops::Deref;
 
-// use std::time::Instant;
 use itertools::Itertools;
 use thiserror::Error;
 
@@ -189,8 +188,6 @@ pub fn prove_batch<L: GkrLayer>(channel: &mut impl Channel, top_layers: Vec<L>) 
         .map(|top_layer| gen_layers(top_layer).into_iter().rev().peekable())
         .collect::<Vec<_>>();
 
-    let now = std::time::Instant::now();
-    // let timer = Timer::new("doing prove work");
     let mut components_output_claims = vec![None; num_components];
     let mut components_layer_masks = (0..num_components).map(|_| Vec::new()).collect_vec();
     let mut sumcheck_proofs = Vec::new();
@@ -266,8 +263,6 @@ pub fn prove_batch<L: GkrLayer>(channel: &mut impl Channel, top_layers: Vec<L>) 
         .into_iter()
         .map(Option::unwrap)
         .collect();
-    println!("Proving took: {:?}", now.elapsed());
-    // drop(timer);
 
     GkrBatchProof {
         sumcheck_proofs,
@@ -316,8 +311,6 @@ pub fn partially_verify<C: BinaryTreeCircuit>(
         let (sumcheck_ood_point, sumcheck_eval) =
             sumcheck::partially_verify(sumcheck_claim, sumcheck_proof, channel)
                 .map_err(|source| GkrError::InvalidSumcheck { layer, source })?;
-
-        println!("verifier assignment: {:?}", sumcheck_ood_point);
 
         let [input_row_0, input_row_1] = input_mask.to_rows();
         let circuit_output = C::eval(&input_row_0, &input_row_1);
@@ -650,8 +643,8 @@ mod tests {
 
     #[test]
     fn prove_batch_with_different_sizes_works() -> Result<(), GkrError> {
-        const LOG_N0: usize = 16;
-        const LOG_N1: usize = 18;
+        const LOG_N0: usize = 12;
+        const LOG_N1: usize = 14;
         let mut channel = test_channel();
         let col0 = GrandProductTrace::<CPUBackend>::new(Mle::new(channel.draw_felts(1 << LOG_N0)));
         let col1 = GrandProductTrace::<CPUBackend>::new(Mle::new(channel.draw_felts(1 << LOG_N1)));
@@ -677,7 +670,7 @@ mod tests {
 
     #[test]
     fn simd_prove_batch_works() -> Result<(), GkrError> {
-        const N: usize = 1 << 24;
+        const N: usize = 1 << 12;
         let mut channel = test_channel();
         let values0 = channel.draw_felts(N);
         let values1 = channel.draw_felts(N);

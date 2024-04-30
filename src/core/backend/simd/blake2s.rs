@@ -238,7 +238,7 @@ fn compress16(
     ]
 }
 
-#[inline(always)]
+#[inline]
 fn round(v: &mut [u32x16; 16], m: [u32x16; 16], r: usize) {
     v[0] += m[SIGMA[r][0] as usize];
     v[1] += m[SIGMA[r][2] as usize];

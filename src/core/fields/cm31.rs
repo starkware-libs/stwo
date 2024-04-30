@@ -62,7 +62,9 @@ macro_rules! cm31 {
 
 #[cfg(test)]
 mod tests {
-    use rand::Rng;
+    use itertools::Itertools;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
 
     use super::CM31;
     use crate::core::fields::m31::P;
@@ -90,10 +92,8 @@ mod tests {
 
     #[test]
     fn test_into_slice() {
-        let mut rng = rand::thread_rng();
-        let x = (0..100)
-            .map(|_| cm31!(rng.gen::<u32>(), rng.gen::<u32>()))
-            .collect::<Vec<CM31>>();
+        let mut rng = SmallRng::seed_from_u64(0);
+        let x = (0..100).map(|_| rng.gen()).collect_vec();
 
         let slice = CM31::into_slice(&x);
 

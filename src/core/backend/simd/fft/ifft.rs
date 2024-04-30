@@ -595,7 +595,7 @@ pub unsafe fn ifft1(values: *mut u32, offset: usize, log_step: usize, twiddles_d
 
 #[cfg(test)]
 mod tests {
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::*;
@@ -609,7 +609,7 @@ mod tests {
 
     #[test]
     fn test_ibutterfly() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let mut v0: [BaseField; N_LANES] = rng.gen();
         let mut v1: [BaseField; N_LANES] = rng.gen();
         let twiddle: [BaseField; N_LANES] = rng.gen();
@@ -627,7 +627,7 @@ mod tests {
 
     #[test]
     fn test_ifft3() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let values = rng.gen::<[BaseField; 8]>().map(PackedBaseField::broadcast);
         let twiddles0: [BaseField; 4] = rng.gen();
         let twiddles1: [BaseField; 2] = rng.gen();
@@ -690,7 +690,7 @@ mod tests {
         let domain = CanonicCoset::new(5).circle_domain();
         let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
         assert_eq!(twiddle_dbls.len(), 4);
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let values: [[BaseField; 16]; 2] = rng.gen();
 
         let res = {
@@ -712,7 +712,7 @@ mod tests {
     fn test_ifft_lower_with_vecwise() {
         for log_size in 5..12 {
             let domain = CanonicCoset::new(log_size).circle_domain();
-            let mut rng = StdRng::seed_from_u64(0);
+            let mut rng = SmallRng::seed_from_u64(0);
             let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
             let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
 
@@ -734,7 +734,7 @@ mod tests {
     fn test_ifft_full() {
         for log_size in CACHED_FFT_LOG_SIZE + 1..CACHED_FFT_LOG_SIZE + 3 {
             let domain = CanonicCoset::new(log_size as u32).circle_domain();
-            let mut rng = StdRng::seed_from_u64(0);
+            let mut rng = SmallRng::seed_from_u64(0);
             let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
             let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
 

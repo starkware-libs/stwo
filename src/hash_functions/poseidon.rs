@@ -240,16 +240,6 @@ mod tests {
     ];
 
     #[test]
-    fn hash_debug_test() {
-        let values = (0..POSEIDON_CAPACITY as u32)
-            .map(|x| m31!(x))
-            .collect::<Vec<BaseField>>();
-        let poseidon_state = PoseidonHash::from(values);
-
-        println!("Poseidon State: {:?}", poseidon_state);
-    }
-
-    #[test]
     fn hash_iter_test() {
         let values = (0..POSEIDON_CAPACITY as u32)
             .map(|x| m31!(x))

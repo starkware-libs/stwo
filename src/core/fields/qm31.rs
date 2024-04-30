@@ -77,7 +77,8 @@ macro_rules! qm31 {
 
 #[cfg(test)]
 mod tests {
-    use rand::Rng;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
 
     use super::QM31;
     use crate::core::fields::m31::P;
@@ -105,7 +106,7 @@ mod tests {
 
     #[test]
     fn test_into_slice() {
-        let mut rng = rand::thread_rng();
+        let mut rng = SmallRng::seed_from_u64(0);
         let x = (0..100)
             .map(|_| {
                 qm31!(

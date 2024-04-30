@@ -1,5 +1,5 @@
 use std::array;
-use std::ops::{Add, Mul, MulAssign, Sub};
+use std::ops::{Add, Mul, MulAssign, Neg, Sub};
 
 use num_traits::{One, Zero};
 
@@ -147,18 +147,27 @@ impl Mul<PackedBaseField> for PackedCM31 {
     }
 }
 
+impl Neg for PackedCM31 {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        let Self([a, b]) = self;
+        Self([-a, -b])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::array;
 
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use crate::core::backend::simd::cm31::PackedCM31;
 
     #[test]
     fn addition_works() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let lhs = rng.gen();
         let rhs = rng.gen();
 
@@ -169,7 +178,7 @@ mod tests {
 
     #[test]
     fn subtraction_works() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let lhs = rng.gen();
         let rhs = rng.gen();
 
@@ -180,7 +189,7 @@ mod tests {
 
     #[test]
     fn multiplication_works() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let lhs = rng.gen();
         let rhs = rng.gen();
 
@@ -191,12 +200,11 @@ mod tests {
 
     #[test]
     fn negation_works() {
-        let mut rng = StdRng::seed_from_u64(0);
-        let lhs = rng.gen();
-        let rhs = rng.gen();
+        let mut rng = SmallRng::seed_from_u64(0);
+        let values = rng.gen();
 
-        let res = PackedCM31::from_array(lhs) * PackedCM31::from_array(rhs);
+        let res = -PackedCM31::from_array(values);
 
-        assert_eq!(res.to_array(), array::from_fn(|i| lhs[i] * rhs[i]));
+        assert_eq!(res.to_array(), values.map(|v| -v));
     }
 }

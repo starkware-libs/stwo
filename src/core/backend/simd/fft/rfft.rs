@@ -2,14 +2,13 @@
 
 use std::array;
 use std::mem::transmute;
-use std::simd::{simd_swizzle, u32x16, u32x2, u32x4, u32x8, u64x8, Swizzle};
+use std::simd::{simd_swizzle, u32x16, u32x2, u32x4, u32x8, Swizzle};
 
 use itertools::Itertools;
 
 use super::compute_first_twiddles;
 use crate::core::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use crate::core::backend::simd::utils::{LoEvensInterleaveHiEvens, LoOddsInterleaveHiOdds};
 use crate::core::circle::Coset;
 use crate::core::utils::bit_reverse;
 
@@ -346,62 +345,115 @@ pub fn butterfly(
     val1: PackedBaseField,
     twiddle_dbl: u32x16,
 ) -> (PackedBaseField, PackedBaseField) {
-    // TODO: This multiplication should be platform specific. avx512 should use `_mm512_mul_epu32`
-    // and avoid the bit masks. wasm and neon can do pairwise multiplication instruction.
+    #[cfg(all(target_feature = "neon", target_arch = "aarch64"))]
+    let prod = _mul_twiddle_neon(val1, twiddle_dbl);
+    #[cfg(not(all(target_feature = "neon", target_arch = "aarch64")))]
+    let prod = {
+        // TODO: This multiplication should be platform specific. avx512 should use
+        // `_mm512_mul_epu32` and avoid the bit masks. wasm and neon can do pairwise
+        // multiplication instruction.
 
-    const MASK_U32: u64x8 = u64x8::from_array([0xFFFFFFFF; 8]);
+        const MASK_U32: std::simd::u64x8 = std::simd::u64x8::from_array([0xFFFFFFFF; 8]);
 
-    // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of val0.
-    let val1: u64x8 = unsafe { transmute(val1.into_simd()) };
-    let val1_e = val1 & MASK_U32;
-    // Set up a word s.t. the lower half of each 64-bit word has the odd 32-bit words of val0.
-    let val1_o = val1 >> 32;
+        // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of val0.
+        let val1: std::simd::u64x8 = unsafe { transmute(val1.into_simd()) };
+        let val1_e = val1 & MASK_U32;
+        // Set up a word s.t. the lower half of each 64-bit word has the odd 32-bit words of val0.
+        let val1_o = val1 >> 32;
 
-    // Note, may be undefined behavior: u32x16 and u64x8 might not have same alignment on 32-bit
-    // non simd architectures.
-    let twiddle_dbl: u64x8 = unsafe { transmute(twiddle_dbl) };
-    let twiddle_dbl_e = twiddle_dbl & MASK_U32;
-    let twiddle_dbl_o = twiddle_dbl >> 32;
+        // Note, may be undefined behavior: u32x16 and u64x8 might not have same alignment on 32-bit
+        // non simd architectures.
+        let twiddle_dbl: std::simd::u64x8 = unsafe { transmute(twiddle_dbl) };
+        let twiddle_dbl_e = twiddle_dbl & MASK_U32;
+        let twiddle_dbl_o = twiddle_dbl >> 32;
 
-    // To compute prod = val1 * twiddle start by multiplying
-    // val1_e/o by twiddle_dbl_e/o.
-    let prod_e_dbl = val1_e * twiddle_dbl_e;
-    let prod_o_dbl = val1_o * twiddle_dbl_o;
+        // To compute prod = val1 * twiddle start by multiplying
+        // val1_e/o by twiddle_dbl_e/o.
+        let prod_e_dbl = val1_e * twiddle_dbl_e;
+        let prod_o_dbl = val1_o * twiddle_dbl_o;
 
-    // The result of a multiplication holds val1*twiddle_dbl in as 64-bits.
-    // Each 64b-bit word looks like this:
-    //               1    31       31    1
-    // prod_e_dbl - |0|prod_e_h|prod_e_l|0|
-    // prod_o_dbl - |0|prod_o_h|prod_o_l|0|
+        // The result of a multiplication holds val1*twiddle_dbl in as 64-bits.
+        // Each 64b-bit word looks like this:
+        //               1    31       31    1
+        // prod_e_dbl - |0|prod_e_h|prod_e_l|0|
+        // prod_o_dbl - |0|prod_o_h|prod_o_l|0|
 
-    // Interleave the even words of prod_e_dbl with the even words of prod_o_dbl:
-    // prod_ls -    |prod_o_l|0|prod_e_l|0|
-    // Divide by 2:
-    let prod_ls = unsafe {
-        PackedBaseField::from_simd(
-            LoEvensInterleaveHiEvens::concat_swizzle(
-                transmute::<_, u32x16>(prod_e_dbl),
-                transmute::<_, u32x16>(prod_o_dbl),
-            ) >> 1,
-        )
+        // Interleave the even words of prod_e_dbl with the even words of prod_o_dbl:
+        // prod_ls -    |prod_o_l|0|prod_e_l|0|
+        // Divide by 2:
+        let prod_ls = unsafe {
+            PackedBaseField::from_simd(
+                crate::core::backend::simd::utils::LoEvensInterleaveHiEvens::concat_swizzle(
+                    transmute::<_, u32x16>(prod_e_dbl),
+                    transmute::<_, u32x16>(prod_o_dbl),
+                ) >> 1,
+            )
+        };
+        // prod_ls -    |0|prod_o_l|0|prod_e_l|
+
+        // Interleave the odd words of prod_e_dbl with the odd words of prod_o_dbl:
+        let prod_hs = unsafe {
+            PackedBaseField::from_simd(
+                crate::core::backend::simd::utils::LoOddsInterleaveHiOdds::concat_swizzle(
+                    transmute::<_, u32x16>(prod_e_dbl),
+                    transmute::<_, u32x16>(prod_o_dbl),
+                ),
+            )
+        };
+
+        // prod_hs -    |0|prod_o_h|0|prod_e_h|
+
+        prod_ls + prod_hs
     };
-    // prod_ls -    |0|prod_o_l|0|prod_e_l|
-
-    // Interleave the odd words of prod_e_dbl with the odd words of prod_o_dbl:
-    let prod_hs = unsafe {
-        PackedBaseField::from_simd(LoOddsInterleaveHiOdds::concat_swizzle(
-            transmute::<_, u32x16>(prod_e_dbl),
-            transmute::<_, u32x16>(prod_o_dbl),
-        ))
-    };
-    // prod_hs -    |0|prod_o_h|0|prod_e_h|
-
-    let prod = prod_ls + prod_hs;
 
     let r0 = val0 + prod;
     let r1 = val0 - prod;
 
     (r0, r1)
+}
+
+#[cfg(all(target_feature = "neon", target_arch = "aarch64"))]
+fn _mul_twiddle_neon(a: PackedBaseField, twiddle_dbl: u32x16) -> PackedBaseField {
+    use core::arch::aarch64::vmull_u32;
+    use std::arch::aarch64::uint32x2_t;
+
+    use crate::core::backend::simd::utils::{LoEvensConcatHiEvens, LoOddsConcatHiOdds};
+
+    let [a0, a1, a2, a3, a4, a5, a6, a7]: [uint32x2_t; 8] = unsafe { transmute(a) };
+    let [b0, b1, b2, b3, b4, b5, b6, b7]: [uint32x2_t; 8] = unsafe { transmute(twiddle_dbl) };
+
+    // Each c_i contains |0|prod_hi|prod_lo|0|0|prod_hi|prod_lo|0|
+    let c0: u32x4 = unsafe { transmute(vmull_u32(a0, b0)) };
+    let c1: u32x4 = unsafe { transmute(vmull_u32(a1, b1)) };
+    let c2: u32x4 = unsafe { transmute(vmull_u32(a2, b2)) };
+    let c3: u32x4 = unsafe { transmute(vmull_u32(a3, b3)) };
+    let c4: u32x4 = unsafe { transmute(vmull_u32(a4, b4)) };
+    let c5: u32x4 = unsafe { transmute(vmull_u32(a5, b5)) };
+    let c6: u32x4 = unsafe { transmute(vmull_u32(a6, b6)) };
+    let c7: u32x4 = unsafe { transmute(vmull_u32(a7, b7)) };
+
+    // *_lo contain `|prod_lo|0|prod_lo|0|prod_lo0|0|prod_lo|0|`.
+    let mut c0_c1_lo: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c0, c1);
+    let mut c2_c3_lo: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c2, c3);
+    let mut c4_c5_lo: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c4, c5);
+    let mut c6_c7_lo: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c6, c7);
+
+    // *_hi contain `|0|prod_hi|0|prod_hi|0|prod_hi|0|prod_hi|`.
+    let c0_c1_hi: u32x4 = LoOddsConcatHiOdds::concat_swizzle(c0, c1);
+    let c2_c3_hi: u32x4 = LoOddsConcatHiOdds::concat_swizzle(c2, c3);
+    let c4_c5_hi: u32x4 = LoOddsConcatHiOdds::concat_swizzle(c4, c5);
+    let c6_c7_hi: u32x4 = LoOddsConcatHiOdds::concat_swizzle(c6, c7);
+
+    // *_lo contain `|0|prod_lo|0|prod_lo|0|prod_lo|0|prod_lo|`.
+    c0_c1_lo >>= 1;
+    c2_c3_lo >>= 1;
+    c4_c5_lo >>= 1;
+    c6_c7_lo >>= 1;
+
+    let lo: PackedBaseField = unsafe { transmute([c0_c1_lo, c2_c3_lo, c4_c5_lo, c6_c7_lo]) };
+    let hi: PackedBaseField = unsafe { transmute([c0_c1_hi, c2_c3_hi, c4_c5_hi, c6_c7_hi]) };
+
+    lo + hi
 }
 
 /// Runs fft on 2 vectors of 16 M31 elements.
@@ -625,7 +677,7 @@ mod tests {
     use std::simd::u32x16;
 
     use itertools::Itertools;
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::{butterfly, fft3};
@@ -643,7 +695,7 @@ mod tests {
 
     #[test]
     fn test_butterfly() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let mut v0: [BaseField; N_LANES] = rng.gen();
         let mut v1: [BaseField; N_LANES] = rng.gen();
         let twiddle: [BaseField; N_LANES] = rng.gen();
@@ -661,7 +713,7 @@ mod tests {
 
     #[test]
     fn test_fft3() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let values = rng.gen::<[BaseField; 8]>().map(PackedBaseField::broadcast);
         let twiddles0: [BaseField; 4] = rng.gen();
         let twiddles1: [BaseField; 2] = rng.gen();
@@ -725,7 +777,7 @@ mod tests {
         let domain = CanonicCoset::new(5).circle_domain();
         let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
         assert_eq!(twiddle_dbls.len(), 4);
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let values: [[BaseField; 16]; 2] = rng.gen();
 
         let res = {
@@ -751,7 +803,7 @@ mod tests {
     fn test_fft_lower() {
         for log_size in 5..12 {
             let domain = CanonicCoset::new(log_size).circle_domain();
-            let mut rng = StdRng::seed_from_u64(0);
+            let mut rng = SmallRng::seed_from_u64(0);
             let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
             let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
 
@@ -774,7 +826,7 @@ mod tests {
     fn test_fft_full() {
         for log_size in CACHED_FFT_LOG_SIZE + 1..CACHED_FFT_LOG_SIZE + 3 {
             let domain = CanonicCoset::new(log_size as u32).circle_domain();
-            let mut rng = StdRng::seed_from_u64(0);
+            let mut rng = SmallRng::seed_from_u64(0);
             let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
             let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
 

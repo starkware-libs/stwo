@@ -2,11 +2,40 @@
 
 use std::mem::{size_of_val, transmute};
 
-use bytemuck::Zeroable;
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{
+    black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput,
+};
 use itertools::Itertools;
+use stwo::core::backend::cpu::CPUCirclePoly;
+use stwo::core::backend::CPUBackend;
 use stwo::core::fields::m31::BaseField;
-use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::poly::circle::{CanonicCoset, PolyOps};
+
+pub fn cpu_rfft(c: &mut Criterion) {
+    const LOG_SIZE: u32 = 20;
+
+    let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+    let twiddles = CPUBackend::precompute_twiddles(domain.half_coset);
+    let coeffs = (0..domain.size()).map(BaseField::from).collect();
+    let poly = CPUCirclePoly::new(coeffs);
+
+    c.bench_function("cpu rfft 20bit", |b| {
+        b.iter_batched(
+            || poly.clone(),
+            |poly| poly.evaluate_with_twiddles(domain, &twiddles),
+            BatchSize::LargeInput,
+        );
+    });
+}
+
+pub fn cpu_bit_rev(c: &mut Criterion) {
+    use stwo::core::utils::bit_reverse;
+    const SIZE: usize = 1 << 24;
+    let mut data = (0..SIZE).map(BaseField::from).collect_vec();
+    c.bench_function("cpu bit_rev 24bit", |b| {
+        b.iter(|| bit_reverse(black_box(&mut data)))
+    });
+}
 
 pub fn simd_ifft(c: &mut Criterion) {
     use stwo::core::backend::simd::column::BaseFieldVec;
@@ -14,11 +43,11 @@ pub fn simd_ifft(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("iffts");
 
-    for log_size in 16..=28 {
+    for log_size in 16..=17 {
         let domain = CanonicCoset::new(log_size).circle_domain();
         let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
         let mut values: BaseFieldVec = (0..domain.size()).map(BaseField::from).collect();
-        group.throughput(Throughput::Bytes(size_of_val(&values.data) as u64));
+        group.throughput(Throughput::Bytes(size_of_val(&*values.data) as u64));
         group.bench_function(BenchmarkId::new("simd ifft", log_size), |b| {
             b.iter(|| unsafe {
                 ifft(
@@ -86,24 +115,36 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
 pub fn simd_rfft(c: &mut Criterion) {
     use stwo::core::backend::simd::column::BaseFieldVec;
     use stwo::core::backend::simd::fft::rfft::{fft, get_twiddle_dbls};
-    use stwo::core::backend::simd::m31::PackedBaseField;
+    // use stwo::core::backend::simd::m31::PackedBaseField;
 
     const LOG_SIZE: u32 = 20;
 
     let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
     let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
     let values: BaseFieldVec = (0..domain.size()).map(BaseField::from).collect();
-    let mut target = vec![PackedBaseField::zeroed(); values.data.len()];
 
     c.bench_function("simd rfft 20bit", |b| {
-        b.iter(|| unsafe {
-            fft(
-                black_box(transmute(values.data.as_ptr())),
-                black_box(transmute(target.as_mut_ptr())),
-                black_box(&twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec()),
-                black_box(LOG_SIZE as usize),
-            )
-        })
+        b.iter_batched(
+            || values.clone(),
+            |mut values| unsafe {
+                fft(
+                    black_box(transmute(values.data.as_ptr())),
+                    black_box(transmute(values.data.as_mut_ptr())),
+                    black_box(&twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec()),
+                    black_box(LOG_SIZE as usize),
+                )
+            },
+            BatchSize::LargeInput,
+        );
+
+        // b.iter(|| unsafe {
+        //     fft(
+        //         black_box(transmute(values.data.as_ptr())),
+        //         black_box(transmute(target.as_mut_ptr())),
+        //         black_box(&twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec()),
+        //         black_box(LOG_SIZE as usize),
+        //     )
+        // })
     });
 }
 
@@ -240,5 +281,5 @@ criterion_group!(
 criterion_group!(
     name=ifft;
     config = Criterion::default().sample_size(10);
-    targets=simd_ifft, simd_ifft_parts, simd_rfft);
+    targets=simd_ifft, simd_ifft_parts, simd_rfft, cpu_rfft);
 criterion_main!(ifft);

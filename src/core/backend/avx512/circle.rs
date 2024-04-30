@@ -332,7 +332,7 @@ fn slow_eval_at_point(
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use crate::core::backend::avx512::circle::slow_eval_at_point;
@@ -426,7 +426,7 @@ mod tests {
     #[test]
     fn test_eval_securefield() {
         use crate::core::backend::avx512::fft::MIN_FFT_LOG_SIZE;
-        let rng = &mut StdRng::seed_from_u64(0);
+        let rng = &mut SmallRng::seed_from_u64(0);
 
         for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 2) {
             let domain = CanonicCoset::new(log_size as u32).circle_domain();

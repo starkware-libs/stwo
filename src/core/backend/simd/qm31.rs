@@ -1,6 +1,6 @@
 use std::array;
 use std::iter::Sum;
-use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
@@ -210,18 +210,27 @@ impl<'a> Sum<&'a Self> for PackedSecureField {
     }
 }
 
+impl Neg for PackedSecureField {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        let Self([a, b]) = self;
+        Self([-a, -b])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::array;
 
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use crate::core::backend::simd::qm31::PackedSecureField;
 
     #[test]
     fn addition_works() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let lhs = rng.gen();
         let rhs = rng.gen();
 
@@ -232,7 +241,7 @@ mod tests {
 
     #[test]
     fn subtraction_works() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let lhs = rng.gen();
         let rhs = rng.gen();
 
@@ -243,7 +252,7 @@ mod tests {
 
     #[test]
     fn multiplication_works() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let lhs = rng.gen();
         let rhs = rng.gen();
 
@@ -254,12 +263,11 @@ mod tests {
 
     #[test]
     fn negation_works() {
-        let mut rng = StdRng::seed_from_u64(0);
-        let lhs = rng.gen();
-        let rhs = rng.gen();
+        let mut rng = SmallRng::seed_from_u64(0);
+        let values = rng.gen();
 
-        let res = PackedSecureField::from_array(lhs) * PackedSecureField::from_array(rhs);
+        let res = -PackedSecureField::from_array(values);
 
-        assert_eq!(res.to_array(), array::from_fn(|i| lhs[i] * rhs[i]));
+        assert_eq!(res.to_array(), values.map(|v| -v));
     }
 }

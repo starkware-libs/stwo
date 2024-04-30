@@ -255,7 +255,7 @@ impl SecureColumn<AVX512Backend> {
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::*;
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_packed_basefield_batch_inverse() {
-        let mut rng = StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let column = BaseFieldVec::from_iter(
             (0..64).map(|_| BaseField::from_u32_unchecked(rng.gen::<u32>() % P)),
         );

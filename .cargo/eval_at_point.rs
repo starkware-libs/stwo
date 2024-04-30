@@ -2,7 +2,7 @@ use criterion::{black_box, Criterion};
 
 #[cfg(target_arch = "x86_64")]
 pub fn cpu_eval_at_secure_point(c: &mut criterion::Criterion) {
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
     use stwo::core::backend::CPUBackend;
     use stwo::core::circle::CirclePoint;
@@ -11,7 +11,7 @@ pub fn cpu_eval_at_secure_point(c: &mut criterion::Criterion) {
     use stwo::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use stwo::core::poly::NaturalOrder;
     let log_size = 20;
-    let rng = &mut StdRng::seed_from_u64(0);
+    let rng = &mut SmallRng::seed_from_u64(0);
 
     let domain = CanonicCoset::new(log_size as u32).circle_domain();
     let evaluation = CircleEvaluation::<CPUBackend, _, NaturalOrder>::new(
@@ -44,7 +44,7 @@ pub fn cpu_eval_at_secure_point(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_eval_at_secure_point(c: &mut criterion::Criterion) {
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
     use stwo::core::backend::avx512::AVX512Backend;
     use stwo::core::circle::CirclePoint;
@@ -53,7 +53,7 @@ pub fn avx512_eval_at_secure_point(c: &mut criterion::Criterion) {
     use stwo::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use stwo::core::poly::NaturalOrder;
     let log_size = 20;
-    let rng = &mut StdRng::seed_from_u64(0);
+    let rng = &mut SmallRng::seed_from_u64(0);
 
     let domain = CanonicCoset::new(log_size as u32).circle_domain();
     let evaluation = CircleEvaluation::<AVX512Backend, BaseField, NaturalOrder>::new(

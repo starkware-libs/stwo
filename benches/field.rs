@@ -1,21 +1,21 @@
 use criterion::Criterion;
-use rand::rngs::ThreadRng;
-use rand::Rng;
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 use stwo::core::fields::cm31::CM31;
 use stwo::core::fields::m31::{M31, P};
 use stwo::core::fields::qm31::SecureField;
 pub const N_ELEMENTS: usize = 1 << 16;
 pub const N_STATE_ELEMENTS: usize = 8;
 
-pub fn get_random_m31_element(rng: &mut ThreadRng) -> M31 {
+pub fn get_random_m31_element(rng: &mut SmallRng) -> M31 {
     M31::from_u32_unchecked(rng.gen::<u32>() % P)
 }
 
-pub fn get_random_cm31_element(rng: &mut ThreadRng) -> CM31 {
+pub fn get_random_cm31_element(rng: &mut SmallRng) -> CM31 {
     CM31::from_m31(get_random_m31_element(rng), get_random_m31_element(rng))
 }
 
-pub fn get_random_qm31_element(rng: &mut ThreadRng) -> SecureField {
+pub fn get_random_qm31_element(rng: &mut SmallRng) -> SecureField {
     SecureField::from_m31(
         get_random_m31_element(rng),
         get_random_m31_element(rng),
@@ -25,7 +25,7 @@ pub fn get_random_qm31_element(rng: &mut ThreadRng) -> SecureField {
 }
 
 pub fn m31_operations_bench(c: &mut criterion::Criterion) {
-    let mut rng = rand::thread_rng();
+    let mut rng = SmallRng::seed_from_u64(0);
     let mut elements: Vec<M31> = Vec::new();
     let mut state: [M31; N_STATE_ELEMENTS] =
         [(); N_STATE_ELEMENTS].map(|_| get_random_m31_element(&mut rng));
@@ -60,7 +60,7 @@ pub fn m31_operations_bench(c: &mut criterion::Criterion) {
 }
 
 pub fn cm31_operations_bench(c: &mut criterion::Criterion) {
-    let mut rng = rand::thread_rng();
+    let mut rng = SmallRng::seed_from_u64(0);
     let mut elements: Vec<CM31> = Vec::new();
     let mut state: [CM31; N_STATE_ELEMENTS] =
         [(); N_STATE_ELEMENTS].map(|_| get_random_cm31_element(&mut rng));
@@ -95,7 +95,7 @@ pub fn cm31_operations_bench(c: &mut criterion::Criterion) {
 }
 
 pub fn qm31_operations_bench(c: &mut criterion::Criterion) {
-    let mut rng = rand::thread_rng();
+    let mut rng = SmallRng::seed_from_u64(0);
     let mut elements: Vec<SecureField> = Vec::new();
     let mut state: [SecureField; N_STATE_ELEMENTS] =
         [(); N_STATE_ELEMENTS].map(|_| get_random_qm31_element(&mut rng));
@@ -127,6 +127,21 @@ pub fn qm31_operations_bench(c: &mut criterion::Criterion) {
             }
         })
     });
+}
+
+// #[cfg(target_feature = "neon")]
+pub fn simd_m31_operations_bench(c: &mut criterion::Criterion) {
+    use criterion::black_box;
+    use stwo::core::backend::simd::m31::PackedBaseField;
+
+    let mut rng = SmallRng::seed_from_u64(0);
+    let lhs = PackedBaseField::from_array(rng.gen());
+    let rhs = PackedBaseField::from_array(rng.gen());
+
+    // TODO: remove `j_` prefix
+    c.bench_function("j_mul_simd", |b| b.iter(|| black_box(lhs) * black_box(rhs)));
+    c.bench_function("j_add_simd", |b| b.iter(|| black_box(lhs) + black_box(rhs)));
+    c.bench_function("j_sub_simd", |b| b.iter(|| black_box(lhs) - black_box(rhs)));
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -192,10 +207,11 @@ criterion::criterion_group!(
     config = Criterion::default().sample_size(10);
     targets=
         m31_operations_bench,
-        avx512_m31_operations_bench
+        avx512_m31_operations_bench,
+        simd_m31_operations_bench
 );
 #[cfg(not(target_arch = "x86_64"))]
-criterion::criterion_group!(m31_benches, m31_operations_bench);
+criterion::criterion_group!(m31_benches, m31_operations_bench, simd_m31_operations_bench);
 
 criterion::criterion_group!(
     name=field_comparison;
