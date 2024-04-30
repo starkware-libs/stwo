@@ -114,7 +114,7 @@ mod tests {
 
     use itertools::Itertools;
     use num_traits::One;
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::{Fibonacci, MultiFibonacci};
@@ -130,7 +130,7 @@ mod tests {
     use crate::{m31, qm31};
 
     pub fn generate_test_queries(n_queries: usize, trace_length: usize) -> Vec<usize> {
-        let rng = &mut StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let mut queries: Vec<usize> = (0..n_queries)
             .map(|_| rng.gen_range(0..trace_length))
             .collect();

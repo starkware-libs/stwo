@@ -105,7 +105,7 @@ impl Mul<PackedBaseField> for PackedCM31 {
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::*;
@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_cm31avx512_basic_ops() {
-        let rng = &mut StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let x = PackedCM31([
             PackedBaseField::from_array(std::array::from_fn(|_| M31::from(rng.gen::<u32>() % P))),
             PackedBaseField::from_array(std::array::from_fn(|_| M31::from(rng.gen::<u32>() % P))),

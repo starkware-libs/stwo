@@ -2,7 +2,7 @@ use criterion::{black_box, Criterion};
 
 #[cfg(target_arch = "x86_64")]
 pub fn cpu_eval_at_secure_point(c: &mut criterion::Criterion) {
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
     use stwo_prover::core::backend::CPUBackend;
     use stwo_prover::core::circle::CirclePoint;
@@ -11,7 +11,7 @@ pub fn cpu_eval_at_secure_point(c: &mut criterion::Criterion) {
     use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use stwo_prover::core::poly::NaturalOrder;
     let log_size = 20;
-    let rng = &mut StdRng::seed_from_u64(0);
+    let mut rng = SmallRng::seed_from_u64(0);
 
     let domain = CanonicCoset::new(log_size as u32).circle_domain();
     let evaluation = CircleEvaluation::<CPUBackend, _, NaturalOrder>::new(
@@ -44,7 +44,7 @@ pub fn cpu_eval_at_secure_point(c: &mut criterion::Criterion) {
 
 #[cfg(target_arch = "x86_64")]
 pub fn avx512_eval_at_secure_point(c: &mut criterion::Criterion) {
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
     use stwo_prover::core::backend::avx512::AVX512Backend;
     use stwo_prover::core::circle::CirclePoint;
@@ -53,7 +53,7 @@ pub fn avx512_eval_at_secure_point(c: &mut criterion::Criterion) {
     use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use stwo_prover::core::poly::NaturalOrder;
     let log_size = 20;
-    let rng = &mut StdRng::seed_from_u64(0);
+    let mut rng = SmallRng::seed_from_u64(0);
 
     let domain = CanonicCoset::new(log_size as u32).circle_domain();
     let evaluation = CircleEvaluation::<AVX512Backend, BaseField, NaturalOrder>::new(
@@ -63,18 +63,8 @@ pub fn avx512_eval_at_secure_point(c: &mut criterion::Criterion) {
             .collect(),
     );
     let poly = evaluation.bit_reverse().interpolate();
-    let x = QM31::from_u32_unchecked(
-        rng.gen::<u32>(),
-        rng.gen::<u32>(),
-        rng.gen::<u32>(),
-        rng.gen::<u32>(),
-    );
-    let y = QM31::from_u32_unchecked(
-        rng.gen::<u32>(),
-        rng.gen::<u32>(),
-        rng.gen::<u32>(),
-        rng.gen::<u32>(),
-    );
+    let x: QM31 = rng.gen();
+    let y: QM31 = rng.gen();
 
     let point = CirclePoint { x, y };
     c.bench_function("avx eval_at_secure_field_point 2^20", |b| {
