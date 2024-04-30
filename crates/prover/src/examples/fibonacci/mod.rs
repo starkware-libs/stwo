@@ -148,8 +148,6 @@ mod tests {
             trace_poly.evaluate(CanonicCoset::new(trace_poly.log_size() + 1).circle_domain());
         let trace = ComponentTrace::new(vec![&trace_poly], vec![&trace_eval]);
 
-        // TODO(ShaharS), Change to a channel implementation to retrieve the random
-        // coefficients from extension field.
         let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
         let component_traces = vec![trace];
         let composition_polynomial_poly = fib
