@@ -332,7 +332,7 @@ fn slow_eval_at_point(
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use crate::core::backend::avx512::circle::slow_eval_at_point;
@@ -341,9 +341,9 @@ mod tests {
     use crate::core::backend::Column;
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
+    use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PolyOps};
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
-    use crate::qm31;
 
     #[test]
     fn test_interpolate_and_eval() {
@@ -426,7 +426,7 @@ mod tests {
     #[test]
     fn test_eval_securefield() {
         use crate::core::backend::avx512::fft::MIN_FFT_LOG_SIZE;
-        let rng = &mut StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
 
         for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 2) {
             let domain = CanonicCoset::new(log_size as u32).circle_domain();
@@ -438,18 +438,8 @@ mod tests {
             );
             let poly = evaluation.bit_reverse().interpolate();
 
-            let x = qm31!(
-                rng.gen::<u32>(),
-                rng.gen::<u32>(),
-                rng.gen::<u32>(),
-                rng.gen::<u32>()
-            );
-            let y = qm31!(
-                rng.gen::<u32>(),
-                rng.gen::<u32>(),
-                rng.gen::<u32>(),
-                rng.gen::<u32>()
-            );
+            let x: SecureField = rng.gen();
+            let y: SecureField = rng.gen();
 
             let p = CirclePoint { x, y };
 

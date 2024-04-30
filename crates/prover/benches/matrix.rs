@@ -1,5 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use rand::Rng;
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 use stwo_prover::core::fields::m31::{M31, P};
 use stwo_prover::core::fields::qm31::QM31;
 use stwo_prover::math::matrix::{RowMajorMatrix, SquareMatrix};
@@ -9,30 +10,22 @@ const QM31_MATRIX_SIZE: usize = 6;
 
 // TODO(ShaharS): Share code with other benchmarks.
 fn row_major_matrix_multiplication_bench(c: &mut Criterion) {
-    let mut rng = rand::thread_rng();
+    let mut rng = SmallRng::seed_from_u64(0);
 
     let matrix_m31 = RowMajorMatrix::<M31, MATRIX_SIZE>::new(
         (0..MATRIX_SIZE.pow(2))
-            .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() % P))
+            .map(|_| rng.gen())
             .collect::<Vec<M31>>(),
     );
 
     let matrix_qm31 = RowMajorMatrix::<QM31, QM31_MATRIX_SIZE>::new(
         (0..QM31_MATRIX_SIZE.pow(2))
-            .map(|_| {
-                QM31::from_u32_unchecked(
-                    rng.gen::<u32>() % P,
-                    rng.gen::<u32>() % P,
-                    rng.gen::<u32>() % P,
-                    rng.gen::<u32>() % P,
-                )
-            })
+            .map(|_| rng.gen())
             .collect::<Vec<QM31>>(),
     );
 
     // Create vector M31.
-    let vec: [M31; MATRIX_SIZE] =
-        [(); MATRIX_SIZE].map(|_| M31::from_u32_unchecked(rng.gen::<u32>() % P));
+    let vec: [M31; MATRIX_SIZE] = rng.gen();
 
     // Create vector QM31.
     let vec_qm31: [QM31; QM31_MATRIX_SIZE] = [(); QM31_MATRIX_SIZE].map(|_| {
