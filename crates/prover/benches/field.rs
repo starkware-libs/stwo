@@ -1,38 +1,17 @@
 use criterion::Criterion;
-use rand::rngs::ThreadRng;
-use rand::Rng;
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 use stwo_prover::core::fields::cm31::CM31;
-use stwo_prover::core::fields::m31::{M31, P};
+use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::qm31::SecureField;
+
 pub const N_ELEMENTS: usize = 1 << 16;
 pub const N_STATE_ELEMENTS: usize = 8;
 
-pub fn get_random_m31_element(rng: &mut ThreadRng) -> M31 {
-    M31::from_u32_unchecked(rng.gen::<u32>() % P)
-}
-
-pub fn get_random_cm31_element(rng: &mut ThreadRng) -> CM31 {
-    CM31::from_m31(get_random_m31_element(rng), get_random_m31_element(rng))
-}
-
-pub fn get_random_qm31_element(rng: &mut ThreadRng) -> SecureField {
-    SecureField::from_m31(
-        get_random_m31_element(rng),
-        get_random_m31_element(rng),
-        get_random_m31_element(rng),
-        get_random_m31_element(rng),
-    )
-}
-
 pub fn m31_operations_bench(c: &mut criterion::Criterion) {
-    let mut rng = rand::thread_rng();
-    let mut elements: Vec<M31> = Vec::new();
-    let mut state: [M31; N_STATE_ELEMENTS] =
-        [(); N_STATE_ELEMENTS].map(|_| get_random_m31_element(&mut rng));
-
-    for _ in 0..(N_ELEMENTS) {
-        elements.push(get_random_m31_element(&mut rng));
-    }
+    let mut rng = SmallRng::seed_from_u64(0);
+    let elements: Vec<M31> = (0..N_ELEMENTS).map(|_| rng.gen()).collect();
+    let mut state: [M31; N_STATE_ELEMENTS] = rng.gen();
 
     c.bench_function("M31 mul", |b| {
         b.iter(|| {
@@ -60,14 +39,9 @@ pub fn m31_operations_bench(c: &mut criterion::Criterion) {
 }
 
 pub fn cm31_operations_bench(c: &mut criterion::Criterion) {
-    let mut rng = rand::thread_rng();
-    let mut elements: Vec<CM31> = Vec::new();
-    let mut state: [CM31; N_STATE_ELEMENTS] =
-        [(); N_STATE_ELEMENTS].map(|_| get_random_cm31_element(&mut rng));
-
-    for _ in 0..(N_ELEMENTS) {
-        elements.push(get_random_cm31_element(&mut rng));
-    }
+    let mut rng = SmallRng::seed_from_u64(0);
+    let elements: Vec<CM31> = (0..N_ELEMENTS).map(|_| rng.gen()).collect();
+    let mut state: [CM31; N_STATE_ELEMENTS] = rng.gen();
 
     c.bench_function("CM31 mul", |b| {
         b.iter(|| {
@@ -95,14 +69,9 @@ pub fn cm31_operations_bench(c: &mut criterion::Criterion) {
 }
 
 pub fn qm31_operations_bench(c: &mut criterion::Criterion) {
-    let mut rng = rand::thread_rng();
-    let mut elements: Vec<SecureField> = Vec::new();
-    let mut state: [SecureField; N_STATE_ELEMENTS] =
-        [(); N_STATE_ELEMENTS].map(|_| get_random_qm31_element(&mut rng));
-
-    for _ in 0..(N_ELEMENTS) {
-        elements.push(get_random_qm31_element(&mut rng));
-    }
+    let mut rng = SmallRng::seed_from_u64(0);
+    let elements: Vec<SecureField> = (0..N_ELEMENTS).map(|_| rng.gen()).collect();
+    let mut state: [SecureField; N_STATE_ELEMENTS] = rng.gen();
 
     c.bench_function("SecureField mul", |b| {
         b.iter(|| {
@@ -138,15 +107,13 @@ pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
         return;
     }
 
-    let mut rng = rand::thread_rng();
+    let mut rng = SmallRng::seed_from_u64(0);
     let mut elements: Vec<PackedBaseField> = Vec::new();
     let mut states: Vec<PackedBaseField> =
         vec![PackedBaseField::from_array([1.into(); K_BLOCK_SIZE]); N_STATE_ELEMENTS];
 
     for _ in 0..(N_ELEMENTS / K_BLOCK_SIZE) {
-        elements.push(PackedBaseField::from_array(
-            [get_random_m31_element(&mut rng); K_BLOCK_SIZE],
-        ));
+        elements.push(PackedBaseField::from_array(rng.gen()));
     }
 
     c.bench_function("mul_avx512", |b| {

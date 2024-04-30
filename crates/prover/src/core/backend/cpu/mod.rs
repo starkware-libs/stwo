@@ -67,16 +67,7 @@ mod tests {
     #[test]
     fn batch_inverse_test() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let column: Vec<QM31> = (0..16)
-            .map(|_| {
-                QM31::from_u32_unchecked(
-                    rng.gen::<u32>() % P,
-                    rng.gen::<u32>() % P,
-                    rng.gen::<u32>() % P,
-                    rng.gen::<u32>() % P,
-                )
-            })
-            .collect();
+        let column = rng.gen::<[QM31; 16]>().to_vec();
         let expected = column.iter().map(|e| e.inverse()).collect_vec();
         let mut dst = Column::zeros(column.len());
 
@@ -89,16 +80,7 @@ mod tests {
     #[test]
     fn batch_inverse_reused_vec_test() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let column: Vec<QM31> = (0..16)
-            .map(|_| {
-                QM31::from_u32_unchecked(
-                    rng.gen::<u32>() % P,
-                    rng.gen::<u32>() % P,
-                    rng.gen::<u32>() % P,
-                    rng.gen::<u32>() % P,
-                )
-            })
-            .collect();
+        let column = rng.gen::<[QM31; 16]>().to_vec();
         let expected = column.iter().map(|e| e.inverse()).collect_vec();
         let mut dst = Column::zeros(column.len());
 
