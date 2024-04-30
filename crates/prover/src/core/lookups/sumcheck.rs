@@ -203,15 +203,14 @@ mod tests {
 
     use num_traits::One;
 
-    use crate::commitment_scheme::blake2_hash::Blake2sHasher;
-    use crate::commitment_scheme::hasher::Hasher;
     use crate::core::backend::CPUBackend;
-    // use crate::core::backend::avx512::AVX512Backend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::Field;
     use crate::core::lookups::mle::Mle;
     use crate::core::lookups::sumcheck::{partially_verify, prove_batch};
+    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::hasher::Hasher;
 
     #[test]
     fn sumcheck_works() {
