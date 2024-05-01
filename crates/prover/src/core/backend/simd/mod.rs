@@ -1,4 +1,5 @@
 pub mod cm31;
+pub mod column;
 pub mod m31;
 pub mod qm31;
 mod utils;
