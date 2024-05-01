@@ -9,7 +9,8 @@
     get_many_mut,
     int_roundings,
     slice_flatten,
-    assert_matches
+    assert_matches,
+    portable_simd
 )]
 pub mod core;
 pub mod examples;
