@@ -6,9 +6,10 @@ use std::simd::{u32x16, Simd, Swizzle};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
+use rand::distributions::{Distribution, Standard};
 
 use crate::core::backend::simd::utils::{LoEvensInterleaveHiEvens, LoOddsInterleaveHiOdds};
-use crate::core::fields::m31::{BaseField, M31, P};
+use crate::core::fields::m31::{pow2147483645, BaseField, M31, P};
 use crate::core::fields::FieldExpOps;
 
 pub const LOG_N_LANES: u32 = 4;
@@ -60,7 +61,7 @@ impl PackedBaseField {
         self.to_array().into_iter().sum()
     }
 
-    /// Doubles each element.
+    /// Doubles each element in the vector.
     pub fn double(self) -> Self {
         // TODO: Make more optimal.
         self + self
@@ -121,6 +122,7 @@ impl Mul for PackedBaseField {
     #[inline(always)]
     fn mul(self, rhs: Self) -> Self {
         // TODO: Come up with a better approach than `cfg`ing on target_feature.
+        // TODO: Ensure all these branches get tested in the CI.
         cfg_if::cfg_if! {
             if #[cfg(all(target_feature = "neon", target_arch = "aarch64"))] {
                 _mul_neon(self, rhs)
@@ -193,8 +195,7 @@ impl One for PackedBaseField {
 
 impl FieldExpOps for PackedBaseField {
     fn inverse(&self) -> Self {
-        assert!(!self.is_zero(), "0 has no inverse");
-        self.pow((P - 2) as u128)
+        pow2147483645(*self)
     }
 }
 
@@ -212,12 +213,16 @@ impl From<[BaseField; N_LANES]> for PackedBaseField {
     }
 }
 
+impl Distribution<PackedBaseField> for Standard {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> PackedBaseField {
+        PackedBaseField::from_array(rng.gen())
+    }
+}
+
 #[cfg(target_arch = "aarch64")]
 fn _mul_neon(a: PackedBaseField, b: PackedBaseField) -> PackedBaseField {
     use core::arch::aarch64::{int32x2_t, vqdmull_s32};
     use std::simd::u32x4;
-
-    use crate::core::backend::simd::utils::{LoEvensConcatHiEvens, LoOddsConcatHiOdds};
 
     let [a0, a1, a2, a3, a4, a5, a6, a7]: [int32x2_t; 8] = unsafe { transmute(a) };
     let [b0, b1, b2, b3, b4, b5, b6, b7]: [int32x2_t; 8] = unsafe { transmute(b) };
@@ -233,16 +238,11 @@ fn _mul_neon(a: PackedBaseField, b: PackedBaseField) -> PackedBaseField {
     let c7: u32x4 = unsafe { transmute(vqdmull_s32(a7, b7)) };
 
     // *_lo contain `|prod_lo|0|prod_lo|0|prod_lo0|0|prod_lo|0|`.
-    let mut c0_c1_lo: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c0, c1);
-    let mut c2_c3_lo: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c2, c3);
-    let mut c4_c5_lo: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c4, c5);
-    let mut c6_c7_lo: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c6, c7);
-
     // *_hi contain `|0|prod_hi|0|prod_hi|0|prod_hi|0|prod_hi|`.
-    let c0_c1_hi: u32x4 = LoOddsConcatHiOdds::concat_swizzle(c0, c1);
-    let c2_c3_hi: u32x4 = LoOddsConcatHiOdds::concat_swizzle(c2, c3);
-    let c4_c5_hi: u32x4 = LoOddsConcatHiOdds::concat_swizzle(c4, c5);
-    let c6_c7_hi: u32x4 = LoOddsConcatHiOdds::concat_swizzle(c6, c7);
+    let (mut c0_c1_lo, c0_c1_hi) = c0.deinterleave(c1);
+    let (mut c2_c3_lo, c2_c3_hi) = c2.deinterleave(c3);
+    let (mut c4_c5_lo, c4_c5_hi) = c4.deinterleave(c5);
+    let (mut c6_c7_lo, c6_c7_hi) = c6.deinterleave(c7);
 
     // *_lo contain `|0|prod_lo|0|prod_lo|0|prod_lo|0|prod_lo|`.
     c0_c1_lo >>= 1;
@@ -261,8 +261,6 @@ fn _mul_wasm(a: PackedBaseField, b: PackedBaseField) -> PackedBaseField {
     use core::arch::wasm32::{i64x2_extmul_high_u32x4, i64x2_extmul_low_u32x4, v128};
     use std::simd::u32x4;
 
-    use crate::core::backend::simd::utils::{LoEvensConcatHiEvens, LoOddsConcatHiOdds};
-
     let [a0, a1, a2, a3]: [v128; 4] = unsafe { transmute(a) };
 
     let b_double = b.0 << 1;
@@ -277,11 +275,10 @@ fn _mul_wasm(a: PackedBaseField, b: PackedBaseField) -> PackedBaseField {
     let c3_lo: u32x4 = unsafe { transmute(i64x2_extmul_low_u32x4(a3, b_double3)) };
     let c3_hi: u32x4 = unsafe { transmute(i64x2_extmul_high_u32x4(a3, b_double3)) };
 
-    let mut c0_even: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c0_lo, c0_hi);
-    let mut c1_even: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c1_lo, c1_hi);
-    let mut c2_even: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c2_lo, c2_hi);
-    let mut c3_even: u32x4 = LoEvensConcatHiEvens::concat_swizzle(c3_lo, c3_hi);
-
+    let (mut c0_even, c0_odd) = c0_lo.deinterleave(c0_hi);
+    let (mut c1_even, c1_odd) = c1_lo.deinterleave(c1_hi);
+    let (mut c2_even, c2_odd) = c2_lo.deinterleave(c2_hi);
+    let (mut c3_even, c3_odd) = c3_lo.deinterleave(c3_hi);
     c0_even >>= 1;
     c1_even >>= 1;
     c2_even >>= 1;
@@ -406,7 +403,7 @@ fn _mul_simd(a: PackedBaseField, b: PackedBaseField) -> PackedBaseField {
     let a_o = unsafe { transmute::<_, Simd<u64, { N_LANES / 2 }>>(a) >> 32 };
 
     // Double the second operand.
-    let b_dbl = b.0 << 1;
+    let b_dbl = b.0 + b.0;
     let b_dbl_e = unsafe { transmute::<_, Simd<u64, { N_LANES / 2 }>>(b_dbl) & MASK_EVENS };
     let b_dbl_o = unsafe { transmute::<_, Simd<u64, { N_LANES / 2 }>>(b_dbl) >> 32 };
 

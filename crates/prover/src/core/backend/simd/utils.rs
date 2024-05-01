@@ -14,20 +14,6 @@ impl<const N: usize> Swizzle<N> for LoHiInterleaveHiHi {
     const INDEX: [usize; N] = segment_interleave(true);
 }
 
-/// Used with [`Swizzle::concat_swizzle`] to concat the even values of vectors `lo` and `hi`.
-pub struct LoEvensConcatHiEvens;
-
-impl<const N: usize> Swizzle<N> for LoEvensConcatHiEvens {
-    const INDEX: [usize; N] = parity_concat(false);
-}
-
-/// Used with [`Swizzle::concat_swizzle`] to concat the odd values of vectors `lo` and `hi`.
-pub struct LoOddsConcatHiOdds;
-
-impl<const N: usize> Swizzle<N> for LoOddsConcatHiOdds {
-    const INDEX: [usize; N] = parity_concat(true);
-}
-
 /// Used with [`Swizzle::concat_swizzle`] to interleave the even values of vectors `lo` and `hi`.
 pub struct LoEvensInterleaveHiEvens;
 
@@ -52,16 +38,6 @@ const fn segment_interleave<const N: usize>(hi: bool) -> [usize; N] {
     res
 }
 
-const fn parity_concat<const N: usize>(odd: bool) -> [usize; N] {
-    let mut res = [0; N];
-    let mut i = 0;
-    while i < N {
-        res[i] = i * 2 + if odd { 1 } else { 0 };
-        i += 1;
-    }
-    res
-}
-
 const fn parity_interleave<const N: usize>(odd: bool) -> [usize; N] {
     let mut res = [0; N];
     let mut i = 0;
@@ -78,8 +54,7 @@ mod tests {
 
     use super::LoLoInterleaveHiLo;
     use crate::core::backend::simd::utils::{
-        LoEvensConcatHiEvens, LoEvensInterleaveHiEvens, LoHiInterleaveHiHi, LoOddsConcatHiOdds,
-        LoOddsInterleaveHiOdds,
+        LoEvensInterleaveHiEvens, LoHiInterleaveHiHi, LoOddsInterleaveHiOdds,
     };
 
     #[test]
@@ -100,26 +75,6 @@ mod tests {
         let res = LoHiInterleaveHiHi::concat_swizzle(lo, hi);
 
         assert_eq!(res, u32x4::from_array([2, 6, 3, 7]));
-    }
-
-    #[test]
-    fn lo_evens_concat_hi_evens() {
-        let lo = u32x4::from_array([0, 1, 2, 3]);
-        let hi = u32x4::from_array([4, 5, 6, 7]);
-
-        let res = LoEvensConcatHiEvens::concat_swizzle(lo, hi);
-
-        assert_eq!(res, u32x4::from_array([0, 2, 4, 6]));
-    }
-
-    #[test]
-    fn lo_odds_concat_hi_odds() {
-        let lo = u32x4::from_array([0, 1, 2, 3]);
-        let hi = u32x4::from_array([4, 5, 6, 7]);
-
-        let res = LoOddsConcatHiOdds::concat_swizzle(lo, hi);
-
-        assert_eq!(res, u32x4::from_array([1, 3, 5, 7]));
     }
 
     #[test]
