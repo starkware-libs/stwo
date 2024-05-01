@@ -43,7 +43,7 @@ mod tests {
 
     use itertools::Itertools;
     use num_traits::Zero;
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use crate::core::backend::CPUBackend;
@@ -63,7 +63,7 @@ mod tests {
         const N_QUERIES: usize = 7;
         let log_size_range = 6..9;
 
-        let rng = &mut StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let log_sizes = (0..N_COLS)
             .map(|_| rng.gen_range(log_size_range.clone()))
             .collect_vec();

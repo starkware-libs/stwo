@@ -159,7 +159,7 @@ mod tests {
     use std::array;
 
     use num_traits::Zero;
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::*;
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn test_point_evaluation_accumulator() {
         // Generate a vector of random sizes with a constant seed.
-        let rng = &mut StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         const MAX_LOG_SIZE: u32 = 10;
         const MASK: u32 = P;
         let log_sizes = (0..100)
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn test_domain_evaluation_accumulator() {
         // Generate a vector of random sizes with a constant seed.
-        let rng = &mut StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         const LOG_SIZE_MIN: u32 = 4;
         const LOG_SIZE_BOUND: u32 = 10;
         const MASK: u32 = P;

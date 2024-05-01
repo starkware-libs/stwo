@@ -274,7 +274,8 @@ macro_rules! impl_field {
 /// Used to extend a field (with characteristic M31) by 2.
 #[macro_export]
 macro_rules! impl_extension_field {
-    ($field_name: ty, $extended_field_name: ty) => {
+    ($field_name: ident, $extended_field_name: ty) => {
+        use rand::distributions::{Distribution, Standard};
         use $crate::core::fields::ExtensionOf;
 
         impl ExtensionOf<M31> for $field_name {
@@ -445,38 +446,42 @@ macro_rules! impl_extension_field {
                 );
             }
         }
+
+        impl Distribution<$field_name> for Standard {
+            // Not intended for cryptographic use. Should only be used in tests and benchmarks.
+            fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> $field_name {
+                $field_name(rng.gen(), rng.gen())
+            }
+        }
     };
 }
 
 #[cfg(test)]
 mod tests {
     use num_traits::Zero;
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::fields::m31::{M31, P};
+    use crate::core::fields::m31::M31;
     use crate::core::fields::FieldExpOps;
 
     #[test]
     fn test_slice_batch_inverse() {
-        let mut rng = StdRng::seed_from_u64(0);
-        let elements: Vec<M31> = (0..16)
-            .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() % P))
-            .collect();
+        let mut rng = SmallRng::seed_from_u64(0);
+        let elements: [M31; 16] = rng.gen();
         let expected = elements.iter().map(|e| e.inverse()).collect::<Vec<_>>();
         let mut dst = [M31::zero(); 16];
 
         M31::batch_inverse(&elements, &mut dst);
+
         assert_eq!(expected, dst);
     }
 
     #[test]
     #[should_panic]
     fn test_slice_batch_inverse_wrong_dst_size() {
-        let mut rng = StdRng::seed_from_u64(0);
-        let elements: Vec<M31> = (0..16)
-            .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() % P))
-            .collect();
+        let mut rng = SmallRng::seed_from_u64(0);
+        let elements: [M31; 16] = rng.gen();
         let mut dst = [M31::zero(); 15];
 
         M31::batch_inverse(&elements, &mut dst);

@@ -4,6 +4,7 @@ use std::ops::{
 };
 
 use bytemuck::{Pod, Zeroable};
+use rand::distributions::{Distribution, Standard};
 
 use super::{ComplexConjugate, FieldExpOps};
 use crate::impl_field;
@@ -125,6 +126,13 @@ impl From<i32> for M31 {
     }
 }
 
+impl Distribution<M31> for Standard {
+    // Not intended for cryptographic use. Should only be used in tests and benchmarks.
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> M31 {
+        M31(rng.gen_range(0..P))
+    }
+}
+
 #[cfg(test)]
 #[macro_export]
 macro_rules! m31 {
@@ -158,7 +166,8 @@ fn sqn<const N: usize, T: FieldExpOps>(mut v: T) -> T {
 
 #[cfg(test)]
 mod tests {
-    use rand::Rng;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
 
     use super::{M31, P};
     use crate::core::fields::m31::{pow2147483645, BaseField};
@@ -182,7 +191,7 @@ mod tests {
 
     #[test]
     fn test_basic_ops() {
-        let mut rng = rand::thread_rng();
+        let mut rng = SmallRng::seed_from_u64(0);
         for _ in 0..10000 {
             let x: u32 = rng.gen::<u32>() % P;
             let y: u32 = rng.gen::<u32>() % P;
@@ -194,10 +203,8 @@ mod tests {
 
     #[test]
     fn test_into_slice() {
-        let mut rng = rand::thread_rng();
-        let x = (0..100)
-            .map(|_| m31!(rng.gen::<u32>()))
-            .collect::<Vec<M31>>();
+        let mut rng = SmallRng::seed_from_u64(0);
+        let x = (0..100).map(|_| rng.gen()).collect::<Vec<M31>>();
 
         let slice = M31::into_slice(&x);
 
