@@ -81,7 +81,7 @@ impl Mul for M31 {
 impl FieldExpOps for M31 {
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");
-        self.pow(P as u128 - 2)
+        pow2147483645(*self)
     }
 }
 
@@ -133,12 +133,36 @@ macro_rules! m31 {
     };
 }
 
+/// Computes `v^((2^31-1)-2)`.
+///
+/// Computes the multiplicative inverse of [`M31`] elements with 37 multiplications vs naive 60
+/// multiplications. Made generic to support both vectorized and non-vectorized implementations.
+/// Multiplication tree found with [addchain](https://github.com/mmcloughlin/addchain).
+pub fn pow2147483645<T: FieldExpOps>(v: T) -> T {
+    let t0 = sqn::<2, T>(v) * v;
+    let t1 = sqn::<1, T>(t0) * t0;
+    let t2 = sqn::<3, T>(t1) * t0;
+    let t3 = sqn::<1, T>(t2) * t0;
+    let t4 = sqn::<8, T>(t3) * t3;
+    let t5 = sqn::<8, T>(t4) * t3;
+    sqn::<7, T>(t5) * t2
+}
+
+/// Computes `v^(2*n)`.
+fn sqn<const N: usize, T: FieldExpOps>(mut v: T) -> T {
+    for _ in 0..N {
+        v = v.square();
+    }
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use rand::Rng;
 
     use super::{M31, P};
-    use crate::core::fields::IntoSlice;
+    use crate::core::fields::m31::{pow2147483645, BaseField};
+    use crate::core::fields::{FieldExpOps, IntoSlice};
 
     fn mul_p(a: u32, b: u32) -> u32 {
         ((a as u64 * b as u64) % P as u64) as u32
@@ -185,5 +209,12 @@ mod tests {
                 ))
             );
         }
+    }
+
+    #[test]
+    fn pow2147483645_works() {
+        let v = BaseField::from(19);
+
+        assert_eq!(pow2147483645(v), v.pow(2147483645));
     }
 }
