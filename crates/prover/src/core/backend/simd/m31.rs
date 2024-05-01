@@ -6,6 +6,7 @@ use std::simd::{u32x16, Simd, Swizzle};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
+use rand::distributions::{Distribution, Standard};
 
 use crate::core::backend::simd::utils::{LoEvensInterleaveHiEvens, LoOddsInterleaveHiOdds};
 use crate::core::fields::m31::{BaseField, M31, P};
@@ -60,7 +61,7 @@ impl PackedBaseField {
         self.to_array().into_iter().sum()
     }
 
-    /// Doubles each element.
+    /// Doubles each element in the vector.
     pub fn double(self) -> Self {
         // TODO: Make more optimal.
         self + self
@@ -209,6 +210,12 @@ unsafe impl Zeroable for PackedBaseField {
 impl From<[BaseField; N_LANES]> for PackedBaseField {
     fn from(v: [BaseField; N_LANES]) -> Self {
         Self::from_array(v)
+    }
+}
+
+impl Distribution<PackedBaseField> for Standard {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> PackedBaseField {
+        PackedBaseField::from_array(rng.gen())
     }
 }
 

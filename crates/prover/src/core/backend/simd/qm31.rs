@@ -4,6 +4,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
+use rand::distributions::{Distribution, Standard};
 
 use super::cm31::PackedCM31;
 use super::m31::{PackedBaseField, N_LANES};
@@ -221,6 +222,12 @@ impl Neg for PackedSecureField {
     fn neg(self) -> Self::Output {
         let Self([a, b]) = self;
         Self([-a, -b])
+    }
+}
+
+impl Distribution<PackedSecureField> for Standard {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> PackedSecureField {
+        PackedSecureField::from_array(rng.gen())
     }
 }
 
