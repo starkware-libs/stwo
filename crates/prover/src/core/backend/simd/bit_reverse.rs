@@ -1,14 +1,19 @@
-use std::simd::{u32x16, Swizzle};
+use std::array;
+use std::mem::transmute;
+use std::simd::Swizzle;
 
+use super::utils::{LoHiInterleaveHiHi, LoLoInterleaveHiLo};
 use super::PackedBaseField;
-use crate::core::backend::simd::utils::{LoHiInterleaveHiHi, LoLoInterleaveHiLo};
 use crate::core::utils::bit_reverse_index;
 
 const VEC_BITS: u32 = 4;
+
 const W_BITS: u32 = 3;
+
 pub const MIN_LOG_SIZE: u32 = 2 * W_BITS + VEC_BITS;
 
-/// Bit reverses packed M31 values.
+/// Bit reverses M31 values.
+///
 /// Given an array `A[0..2^n)`, computes `B[i] = A[bit_reverse(i)]`.
 pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
     assert!(data.len().is_power_of_two());
@@ -26,8 +31,8 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
     // TODO(spapini): when doing multithreading, do it over a.
     for a in 0u32..(1 << a_bits) {
         for w_l in 0u32..(1 << W_BITS) {
-            let w_l_rev = w_l.reverse_bits() >> (32 - W_BITS);
-            for w_h in 0u32..(w_l_rev + 1) {
+            let w_l_rev = w_l.reverse_bits() >> (u32::BITS - W_BITS);
+            for w_h in 0..(w_l_rev + 1) {
                 let idx = ((((w_h << a_bits) | a) << W_BITS) | w_l) as usize;
                 let idx_rev = bit_reverse_index(idx, log_size - VEC_BITS);
 
@@ -38,7 +43,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
 
                 // Read first chunk.
                 // TODO(spapini): Think about optimizing a_bits.
-                let chunk0 = std::array::from_fn(|i| unsafe {
+                let chunk0 = array::from_fn(|i| unsafe {
                     *data.get_unchecked(idx + (i << (2 * W_BITS + a_bits)))
                 });
                 let values0 = bit_reverse16(chunk0);
@@ -56,7 +61,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
                 }
 
                 // Read bit reversed chunk.
-                let chunk1 = std::array::from_fn(|i| unsafe {
+                let chunk1 = array::from_fn(|i| unsafe {
                     *data.get_unchecked(idx_rev + (i << (2 * W_BITS + a_bits)))
                 });
                 let values1 = bit_reverse16(chunk1);
@@ -75,23 +80,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
 
 /// Bit reverses 256 M31 values, packed in 16 words of 16 elements each.
 fn bit_reverse16(data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
-    let mut data: [u32x16; 16] = unsafe { std::mem::transmute(data) };
-    // L is an input to _mm512_permutex2var_epi32, and it is used to
-    // interleave the first half of a with the first half of b.
-    const _L: u32x16 = unsafe {
-        core::mem::transmute([
-            0b00000, 0b10000, 0b00001, 0b10001, 0b00010, 0b10010, 0b00011, 0b10011, 0b00100,
-            0b10100, 0b00101, 0b10101, 0b00110, 0b10110, 0b00111, 0b10111,
-        ])
-    };
-    // H is an input to _mm512_permutex2var_epi32, and it is used to interleave the second half
-    // interleave the second half of a with the second half of b.
-    const _H: u32x16 = unsafe {
-        core::mem::transmute([
-            0b01000, 0b11000, 0b01001, 0b11001, 0b01010, 0b11010, 0b01011, 0b11011, 0b01100,
-            0b11100, 0b01101, 0b11101, 0b01110, 0b11110, 0b01111, 0b11111,
-        ])
-    };
+    let mut data = data.map(PackedBaseField::into_simd);
 
     // Denote the index of each element in the 16 packed M31 words as abcd:0123,
     // where abcd is the index of the packed word and 0123 is the index of the element in the word.
@@ -105,7 +94,7 @@ fn bit_reverse16(data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
     //   3210:dcba
     for _ in 0..4 {
         // Apply the abcd:0123 => 0abc:123d permutation.
-        // _mm512_permutex2var_epi32() with L allows us to interleave the first half of 2 words.
+        // `LoLoInterleaveHiLo` allows us to interleave the first half of 2 words.
         // For example, the second call interleaves 0010:0xyz (low half of register 2) with
         // 0011:0xyz (low half of register 3), and stores the result in register 1 (0001).
         // This results in
@@ -131,38 +120,45 @@ fn bit_reverse16(data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
             LoHiInterleaveHiHi::concat_swizzle(data[14], data[15]),
         ];
     }
-    unsafe { std::mem::transmute(data) }
+
+    unsafe { transmute(data) }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{bit_reverse16, bit_reverse_m31};
-    use crate::core::backend::simd::BaseFieldVec;
+    use std::array;
+    use std::mem::transmute;
+
+    use aligned::{Aligned, A64};
+
+    use super::bit_reverse16;
+    use crate::core::backend::simd::bit_reverse::bit_reverse_m31;
+    use crate::core::backend::simd::column::BaseFieldVec;
     use crate::core::backend::Column;
     use crate::core::fields::m31::BaseField;
-    use crate::core::utils::bit_reverse;
+    use crate::core::utils::bit_reverse as ground_truth_bit_reverse;
 
     #[test]
     fn test_bit_reverse16() {
-        let data: [u32; 256] = std::array::from_fn(|i| i as u32);
-        let expected: [u32; 256] = std::array::from_fn(|i| (i as u32).reverse_bits() >> 24);
-        unsafe {
-            let data = bit_reverse16(std::mem::transmute(data));
-            assert_eq!(std::mem::transmute::<_, [u32; 256]>(data), expected);
-        }
+        let data: Aligned<A64, [u32; 256]> = Aligned(array::from_fn(|i| i as u32));
+        let mut expected: Aligned<A64, [u32; 256]> = data;
+        ground_truth_bit_reverse(&mut *expected);
+
+        let res = unsafe { transmute::<_, [u32; 256]>(bit_reverse16(transmute(data))) };
+
+        assert_eq!(res, *expected);
     }
 
     #[test]
-    fn test_bit_reverse() {
+    fn bit_reverse_m31_works() {
         const SIZE: usize = 1 << 15;
-        let data: Vec<_> = (0..SIZE as u32)
-            .map(BaseField::from_u32_unchecked)
-            .collect();
+        let data: Vec<_> = (0..SIZE).map(BaseField::from).collect();
         let mut expected = data.clone();
-        bit_reverse(&mut expected);
-        let mut data: BaseFieldVec = data.into_iter().collect();
+        ground_truth_bit_reverse(&mut expected);
 
-        bit_reverse_m31(&mut data.data[..]);
-        assert_eq!(data.to_cpu(), expected);
+        let mut res: BaseFieldVec = data.into_iter().collect();
+        bit_reverse_m31(&mut res.data[..]);
+
+        assert_eq!(res.to_cpu(), expected);
     }
 }
