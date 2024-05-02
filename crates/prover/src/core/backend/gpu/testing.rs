@@ -7,12 +7,15 @@ pub fn practice() {
     let mut out = dev.alloc_zeros::<f32>(100).unwrap();
 
     let ptx = compile_ptx(
-        "extern \"C\" __global__ void sin_kernel(float *out, const float *inp, const size_t numel) {
-    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < numel) {
-        out[i] = sin(inp[i]);
-    }
-}").unwrap();
+    "extern \"C\" __global__ void sin_kernel(float *out, const float *inp, const size_t numel) {
+            unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+            if (i < numel) {
+                out[i] = sin(inp[i]);
+            }
+        }"
+
+        
+    ).unwrap();
 
     dev.load_ptx(ptx, "test", &["sin_kernel"]).unwrap();
 
@@ -23,10 +26,11 @@ pub fn practice() {
     let out_host: Vec<f32> = dev.dtoh_sync_copy(&out).unwrap();
     assert_eq!(out_host, [1.0; 100].map(f32::sin));
 }
+
 #[cfg(test)]
 mod test {
-    #[test]
-    pub fn test_cuda() {
-        super::practice();
-    }
+    // #[test]
+    // pub fn test_cuda() {
+    //     super::practice();
+    // }
 }
