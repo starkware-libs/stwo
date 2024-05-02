@@ -4,6 +4,7 @@ use std::ops::{
 };
 
 use bytemuck::{Pod, Zeroable};
+use rand::distributions::{Distribution, Standard};
 
 use super::{ComplexConjugate, FieldExpOps};
 use crate::impl_field;
@@ -81,7 +82,7 @@ impl Mul for M31 {
 impl FieldExpOps for M31 {
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");
-        self.pow(P as u128 - 2)
+        pow2147483645(*self)
     }
 }
 
@@ -125,6 +126,13 @@ impl From<i32> for M31 {
     }
 }
 
+impl Distribution<M31> for Standard {
+    // Not intended for cryptographic use. Should only be used in tests and benchmarks.
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> M31 {
+        M31(rng.gen_range(0..P))
+    }
+}
+
 #[cfg(test)]
 #[macro_export]
 macro_rules! m31 {
@@ -133,12 +141,37 @@ macro_rules! m31 {
     };
 }
 
+/// Computes `v^((2^31-1)-2)`.
+///
+/// Computes the multiplicative inverse of [`M31`] elements with 37 multiplications vs naive 60
+/// multiplications. Made generic to support both vectorized and non-vectorized implementations.
+/// Multiplication tree found with [addchain](https://github.com/mmcloughlin/addchain).
+pub fn pow2147483645<T: FieldExpOps>(v: T) -> T {
+    let t0 = sqn::<2, T>(v) * v;
+    let t1 = sqn::<1, T>(t0) * t0;
+    let t2 = sqn::<3, T>(t1) * t0;
+    let t3 = sqn::<1, T>(t2) * t0;
+    let t4 = sqn::<8, T>(t3) * t3;
+    let t5 = sqn::<8, T>(t4) * t3;
+    sqn::<7, T>(t5) * t2
+}
+
+/// Computes `v^(2*n)`.
+fn sqn<const N: usize, T: FieldExpOps>(mut v: T) -> T {
+    for _ in 0..N {
+        v = v.square();
+    }
+    v
+}
+
 #[cfg(test)]
 mod tests {
-    use rand::Rng;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
 
     use super::{M31, P};
-    use crate::core::fields::IntoSlice;
+    use crate::core::fields::m31::{pow2147483645, BaseField};
+    use crate::core::fields::{FieldExpOps, IntoSlice};
 
     fn mul_p(a: u32, b: u32) -> u32 {
         ((a as u64 * b as u64) % P as u64) as u32
@@ -158,7 +191,7 @@ mod tests {
 
     #[test]
     fn test_basic_ops() {
-        let mut rng = rand::thread_rng();
+        let mut rng = SmallRng::seed_from_u64(0);
         for _ in 0..10000 {
             let x: u32 = rng.gen::<u32>() % P;
             let y: u32 = rng.gen::<u32>() % P;
@@ -170,10 +203,8 @@ mod tests {
 
     #[test]
     fn test_into_slice() {
-        let mut rng = rand::thread_rng();
-        let x = (0..100)
-            .map(|_| m31!(rng.gen::<u32>()))
-            .collect::<Vec<M31>>();
+        let mut rng = SmallRng::seed_from_u64(0);
+        let x = (0..100).map(|_| rng.gen()).collect::<Vec<M31>>();
 
         let slice = M31::into_slice(&x);
 
@@ -185,5 +216,12 @@ mod tests {
                 ))
             );
         }
+    }
+
+    #[test]
+    fn pow2147483645_works() {
+        let v = BaseField::from(19);
+
+        assert_eq!(pow2147483645(v), v.pow(2147483645));
     }
 }

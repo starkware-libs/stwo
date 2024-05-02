@@ -14,12 +14,12 @@ itertools.workspace = true
 num-traits.workspace = true
 thiserror.workspace = true
 bytemuck = { workspace = true, features = ["derive"] }
+rand = { version = "0.8.5", default-features = false, features = ["small_rng"] }
 tracing.workspace = true
 cudarc.workspace = true
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
-rand = { version = "0.8.5", features = ["small_rng"] }
 test-log = { version = "0.2.15", features = ["trace"] }
 tracing-subscriber = "0.3.18"
 

@@ -114,7 +114,7 @@ mod tests {
 
     use itertools::Itertools;
     use num_traits::One;
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::{Fibonacci, MultiFibonacci};
@@ -130,7 +130,7 @@ mod tests {
     use crate::{m31, qm31};
 
     pub fn generate_test_queries(n_queries: usize, trace_length: usize) -> Vec<usize> {
-        let rng = &mut StdRng::seed_from_u64(0);
+        let mut rng = SmallRng::seed_from_u64(0);
         let mut queries: Vec<usize> = (0..n_queries)
             .map(|_| rng.gen_range(0..trace_length))
             .collect();
@@ -148,8 +148,6 @@ mod tests {
             trace_poly.evaluate(CanonicCoset::new(trace_poly.log_size() + 1).circle_domain());
         let trace = ComponentTrace::new(vec![&trace_poly], vec![&trace_eval]);
 
-        // TODO(ShaharS), Change to a channel implementation to retrieve the random
-        // coefficients from extension field.
         let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
         let component_traces = vec![trace];
         let composition_polynomial_poly = fib

@@ -274,12 +274,11 @@ impl FromIterator<SecureField> for SecureColumn<AVX512Backend> {
 #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
-    use rand::rngs::StdRng;
+    use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::*;
     use crate::core::backend::{Col, Column};
-    use crate::core::fields::m31::P;
 
     type B = AVX512Backend;
 
@@ -322,12 +321,10 @@ mod tests {
 
     #[test]
     fn test_packed_basefield_batch_inverse() {
-        let mut rng = StdRng::seed_from_u64(0);
-        let column = BaseFieldVec::from_iter(
-            (0..64).map(|_| BaseField::from_u32_unchecked(rng.gen::<u32>() % P)),
-        );
+        let mut rng = SmallRng::seed_from_u64(0);
+        let column = (0..64).map(|_| rng.gen()).collect::<BaseFieldVec>();
         let expected = column.data.iter().map(|e| e.inverse()).collect::<Vec<_>>();
-        let mut dst = BaseFieldVec::from_iter((0..64).map(|_| BaseField::zero()));
+        let mut dst = (0..64).map(|_| BaseField::zero()).collect::<BaseFieldVec>();
 
         <AVX512Backend as FieldOps<BaseField>>::batch_inverse(&column, &mut dst);
 

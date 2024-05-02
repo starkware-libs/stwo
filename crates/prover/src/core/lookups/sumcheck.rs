@@ -204,7 +204,6 @@ mod tests {
     use num_traits::One;
 
     use crate::core::backend::CPUBackend;
-    // use crate::core::backend::avx512::AVX512Backend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::Field;
