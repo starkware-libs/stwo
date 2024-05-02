@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 use std::ops::{Deref, Index};
 
+use derivative::Derivative;
+
 use super::{CanonicCoset, CircleDomain, CirclePoly, PolyOps};
 use crate::core::backend::cpu::CPUCircleEvaluation;
 use crate::core::backend::{Col, Column};
@@ -13,7 +15,8 @@ use crate::core::utils::bit_reverse_index;
 
 /// An evaluation defined on a [CircleDomain].
 /// The values are ordered according to the [CircleDomain] ordering.
-#[derive(Clone, Debug)]
+#[derive(Derivative)]
+#[derivative(Clone(bound = ""), Debug(bound = ""))]
 pub struct CircleEvaluation<B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder = NaturalOrder> {
     pub domain: CircleDomain,
     pub values: Col<B, F>,
