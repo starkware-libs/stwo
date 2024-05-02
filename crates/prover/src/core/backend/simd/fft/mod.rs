@@ -52,7 +52,7 @@ pub unsafe fn transpose_vecs(values: *mut u32, log_n_vecs: usize) {
 /// Computes the twiddles for the first fft layer from the second, and loads both to SIMD registers.
 ///
 /// Returns the twiddles for the first layer and the twiddles for the second layer.
-fn compute_first_twiddles(twiddle1_dbl: u32x8) -> (u32x16, u32x16) {
+pub fn compute_first_twiddles(twiddle1_dbl: u32x8) -> (u32x16, u32x16) {
     // Start by loading the twiddles for the second layer (layer 1):
     // The twiddles for layer 1 are replicated in the following pattern:
     //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7

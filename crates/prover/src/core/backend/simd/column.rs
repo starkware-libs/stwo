@@ -1,14 +1,17 @@
 use std::mem;
 
 use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 use num_traits::Zero;
 
+use super::cm31::PackedCM31;
 use super::m31::{PackedBaseField, N_LANES};
 use super::qm31::PackedSecureField;
-use crate::core::backend::Column;
+use super::SimdBackend;
+use crate::core::backend::{CPUBackend, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure_column::SecureColumn;
 
 #[derive(Clone, Debug)]
 pub struct BaseFieldVec {
@@ -135,6 +138,54 @@ impl FromIterator<PackedSecureField> for SecureFieldVec {
         let length = data.len() * N_LANES;
 
         Self { data, length }
+    }
+}
+
+impl SecureColumn<SimdBackend> {
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
+    pub unsafe fn packed_at(&self, vec_index: usize) -> PackedSecureField {
+        PackedSecureField([
+            PackedCM31([
+                *self.columns[0].data.get_unchecked(vec_index),
+                *self.columns[1].data.get_unchecked(vec_index),
+            ]),
+            PackedCM31([
+                *self.columns[2].data.get_unchecked(vec_index),
+                *self.columns[3].data.get_unchecked(vec_index),
+            ]),
+        ])
+    }
+
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
+    pub unsafe fn set_packed(&mut self, vec_index: usize, value: PackedSecureField) {
+        let PackedSecureField([PackedCM31([a, b]), PackedCM31([c, d])]) = value;
+        *self.columns[0].data.get_unchecked_mut(vec_index) = a;
+        *self.columns[1].data.get_unchecked_mut(vec_index) = b;
+        *self.columns[2].data.get_unchecked_mut(vec_index) = c;
+        *self.columns[3].data.get_unchecked_mut(vec_index) = d;
+    }
+
+    pub fn to_vec(&self) -> Vec<SecureField> {
+        izip!(
+            self.columns[0].to_cpu(),
+            self.columns[1].to_cpu(),
+            self.columns[2].to_cpu(),
+            self.columns[3].to_cpu(),
+        )
+        .map(|(a, b, c, d)| SecureField::from_m31_array([a, b, c, d]))
+        .collect()
+    }
+}
+
+impl FromIterator<SecureField> for SecureColumn<SimdBackend> {
+    fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
+        let cpu_col = SecureColumn::<CPUBackend>::from_iter(iter);
+        let columns = cpu_col.columns.map(|col| col.into_iter().collect());
+        SecureColumn { columns }
     }
 }
 
