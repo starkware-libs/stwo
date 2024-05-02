@@ -6,9 +6,9 @@ use crate::core::fields::m31::P;
 pub mod ifft;
 pub mod rfft;
 
-pub const CACHED_FFT_LOG_SIZE: usize = 16;
+pub const CACHED_FFT_LOG_SIZE: u32 = 16;
 
-pub const MIN_FFT_LOG_SIZE: usize = 5;
+pub const MIN_FFT_LOG_SIZE: u32 = 5;
 
 // TODO(spapini): FFTs return a redundant representation, that can get the value P. need to reduce
 // it somewhere.
