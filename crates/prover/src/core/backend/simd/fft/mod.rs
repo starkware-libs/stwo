@@ -2,15 +2,15 @@ use std::mem::transmute;
 use std::ptr;
 use std::simd::{i32x16, simd_swizzle, u32x16, u32x8, Simd, Swizzle};
 
-use crate::core::backend::simd::m31::{PackedBaseField, N_LANES};
+use super::m31::{PackedBaseField, N_LANES};
 use crate::core::backend::simd::utils::{InterleaveEvens, InterleaveOdds};
 
 pub mod ifft;
 pub mod rfft;
 
-pub const CACHED_FFT_LOG_SIZE: usize = 16;
+pub const CACHED_FFT_LOG_SIZE: u32 = 16;
 
-pub const MIN_FFT_LOG_SIZE: usize = 5;
+pub const MIN_FFT_LOG_SIZE: u32 = 5;
 
 // TODO(spapini): FFTs return a redundant representation, that can get the value P. need to reduce
 // it somewhere.

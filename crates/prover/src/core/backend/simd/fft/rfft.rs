@@ -28,9 +28,9 @@ use crate::core::utils::bit_reverse;
 ///
 /// Behavior is undefined if `src` and `dst` do not have the same alignment as [`PackedBaseField`].
 pub unsafe fn fft(src: *const u32, dst: *mut u32, twiddle_dbl: &[&[u32]], log_n_elements: usize) {
-    assert!(log_n_elements >= MIN_FFT_LOG_SIZE);
+    assert!(log_n_elements >= MIN_FFT_LOG_SIZE as usize);
     let log_n_vecs = log_n_elements - LOG_N_LANES as usize;
-    if log_n_elements <= CACHED_FFT_LOG_SIZE {
+    if log_n_elements <= CACHED_FFT_LOG_SIZE as usize {
         fft_lower_with_vecwise(src, dst, twiddle_dbl, log_n_elements, log_n_elements);
         return;
     }
@@ -733,19 +733,19 @@ mod tests {
     #[test]
     fn test_fft_full() {
         for log_size in CACHED_FFT_LOG_SIZE + 1..CACHED_FFT_LOG_SIZE + 3 {
-            let domain = CanonicCoset::new(log_size as u32).circle_domain();
+            let domain = CanonicCoset::new(log_size).circle_domain();
             let mut rng = SmallRng::seed_from_u64(0);
             let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
             let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
 
             let mut res = values.iter().copied().collect::<BaseFieldVec>();
             unsafe {
-                transpose_vecs(transmute(res.data.as_mut_ptr()), log_size - 4);
+                transpose_vecs(transmute(res.data.as_mut_ptr()), log_size as usize - 4);
                 fft(
                     transmute(res.data.as_ptr()),
                     transmute(res.data.as_mut_ptr()),
                     &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
-                    log_size,
+                    log_size as usize,
                 );
             }
 
