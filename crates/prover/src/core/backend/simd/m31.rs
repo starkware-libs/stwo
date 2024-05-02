@@ -21,9 +21,10 @@ pub const MODULUS: Simd<u32, N_LANES> = Simd::from_array([P; N_LANES]);
 /// Holds a vector of unreduced [`M31`] elements in the range `[0, P]`.
 ///
 /// Implemented with [`std::simd`] to support multiple targets (avx512, neon, wasm etc.).
+// TODO: Remove `pub` visibility
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
-pub struct PackedBaseField(Simd<u32, N_LANES>);
+pub struct PackedBaseField(pub Simd<u32, N_LANES>);
 
 impl PackedBaseField {
     /// Constructs a new instance with all vector elements set to `value`.
