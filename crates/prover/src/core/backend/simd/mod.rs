@@ -1,3 +1,4 @@
+pub mod bit_reverse;
 pub mod cm31;
 pub mod column;
 pub mod m31;
