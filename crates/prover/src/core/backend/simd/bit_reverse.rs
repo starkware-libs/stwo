@@ -29,10 +29,10 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
     let a_bits = log_size - 2 * W_BITS - VEC_BITS;
 
     // TODO(spapini): when doing multithreading, do it over a.
-    for a in 0u32..(1 << a_bits) {
-        for w_l in 0u32..(1 << W_BITS) {
+    for a in 0..1u32 << a_bits {
+        for w_l in 0..1u32 << W_BITS {
             let w_l_rev = w_l.reverse_bits() >> (u32::BITS - W_BITS);
-            for w_h in 0..(w_l_rev + 1) {
+            for w_h in 0..w_l_rev + 1 {
                 let idx = ((((w_h << a_bits) | a) << W_BITS) | w_l) as usize;
                 let idx_rev = bit_reverse_index(idx, log_size - VEC_BITS);
 

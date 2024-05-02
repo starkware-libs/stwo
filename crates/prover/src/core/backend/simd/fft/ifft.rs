@@ -27,9 +27,9 @@ use crate::core::utils::bit_reverse;
 ///
 /// Behavior is undefined if `values` does not have the same alignment as [`PackedBaseField`].
 pub unsafe fn ifft(values: *mut u32, twiddle_dbl: &[&[u32]], log_n_elements: usize) {
-    assert!(log_n_elements >= MIN_FFT_LOG_SIZE);
+    assert!(log_n_elements >= MIN_FFT_LOG_SIZE as usize);
     let log_n_vecs = log_n_elements - LOG_N_LANES as usize;
-    if log_n_elements <= CACHED_FFT_LOG_SIZE {
+    if log_n_elements <= CACHED_FFT_LOG_SIZE as usize {
         ifft_lower_with_vecwise(values, twiddle_dbl, log_n_elements, log_n_elements);
         return;
     }
@@ -38,14 +38,14 @@ pub unsafe fn ifft(values: *mut u32, twiddle_dbl: &[&[u32]], log_n_elements: usi
     let fft_layers_post_transpose = log_n_vecs / 2;
     ifft_lower_with_vecwise(
         values,
-        &twiddle_dbl[..(3 + fft_layers_pre_transpose)],
+        &twiddle_dbl[..3 + fft_layers_pre_transpose],
         log_n_elements,
         fft_layers_pre_transpose + LOG_N_LANES as usize,
     );
     transpose_vecs(values, log_n_vecs);
     ifft_lower_without_vecwise(
         values,
-        &twiddle_dbl[(3 + fft_layers_pre_transpose)..],
+        &twiddle_dbl[3 + fft_layers_pre_transpose..],
         log_n_elements,
         fft_layers_post_transpose,
     );
@@ -80,7 +80,7 @@ pub unsafe fn ifft_lower_with_vecwise(
 
     assert_eq!(twiddle_dbl[0].len(), 1 << (log_size - 2));
 
-    for index_h in 0..(1 << (log_size - fft_layers)) {
+    for index_h in 0..1 << (log_size - fft_layers) {
         ifft_vecwise_loop(values, twiddle_dbl, fft_layers - VECWISE_FFT_BITS, index_h);
         for layer in (VECWISE_FFT_BITS..fft_layers).step_by(3) {
             match fft_layers - layer {
@@ -130,7 +130,7 @@ pub unsafe fn ifft_lower_without_vecwise(
 ) {
     assert!(log_size >= LOG_N_LANES as usize);
 
-    for index_h in 0..(1 << (log_size - fft_layers - LOG_N_LANES as usize)) {
+    for index_h in 0..1 << (log_size - fft_layers - LOG_N_LANES as usize) {
         for layer in (0..fft_layers).step_by(3) {
             let fixed_layer = layer + LOG_N_LANES as usize;
             match fft_layers - layer {
@@ -172,7 +172,7 @@ pub unsafe fn ifft_vecwise_loop(
     loop_bits: usize,
     index_h: usize,
 ) {
-    for index_l in 0..(1 << loop_bits) {
+    for index_l in 0..1 << loop_bits {
         let index = (index_h << loop_bits) + index_l;
         let mut val0 = PackedBaseField::load(values.add(index * 32).cast_const());
         let mut val1 = PackedBaseField::load(values.add(index * 32 + 16).cast_const());
@@ -704,7 +704,7 @@ mod tests {
     #[test]
     fn test_ifft_full() {
         for log_size in CACHED_FFT_LOG_SIZE + 1..CACHED_FFT_LOG_SIZE + 3 {
-            let domain = CanonicCoset::new(log_size as u32).circle_domain();
+            let domain = CanonicCoset::new(log_size).circle_domain();
             let mut rng = SmallRng::seed_from_u64(0);
             let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
             let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
@@ -714,9 +714,9 @@ mod tests {
                 ifft(
                     transmute(res.data.as_mut_ptr()),
                     &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
-                    log_size,
+                    log_size as usize,
                 );
-                transpose_vecs(transmute(res.data.as_mut_ptr()), log_size - 4);
+                transpose_vecs(transmute(res.data.as_mut_ptr()), log_size as usize - 4);
             }
 
             assert_eq!(res.to_cpu(), ground_truth_ifft(domain, &values));
