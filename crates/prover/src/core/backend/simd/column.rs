@@ -142,6 +142,10 @@ impl FromIterator<PackedSecureField> for SecureFieldVec {
 }
 
 impl SecureColumn<SimdBackend> {
+    pub fn packed_len(&self) -> usize {
+        self.columns[0].data.len()
+    }
+
     /// # Safety
     ///
     /// `vec_index` must be a valid index.
