@@ -44,10 +44,10 @@ impl PackedBaseField {
     //     // unsafe { std::mem::transmute(self.reduce()) }
     // }
 
-    // /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
-    // pub fn reduce(self) -> PackedBaseField {
-    //     Self(unsafe { _mm512_min_epu32(self.0, _mm512_sub_epi32(self.0, M512P)) })
-    // }
+    /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
+    pub fn reduce(self) -> PackedBaseField {
+        Self(unsafe { _mm512_min_epu32(self.0, _mm512_sub_epi32(self.0, M512P)) })
+    }
 
     // /// Interleaves self with other.
     // /// Returns the result as two packed M31 elements.
