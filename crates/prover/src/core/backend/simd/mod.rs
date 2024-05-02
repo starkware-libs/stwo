@@ -2,7 +2,7 @@ use self::bit_reverse::bit_reverse_m31;
 use self::column::{BaseFieldVec, SecureFieldVec};
 use self::m31::PackedBaseField;
 use self::qm31::PackedSecureField;
-use super::ColumnOps;
+use super::{Backend, ColumnOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, FieldOps};
@@ -18,10 +18,13 @@ pub mod fft;
 pub mod fri;
 pub mod m31;
 pub mod qm31;
+pub mod quotients;
 mod utils;
 
 #[derive(Copy, Clone, Debug)]
 pub struct SimdBackend;
+
+impl Backend for SimdBackend {}
 
 impl ColumnOps<BaseField> for SimdBackend {
     type Column = BaseFieldVec;
