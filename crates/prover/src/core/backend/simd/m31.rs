@@ -23,6 +23,7 @@ pub type PackedBaseField = PackedM31;
 /// Holds a vector of unreduced [`M31`] elements in the range `[0, P]`.
 ///
 /// Implemented with [`std::simd`] to support multiple targets (avx512, neon, wasm etc.).
+// TODO: Remove `pub` visibility
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
 pub struct PackedM31(Simd<u32, N_LANES>);
