@@ -449,6 +449,7 @@ mod tests {
 
     use super::PackedM31;
     use crate::core::fields::m31::BaseField;
+    use crate::core::fields::FieldExpOps;
 
     #[test]
     fn addition_works() {
@@ -517,5 +518,16 @@ mod tests {
         unsafe { v.store(res.as_mut_ptr()) };
 
         assert_eq!(*res, v.to_array().map(|v| v.0));
+    }
+
+    #[test]
+    fn inverse_works() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        let values = rng.gen();
+        let packed_values = PackedBaseField::from_array(values);
+
+        let res = packed_values.inverse();
+
+        assert_eq!(res.to_array(), array::from_fn(|i| values[i].inverse()));
     }
 }

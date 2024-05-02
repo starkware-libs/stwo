@@ -1,3 +1,5 @@
+use std::mem;
+
 use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
 use itertools::Itertools;
 use num_traits::Zero;
@@ -12,6 +14,17 @@ use crate::core::fields::qm31::SecureField;
 pub struct BaseFieldVec {
     pub data: Vec<PackedBaseField>,
     pub length: usize,
+}
+
+impl BaseFieldVec {
+    pub fn into_cpu_vec(mut self) -> Vec<BaseField> {
+        let capacity = self.data.capacity() * N_LANES;
+        let length = self.length;
+        let ptr = self.data.as_mut_ptr() as *mut BaseField;
+        let res = unsafe { Vec::from_raw_parts(ptr, length, capacity) };
+        mem::forget(self);
+        res
+    }
 }
 
 impl AsRef<[BaseField]> for BaseFieldVec {
