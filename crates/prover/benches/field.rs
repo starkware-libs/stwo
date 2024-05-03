@@ -1,8 +1,10 @@
 use criterion::Criterion;
+use num_traits::One;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
+use stwo_prover::core::backend::simd::m31::N_LANES;
 use stwo_prover::core::fields::cm31::CM31;
-use stwo_prover::core::fields::m31::M31;
+use stwo_prover::core::fields::m31::{BaseField, M31};
 use stwo_prover::core::fields::qm31::SecureField;
 
 pub const N_ELEMENTS: usize = 1 << 16;
@@ -153,23 +155,60 @@ pub fn avx512_m31_operations_bench(c: &mut criterion::Criterion) {
     });
 }
 
+pub fn simd_m31_operations_bench(c: &mut criterion::Criterion) {
+    use stwo_prover::core::backend::simd::m31::PackedBaseField;
+
+    let mut rng = SmallRng::seed_from_u64(0);
+    let elements: Vec<PackedBaseField> = (0..N_ELEMENTS / N_LANES).map(|_| rng.gen()).collect();
+    let mut states = vec![PackedBaseField::broadcast(BaseField::one()); N_STATE_ELEMENTS];
+
+    c.bench_function("mul_simd", |b| {
+        b.iter(|| {
+            for elem in elements.iter() {
+                for _ in 0..128 {
+                    for state in states.iter_mut() {
+                        *state *= *elem;
+                    }
+                }
+            }
+        })
+    });
+
+    c.bench_function("add_simd", |b| {
+        b.iter(|| {
+            for elem in elements.iter() {
+                for _ in 0..128 {
+                    for state in states.iter_mut() {
+                        *state += *elem;
+                    }
+                }
+            }
+        })
+    });
+
+    c.bench_function("sub_simd", |b| {
+        b.iter(|| {
+            for elem in elements.iter() {
+                for _ in 0..128 {
+                    for state in states.iter_mut() {
+                        *state -= *elem;
+                    }
+                }
+            }
+        })
+    });
+}
+
 #[cfg(target_arch = "x86_64")]
 criterion::criterion_group!(
-    name=m31_benches;
+    name = benches;
     config = Criterion::default().sample_size(10);
-    targets=
-        m31_operations_bench,
-        avx512_m31_operations_bench
-);
+    targets = m31_operations_bench, cm31_operations_bench, qm31_operations_bench, 
+        avx512_m31_operations_bench, simd_m31_operations_bench);
 #[cfg(not(target_arch = "x86_64"))]
-criterion::criterion_group!(m31_benches, m31_operations_bench);
-
 criterion::criterion_group!(
-    name=field_comparison;
+    name = benches;
     config = Criterion::default().sample_size(10);
-    targets=
-        m31_operations_bench,
-        cm31_operations_bench,
-        qm31_operations_bench
-);
-criterion::criterion_main!(field_comparison, m31_benches);
+    targets = m31_operations_bench, cm31_operations_bench, qm31_operations_bench, 
+        simd_m31_operations_bench);
+criterion::criterion_main!(benches);
