@@ -16,4 +16,3 @@ pub mod core;
 pub mod examples;
 pub mod hash_functions;
 pub mod math;
-pub mod platform;
