@@ -32,30 +32,6 @@ pub fn simd_bit_rev(c: &mut Criterion) {
     });
 }
 
-#[cfg(target_arch = "x86_64")]
-pub fn avx512_bit_rev(c: &mut Criterion) {
-    use stwo_prover::core::backend::avx512::bit_reverse::bit_reverse_m31;
-    use stwo_prover::core::backend::avx512::BaseFieldVec;
-    const SIZE: usize = 1 << 26;
-    if !stwo_prover::platform::avx512_detected() {
-        return;
-    }
-    let data = (0..SIZE).map(BaseField::from).collect::<BaseFieldVec>();
-    c.bench_function("avx bit_rev 26bit", |b| {
-        b.iter_batched(
-            || data.data.clone(),
-            |mut data| bit_reverse_m31(&mut data),
-            BatchSize::LargeInput,
-        );
-    });
-}
-
-#[cfg(target_arch = "x86_64")]
-criterion_group!(
-    name = bit_rev;
-    config = Criterion::default().sample_size(10);
-    targets = avx512_bit_rev, simd_bit_rev, cpu_bit_rev);
-#[cfg(not(target_arch = "x86_64"))]
 criterion_group!(
     name = bit_rev;
     config = Criterion::default().sample_size(10);
