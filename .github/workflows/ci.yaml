@@ -38,7 +38,7 @@ jobs:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
       - run: scripts/clippy.sh
-  
+
   doc:
     runs-on: ubuntu-latest
     steps:
@@ -49,7 +49,39 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo +nightly-2024-01-04 doc
 
+  run-wasm32-wasi-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2024-01-04
+          targets: wasm32-wasi
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasmtime
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --target wasm32-wasi
+        env:
+          CARGO_TARGET_WASM32_WASI_RUNNER: "wasmtime run --"
+          RUSTFLAGS: -C target-feature=+simd128
+
+  run-neon-tests:
+    runs-on: macos-latest-xlarge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2024-01-04
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo +nightly-2024-01-04 test
+        env:
+          RUSTFLAGS: -C target-feature=+neon
+
   run-avx-tests:
+    strategy:
+      matrix:
+        target-feature: [avx512f, avx2]
     runs-on: avx
     steps:
       - uses: actions/checkout@v4
@@ -57,9 +89,11 @@ jobs:
         with:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
-      - run: ./scripts/test_avx.sh
-  
-  run-avx-bench:
+      - run: cargo +nightly-2024-01-04 test
+        env:
+          RUSTFLAGS: -C target-cpu=native -C target-feature=+${{ matrix.target-feature }}
+
+  run-avx512-bench:
     runs-on: avx
     steps:
       - uses: actions/checkout@v4
@@ -76,20 +110,17 @@ jobs:
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          tool: 'cargo'
+          tool: "cargo"
           output-file-path: output.txt
           external-data-json-path: ./cache/benchmark-data.json
           fail-on-alert: true
           summary-always: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
-          alert-comment-cc-users: '@spapinistarkware'
+          alert-comment-cc-users: "@spapinistarkware"
 
   run-tests:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest-xlarge]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -116,17 +147,18 @@ jobs:
         env:
           RUSTUP_TOOLCHAIN: nightly-2024-01-04
 
-
   all-tests:
     runs-on: ubuntu-latest
     needs:
-    - clippy
-    - format
-    - run-tests
-    - run-avx-tests
-    - udeps
+      - clippy
+      - format
+      - run-tests
+      - run-avx-tests
+      - run-neon-tests
+      - run-wasm32-wasi-tests
+      - udeps
     steps:
-    - name: Decide whether all the needed jobs succeeded or failed
-      uses: re-actors/alls-green@v1.2.2
-      with:
-        jobs: ${{ toJSON(needs) }}
+      - name: Decide whether all the needed jobs succeeded or failed
+        uses: re-actors/alls-green@v1.2.2
+        with:
+          jobs: ${{ toJSON(needs) }}
