@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/prover"]
+resolver = "2"
 
 [workspace.package]
 version = "0.1.1"
