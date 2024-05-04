@@ -1,7 +1,6 @@
-#[cfg(target_arch = "x86_64")]
-pub mod avx;
 pub mod component;
 pub mod constraint_eval;
+pub mod simd;
 pub mod trace_gen;
 
 #[cfg(test)]
