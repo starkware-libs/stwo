@@ -26,11 +26,6 @@ fn bench_blake2s_merkle<B: MerkleOps<Blake2sMerkleHasher>>(c: &mut Criterion, id
 }
 
 fn blake2s_merkle_benches(c: &mut Criterion) {
-    #[cfg(target_arch = "x86_64")]
-    if stwo_prover::platform::avx512_detected() {
-        use stwo_prover::core::backend::avx512::AVX512Backend;
-        bench_blake2s_merkle::<AVX512Backend>(c, "avx");
-    }
     bench_blake2s_merkle::<SimdBackend>(c, "simd");
     bench_blake2s_merkle::<CPUBackend>(c, "cpu");
 }

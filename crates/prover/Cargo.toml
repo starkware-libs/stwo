@@ -44,9 +44,6 @@ nonstandard-style = "deny"
 rust-2018-idioms = "deny"
 unused = "deny"
 
-[features]
-avx512 = []
-
 [[bench]]
 name = "bit_rev"
 harness = false
