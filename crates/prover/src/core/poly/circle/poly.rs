@@ -67,7 +67,7 @@ impl<B: PolyOps> CirclePoly<B> {
 }
 
 #[cfg(test)]
-impl crate::core::backend::cpu::CPUCirclePoly {
+impl crate::core::backend::cpu::CpuCirclePoly {
     pub fn is_in_fft_space(&self, log_fft_size: u32) -> bool {
         use num_traits::Zero;
 
@@ -81,13 +81,13 @@ impl crate::core::backend::cpu::CPUCirclePoly {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::cpu::CPUCirclePoly;
+    use crate::core::backend::cpu::CpuCirclePoly;
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
 
     #[test]
     fn test_circle_poly_extend() {
-        let poly = CPUCirclePoly::new((0..16).map(BaseField::from_u32_unchecked).collect());
+        let poly = CpuCirclePoly::new((0..16).map(BaseField::from_u32_unchecked).collect());
         let extended = poly.clone().extend(8);
         let random_point = CirclePoint::get_point(21903);
 

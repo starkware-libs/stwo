@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-pub use cpu::CPUBackend;
+pub use cpu::CpuBackend;
 
 use super::air::accumulation::AccumulationOps;
 use super::fields::m31::BaseField;

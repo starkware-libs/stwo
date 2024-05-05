@@ -1,7 +1,7 @@
 use itertools::{izip, zip_eq};
 use num_traits::{One, Zero};
 
-use super::CPUBackend;
+use super::CpuBackend;
 use crate::core::backend::{Backend, Col};
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::{complex_conjugate_line_coeffs, pair_vanishing};
@@ -14,7 +14,7 @@ use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse, bit_reverse_index};
 
-impl QuotientOps for CPUBackend {
+impl QuotientOps for CpuBackend {
     fn accumulate_quotients(
         domain: CircleDomain,
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
@@ -43,8 +43,8 @@ impl QuotientOps for CPUBackend {
 
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
-    columns: &[&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>],
-    quotient_constants: &QuotientConstants<CPUBackend>,
+    columns: &[&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>],
+    quotient_constants: &QuotientConstants<CpuBackend>,
     row: usize,
     domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
@@ -113,7 +113,7 @@ pub fn batch_random_coeffs(
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
-) -> Vec<Col<CPUBackend, SecureField>> {
+) -> Vec<Col<CpuBackend, SecureField>> {
     let mut flat_denominators = Vec::with_capacity(sample_batches.len() * domain.size());
     for sample_batch in sample_batches {
         for row in 0..domain.size() {
@@ -143,7 +143,7 @@ pub fn quotient_constants(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
     domain: CircleDomain,
-) -> QuotientConstants<CPUBackend> {
+) -> QuotientConstants<CpuBackend> {
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
     let batch_random_coeffs = batch_random_coeffs(sample_batches, random_coeff);
     let denominator_inverses = denominator_inverses(sample_batches, domain);
@@ -168,8 +168,8 @@ pub struct QuotientConstants<B: Backend> {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
-    use crate::core::backend::CPUBackend;
+    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
+    use crate::core::backend::CpuBackend;
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
     use crate::core::poly::circle::CanonicCoset;
@@ -178,13 +178,13 @@ mod tests {
     #[test]
     fn test_quotients_are_low_degree() {
         const LOG_SIZE: u32 = 7;
-        let polynomial = CPUCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
+        let polynomial = CpuCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
         let eval_domain = CanonicCoset::new(LOG_SIZE + 1).circle_domain();
         let eval = polynomial.evaluate(eval_domain);
         let point = SECURE_FIELD_CIRCLE_GEN;
         let value = polynomial.eval_at_point(point);
         let coeff = qm31!(1, 2, 3, 4);
-        let quot_eval = CPUBackend::accumulate_quotients(
+        let quot_eval = CpuBackend::accumulate_quotients(
             eval_domain,
             &[&eval],
             coeff,
@@ -194,7 +194,7 @@ mod tests {
             }],
         );
         let quot_poly_base_field =
-            CPUCircleEvaluation::new(eval_domain, quot_eval.columns[0].clone()).interpolate();
+            CpuCircleEvaluation::new(eval_domain, quot_eval.columns[0].clone()).interpolate();
         assert!(quot_poly_base_field.is_in_fft_space(LOG_SIZE));
     }
 }

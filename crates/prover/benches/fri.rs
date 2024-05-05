@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use stwo_prover::core::backend::CPUBackend;
+use stwo_prover::core::backend::CpuBackend;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::fields::secure_column::SecureColumn;
@@ -19,10 +19,10 @@ fn folding_benchmark(c: &mut Criterion) {
         },
     );
     let alpha = SecureField::from_u32_unchecked(2213980, 2213981, 2213982, 2213983);
-    let twiddles = CPUBackend::precompute_twiddles(domain.coset());
+    let twiddles = CpuBackend::precompute_twiddles(domain.coset());
     c.bench_function("fold_line", |b| {
         b.iter(|| {
-            black_box(CPUBackend::fold_line(
+            black_box(CpuBackend::fold_line(
                 black_box(&evals),
                 black_box(alpha),
                 &twiddles,
