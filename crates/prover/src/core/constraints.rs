@@ -71,6 +71,16 @@ pub fn point_vanishing<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
     h.y / (EF::one() + h.x)
 }
 
+/// Evaluates a vanishing polynomial of the vanish_point at a point, but skips the division.
+// TODO(Ohad): reorganize these functions.
+pub fn point_vanishing_fraction<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
+    vanish_point: CirclePoint<EF>,
+    p: CirclePoint<F>,
+) -> (EF, EF) {
+    let h = p.into_ef() - vanish_point;
+    (h.y, (EF::one() + h.x))
+}
+
 /// Evaluates a point on a line between a point and its complex conjugate.
 /// Relies on the fact that every polynomial F over the base field holds:
 /// F(p*) == F(p)* (* being the complex conjugate).

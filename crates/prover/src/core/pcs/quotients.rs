@@ -185,6 +185,10 @@ mod tests {
     use crate::{m31, qm31};
 
     #[test]
+    // Ignored because we allow polynomials outside of fft-space, hence it is not a bug anymore.
+    // TODO(Ohad): consider adding a test for the new behavior,
+    //  i.e. polynomials inside the r-h space.
+    #[ignore]
     fn test_quotients_are_low_degree() {
         const LOG_SIZE: u32 = 7;
         let polynomial = CPUCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());

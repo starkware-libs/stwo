@@ -1,14 +1,14 @@
-use itertools::{izip, zip_eq};
+use itertools::izip;
 use num_traits::{One, Zero};
 
 use super::CPUBackend;
 use crate::core::backend::{Backend, Col};
 use crate::core::circle::CirclePoint;
-use crate::core::constraints::{complex_conjugate_line_coeffs, pair_vanishing};
+use crate::core::constraints::{complex_conjugate_line_coeffs, point_vanishing_fraction};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
-use crate::core::fields::{ComplexConjugate, FieldExpOps};
+use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -41,27 +41,27 @@ impl QuotientOps for CPUBackend {
     }
 }
 
+// TODO(Ohad): no longer using pair_vanishing, remove domain_point_vec and line_coeffs, or write a
+// function that deals with quotients over pair_vanishing polynomials.
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
     columns: &[&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>],
     quotient_constants: &QuotientConstants<CPUBackend>,
     row: usize,
-    domain_point: CirclePoint<BaseField>,
+    _domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
     let mut row_accumulator = SecureField::zero();
-    for (sample_batch, line_coeffs, batch_coeff, denominator_inverses) in izip!(
+    for (sample_batch, _line_coeffs, batch_coeff, denominator_inverses) in izip!(
         sample_batches,
         &quotient_constants.line_coeffs,
         &quotient_constants.batch_random_coeffs,
         &quotient_constants.denominator_inverses
     ) {
         let mut numerator = SecureField::zero();
-        for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
-        {
+        for (column_index, sampled_value) in sample_batch.columns_and_values.iter() {
             let column = &columns[*column_index];
-            let value = column[row] * *c;
-            let linear_term = *a * domain_point.y + *b;
-            numerator += value - linear_term;
+            let value = column[row];
+            numerator += value - *sampled_value;
         }
 
         row_accumulator = row_accumulator * *batch_coeff + numerator * denominator_inverses[row];
@@ -115,20 +115,23 @@ fn denominator_inverses(
     domain: CircleDomain,
 ) -> Vec<Col<CPUBackend, SecureField>> {
     let mut flat_denominators = Vec::with_capacity(sample_batches.len() * domain.size());
+    let mut nested_denominators = Vec::with_capacity(sample_batches.len() * domain.size());
     for sample_batch in sample_batches {
         for row in 0..domain.size() {
             let domain_point = domain.at(row);
-            let denominator = pair_vanishing(
-                sample_batch.point,
-                sample_batch.point.complex_conjugate(),
-                domain_point.into_ef(),
-            );
+            let (denominator, denom_denom) =
+                point_vanishing_fraction(sample_batch.point, domain_point);
             flat_denominators.push(denominator);
+            nested_denominators.push(denom_denom);
         }
     }
 
     let mut flat_denominator_inverses = vec![SecureField::zero(); flat_denominators.len()];
     SecureField::batch_inverse(&flat_denominators, &mut flat_denominator_inverses);
+    flat_denominator_inverses
+        .iter_mut()
+        .zip(&nested_denominators)
+        .for_each(|(inv, denom_denom)| *inv *= *denom_denom);
 
     flat_denominator_inverses
         .chunks_mut(domain.size())
@@ -176,6 +179,8 @@ mod tests {
     use crate::{m31, qm31};
 
     #[test]
+    // Ignored because we allow polynomials outside of fft-space, hence it is not a bug anymore.
+    #[ignore]
     fn test_quotients_are_low_degree() {
         const LOG_SIZE: u32 = 7;
         let polynomial = CPUCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
