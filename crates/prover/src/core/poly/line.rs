@@ -8,7 +8,7 @@ use num_traits::Zero;
 
 use super::circle::CircleDomain;
 use super::utils::fold;
-use crate::core::backend::{CPUBackend, ColumnOps};
+use crate::core::backend::{ColumnOps, CpuBackend};
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
@@ -217,16 +217,16 @@ impl<B: FieldOps<BaseField>> LineEvaluation<B> {
     }
 
     /// Clones the values into a new line evaluation in the CPU.
-    pub fn to_cpu(&self) -> LineEvaluation<CPUBackend> {
+    pub fn to_cpu(&self) -> LineEvaluation<CpuBackend> {
         LineEvaluation::new(self.domain, self.values.to_cpu())
     }
 }
 
-impl LineEvaluation<CPUBackend> {
+impl LineEvaluation<CpuBackend> {
     /// Interpolates the polynomial as evaluations on `domain`.
     pub fn interpolate(self) -> LinePoly {
         let mut values = self.values.into_iter().collect_vec();
-        CPUBackend::bit_reverse_column(&mut values);
+        CpuBackend::bit_reverse_column(&mut values);
         line_ifft(&mut values, self.domain);
         // Normalize the coefficients.
         let len_inv = BaseField::from(values.len()).inverse();
@@ -273,12 +273,12 @@ fn line_ifft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain: LineDomain
 
 #[cfg(test)]
 mod tests {
-    type B = CPUBackend;
+    type B = CpuBackend;
 
     use itertools::Itertools;
 
     use super::LineDomain;
-    use crate::core::backend::{CPUBackend, ColumnOps};
+    use crate::core::backend::{ColumnOps, CpuBackend};
     use crate::core::circle::{CirclePoint, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::line::{LineEvaluation, LinePoly};
@@ -375,7 +375,7 @@ mod tests {
                     + poly.coeffs[3] * pi_x * x
             })
             .collect_vec();
-        CPUBackend::bit_reverse_column(&mut values);
+        CpuBackend::bit_reverse_column(&mut values);
         let evals = LineEvaluation::<B>::new(domain, values.into_iter().collect());
 
         let interpolated_poly = evals.interpolate();

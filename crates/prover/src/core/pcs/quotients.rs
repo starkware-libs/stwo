@@ -178,7 +178,7 @@ pub fn fri_answers_for_log_size(
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
+    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::pcs::quotients::{compute_fri_quotients, PointSample};
     use crate::core::poly::circle::CanonicCoset;
@@ -187,7 +187,7 @@ mod tests {
     #[test]
     fn test_quotients_are_low_degree() {
         const LOG_SIZE: u32 = 7;
-        let polynomial = CPUCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
+        let polynomial = CpuCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
         let eval_domain = CanonicCoset::new(LOG_SIZE + 1).circle_domain();
         let eval = polynomial.evaluate(eval_domain);
         let point = SECURE_FIELD_CIRCLE_GEN;
@@ -198,7 +198,7 @@ mod tests {
                 .pop()
                 .unwrap();
         let quot_poly_base_field =
-            CPUCircleEvaluation::new(eval_domain, quot_eval.values.columns[0].clone())
+            CpuCircleEvaluation::new(eval_domain, quot_eval.values.columns[0].clone())
                 .interpolate();
         assert!(quot_poly_base_field.is_in_fft_space(LOG_SIZE));
     }

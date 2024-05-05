@@ -10,7 +10,7 @@ use super::poly::circle::{CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::ColumnVec;
 use crate::core::air::{Air, AirExt, AirProverExt};
-use crate::core::backend::CPUBackend;
+use crate::core::backend::CpuBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
@@ -45,7 +45,7 @@ pub struct AdditionalProofData {
     pub composition_polynomial_oods_value: SecureField,
     pub composition_polynomial_random_coeff: SecureField,
     pub oods_point: CirclePoint<SecureField>,
-    pub oods_quotients: Vec<CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>,
+    pub oods_quotients: Vec<CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>>,
 }
 
 pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
@@ -198,7 +198,7 @@ fn sampled_values_to_mask(
 ) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), InvalidOodsSampleStructure> {
     let composition_partial_sampled_values =
         sampled_values.pop().ok_or(InvalidOodsSampleStructure)?;
-    let composition_oods_value = SecureCirclePoly::<CPUBackend>::eval_from_partial_evals(
+    let composition_oods_value = SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(
         composition_partial_sampled_values
             .iter()
             .flatten()
@@ -270,8 +270,8 @@ mod tests {
 
     use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
     use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
-    use crate::core::backend::cpu::CPUCircleEvaluation;
-    use crate::core::backend::CPUBackend;
+    use crate::core::backend::cpu::CpuCircleEvaluation;
+    use crate::core::backend::CpuBackend;
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -280,7 +280,7 @@ mod tests {
     use crate::core::test_utils::test_channel;
     use crate::qm31;
 
-    struct TestAir<C: ComponentProver<CPUBackend>> {
+    struct TestAir<C: ComponentProver<CpuBackend>> {
         component: C,
     }
 
@@ -290,8 +290,8 @@ mod tests {
         }
     }
 
-    impl AirProver<CPUBackend> for TestAir<TestComponent> {
-        fn prover_components(&self) -> Vec<&dyn ComponentProver<CPUBackend>> {
+    impl AirProver<CpuBackend> for TestAir<TestComponent> {
+        fn prover_components(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
             vec![&self.component]
         }
     }
@@ -331,11 +331,11 @@ mod tests {
         }
     }
 
-    impl ComponentProver<CPUBackend> for TestComponent {
+    impl ComponentProver<CpuBackend> for TestComponent {
         fn evaluate_constraint_quotients_on_domain(
             &self,
-            _trace: &ComponentTrace<'_, CPUBackend>,
-            _evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
+            _trace: &ComponentTrace<'_, CpuBackend>,
+            _evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
         ) {
             // Does nothing.
         }
@@ -357,7 +357,7 @@ mod tests {
             LOG_DOMAIN_SIZE - 1,
         ));
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
-        let trace = vec![CPUCircleEvaluation::new(domain, values)];
+        let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
         let proof_error = prove(&air, &mut test_channel(), trace).unwrap_err();
         assert!(matches!(
@@ -384,7 +384,7 @@ mod tests {
             LOG_DOMAIN_SIZE - 1,
         ));
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
-        let trace = vec![CPUCircleEvaluation::new(domain, values)];
+        let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
         let proof_error = prove(&air, &mut test_channel(), trace).unwrap_err();
         assert!(matches!(
@@ -406,7 +406,7 @@ mod tests {
         };
         let domain = CanonicCoset::new(LOG_DOMAIN_SIZE).circle_domain();
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
-        let trace = vec![CPUCircleEvaluation::new(domain, values)];
+        let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
         let proof = prove(&air, &mut test_channel(), trace).unwrap_err();
         assert!(matches!(proof, ProvingError::ConstraintsNotSatisfied));

@@ -5,7 +5,7 @@ use super::component::{Input, WideFibAir, WideFibComponent};
 use super::trace_gen::write_trace_row;
 use crate::core::air::accumulation::DomainEvaluationAccumulator;
 use crate::core::air::{AirProver, Component, ComponentProver, ComponentTrace};
-use crate::core::backend::{CPUBackend, Column};
+use crate::core::backend::{Column, CpuBackend};
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -16,17 +16,17 @@ use crate::core::ColumnVec;
 
 // TODO(AlonH): Rename file to `cpu.rs`.
 
-impl AirProver<CPUBackend> for WideFibAir {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<CPUBackend>> {
+impl AirProver<CpuBackend> for WideFibAir {
+    fn prover_components(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
         vec![&self.component]
     }
 }
 
-impl ComponentProver<CPUBackend> for WideFibComponent {
+impl ComponentProver<CpuBackend> for WideFibComponent {
     fn evaluate_constraint_quotients_on_domain(
         &self,
-        trace: &ComponentTrace<'_, CPUBackend>,
-        evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
+        trace: &ComponentTrace<'_, CpuBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
     ) {
         let max_constraint_degree = self.max_constraint_log_degree_bound();
         let trace_eval_domain = CanonicCoset::new(max_constraint_degree).circle_domain();

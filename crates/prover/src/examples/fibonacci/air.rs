@@ -2,7 +2,7 @@ use itertools::{zip_eq, Itertools};
 
 use super::component::FibonacciComponent;
 use crate::core::air::{Air, AirProver, Component, ComponentProver};
-use crate::core::backend::CPUBackend;
+use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 
 pub struct FibonacciAir {
@@ -19,8 +19,8 @@ impl Air for FibonacciAir {
         vec![&self.component]
     }
 }
-impl AirProver<CPUBackend> for FibonacciAir {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<CPUBackend>> {
+impl AirProver<CpuBackend> for FibonacciAir {
+    fn prover_components(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
         vec![&self.component]
     }
 }
@@ -45,11 +45,11 @@ impl Air for MultiFibonacciAir {
             .collect_vec()
     }
 }
-impl AirProver<CPUBackend> for MultiFibonacciAir {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<CPUBackend>> {
+impl AirProver<CpuBackend> for MultiFibonacciAir {
+    fn prover_components(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
         self.components
             .iter()
-            .map(|c| c as &dyn ComponentProver<CPUBackend>)
+            .map(|c| c as &dyn ComponentProver<CpuBackend>)
             .collect_vec()
     }
 }

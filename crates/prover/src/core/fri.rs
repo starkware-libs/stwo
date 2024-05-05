@@ -9,7 +9,7 @@ use num_traits::Zero;
 use thiserror::Error;
 use tracing::{span, Level};
 
-use super::backend::CPUBackend;
+use super::backend::CpuBackend;
 use super::channel::Channel;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
@@ -669,7 +669,7 @@ impl<H: MerkleHasher> FriLayerVerifier<H> {
         let sparse_evaluation = self.extract_evaluation(&queries, &evals_at_queries)?;
 
         // TODO: When leaf values are removed from the decommitment, also remove this block.
-        let actual_decommitment_evals: SecureColumn<CPUBackend> = sparse_evaluation
+        let actual_decommitment_evals: SecureColumn<CpuBackend> = sparse_evaluation
             .subline_evals
             .iter()
             .flat_map(|e| e.values.into_iter())
@@ -846,7 +846,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriLayerProver<B, H> {
 /// Holds a foldable subset of circle polynomial evaluations.
 #[derive(Debug, Clone)]
 pub struct SparseCircleEvaluation {
-    subcircle_evals: Vec<CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>,
+    subcircle_evals: Vec<CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>>,
 }
 
 impl SparseCircleEvaluation {
@@ -854,7 +854,7 @@ impl SparseCircleEvaluation {
     ///
     /// Panics if the evaluation domain sizes don't equal the folding factor.
     pub fn new(
-        subcircle_evals: Vec<CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>,
+        subcircle_evals: Vec<CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>>,
     ) -> Self {
         let folding_factor = 1 << CIRCLE_TO_LINE_FOLD_STEP;
         assert!(subcircle_evals.iter().all(|e| e.len() == folding_factor));
@@ -882,9 +882,9 @@ impl SparseCircleEvaluation {
 }
 
 impl<'a> IntoIterator for &'a mut SparseCircleEvaluation {
-    type Item = &'a mut CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>;
+    type Item = &'a mut CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>;
     type IntoIter =
-        std::slice::IterMut<'a, CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>;
+        std::slice::IterMut<'a, CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.subcircle_evals.iter_mut()
@@ -895,14 +895,14 @@ impl<'a> IntoIterator for &'a mut SparseCircleEvaluation {
 /// Evaluation is held at the CPU backend.
 #[derive(Debug, Clone)]
 struct SparseLineEvaluation {
-    subline_evals: Vec<LineEvaluation<CPUBackend>>,
+    subline_evals: Vec<LineEvaluation<CpuBackend>>,
 }
 
 impl SparseLineEvaluation {
     /// # Panics
     ///
     /// Panics if the evaluation domain sizes don't equal the folding factor.
-    fn new(subline_evals: Vec<LineEvaluation<CPUBackend>>) -> Self {
+    fn new(subline_evals: Vec<LineEvaluation<CpuBackend>>) -> Self {
         let folding_factor = 1 << FOLD_STEP;
         assert!(subline_evals.iter().all(|e| e.len() == folding_factor));
         Self { subline_evals }
@@ -919,9 +919,9 @@ impl SparseLineEvaluation {
 /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
 /// See [`FriOps::fold_line`].
 pub fn fold_line(
-    eval: &LineEvaluation<CPUBackend>,
+    eval: &LineEvaluation<CpuBackend>,
     alpha: SecureField,
-) -> LineEvaluation<CPUBackend> {
+) -> LineEvaluation<CpuBackend> {
     let n = eval.len();
     assert!(n >= 2, "Evaluation too small");
 
@@ -949,8 +949,8 @@ pub fn fold_line(
 /// polynomial.
 /// See [`FriOps::fold_circle_into_line`].
 pub fn fold_circle_into_line(
-    dst: &mut LineEvaluation<CPUBackend>,
-    src: &SecureEvaluation<CPUBackend>,
+    dst: &mut LineEvaluation<CpuBackend>,
+    src: &SecureEvaluation<CpuBackend>,
     alpha: SecureField,
 ) {
     assert_eq!(src.len() >> CIRCLE_TO_LINE_FOLD_STEP, dst.len());
@@ -985,8 +985,8 @@ mod tests {
     use num_traits::{One, Zero};
 
     use super::{get_opening_positions, FriVerificationError, SparseCircleEvaluation};
-    use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
-    use crate::core::backend::{CPUBackend, Col, Column, ColumnOps};
+    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
+    use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -1007,7 +1007,7 @@ mod tests {
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
 
-    type FriProver = super::FriProver<CPUBackend, Blake2sMerkleHasher>;
+    type FriProver = super::FriProver<CpuBackend, Blake2sMerkleHasher>;
 
     #[test]
     fn fold_line_works() {
@@ -1029,12 +1029,12 @@ mod tests {
             .iter()
             .map(|p| poly.eval_at_point(p.into()))
             .collect();
-        CPUBackend::bit_reverse_column(&mut values);
+        CpuBackend::bit_reverse_column(&mut values);
         let evals = LineEvaluation::new(domain, values.into_iter().collect());
 
         let drp_evals = fold_line(&evals, alpha);
         let mut drp_evals = drp_evals.values.into_iter().collect_vec();
-        CPUBackend::bit_reverse_column(&mut drp_evals);
+        CpuBackend::bit_reverse_column(&mut drp_evals);
 
         assert_eq!(drp_evals.len(), DEGREE / 2);
         for (i, (&drp_eval, x)) in zip(&drp_evals, drp_domain).enumerate() {
@@ -1072,7 +1072,7 @@ mod tests {
             &mut test_channel(),
             config,
             &[evaluation.clone()],
-            &CPUBackend::precompute_twiddles(evaluation.domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluation.domain.half_coset),
         );
     }
 
@@ -1090,7 +1090,7 @@ mod tests {
             &mut test_channel(),
             FriConfig::new(2, 2, 3),
             &[evaluation.clone()],
-            &CPUBackend::precompute_twiddles(evaluation.domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluation.domain.half_coset),
         );
     }
 
@@ -1106,7 +1106,7 @@ mod tests {
             &mut test_channel(),
             config,
             &[evaluation.clone()],
-            &CPUBackend::precompute_twiddles(evaluation.domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluation.domain.half_coset),
         );
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
@@ -1129,7 +1129,7 @@ mod tests {
             &mut test_channel(),
             config,
             &[evaluation.clone()],
-            &CPUBackend::precompute_twiddles(evaluation.domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluation.domain.half_coset),
         );
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
@@ -1149,7 +1149,7 @@ mod tests {
             &mut test_channel(),
             config,
             &evaluations,
-            &CPUBackend::precompute_twiddles(evaluations[0].domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluations[0].domain.half_coset),
         );
         let decommitment_values = evaluations.map(|p| query_polynomial(&p, &queries)).to_vec();
         let proof = prover.decommit_on_queries(&queries);
@@ -1169,7 +1169,7 @@ mod tests {
             &mut test_channel(),
             config,
             &evaluations,
-            &CPUBackend::precompute_twiddles(evaluations[0].domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluations[0].domain.half_coset),
         );
         let (proof, prover_opening_positions) = prover.decommit(&mut test_channel());
         let decommitment_values = zip(&evaluations, prover_opening_positions.values().rev())
@@ -1195,7 +1195,7 @@ mod tests {
             &mut test_channel(),
             config,
             &[evaluation.clone()],
-            &CPUBackend::precompute_twiddles(evaluation.domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluation.domain.half_coset),
         );
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
@@ -1222,7 +1222,7 @@ mod tests {
             &mut test_channel(),
             config,
             &[evaluation.clone()],
-            &CPUBackend::precompute_twiddles(evaluation.domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluation.domain.half_coset),
         );
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
@@ -1250,7 +1250,7 @@ mod tests {
             &mut test_channel(),
             config,
             &[evaluation.clone()],
-            &CPUBackend::precompute_twiddles(evaluation.domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluation.domain.half_coset),
         );
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
@@ -1278,7 +1278,7 @@ mod tests {
             &mut test_channel(),
             config,
             &[evaluation.clone()],
-            &CPUBackend::precompute_twiddles(evaluation.domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluation.domain.half_coset),
         );
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
@@ -1306,7 +1306,7 @@ mod tests {
             &mut test_channel(),
             config,
             &[evaluation.clone()],
-            &CPUBackend::precompute_twiddles(evaluation.domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluation.domain.half_coset),
         );
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
@@ -1333,7 +1333,7 @@ mod tests {
             &mut test_channel(),
             config,
             &[evaluation.clone()],
-            &CPUBackend::precompute_twiddles(evaluation.domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluation.domain.half_coset),
         );
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
@@ -1362,7 +1362,7 @@ mod tests {
             &mut test_channel(),
             config,
             &[evaluation.clone()],
-            &CPUBackend::precompute_twiddles(evaluation.domain.half_coset),
+            &CpuBackend::precompute_twiddles(evaluation.domain.half_coset),
         );
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
@@ -1380,8 +1380,8 @@ mod tests {
     fn polynomial_evaluation(
         log_degree: u32,
         log_blowup_factor: u32,
-    ) -> SecureEvaluation<CPUBackend> {
-        let poly = CPUCirclePoly::new(vec![BaseField::one(); 1 << log_degree]);
+    ) -> SecureEvaluation<CpuBackend> {
+        let poly = CpuCirclePoly::new(vec![BaseField::one(); 1 << log_degree]);
         let coset = Coset::half_odds(log_degree + log_blowup_factor - 1);
         let domain = CircleDomain::new(coset);
         let values = poly.evaluate(domain);
@@ -1390,16 +1390,16 @@ mod tests {
             values: SecureColumn {
                 columns: [
                     values.values,
-                    Col::<CPUBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
-                    Col::<CPUBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
-                    Col::<CPUBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
+                    Col::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
+                    Col::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
+                    Col::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
                 ],
             },
         }
     }
 
     /// Returns the log degree bound of a polynomial.
-    fn log_degree_bound(polynomial: LineEvaluation<CPUBackend>) -> u32 {
+    fn log_degree_bound(polynomial: LineEvaluation<CpuBackend>) -> u32 {
         let coeffs = polynomial.interpolate().into_ordered_coefficients();
         let degree = coeffs.into_iter().rposition(|c| !c.is_zero()).unwrap_or(0);
         (degree + 1).ilog2()
@@ -1407,7 +1407,7 @@ mod tests {
 
     // TODO: Remove after SubcircleDomain integration.
     fn query_polynomial(
-        polynomial: &SecureEvaluation<CPUBackend>,
+        polynomial: &SecureEvaluation<CpuBackend>,
         queries: &Queries,
     ) -> SparseCircleEvaluation {
         let polynomial_log_size = polynomial.domain.log_size();
@@ -1417,7 +1417,7 @@ mod tests {
     }
 
     fn open_polynomial(
-        polynomial: &SecureEvaluation<CPUBackend>,
+        polynomial: &SecureEvaluation<CpuBackend>,
         positions: &SparseSubCircleDomain,
     ) -> SparseCircleEvaluation {
         let coset_evals = positions
@@ -1434,7 +1434,7 @@ mod tests {
                     })
                     .collect();
                 let coset_eval =
-                    CPUCircleEvaluation::<SecureField, NaturalOrder>::new(coset_domain, evals);
+                    CpuCircleEvaluation::<SecureField, NaturalOrder>::new(coset_domain, evals);
                 coset_eval.bit_reverse()
             })
             .collect();

@@ -15,7 +15,7 @@ pub use secure_poly::{SecureCirclePoly, SecureEvaluation};
 #[cfg(test)]
 mod tests {
     use super::CanonicCoset;
-    use crate::core::backend::cpu::CPUCircleEvaluation;
+    use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::fields::m31::BaseField;
     use crate::core::utils::bit_reverse_index;
 
@@ -24,7 +24,7 @@ mod tests {
         let domain = CanonicCoset::new(3).circle_domain();
         assert_eq!(domain.log_size(), 3);
         let evaluation =
-            CPUCircleEvaluation::new(domain, (0..8).map(BaseField::from_u32_unchecked).collect());
+            CpuCircleEvaluation::new(domain, (0..8).map(BaseField::from_u32_unchecked).collect());
         let poly = evaluation.clone().interpolate();
         let evaluation2 = poly.evaluate(domain);
         assert_eq!(evaluation.values, evaluation2.values);
