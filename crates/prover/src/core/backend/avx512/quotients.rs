@@ -1,4 +1,5 @@
 use itertools::{izip, zip_eq, Itertools};
+use num_traits::One;
 
 use super::qm31::PackedSecureField;
 use super::{AVX512Backend, SecureFieldVec, K_BLOCK_SIZE, VECS_LOG_SIZE};
@@ -11,7 +12,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
-use crate::core::fields::{ComplexConjugate, FieldOps};
+use crate::core::fields::FieldOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -91,7 +92,7 @@ pub fn accumulate_row_quotients(
 
 /// Pair vanishing for the packed representation of the points. See
 /// [crate::core::constraints::pair_vanishing] for more details.
-fn packed_pair_vanishing(
+fn _packed_pair_vanishing(
     excluded0: CirclePoint<SecureField>,
     excluded1: CirclePoint<SecureField>,
     packed_p: (PackedBaseField, PackedBaseField),
@@ -101,10 +102,23 @@ fn packed_pair_vanishing(
         + PackedSecureField::broadcast(excluded0.x * excluded1.y - excluded0.y * excluded1.x)
 }
 
+fn packed_point_vanishing_fraction(
+    excluded: CirclePoint<SecureField>,
+    p: (PackedBaseField, PackedBaseField),
+) -> (PackedSecureField, PackedSecureField) {
+    let e_conjugate = excluded.conjugate();
+    let h_x = PackedSecureField::broadcast(e_conjugate.x) * p.0
+        - PackedSecureField::broadcast(e_conjugate.y) * p.1;
+    let h_y = PackedSecureField::broadcast(e_conjugate.y) * p.0
+        + PackedSecureField::broadcast(e_conjugate.x) * p.1;
+    (h_y, (PackedSecureField::one() + h_x))
+}
+
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
 ) -> Vec<Col<AVX512Backend, SecureField>> {
+    let mut flat_denominotors_denominators = vec![];
     let flat_denominators: SecureFieldVec = sample_batches
         .iter()
         .flat_map(|sample_batch| {
@@ -120,11 +134,10 @@ fn denominator_inverses(
                     let domain_points_x = PackedBaseField::from_array(points.map(|p| p.x));
                     let domain_points_y = PackedBaseField::from_array(points.map(|p| p.y));
                     let domain_point_vec = (domain_points_x, domain_points_y);
-                    packed_pair_vanishing(
-                        sample_batch.point,
-                        sample_batch.point.complex_conjugate(),
-                        domain_point_vec,
-                    )
+                    let (denom, denom_denom) =
+                        packed_point_vanishing_fraction(sample_batch.point, domain_point_vec);
+                    flat_denominotors_denominators.push(denom_denom);
+                    denom
                 })
                 .collect_vec()
         })
@@ -135,6 +148,12 @@ fn denominator_inverses(
         &flat_denominators,
         &mut flat_denominator_inverses,
     );
+
+    flat_denominator_inverses
+        .data
+        .iter_mut()
+        .zip(&flat_denominotors_denominators)
+        .for_each(|(inv, denom_denom)| *inv *= *denom_denom);
 
     flat_denominator_inverses
         .data
