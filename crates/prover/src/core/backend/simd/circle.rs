@@ -8,7 +8,7 @@ use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE};
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::{BaseFieldVec, SimdBackend};
-use crate::core::backend::{CPUBackend, Col};
+use crate::core::backend::{Col, CpuBackend};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -131,7 +131,7 @@ impl PolyOps for SimdBackend {
         values: Col<Self, BaseField>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(spapini): Optimize.
-        let eval = CPUBackend::new_canonical_ordered(coset, values.into_cpu_vec());
+        let eval = CpuBackend::new_canonical_ordered(coset, values.into_cpu_vec());
         CircleEvaluation::new(
             eval.domain,
             Col::<SimdBackend, BaseField>::from_iter(eval.values),

@@ -8,7 +8,7 @@ use super::cm31::PackedCM31;
 use super::m31::{PackedBaseField, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
-use crate::core::backend::{CPUBackend, Column};
+use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
@@ -187,7 +187,7 @@ impl SecureColumn<SimdBackend> {
 
 impl FromIterator<SecureField> for SecureColumn<SimdBackend> {
     fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
-        let cpu_col = SecureColumn::<CPUBackend>::from_iter(iter);
+        let cpu_col = SecureColumn::<CpuBackend>::from_iter(iter);
         let columns = cpu_col.columns.map(|col| col.into_iter().collect());
         SecureColumn { columns }
     }
