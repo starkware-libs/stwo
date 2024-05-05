@@ -1,4 +1,5 @@
 use itertools::{izip, zip_eq, Itertools};
+use num_traits::One;
 
 use super::qm31::PackedSecureField;
 use super::{AVX512Backend, SecureFieldVec, K_BLOCK_SIZE, VECS_LOG_SIZE};
@@ -11,7 +12,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
-use crate::core::fields::{ComplexConjugate, FieldOps};
+use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -91,7 +92,7 @@ pub fn accumulate_row_quotients(
 
 /// Pair vanishing for the packed representation of the points. See
 /// [crate::core::constraints::pair_vanishing] for more details.
-fn packed_pair_vanishing(
+fn _packed_pair_vanishing(
     excluded0: CirclePoint<SecureField>,
     excluded1: CirclePoint<SecureField>,
     packed_p: (PackedBaseField, PackedBaseField),
@@ -99,6 +100,15 @@ fn packed_pair_vanishing(
     PackedSecureField::broadcast(excluded0.y - excluded1.y) * packed_p.0
         + PackedSecureField::broadcast(excluded1.x - excluded0.x) * packed_p.1
         + PackedSecureField::broadcast(excluded0.x * excluded1.y - excluded0.y * excluded1.x)
+}
+
+fn packed_point_vanishing(
+    excluded: CirclePoint<SecureField>,
+    packed_p: (PackedBaseField, PackedBaseField),
+) -> PackedSecureField {
+    let packed_h_x = PackedSecureField::broadcast(-excluded.x) + packed_p.0;
+    let packed_h_y = PackedSecureField::broadcast(-excluded.y) + packed_p.1;
+    packed_h_y * (PackedSecureField::one() + packed_h_x).inverse()
 }
 
 fn denominator_inverses(
@@ -120,11 +130,7 @@ fn denominator_inverses(
                     let domain_points_x = PackedBaseField::from_array(points.map(|p| p.x));
                     let domain_points_y = PackedBaseField::from_array(points.map(|p| p.y));
                     let domain_point_vec = (domain_points_x, domain_points_y);
-                    packed_pair_vanishing(
-                        sample_batch.point,
-                        sample_batch.point.complex_conjugate(),
-                        domain_point_vec,
-                    )
+                    packed_point_vanishing(sample_batch.point, domain_point_vec)
                 })
                 .collect_vec()
         })
