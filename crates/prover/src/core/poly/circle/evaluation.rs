@@ -4,7 +4,7 @@ use std::ops::{Deref, Index};
 use derivative::Derivative;
 
 use super::{CanonicCoset, CircleDomain, CirclePoly, PolyOps};
-use crate::core::backend::cpu::CPUCircleEvaluation;
+use crate::core::backend::cpu::CpuCircleEvaluation;
 use crate::core::backend::{Col, Column};
 use crate::core::circle::{CirclePointIndex, Coset};
 use crate::core::fields::m31::BaseField;
@@ -49,7 +49,7 @@ impl<F: ExtensionOf<BaseField>, B: FieldOps<F>> CircleEvaluation<B, F, NaturalOr
     }
 }
 
-impl<F: ExtensionOf<BaseField>> CPUCircleEvaluation<F, NaturalOrder> {
+impl<F: ExtensionOf<BaseField>> CpuCircleEvaluation<F, NaturalOrder> {
     pub fn fetch_eval_on_coset(&self, coset: Coset) -> CosetSubEvaluation<'_, F> {
         assert!(coset.log_size() <= self.domain.half_coset.log_size());
         if let Some(offset) = self.domain.half_coset.find(coset.initial_index) {
@@ -155,7 +155,7 @@ impl<'a, F: ExtensionOf<BaseField>> Index<usize> for CosetSubEvaluation<'a, F> {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::cpu::CPUCircleEvaluation;
+    use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::circle::Coset;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::CanonicCoset;
@@ -166,7 +166,7 @@ mod tests {
     fn test_interpolate_non_canonic() {
         let domain = CanonicCoset::new(3).circle_domain();
         assert_eq!(domain.log_size(), 3);
-        let evaluation = CPUCircleEvaluation::<_, NaturalOrder>::new(
+        let evaluation = CpuCircleEvaluation::<_, NaturalOrder>::new(
             domain,
             (0..8).map(BaseField::from_u32_unchecked).collect(),
         )
@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn test_interpolate_canonic() {
         let coset = CanonicCoset::new(3);
-        let evaluation = CPUCircleEvaluation::new_canonical_ordered(
+        let evaluation = CpuCircleEvaluation::new_canonical_ordered(
             coset,
             (0..8).map(BaseField::from_u32_unchecked).collect(),
         );
@@ -194,7 +194,7 @@ mod tests {
     pub fn test_get_at_circle_evaluation() {
         let domain = CanonicCoset::new(7).circle_domain();
         let values = (0..domain.size()).map(|i| m31!(i as u32)).collect();
-        let circle_evaluation = CPUCircleEvaluation::<_, NaturalOrder>::new(domain, values);
+        let circle_evaluation = CpuCircleEvaluation::<_, NaturalOrder>::new(domain, values);
         let bit_reversed_circle_evaluation = circle_evaluation.clone().bit_reverse();
         for index in domain.iter_indices() {
             assert_eq!(
@@ -208,7 +208,7 @@ mod tests {
     fn test_sub_evaluation() {
         let domain = CanonicCoset::new(7).circle_domain();
         let values = (0..domain.size()).map(|i| m31!(i as u32)).collect();
-        let circle_evaluation = CPUCircleEvaluation::new(domain, values);
+        let circle_evaluation = CpuCircleEvaluation::new(domain, values);
         let coset = Coset::new(domain.index_at(17), 3);
         let sub_eval = circle_evaluation.fetch_eval_on_coset(coset);
         for i in 0..coset.size() {

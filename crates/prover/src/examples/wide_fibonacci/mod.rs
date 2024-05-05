@@ -12,8 +12,8 @@ mod tests {
     use super::constraint_eval::gen_trace;
     use crate::core::air::accumulation::DomainEvaluationAccumulator;
     use crate::core::air::{Component, ComponentProver, ComponentTrace};
-    use crate::core::backend::cpu::CPUCircleEvaluation;
-    use crate::core::backend::CPUBackend;
+    use crate::core::backend::cpu::CpuCircleEvaluation;
+    use crate::core::backend::CpuBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::QM31;
@@ -138,7 +138,7 @@ mod tests {
         let trace_domain = CanonicCoset::new(wide_fib.log_column_size());
         let trace = trace
             .into_iter()
-            .map(|col| CPUCircleEvaluation::new_canonical_ordered(trace_domain, col))
+            .map(|col| CpuCircleEvaluation::new_canonical_ordered(trace_domain, col))
             .collect_vec();
         let trace_polys = trace
             .into_iter()
@@ -188,12 +188,12 @@ mod tests {
         let trace_domain = CanonicCoset::new(component.log_column_size()).circle_domain();
         let trace = trace
             .into_iter()
-            .map(|eval| CPUCircleEvaluation::<_, BitReversedOrder>::new(trace_domain, eval))
+            .map(|eval| CpuCircleEvaluation::<_, BitReversedOrder>::new(trace_domain, eval))
             .collect_vec();
         let air = WideFibAir { component };
         let prover_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let proof = prove::<CPUBackend>(&air, prover_channel, trace).unwrap();
+        let proof = prove::<CpuBackend>(&air, prover_channel, trace).unwrap();
 
         let verifier_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));

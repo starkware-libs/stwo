@@ -129,7 +129,7 @@ mod tests {
     use num_traits::Zero;
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
-    use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
+    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
     use crate::core::fields::m31::{BaseField, M31};
@@ -210,7 +210,7 @@ mod tests {
     #[test]
     fn test_complex_conjugate_symmetry() {
         // Create a polynomial over a base circle domain.
-        let polynomial = CPUCirclePoly::new((0..1 << 7).map(|i| m31!(i)).collect());
+        let polynomial = CpuCirclePoly::new((0..1 << 7).map(|i| m31!(i)).collect());
         let oods_point = CirclePoint::get_point(9834759221);
 
         // Assert that the base field polynomial is complex conjugate symmetric.
@@ -225,7 +225,7 @@ mod tests {
         // Create a polynomial over a circle domain.
         let log_domain_size = 7;
         let domain_size = 1 << log_domain_size;
-        let polynomial = CPUCirclePoly::new((0..domain_size).map(|i| m31!(i)).collect());
+        let polynomial = CpuCirclePoly::new((0..domain_size).map(|i| m31!(i)).collect());
 
         // Create a larger domain.
         let log_large_domain_size = log_domain_size + 1;
@@ -248,7 +248,7 @@ mod tests {
             );
             quotient_polynomial_values.push(value);
         }
-        let quotient_evaluation = CPUCircleEvaluation::<SecureField, NaturalOrder>::new(
+        let quotient_evaluation = CpuCircleEvaluation::<SecureField, NaturalOrder>::new(
             large_domain,
             quotient_polynomial_values,
         );
