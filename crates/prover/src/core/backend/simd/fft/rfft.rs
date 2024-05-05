@@ -592,7 +592,7 @@ mod tests {
     use super::{
         butterfly, fft, fft3, fft_lower_with_vecwise, get_twiddle_dbls, vecwise_butterflies,
     };
-    use crate::core::backend::cpu::CPUCirclePoly;
+    use crate::core::backend::cpu::CpuCirclePoly;
     use crate::core::backend::simd::column::BaseFieldVec;
     use crate::core::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE};
     use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
@@ -754,7 +754,7 @@ mod tests {
     }
 
     fn ground_truth_fft(domain: CircleDomain, values: &[BaseField]) -> Vec<BaseField> {
-        let poly = CPUCirclePoly::new(values.to_vec());
+        let poly = CpuCirclePoly::new(values.to_vec());
         poly.evaluate(domain).values
     }
 }

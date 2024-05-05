@@ -1,7 +1,7 @@
 use super::m31::BaseField;
 use super::qm31::SecureField;
 use super::{ExtensionOf, FieldOps};
-use crate::core::backend::{CPUBackend, Col, Column};
+use crate::core::backend::{Col, Column, CpuBackend};
 use crate::core::utils::IteratorMutExt;
 
 pub const SECURE_EXTENSION_DEGREE: usize =
@@ -13,7 +13,7 @@ pub const SECURE_EXTENSION_DEGREE: usize =
 pub struct SecureColumn<B: FieldOps<BaseField>> {
     pub columns: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
-impl SecureColumn<CPUBackend> {
+impl SecureColumn<CpuBackend> {
     pub fn set(&mut self, index: usize, value: SecureField) {
         self.columns
             .iter_mut()
@@ -45,7 +45,7 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
         self.columns[0].is_empty()
     }
 
-    pub fn to_cpu(&self) -> SecureColumn<CPUBackend> {
+    pub fn to_cpu(&self) -> SecureColumn<CpuBackend> {
         SecureColumn {
             columns: self.columns.clone().map(|c| c.to_cpu()),
         }
@@ -53,7 +53,7 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
 }
 
 pub struct SecureColumnIter<'a> {
-    column: &'a SecureColumn<CPUBackend>,
+    column: &'a SecureColumn<CpuBackend>,
     index: usize,
 }
 impl Iterator for SecureColumnIter<'_> {
@@ -69,7 +69,7 @@ impl Iterator for SecureColumnIter<'_> {
         }
     }
 }
-impl<'a> IntoIterator for &'a SecureColumn<CPUBackend> {
+impl<'a> IntoIterator for &'a SecureColumn<CpuBackend> {
     type Item = SecureField;
     type IntoIter = SecureColumnIter<'a>;
 
@@ -80,7 +80,7 @@ impl<'a> IntoIterator for &'a SecureColumn<CPUBackend> {
         }
     }
 }
-impl FromIterator<SecureField> for SecureColumn<CPUBackend> {
+impl FromIterator<SecureField> for SecureColumn<CpuBackend> {
     fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
         let mut columns = std::array::from_fn(|_| vec![]);
         for value in iter.into_iter() {
@@ -92,8 +92,8 @@ impl FromIterator<SecureField> for SecureColumn<CPUBackend> {
         SecureColumn { columns }
     }
 }
-impl From<SecureColumn<CPUBackend>> for Vec<SecureField> {
-    fn from(column: SecureColumn<CPUBackend>) -> Self {
+impl From<SecureColumn<CpuBackend>> for Vec<SecureField> {
+    fn from(column: SecureColumn<CpuBackend>) -> Self {
         column.into_iter().collect()
     }
 }

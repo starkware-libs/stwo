@@ -46,7 +46,7 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::backend::CPUBackend;
+    use crate::core::backend::CpuBackend;
     use crate::core::fields::m31::BaseField;
     use crate::core::vcs::blake2_merkle::{Blake2sHash, Blake2sMerkleHasher};
     use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
@@ -76,7 +76,7 @@ mod tests {
             })
             .collect_vec();
         let merkle =
-            MerkleProver::<CPUBackend, Blake2sMerkleHasher>::commit(cols.iter().collect_vec());
+            MerkleProver::<CpuBackend, Blake2sMerkleHasher>::commit(cols.iter().collect_vec());
 
         let mut queries = BTreeMap::<u32, Vec<usize>>::new();
         for log_size in log_size_range.rev() {

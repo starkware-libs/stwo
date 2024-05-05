@@ -166,7 +166,7 @@ mod tests {
 
     use crate::core::backend::simd::column::BaseFieldVec;
     use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::{CPUBackend, Column};
+    use crate::core::backend::{Column, CpuBackend};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
     use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
@@ -194,13 +194,13 @@ mod tests {
         let cpu_columns = columns
             .iter()
             .map(|c| {
-                CircleEvaluation::<CPUBackend, _, BitReversedOrder>::new(
+                CircleEvaluation::<CpuBackend, _, BitReversedOrder>::new(
                     c.domain,
                     c.values.to_cpu(),
                 )
             })
             .collect::<Vec<_>>();
-        let cpu_result = CPUBackend::accumulate_quotients(
+        let cpu_result = CpuBackend::accumulate_quotients(
             domain,
             &cpu_columns.iter().collect_vec(),
             random_coeff,

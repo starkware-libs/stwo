@@ -4,7 +4,7 @@ use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use itertools::Itertools;
 use num_traits::Zero;
 use stwo_prover::core::backend::simd::SimdBackend;
-use stwo_prover::core::backend::{CPUBackend, Col};
+use stwo_prover::core::backend::{Col, CpuBackend};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use stwo_prover::core::vcs::ops::MerkleOps;
@@ -27,7 +27,7 @@ fn bench_blake2s_merkle<B: MerkleOps<Blake2sMerkleHasher>>(c: &mut Criterion, id
 
 fn blake2s_merkle_benches(c: &mut Criterion) {
     bench_blake2s_merkle::<SimdBackend>(c, "simd");
-    bench_blake2s_merkle::<CPUBackend>(c, "cpu");
+    bench_blake2s_merkle::<CpuBackend>(c, "cpu");
 }
 
 criterion_group!(
