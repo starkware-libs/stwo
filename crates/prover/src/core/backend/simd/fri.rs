@@ -100,7 +100,7 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::CPUBackend;
+    use crate::core::backend::CpuBackend;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::secure_column::SecureColumn;
     use crate::core::fri::FriOps;
@@ -115,10 +115,10 @@ mod tests {
         let values = (0..1 << LOG_SIZE).map(|_| rng.gen()).collect_vec();
         let alpha = qm31!(1, 3, 5, 7);
         let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE + 1).half_coset());
-        let cpu_fold = CPUBackend::fold_line(
+        let cpu_fold = CpuBackend::fold_line(
             &LineEvaluation::new(domain, values.iter().copied().collect()),
             alpha,
-            &CPUBackend::precompute_twiddles(domain.coset()),
+            &CpuBackend::precompute_twiddles(domain.coset()),
         );
 
         let avx_fold = SimdBackend::fold_line(
@@ -141,14 +141,14 @@ mod tests {
         let line_domain = LineDomain::new(circle_domain.half_coset);
         let mut cpu_fold =
             LineEvaluation::new(line_domain, SecureColumn::zeros(1 << (LOG_SIZE - 1)));
-        CPUBackend::fold_circle_into_line(
+        CpuBackend::fold_circle_into_line(
             &mut cpu_fold,
             &SecureEvaluation {
                 domain: circle_domain,
                 values: values.iter().copied().collect(),
             },
             alpha,
-            &CPUBackend::precompute_twiddles(line_domain.coset()),
+            &CpuBackend::precompute_twiddles(line_domain.coset()),
         );
 
         let mut simd_fold =
