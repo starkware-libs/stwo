@@ -1,6 +1,6 @@
 use num_traits::Zero;
 
-use super::CPUBackend;
+use super::CpuBackend;
 use crate::core::backend::{Col, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
@@ -15,7 +15,7 @@ use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse;
 
-impl PolyOps for CPUBackend {
+impl PolyOps for CpuBackend {
     type Twiddles = Vec<BaseField>;
 
     fn new_canonical_ordered(
@@ -32,7 +32,7 @@ impl PolyOps for CPUBackend {
         for i in 0..half_len {
             new_values.push(values[domain.size() - 1 - (i << 1)]);
         }
-        CPUBackend::bit_reverse_column(&mut new_values);
+        CpuBackend::bit_reverse_column(&mut new_values);
         CircleEvaluation::new(domain, new_values)
     }
 
@@ -214,7 +214,7 @@ fn circle_twiddles_from_line_twiddles(
 }
 
 impl<F: ExtensionOf<BaseField>, EvalOrder> IntoIterator
-    for CircleEvaluation<CPUBackend, F, EvalOrder>
+    for CircleEvaluation<CpuBackend, F, EvalOrder>
 {
     type Item = F;
     type IntoIter = std::vec::IntoIter<F>;
