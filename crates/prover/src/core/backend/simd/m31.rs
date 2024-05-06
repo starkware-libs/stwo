@@ -225,7 +225,7 @@ impl Distribution<PackedM31> for Standard {
 
 /// Returns `a * b`.
 #[cfg(target_arch = "aarch64")]
-fn _mul_neon(a: PackedM31, b: PackedM31) -> PackedM31 {
+pub(crate) fn _mul_neon(a: PackedM31, b: PackedM31) -> PackedM31 {
     use core::arch::aarch64::{int32x2_t, vqdmull_s32};
     use std::simd::u32x4;
 
@@ -265,7 +265,7 @@ fn _mul_neon(a: PackedM31, b: PackedM31) -> PackedM31 {
 ///
 /// `b_double` should be in the range `[0, 2P]`.
 #[cfg(target_arch = "aarch64")]
-fn _mul_doubled_neon(a: PackedM31, b_double: PackedM31) -> PackedM31 {
+pub(crate) fn _mul_doubled_neon(a: PackedM31, b_double: u32x16) -> PackedM31 {
     use core::arch::aarch64::{uint32x2_t, vmull_u32};
     use std::simd::u32x4;
 
@@ -303,7 +303,7 @@ fn _mul_doubled_neon(a: PackedM31, b_double: PackedM31) -> PackedM31 {
 
 /// Returns `a * b`.
 #[cfg(target_arch = "wasm32")]
-fn _mul_wasm(a: PackedM31, b: PackedM31) -> PackedM31 {
+pub(crate) fn _mul_wasm(a: PackedM31, b: PackedM31) -> PackedM31 {
     _mul_doubled_wasm(a, b.0 + b.0)
 }
 
@@ -311,7 +311,7 @@ fn _mul_wasm(a: PackedM31, b: PackedM31) -> PackedM31 {
 ///
 /// `b_double` should be in the range `[0, 2P]`.
 #[cfg(target_arch = "wasm32")]
-fn _mul_doubled_wasm(a: PackedM31, b_double: u32x16) -> PackedM31 {
+pub(crate) fn _mul_doubled_wasm(a: PackedM31, b_double: u32x16) -> PackedM31 {
     use core::arch::wasm32::{i64x2_extmul_high_u32x4, i64x2_extmul_low_u32x4, v128};
     use std::simd::u32x4;
 
@@ -344,7 +344,7 @@ fn _mul_doubled_wasm(a: PackedM31, b_double: u32x16) -> PackedM31 {
 
 /// Returns `a * b`.
 #[cfg(target_arch = "x86_64")]
-fn _mul_avx512(a: PackedM31, b: PackedM31) -> PackedM31 {
+pub(crate) fn _mul_avx512(a: PackedM31, b: PackedM31) -> PackedM31 {
     _mul_doubled_avx512(a, b.0 + b.0)
 }
 
@@ -352,7 +352,7 @@ fn _mul_avx512(a: PackedM31, b: PackedM31) -> PackedM31 {
 ///
 /// `b_double` should be in the range `[0, 2P]`.
 #[cfg(target_arch = "x86_64")]
-fn _mul_doubled_avx512(a: PackedM31, b_double: u32x16) -> PackedM31 {
+pub(crate) fn _mul_doubled_avx512(a: PackedM31, b_double: u32x16) -> PackedM31 {
     use std::arch::x86_64::{__m512i, _mm512_mul_epu32, _mm512_srli_epi64};
 
     let a: __m512i = unsafe { transmute(a) };
@@ -394,7 +394,7 @@ fn _mul_doubled_avx512(a: PackedM31, b_double: u32x16) -> PackedM31 {
 
 /// Returns `a * b`.
 #[cfg(target_arch = "x86_64")]
-fn _mul_avx2(a: PackedM31, b: PackedM31) -> PackedM31 {
+pub(crate) fn _mul_avx2(a: PackedM31, b: PackedM31) -> PackedM31 {
     _mul_doubled_avx2(a, b.0 + b.0)
 }
 
@@ -402,7 +402,7 @@ fn _mul_avx2(a: PackedM31, b: PackedM31) -> PackedM31 {
 ///
 /// `b_double` should be in the range `[0, 2P]`.
 #[cfg(target_arch = "x86_64")]
-fn _mul_doubled_avx2(a: PackedM31, b_double: u32x16) -> PackedM31 {
+pub(crate) fn _mul_doubled_avx2(a: PackedM31, b_double: u32x16) -> PackedM31 {
     use std::arch::x86_64::{__m256i, _mm256_mul_epu32, _mm256_srli_epi64};
 
     let [a0, a1]: [__m256i; 2] = unsafe { transmute(a) };
@@ -454,7 +454,7 @@ fn _mul_doubled_avx2(a: PackedM31, b_double: u32x16) -> PackedM31 {
 /// Returns `a * b`.
 ///
 /// Should only be used in the absence of a platform specific implementation.
-fn _mul_simd(a: PackedM31, b: PackedM31) -> PackedM31 {
+pub(crate) fn _mul_simd(a: PackedM31, b: PackedM31) -> PackedM31 {
     _mul_doubled_simd(a, b.0 + b.0)
 }
 
@@ -463,7 +463,7 @@ fn _mul_simd(a: PackedM31, b: PackedM31) -> PackedM31 {
 /// Should only be used in the absence of a platform specific implementation.
 ///
 /// `b_double` should be in the range `[0, 2P]`.
-fn _mul_doubled_simd(a: PackedM31, b_double: u32x16) -> PackedM31 {
+pub(crate) fn _mul_doubled_simd(a: PackedM31, b_double: u32x16) -> PackedM31 {
     const MASK_EVENS: Simd<u64, { N_LANES / 2 }> = Simd::from_array([0xFFFFFFFF; { N_LANES / 2 }]);
 
     // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of
