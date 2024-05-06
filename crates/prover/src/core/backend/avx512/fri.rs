@@ -95,7 +95,7 @@ impl FriOps for AVX512Backend {
     fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField) {
         let lambda = Self::decomposition_coefficient(eval);
         let broadcasted_lambda = PackedSecureField::broadcast(lambda);
-        let mut g_values = SecureColumn::zeros(eval.len());
+        let mut g_values = SecureColumn::<Self>::zeros(eval.len());
 
         let range = eval.len().div_ceil(K_BLOCK_SIZE);
         let half_range = range / 2;
