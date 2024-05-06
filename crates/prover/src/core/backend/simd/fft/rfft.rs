@@ -1,15 +1,13 @@
 //! Regular (forward) fft.
 
-use std::arch::x86_64::{
-    __m512i, _mm512_broadcast_i32x4, _mm512_mul_epu32, _mm512_permutex2var_epi32,
-    _mm512_set1_epi32, _mm512_set1_epi64, _mm512_srli_epi64,
-};
+use std::simd::{simd_swizzle, u32x16, u32x2, u32x4};
 
-use super::{compute_first_twiddles, EVENS_INTERLEAVE_EVENS, ODDS_INTERLEAVE_ODDS};
-use crate::core::backend::avx512::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
-use crate::core::backend::avx512::{PackedBaseField, VECS_LOG_SIZE};
+use super::{compute_first_twiddles, transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
+use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::circle::Coset;
 use crate::core::utils::bit_reverse;
+
+const VECS_LOG_SIZE: usize = LOG_N_LANES as usize;
 
 /// Performs a Circle Fast Fourier Transform (ICFFT) on the given values.
 ///
@@ -175,12 +173,12 @@ unsafe fn fft_vecwise_loop(
 ) {
     for index_l in 0..(1 << loop_bits) {
         let index = (index_h << loop_bits) + index_l;
-        let mut val0 = PackedBaseField::load(src.add(index * 32));
-        let mut val1 = PackedBaseField::load(src.add(index * 32 + 16));
+        let mut val0 = PackedBaseField::load(src.add(index * 32) as *const u32);
+        let mut val1 = PackedBaseField::load(src.add(index * 32 + 16) as *const u32);
         (val0, val1) = avx_butterfly(
             val0,
             val1,
-            _mm512_set1_epi32(*twiddle_dbl[3].get_unchecked(index)),
+            u32x16::splat(*twiddle_dbl[3].get_unchecked(index) as u32),
         );
         (val0, val1) = vecwise_butterflies(
             val0,
@@ -189,8 +187,8 @@ unsafe fn fft_vecwise_loop(
             std::array::from_fn(|i| *twiddle_dbl[1].get_unchecked(index * 4 + i)),
             std::array::from_fn(|i| *twiddle_dbl[2].get_unchecked(index * 2 + i)),
         );
-        val0.store(dst.add(index * 32));
-        val1.store(dst.add(index * 32 + 16));
+        val0.store(dst.add(index * 32) as *mut u32);
+        val1.store(dst.add(index * 32 + 16) as *mut u32);
     }
 }
 
@@ -309,39 +307,25 @@ unsafe fn fft1_loop(
 pub unsafe fn avx_butterfly(
     val0: PackedBaseField,
     val1: PackedBaseField,
-    twiddle_dbl: __m512i,
+    twiddle_dbl: u32x16,
 ) -> (PackedBaseField, PackedBaseField) {
-    // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of val0.
-    let val1_e = val1.0;
-    // Set up a word s.t. the lower half of each 64-bit word has the odd 32-bit words of val0.
-    let val1_o = _mm512_srli_epi64(val1.0, 32);
-    let twiddle_dbl_e = twiddle_dbl;
-    let twiddle_dbl_o = _mm512_srli_epi64(twiddle_dbl, 32);
-
-    // To compute prod = val1 * twiddle start by multiplying
-    // val1_e/o by twiddle_dbl_e/o.
-    let prod_e_dbl = _mm512_mul_epu32(val1_e, twiddle_dbl_e);
-    let prod_o_dbl = _mm512_mul_epu32(val1_o, twiddle_dbl_o);
-
-    // The result of a multiplication holds val1*twiddle_dbl in as 64-bits.
-    // Each 64b-bit word looks like this:
-    //               1    31       31    1
-    // prod_e_dbl - |0|prod_e_h|prod_e_l|0|
-    // prod_o_dbl - |0|prod_o_h|prod_o_l|0|
-
-    // Interleave the even words of prod_e_dbl with the even words of prod_o_dbl:
-    let prod_ls = _mm512_permutex2var_epi32(prod_e_dbl, EVENS_INTERLEAVE_EVENS, prod_o_dbl);
-    // prod_ls -    |prod_o_l|0|prod_e_l|0|
-
-    // Divide by 2:
-    let prod_ls = _mm512_srli_epi64(prod_ls, 1);
-    // prod_ls -    |0|prod_o_l|0|prod_e_l|
-
-    // Interleave the odd words of prod_e_dbl with the odd words of prod_o_dbl:
-    let prod_hs = _mm512_permutex2var_epi32(prod_e_dbl, ODDS_INTERLEAVE_ODDS, prod_o_dbl);
-    // prod_hs -    |0|prod_o_h|0|prod_e_h|
-
-    let prod = PackedBaseField(prod_ls) + PackedBaseField(prod_hs);
+    let prod = {
+        // TODO: Come up with a better approach than `cfg`ing on target_feature.
+        // TODO: Ensure all these branches get tested in the CI.
+        cfg_if::cfg_if! {
+            if #[cfg(all(target_feature = "neon", target_arch = "aarch64"))] {
+                super::_mul_twiddle_neon(val1, twiddle_dbl)
+            } else if #[cfg(all(target_feature = "simd128", target_arch = "wasm32"))] {
+                super::_mul_twiddle_wasm(val1, twiddle_dbl)
+            } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))] {
+                super::_mul_twiddle_avx512(val1, twiddle_dbl)
+            } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx2f"))] {
+                super::_mul_twiddle_avx2(val1, twiddle_dbl)
+            } else {
+                super::_mul_twiddle_simd(val1, twiddle_dbl)
+            }
+        }
+    };
 
     let r0 = val0 + prod;
     let r1 = val0 - prod;
@@ -369,22 +353,28 @@ pub unsafe fn vecwise_butterflies(
     // TODO(spapini): The permute can be fused with the _mm512_srli_epi64 inside the butterfly.
     // The implementation is the exact reverse of vecwise_ibutterflies().
     // See the comments in its body for more info.
-    let t = _mm512_set1_epi64(std::mem::transmute(twiddle3_dbl));
-    (val0, val1) = val0.interleave_with(val1);
+    let t = simd_swizzle!(
+        u32x2::from_array(unsafe { std::mem::transmute(twiddle3_dbl) }),
+        [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1]
+    );
+    (val0, val1) = val0.interleave(val1);
     (val0, val1) = avx_butterfly(val0, val1, t);
 
-    let t = _mm512_broadcast_i32x4(std::mem::transmute(twiddle2_dbl));
-    (val0, val1) = val0.interleave_with(val1);
+    let t = simd_swizzle!(
+        u32x4::from_array(unsafe { std::mem::transmute(twiddle2_dbl) }),
+        [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]
+    );
+    (val0, val1) = val0.interleave(val1);
     (val0, val1) = avx_butterfly(val0, val1, t);
 
     let (t0, t1) = compute_first_twiddles(twiddle1_dbl);
-    (val0, val1) = val0.interleave_with(val1);
+    (val0, val1) = val0.interleave(val1);
     (val0, val1) = avx_butterfly(val0, val1, t1);
 
-    (val0, val1) = val0.interleave_with(val1);
+    (val0, val1) = val0.interleave(val1);
     (val0, val1) = avx_butterfly(val0, val1, t0);
 
-    val0.interleave_with(val1)
+    val0.interleave(val1)
 }
 
 /// Returns the line twiddles (x points) for an fft on a coset.
@@ -429,42 +419,42 @@ pub unsafe fn fft3(
     twiddles_dbl2: [i32; 1],
 ) {
     // Load the 8 AVX vectors from the array.
-    let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)));
-    let mut val1 = PackedBaseField::load(src.add(offset + (1 << log_step)));
-    let mut val2 = PackedBaseField::load(src.add(offset + (2 << log_step)));
-    let mut val3 = PackedBaseField::load(src.add(offset + (3 << log_step)));
-    let mut val4 = PackedBaseField::load(src.add(offset + (4 << log_step)));
-    let mut val5 = PackedBaseField::load(src.add(offset + (5 << log_step)));
-    let mut val6 = PackedBaseField::load(src.add(offset + (6 << log_step)));
-    let mut val7 = PackedBaseField::load(src.add(offset + (7 << log_step)));
+    let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)) as *const u32);
+    let mut val1 = PackedBaseField::load(src.add(offset + (1 << log_step)) as *const u32);
+    let mut val2 = PackedBaseField::load(src.add(offset + (2 << log_step)) as *const u32);
+    let mut val3 = PackedBaseField::load(src.add(offset + (3 << log_step)) as *const u32);
+    let mut val4 = PackedBaseField::load(src.add(offset + (4 << log_step)) as *const u32);
+    let mut val5 = PackedBaseField::load(src.add(offset + (5 << log_step)) as *const u32);
+    let mut val6 = PackedBaseField::load(src.add(offset + (6 << log_step)) as *const u32);
+    let mut val7 = PackedBaseField::load(src.add(offset + (7 << log_step)) as *const u32);
 
     // Apply the third layer of butterflies.
-    (val0, val4) = avx_butterfly(val0, val4, _mm512_set1_epi32(twiddles_dbl2[0]));
-    (val1, val5) = avx_butterfly(val1, val5, _mm512_set1_epi32(twiddles_dbl2[0]));
-    (val2, val6) = avx_butterfly(val2, val6, _mm512_set1_epi32(twiddles_dbl2[0]));
-    (val3, val7) = avx_butterfly(val3, val7, _mm512_set1_epi32(twiddles_dbl2[0]));
+    (val0, val4) = avx_butterfly(val0, val4, u32x16::splat(twiddles_dbl2[0] as u32));
+    (val1, val5) = avx_butterfly(val1, val5, u32x16::splat(twiddles_dbl2[0] as u32));
+    (val2, val6) = avx_butterfly(val2, val6, u32x16::splat(twiddles_dbl2[0] as u32));
+    (val3, val7) = avx_butterfly(val3, val7, u32x16::splat(twiddles_dbl2[0] as u32));
 
     // Apply the second layer of butterflies.
-    (val0, val2) = avx_butterfly(val0, val2, _mm512_set1_epi32(twiddles_dbl1[0]));
-    (val1, val3) = avx_butterfly(val1, val3, _mm512_set1_epi32(twiddles_dbl1[0]));
-    (val4, val6) = avx_butterfly(val4, val6, _mm512_set1_epi32(twiddles_dbl1[1]));
-    (val5, val7) = avx_butterfly(val5, val7, _mm512_set1_epi32(twiddles_dbl1[1]));
+    (val0, val2) = avx_butterfly(val0, val2, u32x16::splat(twiddles_dbl1[0] as u32));
+    (val1, val3) = avx_butterfly(val1, val3, u32x16::splat(twiddles_dbl1[0] as u32));
+    (val4, val6) = avx_butterfly(val4, val6, u32x16::splat(twiddles_dbl1[1] as u32));
+    (val5, val7) = avx_butterfly(val5, val7, u32x16::splat(twiddles_dbl1[1] as u32));
 
     // Apply the first layer of butterflies.
-    (val0, val1) = avx_butterfly(val0, val1, _mm512_set1_epi32(twiddles_dbl0[0]));
-    (val2, val3) = avx_butterfly(val2, val3, _mm512_set1_epi32(twiddles_dbl0[1]));
-    (val4, val5) = avx_butterfly(val4, val5, _mm512_set1_epi32(twiddles_dbl0[2]));
-    (val6, val7) = avx_butterfly(val6, val7, _mm512_set1_epi32(twiddles_dbl0[3]));
+    (val0, val1) = avx_butterfly(val0, val1, u32x16::splat(twiddles_dbl0[0] as u32));
+    (val2, val3) = avx_butterfly(val2, val3, u32x16::splat(twiddles_dbl0[1] as u32));
+    (val4, val5) = avx_butterfly(val4, val5, u32x16::splat(twiddles_dbl0[2] as u32));
+    (val6, val7) = avx_butterfly(val6, val7, u32x16::splat(twiddles_dbl0[3] as u32));
 
     // Store the 8 AVX vectors back to the array.
-    val0.store(dst.add(offset + (0 << log_step)));
-    val1.store(dst.add(offset + (1 << log_step)));
-    val2.store(dst.add(offset + (2 << log_step)));
-    val3.store(dst.add(offset + (3 << log_step)));
-    val4.store(dst.add(offset + (4 << log_step)));
-    val5.store(dst.add(offset + (5 << log_step)));
-    val6.store(dst.add(offset + (6 << log_step)));
-    val7.store(dst.add(offset + (7 << log_step)));
+    val0.store(dst.add(offset + (0 << log_step)) as *mut u32);
+    val1.store(dst.add(offset + (1 << log_step)) as *mut u32);
+    val2.store(dst.add(offset + (2 << log_step)) as *mut u32);
+    val3.store(dst.add(offset + (3 << log_step)) as *mut u32);
+    val4.store(dst.add(offset + (4 << log_step)) as *mut u32);
+    val5.store(dst.add(offset + (5 << log_step)) as *mut u32);
+    val6.store(dst.add(offset + (6 << log_step)) as *mut u32);
+    val7.store(dst.add(offset + (7 << log_step)) as *mut u32);
 }
 
 /// Applies 2 butterfly layers on 4 vectors of 16 M31 elements.
@@ -490,24 +480,24 @@ pub unsafe fn fft2(
     twiddles_dbl1: [i32; 1],
 ) {
     // Load the 4 AVX vectors from the array.
-    let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)));
-    let mut val1 = PackedBaseField::load(src.add(offset + (1 << log_step)));
-    let mut val2 = PackedBaseField::load(src.add(offset + (2 << log_step)));
-    let mut val3 = PackedBaseField::load(src.add(offset + (3 << log_step)));
+    let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)) as *const u32);
+    let mut val1 = PackedBaseField::load(src.add(offset + (1 << log_step)) as *const u32);
+    let mut val2 = PackedBaseField::load(src.add(offset + (2 << log_step)) as *const u32);
+    let mut val3 = PackedBaseField::load(src.add(offset + (3 << log_step)) as *const u32);
 
     // Apply the second layer of butterflies.
-    (val0, val2) = avx_butterfly(val0, val2, _mm512_set1_epi32(twiddles_dbl1[0]));
-    (val1, val3) = avx_butterfly(val1, val3, _mm512_set1_epi32(twiddles_dbl1[0]));
+    (val0, val2) = avx_butterfly(val0, val2, u32x16::splat(twiddles_dbl1[0] as u32));
+    (val1, val3) = avx_butterfly(val1, val3, u32x16::splat(twiddles_dbl1[0] as u32));
 
     // Apply the first layer of butterflies.
-    (val0, val1) = avx_butterfly(val0, val1, _mm512_set1_epi32(twiddles_dbl0[0]));
-    (val2, val3) = avx_butterfly(val2, val3, _mm512_set1_epi32(twiddles_dbl0[1]));
+    (val0, val1) = avx_butterfly(val0, val1, u32x16::splat(twiddles_dbl0[0] as u32));
+    (val2, val3) = avx_butterfly(val2, val3, u32x16::splat(twiddles_dbl0[1] as u32));
 
     // Store the 4 AVX vectors back to the array.
-    val0.store(dst.add(offset + (0 << log_step)));
-    val1.store(dst.add(offset + (1 << log_step)));
-    val2.store(dst.add(offset + (2 << log_step)));
-    val3.store(dst.add(offset + (3 << log_step)));
+    val0.store(dst.add(offset + (0 << log_step)) as *mut u32);
+    val1.store(dst.add(offset + (1 << log_step)) as *mut u32);
+    val2.store(dst.add(offset + (2 << log_step)) as *mut u32);
+    val3.store(dst.add(offset + (3 << log_step)) as *mut u32);
 }
 
 /// Applies 1 butterfly layers on 2 vectors of 16 M31 elements.
@@ -528,24 +518,21 @@ pub unsafe fn fft1(
     twiddles_dbl0: [i32; 1],
 ) {
     // Load the 2 AVX vectors from the array.
-    let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)));
-    let mut val1 = PackedBaseField::load(src.add(offset + (1 << log_step)));
+    let mut val0 = PackedBaseField::load(src.add(offset + (0 << log_step)) as *const u32);
+    let mut val1 = PackedBaseField::load(src.add(offset + (1 << log_step)) as *const u32);
 
-    (val0, val1) = avx_butterfly(val0, val1, _mm512_set1_epi32(twiddles_dbl0[0]));
+    (val0, val1) = avx_butterfly(val0, val1, u32x16::splat(twiddles_dbl0[0] as u32));
 
     // Store the 2 AVX vectors back to the array.
-    val0.store(dst.add(offset + (0 << log_step)));
-    val1.store(dst.add(offset + (1 << log_step)));
+    val0.store(dst.add(offset + (0 << log_step)) as *mut u32);
+    val1.store(dst.add(offset + (1 << log_step)) as *mut u32);
 }
 
-#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
-    use std::arch::x86_64::{_mm512_add_epi32, _mm512_set1_epi32, _mm512_setr_epi32};
-
     use super::*;
-    use crate::core::backend::avx512::{BaseFieldVec, PackedBaseField};
     use crate::core::backend::cpu::CPUCirclePoly;
+    use crate::core::backend::simd::{BaseFieldVec, PackedBaseField};
     use crate::core::backend::Column;
     use crate::core::fft::butterfly;
     use crate::core::fields::m31::BaseField;
@@ -554,16 +541,16 @@ mod tests {
     #[test]
     fn test_butterfly() {
         unsafe {
-            let val0 = PackedBaseField(_mm512_setr_epi32(
+            let val0 = PackedBaseField::from_simd_unchecked(u32x16::from_array([
                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-            ));
-            let val1 = PackedBaseField(_mm512_setr_epi32(
+            ]));
+            let val1 = PackedBaseField::from_simd_unchecked(u32x16::from_array([
                 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-            ));
-            let twiddle = _mm512_setr_epi32(
+            ]));
+            let twiddle = u32x16::from_array([
                 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
-            );
-            let twiddle_dbl = _mm512_add_epi32(twiddle, twiddle);
+            ]);
+            let twiddle_dbl = twiddle + twiddle;
             let (r0, r1) = avx_butterfly(val0, val1, twiddle_dbl);
 
             let val0: [BaseField; 16] = std::mem::transmute(val0);
@@ -663,7 +650,7 @@ mod tests {
             let (val0, val1) = avx_butterfly(
                 std::mem::transmute(values0),
                 std::mem::transmute(values1),
-                _mm512_set1_epi32(twiddle_dbls[3][0]),
+                u32x16::splat(twiddle_dbls[3][0] as u32),
             );
             let (val0, val1) = vecwise_butterflies(
                 val0,
