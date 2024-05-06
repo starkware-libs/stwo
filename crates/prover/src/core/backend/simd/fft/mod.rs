@@ -1,14 +1,15 @@
-use std::arch::x86_64::{
-    __m512i, _mm512_broadcast_i64x4, _mm512_load_epi32, _mm512_permutexvar_epi32,
-    _mm512_store_epi32, _mm512_xor_epi32,
-};
+use std::mem::transmute;
+use std::simd::{simd_swizzle, u32x16, u32x8};
+
+use super::m31::PackedBaseField;
+use crate::core::fields::m31::P;
 
 pub mod ifft;
 pub mod rfft;
 
 /// An input to _mm512_permutex2var_epi32, and is used to interleave the even words of a
 /// with the even words of b.
-const EVENS_INTERLEAVE_EVENS: __m512i = unsafe {
+const _EVENS_INTERLEAVE_EVENS: u32x16 = unsafe {
     core::mem::transmute([
         0b00000, 0b10000, 0b00010, 0b10010, 0b00100, 0b10100, 0b00110, 0b10110, 0b01000, 0b11000,
         0b01010, 0b11010, 0b01100, 0b11100, 0b01110, 0b11110,
@@ -16,7 +17,7 @@ const EVENS_INTERLEAVE_EVENS: __m512i = unsafe {
 };
 /// An input to _mm512_permutex2var_epi32, and is used to interleave the odd words of a
 /// with the odd words of b.
-const ODDS_INTERLEAVE_ODDS: __m512i = unsafe {
+const _ODDS_INTERLEAVE_ODDS: u32x16 = unsafe {
     core::mem::transmute([
         0b00001, 0b10001, 0b00011, 0b10011, 0b00101, 0b10101, 0b00111, 0b10111, 0b01001, 0b11001,
         0b01011, 0b11011, 0b01101, 0b11101, 0b01111, 0b11111,
@@ -60,14 +61,24 @@ pub unsafe fn transpose_vecs(values: *mut i32, log_n_vecs: usize) {
     }
 }
 
+unsafe fn _mm512_load_epi32(mem_addr: *const i32) -> u32x16 {
+    std::ptr::read(mem_addr as *const u32x16)
+}
+
+unsafe fn _mm512_store_epi32(mem_addr: *mut i32, a: u32x16) {
+    std::ptr::write(mem_addr as *mut u32x16, a);
+}
+
 /// Computes the twiddles for the first fft layer from the second, and loads both to AVX registers.
 /// Returns the twiddles for the first layer and the twiddles for the second layer.
 /// # Safety
-pub unsafe fn compute_first_twiddles(twiddle1_dbl: [i32; 8]) -> (__m512i, __m512i) {
+pub unsafe fn compute_first_twiddles(twiddle1_dbl: [i32; 8]) -> (u32x16, u32x16) {
     // Start by loading the twiddles for the second layer (layer 1):
-    // The twiddles for layer 1 are replicated in the following pattern:
-    //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-    let t1 = _mm512_broadcast_i64x4(std::mem::transmute(twiddle1_dbl));
+    let t1 = simd_swizzle!(
+        unsafe { transmute::<_, u32x8>(twiddle1_dbl) },
+        unsafe { transmute::<_, u32x8>(twiddle1_dbl) },
+        [0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7]
+    );
 
     // The twiddles for layer 0 can be computed from the twiddles for layer 1.
     // Since the twiddles are bit reversed, we consider the circle domain in bit reversed order.
@@ -84,17 +95,36 @@ pub unsafe fn compute_first_twiddles(twiddle1_dbl: [i32; 8]) -> (__m512i, __m512
 
     // The twiddles for layer 0 are computed like this:
     //   t0[4i:4i+3] = [t1[2i+1], -t1[2i+1], -t1[2i], t1[2i]]
-    const INDICES_FROM_T1: __m512i = unsafe {
-        core::mem::transmute([
+    // Xoring a double twiddle with P*2 transforms it to the double of it negation.
+    // Note that this keeps the values as a double of a value in the range [0, P].
+    const P2: u32 = P * 2;
+    const NEGATION_MASK: u32x16 =
+        u32x16::from_array([0, P2, P2, 0, 0, P2, P2, 0, 0, P2, P2, 0, 0, P2, P2, 0]);
+    let t0 = simd_swizzle!(
+        t1,
+        [
             0b0001, 0b0001, 0b0000, 0b0000, 0b0011, 0b0011, 0b0010, 0b0010, 0b0101, 0b0101, 0b0100,
             0b0100, 0b0111, 0b0111, 0b0110, 0b0110,
-        ])
-    };
-    // Xoring a double twiddle with 2^32-2 transforms it to the double of it negation.
-    // Note that this keeps the values as a double of a value in the range [0, P].
-    const NEGATION_MASK: __m512i = unsafe {
-        core::mem::transmute([0i32, -2, -2, 0, 0, -2, -2, 0, 0, -2, -2, 0, 0, -2, -2, 0])
-    };
-    let t0 = _mm512_xor_epi32(_mm512_permutexvar_epi32(INDICES_FROM_T1, t1), NEGATION_MASK);
+        ]
+    ) ^ NEGATION_MASK;
     (t0, t1)
+}
+
+/// Computes `v * twiddle`
+fn mul_twiddle(v: PackedBaseField, twiddle_dbl: u32x16) -> PackedBaseField {
+    // TODO: Come up with a better approach than `cfg`ing on target_feature.
+    // TODO: Ensure all these branches get tested in the CI.
+    cfg_if::cfg_if! {
+        if #[cfg(all(target_feature = "neon", target_arch = "aarch64"))] {
+            crate::core::backend::simd::m31::_mul_doubled_neon(v, twiddle_dbl)
+        } else if #[cfg(all(target_feature = "simd128", target_arch = "wasm32"))] {
+            crate::core::backend::simd::m31::_mul_doubled_wasm(v, twiddle_dbl)
+        } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))] {
+            crate::core::backend::simd::m31::_mul_doubled_avx512(v, twiddle_dbl)
+        } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx2f"))] {
+            crate::core::backend::simd::m31::_mul_doubled_avx2(v, twiddle_dbl)
+        } else {
+            crate::core::backend::simd::m31::_mul_doubled_simd(v, twiddle_dbl)
+        }
+    }
 }
