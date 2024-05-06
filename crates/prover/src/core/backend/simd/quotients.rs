@@ -1,8 +1,10 @@
 use itertools::{izip, zip_eq, Itertools};
+use num_traits::Zero;
 
+use super::column::SecureFieldVec;
+use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
-use super::{AVX512Backend, SecureFieldVec, K_BLOCK_SIZE, VECS_LOG_SIZE};
-use crate::core::backend::avx512::PackedBaseField;
+use super::SimdBackend;
 use crate::core::backend::cpu::quotients::{
     batch_random_coeffs, column_line_coeffs, QuotientConstants,
 };
@@ -17,23 +19,23 @@ use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
 
-impl QuotientOps for AVX512Backend {
+impl QuotientOps for SimdBackend {
     fn accumulate_quotients(
         domain: CircleDomain,
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
         sample_batches: &[ColumnSampleBatch],
     ) -> SecureEvaluation<Self> {
-        assert!(domain.log_size() >= VECS_LOG_SIZE as u32);
-        let mut values = SecureColumn::<AVX512Backend>::zeros(domain.size());
+        assert!(domain.log_size() >= LOG_N_LANES);
+        let mut values = SecureColumn::<Self>::zeros(domain.size());
         let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
 
         // TODO(spapini): bit reverse iterator.
-        for vec_row in 0..(1 << (domain.log_size() - VECS_LOG_SIZE as u32)) {
+        for vec_row in 0..1 << (domain.log_size() - LOG_N_LANES) {
             // TODO(spapini): Optimize this, for the small number of columns case.
             let points = std::array::from_fn(|i| {
                 domain.at(bit_reverse_index(
-                    (vec_row << VECS_LOG_SIZE) + i,
+                    (vec_row << LOG_N_LANES) + i,
                     domain.log_size(),
                 ))
             });
@@ -54,8 +56,8 @@ impl QuotientOps for AVX512Backend {
 
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
-    columns: &[&CircleEvaluation<AVX512Backend, BaseField, BitReversedOrder>],
-    quotient_constants: &QuotientConstants<AVX512Backend>,
+    columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
+    quotient_constants: &QuotientConstants<SimdBackend>,
     vec_row: usize,
     domain_point_vec: (PackedBaseField, PackedBaseField),
 ) -> PackedSecureField {
@@ -104,16 +106,16 @@ fn packed_pair_vanishing(
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
-) -> Vec<Col<AVX512Backend, SecureField>> {
+) -> Vec<Col<SimdBackend, SecureField>> {
     let flat_denominators: SecureFieldVec = sample_batches
         .iter()
         .flat_map(|sample_batch| {
-            (0..(1 << (domain.log_size() - VECS_LOG_SIZE as u32)))
+            (0..1 << (domain.log_size() - LOG_N_LANES))
                 .map(|vec_row| {
                     // TODO(spapini): Optimize this, for the small number of columns case.
                     let points = std::array::from_fn(|i| {
                         domain.at(bit_reverse_index(
-                            (vec_row << VECS_LOG_SIZE) + i,
+                            (vec_row << LOG_N_LANES) + i,
                             domain.log_size(),
                         ))
                     });
@@ -131,14 +133,14 @@ fn denominator_inverses(
         .collect();
 
     let mut flat_denominator_inverses = SecureFieldVec::zeros(flat_denominators.len());
-    <AVX512Backend as FieldOps<SecureField>>::batch_inverse(
+    <SimdBackend as FieldOps<SecureField>>::batch_inverse(
         &flat_denominators,
         &mut flat_denominator_inverses,
     );
 
     flat_denominator_inverses
         .data
-        .chunks(domain.size() / K_BLOCK_SIZE)
+        .chunks(domain.size() / N_LANES)
         .map(|denominator_inverses| denominator_inverses.iter().copied().collect())
         .collect()
 }
@@ -147,7 +149,7 @@ fn quotient_constants(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
     domain: CircleDomain,
-) -> QuotientConstants<AVX512Backend> {
+) -> QuotientConstants<SimdBackend> {
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
     let batch_random_coeffs = batch_random_coeffs(sample_batches, random_coeff);
     let denominator_inverses = denominator_inverses(sample_batches, domain);
@@ -158,12 +160,12 @@ fn quotient_constants(
     }
 }
 
-#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
 
-    use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec};
+    use crate::core::backend::simd::column::BaseFieldVec;
+    use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::{CPUBackend, Column};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
@@ -173,14 +175,14 @@ mod tests {
     use crate::qm31;
 
     #[test]
-    fn test_avx_accumulate_quotients() {
+    fn test_accumulate_quotients() {
         const LOG_SIZE: u32 = 8;
         let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
         let e0: BaseFieldVec = (0..domain.size()).map(BaseField::from).collect();
         let e1: BaseFieldVec = (0..domain.size()).map(|i| BaseField::from(2 * i)).collect();
         let columns = vec![
-            CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(domain, e0),
-            CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(domain, e1),
+            CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, e0),
+            CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, e1),
         ];
         let random_coeff = qm31!(1, 2, 3, 4);
         let a = qm31!(3, 6, 9, 12);
@@ -189,15 +191,6 @@ mod tests {
             point: SECURE_FIELD_CIRCLE_GEN,
             columns_and_values: vec![(0, a), (1, b)],
         }];
-        let avx_result = AVX512Backend::accumulate_quotients(
-            domain,
-            &columns.iter().collect_vec(),
-            random_coeff,
-            &samples,
-        )
-        .values
-        .to_vec();
-
         let cpu_columns = columns
             .iter()
             .map(|c| {
@@ -207,7 +200,6 @@ mod tests {
                 )
             })
             .collect::<Vec<_>>();
-
         let cpu_result = CPUBackend::accumulate_quotients(
             domain,
             &cpu_columns.iter().collect_vec(),
@@ -217,6 +209,15 @@ mod tests {
         .values
         .to_vec();
 
-        assert_eq!(avx_result, cpu_result);
+        let res = SimdBackend::accumulate_quotients(
+            domain,
+            &columns.iter().collect_vec(),
+            random_coeff,
+            &samples,
+        )
+        .values
+        .to_vec();
+
+        assert_eq!(res, cpu_result);
     }
 }
