@@ -4,49 +4,80 @@ use std::fmt::Display;
 #[allow(unused_imports)]
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
+// use std::sync::Arc;
+#[allow(unused_imports)]
+use cudarc::driver::{CudaDevice, CudaSlice};
+use itertools::Itertools;
 #[allow(unused_imports)]
 use num_traits::{One, Zero};
 
+#[allow(unused_imports)]
+use super::Device;
+use super::{DEVICE, M512P};
 #[allow(unused_imports)]
 use crate::core::fields::m31::{M31, P};
 // use crate::core::fields::FieldExpOps;
 
 pub const K_BLOCK_SIZE: usize = 16;
-// pub const M512P: __m512i = unsafe { core::mem::transmute([P; K_BLOCK_SIZE]) };
 
-// custom 512 bit vector type (TODO:: performance test on structure ie. )
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 #[repr(C)]
-pub struct _512u {
-    pub inner: [u32; 16],
-}
+pub struct _512u(
+    CudaSlice<u32>, // [u32; 16],
+);
 
-// CUDA implementation of avx512
+// CUDA implementation
 /// Stores 16 M31 elements in a custom 512-bit vector.
 /// Each M31 element is unreduced in the range [0, P].
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct PackedBaseField(pub _512u);
 
 impl PackedBaseField {
-    // pub fn broadcast(value: M31) -> Self {
-    //     Self(unsafe { _mm512_set1_epi32(value.0 as u32) })
-    // }
+    pub fn broadcast(value: M31) -> Self {
+        Self(_512u(
+            DEVICE.lock().unwrap().0.htod_copy(vec![value.0]).unwrap(),
+        ))
+    }
 
     pub fn from_array(v: [M31; K_BLOCK_SIZE]) -> PackedBaseField {
-        unsafe { Self(std::mem::transmute(v)) }
+        Self(_512u(
+            DEVICE
+                .lock()
+                .unwrap()
+                .0
+                .htod_sync_copy(&v.iter().map(|m31| m31.0).collect_vec())
+                .unwrap(),
+        ))
     }
 
     pub fn from_512_unchecked(x: _512u) -> Self {
         Self(x)
     }
 
-    // pub fn to_array(self) -> [M31; K_BLOCK_SIZE] {
-    //     // unsafe { std::mem::transmute(self.reduce()) }
-    // }
+    pub fn to_array(self) -> [M31; K_BLOCK_SIZE] {
+        let host = TryInto::<[u32; K_BLOCK_SIZE]>::try_into(
+            DEVICE
+                .lock()
+                .unwrap()
+                .0
+                .dtoh_sync_copy(&self.reduce().0 .0)
+                .unwrap(),
+        )
+        .unwrap();
+        unsafe { std::mem::transmute(host) }
+    }
 
     /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
     pub fn reduce(self) -> PackedBaseField {
-        Self(unsafe { _mm512_min_epu32(self.0, _mm512_sub_epi32(self.0, M512P)) })
+        Self(_512u(
+            DEVICE.lock().unwrap().vector_512_min_32u(
+                &self.0 .0,
+                &DEVICE
+                    .lock()
+                    .unwrap()
+                    .vector_512_sub_32u(&self.0 .0, &M512P.lock().unwrap()),
+            ),
+        ))
     }
 
     // /// Interleaves self with other.
