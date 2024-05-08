@@ -167,15 +167,26 @@ pub struct GkrArtifact {
 /// circuit) GKR prover implementations.
 ///
 /// [Thaler13]: https://eprint.iacr.org/2013/351.pdf
+#[derive(Debug, Clone, Copy)]
 pub enum Gate {
     _LogUp,
-    _GrandProduct,
+    GrandProduct,
 }
 
 impl Gate {
     /// Returns the output after applying the gate to the mask.
-    fn eval(&self, _mask: &GkrMask) -> Result<Vec<SecureField>, InvalidNumMaskColumnsError> {
-        todo!()
+    fn eval(&self, mask: &GkrMask) -> Result<Vec<SecureField>, InvalidNumMaskColumnsError> {
+        Ok(match self {
+            Self::_LogUp => todo!(),
+            Self::GrandProduct => {
+                if mask.columns().len() != 1 {
+                    return Err(InvalidNumMaskColumnsError);
+                }
+
+                let [a, b] = mask.columns()[0];
+                vec![a * b]
+            }
+        })
     }
 }
 
@@ -239,4 +250,81 @@ pub enum GkrError {
         output: SecureField,
         layer: usize,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{partially_verify_batch, Gate, GkrArtifact, GkrError};
+    use crate::core::backend::CpuBackend;
+    use crate::core::channel::Channel;
+    use crate::core::fields::qm31::SecureField;
+    use crate::core::lookups::gkr_prover::{prove_batch, Layer};
+    use crate::core::lookups::mle::Mle;
+    use crate::core::test_utils::test_channel;
+
+    #[test]
+    fn prove_batch_works() -> Result<(), GkrError> {
+        const LOG_N: usize = 5;
+        let mut channel = test_channel();
+        let col0 = Mle::<CpuBackend, SecureField>::new(channel.draw_felts(1 << LOG_N));
+        let col1 = Mle::<CpuBackend, SecureField>::new(channel.draw_felts(1 << LOG_N));
+        let product0 = col0.iter().product::<SecureField>();
+        let product1 = col1.iter().product::<SecureField>();
+        let input_layers = vec![
+            Layer::GrandProduct(col0.clone()),
+            Layer::GrandProduct(col1.clone()),
+        ];
+        let (proof, _) = prove_batch(&mut test_channel(), input_layers);
+
+        let GkrArtifact {
+            ood_point,
+            claims_to_verify_by_instance,
+            n_variables_by_instance,
+        } = partially_verify_batch(vec![Gate::GrandProduct; 2], &proof, &mut test_channel())?;
+
+        assert_eq!(n_variables_by_instance, [LOG_N, LOG_N]);
+        assert_eq!(proof.output_claims_by_instance.len(), 2);
+        assert_eq!(claims_to_verify_by_instance.len(), 2);
+        assert_eq!(proof.output_claims_by_instance[0], &[product0]);
+        assert_eq!(proof.output_claims_by_instance[1], &[product1]);
+        let claim0 = &claims_to_verify_by_instance[0];
+        let claim1 = &claims_to_verify_by_instance[1];
+        assert_eq!(claim0, &[col0.eval_at_point(&ood_point)]);
+        assert_eq!(claim1, &[col1.eval_at_point(&ood_point)]);
+        Ok(())
+    }
+
+    #[test]
+    fn prove_batch_with_different_sizes_works() -> Result<(), GkrError> {
+        const LOG_N0: usize = 5;
+        const LOG_N1: usize = 7;
+        let mut channel = test_channel();
+        let col0 = Mle::<CpuBackend, SecureField>::new(channel.draw_felts(1 << LOG_N0));
+        let col1 = Mle::<CpuBackend, SecureField>::new(channel.draw_felts(1 << LOG_N1));
+        let product0 = col0.iter().product::<SecureField>();
+        let product1 = col1.iter().product::<SecureField>();
+        let input_layers = vec![
+            Layer::GrandProduct(col0.clone()),
+            Layer::GrandProduct(col1.clone()),
+        ];
+        let (proof, _) = prove_batch(&mut test_channel(), input_layers);
+
+        let GkrArtifact {
+            ood_point,
+            claims_to_verify_by_instance,
+            n_variables_by_instance,
+        } = partially_verify_batch(vec![Gate::GrandProduct; 2], &proof, &mut test_channel())?;
+
+        assert_eq!(n_variables_by_instance, [LOG_N0, LOG_N1]);
+        assert_eq!(proof.output_claims_by_instance.len(), 2);
+        assert_eq!(claims_to_verify_by_instance.len(), 2);
+        assert_eq!(proof.output_claims_by_instance[0], &[product0]);
+        assert_eq!(proof.output_claims_by_instance[1], &[product1]);
+        let claim0 = &claims_to_verify_by_instance[0];
+        let claim1 = &claims_to_verify_by_instance[1];
+        let n_vars = ood_point.len();
+        assert_eq!(claim0, &[col0.eval_at_point(&ood_point[n_vars - LOG_N0..])]);
+        assert_eq!(claim1, &[col1.eval_at_point(&ood_point[n_vars - LOG_N1..])]);
+        Ok(())
+    }
 }
