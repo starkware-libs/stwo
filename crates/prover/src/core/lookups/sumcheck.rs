@@ -186,19 +186,20 @@ pub struct SumcheckProof {
 pub const MAX_DEGREE: usize = 3;
 
 /// Sum-check protocol verification error.
-///
-/// Round 0 corresponds to the first round.
 #[derive(Error, Debug)]
 pub enum SumcheckError {
     #[error("degree of the polynomial in round {round} is too high")]
-    DegreeInvalid { round: usize },
+    DegreeInvalid { round: Round },
     #[error("sum does not match the claim in round {round} (sum {sum}, claim {claim})")]
     SumInvalid {
         claim: SecureField,
         sum: SecureField,
-        round: usize,
+        round: Round,
     },
 }
+
+/// Round 0 corresponds to the first round.
+pub type Round = usize;
 
 #[cfg(test)]
 mod tests {
