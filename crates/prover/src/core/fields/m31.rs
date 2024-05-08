@@ -75,7 +75,10 @@ impl Mul for M31 {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        Self::reduce((self.0 as u64) * (rhs.0 as u64))
+        let v = (self.0 as u64) * (rhs.0 as u64);
+        let w = v + (v >> MODULUS_BITS);
+        let u = v + (w >> MODULUS_BITS);
+        Self((u as u32) & P)
     }
 }
 
