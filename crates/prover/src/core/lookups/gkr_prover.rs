@@ -86,33 +86,50 @@ impl<B: ColumnOps<SecureField>> Deref for EqEvals<B> {
 ///
 /// [LogUp]: https://eprint.iacr.org/2023/1284.pdf
 pub enum Layer<B: GkrOps> {
-    _LogUp(B),
     GrandProduct(Mle<B, SecureField>),
+    LogUpGeneric {
+        numerators: Mle<B, SecureField>,
+        denominators: Mle<B, SecureField>,
+    },
+    LogUpMultiplicities {
+        numerators: Mle<B, BaseField>,
+        denominators: Mle<B, SecureField>,
+    },
+    /// All numerators implicitly equal "1".
+    LogUpSingles {
+        denominators: Mle<B, SecureField>,
+    },
 }
 
 impl<B: GkrOps> Layer<B> {
     /// Returns the number of variables used to interpolate the layer's gate values.
     fn n_variables(&self) -> usize {
         match self {
-            Self::_LogUp(_) => todo!(),
-            Self::GrandProduct(mle) => mle.n_variables(),
+            Self::GrandProduct(mle)
+            | Self::LogUpSingles { denominators: mle }
+            | Self::LogUpMultiplicities {
+                denominators: mle, ..
+            }
+            | Self::LogUpGeneric {
+                denominators: mle, ..
+            } => mle.n_variables(),
         }
+    }
+
+    fn is_output_layer(&self) -> bool {
+        self.n_variables() == 0
     }
 
     /// Produces the next layer from the current layer.
     ///
     /// The next layer is strictly half the size of the current layer.
     /// Returns [`None`] if called on an output layer.
-    fn next_layer(&self) -> Option<Layer<B>> {
+    pub fn next_layer(&self) -> Option<Self> {
         if self.is_output_layer() {
             return None;
         }
 
         Some(B::next_layer(self))
-    }
-
-    fn is_output_layer(&self) -> bool {
-        self.n_variables() == 0
     }
 
     /// Returns each column output if the layer is an output layer, otherwise returns an `Err`.
@@ -122,10 +139,30 @@ impl<B: GkrOps> Layer<B> {
         }
 
         Ok(match self {
-            Self::GrandProduct(col) => {
+            Layer::LogUpSingles { denominators } => {
+                let numerator = SecureField::one();
+                let denominator = denominators.at(0);
+                vec![numerator, denominator]
+            }
+            Layer::LogUpMultiplicities {
+                numerators,
+                denominators,
+            } => {
+                let numerator = numerators.at(0).into();
+                let denominator = denominators.at(0);
+                vec![numerator, denominator]
+            }
+            Layer::LogUpGeneric {
+                numerators,
+                denominators,
+            } => {
+                let numerator = numerators.at(0);
+                let denominator = denominators.at(0);
+                vec![numerator, denominator]
+            }
+            Layer::GrandProduct(col) => {
                 vec![col.at(0)]
             }
-            Self::_LogUp(_) => todo!(),
         })
     }
 
@@ -136,8 +173,24 @@ impl<B: GkrOps> Layer<B> {
         }
 
         match self {
-            Self::_LogUp(_) => todo!(),
             Self::GrandProduct(mle) => Self::GrandProduct(mle.fix_first_variable(x0)),
+            Self::LogUpGeneric {
+                numerators,
+                denominators,
+            } => Self::LogUpGeneric {
+                numerators: numerators.fix_first_variable(x0),
+                denominators: denominators.fix_first_variable(x0),
+            },
+            Self::LogUpMultiplicities {
+                numerators,
+                denominators,
+            } => Self::LogUpGeneric {
+                numerators: numerators.fix_first_variable(x0),
+                denominators: denominators.fix_first_variable(x0),
+            },
+            Self::LogUpSingles { denominators } => Self::LogUpSingles {
+                denominators: denominators.fix_first_variable(x0),
+            },
         }
     }
 
@@ -170,13 +223,14 @@ impl<B: GkrOps> Layer<B> {
     /// hypercube that interpolates `c_i`.
     fn into_multivariate_poly(
         self,
-        _lambda: SecureField,
+        lambda: SecureField,
         eq_evals: &EqEvals<B>,
     ) -> GkrMultivariatePolyOracle<'_, B> {
         GkrMultivariatePolyOracle {
             eq_evals,
             input_layer: self,
             eq_fixed_var_correction: SecureField::one(),
+            lambda,
         }
     }
 }
@@ -207,6 +261,8 @@ pub struct GkrMultivariatePolyOracle<'a, B: GkrOps> {
     pub eq_evals: &'a EqEvals<B>,
     pub input_layer: Layer<B>,
     pub eq_fixed_var_correction: SecureField,
+    /// Used by LogUp to perform a random linear combination of the numerators and denominators.
+    pub lambda: SecureField,
 }
 
 impl<'a, B: GkrOps> MultivariatePolyOracle for GkrMultivariatePolyOracle<'a, B> {
@@ -219,7 +275,7 @@ impl<'a, B: GkrOps> MultivariatePolyOracle for GkrMultivariatePolyOracle<'a, B> 
     }
 
     fn fix_first_variable(self, challenge: SecureField) -> Self {
-        if self.n_variables() == 0 {
+        if self.is_constant() {
             return self;
         }
 
@@ -230,11 +286,16 @@ impl<'a, B: GkrOps> MultivariatePolyOracle for GkrMultivariatePolyOracle<'a, B> 
             eq_evals: self.eq_evals,
             eq_fixed_var_correction,
             input_layer: self.input_layer.fix_first_variable(challenge),
+            lambda: self.lambda,
         }
     }
 }
 
 impl<'a, B: GkrOps> GkrMultivariatePolyOracle<'a, B> {
+    fn is_constant(&self) -> bool {
+        self.n_variables() == 0
+    }
+
     /// Returns all input layer columns restricted to a line.
     ///
     /// Let `l` be the line satisfying `l(0) = b*` and `l(1) = c*`. Oracles that represent constants
@@ -246,14 +307,30 @@ impl<'a, B: GkrOps> GkrMultivariatePolyOracle<'a, B> {
     ///
     /// For more context see <https://people.cs.georgetown.edu/jthaler/ProofsArgsAndZK.pdf> page 64.
     fn try_into_mask(self) -> Result<GkrMask, NotConstantPolyError> {
-        if self.n_variables() != 0 {
+        if !self.is_constant() {
             return Err(NotConstantPolyError);
         }
 
-        match self.input_layer {
-            Layer::_LogUp(_) => todo!(),
-            Layer::GrandProduct(mle) => Ok(GkrMask::new(vec![mle.to_cpu().try_into().unwrap()])),
-        }
+        let columns = match self.input_layer {
+            Layer::GrandProduct(mle) => vec![mle.to_cpu().try_into().unwrap()],
+            Layer::LogUpGeneric {
+                numerators,
+                denominators,
+            } => {
+                let numerators = numerators.to_cpu().try_into().unwrap();
+                let denominators = denominators.to_cpu().try_into().unwrap();
+                vec![numerators, denominators]
+            }
+            // Should never get called.
+            Layer::LogUpMultiplicities { .. } => unimplemented!(),
+            Layer::LogUpSingles { denominators } => {
+                let numerators = [SecureField::one(); 2];
+                let denominators = denominators.to_cpu().try_into().unwrap();
+                vec![numerators, denominators]
+            }
+        };
+
+        Ok(GkrMask::new(columns))
     }
 }
 
