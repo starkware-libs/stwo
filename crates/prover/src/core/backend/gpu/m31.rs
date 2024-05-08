@@ -14,13 +14,13 @@ use num_traits::{One, Zero};
 #[allow(unused_imports)]
 use super::Device;
 use super::{DEVICE, M512P};
+// use crate::core::fields::FieldExpOps;
+use crate::core::backend::gpu::InstructionSet;
 #[allow(unused_imports)]
 use crate::core::fields::m31::{M31, P};
-// use crate::core::fields::FieldExpOps;
-
 pub const K_BLOCK_SIZE: usize = 16;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 #[repr(C)]
 pub struct _512u(
     CudaSlice<u32>, // [u32; 16],
@@ -29,23 +29,20 @@ pub struct _512u(
 // CUDA implementation
 /// Stores 16 M31 elements in a custom 512-bit vector.
 /// Each M31 element is unreduced in the range [0, P].
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct PackedBaseField(pub _512u);
 
 impl PackedBaseField {
     pub fn broadcast(value: M31) -> Self {
-        Self(_512u(
-            DEVICE.lock().unwrap().0.htod_copy(vec![value.0]).unwrap(),
-        ))
+        Self(_512u(DEVICE.vector_512_set_32u(
+            &DEVICE.htod_copy(vec![value.0]).unwrap(),
+        )))
     }
 
     pub fn from_array(v: [M31; K_BLOCK_SIZE]) -> PackedBaseField {
         Self(_512u(
             DEVICE
-                .lock()
-                .unwrap()
-                .0
-                .htod_sync_copy(&v.iter().map(|m31| m31.0).collect_vec())
+                .htod_copy(v.iter().map(|m31| m31.0).collect_vec())
                 .unwrap(),
         ))
     }
@@ -56,12 +53,7 @@ impl PackedBaseField {
 
     pub fn to_array(self) -> [M31; K_BLOCK_SIZE] {
         let host = TryInto::<[u32; K_BLOCK_SIZE]>::try_into(
-            DEVICE
-                .lock()
-                .unwrap()
-                .0
-                .dtoh_sync_copy(&self.reduce().0 .0)
-                .unwrap(),
+            DEVICE.dtoh_sync_copy(&self.reduce().0 .0).unwrap(),
         )
         .unwrap();
         unsafe { std::mem::transmute(host) }
@@ -69,15 +61,10 @@ impl PackedBaseField {
 
     /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
     pub fn reduce(self) -> PackedBaseField {
-        Self(_512u(
-            DEVICE.lock().unwrap().vector_512_min_32u(
-                &self.0 .0,
-                &DEVICE
-                    .lock()
-                    .unwrap()
-                    .vector_512_sub_32u(&self.0 .0, &M512P.lock().unwrap()),
-            ),
-        ))
+        Self(_512u(DEVICE.vector_512_min_32u(
+            &self.0 .0,
+            &DEVICE.vector_512_sub_32u(&self.0 .0, &M512P),
+        )))
     }
 
     // /// Interleaves self with other.
@@ -124,7 +111,7 @@ impl PackedBaseField {
 
 // impl Display for PackedBaseField {
 //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         let v = self.to_array();
+//         let v = self.clone().to_array();
 //         for elem in v.iter() {
 //             write!(f, "{} ", elem)?;
 //         }
@@ -132,58 +119,80 @@ impl PackedBaseField {
 //     }
 // }
 
-// impl Add for PackedBaseField {
-//     type Output = Self;
+impl Add for PackedBaseField {
+    type Output = Self;
 
-//     /// Adds two packed M31 elements, and reduces the result to the range `[0,P]`.
-//     /// Each value is assumed to be in unreduced form, [0, P] including P.
-//     #[inline(always)]
-//     fn add(self, rhs: Self) -> Self::Output {
-//         Self(unsafe {
-//             // Add word by word. Each word is in the range [0, 2P].
-//             let c = _mm512_add_epi32(self.0, rhs.0);
-//             // Apply min(c, c-P) to each word.
-//             // When c in [P,2P], then c-P in [0,P] which is always less than [P,2P].
-//             // When c in [0,P-1], then c-P in [2^32-P,2^32-1] which is always greater than
-// [0,P-1].             _mm512_min_epu32(c, _mm512_sub_epi32(c, M512P))
-//         })
-//     }
-// }
+    /// Adds two packed M31 elements, and reduces the result to the range `[0,P]`.
+    /// Each value is assumed to be in unreduced form, [0, P] including P.
+    #[inline(always)]
+    fn add(self, rhs: Self) -> Self::Output {
+        let c = DEVICE.vector_512_add_32u(&self.0 .0, &rhs.0 .0);
+        // let _m512p = M512P.read().unwrap();
+        // drop(_m512p);
+        let c1 = DEVICE.vector_512_sub_32u(&c, &M512P);
+        let c2 = DEVICE.vector_512_min_32u(&c, &c1);
+        Self(_512u(c2))
+        // Self(
+        //     // Add word by word. Each word is in the range [0, 2P].
+
+        //     // Apply min(c, c-P) to each word.
+        //     // When c in [P,2P], then c-P in [0,P] which is always less than [P,2P].
+        //     // When c in [0,P-1], then c-P in [2^32-P,2^32-1] which is always greater than
+        // [0,P-1] _512u(
+        //         DEVICE.lock().unwrap().vector_512_min_32u(
+        //             &c,
+        //             &DEVICE
+        //                 .lock()
+        //                 .unwrap()
+        //                 .vector_512_sub_32u(&c, &M512P.lock().unwrap()),
+        //         ),
+        //     ),
+        // )
+    }
+}
 #[cfg(test)]
 mod tests {
-    // use itertools::Itertools;
     #[allow(unused_imports)]
+    use itertools::Itertools;
+
     use super::PackedBaseField;
+    use crate::core::backend::gpu::DEVICE;
     #[allow(unused_imports)]
     use crate::core::fields::m31::{M31, P};
+    #[allow(unused_imports)]
+    use crate::core::fields::Field;
     // use crate::core::fields::{Field, FieldExpOps};
 
     /// Tests field operations where field elements are in reduced form.
     #[test]
     fn test_gpu_basic_ops() {
-        // let values = [
-        //     0,
-        //     1,
-        //     2,
-        //     10,
-        //     (P - 1) / 2,
-        //     (P + 1) / 2,
-        //     P - 2,
-        //     P - 1,
-        //     0,
-        //     1,
-        //     2,
-        //     10,
-        //     (P - 1) / 2,
-        //     (P + 1) / 2,
-        //     P - 2,
-        //     P - 1,
-        // ]
-        // .map(M31::from_u32_unchecked);
-        // let avx_values = PackedBaseField::from_array(values);
+        let values = [
+            0,
+            1,
+            2,
+            10,
+            (P - 1) / 2,
+            (P + 1) / 2,
+            P - 2,
+            P - 1,
+            0,
+            1,
+            2,
+            10,
+            (P - 1) / 2,
+            (P + 1) / 2,
+            P - 2,
+            P - 1,
+        ]
+        .map(M31::from_u32_unchecked);
 
+        let avx_values1 = PackedBaseField::from_array(values);
+        let avx_values2 = PackedBaseField::from_array(values);
+        let x = avx_values1 + avx_values2;
+        // let x = DEVICE.lock().unwrap().0.dtoh_sync_copy(&x.0 .0);
+        println!("{:?}", x);
         // assert_eq!(
-        //     (avx_values + avx_values)
+        //     (avx_values1 + avx_values2)
         //         .to_array()
         //         .into_iter()
         //         .collect_vec(),
