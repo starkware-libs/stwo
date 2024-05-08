@@ -12,10 +12,12 @@ use super::sumcheck::MultivariatePolyOracle;
 use super::utils::{eq, random_linear_combination, UnivariatePoly};
 use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::channel::Channel;
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::{Field, FieldExpOps};
 use crate::core::lookups::sumcheck;
 
-pub trait GkrOps: MleOps<SecureField> {
+pub trait GkrOps: MleOps<BaseField> + MleOps<SecureField> {
     /// Returns evaluations `eq(x, y) * v` for all `x` in `{0, 1}^n`.
     ///
     /// Note [`Mle`] stores values in bit-reversed order.
@@ -85,13 +87,16 @@ impl<B: ColumnOps<SecureField>> Deref for EqEvals<B> {
 /// [LogUp]: https://eprint.iacr.org/2023/1284.pdf
 pub enum Layer<B: GkrOps> {
     _LogUp(B),
-    _GrandProduct(B),
+    GrandProduct(Mle<B, SecureField>),
 }
 
 impl<B: GkrOps> Layer<B> {
     /// Returns the number of variables used to interpolate the layer's gate values.
     fn n_variables(&self) -> usize {
-        todo!()
+        match self {
+            Self::_LogUp(_) => todo!(),
+            Self::GrandProduct(mle) => mle.n_variables(),
+        }
     }
 
     /// Produces the next layer from the current layer.
@@ -112,7 +117,28 @@ impl<B: GkrOps> Layer<B> {
 
     /// Returns each column output if the layer is an output layer, otherwise returns an `Err`.
     fn try_into_output_layer_values(self) -> Result<Vec<SecureField>, NotOutputLayerError> {
-        todo!()
+        if !self.is_output_layer() {
+            return Err(NotOutputLayerError);
+        }
+
+        Ok(match self {
+            Self::GrandProduct(col) => {
+                vec![col.at(0)]
+            }
+            Self::_LogUp(_) => todo!(),
+        })
+    }
+
+    /// Returns a transformed layer with the first variable of each column fixed to `assignment`.
+    fn fix_first_variable(self, x0: SecureField) -> Self {
+        if self.n_variables() == 0 {
+            return self;
+        }
+
+        match self {
+            Self::_LogUp(_) => todo!(),
+            Self::GrandProduct(mle) => Self::GrandProduct(mle.fix_first_variable(x0)),
+        }
     }
 
     /// Represents the next GKR layer evaluation as a multivariate polynomial which uses this GKR
@@ -145,16 +171,37 @@ impl<B: GkrOps> Layer<B> {
     fn into_multivariate_poly(
         self,
         _lambda: SecureField,
-        _eq_evals: &EqEvals<B>,
+        eq_evals: &EqEvals<B>,
     ) -> GkrMultivariatePolyOracle<'_, B> {
-        todo!()
+        GkrMultivariatePolyOracle {
+            eq_evals,
+            input_layer: self,
+            eq_fixed_var_correction: SecureField::one(),
+        }
     }
 }
 
 #[derive(Debug)]
 struct NotOutputLayerError;
 
-/// A multivariate polynomial that expresses the relation between two consecutive GKR layers.
+/// Multivariate polynomial `P` that expresses the relation between two consecutive GKR layers.
+///
+/// When the input layer is [`Layer::GrandProduct`] (represented by multilinear column `inp`)
+/// the polynomial represents:
+///
+/// ```text
+/// P(x) = eq(x, y) * inp(x, 0) * inp(x, 1)
+/// ```
+///
+/// When the input layer is LogUp (represented by multilinear columns `inp_numer` and
+/// `inp_denom`) the polynomial represents:
+///
+/// ```text
+/// numer(x) = inp_numer(x, 0) * inp_denom(x, 1) + inp_numer(x, 1) * inp_denom(x, 0)
+/// denom(x) = inp_denom(x, 0) * inp_denom(x, 1)
+///
+/// P(x) = eq(x, y) * (numer(x) + lambda * denom(x))
+/// ```
 pub struct GkrMultivariatePolyOracle<'a, B: GkrOps> {
     /// `eq_evals` passed by `Layer::into_multivariate_poly()`.
     pub eq_evals: &'a EqEvals<B>,
@@ -164,15 +211,26 @@ pub struct GkrMultivariatePolyOracle<'a, B: GkrOps> {
 
 impl<'a, B: GkrOps> MultivariatePolyOracle for GkrMultivariatePolyOracle<'a, B> {
     fn n_variables(&self) -> usize {
-        todo!()
+        self.input_layer.n_variables() - 1
     }
 
-    fn sum_as_poly_in_first_variable(&self, _claim: SecureField) -> UnivariatePoly<SecureField> {
-        todo!()
+    fn sum_as_poly_in_first_variable(&self, claim: SecureField) -> UnivariatePoly<SecureField> {
+        B::sum_as_poly_in_first_variable(self, claim)
     }
 
-    fn fix_first_variable(self, _challenge: SecureField) -> Self {
-        todo!()
+    fn fix_first_variable(self, challenge: SecureField) -> Self {
+        if self.n_variables() == 0 {
+            return self;
+        }
+
+        let z0 = self.eq_evals.y()[self.eq_evals.y().len() - self.n_variables()];
+        let eq_fixed_var_correction = self.eq_fixed_var_correction * eq(&[challenge], &[z0]);
+
+        Self {
+            eq_evals: self.eq_evals,
+            eq_fixed_var_correction,
+            input_layer: self.input_layer.fix_first_variable(challenge),
+        }
     }
 }
 
@@ -188,7 +246,14 @@ impl<'a, B: GkrOps> GkrMultivariatePolyOracle<'a, B> {
     ///
     /// For more context see <https://people.cs.georgetown.edu/jthaler/ProofsArgsAndZK.pdf> page 64.
     fn try_into_mask(self) -> Result<GkrMask, NotConstantPolyError> {
-        todo!()
+        if self.n_variables() != 0 {
+            return Err(NotConstantPolyError);
+        }
+
+        match self.input_layer {
+            Layer::_LogUp(_) => todo!(),
+            Layer::GrandProduct(mle) => Ok(GkrMask::new(vec![mle.to_cpu().try_into().unwrap()])),
+        }
     }
 }
 
@@ -318,4 +383,124 @@ fn gen_layers<B: GkrOps>(input_layer: Layer<B>) -> Vec<Layer<B>> {
     let layers = successors(Some(input_layer), |layer| layer.next_layer()).collect_vec();
     assert_eq!(layers.len(), n_variables + 1);
     layers
+}
+
+/// Corrects and interpolates GKR instance sumcheck round polynomials that are generated with the
+/// precomputed `eq(x, y)` evaluations provided by `Layer::into_multivariate_poly()`.
+///
+/// Let `y` be a fixed vector of length `n` and let `z` be a subvector comprising of the last `k`
+/// elements of `y`. Returns the univariate polynomial `f(t) = sum_x eq((t, x), z) * p(t, x)` for
+/// `x` in the boolean hypercube `{0, 1}^(k-1)` when provided with:
+///
+/// * `claim` equalling `f(0) + f(1)`.
+/// * `eval_at_0/2` equalling `sum_x eq(({0}^(n-k+1), x), y) * p(t, x)` at `t=0,2` respectively.
+///
+/// Note that `f` must have degree <= 3.
+///
+/// For more context see `Layer::into_multivariate_poly()` docs.
+/// See also <https://ia.cr/2024/108> (section 3.2).
+///
+/// # Panics
+///
+/// Panics if:
+/// * `k` is zero or greater than the length of `y`.
+/// * `z_0` is zero.
+pub fn _correct_sum_as_poly_in_first_variable(
+    eval_at_0: SecureField,
+    eval_at_2: SecureField,
+    claim: SecureField,
+    y: &[SecureField],
+    k: usize,
+) -> UnivariatePoly<SecureField> {
+    assert_ne!(k, 0);
+    let n = y.len();
+    assert!(k <= n);
+
+    let z = &y[n - k..];
+
+    // Corrects the difference between two sums:
+    // 1. `sum_x eq(({0}^(n-k+1), x), y) * p(t, x)`
+    // 2. `sum_x eq((0, x), z) * p(t, x)`
+    let eq_y_to_z_correction_factor = eq(&vec![SecureField::zero(); n - k], &y[0..n - k]).inverse();
+
+    // Corrects the difference between two sums:
+    // 1. `sum_x eq((0, x), z) * p(t, x)`
+    // 2. `sum_x eq((t, x), z) * p(t, x)`
+    let eq_correction_factor_at = |t| eq(&[t], &[z[0]]) / eq(&[SecureField::zero()], &[z[0]]);
+
+    // Let `v(t) = sum_x eq((0, x), z) * p(t, x)`. Apply trick from
+    // <https://ia.cr/2024/108> (section 3.2) to obtain `f` from `v`.
+    let t0: SecureField = BaseField::zero().into();
+    let t1: SecureField = BaseField::one().into();
+    let t2: SecureField = BaseField::from(2).into();
+    let t3: SecureField = BaseField::from(3).into();
+
+    // Obtain evals `v(0)`, `v(1)`, `v(2)`.
+    let mut y0 = eq_y_to_z_correction_factor * eval_at_0;
+    let mut y1 = (claim - y0) / eq_correction_factor_at(t1);
+    let mut y2 = eq_y_to_z_correction_factor * eval_at_2;
+
+    // Interpolate `v` to find `v(3)`. Note `v` has degree <= 2.
+    let v = UnivariatePoly::interpolate_lagrange(&[t0, t1, t2], &[y0, y1, y2]);
+    let mut y3 = v.eval_at_point(t3);
+
+    // Obtain evals of `f(0)`, `f(1)`, `f(2)`, `f(3)`.
+    y0 *= eq_correction_factor_at(t0);
+    y1 *= eq_correction_factor_at(t1);
+    y2 *= eq_correction_factor_at(t2);
+    y3 *= eq_correction_factor_at(t3);
+
+    // Interpolate `f(t)`. Note `f(t)` has degree <= 3.
+    UnivariatePoly::interpolate_lagrange(&[t0, t1, t2, t3], &[y0, y1, y2, y3])
+}
+
+/// Computes `r(t) = sum_x eq((t, x), z) * p(t, x)` from evaluations of
+/// `f(t) = sum_x eq(({0}^(n-k), 0, x), y) * p(t, x)`.
+///
+/// Note `z = y_{-k:}`, `claim` must equal `r(0) + r(1)` and `r` must have degree <= 3.
+///
+/// For more context see `Layer::into_multivariate_poly()` docs.
+/// See also <https://ia.cr/2024/108> (section 3.2).
+pub fn correct_sum_as_poly_in_first_variable(
+    f_at_0: SecureField,
+    f_at_2: SecureField,
+    claim: SecureField,
+    y: &[SecureField],
+    k: usize,
+) -> UnivariatePoly<SecureField> {
+    assert_ne!(k, 0);
+    let n = y.len();
+    assert!(k <= n);
+
+    // We evaluated `f(0)` and `f(2)` - the inputs.
+    // We want to compute `r(t) = f(t) * eq(t, z0) / eq(0, z0) / eq(0, y_{0:k})`.
+    let (y_prefix, z) = y.split_at(n - k);
+
+    // `a = eq(0, y_prefix)` is a constant
+    let a_const = eq(&vec![SecureField::zero(); y_prefix.len()], y_prefix);
+
+    // eq(t, z0) / eq(0, z0)
+    // = (t * z0 + (1 - t)(1 - z0)) / (1 - z0)
+    // = 1 - t + t * z0 / (1 - z0)
+    // = 1 - t(1 - z0 / (1 - z0))
+    // = 1 - t(2 - 1 / (1 - z0))
+    // = 1 - b * t
+    let b_const = SecureField::from(BaseField::from(2)) - (SecureField::one() - z[0]).inverse();
+
+    // We get that `r(t) = f(t) * (1 - b * t) / a`.
+    let r_at_0 = f_at_0 / a_const;
+    let r_at_1 = claim - r_at_0;
+    let r_at_2 = f_at_2 * (SecureField::one() - b_const.double()) / a_const;
+    let r_at_b_inv = SecureField::zero();
+
+    // Interpolate. Note `r(t)` has degree <= 3.
+    UnivariatePoly::interpolate_lagrange(
+        &[
+            SecureField::zero(),
+            SecureField::one(),
+            SecureField::from(BaseField::from(2)),
+            b_const.inverse(),
+        ],
+        &[r_at_0, r_at_1, r_at_2, r_at_b_inv],
+    )
 }
