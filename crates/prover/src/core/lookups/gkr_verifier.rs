@@ -7,6 +7,7 @@ use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::sumcheck;
+use crate::core::lookups::utils::Fraction;
 
 /// Partially verifies a batch GKR proof.
 ///
@@ -177,7 +178,7 @@ pub struct GkrArtifact {
 /// [Thaler13]: https://eprint.iacr.org/2013/351.pdf
 #[derive(Debug, Clone, Copy)]
 pub enum Gate {
-    _LogUp,
+    LogUp,
     GrandProduct,
 }
 
@@ -185,7 +186,20 @@ impl Gate {
     /// Returns the output after applying the gate to the mask.
     fn eval(&self, mask: &GkrMask) -> Result<Vec<SecureField>, InvalidNumMaskColumnsError> {
         Ok(match self {
-            Self::_LogUp => todo!(),
+            Self::LogUp => {
+                if mask.columns().len() != 2 {
+                    return Err(InvalidNumMaskColumnsError);
+                }
+
+                let [numerator_a, numerator_b] = mask.columns()[0];
+                let [denominator_a, denominator_b] = mask.columns()[1];
+
+                let a = Fraction::new(numerator_a, denominator_a);
+                let b = Fraction::new(numerator_b, denominator_b);
+                let res = a + b;
+
+                vec![res.numerator, res.denominator]
+            }
             Self::GrandProduct => {
                 if mask.columns().len() != 1 {
                     return Err(InvalidNumMaskColumnsError);
