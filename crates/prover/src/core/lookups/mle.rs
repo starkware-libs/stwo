@@ -72,7 +72,7 @@ mod test {
         B: MleOps<F>,
     {
         /// Evaluates the multilinear polynomial at `point`.
-        pub(crate) fn eval_at_point(self, point: &[SecureField]) -> SecureField {
+        pub(crate) fn eval_at_point(&self, point: &[SecureField]) -> SecureField {
             pub fn eval(mle_evals: &[SecureField], p: &[SecureField]) -> SecureField {
                 match p {
                     [] => mle_evals[0],
