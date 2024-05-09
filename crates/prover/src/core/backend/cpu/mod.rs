@@ -74,17 +74,4 @@ mod tests {
 
         assert_eq!(expected, dst);
     }
-
-    // TODO(Ohad): remove this test.
-    #[test]
-    fn batch_inverse_reused_vec_test() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let column = rng.gen::<[QM31; 16]>().to_vec();
-        let expected = column.iter().map(|e| e.inverse()).collect_vec();
-        let mut dst = Column::zeros(column.len());
-
-        CPUBackend::batch_inverse(&column, &mut dst);
-
-        assert_eq!(expected, dst);
-    }
 }
