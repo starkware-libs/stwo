@@ -20,7 +20,6 @@ use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
 
 impl AVX512Backend {
-    // TODO(Ohad): optimize.
     fn twiddle_at<F: Field>(mappings: &[F], mut index: usize) -> F {
         debug_assert!(
             (1 << mappings.len()) as usize >= index,
@@ -32,11 +31,10 @@ impl AVX512Backend {
         for &num in mappings.iter() {
             if index & 1 == 1 {
                 product *= num;
-            }
-            index >>= 1;
-            if index == 0 {
+            } else if index == 0 {
                 break;
             }
+            index >>= 1;
         }
 
         product
