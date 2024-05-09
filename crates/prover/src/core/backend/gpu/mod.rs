@@ -106,21 +106,24 @@ trait Load {
 }
 
 impl Load for Arc<CudaDevice> {
+    // Note:: intrinsic Math operations are not computing properly...? GPU issue?
     fn load_vector_512_operations(&mut self) {
         let vector_512_operations = compile_ptx("
-            extern \"C\" __global__ void vector_512_add_32u(const unsigned int *in1, const unsigned int *in2, unsigned int *out) {
+            extern \"C\" __global__ void vector_512_add_32u( unsigned int *in1,  unsigned int *in2, unsigned int *out) {
                 unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
                 const unsigned int VECTOR_SIZE = 16; 
                 if (i < VECTOR_SIZE) {
                     out[i] = in1[i] + in2[i];
+                    // out[i] = __vadd4(in1[i], in2[i]);
                 }
             }
 
             extern \"C\" __global__ void vector_512_min_32u(const unsigned int *in1, const unsigned int *in2, unsigned int *out) {
                 unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
                 const unsigned int VECTOR_SIZE = 16; 
-                if (i < VECTOR_SIZE) {
-                    out[i] = in1[i] < in2[i] ? in1[i] : in2[i];
+                if (i  < VECTOR_SIZE) {
+                    out[i] = min(in1[i], in2[i]);
+                    // out[i] = __vminu4(in1[i], in2[i]);
                 }
             }
 
@@ -128,7 +131,8 @@ impl Load for Arc<CudaDevice> {
                 unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
                 const unsigned int VECTOR_SIZE = 16; 
                 if (i < VECTOR_SIZE) {
-                    out[i] = __vsub4(in1[i], in2[i]);
+                    // out[i] = __vsub4(in1[i], in2[i]);
+                    out[i] = in1[i] -in2[i]; 
                 }
             }
 

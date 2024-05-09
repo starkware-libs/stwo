@@ -17,6 +17,7 @@ bytemuck = { workspace = true, features = ["derive"] }
 rand = { version = "0.8.5", default-features = false, features = ["small_rng"] }
 tracing.workspace = true
 cudarc.workspace = true
+once_cell.workspace = true
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
