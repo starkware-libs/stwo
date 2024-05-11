@@ -1,12 +1,14 @@
+use std::iter::zip;
+use std::mem::transmute;
+
 use bytemuck::{cast_slice, Zeroable};
 use num_traits::One;
 
-use super::fft::{ifft, CACHED_FFT_LOG_SIZE};
-use super::m31::PackedBaseField;
+use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE};
+use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
-use super::{as_cpu_vec, AVX512Backend, K_BLOCK_SIZE, VECS_LOG_SIZE};
-use crate::core::backend::avx512::fft::rfft;
-use crate::core::backend::avx512::BaseFieldVec;
+use super::SimdBackend;
+use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::{CPUBackend, Col};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
@@ -19,7 +21,7 @@ use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
 
-impl AVX512Backend {
+impl SimdBackend {
     // TODO(Ohad): optimize.
     fn twiddle_at<F: Field>(mappings: &[F], mut index: usize) -> F {
         debug_assert!(
@@ -66,11 +68,11 @@ impl AVX512Backend {
         // complexity for now, we just reverse the mappings, transpose, then reverse back.
         // TODO(Ohad): optimize. consider changing the caller to expect the mappings in
         // reversed-tranposed order.
-        if log_size as usize > CACHED_FFT_LOG_SIZE {
+        if log_size > CACHED_FFT_LOG_SIZE {
             mappings.reverse();
             let n = mappings.len();
-            let n0 = (n - VECS_LOG_SIZE) / 2;
-            let n1 = (n - VECS_LOG_SIZE + 1) / 2;
+            let n0 = (n - LOG_N_LANES as usize) / 2;
+            let n1 = (n - LOG_N_LANES as usize + 1) / 2;
             let (ab, c) = mappings.split_at_mut(n1);
             let (a, _b) = ab.split_at_mut(n0);
             // Swap content of a,c.
@@ -119,21 +121,21 @@ impl AVX512Backend {
 
 // TODO(spapini): Everything is returned in redundant representation, where values can also be P.
 // Decide if and when it's ok and what to do if it's not.
-impl PolyOps for AVX512Backend {
+impl PolyOps for SimdBackend {
     // The twiddles type is i32, and not BaseField. This is because the fast AVX mul implementation
     //  requries one of the numbers to be shifted left by 1 bit. This is not a reduced
     //  representation of the field.
-    type Twiddles = Vec<i32>;
+    type Twiddles = Vec<u32>;
 
     fn new_canonical_ordered(
         coset: CanonicCoset,
         values: Col<Self, BaseField>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(spapini): Optimize.
-        let eval = CPUBackend::new_canonical_ordered(coset, as_cpu_vec(values));
+        let eval = CPUBackend::new_canonical_ordered(coset, values.into_cpu_vec());
         CircleEvaluation::new(
             eval.domain,
-            Col::<AVX512Backend, BaseField>::from_iter(eval.values),
+            Col::<SimdBackend, BaseField>::from_iter(eval.values),
         )
     }
 
@@ -149,18 +151,15 @@ impl PolyOps for AVX512Backend {
         // Safe because [PackedBaseField] is aligned on 64 bytes.
         unsafe {
             ifft::ifft(
-                std::mem::transmute(values.data.as_mut_ptr()),
+                transmute(values.data.as_mut_ptr()),
                 &twiddles,
                 log_size as usize,
             );
         }
 
         // TODO(spapini): Fuse this multiplication / rotation.
-        let inv = BaseField::from_u32_unchecked(eval.domain.size() as u32).inverse();
-        let inv = PackedBaseField::from_array([inv; 16]);
-        for x in values.data.iter_mut() {
-            *x *= inv;
-        }
+        let inv = PackedBaseField::broadcast(BaseField::from(eval.domain.size()).inverse());
+        values.data.iter_mut().for_each(|x| *x *= inv);
 
         CirclePoly::new(values)
     }
@@ -191,7 +190,7 @@ impl PolyOps for AVX512Backend {
         // twiddle_high) mod 2^n, then multiply by twiddle_low, and sum to get the final result.
         let mut sum = PackedSecureField::zeroed();
         let mut twiddle_high = SecureField::one();
-        for (i, coeff_chunk) in poly.coeffs.data.array_chunks::<K_BLOCK_SIZE>().enumerate() {
+        for (i, coeff_chunk) in poly.coeffs.data.array_chunks::<N_LANES>().enumerate() {
             // For every chunk of 2 ^ 4 * 2 ^ 4 = 2 ^ 8 elements, the twiddle high is the same.
             // Multiply it by every mid twiddle factor to get the factors for the current chunk.
             let high_twiddle_factors =
@@ -200,10 +199,8 @@ impl PolyOps for AVX512Backend {
             // Sum the coefficients multiplied by each corrseponsing twiddle. Result is effectivley
             // an array[16] where the value at index 'i' is the sum of all coefficients at indices
             // that are i mod 16.
-            for (&packed_coeffs, &mid_twiddle) in
-                coeff_chunk.iter().zip(high_twiddle_factors.iter())
-            {
-                sum += PackedSecureField::broadcast(mid_twiddle).mul_packed_m31(packed_coeffs);
+            for (&packed_coeffs, mid_twiddle) in zip(coeff_chunk, high_twiddle_factors) {
+                sum += PackedSecureField::broadcast(mid_twiddle) * packed_coeffs;
             }
 
             // Advance twiddle high.
@@ -226,8 +223,8 @@ impl PolyOps for AVX512Backend {
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(spapini): Precompute twiddles.
         // TODO(spapini): Handle small cases.
-        let log_size = domain.log_size() as usize;
-        let fft_log_size = poly.log_size() as usize;
+        let log_size = domain.log_size();
+        let fft_log_size = poly.log_size();
         assert!(
             log_size >= fft_log_size,
             "Can only evaluate on larger domains"
@@ -239,17 +236,17 @@ impl PolyOps for AVX512Backend {
         let log_subdomains = log_size - fft_log_size;
 
         // Alllocate the destination buffer without initializing.
-        let mut values = Vec::with_capacity(domain.size() >> VECS_LOG_SIZE);
+        let mut values = Vec::with_capacity(domain.size() >> LOG_N_LANES);
         #[allow(clippy::uninit_vec)]
         unsafe {
-            values.set_len(domain.size() >> VECS_LOG_SIZE)
+            values.set_len(domain.size() >> LOG_N_LANES)
         };
 
         for i in 0..(1 << log_subdomains) {
             // The subdomain twiddles are a slice of the large domain twiddles.
             let subdomain_twiddles = (0..(fft_log_size - 1))
                 .map(|layer_i| {
-                    &twiddles[layer_i]
+                    &twiddles[layer_i as usize]
                         [i << (fft_log_size - 2 - layer_i)..(i + 1) << (fft_log_size - 2 - layer_i)]
                 })
                 .collect::<Vec<_>>();
@@ -257,14 +254,14 @@ impl PolyOps for AVX512Backend {
             // FFT from the coefficients buffer to the values chunk.
             unsafe {
                 rfft::fft(
-                    std::mem::transmute(poly.coeffs.data.as_ptr()),
-                    std::mem::transmute(
-                        values[i << (fft_log_size - VECS_LOG_SIZE)
-                            ..(i + 1) << (fft_log_size - VECS_LOG_SIZE)]
+                    transmute(poly.coeffs.data.as_ptr()),
+                    transmute(
+                        values[i << (fft_log_size - LOG_N_LANES)
+                            ..(i + 1) << (fft_log_size - LOG_N_LANES)]
                             .as_mut_ptr(),
                     ),
                     &subdomain_twiddles,
-                    fft_log_size,
+                    fft_log_size as usize,
                 );
             }
         }
@@ -305,7 +302,7 @@ impl PolyOps for AVX512Backend {
 }
 
 fn slow_eval_at_point(
-    poly: &CirclePoly<AVX512Backend>,
+    poly: &CirclePoly<SimdBackend>,
     point: CirclePoint<SecureField>,
 ) -> SecureField {
     let mut mappings = vec![point.y, point.x];
@@ -317,10 +314,10 @@ fn slow_eval_at_point(
     mappings.reverse();
 
     // If the polynomial is large, the fft does a transpose in the middle.
-    if poly.log_size() as usize > CACHED_FFT_LOG_SIZE {
+    if poly.log_size() > CACHED_FFT_LOG_SIZE {
         let n = mappings.len();
-        let n0 = (n - VECS_LOG_SIZE) / 2;
-        let n1 = (n - VECS_LOG_SIZE + 1) / 2;
+        let n0 = (n - LOG_N_LANES as usize) / 2;
+        let n1 = (n - LOG_N_LANES as usize + 1) / 2;
         let (ab, c) = mappings.split_at_mut(n1);
         let (a, _b) = ab.split_at_mut(n0);
         // Swap content of a,c.
@@ -329,77 +326,74 @@ fn slow_eval_at_point(
     fold(cast_slice::<_, BaseField>(&poly.coeffs.data), &mappings)
 }
 
-#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
 #[cfg(test)]
 mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::backend::avx512::circle::slow_eval_at_point;
-    use crate::core::backend::avx512::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
-    use crate::core::backend::avx512::AVX512Backend;
+    use crate::core::backend::simd::circle::slow_eval_at_point;
+    use crate::core::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
+    use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::Column;
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PolyOps};
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
 
     #[test]
     fn test_interpolate_and_eval() {
-        for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 4) {
-            let domain = CanonicCoset::new(log_size as u32).circle_domain();
-            let evaluation = CircleEvaluation::<AVX512Backend, BaseField, BitReversedOrder>::new(
+        for log_size in MIN_FFT_LOG_SIZE..CACHED_FFT_LOG_SIZE + 4 {
+            let domain = CanonicCoset::new(log_size).circle_domain();
+            let evaluation = CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(
                 domain,
-                (0..(1 << log_size))
-                    .map(BaseField::from_u32_unchecked)
-                    .collect(),
+                (0..1 << log_size).map(BaseField::from).collect(),
             );
+
             let poly = evaluation.clone().interpolate();
             let evaluation2 = poly.evaluate(domain);
+
             assert_eq!(evaluation.values.to_cpu(), evaluation2.values.to_cpu());
         }
     }
 
     #[test]
     fn test_eval_extension() {
-        for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 4) {
-            let log_size = log_size as u32;
+        for log_size in MIN_FFT_LOG_SIZE..CACHED_FFT_LOG_SIZE + 2 {
             let domain = CanonicCoset::new(log_size).circle_domain();
-            let domain_ext = CanonicCoset::new(log_size + 3).circle_domain();
-            let evaluation = CircleEvaluation::<AVX512Backend, BaseField, BitReversedOrder>::new(
+            let domain_ext = CanonicCoset::new(log_size + 2).circle_domain();
+            let evaluation = CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(
                 domain,
-                (0..(1 << log_size))
-                    .map(BaseField::from_u32_unchecked)
-                    .collect(),
+                (0..1 << log_size).map(BaseField::from).collect(),
             );
             let poly = evaluation.clone().interpolate();
+
             let evaluation2 = poly.evaluate(domain_ext);
-            let poly2 = evaluation2.interpolate();
+
             assert_eq!(
-                poly.extend(log_size + 3).coeffs.to_cpu(),
-                poly2.coeffs.to_cpu()
+                poly.extend(log_size + 2).coeffs.to_cpu(),
+                evaluation2.interpolate().coeffs.to_cpu()
             );
         }
     }
 
     #[test]
     fn test_eval_at_point() {
-        for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 4) {
-            let domain = CanonicCoset::new(log_size as u32).circle_domain();
-            let evaluation = CircleEvaluation::<AVX512Backend, BaseField, NaturalOrder>::new(
+        for log_size in MIN_FFT_LOG_SIZE + 1..CACHED_FFT_LOG_SIZE + 4 {
+            let domain = CanonicCoset::new(log_size).circle_domain();
+            let evaluation = CircleEvaluation::<SimdBackend, BaseField, NaturalOrder>::new(
                 domain,
-                (0..(1 << log_size))
-                    .map(BaseField::from_u32_unchecked)
-                    .collect(),
+                (0..1 << log_size).map(BaseField::from).collect(),
             );
             let poly = evaluation.bit_reverse().interpolate();
             for i in [0, 1, 3, 1 << (log_size - 1), 1 << (log_size - 2)] {
                 let p = domain.at(i);
+
+                let eval = poly.eval_at_point(p.into_ef());
+
                 assert_eq!(
-                    poly.eval_at_point(p.into_ef()),
-                    BaseField::from_u32_unchecked(i as u32).into(),
-                    "log_size = {log_size} i = {i}"
+                    eval,
+                    BaseField::from(i).into(),
+                    "log_size={log_size}, i={i}"
                 );
             }
         }
@@ -407,14 +401,11 @@ mod tests {
 
     #[test]
     fn test_circle_poly_extend() {
-        for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 2) {
-            let log_size = log_size as u32;
-            let poly = CirclePoly::<AVX512Backend>::new(
-                (0..(1 << log_size))
-                    .map(BaseField::from_u32_unchecked)
-                    .collect(),
-            );
+        for log_size in MIN_FFT_LOG_SIZE..CACHED_FFT_LOG_SIZE + 2 {
+            let poly =
+                CirclePoly::<SimdBackend>::new((0..1 << log_size).map(BaseField::from).collect());
             let eval0 = poly.evaluate(CanonicCoset::new(log_size + 2).circle_domain());
+
             let eval1 = poly
                 .extend(log_size + 2)
                 .evaluate(CanonicCoset::new(log_size + 2).circle_domain());
@@ -425,34 +416,21 @@ mod tests {
 
     #[test]
     fn test_eval_securefield() {
-        use crate::core::backend::avx512::fft::MIN_FFT_LOG_SIZE;
         let mut rng = SmallRng::seed_from_u64(0);
-
-        for log_size in MIN_FFT_LOG_SIZE..(CACHED_FFT_LOG_SIZE + 2) {
-            let domain = CanonicCoset::new(log_size as u32).circle_domain();
-            let evaluation = CircleEvaluation::<AVX512Backend, BaseField, NaturalOrder>::new(
+        for log_size in MIN_FFT_LOG_SIZE..CACHED_FFT_LOG_SIZE + 2 {
+            let domain = CanonicCoset::new(log_size).circle_domain();
+            let evaluation = CircleEvaluation::<SimdBackend, BaseField, NaturalOrder>::new(
                 domain,
-                (0..(1 << log_size))
-                    .map(BaseField::from_u32_unchecked)
-                    .collect(),
+                (0..1 << log_size).map(BaseField::from).collect(),
             );
             let poly = evaluation.bit_reverse().interpolate();
-
-            let x: SecureField = rng.gen();
-            let y: SecureField = rng.gen();
-
+            let x = rng.gen();
+            let y = rng.gen();
             let p = CirclePoint { x, y };
 
-            assert_eq!(
-                <AVX512Backend as PolyOps>::eval_at_point(&poly, p),
-                slow_eval_at_point(&poly, p),
-                "log_size = {log_size}"
-            );
+            let eval = PolyOps::eval_at_point(&poly, p);
 
-            println!(
-                "log_size = {log_size} passed, eval{}",
-                <AVX512Backend as PolyOps>::eval_at_point(&poly, p)
-            );
+            assert_eq!(eval, slow_eval_at_point(&poly, p), "log_size = {log_size}");
         }
     }
 }
