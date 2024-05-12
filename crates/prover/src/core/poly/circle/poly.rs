@@ -75,7 +75,26 @@ impl crate::core::backend::cpu::CPUCirclePoly {
         while coeffs.last() == Some(&BaseField::zero()) {
             coeffs.pop();
         }
-        coeffs.len() <= 1 << log_fft_size
+
+        // The highest degree monomial in a fft-space polynomial is x^{(n/2) - 1}y.
+        // And it is at offset (n-1). x^{(n/2)} is at offset `n`, and is not allowed.
+        let highest_degree_allowed_monomial_offset = 1 << log_fft_size;
+        coeffs.len() <= highest_degree_allowed_monomial_offset
+    }
+
+    /// Fri space is the space of polynomials of total degree n/2.
+    /// Highest degree monomials are x^{n/2} and x^{(n/2)-1}y.
+    pub fn is_in_fri_space(&self, log_fft_size: u32) -> bool {
+        use num_traits::Zero;
+
+        let mut coeffs = self.coeffs.clone();
+        while coeffs.last() == Some(&BaseField::zero()) {
+            coeffs.pop();
+        }
+
+        // x^{n/2} is at offset `n`, and is the last offset allowed to be non-zero.
+        let highest_degree_monomial_offset = (1 << log_fft_size) + 1;
+        coeffs.len() <= highest_degree_monomial_offset
     }
 }
 

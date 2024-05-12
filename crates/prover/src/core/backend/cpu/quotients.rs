@@ -179,8 +179,6 @@ mod tests {
     use crate::{m31, qm31};
 
     #[test]
-    // Ignored because we allow polynomials outside of fft-space, hence it is not a bug anymore.
-    #[ignore]
     fn test_quotients_are_low_degree() {
         const LOG_SIZE: u32 = 7;
         let polynomial = CPUCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
@@ -200,6 +198,6 @@ mod tests {
         );
         let quot_poly_base_field =
             CPUCircleEvaluation::new(eval_domain, quot_eval.columns[0].clone()).interpolate();
-        assert!(quot_poly_base_field.is_in_fft_space(LOG_SIZE));
+        assert!(quot_poly_base_field.is_in_fri_space(LOG_SIZE));
     }
 }
