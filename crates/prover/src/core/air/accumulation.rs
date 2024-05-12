@@ -6,6 +6,8 @@
 use itertools::Itertools;
 use tracing::{span, Level};
 
+use crate::core::backend::avx512::qm31::PackedSecureField;
+use crate::core::backend::avx512::AVX512Backend;
 use crate::core::backend::{Backend, CPUBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -151,6 +153,13 @@ impl<'a> ColumnAccumulator<'a, CPUBackend> {
     pub fn accumulate(&mut self, index: usize, evaluation: SecureField) {
         let val = self.col.at(index) + evaluation;
         self.col.set(index, val);
+    }
+}
+
+impl<'a> ColumnAccumulator<'a, AVX512Backend> {
+    pub fn accumulate(&mut self, index: usize, evaluation: PackedSecureField) {
+        let val = self.col.packed_at(index) + evaluation;
+        unsafe{self.col.set_packed(index, val)};
     }
 }
 
