@@ -77,6 +77,18 @@ impl crate::core::backend::cpu::CPUCirclePoly {
         }
         coeffs.len() <= 1 << log_fft_size
     }
+
+    /// Fri space is the space of polynomials of total degree n/2.
+    /// Highest degree monomials are x^{n/2} and x^{(n/2)-1}y.
+    pub fn is_in_fri_space(&self, log_fft_size: u32) -> bool {
+        use num_traits::Zero;
+
+        let mut coeffs = self.coeffs.clone();
+        while coeffs.last() == Some(&BaseField::zero()) {
+            coeffs.pop();
+        }
+        coeffs.len() <= (1 << log_fft_size) + 1
+    }
 }
 
 #[cfg(test)]
