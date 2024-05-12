@@ -80,6 +80,19 @@ impl crate::core::backend::cpu::CPUCirclePoly {
 }
 
 #[cfg(test)]
+impl crate::core::backend::cpu::CPUCirclePoly {
+    pub fn is_in_fri_space(&self, log_fft_size: u32) -> bool {
+        use num_traits::Zero;
+
+        let mut coeffs = self.coeffs.clone();
+        while coeffs.last() == Some(&BaseField::zero()) {
+            coeffs.pop();
+        }
+        coeffs.len() <= (1 << log_fft_size) + 1
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use crate::core::backend::cpu::CPUCirclePoly;
     use crate::core::circle::CirclePoint;
