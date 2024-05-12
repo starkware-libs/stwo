@@ -114,8 +114,9 @@ pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized + FieldOps<SecureField> 
         twiddles: &TwiddleTree<Self>,
     );
 
-    /// Decomposes a polynomial of degree N/2 in 'x', into a polynomial inside the fft-space and the
+    /// Decomposes a FRI-space polynomial into a polynomial inside the fft-space and the
     /// remainder term.
+    /// FRI-space: polynomials of total degree n/2.
     /// Based on lemma #12 from the CircleStark paper: f(P) = g(P)+ lambda * alternating(P),
     /// where lambda is the cosset diff of eval, and g is a polynomial in the fft-space.
     fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField);
