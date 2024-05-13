@@ -33,11 +33,13 @@ trait InstructionSet {
     fn vector_512_min_32u(&self, in1: &CudaSlice<u32>, in2: &CudaSlice<u32>) -> CudaSlice<u32>;
     fn vector_512_sub_32u(&self, in1: &CudaSlice<u32>, in2: &CudaSlice<u32>) -> CudaSlice<u32>;
     fn vector_512_set_32u(&self, val: &CudaSlice<u32>) -> CudaSlice<u32>;
+    fn vector_512_clone_slice(&self, in1: &CudaSlice<u32>) -> CudaSlice<u32>;
 }
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Device(Arc<CudaDevice>);
 
+// TODO:: Refactor kernel launching into a single function call
 #[allow(dead_code)]
 impl InstructionSet for Arc<CudaDevice> {
     // Returns a new Device with functions and constants pre-loaded
@@ -60,7 +62,6 @@ impl InstructionSet for Arc<CudaDevice> {
         out
     }
 
-    // TODO:: Optimize using __vminu4 (might not be possible)?
     fn vector_512_min_32u(&self, in1: &CudaSlice<u32>, in2: &CudaSlice<u32>) -> CudaSlice<u32> {
         let min_kernel = self
             .get_func("instruction_set_op", "vector_512_min_32u")
@@ -99,14 +100,31 @@ impl InstructionSet for Arc<CudaDevice> {
 
         out
     }
+
+    fn vector_512_clone_slice(&self, val: &CudaSlice<u32>) -> CudaSlice<u32> {
+        let sub_kernel = self
+            .get_func("instruction_set_op", "vector_512_clone_slice")
+            .unwrap();
+
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(VECTOR_SIZE as u32);
+        let out = self.alloc_zeros::<u32>(VECTOR_SIZE).unwrap();
+
+        unsafe { sub_kernel.launch(cfg, (val, &out)) }.unwrap();
+
+        out
+    }
 }
 
+// Implements loading capability for the Device
+// * 'load_vector_512_operations' - basic operations for 512 bit vector
 trait Load {
     fn load_vector_512_operations(&mut self);
 }
 
+// 512 bit vector
 impl Load for Arc<CudaDevice> {
-    // Note:: intrinsic Math operations are not computing properly...? GPU issue?
+    // Intrinsic operations don't work because they don't overflow (ie. __viadd4 or __vminu4)
+    // TODO:: Look at performance trade off of explicit addition versus intrinsic built addition
     fn load_vector_512_operations(&mut self) {
         let vector_512_operations = compile_ptx("
             extern \"C\" __global__ void vector_512_add_32u( unsigned int *in1,  unsigned int *in2, unsigned int *out) {
@@ -144,7 +162,13 @@ impl Load for Arc<CudaDevice> {
                 }
             }
 
-
+            extern \"C\" __global__ void vector_512_clone_slice( unsigned int *in1, unsigned int *out) {
+                unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+                const unsigned int VECTOR_SIZE = 16; 
+                if (i < VECTOR_SIZE) {
+                    out[i] = in1[i];
+                }
+            }
         ").unwrap();
 
         self.load_ptx(
@@ -155,6 +179,7 @@ impl Load for Arc<CudaDevice> {
                 "vector_512_min_32u",
                 "vector_512_sub_32u",
                 "vector_512_set_32u",
+                "vector_512_clone_slice",
             ],
         )
         .unwrap();
@@ -224,6 +249,11 @@ mod test {
 
         // Test vector_512_set_32u
         let out = DEVICE.vector_512_set_32u(&in3);
+        let out_host: Vec<u32> = DEVICE.dtoh_sync_copy(&out).unwrap();
+        assert!(out_host == [P; VECTOR_SIZE]);
+
+        // Test vector_512_clone_slice
+        let out = DEVICE.vector_512_clone_slice(&out);
         let out_host: Vec<u32> = DEVICE.dtoh_sync_copy(&out).unwrap();
         assert!(out_host == [P; VECTOR_SIZE]);
     }

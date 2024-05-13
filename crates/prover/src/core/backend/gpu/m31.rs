@@ -123,6 +123,13 @@ impl PackedBaseField {
 //     }
 // }
 
+// Clone will return a new pointer to copied new memory
+// impl Clone for PackedBaseField {
+//     fn clone(&self) -> Self {
+//         DEVICE.htod_copy(src)
+//     }
+// }
+
 impl Add for PackedBaseField {
     type Output = Self;
 
@@ -309,14 +316,14 @@ mod tests {
     use itertools::Itertools;
 
     use super::PackedBaseField;
+    // use crate::core::fields::{Field, FieldExpOps};
+    use crate::core::backend::gpu::InstructionSet;
     #[allow(unused_imports)]
     use crate::core::backend::gpu::{DEVICE, M512P};
     #[allow(unused_imports)]
     use crate::core::fields::m31::{M31, P};
     #[allow(unused_imports)]
     use crate::core::fields::Field;
-    // use crate::core::fields::{Field, FieldExpOps};
-
     /// Tests field operations where field elements are in reduced form.
     #[test]
     fn test_gpu_basic_ops() {
@@ -344,6 +351,15 @@ mod tests {
         let avx_values2 = PackedBaseField::from_array(values);
         let avx_values3 = PackedBaseField::from_array(values);
 
+        let c = DEVICE.vector_512_add_32u(&avx_values1.0 .0, &avx_values2.0 .0);
+        let out_host: Vec<u32> = DEVICE.dtoh_sync_copy(&c).unwrap();
+
+        for out in out_host {
+            print!("{:x}, ", out);
+        }
+        // println!("{:x}", out_host);
+
+        assert!(false);
         assert_eq!(
             (avx_values1 + avx_values2)
                 .to_array()
