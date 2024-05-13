@@ -4,6 +4,7 @@ use rand::{Rng, SeedableRng};
 use stwo_prover::core::fields::cm31::CM31;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::qm31::SecureField;
+use stwo_prover::core::fields::FieldExpOps;
 
 pub const N_ELEMENTS: usize = 1 << 16;
 pub const N_STATE_ELEMENTS: usize = 8;
@@ -49,6 +50,18 @@ pub fn cm31_operations_bench(c: &mut criterion::Criterion) {
                 for _ in 0..128 {
                     for state_elem in &mut state {
                         *state_elem *= *elem;
+                    }
+                }
+            }
+        })
+    });
+
+    c.bench_function("CM31 square", |b| {
+        b.iter(|| {
+            for _ in &elements {
+                for _ in 0..128 {
+                    for state_elem in &mut state {
+                        *state_elem = state_elem.square();
                     }
                 }
             }

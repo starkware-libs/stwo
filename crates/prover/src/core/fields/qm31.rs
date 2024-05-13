@@ -58,11 +58,11 @@ impl Mul for QM31 {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        // (a + bu) * (c + du) = (ac + rbd) + (ad + bc)u.
-        Self(
-            self.0 * rhs.0 + R * self.1 * rhs.1,
-            self.0 * rhs.1 + self.1 * rhs.0,
-        )
+        // Karatsuba algorithm taken from https://eprint.iacr.org/2006/471.pdf
+        let v0 = self.0 * rhs.0;
+        let v1 = self.1 * rhs.1;
+ 
+        Self(v0 + R * v1, (self.0 + self.1) * (rhs.0 + rhs.1) - v0 - v1)
     }
 }
 

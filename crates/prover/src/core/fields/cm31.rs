@@ -52,7 +52,12 @@ impl Mul for CM31 {
     }
 }
 
-impl FieldExpOps for CM31 {
+impl FieldExpOps for CM31 {    
+    fn square(&self) -> Self {
+        let a0a1 = self.0 * self.1;
+        Self((self.0 + self.1) * (self.0 - self.1), a0a1 + a0a1)    
+    }
+
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");
         // 1 / (a + bi) = (a - bi) / (a^2 + b^2).
