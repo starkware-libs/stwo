@@ -54,6 +54,7 @@ impl Mul for CM31 {
 
 impl FieldExpOps for CM31 {    
     fn square(&self) -> Self {
+        // Complex squaring algorithm taken from https://eprint.iacr.org/2006/471.pdf
         let a0a1 = self.0 * self.1;
         Self((self.0 + self.1) * (self.0 - self.1), a0a1 + a0a1)    
     }
