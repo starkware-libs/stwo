@@ -11,6 +11,7 @@ use cudarc::driver::{LaunchAsync, LaunchConfig};
 use itertools::Itertools;
 #[allow(unused_imports)]
 use num_traits::{One, Zero};
+use once_cell::sync::Lazy;
 
 #[allow(unused_imports)]
 use super::Device;
@@ -24,31 +25,46 @@ use crate::core::fields::m31::{M31, P};
 use crate::core::fields::FieldExpOps;
 pub const K_BLOCK_SIZE: usize = 16;
 
-#[derive(Debug)]
-#[repr(C)]
-pub struct _512u(
-    CudaSlice<u32>, // [u32; 16],
-);
+static EVENS_INTERLEAVE_EVENS: Lazy<CudaSlice<u32>> = Lazy::new(|| {
+    DEVICE
+        .htod_copy(vec![
+            0b00000, 0b10000, 0b00010, 0b10010, 0b00100, 0b10100, 0b00110, 0b10110, 0b01000,
+            0b11000, 0b01010, 0b11010, 0b01100, 0b11100, 0b01110, 0b11110,
+        ])
+        .unwrap()
+});
+static ODDS_INTERLEAVE_ODDS: Lazy<CudaSlice<u32>> = Lazy::new(|| {
+    DEVICE
+        .htod_copy(vec![
+            0b00001, 0b10001, 0b00011, 0b10011, 0b00101, 0b10101, 0b00111, 0b10111, 0b01001,
+            0b11001, 0b01011, 0b11011, 0b01101, 0b11101, 0b01111, 0b11111,
+        ])
+        .unwrap()
+});
+
+static SHIFT_COUNT_32: Lazy<CudaSlice<u32>> = Lazy::new(|| DEVICE.htod_copy(vec![32]).unwrap());
+static SHIFT_COUNT_1: Lazy<CudaSlice<u32>> = Lazy::new(|| DEVICE.htod_copy(vec![1]).unwrap());
+
+type _512u = CudaSlice<u32>;
 
 // CUDA implementation
 /// Stores 16 M31 elements in a custom 512-bit vector.
 /// Each M31 element is unreduced in the range [0, P].
 #[derive(Debug)]
+#[repr(C)]
 pub struct PackedBaseField(pub _512u);
 
 impl PackedBaseField {
     pub fn broadcast(value: M31) -> Self {
-        Self(_512u(DEVICE.vector_512_set_32u(
-            &DEVICE.htod_copy(vec![value.0]).unwrap(),
-        )))
+        Self(DEVICE.vector_512_set_u32(&DEVICE.htod_copy(vec![value.0]).unwrap()))
     }
 
     pub fn from_array(v: [M31; K_BLOCK_SIZE]) -> PackedBaseField {
-        Self(_512u(
+        Self(
             DEVICE
                 .htod_copy(v.iter().map(|m31| m31.0).collect_vec())
                 .unwrap(),
-        ))
+        )
     }
 
     pub fn from_512_unchecked(x: _512u) -> Self {
@@ -57,7 +73,7 @@ impl PackedBaseField {
 
     pub fn to_array(self) -> [M31; K_BLOCK_SIZE] {
         let host = TryInto::<[u32; K_BLOCK_SIZE]>::try_into(
-            DEVICE.dtoh_sync_copy(&self.reduce().0 .0).unwrap(),
+            DEVICE.dtoh_sync_copy(&self.reduce().0).unwrap(),
         )
         .unwrap();
         unsafe { std::mem::transmute(host) }
@@ -65,10 +81,7 @@ impl PackedBaseField {
 
     /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
     pub fn reduce(self) -> PackedBaseField {
-        Self(_512u(DEVICE.vector_512_min_32u(
-            &self.0 .0,
-            &DEVICE.vector_512_sub_32u(&self.0 .0, &M512P),
-        )))
+        Self(DEVICE.vector_512_min_u32(&self.0, &DEVICE.vector_512_sub_u32(&self.0, &M512P)))
     }
 
     // /// Interleaves self with other.
@@ -124,11 +137,11 @@ impl PackedBaseField {
 // }
 
 // Clone will return a new pointer to copied new memory
-// impl Clone for PackedBaseField {
-//     fn clone(&self) -> Self {
-//         DEVICE.htod_copy(src)
-//     }
-// }
+impl Clone for PackedBaseField {
+    fn clone(&self) -> Self {
+        Self(DEVICE.vector_512_clone_slice(&self.0))
+    }
+}
 
 impl Add for PackedBaseField {
     type Output = Self;
@@ -142,11 +155,8 @@ impl Add for PackedBaseField {
         // Apply min(c, c-P) to each word.
         // When c in [P,2P], then c-P in [0,P] which is always less than [P,2P].
         // When c in [0,P-1], then c-P in [2^32-P,2^32-1] which is always greater than
-        let c = DEVICE.vector_512_add_32u(&self.0 .0, &rhs.0 .0);
-        Self(_512u(DEVICE.vector_512_min_32u(
-            &c,
-            &DEVICE.vector_512_sub_32u(&c, &M512P),
-        )))
+        let c = DEVICE.vector_512_add_u32(&self.0, &rhs.0);
+        Self(DEVICE.vector_512_min_u32(&c, &DEVICE.vector_512_sub_u32(&c, &M512P)))
     }
 }
 
@@ -155,84 +165,62 @@ impl AddAssign for PackedBaseField {
     #[inline(always)]
     fn add_assign(&mut self, rhs: Self) {
         let add_kernel = DEVICE
-            .get_func("instruction_set_op", "vector_512_add_32u")
+            .get_func("instruction_set_op", "vector_512_add_u32")
             .unwrap();
 
         let cfg: LaunchConfig = LaunchConfig::for_num_elems(VECTOR_SIZE as u32);
 
-        unsafe { add_kernel.launch(cfg, (&self.0 .0, &rhs.0 .0, &self.0 .0)) }.unwrap();
+        unsafe { add_kernel.launch(cfg, (&self.0, &rhs.0, &self.0)) }.unwrap();
     }
 }
 
-// impl Mul for PackedBaseField {
-//     type Output = Self;
+impl Mul for PackedBaseField {
+    type Output = Self;
 
-//     /// Computes the product of two packed M31 elements
-//     /// Each value is assumed to be in unreduced form, [0, P] including P.
-//     /// Returned values are in unreduced form, [0, P] including P.
-//     #[inline(always)]
-//     fn mul(self, rhs: Self) -> Self::Output {
-//         /// An input to _mm512_permutex2var_epi32, and is used to interleave the even words of a
-//         /// with the even words of b.
-//         const EVENS_INTERLEAVE_EVENS: __m512i = unsafe {
-//             core::mem::transmute([
-//                 0b00000, 0b10000, 0b00010, 0b10010, 0b00100, 0b10100, 0b00110, 0b10110, 0b01000,
-//                 0b11000, 0b01010, 0b11010, 0b01100, 0b11100, 0b01110, 0b11110,
-//             ])
-//         };
-//         /// An input to _mm512_permutex2var_epi32, and is used to interleave the odd words of a
-//         /// with the odd words of b.
-//         const ODDS_INTERLEAVE_ODDS: __m512i = unsafe {
-//             core::mem::transmute([
-//                 0b00001, 0b10001, 0b00011, 0b10011, 0b00101, 0b10101, 0b00111, 0b10111, 0b01001,
-//                 0b11001, 0b01011, 0b11011, 0b01101, 0b11101, 0b01111, 0b11111,
-//             ])
-//         };
+    /// Computes the product of two packed M31 elements
+    /// Each value is assumed to be in unreduced form, [0, P] including P.
+    /// Returned values are in unreduced form, [0, P] including P.
+    #[inline(always)]
+    fn mul(self, rhs: Self) -> Self::Output {
+        // Set up a word s.t. the lower half of each 64-bit word has the odd 32-bit words of
+        // the first operand.
+        let val0_o = DEVICE.vector_512_srli_i64(&self.0, &SHIFT_COUNT_32);
+        // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of
+        // the first operand.
+        let val0_e = self.0;
 
-//         unsafe {
-//             // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of
-//             // the first operand.
-//             let val0_e = self.0;
-//             // Set up a word s.t. the lower half of each 64-bit word has the odd 32-bit words of
-//             // the first operand.
-//             let val0_o = _mm512_srli_epi64(self.0, 32);
+        // Double the second operand.
+        let val1 = DEVICE.vector_512_add_u32(&rhs.0, &rhs.0);
+        let val1_o = DEVICE.vector_512_srli_i64(&val1, &SHIFT_COUNT_32);
+        let val1_e = val1;
 
-//             // Double the second operand.
-//             let val1 = _mm512_add_epi32(rhs.0, rhs.0);
-//             let val1_e = val1;
-//             let val1_o = _mm512_srli_epi64(val1, 32);
+        // To compute prod = val0 * val1 start by multiplying
+        // val0_e/o by val1_e/o.
+        let prod_e_dbl = DEVICE.vector_512_mul_u32(&val0_e, &val1_e);
+        let prod_o_dbl = DEVICE.vector_512_mul_u32(&val0_o, &val1_o);
 
-//             // To compute prod = val0 * val1 start by multiplying
-//             // val0_e/o by val1_e/o.
-//             let prod_e_dbl = _mm512_mul_epu32(val0_e, val1_e);
-//             let prod_o_dbl = _mm512_mul_epu32(val0_o, val1_o);
+        // The result of a multiplication holds val1*twiddle_dbl in as 64-bits.
+        // Each 64b-bit word looks like this:
+        //               1    31       31    1
+        // prod_e_dbl - |0|prod_e_h|prod_e_l|0|
+        // prod_o_dbl - |0|prod_o_h|prod_o_l|0|
 
-//             // The result of a multiplication holds val1*twiddle_dbl in as 64-bits.
-//             // Each 64b-bit word looks like this:
-//             //               1    31       31    1
-//             // prod_e_dbl - |0|prod_e_h|prod_e_l|0|
-//             // prod_o_dbl - |0|prod_o_h|prod_o_l|0|
+        // Interleave the even words of prod_e_dbl with the even words of prod_o_dbl:
+        let prod_ls =
+            DEVICE.vector_512_permute_u32(&prod_e_dbl, &prod_o_dbl, &EVENS_INTERLEAVE_EVENS); // prod_ls -    |prod_o_l|0|prod_e_l|0|
 
-//             // Interleave the even words of prod_e_dbl with the even words of prod_o_dbl:
-//             let prod_ls = _mm512_permutex2var_epi32(prod_e_dbl, EVENS_INTERLEAVE_EVENS,
-// prod_o_dbl);             // prod_ls -    |prod_o_l|0|prod_e_l|0|
+        // Divide by 2:
+        let prod_ls = Self(DEVICE.vector_512_srli_i64(&prod_ls, &SHIFT_COUNT_1));
+        // prod_ls -    |0|prod_o_l|0|prod_e_l|
 
-//             // Divide by 2:
-//             let prod_ls = Self(_mm512_srli_epi64(prod_ls, 1));
-//             // prod_ls -    |0|prod_o_l|0|prod_e_l|
+        // Interleave the odd words of prod_e_dbl with the odd words of prod_o_dbl:
+        let prod_hs =
+            Self(DEVICE.vector_512_permute_u32(&prod_e_dbl, &ODDS_INTERLEAVE_ODDS, &prod_o_dbl));
+        // prod_hs -    |0|prod_o_h|0|prod_e_h|
 
-//             // Interleave the odd words of prod_e_dbl with the odd words of prod_o_dbl:
-//             let prod_hs = Self(_mm512_permutex2var_epi32(
-//                 prod_e_dbl,
-//                 ODDS_INTERLEAVE_ODDS,
-//                 prod_o_dbl,
-//             ));
-//             // prod_hs -    |0|prod_o_h|0|prod_e_h|
-
-//             Self::add(prod_ls, prod_hs)
-//         }
-//     }
-// }
+        Self::add(prod_ls, prod_hs)
+    }
+}
 
 // impl MulAssign for PackedBaseField {
 //     #[inline(always)]
@@ -246,7 +234,7 @@ impl Neg for PackedBaseField {
 
     #[inline(always)]
     fn neg(self) -> Self::Output {
-        Self(_512u(DEVICE.vector_512_sub_32u(&M512P, &self.0 .0)))
+        Self(DEVICE.vector_512_sub_u32(&M512P, &self.0))
     }
 }
 
@@ -262,11 +250,8 @@ impl Sub for PackedBaseField {
         // When c in [0,P], then c+P in [P,2P] which is always greater than [0,P].
         // When c in [2^32-P,2^32-1], then c+P in [0,P-1] which is always less than
         // [2^32-P,2^32-1].
-        let c = DEVICE.vector_512_sub_32u(&self.0 .0, &rhs.0 .0);
-        Self(_512u(DEVICE.vector_512_min_32u(
-            &DEVICE.vector_512_add_32u(&c, &M512P),
-            &c,
-        )))
+        let c = DEVICE.vector_512_sub_u32(&self.0, &rhs.0);
+        Self(DEVICE.vector_512_min_u32(&DEVICE.vector_512_add_u32(&c, &M512P), &c))
     }
 }
 
@@ -275,12 +260,12 @@ impl SubAssign for PackedBaseField {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: Self) {
         let add_kernel = DEVICE
-            .get_func("instruction_set_op", "vector_512_sub_32u")
+            .get_func("instruction_set_op", "vector_512_sub_u32")
             .unwrap();
 
         let cfg: LaunchConfig = LaunchConfig::for_num_elems(VECTOR_SIZE as u32);
 
-        unsafe { add_kernel.launch(cfg, (&self.0 .0, &rhs.0 .0, &self.0 .0)) }.unwrap();
+        unsafe { add_kernel.launch(cfg, (&self.0, &rhs.0, &self.0)) }.unwrap();
     }
 }
 
@@ -317,7 +302,6 @@ mod tests {
 
     use super::PackedBaseField;
     // use crate::core::fields::{Field, FieldExpOps};
-    use crate::core::backend::gpu::InstructionSet;
     #[allow(unused_imports)]
     use crate::core::backend::gpu::{DEVICE, M512P};
     #[allow(unused_imports)]
@@ -348,18 +332,9 @@ mod tests {
         .map(M31::from_u32_unchecked);
 
         let avx_values1 = PackedBaseField::from_array(values);
-        let avx_values2 = PackedBaseField::from_array(values);
-        let avx_values3 = PackedBaseField::from_array(values);
+        let avx_values2 = avx_values1.clone();
+        let avx_values3 = avx_values1.clone();
 
-        let c = DEVICE.vector_512_add_32u(&avx_values1.0 .0, &avx_values2.0 .0);
-        let out_host: Vec<u32> = DEVICE.dtoh_sync_copy(&c).unwrap();
-
-        for out in out_host {
-            print!("{:x}, ", out);
-        }
-        // println!("{:x}", out_host);
-
-        assert!(false);
         assert_eq!(
             (avx_values1 + avx_values2)
                 .to_array()
