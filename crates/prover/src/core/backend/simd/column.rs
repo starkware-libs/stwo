@@ -5,30 +5,14 @@ use num_traits::Zero;
 use super::m31::{PackedBaseField, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
-use crate::core::backend::{Column, ColumnOps};
+use crate::core::backend::Column;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, FieldOps};
 
-impl ColumnOps<BaseField> for SimdBackend {
-    type Column = BaseFieldVec;
-
-    fn bit_reverse_column(_column: &mut Self::Column) {
-        todo!()
-    }
-}
-
 impl FieldOps<BaseField> for SimdBackend {
     fn batch_inverse(column: &BaseFieldVec, dst: &mut BaseFieldVec) {
         PackedBaseField::batch_inverse(&column.data, &mut dst.data);
-    }
-}
-
-impl ColumnOps<SecureField> for SimdBackend {
-    type Column = SecureFieldVec;
-
-    fn bit_reverse_column(_column: &mut SecureFieldVec) {
-        todo!()
     }
 }
 
