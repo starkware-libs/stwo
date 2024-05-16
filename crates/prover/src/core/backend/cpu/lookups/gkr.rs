@@ -234,7 +234,7 @@ fn eval_logup_singles_sum(
 /// Returns evaluations `eq(x, y) * v` for all `x` in `{0, 1}^n`.
 ///
 /// Evaluations are returned in bit-reversed order.
-fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Vec<SecureField> {
+pub fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Vec<SecureField> {
     let mut evals = Vec::with_capacity(1 << y.len());
     evals.push(v);
 
@@ -328,7 +328,7 @@ mod tests {
         let eq_evals = CpuBackend::gen_eq_evals(&y, two);
 
         assert_eq!(
-            **eq_evals,
+            *eq_evals,
             [
                 eq(&[zero, zero], &y) * two,
                 eq(&[zero, one], &y) * two,
