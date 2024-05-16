@@ -227,7 +227,7 @@ mod tests {
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
-        invalid_proof.commitment_scheme_proof.queried_values.0[0][0][4] += BaseField::one();
+        invalid_proof.commitment_scheme_proof.queried_values.0[0][0][3] += BaseField::one();
 
         let error = fib.verify(invalid_proof).unwrap_err();
         assert_matches!(error, VerificationError::Merkle(_));
