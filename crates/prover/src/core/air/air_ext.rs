@@ -1,17 +1,18 @@
 use std::iter::zip;
 
-use itertools::Itertools;
+use itertools::{zip_eq, Itertools};
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Air, AirProver, ComponentTrace};
 use crate::core::backend::Backend;
+use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::LOG_BLOWUP_FACTOR;
-use crate::core::ComponentVec;
+use crate::core::{ComponentVec, InteractionElements};
 
 pub trait AirExt: Air {
     fn composition_log_degree_bound(&self) -> u32 {
@@ -39,6 +40,18 @@ pub trait AirExt: Air {
             component_points.push(points);
         }
         component_points
+    }
+
+    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements {
+        let ids = self
+            .components()
+            .iter()
+            .flat_map(|component| component.interaction_element_ids())
+            .sorted()
+            .dedup()
+            .collect_vec();
+        let elements = channel.draw_felts(ids.len()).into_iter().map(|e| e.0 .0);
+        InteractionElements(zip_eq(ids, elements).collect_vec())
     }
 
     fn eval_composition_polynomial_at_point(
