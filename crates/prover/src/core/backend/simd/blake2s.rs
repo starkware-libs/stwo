@@ -48,7 +48,7 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         columns: &[&Col<Self, BaseField>],
     ) -> Vec<Blake2sHash> {
         if log_size < N_LANES as u32 {
-            return (0..(1 << log_size))
+            return (0..1 << log_size)
                 .map(|i| {
                     Blake2sMerkleHasher::hash_node(
                         prev_layer.map(|prev_layer| (prev_layer[2 * i], prev_layer[2 * i + 1])),
