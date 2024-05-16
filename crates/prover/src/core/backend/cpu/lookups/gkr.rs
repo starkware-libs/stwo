@@ -12,7 +12,7 @@ impl GkrOps for CpuBackend {
 /// Returns evaluations `eq(x, y) * v` for all `x` in `{0, 1}^n`.
 ///
 /// Evaluations are returned in bit-reversed order.
-fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Vec<SecureField> {
+pub fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Vec<SecureField> {
     let mut evals = Vec::with_capacity(1 << y.len());
     evals.push(v);
 
@@ -43,17 +43,18 @@ mod tests {
     fn gen_eq_evals() {
         let zero = SecureField::zero();
         let one = SecureField::one();
+        let two = BaseField::from(2).into();
         let y = [7, 3].map(|v| BaseField::from(v).into());
 
-        let eq_evals = CpuBackend::gen_eq_evals(&y, one);
+        let eq_evals = CpuBackend::gen_eq_evals(&y, two);
 
         assert_eq!(
-            **eq_evals,
+            *eq_evals,
             [
-                eq(&[zero, zero], &y),
-                eq(&[zero, one], &y),
-                eq(&[one, zero], &y),
-                eq(&[one, one], &y),
+                eq(&[zero, zero], &y) * two,
+                eq(&[zero, one], &y) * two,
+                eq(&[one, zero], &y) * two,
+                eq(&[one, one], &y) * two,
             ]
         );
     }
