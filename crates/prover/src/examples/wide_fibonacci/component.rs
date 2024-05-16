@@ -67,6 +67,13 @@ impl Component for WideFibComponent {
         fixed_mask_points(&vec![vec![0_usize]; self.n_columns()], point)
     }
 
+    fn interaction_element_ids(&self) -> Vec<String> {
+        vec![
+            "wide_fibonacci_alpha".to_string(),
+            "wide_fibonacci_z".to_string(),
+        ]
+    }
+
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,

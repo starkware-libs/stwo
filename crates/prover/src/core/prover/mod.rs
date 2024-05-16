@@ -321,6 +321,10 @@ mod tests {
             vec![vec![point]]
         }
 
+        fn interaction_element_ids(&self) -> Vec<String> {
+            vec![]
+        }
+
         fn evaluate_constraint_quotients_at_point(
             &self,
             _point: CirclePoint<SecureField>,

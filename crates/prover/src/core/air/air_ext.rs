@@ -5,6 +5,7 @@ use itertools::Itertools;
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Air, AirProver, ComponentTrace};
 use crate::core::backend::Backend;
+use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -39,6 +40,19 @@ pub trait AirExt: Air {
             component_points.push(points);
         }
         component_points
+    }
+
+    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> Vec<(String, BaseField)> {
+        self.components()
+            .iter()
+            .flat_map(|component| component.interaction_element_ids())
+            .sorted()
+            .dedup()
+            .map(|id| {
+                let element = channel.draw_felt().0 .0;
+                (id, element)
+            })
+            .collect()
     }
 
     fn eval_composition_polynomial_at_point(
