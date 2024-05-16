@@ -1,6 +1,7 @@
 use super::CPUBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fri::{fold_circle_into_line, fold_line, FriOps};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
@@ -23,6 +24,31 @@ impl FriOps for CPUBackend {
     ) {
         fold_circle_into_line(dst, src, alpha)
     }
+
+    fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField) {
+        let lambda = Self::decomposition_coefficient(eval);
+        let mut g_values = SecureColumn::<Self>::zeros(eval.len());
+
+        let domain_size = eval.len();
+        let half_domain_size = domain_size / 2;
+
+        for i in 0..half_domain_size {
+            let x = eval.values.at(i);
+            let val = x - lambda;
+            g_values.set(i, val);
+        }
+        for i in half_domain_size..domain_size {
+            let x = eval.values.at(i);
+            let val = x + lambda;
+            g_values.set(i, val);
+        }
+
+        let g = SecureEvaluation {
+            domain: eval.domain,
+            values: g_values,
+        };
+        (g, lambda)
+    }
 }
 
 impl CPUBackend {
@@ -41,8 +67,7 @@ impl CPUBackend {
     /// This function assumes the blowupfactor is 2
     ///
     /// [`CirclePoly`]: crate::core::poly::circle::CirclePoly
-    // TODO(Ohad): remove pub.
-    pub fn decomposition_coefficient(eval: &SecureEvaluation<Self>) -> SecureField {
+    fn decomposition_coefficient(eval: &SecureEvaluation<Self>) -> SecureField {
         let domain_size = 1 << eval.domain.log_size();
         let half_domain_size = domain_size / 2;
 
@@ -67,7 +92,9 @@ mod tests {
     use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
     use crate::core::backend::CPUBackend;
     use crate::core::fields::m31::BaseField;
+    use crate::core::fields::qm31::SecureField;
     use crate::core::fields::secure_column::SecureColumn;
+    use crate::core::fri::FriOps;
     use crate::core::poly::circle::{CanonicCoset, SecureEvaluation};
     use crate::m31;
 
@@ -99,25 +126,14 @@ mod tests {
                 values: secure_column.clone(),
             };
 
-            let lambda = CPUBackend::decomposition_coefficient(&secure_eval.clone());
+            let (g, lambda) = CPUBackend::decompose(&secure_eval);
 
-            // isolate the polynomial that is inside of the fft-space.
-            // TODO(Ohad): this should be a function in itself.
-            let q_x_values: SecureColumn<CPUBackend> = secure_column
-                .into_iter()
-                .enumerate()
-                .map(|(i, x)| {
-                    if i < (1 << domain_log_half_size) {
-                        x - lambda
-                    } else {
-                        x + lambda
-                    }
-                })
-                .collect();
+            // Sanity check.
+            assert_ne!(lambda, SecureField::zero());
 
             // Assert the new polynomial is in the FFT space.
             for i in 0..4 {
-                let basefield_column = q_x_values.columns[i].clone();
+                let basefield_column = g.columns[i].clone();
                 let eval = CPUCircleEvaluation::new(domain, basefield_column);
                 let coeffs = eval.interpolate().coeffs;
                 assert!(CPUCirclePoly::new(coeffs).is_in_fft_space(domain_log_half_size));
