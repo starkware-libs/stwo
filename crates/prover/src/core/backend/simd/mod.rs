@@ -1,3 +1,4 @@
+pub mod accumulation;
 pub mod bit_reverse;
 pub mod blake2s;
 pub mod circle;
