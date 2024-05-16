@@ -41,6 +41,9 @@ pub trait Component {
         point: CirclePoint<SecureField>,
     ) -> ColumnVec<Vec<CirclePoint<SecureField>>>;
 
+    // Returns the ids of the interaction elements used by the component.
+    fn interaction_element_ids(&self) -> Vec<String>;
+
     /// Evaluates the constraint quotients combination of the component, given the mask values.
     fn evaluate_constraint_quotients_at_point(
         &self,
