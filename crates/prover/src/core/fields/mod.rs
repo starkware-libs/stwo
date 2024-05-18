@@ -17,10 +17,54 @@ pub trait FieldOps<F: Field>: ColumnOps<F> {
 }
 
 pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
+    /// The `square` function computes the square of a Mersenne Field Element.
+    ///     
+    /// # Arguments
+    ///
+    /// * `self` - The `Mersenne Field` instance.
+    ///
+    /// # Returns
+    ///
+    /// A new `Mersenne Field` instance.
+    ///
+    /// # Examples
+    /// 
+    /// ```
+    ///     use crate::stwo_prover::core::fields::m31::{M31, P};
+    ///     use crate::stwo_prover::core::fields::FieldExpOps;
+    ///     use num_traits::{ Zero};
+    ///     
+    ///     let a = M31(4);
+    ///
+    ///     let a_square = a.square();
+    ///     println!("a_square: {:?}", a_square); // a_square: M31(16)
+    /// ```
     fn square(&self) -> Self {
         (*self) * (*self)
     }
 
+    /// The `pow` function computes the power of a Mersenne Field Element.
+    ///     
+    /// # Arguments
+    ///
+    /// * `self` - The `Mersenne Field` instance which is the base (the number to be raised to a power).
+    /// * `exp` - The `Mersenne Field` instance which is the exponent (the power to which the base is raised).
+    ///
+    /// # Returns
+    ///
+    /// A new `Field` instance.
+    ///
+    /// # Examples
+    /// 
+    /// ```
+    ///     use crate::stwo_prover::core::fields::m31::{M31, P};
+    ///     use crate::stwo_prover::core::fields::FieldExpOps;
+    ///     
+    ///     let a = M31(2);
+    ///
+    ///     let a_power = a.pow(5);
+    ///     println!("a_power: {:?}", a_power); // a_power: M31(32)
+    /// ```
     fn pow(&self, exp: u128) -> Self {
         let mut res = Self::one();
         let mut base = *self;
@@ -37,7 +81,36 @@ pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
 
     fn inverse(&self) -> Self;
 
+    /// The `batch_inverse` function computes the inverse of a batch of elements.
     /// Inverts a batch of elements using Montgomery's trick.
+    ///     
+    /// # Arguments
+    ///
+    /// * `self` - An array of `Mersenne Field` .
+    /// * `dst` - A mutable array of same `Mersenne Field` as `self`, must be the same len as `self`.
+    ///
+    /// # Returns
+    ///
+    /// A new array of `Mersenne Field` with the inverse values.
+    ///
+    /// # Examples
+    /// 
+    /// ```
+    ///     use crate::stwo_prover::core::fields::m31::{M31, P};
+    ///     use crate::stwo_prover::core::fields::FieldExpOps;
+    ///     use num_traits::{ Zero};
+    ///     
+    ///     let a = M31(1);
+    ///     let b = M31(4);
+    ///     let c = M31(11);
+    ///     let d = M31(50000);
+    ///
+    ///    let elements = [a, b, c, d];
+    ///    let mut dst = [M31::zero(); 4];
+    ///
+    ///    M31::batch_inverse(&elements, &mut dst);
+    ///    println!("dst value: {:?}", dst);
+    /// ```
     fn batch_inverse(column: &[Self], dst: &mut [Self]) {
         const WIDTH: usize = 4;
         let n = column.len();
@@ -458,7 +531,7 @@ macro_rules! impl_extension_field {
 
 #[cfg(test)]
 mod tests {
-    use num_traits::Zero;
+    use num_traits::{Zero};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 

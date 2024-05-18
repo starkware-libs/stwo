@@ -29,34 +29,143 @@ impl QM31 {
         )
     }
 
+    /// Converts four `M31` into a `QM31`.
+    ///
+    /// # Arguments
+    ///
+    /// * `a` - The first `M31` instance.
+    /// * `b` - The second `M31` instance.
+    /// * `c` - The third `M31` instance.
+    /// * `d` - The fourth `M31` instance.
+    ///
+    /// # Returns
+    ///
+    /// A new `QM31` instance of the `a`, `b`, `c` and `d` in the form (a + bi) + (c + di)u.
+    ///
+    /// # Example
+    ///
+    /// ```
+    ///     use stwo_prover::core::fields::m31::M31;
+    ///     use stwo_prover::core::fields::cm31::CM31;
+    ///     use stwo_prover::core::fields::qm31::QM31;
+    /// 
+    ///     let a = M31(1);
+    ///     let b = M31(2);
+    ///     let c = M31(3);
+    ///     let d = M31(4);
+    /// 
+    ///     let qm = QM31::from_m31(a, b, c, d);
+    ///     println!("QM31 value: {:?}", qm);  // QM31 value: (1 + 2i) + (3 + 4i)u.
+    /// ```
     pub fn from_m31(a: M31, b: M31, c: M31, d: M31) -> Self {
         Self(CM31::from_m31(a, b), CM31::from_m31(c, d))
     }
 
+    /// Converts an array of four `M31` elements into a `QM31`.
+    ///
+    /// # Arguments
+    ///
+    /// * `array` - An array of four `M31` instance.
+    ///
+    /// # Returns
+    ///
+    /// A new `QM31` instance from the array .
+    ///
+    /// # Example
+    ///
+    /// ```
+    ///     use stwo_prover::core::fields::m31::M31;
+    ///     use stwo_prover::core::fields::qm31::QM31;
+    /// 
+    ///     let a = M31(1);
+    ///     let b = M31(2);
+    ///     let c = M31(3);
+    ///     let d = M31(4);
+    ///     let array: [M31; 4] = [a, b, c, d];
+    /// 
+    ///     let qm = QM31::from_m31_array(array);
+    ///     println!("QM31 value: {:?}", qm);  // QM31 value: (1 + 2i) + (3 + 4i)u.
+    /// ```
     pub fn from_m31_array(array: [M31; 4]) -> Self {
         Self::from_m31(array[0], array[1], array[2], array[3])
     }
 
+    /// Converts a `QM31` instance into an array of `M31`.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - The `QM31` instance.
+    ///
+    /// # Returns
+    ///
+    /// An array of `M31`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    ///     use stwo_prover::core::fields::m31::M31;
+    ///     use stwo_prover::core::fields::qm31::QM31;
+    /// 
+    ///     let a = M31(1);
+    ///     let b = M31(2);
+    ///     let c = M31(3);
+    ///     let d = M31(4);
+    /// 
+    ///     let qm = QM31::from_m31(a, b, c, d);
+    /// 
+    ///     let m31_array = qm.to_m31_array();
+    ///     println!("M31 array values: {:?}", m31_array);  // M31 array values: [M31(1), M31(2), M31(3), M31(4)]
+    /// ```
     pub fn to_m31_array(self) -> [M31; 4] {
         [self.0 .0, self.0 .1, self.1 .0, self.1 .1]
     }
 }
 
+/// Implementation of the `Display` trait for `QM31` for custom formatting when displayed.
 impl Display for QM31 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}) + ({})u", self.0, self.1)
     }
 }
 
+/// Implementation of the `Debug` trait for `QM31` for custom formatting when displayed.
 impl Debug for QM31 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}) + ({})u", self.0, self.1)
     }
 }
 
+/// Implementation of the `Mul` trait for `QM31`, allowing multiplication of two `QM31` instances.
 impl Mul for QM31 {
     type Output = Self;
 
+    /// Multiply two `QM31` instances.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - The first `QM31` instance.
+    /// * `rhs` - The second `QM31` instance to be multiplied by.
+    ///
+    /// # Returns
+    ///
+    /// A new `QM31` instance with the multiplied value.
+    ///
+    /// # Examples
+    /// 
+    /// ```
+    ///     use stwo_prover::core::fields::m31::M31;
+    ///     use stwo_prover::core::fields::cm31::CM31;
+    ///     use stwo_prover::core::fields::qm31::QM31;
+    /// 
+    ///     let a = M31(1);
+    ///     let b = M31(2);
+    ///     let c = M31(3);
+    ///     let d = M31(4);
+    /// 
+    ///     let qm = QM31::from_m31(a, b, c, d);
+    ///     let prod = qm * qm;
+    ///     println!("prod value: {:?}", prod)  // prod value: (2147483606 + 45i) + (2147483637 + 20i)u
+    /// ```
     fn mul(self, rhs: Self) -> Self::Output {
         // (a + bu) * (c + du) = (ac + rbd) + (ad + bc)u.
         Self(
@@ -67,6 +176,34 @@ impl Mul for QM31 {
 }
 
 impl FieldExpOps for QM31 {
+    /// The `inverse` function computes the inverse of QM31.
+    /// The inverse of an element is the number you multiply it with to get the finite field element 1.
+    ///     
+    /// # Arguments
+    ///
+    /// * `self` - The `QM31` instance.
+    ///
+    /// # Returns
+    ///
+    /// A new `QM31` instance with the inverse value.
+    ///
+    /// # Examples
+    /// 
+    /// ```
+    ///     use stwo_prover::core::fields::m31::M31;
+    ///     use stwo_prover::core::fields::qm31::QM31;
+    ///     use crate::stwo_prover::core::fields::FieldExpOps;
+    /// 
+    ///     let a = M31(1);
+    ///     let b = M31(2);
+    ///     let c = M31(3);
+    ///     let d = M31(4);
+    /// 
+    ///     let qm = QM31::from_m31(a, b, c, d);
+    ///
+    ///     let qm_inv = qm.inverse();
+    ///     println!("inverse value: {:?}", qm_inv); // inverse value: (1855247052 + 856841008i) + (1588674294 + 1863525709i)u
+    /// ```
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");
         // (a + bu)^-1 = (a - bu) / (a^2 - (2+i)b^2).
@@ -98,7 +235,7 @@ mod tests {
     use crate::core::fields::{FieldExpOps, IntoSlice};
     use crate::m31;
 
-    #[test]
+     #[test]
     fn test_inverse() {
         let qm = qm31!(1, 2, 3, 4);
         let qm_inv = qm.inverse();
