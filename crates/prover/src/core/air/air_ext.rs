@@ -1,5 +1,3 @@
-use std::iter::zip;
-
 use itertools::{zip_eq, Itertools};
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -9,9 +7,12 @@ use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
+use crate::core::pcs::{CommitmentTreeProver, TreeVec};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::LOG_BLOWUP_FACTOR;
+use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs::ops::MerkleOps;
 use crate::core::{ColumnVec, ComponentVec, InteractionElements};
 
 pub trait AirExt: Air {
@@ -59,13 +60,15 @@ pub trait AirExt: Air {
         point: CirclePoint<SecureField>,
         mask_values: &ComponentVec<Vec<SecureField>>,
         random_coeff: SecureField,
+        interaction_elements: &InteractionElements,
     ) -> SecureField {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
-        zip(self.components(), &mask_values.0).for_each(|(component, mask)| {
+        zip_eq(self.components(), &mask_values.0).for_each(|(component, mask)| {
             component.evaluate_constraint_quotients_at_point(
                 point,
                 mask,
                 &mut evaluation_accumulator,
+                interaction_elements,
             )
         });
         evaluation_accumulator.finalize()
@@ -78,24 +81,42 @@ pub trait AirExt: Air {
             .collect()
     }
 
-    fn component_traces<'a, B: Backend>(
+    fn component_traces<'a, B: Backend + MerkleOps<Blake2sMerkleHasher>>(
         &'a self,
-        polynomials: &'a [CirclePoly<B>],
-        evals: &'a [CircleEvaluation<B, BaseField, BitReversedOrder>],
+        trees: &'a [CommitmentTreeProver<B>],
     ) -> Vec<ComponentTrace<'_, B>> {
-        let poly_iter = &mut polynomials.iter();
-        let eval_iter = &mut evals.iter();
-        self.components()
-            .iter()
-            .map(|component| {
-                let n_columns = component.trace_log_degree_bounds().len();
-                let polys = poly_iter.take(n_columns).collect();
-                let evals = eval_iter.take(n_columns).collect();
-                ComponentTrace::new(polys, evals)
-            })
-            .collect()
+        let poly_iter = &mut trees[0].polynomials.iter();
+        let eval_iter = &mut trees[0].evaluations.iter();
+        let mut component_traces = vec![];
+        self.components().iter().for_each(|component| {
+            let n_columns = component.trace_log_degree_bounds().len();
+            let polys = poly_iter.take(n_columns).collect_vec();
+            let evals = eval_iter.take(n_columns).collect_vec();
+
+            component_traces.push(ComponentTrace {
+                polys: TreeVec::new(vec![polys]),
+                evals: TreeVec::new(vec![evals]),
+            });
+        });
+
+        if trees.len() > 1 {
+            let poly_iter = &mut trees[1].polynomials.iter();
+            let eval_iter = &mut trees[1].evaluations.iter();
+            self.components()
+                .iter()
+                .zip_eq(&mut component_traces)
+                .for_each(|(_component, component_trace)| {
+                    // TODO(AlonH): Implement n_interaction_columns() for component.
+                    let polys = poly_iter.take(1).collect_vec();
+                    let evals = eval_iter.take(1).collect_vec();
+                    component_trace.polys.push(polys);
+                    component_trace.evals.push(evals);
+                });
+        }
+        component_traces
     }
 }
+
 impl<A: Air + ?Sized> AirExt for A {}
 
 pub trait AirProverExt<B: Backend>: AirProver<B> {
@@ -121,6 +142,7 @@ pub trait AirProverExt<B: Backend>: AirProver<B> {
         &self,
         random_coeff: SecureField,
         component_traces: &[ComponentTrace<'_, B>],
+        interaction_elements: &InteractionElements,
     ) -> SecureCirclePoly<B> {
         let total_constraints: usize = self
             .prover_components()
@@ -132,8 +154,12 @@ pub trait AirProverExt<B: Backend>: AirProver<B> {
             self.composition_log_degree_bound(),
             total_constraints,
         );
-        zip(self.prover_components(), component_traces).for_each(|(component, trace)| {
-            component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
+        zip_eq(self.prover_components(), component_traces).for_each(|(component, trace)| {
+            component.evaluate_constraint_quotients_on_domain(
+                trace,
+                &mut accumulator,
+                interaction_elements,
+            )
         });
         accumulator.finalize()
     }
