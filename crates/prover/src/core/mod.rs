@@ -1,4 +1,5 @@
-use std::ops::{Deref, DerefMut};
+use std::collections::BTreeMap;
+use std::ops::{Deref, DerefMut, Index};
 
 use self::fields::m31::BaseField;
 
@@ -60,4 +61,13 @@ impl<T> DerefMut for ComponentVec<T> {
     }
 }
 
-pub struct InteractionElements(Vec<(String, BaseField)>);
+pub struct InteractionElements(BTreeMap<String, BaseField>);
+
+impl Index<&str> for InteractionElements {
+    type Output = BaseField;
+
+    fn index(&self, index: &str) -> &Self::Output {
+        // TODO(AlonH): Return an error if the key is not found.
+        &self.0[index]
+    }
+}
