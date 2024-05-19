@@ -110,6 +110,7 @@ impl MultiFibonacci {
 #[cfg(test)]
 mod tests {
     use std::assert_matches::assert_matches;
+    use std::collections::BTreeMap;
     use std::iter::zip;
 
     use itertools::Itertools;
@@ -123,10 +124,12 @@ mod tests {
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::VerificationError;
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
+    use crate::core::InteractionElements;
     use crate::{m31, qm31};
 
     pub fn generate_test_queries(n_queries: usize, trace_length: usize) -> Vec<usize> {
@@ -146,20 +149,25 @@ mod tests {
         let trace_poly = trace.interpolate();
         let trace_eval =
             trace_poly.evaluate(CanonicCoset::new(trace_poly.log_size() + 1).circle_domain());
-        let trace = ComponentTrace::new(vec![&trace_poly], vec![&trace_eval]);
+        let trace = ComponentTrace::new(
+            TreeVec::new(vec![vec![&trace_poly]]),
+            TreeVec::new(vec![vec![&trace_eval]]),
+        );
 
         let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
         let component_traces = vec![trace];
-        let composition_polynomial_poly = fib
-            .air
-            .compute_composition_polynomial(random_coeff, &component_traces);
+        let composition_polynomial_poly = fib.air.compute_composition_polynomial(
+            random_coeff,
+            &component_traces,
+            &InteractionElements::new(BTreeMap::new()),
+        );
 
         // Evaluate this polynomial at another point out of the evaluation domain and compare to
         // what we expect.
         let point = CirclePoint::<SecureField>::get_point(98989892);
 
         let points = fib.air.mask_points(point);
-        let mask_values = zip(&component_traces[0].polys, &points[0])
+        let mask_values = zip(&component_traces[0].polys[0], &points[0])
             .map(|(poly, points)| {
                 points
                     .iter()
@@ -173,8 +181,10 @@ mod tests {
             point,
             &mask_values,
             &mut evaluation_accumulator,
+            &InteractionElements::new(BTreeMap::new()),
         );
         let oods_value = evaluation_accumulator.finalize();
+
         assert_eq!(oods_value, composition_polynomial_poly.eval_at_point(point));
     }
 
