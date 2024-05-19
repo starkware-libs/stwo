@@ -1,16 +1,24 @@
+use itertools::Itertools;
+
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::air::mask::fixed_mask_points;
-use crate::core::air::{Air, Component};
+use crate::core::air::{Air, Component, ComponentTraceWriter};
+use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::poly::circle::CanonicCoset;
-use crate::core::ColumnVec;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use crate::core::poly::BitReversedOrder;
+use crate::core::{ColumnVec, InteractionElements};
+use crate::examples::wide_fibonacci::trace_gen::write_lookup_column;
 
 pub const LOG_N_COLUMNS: usize = 8;
 pub const N_COLUMNS: usize = 1 << LOG_N_COLUMNS;
+
+const ALPHA_ID: &str = "wide_fibonacci_alpha";
+const Z_ID: &str = "wide_fibonacci_z";
 
 /// Component that computes 2^`self.log_n_instances` instances of fibonacci sequences of size
 /// 2^`self.log_fibonacci_size`. The numbers are computes over [N_COLUMNS] trace columns. The
@@ -68,10 +76,7 @@ impl Component for WideFibComponent {
     }
 
     fn interaction_element_ids(&self) -> Vec<String> {
-        vec![
-            "wide_fibonacci_alpha".to_string(),
-            "wide_fibonacci_z".to_string(),
-        ]
+        vec![ALPHA_ID.to_string(), Z_ID.to_string()]
     }
 
     fn evaluate_constraint_quotients_at_point(
@@ -87,6 +92,21 @@ impl Component for WideFibComponent {
             let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
             evaluation_accumulator.accumulate(numerator * denom_inverse);
         }
+    }
+}
+
+impl ComponentTraceWriter<CPUBackend> for WideFibComponent {
+    fn write_interaction_trace(
+        &self,
+        trace: &ColumnVec<&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>>,
+        elements: &InteractionElements,
+    ) -> ColumnVec<CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>> {
+        let domain = trace[0].domain;
+        let input_trace = trace.iter().map(|eval| &eval.values).collect_vec();
+        let (alpha, z) = (elements[ALPHA_ID], elements[Z_ID]);
+        let values = write_lookup_column(&input_trace, alpha, z);
+        let eval = CircleEvaluation::new(domain, values);
+        vec![eval]
     }
 }
 

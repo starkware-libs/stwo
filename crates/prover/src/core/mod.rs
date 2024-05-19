@@ -1,4 +1,4 @@
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Index};
 
 use self::fields::m31::BaseField;
 
@@ -61,3 +61,11 @@ impl<T> DerefMut for ComponentVec<T> {
 }
 
 pub struct InteractionElements(Vec<(String, BaseField)>);
+
+impl Index<&str> for InteractionElements {
+    type Output = BaseField;
+
+    fn index(&self, index: &str) -> &Self::Output {
+        &self.0.iter().find(|(id, _)| id == index).unwrap().1
+    }
+}
