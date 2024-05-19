@@ -1,13 +1,18 @@
+use itertools::Itertools;
+
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::air::mask::fixed_mask_points;
-use crate::core::air::{Air, Component};
+use crate::core::air::{Air, Component, ComponentTraceWriter};
+use crate::core::backend::CPUBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::poly::circle::CanonicCoset;
-use crate::core::ColumnVec;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use crate::core::poly::BitReversedOrder;
+use crate::core::{ColumnVec, InteractionElements};
+use crate::examples::wide_fibonacci::trace_gen::write_lookup_column;
 
 pub const LOG_N_COLUMNS: usize = 8;
 pub const N_COLUMNS: usize = 1 << LOG_N_COLUMNS;
@@ -87,6 +92,21 @@ impl Component for WideFibComponent {
             let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
             evaluation_accumulator.accumulate(numerator * denom_inverse);
         }
+    }
+}
+
+impl ComponentTraceWriter<CPUBackend> for WideFibComponent {
+    fn write_interaction_trace(
+        &self,
+        trace: &ColumnVec<&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>>,
+        elements: &InteractionElements,
+    ) -> ColumnVec<CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>> {
+        let domain = trace[0].domain;
+        let input_trace = trace.iter().map(|eval| &eval.values).collect_vec();
+        let (alpha, z) = (elements["wide_fibonacci_alpha"], elements["wide_fibonacci_z"]);
+        let values = write_lookup_column(&input_trace, alpha, z);
+        let eval = CircleEvaluation::new(domain, values);
+        vec![eval]
     }
 }
 

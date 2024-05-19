@@ -4,7 +4,9 @@ use tracing::{span, Level};
 
 use super::component::{WideFibAir, WideFibComponent};
 use crate::core::air::accumulation::DomainEvaluationAccumulator;
-use crate::core::air::{AirProver, Component, ComponentProver, ComponentTrace};
+use crate::core::air::{
+    AirProver, Component, ComponentProver, ComponentTrace, ComponentTraceWriter,
+};
 use crate::core::backend::avx512::qm31::PackedSecureField;
 use crate::core::backend::avx512::{AVX512Backend, BaseFieldVec, PackedBaseField, VECS_LOG_SIZE};
 use crate::core::backend::{Col, Column, ColumnOps};
@@ -13,7 +15,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::ColumnVec;
+use crate::core::{ColumnVec, InteractionElements};
 use crate::examples::wide_fibonacci::component::N_COLUMNS;
 
 impl AirProver<AVX512Backend> for WideFibAir {
@@ -46,6 +48,16 @@ pub fn gen_trace(
         .into_iter()
         .map(|eval| CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(domain, eval))
         .collect_vec()
+}
+
+impl ComponentTraceWriter<AVX512Backend> for WideFibComponent {
+    fn write_interaction_trace(
+        &self,
+        _trace: &ColumnVec<&CircleEvaluation<AVX512Backend, BaseField, BitReversedOrder>>,
+        _elements: &InteractionElements,
+    ) -> ColumnVec<CircleEvaluation<AVX512Backend, BaseField, BitReversedOrder>> {
+        vec![]
+    }
 }
 
 impl ComponentProver<AVX512Backend> for WideFibComponent {
