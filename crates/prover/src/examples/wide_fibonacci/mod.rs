@@ -110,7 +110,8 @@ mod tests {
         let alpha = m31!(7);
         let z = m31!(11);
         let trace = gen_trace(&wide_fib, vec![input]);
-        let lookup_column = write_lookup_column(&trace, alpha, z);
+        let input_trace = trace.iter().collect_vec();
+        let lookup_column = write_lookup_column(&input_trace, alpha, z);
 
         assert_constraints_on_lookup_column(&lookup_column, &trace, alpha, z)
     }
