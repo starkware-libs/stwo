@@ -5,7 +5,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::FieldExpOps;
 use crate::core::utils::shifted_secure_combination;
 
-/// Given a private input, write the trace row for the wide Fibonacci example to dst. Returns the
+/// Writes the trace row for the wide Fibonacci example to dst, given a private input. Returns the
 /// last two elements of the row in case the sequence is continued.
 pub fn write_trace_row(
     dst: &mut [Vec<BaseField>],
@@ -22,8 +22,11 @@ pub fn write_trace_row(
     (dst[n_columns - 2][row_index], dst[n_columns - 1][row_index])
 }
 
+/// Writes and returns the lookup column for the wide Fibonacci example, which is the partial
+/// product of the shifted secure combination of the first two elements in each row divided by the
+/// the shifted secure combination of the last two elements in each row.
 pub fn write_lookup_column(
-    input_trace: &[Vec<BaseField>],
+    input_trace: &[&[BaseField]],
     // TODO(AlonH): Change alpha and z to SecureField.
     alpha: BaseField,
     z: BaseField,
