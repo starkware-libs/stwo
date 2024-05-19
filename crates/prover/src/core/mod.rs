@@ -63,6 +63,16 @@ impl<T> DerefMut for ComponentVec<T> {
 
 pub struct InteractionElements(BTreeMap<String, BaseField>);
 
+impl InteractionElements {
+    pub fn new(elements: BTreeMap<String, BaseField>) -> Self {
+        Self(elements)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
 impl Index<&str> for InteractionElements {
     type Output = BaseField;
 
