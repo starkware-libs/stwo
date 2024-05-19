@@ -5,7 +5,7 @@ use tracing::{span, Level};
 use super::component::{WideFibAir, WideFibComponent};
 use crate::core::air::accumulation::DomainEvaluationAccumulator;
 use crate::core::air::{
-    AirProver, Component, ComponentProver, ComponentTrace, ComponentTraceWriter,
+    AirProver, AirTraceWriter, Component, ComponentProver, ComponentTrace, ComponentTraceWriter,
 };
 use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -17,8 +17,22 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::{ColumnVec, InteractionElements};
+use crate::core::{ColumnVec, ComponentVec, InteractionElements};
 use crate::examples::wide_fibonacci::component::N_COLUMNS;
+
+impl AirTraceWriter<SimdBackend> for WideFibAir {
+    fn interact(
+        &self,
+        _trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+        _elements: &InteractionElements,
+    ) -> ComponentVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+        ComponentVec(vec![vec![]])
+    }
+
+    fn to_air_prover(&self) -> &impl AirProver<SimdBackend> {
+        self
+    }
+}
 
 impl AirProver<SimdBackend> for WideFibAir {
     fn prover_components(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {
@@ -67,8 +81,9 @@ impl ComponentProver<SimdBackend> for WideFibComponent {
         &self,
         trace: &ComponentTrace<'_, SimdBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
+        _interaction_elements: &InteractionElements,
     ) {
-        assert_eq!(trace.polys.len(), self.n_columns());
+        assert_eq!(trace.polys[0].len(), self.n_columns());
         // TODO(spapini): Steal evaluation from commitment.
         let eval_domain = CanonicCoset::new(self.log_column_size() + 1).circle_domain();
         let trace_eval = &trace.evals;
@@ -93,14 +108,17 @@ impl ComponentProver<SimdBackend> for WideFibComponent {
 
         for vec_row in 0..(1 << (eval_domain.log_size() - LOG_N_LANES)) {
             // Numerator.
-            let a = trace_eval[0].data[vec_row];
+            let a = trace_eval[0][0].data[vec_row];
             let mut row_res = PackedSecureField::zero();
             let mut a_sq = a.square();
-            let mut b_sq = trace_eval[1].data[vec_row].square();
+            let mut b_sq = trace_eval[0][1].data[vec_row].square();
             #[allow(clippy::needless_range_loop)]
             for i in 0..(self.n_columns() - 2) {
                 unsafe {
-                    let c = *trace_eval.get_unchecked(i + 2).data.get_unchecked(vec_row);
+                    let c = *trace_eval[0]
+                        .get_unchecked(i + 2)
+                        .data
+                        .get_unchecked(vec_row);
                     row_res += PackedSecureField::broadcast(
                         accum.random_coeff_powers[self.n_columns() - 3 - i],
                     ) * (a_sq + b_sq - c);
