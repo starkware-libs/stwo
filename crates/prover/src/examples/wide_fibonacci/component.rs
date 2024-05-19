@@ -84,6 +84,7 @@ impl Component for WideFibComponent {
         point: CirclePoint<SecureField>,
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
+        _interaction_elements: &InteractionElements,
     ) {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let denom = coset_vanishing(constraint_zero_domain, point);
@@ -103,7 +104,10 @@ impl ComponentTraceWriter<CPUBackend> for WideFibComponent {
     ) -> ColumnVec<CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>> {
         let domain = trace[0].domain;
         let input_trace = trace.iter().map(|eval| &eval.values).collect_vec();
-        let (alpha, z) = (elements["wide_fibonacci_alpha"], elements["wide_fibonacci_z"]);
+        let (alpha, z) = (
+            elements["wide_fibonacci_alpha"],
+            elements["wide_fibonacci_z"],
+        );
         let values = write_lookup_column(&input_trace, alpha, z);
         let eval = CircleEvaluation::new(domain, values);
         vec![eval]

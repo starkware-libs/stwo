@@ -62,6 +62,12 @@ impl<T> DerefMut for ComponentVec<T> {
 
 pub struct InteractionElements(Vec<(String, BaseField)>);
 
+impl InteractionElements {
+    pub fn new(elements: Vec<(String, BaseField)>) -> Self {
+        Self(elements)
+    }
+}
+
 impl Index<&str> for InteractionElements {
     type Output = BaseField;
 
