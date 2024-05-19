@@ -3,6 +3,7 @@ use super::backend::Backend;
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
+use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
 use super::{ColumnVec, InteractionElements};
@@ -50,6 +51,7 @@ pub trait Component {
         point: CirclePoint<SecureField>,
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
+        interaction_elements: &InteractionElements,
     );
 }
 
@@ -68,6 +70,7 @@ pub trait ComponentProver<B: Backend>: Component + ComponentTraceWriter<B> {
         &self,
         trace: &ComponentTrace<'_, B>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
+        interaction_elements: &InteractionElements,
     );
 }
 
@@ -75,16 +78,16 @@ pub trait ComponentProver<B: Backend>: Component + ComponentTraceWriter<B> {
 /// Each polynomial is stored both in a coefficients, and evaluations form (for efficiency)
 pub struct ComponentTrace<'a, B: Backend> {
     /// Polynomials for each column.
-    pub polys: Vec<&'a CirclePoly<B>>,
+    pub polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
     /// Evaluations for each column. The evaluation domain is the commitment domain for that column
     /// obtained from [AirExt::trace_commitment_domains()].
-    pub evals: Vec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    pub evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
 }
 
 impl<'a, B: Backend> ComponentTrace<'a, B> {
     pub fn new(
-        polys: Vec<&'a CirclePoly<B>>,
-        evals: Vec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
+        evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
     ) -> Self {
         Self { polys, evals }
     }
