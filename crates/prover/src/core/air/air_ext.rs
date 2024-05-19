@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::iter::zip;
 
 use itertools::{zip_eq, Itertools};
@@ -12,7 +13,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::LOG_BLOWUP_FACTOR;
-use crate::core::{ComponentVec, InteractionElements};
+use crate::core::{ColumnVec, ComponentVec, InteractionElements};
 
 pub trait AirExt: Air {
     fn composition_log_degree_bound(&self) -> u32 {
@@ -51,7 +52,7 @@ pub trait AirExt: Air {
             .dedup()
             .collect_vec();
         let elements = channel.draw_felts(ids.len()).into_iter().map(|e| e.0 .0);
-        InteractionElements(zip_eq(ids, elements).collect_vec())
+        InteractionElements(BTreeMap::from_iter(zip_eq(ids, elements)))
     }
 
     fn eval_composition_polynomial_at_point(
@@ -99,6 +100,24 @@ pub trait AirExt: Air {
 impl<A: Air + ?Sized> AirExt for A {}
 
 pub trait AirProverExt<B: Backend>: AirProver<B> {
+    fn interact(
+        &self,
+        trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        elements: &InteractionElements,
+    ) -> ComponentVec<CircleEvaluation<B, BaseField, BitReversedOrder>> {
+        let trace_iter = &mut trace.iter();
+        ComponentVec(
+            self.prover_components()
+                .iter()
+                .map(|component| {
+                    let n_columns = component.trace_log_degree_bounds().len();
+                    let trace_columns = trace_iter.take(n_columns).collect_vec();
+                    component.write_interaction_trace(&trace_columns, elements)
+                })
+                .collect(),
+        )
+    }
+
     fn compute_composition_polynomial(
         &self,
         random_coeff: SecureField,
@@ -120,4 +139,5 @@ pub trait AirProverExt<B: Backend>: AirProver<B> {
         accumulator.finalize()
     }
 }
+
 impl<B: Backend, A: AirProver<B>> AirProverExt<B> for A {}

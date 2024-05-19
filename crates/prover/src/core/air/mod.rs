@@ -5,7 +5,7 @@ use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
-use super::ColumnVec;
+use super::{ColumnVec, InteractionElements};
 
 pub mod accumulation;
 mod air_ext;
@@ -53,7 +53,15 @@ pub trait Component {
     );
 }
 
-pub trait ComponentProver<B: Backend>: Component {
+pub trait ComponentTraceWriter<B: Backend> {
+    fn write_interaction_trace(
+        &self,
+        trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        elements: &InteractionElements,
+    ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
+}
+
+pub trait ComponentProver<B: Backend>: Component + ComponentTraceWriter<B> {
     /// Evaluates the constraint quotients of the component on the evaluation domain.
     /// Accumulates quotients in `evaluation_accumulator`.
     fn evaluate_constraint_quotients_on_domain(

@@ -269,15 +269,21 @@ mod tests {
     use num_traits::Zero;
 
     use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-    use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
+    use crate::core::air::{
+        Air, AirProver, Component, ComponentProver, ComponentTrace, ComponentTraceWriter,
+    };
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::backend::CpuBackend;
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::poly::circle::{CanonicCoset, CircleDomain, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+    use crate::core::poly::circle::{
+        CanonicCoset, CircleDomain, CircleEvaluation, MAX_CIRCLE_DOMAIN_LOG_SIZE,
+    };
+    use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{prove, ProvingError};
     use crate::core::test_utils::test_channel;
+    use crate::core::{ColumnVec, InteractionElements};
     use crate::qm31;
 
     struct TestAir<C: ComponentProver<CpuBackend>> {
@@ -332,6 +338,16 @@ mod tests {
             evaluation_accumulator: &mut PointEvaluationAccumulator,
         ) {
             evaluation_accumulator.accumulate(qm31!(0, 0, 0, 1))
+        }
+    }
+
+    impl ComponentTraceWriter<CpuBackend> for TestComponent {
+        fn write_interaction_trace(
+            &self,
+            _trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
+            _elements: &InteractionElements,
+        ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+            vec![]
         }
     }
 

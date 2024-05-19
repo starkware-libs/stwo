@@ -4,16 +4,17 @@ use num_traits::One;
 
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::shifted_mask_points;
-use crate::core::air::{Component, ComponentProver, ComponentTrace};
+use crate::core::air::{Component, ComponentProver, ComponentTrace, ComponentTraceWriter};
 use crate::core::backend::CpuBackend;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, FieldExpOps};
-use crate::core::poly::circle::CanonicCoset;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
-use crate::core::ColumnVec;
+use crate::core::{ColumnVec, InteractionElements};
 
 pub struct FibonacciComponent {
     pub log_size: u32,
@@ -113,6 +114,16 @@ impl Component for FibonacciComponent {
                 &mask[0][..1].try_into().unwrap(),
             ),
         );
+    }
+}
+
+impl ComponentTraceWriter<CpuBackend> for FibonacciComponent {
+    fn write_interaction_trace(
+        &self,
+        _trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
+        _elements: &InteractionElements,
+    ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+        vec![]
     }
 }
 
