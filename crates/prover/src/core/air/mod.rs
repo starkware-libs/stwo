@@ -53,7 +53,15 @@ pub trait Component {
     );
 }
 
-pub trait ComponentProver<B: Backend>: Component {
+pub trait ComponentTraceWriter<B: Backend> {
+    fn write_interaction_trace(
+        &self,
+        trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        elements: &[BaseField],
+    ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
+}
+
+pub trait ComponentProver<B: Backend>: Component + ComponentTraceWriter<B> {
     /// Evaluates the constraint quotients of the component on the evaluation domain.
     /// Accumulates quotients in `evaluation_accumulator`.
     fn evaluate_constraint_quotients_on_domain(
