@@ -4,7 +4,9 @@ use tracing::{span, Level};
 
 use super::component::{WideFibAir, WideFibComponent};
 use crate::core::air::accumulation::DomainEvaluationAccumulator;
-use crate::core::air::{AirProver, Component, ComponentProver, ComponentTrace};
+use crate::core::air::{
+    AirProver, Component, ComponentProver, ComponentTrace, ComponentTraceWriter,
+};
 use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -15,7 +17,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::ColumnVec;
+use crate::core::{ColumnVec, InteractionElements};
 use crate::examples::wide_fibonacci::component::N_COLUMNS;
 
 impl AirProver<SimdBackend> for WideFibAir {
@@ -48,6 +50,16 @@ pub fn gen_trace(
         .into_iter()
         .map(|eval| CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(domain, eval))
         .collect_vec()
+}
+
+impl ComponentTraceWriter<SimdBackend> for WideFibComponent {
+    fn write_interaction_trace(
+        &self,
+        _trace: &ColumnVec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+        _elements: &InteractionElements,
+    ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+        vec![]
+    }
 }
 
 impl ComponentProver<SimdBackend> for WideFibComponent {
