@@ -104,6 +104,7 @@ impl Component for FibonacciComponent {
         point: CirclePoint<SecureField>,
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
+        _interaction_elements: &InteractionElements,
     ) {
         evaluation_accumulator.accumulate(
             self.step_constraint_eval_quotient_by_mask(point, &mask[0][..].try_into().unwrap()),
@@ -132,8 +133,9 @@ impl ComponentProver<CpuBackend> for FibonacciComponent {
         &self,
         trace: &ComponentTrace<'_, CpuBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
+        _interaction_elements: &InteractionElements,
     ) {
-        let poly = &trace.polys[0];
+        let poly = &trace.polys[0][0];
         let trace_domain = CanonicCoset::new(self.log_size);
         let trace_eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
         let trace_eval = poly.evaluate(trace_eval_domain).bit_reverse();
