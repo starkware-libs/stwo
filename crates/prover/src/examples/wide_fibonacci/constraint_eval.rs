@@ -5,14 +5,14 @@ use super::component::{Input, WideFibAir, WideFibComponent};
 use super::trace_gen::write_trace_row;
 use crate::core::air::accumulation::DomainEvaluationAccumulator;
 use crate::core::air::{AirProver, Component, ComponentProver, ComponentTrace};
-use crate::core::backend::{CPUBackend, Column};
+use crate::core::backend::CPUBackend;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse;
-use crate::core::ColumnVec;
+use crate::core::{ColumnVec, InteractionElements};
 use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
 
 // TODO(AlonH): Rename file to `cpu.rs`.
@@ -28,6 +28,7 @@ impl ComponentProver<CPUBackend> for WideFibComponent {
         &self,
         trace: &ComponentTrace<'_, CPUBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
+        _interaction_elements: &InteractionElements,
     ) {
         let max_constraint_degree = self.max_constraint_log_degree_bound();
         let trace_eval_domain = CanonicCoset::new(max_constraint_degree).circle_domain();
@@ -49,9 +50,8 @@ impl ComponentProver<CPUBackend> for WideFibComponent {
             // Step constraints.
             for j in 0..self.n_columns() - 2 {
                 numerators[i] += accum.random_coeff_powers[self.n_columns() - 3 - j]
-                    * (trace_evals[j].values.at(i).square()
-                        + trace_evals[j + 1].values.at(i).square()
-                        - trace_evals[j + 2].values.at(i));
+                    * (trace_evals[0][j][i].square() + trace_evals[0][j + 1][i].square()
+                        - trace_evals[0][j + 2][i]);
             }
         }
         for (i, (num, denom)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {

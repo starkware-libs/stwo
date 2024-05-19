@@ -9,7 +9,7 @@ use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::poly::circle::{CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::poly::twiddles::TwiddleTree;
 use super::proof_of_work::ProofOfWorkVerificationError;
-use super::ColumnVec;
+use super::{ColumnVec, InteractionElements};
 use crate::core::air::{Air, AirExt, AirProverExt};
 use crate::core::backend::CPUBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
@@ -81,10 +81,8 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     let span = span!(Level::INFO, "Composition generation").entered();
     let composition_polynomial_poly = air.compute_composition_polynomial(
         random_coeff,
-        &air.component_traces(
-            &commitment_scheme.trees[0].polynomials,
-            &commitment_scheme.trees[0].evaluations,
-        ),
+        &air.component_traces(&commitment_scheme.trees),
+        &InteractionElements::new(vec![]),
     );
     span.exit();
 
@@ -114,7 +112,12 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
         sampled_values_to_mask(air, commitment_scheme_proof.sampled_values.clone()).unwrap();
 
     if composition_oods_value
-        != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
+        != air.eval_composition_polynomial_at_point(
+            oods_point,
+            &trace_oods_values,
+            random_coeff,
+            &InteractionElements::new(vec![]),
+        )
     {
         return Err(ProvingError::ConstraintsNotSatisfied);
     }
@@ -150,7 +153,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
 
     let span = span!(Level::INFO, "Precompute twiddle").entered();
     let twiddles = B::precompute_twiddles(
-        CanonicCoset::new(air.composition_log_degree_bound() + LOG_BLOWUP_FACTOR)
+        CanonicCoset::new(composition_polynomial_log_degree_bound + LOG_BLOWUP_FACTOR)
             .circle_domain()
             .half_coset,
     );
@@ -200,7 +203,12 @@ pub fn verify(
     })?;
 
     if composition_oods_value
-        != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
+        != air.eval_composition_polynomial_at_point(
+            oods_point,
+            &trace_oods_values,
+            random_coeff,
+            &InteractionElements::new(vec![]),
+        )
     {
         return Err(VerificationError::OodsNotMatching);
     }
@@ -354,6 +362,7 @@ mod tests {
             _point: CirclePoint<SecureField>,
             _mask: &crate::core::ColumnVec<Vec<SecureField>>,
             evaluation_accumulator: &mut PointEvaluationAccumulator,
+            _interaction_elements: &InteractionElements,
         ) {
             evaluation_accumulator.accumulate(qm31!(0, 0, 0, 1))
         }
@@ -374,6 +383,7 @@ mod tests {
             &self,
             _trace: &ComponentTrace<'_, CPUBackend>,
             _evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
+            _interaction_elements: &InteractionElements,
         ) {
             // Does nothing.
         }
