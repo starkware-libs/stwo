@@ -5,20 +5,21 @@ use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, Component, ComponentTraceWriter};
 use crate::core::backend::CpuBackend;
 use crate::core::circle::CirclePoint;
-use crate::core::constraints::coset_vanishing;
+use crate::core::constraints::{coset_vanishing, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::utils::shifted_secure_combination;
 use crate::core::{ColumnVec, InteractionElements};
 use crate::examples::wide_fibonacci::trace_gen::write_lookup_column;
 
 pub const LOG_N_COLUMNS: usize = 8;
 pub const N_COLUMNS: usize = 1 << LOG_N_COLUMNS;
 
-const ALPHA_ID: &str = "wide_fibonacci_alpha";
-const Z_ID: &str = "wide_fibonacci_z";
+pub const ALPHA_ID: &str = "wide_fibonacci_alpha";
+pub const Z_ID: &str = "wide_fibonacci_z";
 
 /// Component that computes 2^`self.log_n_instances` instances of fibonacci sequences of size
 /// 2^`self.log_fibonacci_size`. The numbers are computes over [N_COLUMNS] trace columns. The
@@ -57,11 +58,15 @@ impl Air for WideFibAir {
 
 impl Component for WideFibComponent {
     fn n_constraints(&self) -> usize {
-        self.n_columns() - 2
+        self.n_columns() - 1
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
         self.log_column_size() + 1
+    }
+
+    fn n_phases(&self) -> u32 {
+        2
     }
 
     fn trace_log_degree_bounds(&self) -> Vec<u32> {
@@ -84,9 +89,20 @@ impl Component for WideFibComponent {
         point: CirclePoint<SecureField>,
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
-        _interaction_elements: &InteractionElements,
+        interaction_elements: &InteractionElements,
     ) {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
+        let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
+        let lookup_numerator = (mask[self.n_columns()][0]
+            * shifted_secure_combination(
+                &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
+                alpha,
+                z,
+            ))
+            - shifted_secure_combination(&[mask[0][0], mask[1][0]], alpha, z);
+        let lookup_denom = point_vanishing(constraint_zero_domain.at(0), point);
+        evaluation_accumulator.accumulate(lookup_numerator / lookup_denom);
+
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
         for i in 0..self.n_columns() - 2 {

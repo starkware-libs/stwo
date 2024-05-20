@@ -21,6 +21,14 @@ pub trait AirExt: Air {
             .unwrap()
     }
 
+    fn n_phases(&self) -> u32 {
+        self.components()
+            .iter()
+            .map(|component| component.n_phases())
+            .max()
+            .unwrap()
+    }
+
     fn trace_commitment_domains(&self) -> Vec<CanonicCoset> {
         self.column_log_sizes()
             .iter()
