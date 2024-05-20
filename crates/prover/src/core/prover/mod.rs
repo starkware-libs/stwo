@@ -80,8 +80,7 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
                 .map(|poly| poly.interpolate_with_twiddles(twiddles))
         })
         .collect_vec();
-    let n_interaction_traces = interaction_trace_polys.len();
-    if n_interaction_traces > 0 {
+    if !interaction_trace_polys.is_empty() {
         commitment_scheme.commit(interaction_trace_polys, channel, twiddles);
     }
 
@@ -119,7 +118,7 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     // TODO(spapini): Change when we support multiple interactions.
     // First tree - trace.
     let mut sample_points = TreeVec::new(vec![sample_points.flatten()]);
-    if commitment_scheme.trees.len() > 2 {
+    if air.n_phases() == 2 {
         // Second tree - interaction trace.
         sample_points.push(vec![
             vec![oods_point];
@@ -210,7 +209,7 @@ pub fn verify(
     commitment_scheme.commit(proof.commitments[0], air.column_log_sizes(), channel);
     let interaction_elements = air.interaction_elements(channel);
 
-    if proof.commitments.len() > 2 {
+    if air.n_phases() == 2 {
         commitment_scheme.commit(
             proof.commitments[1],
             air.column_log_sizes()[..1].to_vec(),
@@ -236,7 +235,7 @@ pub fn verify(
     // TODO(spapini): Change when we support multiple interactions.
     // First tree - trace.
     let mut sample_points = TreeVec::new(vec![trace_sample_points.flatten()]);
-    if proof.commitments.len() > 2 {
+    if air.n_phases() == 2 {
         // Second tree - interaction trace.
         // TODO(AlonH): Get the number of interaction traces from the air.
         sample_points.push(vec![vec![oods_point]; 1]);
@@ -288,7 +287,7 @@ fn sampled_values_to_mask(
         )
     });
 
-    if sampled_values.len() > 2 {
+    if air.n_phases() == 2 {
         let interaction_values = &mut sampled_values
             .get(1)
             .ok_or(InvalidOodsSampleStructure)?
@@ -427,6 +426,10 @@ mod tests {
 
         fn max_constraint_log_degree_bound(&self) -> u32 {
             self.max_constraint_log_degree_bound
+        }
+
+        fn n_phases(&self) -> u32 {
+            1
         }
 
         fn trace_log_degree_bounds(&self) -> Vec<u32> {

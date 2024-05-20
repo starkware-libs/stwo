@@ -50,6 +50,8 @@ pub trait Component {
 
     fn max_constraint_log_degree_bound(&self) -> u32;
 
+    fn n_phases(&self) -> u32;
+
     /// Returns the degree bounds of each trace column.
     fn trace_log_degree_bounds(&self) -> Vec<u32>;
 
