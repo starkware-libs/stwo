@@ -50,6 +50,9 @@ pub trait Component {
 
     fn max_constraint_log_degree_bound(&self) -> u32;
 
+    /// Returns the number of interaction phases done by the component.
+    fn n_interaction_phases(&self) -> u32;
+
     /// Returns the degree bounds of each trace column.
     fn trace_log_degree_bounds(&self) -> Vec<u32>;
 
