@@ -1,17 +1,17 @@
 use itertools::Itertools;
 use num_traits::Zero;
 
-use super::component::{Input, WideFibAir, WideFibComponent};
+use super::component::{Input, WideFibAir, WideFibComponent, ALPHA_ID, Z_ID};
 use super::trace_gen::write_trace_row;
 use crate::core::air::accumulation::DomainEvaluationAccumulator;
 use crate::core::air::{AirProver, Component, ComponentProver, ComponentTrace};
 use crate::core::backend::CpuBackend;
-use crate::core::constraints::coset_vanishing;
+use crate::core::constraints::{coset_vanishing, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
-use crate::core::utils::bit_reverse;
+use crate::core::utils::{bit_reverse, shifted_secure_combination};
 use crate::core::{ColumnVec, InteractionElements};
 use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
 
@@ -28,24 +28,30 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
         &self,
         trace: &ComponentTrace<'_, CpuBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
-        _interaction_elements: &InteractionElements,
+        interaction_elements: &InteractionElements,
     ) {
         let max_constraint_degree = self.max_constraint_log_degree_bound();
         let trace_eval_domain = CanonicCoset::new(max_constraint_degree).circle_domain();
         let trace_evals = &trace.evals;
         let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let mut denoms = vec![];
+        let mut lookup_denoms = vec![];
         for point in trace_eval_domain.iter() {
             denoms.push(coset_vanishing(zero_domain, point));
+            lookup_denoms.push(point_vanishing(zero_domain.at(0), point));
         }
         bit_reverse(&mut denoms);
         let mut denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
         BaseField::batch_inverse(&denoms, &mut denom_inverses);
+        bit_reverse(&mut lookup_denoms);
+        let mut lookup_denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
+        BaseField::batch_inverse(&lookup_denoms, &mut lookup_denom_inverses);
         let mut numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
+        let mut lookup_numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
         let [mut accum] =
             evaluation_accumulator.columns([(max_constraint_degree, self.n_constraints())]);
+        let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
 
-        #[allow(clippy::needless_range_loop)]
         for i in 0..trace_eval_domain.size() {
             // Step constraints.
             for j in 0..self.n_columns() - 2 {
@@ -53,9 +59,33 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
                     * (trace_evals[0][j][i].square() + trace_evals[0][j + 1][i].square()
                         - trace_evals[0][j + 2][i]);
             }
+
+            // Lookup constraints.
+            lookup_numerators[i] = accum.random_coeff_powers[self.n_columns() - 2]
+                * ((trace_evals[1][0][i]
+                    * shifted_secure_combination(
+                        &[
+                            trace_evals[0][self.n_columns() - 2][i],
+                            trace_evals[0][self.n_columns() - 1][i],
+                        ],
+                        alpha,
+                        z,
+                    ))
+                    - shifted_secure_combination(
+                        &[trace_evals[0][0][i], trace_evals[0][1][i]],
+                        alpha,
+                        z,
+                    ));
         }
-        for (i, (num, denom)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
-            accum.accumulate(i, *num * *denom);
+        for (i, (num, denom_inverse)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
+            accum.accumulate(i, *num * *denom_inverse);
+        }
+        for (i, (num, denom_inverse)) in lookup_numerators
+            .iter()
+            .zip(lookup_denom_inverses.iter())
+            .enumerate()
+        {
+            accum.accumulate(i, *num * *denom_inverse);
         }
     }
 }
