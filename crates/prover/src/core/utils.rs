@@ -1,9 +1,10 @@
 use std::iter::Peekable;
 
-use num_traits::{One, Zero};
+use num_traits::One;
 
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
+use super::fields::ExtensionOf;
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
     fn assign(self, other: impl IntoIterator<Item = T>)
@@ -89,14 +90,14 @@ pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureF
 
 /// Securely combines the given values using the given random alpha and z.
 /// Alpha and z should be secure field elements for soundness.
-pub fn shifted_secure_combination(
-    values: &[BaseField],
+pub fn shifted_secure_combination<F: ExtensionOf<BaseField>>(
+    values: &[F],
     alpha: BaseField,
     z: BaseField,
-) -> BaseField {
+) -> F {
     let res = values
         .iter()
-        .fold(BaseField::zero(), |acc, &value| acc * alpha + value);
+        .fold(F::zero(), |acc, &value| acc * alpha + value);
     res - z
 }
 
