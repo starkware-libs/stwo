@@ -1,4 +1,4 @@
-use super::CPUBackend;
+use super::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
@@ -8,7 +8,7 @@ use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
 
 // TODO(spapini): Optimized these functions as well.
-impl FriOps for CPUBackend {
+impl FriOps for CpuBackend {
     fn fold_line(
         eval: &LineEvaluation<Self>,
         alpha: SecureField,
@@ -51,7 +51,7 @@ impl FriOps for CPUBackend {
     }
 }
 
-impl CPUBackend {
+impl CpuBackend {
     /// Used to decompose a general polynomial to a polynomial inside the fft-space, and
     /// the remainder terms.
     /// A coset-diff on a [`CirclePoly`] that is in the FFT space will return zero.
@@ -89,8 +89,8 @@ impl CPUBackend {
 mod tests {
     use num_traits::Zero;
 
-    use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
-    use crate::core::backend::CPUBackend;
+    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
+    use crate::core::backend::CpuBackend;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::secure_column::SecureColumn;
@@ -109,9 +109,9 @@ mod tests {
 
             // Polynomial is out of FFT space.
             coeffs[1 << domain_log_half_size] = m31!(1);
-            assert!(!CPUCirclePoly::new(coeffs.clone()).is_in_fft_space(domain_log_half_size));
+            assert!(!CpuCirclePoly::new(coeffs.clone()).is_in_fft_space(domain_log_half_size));
 
-            let poly = CPUCirclePoly::new(coeffs);
+            let poly = CpuCirclePoly::new(coeffs);
             let values = poly.evaluate(domain);
             let secure_column = SecureColumn {
                 columns: [
@@ -121,12 +121,12 @@ mod tests {
                     values.values.clone(),
                 ],
             };
-            let secure_eval = SecureEvaluation::<CPUBackend> {
+            let secure_eval = SecureEvaluation::<CpuBackend> {
                 domain,
                 values: secure_column.clone(),
             };
 
-            let (g, lambda) = CPUBackend::decompose(&secure_eval);
+            let (g, lambda) = CpuBackend::decompose(&secure_eval);
 
             // Sanity check.
             assert_ne!(lambda, SecureField::zero());
@@ -134,9 +134,9 @@ mod tests {
             // Assert the new polynomial is in the FFT space.
             for i in 0..4 {
                 let basefield_column = g.columns[i].clone();
-                let eval = CPUCircleEvaluation::new(domain, basefield_column);
+                let eval = CpuCircleEvaluation::new(domain, basefield_column);
                 let coeffs = eval.interpolate().coeffs;
-                assert!(CPUCirclePoly::new(coeffs).is_in_fft_space(domain_log_half_size));
+                assert!(CpuCirclePoly::new(coeffs).is_in_fft_space(domain_log_half_size));
             }
         }
     }

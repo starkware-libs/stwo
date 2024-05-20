@@ -548,7 +548,7 @@ mod tests {
         get_itwiddle_dbls, ifft, ifft3, ifft_lower_with_vecwise, simd_ibutterfly,
         vecwise_ibutterflies,
     };
-    use crate::core::backend::cpu::CPUCircleEvaluation;
+    use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::backend::simd::column::BaseFieldVec;
     use crate::core::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE};
     use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
@@ -703,7 +703,7 @@ mod tests {
     }
 
     fn ground_truth_ifft(domain: CircleDomain, values: &[BaseField]) -> Vec<BaseField> {
-        let eval = CPUCircleEvaluation::new(domain, values.to_vec());
+        let eval = CpuCircleEvaluation::new(domain, values.to_vec());
         let mut res = eval.interpolate().coeffs;
         let denorm = BaseField::from(domain.size());
         res.iter_mut().for_each(|v| *v *= denorm);
