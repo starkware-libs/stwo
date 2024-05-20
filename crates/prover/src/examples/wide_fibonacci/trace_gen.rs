@@ -1,9 +1,15 @@
-use num_traits::One;
+use num_traits::{One, Zero};
 
-use super::component::Input;
+use super::component::{Input, N_COLUMNS};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::FieldExpOps;
 use crate::core::utils::shifted_secure_combination;
+
+pub fn component_output(input: &Input) -> (BaseField, BaseField) {
+    let mut trace = vec![vec![BaseField::zero(); 1]; N_COLUMNS];
+    let output = write_trace_row(&mut trace, input, 0);
+    output
+}
 
 /// Given a private input, write the trace row for the wide Fibonacci example to dst. Returns the
 /// last two elements of the row in case the sequence is continued.

@@ -94,3 +94,9 @@ pub struct Input {
     pub a: BaseField,
     pub b: BaseField,
 }
+
+impl Input {
+    pub fn new(a: BaseField, b: BaseField) -> Self {
+        Self { a, b }
+    }
+}
