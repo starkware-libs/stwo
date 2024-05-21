@@ -114,19 +114,9 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let sample_points = air.mask_points(oods_point);
+    let mut sample_points = air.mask_points(oods_point);
 
-    // TODO(spapini): Change when we support multiple interactions.
-    // First tree - trace.
-    let mut sample_points = TreeVec::new(vec![sample_points.flatten()]);
-    if commitment_scheme.trees.len() > 2 {
-        // Second tree - interaction trace.
-        sample_points.push(vec![
-            vec![oods_point];
-            commitment_scheme.trees[1].polynomials.len()
-        ]);
-    }
-    // Final tree - composition polynomial.
+    // Get composition polynomial sample points.
     sample_points.push(vec![vec![oods_point]; 4]);
 
     // Prove the trace and composition OODS values, and retrieve them.
@@ -228,17 +218,9 @@ pub fn verify(
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let trace_sample_points = air.mask_points(oods_point);
+    let mut sample_points = air.mask_points(oods_point);
 
-    // TODO(spapini): Change when we support multiple interactions.
-    // First tree - trace.
-    let mut sample_points = TreeVec::new(vec![trace_sample_points.flatten()]);
-    if proof.commitments.len() > 2 {
-        // Second tree - interaction trace.
-        // TODO(AlonH): Get the number of interaction traces from the air.
-        sample_points.push(vec![vec![oods_point]; 1]);
-    }
-    // Final tree - composition polynomial.
+    // Get composition polynomial sample points.
     sample_points.push(vec![vec![oods_point]; 4]);
 
     // TODO(spapini): Save clone.
@@ -279,7 +261,7 @@ fn sampled_values_to_mask(
     air.components().iter().for_each(|c| {
         trace_oods_values.push(
             flat_trace_values
-                .take(c.mask_points(CirclePoint::zero()).len())
+                .take(c.mask_points(CirclePoint::zero())[0].len())
                 .cloned()
                 .collect_vec(),
         )
@@ -294,9 +276,13 @@ fn sampled_values_to_mask(
         air.components()
             .iter()
             .zip_eq(&mut trace_oods_values)
-            .for_each(|(_component, values)| {
-                // TODO(AlonH): Implement n_interaction_columns() for component.
-                values.extend(interaction_values.take(1).cloned().collect_vec())
+            .for_each(|(component, values)| {
+                values.extend(
+                    interaction_values
+                        .take(component.mask_points(CirclePoint::zero())[1].len())
+                        .cloned()
+                        .collect_vec(),
+                )
             });
     }
 
@@ -434,8 +420,8 @@ mod tests {
         fn mask_points(
             &self,
             point: CirclePoint<SecureField>,
-        ) -> crate::core::ColumnVec<Vec<CirclePoint<SecureField>>> {
-            vec![vec![point]]
+        ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+            TreeVec::new(vec![vec![vec![point]], vec![]])
         }
 
         fn interaction_element_ids(&self) -> Vec<String> {
