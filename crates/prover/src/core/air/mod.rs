@@ -51,7 +51,7 @@ pub trait Component {
     fn max_constraint_log_degree_bound(&self) -> u32;
 
     /// Returns the degree bounds of each trace column.
-    fn trace_log_degree_bounds(&self) -> Vec<u32>;
+    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>>;
 
     fn mask_points(
         &self,
@@ -95,8 +95,7 @@ pub trait ComponentProver<B: Backend>: Component {
 pub struct ComponentTrace<'a, B: Backend> {
     /// Polynomials for each column.
     pub polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
-    /// Evaluations for each column. The evaluation domain is the commitment domain for that column
-    /// obtained from [AirExt::trace_commitment_domains()].
+    /// Evaluations for each column (evaluated on the commitment domains).
     pub evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
 }
 
