@@ -37,7 +37,7 @@ pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
     ///     let a = M31(4);
     ///
     ///     let a_square = a.square();
-    ///     println!("a_square: {:?}", a_square); // a_square: M31(16)
+    ///     println!("a_square: {:?}", a_square);
     /// ```
     fn square(&self) -> Self {
         (*self) * (*self)
@@ -63,7 +63,7 @@ pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
     ///     let a = M31(2);
     ///
     ///     let a_power = a.pow(5);
-    ///     println!("a_power: {:?}", a_power); // a_power: M31(32)
+    ///     println!("a_power: {:?}", a_power);
     /// ```
     fn pow(&self, exp: u128) -> Self {
         let mut res = Self::one();

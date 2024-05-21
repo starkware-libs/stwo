@@ -55,7 +55,7 @@ impl QM31 {
     ///     let d = M31(4);
     /// 
     ///     let qm = QM31::from_m31(a, b, c, d);
-    ///     println!("QM31 value: {:?}", qm);  // QM31 value: (1 + 2i) + (3 + 4i)u.
+    ///     println!("QM31 value: {:?}", qm);
     /// ```
     pub fn from_m31(a: M31, b: M31, c: M31, d: M31) -> Self {
         Self(CM31::from_m31(a, b), CM31::from_m31(c, d))
@@ -84,7 +84,7 @@ impl QM31 {
     ///     let array: [M31; 4] = [a, b, c, d];
     /// 
     ///     let qm = QM31::from_m31_array(array);
-    ///     println!("QM31 value: {:?}", qm);  // QM31 value: (1 + 2i) + (3 + 4i)u.
+    ///     println!("QM31 value: {:?}", qm);
     /// ```
     pub fn from_m31_array(array: [M31; 4]) -> Self {
         Self::from_m31(array[0], array[1], array[2], array[3])
@@ -114,7 +114,7 @@ impl QM31 {
     ///     let qm = QM31::from_m31(a, b, c, d);
     /// 
     ///     let m31_array = qm.to_m31_array();
-    ///     println!("M31 array values: {:?}", m31_array);  // M31 array values: [M31(1), M31(2), M31(3), M31(4)]
+    ///     println!("M31 array values: {:?}", m31_array);
     /// ```
     pub fn to_m31_array(self) -> [M31; 4] {
         [self.0 .0, self.0 .1, self.1 .0, self.1 .1]
@@ -164,7 +164,7 @@ impl Mul for QM31 {
     /// 
     ///     let qm = QM31::from_m31(a, b, c, d);
     ///     let prod = qm * qm;
-    ///     println!("prod value: {:?}", prod)  // prod value: (2147483606 + 45i) + (2147483637 + 20i)u
+    ///     println!("prod value: {:?}", prod)
     /// ```
     fn mul(self, rhs: Self) -> Self::Output {
         // (a + bu) * (c + du) = (ac + rbd) + (ad + bc)u.
@@ -202,7 +202,7 @@ impl FieldExpOps for QM31 {
     ///     let qm = QM31::from_m31(a, b, c, d);
     ///
     ///     let qm_inv = qm.inverse();
-    ///     println!("inverse value: {:?}", qm_inv); // inverse value: (1855247052 + 856841008i) + (1588674294 + 1863525709i)u
+    ///     println!("inverse value: {:?}", qm_inv);
     /// ```
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");

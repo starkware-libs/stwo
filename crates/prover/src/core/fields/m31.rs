@@ -27,8 +27,10 @@ pub const P: u32 = 2147483647; // 2 ** 31 - 1
 /// # Example
 ///
 /// ```
-/// let m31_value = M31(42);
-/// println!("M31 value: {}", m31_value.0);
+///     use crate::stwo_prover::core::fields::m31::{M31};
+/// 
+///     let m31_value = M31(42);
+///     println!("M31 value: {}", m31_value.0);
 /// ```
 pub struct M31(pub u32);
 pub type BaseField = M31;
@@ -262,7 +264,6 @@ impl One for M31 {
     /// 
     ///     let m31_one: M31 = one();
     ///     println!("One is : {:?}", m31_one);
-    /// 
     /// ```
     fn one() -> Self {
         Self(1)
@@ -285,7 +286,6 @@ impl Zero for M31 {
     /// 
     ///     let m31_zero: M31 = zero();
     ///     println!("Zero is : {:?}", m31_zero);
-    /// 
     /// ```
     fn zero() -> Self {
         Self(0)
@@ -328,9 +328,11 @@ impl From<usize> for M31 {
     /// ```    
     ///     use stwo_prover::core::fields::m31::M31;
     /// 
-    ///     let value: usize = 18446744073;
-    ///     let m31: M31 = value.into();
+    ///     let value: usize = 4294967295;
+    ///     let m31: M31 = M31::from(value);
     ///     println!("M31 value: {:?}", m31);
+    ///     assert_eq!(m31, M31(1));
+    /// ```
     fn from(value: usize) -> Self {
         M31::reduce(value.try_into().unwrap())
     }
@@ -354,8 +356,9 @@ impl From<u32> for M31 {
     ///     use stwo_prover::core::fields::m31::M31;
     /// 
     ///     let value: u32 = 4294967295;
-    ///     let m31: M31 = value.into();
+    ///     let m31: M31 = M31::from(value);
     ///     println!("M31 value: {:?}", m31);
+    ///     assert_eq!(m31, M31(1));
     /// ```
     fn from(value: u32) -> Self {
         M31::reduce(value.into())
@@ -380,8 +383,10 @@ impl From<i32> for M31 {
     ///     use stwo_prover::core::fields::m31::M31;
     /// 
     ///     let value: i32 = 2147483647;
-    ///     let m31: M31 = value.into();
+    ///     let m31: M31 = M31::from(value);
     ///     println!("M31 value: {:?}", m31);
+    ///     assert_eq!(m31, M31(0));
+    /// ```
     fn from(value: i32) -> Self {
         M31::reduce(value.try_into().unwrap())
     }

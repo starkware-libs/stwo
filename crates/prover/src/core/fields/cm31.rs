@@ -44,7 +44,7 @@ impl CM31 {
     ///     let mb = M31(5);
     /// 
     ///     let cm = CM31::from_m31(ma, mb);
-    ///     println!("CM31 value: {:?}", cm); // CM31 value: 8 + 5i
+    ///     println!("CM31 value: {:?}", cm);
     /// ```
     pub fn from_m31(a: M31, b: M31) -> CM31 {
         Self(a, b)
@@ -88,14 +88,14 @@ impl Mul for CM31 {
     /// 
     ///    let ma1 = M31(8);
     ///    let mb1 = M31(5);
-    ///    let cm1 = CM31::from_m31(ma1, mb1);  // 8 + 5i
+    ///    let cm1 = CM31::from_m31(ma1, mb1); 
     ///
     ///    let ma2 = M31(2);
     ///    let mb2 = M31(4);
-    ///    let cm2 = CM31::from_m31(ma2, mb2);  // 2 + 4i
+    ///    let cm2 = CM31::from_m31(ma2, mb2);
     ///
-    ///    let prod = cm1 * cm2;                // (8 * 2) - (5i * 4i) + (8 * 4i) + (5i * 2)  = (16 - 20) + (32i + 10i)
-    ///    println!("prod value: {:?}", prod);  // (-4 + 42i) = (-4 % 2147483647 + 42i) = (2147483643 + 42i).
+    ///    let prod = cm1 * cm2;              
+    ///    println!("prod value: {:?}", prod);
     /// ```
     fn mul(self, rhs: Self) -> Self::Output {
         // (a + bi) * (c + di) = (ac - bd) + (ad + bc)i.
