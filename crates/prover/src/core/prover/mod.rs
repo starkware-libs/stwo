@@ -206,15 +206,12 @@ pub fn verify(
 ) -> Result<(), VerificationError> {
     // Read trace commitment.
     let mut commitment_scheme = CommitmentSchemeVerifier::new();
-    commitment_scheme.commit(proof.commitments[0], air.column_log_sizes(), channel);
+    let column_log_sizes = air.column_log_sizes();
+    commitment_scheme.commit(proof.commitments[0], &column_log_sizes[0], channel);
     let interaction_elements = air.interaction_elements(channel);
 
     if air.n_phases() == 2 {
-        commitment_scheme.commit(
-            proof.commitments[1],
-            air.column_log_sizes()[..1].to_vec(),
-            channel,
-        );
+        commitment_scheme.commit(proof.commitments[1], &column_log_sizes[1], channel);
     }
 
     let random_coeff = channel.draw_felt();
@@ -222,7 +219,7 @@ pub fn verify(
     // Read composition polynomial commitment.
     commitment_scheme.commit(
         *proof.commitments.last().unwrap(),
-        vec![air.composition_log_degree_bound(); 4],
+        &[air.composition_log_degree_bound(); 4],
         channel,
     );
 
@@ -369,6 +366,7 @@ mod tests {
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::{
         CanonicCoset, CircleDomain, CircleEvaluation, MAX_CIRCLE_DOMAIN_LOG_SIZE,
     };
@@ -432,8 +430,8 @@ mod tests {
             1
         }
 
-        fn trace_log_degree_bounds(&self) -> Vec<u32> {
-            vec![self.log_size]
+        fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+            TreeVec::new(vec![vec![self.log_size], vec![]])
         }
 
         fn mask_points(
