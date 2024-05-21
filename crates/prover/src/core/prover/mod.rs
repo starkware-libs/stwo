@@ -4,6 +4,7 @@ use tracing::{span, Level};
 
 use super::air::{AirProver, AirTraceVerifier, AirTraceWriter};
 use super::backend::Backend;
+use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::poly::circle::{CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
@@ -115,19 +116,6 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     // Get mask sample points relative to oods point.
     let sample_points = air.mask_points(oods_point);
 
-    // TODO(spapini): Change when we support multiple interactions.
-    // First tree - trace.
-    let mut sample_points = TreeVec::new(vec![sample_points.flatten()]);
-    if air.n_interaction_phases() == 2 {
-        // Second tree - interaction trace.
-        sample_points.push(vec![
-            vec![oods_point];
-            commitment_scheme.trees[1].polynomials.len()
-        ]);
-    }
-    // Final tree - composition polynomial.
-    sample_points.push(vec![vec![oods_point]; 4]);
-
     // Prove the trace and composition OODS values, and retrieve them.
     let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel, twiddles);
 
@@ -219,7 +207,7 @@ pub fn verify(
     // Read composition polynomial commitment.
     commitment_scheme.commit(
         *proof.commitments.last().unwrap(),
-        &[air.composition_log_degree_bound(); 4],
+        &[air.composition_log_degree_bound(); SECURE_EXTENSION_DEGREE],
         channel,
     );
 
@@ -227,18 +215,7 @@ pub fn verify(
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let trace_sample_points = air.mask_points(oods_point);
-
-    // TODO(spapini): Change when we support multiple interactions.
-    // First tree - trace.
-    let mut sample_points = TreeVec::new(vec![trace_sample_points.flatten()]);
-    if air.n_interaction_phases() == 2 {
-        // Second tree - interaction trace.
-        // TODO(AlonH): Get the number of interaction traces from the air.
-        sample_points.push(vec![vec![oods_point]; 1]);
-    }
-    // Final tree - composition polynomial.
-    sample_points.push(vec![vec![oods_point]; 4]);
+    let sample_points = air.mask_points(oods_point);
 
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) = sampled_values_to_mask(
@@ -276,9 +253,10 @@ fn sampled_values_to_mask(
         .iter();
     let mut trace_oods_values = vec![];
     air.components().iter().for_each(|component| {
+        let n_trace_points = component.mask_points(CirclePoint::zero())[0].len();
         trace_oods_values.push(
             flat_trace_values
-                .take(component.mask_points(CirclePoint::zero()).len())
+                .take(n_trace_points)
                 .cloned()
                 .collect_vec(),
         )
@@ -293,9 +271,14 @@ fn sampled_values_to_mask(
         air.components()
             .iter()
             .zip_eq(&mut trace_oods_values)
-            .for_each(|(_component, values)| {
-                // TODO(AlonH): Implement n_interaction_columns() for component.
-                values.extend(interaction_values.take(1).cloned().collect_vec())
+            .for_each(|(component, values)| {
+                let n_interaction_points = component.mask_points(CirclePoint::zero())[1].len();
+                values.extend(
+                    interaction_values
+                        .take(n_interaction_points)
+                        .cloned()
+                        .collect_vec(),
+                )
             });
     }
 
@@ -437,8 +420,8 @@ mod tests {
         fn mask_points(
             &self,
             point: CirclePoint<SecureField>,
-        ) -> crate::core::ColumnVec<Vec<CirclePoint<SecureField>>> {
-            vec![vec![point]]
+        ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+            TreeVec::new(vec![vec![vec![point]], vec![]])
         }
 
         fn interaction_element_ids(&self) -> Vec<String> {
