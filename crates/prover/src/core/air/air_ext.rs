@@ -8,9 +8,8 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::{CommitmentTreeProver, TreeVec};
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureCirclePoly};
+use crate::core::poly::circle::{CircleEvaluation, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::LOG_BLOWUP_FACTOR;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::{ColumnVec, ComponentVec, InteractionElements};
@@ -22,13 +21,6 @@ pub trait AirExt: Air {
             .map(|component| component.max_constraint_log_degree_bound())
             .max()
             .unwrap()
-    }
-
-    fn trace_commitment_domains(&self) -> Vec<CanonicCoset> {
-        self.column_log_sizes()
-            .iter()
-            .map(|&log_size| CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR))
-            .collect_vec()
     }
 
     fn mask_points(
@@ -74,11 +66,19 @@ pub trait AirExt: Air {
         evaluation_accumulator.finalize()
     }
 
-    fn column_log_sizes(&self) -> Vec<u32> {
-        self.components()
-            .iter()
-            .flat_map(|component| component.trace_log_degree_bounds())
-            .collect()
+    fn column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
+        let mut trace_tree = vec![];
+        let mut interaction_tree = vec![];
+        self.components().iter().for_each(|component| {
+            let bounds = component.trace_log_degree_bounds();
+            trace_tree.extend(bounds[0].clone());
+            interaction_tree.extend(bounds[1].clone());
+        });
+        let mut sizes = TreeVec::new(vec![trace_tree]);
+        if !interaction_tree.is_empty() {
+            sizes.push(interaction_tree);
+        }
+        sizes
     }
 
     fn component_traces<'a, B: Backend + MerkleOps<Blake2sMerkleHasher>>(
@@ -89,7 +89,7 @@ pub trait AirExt: Air {
         let eval_iter = &mut trees[0].evaluations.iter();
         let mut component_traces = vec![];
         self.components().iter().for_each(|component| {
-            let n_columns = component.trace_log_degree_bounds().len();
+            let n_columns = component.trace_log_degree_bounds()[0].len();
             let polys = poly_iter.take(n_columns).collect_vec();
             let evals = eval_iter.take(n_columns).collect_vec();
 
@@ -105,10 +105,10 @@ pub trait AirExt: Air {
             self.components()
                 .iter()
                 .zip_eq(&mut component_traces)
-                .for_each(|(_component, component_trace)| {
-                    // TODO(AlonH): Implement n_interaction_columns() for component.
-                    let polys = poly_iter.take(1).collect_vec();
-                    let evals = eval_iter.take(1).collect_vec();
+                .for_each(|(component, component_trace)| {
+                    let n_columns = component.trace_log_degree_bounds()[1].len();
+                    let polys = poly_iter.take(n_columns).collect_vec();
+                    let evals = eval_iter.take(n_columns).collect_vec();
                     component_trace.polys.push(polys);
                     component_trace.evals.push(evals);
                 });
@@ -130,7 +130,7 @@ pub trait AirProverExt<B: Backend>: AirProver<B> {
             self.prover_components()
                 .iter()
                 .map(|component| {
-                    let n_columns = component.trace_log_degree_bounds().len();
+                    let n_columns = component.trace_log_degree_bounds()[0].len();
                     let trace_columns = trace_iter.take(n_columns).collect_vec();
                     component.write_interaction_trace(&trace_columns, elements)
                 })

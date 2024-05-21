@@ -18,6 +18,7 @@ use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, FieldOps};
+use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::{ColumnVec, InteractionElements};
@@ -65,8 +66,8 @@ impl Component for SimdWideFibComponent {
         self.log_column_size() + 1
     }
 
-    fn trace_log_degree_bounds(&self) -> Vec<u32> {
-        vec![self.log_column_size(); self.n_columns()]
+    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+        TreeVec::new(vec![vec![self.log_column_size(); self.n_columns()], vec![]])
     }
 
     fn mask_points(
