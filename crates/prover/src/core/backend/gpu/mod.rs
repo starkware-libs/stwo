@@ -121,7 +121,7 @@ impl InstructionSet for Arc<CudaDevice> {
             .get_func("instruction_set", "vector_512_srli_u64")
             .unwrap();
 
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems((VECTOR_SIZE / 2) as u32);
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(VECTOR_SIZE as u32);
         let out = self.alloc_zeros::<u32>(VECTOR_SIZE).unwrap();
 
         unsafe { shift_right_kernel.launch(cfg, (in1, shift, &out)) }.unwrap();
@@ -197,7 +197,7 @@ impl Load for Arc<CudaDevice> {
                 const unsigned int VECTOR_SIZE = 16; 
                 if (tid < VECTOR_SIZE) {
                     // out[tid] = __vsub4(in1[tid], in2[tid]);
-                    out[tid] = in1[tid] -in2[tid]; 
+                    out[tid] = in1[tid] - in2[tid]; 
                 }
             }
 
@@ -217,15 +217,16 @@ impl Load for Arc<CudaDevice> {
                 }
             }
 
-            extern \"C\" __global__ void vector_512_srli_u64(const unsigned long long int *in, unsigned long long int *out, const unsigned int *shift_count) {
-                int tid = threadIdx.x + blockIdx.x * blockDim.x;
-                if (tid < 8) {
-                    out[tid] = in[tid] >> *shift_count;
+            extern \"C\" __global__ void vector_512_srli_u64(const unsigned long long int *in, const unsigned int *shift_count, unsigned long long int *out) {
+                int tid = blockIdx.x * blockDim.x + threadIdx.x;
+                const unsigned int VECTOR_SIZE = 16;
+                if (tid < (VECTOR_SIZE/2)) {
+                    out[tid] = in[tid] >> shift_count[0];
                 }
             }
             
             extern \"C\" __global__ void vector_512_mul_u32(const unsigned long long int *in1, const unsigned long long int *in2, unsigned long long int *out) {
-                int tid = threadIdx.x + blockIdx.x * blockDim.x;
+                int tid = blockIdx.x * blockDim.x + threadIdx.x;
                 if (tid < 8) {
                     out[tid] = in1[tid] * in2[tid];
                 }
@@ -239,17 +240,16 @@ impl Load for Arc<CudaDevice> {
                     unsigned int b_val = in2[tid];
                     unsigned int index = idx[tid];
 
-                    if (index & 0x80000000) { // ie. index < 0
-                        out[tid] = __shfl_sync(0xFFFFFFFF, b_val, index & 0x0F);
-                    }
-                    else {
-                        out[tid] = __shfl_sync(0xFFFFFFFF, a_val, index);
-                    }
+                    out[tid] = index > 15 ? in2[index-16] : in1[index];
+                    // if (index > 15) { // ie. index < 0\
+                    //     out[tid] = __shfl_sync(0xFFFF, b_val, index - 16);
+                    // }
+                    // else {
+                    //     out[tid] = __shfl_sync(0xFFFF, a_val, index);
+                    // }
                 }
             }
-
         ").unwrap();
-
         self.load_ptx(
             vector_512_operations,
             "instruction_set",
@@ -259,6 +259,9 @@ impl Load for Arc<CudaDevice> {
                 "vector_512_sub_u32",
                 "vector_512_set_u32",
                 "vector_512_clone_slice",
+                "vector_512_srli_u64",
+                "vector_512_mul_u32",
+                "vector_512_permute_u32",
             ],
         )
         .unwrap();
@@ -300,6 +303,23 @@ mod test {
         ]
         .map(M31::from_u32_unchecked);
 
+        let permute1 = DEVICE
+            .htod_copy((0..=15).map(|x| M31::from_u32_unchecked(x).0).collect_vec())
+            .unwrap();
+        let permute2 = DEVICE
+            .htod_copy(
+                (16..=31)
+                    .map(|x| M31::from_u32_unchecked(x).0)
+                    .collect_vec(),
+            )
+            .unwrap();
+        let idx = DEVICE
+            .htod_copy(vec![
+                0b00000, 0b10000, 0b00010, 0b10010, 0b00100, 0b10100, 0b00110, 0b10110, 0b01000,
+                0b11000, 0b01010, 0b11010, 0b01100, 0b11100, 0b01110, 0b11110,
+            ])
+            .unwrap();
+
         // Create initial device memory variables
         let in1 = DEVICE
             .htod_copy(values.iter().map(|m31| m31.0).collect_vec())
@@ -334,5 +354,19 @@ mod test {
         let out = DEVICE.vector_512_clone_slice(&out);
         let out_host: Vec<u32> = DEVICE.dtoh_sync_copy(&out).unwrap();
         assert!(out_host == [P; VECTOR_SIZE]);
+
+        // Test vector_512_srli_u64
+        let in4: cudarc::driver::CudaSlice<u32> = DEVICE.htod_copy(vec![P; 16]).unwrap();
+        let shift = DEVICE.htod_copy(vec![32 as u32]).unwrap();
+        let out = DEVICE.vector_512_srli_i64(&in4, &shift);
+        let out_host: Vec<u32> = DEVICE.dtoh_sync_copy(&out).unwrap();
+        println!("out: {:?}", out_host);
+        assert!(out_host == [P; VECTOR_SIZE]);
+
+        // Test vector_512_permute_u32
+        let out = DEVICE.vector_512_permute_u32(&permute1, &permute2, &idx);
+        let out_host: Vec<u32> = DEVICE.dtoh_sync_copy(&out).unwrap();
+        println!("out: {:?}", out_host);
+        assert!(out_host == vec![24, 18, 10, 22, 2, 29, 20, 14, 23, 17, 8, 28, 5, 26, 13, 15]);
     }
 }

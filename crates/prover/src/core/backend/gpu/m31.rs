@@ -215,7 +215,7 @@ impl Mul for PackedBaseField {
 
         // Interleave the odd words of prod_e_dbl with the odd words of prod_o_dbl:
         let prod_hs =
-            Self(DEVICE.vector_512_permute_u32(&prod_e_dbl, &ODDS_INTERLEAVE_ODDS, &prod_o_dbl));
+            Self(DEVICE.vector_512_permute_u32(&prod_e_dbl, &prod_o_dbl, &ODDS_INTERLEAVE_ODDS));
         // prod_hs -    |0|prod_o_h|0|prod_e_h|
 
         Self::add(prod_ls, prod_hs)
@@ -301,13 +301,12 @@ mod tests {
     use itertools::Itertools;
 
     use super::PackedBaseField;
-    // use crate::core::fields::{Field, FieldExpOps};
     #[allow(unused_imports)]
     use crate::core::backend::gpu::{DEVICE, M512P};
     #[allow(unused_imports)]
     use crate::core::fields::m31::{M31, P};
     #[allow(unused_imports)]
-    use crate::core::fields::Field;
+    use crate::core::fields::{Field, FieldExpOps};
     /// Tests field operations where field elements are in reduced form.
     #[test]
     fn test_gpu_basic_ops() {
@@ -334,6 +333,7 @@ mod tests {
         let avx_values1 = PackedBaseField::from_array(values);
         let avx_values2 = avx_values1.clone();
         let avx_values3 = avx_values1.clone();
+        let avx_values4 = avx_values1.clone();
 
         assert_eq!(
             (avx_values1 + avx_values2)
@@ -343,13 +343,13 @@ mod tests {
             values.iter().map(|x| x.double()).collect_vec()
         );
 
-        // assert_eq!(
-        //     (avx_values * avx_values)
-        //         .to_array()
-        //         .into_iter()
-        //         .collect_vec(),
-        //     values.iter().map(|x| x.square()).collect_vec()
-        // );
+        assert_eq!(
+            (avx_values4.clone() * avx_values4.clone())
+                .to_array()
+                .into_iter()
+                .collect_vec(),
+            values.iter().map(|x| x.square()).collect_vec()
+        );
 
         assert_eq!(
             (-avx_values3).to_array().into_iter().collect_vec(),
