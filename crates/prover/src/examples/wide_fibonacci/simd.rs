@@ -95,8 +95,11 @@ impl Component for SimdWideFibComponent {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
-    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        fixed_mask_points(&vec![vec![0_usize]; self.n_columns()], point)
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        TreeVec::new(vec![
+            fixed_mask_points(&vec![vec![0_usize]; self.n_columns()], point),
+            vec![],
+        ])
     }
 
     fn interaction_element_ids(&self) -> Vec<String> {
