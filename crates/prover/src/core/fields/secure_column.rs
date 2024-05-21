@@ -1,7 +1,7 @@
 use super::m31::BaseField;
 use super::qm31::SecureField;
 use super::{ExtensionOf, FieldOps};
-use crate::core::backend::{Col, Column, CpuBackend};
+use crate::core::backend::{CpuBackend, Col, Column};
 use crate::core::utils::IteratorMutExt;
 
 pub const SECURE_EXTENSION_DEGREE: usize =
@@ -15,7 +15,7 @@ pub struct SecureColumn<B: FieldOps<BaseField>> {
     pub columns: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
 
-impl SecureColumn<CPUBackend> {
+impl SecureColumn<CpuBackend> {
     /// Sets the value of the SecureField at the specified index in each column of the SecureColumn.
     ///
     /// # Arguments
@@ -32,7 +32,7 @@ impl SecureColumn<CPUBackend> {
     ///
     /// ```
     ///     use stwo_prover::core::fields::secure_column::SecureColumn;
-    ///     use stwo_prover::core::backend::{CPUBackend};
+    ///     use stwo_prover::core::backend::{CpuBackend};
     ///     use stwo_prover::core::fields::cm31::CM31;
     ///     use stwo_prover::core::fields::qm31::QM31;
     ///     use stwo_prover::core::fields::m31::{BaseField, M31};
@@ -45,7 +45,7 @@ impl SecureColumn<CPUBackend> {
     /// 
     ///     let qm = QM31::from_m31_array(array);
     ///
-    ///     let mut secure_col = SecureColumn::<CPUBackend> {
+    ///     let mut secure_col = SecureColumn::<CpuBackend> {
     ///            columns: std::array::from_fn(|i| {
     ///                 vec![BaseField::from_u32_unchecked(i as u32); 4]
     ///         }),
@@ -77,10 +77,10 @@ impl SecureColumn<CPUBackend> {
     ///
     /// ```
     ///     use stwo_prover::core::fields::secure_column::SecureColumn;
-    ///     use stwo_prover::core::backend::{CPUBackend};
+    ///     use stwo_prover::core::backend::{CpuBackend};
     ///     use stwo_prover::core::fields::m31::{BaseField};
     /// 
-    ///     let secure_column = SecureColumn::<CPUBackend> {
+    ///     let secure_column = SecureColumn::<CpuBackend> {
     ///            columns: std::array::from_fn(|i| {
     ///                 vec![BaseField::from_u32_unchecked(i as u32); 2]
     ///         }),
@@ -108,10 +108,10 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
     ///
     /// ```
     ///     use stwo_prover::core::fields::secure_column::SecureColumn;
-    ///     use stwo_prover::core::backend::{CPUBackend};
+    ///     use stwo_prover::core::backend::{CpuBackend};
     ///     use stwo_prover::core::fields::m31::{BaseField};
     /// 
-    ///     let secure_col = SecureColumn::<CPUBackend> {
+    ///     let secure_col = SecureColumn::<CpuBackend> {
     ///            columns: std::array::from_fn(|i| {
     ///                 vec![BaseField::from_u32_unchecked(i as u32); 4]
     ///         }),
@@ -137,9 +137,9 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
     ///
     /// ```
     ///     use stwo_prover::core::fields::secure_column::SecureColumn;
-    ///     use stwo_prover::core::backend::{CPUBackend};
+    ///     use stwo_prover::core::backend::{CpuBackend};
     /// 
-    ///     let secure_col = SecureColumn::<CPUBackend>::zeros(3);
+    ///     let secure_col = SecureColumn::<CpuBackend>::zeros(3);
     ///     println!("secure_column value: {:?}", secure_col);  
     /// ```
     pub fn zeros(len: usize) -> Self {
@@ -162,9 +162,9 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
     ///
     /// ```
     ///     use stwo_prover::core::fields::secure_column::SecureColumn;
-    ///     use stwo_prover::core::backend::{CPUBackend};
+    ///     use stwo_prover::core::backend::{CpuBackend};
     /// 
-    ///     let secure_col = SecureColumn::<CPUBackend>::zeros(3);
+    ///     let secure_col = SecureColumn::<CpuBackend>::zeros(3);
     ///     println!("length of secure_column: {:?}", secure_col.len()); 
     /// ```
     pub fn len(&self) -> usize {
@@ -185,9 +185,9 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
     ///
     /// ```
     ///     use stwo_prover::core::fields::secure_column::SecureColumn;
-    ///     use stwo_prover::core::backend::{CPUBackend};
+    ///     use stwo_prover::core::backend::{CpuBackend};
     /// 
-    ///     let secure_col = SecureColumn::<CPUBackend>::zeros(3);
+    ///     let secure_col = SecureColumn::<CpuBackend>::zeros(3);
     ///     println!("Is secure_column empty: {:?}", secure_col.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
@@ -210,10 +210,10 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
     ///
     /// ```
     ///     use stwo_prover::core::fields::secure_column::SecureColumn;
-    ///     use stwo_prover::core::backend::{CPUBackend};
+    ///     use stwo_prover::core::backend::{CpuBackend};
     ///     use stwo_prover::core::backend::simd::{SimdBackend};
     /// 
-    ///     let secure_col = SecureColumn::<CPUBackend>::zeros(1);
+    ///     let secure_col = SecureColumn::<CpuBackend>::zeros(1);
     ///     println!("secure_column SimdBackend: {:?}", secure_col);
     /// 
     ///     println!("secure_column to CPU: {:?}", secure_col.to_cpu());
@@ -254,9 +254,9 @@ impl Iterator for SecureColumnIter<'_> {
     ///
     /// ```text
     ///     use stwo_prover::core::fields::secure_column::{SecureColumn, SecureColumnIter};
-    ///     use stwo_prover::core::backend::{CPUBackend};
+    ///     use stwo_prover::core::backend::{CpuBackend};
     /// 
-    ///     let secure_column = SecureColumn::<CPUBackend> {
+    ///     let secure_column = SecureColumn::<CpuBackend> {
     ///         columns: std::array::from_fn(|i| {
     ///         vec![BaseField::from_u32_unchecked(i as u32); 4]
     ///        }),
@@ -279,8 +279,8 @@ impl Iterator for SecureColumnIter<'_> {
     }
 }
 
-/// Implementation of the `IntoIterator` trait for `SecureColumn<CPUBackend>`.
-impl<'a> IntoIterator for &'a SecureColumn<CPUBackend> {
+/// Implementation of the `IntoIterator` trait for `SecureColumn<CpuBackend>`.
+impl<'a> IntoIterator for &'a SecureColumn<CpuBackend> {
     type Item = SecureField;
     type IntoIter = SecureColumnIter<'a>;
 
@@ -294,9 +294,9 @@ impl<'a> IntoIterator for &'a SecureColumn<CPUBackend> {
     ///
     /// ```text
     ///     use stwo_prover::core::fields::secure_column::{SecureColumn, SecureColumnIter};
-    ///     use stwo_prover::core::backend::{CPUBackend};
+    ///     use stwo_prover::core::backend::{CpuBackend};
     /// 
-    ///     let secure_column = SecureColumn::<CPUBackend> {
+    ///     let secure_column = SecureColumn::<CpuBackend> {
     ///         columns: std::array::from_fn(|i| {
     ///         vec![BaseField::from_u32_unchecked(i as u32); 4]
     ///        }),
@@ -313,8 +313,8 @@ impl<'a> IntoIterator for &'a SecureColumn<CPUBackend> {
     }
 }
 
-/// Implementation of the `FromIterator` trait for `SecureColumn<CPUBackend>`.
-impl FromIterator<SecureField> for SecureColumn<CPUBackend> {
+/// Implementation of the `FromIterator` trait for `SecureColumn<CpuBackend>`.
+impl FromIterator<SecureField> for SecureColumn<CpuBackend> {
     /// Creates a new SecureColumn with all elements as zero.
     ///
     /// # Arguments
@@ -329,17 +329,17 @@ impl FromIterator<SecureField> for SecureColumn<CPUBackend> {
     ///
     /// ```
     ///     use stwo_prover::core::fields::secure_column::SecureColumn;
-    ///     use stwo_prover::core::backend::{CPUBackend};
+    ///     use stwo_prover::core::backend::{CpuBackend};
     ///     use stwo_prover::core::fields::m31::{BaseField};
     /// 
-    ///     let secure_column = SecureColumn::<CPUBackend> {
+    ///     let secure_column = SecureColumn::<CpuBackend> {
     ///         columns: std::array::from_fn(|i| {
     ///             vec![BaseField::from_u32_unchecked(i as u32); 2]
     ///         }),
     ///     };
     ///
     ///     let sec_iter = secure_column.into_iter();
-    ///     let secure_col = SecureColumn::<CPUBackend>::from_iter(sec_iter);
+    ///     let secure_col = SecureColumn::<CpuBackend>::from_iter(sec_iter);
     ///     println!("secure_column: {:?}", secure_col);
     /// ```
     fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
@@ -354,9 +354,9 @@ impl FromIterator<SecureField> for SecureColumn<CPUBackend> {
     }
 }
 
-/// Implements conversion from a `SecureColumn<CPUBackend>` into a vector of `SecureField` elements.
-impl From<SecureColumn<CPUBackend>> for Vec<SecureField> {
-    fn from(column: SecureColumn<CPUBackend>) -> Self {
+/// Implements conversion from a `SecureColumn<CpuBackend>` into a vector of `SecureField` elements.
+impl From<SecureColumn<CpuBackend>> for Vec<SecureField> {
+    fn from(column: SecureColumn<CpuBackend>) -> Self {
         column.into_iter().collect()
     }
 }
