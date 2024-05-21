@@ -56,7 +56,7 @@ pub trait Component {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
-    ) -> ColumnVec<Vec<CirclePoint<SecureField>>>;
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>;
 
     /// Returns the ids of the interaction elements used by the component.
     fn interaction_element_ids(&self) -> Vec<String>;
