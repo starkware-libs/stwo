@@ -92,12 +92,15 @@ impl Component for FibonacciComponent {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
-    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        shifted_mask_points(
-            &vec![vec![0, 1, 2]],
-            &[CanonicCoset::new(self.log_size)],
-            point,
-        )
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        TreeVec::new(vec![
+            shifted_mask_points(
+                &vec![vec![0, 1, 2]],
+                &[CanonicCoset::new(self.log_size)],
+                point,
+            ),
+            vec![],
+        ])
     }
 
     fn interaction_element_ids(&self) -> Vec<String> {
