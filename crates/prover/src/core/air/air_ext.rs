@@ -31,13 +31,22 @@ pub trait AirExt: Air {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
-    ) -> ComponentVec<Vec<CirclePoint<SecureField>>> {
-        let mut component_points = ComponentVec(Vec::new());
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        let mut trace_component_points = vec![];
+        let mut interaction_component_points = vec![];
         for component in self.components() {
             let points = component.mask_points(point);
-            component_points.push(points);
+            trace_component_points.extend(points[0].clone());
+            interaction_component_points.extend(points[1].clone());
         }
-        component_points
+        let mut points = TreeVec::new(vec![trace_component_points]);
+        if !interaction_component_points
+            .iter()
+            .all(|column| column.is_empty())
+        {
+            points.push(interaction_component_points);
+        }
+        points
     }
 
     fn eval_composition_polynomial_at_point(

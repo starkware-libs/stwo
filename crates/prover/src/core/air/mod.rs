@@ -53,13 +53,16 @@ pub trait Component {
     /// Returns the number of interaction phases done by the component.
     fn n_interaction_phases(&self) -> u32;
 
-    /// Returns the degree bounds of each trace column.
+    /// Returns the degree bounds of each trace column. The returned TreeVec should be of size
+    /// `n_interaction_phases`.
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>>;
 
+    /// Returns the mask points for each trace column. The returned TreeVec should be of size
+    /// `n_interaction_phases`.
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
-    ) -> ColumnVec<Vec<CirclePoint<SecureField>>>;
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>;
 
     /// Returns the ids of the interaction elements used by the component.
     fn interaction_element_ids(&self) -> Vec<String>;
