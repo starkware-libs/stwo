@@ -6,7 +6,7 @@
 use itertools::Itertools;
 use tracing::{span, Level};
 
-use crate::core::backend::{Backend, CPUBackend};
+use crate::core::backend::{Backend, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
@@ -147,7 +147,7 @@ pub struct ColumnAccumulator<'a, B: Backend> {
     pub random_coeff_powers: Vec<SecureField>,
     pub col: &'a mut SecureColumn<B>,
 }
-impl<'a> ColumnAccumulator<'a, CPUBackend> {
+impl<'a> ColumnAccumulator<'a, CpuBackend> {
     pub fn accumulate(&mut self, index: usize, evaluation: SecureField) {
         let val = self.col.at(index) + evaluation;
         self.col.set(index, val);
@@ -163,7 +163,7 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::*;
-    use crate::core::backend::cpu::CPUCircleEvaluation;
+    use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::{M31, P};
     use crate::qm31;
@@ -225,7 +225,7 @@ mod tests {
         let alpha = qm31!(2, 3, 4, 5);
 
         // Use accumulator.
-        let mut accumulator = DomainEvaluationAccumulator::<CPUBackend>::new(
+        let mut accumulator = DomainEvaluationAccumulator::<CpuBackend>::new(
             alpha,
             LOG_SIZE_BOUND,
             evaluations.len(),
@@ -273,7 +273,7 @@ mod tests {
         let mut res = SecureField::default();
         for (log_size, values) in log_sizes.into_iter().zip(evaluations) {
             res = res * alpha
-                + CPUCircleEvaluation::new(CanonicCoset::new(log_size).circle_domain(), values)
+                + CpuCircleEvaluation::new(CanonicCoset::new(log_size).circle_domain(), values)
                     .interpolate()
                     .eval_at_point(point);
         }

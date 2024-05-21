@@ -1,7 +1,7 @@
 use super::m31::BaseField;
 use super::qm31::SecureField;
 use super::{ExtensionOf, FieldOps};
-use crate::core::backend::{CPUBackend, Col, Column};
+use crate::core::backend::{Col, Column, CpuBackend};
 use crate::core::utils::IteratorMutExt;
 
 pub const SECURE_EXTENSION_DEGREE: usize =
@@ -14,6 +14,7 @@ pub const SECURE_EXTENSION_DEGREE: usize =
 pub struct SecureColumn<B: FieldOps<BaseField>> {
     pub columns: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
+
 impl SecureColumn<CPUBackend> {
     /// Sets the value of the SecureField at the specified index in each column of the SecureColumn.
     ///
@@ -217,7 +218,7 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
     /// 
     ///     println!("secure_column to CPU: {:?}", secure_col.to_cpu());
     /// ```
-    pub fn to_cpu(&self) -> SecureColumn<CPUBackend> {
+    pub fn to_cpu(&self) -> SecureColumn<CpuBackend> {
         SecureColumn {
             columns: self.columns.clone().map(|c| c.to_cpu()),
         }
@@ -231,7 +232,7 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
 /// * `column` - A reference to the SecureColumn being iterated over.
 /// * `index` - The current index of the iteration.
 pub struct SecureColumnIter<'a> {
-    column: &'a SecureColumn<CPUBackend>,
+    column: &'a SecureColumn<CpuBackend>,
     index: usize,
 }
 
@@ -277,6 +278,7 @@ impl Iterator for SecureColumnIter<'_> {
         }
     }
 }
+
 /// Implementation of the `IntoIterator` trait for `SecureColumn<CPUBackend>`.
 impl<'a> IntoIterator for &'a SecureColumn<CPUBackend> {
     type Item = SecureField;
@@ -310,6 +312,7 @@ impl<'a> IntoIterator for &'a SecureColumn<CPUBackend> {
         }
     }
 }
+
 /// Implementation of the `FromIterator` trait for `SecureColumn<CPUBackend>`.
 impl FromIterator<SecureField> for SecureColumn<CPUBackend> {
     /// Creates a new SecureColumn with all elements as zero.
@@ -350,6 +353,7 @@ impl FromIterator<SecureField> for SecureColumn<CPUBackend> {
         SecureColumn { columns }
     }
 }
+
 /// Implements conversion from a `SecureColumn<CPUBackend>` into a vector of `SecureField` elements.
 impl From<SecureColumn<CPUBackend>> for Vec<SecureField> {
     fn from(column: SecureColumn<CPUBackend>) -> Self {

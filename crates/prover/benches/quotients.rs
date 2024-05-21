@@ -2,7 +2,7 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use itertools::Itertools;
-use stwo_prover::core::backend::cpu::CPUBackend;
+use stwo_prover::core::backend::cpu::CpuBackend;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::circle::SECURE_FIELD_CIRCLE_GEN;
 use stwo_prover::core::fields::m31::BaseField;
@@ -13,7 +13,7 @@ use stwo_prover::core::poly::BitReversedOrder;
 
 // TODO(andrew): Consider removing const generics and making all sizes the same.
 fn bench_quotients<B: QuotientOps, const LOG_N_ROWS: u32, const LOG_N_COLS: u32>(
-    c: &mut criterion::Criterion,
+    c: &mut Criterion,
     id: &str,
 ) {
     let domain = CanonicCoset::new(LOG_N_ROWS).circle_domain();
@@ -42,14 +42,9 @@ fn bench_quotients<B: QuotientOps, const LOG_N_ROWS: u32, const LOG_N_COLS: u32>
     );
 }
 
-fn quotients_benches(c: &mut criterion::Criterion) {
-    #[cfg(target_arch = "x86_64")]
-    if stwo_prover::platform::avx512_detected() {
-        use stwo_prover::core::backend::avx512::AVX512Backend;
-        bench_quotients::<AVX512Backend, 20, 8>(c, "avx");
-    }
+fn quotients_benches(c: &mut Criterion) {
     bench_quotients::<SimdBackend, 20, 8>(c, "simd");
-    bench_quotients::<CPUBackend, 16, 8>(c, "cpu");
+    bench_quotients::<CpuBackend, 16, 8>(c, "cpu");
 }
 
 criterion_group!(

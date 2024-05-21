@@ -5,7 +5,7 @@ use num_traits::One;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::shifted_mask_points;
 use crate::core::air::{Component, ComponentProver, ComponentTrace};
-use crate::core::backend::CPUBackend;
+use crate::core::backend::CpuBackend;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
@@ -112,11 +112,11 @@ impl Component for FibonacciComponent {
     }
 }
 
-impl ComponentProver<CPUBackend> for FibonacciComponent {
+impl ComponentProver<CpuBackend> for FibonacciComponent {
     fn evaluate_constraint_quotients_on_domain(
         &self,
-        trace: &ComponentTrace<'_, CPUBackend>,
-        evaluation_accumulator: &mut DomainEvaluationAccumulator<CPUBackend>,
+        trace: &ComponentTrace<'_, CpuBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
     ) {
         let poly = &trace.polys[0];
         let trace_domain = CanonicCoset::new(self.log_size);
