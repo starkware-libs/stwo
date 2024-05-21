@@ -49,10 +49,10 @@ impl SecureColumn<CPUBackend> {
     ///                 vec![BaseField::from_u32_unchecked(i as u32); 4]
     ///         }),
     ///     };
-    ///     println!("secure_column value: {:?}", secure_col);  //secure_column value: SecureColumn { columns: [[M31(0), M31(0), M31(0), M31(0)], [M31(1), M31(1), M31(1), M31(1)], [M31(2), M31(2), M31(2), M31(2)], [M31(3), M31(3), M31(3), M31(3)]] }
-    ///
+    ///     println!("secure_column value: {:?}", secure_col);  
+    /// 
     ///     secure_col.set(2, qm);
-    ///     println!("secure_column value: {:?}", secure_col); // secure_column value: SecureColumn { columns: [[M31(0), M31(0), M31(5), M31(0)], [M31(1), M31(1), M31(6), M31(1)], [M31(2), M31(2), M31(7), M31(2)], [M31(3), M31(3), M31(8), M31(3)]] }
+    ///     println!("secure_column value: {:?}", secure_col); 
     /// ```
     pub fn set(&mut self, index: usize, value: SecureField) {
         self.columns
@@ -85,7 +85,7 @@ impl SecureColumn<CPUBackend> {
     ///         }),
     ///     };
     /// 
-    ///     println!("vector of secure_column: {:?}", secure_column.to_vec());  // vector of secure_column: [(0 + 1i) + (2 + 3i)u, (0 + 1i) + (2 + 3i)u]
+    ///     println!("vector of secure_column: {:?}", secure_column.to_vec());
     /// ```
     pub fn to_vec(&self) -> Vec<SecureField> {
         (0..self.len()).map(|i| self.at(i)).collect()
@@ -115,10 +115,8 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
     ///                 vec![BaseField::from_u32_unchecked(i as u32); 4]
     ///         }),
     ///     };
-    ///     println!("secure_column value: {:?}", secure_col);  //secure_column value: SecureColumn { columns: [[M31(0), M31(0), M31(0), M31(0)], [M31(1), M31(1), M31(1), M31(1)], [M31(2), M31(2), M31(2), M31(2)], [M31(3), M31(3), M31(3), M31(3)]] }
-    ///                                                                                                   //index  0       1       2       3       0         1       2       3         0       1       2       3         0       1       2       3
-    /// 
-    ///     println!("secure_column at index: {:?}", secure_col.at(2)); // secure_column at index: (0 + 1i) + (2 + 3i)u
+    ///     println!("secure_column value: {:?}", secure_col);  
+    ///     println!("secure_column at index: {:?}", secure_col.at(2));
     /// ```
     pub fn at(&self, index: usize) -> SecureField {
         SecureField::from_m31_array(std::array::from_fn(|i| self.columns[i].at(index)))
@@ -141,7 +139,7 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
     ///     use stwo_prover::core::backend::{CPUBackend};
     /// 
     ///     let secure_col = SecureColumn::<CPUBackend>::zeros(3);
-    ///     println!("secure_column value: {:?}", secure_col);  // secure_column value: SecureColumn { columns: [[M31(0), M31(0), M31(0)], [M31(0), M31(0), M31(0)], [M31(0), M31(0), M31(0)], [M31(0), M31(0), M31(0)]] }
+    ///     println!("secure_column value: {:?}", secure_col);  
     /// ```
     pub fn zeros(len: usize) -> Self {
         Self {
@@ -166,7 +164,7 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
     ///     use stwo_prover::core::backend::{CPUBackend};
     /// 
     ///     let secure_col = SecureColumn::<CPUBackend>::zeros(3);
-    ///     println!("length of secure_column: {:?}", secure_col.len());  // length of secure_column: 3
+    ///     println!("length of secure_column: {:?}", secure_col.len()); 
     /// ```
     pub fn len(&self) -> usize {
         self.columns[0].len()
@@ -189,7 +187,7 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
     ///     use stwo_prover::core::backend::{CPUBackend};
     /// 
     ///     let secure_col = SecureColumn::<CPUBackend>::zeros(3);
-    ///     println!("Is secure_column empty: {:?}", secure_col.is_empty());  // Is secure_column empty: false
+    ///     println!("Is secure_column empty: {:?}", secure_col.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
         self.columns[0].is_empty()
