@@ -8,14 +8,14 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 #[allow(unused_imports)]
 use cudarc::driver::{CudaDevice, CudaSlice};
 use cudarc::driver::{LaunchAsync, LaunchConfig};
-use itertools::Itertools;
+use cudarc::nvrtc::compile_ptx;
 #[allow(unused_imports)]
 use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 #[allow(unused_imports)]
 use super::Device;
-use super::{DEVICE, M512P, VECTOR_SIZE};
+use super::{DEVICE, MODULUS};
 use crate::core::backend::gpu::InstructionSet;
 #[allow(unused_imports)]
 use crate::core::fields::m31::pow2147483645;
@@ -24,6 +24,10 @@ use crate::core::fields::m31::{M31, P};
 #[allow(unused_imports)]
 use crate::core::fields::FieldExpOps;
 pub const K_BLOCK_SIZE: usize = 16;
+pub const PACKED_BASE_FIELD_SIZE: usize = 1 << 4;
+
+type PackedBaseField = PackedM31;
+type U32_16 = CudaSlice<u32>;
 
 static EVENS_INTERLEAVE_EVENS: Lazy<CudaSlice<u32>> = Lazy::new(|| {
     DEVICE
@@ -45,84 +49,227 @@ static ODDS_INTERLEAVE_ODDS: Lazy<CudaSlice<u32>> = Lazy::new(|| {
 static SHIFT_COUNT_32: Lazy<CudaSlice<u32>> = Lazy::new(|| DEVICE.htod_copy(vec![32]).unwrap());
 static SHIFT_COUNT_1: Lazy<CudaSlice<u32>> = Lazy::new(|| DEVICE.htod_copy(vec![1]).unwrap());
 
-type _512u = CudaSlice<u32>;
+pub trait LoadPackedBaseField {
+    fn mul(&self);
+    fn reduce(&self);
+    fn add(&self);
+    fn neg(&self);
+    fn sub(&self);
+    fn load(&self);
+}
+
+impl LoadPackedBaseField for Device {
+    fn reduce(&self) {
+        let reduce_packed_base_field = compile_ptx(
+            "
+            extern \"C\" __global__ void reduce(unsigned int *f, const unsigned int *m) {
+                unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+                const unsigned int VECTOR_SIZE = 16; 
+                if (tid  < VECTOR_SIZE) {
+                    f[tid] = min(f[tid], f[tid] - m[tid]);
+                }
+            }
+        ",
+        )
+        .unwrap();
+
+        self.load_ptx(
+            reduce_packed_base_field,
+            "PackedBaseFieldReduce",
+            &["reduce"],
+        )
+        .unwrap();
+    }
+
+    fn add(&self) {
+        // Add word by word. Each word is in the range [0, 2P].
+
+        // Apply min(c, c-P) to each word.
+        // When c in [P,2P], then c-P in [0,P] which is always less than [P,2P].
+        // When c in [0,P-1], then c-P in [2^32-P,2^32-1] which is always greater than
+        let add_packed_base_field = compile_ptx("
+            extern \"C\" __global__ void add(unsigned int *lhs, const unsigned int *rhs, const unsigned int *m) {
+                unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+                const unsigned int VECTOR_SIZE = 16; 
+                if (tid  < VECTOR_SIZE) {
+                    lhs[tid] += rhs[tid]; 
+                    lhs[tid] = min(lhs[tid], lhs[tid] - m[tid]);
+                }
+            }
+        ").unwrap();
+
+        self.load_ptx(add_packed_base_field, "PackedBaseFieldAdd", &["add"])
+            .unwrap();
+    }
+
+    fn neg(&self) {
+        let neg_packed_base_field = compile_ptx(
+            "
+            extern \"C\" __global__ void neg(unsigned int *f, const unsigned int *m) {
+                unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+                const unsigned int VECTOR_SIZE = 16; 
+                if (tid  < VECTOR_SIZE) {
+                    f[tid] = f[tid] - m[tid];
+                }
+            }
+        ",
+        )
+        .unwrap();
+
+        self.load_ptx(neg_packed_base_field, "PackedBaseFieldNeg", &["neg"])
+            .unwrap();
+    }
+
+    fn sub(&self) {
+        // Subtract word by word. Each word is in the range [-P, P].
+
+        // Apply min(c, c+P) to each word.
+        // When c in [0,P], then c+P in [P,2P] which is always greater than [0,P].
+        // When c in [2^32-P,2^32-1], then c+P in [0,P-1] which is always less than
+        // [2^32-P,2^32-1].
+        let sub_packed_base_field = compile_ptx(
+            "
+            extern \"C\" __global__ void sub(unsigned int *lhs, const unsigned int *rhs, const unsigned int *m) {
+                unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+                const unsigned int VECTOR_SIZE = 16; 
+                if (tid  < VECTOR_SIZE) {
+                    lhs[tid] = lhs[tid] - rhs[tid];
+                    lhs[tid] = min(lhs[tid], lhs[tid] + m[tid]);
+                }
+            }
+        ",
+        )
+        .unwrap();
+
+        self.load_ptx(sub_packed_base_field, "PackedBaseFieldSub", &["sub"])
+            .unwrap();
+    }
+
+    fn mul(&self) {
+        let mul_packed_base_field = compile_ptx(
+            "
+            extern \"C\" __global__ void mul(unsigned int *lhs, unsigned int *rhs) {
+                unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+                const unsigned int VECTOR_SIZE = 16; 
+                if (tid  < VECTOR_SIZE) {
+                    unsigned long long int a_e[8]; 
+
+                }
+            }
+        ",
+        )
+        .unwrap();
+
+        self.load_ptx(mul_packed_base_field, "PackedBaseFieldMul", &["mul"])
+            .unwrap();
+    }
+
+    fn load(&self) {
+        self.reduce();
+        self.add();
+        self.neg();
+        self.sub();
+        self.mul();
+    }
+}
 
 // CUDA implementation
 /// Stores 16 M31 elements in a custom 512-bit vector.
 /// Each M31 element is unreduced in the range [0, P].
 #[derive(Debug)]
 #[repr(C)]
-pub struct PackedBaseField(pub _512u);
+pub struct PackedM31(U32_16);
 
 impl PackedBaseField {
-    pub fn broadcast(value: M31) -> Self {
-        Self(DEVICE.vector_512_set_u32(&DEVICE.htod_copy(vec![value.0]).unwrap()))
+    /// Constructs a new instance with all vector elements set to `value`.
+    pub fn broadcast(M31(v): M31) -> Self {
+        Self(DEVICE.htod_copy(vec![v; PACKED_BASE_FIELD_SIZE]).unwrap())
     }
 
-    pub fn from_array(v: [M31; K_BLOCK_SIZE]) -> PackedBaseField {
-        Self(
-            DEVICE
-                .htod_copy(v.iter().map(|m31| m31.0).collect_vec())
-                .unwrap(),
-        )
+    pub fn from_array(v: [M31; PACKED_BASE_FIELD_SIZE]) -> PackedBaseField {
+        Self(DEVICE.htod_copy(v.map(|M31(v)| v).to_vec()).unwrap()) // Can we condense this?
     }
 
-    pub fn from_512_unchecked(x: _512u) -> Self {
-        Self(x)
-    }
-
-    pub fn to_array(self) -> [M31; K_BLOCK_SIZE] {
+    pub fn to_array(self) -> [M31; PACKED_BASE_FIELD_SIZE] {
         let host = TryInto::<[u32; K_BLOCK_SIZE]>::try_into(
             DEVICE.dtoh_sync_copy(&self.reduce().0).unwrap(),
         )
         .unwrap();
-        unsafe { std::mem::transmute(host) }
+        host.map(M31)
     }
 
-    /// Reduces each word in the 512-bit register to the range `[0, P)`, excluding P.
+    /// Reduces each word in the 512-bit register to the range `[0, P)`.
     pub fn reduce(self) -> PackedBaseField {
-        Self(DEVICE.vector_512_min_u32(&self.0, &DEVICE.vector_512_sub_u32(&self.0, &M512P)))
+        let reduce_kernel = self
+            .0
+            .device()
+            .get_func("PackedBaseFieldReduce", "reduce")
+            .unwrap();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(PACKED_BASE_FIELD_SIZE as u32);
+
+        unsafe { reduce_kernel.launch(cfg, (&self.0, &*MODULUS)) }.unwrap();
+
+        self
     }
 
-    // /// Interleaves self with other.
-    // /// Returns the result as two packed M31 elements.
-    // pub fn interleave_with(self, other: Self) -> (Self, Self) {
-    //     (
-    //         Self(unsafe { _mm512_permutex2var_epi32(self.0, LHALF_INTERLEAVE_LHALF, other.0) }),
-    //         Self(unsafe { _mm512_permutex2var_epi32(self.0, HHALF_INTERLEAVE_HHALF, other.0) }),
-    //     )
+    // TODO:: Implement or Optimize as needed
+    // /// Interleaves two vectors.
+    // pub fn interleave(self, other: Self) -> (Self, Self) {
+    //     let (a, b) = self.0.interleave(other.0);
+    //     (Self(a), Self(b))
     // }
 
-    // /// Deinterleaves self with other.
-    // /// Done by concatenating the even words of self with the even words of other, and the odd
-    // words /// The inverse of [Self::interleave_with].
-    // /// Returns the result as two packed M31 elements.
-    // pub fn deinterleave_with(self, other: Self) -> (Self, Self) {
-    //     (
-    //         Self(unsafe { _mm512_permutex2var_epi32(self.0, EVENS_CONCAT_EVENS, other.0) }),
-    //         Self(unsafe { _mm512_permutex2var_epi32(self.0, ODDS_CONCAT_ODDS, other.0) }),
-    //     )
+    // TODO:: Implement or Optimize as needed
+    // /// Deinterleaves two vectors.
+    // pub fn deinterleave(self, other: Self) -> (Self, Self) {
+    //     let (a, b) = self.0.deinterleave(other.0);
+    //     (Self(a), Self(b))
     // }
 
+    /// Sums all the elements in the vector.
+    pub fn pointwise_sum(self) -> M31 {
+        self.to_array().into_iter().sum()
+    }
+
+    // TODO:: Implement or Optimize as needed
+    // /// Doubles each element in the vector.
+    // pub fn double(self) -> Self {
+    //     // TODO: Make more optimal.
+    //     self + self
+    // }
+
+    /// # Safety
+    ///
+    /// Vector elements must be in the range `[0, P]`.
+    pub unsafe fn from_cuda_slice_unchecked(v: CudaSlice<u32>) -> Self {
+        Self(v)
+    }
+
+    // TODO:: Implement or Optimize as needed
     // /// # Safety
     // ///
-    // /// This function is unsafe because it performs a load from a raw pointer. The pointer must
-    // be /// valid and aligned to 64 bytes.
-    // pub unsafe fn load(ptr: *const i32) -> Self {
-    //     Self(_mm512_load_epi32(ptr))
+    // /// Behavior is undefined if the pointer does not have the same alignment as
+    // /// [`PackedM31`]. The loaded `u32` values must be in the range `[0, P]`.
+    // pub unsafe fn load(mem_addr: *const u32) -> Self {
+    //     Self(ptr::read(mem_addr as *const u32x16))
     // }
 
+    // TODO:: Implement or Optimize as needed
     // /// # Safety
     // ///
-    // /// This function is unsafe because it performs a load from a raw pointer. The pointer must
-    // be /// valid and aligned to 64 bytes.
-    // pub unsafe fn store(self, ptr: *mut i32) {
-    //     _mm512_store_epi32(ptr, self.0);
+    // /// Behavior is undefined if the pointer does not have the same alignment as
+    // /// [`PackedM31`]. The loaded `u32` values must be in the range `[0, P]`.
+    // pub unsafe fn load(mem_addr: *const u32) -> Self {
+    //     Self(ptr::read(mem_addr as *const u32x16))
     // }
 
-    // /// Sums all the elements in the packed M31 element.
-    // pub fn pointwise_sum(self) -> M31 {
-    //     self.to_array().into_iter().sum()
+    // TODO:: Implement or Optimize as needed
+    // /// # Safety
+    // ///
+    // /// Behavior is undefined if the pointer does not have the same alignment as
+    // /// [`PackedM31`].
+    // pub unsafe fn store(self, dst: *mut u32) {
+    //     ptr::write(dst as *mut u32x16, self.0)
     // }
 }
 
@@ -136,27 +283,34 @@ impl PackedBaseField {
 //     }
 // }
 
-// Clone will return a new pointer to copied new memory
+// Clone is a device to device copy
 impl Clone for PackedBaseField {
     fn clone(&self) -> Self {
-        Self(DEVICE.vector_512_clone_slice(&self.0))
+        let mut out = unsafe { self.0.device().alloc::<u32>(PACKED_BASE_FIELD_SIZE) }.unwrap();
+        self.0.device().dtod_copy(&self.0, &mut out).unwrap();
+        Self(out)
     }
 }
 
 impl Add for PackedBaseField {
     type Output = Self;
 
+    // Do we need to consume self? (if not we can change back add implementation to allocate new
+    // vector)
     /// Adds two packed M31 elements, and reduces the result to the range `[0,P]`.
     /// Each value is assumed to be in unreduced form, [0, P] including P.
     #[inline(always)]
     fn add(self, rhs: Self) -> Self::Output {
-        // Add word by word. Each word is in the range [0, 2P].
+        let add_kernel = self
+            .0
+            .device()
+            .get_func("PackedBaseFieldAdd", "add")
+            .unwrap();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(PACKED_BASE_FIELD_SIZE as u32);
 
-        // Apply min(c, c-P) to each word.
-        // When c in [P,2P], then c-P in [0,P] which is always less than [P,2P].
-        // When c in [0,P-1], then c-P in [2^32-P,2^32-1] which is always greater than
-        let c = DEVICE.vector_512_add_u32(&self.0, &rhs.0);
-        Self(DEVICE.vector_512_min_u32(&c, &DEVICE.vector_512_sub_u32(&c, &M512P)))
+        unsafe { add_kernel.launch(cfg, (&self.0, &rhs.0, &*MODULUS)) }.unwrap();
+
+        self
     }
 }
 
@@ -164,13 +318,14 @@ impl Add for PackedBaseField {
 impl AddAssign for PackedBaseField {
     #[inline(always)]
     fn add_assign(&mut self, rhs: Self) {
-        let add_kernel = DEVICE
-            .get_func("instruction_set_op", "vector_512_add_u32")
+        let add_kernel = self
+            .0
+            .device()
+            .get_func("PackedBaseFieldAdd", "add")
             .unwrap();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(PACKED_BASE_FIELD_SIZE as u32);
 
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(VECTOR_SIZE as u32);
-
-        unsafe { add_kernel.launch(cfg, (&self.0, &rhs.0, &self.0)) }.unwrap();
+        unsafe { add_kernel.launch(cfg, (&self.0, &rhs.0, &*MODULUS)) }.unwrap();
     }
 }
 
@@ -234,7 +389,16 @@ impl Neg for PackedBaseField {
 
     #[inline(always)]
     fn neg(self) -> Self::Output {
-        Self(DEVICE.vector_512_sub_u32(&M512P, &self.0))
+        let neg_kernel = self
+            .0
+            .device()
+            .get_func("PackedBaseFieldNeg", "neg")
+            .unwrap();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(PACKED_BASE_FIELD_SIZE as u32);
+
+        unsafe { neg_kernel.launch(cfg, (&self.0, &*MODULUS)) }.unwrap();
+
+        self
     }
 }
 
@@ -245,13 +409,16 @@ impl Sub for PackedBaseField {
 
     #[inline(always)]
     fn sub(self, rhs: Self) -> Self::Output {
-        // Subtract word by word. Each word is in the range [-P, P].
-        // Apply min(c, c+P) to each word.
-        // When c in [0,P], then c+P in [P,2P] which is always greater than [0,P].
-        // When c in [2^32-P,2^32-1], then c+P in [0,P-1] which is always less than
-        // [2^32-P,2^32-1].
-        let c = DEVICE.vector_512_sub_u32(&self.0, &rhs.0);
-        Self(DEVICE.vector_512_min_u32(&DEVICE.vector_512_add_u32(&c, &M512P), &c))
+        let sub_kernel = self
+            .0
+            .device()
+            .get_func("PackedBaseFieldSub", "sub")
+            .unwrap();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(PACKED_BASE_FIELD_SIZE as u32);
+
+        unsafe { sub_kernel.launch(cfg, (&self.0, &rhs.0, &*MODULUS)) }.unwrap();
+
+        self
     }
 }
 
@@ -259,34 +426,33 @@ impl Sub for PackedBaseField {
 impl SubAssign for PackedBaseField {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: Self) {
-        let add_kernel = DEVICE
-            .get_func("instruction_set_op", "vector_512_sub_u32")
+        let sub_kernel = self
+            .0
+            .device()
+            .get_func("PackedBaseFieldSub", "sub")
             .unwrap();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(PACKED_BASE_FIELD_SIZE as u32);
 
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(VECTOR_SIZE as u32);
-
-        unsafe { add_kernel.launch(cfg, (&self.0, &rhs.0, &self.0)) }.unwrap();
+        unsafe { sub_kernel.launch(cfg, (&self.0, &rhs.0, &*MODULUS)) }.unwrap();
     }
 }
 
-// impl Zero for PackedBaseField {
-//     fn zero() -> Self {
-//         Self(_512u(DEVICE.alloc_zeros::<u32>(VECTOR_SIZE).unwrap()))
-//     }
-//     fn is_zero(&self) -> bool {
-//         self.to_array().iter().all(|x| x.is_zero())
-//     }
-// }
+impl Zero for PackedBaseField {
+    fn zero() -> Self {
+        Self(DEVICE.alloc_zeros::<u32>(PACKED_BASE_FIELD_SIZE).unwrap())
+    }
 
-// impl One for PackedBaseField {
-//     fn one() -> Self {
-//         Self(_512u(
-//             DEVICE
-//                 .htod_copy([M31::one(); K_BLOCK_SIZE].to_vec())
-//                 .unwrap(),
-//         ))
-//     }
-// }
+    // TODO:: Optimize? It currently does a htod copy
+    fn is_zero(&self) -> bool {
+        self.clone().to_array().iter().all(M31::is_zero)
+    }
+}
+
+impl One for PackedBaseField {
+    fn one() -> Self {
+        Self(DEVICE.htod_copy([1; K_BLOCK_SIZE].to_vec()).unwrap())
+    }
+}
 
 // impl FieldExpOps for PackedBaseField {
 //     fn inverse(&self) -> Self {
@@ -302,7 +468,7 @@ mod tests {
 
     use super::PackedBaseField;
     #[allow(unused_imports)]
-    use crate::core::backend::gpu::{DEVICE, M512P};
+    use crate::core::backend::gpu::{DEVICE, MODULUS};
     #[allow(unused_imports)]
     use crate::core::fields::m31::{M31, P};
     #[allow(unused_imports)]

@@ -1,6 +1,5 @@
 pub mod error;
 pub mod m31;
-pub mod testing;
 
 use std::sync::Arc;
 
@@ -9,6 +8,7 @@ use cudarc::nvrtc::compile_ptx;
 // use error::Error;
 use once_cell::sync::Lazy;
 
+use self::m31::LoadPackedBaseField;
 use crate::core::fields::m31::P;
 
 const VECTOR_SIZE: usize = 16;
@@ -16,11 +16,23 @@ const VECTOR_SIZE: usize = 16;
 // TODO:: cleanup unwraps with error handling?
 // (We can replace lazy statics with unsafe global references)
 static DEVICE: Lazy<Arc<CudaDevice>> = Lazy::new(|| CudaDevice::new(0).unwrap().load());
-static M512P: Lazy<CudaSlice<u32>> =
+static MODULUS: Lazy<CudaSlice<u32>> =
     Lazy::new(|| DEVICE.htod_copy([P; VECTOR_SIZE].to_vec()).unwrap());
 
-trait InstructionSet {
+type Device = Arc<CudaDevice>;
+
+trait Load {
     fn load(self) -> Self;
+}
+
+impl Load for Device {
+    fn load(mut self) -> Self {
+        self.load_vector_512();
+        LoadPackedBaseField::load(&self);
+        self
+    }
+}
+trait InstructionSet {
     fn vector_512_add_u32(&self, in1: &CudaSlice<u32>, in2: &CudaSlice<u32>) -> CudaSlice<u32>;
     fn vector_512_min_u32(&self, in1: &CudaSlice<u32>, in2: &CudaSlice<u32>) -> CudaSlice<u32>;
     fn vector_512_sub_u32(&self, in1: &CudaSlice<u32>, in2: &CudaSlice<u32>) -> CudaSlice<u32>;
@@ -36,22 +48,11 @@ trait InstructionSet {
     fn vector_512_clone_slice(&self, in1: &CudaSlice<u32>) -> CudaSlice<u32>;
 }
 
-#[allow(dead_code)]
-#[derive(Clone, Debug)]
-pub struct Device(Arc<CudaDevice>);
-
 // TODO (Cleanup): Refactor kernel launching into a single function call
 // TODO (Research): inline optimizations exist
 // TODO (Optimization): unsafe optimization exists with just alloc instead of alloc_zeros
 #[allow(dead_code)]
-impl InstructionSet for Arc<CudaDevice> {
-    // Returns a new Device with functions and constants pre-loaded
-    fn load(mut self) -> Self {
-        // let mut device = CudaDevice::new(0).unwrap();
-        self.load_vector_512_operations();
-        self
-    }
-
+impl InstructionSet for Device {
     fn vector_512_add_u32(&self, in1: &CudaSlice<u32>, in2: &CudaSlice<u32>) -> CudaSlice<u32> {
         let add_kernel = self
             .get_func("instruction_set", "vector_512_add_u32")
@@ -164,15 +165,15 @@ impl InstructionSet for Arc<CudaDevice> {
 
 /// Implements loading capability for the Device
 /// * 'load_vector_512_operations' - basic operations for 512 bit vector
-trait Load {
-    fn load_vector_512_operations(&mut self);
+trait LoadVector512 {
+    fn load_vector_512(&mut self);
 }
 
 /// 512 bit vector operations
-impl Load for Arc<CudaDevice> {
+impl LoadVector512 for Device {
     // Intrinsic operations don't work because they don't overflow (ie. __viadd4 or __vminu4)
     // TODO:: Look at performance trade off of explicit addition versus intrinsic built addition
-    fn load_vector_512_operations(&mut self) {
+    fn load_vector_512(&mut self) {
         let vector_512_operations = compile_ptx("
             extern \"C\" __global__ void vector_512_add_u32( unsigned int *in1,  unsigned int *in2, unsigned int *out) {
                 unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -266,11 +267,6 @@ impl Load for Arc<CudaDevice> {
         )
         .unwrap();
     }
-}
-
-pub trait Kernelize {
-    fn load_to_kernel();
-    fn dtoh();
 }
 
 #[cfg(test)]
