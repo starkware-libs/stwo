@@ -1,7 +1,9 @@
 //! GKR batch prover for Grand Product and LogUp lookup arguments.
+use std::borrow::Cow;
 use std::iter::{successors, zip};
 use std::ops::Deref;
 
+use educe::Educe;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use thiserror::Error;
@@ -10,7 +12,7 @@ use super::gkr_verifier::{GkrArtifact, GkrBatchProof, GkrMask};
 use super::mle::{Mle, MleOps};
 use super::sumcheck::MultivariatePolyOracle;
 use super::utils::{eq, random_linear_combination, UnivariatePoly};
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -46,6 +48,8 @@ pub trait GkrOps: MleOps<BaseField> + MleOps<SecureField> {
 /// `evals[1] = eq((0, ..., 0, 1), y)`, etc.
 ///
 /// [`eq(x, y)`]: crate::core::lookups::utils::eq
+#[derive(Educe)]
+#[educe(Debug, Clone)]
 pub struct EqEvals<B: ColumnOps<SecureField>> {
     y: Vec<SecureField>,
     evals: Mle<B, SecureField>,
@@ -103,7 +107,7 @@ pub enum Layer<B: GkrOps> {
 
 impl<B: GkrOps> Layer<B> {
     /// Returns the number of variables used to interpolate the layer's gate values.
-    fn n_variables(&self) -> usize {
+    pub fn n_variables(&self) -> usize {
         match self {
             Self::GrandProduct(mle)
             | Self::LogUpSingles { denominators: mle }
@@ -227,10 +231,38 @@ impl<B: GkrOps> Layer<B> {
         eq_evals: &EqEvals<B>,
     ) -> GkrMultivariatePolyOracle<'_, B> {
         GkrMultivariatePolyOracle {
-            eq_evals,
+            eq_evals: Cow::Borrowed(eq_evals),
             input_layer: self,
             eq_fixed_var_correction: SecureField::one(),
             lambda,
+        }
+    }
+
+    /// Returns a copy of this layer with the [`CpuBackend`].
+    ///
+    /// This operation is expensive but can be useful for small traces that are difficult to handle
+    /// depending on the backend. For example, the SIMD backend offloads to the CPU backend when
+    /// trace length becomes smaller than the SIMD lane count.
+    pub fn to_cpu(&self) -> Layer<CpuBackend> {
+        match self {
+            Layer::GrandProduct(mle) => Layer::GrandProduct(Mle::new(mle.to_cpu())),
+            Layer::LogUpGeneric {
+                numerators,
+                denominators,
+            } => Layer::LogUpGeneric {
+                numerators: Mle::new(numerators.to_cpu()),
+                denominators: Mle::new(denominators.to_cpu()),
+            },
+            Layer::LogUpMultiplicities {
+                numerators,
+                denominators,
+            } => Layer::LogUpMultiplicities {
+                numerators: Mle::new(numerators.to_cpu()),
+                denominators: Mle::new(denominators.to_cpu()),
+            },
+            Layer::LogUpSingles { denominators } => Layer::LogUpSingles {
+                denominators: Mle::new(denominators.to_cpu()),
+            },
         }
     }
 }
@@ -258,7 +290,7 @@ struct NotOutputLayerError;
 /// ```
 pub struct GkrMultivariatePolyOracle<'a, B: GkrOps> {
     /// `eq_evals` passed by `Layer::into_multivariate_poly()`.
-    pub eq_evals: &'a EqEvals<B>,
+    pub eq_evals: Cow<'a, EqEvals<B>>,
     pub input_layer: Layer<B>,
     pub eq_fixed_var_correction: SecureField,
     /// Used by LogUp to perform a random linear combination of the numerators and denominators.
@@ -331,6 +363,27 @@ impl<'a, B: GkrOps> GkrMultivariatePolyOracle<'a, B> {
         };
 
         Ok(GkrMask::new(columns))
+    }
+
+    /// Returns a copy of this oracle with the [`CpuBackend`].
+    ///
+    /// This operation is expensive but can be useful for small oracles that are difficult to handle
+    /// depending on the backend. For example, the SIMD backend offloads to the CPU backend when
+    /// trace length becomes smaller than the SIMD lane count.
+    pub fn to_cpu(&self) -> GkrMultivariatePolyOracle<'a, CpuBackend> {
+        // TODO(andrew): This block is not ideal.
+        let n_eq_evals = 1 << (self.n_variables() - 1);
+        let eq_evals = Cow::Owned(EqEvals {
+            evals: Mle::new((0..n_eq_evals).map(|i| self.eq_evals.at(i)).collect()),
+            y: self.eq_evals.y.to_vec(),
+        });
+
+        GkrMultivariatePolyOracle {
+            eq_evals,
+            eq_fixed_var_correction: self.eq_fixed_var_correction,
+            input_layer: self.input_layer.to_cpu(),
+            lambda: self.lambda,
+        }
     }
 }
 
