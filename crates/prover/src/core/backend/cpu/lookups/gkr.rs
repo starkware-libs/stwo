@@ -41,15 +41,14 @@ impl GkrOps for CpuBackend {
     ) -> UnivariatePoly<SecureField> {
         let k = h.n_variables();
         let n_terms = 1 << (k - 1);
-        let eq_evals = h.eq_evals;
+        let eq_evals = h.eq_evals.as_ref();
         let y = eq_evals.y();
         let lambda = h.lambda;
-        let input_layer = &h.input_layer;
 
         let mut eval_at_0 = SecureField::zero();
         let mut eval_at_2 = SecureField::zero();
 
-        match input_layer {
+        match &h.input_layer {
             Layer::GrandProduct(col) => {
                 process_grand_product_sum(&mut eval_at_0, &mut eval_at_2, eq_evals, col, n_terms)
             }
