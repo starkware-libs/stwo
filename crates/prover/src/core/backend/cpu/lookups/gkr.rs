@@ -42,13 +42,12 @@ impl GkrOps for CpuBackend {
         let n_variables = h.n_variables();
         assert!(!n_variables.is_zero());
         let n_terms = 1 << (n_variables - 1);
-        let eq_evals = h.eq_evals;
+        let eq_evals = h.eq_evals.as_ref();
         // Vector used to generate evaluations of `eq(x, y)` for `x` in the boolean hypercube.
         let y = eq_evals.y();
         let lambda = h.lambda;
-        let input_layer = &h.input_layer;
 
-        let (mut eval_at_0, mut eval_at_2) = match input_layer {
+        let (mut eval_at_0, mut eval_at_2) = match &h.input_layer {
             Layer::GrandProduct(col) => eval_grand_product_sum(eq_evals, col, n_terms),
             Layer::LogUpGeneric {
                 numerators,
@@ -88,6 +87,8 @@ fn eval_grand_product_sum(
         let inp_at_r1i1 = input_layer[(n_terms + i) * 2 + 1];
         // Note `inp(r, t, x) = eq(t, 0) * inp(r, 0, x) + eq(t, 1) * inp(r, 1, x)`
         //   => `inp(r, 2, x) = 2 * inp(r, 1, x) - inp(r, 0, x)`
+        // TODO: Consider evaluation at `1/2` to save an addition operation since `inp(r, 1/2, x) =
+        // 1/2 * (inp(r, 1, x) + inp(r, 0, x))`. `1/2 * ...` can be factored outside the loop.
         let inp_at_r2i0 = inp_at_r1i0.double() - inp_at_r0i0;
         let inp_at_r2i1 = inp_at_r1i1.double() - inp_at_r0i1;
 
