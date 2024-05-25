@@ -8,13 +8,14 @@ use crate::core::backend::simd::m31::{LOG_N_LANES, N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Column, CpuBackend};
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::gkr_prover::{
     correct_sum_as_poly_in_first_variable, EqEvals, GkrMultivariatePolyOracle, GkrOps, Layer,
 };
 use crate::core::lookups::mle::Mle;
 use crate::core::lookups::sumcheck::MultivariatePolyOracle;
-use crate::core::lookups::utils::UnivariatePoly;
+use crate::core::lookups::utils::{Fraction, Reciprocal, UnivariatePoly};
 
 impl GkrOps for SimdBackend {
     #[allow(clippy::uninit_vec)]
@@ -61,14 +62,14 @@ impl GkrOps for SimdBackend {
         match layer {
             Layer::GrandProduct(col) => next_grand_product_layer(col),
             Layer::LogUpGeneric {
-                numerators: _,
-                denominators: _,
-            } => todo!(),
+                numerators,
+                denominators,
+            } => next_logup_generic_layer(numerators, denominators),
             Layer::LogUpMultiplicities {
-                numerators: _,
-                denominators: _,
-            } => todo!(),
-            Layer::LogUpSingles { denominators: _ } => todo!(),
+                numerators,
+                denominators,
+            } => next_logup_multiplicities_layer(numerators, denominators),
+            Layer::LogUpSingles { denominators } => next_logup_singles_layer(denominators),
         }
     }
 
@@ -88,6 +89,7 @@ impl GkrOps for SimdBackend {
         }
 
         let n_packed_terms = n_terms / N_LANES;
+        let packed_lambda = PackedSecureField::broadcast(h.lambda);
         let mut packed_eval_at_0 = PackedSecureField::zero();
         let mut packed_eval_at_2 = PackedSecureField::zero();
 
@@ -100,14 +102,37 @@ impl GkrOps for SimdBackend {
                 n_packed_terms,
             ),
             Layer::LogUpGeneric {
-                numerators: _,
-                denominators: _,
-            } => todo!(),
+                numerators,
+                denominators,
+            } => process_logup_generic_sum(
+                &mut packed_eval_at_0,
+                &mut packed_eval_at_2,
+                eq_evals,
+                numerators,
+                denominators,
+                n_packed_terms,
+                packed_lambda,
+            ),
             Layer::LogUpMultiplicities {
-                numerators: _,
-                denominators: _,
-            } => todo!(),
-            Layer::LogUpSingles { denominators: _ } => todo!(),
+                numerators,
+                denominators,
+            } => process_logup_multiplicities_sum(
+                &mut packed_eval_at_0,
+                &mut packed_eval_at_2,
+                eq_evals,
+                numerators,
+                denominators,
+                n_packed_terms,
+                packed_lambda,
+            ),
+            Layer::LogUpSingles { denominators } => process_logup_singles_sum(
+                &mut packed_eval_at_0,
+                &mut packed_eval_at_2,
+                eq_evals,
+                denominators,
+                n_packed_terms,
+                packed_lambda,
+            ),
         }
 
         // Corrects the difference between two univariate sums in `t`:
@@ -121,7 +146,7 @@ impl GkrOps for SimdBackend {
     }
 }
 
-// Can assume `len(layer) > N_LANES * 2`
+// Can assume `len(layer) > N_LANES`.
 fn next_grand_product_layer(layer: &Mle<SimdBackend, SecureField>) -> Layer<SimdBackend> {
     assert!(layer.len() > N_LANES);
     let next_layer_len = layer.len() / 2;
@@ -139,6 +164,128 @@ fn next_grand_product_layer(layer: &Mle<SimdBackend, SecureField>) -> Layer<Simd
         data,
         length: next_layer_len,
     }))
+}
+
+fn next_logup_generic_layer(
+    numerators: &Mle<SimdBackend, SecureField>,
+    denominators: &Mle<SimdBackend, SecureField>,
+) -> Layer<SimdBackend> {
+    assert!(denominators.len() > N_LANES);
+    assert_eq!(numerators.len(), denominators.len());
+
+    let next_layer_len = denominators.len() / 2;
+    let next_layer_packed_len = next_layer_len / N_LANES;
+
+    let mut next_numerators = Vec::with_capacity(next_layer_packed_len);
+    let mut next_denominators = Vec::with_capacity(next_layer_packed_len);
+
+    for i in 0..next_layer_packed_len {
+        let (n_even, n_odd) = numerators.data[i * 2].deinterleave(numerators.data[i * 2 + 1]);
+        let (d_even, d_odd) = denominators.data[i * 2].deinterleave(denominators.data[i * 2 + 1]);
+
+        let Fraction {
+            numerator,
+            denominator,
+        } = Fraction::new(n_even, d_even) + Fraction::new(n_odd, d_odd);
+
+        next_numerators.push(numerator);
+        next_denominators.push(denominator);
+    }
+
+    let next_numerators = SecureFieldVec {
+        data: next_numerators,
+        length: next_layer_len,
+    };
+
+    let next_denominators = SecureFieldVec {
+        data: next_denominators,
+        length: next_layer_len,
+    };
+
+    Layer::LogUpGeneric {
+        numerators: Mle::new(next_numerators),
+        denominators: Mle::new(next_denominators),
+    }
+}
+
+// TODO: Code duplication of `next_logup_generic_layer`. Consider unifying these.
+fn next_logup_multiplicities_layer(
+    numerators: &Mle<SimdBackend, BaseField>,
+    denominators: &Mle<SimdBackend, SecureField>,
+) -> Layer<SimdBackend> {
+    assert!(denominators.len() > N_LANES);
+    assert_eq!(numerators.len(), denominators.len());
+
+    let next_layer_len = denominators.len() / 2;
+    let next_layer_packed_len = next_layer_len / N_LANES;
+
+    let mut next_numerators = Vec::with_capacity(next_layer_packed_len);
+    let mut next_denominators = Vec::with_capacity(next_layer_packed_len);
+
+    for i in 0..next_layer_packed_len {
+        let (n_even, n_odd) = numerators.data[i * 2].deinterleave(numerators.data[i * 2 + 1]);
+        let (d_even, d_odd) = denominators.data[i * 2].deinterleave(denominators.data[i * 2 + 1]);
+
+        let Fraction {
+            numerator,
+            denominator,
+        } = Fraction::new(n_even, d_even) + Fraction::new(n_odd, d_odd);
+
+        next_numerators.push(numerator);
+        next_denominators.push(denominator);
+    }
+
+    let next_numerators = SecureFieldVec {
+        data: next_numerators,
+        length: next_layer_len,
+    };
+
+    let next_denominators = SecureFieldVec {
+        data: next_denominators,
+        length: next_layer_len,
+    };
+
+    Layer::LogUpGeneric {
+        numerators: Mle::new(next_numerators),
+        denominators: Mle::new(next_denominators),
+    }
+}
+
+fn next_logup_singles_layer(denominators: &Mle<SimdBackend, SecureField>) -> Layer<SimdBackend> {
+    assert!(denominators.len() > N_LANES);
+
+    let next_layer_len = denominators.len() / 2;
+    let next_layer_packed_len = next_layer_len / N_LANES;
+
+    let mut next_numerators = Vec::with_capacity(next_layer_packed_len);
+    let mut next_denominators = Vec::with_capacity(next_layer_packed_len);
+
+    for i in 0..next_layer_packed_len {
+        let (d_even, d_odd) = denominators.data[i * 2].deinterleave(denominators.data[i * 2 + 1]);
+
+        let Fraction {
+            numerator,
+            denominator,
+        } = Reciprocal::new(d_even) + Reciprocal::new(d_odd);
+
+        next_numerators.push(numerator);
+        next_denominators.push(denominator);
+    }
+
+    let next_numerators = SecureFieldVec {
+        data: next_numerators,
+        length: next_layer_len,
+    };
+
+    let next_denominators = SecureFieldVec {
+        data: next_denominators,
+        length: next_layer_len,
+    };
+
+    Layer::LogUpGeneric {
+        numerators: Mle::new(next_numerators),
+        denominators: Mle::new(next_denominators),
+    }
 }
 
 fn process_grand_product_sum(
@@ -170,6 +317,151 @@ fn process_grand_product_sum(
     }
 }
 
+fn process_logup_generic_sum(
+    packed_eval_at_0: &mut PackedSecureField,
+    packed_eval_at_2: &mut PackedSecureField,
+    eq_evals: &EqEvals<SimdBackend>,
+    numerators: &Mle<SimdBackend, SecureField>,
+    denominators: &Mle<SimdBackend, SecureField>,
+    n_packed_terms: usize,
+    packed_lambda: PackedSecureField,
+) {
+    let inp_numer = &numerators.data;
+    let inp_denom = &denominators.data;
+
+    for i in 0..n_packed_terms {
+        // Input polynomials at points `(r, {0, 1, 2}, bits(i), v, {0, 1})`
+        // for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
+        let (inp_numer_at_r0iv0, inp_numer_at_r0iv1) =
+            inp_numer[i * 2].deinterleave(inp_numer[i * 2 + 1]);
+        let (inp_denom_at_r0iv0, inp_denom_at_r0iv1) =
+            inp_denom[i * 2].deinterleave(inp_denom[i * 2 + 1]);
+        let (inp_numer_at_r1iv0, inp_numer_at_r1iv1) = inp_numer[(n_packed_terms + i) * 2]
+            .deinterleave(inp_numer[(n_packed_terms + i) * 2 + 1]);
+        let (inp_denom_at_r1iv0, inp_denom_at_r1iv1) = inp_denom[(n_packed_terms + i) * 2]
+            .deinterleave(inp_denom[(n_packed_terms + i) * 2 + 1]);
+        // Note `inp_denom(r, t, x) = eq(t, 0) * inp_denom(r, 0, x) + eq(t, 1) * inp_denom(r, 1, x)`
+        //   => `inp_denom(r, 2, x) = 2 * inp_denom(r, 1, x) - inp_denom(r, 0, x)`
+        let inp_numer_at_r2iv0 = inp_numer_at_r1iv0.double() - inp_numer_at_r0iv0;
+        let inp_numer_at_r2iv1 = inp_numer_at_r1iv1.double() - inp_numer_at_r0iv1;
+        let inp_denom_at_r2iv0 = inp_denom_at_r1iv0.double() - inp_denom_at_r0iv0;
+        let inp_denom_at_r2iv1 = inp_denom_at_r1iv1.double() - inp_denom_at_r0iv1;
+
+        // Fraction addition polynomials:
+        // - `numer(x) = inp_numer(x, 0) * inp_denom(x, 1) + inp_numer(x, 1) * inp_denom(x, 0)`
+        // - `denom(x) = inp_denom(x, 0) * inp_denom(x, 1)`.
+        // at points `(r, {0, 2}, bits(i), v)` for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
+        let Fraction {
+            numerator: numer_at_r0iv,
+            denominator: denom_at_r0iv,
+        } = Fraction::new(inp_numer_at_r0iv0, inp_denom_at_r0iv0)
+            + Fraction::new(inp_numer_at_r0iv1, inp_denom_at_r0iv1);
+        let Fraction {
+            numerator: numer_at_r2iv,
+            denominator: denom_at_r2iv,
+        } = Fraction::new(inp_numer_at_r2iv0, inp_denom_at_r2iv0)
+            + Fraction::new(inp_numer_at_r2iv1, inp_denom_at_r2iv1);
+
+        let eq_eval_at_0iv = eq_evals.data[i];
+        *packed_eval_at_0 += eq_eval_at_0iv * (numer_at_r0iv + packed_lambda * denom_at_r0iv);
+        *packed_eval_at_2 += eq_eval_at_0iv * (numer_at_r2iv + packed_lambda * denom_at_r2iv);
+    }
+}
+
+// Can assume `n_terms > N_LANES`.
+// TODO: Code duplication of `process_logup_generic_sum`. Consider unifying these.
+fn process_logup_multiplicities_sum(
+    packed_eval_at_0: &mut PackedSecureField,
+    packed_eval_at_2: &mut PackedSecureField,
+    eq_evals: &EqEvals<SimdBackend>,
+    numerators: &Mle<SimdBackend, BaseField>,
+    denominators: &Mle<SimdBackend, SecureField>,
+    n_packed_terms: usize,
+    packed_lambda: PackedSecureField,
+) {
+    let inp_numer = &numerators.data;
+    let inp_denom = &denominators.data;
+
+    for i in 0..n_packed_terms {
+        // Input polynomials at points `(r, {0, 1, 2}, bits(i), v, {0, 1})`
+        // for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
+        let (inp_numer_at_r0iv0, inp_numer_at_r0iv1) =
+            inp_numer[i * 2].deinterleave(inp_numer[i * 2 + 1]);
+        let (inp_denom_at_r0iv0, inp_denom_at_r0iv1) =
+            inp_denom[i * 2].deinterleave(inp_denom[i * 2 + 1]);
+        let (inp_numer_at_r1iv0, inp_numer_at_r1iv1) = inp_numer[(n_packed_terms + i) * 2]
+            .deinterleave(inp_numer[(n_packed_terms + i) * 2 + 1]);
+        let (inp_denom_at_r1iv0, inp_denom_at_r1iv1) = inp_denom[(n_packed_terms + i) * 2]
+            .deinterleave(inp_denom[(n_packed_terms + i) * 2 + 1]);
+        // Note `inp_denom(r, t, x) = eq(t, 0) * inp_denom(r, 0, x) + eq(t, 1) * inp_denom(r, 1, x)`
+        //   => `inp_denom(r, 2, x) = 2 * inp_denom(r, 1, x) - inp_denom(r, 0, x)`
+        let inp_numer_at_r2iv0 = inp_numer_at_r1iv0.double() - inp_numer_at_r0iv0;
+        let inp_numer_at_r2iv1 = inp_numer_at_r1iv1.double() - inp_numer_at_r0iv1;
+        let inp_denom_at_r2iv0 = inp_denom_at_r1iv0.double() - inp_denom_at_r0iv0;
+        let inp_denom_at_r2iv1 = inp_denom_at_r1iv1.double() - inp_denom_at_r0iv1;
+
+        // Fraction addition polynomials:
+        // - `numer(x) = inp_numer(x, 0) * inp_denom(x, 1) + inp_numer(x, 1) * inp_denom(x, 0)`
+        // - `denom(x) = inp_denom(x, 0) * inp_denom(x, 1)`.
+        // at points `(r, {0, 2}, bits(i), v)` for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
+        let Fraction {
+            numerator: numer_at_r0iv,
+            denominator: denom_at_r0iv,
+        } = Fraction::new(inp_numer_at_r0iv0, inp_denom_at_r0iv0)
+            + Fraction::new(inp_numer_at_r0iv1, inp_denom_at_r0iv1);
+        let Fraction {
+            numerator: numer_at_r2iv,
+            denominator: denom_at_r2iv,
+        } = Fraction::new(inp_numer_at_r2iv0, inp_denom_at_r2iv0)
+            + Fraction::new(inp_numer_at_r2iv1, inp_denom_at_r2iv1);
+
+        let eq_eval_at_0iv = eq_evals.data[i];
+        *packed_eval_at_0 += eq_eval_at_0iv * (numer_at_r0iv + packed_lambda * denom_at_r0iv);
+        *packed_eval_at_2 += eq_eval_at_0iv * (numer_at_r2iv + packed_lambda * denom_at_r2iv);
+    }
+}
+
+fn process_logup_singles_sum(
+    packed_eval_at_0: &mut PackedSecureField,
+    packed_eval_at_2: &mut PackedSecureField,
+    eq_evals: &EqEvals<SimdBackend>,
+    denominators: &Mle<SimdBackend, SecureField>,
+    n_packed_terms: usize,
+    packed_lambda: PackedSecureField,
+) {
+    let inp_denom = &denominators.data;
+
+    for i in 0..n_packed_terms {
+        // Input polynomial at points `(r, {0, 1, 2}, bits(i), v, {0, 1})`
+        // for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
+        let (inp_denom_at_r0iv0, inp_denom_at_r0iv1) =
+            inp_denom[i * 2].deinterleave(inp_denom[i * 2 + 1]);
+        let (inp_denom_at_r1iv0, inp_denom_at_r1iv1) = inp_denom[(n_packed_terms + i) * 2]
+            .deinterleave(inp_denom[(n_packed_terms + i) * 2 + 1]);
+        // Note `inp_denom(r, t, x) = eq(t, 0) * inp_denom(r, 0, x) + eq(t, 1) * inp_denom(r, 1, x)`
+        //   => `inp_denom(r, 2, x) = 2 * inp_denom(r, 1, x) - inp_denom(r, 0, x)`
+        let inp_denom_at_r2iv0 = inp_denom_at_r1iv0.double() - inp_denom_at_r0iv0;
+        let inp_denom_at_r2iv1 = inp_denom_at_r1iv1.double() - inp_denom_at_r0iv1;
+
+        // Fraction addition polynomials:
+        // - `numer(x) = inp_denom(x, 1) + inp_denom(x, 0)`
+        // - `denom(x) = inp_denom(x, 0) * inp_denom(x, 1)`.
+        // at points `(r, {0, 2}, bits(i), v)` for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
+        let Fraction {
+            numerator: numer_at_r0iv,
+            denominator: denom_at_r0iv,
+        } = Reciprocal::new(inp_denom_at_r0iv0) + Reciprocal::new(inp_denom_at_r0iv1);
+        let Fraction {
+            numerator: numer_at_r2iv,
+            denominator: denom_at_r2iv,
+        } = Reciprocal::new(inp_denom_at_r2iv0) + Reciprocal::new(inp_denom_at_r2iv1);
+
+        let eq_eval_at_0iv = eq_evals.data[i];
+        *packed_eval_at_0 += eq_eval_at_0iv * (numer_at_r0iv + packed_lambda * denom_at_r0iv);
+        *packed_eval_at_2 += eq_eval_at_0iv * (numer_at_r2iv + packed_lambda * denom_at_r2iv);
+    }
+}
+
 fn into_simd_layer(cpu_layer: Layer<CpuBackend>) -> Layer<SimdBackend> {
     match cpu_layer {
         Layer::GrandProduct(mle) => {
@@ -197,6 +489,12 @@ fn into_simd_layer(cpu_layer: Layer<CpuBackend>) -> Layer<SimdBackend> {
 
 #[cfg(test)]
 mod tests {
+    use std::iter::zip;
+
+    use num_traits::One;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
+
     use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::{Column, CpuBackend};
     use crate::core::channel::Channel;
@@ -205,6 +503,7 @@ mod tests {
     use crate::core::lookups::gkr_prover::{prove_batch, GkrOps, Layer};
     use crate::core::lookups::gkr_verifier::{partially_verify_batch, Gate, GkrArtifact, GkrError};
     use crate::core::lookups::mle::Mle;
+    use crate::core::lookups::utils::Fraction;
     use crate::core::test_utils::test_channel;
 
     #[test]
@@ -248,6 +547,118 @@ mod tests {
         assert_eq!(
             claims_to_verify_by_instance,
             [vec![col.eval_at_point(&ood_point)]]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn logup_with_generic_trace_works() -> Result<(), GkrError> {
+        const N: usize = 1 << 8;
+        let mut rng = SmallRng::seed_from_u64(0);
+        let numerators = (0..N).map(|_| rng.gen()).collect::<Vec<SecureField>>();
+        let denominators = (0..N).map(|_| rng.gen()).collect::<Vec<SecureField>>();
+        let sum = zip(&numerators, &denominators)
+            .map(|(&n, &d)| Fraction::new(n, d))
+            .sum::<Fraction<SecureField, SecureField>>();
+        let numerators = Mle::<SimdBackend, SecureField>::new(numerators.into_iter().collect());
+        let denominators = Mle::<SimdBackend, SecureField>::new(denominators.into_iter().collect());
+        let input_layer = Layer::LogUpGeneric {
+            numerators: numerators.clone(),
+            denominators: denominators.clone(),
+        };
+        let (proof, _) = prove_batch(&mut test_channel(), vec![input_layer]);
+
+        let GkrArtifact {
+            ood_point,
+            claims_to_verify_by_instance,
+            n_variables_by_instance: _,
+        } = partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
+
+        assert_eq!(claims_to_verify_by_instance.len(), 1);
+        assert_eq!(proof.output_claims_by_instance.len(), 1);
+        assert_eq!(
+            claims_to_verify_by_instance[0],
+            [
+                numerators.eval_at_point(&ood_point),
+                denominators.eval_at_point(&ood_point)
+            ]
+        );
+        assert_eq!(
+            proof.output_claims_by_instance[0],
+            [sum.numerator, sum.denominator]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn logup_with_multiplicities_trace_works() -> Result<(), GkrError> {
+        const N: usize = 1 << 8;
+        let mut rng = SmallRng::seed_from_u64(0);
+        let numerators = (0..N).map(|_| rng.gen()).collect::<Vec<BaseField>>();
+        let denominators = (0..N).map(|_| rng.gen()).collect::<Vec<SecureField>>();
+        let sum = zip(&numerators, &denominators)
+            .map(|(&n, &d)| Fraction::new(n.into(), d))
+            .sum::<Fraction<SecureField, SecureField>>();
+        let numerators = Mle::<SimdBackend, BaseField>::new(numerators.into_iter().collect());
+        let denominators = Mle::<SimdBackend, SecureField>::new(denominators.into_iter().collect());
+        let input_layer = Layer::LogUpMultiplicities {
+            numerators: numerators.clone(),
+            denominators: denominators.clone(),
+        };
+        let (proof, _) = prove_batch(&mut test_channel(), vec![input_layer]);
+
+        let GkrArtifact {
+            ood_point,
+            claims_to_verify_by_instance,
+            n_variables_by_instance: _,
+        } = partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
+
+        assert_eq!(claims_to_verify_by_instance.len(), 1);
+        assert_eq!(proof.output_claims_by_instance.len(), 1);
+        assert_eq!(
+            claims_to_verify_by_instance[0],
+            [
+                numerators.eval_at_point(&ood_point),
+                denominators.eval_at_point(&ood_point)
+            ]
+        );
+        assert_eq!(
+            proof.output_claims_by_instance[0],
+            [sum.numerator, sum.denominator]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn logup_with_singles_trace_works() -> Result<(), GkrError> {
+        const N: usize = 1 << 8;
+        let mut rng = SmallRng::seed_from_u64(0);
+        let denominators = (0..N).map(|_| rng.gen()).collect::<Vec<SecureField>>();
+        let sum = denominators
+            .iter()
+            .map(|&d| Fraction::new(SecureField::one(), d))
+            .sum::<Fraction<SecureField, SecureField>>();
+        let denominators = Mle::<SimdBackend, SecureField>::new(denominators.into_iter().collect());
+        let input_layer = Layer::LogUpSingles {
+            denominators: denominators.clone(),
+        };
+        let (proof, _) = prove_batch(&mut test_channel(), vec![input_layer]);
+
+        let GkrArtifact {
+            ood_point,
+            claims_to_verify_by_instance,
+            n_variables_by_instance: _,
+        } = partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
+
+        assert_eq!(claims_to_verify_by_instance.len(), 1);
+        assert_eq!(proof.output_claims_by_instance.len(), 1);
+        assert_eq!(
+            claims_to_verify_by_instance[0],
+            [SecureField::one(), denominators.eval_at_point(&ood_point)]
+        );
+        assert_eq!(
+            proof.output_claims_by_instance[0],
+            [sum.numerator, sum.denominator]
         );
         Ok(())
     }

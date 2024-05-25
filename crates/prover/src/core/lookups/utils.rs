@@ -196,13 +196,13 @@ where
 
 /// Projective fraction.
 #[derive(Debug, Clone, Copy)]
-pub struct Fraction<F> {
-    pub numerator: F,
-    pub denominator: SecureField,
+pub struct Fraction<N, D> {
+    pub numerator: N,
+    pub denominator: D,
 }
 
-impl<F> Fraction<F> {
-    pub fn new(numerator: F, denominator: SecureField) -> Self {
+impl<N, D> Fraction<N, D> {
+    pub fn new(numerator: N, denominator: D) -> Self {
         Self {
             numerator,
             denominator,
@@ -210,14 +210,12 @@ impl<F> Fraction<F> {
     }
 }
 
-impl<F> Add for Fraction<F>
-where
-    F: Field,
-    SecureField: ExtensionOf<F> + Field,
+impl<N, D: Add<Output = D> + Add<N, Output = D> + Mul<N, Output = D> + Mul<Output = D> + Copy> Add
+    for Fraction<N, D>
 {
-    type Output = Fraction<SecureField>;
+    type Output = Fraction<D, D>;
 
-    fn add(self, rhs: Self) -> Fraction<SecureField> {
+    fn add(self, rhs: Self) -> Fraction<D, D> {
         Fraction {
             numerator: rhs.denominator * self.numerator + self.denominator * rhs.numerator,
             denominator: self.denominator * rhs.denominator,
@@ -225,11 +223,14 @@ where
     }
 }
 
-impl Zero for Fraction<SecureField> {
+impl<N: Zero, D: One + Zero> Zero for Fraction<N, D>
+where
+    Self: Add<Output = Self>,
+{
     fn zero() -> Self {
         Self {
-            numerator: SecureField::zero(),
-            denominator: SecureField::one(),
+            numerator: N::zero(),
+            denominator: D::one(),
         }
     }
 
@@ -238,10 +239,36 @@ impl Zero for Fraction<SecureField> {
     }
 }
 
-impl Sum for Fraction<SecureField> {
+impl<N, D> Sum for Fraction<N, D>
+where
+    Self: Zero,
+{
     fn sum<I: Iterator<Item = Self>>(mut iter: I) -> Self {
         let first = iter.next().unwrap_or_else(Self::zero);
         iter.fold(first, |a, b| a + b)
+    }
+}
+
+/// Represents the fraction `1 / x`
+pub struct Reciprocal<T> {
+    x: T,
+}
+
+impl<T> Reciprocal<T> {
+    pub fn new(x: T) -> Self {
+        Self { x }
+    }
+}
+
+impl<T: Add<Output = T> + Mul<Output = T> + Copy> Add for Reciprocal<T> {
+    type Output = Fraction<T, T>;
+
+    fn add(self, rhs: Self) -> Fraction<T, T> {
+        // `1/a + 1/b = (a + b)/(a * b)`
+        Fraction {
+            numerator: self.x + rhs.x,
+            denominator: self.x * rhs.x,
+        }
     }
 }
 
