@@ -221,12 +221,12 @@ mod tests {
             numerators: numerators.clone(),
             denominators: denominators.clone(),
         };
-        let (proof, _) = prove_batch(&mut test_channel(), vec![top_layer.clone()]);
+        let (proof, _) = prove_batch(&mut test_channel(), vec![top_layer]);
 
         let GkrArtifact {
             ood_point,
             claims_to_verify_by_component,
-            ..
+            n_variables_by_component: _,
         } = partially_verify_batch(vec![&LogupGate], &proof, &mut test_channel())?;
 
         assert_eq!(claims_to_verify_by_component.len(), 1);
@@ -258,12 +258,12 @@ mod tests {
         let top_layer = LogupTrace::Singles {
             denominators: denominators.clone(),
         };
-        let (proof, _) = prove_batch(&mut test_channel(), vec![top_layer.clone()]);
+        let (proof, _) = prove_batch(&mut test_channel(), vec![top_layer]);
 
         let GkrArtifact {
             ood_point,
             claims_to_verify_by_component,
-            ..
+            n_variables_by_component: _,
         } = partially_verify_batch(vec![&LogupGate], &proof, &mut test_channel())?;
 
         assert_eq!(claims_to_verify_by_component.len(), 1);
@@ -294,12 +294,12 @@ mod tests {
             numerators: numerators.clone(),
             denominators: denominators.clone(),
         };
-        let (proof, _) = prove_batch(&mut test_channel(), vec![top_layer.clone()]);
+        let (proof, _) = prove_batch(&mut test_channel(), vec![top_layer]);
 
         let GkrArtifact {
             ood_point,
             claims_to_verify_by_component,
-            ..
+            n_variables_by_component: _,
         } = partially_verify_batch(vec![&LogupGate], &proof, &mut test_channel())?;
 
         assert_eq!(claims_to_verify_by_component.len(), 1);
