@@ -2,6 +2,7 @@
 use std::iter::{successors, zip};
 use std::ops::Deref;
 
+use derivative::Derivative;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use thiserror::Error;
@@ -28,9 +29,11 @@ pub trait GkrOps: MleOps<SecureField> {
 ///
 /// Evaluations are stored in bit-reversed order i.e. `evals[0] = eq((0, ..., 0, 0), y)`,
 /// `evals[1] = eq((0, ..., 0, 1), y)`, etc.
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""), Clone(bound = ""))]
 pub struct EqEvals<B: ColumnOps<SecureField>> {
-    y: Vec<SecureField>,
-    evals: Mle<B, SecureField>,
+    pub y: Vec<SecureField>,
+    pub evals: Mle<B, SecureField>,
 }
 
 impl<B: GkrOps> EqEvals<B> {
@@ -570,7 +573,6 @@ mod tests {
     use super::GkrError;
     use crate::core::backend::CpuBackend;
     use crate::core::channel::Channel;
-    use crate::core::fields::qm31::SecureField;
     use crate::core::lookups::gkr::{partially_verify_batch, prove_batch, GkrArtifact};
     use crate::core::lookups::grandproduct::{GrandProductGate, GrandProductTrace};
     use crate::core::lookups::mle::Mle;
@@ -582,8 +584,8 @@ mod tests {
         let mut channel = test_channel();
         let col0 = GrandProductTrace::<CpuBackend>::new(Mle::new(channel.draw_felts(1 << LOG_N)));
         let col1 = GrandProductTrace::<CpuBackend>::new(Mle::new(channel.draw_felts(1 << LOG_N)));
-        let product0 = col0.iter().product::<SecureField>();
-        let product1 = col1.iter().product::<SecureField>();
+        let product0 = col0.iter().product();
+        let product1 = col1.iter().product();
         let top_layers = vec![col0.clone(), col1.clone()];
         let (proof, _) = prove_batch(&mut test_channel(), top_layers);
 
@@ -612,8 +614,8 @@ mod tests {
         let mut channel = test_channel();
         let col0 = GrandProductTrace::<CpuBackend>::new(Mle::new(channel.draw_felts(1 << LOG_N0)));
         let col1 = GrandProductTrace::<CpuBackend>::new(Mle::new(channel.draw_felts(1 << LOG_N1)));
-        let product0 = col0.iter().product::<SecureField>();
-        let product1 = col1.iter().product::<SecureField>();
+        let product0 = col0.iter().product();
+        let product1 = col1.iter().product();
         let top_layers = vec![col0.clone(), col1.clone()];
         let (proof, _) = prove_batch(&mut test_channel(), top_layers);
 
