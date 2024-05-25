@@ -1,4 +1,4 @@
-use std::ops::{Add, Index};
+use std::ops::Index;
 
 use num_traits::{One, Zero};
 
@@ -11,7 +11,7 @@ use crate::core::lookups::gkr_prover::{
 };
 use crate::core::lookups::mle::{Mle, MleOps};
 use crate::core::lookups::sumcheck::MultivariatePolyOracle;
-use crate::core::lookups::utils::{Fraction, UnivariatePoly};
+use crate::core::lookups::utils::{Fraction, Reciprocal, UnivariatePoly};
 
 impl GkrOps for CpuBackend {
     fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Mle<Self, SecureField> {
@@ -185,23 +185,6 @@ fn process_logup_singles_sum(
     n_terms: usize,
     lambda: SecureField,
 ) {
-    /// Represents the fraction `1 / x`
-    struct Reciprocal {
-        x: SecureField,
-    }
-
-    impl Add for Reciprocal {
-        type Output = Fraction<SecureField>;
-
-        fn add(self, rhs: Self) -> Fraction<SecureField> {
-            // `1/a + 1/b = (a + b)/(a * b)`
-            Fraction {
-                numerator: self.x + rhs.x,
-                denominator: self.x * rhs.x,
-            }
-        }
-    }
-
     for i in 0..n_terms {
         // Input polynomial at points `(r, {0, 1, 2}, bits(i), {0, 1})`.
         let inp_denom_at_r0i0 = denominators[i * 2];
@@ -220,19 +203,11 @@ fn process_logup_singles_sum(
         let Fraction {
             numerator: numer_at_r0i,
             denominator: denom_at_r0i,
-        } = Reciprocal {
-            x: inp_denom_at_r0i0,
-        } + Reciprocal {
-            x: inp_denom_at_r0i1,
-        };
+        } = Reciprocal::new(inp_denom_at_r0i0) + Reciprocal::new(inp_denom_at_r0i1);
         let Fraction {
             numerator: numer_at_r2i,
             denominator: denom_at_r2i,
-        } = Reciprocal {
-            x: inp_denom_at_r2i0,
-        } + Reciprocal {
-            x: inp_denom_at_r2i1,
-        };
+        } = Reciprocal::new(inp_denom_at_r2i0) + Reciprocal::new(inp_denom_at_r2i1);
 
         let eq_eval_at_0i = eq_evals[i];
         *eval_at_0 += eq_eval_at_0i * (numer_at_r0i + lambda * denom_at_r0i);
@@ -375,7 +350,7 @@ mod tests {
         let denominator_values = (0..N).map(|_| rng.gen()).collect::<Vec<SecureField>>();
         let sum = zip(&numerator_values, &denominator_values)
             .map(|(&n, &d)| Fraction::new(n, d))
-            .sum::<Fraction<SecureField>>();
+            .sum::<Fraction<SecureField, SecureField>>();
         let numerators = Mle::<CpuBackend, SecureField>::new(numerator_values);
         let denominators = Mle::<CpuBackend, SecureField>::new(denominator_values);
         let top_layer = Layer::LogUpGeneric {
@@ -417,7 +392,7 @@ mod tests {
         let sum = denominator_values
             .iter()
             .map(|&d| Fraction::new(SecureField::one(), d))
-            .sum::<Fraction<SecureField>>();
+            .sum::<Fraction<SecureField, SecureField>>();
         let denominators = Mle::<CpuBackend, SecureField>::new(denominator_values);
         let top_layer = Layer::LogUpSingles {
             denominators: denominators.clone(),
@@ -451,7 +426,7 @@ mod tests {
         let denominator_values = (0..N).map(|_| rng.gen()).collect::<Vec<SecureField>>();
         let sum = zip(&numerator_values, &denominator_values)
             .map(|(&n, &d)| Fraction::new(n.into(), d))
-            .sum::<Fraction<SecureField>>();
+            .sum::<Fraction<SecureField, SecureField>>();
         let numerators = Mle::<CpuBackend, BaseField>::new(numerator_values);
         let denominators = Mle::<CpuBackend, SecureField>::new(denominator_values);
         let top_layer = Layer::LogUpMultiplicities {
