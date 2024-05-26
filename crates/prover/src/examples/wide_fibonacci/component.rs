@@ -8,9 +8,12 @@ use crate::core::circle::CirclePoint;
 use crate::core::constraints::{coset_vanishing, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use crate::core::poly::circle::{
+    CanonicCoset, CircleEvaluation, SecureCirclePoly, SecureEvaluation,
+};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::shifted_secure_combination;
 use crate::core::{ColumnVec, InteractionElements};
@@ -69,7 +72,7 @@ impl Component for WideFibComponent {
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
         TreeVec::new(vec![
             vec![self.log_column_size(); self.n_columns()],
-            vec![self.log_column_size(); 1],
+            vec![self.log_column_size(); SECURE_EXTENSION_DEGREE],
         ])
     }
 
@@ -79,7 +82,7 @@ impl Component for WideFibComponent {
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
         TreeVec::new(vec![
             fixed_mask_points(&vec![vec![0_usize]; self.n_columns()], point),
-            vec![vec![point]],
+            vec![vec![point]; SECURE_EXTENSION_DEGREE],
         ])
     }
 
@@ -96,7 +99,11 @@ impl Component for WideFibComponent {
     ) {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
-        let lookup_numerator = (mask[self.n_columns()][0]
+        let lookup_value =
+            SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
+                mask[self.n_columns() + i][0]
+            }));
+        let lookup_numerator = (lookup_value
             * shifted_secure_combination(
                 &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
                 alpha,
@@ -120,12 +127,19 @@ impl ComponentTraceWriter<CpuBackend> for WideFibComponent {
         &self,
         trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
-    ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+    ) -> ColumnVec<SecureEvaluation<CpuBackend>> {
         let interaction_trace_domain = trace[0].domain;
         let trace_values = trace.iter().map(|eval| &eval.values[..]).collect_vec();
         let (alpha, z) = (elements[ALPHA_ID], elements[Z_ID]);
         let values = write_lookup_column(&trace_values, alpha, z);
-        let eval = CircleEvaluation::new(interaction_trace_domain, values);
+        let mut secure_column = SecureColumn::<CpuBackend>::zeros(values.len());
+        for (i, value) in values.into_iter().enumerate() {
+            secure_column.set(i, value);
+        }
+        let eval = SecureEvaluation {
+            domain: interaction_trace_domain,
+            values: secure_column,
+        };
         vec![eval]
     }
 }

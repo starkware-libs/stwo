@@ -5,9 +5,9 @@ use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
-use super::poly::circle::{CircleEvaluation, CirclePoly};
+use super::poly::circle::{CircleEvaluation, CirclePoly, SecureEvaluation};
 use super::poly::BitReversedOrder;
-use super::{ColumnVec, ComponentVec, InteractionElements};
+use super::{ColumnVec, InteractionElements};
 
 pub mod accumulation;
 mod air_ext;
@@ -34,7 +34,7 @@ pub trait AirTraceWriter<B: Backend>: AirTraceVerifier {
         &self,
         trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
-    ) -> ComponentVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
+    ) -> Vec<CirclePoly<B>>;
 
     fn to_air_prover(&self) -> &impl AirProver<B>;
 }
@@ -76,7 +76,7 @@ pub trait ComponentTraceWriter<B: Backend> {
         &self,
         trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
-    ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
+    ) -> ColumnVec<SecureEvaluation<B>>;
 }
 
 pub trait ComponentProver<B: Backend>: Component {
