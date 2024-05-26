@@ -23,7 +23,7 @@ use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::{ColumnVec, ComponentVec, InteractionElements};
+use crate::core::{ColumnVec, InteractionElements};
 use crate::examples::wide_fibonacci::component::{ALPHA_ID, N_COLUMNS, Z_ID};
 
 // TODO(AlonH): Remove this once the Cpu and Simd implementations are aligned.
@@ -70,8 +70,8 @@ impl AirTraceWriter<SimdBackend> for SimdWideFibAir {
         &self,
         _trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         _elements: &InteractionElements,
-    ) -> ComponentVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-        ComponentVec(vec![vec![]])
+    ) -> Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+        vec![]
     }
 
     fn to_air_prover(&self) -> &impl AirProver<SimdBackend> {
