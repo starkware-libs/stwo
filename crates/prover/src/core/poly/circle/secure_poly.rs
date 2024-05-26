@@ -35,6 +35,7 @@ impl<B: PolyOps> SecureCirclePoly<B> {
 
     /// Evaluates the polynomial at a point, given evaluations of its composing base field
     /// polynomials at that point.
+    // TODO(AlonH): Move to SecureField and rename.
     pub fn eval_from_partial_evals(evals: [SecureField; SECURE_EXTENSION_DEGREE]) -> SecureField {
         let mut res = evals[0];
         res += evals[1] * SecureField::from_u32_unchecked(0, 1, 0, 0);

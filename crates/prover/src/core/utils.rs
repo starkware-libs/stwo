@@ -1,6 +1,7 @@
 use std::iter::Peekable;
+use std::ops::Add;
 
-use num_traits::One;
+use num_traits::{One, Zero};
 
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
@@ -92,12 +93,15 @@ pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureF
 /// Alpha and z should be secure field elements for soundness.
 pub fn shifted_secure_combination<F: ExtensionOf<BaseField>>(
     values: &[F],
-    alpha: BaseField,
-    z: BaseField,
-) -> F {
+    alpha: SecureField,
+    z: SecureField,
+) -> SecureField
+where
+    SecureField: Add<F, Output = SecureField>,
+{
     let res = values
         .iter()
-        .fold(F::zero(), |acc, &value| acc * alpha + value);
+        .fold(SecureField::zero(), |acc, &value| acc * alpha + value);
     res - z
 }
 
