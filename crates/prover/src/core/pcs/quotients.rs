@@ -16,7 +16,6 @@ use crate::core::poly::circle::{
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::VerificationError;
 use crate::core::queries::SparseSubCircleDomain;
-use crate::core::utils::bit_reverse_index;
 
 pub trait QuotientOps: PolyOps {
     /// Accumulates the quotients of the columns at the given domain.
@@ -153,13 +152,11 @@ pub fn fri_answers_for_log_size(
         // TODO(spapini): bit reverse iterator.
         let mut values = Vec::new();
         for row in 0..domain.size() {
-            let domain_point = domain.at(bit_reverse_index(row, log_size));
             let value = accumulate_row_quotients(
                 &sample_batches,
                 &column_evals.iter().collect_vec(),
                 &quotient_constants,
                 row,
-                domain_point,
             );
             values.push(value);
         }
