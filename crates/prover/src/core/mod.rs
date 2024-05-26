@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut, Index};
 
-use self::fields::m31::BaseField;
+use self::fields::qm31::SecureField;
 
 pub mod air;
 pub mod backend;
@@ -60,10 +60,10 @@ impl<T> DerefMut for ComponentVec<T> {
     }
 }
 
-pub struct InteractionElements(Vec<(String, BaseField)>);
+pub struct InteractionElements(Vec<(String, SecureField)>);
 
 impl InteractionElements {
-    pub fn new(elements: Vec<(String, BaseField)>) -> Self {
+    pub fn new(elements: Vec<(String, SecureField)>) -> Self {
         Self(elements)
     }
 
@@ -73,7 +73,7 @@ impl InteractionElements {
 }
 
 impl Index<&str> for InteractionElements {
-    type Output = BaseField;
+    type Output = SecureField;
 
     fn index(&self, index: &str) -> &Self::Output {
         &self.0.iter().find(|(id, _)| id == index).unwrap().1

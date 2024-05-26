@@ -4,7 +4,7 @@ use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
-use super::poly::circle::{CircleEvaluation, CirclePoly};
+use super::poly::circle::{CircleEvaluation, CirclePoly, SecureCirclePoly};
 use super::poly::BitReversedOrder;
 use super::{ColumnVec, InteractionElements};
 
@@ -60,7 +60,7 @@ pub trait ComponentTraceWriter<B: Backend> {
         &self,
         trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
-    ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
+    ) -> ColumnVec<SecureCirclePoly<B>>;
 }
 
 pub trait ComponentProver<B: Backend>: Component + ComponentTraceWriter<B> {

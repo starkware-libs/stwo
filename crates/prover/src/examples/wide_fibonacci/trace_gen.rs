@@ -2,6 +2,7 @@ use num_traits::One;
 
 use super::component::Input;
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::utils::shifted_secure_combination;
 
@@ -28,12 +29,12 @@ pub fn write_trace_row(
 pub fn write_lookup_column(
     input_trace: &[&Vec<BaseField>],
     // TODO(AlonH): Change alpha and z to SecureField.
-    alpha: BaseField,
-    z: BaseField,
-) -> Vec<BaseField> {
+    alpha: SecureField,
+    z: SecureField,
+) -> Vec<SecureField> {
     let n_rows = input_trace[0].len();
     let n_columns = input_trace.len();
-    let mut prev_value = BaseField::one();
+    let mut prev_value = SecureField::one();
     (0..n_rows)
         .map(|i| {
             let numerator =

@@ -19,7 +19,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::{ColumnVec, InteractionElements};
 use crate::examples::wide_fibonacci::component::{ALPHA_ID, N_COLUMNS, Z_ID};
@@ -139,7 +139,7 @@ impl ComponentTraceWriter<SimdBackend> for SimdWideFibComponent {
         &self,
         _trace: &ColumnVec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         _elements: &InteractionElements,
-    ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+    ) -> ColumnVec<SecureCirclePoly<SimdBackend>> {
         vec![]
     }
 }

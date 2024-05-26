@@ -52,7 +52,7 @@ pub trait AirExt: Air {
             .sorted()
             .dedup()
             .collect_vec();
-        let elements = channel.draw_felts(ids.len()).into_iter().map(|e| e.0 .0);
+        let elements = channel.draw_felts(ids.len());
         InteractionElements(zip_eq(ids, elements).collect_vec())
     }
 
@@ -133,18 +133,17 @@ pub trait AirProverExt<B: Backend>: AirProver<B> {
         &self,
         trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
-    ) -> ComponentVec<CircleEvaluation<B, BaseField, BitReversedOrder>> {
+    ) -> Vec<SecureCirclePoly<B>> {
         let trace_iter = &mut trace.iter();
-        ComponentVec(
-            self.prover_components()
-                .iter()
-                .map(|component| {
-                    let n_columns = component.trace_log_degree_bounds()[0].len();
-                    let trace_columns = trace_iter.take(n_columns).collect_vec();
-                    component.write_interaction_trace(&trace_columns, elements)
-                })
-                .collect(),
-        )
+
+        self.prover_components()
+            .iter()
+            .flat_map(|component| {
+                let n_columns = component.trace_log_degree_bounds()[0].len();
+                let trace_columns = trace_iter.take(n_columns).collect_vec();
+                component.write_interaction_trace(&trace_columns, elements)
+            })
+            .collect()
     }
 
     fn compute_composition_polynomial(

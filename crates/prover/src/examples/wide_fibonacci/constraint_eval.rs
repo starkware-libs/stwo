@@ -10,7 +10,7 @@ use crate::core::constraints::{coset_vanishing, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::poly::circle::CanonicCoset;
+use crate::core::poly::circle::{CanonicCoset, SecureCirclePoly};
 use crate::core::utils::{bit_reverse, shifted_secure_combination};
 use crate::core::{ColumnVec, InteractionElements};
 use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
@@ -61,8 +61,12 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
             }
 
             // Lookup constraints.
+            let lookup_value =
+                SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
+                    trace_evals[1][j][i].into()
+                }));
             lookup_numerators[i] = accum.random_coeff_powers[self.n_columns() - 2]
-                * ((trace_evals[1][0][i]
+                * ((lookup_value
                     * shifted_secure_combination(
                         &[
                             trace_evals[0][self.n_columns() - 2][i],
