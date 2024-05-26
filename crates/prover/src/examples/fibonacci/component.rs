@@ -5,7 +5,7 @@ use num_traits::One;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::shifted_mask_points;
 use crate::core::air::{Component, ComponentProver, ComponentTrace, ComponentTraceWriter};
-use crate::core::backend::CpuBackend;
+use crate::core::backend::{Col, CpuBackend};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
@@ -131,7 +131,7 @@ impl ComponentTraceWriter<CpuBackend> for FibonacciComponent {
         &self,
         _trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
         _elements: &InteractionElements,
-    ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+    ) -> ColumnVec<Col<CpuBackend, BaseField>> {
         vec![]
     }
 }

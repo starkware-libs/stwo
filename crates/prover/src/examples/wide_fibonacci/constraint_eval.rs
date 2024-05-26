@@ -16,10 +16,10 @@ use crate::core::constraints::{coset_vanishing, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse, shifted_secure_combination};
-use crate::core::{ColumnVec, ComponentVec, InteractionElements};
+use crate::core::{ColumnVec, InteractionElements};
 use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
 
 // TODO(AlonH): Rename file to `cpu.rs`.
@@ -27,7 +27,7 @@ use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
 impl AirTraceVerifier for WideFibAir {
     fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements {
         let ids = self.component.interaction_element_ids();
-        let elements = channel.draw_felts(ids.len()).into_iter().map(|e| e.0 .0);
+        let elements = channel.draw_felts(ids.len());
         InteractionElements::new(BTreeMap::from_iter(zip_eq(ids, elements)))
     }
 }
@@ -37,10 +37,17 @@ impl AirTraceWriter<CpuBackend> for WideFibAir {
         &self,
         trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
-    ) -> ComponentVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
-        ComponentVec(vec![self
-            .component
-            .write_interaction_trace(&trace.iter().collect(), elements)])
+    ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+        self.component
+            .write_interaction_trace(&trace.iter().collect(), elements)
+            .into_iter()
+            .map(|eval| {
+                CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(
+                    trace[0].domain,
+                    eval,
+                )
+            })
+            .collect_vec()
     }
 
     fn to_air_prover(&self) -> &impl AirProver<CpuBackend> {
@@ -92,8 +99,12 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
             }
 
             // Lookup constraints.
+            let lookup_value =
+                SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
+                    trace_evals[1][j][i].into()
+                }));
             lookup_numerators[i] = accum.random_coeff_powers[self.n_columns() - 2]
-                * ((trace_evals[1][0][i]
+                * ((lookup_value
                     * shifted_secure_combination(
                         &[
                             trace_evals[0][self.n_columns() - 2][i],
