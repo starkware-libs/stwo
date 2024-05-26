@@ -18,9 +18,10 @@ mod tests {
     use crate::core::backend::CpuBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
+    use crate::core::fields::qm31::SecureField;
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::TreeVec;
-    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
     use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{prove, verify};
     use crate::core::utils::shifted_secure_combination;
@@ -40,15 +41,15 @@ mod tests {
     }
 
     pub fn assert_constraints_on_lookup_column(
-        column: &[BaseField],
+        column: &[SecureField],
         input_trace: &[Vec<BaseField>],
-        alpha: BaseField,
-        z: BaseField,
+        alpha: SecureField,
+        z: SecureField,
     ) {
         let n_columns = input_trace.len();
         let column_length = column.len();
         assert_eq!(column_length, input_trace[0].len());
-        let mut prev_value = BaseField::one();
+        let mut prev_value = SecureField::one();
         for (i, cell) in column.iter().enumerate() {
             assert_eq!(
                 *cell
@@ -110,8 +111,8 @@ mod tests {
             b: m31!(1),
         };
 
-        let alpha = m31!(7);
-        let z = m31!(11);
+        let alpha = qm31!(7, 1, 3, 4);
+        let z = qm31!(11, 1, 2, 3);
         let trace = gen_trace(&wide_fib, vec![input]);
         let input_trace = trace.iter().map(|values| &values[..]).collect_vec();
         let lookup_column = write_lookup_column(&input_trace, alpha, z);
@@ -163,15 +164,19 @@ mod tests {
                 .iter()
                 .cloned()
                 .enumerate()
-                .map(|(i, id)| (id, m31!(43 + i as u32))),
+                .map(|(i, id)| (id, qm31!(43 + i as u32, 1, 2, 3))),
         ));
-        let interaction_trace =
-            wide_fib.write_interaction_trace(&trace.iter().collect(), &interaction_elements);
-
-        let interaction_poly = interaction_trace
-            .iter()
-            .map(|trace| trace.clone().interpolate())
+        let interaction_poly = wide_fib
+            .write_interaction_trace(&trace.iter().collect(), &interaction_elements)
+            .into_iter()
+            .flat_map(|eval| {
+                eval.values.columns.map(|c| {
+                    CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(eval.domain, c)
+                        .interpolate()
+                })
+            })
             .collect_vec();
+
         let interaction_trace = interaction_poly
             .iter()
             .map(|poly| poly.evaluate(eval_domain))

@@ -7,9 +7,9 @@ use crate::core::air::{
 use crate::core::backend::CpuBackend;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
-use crate::core::poly::circle::CircleEvaluation;
+use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::poly::BitReversedOrder;
-use crate::core::{ColumnVec, ComponentVec, InteractionElements};
+use crate::core::{ColumnVec, InteractionElements};
 
 pub struct FibonacciAir {
     pub component: FibonacciComponent,
@@ -38,8 +38,8 @@ impl AirTraceWriter<CpuBackend> for FibonacciAir {
         &self,
         _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
         _elements: &InteractionElements,
-    ) -> ComponentVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
-        ComponentVec(vec![vec![]])
+    ) -> Vec<CirclePoly<CpuBackend>> {
+        vec![]
     }
 
     fn to_air_prover(&self) -> &impl AirProver<CpuBackend> {
@@ -87,8 +87,8 @@ impl AirTraceWriter<CpuBackend> for MultiFibonacciAir {
         &self,
         _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
         _elements: &InteractionElements,
-    ) -> ComponentVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
-        ComponentVec(vec![vec![]])
+    ) -> Vec<CirclePoly<CpuBackend>> {
+        vec![]
     }
 
     fn to_air_prover(&self) -> &impl AirProver<CpuBackend> {
