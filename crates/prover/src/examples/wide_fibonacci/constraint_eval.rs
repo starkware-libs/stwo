@@ -5,18 +5,20 @@ use num_traits::Zero;
 
 use super::component::{Input, WideFibAir, WideFibComponent, ALPHA_ID, Z_ID};
 use super::trace_gen::write_trace_row;
-use crate::core::air::accumulation::DomainEvaluationAccumulator;
+use crate::core::air::accumulation::{ColumnAccumulator, DomainEvaluationAccumulator};
 use crate::core::air::{
     AirProver, AirTraceVerifier, AirTraceWriter, Component, ComponentProver, ComponentTrace,
     ComponentTraceWriter,
 };
 use crate::core::backend::CpuBackend;
 use crate::core::channel::{Blake2sChannel, Channel};
+use crate::core::circle::Coset;
 use crate::core::constraints::{coset_vanishing, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureCirclePoly};
+use crate::core::pcs::TreeVec;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse, shifted_secure_combination};
 use crate::core::{ColumnVec, InteractionElements};
@@ -61,50 +63,64 @@ impl AirProver<CpuBackend> for WideFibAir {
     }
 }
 
-impl ComponentProver<CpuBackend> for WideFibComponent {
-    fn evaluate_constraint_quotients_on_domain(
+impl WideFibComponent {
+    fn evaluate_trace_step_constraints(
         &self,
-        trace: &ComponentTrace<'_, CpuBackend>,
-        evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
-        interaction_elements: &InteractionElements,
+        trace_evals: &TreeVec<Vec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
+        trace_eval_domain: CircleDomain,
+        zero_domain: Coset,
+        accum: &mut ColumnAccumulator<'_, CpuBackend>,
     ) {
         let max_constraint_degree = self.max_constraint_log_degree_bound();
-        let trace_eval_domain = CanonicCoset::new(max_constraint_degree).circle_domain();
-        let trace_evals = &trace.evals;
-        let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let mut denoms = vec![];
-        let mut lookup_denoms = vec![];
         for point in trace_eval_domain.iter() {
             denoms.push(coset_vanishing(zero_domain, point));
-            lookup_denoms.push(point_vanishing(zero_domain.at(0), point));
         }
         bit_reverse(&mut denoms);
         let mut denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
         BaseField::batch_inverse(&denoms, &mut denom_inverses);
-        bit_reverse(&mut lookup_denoms);
-        let mut lookup_denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
-        BaseField::batch_inverse(&lookup_denoms, &mut lookup_denom_inverses);
         let mut numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
-        let mut lookup_numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
-        let [mut accum] =
-            evaluation_accumulator.columns([(max_constraint_degree, self.n_constraints())]);
-        let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..trace_eval_domain.size() {
-            // Step constraints.
             for j in 0..self.n_columns() - 2 {
                 numerators[i] += accum.random_coeff_powers[self.n_columns() - 3 - j]
                     * (trace_evals[0][j][i].square() + trace_evals[0][j + 1][i].square()
                         - trace_evals[0][j + 2][i]);
             }
+        }
+        for (i, (num, denom_inverse)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
+            accum.accumulate(i, *num * *denom_inverse);
+        }
+    }
 
-            // Lookup constraints.
-            let lookup_value =
+    fn evaluate_lookup_boundary_constraint(
+        &self,
+        trace_evals: &TreeVec<Vec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
+        trace_eval_domain: CircleDomain,
+        zero_domain: Coset,
+        accum: &mut ColumnAccumulator<'_, CpuBackend>,
+        interaction_elements: &InteractionElements,
+    ) {
+        let max_constraint_degree = self.max_constraint_log_degree_bound();
+        let mut denoms = vec![];
+        for point in trace_eval_domain.iter() {
+            denoms.push(point_vanishing(zero_domain.at(0), point));
+        }
+        bit_reverse(&mut denoms);
+        let mut denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
+        BaseField::batch_inverse(&denoms, &mut denom_inverses);
+        let mut numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
+        let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
+
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..trace_eval_domain.size() {
+            let value =
                 SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
                     trace_evals[1][j][i].into()
                 }));
-            lookup_numerators[i] = accum.random_coeff_powers[self.n_columns() - 2]
-                * ((lookup_value
+            numerators[i] = accum.random_coeff_powers[self.n_columns() - 2]
+                * ((value
                     * shifted_secure_combination(
                         &[
                             trace_evals[0][self.n_columns() - 2][i],
@@ -122,13 +138,36 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
         for (i, (num, denom_inverse)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
             accum.accumulate(i, *num * *denom_inverse);
         }
-        for (i, (num, denom_inverse)) in lookup_numerators
-            .iter()
-            .zip(lookup_denom_inverses.iter())
-            .enumerate()
-        {
-            accum.accumulate(i, *num * *denom_inverse);
-        }
+    }
+}
+
+impl ComponentProver<CpuBackend> for WideFibComponent {
+    fn evaluate_constraint_quotients_on_domain(
+        &self,
+        trace: &ComponentTrace<'_, CpuBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
+        interaction_elements: &InteractionElements,
+    ) {
+        let max_constraint_degree = self.max_constraint_log_degree_bound();
+        let trace_eval_domain = CanonicCoset::new(max_constraint_degree).circle_domain();
+        let trace_evals = &trace.evals;
+        let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
+        let [mut accum] =
+            evaluation_accumulator.columns([(max_constraint_degree, self.n_constraints())]);
+
+        self.evaluate_trace_step_constraints(
+            trace_evals,
+            trace_eval_domain,
+            zero_domain,
+            &mut accum,
+        );
+        self.evaluate_lookup_boundary_constraint(
+            trace_evals,
+            trace_eval_domain,
+            zero_domain,
+            &mut accum,
+            interaction_elements,
+        );
     }
 }
 
