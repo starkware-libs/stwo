@@ -1,5 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
+use self::fields::m31::BaseField;
+
 pub mod air;
 pub mod backend;
 pub mod channel;
@@ -57,3 +59,5 @@ impl<T> DerefMut for ComponentVec<T> {
         &mut self.0
     }
 }
+
+pub struct InteractionElements(Vec<(String, BaseField)>);
