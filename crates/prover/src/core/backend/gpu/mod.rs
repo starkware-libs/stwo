@@ -29,6 +29,3 @@ impl Load for Device {
         self
     }
 }
-
-#[cfg(test)]
-mod test {}
