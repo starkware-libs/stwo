@@ -1,8 +1,8 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use super::{CircleDomain, CircleEvaluation, CirclePoly, PolyOps};
-use crate::core::backend::cpu::CPUCircleEvaluation;
-use crate::core::backend::CPUBackend;
+use crate::core::backend::cpu::CpuCircleEvaluation;
+use crate::core::backend::CpuBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -65,17 +65,23 @@ impl<B: FieldOps<BaseField>> Deref for SecureEvaluation<B> {
     }
 }
 
-impl SecureEvaluation<CPUBackend> {
-    // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
-    pub fn to_cpu(self) -> CPUCircleEvaluation<SecureField, BitReversedOrder> {
-        CPUCircleEvaluation::new(self.domain, self.values.to_vec())
+impl<B: FieldOps<BaseField>> DerefMut for SecureEvaluation<B> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.values
     }
 }
 
-impl From<CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>>
-    for SecureEvaluation<CPUBackend>
+impl SecureEvaluation<CpuBackend> {
+    // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
+    pub fn to_cpu(self) -> CpuCircleEvaluation<SecureField, BitReversedOrder> {
+        CpuCircleEvaluation::new(self.domain, self.values.to_vec())
+    }
+}
+
+impl From<CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>>
+    for SecureEvaluation<CpuBackend>
 {
-    fn from(evaluation: CircleEvaluation<CPUBackend, SecureField, BitReversedOrder>) -> Self {
+    fn from(evaluation: CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>) -> Self {
         Self {
             domain: evaluation.domain,
             values: evaluation.values.into_iter().collect(),

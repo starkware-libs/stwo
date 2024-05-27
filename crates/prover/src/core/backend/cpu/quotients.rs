@@ -1,20 +1,20 @@
-use itertools::{izip, zip_eq};
+use itertools::izip;
 use num_traits::{One, Zero};
 
-use super::CPUBackend;
+use super::CpuBackend;
 use crate::core::backend::{Backend, Col};
 use crate::core::circle::CirclePoint;
-use crate::core::constraints::{complex_conjugate_line_coeffs, pair_vanishing};
+use crate::core::constraints::{complex_conjugate_line_coeffs, point_vanishing_fraction};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
-use crate::core::fields::{ComplexConjugate, FieldExpOps};
+use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse, bit_reverse_index};
 
-impl QuotientOps for CPUBackend {
+impl QuotientOps for CpuBackend {
     fn accumulate_quotients(
         domain: CircleDomain,
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
@@ -41,27 +41,27 @@ impl QuotientOps for CPUBackend {
     }
 }
 
+// TODO(Ohad): no longer using pair_vanishing, remove domain_point_vec and line_coeffs, or write a
+// function that deals with quotients over pair_vanishing polynomials.
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
-    columns: &[&CircleEvaluation<CPUBackend, BaseField, BitReversedOrder>],
-    quotient_constants: &QuotientConstants<CPUBackend>,
+    columns: &[&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>],
+    quotient_constants: &QuotientConstants<CpuBackend>,
     row: usize,
-    domain_point: CirclePoint<BaseField>,
+    _domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
     let mut row_accumulator = SecureField::zero();
-    for (sample_batch, line_coeffs, batch_coeff, denominator_inverses) in izip!(
+    for (sample_batch, _line_coeffs, batch_coeff, denominator_inverses) in izip!(
         sample_batches,
         &quotient_constants.line_coeffs,
         &quotient_constants.batch_random_coeffs,
         &quotient_constants.denominator_inverses
     ) {
         let mut numerator = SecureField::zero();
-        for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
-        {
+        for (column_index, sampled_value) in sample_batch.columns_and_values.iter() {
             let column = &columns[*column_index];
-            let value = column[row] * *c;
-            let linear_term = *a * domain_point.y + *b;
-            numerator += value - linear_term;
+            let value = column[row];
+            numerator += value - *sampled_value;
         }
 
         row_accumulator = row_accumulator * *batch_coeff + numerator * denominator_inverses[row];
@@ -113,22 +113,25 @@ pub fn batch_random_coeffs(
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
-) -> Vec<Col<CPUBackend, SecureField>> {
-    let mut flat_denominators = Vec::with_capacity(sample_batches.len() * domain.size());
+) -> Vec<Col<CpuBackend, SecureField>> {
+    let n_fracions = sample_batches.len() * domain.size();
+    let mut flat_denominators = Vec::with_capacity(n_fracions);
+    let mut numerator_terms = Vec::with_capacity(n_fracions);
     for sample_batch in sample_batches {
         for row in 0..domain.size() {
             let domain_point = domain.at(row);
-            let denominator = pair_vanishing(
-                sample_batch.point,
-                sample_batch.point.complex_conjugate(),
-                domain_point.into_ef(),
-            );
-            flat_denominators.push(denominator);
+            let (num, denom) = point_vanishing_fraction(sample_batch.point, domain_point);
+            flat_denominators.push(num);
+            numerator_terms.push(denom);
         }
     }
 
     let mut flat_denominator_inverses = vec![SecureField::zero(); flat_denominators.len()];
     SecureField::batch_inverse(&flat_denominators, &mut flat_denominator_inverses);
+    flat_denominator_inverses
+        .iter_mut()
+        .zip(&numerator_terms)
+        .for_each(|(inv, num_term)| *inv *= *num_term);
 
     flat_denominator_inverses
         .chunks_mut(domain.size())
@@ -143,7 +146,7 @@ pub fn quotient_constants(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
     domain: CircleDomain,
-) -> QuotientConstants<CPUBackend> {
+) -> QuotientConstants<CpuBackend> {
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
     let batch_random_coeffs = batch_random_coeffs(sample_batches, random_coeff);
     let denominator_inverses = denominator_inverses(sample_batches, domain);
@@ -168,8 +171,8 @@ pub struct QuotientConstants<B: Backend> {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::cpu::{CPUCircleEvaluation, CPUCirclePoly};
-    use crate::core::backend::CPUBackend;
+    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
+    use crate::core::backend::CpuBackend;
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
     use crate::core::poly::circle::CanonicCoset;
@@ -178,13 +181,13 @@ mod tests {
     #[test]
     fn test_quotients_are_low_degree() {
         const LOG_SIZE: u32 = 7;
-        let polynomial = CPUCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
+        let polynomial = CpuCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
         let eval_domain = CanonicCoset::new(LOG_SIZE + 1).circle_domain();
         let eval = polynomial.evaluate(eval_domain);
         let point = SECURE_FIELD_CIRCLE_GEN;
         let value = polynomial.eval_at_point(point);
         let coeff = qm31!(1, 2, 3, 4);
-        let quot_eval = CPUBackend::accumulate_quotients(
+        let quot_eval = CpuBackend::accumulate_quotients(
             eval_domain,
             &[&eval],
             coeff,
@@ -194,7 +197,7 @@ mod tests {
             }],
         );
         let quot_poly_base_field =
-            CPUCircleEvaluation::new(eval_domain, quot_eval.columns[0].clone()).interpolate();
-        assert!(quot_poly_base_field.is_in_fft_space(LOG_SIZE));
+            CpuCircleEvaluation::new(eval_domain, quot_eval.columns[0].clone()).interpolate();
+        assert!(quot_poly_base_field.is_in_fri_space(LOG_SIZE));
     }
 }

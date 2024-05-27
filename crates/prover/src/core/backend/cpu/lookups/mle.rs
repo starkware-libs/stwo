@@ -2,7 +2,7 @@ use std::iter::zip;
 
 use num_traits::{One, Zero};
 
-use crate::core::backend::CPUBackend;
+use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
@@ -10,7 +10,7 @@ use crate::core::lookups::mle::{Mle, MleOps};
 use crate::core::lookups::sumcheck::MultivariatePolyOracle;
 use crate::core::lookups::utils::UnivariatePoly;
 
-impl MleOps<BaseField> for CPUBackend {
+impl MleOps<BaseField> for CpuBackend {
     fn fix_first_variable(
         mle: Mle<Self, BaseField>,
         assignment: SecureField,
@@ -26,7 +26,7 @@ impl MleOps<BaseField> for CPUBackend {
     }
 }
 
-impl MleOps<SecureField> for CPUBackend {
+impl MleOps<SecureField> for CpuBackend {
     fn fix_first_variable(
         mle: Mle<Self, SecureField>,
         assignment: SecureField,
@@ -46,7 +46,7 @@ impl MleOps<SecureField> for CPUBackend {
     }
 }
 
-impl MultivariatePolyOracle for Mle<CPUBackend, SecureField> {
+impl MultivariatePolyOracle for Mle<CpuBackend, SecureField> {
     fn n_variables(&self) -> usize {
         self.n_variables()
     }

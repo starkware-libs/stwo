@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-pub use cpu::CPUBackend;
+pub use cpu::CpuBackend;
 
 use super::air::accumulation::AccumulationOps;
 use super::fields::m31::BaseField;
@@ -15,7 +15,9 @@ pub mod gpu;
 
 #[cfg(target_arch = "x86_64")]
 pub mod avx512;
+
 pub mod cpu;
+pub mod simd;
 
 pub trait Backend:
     Copy

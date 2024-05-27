@@ -463,32 +463,24 @@ pub(crate) fn _mul_simd(a: PackedM31, b: PackedM31) -> PackedM31 {
 /// Should only be used in the absence of a platform specific implementation.
 ///
 /// `b_double` should be in the range `[0, 2P]`.
-pub(crate) fn _mul_doubled_simd(a: PackedM31, b_double: PackedM31) -> PackedM31 {
+pub(crate) fn _mul_doubled_simd(a: PackedM31, b_double: u32x16) -> PackedM31 {
     const MASK_EVENS: Simd<u64, { N_LANES / 2 }> = Simd::from_array([0xFFFFFFFF; { N_LANES / 2 }]);
-    println!("a {:?}", a);
-    println!("b_dbl {:?}", b_double);
+
     // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of
     // the first operand.
     let a_e = unsafe { transmute::<_, Simd<u64, { N_LANES / 2 }>>(a.0) & MASK_EVENS };
-    println!("a_e: {:?}", a_e);
-
     // Set up a word s.t. the lower half of each 64-bit word has the odd 32-bit words of
     // the first operand.
     let a_o = unsafe { transmute::<_, Simd<u64, { N_LANES / 2 }>>(a) >> 32 };
-    println!("a_o: {:?}", a_o);
 
     let b_dbl_e = unsafe { transmute::<_, Simd<u64, { N_LANES / 2 }>>(b_double) & MASK_EVENS };
     let b_dbl_o = unsafe { transmute::<_, Simd<u64, { N_LANES / 2 }>>(b_double) >> 32 };
-    println!("b_e {:?} and \n b_0 {:?}", b_dbl_e, b_dbl_o);
 
     // To compute prod = a * b start by multiplying
     // a_e/o by b_dbl_e/o.
     let prod_e_dbl = a_e * b_dbl_e;
     let prod_o_dbl = a_o * b_dbl_o;
-    println!("e1 {:?} and \n o1 {:?}", prod_e_dbl, prod_o_dbl);
 
-    println!("pe {:?}", prod_e_dbl);
-    println!("po {:?}", prod_o_dbl);
     // The result of a multiplication holds a*b in as 64-bits.
     // Each 64b-bit word looks like this:
     //               1    31       31    1
@@ -503,7 +495,6 @@ pub(crate) fn _mul_doubled_simd(a: PackedM31, b_double: PackedM31) -> PackedM31 
         unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_e_dbl) },
         unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_o_dbl) },
     );
-    println!("prod_lows {:?}", prod_lows);
     // Divide by 2:
     prod_lows >>= 1;
     // prod_ls -    |0|prod_o_l|0|prod_e_l|
@@ -513,13 +504,9 @@ pub(crate) fn _mul_doubled_simd(a: PackedM31, b_double: PackedM31) -> PackedM31 
         unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_e_dbl) },
         unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_o_dbl) },
     );
-    println!("prod_highs {:?}", prod_highs);
 
     // prod_hs -    |0|prod_o_h|0|prod_e_h|
-    let x = PackedM31(prod_lows) + PackedM31(prod_highs);
-    println!("final {:?}", x);
-
-    x
+    PackedM31(prod_lows) + PackedM31(prod_highs)
 }
 
 #[cfg(test)]
@@ -567,7 +554,6 @@ mod tests {
         let rhs = rng.gen();
         let packed_lhs = PackedM31::from_array(lhs);
         let packed_rhs = PackedM31::from_array(rhs);
-        println!("lhs {:?} and \n rhs {:?}", lhs, rhs);
 
         let res = packed_lhs * packed_rhs;
 

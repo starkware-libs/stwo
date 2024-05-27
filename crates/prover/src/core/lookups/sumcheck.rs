@@ -203,7 +203,7 @@ mod tests {
 
     use num_traits::One;
 
-    use crate::core::backend::CPUBackend;
+    use crate::core::backend::CpuBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::Field;
@@ -216,7 +216,7 @@ mod tests {
     fn sumcheck_works() {
         let values = test_channel().draw_felts(32);
         let claim = values.iter().sum();
-        let mle = Mle::<CPUBackend, SecureField>::new(values);
+        let mle = Mle::<CpuBackend, SecureField>::new(values);
         let lambda = SecureField::one();
         let (proof, ..) = prove_batch(vec![claim], vec![mle.clone()], lambda, &mut test_channel());
 
@@ -232,8 +232,8 @@ mod tests {
         let values1 = channel.draw_felts(32);
         let claim0 = values0.iter().sum();
         let claim1 = values1.iter().sum();
-        let mle0 = Mle::<CPUBackend, SecureField>::new(values0.clone());
-        let mle1 = Mle::<CPUBackend, SecureField>::new(values1.clone());
+        let mle0 = Mle::<CpuBackend, SecureField>::new(values0.clone());
+        let mle1 = Mle::<CpuBackend, SecureField>::new(values1.clone());
         let lambda = channel.draw_felt();
         let claims = vec![claim0, claim1];
         let mles = vec![mle0.clone(), mle1.clone()];
@@ -254,8 +254,8 @@ mod tests {
         let values1 = channel.draw_felts(32);
         let claim0 = values0.iter().sum();
         let claim1 = values1.iter().sum();
-        let mle0 = Mle::<CPUBackend, SecureField>::new(values0.clone());
-        let mle1 = Mle::<CPUBackend, SecureField>::new(values1.clone());
+        let mle0 = Mle::<CpuBackend, SecureField>::new(values0.clone());
+        let mle1 = Mle::<CpuBackend, SecureField>::new(values1.clone());
         let lambda = channel.draw_felt();
         let claims = vec![claim0, claim1];
         let mles = vec![mle0.clone(), mle1.clone()];
@@ -278,7 +278,7 @@ mod tests {
         let mut invalid_values = values;
         invalid_values[0] += SecureField::one();
         let invalid_claim = vec![invalid_values.iter().sum::<SecureField>()];
-        let invalid_mle = vec![Mle::<CPUBackend, SecureField>::new(invalid_values.clone())];
+        let invalid_mle = vec![Mle::<CpuBackend, SecureField>::new(invalid_values.clone())];
         let (invalid_proof, ..) =
             prove_batch(invalid_claim, invalid_mle, lambda, &mut test_channel());
 

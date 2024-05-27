@@ -1,12 +1,12 @@
 use itertools::Itertools;
 
-use crate::core::backend::CPUBackend;
+use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 
-impl MerkleOps<Blake2sMerkleHasher> for CPUBackend {
+impl MerkleOps<Blake2sMerkleHasher> for CpuBackend {
     fn commit_on_layer(
         log_size: u32,
         prev_layer: Option<&Vec<Blake2sHash>>,

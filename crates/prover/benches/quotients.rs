@@ -1,8 +1,9 @@
 #![feature(iter_array_chunks)]
 
-use criterion::{black_box, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use itertools::Itertools;
-use stwo_prover::core::backend::CPUBackend;
+use stwo_prover::core::backend::cpu::CpuBackend;
+use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::circle::SECURE_FIELD_CIRCLE_GEN;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
@@ -10,81 +11,44 @@ use stwo_prover::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 
-pub fn cpu_quotients(c: &mut criterion::Criterion) {
-    const LOG_SIZE: u32 = 16;
-    const SIZE: usize = 1 << LOG_SIZE;
-    const N_COLS: usize = 1 << 8;
-    let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-    let cols = (0..N_COLS)
-        .map(|_| {
-            let values = (0..SIZE).map(BaseField::from).collect();
-            CircleEvaluation::<CPUBackend, _, BitReversedOrder>::new(domain, values)
-        })
-        .collect_vec();
+// TODO(andrew): Consider removing const generics and making all sizes the same.
+fn bench_quotients<B: QuotientOps, const LOG_N_ROWS: u32, const LOG_N_COLS: u32>(
+    c: &mut Criterion,
+    id: &str,
+) {
+    let domain = CanonicCoset::new(LOG_N_ROWS).circle_domain();
+    let values = (0..domain.size()).map(BaseField::from).collect();
+    let col = CircleEvaluation::<B, BaseField, BitReversedOrder>::new(domain, values);
+    let cols = (0..1 << LOG_N_COLS).map(|_| col.clone()).collect_vec();
+    let col_refs = cols.iter().collect_vec();
     let random_coeff = SecureField::from_u32_unchecked(0, 1, 2, 3);
     let a = SecureField::from_u32_unchecked(5, 6, 7, 8);
     let samples = vec![ColumnSampleBatch {
         point: SECURE_FIELD_CIRCLE_GEN,
-        columns_and_values: (0..N_COLS).map(|i| (i, a)).collect(),
+        columns_and_values: (0..1 << LOG_N_COLS).map(|i| (i, a)).collect(),
     }];
-
-    let col_refs = &cols.iter().collect_vec();
-    c.bench_function("cpu quotients 2^8 x 2^16", |b| {
-        b.iter(|| {
-            black_box(CPUBackend::accumulate_quotients(
-                black_box(domain),
-                black_box(col_refs),
-                black_box(random_coeff),
-                black_box(&samples),
-            ))
-        })
-    });
+    c.bench_function(
+        &format!("{id} quotients 2^{LOG_N_COLS} x 2^{LOG_N_ROWS}"),
+        |b| {
+            b.iter_with_large_drop(|| {
+                B::accumulate_quotients(
+                    black_box(domain),
+                    black_box(&col_refs),
+                    black_box(random_coeff),
+                    black_box(&samples),
+                )
+            })
+        },
+    );
 }
 
-#[cfg(target_arch = "x86_64")]
-pub fn avx512_quotients(c: &mut criterion::Criterion) {
-    use stwo_prover::core::backend::avx512::AVX512Backend;
-
-    const LOG_SIZE: u32 = 20;
-    const SIZE: usize = 1 << LOG_SIZE;
-    const N_COLS: usize = 1 << 8;
-    let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-    let cols = (0..N_COLS)
-        .map(|_| {
-            let values = (0..SIZE as u32)
-                .map(BaseField::from_u32_unchecked)
-                .collect();
-            CircleEvaluation::<AVX512Backend, _, BitReversedOrder>::new(domain, values)
-        })
-        .collect_vec();
-    let random_coeff = SecureField::from_m31_array(std::array::from_fn(BaseField::from));
-    let a = SecureField::from_m31_array(std::array::from_fn(|i| BaseField::from(3 * i)));
-    let samples = vec![ColumnSampleBatch {
-        point: SECURE_FIELD_CIRCLE_GEN,
-        columns_and_values: (0..N_COLS).map(|i| (i, a)).collect(),
-    }];
-
-    let col_refs = &cols.iter().collect_vec();
-    c.bench_function("avx quotients 2^8 x 2^20", |b| {
-        b.iter(|| {
-            black_box(AVX512Backend::accumulate_quotients(
-                black_box(domain),
-                black_box(col_refs),
-                black_box(random_coeff),
-                black_box(&samples),
-            ))
-        })
-    });
+fn quotients_benches(c: &mut Criterion) {
+    bench_quotients::<SimdBackend, 20, 8>(c, "simd");
+    bench_quotients::<CpuBackend, 16, 8>(c, "cpu");
 }
 
-#[cfg(target_arch = "x86_64")]
-criterion::criterion_group!(
-    name=quotients;
+criterion_group!(
+    name = benches;
     config = Criterion::default().sample_size(10);
-    targets=avx512_quotients, cpu_quotients);
-#[cfg(not(target_arch = "x86_64"))]
-criterion::criterion_group!(
-    name=quotients;
-    config = Criterion::default().sample_size(10);
-    targets=cpu_quotients);
-criterion::criterion_main!(quotients);
+    targets = quotients_benches);
+criterion_main!(benches);

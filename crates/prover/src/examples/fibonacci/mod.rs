@@ -4,7 +4,7 @@ use num_traits::One;
 
 use self::air::{FibonacciAir, MultiFibonacciAir};
 use self::component::FibonacciComponent;
-use crate::core::backend::cpu::CPUCircleEvaluation;
+use crate::core::backend::cpu::CpuCircleEvaluation;
 use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
@@ -29,7 +29,7 @@ impl Fibonacci {
         }
     }
 
-    pub fn get_trace(&self) -> CPUCircleEvaluation<BaseField, BitReversedOrder> {
+    pub fn get_trace(&self) -> CpuCircleEvaluation<BaseField, BitReversedOrder> {
         // Trace.
         let trace_domain = CanonicCoset::new(self.air.component.log_size);
         // TODO(AlonH): Consider using Vec::new instead of Vec::with_capacity throughout file.
@@ -85,7 +85,7 @@ impl MultiFibonacci {
         }
     }
 
-    pub fn get_trace(&self) -> Vec<CPUCircleEvaluation<BaseField, BitReversedOrder>> {
+    pub fn get_trace(&self) -> Vec<CpuCircleEvaluation<BaseField, BitReversedOrder>> {
         zip(&self.log_sizes, &self.claims)
             .map(|(log_size, claim)| {
                 let fib = Fibonacci::new(*log_size, *claim);
@@ -227,7 +227,7 @@ mod tests {
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
-        invalid_proof.commitment_scheme_proof.queried_values.0[0][0][4] += BaseField::one();
+        invalid_proof.commitment_scheme_proof.queried_values.0[0][0][3] += BaseField::one();
 
         let error = fib.verify(invalid_proof).unwrap_err();
         assert_matches!(error, VerificationError::Merkle(_));

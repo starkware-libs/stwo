@@ -1,11 +1,11 @@
-use super::AVX512Backend;
+use super::SimdBackend;
 use crate::core::air::accumulation::AccumulationOps;
 use crate::core::fields::secure_column::SecureColumn;
 
-impl AccumulationOps for AVX512Backend {
+impl AccumulationOps for SimdBackend {
     fn accumulate(column: &mut SecureColumn<Self>, other: &SecureColumn<Self>) {
-        for i in 0..column.n_packs() {
-            let res_coeff = column.packed_at(i) + other.packed_at(i);
+        for i in 0..column.packed_len() {
+            let res_coeff = unsafe { column.packed_at(i) + other.packed_at(i) };
             unsafe { column.set_packed(i, res_coeff) };
         }
     }

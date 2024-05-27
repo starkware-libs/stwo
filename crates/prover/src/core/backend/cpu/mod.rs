@@ -14,11 +14,11 @@ use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::utils::bit_reverse;
 
 #[derive(Copy, Clone, Debug)]
-pub struct CPUBackend;
+pub struct CpuBackend;
 
-impl Backend for CPUBackend {}
+impl Backend for CpuBackend {}
 
-impl<T: Debug + Clone + Default> ColumnOps<T> for CPUBackend {
+impl<T: Debug + Clone + Default> ColumnOps<T> for CpuBackend {
     type Column = Vec<T>;
 
     fn bit_reverse_column(column: &mut Self::Column) {
@@ -26,7 +26,7 @@ impl<T: Debug + Clone + Default> ColumnOps<T> for CPUBackend {
     }
 }
 
-impl<F: Field> FieldOps<F> for CPUBackend {
+impl<F: Field> FieldOps<F> for CpuBackend {
     /// Batch inversion using the Montgomery's trick.
     // TODO(Ohad): Benchmark this function.
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
@@ -49,9 +49,9 @@ impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
     }
 }
 
-pub type CPUCirclePoly = CirclePoly<CPUBackend>;
-pub type CPUCircleEvaluation<F, EvalOrder> = CircleEvaluation<CPUBackend, F, EvalOrder>;
-pub type CPUMle<F> = Mle<CPUBackend, F>;
+pub type CpuCirclePoly = CirclePoly<CpuBackend>;
+pub type CpuCircleEvaluation<F, EvalOrder> = CircleEvaluation<CpuBackend, F, EvalOrder>;
+pub type CpuMle<F> = Mle<CpuBackend, F>;
 
 #[cfg(test)]
 mod tests {
@@ -59,7 +59,7 @@ mod tests {
     use rand::prelude::*;
     use rand::rngs::SmallRng;
 
-    use crate::core::backend::{CPUBackend, Column, FieldOps};
+    use crate::core::backend::{Column, CpuBackend, FieldOps};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::FieldExpOps;
 
@@ -70,20 +70,7 @@ mod tests {
         let expected = column.iter().map(|e| e.inverse()).collect_vec();
         let mut dst = Column::zeros(column.len());
 
-        CPUBackend::batch_inverse(&column, &mut dst);
-
-        assert_eq!(expected, dst);
-    }
-
-    // TODO(Ohad): remove this test.
-    #[test]
-    fn batch_inverse_reused_vec_test() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let column = rng.gen::<[QM31; 16]>().to_vec();
-        let expected = column.iter().map(|e| e.inverse()).collect_vec();
-        let mut dst = Column::zeros(column.len());
-
-        CPUBackend::batch_inverse(&column, &mut dst);
+        CpuBackend::batch_inverse(&column, &mut dst);
 
         assert_eq!(expected, dst);
     }
