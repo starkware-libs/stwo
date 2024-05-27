@@ -1,54 +1,19 @@
 // CUDA implementation of packed m31
-#[allow(unused_imports)]
-use std::fmt::Display;
-#[allow(unused_imports)]
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-// use std::sync::Arc;
-#[allow(unused_imports)]
-use cudarc::driver::{CudaDevice, CudaSlice};
-use cudarc::driver::{LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaSlice, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::compile_ptx;
-#[allow(unused_imports)]
 use num_traits::{One, Zero};
-use once_cell::sync::Lazy;
 
-#[allow(unused_imports)]
-use super::Device;
-use super::{DEVICE, MODULUS};
-use crate::core::backend::gpu::InstructionSet;
-#[allow(unused_imports)]
-use crate::core::fields::m31::pow2147483645;
-#[allow(unused_imports)]
-use crate::core::fields::m31::{M31, P};
-#[allow(unused_imports)]
-use crate::core::fields::FieldExpOps;
+use super::{Device, DEVICE, MODULUS};
+// use crate::core::fields::m31::pow2147483645;
+use crate::core::fields::m31::M31;
+// use crate::core::fields::FieldExpOps;
 pub const K_BLOCK_SIZE: usize = 16;
 pub const PACKED_BASE_FIELD_SIZE: usize = 1 << 4;
 
 type PackedBaseField = PackedM31;
 type U32_16 = CudaSlice<u32>;
-
-static EVENS_INTERLEAVE_EVENS: Lazy<CudaSlice<u32>> = Lazy::new(|| {
-    DEVICE
-        .htod_copy(vec![
-            0b00000, 0b10000, 0b00010, 0b10010, 0b00100, 0b10100, 0b00110, 0b10110, 0b01000,
-            0b11000, 0b01010, 0b11010, 0b01100, 0b11100, 0b01110, 0b11110,
-        ])
-        .unwrap()
-});
-static ODDS_INTERLEAVE_ODDS: Lazy<CudaSlice<u32>> = Lazy::new(|| {
-    DEVICE
-        .htod_copy(vec![
-            0b00001, 0b10001, 0b00011, 0b10011, 0b00101, 0b10101, 0b00111, 0b10111, 0b01001,
-            0b11001, 0b01011, 0b11011, 0b01101, 0b11101, 0b01111, 0b11111,
-        ])
-        .unwrap()
-});
-
-static SHIFT_COUNT_32: Lazy<CudaSlice<u32>> = Lazy::new(|| DEVICE.htod_copy(vec![32]).unwrap());
-static SHIFT_COUNT_1: Lazy<CudaSlice<u32>> = Lazy::new(|| DEVICE.htod_copy(vec![1]).unwrap());
-
 pub trait LoadPackedBaseField {
     fn mul(&self);
     fn reduce(&self);
@@ -89,7 +54,7 @@ impl LoadPackedBaseField for Device {
         // When c in [0,P-1], then c-P in [2^32-P,2^32-1] which is always greater than
         let add_packed_base_field = compile_ptx("
             extern \"C\" __global__ void add(unsigned int *lhs, const unsigned int *rhs, const unsigned int *m) {
-                unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+                unsigned int tid = threadIdx.x;
                 const unsigned int VECTOR_SIZE = 16; 
                 if (tid  < VECTOR_SIZE) {
                     lhs[tid] += rhs[tid]; 
@@ -106,10 +71,10 @@ impl LoadPackedBaseField for Device {
         let neg_packed_base_field = compile_ptx(
             "
             extern \"C\" __global__ void neg(unsigned int *f, const unsigned int *m) {
-                unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+                unsigned int tid = threadIdx.x;
                 const unsigned int VECTOR_SIZE = 16; 
                 if (tid  < VECTOR_SIZE) {
-                    f[tid] = f[tid] - m[tid];
+                    f[tid] = m[tid] - f[tid];
                 }
             }
         ",
@@ -130,7 +95,7 @@ impl LoadPackedBaseField for Device {
         let sub_packed_base_field = compile_ptx(
             "
             extern \"C\" __global__ void sub(unsigned int *lhs, const unsigned int *rhs, const unsigned int *m) {
-                unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+                unsigned int tid = threadIdx.x;
                 const unsigned int VECTOR_SIZE = 16; 
                 if (tid  < VECTOR_SIZE) {
                     lhs[tid] = lhs[tid] - rhs[tid];
@@ -145,15 +110,67 @@ impl LoadPackedBaseField for Device {
             .unwrap();
     }
 
+    // TODO:: Optimize to save memory and fewer copies
     fn mul(&self) {
         let mul_packed_base_field = compile_ptx(
             "
-            extern \"C\" __global__ void mul(unsigned int *lhs, unsigned int *rhs) {
-                unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+            extern \"C\" __global__ void mul(unsigned int *a, unsigned int *b_dbl, unsigned int *out, const unsigned int *m) {
+                unsigned int tid = threadIdx.x;
                 const unsigned int VECTOR_SIZE = 16; 
-                if (tid  < VECTOR_SIZE) {
-                    unsigned long long int a_e[8]; 
+                __shared__ unsigned long long int a_e[8]; 
+                __shared__ unsigned long long int a_o[8]; 
+                __shared__ unsigned long long int b_dbl_e[8]; 
+                __shared__ unsigned long long int b_dbl_o[8];
+                __shared__ unsigned long long int prod_e_dbl[8];
+                __shared__ unsigned long long int prod_o_dbl[8];
+                __shared__ unsigned int prod_lows[16];
+                __shared__ unsigned int prod_highs[16];
 
+                if (tid < 16) {
+                    // Double b value
+                    b_dbl[tid] <<= 1; 
+
+                    // if Odd
+                    if (tid % 2) {
+                        // Set up a word s.t. the lower half of each 64-bit word has the odd 32-bit words of
+                        // the first operand.
+                        a_o[tid/2] = static_cast<unsigned long long int>(a[tid]);
+
+                        b_dbl_o[tid/2] = static_cast<unsigned long long int>(b_dbl[tid]);
+                    }
+                    else {
+                        // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of
+                        // the first operand.
+                        a_e[tid/2] = static_cast<unsigned long long int>(a[tid]);
+                        b_dbl_e[tid/2] = static_cast<unsigned long long int>(b_dbl[tid]);
+                    }
+
+                    // To compute prod = a * b start by multiplying
+                    // a_e/o by b_dbl_e/o.
+                    if (tid < VECTOR_SIZE/2) {
+                        prod_e_dbl[tid] = a_e[tid] * b_dbl_e[tid];
+                        prod_o_dbl[tid] = a_o[tid] * b_dbl_o[tid];
+                    }
+                    
+                    // if Odd
+                    if (tid % 2) {
+                        // Interleave the even words of prod_e_dbl with the even words of prod_o_dbl:
+                        prod_lows[tid] = static_cast<unsigned int>(prod_o_dbl[tid / 2] & 0xFFFFFFFF);
+                        // Divide by 2
+                        prod_lows[tid] >>= 1; 
+                        // Interleave the odd words of prod_e_dbl with the odd words of prod_o_dbl:
+                        prod_highs[tid] = static_cast<unsigned int>(prod_o_dbl[tid / 2] >> 32);
+                    }
+                    else {
+                        prod_lows[tid] = static_cast<unsigned int>(prod_e_dbl[tid / 2] & 0xFFFFFFFF);
+                        prod_lows[tid] >>= 1; 
+                        prod_highs[tid] = static_cast<unsigned int>(prod_e_dbl[tid / 2] >> 32);
+                        
+                    }
+
+                    // add 
+                    out[tid] = prod_lows[tid] + prod_highs[tid]; 
+                    out[tid] = min(out[tid], out[tid] - m[tid]);
                 }
             }
         ",
@@ -173,8 +190,7 @@ impl LoadPackedBaseField for Device {
     }
 }
 
-// CUDA implementation
-/// Stores 16 M31 elements in a custom 512-bit vector.
+/// Stores 16 M31 elements
 /// Each M31 element is unreduced in the range [0, P].
 #[derive(Debug)]
 #[repr(C)]
@@ -187,7 +203,7 @@ impl PackedBaseField {
     }
 
     pub fn from_array(v: [M31; PACKED_BASE_FIELD_SIZE]) -> PackedBaseField {
-        Self(DEVICE.htod_copy(v.map(|M31(v)| v).to_vec()).unwrap()) // Can we condense this?
+        Self(DEVICE.htod_copy(v.map(|M31(v)| v).to_vec()).unwrap())
     }
 
     pub fn to_array(self) -> [M31; PACKED_BASE_FIELD_SIZE] {
@@ -273,16 +289,6 @@ impl PackedBaseField {
     // }
 }
 
-// impl Display for PackedBaseField {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         let v = self.clone().to_array();
-//         for elem in v.iter() {
-//             write!(f, "{} ", elem)?;
-//         }
-//         Ok(())
-//     }
-// }
-
 // Clone is a device to device copy
 impl Clone for PackedBaseField {
     fn clone(&self) -> Self {
@@ -337,52 +343,33 @@ impl Mul for PackedBaseField {
     /// Returned values are in unreduced form, [0, P] including P.
     #[inline(always)]
     fn mul(self, rhs: Self) -> Self::Output {
-        // Set up a word s.t. the lower half of each 64-bit word has the odd 32-bit words of
-        // the first operand.
-        let val0_o = DEVICE.vector_512_srli_i64(&self.0, &SHIFT_COUNT_32);
-        // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of
-        // the first operand.
-        let val0_e = self.0;
+        let mul_kernel = self
+            .0
+            .device()
+            .get_func("PackedBaseFieldMul", "mul")
+            .unwrap();
+        let out = DEVICE.alloc_zeros::<u32>(PACKED_BASE_FIELD_SIZE).unwrap();
 
-        // Double the second operand.
-        let val1 = DEVICE.vector_512_add_u32(&rhs.0, &rhs.0);
-        let val1_o = DEVICE.vector_512_srli_i64(&val1, &SHIFT_COUNT_32);
-        let val1_e = val1;
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(PACKED_BASE_FIELD_SIZE as u32);
+        unsafe { mul_kernel.launch(cfg, (&self.0, &rhs.0, &out, &*MODULUS)) }.unwrap();
 
-        // To compute prod = val0 * val1 start by multiplying
-        // val0_e/o by val1_e/o.
-        let prod_e_dbl = DEVICE.vector_512_mul_u32(&val0_e, &val1_e);
-        let prod_o_dbl = DEVICE.vector_512_mul_u32(&val0_o, &val1_o);
-
-        // The result of a multiplication holds val1*twiddle_dbl in as 64-bits.
-        // Each 64b-bit word looks like this:
-        //               1    31       31    1
-        // prod_e_dbl - |0|prod_e_h|prod_e_l|0|
-        // prod_o_dbl - |0|prod_o_h|prod_o_l|0|
-
-        // Interleave the even words of prod_e_dbl with the even words of prod_o_dbl:
-        let prod_ls =
-            DEVICE.vector_512_permute_u32(&prod_e_dbl, &prod_o_dbl, &EVENS_INTERLEAVE_EVENS); // prod_ls -    |prod_o_l|0|prod_e_l|0|
-
-        // Divide by 2:
-        let prod_ls = Self(DEVICE.vector_512_srli_i64(&prod_ls, &SHIFT_COUNT_1));
-        // prod_ls -    |0|prod_o_l|0|prod_e_l|
-
-        // Interleave the odd words of prod_e_dbl with the odd words of prod_o_dbl:
-        let prod_hs =
-            Self(DEVICE.vector_512_permute_u32(&prod_e_dbl, &prod_o_dbl, &ODDS_INTERLEAVE_ODDS));
-        // prod_hs -    |0|prod_o_h|0|prod_e_h|
-
-        Self::add(prod_ls, prod_hs)
+        unsafe { PackedBaseField::from_cuda_slice_unchecked(out) }
     }
 }
 
-// impl MulAssign for PackedBaseField {
-//     #[inline(always)]
-//     fn mul_assign(&mut self, rhs: Self) {
-//         *self = *self * rhs;
-//     }
-// }
+impl MulAssign for PackedBaseField {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: Self) {
+        let mul_kernel = self
+            .0
+            .device()
+            .get_func("PackedBaseFieldMul", "mul")
+            .unwrap();
+
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(PACKED_BASE_FIELD_SIZE as u32);
+        unsafe { mul_kernel.launch(cfg, (&self.0, &rhs.0, &self.0, &*MODULUS)) }.unwrap();
+    }
+}
 
 impl Neg for PackedBaseField {
     type Output = Self;
@@ -454,6 +441,7 @@ impl One for PackedBaseField {
     }
 }
 
+// TODO:: Implement
 // impl FieldExpOps for PackedBaseField {
 //     fn inverse(&self) -> Self {
 //         assert!(!self.is_zero(), "0 has no inverse");
@@ -463,63 +451,59 @@ impl One for PackedBaseField {
 
 #[cfg(test)]
 mod tests {
-    #[allow(unused_imports)]
-    use itertools::Itertools;
+    use std::array;
 
-    use super::PackedBaseField;
-    #[allow(unused_imports)]
-    use crate::core::backend::gpu::{DEVICE, MODULUS};
-    #[allow(unused_imports)]
-    use crate::core::fields::m31::{M31, P};
-    #[allow(unused_imports)]
-    use crate::core::fields::{Field, FieldExpOps};
-    /// Tests field operations where field elements are in reduced form.
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
+
+    use super::PackedM31;
     #[test]
-    fn test_gpu_basic_ops() {
-        let values = [
-            0,
-            1,
-            2,
-            10,
-            (P - 1) / 2,
-            (P + 1) / 2,
-            P - 2,
-            P - 1,
-            0,
-            1,
-            2,
-            10,
-            (P - 1) / 2,
-            (P + 1) / 2,
-            P - 2,
-            P - 1,
-        ]
-        .map(M31::from_u32_unchecked);
+    fn addition_works() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        let lhs = rng.gen();
+        let rhs = rng.gen();
+        let packed_lhs = PackedM31::from_array(lhs);
+        let packed_rhs = PackedM31::from_array(rhs);
 
-        let avx_values1 = PackedBaseField::from_array(values);
-        let avx_values2 = avx_values1.clone();
-        let avx_values3 = avx_values1.clone();
-        let avx_values4 = avx_values1.clone();
+        let res = packed_lhs + packed_rhs;
 
-        assert_eq!(
-            (avx_values1 + avx_values2)
-                .to_array()
-                .into_iter()
-                .collect_vec(),
-            values.iter().map(|x| x.double()).collect_vec()
-        );
+        assert_eq!(res.to_array(), array::from_fn(|i| lhs[i] + rhs[i]));
+    }
 
-        assert_eq!(
-            (avx_values4.clone() * avx_values4.clone())
-                .to_array()
-                .into_iter()
-                .collect_vec(),
-            values.iter().map(|x| x.square()).collect_vec()
-        );
+    #[test]
+    fn subtraction_works() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        let lhs = rng.gen();
+        let rhs = rng.gen();
+        let packed_lhs = PackedM31::from_array(lhs);
+        let packed_rhs = PackedM31::from_array(rhs);
 
-        assert_eq!(
-            (-avx_values3).to_array().into_iter().collect_vec(),
-            values.iter().map(|x| -*x).collect_vec()
-        );
+        let res = packed_lhs - packed_rhs;
+
+        assert_eq!(res.to_array(), array::from_fn(|i| lhs[i] - rhs[i]));
+    }
+
+    #[test]
+    fn multiplication_works() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        let lhs = rng.gen();
+        let rhs = rng.gen();
+        let packed_lhs = PackedM31::from_array(lhs);
+        let packed_rhs = PackedM31::from_array(rhs);
+
+        let res = packed_lhs * packed_rhs;
+
+        assert_eq!(res.to_array(), array::from_fn(|i| lhs[i] * rhs[i]));
+    }
+
+    #[test]
+    fn negation_works() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        let values = rng.gen();
+        let packed_values = PackedM31::from_array(values);
+
+        let res = -packed_values;
+
+        assert_eq!(res.to_array(), array::from_fn(|i| -values[i]));
     }
 }

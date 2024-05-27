@@ -487,6 +487,8 @@ pub(crate) fn _mul_doubled_simd(a: PackedM31, b_double: PackedM31) -> PackedM31 
     let prod_o_dbl = a_o * b_dbl_o;
     println!("e1 {:?} and \n o1 {:?}", prod_e_dbl, prod_o_dbl);
 
+    println!("pe {:?}", prod_e_dbl);
+    println!("po {:?}", prod_o_dbl);
     // The result of a multiplication holds a*b in as 64-bits.
     // Each 64b-bit word looks like this:
     //               1    31       31    1
@@ -501,6 +503,7 @@ pub(crate) fn _mul_doubled_simd(a: PackedM31, b_double: PackedM31) -> PackedM31 
         unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_e_dbl) },
         unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_o_dbl) },
     );
+    println!("prod_lows {:?}", prod_lows);
     // Divide by 2:
     prod_lows >>= 1;
     // prod_ls -    |0|prod_o_l|0|prod_e_l|
@@ -510,9 +513,13 @@ pub(crate) fn _mul_doubled_simd(a: PackedM31, b_double: PackedM31) -> PackedM31 
         unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_e_dbl) },
         unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_o_dbl) },
     );
+    println!("prod_highs {:?}", prod_highs);
 
     // prod_hs -    |0|prod_o_h|0|prod_e_h|
-    PackedM31(prod_lows) + PackedM31(prod_highs)
+    let x = PackedM31(prod_lows) + PackedM31(prod_highs);
+    println!("final {:?}", x);
+
+    x
 }
 
 #[cfg(test)]
