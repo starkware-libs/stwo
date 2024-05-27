@@ -10,13 +10,8 @@ use super::fri::FriOps;
 use super::pcs::quotients::QuotientOps;
 use super::poly::circle::PolyOps;
 
-// #[cfg(target_arch = "nvptx64")]
-pub mod gpu;
-
-#[cfg(target_arch = "x86_64")]
-pub mod avx512;
-
 pub mod cpu;
+pub mod gpu;
 pub mod simd;
 
 pub trait Backend:
