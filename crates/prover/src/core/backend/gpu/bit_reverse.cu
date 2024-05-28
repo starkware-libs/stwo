@@ -1,3 +1,5 @@
+// These functions assume `bits` is at most 32
+
 __device__ unsigned int bit_reverse(unsigned int n, int bits) {
     unsigned int reversed_n = __brev(n);
     return reversed_n >> (32 - bits);

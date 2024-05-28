@@ -10,13 +10,16 @@ use crate::core::backend::{Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 
+// TODO: Do we need to handle columns of sizes larger than 2^32?
 impl ColumnOps<BaseField> for GpuBackend {
     type Column = BaseFieldCudaColumn;
 
+    /// Permutes `column` in place according to bit-reversed order.
+    /// This method assumes that the length of `column` is 2^k for some k < 32.
     fn bit_reverse_column(column: &mut Self::Column) {
         let size = column.len();
-        assert!(size.is_power_of_two());
-        let bits = usize::BITS - size.leading_zeros() - 1;
+        assert!(size.is_power_of_two() && size < u32::MAX as usize);
+        let bits = u32::BITS - (size as u32).leading_zeros() - 1;
         let config = LaunchConfig::for_num_elems(size as u32);
         let kernel = DEVICE.get_func("bit_reverse", "kernel").unwrap();
         unsafe { kernel.launch(config, (column.as_mut_slice(), size, bits)) }.unwrap();
