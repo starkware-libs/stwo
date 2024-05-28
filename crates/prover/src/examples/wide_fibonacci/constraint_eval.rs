@@ -13,7 +13,7 @@ use crate::core::air::{
 use crate::core::backend::CpuBackend;
 use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::circle::Coset;
-use crate::core::constraints::{coset_vanishing, point_vanishing};
+use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
@@ -136,6 +136,60 @@ impl WideFibComponent {
                         alpha,
                         z,
                     ));
+        }
+        for (i, (num, denom_inverse)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
+            accum.accumulate(i, *num * *denom_inverse);
+        }
+    }
+
+    fn evaluate_lookup_step_constraints(
+        &self,
+        trace_evals: &TreeVec<Vec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
+        trace_eval_domain: CircleDomain,
+        zero_domain: Coset,
+        accum: &mut ColumnAccumulator<'_, CpuBackend>,
+        interaction_elements: &InteractionElements,
+    ) {
+        let max_constraint_degree = self.max_constraint_log_degree_bound();
+        let mut denoms = vec![];
+        for point in trace_eval_domain.iter() {
+            denoms.push(
+                coset_vanishing(zero_domain, point) / point_excluder(zero_domain.at(0), point),
+            );
+        }
+        bit_reverse(&mut denoms);
+        let mut denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
+        BaseField::batch_inverse(&denoms, &mut denom_inverses);
+        let mut numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
+        let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
+
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..trace_eval_domain.size() {
+            let value =
+                SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
+                    trace_evals[1][j][i].into()
+                }));
+            let prev_value =
+                SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
+                    trace_evals[1][j][(i + trace_eval_domain.size() - 1) % trace_eval_domain.size()]
+                        .into()
+                }));
+            numerators[i] = accum.random_coeff_powers[self.n_columns() - 1]
+                * ((value
+                    * shifted_secure_combination(
+                        &[
+                            trace_evals[0][self.n_columns() - 2][i],
+                            trace_evals[0][self.n_columns() - 1][i],
+                        ],
+                        alpha,
+                        z,
+                    ))
+                    - (prev_value
+                        * shifted_secure_combination(
+                            &[trace_evals[0][0][i], trace_evals[0][1][i]],
+                            alpha,
+                            z,
+                        )));
         }
         for (i, (num, denom_inverse)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
             accum.accumulate(i, *num * *denom_inverse);

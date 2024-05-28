@@ -62,7 +62,7 @@ impl Air for WideFibAir {
 
 impl Component for WideFibComponent {
     fn n_constraints(&self) -> usize {
-        self.n_columns() - 1
+        self.n_columns()
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
