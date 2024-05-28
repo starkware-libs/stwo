@@ -1,7 +1,13 @@
-use crate::core::{backend::Col, circle::{CirclePoint, Coset}, fields::{m31::BaseField, qm31::SecureField}, poly::{circle::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps}, twiddles::TwiddleTree, BitReversedOrder}};
-
 use super::GpuBackend;
-
+use crate::core::backend::Col;
+use crate::core::circle::{CirclePoint, Coset};
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
+use crate::core::poly::circle::{
+    CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
+};
+use crate::core::poly::twiddles::TwiddleTree;
+use crate::core::poly::BitReversedOrder;
 
 impl PolyOps for GpuBackend {
     // TODO: This type may need to be changed

@@ -1,10 +1,11 @@
-pub mod error;
-pub mod m31;
-mod bit_reverse;
-mod column;
 mod accumulation;
+mod bit_reverse;
 mod circle;
+mod column;
+pub mod error;
 mod fri;
+pub mod m31;
+mod quotients;
 
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -15,13 +16,9 @@ use cudarc::nvrtc::compile_ptx;
 use once_cell::sync::Lazy;
 
 use self::m31::LoadPackedBaseField;
-use super::{Backend};
-use crate::core::fields::m31::{BaseField, P};
-use crate::core::fields::qm31::SecureField;
-use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
-use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation,
-};
-use crate::core::poly::BitReversedOrder;
+use super::Backend;
+use crate::core::fields::m31::P;
+
 const VECTOR_SIZE: usize = 16;
 
 // TODO:: cleanup unwraps with error handling?
@@ -50,17 +47,3 @@ impl Load for Device {
 struct GpuBackend;
 
 impl Backend for GpuBackend {}
-
-
-
-impl QuotientOps for GpuBackend {
-    fn accumulate_quotients(
-        _domain: CircleDomain,
-        _columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
-        _random_coeff: SecureField,
-        _sample_batches: &[ColumnSampleBatch],
-    ) -> SecureEvaluation<Self> {
-        todo!()
-    }
-}
-

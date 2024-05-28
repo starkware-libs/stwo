@@ -1,9 +1,10 @@
 use cudarc::driver::{CudaSlice, DeviceSlice};
 
-use crate::core::{backend::Column, fields::{m31::BaseField, qm31::SecureField, FieldOps}};
-
 use super::GpuBackend;
-
+use crate::core::backend::Column;
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
+use crate::core::fields::FieldOps;
 
 impl FieldOps<BaseField> for GpuBackend {
     fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {

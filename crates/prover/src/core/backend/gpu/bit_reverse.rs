@@ -1,10 +1,11 @@
 use cudarc::driver::{LaunchAsync, LaunchConfig};
 
-use crate::core::{backend::{gpu::DEVICE, Column, ColumnOps}, fields::{m31::BaseField, qm31::SecureField}};
-
-use super::{column::{BaseFieldCudaColumn, SecureFieldCudaColumn}, GpuBackend};
-
-
+use super::column::{BaseFieldCudaColumn, SecureFieldCudaColumn};
+use super::GpuBackend;
+use crate::core::backend::gpu::DEVICE;
+use crate::core::backend::{Column, ColumnOps};
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
 
 impl ColumnOps<BaseField> for GpuBackend {
     type Column = BaseFieldCudaColumn;
@@ -27,8 +28,6 @@ impl ColumnOps<SecureField> for GpuBackend {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::DEVICE;
@@ -41,7 +40,8 @@ mod tests {
     fn test_bit_reverse() {
         let size: usize = 16;
         let mut h_column: Vec<u32> = (0..size as u32).collect();
-        let mut column: BaseFieldCudaColumn = BaseFieldCudaColumn::new(DEVICE.htod_sync_copy(&h_column).unwrap());
+        let mut column: BaseFieldCudaColumn =
+            BaseFieldCudaColumn::new(DEVICE.htod_sync_copy(&h_column).unwrap());
 
         <GpuBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut column);
 
