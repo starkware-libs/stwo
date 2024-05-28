@@ -131,7 +131,6 @@ impl LinePoly {
 
     /// Evaluates the polynomial at a single point.
     pub fn eval_at_point(&self, mut x: SecureField) -> SecureField {
-        // TODO(Andrew): Allocation here expensive for small polynomials.
         let mut doublings = Vec::new();
         for _ in 0..self.log_size {
             doublings.push(x);
