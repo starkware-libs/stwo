@@ -1,4 +1,7 @@
-use cudarc::driver::{LaunchAsync, LaunchConfig};
+use std::sync::Arc;
+
+use cudarc::driver::{CudaDevice, LaunchAsync, LaunchConfig};
+use cudarc::nvrtc::compile_ptx;
 
 use super::column::{BaseFieldCudaColumn, SecureFieldCudaColumn};
 use super::GpuBackend;
@@ -26,6 +29,12 @@ impl ColumnOps<SecureField> for GpuBackend {
     fn bit_reverse_column(_column: &mut Self::Column) {
         todo!()
     }
+}
+
+pub fn load_bit_reverse_ptx(device: &Arc<CudaDevice>) {
+    let ptx_src = include_str!("bit_reverse.cu");
+    let ptx = compile_ptx(ptx_src).unwrap();
+    device.load_ptx(ptx, "bit_reverse", &["kernel"]).unwrap();
 }
 
 #[cfg(test)]

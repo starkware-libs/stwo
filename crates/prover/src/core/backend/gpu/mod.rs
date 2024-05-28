@@ -11,7 +11,6 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use cudarc::driver::{CudaDevice, CudaSlice};
-use cudarc::nvrtc::compile_ptx;
 // use error::Error;
 use once_cell::sync::Lazy;
 
@@ -36,9 +35,7 @@ trait Load {
 impl Load for Device {
     fn load(self) -> Self {
         LoadPackedBaseField::load(&self);
-        let ptx_src = include_str!("bit_reverse.cu");
-        let ptx = compile_ptx(ptx_src).unwrap();
-        self.load_ptx(ptx, "bit_reverse", &["kernel"]).unwrap();
+        bit_reverse::load_bit_reverse_ptx(&self);
         self
     }
 }
