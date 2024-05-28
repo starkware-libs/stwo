@@ -60,6 +60,50 @@ pub(crate) fn bit_reverse_index(i: usize, log_size: u32) -> usize {
     i.reverse_bits() >> (usize::BITS - log_size)
 }
 
+/// Returns the index of the previous element in a bit reversed
+/// [super::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a domain of
+/// size `domain_log_size`.
+pub(crate) fn previous_bit_reversed_circle_domain_index(
+    i: usize,
+    domain_log_size: u32,
+    eval_log_size: u32,
+) -> usize {
+    let mut prev_index = bit_reverse_index(i, eval_log_size);
+    let half_size = 1 << (eval_log_size - 1);
+    let step_size = (eval_log_size - domain_log_size) as usize;
+    if prev_index < half_size {
+        prev_index = (prev_index + half_size - step_size) % half_size;
+    } else {
+        prev_index = ((prev_index + step_size) % half_size) + half_size;
+    }
+    bit_reverse_index(prev_index, eval_log_size)
+}
+
+// TODO(AlonH): Pair both functions below with bit reverse. Consider removing both and calculating
+// the indices instead.
+pub(crate) fn circle_domain_order_to_coset_order(values: &[BaseField]) -> Vec<BaseField> {
+    let n = values.len();
+    let mut coset_order = vec![];
+    for i in 0..(n / 2) {
+        coset_order.push(values[i]);
+        coset_order.push(values[n - 1 - i]);
+    }
+    coset_order
+}
+
+pub(crate) fn coset_order_to_circle_domain_order(values: &[BaseField]) -> Vec<BaseField> {
+    let mut circle_domain_order = Vec::with_capacity(values.len());
+    let n = values.len();
+    let half_len = n / 2;
+    for i in 0..half_len {
+        circle_domain_order.push(values[i << 1]);
+    }
+    for i in 0..half_len {
+        circle_domain_order.push(values[n - 1 - (i << 1)]);
+    }
+    circle_domain_order
+}
+
 /// Performs a naive bit-reversal permutation inplace.
 ///
 /// # Panics
@@ -107,12 +151,16 @@ where
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
     use num_traits::One;
 
+    use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::FieldExpOps;
+    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::poly::NaturalOrder;
     use crate::core::utils::bit_reverse;
-    use crate::qm31;
+    use crate::{m31, qm31};
 
     #[test]
     fn bit_reverse_works() {
@@ -149,5 +197,47 @@ mod tests {
         let powers = super::generate_secure_powers(felt, max_log_size);
 
         assert_eq!(powers, vec![]);
+    }
+
+    #[test]
+    fn test_previous_bit_reversed_circle_domain_index() {
+        let log_size = 3;
+        let n = 1 << log_size;
+        let domain = CanonicCoset::new(log_size).circle_domain();
+        let values = (0..n).map(|i| m31!(i as u32)).collect_vec();
+        let evaluation = CpuCircleEvaluation::<_, NaturalOrder>::new(domain, values.clone());
+        let bit_reversed_evaluation = evaluation.clone().bit_reverse();
+
+        let neighbor_pairs = (0..n)
+            .map(|i| {
+                let prev_index =
+                    super::previous_bit_reversed_circle_domain_index(i, log_size - 1, log_size);
+                (
+                    bit_reversed_evaluation[i],
+                    bit_reversed_evaluation[prev_index],
+                )
+            })
+            .sorted()
+            .collect_vec();
+        //    1 O 7
+        //  O       O
+        // 6         0
+        // O         O
+        // 2         4
+        //  O       O
+        //    5 O 3
+        let mut expected_neighbor_pairs = vec![
+            (m31!(0), m31!(3)),
+            (m31!(7), m31!(4)),
+            (m31!(1), m31!(0)),
+            (m31!(6), m31!(7)),
+            (m31!(2), m31!(1)),
+            (m31!(5), m31!(6)),
+            (m31!(3), m31!(2)),
+            (m31!(4), m31!(5)),
+        ];
+        expected_neighbor_pairs.sort();
+
+        assert_eq!(neighbor_pairs, expected_neighbor_pairs);
     }
 }

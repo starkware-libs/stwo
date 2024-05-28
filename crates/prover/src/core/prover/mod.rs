@@ -57,7 +57,7 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> Result<(CommitmentSchemeProver<B>, InteractionElements), ProvingError> {
     let span = span!(Level::INFO, "Trace interpolation").entered();
-    // TODO(AlonH): Remove clone.
+    // TODO(AlonH): Clone only the columns needed for interaction.
     let trace_polys = trace
         .clone()
         .into_iter()
