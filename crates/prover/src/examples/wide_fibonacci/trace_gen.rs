@@ -1,10 +1,13 @@
+use itertools::Itertools;
 use num_traits::One;
 
 use super::component::Input;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::utils::shifted_secure_combination;
+use crate::core::utils::{
+    bit_reverse, circle_domain_order_to_coset_order, shifted_secure_combination,
+};
 
 /// Writes the trace row for the wide Fibonacci example to dst, given a private input. Returns the
 /// last two elements of the row in case the sequence is continued.
@@ -34,12 +37,30 @@ pub fn write_lookup_column(
     let n_rows = input_trace[0].len();
     let n_columns = input_trace.len();
     let mut prev_value = SecureField::one();
+    let mut input_trace = input_trace
+        .iter()
+        .map(|column| column.to_vec())
+        .collect_vec();
+    let natural_ordered_trace = input_trace
+        .iter_mut()
+        .map(|column| {
+            bit_reverse(column);
+            circle_domain_order_to_coset_order(column)
+        })
+        .collect_vec();
+
     (0..n_rows)
         .map(|i| {
-            let numerator =
-                shifted_secure_combination(&[input_trace[0][i], input_trace[1][i]], alpha, z);
+            let numerator = shifted_secure_combination(
+                &[natural_ordered_trace[0][i], natural_ordered_trace[1][i]],
+                alpha,
+                z,
+            );
             let denominator = shifted_secure_combination(
-                &[input_trace[n_columns - 2][i], input_trace[n_columns - 1][i]],
+                &[
+                    natural_ordered_trace[n_columns - 2][i],
+                    natural_ordered_trace[n_columns - 1][i],
+                ],
                 alpha,
                 z,
             );
@@ -48,5 +69,5 @@ pub fn write_lookup_column(
             prev_value = cell;
             cell
         })
-        .collect()
+        .collect_vec()
 }

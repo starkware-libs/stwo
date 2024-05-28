@@ -5,7 +5,7 @@ use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, Component, ComponentTraceWriter};
 use crate::core::backend::CpuBackend;
 use crate::core::circle::CirclePoint;
-use crate::core::constraints::{coset_vanishing, point_vanishing};
+use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
@@ -62,7 +62,7 @@ impl Air for WideFibAir {
 
 impl Component for WideFibComponent {
     fn n_constraints(&self) -> usize {
-        self.n_columns() - 1
+        self.n_columns()
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
@@ -84,9 +84,10 @@ impl Component for WideFibComponent {
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        let domain = CanonicCoset::new(self.log_column_size());
         TreeVec::new(vec![
             fixed_mask_points(&vec![vec![0_usize]; self.n_columns()], point),
-            vec![vec![point]; SECURE_EXTENSION_DEGREE],
+            vec![vec![point, point - domain.step().into_ef()]; SECURE_EXTENSION_DEGREE],
         ])
     }
 
@@ -107,15 +108,29 @@ impl Component for WideFibComponent {
             SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
                 mask[self.n_columns() + i][0]
             }));
-        let lookup_numerator = (lookup_value
+        let lookup_prev_value =
+            SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
+                mask[self.n_columns() + i][1]
+            }));
+        let lookup_step_numerator = (lookup_value
+            * shifted_secure_combination(
+                &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
+                alpha,
+                z,
+            ))
+            - (lookup_prev_value * shifted_secure_combination(&[mask[0][0], mask[1][0]], alpha, z));
+        let lookup_step_denom = coset_vanishing(constraint_zero_domain, point)
+            / point_excluder(constraint_zero_domain.at(0), point);
+        evaluation_accumulator.accumulate(lookup_step_numerator / lookup_step_denom);
+        let lookup_boundary_numerator = (lookup_value
             * shifted_secure_combination(
                 &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
                 alpha,
                 z,
             ))
             - shifted_secure_combination(&[mask[0][0], mask[1][0]], alpha, z);
-        let lookup_denom = point_vanishing(constraint_zero_domain.at(0), point);
-        evaluation_accumulator.accumulate(lookup_numerator / lookup_denom);
+        let lookup_boundary_denom = point_vanishing(constraint_zero_domain.at(0), point);
+        evaluation_accumulator.accumulate(lookup_boundary_numerator / lookup_boundary_denom);
 
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
