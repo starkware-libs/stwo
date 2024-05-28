@@ -13,7 +13,7 @@ use crate::core::poly::circle::{
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::bit_reverse;
+use crate::core::utils::{bit_reverse, coset_order_to_circle_domain_order};
 
 impl PolyOps for CpuBackend {
     type Twiddles = Vec<BaseField>;
@@ -24,14 +24,7 @@ impl PolyOps for CpuBackend {
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         let domain = coset.circle_domain();
         assert_eq!(values.len(), domain.size());
-        let mut new_values = Vec::with_capacity(values.len());
-        let half_len = 1 << (coset.log_size() - 1);
-        for i in 0..half_len {
-            new_values.push(values[i << 1]);
-        }
-        for i in 0..half_len {
-            new_values.push(values[domain.size() - 1 - (i << 1)]);
-        }
+        let mut new_values = coset_order_to_circle_domain_order(&values);
         CpuBackend::bit_reverse_column(&mut new_values);
         CircleEvaluation::new(domain, new_values)
     }
