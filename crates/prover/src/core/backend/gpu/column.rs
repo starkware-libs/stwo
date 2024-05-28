@@ -1,7 +1,21 @@
 use cudarc::driver::{CudaSlice, DeviceSlice};
 
-use crate::core::{backend::Column, fields::{m31::BaseField, qm31::SecureField}};
+use crate::core::{backend::Column, fields::{m31::BaseField, qm31::SecureField, FieldOps}};
 
+use super::GpuBackend;
+
+
+impl FieldOps<BaseField> for GpuBackend {
+    fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {
+        todo!()
+    }
+}
+
+impl FieldOps<SecureField> for GpuBackend {
+    fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {
+        todo!()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct CudaColumnM31(CudaSlice<u32>);

@@ -1,8 +1,8 @@
 use cudarc::driver::{LaunchAsync, LaunchConfig};
 
-use crate::core::{backend::{gpu::DEVICE, Column, ColumnOps}, fields::m31::BaseField};
+use crate::core::{backend::{gpu::DEVICE, Column, ColumnOps}, fields::{m31::BaseField, qm31::SecureField}};
 
-use super::{column::CudaColumnM31, GpuBackend};
+use super::{column::{CudaColumnM31, CudaColumnQM31}, GpuBackend};
 
 
 
@@ -18,6 +18,15 @@ impl ColumnOps<BaseField> for GpuBackend {
         unsafe { kernel.launch(config, (column.as_mut_slice(), size, bits)) }.unwrap();
     }
 }
+
+impl ColumnOps<SecureField> for GpuBackend {
+    type Column = CudaColumnQM31;
+
+    fn bit_reverse_column(_column: &mut Self::Column) {
+        todo!()
+    }
+}
+
 
 
 #[cfg(test)]

@@ -7,20 +7,18 @@ mod column;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use column::CudaColumnQM31;
 use cudarc::driver::{CudaDevice, CudaSlice};
 use cudarc::nvrtc::compile_ptx;
 // use error::Error;
 use once_cell::sync::Lazy;
 
 use self::m31::LoadPackedBaseField;
-use super::{Backend, Col, ColumnOps};
+use super::{Backend, Col};
 use crate::core::air::accumulation::AccumulationOps;
 use crate::core::circle::{CirclePoint, Coset};
-use crate::core::fields::m31::{BaseField, M31, P};
+use crate::core::fields::m31::{BaseField, P};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
-use crate::core::fields::FieldOps;
 use crate::core::fri::FriOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{
@@ -58,25 +56,7 @@ struct GpuBackend;
 
 impl Backend for GpuBackend {}
 
-impl ColumnOps<SecureField> for GpuBackend {
-    type Column = CudaColumnQM31;
 
-    fn bit_reverse_column(_column: &mut Self::Column) {
-        todo!()
-    }
-}
-
-impl FieldOps<M31> for GpuBackend {
-    fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {
-        todo!()
-    }
-}
-
-impl FieldOps<SecureField> for GpuBackend {
-    fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {
-        todo!()
-    }
-}
 
 impl AccumulationOps for GpuBackend {
     fn accumulate(_column: &mut SecureColumn<Self>, _other: &SecureColumn<Self>) {
