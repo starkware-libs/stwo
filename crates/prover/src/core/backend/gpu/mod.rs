@@ -2,7 +2,7 @@ pub mod error;
 pub mod m31;
 mod bit_reverse;
 mod column;
-
+mod accumulation;
 
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -14,11 +14,9 @@ use once_cell::sync::Lazy;
 
 use self::m31::LoadPackedBaseField;
 use super::{Backend, Col};
-use crate::core::air::accumulation::AccumulationOps;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::{BaseField, P};
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fri::FriOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{
@@ -56,13 +54,6 @@ struct GpuBackend;
 
 impl Backend for GpuBackend {}
 
-
-
-impl AccumulationOps for GpuBackend {
-    fn accumulate(_column: &mut SecureColumn<Self>, _other: &SecureColumn<Self>) {
-        todo!()
-    }
-}
 
 impl PolyOps for GpuBackend {
     type Twiddles = Vec<BaseField>;

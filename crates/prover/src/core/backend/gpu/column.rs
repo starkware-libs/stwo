@@ -18,9 +18,10 @@ impl FieldOps<SecureField> for GpuBackend {
 }
 
 #[derive(Debug, Clone)]
-pub struct CudaColumnM31(CudaSlice<u32>);
+pub struct BaseFieldCudaColumn(CudaSlice<u32>);
 
-impl CudaColumnM31 {
+#[allow(unused)]
+impl BaseFieldCudaColumn {
     pub fn new(slice: CudaSlice<u32>) -> Self {
         Self(slice)
     }
@@ -34,13 +35,13 @@ impl CudaColumnM31 {
     }
 }
 
-impl FromIterator<BaseField> for CudaColumnM31 {
+impl FromIterator<BaseField> for BaseFieldCudaColumn {
     fn from_iter<T: IntoIterator<Item = BaseField>>(_iter: T) -> Self {
         todo!()
     }
 }
 
-impl Column<BaseField> for CudaColumnM31 {
+impl Column<BaseField> for BaseFieldCudaColumn {
     fn zeros(_len: usize) -> Self {
         todo!()
     }
@@ -59,15 +60,15 @@ impl Column<BaseField> for CudaColumnM31 {
 }
 
 #[derive(Debug, Clone)]
-pub struct CudaColumnQM31([CudaSlice<u32>; 4]);
+pub struct SecureFieldCudaColumn([CudaSlice<u32>; 4]);
 
-impl FromIterator<SecureField> for CudaColumnQM31 {
+impl FromIterator<SecureField> for SecureFieldCudaColumn {
     fn from_iter<T: IntoIterator<Item = SecureField>>(_iter: T) -> Self {
         todo!()
     }
 }
 
-impl Column<SecureField> for CudaColumnQM31 {
+impl Column<SecureField> for SecureFieldCudaColumn {
     fn zeros(_len: usize) -> Self {
         todo!()
     }
