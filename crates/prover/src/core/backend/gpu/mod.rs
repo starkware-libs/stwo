@@ -1,10 +1,15 @@
 pub mod error;
 pub mod m31;
+mod bit_reverse;
+mod column;
+
 
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use column::CudaColumnQM31;
 use cudarc::driver::{CudaDevice, CudaSlice};
+use cudarc::nvrtc::compile_ptx;
 // use error::Error;
 use once_cell::sync::Lazy;
 
@@ -41,6 +46,9 @@ trait Load {
 impl Load for Device {
     fn load(self) -> Self {
         LoadPackedBaseField::load(&self);
+        let ptx_src = include_str!("bit_reverse.cu");
+        let ptx = compile_ptx(ptx_src).unwrap();
+        self.load_ptx(ptx, "bit_reverse", &["kernel"]).unwrap();
         self
     }
 }
@@ -50,8 +58,8 @@ struct GpuBackend;
 
 impl Backend for GpuBackend {}
 
-impl<T: Debug + Clone + Default> ColumnOps<T> for GpuBackend {
-    type Column = Vec<T>;
+impl ColumnOps<SecureField> for GpuBackend {
+    type Column = CudaColumnQM31;
 
     fn bit_reverse_column(_column: &mut Self::Column) {
         todo!()
@@ -147,3 +155,4 @@ impl QuotientOps for GpuBackend {
         todo!()
     }
 }
+
