@@ -10,17 +10,20 @@ use crate::core::air::{
     AirProver, AirTraceVerifier, AirTraceWriter, Component, ComponentProver, ComponentTrace,
     ComponentTraceWriter,
 };
+use crate::core::backend::cpu::CpuCircleEvaluation;
 use crate::core::backend::CpuBackend;
 use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::circle::Coset;
-use crate::core::constraints::{coset_vanishing, point_vanishing};
+use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::{bit_reverse, shifted_secure_combination};
+use crate::core::utils::{
+    bit_reverse, previous_bit_reversed_circle_domain_index, shifted_secure_combination,
+};
 use crate::core::{ColumnVec, InteractionElements};
 use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
 
@@ -44,10 +47,8 @@ impl AirTraceWriter<CpuBackend> for WideFibAir {
             .write_interaction_trace(&trace.iter().collect(), elements)
             .into_iter()
             .map(|eval| {
-                CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(
-                    trace[0].domain,
-                    eval,
-                )
+                let coset = CanonicCoset::new(trace[0].domain.log_size());
+                CpuCircleEvaluation::new_canonical_ordered(coset, eval)
             })
             .collect_vec()
     }
@@ -139,6 +140,61 @@ impl WideFibComponent {
             accum.accumulate(i, *num * *denom_inverse);
         }
     }
+
+    fn evaluate_lookup_step_constraints(
+        &self,
+        trace_evals: &TreeVec<Vec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
+        trace_eval_domain: CircleDomain,
+        zero_domain: Coset,
+        accum: &mut ColumnAccumulator<'_, CpuBackend>,
+        interaction_elements: &InteractionElements,
+    ) {
+        let max_constraint_degree = self.max_constraint_log_degree_bound();
+        let mut denoms = vec![];
+        for point in trace_eval_domain.iter() {
+            denoms.push(
+                coset_vanishing(zero_domain, point) / point_excluder(zero_domain.at(0), point),
+            );
+        }
+        bit_reverse(&mut denoms);
+        let mut denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
+        BaseField::batch_inverse(&denoms, &mut denom_inverses);
+        let mut numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
+        let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
+
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..trace_eval_domain.size() {
+            let value =
+                SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
+                    trace_evals[1][j][i].into()
+                }));
+            let prev_index =
+                previous_bit_reversed_circle_domain_index(i, trace_eval_domain.log_size());
+            let prev_value =
+                SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
+                    trace_evals[1][j][prev_index].into()
+                }));
+            numerators[i] = accum.random_coeff_powers[self.n_columns() - 1]
+                * ((value
+                    * shifted_secure_combination(
+                        &[
+                            trace_evals[0][self.n_columns() - 2][i],
+                            trace_evals[0][self.n_columns() - 1][i],
+                        ],
+                        alpha,
+                        z,
+                    ))
+                    - (prev_value
+                        * shifted_secure_combination(
+                            &[trace_evals[0][0][i], trace_evals[0][1][i]],
+                            alpha,
+                            z,
+                        )));
+        }
+        for (i, (num, denom_inverse)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
+            accum.accumulate(i, *num * *denom_inverse);
+        }
+    }
 }
 
 impl ComponentProver<CpuBackend> for WideFibComponent {
@@ -168,6 +224,13 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
             &mut accum,
             interaction_elements,
         );
+        self.evaluate_lookup_step_constraints(
+            trace_evals,
+            trace_eval_domain,
+            zero_domain,
+            &mut accum,
+            interaction_elements,
+        )
     }
 }
 

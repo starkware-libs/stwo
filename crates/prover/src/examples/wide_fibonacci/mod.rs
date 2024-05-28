@@ -21,10 +21,11 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::TreeVec;
-    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
-    use crate::core::poly::BitReversedOrder;
+    use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::{prove, verify};
-    use crate::core::utils::shifted_secure_combination;
+    use crate::core::utils::{
+        bit_reverse, circle_domain_order_to_coset_order, shifted_secure_combination,
+    };
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::core::InteractionElements;
@@ -70,10 +71,7 @@ mod tests {
         assert_eq!(
             column[column_length - 1]
                 * shifted_secure_combination(
-                    &[
-                        input_trace[n_columns - 2][column_length - 1],
-                        input_trace[n_columns - 1][column_length - 1]
-                    ],
+                    &[input_trace[n_columns - 2][1], input_trace[n_columns - 1][1]],
                     alpha,
                     z,
                 ),
@@ -113,10 +111,17 @@ mod tests {
 
         let alpha = qm31!(7, 1, 3, 4);
         let z = qm31!(11, 1, 2, 3);
-        let trace = gen_trace(&wide_fib, vec![input]);
+        let mut trace = gen_trace(&wide_fib, vec![input]);
         let input_trace = trace.iter().map(|values| &values[..]).collect_vec();
         let lookup_column = write_lookup_column(&input_trace, alpha, z);
 
+        trace = trace
+            .iter_mut()
+            .map(|column| {
+                bit_reverse(column);
+                circle_domain_order_to_coset_order(column)
+            })
+            .collect_vec();
         assert_constraints_on_lookup_column(&lookup_column, &trace, alpha, z)
     }
 
@@ -135,16 +140,16 @@ mod tests {
         let inputs = (0..1 << wide_fib.log_n_instances)
             .map(|i| Input {
                 a: m31!(1),
-                b: m31!(i as u32),
+                b: m31!(i + 1_u32),
             })
             .collect_vec();
 
-        let trace = gen_trace(&wide_fib, inputs);
+        let trace_values = gen_trace(&wide_fib, inputs);
 
-        let trace_domain = CanonicCoset::new(wide_fib.log_column_size()).circle_domain();
-        let trace = trace
+        let trace_domain = CanonicCoset::new(wide_fib.log_column_size());
+        let trace = trace_values
             .into_iter()
-            .map(|eval| CpuCircleEvaluation::<_, BitReversedOrder>::new(trace_domain, eval))
+            .map(|eval| CpuCircleEvaluation::new_canonical_ordered(trace_domain, eval))
             .collect_vec();
         let trace_polys = trace
             .clone()
@@ -170,11 +175,8 @@ mod tests {
             .write_interaction_trace(&trace.iter().collect(), &interaction_elements)
             .into_iter()
             .map(|eval| {
-                CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(
-                    trace[0].domain,
-                    eval,
-                )
-                .interpolate()
+                let coset = CanonicCoset::new(trace[0].domain.log_size());
+                CpuCircleEvaluation::new_canonical_ordered(coset, eval).interpolate()
             })
             .collect_vec();
 
@@ -197,8 +199,7 @@ mod tests {
 
         let res = acc.finalize();
         let poly = res.0[0].clone();
-
-        for coeff in poly.coeffs[1 << wide_fib.max_constraint_log_degree_bound()..].iter() {
+        for coeff in poly.coeffs[(1 << wide_fib.max_constraint_log_degree_bound()) - 1..].iter() {
             assert_eq!(*coeff, BaseField::zero());
         }
     }
@@ -222,10 +223,10 @@ mod tests {
             .collect();
         let trace = gen_trace(&component, private_input);
 
-        let trace_domain = CanonicCoset::new(component.log_column_size()).circle_domain();
+        let trace_domain = CanonicCoset::new(component.log_column_size());
         let trace = trace
             .into_iter()
-            .map(|eval| CpuCircleEvaluation::<_, BitReversedOrder>::new(trace_domain, eval))
+            .map(|eval| CpuCircleEvaluation::new_canonical_ordered(trace_domain, eval))
             .collect_vec();
         let air = WideFibAir { component };
         let prover_channel =
