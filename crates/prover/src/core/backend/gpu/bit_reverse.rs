@@ -47,7 +47,7 @@ mod tests {
 
     #[test]
     fn test_bit_reverse() {
-        let size: usize = 128;
+        let size: usize = 1024;
         let mut h_column: Vec<u32> = (0..size as u32).collect();
         let mut column: BaseFieldCudaColumn =
             BaseFieldCudaColumn::new(DEVICE.htod_sync_copy(&h_column).unwrap());
