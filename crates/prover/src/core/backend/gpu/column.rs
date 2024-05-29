@@ -51,7 +51,7 @@ impl BaseFieldCudaColumn {
 
 impl FromIterator<BaseField> for BaseFieldCudaColumn {
     fn from_iter<T: IntoIterator<Item = BaseField>>(iter: T) -> Self {
-        BaseFieldCudaColumn(iter.into_iter().collect::<Vec<_>>())
+        BaseFieldCudaColumn(iter.into_iter().collect())
     }
 }
 
