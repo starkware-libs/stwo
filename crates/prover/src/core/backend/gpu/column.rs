@@ -39,7 +39,7 @@ impl BaseFieldCudaColumn {
         DEVICE.dtoh_sync_copy_into(cuda_slice, &mut self.0);
     }
 
-    pub fn to_vec(self) -> Vec<M31> {
+    pub fn into_vec(self) -> Vec<M31> {
         self.0
     }
 
@@ -47,7 +47,6 @@ impl BaseFieldCudaColumn {
         DEVICE.htod_sync_copy(&self.0)
     }
 }
-
 
 impl FromIterator<BaseField> for BaseFieldCudaColumn {
     fn from_iter<T: IntoIterator<Item = BaseField>>(iter: T) -> Self {

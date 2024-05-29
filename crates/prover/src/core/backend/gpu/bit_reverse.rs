@@ -54,13 +54,14 @@ mod tests {
     #[test]
     fn test_bit_reverse() {
         let size: usize = 2048;
-        let mut column = BaseFieldCudaColumn::new((0..size as u32).map(|x| M31(x)).collect::<Vec<_>>());
+        let mut column =
+            BaseFieldCudaColumn::new((0..size as u32).map(|x| M31(x)).collect::<Vec<_>>());
 
-        let mut expected_result = column.clone().to_vec();
+        let mut expected_result = column.clone().into_vec();
         CpuBackend::bit_reverse_column(&mut expected_result);
-        
+
         <GpuBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut column);
 
-        assert_eq!(column.to_vec(), expected_result);
+        assert_eq!(column.into_vec(), expected_result);
     }
 }
