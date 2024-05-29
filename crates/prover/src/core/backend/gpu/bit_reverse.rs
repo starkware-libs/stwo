@@ -25,7 +25,7 @@ impl ColumnOps<BaseField> for GpuBackend {
         let config = LaunchConfig::for_num_elems(size as u32);
         let kernel = DEVICE.get_func("bit_reverse", "kernel").unwrap();
         unsafe { kernel.launch(config, (&mut device_column, size, bits)) }.unwrap();
-        
+
         column.inplace_copy_from_slice(&device_column);
     }
 }
@@ -49,12 +49,12 @@ mod tests {
     use crate::core::backend::gpu::column::BaseFieldCudaColumn;
     use crate::core::backend::gpu::GpuBackend;
     use crate::core::backend::{ColumnOps, CpuBackend};
-    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::m31::{BaseField, M31};
 
     #[test]
     fn test_bit_reverse() {
-        let size: usize = 1024;
-        let mut column = BaseFieldCudaColumn::new((0..size as u32).collect::<Vec<_>>());
+        let size: usize = 2048;
+        let mut column = BaseFieldCudaColumn::new((0..size as u32).map(|x| M31(x)).collect::<Vec<_>>());
 
         let mut expected_result = column.clone().to_vec();
         CpuBackend::bit_reverse_column(&mut expected_result);
