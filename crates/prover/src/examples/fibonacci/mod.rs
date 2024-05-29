@@ -213,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn test_prove() {
+    fn test_fib_prove() {
         const FIB_LOG_SIZE: u32 = 5;
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
