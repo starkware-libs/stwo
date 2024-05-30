@@ -142,9 +142,51 @@ pub fn simd_m31_operations_bench(c: &mut Criterion) {
     });
 }
 
+pub fn gpu_m31_operations_bench(c: &mut Criterion) {
+    let mut rng = SmallRng::seed_from_u64(0);
+    let elements: Vec<M31> = (0..N_ELEMENTS).map(|_| rng.gen()).collect();
+    let mut states = vec![BaseField::one(); N_STATE_ELEMENTS];
+
+    c.bench_function("mul_gpu", |b| {
+        b.iter(|| {
+            for elem in elements.iter() {
+                for _ in 0..128 {
+                    for state in states.iter_mut() {
+                        *state *= *elem;
+                    }
+                }
+            }
+        })
+    });
+
+    c.bench_function("add_gpu", |b| {
+        b.iter(|| {
+            for elem in elements.iter() {
+                for _ in 0..128 {
+                    for state in states.iter_mut() {
+                        *state += *elem;
+                    }
+                }
+            }
+        })
+    });
+
+    c.bench_function("sub_gpu", |b| {
+        b.iter(|| {
+            for elem in elements.iter() {
+                for _ in 0..128 {
+                    for state in states.iter_mut() {
+                        *state -= *elem;
+                    }
+                }
+            }
+        })
+    });
+}
+
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
     targets = m31_operations_bench, cm31_operations_bench, qm31_operations_bench, 
-        simd_m31_operations_bench);
+        simd_m31_operations_bench, gpu_m31_operations_bench);
 criterion_main!(benches);
