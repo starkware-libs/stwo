@@ -14,6 +14,7 @@ pub mod fri;
 pub mod lookups;
 pub mod pcs;
 pub mod poly;
+pub mod poseidon_channel;
 pub mod proof_of_work;
 pub mod prover;
 pub mod queries;

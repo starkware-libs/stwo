@@ -13,16 +13,16 @@ pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 
 #[derive(Default)]
 pub struct ChannelTime {
-    n_challenges: usize,
-    n_sent: usize,
+    pub n_challenges: usize,
+    pub n_sent: usize,
 }
 
 impl ChannelTime {
-    fn inc_sent(&mut self) {
+    pub fn inc_sent(&mut self) {
         self.n_sent += 1;
     }
 
-    fn inc_challenges(&mut self) {
+    pub fn inc_challenges(&mut self) {
         self.n_challenges += 1;
         self.n_sent = 0;
     }

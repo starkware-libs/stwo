@@ -15,6 +15,8 @@ itertools = "0.12.0"
 num-traits = "0.2.17"
 thiserror = "1.0.56"
 bytemuck = "1.14.3"
+starknet-types-core = { version = "0.0.11", features = ["hash"] }
+
 tracing = "0.1.40"
 
 [profile.bench]
