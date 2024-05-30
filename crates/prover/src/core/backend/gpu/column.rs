@@ -1,6 +1,8 @@
 use std::ffi::c_void;
+use std::sync::Arc;
 
-use cudarc::driver::{CudaSlice, DeviceRepr, DriverError};
+use cudarc::driver::{CudaDevice, CudaSlice, DeviceRepr, DriverError, LaunchAsync, LaunchConfig};
+use cudarc::nvrtc::compile_ptx;
 
 use super::{GpuBackend, DEVICE};
 use crate::core::backend::Column;
@@ -15,8 +17,21 @@ unsafe impl DeviceRepr for M31 {
 }
 
 impl FieldOps<BaseField> for GpuBackend {
-    fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {
-        todo!()
+    fn batch_inverse(from: &Self::Column, dst: &mut Self::Column) {
+        let size = from.len();
+        let log_size = u32::BITS - (size as u32).leading_zeros() - 1;
+
+        assert!(size.is_power_of_two() && size < u32::MAX as usize);
+
+        let mut a_column = from.to_device().unwrap();
+        let mut b_column = from.to_device().unwrap();
+        let mut c_column = from.to_device().unwrap();
+
+        let config = LaunchConfig::for_num_elems(size as u32);
+        let kernel = DEVICE.get_func("column", "batch_inverse").unwrap();
+        unsafe { kernel.launch(config, (&mut a_column, &mut b_column, &mut c_column, size, log_size)) }.unwrap();
+
+        dst.inplace_copy_from_slice(&c_column);    
     }
 }
 
@@ -96,5 +111,33 @@ impl Column<SecureField> for SecureFieldCudaColumn {
 
     fn at(&self, _index: usize) -> SecureField {
         todo!()
+    }
+}
+
+pub fn load_column_ptx(device: &Arc<CudaDevice>) {
+    let ptx_src = include_str!("column.cu");
+    let ptx = compile_ptx(ptx_src).unwrap();
+    device.load_ptx(ptx, "column", &["batch_inverse"]).unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::core::backend::gpu::column::BaseFieldCudaColumn;
+    use crate::core::backend::gpu::GpuBackend;
+    use crate::core::backend::CpuBackend;
+    use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::FieldOps;
+
+    #[test]
+    fn test_batch_inverse() {
+        //let size: usize = 2048;
+        let column = BaseFieldCudaColumn::new(vec![1, 2, 3, 4, 5, 6, 7, 8].into_iter().map(|x| M31(x)).collect::<Vec<_>>());
+        let mut expected_result = column.clone().into_vec();
+
+        let mut res = BaseFieldCudaColumn::new(vec![M31(1); 8]);
+        CpuBackend::batch_inverse(&column.clone().into_vec(), &mut expected_result);
+
+        <GpuBackend as FieldOps<BaseField>>::batch_inverse(&column, &mut res);
+        assert_eq!(res.into_vec(), expected_result);
     }
 }
