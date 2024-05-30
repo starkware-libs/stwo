@@ -1,7 +1,7 @@
 mod accumulation;
 mod bit_reverse;
 mod circle;
-mod column;
+pub mod column;
 pub mod error;
 mod fri;
 pub mod m31;
@@ -41,6 +41,6 @@ impl Load for Device {
 }
 
 #[derive(Copy, Clone, Debug)]
-struct GpuBackend;
+pub struct GpuBackend;
 
 impl Backend for GpuBackend {}

@@ -2,7 +2,7 @@
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use itertools::Itertools;
-use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::{backend::ColumnOps, fields::m31::{BaseField, M31}};
 
 pub fn cpu_bit_rev(c: &mut Criterion) {
     use stwo_prover::core::utils::bit_reverse;
@@ -23,7 +23,7 @@ pub fn simd_bit_rev(c: &mut Criterion) {
     use stwo_prover::core::backend::simd::column::BaseFieldVec;
     const SIZE: usize = 1 << 26;
     let data = (0..SIZE).map(BaseField::from).collect::<BaseFieldVec>();
-    c.bench_function("simd bit_rev 26bit", |b| {
+    c.bench_function("simd bit_rev 26 bit", |b| {
         b.iter_batched(
             || data.data.clone(),
             |mut data| bit_reverse_m31(&mut data),
@@ -32,8 +32,23 @@ pub fn simd_bit_rev(c: &mut Criterion) {
     });
 }
 
+pub fn gpu_bit_rev(c: &mut Criterion) {
+    use stwo_prover::core::backend::gpu::column::BaseFieldCudaColumn;
+    use stwo_prover::core::backend::gpu::GpuBackend;
+    const SIZE: usize = 1 << 26;
+    let data = BaseFieldCudaColumn::new((0..SIZE).map(BaseField::from).collect_vec());
+
+    c.bench_function("gpu bit_rev 26 bit", |b| {
+        b.iter_batched(
+            || data.clone(),
+            |mut data| <GpuBackend as ColumnOps<M31>>::bit_reverse_column(&mut data),
+            BatchSize::LargeInput,
+        );
+    });
+}
+
 criterion_group!(
     name = bit_rev;
     config = Criterion::default().sample_size(10);
-    targets = simd_bit_rev, cpu_bit_rev);
+    targets = gpu_bit_rev, simd_bit_rev, cpu_bit_rev);
 criterion_main!(bit_rev);
