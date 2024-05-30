@@ -1,11 +1,12 @@
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
+use super::channel::Blake2sChannel;
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
-use super::{ColumnVec, InteractionElements};
+use super::{ColumnVec, ComponentVec, InteractionElements};
 
 pub mod accumulation;
 mod air_ext;
@@ -22,6 +23,21 @@ pub use air_ext::{AirExt, AirProverExt};
 pub trait Air {
     fn components(&self) -> Vec<&dyn Component>;
 }
+
+pub trait AirTraceVerifier {
+    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements;
+}
+
+pub trait AirTraceWriter<B: Backend>: AirTraceVerifier {
+    fn interact(
+        &self,
+        trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        elements: &InteractionElements,
+    ) -> ComponentVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
+
+    fn to_air_prover(&self) -> &dyn AirProver<B>;
+}
+
 pub trait AirProver<B: Backend>: Air {
     fn prover_components(&self) -> Vec<&dyn ComponentProver<B>>;
 }
@@ -61,8 +77,7 @@ pub trait ComponentTraceWriter<B: Backend> {
     ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
 }
 
-// TODO(AlonH): Rethink this trait.
-pub trait ComponentProver<B: Backend>: Component + ComponentTraceWriter<B> {
+pub trait ComponentProver<B: Backend>: Component {
     /// Evaluates the constraint quotients of the component on the evaluation domain.
     /// Accumulates quotients in `evaluation_accumulator`.
     fn evaluate_constraint_quotients_on_domain(
