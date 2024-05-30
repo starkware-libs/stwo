@@ -10,7 +10,7 @@ blake2.workspace = true
 blake3.workspace = true
 bytemuck = { workspace = true, features = ["derive"] }
 cfg-if = "1.0.0"
-derivative.workspace = true
+educe.workspace = true
 hex.workspace = true
 itertools.workspace = true
 num-traits.workspace = true
