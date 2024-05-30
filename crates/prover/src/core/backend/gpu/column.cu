@@ -42,7 +42,7 @@ __global__ void batch_inverse(uint32_t *A, uint32_t *B, uint32_t *C, int size, i
             if((index >> step) % 2 == 1) {
                 A[index] = mul_m31(A[index], A[((index >> step) << step) - 1]);
             } else {
-                B[index] = mul_m31(B[index], B[((index >> step) + 1) << step]); // TODO: Be aware of warp diversions
+                B[index] = mul_m31(B[index], B[((index >> step) + 1) << step]); // TODO: Be aware of warp divergence
             }
             step++;
         }
