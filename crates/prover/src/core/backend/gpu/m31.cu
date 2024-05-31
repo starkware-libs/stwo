@@ -1,6 +1,13 @@
 
 __device__ __constant__ int MODULUS = (1 << 31) - 1; 
 
+
+extern "C" __global__  void test_add_m31(unsigned int lhs,  unsigned int rhs, unsigned int *out) {
+    *out = lhs + rhs; 
+    
+    *out = min(*out, *out - MODULUS);
+}
+
 // TODO: Use Shared memory per block over device
 extern "C" __global__  void mul_m31(unsigned int *a, unsigned int *b, unsigned int *out) {
     // unsigned int = u32
@@ -55,20 +62,27 @@ extern "C" __global__  void neg_m31(unsigned int *f) {
 
 // Make sure size is equal to thread count
 extern "C" __global__ void mul(unsigned int *a, unsigned int *b, unsigned int *out, int size) {
-    unsigned int tid = threadIdx.x;
+    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (tid < size) {
         mul_m31(&a[tid], &b[tid], &out[tid]);
     }
 }
 
-extern "C" __global__ void add(unsigned int *a, unsigned int *b, unsigned int *out, int size) {
-    unsigned int tid = threadIdx.x;
+// __device__ void add_m31_shared(unsigned int *lhs,  unsigned int *rhs, unsigned int *out, const int *m) {
+//     *out = *lhs + *rhs; 
+    
+//     *out = min(*out, *out - *m);
+// }
 
+extern "C" __global__ void add(unsigned int *a, unsigned int *b, unsigned int *out, int size) {
+    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid < size) {
         add_m31(&a[tid], &b[tid], &out[tid]);
     }
 }
+
+
 
 extern "C" __global__ void reduce(unsigned int *out, int size) {
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -79,7 +93,7 @@ extern "C" __global__ void reduce(unsigned int *out, int size) {
 }
 
 extern "C" __global__ void sub(unsigned int *a, unsigned int *b, unsigned int *out, int size) {
-    unsigned int tid = threadIdx.x;
+    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (tid < size) {
         sub_m31(&a[tid], &b[tid], &out[tid]);
@@ -87,7 +101,7 @@ extern "C" __global__ void sub(unsigned int *a, unsigned int *b, unsigned int *o
 }
 
 extern "C" __global__ void neg(unsigned int *a, int size) {
-    unsigned int tid = threadIdx.x;
+    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (tid < size) {
         neg_m31(&a[tid]);

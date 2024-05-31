@@ -2,6 +2,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use num_traits::One;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
+use stwo_prover::core::backend::gpu::m31::{PackedBaseField as GpuPackedBaseField, TestBaseField};
 use stwo_prover::core::backend::simd::m31::{PackedBaseField, N_LANES};
 use stwo_prover::core::fields::cm31::CM31;
 use stwo_prover::core::fields::m31::{BaseField, M31};
@@ -144,49 +145,133 @@ pub fn simd_m31_operations_bench(c: &mut Criterion) {
 
 pub fn gpu_m31_operations_bench(c: &mut Criterion) {
     let mut rng = SmallRng::seed_from_u64(0);
-    let elements: Vec<M31> = (0..N_ELEMENTS).map(|_| rng.gen()).collect();
-    let mut states = vec![BaseField::one(); N_STATE_ELEMENTS];
+    let mut elements: Vec<TestBaseField> =
+        (0..N_ELEMENTS).map(|_| TestBaseField(rng.gen())).collect();
+    let states: [M31; N_STATE_ELEMENTS] = rng.gen();
+    let mut states: [TestBaseField; N_STATE_ELEMENTS] = states.map(TestBaseField);
 
-    c.bench_function("mul_gpu", |b| {
-        b.iter(|| {
-            for elem in elements.iter() {
-                for _ in 0..128 {
-                    for state in states.iter_mut() {
-                        *state *= *elem;
-                    }
-                }
-            }
-        })
-    });
+    // let mut elements: Vec<GpuBaseField> = (0..N_ELEMENTS)
+    //     .map(|_| GpuBaseField::from_host(rng.gen()))
+    //     .collect();
+    // let mut states: Vec<GpuBaseField> = vec![GpuBaseField::one(); N_STATE_ELEMENTS];
+
+    // c.bench_function("mul_gpu", |b| {
+    //     b.iter(|| {
+    //         for elem in elements.iter() {
+    //             for _ in 0..128 {
+    //                 for state in states.iter_mut() {
+    //                     *state *= elem.clone();
+    //                 }
+    //             }
+    //         }
+    //     })
+    // });
 
     c.bench_function("add_gpu", |b| {
         b.iter(|| {
-            for elem in elements.iter() {
+            for elem in elements.iter_mut() {
                 for _ in 0..128 {
                     for state in states.iter_mut() {
-                        *state += *elem;
+                        state.add_assign_ref(elem);
                     }
                 }
             }
         })
     });
 
-    c.bench_function("sub_gpu", |b| {
+    // c.bench_function("sub_gpu", |b| {
+    //     b.iter(|| {
+    //         for elem in elements.iter() {
+    //             for _ in 0..128 {
+    //                 for state in states.iter_mut() {
+    //                     *state -= *(elem.clone());
+    //                 }
+    //             }
+    //         }
+    //     })
+    // });
+}
+
+pub fn gpu_packed_operations_bench(c: &mut Criterion) {
+    fn setup() -> (GpuPackedBaseField, GpuPackedBaseField) {
+        let mut rng = SmallRng::seed_from_u64(0);
+
+        let mut values: [M31; 524288] = [M31(0); 524288];
+        for j in 0..524288 {
+            values[j] = rng.gen();
+        }
+        let elements: GpuPackedBaseField = GpuPackedBaseField::from_array(values);
+        let states = GpuPackedBaseField::one();
+        (elements, states)
+    }
+
+    c.bench_function("mul_gpu_non_amortized", |b| {
+        let (elements, states) = setup();
         b.iter(|| {
-            for elem in elements.iter() {
-                for _ in 0..128 {
-                    for state in states.iter_mut() {
-                        *state -= *elem;
-                    }
-                }
+            for _ in 0..128 {
+                states.mul_assign_ref(&elements);
             }
         })
+    });
+
+    c.bench_function("mul_gpu_amortized", |b| {
+        b.iter_batched(
+            || setup(),
+            |(elements, states)| {
+                for _ in 0..128 {
+                    states.mul_assign_ref(&elements);
+                }
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    c.bench_function("add_gpu_non_amortized", |b| {
+        let (elements, states) = setup();
+        b.iter(|| {
+            for _ in 0..128 {
+                states.add_assign_ref(&elements);
+            }
+        })
+    });
+
+    c.bench_function("add_gpu_amortized", |b| {
+        b.iter_batched(
+            || setup(),
+            |(elements, states)| {
+                for _ in 0..128 {
+                    states.add_assign_ref(&elements);
+                }
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    c.bench_function("sub_gpu_non_amortized", |b| {
+        let (elements, states) = setup();
+        b.iter(|| {
+            for _ in 0..128 {
+                states.sub_assign_ref(&elements);
+            }
+        })
+    });
+
+    c.bench_function("sub_gpu_amortized", |b| {
+        b.iter_batched(
+            || setup(),
+            |(elements, states)| {
+                for _ in 0..128 {
+                    states.sub_assign_ref(&elements);
+                }
+            },
+            criterion::BatchSize::SmallInput,
+        )
     });
 }
 
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
-    targets = m31_operations_bench, cm31_operations_bench, qm31_operations_bench, 
-        simd_m31_operations_bench, gpu_m31_operations_bench);
+    targets = gpu_m31_operations_bench, m31_operations_bench, /*cm31_operations_bench, qm31_operations_bench,*/
+        simd_m31_operations_bench,  gpu_packed_operations_bench);
 criterion_main!(benches);
