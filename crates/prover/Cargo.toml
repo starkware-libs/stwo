@@ -47,6 +47,10 @@ rust-2018-idioms = "deny"
 unused = "deny"
 
 [[bench]]
+name = "batch_inverse"
+harness = false
+
+[[bench]]
 name = "bit_rev"
 harness = false
 
