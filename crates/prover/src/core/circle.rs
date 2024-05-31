@@ -7,7 +7,7 @@ use crate::core::channel::Channel;
 use crate::core::fields::qm31::P4;
 use crate::math::utils::egcd;
 
-/// A point on the complex circle. Treaed as an additive group.
+/// A point on the complex circle. Treated as an additive group.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CirclePoint<F: Field> {
     pub x: F,
