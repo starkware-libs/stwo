@@ -21,12 +21,10 @@ impl ColumnOps<BaseField> for GpuBackend {
         assert!(size.is_power_of_two() && size < u32::MAX as usize);
         let bits = u32::BITS - (size as u32).leading_zeros() - 1;
 
-        let mut device_column = column.to_device().unwrap();
         let config = LaunchConfig::for_num_elems(size as u32);
         let kernel = DEVICE.get_func("bit_reverse", "kernel").unwrap();
-        unsafe { kernel.launch(config, (&mut device_column, size, bits)) }.unwrap();
-
-        column.inplace_copy_from_slice(&device_column);
+        unsafe { kernel.launch(config, (column.as_mut_slice(), size, bits)) }.unwrap();
+        DEVICE.synchronize().unwrap();
     }
 }
 
@@ -46,22 +44,23 @@ pub fn load_bit_reverse_ptx(device: &Arc<CudaDevice>) {
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+
     use crate::core::backend::gpu::column::BaseFieldCudaColumn;
     use crate::core::backend::gpu::GpuBackend;
-    use crate::core::backend::{ColumnOps, CpuBackend};
+    use crate::core::backend::{Column, ColumnOps, CpuBackend};
     use crate::core::fields::m31::{BaseField, M31};
 
     #[test]
     fn test_bit_reverse() {
         let size: usize = 2048;
-        let mut column =
-            BaseFieldCudaColumn::new((0..size as u32).map(|x| M31(x)).collect::<Vec<_>>());
-
-        let mut expected_result = column.clone().into_vec();
+        let column_data = (0..size as u32).map(|x| M31(x)).collect_vec();
+        let mut expected_result = column_data.clone();
         CpuBackend::bit_reverse_column(&mut expected_result);
 
+        let mut column = BaseFieldCudaColumn::from_vec(column_data);
         <GpuBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut column);
 
-        assert_eq!(column.into_vec(), expected_result);
+        assert_eq!(column.to_cpu(), expected_result);
     }
 }

@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 
-use cudarc::driver::{CudaSlice, DeviceRepr, DriverError};
+use cudarc::driver::{CudaSlice, DeviceRepr, DeviceSlice};
 
 use super::{GpuBackend, DEVICE};
 use crate::core::backend::Column;
@@ -15,7 +15,7 @@ unsafe impl DeviceRepr for M31 {
 }
 
 impl FieldOps<BaseField> for GpuBackend {
-    fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {
+    fn batch_inverse(_from: &Self::Column, _dst: &mut Self::Column) {
         todo!()
     }
 }
@@ -27,40 +27,36 @@ impl FieldOps<SecureField> for GpuBackend {
 }
 
 #[derive(Debug, Clone)]
-pub struct BaseFieldCudaColumn(Vec<M31>);
+pub struct BaseFieldCudaColumn(CudaSlice<M31>);
 
 #[allow(unused)]
 impl BaseFieldCudaColumn {
-    pub fn new(column: Vec<M31>) -> Self {
+    pub fn new(column: CudaSlice<M31>) -> Self {
         Self(column)
     }
 
-    pub fn inplace_copy_from_slice(&mut self, cuda_slice: &CudaSlice<M31>) {
-        DEVICE.dtoh_sync_copy_into(cuda_slice, &mut self.0);
+    pub fn from_vec(column: Vec<M31>) -> Self {
+        Self(DEVICE.htod_sync_copy(&column).unwrap())
     }
 
-    pub fn into_vec(self) -> Vec<M31> {
-        self.0
-    }
-
-    pub fn to_device(&self) -> Result<CudaSlice<M31>, DriverError> {
-        DEVICE.htod_sync_copy(&self.0)
+    pub fn as_mut_slice(&mut self) -> &mut CudaSlice<M31> {
+        &mut self.0
     }
 }
 
 impl FromIterator<BaseField> for BaseFieldCudaColumn {
-    fn from_iter<T: IntoIterator<Item = BaseField>>(iter: T) -> Self {
-        BaseFieldCudaColumn(iter.into_iter().collect())
+    fn from_iter<T: IntoIterator<Item = BaseField>>(_iter: T) -> Self {
+        todo!()
     }
 }
 
 impl Column<BaseField> for BaseFieldCudaColumn {
-    fn zeros(len: usize) -> Self {
-        Self(vec![M31::default(); len])
+    fn zeros(_len: usize) -> Self {
+        todo!()
     }
 
     fn to_cpu(&self) -> Vec<BaseField> {
-        self.0.clone()
+        DEVICE.dtoh_sync_copy(&self.0).unwrap()
     }
 
     fn len(&self) -> usize {
