@@ -8,6 +8,12 @@ extern "C" __global__  void test_add_m31(unsigned int lhs,  unsigned int rhs, un
     *out = min(*out, *out - MODULUS);
 }
 
+extern "C" __global__  void benchmark_add(unsigned int lhs,  unsigned int rhs, unsigned int *out) {
+    *out = lhs + rhs; 
+    
+    *out = min(*out, *out - MODULUS);
+}
+
 // TODO: Use Shared memory per block over device
 extern "C" __global__  void mul_m31(unsigned int *a, unsigned int *b, unsigned int *out) {
     // unsigned int = u32

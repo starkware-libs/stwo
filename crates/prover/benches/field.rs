@@ -193,6 +193,8 @@ pub fn gpu_m31_operations_bench(c: &mut Criterion) {
     // });
 }
 
+// todo:: cuda function to
+
 pub fn gpu_packed_operations_bench(c: &mut Criterion) {
     fn setup() -> (GpuPackedBaseField, GpuPackedBaseField) {
         let mut rng = SmallRng::seed_from_u64(0);
@@ -206,8 +208,9 @@ pub fn gpu_packed_operations_bench(c: &mut Criterion) {
         (elements, states)
     }
 
-    // The Vec State is flattened into CudaSlice and Vec Element is adjusted respectively
-    fn setup_fix() -> (Vec<GpuPackedBaseField>, GpuPackedBaseField) {
+    // TODO:: Convert to CUDA function with respective thread blocks for 2d array flattened
+    // // The Vec State is flattened into CudaSlice and Vec Element is adjusted respectively
+    fn setup_cuda_parallel() -> (Vec<GpuPackedBaseField>, GpuPackedBaseField) {
         let mut rng = SmallRng::seed_from_u64(0);
         const SIZE: usize = N_STATE_ELEMENTS * N_LANES;
         const ELEMENTS_SIZE: usize = N_ELEMENTS / SIZE;
@@ -223,14 +226,15 @@ pub fn gpu_packed_operations_bench(c: &mut Criterion) {
                 )
             })
             .collect();
-        let state_values: GpuPackedBaseField = GpuPackedBaseField::one(); // GpuPackedBaseField::broadcast(M31(1), Some(SIZE));
+        let state_values: GpuPackedBaseField = GpuPackedBaseField::one(); //
+        GpuPackedBaseField::broadcast(M31(1), Some(SIZE));
         (element_values, state_values)
     }
 
     c.bench_function("mul_gpu_amortized_fixed", |b| {
         // let (elements, states) = ;
         b.iter_batched(
-            || setup_fix(),
+            || setup_cuda_parallel(),
             |(elements, states)| {
                 for element in elements.iter() {
                     for _ in 0..128 {
