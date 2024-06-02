@@ -1,7 +1,7 @@
 use itertools::Itertools;
 
 use crate::core::air::accumulation::PointEvaluationAccumulator;
-use crate::core::air::mask::fixed_mask_points;
+use crate::core::air::mask::shifted_mask_points;
 use crate::core::air::{Air, Component, ComponentTraceWriter};
 use crate::core::backend::CpuBackend;
 use crate::core::circle::CirclePoint;
@@ -81,8 +81,16 @@ impl Component for WideFibComponent {
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
         TreeVec::new(vec![
-            fixed_mask_points(&vec![vec![0_usize]; self.n_columns()], point),
-            vec![vec![point]; SECURE_EXTENSION_DEGREE],
+            shifted_mask_points(
+                &vec![vec![0_usize]; self.n_columns()],
+                &vec![CanonicCoset::new(self.log_column_size()); self.n_columns()],
+                point,
+            ),
+            shifted_mask_points(
+                &vec![vec![0_usize]; SECURE_EXTENSION_DEGREE],
+                &vec![CanonicCoset::new(self.log_column_size()); SECURE_EXTENSION_DEGREE],
+                point,
+            ),
         ])
     }
 
