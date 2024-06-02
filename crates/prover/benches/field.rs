@@ -1,4 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
+use itertools::Itertools;
 use num_traits::One;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
@@ -195,15 +196,51 @@ pub fn gpu_m31_operations_bench(c: &mut Criterion) {
 pub fn gpu_packed_operations_bench(c: &mut Criterion) {
     fn setup() -> (GpuPackedBaseField, GpuPackedBaseField) {
         let mut rng = SmallRng::seed_from_u64(0);
-
-        let mut values: [M31; 524288] = [M31(0); 524288];
-        for j in 0..524288 {
-            values[j] = rng.gen();
-        }
+        let values: [M31; 524288] = (0..524288)
+            .map(|_| rng.gen())
+            .collect_vec()
+            .try_into()
+            .unwrap();
         let elements: GpuPackedBaseField = GpuPackedBaseField::from_array(values);
-        let states = GpuPackedBaseField::one();
+        let states = GpuPackedBaseField::from_array(values); // GpuPackedBaseField::one();
         (elements, states)
     }
+
+    // The Vec State is flattened into CudaSlice and Vec Element is adjusted respectively
+    fn setup_fix() -> (Vec<GpuPackedBaseField>, GpuPackedBaseField) {
+        let mut rng = SmallRng::seed_from_u64(0);
+        const SIZE: usize = N_STATE_ELEMENTS * N_LANES;
+        const ELEMENTS_SIZE: usize = N_ELEMENTS / SIZE;
+
+        let element_values: Vec<GpuPackedBaseField> = (0..ELEMENTS_SIZE)
+            .map(|_| {
+                GpuPackedBaseField::from_array::<SIZE>(
+                    (0..SIZE)
+                        .map(|_| rng.gen())
+                        .collect_vec()
+                        .try_into()
+                        .unwrap(),
+                )
+            })
+            .collect();
+        let state_values: GpuPackedBaseField = GpuPackedBaseField::one(); // GpuPackedBaseField::broadcast(M31(1), Some(SIZE));
+        (element_values, state_values)
+    }
+
+    c.bench_function("mul_gpu_amortized_fixed", |b| {
+        // let (elements, states) = ;
+        b.iter_batched(
+            || setup_fix(),
+            |(elements, states)| {
+                for element in elements.iter() {
+                    for _ in 0..128 {
+                        states.mul_assign_ref(&element);
+                    }
+                }
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
 
     c.bench_function("mul_gpu_non_amortized", |b| {
         let (elements, states) = setup();
@@ -272,6 +309,6 @@ pub fn gpu_packed_operations_bench(c: &mut Criterion) {
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
-    targets = gpu_m31_operations_bench, m31_operations_bench, /*cm31_operations_bench, qm31_operations_bench,*/
-        simd_m31_operations_bench,  gpu_packed_operations_bench);
+    targets =  /*m31_operations_bench, cm31_operations_bench, qm31_operations_bench,
+        simd_m31_operations_bench,*/  gpu_packed_operations_bench);
 criterion_main!(benches);
