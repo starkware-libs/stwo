@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use itertools::{zip_eq, Itertools};
 use num_traits::Zero;
 
-use super::component::{Input, WideFibAir, WideFibComponent, ALPHA_ID, Z_ID};
+use super::component::{FibInput, WideFibAir, WideFibComponent, ALPHA_ID, Z_ID};
 use super::trace_gen::write_trace_row;
 use crate::core::air::accumulation::{ColumnAccumulator, DomainEvaluationAccumulator};
 use crate::core::air::{
@@ -176,7 +176,7 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
 /// Generates the trace for the wide Fibonacci example.
 pub fn gen_trace(
     wide_fib: &WideFibComponent,
-    private_input: Vec<Input>,
+    private_input: Vec<FibInput>,
 ) -> ColumnVec<Vec<BaseField>> {
     let n_instances = 1 << wide_fib.log_n_instances;
     assert_eq!(
@@ -197,7 +197,7 @@ pub fn gen_trace(
             .map(|instance| {
                 let (a, b) =
                     write_trace_row(&mut dst, &input[instance], row * n_instances + instance);
-                Input { a, b }
+                FibInput { a, b }
             })
             .collect_vec()
     });

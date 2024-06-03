@@ -10,7 +10,7 @@ mod tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
 
-    use super::component::{Input, WideFibAir, WideFibComponent, LOG_N_COLUMNS};
+    use super::component::{FibInput, WideFibAir, WideFibComponent, LOG_N_COLUMNS};
     use super::constraint_eval::gen_trace;
     use crate::core::air::accumulation::DomainEvaluationAccumulator;
     use crate::core::air::{Component, ComponentProver, ComponentTrace, ComponentTraceWriter};
@@ -87,7 +87,7 @@ mod tests {
             log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: 1,
         };
-        let input = Input {
+        let input = FibInput {
             a: m31!(0x76),
             b: m31!(0x483),
         };
@@ -106,7 +106,7 @@ mod tests {
             log_fibonacci_size: 4 + LOG_N_COLUMNS as u32,
             log_n_instances: 0,
         };
-        let input = Input {
+        let input = FibInput {
             a: m31!(1),
             b: m31!(1),
         };
@@ -133,7 +133,7 @@ mod tests {
             wide_fib.n_constraints(),
         );
         let inputs = (0..1 << wide_fib.log_n_instances)
-            .map(|i| Input {
+            .map(|i| FibInput {
                 a: m31!(1),
                 b: m31!(i as u32),
             })
@@ -214,7 +214,7 @@ mod tests {
             log_n_instances: LOG_N_INSTANCES,
         };
         let private_input = (0..(1 << LOG_N_INSTANCES))
-            .map(|i| Input {
+            .map(|i| FibInput {
                 a: m31!(1),
                 b: m31!(i),
             })

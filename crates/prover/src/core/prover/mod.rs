@@ -356,7 +356,7 @@ mod tests {
     use crate::core::{ColumnVec, InteractionElements};
     use crate::qm31;
 
-    struct TestAir<C: ComponentProver<CpuBackend>> {
+    struct TestAir<C: ComponentProver<CpuBackend> + ComponentTraceWriter<CpuBackend>> {
         component: C,
     }
 
@@ -439,6 +439,16 @@ mod tests {
             _elements: &InteractionElements,
         ) -> ColumnVec<SecureEvaluation<CpuBackend>> {
             vec![]
+        }
+
+        type InputType = BaseField;
+
+        fn write_trace(
+            &self,
+            _secrets: &[Self::InputType],
+        ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+            // Call auto-generated function.
+            todo!()
         }
     }
 

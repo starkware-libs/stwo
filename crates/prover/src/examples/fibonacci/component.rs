@@ -16,6 +16,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureEvaluation
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
 use crate::core::{ColumnVec, InteractionElements};
+use crate::examples::wide_fibonacci::component::FibInput;
 
 pub struct FibonacciComponent {
     pub log_size: u32,
@@ -129,6 +130,16 @@ impl ComponentTraceWriter<CpuBackend> for FibonacciComponent {
         _elements: &InteractionElements,
     ) -> ColumnVec<SecureEvaluation<CpuBackend>> {
         vec![]
+    }
+
+    type InputType = FibInput;
+
+    fn write_trace(
+        &self,
+        _secrets: &[Self::InputType],
+    ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+        // TODO(Ohad): implement.
+        todo!()
     }
 }
 

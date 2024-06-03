@@ -29,7 +29,7 @@ pub trait AirTraceVerifier {
     fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements;
 }
 
-pub trait AirTraceWriter<B: Backend>: AirTraceVerifier {
+pub trait AirTraceWriter<B: Backend>: AirTraceVerifier + Air {
     fn interact(
         &self,
         trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
@@ -71,7 +71,13 @@ pub trait Component {
     );
 }
 
-pub trait ComponentTraceWriter<B: Backend> {
+pub trait ComponentTraceWriter<B: Backend>: Component {
+    type InputType;
+    fn write_trace(
+        &self,
+        secrets: &[Self::InputType],
+    ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
+
     fn write_interaction_trace(
         &self,
         trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,

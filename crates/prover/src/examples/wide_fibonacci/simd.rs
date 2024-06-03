@@ -164,6 +164,16 @@ impl ComponentTraceWriter<SimdBackend> for SimdWideFibComponent {
     ) -> ColumnVec<SecureEvaluation<SimdBackend>> {
         vec![]
     }
+
+    type InputType = BaseField;
+
+    fn write_trace(
+        &self,
+        _secrets: &[Self::InputType],
+    ) -> Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+        // TODO(Ohad): Implement.
+        todo!()
+    }
 }
 
 impl ComponentProver<SimdBackend> for SimdWideFibComponent {

@@ -1,8 +1,10 @@
 use itertools::Itertools;
 
+use super::constraint_eval::gen_trace;
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, Component, ComponentTraceWriter};
+use crate::core::backend::cpu::CpuCircleEvaluation;
 use crate::core::backend::CpuBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::{coset_vanishing, point_vanishing};
@@ -142,11 +144,26 @@ impl ComponentTraceWriter<CpuBackend> for WideFibComponent {
         };
         vec![eval]
     }
+
+    type InputType = FibInput;
+
+    fn write_trace(
+        &self,
+        secrets: &[Self::InputType],
+    ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+        // TODO(Ohad): Implement.
+        let trace = gen_trace(self, secrets.to_vec());
+        let trace_domain = CanonicCoset::new(self.log_column_size()).circle_domain();
+        trace
+            .into_iter()
+            .map(|eval| CpuCircleEvaluation::<_, BitReversedOrder>::new(trace_domain, eval))
+            .collect_vec()
+    }
 }
 
 // Input for the fibonacci claim.
 #[derive(Debug, Clone, Copy)]
-pub struct Input {
+pub struct FibInput {
     pub a: BaseField,
     pub b: BaseField,
 }

@@ -1,6 +1,6 @@
 use num_traits::One;
 
-use super::component::Input;
+use super::component::FibInput;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
@@ -10,7 +10,7 @@ use crate::core::utils::shifted_secure_combination;
 /// last two elements of the row in case the sequence is continued.
 pub fn write_trace_row(
     dst: &mut [Vec<BaseField>],
-    private_input: &Input,
+    private_input: &FibInput,
     row_index: usize,
 ) -> (BaseField, BaseField) {
     let n_columns = dst.len();
