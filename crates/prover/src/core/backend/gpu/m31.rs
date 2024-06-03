@@ -287,16 +287,32 @@ impl PackedBaseField {
         Self(DEVICE.htod_copy(vec![v; size]).unwrap())
     }
 
-    pub fn from_array<const N: usize>(v: [M31; N]) -> PackedBaseField {
+    pub fn from_fixed_array<const N: usize>(v: [M31; N]) -> PackedBaseField {
         Self(DEVICE.htod_copy(v.map(|M31(v)| v).to_vec()).unwrap())
     }
 
-    pub fn to_array<const N: usize>(self) -> [M31; N] {
+    pub fn from_array(v: Vec<M31>) -> PackedBaseField {
+        Self(
+            DEVICE
+                .htod_copy(v.into_iter().map(|M31(v)| v).collect())
+                .unwrap(),
+        )
+    }
+
+    pub fn to_fixed_array<const N: usize>(self) -> [M31; N] {
         let host = TryInto::<[u32; N]>::try_into(DEVICE.dtoh_sync_copy(&self.reduce().0).unwrap())
             .unwrap();
         host.map(M31)
     }
 
+    pub fn to_array(self) -> Vec<M31> {
+        DEVICE
+            .dtoh_sync_copy(&self.reduce().0)
+            .unwrap()
+            .iter()
+            .map(|&v| M31(v))
+            .collect()
+    }
     /// Reduces each word in the 512-bit register to the range `[0, P)`.
     pub fn reduce(self) -> PackedBaseField {
         let reduce_kernel = self
@@ -517,7 +533,6 @@ impl One for PackedBaseField {
 
 #[cfg(test)]
 mod tests {
-    use std::array;
 
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
@@ -537,6 +552,7 @@ mod tests {
 
         assert_eq!(packed_lhs.0, lhs + rhs);
     }
+
     #[test]
     fn test_addition_m31() {
         let mut rng = SmallRng::seed_from_u64(0);
@@ -597,86 +613,90 @@ mod tests {
 
     #[test]
     fn test_addition() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let mut lhs: [M31; 1024] = [M31(0); 1024];
-        let mut rhs: [M31; 1024] = [M31(0); 1024];
-        for i in 0..1024 {
-            lhs[i] = rng.gen();
-            rhs[i] = rng.gen();
-        }
-        let packed_lhs = PackedBaseField::from_array(lhs);
-        let packed_rhs = PackedBaseField::from_array(rhs);
+        let (lhs, rhs) = setup(100000);
+        let mut packed_lhs = PackedBaseField::from_array(lhs.clone());
+        let packed_rhs = PackedBaseField::from_array(rhs.clone());
 
-        let res = packed_lhs + packed_rhs;
+        packed_lhs += packed_rhs;
 
-        assert_eq!(res.to_array::<1024>(), array::from_fn(|i| lhs[i] + rhs[i]));
+        assert_eq!(
+            packed_lhs.to_array(),
+            lhs.iter()
+                .zip(rhs.iter())
+                .map(|(&l, &r)| l + r)
+                .collect::<Vec<M31>>()
+        );
     }
 
     #[test]
     fn test_subtraction() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let mut lhs: [M31; 1024] = [M31(0); 1024];
-        let mut rhs: [M31; 1024] = [M31(0); 1024];
-        for i in 0..1024 {
-            lhs[i] = rng.gen();
-            rhs[i] = rng.gen();
-        }
-        let packed_lhs = PackedBaseField::from_array(lhs);
-        let packed_rhs = PackedBaseField::from_array(rhs);
+        let (lhs, rhs) = setup(100000);
+        let mut packed_lhs = PackedBaseField::from_array(lhs.clone());
+        let packed_rhs = PackedBaseField::from_array(rhs.clone());
 
-        let res = packed_lhs - packed_rhs;
+        packed_lhs -= packed_rhs;
 
-        assert_eq!(res.to_array::<1024>(), array::from_fn(|i| lhs[i] - rhs[i]));
+        assert_eq!(
+            packed_lhs.to_array(),
+            lhs.iter()
+                .zip(rhs.iter())
+                .map(|(&l, &r)| l - r)
+                .collect::<Vec<M31>>()
+        );
     }
 
     #[test]
     fn test_multiplication() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let mut lhs: [M31; 1024] = [M31(0); 1024];
-        let mut rhs: [M31; 1024] = [M31(0); 1024];
-        for i in 0..1024 {
-            lhs[i] = rng.gen();
-            rhs[i] = rng.gen();
-        }
-        let packed_lhs = PackedBaseField::from_array(lhs);
-        let packed_rhs = PackedBaseField::from_array(rhs);
+        let (lhs, rhs) = setup(100000);
+        let mut packed_lhs = PackedBaseField::from_array(lhs.clone());
+        let packed_rhs = PackedBaseField::from_array(rhs.clone());
 
-        let res = packed_lhs * packed_rhs;
+        packed_lhs *= packed_rhs;
 
-        assert_eq!(res.to_array::<1024>(), array::from_fn(|i| lhs[i] * rhs[i]));
+        assert_eq!(
+            packed_lhs.to_array(),
+            lhs.iter()
+                .zip(rhs.iter())
+                .map(|(&l, &r)| l * r)
+                .collect::<Vec<M31>>()
+        );
     }
 
     #[test]
     fn test_negation() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let mut values: [M31; 1024] = [M31(0); 1024];
-        for i in 0..1024 {
-            values[i] = rng.gen();
-        }
-        let packed_values = PackedBaseField::from_array(values);
+        let (lhs, _) = setup(100000);
+        let packed_values = PackedBaseField::from_array(lhs.clone());
 
         let res = -packed_values;
 
-        assert_eq!(res.to_array::<1024>(), array::from_fn(|i| -values[i]));
+        assert_eq!(
+            res.to_array(),
+            lhs.iter().map(|&l| -M31(l.0)).collect::<Vec<M31>>()
+        )
     }
 
     #[test]
     fn test_addition_ref_mut() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let mut lhs: [M31; 1024] = [M31(0); 1024];
-        let mut rhs: [M31; 1024] = [M31(0); 1024];
-        for i in 0..1 {
-            lhs[i] = rng.gen();
-            rhs[i] = rng.gen();
-        }
-        let packed_lhs = PackedBaseField::from_array(lhs);
-        let packed_rhs = PackedBaseField::from_array(rhs);
+        let (lhs, rhs) = setup(100000);
+
+        let packed_lhs = PackedBaseField::from_array(lhs.clone());
+        let packed_rhs = PackedBaseField::from_array(rhs.clone());
 
         packed_lhs.add_assign_ref(&packed_rhs);
 
         assert_eq!(
-            packed_lhs.to_array::<1024>(),
-            array::from_fn(|i| lhs[i] + rhs[i])
+            packed_lhs.to_array(),
+            lhs.iter()
+                .zip(rhs.iter())
+                .map(|(&l, &r)| l + r)
+                .collect::<Vec<M31>>()
         );
+    }
+
+    fn setup(size: usize) -> (Vec<M31>, Vec<M31>) {
+        let mut rng: SmallRng = SmallRng::seed_from_u64(0);
+        std::iter::repeat_with(|| (rng.gen::<M31>(), rng.gen::<M31>()))
+            .take(size)
+            .unzip()
     }
 }
