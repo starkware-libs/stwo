@@ -16,6 +16,9 @@ use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 const IV: [u32; 8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
 ];
@@ -48,8 +51,14 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         columns: &[&Col<Self, BaseField>],
     ) -> Vec<Blake2sHash> {
         if log_size < N_LANES as u32 {
-            return (0..1 << log_size)
-                .map(|i| {
+    
+            #[cfg(not(feature = "parallel"))]
+            let iter = 0..1 << log_size;
+
+            #[cfg(feature = "parallel")]
+            let iter = (0..1 << log_size).into_par_iter();
+            
+            return iter.map(|i| {
                     Blake2sMerkleHasher::hash_node(
                         prev_layer.map(|prev_layer| (prev_layer[2 * i], prev_layer[2 * i + 1])),
                         &columns.iter().map(|column| column.at(i)).collect_vec(),
