@@ -42,7 +42,16 @@ __device__ void new_backward_layer(uint32_t *from, uint32_t *dst, int index) {
 extern "C"
 __global__ void batch_inverse(uint32_t *from, uint32_t *dst, uint32_t *inner_tree, int size, int log_size) {
     // Montgomery's trick.
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int index = threadIdx.x;
+
+    if(size >= 2048) {
+        size = 2048;
+        log_size = 11;
+    }
+
+    from = &from[2 * blockIdx.x * blockDim.x];
+    dst = &dst[2 * blockIdx.x * blockDim.x];
+    inner_tree = &inner_tree[2 * blockIdx.x * blockDim.x];
 
     size = size >> 1;
 

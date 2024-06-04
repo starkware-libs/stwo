@@ -21,7 +21,7 @@ impl FieldOps<BaseField> for GpuBackend {
         let size = from.len();
         let log_size = u32::BITS - (size as u32).leading_zeros() - 1;
 
-        let config = LaunchConfig::for_num_elems(size as u32);
+        let config = LaunchConfig::for_num_elems(size as u32 >> 1);
         let batch_inverse = DEVICE.get_func("column", "batch_inverse").unwrap();
         unsafe {
             let mut inner_tree:CudaSlice<M31> = DEVICE.alloc(size).unwrap();
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_batch_inverse() {
-        let size: usize = 2048;
+        let size: usize = 1 << 12;
         let from = (1..(size+1) as u32).map(|x| M31(x)).collect_vec();
         let dst = from.clone();
         let mut dst_expected = dst.clone();
