@@ -1,77 +1,47 @@
 use std::iter;
 
-use super::fields::m31::{BaseField, N_BYTES_FELT, P};
-use super::fields::qm31::SecureField;
-use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
-use super::fields::IntoSlice;
-use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
-use crate::core::vcs::hasher::Hasher;
+use starknet_crypto::poseidon_hash;
+use starknet_ff::FieldElement as FieldElement252;
+
+use super::{Channel, ChannelTime};
+use crate::core::fields::m31::{BaseField, P};
+use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
-pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 
-#[derive(Default)]
-pub struct ChannelTime {
-    n_challenges: usize,
-    n_sent: usize,
-}
-
-impl ChannelTime {
-    fn inc_sent(&mut self) {
-        self.n_sent += 1;
-    }
-
-    fn inc_challenges(&mut self) {
-        self.n_challenges += 1;
-        self.n_sent = 0;
-    }
-}
-
-pub trait Channel {
-    type Digest;
-
-    const BYTES_PER_HASH: usize;
-
-    fn new(digest: Self::Digest) -> Self;
-    fn get_digest(&self) -> Self::Digest;
-
-    // Mix functions.
-    fn mix_digest(&mut self, digest: Self::Digest);
-    fn mix_felts(&mut self, felts: &[SecureField]);
-    fn mix_nonce(&mut self, nonce: u64);
-
-    // Draw functions.
-    fn draw_felt(&mut self) -> SecureField;
-    /// Generates a uniform random vector of SecureField elements.
-    fn draw_felts(&mut self, n_felts: usize) -> Vec<SecureField>;
-    /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
-    fn draw_random_bytes(&mut self) -> Vec<u8>;
-}
-
-/// A channel that can be used to draw random elements from a [Blake2sHash] digest.
-pub struct Blake2sChannel {
-    digest: Blake2sHash,
+/// A channel that can be used to draw random elements from a Poseidon252 hash.
+pub struct Poseidon252Channel {
+    digest: FieldElement252,
     channel_time: ChannelTime,
 }
 
-impl Blake2sChannel {
+impl Poseidon252Channel {
+    fn draw_felt252(&mut self) -> FieldElement252 {
+        let res = poseidon_hash(self.digest, self.channel_time.n_sent.into());
+        self.channel_time.inc_sent();
+        res
+    }
+
     /// Generates a uniform random vector of BaseField elements.
-    fn draw_base_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
+    fn draw_base_felts(&mut self) -> [BaseField; 8] {
+        let shift = (1u64 << 31).into();
+
         // Repeats hashing with an increasing counter until getting a good result.
         // Retry probability for each round is ~ 2^(-28).
         loop {
-            let random_bytes: [u32; FELTS_PER_HASH] = self
-                .draw_random_bytes()
-                .chunks_exact(N_BYTES_FELT) // 4 bytes per u32.
-                .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
+            let mut cur = self.draw_felt252();
+            let u32s: [u32; 8] = std::array::from_fn(|_| {
+                let next = cur.floor_div(shift);
+                let res = cur - next * shift;
+                cur = next;
+                res.try_into().unwrap()
+            });
 
             // Retry if not all the u32 are in the range [0, 2P).
-            if random_bytes.iter().all(|x| *x < 2 * P) {
-                return random_bytes
+            if u32s.iter().all(|x| *x < 2 * P) {
+                return u32s
                     .into_iter()
                     .map(|x| BaseField::reduce(x as u64))
                     .collect::<Vec<_>>()
@@ -82,12 +52,12 @@ impl Blake2sChannel {
     }
 }
 
-impl Channel for Blake2sChannel {
-    type Digest = Blake2sHash;
+impl Channel for Poseidon252Channel {
+    type Digest = FieldElement252;
     const BYTES_PER_HASH: usize = BLAKE_BYTES_PER_HASH;
 
     fn new(digest: Self::Digest) -> Self {
-        Blake2sChannel {
+        Poseidon252Channel {
             digest,
             channel_time: ChannelTime::default(),
         }
@@ -98,27 +68,35 @@ impl Channel for Blake2sChannel {
     }
 
     fn mix_digest(&mut self, digest: Self::Digest) {
-        self.digest = Blake2sHasher::concat_and_hash(&self.digest, &digest);
+        self.digest = poseidon_hash(self.digest, digest);
         self.channel_time.inc_challenges();
     }
 
     fn mix_felts(&mut self, felts: &[SecureField]) {
-        let mut hasher = Blake2sHasher::new();
-        hasher.update(self.digest.as_ref());
-        hasher.update(IntoSlice::<u8>::into_slice(felts));
+        let shift = (1u64 << 31).into();
+        let mut cur = FieldElement252::default();
+        let mut in_chunk = 0;
+        for x in felts {
+            for y in x.to_m31_array() {
+                cur = cur * shift + y.0.into();
+            }
+            in_chunk += 1;
+            if in_chunk == 2 {
+                self.digest = poseidon_hash(self.digest, cur);
+                cur = FieldElement252::default();
+                in_chunk = 0;
+            }
+        }
+        if in_chunk > 0 {
+            self.digest = poseidon_hash(self.digest, cur);
+        }
 
-        self.digest = hasher.finalize();
+        // TODO(spapini): do we need length padding?
         self.channel_time.inc_challenges();
     }
 
     fn mix_nonce(&mut self, nonce: u64) {
-        // Copy the elements from the original array to the new array
-        let mut padded_nonce = vec![0; BLAKE_BYTES_PER_HASH];
-        padded_nonce[..8].copy_from_slice(&nonce.to_le_bytes());
-
-        self.digest =
-            Blake2sHasher::concat_and_hash(&self.digest, &Blake2sHash::from(padded_nonce));
-        self.channel_time.inc_challenges();
+        self.mix_digest(nonce.into())
     }
 
     fn draw_felt(&mut self) -> SecureField {
@@ -140,17 +118,15 @@ impl Channel for Blake2sChannel {
     }
 
     fn draw_random_bytes(&mut self) -> Vec<u8> {
-        let mut hash_input = self.digest.as_ref().to_vec();
-
-        // Pad the counter to 32 bytes.
-        let mut padded_counter = [0; BLAKE_BYTES_PER_HASH];
-        let counter_bytes = self.channel_time.n_sent.to_le_bytes();
-        padded_counter[0..counter_bytes.len()].copy_from_slice(&counter_bytes);
-
-        hash_input.extend_from_slice(&padded_counter);
-
-        self.channel_time.inc_sent();
-        Blake2sHasher::hash(&hash_input).into()
+        let shift = (1u64 << 8).into();
+        let mut cur = self.draw_felt252();
+        let bytes: [u8; 31] = std::array::from_fn(|_| {
+            let next = cur.floor_div(shift);
+            let res = cur - next * shift;
+            cur = next;
+            res.try_into().unwrap()
+        });
+        bytes.to_vec()
     }
 }
 
@@ -158,15 +134,17 @@ impl Channel for Blake2sChannel {
 mod tests {
     use std::collections::BTreeSet;
 
-    use crate::core::channel::{Blake2sChannel, Channel};
+    use starknet_ff::FieldElement as FieldElement252;
+
+    use crate::core::channel::poseidon252::Poseidon252Channel;
+    use crate::core::channel::Channel;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::vcs::blake2_hash::Blake2sHash;
     use crate::m31;
 
     #[test]
     fn test_initialize_channel() {
-        let initial_digest = Blake2sHash::from(vec![0; 32]);
-        let channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = FieldElement252::default();
+        let channel = Poseidon252Channel::new(initial_digest);
 
         // Assert that the channel is initialized correctly.
         assert_eq!(channel.digest, initial_digest);
@@ -176,8 +154,8 @@ mod tests {
 
     #[test]
     fn test_channel_time() {
-        let initial_digest = Blake2sHash::from(vec![0; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = FieldElement252::default();
+        let mut channel = Poseidon252Channel::new(initial_digest);
 
         assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 0);
@@ -190,7 +168,7 @@ mod tests {
         assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 6);
 
-        channel.mix_digest(Blake2sHash::from(vec![1; 32]));
+        channel.mix_digest(FieldElement252::default());
         assert_eq!(channel.channel_time.n_challenges, 1);
         assert_eq!(channel.channel_time.n_sent, 0);
 
@@ -202,8 +180,8 @@ mod tests {
 
     #[test]
     fn test_draw_random_bytes() {
-        let initial_digest = Blake2sHash::from(vec![1; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = FieldElement252::default();
+        let mut channel = Poseidon252Channel::new(initial_digest);
 
         let first_random_bytes = channel.draw_random_bytes();
 
@@ -213,8 +191,8 @@ mod tests {
 
     #[test]
     pub fn test_draw_felt() {
-        let initial_digest = Blake2sHash::from(vec![2; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = FieldElement252::default();
+        let mut channel = Poseidon252Channel::new(initial_digest);
 
         let first_random_felt = channel.draw_felt();
 
@@ -224,8 +202,8 @@ mod tests {
 
     #[test]
     pub fn test_draw_felts() {
-        let initial_digest = Blake2sHash::from(vec![2; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = FieldElement252::default();
+        let mut channel = Poseidon252Channel::new(initial_digest);
 
         let mut random_felts = channel.draw_felts(5);
         random_felts.extend(channel.draw_felts(4));
@@ -239,8 +217,8 @@ mod tests {
 
     #[test]
     pub fn test_mix_digest() {
-        let initial_digest = Blake2sHash::from(vec![0; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = FieldElement252::default();
+        let mut channel = Poseidon252Channel::new(initial_digest);
 
         for _ in 0..10 {
             channel.draw_random_bytes();
@@ -248,14 +226,14 @@ mod tests {
         }
 
         // Reseed channel and check the digest was changed.
-        channel.mix_digest(Blake2sHash::from(vec![1; 32]));
+        channel.mix_digest(FieldElement252::default());
         assert_ne!(initial_digest, channel.digest);
     }
 
     #[test]
     pub fn test_mix_felts() {
-        let initial_digest = Blake2sHash::from(vec![0; 32]);
-        let mut channel = Blake2sChannel::new(initial_digest);
+        let initial_digest = FieldElement252::default();
+        let mut channel = Poseidon252Channel::new(initial_digest);
         let felts: Vec<SecureField> = (0..2)
             .map(|i| SecureField::from(m31!(i + 1923782)))
             .collect();
