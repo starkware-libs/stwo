@@ -3,6 +3,11 @@ name = "stwo-prover"
 version.workspace = true
 edition.workspace = true
 
+
+[features]
+parallel = []
+
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -19,6 +24,7 @@ starknet-crypto = "0.6.2"
 starknet-ff = "0.3.7"
 thiserror.workspace = true
 tracing.workspace = true
+rayon = "1.10.0"
 
 [dev-dependencies]
 aligned = "0.4.2"
