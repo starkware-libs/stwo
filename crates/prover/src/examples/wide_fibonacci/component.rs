@@ -14,7 +14,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::{ColumnVec, InteractionElements};
 use crate::examples::wide_fibonacci::trace_gen::write_lookup_column;
 
-pub const LOG_N_COLUMNS: usize = 8;
+pub const LOG_N_COLUMNS: usize = 10;
 pub const N_COLUMNS: usize = 1 << LOG_N_COLUMNS;
 
 const ALPHA_ID: &str = "wide_fibonacci_alpha";
