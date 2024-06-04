@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use derivative::Derivative;
+use educe::Educe;
 
 use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::fields::qm31::SecureField;
@@ -15,8 +15,8 @@ pub trait MleOps<F: Field>: ColumnOps<F> + Sized {
 
 /// Multilinear Extension stored as evaluations of a multilinear polynomial over the boolean
 /// hypercube in bit-reversed order.
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""))]
+#[derive(Educe)]
+#[educe(Debug, Clone)]
 pub struct Mle<B: ColumnOps<F>, F: Field> {
     evals: Col<B, F>,
 }

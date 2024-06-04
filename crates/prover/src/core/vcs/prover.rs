@@ -1,6 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
+use educe::Educe;
 use itertools::Itertools;
 
 use super::ops::{MerkleHasher, MerkleOps};
@@ -202,7 +203,8 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Educe)]
+#[educe(Clone)]
 pub struct MerkleDecommitment<H: MerkleHasher> {
     /// Hash values that the verifier needs but cannot deduce from previous computations, in the
     /// order they are needed.
@@ -218,15 +220,6 @@ impl<H: MerkleHasher> MerkleDecommitment<H> {
         Self {
             hash_witness: Vec::new(),
             column_witness: Vec::new(),
-        }
-    }
-}
-// TODO(andreW): Remove these in favor of the `derivative` crate.
-impl<H: MerkleHasher> Clone for MerkleDecommitment<H> {
-    fn clone(&self) -> Self {
-        Self {
-            hash_witness: self.hash_witness.clone(),
-            column_witness: self.column_witness.clone(),
         }
     }
 }
