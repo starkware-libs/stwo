@@ -24,10 +24,20 @@ impl FieldOps<BaseField> for GpuBackend {
         let config = LaunchConfig::for_num_elems(size as u32 >> 1);
         let batch_inverse = DEVICE.get_func("column", "batch_inverse").unwrap();
         unsafe {
-            let mut inner_tree:CudaSlice<M31> = DEVICE.alloc(size).unwrap();
-            let res = batch_inverse.launch(config, (from.as_slice(), dst.as_mut_slice(), &mut inner_tree, size, log_size));
+            let mut inner_tree: CudaSlice<M31> = DEVICE.alloc(size).unwrap();
+            let res = batch_inverse.launch(
+                config,
+                (
+                    from.as_slice(),
+                    dst.as_mut_slice(),
+                    &mut inner_tree,
+                    size,
+                    log_size,
+                ),
+            );
             res
-        }.unwrap();
+        }
+        .unwrap();
         DEVICE.synchronize().unwrap();
     }
 }
@@ -121,12 +131,16 @@ pub fn load_batch_inverse_ptx(device: &Arc<CudaDevice>) {
 mod tests {
     use itertools::Itertools;
 
-    use crate::core::{backend::{gpu::{column::BaseFieldCudaColumn, GpuBackend}, Column, CpuBackend}, fields::{m31::{BaseField, M31}, FieldOps}};
+    use crate::core::backend::gpu::column::BaseFieldCudaColumn;
+    use crate::core::backend::gpu::GpuBackend;
+    use crate::core::backend::{Column, CpuBackend};
+    use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::FieldOps;
 
     #[test]
     fn test_batch_inverse() {
         let size: usize = 1 << 12;
-        let from = (1..(size+1) as u32).map(|x| M31(x)).collect_vec();
+        let from = (1..(size + 1) as u32).map(|x| M31(x)).collect_vec();
         let dst = from.clone();
         let mut dst_expected = dst.clone();
         CpuBackend::batch_inverse(&from, &mut dst_expected);

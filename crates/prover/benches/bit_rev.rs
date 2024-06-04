@@ -2,7 +2,9 @@
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use itertools::Itertools;
-use stwo_prover::core::{backend::{gpu::GpuBackend, ColumnOps}, fields::m31::{BaseField, M31}};
+use stwo_prover::core::backend::gpu::GpuBackend;
+use stwo_prover::core::backend::ColumnOps;
+use stwo_prover::core::fields::m31::{BaseField, M31};
 
 pub fn cpu_bit_rev(c: &mut Criterion) {
     use stwo_prover::core::utils::bit_reverse;
@@ -38,7 +40,9 @@ pub fn gpu_bit_rev(c: &mut Criterion) {
     let mut data = BaseFieldCudaColumn::from_vec((0..SIZE).map(BaseField::from).collect_vec());
 
     c.bench_function("gpu bit_rev 28 bit", |b| {
-        b.iter(|| {<GpuBackend as ColumnOps<M31>>::bit_reverse_column(&mut data);})
+        b.iter(|| {
+            <GpuBackend as ColumnOps<M31>>::bit_reverse_column(&mut data);
+        })
     });
 }
 
