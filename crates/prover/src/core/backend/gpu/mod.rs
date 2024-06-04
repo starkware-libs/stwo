@@ -1,13 +1,24 @@
+mod accumulation;
+mod bit_reverse;
+mod circle;
+pub mod column;
 pub mod error;
+mod fri;
 pub mod m31;
+mod quotients;
 // pub mod packedm31;
 
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use cudarc::driver::CudaDevice;
 // use error::Error;
 use once_cell::sync::Lazy;
 
+use super::Backend;
+use crate::core::fields::m31::P;
+
+const VECTOR_SIZE: usize = 16;
 use self::m31::LoadBaseField;
 
 // TODO:: cleanup unwraps with error handling?
@@ -24,7 +35,13 @@ trait Load {
 
 impl Load for Device {
     fn load(self) -> Self {
+        bit_reverse::load_bit_reverse_ptx(&self);
         LoadBaseField::load(&self);
         self
     }
 }
+
+#[derive(Copy, Clone, Debug)]
+pub struct GpuBackend;
+
+impl Backend for GpuBackend {}
