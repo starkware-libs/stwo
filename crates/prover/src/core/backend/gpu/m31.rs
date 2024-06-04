@@ -1,4 +1,4 @@
-// CUDA implementation of packed m31
+// CUDA implementation of arbitrary size packed m31
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use cudarc::driver::{CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
@@ -7,9 +7,10 @@ use itertools::Itertools;
 use num_traits::{One, Zero};
 
 use super::{Device, DEVICE};
-// use crate::core::fields::m31::pow2147483645;
-use crate::core::fields::m31::M31;
-// use crate::core::fields::FieldExpOps;
+#[allow(unused_imports)]
+use crate::core::fields::m31::{pow2147483645, M31};
+#[allow(unused_imports)]
+use crate::core::fields::FieldExpOps;
 pub const K_BLOCK_SIZE: usize = 16;
 pub const PACKED_BASE_FIELD_SIZE: usize = 1 << 4;
 pub const M31_SIZE: usize = 1;
@@ -280,8 +281,13 @@ impl One for PackedBaseField {
     }
 }
 
-// TODO:: Implement
-// impl FieldExpOps for PackedBaseField {
+// // // impl<T: DeviceRepr> Copy for CudaSlice<T> {}
+// impl<'a> Copy for TestPackedBaseField<'a> {}
+// pub struct TestPackedBaseField<'a> {
+//     field: std::sync::Arc<&'a CudaSlice<u32>>,
+// }
+// // TODO:: Implement
+// impl FieldExpOps for TestPackedBaseField {
 //     fn inverse(&self) -> Self {
 //         assert!(!self.is_zero(), "0 has no inverse");
 //         pow2147483645(*self)
@@ -290,7 +296,6 @@ impl One for PackedBaseField {
 
 #[cfg(test)]
 mod tests {
-
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
@@ -362,7 +367,7 @@ mod tests {
     }
 
     #[test]
-    fn test_addition_ref_mut() {
+    fn test_addition_ref() {
         let (lhs, rhs) = setup(100000);
 
         let packed_lhs = PackedBaseField::from_array(lhs.clone());

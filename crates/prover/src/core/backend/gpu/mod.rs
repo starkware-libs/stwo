@@ -15,11 +15,8 @@ use cudarc::driver::CudaDevice;
 // use error::Error;
 use once_cell::sync::Lazy;
 
-use super::Backend;
-use crate::core::fields::m31::P;
-
-const VECTOR_SIZE: usize = 16;
 use self::m31::LoadBaseField;
+use super::Backend;
 
 // TODO:: cleanup unwraps with error handling?
 // (We can replace lazy statics with unsafe global references)
