@@ -29,42 +29,69 @@ __device__ uint32_t inv_m31(uint32_t t) {
     return mul_m31(pow_to_power_of_two(7, t5), t2);
 }
 
+__device__ void new_forward_layer(uint32_t *from, uint32_t *dst, int index) {
+    dst[index] = mul_m31(from[index << 1], from[(index << 1) + 1]);
+}
+
+__device__ void new_backward_layer(uint32_t *from, uint32_t *dst, int index) {
+    int temp = dst[index << 1];
+    dst[index << 1] = mul_m31(from[index], dst[(index << 1) + 1]);
+    dst[(index << 1) + 1] = mul_m31(from[index], temp);
+}
+
 extern "C"
-__global__ void batch_inverse(uint32_t *A, uint32_t *B, uint32_t *C, int size, int log_size) {
+__global__ void batch_inverse(uint32_t *from, uint32_t *dst, uint32_t *inner_tree, int size, int log_size) {
     // Montgomery's trick.
     int index = blockIdx.x * blockDim.x + threadIdx.x;
 
+    size = size >> 1;
+
+    // Forward Pass
     if(index < size) {
-        // Compute 2 cumulative products.
-        int step = 0;
-        while(step < log_size) {
-            // Check if this thread has to do something in this step.
-            if((index >> step) % 2 == 1) {
-                A[index] = mul_m31(A[index], A[((index >> step) << step) - 1]);
-            } else {
-                B[index] = mul_m31(B[index], B[((index >> step) + 1) << step]); // TODO: Be aware of warp divergence
-            }
-            step++;
-        }
+        new_forward_layer(from, inner_tree, index);
+    }
+    int from_offset = 0;
+    int dst_offset = size;
+    size >>= 1;
 
-        // Multiply cumulative.
-        if(index == size - 1) {
-            C[index] = A[index - 1];
-        }
-        if(0 < index && index < size - 1) {
-            C[index] = mul_m31(A[index - 1], B[index + 1]);
-        }
-        if(index == 0) {
-            C[index] = B[1];
-        }
-        
-        __shared__ uint32_t inv;
-        // Invert the cumulative product of all.
-        if(index == 0) {
-           inv = inv_m31(A[size - 1]);
-        }
+    int step = 1;
+    while(step < log_size) {
         __syncthreads();
+        if(index < size) {
+            new_forward_layer(&inner_tree[from_offset], &inner_tree[dst_offset], index);
+        }
+        from_offset = dst_offset;
+        dst_offset = dst_offset + size;
+        size >>= 1;
+        step++;
+    }
 
-        C[index] = mul_m31(C[index], inv);
+    // Compute inverse of cumulative product
+    __syncthreads();
+    if(index == 0){
+        inner_tree[dst_offset - 1] = inv_m31(inner_tree[dst_offset - 1]);
+    }
+    
+
+    // Backward Pass
+    step = 0;
+    size = 1;
+    from_offset = dst_offset - 1;
+    dst_offset = from_offset - (size << 1);
+    while(step < log_size - 1) {
+        __syncthreads();
+        if(index < size) {
+            new_backward_layer(&inner_tree[from_offset], &inner_tree[dst_offset], index);
+        }
+        size <<= 1;
+        from_offset = dst_offset;
+        dst_offset = from_offset - (size << 1);
+        step++;
+    }
+    
+    __syncthreads();
+    if(index < size) {
+        dst[index << 1] = mul_m31(inner_tree[index], from[(index << 1) + 1]);
+        dst[(index << 1) + 1] = mul_m31(inner_tree[index], from[index << 1]);
     }
 }

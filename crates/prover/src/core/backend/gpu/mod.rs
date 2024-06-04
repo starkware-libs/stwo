@@ -36,7 +36,7 @@ impl Load for Device {
     fn load(self) -> Self {
         LoadPackedBaseField::load(&self);
         bit_reverse::load_bit_reverse_ptx(&self);
-        column::load_column_ptx(&self);
+        column::load_batch_inverse_ptx(&self);
         self
     }
 }
