@@ -8,14 +8,13 @@ use num_traits::{One, Zero};
 use thiserror::Error;
 
 use super::mle::{Mle, MleOps};
-use super::sumcheck::{MultivariatePolyOracle, SumcheckError, SumcheckProof};
+use super::sumcheck::{self, MultivariatePolyOracle, SumcheckError, SumcheckProof};
 use super::utils::{eq, fold_mle_evals, horner_eval, UnivariatePoly};
 use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::lookups::sumcheck;
 
 pub trait GkrOps: MleOps<SecureField> {
     /// Returns evaluations `eq(x, y) * v` for all `x` in `{0, 1}^n`.

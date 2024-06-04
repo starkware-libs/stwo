@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use super::{CircleDomain, CircleEvaluation, PolyOps};
 use crate::core::backend::{Col, Column};
 use crate::core::circle::CirclePoint;
@@ -63,6 +65,14 @@ impl<B: PolyOps> CirclePoly<B> {
         twiddles: &TwiddleTree<B>,
     ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
         B::evaluate(self, domain, twiddles)
+    }
+}
+
+impl<B: FieldOps<BaseField>> Deref for CirclePoly<B> {
+    type Target = B::Column;
+
+    fn deref(&self) -> &B::Column {
+        &self.coeffs
     }
 }
 

@@ -14,7 +14,7 @@ use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
-use crate::core::fields::{ExtensionOf, FieldExpOps, FieldOps};
+use crate::core::fields::{ExtensionOf, Field, FieldExpOps, FieldOps};
 use crate::core::utils::bit_reverse;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
@@ -108,29 +108,32 @@ type LineDomainIterator =
 
 /// A univariate polynomial defined on a [LineDomain].
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct LinePoly {
+pub struct LinePoly<F> {
     /// Coefficients of the polynomial in [line_ifft] algorithm's basis.
     ///
     /// The coefficients are stored in bit-reversed order.
-    coeffs: Vec<SecureField>,
+    coeffs: Vec<F>,
     /// The number of coefficients stored as `log2(len(coeffs))`.
     log_size: u32,
 }
 
-impl LinePoly {
+impl<F: Field> LinePoly<F> {
     /// Creates a new line polynomial from bit reversed coefficients.
     ///
     /// # Panics
     ///
     /// Panics if the number of coefficients is not a power of two.
-    pub fn new(coeffs: Vec<SecureField>) -> Self {
+    pub fn new(coeffs: Vec<F>) -> Self {
         assert!(coeffs.len().is_power_of_two());
         let log_size = coeffs.len().ilog2();
         Self { coeffs, log_size }
     }
 
     /// Evaluates the polynomial at a single point.
-    pub fn eval_at_point(&self, mut x: SecureField) -> SecureField {
+    pub fn eval_at_point(&self, mut x: SecureField) -> SecureField
+    where
+        SecureField: ExtensionOf<F>,
+    {
         // TODO(Andrew): Allocation here expensive for small polynomials.
         let mut doublings = Vec::new();
         for _ in 0..self.log_size {
@@ -150,7 +153,7 @@ impl LinePoly {
     }
 
     /// Returns the polynomial's coefficients in their natural order.
-    pub fn into_ordered_coefficients(mut self) -> Vec<SecureField> {
+    pub fn into_ordered_coefficients(mut self) -> Vec<F> {
         bit_reverse(&mut self.coeffs);
         self.coeffs
     }
@@ -160,22 +163,22 @@ impl LinePoly {
     /// # Panics
     ///
     /// Panics if the number of coefficients is not a power of two.
-    pub fn from_ordered_coefficients(mut coeffs: Vec<SecureField>) -> Self {
+    pub fn from_ordered_coefficients(mut coeffs: Vec<F>) -> Self {
         bit_reverse(&mut coeffs);
         Self::new(coeffs)
     }
 }
 
-impl Deref for LinePoly {
-    type Target = [SecureField];
+impl<F> Deref for LinePoly<F> {
+    type Target = [F];
 
-    fn deref(&self) -> &[SecureField] {
+    fn deref(&self) -> &[F] {
         &self.coeffs
     }
 }
 
-impl DerefMut for LinePoly {
-    fn deref_mut(&mut self) -> &mut [SecureField] {
+impl<F> DerefMut for LinePoly<F> {
+    fn deref_mut(&mut self) -> &mut [F] {
         &mut self.coeffs
     }
 }
@@ -224,7 +227,7 @@ impl<B: FieldOps<BaseField>> LineEvaluation<B> {
 
 impl LineEvaluation<CpuBackend> {
     /// Interpolates the polynomial as evaluations on `domain`.
-    pub fn interpolate(self) -> LinePoly {
+    pub fn interpolate(self) -> LinePoly<SecureField> {
         let mut values = self.values.into_iter().collect_vec();
         CpuBackend::bit_reverse_column(&mut values);
         line_ifft(&mut values, self.domain);

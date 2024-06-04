@@ -125,7 +125,7 @@ pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized + FieldOps<SecureField> 
 pub struct FriProver<B: FriOps + MerkleOps<H>, H: MerkleHasher> {
     config: FriConfig,
     inner_layers: Vec<FriLayerProver<B, H>>,
-    last_layer_poly: LinePoly,
+    last_layer_poly: LinePoly<SecureField>,
     /// Unique sizes of committed columns sorted in descending order.
     column_log_sizes: Vec<u32>,
 }
@@ -252,7 +252,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
         channel: &mut impl Channel<Digest = H::Hash>,
         config: FriConfig,
         evaluation: LineEvaluation<B>,
-    ) -> LinePoly {
+    ) -> LinePoly<SecureField> {
         assert_eq!(evaluation.len(), config.last_layer_domain_size());
 
         let evaluation = evaluation.to_cpu();
@@ -318,7 +318,7 @@ pub struct FriVerifier<H: MerkleHasher> {
     column_bounds: Vec<CirclePolyDegreeBound>,
     inner_layers: Vec<FriLayerVerifier<H>>,
     last_layer_domain: LineDomain,
-    last_layer_poly: LinePoly,
+    last_layer_poly: LinePoly<SecureField>,
     /// The queries used for decommitment. Initialized when calling
     /// [`FriVerifier::column_opening_positions`].
     queries: Option<Queries>,
@@ -598,7 +598,7 @@ pub trait FriChannel {
     fn reseed_with_inner_layer(&mut self, commitment: &Self::Digest);
 
     /// Reseeds the channel with the FRI last layer polynomial.
-    fn reseed_with_last_layer(&mut self, last_layer: &LinePoly);
+    fn reseed_with_last_layer(&mut self, last_layer: &LinePoly<SecureField>);
 
     /// Draws a random field element.
     fn draw(&mut self) -> Self::Field;
@@ -673,7 +673,7 @@ impl LinePolyDegreeBound {
 #[derive(Debug)]
 pub struct FriProof<H: MerkleHasher> {
     pub inner_layers: Vec<FriLayerProof<H>>,
-    pub last_layer_poly: LinePoly,
+    pub last_layer_poly: LinePoly<SecureField>,
 }
 
 /// Number of folds for univariate polynomials.
