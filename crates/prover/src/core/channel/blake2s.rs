@@ -1,53 +1,15 @@
 use std::iter;
 
-use super::fields::m31::{BaseField, N_BYTES_FELT, P};
-use super::fields::qm31::SecureField;
-use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
-use super::fields::IntoSlice;
+use super::{Channel, ChannelTime};
+use crate::core::fields::m31::{BaseField, N_BYTES_FELT, P};
+use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use crate::core::fields::IntoSlice;
 use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::core::vcs::hasher::Hasher;
 
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
-pub const EXTENSION_FELTS_PER_HASH: usize = 2;
-
-#[derive(Default)]
-pub struct ChannelTime {
-    n_challenges: usize,
-    n_sent: usize,
-}
-
-impl ChannelTime {
-    fn inc_sent(&mut self) {
-        self.n_sent += 1;
-    }
-
-    fn inc_challenges(&mut self) {
-        self.n_challenges += 1;
-        self.n_sent = 0;
-    }
-}
-
-pub trait Channel {
-    type Digest;
-
-    const BYTES_PER_HASH: usize;
-
-    fn new(digest: Self::Digest) -> Self;
-    fn get_digest(&self) -> Self::Digest;
-
-    // Mix functions.
-    fn mix_digest(&mut self, digest: Self::Digest);
-    fn mix_felts(&mut self, felts: &[SecureField]);
-    fn mix_nonce(&mut self, nonce: u64);
-
-    // Draw functions.
-    fn draw_felt(&mut self) -> SecureField;
-    /// Generates a uniform random vector of SecureField elements.
-    fn draw_felts(&mut self, n_felts: usize) -> Vec<SecureField>;
-    /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
-    fn draw_random_bytes(&mut self) -> Vec<u8>;
-}
 
 /// A channel that can be used to draw random elements from a [Blake2sHash] digest.
 pub struct Blake2sChannel {
@@ -61,7 +23,7 @@ impl Blake2sChannel {
         // Repeats hashing with an increasing counter until getting a good result.
         // Retry probability for each round is ~ 2^(-28).
         loop {
-            let random_bytes: [u32; FELTS_PER_HASH] = self
+            let u32s: [u32; FELTS_PER_HASH] = self
                 .draw_random_bytes()
                 .chunks_exact(N_BYTES_FELT) // 4 bytes per u32.
                 .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
@@ -70,8 +32,8 @@ impl Blake2sChannel {
                 .unwrap();
 
             // Retry if not all the u32 are in the range [0, 2P).
-            if random_bytes.iter().all(|x| *x < 2 * P) {
-                return random_bytes
+            if u32s.iter().all(|x| *x < 2 * P) {
+                return u32s
                     .into_iter()
                     .map(|x| BaseField::reduce(x as u64))
                     .collect::<Vec<_>>()
@@ -149,6 +111,8 @@ impl Channel for Blake2sChannel {
 
         hash_input.extend_from_slice(&padded_counter);
 
+        // TODO(spapini): Are we worried about this drawing hash colliding with mix_digest?
+
         self.channel_time.inc_sent();
         Blake2sHasher::hash(&hash_input).into()
     }
@@ -158,7 +122,8 @@ impl Channel for Blake2sChannel {
 mod tests {
     use std::collections::BTreeSet;
 
-    use crate::core::channel::{Blake2sChannel, Channel};
+    use crate::core::channel::blake2s::Blake2sChannel;
+    use crate::core::channel::Channel;
     use crate::core::fields::qm31::SecureField;
     use crate::core::vcs::blake2_hash::Blake2sHash;
     use crate::m31;
