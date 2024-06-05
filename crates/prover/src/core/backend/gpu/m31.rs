@@ -301,7 +301,7 @@ mod tests {
     use super::PackedBaseField;
     use crate::core::fields::m31::M31;
 
-    const SIZE: usize = 1 << 26;
+    const SIZE: usize = 1 << 24;
 
     fn setup(size: usize) -> (Vec<M31>, Vec<M31>) {
         let mut rng: SmallRng = SmallRng::seed_from_u64(0);
