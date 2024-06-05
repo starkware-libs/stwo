@@ -6,7 +6,7 @@ typedef unsigned long long uint64_t;
 const uint32_t P = 2147483647;
 
 __device__ uint32_t mul_m31(uint32_t a, uint32_t b) {
-    // TODO: replace with a faster algorithm
+    // TODO: use mul_m31 from m31.cu
     return ((uint64_t) a * (uint64_t) b) % P;
 }
 
