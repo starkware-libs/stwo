@@ -1,0 +1,168 @@
+use itertools::Itertools;
+use num_traits::Zero;
+use starknet_crypto::poseidon_hash_many;
+use starknet_ff::FieldElement as FieldElement252;
+
+use super::ops::{MerkleHasher, MerkleOps};
+use crate::core::backend::CpuBackend;
+use crate::core::fields::m31::BaseField;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub struct Poseidon252MerkleHasher;
+impl MerkleHasher for Poseidon252MerkleHasher {
+    type Hash = FieldElement252;
+
+    fn hash_node(
+        children_hashes: Option<(Self::Hash, Self::Hash)>,
+        column_values: &[BaseField],
+    ) -> Self::Hash {
+        let mut values = vec![];
+        if let Some((left, right)) = children_hashes {
+            values.push(left);
+            values.push(right);
+        }
+        let rem = 7 - ((column_values.len() + 7) % 8);
+        let padded_values = column_values
+            .iter()
+            .copied()
+            .chain(std::iter::repeat(BaseField::zero()).take(rem));
+        for chunk in padded_values.array_chunks::<8>() {
+            let mut word = FieldElement252::default();
+            for x in chunk {
+                word = word * FieldElement252::from(2u64.pow(31)) + FieldElement252::from(x.0);
+            }
+            values.push(word);
+        }
+        poseidon_hash_many(&values)
+    }
+}
+
+impl MerkleOps<Poseidon252MerkleHasher> for CpuBackend {
+    fn commit_on_layer(
+        log_size: u32,
+        prev_layer: Option<&Vec<FieldElement252>>,
+        columns: &[&Vec<BaseField>],
+    ) -> Vec<FieldElement252> {
+        (0..(1 << log_size))
+            .map(|i| {
+                Poseidon252MerkleHasher::hash_node(
+                    prev_layer.map(|prev_layer| (prev_layer[2 * i], prev_layer[2 * i + 1])),
+                    &columns.iter().map(|column| column[i]).collect_vec(),
+                )
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use num_traits::Zero;
+    use starknet_ff::FieldElement as FieldElement252;
+
+    use crate::core::fields::m31::BaseField;
+    use crate::core::vcs::ops::MerkleHasher;
+    use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher;
+    use crate::core::vcs::test_utils::prepare_merkle;
+    use crate::core::vcs::verifier::MerkleVerificationError;
+    use crate::m31;
+
+    #[test]
+    fn test_vector() {
+        assert_eq!(
+            Poseidon252MerkleHasher::hash_node(None, &[m31!(0), m31!(1)]),
+            FieldElement252::from_dec_str(
+                "2552053700073128806553921687214114320458351061521275103654266875084493044716"
+            )
+            .unwrap()
+        );
+
+        assert_eq!(
+            Poseidon252MerkleHasher::hash_node(
+                Some((FieldElement252::from(1u32), FieldElement252::from(2u32))),
+                &[m31!(3)]
+            ),
+            FieldElement252::from_dec_str(
+                "159358216886023795422515519110998391754567506678525778721401012606792642769"
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_merkle_success() {
+        let (queries, decommitment, values, verifier) = prepare_merkle::<Poseidon252MerkleHasher>();
+        verifier.verify(queries, values, decommitment).unwrap();
+    }
+
+    #[test]
+    fn test_merkle_invalid_witness() {
+        let (queries, mut decommitment, values, verifier) =
+            prepare_merkle::<Poseidon252MerkleHasher>();
+        decommitment.hash_witness[20] = FieldElement252::default();
+
+        assert_eq!(
+            verifier.verify(queries, values, decommitment).unwrap_err(),
+            MerkleVerificationError::RootMismatch
+        );
+    }
+
+    #[test]
+    fn test_merkle_invalid_value() {
+        let (queries, decommitment, mut values, verifier) =
+            prepare_merkle::<Poseidon252MerkleHasher>();
+        values[3][6] = BaseField::zero();
+
+        assert_eq!(
+            verifier.verify(queries, values, decommitment).unwrap_err(),
+            MerkleVerificationError::RootMismatch
+        );
+    }
+
+    #[test]
+    fn test_merkle_witness_too_short() {
+        let (queries, mut decommitment, values, verifier) =
+            prepare_merkle::<Poseidon252MerkleHasher>();
+        decommitment.hash_witness.pop();
+
+        assert_eq!(
+            verifier.verify(queries, values, decommitment).unwrap_err(),
+            MerkleVerificationError::WitnessTooShort
+        );
+    }
+
+    #[test]
+    fn test_merkle_column_values_too_long() {
+        let (queries, decommitment, mut values, verifier) =
+            prepare_merkle::<Poseidon252MerkleHasher>();
+        values[3].push(BaseField::zero());
+
+        assert_eq!(
+            verifier.verify(queries, values, decommitment).unwrap_err(),
+            MerkleVerificationError::ColumnValuesTooLong
+        );
+    }
+
+    #[test]
+    fn test_merkle_column_values_too_short() {
+        let (queries, decommitment, mut values, verifier) =
+            prepare_merkle::<Poseidon252MerkleHasher>();
+        values[3].pop();
+
+        assert_eq!(
+            verifier.verify(queries, values, decommitment).unwrap_err(),
+            MerkleVerificationError::ColumnValuesTooShort
+        );
+    }
+
+    #[test]
+    fn test_merkle_witness_too_long() {
+        let (queries, mut decommitment, values, verifier) =
+            prepare_merkle::<Poseidon252MerkleHasher>();
+        decommitment.hash_witness.push(FieldElement252::default());
+
+        assert_eq!(
+            verifier.verify(queries, values, decommitment).unwrap_err(),
+            MerkleVerificationError::WitnessTooLong
+        );
+    }
+}
