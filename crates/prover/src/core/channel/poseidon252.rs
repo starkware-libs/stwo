@@ -1,6 +1,6 @@
 use std::iter;
 
-use starknet_crypto::poseidon_hash;
+use starknet_crypto::{poseidon_hash, poseidon_hash_many};
 use starknet_ff::FieldElement as FieldElement252;
 
 use super::{Channel, ChannelTime};
@@ -65,24 +65,23 @@ impl Channel for Poseidon252Channel {
         self.channel_time.inc_challenges();
     }
 
+    // TODO(spapini): Optimize.
     fn mix_felts(&mut self, felts: &[SecureField]) {
         let shift = (1u64 << 31).into();
-        let mut cur = FieldElement252::default();
-        let mut in_chunk = 0;
-        for x in felts {
-            for y in x.to_m31_array() {
-                cur = cur * shift + y.0.into();
-            }
-            in_chunk += 1;
-            if in_chunk == 2 {
-                self.digest = poseidon_hash(self.digest, cur);
-                cur = FieldElement252::default();
-                in_chunk = 0;
-            }
+        let mut res = Vec::with_capacity(felts.len() / 2 + 2);
+        res.push(self.digest);
+        for chunk in felts.chunks(2) {
+            res.push(
+                chunk
+                    .iter()
+                    .flat_map(|x| x.to_m31_array())
+                    .fold(FieldElement252::default(), |cur, y| {
+                        cur * shift + y.0.into()
+                    }),
+            );
         }
-        if in_chunk > 0 {
-            self.digest = poseidon_hash(self.digest, cur);
-        }
+
+        self.digest = poseidon_hash_many(&res);
 
         // TODO(spapini): do we need length padding?
         self.channel_time.inc_challenges();
