@@ -39,7 +39,6 @@ pub struct PackedBaseField(GpuM31);
 
 impl PackedBaseField {
     /// Constructs a new instance with all vector elements set to `value`.
-    /// Size must be less thna 1024 for now
     pub fn broadcast(M31(v): M31, size: Option<usize>) -> Self {
         let size = size.unwrap_or(1024);
         Self(DEVICE.htod_copy(vec![v; size]).unwrap())
@@ -105,6 +104,7 @@ impl PackedBaseField {
             .unwrap();
         let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
         unsafe { kernel.launch(cfg, (&self.0, &rhs.0, &self.0, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
     }
 
     pub fn mul_assign_ref(&self, rhs: &Self) {
@@ -115,6 +115,7 @@ impl PackedBaseField {
             .unwrap();
         let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
         unsafe { kernel.launch(cfg, (&self.0, &rhs.0, &self.0, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
     }
 
     pub fn sub_assign_ref(&self, rhs: &Self) {
@@ -125,6 +126,7 @@ impl PackedBaseField {
             .unwrap();
         let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
         unsafe { kernel.launch(cfg, (&self.0, &rhs.0, &self.0, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
     }
 }
 
@@ -154,6 +156,8 @@ impl Add for PackedBaseField {
         let mut out = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
 
         unsafe { add_kernel.launch(cfg, (&self.0, &rhs.0, &mut out, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
+
         Self(out)
     }
 }
@@ -170,6 +174,7 @@ impl AddAssign for PackedBaseField {
         let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
 
         unsafe { add_kernel.launch(cfg, (&self.0, &rhs.0, &self.0, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
     }
 }
 
@@ -190,6 +195,7 @@ impl Mul for PackedBaseField {
         let out = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
         let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
         unsafe { mul_kernel.launch(cfg, (&self.0, &rhs.0, &out, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
 
         Self(out)
     }
@@ -206,6 +212,7 @@ impl MulAssign for PackedBaseField {
 
         let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
         unsafe { mul_kernel.launch(cfg, (&self.0, &rhs.0, &self.0, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
     }
 }
 
@@ -222,6 +229,7 @@ impl Neg for PackedBaseField {
         let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
 
         unsafe { neg_kernel.launch(cfg, (&self.0, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
 
         self
     }
@@ -242,6 +250,7 @@ impl Sub for PackedBaseField {
         let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
 
         unsafe { sub_kernel.launch(cfg, (&self.0, &rhs.0, &self.0, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
 
         self
     }
@@ -259,6 +268,7 @@ impl SubAssign for PackedBaseField {
         let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
 
         unsafe { sub_kernel.launch(cfg, (&self.0, &rhs.0, &self.0, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
     }
 }
 
