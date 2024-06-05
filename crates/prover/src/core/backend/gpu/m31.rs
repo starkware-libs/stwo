@@ -141,8 +141,6 @@ impl Clone for PackedBaseField {
 impl Add for PackedBaseField {
     type Output = Self;
 
-    // Do we need to consume self? (if not we can change back add implementation to allocate new
-    // vector)
     /// Adds two packed M31 elements, and reduces the result to the range `[0,P]`.
     /// Each value is assumed to be in unreduced form, [0, P] including P.
     #[inline(always)]
@@ -264,9 +262,10 @@ impl SubAssign for PackedBaseField {
     }
 }
 
+// Returns a single zero
 impl Zero for PackedBaseField {
     fn zero() -> Self {
-        Self(DEVICE.alloc_zeros::<u32>(1024).unwrap())
+        Self(DEVICE.alloc_zeros::<u32>(1).unwrap())
     }
 
     // TODO:: Optimize? It currently does a htod copy
@@ -277,7 +276,7 @@ impl Zero for PackedBaseField {
 
 impl One for PackedBaseField {
     fn one() -> Self {
-        Self(DEVICE.htod_copy([1; 1024].to_vec()).unwrap())
+        Self(DEVICE.htod_copy([1; 1].to_vec()).unwrap())
     }
 }
 
@@ -302,9 +301,18 @@ mod tests {
     use super::PackedBaseField;
     use crate::core::fields::m31::M31;
 
+    const SIZE: usize = 1 << 26;
+
+    fn setup(size: usize) -> (Vec<M31>, Vec<M31>) {
+        let mut rng: SmallRng = SmallRng::seed_from_u64(0);
+        std::iter::repeat_with(|| (rng.gen::<M31>(), rng.gen::<M31>()))
+            .take(size)
+            .unzip()
+    }
+
     #[test]
     fn test_addition() {
-        let (lhs, rhs) = setup(100000);
+        let (lhs, rhs) = setup(SIZE);
         let mut packed_lhs = PackedBaseField::from_array(lhs.clone());
         let packed_rhs = PackedBaseField::from_array(rhs.clone());
 
@@ -321,7 +329,7 @@ mod tests {
 
     #[test]
     fn test_subtraction() {
-        let (lhs, rhs) = setup(100000);
+        let (lhs, rhs) = setup(SIZE);
         let mut packed_lhs = PackedBaseField::from_array(lhs.clone());
         let packed_rhs = PackedBaseField::from_array(rhs.clone());
 
@@ -338,7 +346,7 @@ mod tests {
 
     #[test]
     fn test_multiplication() {
-        let (lhs, rhs) = setup(100000);
+        let (lhs, rhs) = setup(SIZE);
         let mut packed_lhs = PackedBaseField::from_array(lhs.clone());
         let packed_rhs = PackedBaseField::from_array(rhs.clone());
 
@@ -355,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_negation() {
-        let (lhs, _) = setup(100000);
+        let (lhs, _) = setup(SIZE);
         let packed_values = PackedBaseField::from_array(lhs.clone());
 
         let res = -packed_values;
@@ -368,7 +376,7 @@ mod tests {
 
     #[test]
     fn test_addition_ref() {
-        let (lhs, rhs) = setup(100000);
+        let (lhs, rhs) = setup(SIZE);
 
         let packed_lhs = PackedBaseField::from_array(lhs.clone());
         let packed_rhs = PackedBaseField::from_array(rhs.clone());
@@ -382,12 +390,5 @@ mod tests {
                 .map(|(&l, &r)| l + r)
                 .collect::<Vec<M31>>()
         );
-    }
-
-    fn setup(size: usize) -> (Vec<M31>, Vec<M31>) {
-        let mut rng: SmallRng = SmallRng::seed_from_u64(0);
-        std::iter::repeat_with(|| (rng.gen::<M31>(), rng.gen::<M31>()))
-            .take(size)
-            .unzip()
     }
 }
