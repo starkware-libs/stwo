@@ -1,5 +1,3 @@
-// These functions assume `bits` is at most 32
-
 typedef unsigned int uint32_t;
 typedef unsigned long long uint64_t;
 
