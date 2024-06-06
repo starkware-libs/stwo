@@ -5,6 +5,7 @@ pub mod column;
 pub mod error;
 mod fri;
 pub mod m31;
+mod qm31;
 mod quotients;
 // pub mod packedm31;
 
