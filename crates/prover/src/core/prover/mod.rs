@@ -3,10 +3,11 @@ use thiserror::Error;
 use tracing::{span, Level};
 
 use super::air::AirProver;
-use super::backend::Backend;
+use super::backend::{Backend, ColumnOps};
+use super::fields::m31::M31;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
-use super::poly::circle::{CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+use super::poly::circle::{CanonicCoset, PolyOps, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::poly::twiddles::TwiddleTree;
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::ColumnVec;
@@ -25,6 +26,9 @@ use crate::core::vcs::hasher::Hasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::verifier::MerkleVerificationError;
 use crate::core::ComponentVec;
+
+#[cfg(feature="parallel")]
+use rayon::prelude::*;
 
 type Channel = Blake2sChannel;
 type ChannelHasher = Blake2sHasher;
@@ -53,10 +57,22 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     channel: &mut Channel,
     twiddles: &TwiddleTree<B>,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-) -> Result<CommitmentSchemeProver<B>, ProvingError> {
+) -> Result<CommitmentSchemeProver<B>, ProvingError>
+where
+    CircleEvaluation<B, BaseField, BitReversedOrder>: Sized + Send + Sync,
+    <B as ColumnOps<M31>>::Column: Send + Sync,
+    <B as PolyOps>::Twiddles: Send + Sync 
+{
     let span = span!(Level::INFO, "Trace interpolation").entered();
-    let trace_polys = trace
-        .into_iter()
+    
+    #[cfg(not(feature="parallel"))]
+    let iter = trace.into_iter();
+    
+    #[cfg(feature="parallel")]
+    let iter = trace.into_par_iter();
+    
+    println!("{:?}", iter.len());
+    let trace_polys = iter
         .map(|poly| poly.interpolate_with_twiddles(twiddles))
         .collect();
     span.exit();
@@ -125,11 +141,17 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     })
 }
 
-pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
+pub fn prove<B>(
     air: &impl AirProver<B>,
     channel: &mut Channel,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-) -> Result<StarkProof, ProvingError> {
+) -> Result<StarkProof, ProvingError> 
+    where
+    CircleEvaluation<B, BaseField, BitReversedOrder>: Sized + Send + Sync,
+    <B as ColumnOps<M31>>::Column: Send + Sync,
+    <B as PolyOps>::Twiddles: Send + Sync, 
+    B: Backend + MerkleOps<MerkleHasher> 
+        {
     // Check that traces are not too big.
     for (i, trace) in trace.iter().enumerate() {
         if trace.domain.log_size() + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
