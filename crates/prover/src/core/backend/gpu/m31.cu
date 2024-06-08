@@ -16,8 +16,6 @@ extern "C" __global__  void mul_m31(unsigned int a, unsigned int b, unsigned int
     unsigned int prod_lows;
     unsigned int prod_highs;
 
-    // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of
-    // the first operand.
     a_e = static_cast<unsigned long long int>(a);
     b_e = static_cast<unsigned long long int>(b);
 
