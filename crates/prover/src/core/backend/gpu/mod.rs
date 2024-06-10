@@ -35,6 +35,7 @@ impl Load for Device {
         bit_reverse::load_bit_reverse_ptx(&self);
         LoadBaseField::load(&self);
         column::load_batch_inverse_ptx(&self);
+        circle::load_circle(&self);
         self
     }
 }
