@@ -73,8 +73,7 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         let zeros = u32x16::splat(0);
 
         // Commit to columns.
-        let mut res = vec![Blake2sHash::default(); 1 << log_size]; 
-
+        let mut res = vec![Blake2sHash::default(); 1 << log_size];
         #[cfg(not(feature = "parallel"))]
         let iter = res.chunks_mut(1 << LOG_N_LANES);
 
