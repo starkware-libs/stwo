@@ -7,6 +7,8 @@ use std::mem::transmute;
 use std::simd::u32x16;
 
 use itertools::Itertools;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::m31::{LOG_N_LANES, N_LANES};
 use super::SimdBackend;
@@ -15,9 +17,6 @@ use crate::core::fields::m31::BaseField;
 use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
-
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 
 const IV: [u32; 8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
@@ -51,14 +50,14 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         columns: &[&Col<Self, BaseField>],
     ) -> Vec<Blake2sHash> {
         if log_size < N_LANES as u32 {
-    
             #[cfg(not(feature = "parallel"))]
             let iter = 0..1 << log_size;
 
             #[cfg(feature = "parallel")]
             let iter = (0..1 << log_size).into_par_iter();
-            
-            return iter.map(|i| {
+
+            return iter
+                .map(|i| {
                     Blake2sMerkleHasher::hash_node(
                         prev_layer.map(|prev_layer| (prev_layer[2 * i], prev_layer[2 * i + 1])),
                         &columns.iter().map(|column| column.at(i)).collect_vec(),
@@ -74,8 +73,15 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         let zeros = u32x16::splat(0);
 
         // Commit to columns.
-        let mut res = Vec::with_capacity(1 << log_size);
-        for i in 0..(1 << (log_size - LOG_N_LANES)) {
+        let mut res = vec![Blake2sHash::default(); 1 << log_size]; 
+
+        #[cfg(not(feature = "parallel"))]
+        let iter = res.chunks_mut(1 << LOG_N_LANES);
+
+        #[cfg(feature = "parallel")]
+        let iter = res.par_chunks_mut(1 << LOG_N_LANES);
+
+        iter.enumerate().for_each(|(i, chunk)| {
             let mut state: [u32x16; 8] = unsafe { std::mem::zeroed() };
             // Hash prev_layer, if exists.
             if let Some(prev_layer) = prev_layer {
@@ -105,8 +111,10 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
                 state = compress16(state, msgs, zeros, zeros, zeros, zeros);
             }
             let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
-            res.extend_from_slice(&state);
-        }
+            // res.extend_from_slice(&state);
+            chunk.copy_from_slice(&state);
+        });
+        // );
         res
     }
 }
