@@ -76,37 +76,25 @@ __device__ point point_pow(point p, int exponent) {
 
 const point m31_circle_gen = {2, 1268011823};
 
-extern "C"
-__global__ void precompute_twiddles_small(uint32_t *dst, point initial, point step, int size, int log_size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    dst[size - 1] = 1;
-    size >>= 1;
-    int offset = 0;
-    while(size > 0) {
-        __syncthreads();
-        if (idx < size) {
-            point pow = point_pow(step, idx);
-            dst[offset + idx] = point_mul(initial, pow).x;
-        }
-        initial = point_square(initial);
-        step = point_square(step);
-        offset += size;
-        size >>= 1;
-    }
+__device__ unsigned int bit_reverse(unsigned int n, int bits) {
+    unsigned int reversed_n = __brev(n);
+    return reversed_n >> (32 - bits);
 }
 
 extern "C"
-__global__ void precompute_twiddles_large(uint32_t *dst, point initial, int step_size, int size, int log_size) {
+__global__ void precompute_twiddles(uint32_t *dst, point initial, point step, int offset, int size, int log_size) {
+    // Computes one level of twiddles for a particular Coset.
+    //      dst: twiddles array.
+    //  initial: coset factor.
+    //     step: generator of the group.
+    //   offset: store values in dst[offset]
+    //     size: coset size
+    // log_size: log(size)
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    // if (idx < size) {
-    //     point generator = pow_to_power_of_two(m31_circle_gen, 31 - log_size);
-    //     int base_index = idx << (size - LOG_MAX_NUM_CONCURRENT_THREADS);
-    //     point base_point = point_pow(generator, base_index);
 
-    //     dst[base_index] = base_point.x;
-    //     for (int i=base_index + 1; i < 2 * base_index; i++) {
-    //         dst[i] = point_mul(dst[i - 1], generator);
-    //     }
-    // }
+    size >>= 1;
+    if (idx < size) {
+        point pow = point_pow(step, bit_reverse(idx, log_size));
+        dst[offset + idx] = point_mul(initial, pow).x;
+    }
 }

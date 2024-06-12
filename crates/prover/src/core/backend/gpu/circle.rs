@@ -70,38 +70,34 @@ impl PolyOps for GpuBackend {
         todo!()
     }
 
-    fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self> {
+    fn precompute_twiddles(mut coset: Coset) -> TwiddleTree<Self> {
         // Compute twiddles
-        let mut size = coset.size() as u32;
-        let config = LaunchConfig::for_num_elems(size);
-        let kernel = DEVICE.get_func("circle", "precompute_twiddles_small").unwrap();
-        let mut twiddles = BaseFieldCudaColumn::new(unsafe { DEVICE.alloc(size as usize).unwrap() });
-        unsafe {
-            kernel.launch(
-                config,
-                (twiddles.as_mut_slice(), coset.initial(), coset.step_size.to_point(), size, coset.log_size()),
-            )
+        let config = LaunchConfig::for_num_elems(coset.size() as u32);
+        let kernel = DEVICE.get_func("circle", "precompute_twiddles").unwrap();
+
+        let mut twiddles = BaseFieldCudaColumn::new(unsafe { DEVICE.alloc(coset.size()).unwrap() });
+        let mut current_level_offset = 0;
+
+        for _ in 0..coset.log_size() {
+            // Compute each level of the twiddle tree.
+            unsafe {
+                kernel.clone().launch(
+                    config,
+                    (twiddles.as_mut_slice(),
+                     coset.initial(),
+                     coset.step_size.to_point(),
+                     current_level_offset,
+                     coset.size(),
+                     coset.log_size()),
+                )
+            }
+            .unwrap();
+            current_level_offset += coset.size();
+            coset = coset.double();
         }
-        .unwrap();
         DEVICE.synchronize().unwrap();
 
-        // Bit reverse parts
-        let kernel = DEVICE.get_func("bit_reverse", "bit_reverse_basefield").unwrap();
-
-        size = size >> 1;
-        let config = LaunchConfig::for_num_elems(size);
-        let bits = u32::BITS - (size as u32).leading_zeros() - 1;
-        unsafe {kernel.launch(config, (twiddles.as_mut_slice(), size, bits)).unwrap()};
-
-        let kernel = DEVICE.get_func("bit_reverse", "bit_reverse_basefield").unwrap();
-        size = size >> 1;
-        let config = LaunchConfig::for_num_elems(size);
-        let bits = u32::BITS - (size as u32).leading_zeros() - 1;
-        unsafe {kernel.launch(config, (twiddles.as_mut_slice().sub_slice(size, size), size, bits)).unwrap()};
-
-
         let itwiddles = BaseFieldCudaColumn::new(unsafe { DEVICE.alloc(coset.size()).unwrap() });
-        // <Self as FieldOps<BaseField>>::batch_inverse(&twiddles, &mut itwiddles);
 
         TwiddleTree {
             root_coset: coset,
@@ -114,7 +110,7 @@ impl PolyOps for GpuBackend {
 pub fn load_circle(device: &Arc<CudaDevice>) {
     let ptx_src = include_str!("circle.cu");
     let ptx = compile_ptx(ptx_src).unwrap();
-    device.load_ptx(ptx, "circle", &["sort_values", "precompute_twiddles_small", "precompute_twiddles_large"]).unwrap();
+    device.load_ptx(ptx, "circle", &["sort_values", "precompute_twiddles"]).unwrap();
 }
 
 #[cfg(test)]
@@ -141,7 +137,6 @@ mod tests {
 
         assert_eq!(result.values.to_cpu(), expected_result.values);
     }
-
 
     #[test]
     fn test_precompute_twiddles() {
