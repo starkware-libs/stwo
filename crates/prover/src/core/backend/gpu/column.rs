@@ -1,17 +1,24 @@
 use std::ffi::c_void;
 use std::sync::Arc;
+
 use cudarc::driver::{CudaDevice, CudaSlice, DeviceRepr, DeviceSlice, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::compile_ptx;
 
 use super::{GpuBackend, DEVICE};
 use crate::core::backend::Column;
 use crate::core::fields::m31::{BaseField, M31};
-use crate::core::fields::qm31::SecureField;
+use crate::core::fields::qm31::{SecureField, QM31};
 use crate::core::fields::FieldOps;
 
 unsafe impl DeviceRepr for M31 {
     fn as_kernel_param(&self) -> *mut c_void {
         self.0 as *const Self as *mut c_void
+    }
+}
+
+unsafe impl DeviceRepr for QM31 {
+    fn as_kernel_param(&self) -> *mut c_void {
+        self.0 .0 .0 as *const Self as *mut c_void
     }
 }
 
@@ -21,7 +28,9 @@ impl FieldOps<BaseField> for GpuBackend {
         let log_size = u32::BITS - (size as u32).leading_zeros() - 1;
 
         let config = LaunchConfig::for_num_elems(size as u32 >> 1);
-        let batch_inverse = DEVICE.get_func("column", "batch_inverse").unwrap();
+        let batch_inverse = DEVICE
+            .get_func("column", "batch_inverse_basefield")
+            .unwrap();
         unsafe {
             let mut inner_tree: CudaSlice<M31> = DEVICE.alloc(size).unwrap();
             let res = batch_inverse.launch(
@@ -42,8 +51,30 @@ impl FieldOps<BaseField> for GpuBackend {
 }
 
 impl FieldOps<SecureField> for GpuBackend {
-    fn batch_inverse(_column: &Self::Column, _dst: &mut Self::Column) {
-        todo!()
+    fn batch_inverse(from: &Self::Column, dst: &mut Self::Column) {
+        let size = from.len();
+        let log_size = u32::BITS - (size as u32).leading_zeros() - 1;
+
+        let config = LaunchConfig::for_num_elems(size as u32 >> 1);
+        let batch_inverse = DEVICE
+            .get_func("column", "batch_inverse_secure_field")
+            .unwrap();
+        unsafe {
+            let mut inner_tree: CudaSlice<QM31> = DEVICE.alloc(size).unwrap();
+            let res = batch_inverse.launch(
+                config,
+                (
+                    from.as_slice(),
+                    dst.as_mut_slice(),
+                    &mut inner_tree,
+                    size,
+                    log_size,
+                ),
+            );
+            res
+        }
+        .unwrap();
+        DEVICE.synchronize().unwrap();
     }
 }
 
@@ -94,7 +125,26 @@ impl Column<BaseField> for BaseFieldCudaColumn {
 }
 
 #[derive(Debug, Clone)]
-pub struct SecureFieldCudaColumn([CudaSlice<u32>; 4]);
+pub struct SecureFieldCudaColumn(CudaSlice<QM31>);
+
+#[allow(unused)]
+impl SecureFieldCudaColumn {
+    pub fn new(column: CudaSlice<QM31>) -> Self {
+        Self(column)
+    }
+
+    pub fn from_vec(column: Vec<QM31>) -> Self {
+        Self(DEVICE.htod_sync_copy(&column).unwrap())
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut CudaSlice<QM31> {
+        &mut self.0
+    }
+
+    pub fn as_slice(&self) -> &CudaSlice<QM31> {
+        &self.0
+    }
+}
 
 impl FromIterator<SecureField> for SecureFieldCudaColumn {
     fn from_iter<T: IntoIterator<Item = SecureField>>(_iter: T) -> Self {
@@ -108,7 +158,7 @@ impl Column<SecureField> for SecureFieldCudaColumn {
     }
 
     fn to_cpu(&self) -> Vec<SecureField> {
-        todo!()
+        DEVICE.dtoh_sync_copy(&self.0).unwrap()
     }
 
     fn len(&self) -> usize {
@@ -123,17 +173,24 @@ impl Column<SecureField> for SecureFieldCudaColumn {
 pub fn load_batch_inverse_ptx(device: &Arc<CudaDevice>) {
     let ptx_src = include_str!("column.cu");
     let ptx = compile_ptx(ptx_src).unwrap();
-    device.load_ptx(ptx, "column", &["batch_inverse"]).unwrap();
+    device
+        .load_ptx(
+            ptx,
+            "column",
+            &["batch_inverse_basefield", "batch_inverse_secure_field"],
+        )
+        .unwrap();
 }
 
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
 
-    use crate::core::backend::gpu::column::BaseFieldCudaColumn;
+    use crate::core::backend::gpu::column::{BaseFieldCudaColumn, SecureFieldCudaColumn};
     use crate::core::backend::gpu::GpuBackend;
     use crate::core::backend::{Column, CpuBackend};
     use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::qm31::{SecureField, QM31};
     use crate::core::fields::FieldOps;
 
     #[test]
@@ -149,5 +206,27 @@ mod tests {
         <GpuBackend as FieldOps<BaseField>>::batch_inverse(&from_device, &mut dst_device);
 
         assert_eq!(dst_device.to_cpu(), dst_expected.to_cpu());
+    }
+
+    #[test]
+    fn test_batch_inverse_secure_field() {
+        let size: usize = 1 << 12;
+
+        let from_raw = (1..(size + 1) as u32).collect::<Vec<u32>>();
+
+        let from_cpu = from_raw
+            .chunks(4)
+            .map(|a| QM31::from_u32_unchecked(a[0], a[1], a[2], a[3]))
+            .collect_vec();
+        let mut dst_expected_cpu = from_cpu.clone();
+
+        CpuBackend::batch_inverse(&from_cpu, &mut dst_expected_cpu);
+
+        let from_device = SecureFieldCudaColumn::from_vec(from_cpu.clone());
+        let mut dst_device = SecureFieldCudaColumn::from_vec(from_cpu.clone());
+
+        <GpuBackend as FieldOps<SecureField>>::batch_inverse(&from_device, &mut dst_device);
+
+        assert_eq!(dst_device.to_cpu(), dst_expected_cpu);
     }
 }

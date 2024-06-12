@@ -1,54 +1,121 @@
-// These functions assume `bits` is at most 32
-
 typedef unsigned int uint32_t;
 typedef unsigned long long uint64_t;
 
-const uint32_t P = 2147483647;
+typedef struct {
+    uint32_t a;
+    uint32_t b;
+} cm31;
 
-__device__ uint32_t mul_m31(uint32_t a, uint32_t b) {
-    // TODO: use mul_m31 from m31.cu
+typedef struct {
+    cm31 a;
+    cm31 b;
+} qm31;
+
+const uint32_t P = 2147483647;
+const cm31 R = {2, 1};
+
+/*##### M31 ##### */
+
+__device__ uint32_t mul(uint32_t a, uint32_t b) {
+    // TODO: use mul from m31.cu
     return ((uint64_t) a * (uint64_t) b) % P;
+}
+
+__device__ uint32_t add(uint32_t a, uint32_t b) {
+    // TODO: use add from m31.cu
+    return ((uint64_t) a + (uint64_t) b) % P;
+}
+
+__device__ uint32_t sub(uint32_t a, uint32_t b) {
+    // TODO: use sub from m31.cu
+    return ((uint64_t) a + (uint64_t) (P - b)) % P;
+}
+
+__device__ uint32_t neg(uint32_t a) {
+    // TODO: use neg from m31.cu
+    return P - a;
 }
 
 __device__ uint64_t pow_to_power_of_two(int n, uint32_t t) {
     int i = 0;
     while(i < n) {
-        t = mul_m31(t, t);
+        t = mul(t, t);
         i++;
     }
     return t;
 }
 
-__device__ uint32_t inv_m31(uint32_t t) {
-    uint64_t t0 = mul_m31(pow_to_power_of_two(2, t), t);
-    uint64_t t1 = mul_m31(pow_to_power_of_two(1, t0), t0);
-    uint64_t t2 = mul_m31(pow_to_power_of_two(3, t1), t0);
-    uint64_t t3 = mul_m31(pow_to_power_of_two(1, t2), t0);
-    uint64_t t4 = mul_m31(pow_to_power_of_two(8, t3), t3);
-    uint64_t t5 = mul_m31(pow_to_power_of_two(8, t4), t3);
-    return mul_m31(pow_to_power_of_two(7, t5), t2);
+__device__ uint32_t inv(uint32_t t) {
+    uint64_t t0 = mul(pow_to_power_of_two(2, t), t);
+    uint64_t t1 = mul(pow_to_power_of_two(1, t0), t0);
+    uint64_t t2 = mul(pow_to_power_of_two(3, t1), t0);
+    uint64_t t3 = mul(pow_to_power_of_two(1, t2), t0);
+    uint64_t t4 = mul(pow_to_power_of_two(8, t3), t3);
+    uint64_t t5 = mul(pow_to_power_of_two(8, t4), t3);
+    return mul(pow_to_power_of_two(7, t5), t2);
 }
 
-__device__ void new_forward_level(uint32_t *from, uint32_t *dst, int index) {
+/*##### CM1 ##### */
+
+__device__ cm31 mul(cm31 x, cm31 y) {
+    return {sub(mul(x.a, y.a), mul(x.b, y.b)), add(mul(x.a, y.b), mul(x.b, y.a))};
+}
+
+__device__ cm31 add(cm31 x, cm31 y) {
+    return {add(x.a, y.a), add(x.b, y.b)};
+}
+
+__device__ cm31 sub(cm31 x, cm31 y) {
+    return {sub(x.a, y.a), sub(x.b, y.b)};
+}
+
+__device__ cm31 neg(cm31 x) {
+    return {neg(x.a), neg(x.b)};
+}
+
+__device__ cm31 inv(cm31 t) {
+    uint32_t factor = inv(add(mul(t.a, t.a), mul(t.b, t.b)));
+    return {mul(t.a, factor), mul(neg(t.b) , factor)};
+}
+
+/*##### Q31 ##### */
+
+__device__ qm31 mul(qm31 x, qm31 y) {
+    return {add(mul(x.a, y.a), mul(R, mul(x.b, y.b))), add(mul(x.a, y.b), mul(x.b, y.a))};
+}
+
+__device__ qm31 inv(qm31 t) {
+    cm31 b2 = mul(t.b, t.b);
+    cm31 ib2 = {neg(b2.b), b2.a};
+    cm31 denom = sub(mul(t.a, t.a), add(add(b2, b2),ib2));
+    cm31 denom_inverse = inv(denom);
+    return {mul(t.a, denom_inverse), neg(mul(t.b, denom_inverse))};
+}
+
+/*##### batch inverse ##### */
+
+template<typename T>
+__device__ void new_forward_level(T *from, T *dst, int index) {
     // Computes the value of the parent from the multiplication of two children.
     // dst  : Pointer to the beginning of the parent's level.
     // from : Pointer to the beginning of the children level.
     // index: Index of the computed parent.
-    dst[index] = mul_m31(from[index << 1], from[(index << 1) + 1]);
+    dst[index] = mul(from[index << 1], from[(index << 1) + 1]);
 }
 
-__device__ void new_backward_level(uint32_t *from, uint32_t *dst, int index) {
+template<typename T>
+__device__ void new_backward_level(T *from, T *dst, int index) {
     // Computes the inverse of the two children from the inverse of the parent.
     // dst  : Pointer to the beginning of the children's level.
     // from : Pointer to the beginning of the parent's level.
     // index: Index of the computed children.
-    int temp = dst[index << 1];
-    dst[index << 1] = mul_m31(from[index], dst[(index << 1) + 1]);
-    dst[(index << 1) + 1] = mul_m31(from[index], temp);
+    T temp = dst[index << 1];
+    dst[index << 1] = mul(from[index], dst[(index << 1) + 1]);
+    dst[(index << 1) + 1] = mul(from[index], temp);
 }
 
-extern "C"
-__global__ void batch_inverse(uint32_t *from, uint32_t *dst, uint32_t *inner_tree, int size, int log_size) {
+template<typename T>
+__global__ void batch_inverse(T *from, T *dst, T *inner_tree, int size, int log_size) {
     // Input:
     // - from      : array of uint32_t representing field elements in M31.
     // - inner_tree: array of uint32_t used as an auxiliary variable.
@@ -88,8 +155,8 @@ __global__ void batch_inverse(uint32_t *from, uint32_t *dst, uint32_t *inner_tre
     // are stored in separate variables.
     if(index < size) {
         new_forward_level(from, inner_tree, index);
-        // from      : | a_0       | a_1       | ... | a_(n/2 - 1)       | ...   | a_(n-1)
-        // inner_tree: | a_0 * a_1 | a_2 * a_3 | ... | a_(n-2) * a_(n-1) | empty | empty   
+        // from      : | a_0       | a_1       | ... | a_(n/2 - 1)       |      ...    | a_(n-1)
+        // inner_tree: | a_0 * a_1 | a_2 * a_3 | ... | a_(n-2) * a_(n-1) | empty | ... | empty   
     }
 
     int from_offset = 0;   // Offset at inner_tree to get the children.
@@ -119,7 +186,7 @@ __global__ void batch_inverse(uint32_t *from, uint32_t *dst, uint32_t *inner_tre
     // Compute inverse of the root.
     __syncthreads();
     if(index == 0){
-        inner_tree[dst_offset - 1] = inv_m31(inner_tree[dst_offset - 1]);
+        inner_tree[dst_offset - 1] = inv(inner_tree[dst_offset - 1]);
     }
     
     // Backward Pass: compute the inverses of the children using the parents.
@@ -146,8 +213,17 @@ __global__ void batch_inverse(uint32_t *from, uint32_t *dst, uint32_t *inner_tre
     // The inner_tree has all its inverses computed, now
     // we have to compute the inverses of the leaves:
     if(index < size) {
-        dst[index << 1] = mul_m31(inner_tree[index], from[(index << 1) + 1]);
-        dst[(index << 1) + 1] = mul_m31(inner_tree[index], from[index << 1]);
+        dst[index << 1] = mul(inner_tree[index], from[(index << 1) + 1]);
+        dst[(index << 1) + 1] = mul(inner_tree[index], from[index << 1]);
     }
 }
 
+extern "C"
+__global__ void batch_inverse_basefield(uint32_t *from, uint32_t *dst, uint32_t *inner_tree, int size, int log_size) {
+    batch_inverse(from, dst, inner_tree, size, log_size);
+}
+
+extern "C"
+__global__ void batch_inverse_secure_field(qm31 *from, qm31 *dst, qm31 *inner_tree, int size, int log_size) {
+    batch_inverse(from, dst, inner_tree, size, log_size);
+}
