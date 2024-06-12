@@ -149,7 +149,6 @@ impl CirclePoint<SecureField> {
         SECURE_FIELD_CIRCLE_GEN.mul(index)
     }
 
-    #[allow(clippy::assertions_on_constants)]
     pub fn get_random_point<C: Channel>(channel: &mut C) -> Self {
         let t = channel.draw_felt();
 
