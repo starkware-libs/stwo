@@ -82,6 +82,11 @@ __device__ unsigned int bit_reverse(unsigned int n, int bits) {
 }
 
 extern "C"
+__global__ void put_one(uint32_t *dst, int offset) {
+    dst[offset] = 1;
+}
+
+extern "C"
 __global__ void precompute_twiddles(uint32_t *dst, point initial, point step, int offset, int size, int log_size) {
     // Computes one level of twiddles for a particular Coset.
     //      dst: twiddles array.
@@ -94,7 +99,7 @@ __global__ void precompute_twiddles(uint32_t *dst, point initial, point step, in
 
     size >>= 1;
     if (idx < size) {
-        point pow = point_pow(step, bit_reverse(idx, log_size));
+        point pow = point_pow(step, bit_reverse(idx, log_size - 1));
         dst[offset + idx] = point_mul(initial, pow).x;
     }
 }

@@ -9,6 +9,7 @@ use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::FieldOps;
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
@@ -76,8 +77,10 @@ impl PolyOps for GpuBackend {
         let kernel = DEVICE.get_func("circle", "precompute_twiddles").unwrap();
 
         let mut twiddles = BaseFieldCudaColumn::new(unsafe { DEVICE.alloc(coset.size()).unwrap() });
-        let mut current_level_offset = 0;
+        let mut itwiddles = BaseFieldCudaColumn::new(unsafe { DEVICE.alloc(coset.size()).unwrap() });
 
+        let mut current_level_offset = 0;
+        
         for _ in 0..coset.log_size() {
             // Compute each level of the twiddle tree.
             unsafe {
@@ -92,12 +95,19 @@ impl PolyOps for GpuBackend {
                 )
             }
             .unwrap();
-            current_level_offset += coset.size();
             coset = coset.double();
+            current_level_offset += coset.size();
         }
         DEVICE.synchronize().unwrap();
 
-        let itwiddles = BaseFieldCudaColumn::new(unsafe { DEVICE.alloc(coset.size()).unwrap() });
+        // Put a one in the last position.
+        let kernel = DEVICE.get_func("circle", "put_one").unwrap();
+        let config = LaunchConfig::for_num_elems(1);
+        unsafe {
+            kernel.clone().launch(config, (twiddles.as_mut_slice(), current_level_offset))
+        }.unwrap();
+
+        <Self as FieldOps<BaseField>>::batch_inverse(&twiddles, &mut itwiddles);
 
         TwiddleTree {
             root_coset: coset,
@@ -110,7 +120,7 @@ impl PolyOps for GpuBackend {
 pub fn load_circle(device: &Arc<CudaDevice>) {
     let ptx_src = include_str!("circle.cu");
     let ptx = compile_ptx(ptx_src).unwrap();
-    device.load_ptx(ptx, "circle", &["sort_values", "precompute_twiddles"]).unwrap();
+    device.load_ptx(ptx, "circle", &["sort_values", "precompute_twiddles", "put_one"]).unwrap();
 }
 
 #[cfg(test)]
@@ -140,12 +150,13 @@ mod tests {
 
     #[test]
     fn test_precompute_twiddles() {
-        let log_size = 5;
+        let log_size = 20;
 
         let coset = CanonicCoset::new(log_size).half_coset();
         let expected_result = CpuBackend::precompute_twiddles(coset.clone());
         let twiddles = GpuBackend::precompute_twiddles(coset);
         
         assert_eq!(twiddles.twiddles.to_cpu(), expected_result.twiddles);
+        assert_eq!(twiddles.itwiddles.to_cpu(), expected_result.itwiddles);
     }
 }
