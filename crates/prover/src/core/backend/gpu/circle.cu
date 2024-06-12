@@ -95,6 +95,10 @@ __global__ void precompute_twiddles(uint32_t *dst, point initial, point step, in
     //   offset: store values in dst[offset]
     //     size: coset size
     // log_size: log(size)
+
+    // TODO: when size is larger than the max number of concurrent threads,
+    //       consecutive numbers can me computed with a multiplication within the same thread,
+    //       instead of using another pow.
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     size >>= 1;
