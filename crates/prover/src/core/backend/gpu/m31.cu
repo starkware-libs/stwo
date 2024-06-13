@@ -1,4 +1,4 @@
-
+import "m31.h"
 
 __device__ __constant__ int MODULUS = (1 << 31) - 1; 
 
