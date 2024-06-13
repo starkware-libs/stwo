@@ -4,7 +4,7 @@ use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, Component, ComponentTraceWriter};
 use crate::core::backend::CpuBackend;
-use crate::core::circle::CirclePoint;
+use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -47,6 +47,74 @@ impl WideFibComponent {
 
     pub fn n_columns(&self) -> usize {
         N_COLUMNS
+    }
+
+    fn evaluate_trace_step_constraints_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask: &ColumnVec<Vec<SecureField>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
+        constraint_zero_domain: Coset,
+    ) {
+        let denom = coset_vanishing(constraint_zero_domain, point);
+        let denom_inverse = denom.inverse();
+        for i in 0..self.n_columns() - 2 {
+            let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
+            evaluation_accumulator.accumulate(numerator * denom_inverse);
+        }
+    }
+
+    fn evaluate_lookup_boundary_constraint_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask: &ColumnVec<Vec<SecureField>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
+        constraint_zero_domain: Coset,
+        interaction_elements: &InteractionElements,
+    ) {
+        let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
+        let value =
+            SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
+                mask[self.n_columns() + i][0]
+            }));
+        let numerator = (value
+            * shifted_secure_combination(
+                &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
+                alpha,
+                z,
+            ))
+            - shifted_secure_combination(&[mask[0][0], mask[1][0]], alpha, z);
+        let denom = point_vanishing(constraint_zero_domain.at(0), point);
+        evaluation_accumulator.accumulate(numerator / denom);
+    }
+
+    fn evaluate_lookup_step_constraints_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask: &ColumnVec<Vec<SecureField>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
+        constraint_zero_domain: Coset,
+        interaction_elements: &InteractionElements,
+    ) {
+        let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
+        let value =
+            SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
+                mask[self.n_columns() + i][0]
+            }));
+        let prev_value =
+            SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
+                mask[self.n_columns() + i][1]
+            }));
+        let numerator = (value
+            * shifted_secure_combination(
+                &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
+                alpha,
+                z,
+            ))
+            - (prev_value * shifted_secure_combination(&[mask[0][0], mask[1][0]], alpha, z));
+        let denom = coset_vanishing(constraint_zero_domain, point)
+            / point_excluder(constraint_zero_domain.at(0), point);
+        evaluation_accumulator.accumulate(numerator / denom);
     }
 }
 
@@ -103,41 +171,26 @@ impl Component for WideFibComponent {
         interaction_elements: &InteractionElements,
     ) {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
-        let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
-        let lookup_value =
-            SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
-                mask[self.n_columns() + i][0]
-            }));
-        let lookup_prev_value =
-            SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
-                mask[self.n_columns() + i][1]
-            }));
-        let lookup_step_numerator = (lookup_value
-            * shifted_secure_combination(
-                &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
-                alpha,
-                z,
-            ))
-            - (lookup_prev_value * shifted_secure_combination(&[mask[0][0], mask[1][0]], alpha, z));
-        let lookup_step_denom = coset_vanishing(constraint_zero_domain, point)
-            / point_excluder(constraint_zero_domain.at(0), point);
-        evaluation_accumulator.accumulate(lookup_step_numerator / lookup_step_denom);
-        let lookup_boundary_numerator = (lookup_value
-            * shifted_secure_combination(
-                &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
-                alpha,
-                z,
-            ))
-            - shifted_secure_combination(&[mask[0][0], mask[1][0]], alpha, z);
-        let lookup_boundary_denom = point_vanishing(constraint_zero_domain.at(0), point);
-        evaluation_accumulator.accumulate(lookup_boundary_numerator / lookup_boundary_denom);
-
-        let denom = coset_vanishing(constraint_zero_domain, point);
-        let denom_inverse = denom.inverse();
-        for i in 0..self.n_columns() - 2 {
-            let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
-            evaluation_accumulator.accumulate(numerator * denom_inverse);
-        }
+        self.evaluate_lookup_step_constraints_at_point(
+            point,
+            mask,
+            evaluation_accumulator,
+            constraint_zero_domain,
+            interaction_elements,
+        );
+        self.evaluate_lookup_boundary_constraint_at_point(
+            point,
+            mask,
+            evaluation_accumulator,
+            constraint_zero_domain,
+            interaction_elements,
+        );
+        self.evaluate_trace_step_constraints_at_point(
+            point,
+            mask,
+            evaluation_accumulator,
+            constraint_zero_domain,
+        );
     }
 }
 
