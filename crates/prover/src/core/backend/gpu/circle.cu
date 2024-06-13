@@ -38,6 +38,11 @@ __device__ uint32_t m31_sub(uint32_t a, uint32_t b) {
     return ((uint64_t) a + (uint64_t) (P - b)) % P;
 }
 
+__device__ uint32_t m31_neg(uint32_t a) {
+    // TODO: use sub from m31.cu
+    return P - a;
+}
+
 __device__ point point_mul(point &p1, point &p2) {
     return {
         m31_sub(m31_mul(p1.x, p2.x), m31_mul(p1.y, p2.y)),
@@ -105,5 +110,63 @@ __global__ void precompute_twiddles(uint32_t *dst, point initial, point step, in
     if (idx < size) {
         point pow = point_pow(step, bit_reverse(idx, log_size - 1));
         dst[offset + idx] = point_mul(initial, pow).x;
+    }
+}
+
+__device__ int get_twiddle(uint32_t *twiddles, int index) {
+    int k = index >> 2;
+    if (index % 4 == 0) {
+        return twiddles[2 * k + 1];
+    } else if (index % 4 == 1) {
+        return m31_neg(twiddles[2 * k + 1]);
+    } else if (index % 4 == 2) {
+        return m31_neg(twiddles[2 * k]);
+    } else {
+        return twiddles[2 * k];
+    }
+}
+
+extern "C"
+__global__ void fft_circle_part(uint32_t *values, uint32_t *inverse_twiddles_tree, int values_size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    
+    if (idx < (values_size >> 1)) {
+        uint32_t val0 = values[2 * idx];
+        uint32_t val1 = values[2 * idx + 1];
+        uint32_t twiddle = get_twiddle(inverse_twiddles_tree, idx);
+        
+        values[2 * idx] = m31_add(val0, val1);
+        values[2 * idx + 1] = m31_mul(m31_sub(val0, val1), twiddle);
+    }
+}
+
+
+extern "C"
+__global__ void fft_line_part(uint32_t *values, uint32_t *inverse_twiddles_tree, int values_size, int inverse_twiddles_size, int layer_domain_offset, int layer) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < (values_size >> 1)) {
+        uint32_t  number_polynomials = 1 << layer;
+        uint32_t h = idx / number_polynomials;
+        uint32_t l = idx % number_polynomials;
+        uint32_t idx0 = (h << (layer + 1)) + l;
+        uint32_t idx1 = idx0 + number_polynomials;
+
+        uint32_t val0 = values[idx0];
+        uint32_t val1 = values[idx1];
+        uint32_t twiddle = inverse_twiddles_tree[layer_domain_offset + h];
+        
+        values[idx0] = m31_add(val0, val1);
+        values[idx1] = m31_mul(m31_sub(val0, val1), twiddle);
+    }
+}
+
+extern "C"
+__global__ void rescale(uint32_t *values, int size, uint32_t factor) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(idx < size) {
+        values[idx] = m31_mul(values[idx], factor);
     }
 }
