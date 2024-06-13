@@ -1,4 +1,4 @@
-// crypto_ops.h
+// m31.h
 #ifndef M31_H
 #define M31_H
 
