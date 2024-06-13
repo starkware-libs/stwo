@@ -1,12 +1,6 @@
 
-__device__ __constant__ int MODULUS = (1 << 31) - 1; 
 
-// TODO::CUDA Benchmark Functions
-extern "C" __global__  void benchmark_add(unsigned int lhs,  unsigned int rhs, unsigned int *out) {
-    *out = lhs + rhs; 
-    
-    *out = min(*out, *out - MODULUS);
-}
+__device__ __constant__ int MODULUS = (1 << 31) - 1; 
 
 // TODO: Check if using Shared memory per block over device for optimizations
 extern "C" __global__  void mul_m31(unsigned int a, unsigned int b, unsigned int *out) {

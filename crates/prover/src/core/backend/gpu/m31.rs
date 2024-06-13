@@ -2,7 +2,7 @@
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use cudarc::driver::{CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
-use cudarc::nvrtc::compile_ptx;
+use cudarc::nvrtc::{compile_ptx_with_opts, CompileOptions};
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
@@ -22,7 +22,17 @@ pub trait LoadBaseField {
 impl LoadBaseField for Device {
     fn load(&self) {
         let ptx_src_mul_m31 = include_str!("m31.cu");
-        let ptx_mul_m31 = compile_ptx(ptx_src_mul_m31).unwrap();
+        println!("curr {:?}", std::env::current_dir());
+        let curr_dir = std::env::current_dir()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned();
+        let opts = CompileOptions {
+            include_paths: vec![curr_dir + "/src/core/backend/gpu"],
+            ..Default::default()
+        };
+        let ptx_mul_m31 = compile_ptx_with_opts(ptx_src_mul_m31, opts).unwrap();
         self.load_ptx(
             ptx_mul_m31,
             "base_field_functions",
@@ -314,8 +324,9 @@ mod tests {
 
     fn setup(size: usize) -> (Vec<M31>, Vec<M31>) {
         let mut rng: SmallRng = SmallRng::seed_from_u64(0);
-        std::iter::repeat_with(|| (rng.gen::<M31>(), rng.gen::<M31>()))
-            .take(size)
+        (0..size)
+            .into_iter()
+            .map(|_| (rng.gen::<M31>(), rng.gen::<M31>()))
             .unzip()
     }
 

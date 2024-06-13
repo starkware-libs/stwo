@@ -2,11 +2,10 @@
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use cudarc::driver::{DeviceSlice, LaunchAsync, LaunchConfig};
-use cudarc::nvrtc::compile_ptx;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
-use super::{Device, DEVICE};
+use super::DEVICE;
 use crate::core::backend::gpu::m31::PackedBaseField as PackedM31;
 use crate::core::fields::cm31::CM31;
 #[allow(unused_imports)]
@@ -15,22 +14,22 @@ use crate::core::fields::qm31::QM31;
 #[allow(unused_imports)]
 use crate::core::fields::FieldExpOps;
 
-pub trait LoadSecureBaseField {
-    fn load(&self);
-}
+// pub trait LoadSecureBaseField {
+//     fn load(&self);
+// }
 
-impl LoadSecureBaseField for Device {
-    fn load(&self) {
-        let ptx_src_mul_m31 = include_str!("qm31.cu");
-        let ptx_mul_m31 = compile_ptx(ptx_src_mul_m31).unwrap();
-        self.load_ptx(
-            ptx_mul_m31,
-            "base_field_functions",
-            &["mul", "reduce", "add", "sub", "neg"],
-        )
-        .unwrap();
-    }
-}
+// impl LoadSecureBaseField for Device {
+//     fn load(&self) {
+//         let ptx_src_mul_m31 = include_str!("qm31.cu");
+//         let ptx_mul_m31 = compile_ptx(ptx_src_mul_m31).unwrap();
+//         self.load_ptx(
+//             ptx_mul_m31,
+//             "base_field_functions",
+//             &["mul", "reduce", "add", "sub", "neg"],
+//         )
+//         .unwrap();
+//     }
+// }
 
 #[derive(Debug)]
 #[repr(C)]
@@ -131,11 +130,12 @@ impl Add for PackedQM31 {
             .device()
             .get_func("base_field_functions", "add")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0[0].0.len() as u32);
-        let a = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let b = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let c = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let d = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
+        let len = self.0[0].0.len();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(len as u32);
+        let a = DEVICE.alloc_zeros::<u32>(len).unwrap();
+        let b = DEVICE.alloc_zeros::<u32>(len).unwrap();
+        let c = DEVICE.alloc_zeros::<u32>(len).unwrap();
+        let d = DEVICE.alloc_zeros::<u32>(len).unwrap();
 
         let stream_b = DEVICE.fork_default_stream().unwrap();
         let stream_c = DEVICE.fork_default_stream().unwrap();
@@ -144,14 +144,14 @@ impl Add for PackedQM31 {
         unsafe {
             add_kernel
                 .clone()
-                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &a, self.0.len()))
+                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &a, len))
         }
         .unwrap();
         unsafe {
             add_kernel.clone().launch_on_stream(
                 &stream_b,
                 cfg,
-                (&self.0[1].0, &rhs.0[1].0, &b, self.0.len()),
+                (&self.0[1].0, &rhs.0[1].0, &b, len),
             )
         }
         .unwrap();
@@ -159,16 +159,12 @@ impl Add for PackedQM31 {
             add_kernel.clone().launch_on_stream(
                 &stream_c,
                 cfg,
-                (&self.0[2].0, &rhs.0[2].0, &c, self.0.len()),
+                (&self.0[2].0, &rhs.0[2].0, &c, len),
             )
         }
         .unwrap();
         unsafe {
-            add_kernel.launch_on_stream(
-                &stream_d,
-                cfg,
-                (&self.0[3].0, &rhs.0[3].0, &d, self.0.len()),
-            )
+            add_kernel.launch_on_stream(&stream_d, cfg, (&self.0[3].0, &rhs.0[3].0, &d, len))
         }
         .unwrap();
 
@@ -187,11 +183,8 @@ impl AddAssign for PackedQM31 {
             .device()
             .get_func("base_field_functions", "add")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0[0].0.len() as u32);
-        let a = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let b = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let c = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let d = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
+        let len = self.0[0].0.len();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(len as u32);
 
         let stream_b = DEVICE.fork_default_stream().unwrap();
         let stream_c = DEVICE.fork_default_stream().unwrap();
@@ -200,14 +193,14 @@ impl AddAssign for PackedQM31 {
         unsafe {
             add_kernel
                 .clone()
-                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &a, self.0.len()))
+                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &self.0[0].0, len))
         }
         .unwrap();
         unsafe {
             add_kernel.clone().launch_on_stream(
                 &stream_b,
                 cfg,
-                (&self.0[1].0, &rhs.0[1].0, &b, self.0.len()),
+                (&self.0[1].0, &rhs.0[1].0, &self.0[1].0, len),
             )
         }
         .unwrap();
@@ -215,7 +208,7 @@ impl AddAssign for PackedQM31 {
             add_kernel.clone().launch_on_stream(
                 &stream_c,
                 cfg,
-                (&self.0[2].0, &rhs.0[2].0, &c, self.0.len()),
+                (&self.0[2].0, &rhs.0[2].0, &self.0[2].0, len),
             )
         }
         .unwrap();
@@ -223,7 +216,7 @@ impl AddAssign for PackedQM31 {
             add_kernel.launch_on_stream(
                 &stream_d,
                 cfg,
-                (&self.0[3].0, &rhs.0[3].0, &d, self.0.len()),
+                (&self.0[3].0, &rhs.0[3].0, &self.0[3].0, len),
             )
         }
         .unwrap();
@@ -245,11 +238,12 @@ impl Mul for PackedQM31 {
             .device()
             .get_func("base_field_functions", "mul")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0[0].0.len() as u32);
-        let a = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let b = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let c = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let d = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
+        let len = self.0[0].0.len();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(len as u32);
+        let a = DEVICE.alloc_zeros::<u32>(len).unwrap();
+        let b = DEVICE.alloc_zeros::<u32>(len).unwrap();
+        let c = DEVICE.alloc_zeros::<u32>(len).unwrap();
+        let d = DEVICE.alloc_zeros::<u32>(len).unwrap();
 
         let stream_b = DEVICE.fork_default_stream().unwrap();
         let stream_c = DEVICE.fork_default_stream().unwrap();
@@ -258,14 +252,14 @@ impl Mul for PackedQM31 {
         unsafe {
             mul_kernel
                 .clone()
-                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &a, self.0.len()))
+                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &a, len))
         }
         .unwrap();
         unsafe {
             mul_kernel.clone().launch_on_stream(
                 &stream_b,
                 cfg,
-                (&self.0[1].0, &rhs.0[1].0, &b, self.0.len()),
+                (&self.0[1].0, &rhs.0[1].0, &b, len),
             )
         }
         .unwrap();
@@ -273,16 +267,12 @@ impl Mul for PackedQM31 {
             mul_kernel.clone().launch_on_stream(
                 &stream_c,
                 cfg,
-                (&self.0[2].0, &rhs.0[2].0, &c, self.0.len()),
+                (&self.0[2].0, &rhs.0[2].0, &c, len),
             )
         }
         .unwrap();
         unsafe {
-            mul_kernel.launch_on_stream(
-                &stream_d,
-                cfg,
-                (&self.0[3].0, &rhs.0[3].0, &d, self.0.len()),
-            )
+            mul_kernel.launch_on_stream(&stream_d, cfg, (&self.0[3].0, &rhs.0[3].0, &d, len))
         }
         .unwrap();
 
@@ -295,16 +285,32 @@ impl Mul for PackedQM31 {
 impl MulAssign for PackedQM31 {
     #[inline(always)]
     fn mul_assign(&mut self, rhs: Self) {
+        // // Compute using Karatsuba.
+        // //   (a + ub) * (c + ud) =
+        // //   (ac + (2+i)bd) + (ad + bc)u =
+        // //   ac + 2bd + ibd + (ad + bc)u.
+        // let ac = self.a() * rhs.a();
+        // let bd = self.b() * rhs.b();
+        // let bd_times_1_plus_i = PackedCM31([bd.a() - bd.b(), bd.a() + bd.b()]);
+        // // Computes ac + bd.
+        // let ac_p_bd = ac + bd;
+        // // Computes ad + bc.
+        // let ad_p_bc = (self.a() + self.b()) * (rhs.a() + rhs.b()) - ac_p_bd;
+        // // ac + 2bd + ibd =
+        // // ac + bd + bd + ibd
+        // let l = PackedCM31([
+        //     ac_p_bd.a() + bd_times_1_plus_i.a(),
+        //     ac_p_bd.b() + bd_times_1_plus_i.b(),
+        // ]);
+        // Self([l, ad_p_bc])
+
         let mul_kernel = self.0[0]
             .0
             .device()
             .get_func("base_field_functions", "mul")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0[0].0.len() as u32);
-        let a = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let b = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let c = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let d = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
+        let len = self.0[0].0.len();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(len as u32);
 
         let stream_b = DEVICE.fork_default_stream().unwrap();
         let stream_c = DEVICE.fork_default_stream().unwrap();
@@ -313,14 +319,14 @@ impl MulAssign for PackedQM31 {
         unsafe {
             mul_kernel
                 .clone()
-                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &a, self.0.len()))
+                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &self.0[0].0, len))
         }
         .unwrap();
         unsafe {
             mul_kernel.clone().launch_on_stream(
                 &stream_b,
                 cfg,
-                (&self.0[1].0, &rhs.0[1].0, &b, self.0.len()),
+                (&self.0[1].0, &rhs.0[1].0, &self.0[1].0, len),
             )
         }
         .unwrap();
@@ -328,7 +334,7 @@ impl MulAssign for PackedQM31 {
             mul_kernel.clone().launch_on_stream(
                 &stream_c,
                 cfg,
-                (&self.0[2].0, &rhs.0[2].0, &c, self.0.len()),
+                (&self.0[2].0, &rhs.0[2].0, &self.0[2].0, len),
             )
         }
         .unwrap();
@@ -336,7 +342,7 @@ impl MulAssign for PackedQM31 {
             mul_kernel.launch_on_stream(
                 &stream_d,
                 cfg,
-                (&self.0[3].0, &rhs.0[3].0, &d, self.0.len()),
+                (&self.0[3].0, &rhs.0[3].0, &self.0[3].0, len),
             )
         }
         .unwrap();
@@ -355,27 +361,27 @@ impl Neg for PackedQM31 {
             .device()
             .get_func("base_field_functions", "neg")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0[0].0.len() as u32);
+        let len = self.0[0].0.len();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(len as u32);
 
         let stream_b = DEVICE.fork_default_stream().unwrap();
         let stream_c = DEVICE.fork_default_stream().unwrap();
         let stream_d = DEVICE.fork_default_stream().unwrap();
 
-        unsafe { neg_kernel.clone().launch(cfg, (&self.0[0].0, self.0.len())) }.unwrap();
+        unsafe { neg_kernel.clone().launch(cfg, (&self.0[0].0, len)) }.unwrap();
         unsafe {
             neg_kernel
                 .clone()
-                .launch_on_stream(&stream_b, cfg, (&self.0[1].0, self.0.len()))
+                .launch_on_stream(&stream_b, cfg, (&self.0[1].0, len))
         }
         .unwrap();
         unsafe {
             neg_kernel
                 .clone()
-                .launch_on_stream(&stream_c, cfg, (&self.0[2].0, self.0.len()))
+                .launch_on_stream(&stream_c, cfg, (&self.0[2].0, len))
         }
         .unwrap();
-        unsafe { neg_kernel.launch_on_stream(&stream_d, cfg, (&self.0[3].0, self.0.len())) }
-            .unwrap();
+        unsafe { neg_kernel.launch_on_stream(&stream_d, cfg, (&self.0[3].0, len)) }.unwrap();
 
         DEVICE.synchronize().unwrap();
 
@@ -395,12 +401,12 @@ impl Sub for PackedQM31 {
             .device()
             .get_func("base_field_functions", "sub")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0[0].0.len() as u32);
-
-        let a = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let b = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let c = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let d = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
+        let len = self.0[0].0.len();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(len as u32);
+        let a = DEVICE.alloc_zeros::<u32>(len).unwrap();
+        let b = DEVICE.alloc_zeros::<u32>(len).unwrap();
+        let c = DEVICE.alloc_zeros::<u32>(len).unwrap();
+        let d = DEVICE.alloc_zeros::<u32>(len).unwrap();
 
         let stream_b = DEVICE.fork_default_stream().unwrap();
         let stream_c = DEVICE.fork_default_stream().unwrap();
@@ -409,14 +415,14 @@ impl Sub for PackedQM31 {
         unsafe {
             sub_kernel
                 .clone()
-                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &a, self.0.len()))
+                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &a, len))
         }
         .unwrap();
         unsafe {
             sub_kernel.clone().launch_on_stream(
                 &stream_b,
                 cfg,
-                (&self.0[1].0, &rhs.0[1].0, &b, self.0.len()),
+                (&self.0[1].0, &rhs.0[1].0, &b, len),
             )
         }
         .unwrap();
@@ -424,16 +430,12 @@ impl Sub for PackedQM31 {
             sub_kernel.clone().launch_on_stream(
                 &stream_c,
                 cfg,
-                (&self.0[2].0, &rhs.0[2].0, &c, self.0.len()),
+                (&self.0[2].0, &rhs.0[2].0, &c, len),
             )
         }
         .unwrap();
         unsafe {
-            sub_kernel.launch_on_stream(
-                &stream_d,
-                cfg,
-                (&self.0[3].0, &rhs.0[3].0, &d, self.0.len()),
-            )
+            sub_kernel.launch_on_stream(&stream_d, cfg, (&self.0[3].0, &rhs.0[3].0, &d, len))
         }
         .unwrap();
 
@@ -447,48 +449,45 @@ impl Sub for PackedQM31 {
 impl SubAssign for PackedQM31 {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: Self) {
-        let sub_kernel = self.0[0]
+        let kernel = self.0[0]
             .0
             .device()
             .get_func("base_field_functions", "sub")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0[0].0.len() as u32);
-        let a = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let b = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let c = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
-        let d = DEVICE.alloc_zeros::<u32>(self.0.len()).unwrap();
+        let len = self.0[0].0.len();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(len as u32);
 
         let stream_b = DEVICE.fork_default_stream().unwrap();
         let stream_c = DEVICE.fork_default_stream().unwrap();
         let stream_d = DEVICE.fork_default_stream().unwrap();
 
         unsafe {
-            sub_kernel
+            kernel
                 .clone()
-                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &a, self.0.len()))
+                .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &self.0[0].0, len))
         }
         .unwrap();
         unsafe {
-            sub_kernel.clone().launch_on_stream(
+            kernel.clone().launch_on_stream(
                 &stream_b,
                 cfg,
-                (&self.0[1].0, &rhs.0[1].0, &b, self.0.len()),
+                (&self.0[1].0, &rhs.0[1].0, &self.0[1].0, len),
             )
         }
         .unwrap();
         unsafe {
-            sub_kernel.clone().launch_on_stream(
+            kernel.clone().launch_on_stream(
                 &stream_c,
                 cfg,
-                (&self.0[2].0, &rhs.0[2].0, &c, self.0.len()),
+                (&self.0[2].0, &rhs.0[2].0, &self.0[2].0, len),
             )
         }
         .unwrap();
         unsafe {
-            sub_kernel.launch_on_stream(
+            kernel.launch_on_stream(
                 &stream_d,
                 cfg,
-                (&self.0[3].0, &rhs.0[3].0, &d, self.0.len()),
+                (&self.0[3].0, &rhs.0[3].0, &self.0[3].0, len),
             )
         }
         .unwrap();
@@ -534,108 +533,107 @@ impl One for PackedQM31 {
 //     }
 // }
 
-// #[cfg(test)]
-// mod tests {
-//     use rand::rngs::SmallRng;
-//     use rand::{Rng, SeedableRng};
+#[cfg(test)]
+mod tests {
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
 
-//     use super::PackedQM31;
-//     use crate::core::fields::m31::M31;
+    use super::PackedQM31;
+    use crate::core::fields::qm31::QM31;
 
-//     const SIZE: usize = 1 << 24;
+    const SIZE: usize = 1 << 4;
 
-//     fn setup(size: usize) -> (Vec<M31>, Vec<M31>, Vec<M31>, Vec<M31>) {
-//         let mut rng: SmallRng = SmallRng::seed_from_u64(0);
-//         let (a, b) = std::iter::repeat_with(|| (rng.gen::<M31>(), rng.gen::<M31>()))
-//             .take(size)
-//             .unzip();
-//         let (c, d) = std::iter::repeat_with(|| (rng.gen::<M31>(), rng.gen::<M31>()))
-//             .take(size)
-//             .unzip();
-//         (a, b, c, d)
-//     }
+    fn setup(size: usize) -> (Vec<QM31>, Vec<QM31>) {
+        let mut rng: SmallRng = SmallRng::seed_from_u64(0);
+        (0..size)
+            .into_iter()
+            .map(|_| (rng.gen::<QM31>(), rng.gen::<QM31>()))
+            .unzip()
+    }
 
-//     #[test]
-//     fn test_addition() {
-//         let (a_lhs, b_lhs, c_lhs, d_lhs) = setup(SIZE);
-//         let (a_rhs, b_rhs, c_rhs, d_rhs) = setup(SIZE);
+    #[test]
+    fn test_addition() {
+        let (lhs, rhs) = setup(SIZE);
+        let mut packed_lhs = PackedQM31::from_array(lhs.clone());
+        let packed_rhs = PackedQM31::from_array(rhs.clone());
 
-//         let mut packed_lhs = PackedQM31::from_array(lhs.clone());
-//         let packed_rhs = PackedQM31::from_array(rhs.clone());
+        packed_lhs += packed_rhs;
 
-//         packed_lhs += packed_rhs;
+        assert_eq!(
+            packed_lhs.to_array(),
+            lhs.iter()
+                .zip(rhs.iter())
+                .map(|(&l, &r)| l + r)
+                .collect::<Vec<QM31>>()
+        );
+    }
 
-//         assert_eq!(
-//             packed_lhs.to_array(),
-//             lhs.iter()
-//                 .zip(rhs.iter())
-//                 .map(|(&l, &r)| l + r)
-//                 .collect::<Vec<M31>>()
-//         );
-//     }
+    #[test]
+    fn test_subtraction() {
+        let (lhs, rhs) = setup(SIZE);
+        let mut packed_lhs = PackedQM31::from_array(lhs.clone());
+        let packed_rhs = PackedQM31::from_array(rhs.clone());
 
-//     #[test]
-//     fn test_subtraction() {
-//         let (lhs, rhs) = setup(SIZE);
-//         let mut packed_lhs = PackedQM31::from_array(lhs.clone());
-//         let packed_rhs = PackedQM31::from_array(rhs.clone());
+        packed_lhs -= packed_rhs;
 
-//         packed_lhs -= packed_rhs;
+        assert_eq!(
+            packed_lhs.to_array(),
+            lhs.iter()
+                .zip(rhs.iter())
+                .map(|(&l, &r)| l - r)
+                .collect::<Vec<QM31>>()
+        );
+    }
 
-//         assert_eq!(
-//             packed_lhs.to_array(),
-//             lhs.iter()
-//                 .zip(rhs.iter())
-//                 .map(|(&l, &r)| l - r)
-//                 .collect::<Vec<M31>>()
-//         );
-//     }
+    #[test]
+    fn test_multiplication() {
+        let (lhs, rhs) = setup(4);
+        let mut packed_lhs = PackedQM31::from_array(lhs.clone());
+        let packed_rhs = PackedQM31::from_array(rhs.clone());
 
-//     #[test]
-//     fn test_multiplication() {
-//         let (lhs, rhs) = setup(SIZE);
-//         let mut packed_lhs = PackedQM31::from_array(lhs.clone());
-//         let packed_rhs = PackedQM31::from_array(rhs.clone());
+        println!("{:?}", lhs);
+        println!("{:?}", rhs);
+        println!("{:?}", packed_lhs.clone().to_array());
+        println!("{:?}", packed_rhs.clone().to_array());
+        packed_lhs = packed_lhs * packed_rhs;
 
-//         packed_lhs *= packed_rhs;
+        assert_eq!(
+            packed_lhs.to_array(),
+            lhs.iter()
+                .zip(rhs.iter())
+                .map(|(&l, &r)| l * r)
+                .collect::<Vec<QM31>>()
+        );
+    }
 
-//         assert_eq!(
-//             packed_lhs.to_array(),
-//             lhs.iter()
-//                 .zip(rhs.iter())
-//                 .map(|(&l, &r)| l * r)
-//                 .collect::<Vec<M31>>()
-//         );
-//     }
+    #[test]
+    fn test_negation() {
+        let (lhs, _) = setup(SIZE);
+        let packed_lhs = PackedQM31::from_array(lhs.clone());
 
-//     #[test]
-//     fn test_negation() {
-//         let (lhs, _) = setup(SIZE);
-//         let packed_values = PackedQM31::from_array(lhs.clone());
+        let packed_lhs = -packed_lhs;
 
-//         let res = -packed_values;
+        assert_eq!(
+            packed_lhs.to_array(),
+            lhs.iter().map(|&l| -l).collect::<Vec<QM31>>()
+        );
+    }
 
-//         assert_eq!(
-//             res.to_array(),
-//             lhs.iter().map(|&l| -M31(l.0)).collect::<Vec<M31>>()
-//         )
-//     }
+    // #[test]
+    // fn test_addition_ref() {
+    //     let (lhs, rhs) = setup(SIZE);
 
-//     #[test]
-//     fn test_addition_ref() {
-//         let (lhs, rhs) = setup(SIZE);
+    //     let packed_lhs = PackedQM31::from_array(lhs.clone());
+    //     let packed_rhs = PackedQM31::from_array(rhs.clone());
 
-//         let packed_lhs = PackedQM31::from_array(lhs.clone());
-//         let packed_rhs = PackedQM31::from_array(rhs.clone());
+    //     packed_lhs.add_assign_ref(&packed_rhs);
 
-//         packed_lhs.add_assign_ref(&packed_rhs);
-
-//         assert_eq!(
-//             packed_lhs.to_array(),
-//             lhs.iter()
-//                 .zip(rhs.iter())
-//                 .map(|(&l, &r)| l + r)
-//                 .collect::<Vec<M31>>()
-//         );
-//     }
-// }
+    //     assert_eq!(
+    //         packed_lhs.to_array(),
+    //         lhs.iter()
+    //             .zip(rhs.iter())
+    //             .map(|(&l, &r)| l + r)
+    //             .collect::<Vec<M31>>()
+    //     );
+    // }
+}
