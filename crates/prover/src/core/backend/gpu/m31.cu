@@ -1,17 +1,17 @@
-import "m31.h"
+#include "m31.h"
 
 __device__ __constant__ int MODULUS = (1 << 31) - 1; 
 
 // TODO: Check if using Shared memory per block over device for optimizations
-extern "C" __global__  void mul_m31(unsigned int a, unsigned int b, unsigned int *out) {
+extern "C" __global__  void mul_m31(unsigned int lhs, unsigned int rhs, unsigned int *out) {
     unsigned long long int a_e;
     unsigned long long int b_e;
     unsigned long long int prod_e;
     unsigned int prod_lows;
     unsigned int prod_highs;
 
-    a_e = static_cast<unsigned long long int>(a);
-    b_e = static_cast<unsigned long long int>(b);
+    a_e = static_cast<unsigned long long int>(lhs);
+    b_e = static_cast<unsigned long long int>(rhs);
 
     prod_e = a_e * b_e;
     
