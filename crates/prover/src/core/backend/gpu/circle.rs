@@ -22,6 +22,8 @@ unsafe impl DeviceRepr for CirclePoint<BaseField> {
     }
 }
 
+
+
 impl PolyOps for GpuBackend {
     // TODO: This type may need to be changed
     type Twiddles = BaseFieldCudaColumn;
@@ -58,46 +60,19 @@ impl PolyOps for GpuBackend {
 
         assert!(eval.domain.half_coset.is_doubling_of(twiddle_tree.root_coset));
 
-        let mut layer_domain_size = (values_size as u32) >> 1;
-        let config = LaunchConfig::for_num_elems(values_size as u32);
-        let kernel = DEVICE.get_func("circle", "fft_circle_part").unwrap();
-        unsafe {
-            kernel.launch(
-                config,
-                (values.as_mut_slice(), twiddle_tree.itwiddles.as_slice(), values_size),
-            )
-        }
-        .unwrap();
-        DEVICE.synchronize().unwrap();
+        Self::fft_circle_part(&mut values, twiddle_tree);
 
+        let mut layer_domain_size = values_size as u32 >> 1;
         let mut layer_domain_offset = 0;
-        for i in 0..(log_values_size - 1) {
-            let config = LaunchConfig::for_num_elems(values_size as u32);
-            let kernel = DEVICE.get_func("circle", "fft_line_part").unwrap();
-            unsafe {
-                kernel.launch(
-                    config,
-                    (values.as_mut_slice(), twiddle_tree.itwiddles.as_slice(), values_size, layer_domain_size, layer_domain_offset, i + 1),
-                )
-            }
-            .unwrap();
+        for i in 1..log_values_size {
+            Self::fft_line_part(&mut values, &twiddle_tree, layer_domain_size, layer_domain_offset, i);
             layer_domain_size >>= 1;
             layer_domain_offset += layer_domain_size;
-            DEVICE.synchronize().unwrap();
         }
 
         // Divide all values by 2^log_size.
-        let config = LaunchConfig::for_num_elems(values_size as u32);
-        let kernel = DEVICE.get_func("circle", "rescale").unwrap();
-        unsafe {
-            kernel.launch(
-                config,
-                (values.as_mut_slice(), values_size, M31(2).pow(log_values_size as u128).inverse().0),
-            )
-        }
-        .unwrap();
+        Self::rescale_by_power_of_two(&mut values, log_values_size as u128);
 
-        DEVICE.synchronize().unwrap();
         CirclePoly::new(values)
     }
 
@@ -170,6 +145,50 @@ pub fn load_circle(device: &Arc<CudaDevice>) {
     device.load_ptx(ptx, "circle", &["sort_values", "precompute_twiddles", "put_one", "fft_circle_part", "fft_line_part", "rescale"]).unwrap();
 }
 
+impl GpuBackend {
+    fn fft_circle_part(values: &mut BaseFieldCudaColumn, twiddle_tree: &TwiddleTree<GpuBackend>) {
+        let size = values.len();
+        let config = LaunchConfig::for_num_elems(size as u32);
+        let kernel = DEVICE.get_func("circle", "fft_circle_part").unwrap();
+        unsafe {
+            kernel.launch(
+                config,
+                (values.as_mut_slice(), twiddle_tree.itwiddles.as_slice(), size),
+            )
+        }
+        .unwrap();
+        DEVICE.synchronize().unwrap();
+    }
+
+    fn fft_line_part(values: &mut BaseFieldCudaColumn, twiddle_tree: &TwiddleTree<GpuBackend>, layer_domain_size: u32, layer_domain_offset: u32, i: u32) {
+        let size = values.len();
+        let config = LaunchConfig::for_num_elems(size as u32);
+        let kernel = DEVICE.get_func("circle", "fft_line_part").unwrap();
+        unsafe {
+            kernel.launch(
+                config,
+                (values.as_mut_slice(), twiddle_tree.itwiddles.as_slice(), size, layer_domain_size, layer_domain_offset, i),
+            )
+        }
+        .unwrap();
+        DEVICE.synchronize().unwrap();
+    }
+
+    fn rescale_by_power_of_two(values: &mut BaseFieldCudaColumn, exponent: u128) { 
+        let size = values.len();
+        let config = LaunchConfig::for_num_elems(size as u32);
+        let kernel = DEVICE.get_func("circle", "rescale").unwrap();
+        unsafe {
+            kernel.launch(
+                config,
+                (values.as_mut_slice(), size, M31(2).pow(exponent).inverse().0),
+            )
+        }
+        .unwrap();
+        DEVICE.synchronize().unwrap();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
@@ -177,7 +196,7 @@ mod tests {
     use crate::core::backend::gpu::column::BaseFieldCudaColumn;
     use crate::core::backend::gpu::GpuBackend;
     use crate::core::backend::{Column, CpuBackend};
-    use crate::core::fields::m31::M31;
+    use crate::core::fields::m31::{BaseField, M31};
     use crate::core::poly::circle::{CanonicCoset, PolyOps};
 
     #[test]
@@ -216,7 +235,7 @@ mod tests {
         
         let size = 1 << log_size;
 
-        let cpu_values = (1..(size+1) as u32).map(|x| M31(x)).collect_vec();
+        let cpu_values = (1..(size+1) as u32).map(BaseField::from).collect_vec();
         let gpu_values = BaseFieldCudaColumn::from_vec(cpu_values.clone());
 
         let coset = CanonicCoset::new(log_size);

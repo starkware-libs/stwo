@@ -81,3 +81,7 @@ harness = false
 [[bench]]
 name = "quotients"
 harness = false
+
+[[bench]]
+name = "interpolate"
+harness = false
