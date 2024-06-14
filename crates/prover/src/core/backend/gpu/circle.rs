@@ -55,23 +55,17 @@ impl PolyOps for GpuBackend {
         twiddle_tree: &TwiddleTree<Self>,
     ) -> CirclePoly<Self> {
         let mut values = eval.values;
-        let values_size = values.len();
-        let log_values_size = u32::BITS - (values_size as u32).leading_zeros() - 1;
-
         assert!(eval.domain.half_coset.is_doubling_of(twiddle_tree.root_coset));
 
         Self::fft_circle_part(&mut values, twiddle_tree);
+        DEVICE.synchronize().unwrap();
 
-        let mut layer_domain_size = values_size as u32 >> 1;
-        let mut layer_domain_offset = 0;
-        for i in 1..log_values_size {
-            Self::fft_line_part(&mut values, &twiddle_tree, layer_domain_size, layer_domain_offset, i);
-            layer_domain_size >>= 1;
-            layer_domain_offset += layer_domain_size;
-        }
+        Self::fft_line_part(&mut values, twiddle_tree);
+        DEVICE.synchronize().unwrap();
 
-        // Divide all values by 2^log_size.
-        Self::rescale_by_power_of_two(&mut values, log_values_size as u128);
+        let exponent = u32::BITS - (values.len() as u32).leading_zeros() - 1;
+        Self::rescale_by_power_of_two(&mut values, exponent as u128);
+        DEVICE.synchronize().unwrap();
 
         CirclePoly::new(values)
     }
@@ -157,21 +151,27 @@ impl GpuBackend {
             )
         }
         .unwrap();
-        DEVICE.synchronize().unwrap();
     }
 
-    fn fft_line_part(values: &mut BaseFieldCudaColumn, twiddle_tree: &TwiddleTree<GpuBackend>, layer_domain_size: u32, layer_domain_offset: u32, i: u32) {
-        let size = values.len();
-        let config = LaunchConfig::for_num_elems(size as u32);
-        let kernel = DEVICE.get_func("circle", "fft_line_part").unwrap();
-        unsafe {
-            kernel.launch(
-                config,
-                (values.as_mut_slice(), twiddle_tree.itwiddles.as_slice(), size, layer_domain_size, layer_domain_offset, i),
-            )
+    fn fft_line_part(values: &mut BaseFieldCudaColumn, twiddle_tree: &TwiddleTree<GpuBackend>) {
+        let size = values.len() as u32;
+        let log_values_size = u32::BITS - size.leading_zeros() - 1;
+
+        let mut layer_domain_size = size >> 1;
+        let mut layer_domain_offset = 0;
+        for i in 1..log_values_size {
+            let config = LaunchConfig::for_num_elems(size);
+            let kernel = DEVICE.get_func("circle", "fft_line_part").unwrap();
+            unsafe {
+                kernel.launch(
+                    config,
+                    (values.as_mut_slice(), twiddle_tree.itwiddles.as_slice(), size, layer_domain_size, layer_domain_offset, i),
+                )
+            }
+            .unwrap();
+            layer_domain_size >>= 1;
+            layer_domain_offset += layer_domain_size;
         }
-        .unwrap();
-        DEVICE.synchronize().unwrap();
     }
 
     fn rescale_by_power_of_two(values: &mut BaseFieldCudaColumn, exponent: u128) { 
@@ -185,7 +185,6 @@ impl GpuBackend {
             )
         }
         .unwrap();
-        DEVICE.synchronize().unwrap();
     }
 }
 

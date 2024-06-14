@@ -25,8 +25,10 @@ typedef struct {
 
 __device__ uint32_t m31_mul(uint32_t a, uint32_t b) {
     // TODO: use mul from m31.cu
-    return ((uint64_t) a * (uint64_t) b) % P;
-}
+    uint64_t v = ((uint64_t) a * (uint64_t) b);
+    uint64_t w = v + (v >> 31);
+    uint64_t u = v + (w >> 31);
+    return u & P;}
 
 __device__ uint32_t m31_add(uint32_t a, uint32_t b) {
     // TODO: use add from m31.cu
