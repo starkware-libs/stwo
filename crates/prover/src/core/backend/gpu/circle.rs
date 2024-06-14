@@ -7,7 +7,7 @@ use super::column::BaseFieldCudaColumn;
 use super::{GpuBackend, DEVICE};
 use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
-use crate::core::fields::m31::{BaseField, M31};
+use crate::core::fields::m31::{BaseField, M31, };
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::poly::circle::{
@@ -71,7 +71,7 @@ impl PolyOps for GpuBackend {
         DEVICE.synchronize().unwrap();
 
         let mut layer_domain_offset = 0;
-        for i in 0..log_values_size {
+        for i in 0..(log_values_size - 1) {
             let config = LaunchConfig::for_num_elems(values_size as u32);
             let kernel = DEVICE.get_func("circle", "fft_line_part").unwrap();
             unsafe {
@@ -212,7 +212,8 @@ mod tests {
 
     #[test]
     fn test_interpolate() {
-        let log_size = 7;
+        let log_size = 20;
+        
         let size = 1 << log_size;
 
         let cpu_values = (1..(size+1) as u32).map(|x| M31(x)).collect_vec();

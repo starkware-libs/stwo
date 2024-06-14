@@ -147,11 +147,11 @@ __global__ void fft_line_part(uint32_t *values, uint32_t *inverse_twiddles_tree,
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < (values_size >> 1)) {
-        uint32_t  number_polynomials = 1 << layer;
-        uint32_t h = idx / number_polynomials;
-        uint32_t l = idx % number_polynomials;
-        uint32_t idx0 = (h << (layer + 1)) + l;
-        uint32_t idx1 = idx0 + number_polynomials;
+        int number_polynomials = 1 << layer;
+        int h = idx / number_polynomials;
+        int l = idx % number_polynomials;
+        int idx0 = (h << (layer + 1)) + l;
+        int idx1 = idx0 + number_polynomials;
 
         uint32_t val0 = values[idx0];
         uint32_t val1 = values[idx1];
