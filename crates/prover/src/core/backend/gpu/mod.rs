@@ -11,9 +11,11 @@ mod quotients;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use cudarc::driver::CudaDevice;
+use cudarc::driver::{CudaDevice, ValidAsZeroBits};
 // use error::Error;
 use once_cell::sync::Lazy;
+
+use crate::core::fields::m31::M31;
 
 use self::m31::LoadBaseField;
 use super::Backend;
@@ -39,6 +41,8 @@ impl Load for Device {
         self
     }
 }
+
+unsafe impl ValidAsZeroBits for M31 {}
 
 #[derive(Copy, Clone, Debug)]
 pub struct GpuBackend;

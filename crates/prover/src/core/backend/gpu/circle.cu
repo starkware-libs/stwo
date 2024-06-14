@@ -129,7 +129,7 @@ __device__ int get_twiddle(uint32_t *twiddles, int index) {
 }
 
 extern "C"
-__global__ void fft_circle_part(uint32_t *values, uint32_t *inverse_twiddles_tree, int values_size) {
+__global__ void ifft_circle_part(uint32_t *values, uint32_t *inverse_twiddles_tree, int values_size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     
@@ -145,7 +145,7 @@ __global__ void fft_circle_part(uint32_t *values, uint32_t *inverse_twiddles_tre
 
 
 extern "C"
-__global__ void fft_line_part(uint32_t *values, uint32_t *inverse_twiddles_tree, int values_size, int inverse_twiddles_size, int layer_domain_offset, int layer) {
+__global__ void ifft_line_part(uint32_t *values, uint32_t *inverse_twiddles_tree, int values_size, int inverse_twiddles_size, int layer_domain_offset, int layer) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (idx < (values_size >> 1)) {
@@ -161,6 +161,46 @@ __global__ void fft_line_part(uint32_t *values, uint32_t *inverse_twiddles_tree,
         
         values[idx0] = m31_add(val0, val1);
         values[idx1] = m31_mul(m31_sub(val0, val1), twiddle);
+    }
+}
+
+extern "C"
+__global__ void rfft_circle_part(uint32_t *values, uint32_t *inverse_twiddles_tree, int values_size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    
+    if (idx < (values_size >> 1)) {
+        uint32_t val0 = values[2 * idx];
+        uint32_t val1 = values[2 * idx + 1];
+        uint32_t twiddle = get_twiddle(inverse_twiddles_tree, idx);
+        
+        uint32_t temp = m31_mul(val1, twiddle);
+        
+        values[2 * idx] = m31_add(val0, temp);
+        values[2 * idx + 1] = m31_sub(val0, temp);
+    }
+}
+
+
+extern "C"
+__global__ void rfft_line_part(uint32_t *values, uint32_t *inverse_twiddles_tree, int values_size, int inverse_twiddles_size, int layer_domain_offset, int layer) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < (values_size >> 1)) {
+        int number_polynomials = 1 << layer;
+        int h = idx / number_polynomials;
+        int l = idx % number_polynomials;
+        int idx0 = (h << (layer + 1)) + l;
+        int idx1 = idx0 + number_polynomials;
+
+        uint32_t val0 = values[idx0];
+        uint32_t val1 = values[idx1];
+        uint32_t twiddle = inverse_twiddles_tree[layer_domain_offset + h];
+        
+        uint32_t temp = m31_mul(val1, twiddle);
+        
+        values[idx0] = m31_add(val0, temp);
+        values[idx1] = m31_sub(val0, temp);
     }
 }
 
