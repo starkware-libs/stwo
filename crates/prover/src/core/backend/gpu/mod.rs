@@ -15,6 +15,7 @@ use std::sync::Arc;
 use cudarc::driver::CudaDevice;
 // use error::Error;
 use once_cell::sync::Lazy;
+use qm31::LoadSecureBaseField;
 
 use self::m31::LoadBaseField;
 use super::Backend;
@@ -35,6 +36,7 @@ impl Load for Device {
     fn load(self) -> Self {
         bit_reverse::load_bit_reverse_ptx(&self);
         LoadBaseField::load(&self);
+        LoadSecureBaseField::load(&self);
         self
     }
 }

@@ -1,9 +1,9 @@
-#include "m31.h"
+#include "m31.cuh"
 
 __device__ __constant__ int MODULUS = (1 << 31) - 1; 
 
 // TODO: Check if using Shared memory per block over device for optimizations
-extern "C" __global__  void mul_m31(unsigned int lhs, unsigned int rhs, unsigned int *out) {
+extern "C" __device__  unsigned int mul_m31(unsigned int lhs, unsigned int rhs) {
     unsigned long long int a_e;
     unsigned long long int b_e;
     unsigned long long int prod_e;
@@ -21,26 +21,26 @@ extern "C" __global__  void mul_m31(unsigned int lhs, unsigned int rhs, unsigned
     prod_highs = static_cast<unsigned int>(prod_e >> 31);
 
     // add 
-    *out = prod_lows + prod_highs; 
-    *out = min(*out, *out - MODULUS);
+    unsigned int out = prod_lows + prod_highs; 
+    return min(out, out - MODULUS);
 }
 
-extern "C" __global__  void add_m31(unsigned int lhs,  unsigned int rhs, unsigned int *out) {
-    *out = lhs + rhs; 
+extern "C" __device__  unsigned int add_m31(unsigned int lhs, unsigned int rhs) {
+    unsigned int out = lhs + rhs; 
     
-    *out = min(*out, *out - MODULUS);
+    return min(out, out - MODULUS);
 }
 
-extern "C" __global__ void reduce_m31(unsigned int *f) {
+extern "C" __device__ void reduce_m31(unsigned int *f) {
     *f = min(*f, *f - MODULUS);
 }
 
-extern "C" __global__  void sub_m31(unsigned int lhs, unsigned int rhs, unsigned int *out) {
-    *out = lhs - rhs; 
-    *out = min(*out, *out + MODULUS);
+extern "C" __device__  unsigned int sub_m31(unsigned int lhs, unsigned int rhs) {
+    unsigned int out = lhs - rhs; 
+    return min(out, out + MODULUS);
 }
 
-extern "C" __global__  void neg_m31(unsigned int *f) {
+extern "C" __device__  void neg_m31(unsigned int *f) {
     *f = MODULUS - *f;
 }
 
@@ -48,14 +48,14 @@ extern "C" __global__ void mul(unsigned int *a, unsigned int *b, unsigned int *o
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (tid < size) {
-        mul_m31(a[tid], b[tid], &out[tid]);
+        out[tid] = mul_m31(a[tid], b[tid]);
     }
 }
 
 extern "C" __global__ void add(unsigned int *a, unsigned int *b, unsigned int *out, int size) {
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid < size) {
-        add_m31(a[tid], b[tid], &out[tid]);
+        out[tid] = add_m31(a[tid], b[tid]);
     }
 }
 
@@ -71,7 +71,7 @@ extern "C" __global__ void sub(unsigned int *a, unsigned int *b, unsigned int *o
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
     if (tid < size) {
-        sub_m31(a[tid], b[tid], &out[tid]);
+        out[tid] = sub_m31(a[tid], b[tid]);
     }
 }
 
