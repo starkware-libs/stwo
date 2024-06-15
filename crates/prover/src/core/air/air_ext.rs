@@ -1,18 +1,14 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::iter::zip;
-
 use itertools::{zip_eq, Itertools};
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Air, AirProver, ComponentTrace};
 use crate::core::backend::Backend;
-use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::circle::CirclePoint;
-use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
-use crate::core::poly::BitReversedOrder;
-use crate::core::prover::LOG_BLOWUP_FACTOR;
+use crate::core::pcs::{CommitmentTreeProver, TreeVec};
+use crate::core::poly::circle::SecureCirclePoly;
+use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs::ops::MerkleOps;
 use crate::core::{ColumnVec, ComponentVec, InteractionElements};
 
 pub trait AirExt: Air {
@@ -24,32 +20,25 @@ pub trait AirExt: Air {
             .unwrap()
     }
 
-    fn trace_commitment_domains(&self) -> Vec<CanonicCoset> {
-        self.column_log_sizes()
-            .iter()
-            .map(|&log_size| CanonicCoset::new(log_size + LOG_BLOWUP_FACTOR))
-            .collect_vec()
-    }
-
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
-    ) -> ComponentVec<Vec<CirclePoint<SecureField>>> {
-        let mut component_points = ComponentVec(Vec::new());
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        let mut trace_component_points = vec![];
+        let mut interaction_component_points = vec![];
         for component in self.components() {
             let points = component.mask_points(point);
-            component_points.push(points);
+            trace_component_points.extend(points[0].clone());
+            interaction_component_points.extend(points[1].clone());
         }
-        component_points
-    }
-
-    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements {
-        let mut ids = BTreeSet::new();
-        for component in self.components() {
-            ids.extend(component.interaction_element_ids());
+        let mut points = TreeVec::new(vec![trace_component_points]);
+        if !interaction_component_points
+            .iter()
+            .all(|column| column.is_empty())
+        {
+            points.push(interaction_component_points);
         }
-        let elements = channel.draw_felts(ids.len()).into_iter().map(|e| e.0 .0);
-        InteractionElements(BTreeMap::from_iter(zip_eq(ids, elements)))
+        points
     }
 
     fn eval_composition_polynomial_at_point(
@@ -57,68 +46,79 @@ pub trait AirExt: Air {
         point: CirclePoint<SecureField>,
         mask_values: &ComponentVec<Vec<SecureField>>,
         random_coeff: SecureField,
+        interaction_elements: &InteractionElements,
     ) -> SecureField {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
-        zip(self.components(), &mask_values.0).for_each(|(component, mask)| {
+        zip_eq(self.components(), &mask_values.0).for_each(|(component, mask)| {
             component.evaluate_constraint_quotients_at_point(
                 point,
                 mask,
                 &mut evaluation_accumulator,
+                interaction_elements,
             )
         });
         evaluation_accumulator.finalize()
     }
 
-    fn column_log_sizes(&self) -> Vec<u32> {
-        self.components()
-            .iter()
-            .flat_map(|component| component.trace_log_degree_bounds())
-            .collect()
+    fn column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
+        let mut trace_tree = vec![];
+        let mut interaction_tree = vec![];
+        self.components().iter().for_each(|component| {
+            let bounds = component.trace_log_degree_bounds();
+            trace_tree.extend(bounds[0].clone());
+            interaction_tree.extend(bounds[1].clone());
+        });
+        let mut sizes = TreeVec::new(vec![trace_tree]);
+        if !interaction_tree.is_empty() {
+            sizes.push(interaction_tree);
+        }
+        sizes
     }
 
-    fn component_traces<'a, B: Backend>(
+    fn component_traces<'a, B: Backend + MerkleOps<Blake2sMerkleHasher>>(
         &'a self,
-        polynomials: &'a [CirclePoly<B>],
-        evals: &'a [CircleEvaluation<B, BaseField, BitReversedOrder>],
+        trees: &'a [CommitmentTreeProver<B>],
     ) -> Vec<ComponentTrace<'_, B>> {
-        let poly_iter = &mut polynomials.iter();
-        let eval_iter = &mut evals.iter();
-        self.components()
-            .iter()
-            .map(|component| {
-                let n_columns = component.trace_log_degree_bounds().len();
-                let polys = poly_iter.take(n_columns).collect();
-                let evals = eval_iter.take(n_columns).collect();
-                ComponentTrace::new(polys, evals)
-            })
-            .collect()
+        let poly_iter = &mut trees[0].polynomials.iter();
+        let eval_iter = &mut trees[0].evaluations.iter();
+        let mut component_traces = vec![];
+        self.components().iter().for_each(|component| {
+            let n_columns = component.trace_log_degree_bounds()[0].len();
+            let polys = poly_iter.take(n_columns).collect_vec();
+            let evals = eval_iter.take(n_columns).collect_vec();
+
+            component_traces.push(ComponentTrace {
+                polys: TreeVec::new(vec![polys]),
+                evals: TreeVec::new(vec![evals]),
+            });
+        });
+
+        if trees.len() > 1 {
+            let poly_iter = &mut trees[1].polynomials.iter();
+            let eval_iter = &mut trees[1].evaluations.iter();
+            self.components()
+                .iter()
+                .zip_eq(&mut component_traces)
+                .for_each(|(component, component_trace)| {
+                    let n_columns = component.trace_log_degree_bounds()[1].len();
+                    let polys = poly_iter.take(n_columns).collect_vec();
+                    let evals = eval_iter.take(n_columns).collect_vec();
+                    component_trace.polys.push(polys);
+                    component_trace.evals.push(evals);
+                });
+        }
+        component_traces
     }
 }
+
 impl<A: Air + ?Sized> AirExt for A {}
 
 pub trait AirProverExt<B: Backend>: AirProver<B> {
-    fn interact(
-        &self,
-        trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-        elements: &InteractionElements,
-    ) -> ComponentVec<CircleEvaluation<B, BaseField, BitReversedOrder>> {
-        let trace_iter = &mut trace.iter();
-        ComponentVec(
-            self.prover_components()
-                .iter()
-                .map(|component| {
-                    let n_columns = component.trace_log_degree_bounds().len();
-                    let trace_columns = trace_iter.take(n_columns).collect_vec();
-                    component.write_interaction_trace(&trace_columns, elements)
-                })
-                .collect(),
-        )
-    }
-
     fn compute_composition_polynomial(
         &self,
         random_coeff: SecureField,
         component_traces: &[ComponentTrace<'_, B>],
+        interaction_elements: &InteractionElements,
     ) -> SecureCirclePoly<B> {
         let total_constraints: usize = self
             .prover_components()
@@ -130,8 +130,12 @@ pub trait AirProverExt<B: Backend>: AirProver<B> {
             self.composition_log_degree_bound(),
             total_constraints,
         );
-        zip(self.prover_components(), component_traces).for_each(|(component, trace)| {
-            component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
+        zip_eq(self.prover_components(), component_traces).for_each(|(component, trace)| {
+            component.evaluate_constraint_quotients_on_domain(
+                trace,
+                &mut accumulator,
+                interaction_elements,
+            )
         });
         accumulator.finalize()
     }

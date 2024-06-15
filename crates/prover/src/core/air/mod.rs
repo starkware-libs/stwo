@@ -1,10 +1,11 @@
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use super::backend::{Backend, ColumnOps};
+use super::backend::Backend;
+use super::channel::Blake2sChannel;
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::lookups::gkr_prover::Layer;
-use super::poly::circle::{CircleEvaluation, CirclePoly};
+use super::pcs::TreeVec;
+use super::poly::circle::{CircleEvaluation, CirclePoly, SecureEvaluation};
 use super::poly::BitReversedOrder;
 use super::{ColumnVec, InteractionElements};
 
@@ -23,6 +24,21 @@ pub use air_ext::{AirExt, AirProverExt};
 pub trait Air {
     fn components(&self) -> Vec<&dyn Component>;
 }
+
+pub trait AirTraceVerifier {
+    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements;
+}
+
+pub trait AirTraceWriter<B: Backend>: AirTraceVerifier {
+    fn interact(
+        &self,
+        trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        elements: &InteractionElements,
+    ) -> Vec<CirclePoly<B>>;
+
+    fn to_air_prover(&self) -> &impl AirProver<B>;
+}
+
 pub trait AirProver<B: Backend>: Air {
     fn prover_components(&self) -> Vec<&dyn ComponentProver<B>>;
 }
@@ -35,12 +51,12 @@ pub trait Component {
     fn max_constraint_log_degree_bound(&self) -> u32;
 
     /// Returns the degree bounds of each trace column.
-    fn trace_log_degree_bounds(&self) -> Vec<u32>;
+    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>>;
 
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
-    ) -> ColumnVec<Vec<CirclePoint<SecureField>>>;
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>;
 
     /// Returns the ids of the interaction elements used by the component.
     fn interaction_element_ids(&self) -> Vec<String>;
@@ -51,6 +67,7 @@ pub trait Component {
         point: CirclePoint<SecureField>,
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
+        interaction_elements: &InteractionElements,
     );
 }
 
@@ -59,31 +76,17 @@ pub trait ComponentTraceWriter<B: Backend> {
         &self,
         trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
-    ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
-
-    fn write_lookup_trace(
-        &self,
-        _trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
-        _elements: &InteractionElements,
-    ) -> Vec<Lookup<B>> {
-        vec![]
-    }
+    ) -> ColumnVec<SecureEvaluation<B>>;
 }
 
-pub struct Lookup<B: ColumnOps<BaseField> + ColumnOps<SecureField>> {
-    pub layer: Layer<B>,
-    pub table: bool,
-    pub id: String,
-}
-
-// TODO(AlonH): Rethink this trait.
-pub trait ComponentProver<B: Backend>: Component + ComponentTraceWriter<B> {
+pub trait ComponentProver<B: Backend>: Component {
     /// Evaluates the constraint quotients of the component on the evaluation domain.
     /// Accumulates quotients in `evaluation_accumulator`.
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &ComponentTrace<'_, B>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
+        interaction_elements: &InteractionElements,
     );
 }
 
@@ -91,16 +94,15 @@ pub trait ComponentProver<B: Backend>: Component + ComponentTraceWriter<B> {
 /// Each polynomial is stored both in a coefficients, and evaluations form (for efficiency)
 pub struct ComponentTrace<'a, B: Backend> {
     /// Polynomials for each column.
-    pub polys: Vec<&'a CirclePoly<B>>,
-    /// Evaluations for each column. The evaluation domain is the commitment domain for that column
-    /// obtained from [AirExt::trace_commitment_domains()].
-    pub evals: Vec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    pub polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
+    /// Evaluations for each column (evaluated on the commitment domains).
+    pub evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
 }
 
 impl<'a, B: Backend> ComponentTrace<'a, B> {
     pub fn new(
-        polys: Vec<&'a CirclePoly<B>>,
-        evals: Vec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
+        evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
     ) -> Self {
         Self { polys, evals }
     }
