@@ -1,8 +1,9 @@
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use super::backend::Backend;
+use super::backend::{Backend, ColumnOps};
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
+use super::lookups::gkr_prover::Layer;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
 use super::{ColumnVec, InteractionElements};
@@ -59,6 +60,20 @@ pub trait ComponentTraceWriter<B: Backend> {
         trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
     ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
+
+    fn write_lookup_trace(
+        &self,
+        _trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        _elements: &InteractionElements,
+    ) -> Vec<Lookup<B>> {
+        vec![]
+    }
+}
+
+pub struct Lookup<B: ColumnOps<BaseField> + ColumnOps<SecureField>> {
+    pub layer: Layer<B>,
+    pub table: bool,
+    pub id: String,
 }
 
 // TODO(AlonH): Rethink this trait.
