@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut, Index};
 
+use channel::Channel;
+use fields::m31::BaseField;
+
 use self::fields::qm31::SecureField;
 
 pub mod air;
@@ -61,7 +64,7 @@ impl<T> DerefMut for ComponentVec<T> {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct InteractionElements(BTreeMap<String, SecureField>);
 
 impl InteractionElements {
@@ -76,6 +79,34 @@ impl InteractionElements {
 
 impl Index<&str> for InteractionElements {
     type Output = SecureField;
+
+    fn index(&self, index: &str) -> &Self::Output {
+        // TODO(AlonH): Return an error if the key is not found.
+        &self.0[index]
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct LookupValues(BTreeMap<String, BaseField>);
+
+impl LookupValues {
+    pub fn new(values: BTreeMap<String, BaseField>) -> Self {
+        Self(values)
+    }
+
+    pub fn extend(&mut self, other: Self) {
+        self.0.extend(other.0);
+    }
+
+    pub fn mix_in_channel(&self, channel: &mut impl Channel) {
+        for value in self.0.values() {
+            channel.mix_felts(&[(*value).into()]);
+        }
+    }
+}
+
+impl Index<&str> for LookupValues {
+    type Output = BaseField;
 
     fn index(&self, index: &str) -> &Self::Output {
         // TODO(AlonH): Return an error if the key is not found.
