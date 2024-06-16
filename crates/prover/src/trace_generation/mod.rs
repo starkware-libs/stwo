@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+pub mod registry;
 
 use downcast_rs::{impl_downcast, Downcast};
+use registry::ComponentRegistry;
 
 use crate::core::backend::Backend;
 use crate::core::fields::m31::BaseField;
@@ -10,10 +11,6 @@ use crate::core::ColumnVec;
 
 pub trait ComponentGen: Downcast {}
 impl_downcast!(ComponentGen);
-
-pub struct ComponentRegistry {
-    _components: HashMap<String, Box<dyn ComponentGen>>,
-}
 
 // A trait to generate a a trace.
 // Generates the trace given a list of inputs collects inputs for subcomponents.
