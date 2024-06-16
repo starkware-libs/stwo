@@ -406,6 +406,17 @@ macro_rules! impl_extension_field {
             }
         }
 
+        impl TryInto<M31> for $field_name {
+            type Error = ();
+
+            fn try_into(self) -> Result<M31, Self::Error> {
+                if self.1 != <$extended_field_name>::zero() {
+                    return Err(());
+                }
+                self.0.try_into().map_err(|_| ())
+            }
+        }
+
         impl AddAssign<M31> for $field_name {
             fn add_assign(&mut self, rhs: M31) {
                 *self = *self + rhs;
