@@ -23,7 +23,7 @@ use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::{ColumnVec, InteractionElements};
+use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::examples::wide_fibonacci::component::{ALPHA_ID, N_COLUMNS, Z_ID};
 
 // TODO(AlonH): Remove this once the Cpu and Simd implementations are aligned.
@@ -116,6 +116,7 @@ impl Component for SimdWideFibComponent {
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         _interaction_elements: &InteractionElements,
+        _lookup_values: &LookupValues,
     ) {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let denom = coset_vanishing(constraint_zero_domain, point);
@@ -176,6 +177,7 @@ impl ComponentProver<SimdBackend> for SimdWideFibComponent {
         trace: &ComponentTrace<'_, SimdBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
         _interaction_elements: &InteractionElements,
+        _lookup_values: &LookupValues,
     ) {
         assert_eq!(trace.polys[0].len(), self.n_columns());
         // TODO(spapini): Steal evaluation from commitment.

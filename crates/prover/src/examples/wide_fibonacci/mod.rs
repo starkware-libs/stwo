@@ -196,7 +196,13 @@ mod tests {
             ]),
         };
 
-        wide_fib.evaluate_constraint_quotients_on_domain(&trace, &mut acc, &interaction_elements);
+        let lookup_values = wide_fib.lookup_values(&trace);
+        wide_fib.evaluate_constraint_quotients_on_domain(
+            &trace,
+            &mut acc,
+            &interaction_elements,
+            &lookup_values,
+        );
 
         let res = acc.finalize();
         let poly = res.0[0].clone();
