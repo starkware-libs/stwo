@@ -1,6 +1,6 @@
-#include "m31.cuh"
+#include "m31.h"
 
-__device__ __constant__ int MODULUS = (1 << 31) - 1; 
+__constant__ int MODULUS = (1 << 31) - 1; 
 
 // TODO: Check if using Shared memory per block over device for optimizations
 extern "C" __device__  unsigned int mul_m31(unsigned int lhs, unsigned int rhs) {
@@ -25,10 +25,10 @@ extern "C" __device__  unsigned int mul_m31(unsigned int lhs, unsigned int rhs) 
     return min(out, out - MODULUS);
 }
 
-extern "C" __device__  unsigned int add_m31(unsigned int lhs, unsigned int rhs) {
+__device__  unsigned int add_m31(unsigned int lhs, unsigned int rhs) {
     unsigned int out = lhs + rhs; 
     
-    return min(out, out - MODULUS);
+    return min(out, out - MODULUS;
 }
 
 extern "C" __device__ void reduce_m31(unsigned int *f) {

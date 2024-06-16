@@ -1,5 +1,10 @@
-// #include "m31.cuh"
-
+#include "m31.h"
+// __device__ __constant__ int MODULUS = (1 << 31) - 1; 
+// extern "C" __device__  unsigned int add_m31(unsigned int lhs, unsigned int rhs) {
+//     unsigned int out = lhs + rhs; 
+    
+//     return min(out, out - MODULUS);
+// }
 // extern "C" __device__  void mul_cm31(unsigned int *lhs,  unsigned int *rhs,  unsigned int *out) {
 //     unsigned int ac = mul_m31(lhs[0], rhs[0]);
 //     unsigned int bd = mul_m31(lhs[1], rhs[1]);
@@ -18,7 +23,7 @@
 //     unsigned int l[2];
 
 //     mul_cm31(lhs, rhs, ac);
-//     mul_cm31(&(lhs[2]), &(rhs[2]), bd);
+//     mul_cm31(lhs + 2, rhs + 2, bd);
 
 //     bd_times_1_plus_i[0] = sub_m31(bd[0], bd[1]);
 //     bd_times_1_plus_i[1] = add_m31(bd[0], bd[1]);
@@ -46,12 +51,15 @@
 // }
 
 extern "C" __global__ void mul(unsigned int *lhs, unsigned int *rhs, unsigned int *out, int size) {
-    // unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
-
+    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < size) {
+        out[tid] = add_m31(lhs[tid], rhs[tid]);
+    }
     // if (tid < size) {
     //     unsigned int idx = tid * 4; 
-    //     mul_qm31(lhs + idx, rhs + idx, out + idx);
-    //}
+    //     out[idx] = 0;
+    //     //mul_qm31(lhs + idx, rhs + idx, out + idx);
+    // }
 }
 
 // // Compute using Karatsuba.

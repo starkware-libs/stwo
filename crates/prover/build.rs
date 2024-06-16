@@ -1,24 +1,44 @@
+use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    let _out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    let files = get_cuda_files(
-        &(std::env::current_dir()
+    let nvcc = match env::var("NVCC") {
+        Ok(var) => which::which(var),
+        Err(_) => which::which("nvcc"),
+    };
+    if nvcc.is_ok() {
+        let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+        let cuda_dir = std::env::current_dir()
             .unwrap()
             .to_str()
             .unwrap()
             .to_owned()
-            + "/src/core/backend/gpu"),
-    );
-    for cu in files {
-        std::process::Command::new("nvcc")
-            .arg("-ptx")
-            .arg(cu)
-            .output()
-            .expect("Failed to execute nvcc");
+            + "/src/core/backend/gpu";
+        let source_files = get_cuda_files(&cuda_dir);
+
+        for cuda_file in source_files {
+            let mut ptx = cuda_file.file_stem().unwrap().to_owned();
+            ptx.push(".ptx");
+            let mut out_dir = out_dir.clone();
+            out_dir.push(ptx);
+
+            println!("cargo:rerun-if-changed={}", cuda_file.to_str().unwrap());
+
+            std::process::Command::new("nvcc")
+                .arg("-ptx")
+                .arg(&cuda_file)
+                .arg("--output-file")
+                .arg(out_dir)
+                .arg("--include-path")
+                .arg(&cuda_dir)
+                .output()
+                .expect("Failed to execute nvcc");
+        }
     }
+    println!("cargo:rerun-if-env-changed=NVCC");
 }
 
+// Grab path object to CUDA files
 fn get_cuda_files(dir: &str) -> Vec<PathBuf> {
     let entries = std::fs::read_dir(dir).expect("Failed to read directory");
     let cuda_files: Vec<PathBuf> = entries

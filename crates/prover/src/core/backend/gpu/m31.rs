@@ -1,8 +1,10 @@
+use std::env;
 // CUDA implementation of arbitrary size packed m31
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::path::PathBuf;
 
 use cudarc::driver::{CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
-use cudarc::nvrtc::{compile_ptx_with_opts, CompileOptions};
+use cudarc::nvrtc::Ptx;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
@@ -21,20 +23,11 @@ pub trait LoadBaseField {
 
 impl LoadBaseField for Device {
     fn load(&self) {
-        let ptx_src_mul_m31 = include_str!("m31.cu");
-        println!("curr {:?}", std::env::current_dir());
-        let curr_dir = std::env::current_dir()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned();
-        let opts = CompileOptions {
-            include_paths: vec![curr_dir + "/src/core/backend/gpu"],
-            ..Default::default()
-        };
-        let ptx_mul_m31 = compile_ptx_with_opts(ptx_src_mul_m31, opts).unwrap();
+        let ptx_dir = PathBuf::from(env::var("OUT_DIR").unwrap() + "/m31.ptx");
+
+        let ptx = Ptx::from_file(ptx_dir);
         self.load_ptx(
-            ptx_mul_m31,
+            ptx,
             "base_field_functions",
             &["mul", "reduce", "add", "sub", "neg"],
         )

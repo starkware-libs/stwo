@@ -20,8 +20,8 @@ tracing.workspace = true
 cudarc.workspace = true
 once_cell.workspace = true
 
-[build]
-build = "/home/dexlessx11/stwo/crates/prover/src/core/backend/gpu/build/build.rs"
+[build-dependencies]
+which = "^6.0.1"
 
 [dev-dependencies]
 aligned = "0.4.2"

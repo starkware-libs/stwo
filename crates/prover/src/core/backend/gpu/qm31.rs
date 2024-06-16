@@ -1,8 +1,10 @@
+use std::env;
 #[allow(unused_imports)]
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::path::PathBuf;
 
 use cudarc::driver::{CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
-use cudarc::nvrtc::{compile_ptx_with_opts, CompileOptions};
+use cudarc::nvrtc::Ptx;
 #[allow(unused_imports)]
 use itertools::Itertools;
 #[allow(unused_imports)]
@@ -24,18 +26,12 @@ pub trait LoadSecureBaseField {
 
 impl LoadSecureBaseField for Device {
     fn load(&self) {
-        let ptx_src_mul_m31 = include_str!("qm31.cu");
-        let curr_dir = std::env::current_dir()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned();
-        let opts = CompileOptions {
-            include_paths: vec![curr_dir + "/src/core/backend/gpu"],
-            ..Default::default()
-        };
-        let ptx_mul_m31 = compile_ptx_with_opts(ptx_src_mul_m31, opts).unwrap();
-        self.load_ptx(ptx_mul_m31, "secure_field_functions", &["mul"])
+        let _ptx_dir = PathBuf::from(env::var("OUT_DIR").unwrap() + "/qm31.ptx");
+        let _ptx_dir =
+            PathBuf::from("/home/dexlessx11/stwo/crates/prover/src/core/backend/gpu/qm31.ptx");
+        let ptx = Ptx::from_file(_ptx_dir);
+
+        self.load_ptx(ptx, "secure_field_functions", &["mul"])
             .unwrap();
     }
 }
@@ -134,114 +130,56 @@ impl AddAssign for PackedQM31 {
     }
 }
 
-// impl Mul for PackedQM31 {
-//     type Output = Self;
+impl Mul for PackedQM31 {
+    type Output = Self;
 
-//     /// Computes the product of two packed M31 elements
-//     /// Each value is assumed to be in unreduced form, [0, P] including P.
-//     /// Returned values are in unreduced form, [0, P] including P.
-//     #[inline(always)]
-//     fn mul(self, rhs: Self) -> Self::Output {
-//         let mul_kernel = self.0[0]
-//             .0
-//             .device()
-//             .get_func("base_field_functions", "mul")
-//             .unwrap();
-//         let len = self.0[0].0.len();
-//         let cfg: LaunchConfig = LaunchConfig::for_num_elems(len as u32);
-//         let a = DEVICE.alloc_zeros::<u32>(len).unwrap();
-//         let b = DEVICE.alloc_zeros::<u32>(len).unwrap();
-//         let c = DEVICE.alloc_zeros::<u32>(len).unwrap();
-//         let d = DEVICE.alloc_zeros::<u32>(len).unwrap();
+    /// Computes the product of two packed M31 elements
+    /// Each value is assumed to be in unreduced form, [0, P] including P.
+    /// Returned values are in unreduced form, [0, P] including P.
+    #[inline(always)]
+    fn mul(self, rhs: Self) -> Self::Output {
+        let kernel = self
+            .0
+            .device()
+            .get_func("secure_field_functions", "mul")
+            .unwrap();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
+        let out = unsafe { self.0.device().alloc::<M31>(self.0.len()) }.unwrap();
 
-//         let stream_b = DEVICE.fork_default_stream().unwrap();
-//         let stream_c = DEVICE.fork_default_stream().unwrap();
-//         let stream_d = DEVICE.fork_default_stream().unwrap();
+        unsafe {
+            kernel
+                .clone()
+                .launch(cfg, (&self.0, &rhs.0, &out, self.0.len()))
+        }
+        .unwrap();
 
-//         unsafe {
-//             mul_kernel
-//                 .clone()
-//                 .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &a, len))
-//         }
-//         .unwrap();
-//         unsafe {
-//             mul_kernel.clone().launch_on_stream(
-//                 &stream_b,
-//                 cfg,
-//                 (&self.0[1].0, &rhs.0[1].0, &b, len),
-//             )
-//         }
-//         .unwrap();
-//         unsafe {
-//             mul_kernel.clone().launch_on_stream(
-//                 &stream_c,
-//                 cfg,
-//                 (&self.0[2].0, &rhs.0[2].0, &c, len),
-//             )
-//         }
-//         .unwrap();
-//         unsafe {
-//             mul_kernel.launch_on_stream(&stream_d, cfg, (&self.0[3].0, &rhs.0[3].0, &d, len))
-//         }
-//         .unwrap();
+        DEVICE.synchronize().unwrap();
 
-//         DEVICE.synchronize().unwrap();
+        Self(out)
+    }
+}
 
-//         Self([PackedM31(a), PackedM31(b), PackedM31(c), PackedM31(d)])
-//     }
-// }
+impl MulAssign for PackedQM31 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: Self) {
+        let kernel = self
+            .0
+            .device()
+            .get_func("secure_field_functions", "mul")
+            .unwrap();
+        println!("size :{:?}", self.0.len());
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems((self.0.len() + 0) as u32);
 
-// impl MulAssign for PackedQM31 {
-//     #[inline(always)]
-//     fn mul_assign(&mut self, rhs: Self) {
-//
+        unsafe {
+            kernel
+                .clone()
+                .launch(cfg, (&self.0, &rhs.0, &self.0, self.0.len()))
+        }
+        .unwrap();
 
-//         let mul_kernel = self.0[0]
-//             .0
-//             .device()
-//             .get_func("base_field_functions", "mul")
-//             .unwrap();
-//         let len = self.0[0].0.len();
-//         let cfg: LaunchConfig = LaunchConfig::for_num_elems(len as u32);
-
-//         let stream_b = DEVICE.fork_default_stream().unwrap();
-//         let stream_c = DEVICE.fork_default_stream().unwrap();
-//         let stream_d = DEVICE.fork_default_stream().unwrap();
-
-//         unsafe {
-//             mul_kernel
-//                 .clone()
-//                 .launch(cfg, (&self.0[0].0, &rhs.0[0].0, &self.0[0].0, len))
-//         }
-//         .unwrap();
-//         unsafe {
-//             mul_kernel.clone().launch_on_stream(
-//                 &stream_b,
-//                 cfg,
-//                 (&self.0[1].0, &rhs.0[1].0, &self.0[1].0, len),
-//             )
-//         }
-//         .unwrap();
-//         unsafe {
-//             mul_kernel.clone().launch_on_stream(
-//                 &stream_c,
-//                 cfg,
-//                 (&self.0[2].0, &rhs.0[2].0, &self.0[2].0, len),
-//             )
-//         }
-//         .unwrap();
-//         unsafe {
-//             mul_kernel.launch_on_stream(
-//                 &stream_d,
-//                 cfg,
-//                 (&self.0[3].0, &rhs.0[3].0, &self.0[3].0, len),
-//             )
-//         }
-//         .unwrap();
-
-//         DEVICE.synchronize().unwrap();
-//     }
-// }
+        DEVICE.synchronize().unwrap();
+    }
+}
 
 impl Neg for PackedQM31 {
     type Output = Self;
@@ -402,26 +340,25 @@ mod tests {
         );
     }
 
-    // #[test]
-    // fn test_multiplication() {
-    //     let (lhs, rhs) = setup(4);
-    //     let mut packed_lhs = PackedQM31::from_array(lhs.clone());
-    //     let packed_rhs = PackedQM31::from_array(rhs.clone());
+    #[test]
+    fn test_multiplication() {
+        let (lhs, rhs) = setup(4);
+        let mut packed_lhs = PackedQM31::from_array(lhs.clone());
+        let packed_rhs = PackedQM31::from_array(rhs.clone());
+        println!("{:?}", lhs);
+        println!("{:?}", rhs);
+        println!("{:?}", packed_lhs.clone().to_array());
+        println!("{:?}", packed_rhs.clone().to_array());
+        packed_lhs *= packed_rhs;
 
-    //     println!("{:?}", lhs);
-    //     println!("{:?}", rhs);
-    //     println!("{:?}", packed_lhs.clone().to_array());
-    //     println!("{:?}", packed_rhs.clone().to_array());
-    //     packed_lhs = packed_lhs * packed_rhs;
-
-    //     assert_eq!(
-    //         packed_lhs.to_array(),
-    //         lhs.iter()
-    //             .zip(rhs.iter())
-    //             .map(|(&l, &r)| l * r)
-    //             .collect::<Vec<QM31>>()
-    //     );
-    // }
+        assert_eq!(
+            packed_lhs.to_array(),
+            lhs.iter()
+                .zip(rhs.iter())
+                .map(|(&l, &r)| l + r)
+                .collect::<Vec<QM31>>()
+        );
+    }
 
     #[test]
     fn test_negation() {
