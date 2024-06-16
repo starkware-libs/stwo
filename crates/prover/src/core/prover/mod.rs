@@ -6,6 +6,7 @@ use super::air::{AirProver, AirTraceVerifier, AirTraceWriter};
 use super::backend::Backend;
 use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
+use super::lookups::gkr_verifier::{partially_verify_batch, GkrBatchProof};
 use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::poly::circle::{CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::poly::twiddles::TwiddleTree;
@@ -39,6 +40,7 @@ pub const N_QUERIES: usize = 3;
 #[derive(Debug)]
 pub struct StarkProof {
     pub commitments: TreeVec<<ChannelHasher as Hasher>::Hash>,
+    pub gkr_proof: GkrBatchProof,
     pub commitment_scheme_proof: CommitmentSchemeProof,
 }
 
@@ -55,7 +57,14 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     channel: &mut Channel,
     twiddles: &TwiddleTree<B>,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-) -> Result<(CommitmentSchemeProver<B>, InteractionElements), ProvingError> {
+) -> Result<
+    (
+        CommitmentSchemeProver<B>,
+        InteractionElements,
+        GkrBatchProof,
+    ),
+    ProvingError,
+> {
     let span = span!(Level::INFO, "Trace interpolation").entered();
     // TODO(AlonH): Remove clone.
     let trace_polys = trace
@@ -71,13 +80,13 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     span.exit();
 
     let interaction_elements = air.interaction_elements(channel);
-    let interaction_trace_polys = air.interact(&trace, &interaction_elements);
+    let (interaction_trace_polys, gkr_proof) = air.interact(channel, &trace, &interaction_elements);
     let n_interaction_traces = interaction_trace_polys.len();
     if n_interaction_traces > 0 {
         commitment_scheme.commit(interaction_trace_polys, channel, twiddles);
     }
 
-    Ok((commitment_scheme, interaction_elements))
+    Ok((commitment_scheme, interaction_elements, gkr_proof))
 }
 
 pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
@@ -86,6 +95,7 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     interaction_elements: &InteractionElements,
     twiddles: &TwiddleTree<B>,
     commitment_scheme: &mut CommitmentSchemeProver<B>,
+    gkr_proof: GkrBatchProof,
 ) -> Result<StarkProof, ProvingError> {
     // Evaluate and commit on composition polynomial.
     let random_coeff = channel.draw_felt();
@@ -134,6 +144,7 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     Ok(StarkProof {
         commitments: commitment_scheme.roots(),
         commitment_scheme_proof,
+        gkr_proof,
     })
 }
 
@@ -170,7 +181,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     );
     span.exit();
 
-    let (mut commitment_scheme, interaction_elements) =
+    let (mut commitment_scheme, interaction_elements, gkr_proof) =
         evaluate_and_commit_on_trace(air, channel, &twiddles, trace)?;
 
     generate_proof(
@@ -179,6 +190,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
         &interaction_elements,
         &twiddles,
         &mut commitment_scheme,
+        gkr_proof,
     )
 }
 
@@ -192,6 +204,11 @@ pub fn verify(
     let column_log_sizes = air.column_log_sizes();
     commitment_scheme.commit(proof.commitments[0], &column_log_sizes[0], channel);
     let interaction_elements = air.interaction_elements(channel);
+
+    // Verify the GKR proof.
+    air.verify_gkr(channel, proof.gkr_proof);
+
+    let gkr_random_coeff = channel.draw_felt();
 
     if proof.commitments.len() > 2 {
         commitment_scheme.commit(proof.commitments[1], &column_log_sizes[1], channel);
@@ -345,6 +362,8 @@ mod tests {
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::lookups::gkr_prover::prove_batch;
+    use crate::core::lookups::gkr_verifier::GkrBatchProof;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::{
         CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, SecureEvaluation,
@@ -370,15 +389,24 @@ mod tests {
         fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
             InteractionElements::default()
         }
+
+        fn verify_gkr(
+            &self,
+            channel: &mut Blake2sChannel,
+            proof: GkrBatchProof,
+        ) -> crate::core::lookups::gkr_verifier::GkrArtifact {
+            todo!()
+        }
     }
 
     impl AirTraceWriter<CpuBackend> for TestAir<TestComponent> {
         fn interact(
             &self,
+            _channel: &mut Blake2sChannel,
             _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
             _elements: &InteractionElements,
-        ) -> Vec<CirclePoly<CpuBackend>> {
-            vec![]
+        ) -> (Vec<CirclePoly<CpuBackend>>, GkrBatchProof) {
+            (vec![], prove_batch::<CpuBackend>(_channel, vec![]).0)
         }
 
         fn to_air_prover(&self) -> &impl AirProver<CpuBackend> {

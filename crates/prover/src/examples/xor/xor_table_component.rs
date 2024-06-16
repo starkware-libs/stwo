@@ -2,7 +2,8 @@ use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::air::Component;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
-use crate::core::ColumnVec;
+use crate::core::pcs::TreeVec;
+use crate::core::{ColumnVec, InteractionElements};
 
 pub const XOR_Z_ID: &str = "xor_z";
 
@@ -17,18 +18,18 @@ impl Component for XorTableComponent {
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.trace_log_degree_bounds().into_iter().max().unwrap()
+        u8::BITS + u8::BITS
     }
 
-    fn trace_log_degree_bounds(&self) -> Vec<u32> {
-        vec![u8::BITS + u8::BITS]
+    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+        TreeVec::new(vec![vec![u8::BITS + u8::BITS]])
     }
 
     fn mask_points(
         &self,
         _point: CirclePoint<SecureField>,
-    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        vec![]
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        TreeVec::new(vec![])
     }
 
     fn interaction_element_ids(&self) -> Vec<String> {
@@ -40,6 +41,8 @@ impl Component for XorTableComponent {
         _point: CirclePoint<SecureField>,
         _mask: &ColumnVec<Vec<SecureField>>,
         _evaluation_accumulator: &mut PointEvaluationAccumulator,
+        _interaction_elements: &InteractionElements,
     ) {
+        todo!()
     }
 }

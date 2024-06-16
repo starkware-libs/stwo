@@ -7,11 +7,11 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::{BitReversedOrder, NaturalOrder};
 use crate::core::ColumnVec;
 
-mod air;
-mod multilinear_eval_at_point;
+pub mod air;
+pub mod multilinear_eval_at_point;
 pub mod prove;
-mod unordered_xor_component;
-mod xor_table_component;
+pub mod unordered_xor_component;
+pub mod xor_table_component;
 
 const LOG_TRACE_LEN: u32 = u8::BITS + u8::BITS;
 

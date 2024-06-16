@@ -4,6 +4,7 @@ use super::channel::Blake2sChannel;
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
+use super::lookups::gkr_verifier::{GkrArtifact, GkrBatchProof};
 use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly, SecureEvaluation};
 use super::poly::BitReversedOrder;
@@ -27,14 +28,17 @@ pub trait Air {
 
 pub trait AirTraceVerifier {
     fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements;
+
+    fn verify_gkr(&self, channel: &mut Blake2sChannel, proof: GkrBatchProof) -> GkrArtifact;
 }
 
 pub trait AirTraceWriter<B: Backend>: AirTraceVerifier {
     fn interact(
         &self,
+        channel: &mut Blake2sChannel,
         trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
-    ) -> Vec<CirclePoly<B>>;
+    ) -> (Vec<CirclePoly<B>>, GkrBatchProof);
 
     fn to_air_prover(&self) -> &impl AirProver<B>;
 }
