@@ -15,7 +15,7 @@ use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::shifted_secure_combination;
-use crate::core::{ColumnVec, InteractionElements};
+use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::examples::wide_fibonacci::trace_gen::write_lookup_column;
 
 pub const LOG_N_COLUMNS: usize = 8;
@@ -23,6 +23,10 @@ pub const N_COLUMNS: usize = 1 << LOG_N_COLUMNS;
 
 pub const ALPHA_ID: &str = "wide_fibonacci_alpha";
 pub const Z_ID: &str = "wide_fibonacci_z";
+pub const LOOKUP_VALUE_0_ID: &str = "wide_fibonacci_0";
+pub const LOOKUP_VALUE_1_ID: &str = "wide_fibonacci_1";
+pub const LOOKUP_VALUE_N_MINUS_2_ID: &str = "wide_fibonacci_n-2";
+pub const LOOKUP_VALUE_N_MINUS_1_ID: &str = "wide_fibonacci_n-1";
 
 /// Component that computes 2^`self.log_n_instances` instances of fibonacci sequences of size
 /// 2^`self.log_fibonacci_size`. The numbers are computes over [N_COLUMNS] trace columns. The
@@ -46,6 +50,30 @@ impl WideFibComponent {
 
     pub fn n_columns(&self) -> usize {
         N_COLUMNS
+    }
+
+    fn evaluate_trace_boundary_constraints_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask: &TreeVec<Vec<Vec<SecureField>>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
+        constraint_zero_domain: Coset,
+        lookup_values: &LookupValues,
+    ) {
+        let numerator = mask[0][0][0] - lookup_values[LOOKUP_VALUE_0_ID];
+        let denom = point_vanishing(constraint_zero_domain.at(0), point);
+        evaluation_accumulator.accumulate(numerator / denom);
+        let numerator = mask[0][1][0] - lookup_values[LOOKUP_VALUE_1_ID];
+        evaluation_accumulator.accumulate(numerator / denom);
+
+        let numerator = mask[0][self.n_columns() - 2][0] - lookup_values[LOOKUP_VALUE_N_MINUS_2_ID];
+        let denom = point_vanishing(
+            constraint_zero_domain.at(constraint_zero_domain.size() - 1),
+            point,
+        );
+        evaluation_accumulator.accumulate(numerator / denom);
+        let numerator = mask[0][self.n_columns() - 1][0] - lookup_values[LOOKUP_VALUE_N_MINUS_1_ID];
+        evaluation_accumulator.accumulate(numerator / denom);
     }
 
     fn evaluate_trace_step_constraints_at_point(
@@ -135,7 +163,7 @@ impl Air for WideFibAir {
 
 impl Component for WideFibComponent {
     fn n_constraints(&self) -> usize {
-        self.n_columns()
+        self.n_columns() + 4
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
@@ -174,8 +202,16 @@ impl Component for WideFibComponent {
         mask: &TreeVec<Vec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         interaction_elements: &InteractionElements,
+        lookup_values: &LookupValues,
     ) {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
+        self.evaluate_trace_boundary_constraints_at_point(
+            point,
+            mask,
+            evaluation_accumulator,
+            constraint_zero_domain,
+            lookup_values,
+        );
         self.evaluate_lookup_step_constraints_at_point(
             point,
             mask,

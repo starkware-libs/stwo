@@ -7,7 +7,7 @@ use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
-use super::{ColumnVec, InteractionElements};
+use super::{ColumnVec, InteractionElements, LookupValues};
 
 pub mod accumulation;
 mod air_ext;
@@ -67,13 +67,14 @@ pub trait Component {
     /// Returns the ids of the interaction elements used by the component.
     fn interaction_element_ids(&self) -> Vec<String>;
 
-    /// Evaluates the constraint quotients combination of the component, given the mask values.
+    /// Evaluates the constraint quotients combination of the component at a point.
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         interaction_elements: &InteractionElements,
+        lookup_values: &LookupValues,
     );
 }
 
@@ -93,7 +94,11 @@ pub trait ComponentProver<B: Backend>: Component {
         trace: &ComponentTrace<'_, B>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
         interaction_elements: &InteractionElements,
+        lookup_values: &LookupValues,
     );
+
+    /// Returns the values needed to evaluate the components lookup boundary constraints.
+    fn lookup_values(&self, _trace: &ComponentTrace<'_, B>) -> LookupValues;
 }
 
 /// A component trace is a set of polynomials for each column on that component.

@@ -52,6 +52,17 @@ impl Mul for CM31 {
     }
 }
 
+impl TryInto<M31> for CM31 {
+    type Error = ();
+
+    fn try_into(self) -> Result<M31, Self::Error> {
+        if self.1 != M31::zero() {
+            return Err(());
+        }
+        Ok(self.0)
+    }
+}
+
 impl FieldExpOps for CM31 {
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");

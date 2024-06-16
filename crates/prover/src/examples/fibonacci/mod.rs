@@ -110,7 +110,6 @@ impl MultiFibonacci {
 #[cfg(test)]
 mod tests {
     use std::assert_matches::assert_matches;
-    use std::collections::BTreeMap;
     use std::iter::zip;
 
     use itertools::Itertools;
@@ -129,7 +128,7 @@ mod tests {
     use crate::core::prover::VerificationError;
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
-    use crate::core::InteractionElements;
+    use crate::core::{InteractionElements, LookupValues};
     use crate::{m31, qm31};
 
     pub fn generate_test_queries(n_queries: usize, trace_length: usize) -> Vec<usize> {
@@ -159,7 +158,8 @@ mod tests {
         let composition_polynomial_poly = fib.air.compute_composition_polynomial(
             random_coeff,
             &component_traces,
-            &InteractionElements::new(BTreeMap::new()),
+            &InteractionElements::default(),
+            &LookupValues::default(),
         );
 
         // Evaluate this polynomial at another point out of the evaluation domain and compare to
@@ -181,7 +181,8 @@ mod tests {
             point,
             &TreeVec::new(vec![mask_values]),
             &mut evaluation_accumulator,
-            &InteractionElements::new(BTreeMap::new()),
+            &InteractionElements::default(),
+            &LookupValues::default(),
         );
         let oods_value = evaluation_accumulator.finalize();
 
