@@ -160,6 +160,7 @@ mod tests {
             random_coeff,
             &component_traces,
             &InteractionElements::new(BTreeMap::new()),
+            &[vec![]],
         );
 
         // Evaluate this polynomial at another point out of the evaluation domain and compare to
@@ -182,6 +183,7 @@ mod tests {
             &mask_values,
             &mut evaluation_accumulator,
             &InteractionElements::new(BTreeMap::new()),
+            &[],
         );
         let oods_value = evaluation_accumulator.finalize();
 

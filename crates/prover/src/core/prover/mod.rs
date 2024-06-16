@@ -39,6 +39,7 @@ pub const N_QUERIES: usize = 3;
 #[derive(Debug)]
 pub struct StarkProof {
     pub commitments: TreeVec<<ChannelHasher as Hasher>::Hash>,
+    pub lookup_values: Vec<Vec<BaseField>>,
     pub commitment_scheme_proof: CommitmentSchemeProof,
 }
 
@@ -90,10 +91,13 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     let random_coeff = channel.draw_felt();
 
     let span = span!(Level::INFO, "Composition generation").entered();
+    let component_traces = air.component_traces(&commitment_scheme.trees);
+    let lookup_values = air.lookup_values(&component_traces);
     let composition_polynomial_poly = air.compute_composition_polynomial(
         random_coeff,
-        &air.component_traces(&commitment_scheme.trees),
+        &component_traces,
         interaction_elements,
+        &lookup_values,
     );
     span.exit();
 
@@ -125,6 +129,7 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
             &trace_oods_values,
             random_coeff,
             interaction_elements,
+            &lookup_values,
         )
     {
         return Err(ProvingError::ConstraintsNotSatisfied);
@@ -132,6 +137,7 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
 
     Ok(StarkProof {
         commitments: commitment_scheme.roots(),
+        lookup_values,
         commitment_scheme_proof,
     })
 }
@@ -229,6 +235,7 @@ pub fn verify(
             &trace_oods_values,
             random_coeff,
             &interaction_elements,
+            &proof.lookup_values,
         )
     {
         return Err(VerificationError::OodsNotMatching);
@@ -430,6 +437,7 @@ mod tests {
             _mask: &crate::core::ColumnVec<Vec<SecureField>>,
             evaluation_accumulator: &mut PointEvaluationAccumulator,
             _interaction_elements: &InteractionElements,
+            _lookup_values: &[BaseField],
         ) {
             evaluation_accumulator.accumulate(qm31!(0, 0, 0, 1))
         }
@@ -451,6 +459,7 @@ mod tests {
             _trace: &ComponentTrace<'_, CpuBackend>,
             _evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
             _interaction_elements: &InteractionElements,
+            _lookup_values: &[BaseField],
         ) {
             // Does nothing.
         }

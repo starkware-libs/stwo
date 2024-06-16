@@ -1,9 +1,10 @@
-use itertools::{zip_eq, Itertools};
+use itertools::{izip, zip_eq, Itertools};
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Air, AirProver, ComponentTrace};
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::{CommitmentTreeProver, TreeVec};
 use crate::core::poly::circle::SecureCirclePoly;
@@ -55,16 +56,20 @@ pub trait AirExt: Air {
         mask_values: &ComponentVec<Vec<SecureField>>,
         random_coeff: SecureField,
         interaction_elements: &InteractionElements,
+        lookup_values: &[Vec<BaseField>],
     ) -> SecureField {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
-        zip_eq(self.components(), &mask_values.0).for_each(|(component, mask)| {
-            component.evaluate_constraint_quotients_at_point(
-                point,
-                mask,
-                &mut evaluation_accumulator,
-                interaction_elements,
-            )
-        });
+        izip!(self.components(), &mask_values.0, lookup_values).for_each(
+            |(component, mask, values)| {
+                component.evaluate_constraint_quotients_at_point(
+                    point,
+                    mask,
+                    &mut evaluation_accumulator,
+                    interaction_elements,
+                    values,
+                )
+            },
+        );
         evaluation_accumulator.finalize()
     }
 
@@ -127,6 +132,7 @@ pub trait AirProverExt<B: Backend>: AirProver<B> {
         random_coeff: SecureField,
         component_traces: &[ComponentTrace<'_, B>],
         interaction_elements: &InteractionElements,
+        lookup_values: &[Vec<BaseField>],
     ) -> SecureCirclePoly<B> {
         let total_constraints: usize = self
             .prover_components()
@@ -138,14 +144,23 @@ pub trait AirProverExt<B: Backend>: AirProver<B> {
             self.composition_log_degree_bound(),
             total_constraints,
         );
-        zip_eq(self.prover_components(), component_traces).for_each(|(component, trace)| {
-            component.evaluate_constraint_quotients_on_domain(
-                trace,
-                &mut accumulator,
-                interaction_elements,
-            )
-        });
+        izip!(self.prover_components(), component_traces, lookup_values).for_each(
+            |(component, trace, values)| {
+                component.evaluate_constraint_quotients_on_domain(
+                    trace,
+                    &mut accumulator,
+                    interaction_elements,
+                    values,
+                )
+            },
+        );
         accumulator.finalize()
+    }
+
+    fn lookup_values(&self, component_traces: &[ComponentTrace<'_, B>]) -> Vec<Vec<BaseField>> {
+        zip_eq(self.prover_components(), component_traces)
+            .map(|(component, trace)| component.lookup_values(trace))
+            .collect()
     }
 }
 

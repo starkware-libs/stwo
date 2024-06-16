@@ -49,6 +49,28 @@ impl WideFibComponent {
         N_COLUMNS
     }
 
+    fn evaluate_trace_boundary_constraints_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask: &ColumnVec<Vec<SecureField>>,
+        evaluation_accumulator: &mut PointEvaluationAccumulator,
+        constraint_zero_domain: Coset,
+        lookup_values: &[BaseField],
+    ) {
+        let numerator = mask[0][0] - lookup_values[0];
+        let denom = point_vanishing(constraint_zero_domain.at(0), point);
+        evaluation_accumulator.accumulate(numerator / denom);
+        let numerator = mask[1][0] - lookup_values[1];
+        evaluation_accumulator.accumulate(numerator / denom);
+
+        let numerator = mask[self.n_columns() - 2][0] - lookup_values[2];
+        let denom = point_vanishing(constraint_zero_domain.at(0), point);
+        evaluation_accumulator.accumulate(numerator / denom);
+        let numerator = mask[self.n_columns() - 1][0] - lookup_values[3];
+        let denom = point_vanishing(constraint_zero_domain.at(0), point);
+        evaluation_accumulator.accumulate(numerator / denom);
+    }
+
     fn evaluate_trace_step_constraints_at_point(
         &self,
         point: CirclePoint<SecureField>,
@@ -130,7 +152,7 @@ impl Air for WideFibAir {
 
 impl Component for WideFibComponent {
     fn n_constraints(&self) -> usize {
-        self.n_columns()
+        self.n_columns() + 4
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
@@ -169,8 +191,16 @@ impl Component for WideFibComponent {
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         interaction_elements: &InteractionElements,
+        lookup_values: &[BaseField],
     ) {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
+        self.evaluate_trace_boundary_constraints_at_point(
+            point,
+            mask,
+            evaluation_accumulator,
+            constraint_zero_domain,
+            lookup_values,
+        );
         self.evaluate_lookup_step_constraints_at_point(
             point,
             mask,

@@ -113,6 +113,7 @@ impl Component for FibonacciComponent {
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         _interaction_elements: &InteractionElements,
+        _lookup_values: &[BaseField],
     ) {
         evaluation_accumulator.accumulate(
             self.step_constraint_eval_quotient_by_mask(point, &mask[0][..].try_into().unwrap()),
@@ -142,6 +143,7 @@ impl ComponentProver<CpuBackend> for FibonacciComponent {
         trace: &ComponentTrace<'_, CpuBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
         _interaction_elements: &InteractionElements,
+        _lookup_values: &[BaseField],
     ) {
         let poly = &trace.polys[0][0];
         let trace_domain = CanonicCoset::new(self.log_size);

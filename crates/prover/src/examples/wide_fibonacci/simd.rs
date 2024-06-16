@@ -116,6 +116,7 @@ impl Component for SimdWideFibComponent {
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         _interaction_elements: &InteractionElements,
+        _lookup_values: &[BaseField],
     ) {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let denom = coset_vanishing(constraint_zero_domain, point);
@@ -176,6 +177,7 @@ impl ComponentProver<SimdBackend> for SimdWideFibComponent {
         trace: &ComponentTrace<'_, SimdBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
         _interaction_elements: &InteractionElements,
+        _lookup_values: &[BaseField],
     ) {
         assert_eq!(trace.polys[0].len(), self.n_columns());
         // TODO(spapini): Steal evaluation from commitment.

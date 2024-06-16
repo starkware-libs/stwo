@@ -71,6 +71,7 @@ pub trait Component {
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         interaction_elements: &InteractionElements,
+        lookup_values: &[BaseField],
     );
 }
 
@@ -90,7 +91,12 @@ pub trait ComponentProver<B: Backend>: Component {
         trace: &ComponentTrace<'_, B>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
         interaction_elements: &InteractionElements,
+        lookup_values: &[BaseField],
     );
+
+    fn lookup_values(&self, _trace: &ComponentTrace<'_, B>) -> Vec<BaseField> {
+        vec![]
+    }
 }
 
 /// A component trace is a set of polynomials for each column on that component.

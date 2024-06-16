@@ -69,6 +69,57 @@ impl AirProver<CpuBackend> for WideFibAir {
 }
 
 impl WideFibComponent {
+    fn evaluate_trace_boundary_constraints(
+        &self,
+        trace_evals: &TreeVec<Vec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
+        trace_eval_domain: CircleDomain,
+        zero_domain: Coset,
+        accum: &mut ColumnAccumulator<'_, CpuBackend>,
+        lookup_values: &[BaseField],
+    ) {
+        let max_constraint_degree = self.max_constraint_log_degree_bound();
+        let mut first_point_denoms = vec![];
+        let mut last_point_denoms = vec![];
+        for point in trace_eval_domain.iter() {
+            first_point_denoms.push(point_vanishing(zero_domain.at(0), point));
+            last_point_denoms.push(point_vanishing(zero_domain.at(zero_domain.size()), point));
+        }
+        bit_reverse(&mut first_point_denoms);
+        bit_reverse(&mut last_point_denoms);
+        let mut first_point_denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
+        let mut last_point_denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
+        BaseField::batch_inverse(&first_point_denoms, &mut first_point_denom_inverses);
+        BaseField::batch_inverse(&last_point_denoms, &mut last_point_denom_inverses);
+        let mut first_point_numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
+        let mut last_point_numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
+
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..trace_eval_domain.size() {
+            first_point_numerators[i] = accum.random_coeff_powers[self.n_columns() + 3]
+                * (trace_evals[0][0][i] - lookup_values[0])
+                + accum.random_coeff_powers[self.n_columns() + 2]
+                    * (trace_evals[0][1][i] - lookup_values[1]);
+            last_point_numerators[i] = accum.random_coeff_powers[self.n_columns() + 1]
+                * (trace_evals[0][self.n_columns() - 2][i] - lookup_values[2])
+                + accum.random_coeff_powers[self.n_columns()]
+                    * (trace_evals[0][self.n_columns() - 1][i] - lookup_values[3]);
+        }
+        for (i, (num, denom_inverse)) in first_point_numerators
+            .iter()
+            .zip(first_point_denom_inverses.iter())
+            .enumerate()
+        {
+            accum.accumulate(i, *num * *denom_inverse);
+        }
+        for (i, (num, denom_inverse)) in last_point_numerators
+            .iter()
+            .zip(last_point_denom_inverses.iter())
+            .enumerate()
+        {
+            accum.accumulate(i, *num * *denom_inverse);
+        }
+    }
+
     fn evaluate_trace_step_constraints(
         &self,
         trace_evals: &TreeVec<Vec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
@@ -207,6 +258,7 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
         trace: &ComponentTrace<'_, CpuBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
         interaction_elements: &InteractionElements,
+        lookup_values: &[BaseField],
     ) {
         let max_constraint_degree = self.max_constraint_log_degree_bound();
         let trace_eval_domain = CanonicCoset::new(max_constraint_degree).circle_domain();
@@ -215,6 +267,13 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
         let [mut accum] =
             evaluation_accumulator.columns([(max_constraint_degree, self.n_constraints())]);
 
+        self.evaluate_trace_boundary_constraints(
+            trace_evals,
+            trace_eval_domain,
+            zero_domain,
+            &mut accum,
+            lookup_values,
+        );
         self.evaluate_trace_step_constraints(
             trace_evals,
             trace_eval_domain,
@@ -235,6 +294,29 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
             &mut accum,
             interaction_elements,
         )
+    }
+
+    fn lookup_values(&self, trace: &ComponentTrace<'_, CpuBackend>) -> Vec<BaseField> {
+        let domain = CanonicCoset::new(self.log_column_size());
+        let trace_poly = &trace.polys[0];
+        vec![
+            trace_poly[0]
+                .eval_at_point(domain.at(0).into_ef())
+                .try_into()
+                .unwrap(),
+            trace_poly[1]
+                .eval_at_point(domain.at(0).into_ef())
+                .try_into()
+                .unwrap(),
+            trace_poly[self.n_columns() - 2]
+                .eval_at_point(domain.at(domain.size()).into_ef())
+                .try_into()
+                .unwrap(),
+            trace_poly[self.n_columns() - 1]
+                .eval_at_point(domain.at(domain.size()).into_ef())
+                .try_into()
+                .unwrap(),
+        ]
     }
 }
 
