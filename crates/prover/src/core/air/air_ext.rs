@@ -10,7 +10,7 @@ use crate::core::pcs::{CommitmentTreeProver, TreeVec};
 use crate::core::poly::circle::SecureCirclePoly;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::MerkleOps;
-use crate::core::{ColumnVec, ComponentVec, InteractionElements};
+use crate::core::{ColumnVec, ComponentVec, InteractionElements, LookupValues};
 
 pub trait AirExt: Air {
     fn composition_log_degree_bound(&self) -> u32 {
@@ -58,6 +58,7 @@ pub trait AirExt: Air {
         mask_values: &ComponentVec<Vec<SecureField>>,
         random_coeff: SecureField,
         interaction_elements: &InteractionElements,
+        lookup_values: &LookupValues,
     ) -> SecureField {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         zip_eq(self.components(), &mask_values.0).for_each(|(component, mask)| {
@@ -66,6 +67,7 @@ pub trait AirExt: Air {
                 mask,
                 &mut evaluation_accumulator,
                 interaction_elements,
+                lookup_values,
             )
         });
         evaluation_accumulator.finalize()
@@ -130,6 +132,7 @@ pub trait AirProverExt<B: Backend>: AirProver<B> {
         random_coeff: SecureField,
         component_traces: &[ComponentTrace<'_, B>],
         interaction_elements: &InteractionElements,
+        lookup_values: &LookupValues,
     ) -> SecureCirclePoly<B> {
         let total_constraints: usize = self
             .prover_components()
@@ -146,9 +149,17 @@ pub trait AirProverExt<B: Backend>: AirProver<B> {
                 trace,
                 &mut accumulator,
                 interaction_elements,
+                lookup_values,
             )
         });
         accumulator.finalize()
+    }
+
+    fn lookup_values(&self, component_traces: &[ComponentTrace<'_, B>]) -> LookupValues {
+        let mut values = LookupValues::default();
+        zip_eq(self.prover_components(), component_traces)
+            .for_each(|(component, trace)| values.extend(component.lookup_values(trace)));
+        values
     }
 }
 
