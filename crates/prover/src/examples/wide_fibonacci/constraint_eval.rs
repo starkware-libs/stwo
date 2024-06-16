@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use itertools::{zip_eq, Itertools};
 use num_traits::Zero;
 
-use super::component::{Input, WideFibAir, WideFibComponent, ALPHA_ID, Z_ID};
+use super::component::{
+    Input, WideFibAir, WideFibComponent, ALPHA_ID, LOOKUP_VALUE_0_ID, LOOKUP_VALUE_1_ID,
+    LOOKUP_VALUE_N_MINUS_1_ID, LOOKUP_VALUE_N_MINUS_2_ID, Z_ID,
+};
 use super::trace_gen::write_trace_row;
 use crate::core::air::accumulation::{ColumnAccumulator, DomainEvaluationAccumulator};
 use crate::core::air::{
@@ -23,7 +26,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{
     bit_reverse, previous_bit_reversed_circle_domain_index, shifted_secure_combination,
 };
-use crate::core::{ColumnVec, InteractionElements};
+use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
 
 // TODO(AlonH): Rename file to `cpu.rs`.
@@ -58,6 +61,60 @@ impl AirProver<CpuBackend> for WideFibAir {
 }
 
 impl WideFibComponent {
+    fn evaluate_trace_boundary_constraints(
+        &self,
+        trace_evals: &TreeVec<Vec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
+        trace_eval_domain: CircleDomain,
+        zero_domain: Coset,
+        accum: &mut ColumnAccumulator<'_, CpuBackend>,
+        lookup_values: &LookupValues,
+    ) {
+        let max_constraint_degree = self.max_constraint_log_degree_bound();
+        let mut first_point_denoms = vec![];
+        let mut last_point_denoms = vec![];
+        for point in trace_eval_domain.iter() {
+            // TODO(AlonH): Use `point_vanishing_fraction` instead of `point_vanishing` everywhere.
+            first_point_denoms.push(point_vanishing(zero_domain.at(0), point));
+            last_point_denoms.push(point_vanishing(zero_domain.at(zero_domain.size()), point));
+        }
+        bit_reverse(&mut first_point_denoms);
+        bit_reverse(&mut last_point_denoms);
+        let mut first_point_denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
+        let mut last_point_denom_inverses = vec![BaseField::zero(); 1 << (max_constraint_degree)];
+        BaseField::batch_inverse(&first_point_denoms, &mut first_point_denom_inverses);
+        BaseField::batch_inverse(&last_point_denoms, &mut last_point_denom_inverses);
+        let mut first_point_numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
+        let mut last_point_numerators = vec![SecureField::zero(); 1 << (max_constraint_degree)];
+
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..trace_eval_domain.size() {
+            first_point_numerators[i] = accum.random_coeff_powers[self.n_columns() + 3]
+                * (trace_evals[0][0][i] - lookup_values[LOOKUP_VALUE_0_ID])
+                + accum.random_coeff_powers[self.n_columns() + 2]
+                    * (trace_evals[0][1][i] - lookup_values[LOOKUP_VALUE_1_ID]);
+            last_point_numerators[i] = accum.random_coeff_powers[self.n_columns() + 1]
+                * (trace_evals[0][self.n_columns() - 2][i]
+                    - lookup_values[LOOKUP_VALUE_N_MINUS_2_ID])
+                + accum.random_coeff_powers[self.n_columns()]
+                    * (trace_evals[0][self.n_columns() - 1][i]
+                        - lookup_values[LOOKUP_VALUE_N_MINUS_1_ID]);
+        }
+        for (i, (num, denom_inverse)) in first_point_numerators
+            .iter()
+            .zip(first_point_denom_inverses.iter())
+            .enumerate()
+        {
+            accum.accumulate(i, *num * *denom_inverse);
+        }
+        for (i, (num, denom_inverse)) in last_point_numerators
+            .iter()
+            .zip(last_point_denom_inverses.iter())
+            .enumerate()
+        {
+            accum.accumulate(i, *num * *denom_inverse);
+        }
+    }
+
     fn evaluate_trace_step_constraints(
         &self,
         trace_evals: &TreeVec<Vec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>>,
@@ -200,6 +257,7 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
         trace: &ComponentTrace<'_, CpuBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
         interaction_elements: &InteractionElements,
+        lookup_values: &LookupValues,
     ) {
         let max_constraint_degree = self.max_constraint_log_degree_bound();
         let trace_eval_domain = CanonicCoset::new(max_constraint_degree).circle_domain();
@@ -208,6 +266,13 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
         let [mut accum] =
             evaluation_accumulator.columns([(max_constraint_degree, self.n_constraints())]);
 
+        self.evaluate_trace_boundary_constraints(
+            trace_evals,
+            trace_eval_domain,
+            zero_domain,
+            &mut accum,
+            lookup_values,
+        );
         self.evaluate_trace_step_constraints(
             trace_evals,
             trace_eval_domain,
@@ -228,6 +293,42 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
             &mut accum,
             interaction_elements,
         )
+    }
+
+    fn lookup_values(&self, trace: &ComponentTrace<'_, CpuBackend>) -> LookupValues {
+        let domain = CanonicCoset::new(self.log_column_size());
+        let trace_poly = &trace.polys[0];
+        let values = BTreeMap::from_iter([
+            (
+                LOOKUP_VALUE_0_ID.to_string(),
+                trace_poly[0]
+                    .eval_at_point(domain.at(0).into_ef())
+                    .try_into()
+                    .unwrap(),
+            ),
+            (
+                LOOKUP_VALUE_1_ID.to_string(),
+                trace_poly[1]
+                    .eval_at_point(domain.at(0).into_ef())
+                    .try_into()
+                    .unwrap(),
+            ),
+            (
+                LOOKUP_VALUE_N_MINUS_2_ID.to_string(),
+                trace_poly[self.n_columns() - 2]
+                    .eval_at_point(domain.at(domain.size()).into_ef())
+                    .try_into()
+                    .unwrap(),
+            ),
+            (
+                LOOKUP_VALUE_N_MINUS_1_ID.to_string(),
+                trace_poly[self.n_columns() - 1]
+                    .eval_at_point(domain.at(domain.size()).into_ef())
+                    .try_into()
+                    .unwrap(),
+            ),
+        ]);
+        LookupValues::new(values)
     }
 }
 

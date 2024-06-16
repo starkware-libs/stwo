@@ -44,7 +44,7 @@ mod tests {
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CircleEvaluation;
     use crate::core::poly::BitReversedOrder;
-    use crate::core::{ColumnVec, InteractionElements};
+    use crate::core::{ColumnVec, InteractionElements, LookupValues};
     use crate::m31;
     use crate::trace_generation::TraceGenerator;
     pub struct ComponentA {
@@ -85,6 +85,7 @@ mod tests {
             _mask: &TreeVec<Vec<Vec<SecureField>>>,
             _evaluation_accumulator: &mut PointEvaluationAccumulator,
             _interaction_elements: &InteractionElements,
+            _lookup_values: &LookupValues,
         ) {
             todo!()
         }

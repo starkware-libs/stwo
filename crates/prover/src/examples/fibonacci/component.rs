@@ -15,7 +15,7 @@ use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
-use crate::core::{ColumnVec, InteractionElements};
+use crate::core::{ColumnVec, InteractionElements, LookupValues};
 
 pub struct FibonacciComponent {
     pub log_size: u32,
@@ -110,6 +110,7 @@ impl Component for FibonacciComponent {
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         _interaction_elements: &InteractionElements,
+        _lookup_values: &LookupValues,
     ) {
         evaluation_accumulator.accumulate(
             self.step_constraint_eval_quotient_by_mask(point, &mask[0][0][..].try_into().unwrap()),
@@ -137,6 +138,7 @@ impl ComponentProver<CpuBackend> for FibonacciComponent {
         trace: &ComponentTrace<'_, CpuBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
         _interaction_elements: &InteractionElements,
+        _lookup_values: &LookupValues,
     ) {
         let poly = &trace.polys[0][0];
         let trace_domain = CanonicCoset::new(self.log_size);
