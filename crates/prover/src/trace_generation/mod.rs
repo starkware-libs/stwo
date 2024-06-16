@@ -11,8 +11,31 @@ use crate::core::ColumnVec;
 pub trait ComponentGen: Downcast {}
 impl_downcast!(ComponentGen);
 
+#[derive(Default)]
 pub struct ComponentRegistry {
-    _components: HashMap<String, Box<dyn ComponentGen>>,
+    components: HashMap<String, Box<dyn ComponentGen>>,
+}
+
+impl ComponentRegistry {
+    pub fn register_component(&mut self, component_id: String, component: Box<dyn ComponentGen>) {
+        self.components.insert(component_id, component);
+    }
+
+    pub fn get_component<T: ComponentGen>(&self, component_id: &str) -> &T {
+        self.components
+            .get(component_id)
+            .unwrap()
+            .downcast_ref()
+            .unwrap()
+    }
+
+    pub fn get_component_mut<T: ComponentGen>(&mut self, component_id: &str) -> &mut T {
+        self.components
+            .get_mut(component_id)
+            .unwrap()
+            .downcast_mut()
+            .unwrap()
+    }
 }
 
 // A trait to generate a a trace.
@@ -33,4 +56,41 @@ trait TraceGenerator<B: Backend> {
         component_id: &str,
         registry: &mut ComponentRegistry,
     ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::backend::CpuBackend;
+
+    #[derive(Default)]
+    struct ComponentA {
+        inputs: Vec<u32>,
+    }
+
+    impl ComponentGen for ComponentA {}
+
+    impl TraceGenerator<CpuBackend> for ComponentA {
+        type ComponentInputs = u32;
+
+        fn add_inputs(&mut self, _inputs: &Self::ComponentInputs) {
+            unimplemented!("TestTraceGenerator::add_inputs")
+        }
+
+        fn write_trace(
+            _component_id: &str,
+            _registry: &mut ComponentRegistry,
+        ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+            unimplemented!("TestTraceGenerator::write_trace")
+        }
+    }
+
+    #[test]
+    fn test_component_registry() {
+        let mut registry = ComponentRegistry::default();
+        let component = Box::new(ComponentA { inputs: vec![1] });
+        registry.register_component("test".to_string(), component);
+        let component = registry.get_component::<ComponentA>("test");
+        assert_eq!(component.inputs, vec![1]);
+    }
 }
