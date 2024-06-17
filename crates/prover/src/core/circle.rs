@@ -293,7 +293,7 @@ impl Neg for CirclePointIndex {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Coset {
     pub initial_index: CirclePointIndex,
-    pub initial: CirclePoint<M31>, // Q
+    pub initial: CirclePoint<M31>,
     pub step_size: CirclePointIndex,
     pub step: CirclePoint<M31>,
     pub log_size: u32,
