@@ -15,10 +15,10 @@ use cudarc::driver::{CudaDevice, ValidAsZeroBits};
 // use error::Error;
 use once_cell::sync::Lazy;
 
-use crate::core::fields::m31::M31;
-
 use self::m31::LoadBaseField;
 use super::Backend;
+use crate::core::fields::m31::M31;
+use crate::core::fields::qm31::QM31;
 
 // TODO:: cleanup unwraps with error handling?
 // (We can replace lazy statics with unsafe global references)
@@ -43,6 +43,7 @@ impl Load for Device {
 }
 
 unsafe impl ValidAsZeroBits for M31 {}
+unsafe impl ValidAsZeroBits for QM31 {}
 
 #[derive(Copy, Clone, Debug)]
 pub struct GpuBackend;

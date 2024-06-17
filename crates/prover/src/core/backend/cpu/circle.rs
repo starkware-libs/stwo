@@ -181,11 +181,9 @@ fn fft_layer_loop(
     t: BaseField,
     butterfly_fn: impl Fn(&mut BaseField, &mut BaseField, BaseField),
 ) {
-    // i = 2
     for l in 0..(1 << i) {
-        // l in 0..4
-        let idx0 = (h << (i + 1)) + l; // (h << 3) + l           h = 0: [0, 1, 2, 3]     h = 1: [ 8,  9, 10, 11]
-        let idx1 = idx0 + (1 << i); //    (h << 3) + l + 4              [4, 5, 6, 7]            [12, 13, 14, 15]
+        let idx0 = (h << (i + 1)) + l;
+        let idx1 = idx0 + (1 << i);
         let (mut val0, mut val1) = (values[idx0], values[idx1]);
         butterfly_fn(&mut val0, &mut val1, t);
         (values[idx0], values[idx1]) = (val0, val1);

@@ -1,8 +1,19 @@
 typedef unsigned int uint32_t;
 typedef unsigned long long uint64_t;
 
+typedef struct {
+    uint32_t a;
+    uint32_t b;
+} cm31;
+
+typedef struct {
+    cm31 a;
+    cm31 b;
+} qm31;
+
 const int LOG_MAX_NUM_CONCURRENT_THREADS = 14;
 const uint32_t P = 2147483647;
+const cm31 R = {2, 1};
 
 extern "C"
 __global__ void sort_values(uint32_t *from, uint32_t *dst, int size) {
@@ -44,6 +55,39 @@ __device__ uint32_t m31_neg(uint32_t a) {
     // TODO: use sub from m31.cu
     return P - a;
 }
+
+
+/*##### CM1 ##### */
+
+__device__ cm31 cm31_mul(cm31 x, cm31 y) {
+    return {m31_sub(m31_mul(x.a, y.a), m31_mul(x.b, y.b)), m31_add(m31_mul(x.a, y.b), m31_mul(x.b, y.a))};
+}
+
+__device__ cm31 cm31_add(cm31 x, cm31 y) {
+    return {m31_add(x.a, y.a), m31_add(x.b, y.b)};
+}
+
+/*##### Q31 ##### */
+
+__device__ qm31 qm31_mul(qm31 x, qm31 y) {
+    return {
+        cm31_add(
+            cm31_mul(x.a, y.a),
+            cm31_mul(R, cm31_mul(x.b, y.b))
+        ),
+        cm31_add(
+            cm31_mul(x.a, y.b),
+            cm31_mul(x.b, y.a)
+        )
+    };
+}
+
+__device__ qm31 qm31_add(qm31 x, qm31 y) {
+    return {cm31_add(x.a, y.a), cm31_add(x.b, y.b)};
+}
+
+
+/*##### Point ##### */
 
 __device__ point point_mul(point &p1, point &p2) {
     return {
@@ -210,5 +254,44 @@ __global__ void rescale(uint32_t *values, int size, uint32_t factor) {
 
     if(idx < size) {
         values[idx] = m31_mul(values[idx], factor);
+    }
+}
+
+extern "C"
+__global__ void eval_at_point(uint32_t* coeffs, qm31 *level, qm31 *factors, int coeffs_size, int factors_size, qm31 point, qm31 *output) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    int level_size = coeffs_size >> 1;
+    int factor_idx = factors_size - 1;
+
+    if(idx < level_size) {
+        uint32_t alpha = coeffs[2 * idx];
+        uint32_t beta = coeffs[2 * idx + 1];
+        qm31 factor = factors[factor_idx];
+        __syncthreads();
+        qm31 result = { 
+            {m31_add(m31_mul(beta, factor.a.a), alpha), m31_mul(factor.a.b, beta)}, 
+            {m31_mul(beta,  factor.b.a), m31_mul(beta, factor.b.b)} 
+        };
+        level[idx] = result;
+    }
+    factor_idx -= 1;
+    level_size >>= 1;
+
+    while(level_size > 0) {
+        if(idx < level_size) {
+            qm31 a = level[2 * idx];
+            qm31 b = level[2 * idx + 1];
+            __syncthreads();
+            level[idx] = qm31_add(a, qm31_mul(b, factors[factor_idx]));
+        }
+        factor_idx -= 1;
+        level_size >>= 1;
+        
+    }
+    __syncthreads();
+
+    if(idx == 0) {
+        output[0] = level[0];
     }
 }

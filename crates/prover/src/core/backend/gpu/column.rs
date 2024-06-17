@@ -12,13 +12,19 @@ use crate::core::fields::FieldOps;
 
 unsafe impl DeviceRepr for M31 {
     fn as_kernel_param(&self) -> *mut c_void {
-        self.0 as *const Self as *mut c_void
+        self as *const Self as *mut c_void
     }
 }
 
 unsafe impl DeviceRepr for QM31 {
     fn as_kernel_param(&self) -> *mut c_void {
-        self.0 .0 .0 as *const Self as *mut c_void
+        self as *const Self as *mut c_void
+    }
+}
+
+unsafe impl DeviceRepr for &mut QM31 {
+    fn as_kernel_param(&self) -> *mut std::ffi::c_void {
+        self as *const Self as *mut _
     }
 }
 
