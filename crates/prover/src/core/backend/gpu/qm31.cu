@@ -1,11 +1,11 @@
 #include "m31.h"
 // __device__ __constant__ int MODULUS = (1 << 31) - 1; 
-// extern "C" __device__  unsigned int add_m31(unsigned int lhs, unsigned int rhs) {
+// __device__  unsigned int add_m31(unsigned int lhs, unsigned int rhs) {
 //     unsigned int out = lhs + rhs; 
     
 //     return min(out, out - MODULUS);
 // }
-// extern "C" __device__  void mul_cm31(unsigned int *lhs,  unsigned int *rhs,  unsigned int *out) {
+// __device__  void mul_cm31(unsigned int *lhs,  unsigned int *rhs,  unsigned int *out) {
 //     unsigned int ac = mul_m31(lhs[0], rhs[0]);
 //     unsigned int bd = mul_m31(lhs[1], rhs[1]);
 
@@ -14,7 +14,7 @@
 //     out[1] = sub_m31(ab_t_cd, add_m31(ac, bd)); 
 // }
 
-// extern "C" __device__  void mul_qm31(unsigned int *lhs, unsigned int *rhs, unsigned int *out) {
+// __device__  void mul_qm31(unsigned int *lhs, unsigned int *rhs, unsigned int *out) {
 //     unsigned int ac[2];
 //     unsigned int bd[2];
 //     unsigned int bd_times_1_plus_i[2];
@@ -50,7 +50,7 @@
 //     out[2] = ad_p_bc[1];
 // }
 
-extern "C" __global__ void mul(unsigned int *lhs, unsigned int *rhs, unsigned int *out, int size) {
+__global__ void mul(unsigned int *lhs, unsigned int *rhs, unsigned int *out, int size) {
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid < size) {
         out[tid] = add_m31(lhs[tid], rhs[tid]);
