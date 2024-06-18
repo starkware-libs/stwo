@@ -1,7 +1,6 @@
-use std::ffi::c_void;
 use std::sync::Arc;
 
-use cudarc::driver::{CudaDevice, CudaSlice, DeviceRepr, DeviceSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaDevice, CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::compile_ptx;
 
 use super::{GpuBackend, DEVICE};
@@ -10,17 +9,6 @@ use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::{SecureField, QM31};
 use crate::core::fields::FieldOps;
 
-unsafe impl DeviceRepr for M31 {
-    fn as_kernel_param(&self) -> *mut c_void {
-        self.0 as *const Self as *mut c_void
-    }
-}
-
-unsafe impl DeviceRepr for QM31 {
-    fn as_kernel_param(&self) -> *mut c_void {
-        self.0 .0 .0 as *const Self as *mut c_void
-    }
-}
 
 impl FieldOps<BaseField> for GpuBackend {
     fn batch_inverse(from: &Self::Column, dst: &mut Self::Column) {
