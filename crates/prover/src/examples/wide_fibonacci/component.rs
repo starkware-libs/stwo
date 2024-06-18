@@ -89,13 +89,14 @@ impl WideFibComponent {
         }
     }
 
-    fn evaluate_lookup_boundary_constraint_at_point(
+    fn evaluate_lookup_boundary_constraints_at_point(
         &self,
         point: CirclePoint<SecureField>,
         mask: &ColumnVec<Vec<SecureField>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         constraint_zero_domain: Coset,
         interaction_elements: &InteractionElements,
+        lookup_values: &LookupValues,
     ) {
         let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
         let value =
@@ -110,6 +111,29 @@ impl WideFibComponent {
             ))
             - shifted_secure_combination(&[mask[0][0], mask[1][0]], alpha, z);
         let denom = point_vanishing(constraint_zero_domain.at(0), point);
+        evaluation_accumulator.accumulate(numerator / denom);
+
+        let numerator = (value
+            * shifted_secure_combination(
+                &[
+                    lookup_values[LOOKUP_VALUE_N_MINUS_2_ID],
+                    lookup_values[LOOKUP_VALUE_N_MINUS_1_ID],
+                ],
+                alpha,
+                z,
+            ))
+            - shifted_secure_combination(
+                &[
+                    lookup_values[LOOKUP_VALUE_0_ID],
+                    lookup_values[LOOKUP_VALUE_1_ID],
+                ],
+                alpha,
+                z,
+            );
+        let denom = point_vanishing(
+            constraint_zero_domain.at(constraint_zero_domain.size()),
+            point,
+        );
         evaluation_accumulator.accumulate(numerator / denom);
     }
 
@@ -155,7 +179,7 @@ impl Air for WideFibAir {
 
 impl Component for WideFibComponent {
     fn n_constraints(&self) -> usize {
-        self.n_columns() + 4
+        self.n_columns() + 5
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
@@ -211,12 +235,13 @@ impl Component for WideFibComponent {
             constraint_zero_domain,
             interaction_elements,
         );
-        self.evaluate_lookup_boundary_constraint_at_point(
+        self.evaluate_lookup_boundary_constraints_at_point(
             point,
             mask,
             evaluation_accumulator,
             constraint_zero_domain,
             interaction_elements,
+            lookup_values,
         );
         self.evaluate_trace_step_constraints_at_point(
             point,
