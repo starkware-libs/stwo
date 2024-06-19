@@ -23,6 +23,7 @@ use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, SecureCirclePoly,
 };
 use crate::core::poly::BitReversedOrder;
+use crate::core::prover::{BASE_TRACE, INTERACTION_TRACE};
 use crate::core::utils::{
     bit_reverse, previous_bit_reversed_circle_domain_index, shifted_secure_combination,
 };
@@ -96,13 +97,13 @@ impl WideFibComponent {
         #[allow(clippy::needless_range_loop)]
         for i in 0..trace_eval_domain.size() {
             first_point_numerators[i] = accum.random_coeff_powers[self.n_columns() + 4]
-                * (trace_evals[0][0][i] - lookup_values[0])
+                * (trace_evals[BASE_TRACE][0][i] - lookup_values[0])
                 + accum.random_coeff_powers[self.n_columns() + 3]
-                    * (trace_evals[0][1][i] - lookup_values[1]);
+                    * (trace_evals[BASE_TRACE][1][i] - lookup_values[1]);
             last_point_numerators[i] = accum.random_coeff_powers[self.n_columns() + 2]
-                * (trace_evals[0][self.n_columns() - 2][i] - lookup_values[2])
+                * (trace_evals[BASE_TRACE][self.n_columns() - 2][i] - lookup_values[2])
                 + accum.random_coeff_powers[self.n_columns() + 1]
-                    * (trace_evals[0][self.n_columns() - 1][i] - lookup_values[3]);
+                    * (trace_evals[BASE_TRACE][self.n_columns() - 1][i] - lookup_values[3]);
         }
         for (i, (num, denom_inverse)) in first_point_numerators
             .iter()
@@ -141,8 +142,9 @@ impl WideFibComponent {
         for i in 0..trace_eval_domain.size() {
             for j in 0..self.n_columns() - 2 {
                 numerators[i] += accum.random_coeff_powers[self.n_columns() - 3 - j]
-                    * (trace_evals[0][j][i].square() + trace_evals[0][j + 1][i].square()
-                        - trace_evals[0][j + 2][i]);
+                    * (trace_evals[BASE_TRACE][j][i].square()
+                        + trace_evals[BASE_TRACE][j + 1][i].square()
+                        - trace_evals[BASE_TRACE][j + 2][i]);
             }
         }
         for (i, (num, denom_inverse)) in numerators.iter().zip(denom_inverses.iter()).enumerate() {
@@ -180,20 +182,20 @@ impl WideFibComponent {
         for i in 0..trace_eval_domain.size() {
             let value =
                 SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
-                    trace_evals[1][j][i].into()
+                    trace_evals[INTERACTION_TRACE][j][i].into()
                 }));
             first_point_numerators[i] = accum.random_coeff_powers[self.n_columns() - 1]
                 * ((value
                     * shifted_secure_combination(
                         &[
-                            trace_evals[0][self.n_columns() - 2][i],
-                            trace_evals[0][self.n_columns() - 1][i],
+                            trace_evals[BASE_TRACE][self.n_columns() - 2][i],
+                            trace_evals[BASE_TRACE][self.n_columns() - 1][i],
                         ],
                         alpha,
                         z,
                     ))
                     - shifted_secure_combination(
-                        &[trace_evals[0][0][i], trace_evals[0][1][i]],
+                        &[trace_evals[BASE_TRACE][0][i], trace_evals[BASE_TRACE][1][i]],
                         alpha,
                         z,
                     ));
@@ -243,27 +245,27 @@ impl WideFibComponent {
         for i in 0..trace_eval_domain.size() {
             let value =
                 SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
-                    trace_evals[1][j][i].into()
+                    trace_evals[INTERACTION_TRACE][j][i].into()
                 }));
             let prev_index =
                 previous_bit_reversed_circle_domain_index(i, trace_eval_domain.log_size());
             let prev_value =
                 SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
-                    trace_evals[1][j][prev_index].into()
+                    trace_evals[INTERACTION_TRACE][j][prev_index].into()
                 }));
             numerators[i] = accum.random_coeff_powers[self.n_columns()]
                 * ((value
                     * shifted_secure_combination(
                         &[
-                            trace_evals[0][self.n_columns() - 2][i],
-                            trace_evals[0][self.n_columns() - 1][i],
+                            trace_evals[BASE_TRACE][self.n_columns() - 2][i],
+                            trace_evals[BASE_TRACE][self.n_columns() - 1][i],
                         ],
                         alpha,
                         z,
                     ))
                     - (prev_value
                         * shifted_secure_combination(
-                            &[trace_evals[0][0][i], trace_evals[0][1][i]],
+                            &[trace_evals[BASE_TRACE][0][i], trace_evals[BASE_TRACE][1][i]],
                             alpha,
                             z,
                         )));
@@ -321,7 +323,7 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
 
     fn lookup_values(&self, trace: &ComponentTrace<'_, CpuBackend>) -> Vec<BaseField> {
         let domain = CanonicCoset::new(self.log_column_size());
-        let trace_poly = &trace.polys[0];
+        let trace_poly = &trace.polys[BASE_TRACE];
         vec![
             trace_poly[0]
                 .eval_at_point(domain.at(0).into_ef())

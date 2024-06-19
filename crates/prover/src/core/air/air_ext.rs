@@ -8,6 +8,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::{CommitmentTreeProver, TreeVec};
 use crate::core::poly::circle::SecureCirclePoly;
+use crate::core::prover::{BASE_TRACE, INTERACTION_TRACE};
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::{ColumnVec, ComponentVec, InteractionElements};
@@ -37,8 +38,8 @@ pub trait AirExt: Air {
         let mut interaction_component_points = vec![];
         for component in self.components() {
             let points = component.mask_points(point);
-            trace_component_points.extend(points[0].clone());
-            interaction_component_points.extend(points[1].clone());
+            trace_component_points.extend(points[BASE_TRACE].clone());
+            interaction_component_points.extend(points[INTERACTION_TRACE].clone());
         }
         let mut points = TreeVec::new(vec![trace_component_points]);
         if !interaction_component_points
@@ -78,8 +79,8 @@ pub trait AirExt: Air {
         let mut interaction_tree = vec![];
         self.components().iter().for_each(|component| {
             let bounds = component.trace_log_degree_bounds();
-            trace_tree.extend(bounds[0].clone());
-            interaction_tree.extend(bounds[1].clone());
+            trace_tree.extend(bounds[BASE_TRACE].clone());
+            interaction_tree.extend(bounds[INTERACTION_TRACE].clone());
         });
         let mut sizes = TreeVec::new(vec![trace_tree]);
         if !interaction_tree.is_empty() {
@@ -92,11 +93,11 @@ pub trait AirExt: Air {
         &'a self,
         trees: &'a [CommitmentTreeProver<B>],
     ) -> Vec<ComponentTrace<'_, B>> {
-        let poly_iter = &mut trees[0].polynomials.iter();
-        let eval_iter = &mut trees[0].evaluations.iter();
+        let poly_iter = &mut trees[BASE_TRACE].polynomials.iter();
+        let eval_iter = &mut trees[BASE_TRACE].evaluations.iter();
         let mut component_traces = vec![];
         self.components().iter().for_each(|component| {
-            let n_columns = component.trace_log_degree_bounds()[0].len();
+            let n_columns = component.trace_log_degree_bounds()[BASE_TRACE].len();
             let polys = poly_iter.take(n_columns).collect_vec();
             let evals = eval_iter.take(n_columns).collect_vec();
 
@@ -107,13 +108,13 @@ pub trait AirExt: Air {
         });
 
         if trees.len() > 1 {
-            let poly_iter = &mut trees[1].polynomials.iter();
-            let eval_iter = &mut trees[1].evaluations.iter();
+            let poly_iter = &mut trees[INTERACTION_TRACE].polynomials.iter();
+            let eval_iter = &mut trees[INTERACTION_TRACE].evaluations.iter();
             self.components()
                 .iter()
                 .zip_eq(&mut component_traces)
                 .for_each(|(component, component_trace)| {
-                    let n_columns = component.trace_log_degree_bounds()[1].len();
+                    let n_columns = component.trace_log_degree_bounds()[INTERACTION_TRACE].len();
                     let polys = poly_iter.take(n_columns).collect_vec();
                     let evals = eval_iter.take(n_columns).collect_vec();
                     component_trace.polys.push(polys);
