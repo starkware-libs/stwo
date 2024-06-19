@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cudarc::driver::{CudaDevice, CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaDevice, CudaSlice, DeviceSlice, LaunchAsync};
 use cudarc::nvrtc::compile_ptx;
 use itertools::Itertools;
 
@@ -15,18 +15,16 @@ impl FieldOps<BaseField> for GpuBackend {
         let size = from.len();
         let log_size = u32::BITS - (size as u32).leading_zeros() - 1;
 
-        let config = LaunchConfig::for_num_elems(size as u32 >> 1);
+        let config = Self::launch_config_for_num_elems(size as u32 >> 1, 256, 512 * 4 * 2);
         let batch_inverse = DEVICE
             .get_func("column", "batch_inverse_basefield")
             .unwrap();
         unsafe {
-            let mut inner_tree: CudaSlice<M31> = DEVICE.alloc(size).unwrap();
             let res = batch_inverse.launch(
                 config,
                 (
                     from.as_slice(),
                     dst.as_mut_slice(),
-                    &mut inner_tree,
                     size,
                     log_size,
                 ),
@@ -43,18 +41,16 @@ impl FieldOps<SecureField> for GpuBackend {
         let size = from.len();
         let log_size = u32::BITS - (size as u32).leading_zeros() - 1;
 
-        let config = LaunchConfig::for_num_elems(size as u32 >> 1);
+        let config = Self::launch_config_for_num_elems(size as u32 >> 1, 512, 1024 * 4 * 4 * 2);
         let batch_inverse = DEVICE
             .get_func("column", "batch_inverse_secure_field")
             .unwrap();
         unsafe {
-            let mut inner_tree: CudaSlice<QM31> = DEVICE.alloc(size).unwrap();
             let res = batch_inverse.launch(
                 config,
                 (
                     from.as_slice(),
                     dst.as_mut_slice(),
-                    &mut inner_tree,
                     size,
                     log_size,
                 ),
@@ -182,8 +178,8 @@ mod tests {
     use crate::core::fields::FieldOps;
 
     #[test]
-    fn test_batch_inverse() {
-        let size: usize = 1 << 12;
+    fn test_batch_inverse_basefield() {
+        let size: usize = 1 << 24;
         let from = (1..(size + 1) as u32).map(|x| M31(x)).collect_vec();
         let dst = from.clone();
         let mut dst_expected = dst.clone();
@@ -198,7 +194,7 @@ mod tests {
 
     #[test]
     fn test_batch_inverse_secure_field() {
-        let size: usize = 1 << 12;
+        let size: usize = 1 << 25;
 
         let from_raw = (1..(size + 1) as u32).collect::<Vec<u32>>();
 
