@@ -14,6 +14,7 @@ use crate::core::fields::{ExtensionOf, FieldExpOps};
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::prover::BASE_TRACE;
 use crate::core::utils::bit_reverse_index;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 
@@ -145,7 +146,7 @@ impl ComponentProver<CpuBackend> for FibonacciComponent {
         _interaction_elements: &InteractionElements,
         _lookup_values: &LookupValues,
     ) {
-        let poly = &trace.polys[0][0];
+        let poly = &trace.polys[BASE_TRACE][0];
         let trace_domain = CanonicCoset::new(self.log_size);
         let trace_eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
         let trace_eval = poly.evaluate(trace_eval_domain).bit_reverse();
