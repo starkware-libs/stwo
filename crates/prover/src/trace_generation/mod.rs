@@ -9,18 +9,27 @@ use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 
+pub trait InputsType: Downcast {
+    fn add_inputs(&mut self, component_id: &str, registry: &mut ComponentRegistry);
+}
+impl_downcast!(InputsType);
+
 pub trait ComponentGen: Downcast {}
 impl_downcast!(ComponentGen);
 
 // A trait to generate a a trace.
 // Generates the trace given a list of inputs collects inputs for subcomponents.
-trait TraceGenerator<B: Backend> {
+pub trait TraceGenerator<B: Backend> {
     type ComponentInputs;
 
     /// Add inputs for the trace generation of the component.
     /// This function should be called from the caller components before calling `write_trace` of
     /// this component.
-    fn add_inputs(&mut self, inputs: &Self::ComponentInputs);
+    fn add_inputs(
+        component_id: &str,
+        registry: &mut ComponentRegistry,
+        inputs: &Self::ComponentInputs,
+    );
 
     /// Allocates and returns the trace of the component and updates the
     /// subcomponents with the corresponding inputs.
@@ -30,4 +39,8 @@ trait TraceGenerator<B: Backend> {
         component_id: &str,
         registry: &mut ComponentRegistry,
     ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
+
+    /// Initializes the inputs for the trace generation of the component.
+    /// This function should be called when registering the component.
+    fn initialize_inputs(&self) -> Box<dyn InputsType>;
 }
