@@ -1,8 +1,9 @@
 pub mod registry;
 
 use downcast_rs::{impl_downcast, Downcast};
-use registry::ComponentRegistry;
+use registry::ComponentGenerationRegistry;
 
+use crate::core::air::Component;
 use crate::core::backend::Backend;
 use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::CircleEvaluation;
@@ -15,6 +16,7 @@ impl_downcast!(ComponentGen);
 // A trait to generate a a trace.
 // Generates the trace given a list of inputs collects inputs for subcomponents.
 pub trait TraceGenerator<B: Backend> {
+    type Component: Component;
     type ComponentInputs;
 
     /// Add inputs for the trace generation of the component.
@@ -27,7 +29,9 @@ pub trait TraceGenerator<B: Backend> {
     /// Should be called only after all the inputs are available.
     // TODO(ShaharS): change `component_id` to a struct that contains the id and the component name.
     fn write_trace(
-        component_id: &str,
-        registry: &mut ComponentRegistry,
+        &mut self,
+        registry: &mut ComponentGenerationRegistry,
     ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
+
+    fn component(&self) -> Self::Component;
 }
