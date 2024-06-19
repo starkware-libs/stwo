@@ -36,6 +36,9 @@ pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 0;
 pub const PROOF_OF_WORK_BITS: u32 = 12;
 pub const N_QUERIES: usize = 3;
 
+pub const BASE_TRACE: usize = 0;
+pub const INTERACTION_TRACE: usize = 1;
+
 #[derive(Debug)]
 pub struct StarkProof {
     pub commitments: TreeVec<<ChannelHasher as Hasher>::Hash>,
@@ -201,11 +204,19 @@ pub fn verify(
     // Read trace commitment.
     let mut commitment_scheme = CommitmentSchemeVerifier::new();
     let column_log_sizes = air.column_log_sizes();
-    commitment_scheme.commit(proof.commitments[0], &column_log_sizes[0], channel);
+    commitment_scheme.commit(
+        proof.commitments[BASE_TRACE],
+        &column_log_sizes[BASE_TRACE],
+        channel,
+    );
     let interaction_elements = air.interaction_elements(channel);
 
     if air.n_interaction_phases() == 2 {
-        commitment_scheme.commit(proof.commitments[1], &column_log_sizes[1], channel);
+        commitment_scheme.commit(
+            proof.commitments[INTERACTION_TRACE],
+            &column_log_sizes[INTERACTION_TRACE],
+            channel,
+        );
     }
 
     let random_coeff = channel.draw_felt();
@@ -265,7 +276,7 @@ fn sampled_values_to_mask(
     air.components().iter().for_each(|component| {
         trace_oods_values.push(
             flat_trace_values
-                .take(component.mask_points(CirclePoint::zero())[0].len())
+                .take(component.mask_points(CirclePoint::zero())[BASE_TRACE].len())
                 .cloned()
                 .collect_vec(),
         )
@@ -283,7 +294,7 @@ fn sampled_values_to_mask(
             .for_each(|(component, values)| {
                 values.extend(
                     interaction_values
-                        .take(component.mask_points(CirclePoint::zero())[1].len())
+                        .take(component.mask_points(CirclePoint::zero())[INTERACTION_TRACE].len())
                         .cloned()
                         .collect_vec(),
                 )
