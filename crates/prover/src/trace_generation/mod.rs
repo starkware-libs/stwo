@@ -12,15 +12,18 @@ use crate::core::ColumnVec;
 pub trait ComponentGen: Downcast {}
 impl_downcast!(ComponentGen);
 
+/// Input types are spe
+pub trait InputsType: Downcast {}
+impl_downcast!(InputsType);
+
+pub trait ExtendableInputs: InputsType + Default {
+    fn extend(&mut self, other: &Self);
+}
+
 // A trait to generate a a trace.
 // Generates the trace given a list of inputs collects inputs for subcomponents.
 pub trait TraceGenerator<B: Backend> {
-    type ComponentInputs;
-
-    /// Add inputs for the trace generation of the component.
-    /// This function should be called from the caller components before calling `write_trace` of
-    /// this component.
-    fn add_inputs(&mut self, inputs: &Self::ComponentInputs);
+    type ComponentInputs: ExtendableInputs;
 
     /// Allocates and returns the trace of the component and updates the
     /// subcomponents with the corresponding inputs.
