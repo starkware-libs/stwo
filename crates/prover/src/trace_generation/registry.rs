@@ -33,42 +33,138 @@ impl ComponentRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::air::accumulation::PointEvaluationAccumulator;
+    use crate::core::air::Component;
+    use crate::core::backend::simd::m31::PackedM31;
+    use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::CpuBackend;
-    use crate::core::fields::m31::BaseField;
+    use crate::core::circle::CirclePoint;
+    use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::qm31::SecureField;
+    use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CircleEvaluation;
     use crate::core::poly::BitReversedOrder;
-    use crate::core::ColumnVec;
-    use crate::trace_generation::TraceGenerator;
-
-    #[derive(Default)]
+    use crate::core::{ColumnVec, InteractionElements};
+    use crate::m31;
     struct ComponentA {
-        inputs: Vec<u32>,
+        n_instances: usize,
     }
 
-    impl ComponentGen for ComponentA {}
-
-    impl TraceGenerator<CpuBackend> for ComponentA {
-        type ComponentInputs = u32;
-
-        fn add_inputs(&mut self, _inputs: &Self::ComponentInputs) {
-            unimplemented!("TestTraceGenerator::add_inputs")
+    impl Component for ComponentA {
+        fn n_constraints(&self) -> usize {
+            todo!()
         }
 
-        fn write_trace(
+        fn max_constraint_log_degree_bound(&self) -> u32 {
+            todo!()
+        }
+
+        fn n_interaction_phases(&self) -> u32 {
+            todo!()
+        }
+
+        fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+            todo!()
+        }
+
+        fn mask_points(
+            &self,
+            _point: CirclePoint<SecureField>,
+        ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+            todo!()
+        }
+
+        fn interaction_element_ids(&self) -> Vec<String> {
+            todo!()
+        }
+
+        fn evaluate_constraint_quotients_at_point(
+            &self,
+            _point: CirclePoint<SecureField>,
+            _mask: &ColumnVec<Vec<SecureField>>,
+            _evaluation_accumulator: &mut PointEvaluationAccumulator,
+            _interaction_elements: &InteractionElements,
+        ) {
+            todo!()
+        }
+    }
+
+    struct ComponentACpuTraceGenerator {
+        component: ComponentA,
+        inputs: Vec<(M31, M31)>,
+    }
+    impl ComponentGen for ComponentACpuTraceGenerator {}
+    type ComponentACpuInput = Vec<(M31, M31)>;
+
+    impl ComponentACpuTraceGenerator {
+        pub fn _write_trace(
             _component_id: &str,
             _registry: &mut ComponentRegistry,
         ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
             unimplemented!("TestTraceGenerator::write_trace")
+        }
+
+        fn add_inputs(&mut self, inputs: &ComponentACpuInput) {
+            self.component.n_instances += inputs.len();
+            self.inputs.extend(inputs)
+        }
+
+        pub fn _get_component_mut(&mut self) -> &mut ComponentA {
+            &mut self.component
+        }
+    }
+
+    struct ComponentASimdTraceGenerator {
+        component: ComponentA,
+        inputs: Vec<(PackedM31, PackedM31)>,
+    }
+    impl ComponentGen for ComponentASimdTraceGenerator {}
+    type ComponentASimdInput = Vec<(PackedM31, PackedM31)>;
+
+    impl ComponentASimdTraceGenerator {
+        pub fn _write_trace(
+            _component_id: &str,
+            _registry: &mut ComponentRegistry,
+        ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+            unimplemented!("TestTraceGenerator::write_trace")
+        }
+
+        pub fn add_inputs(&mut self, inputs: &ComponentASimdInput) {
+            self.component.n_instances += inputs.len();
+            self.inputs.extend(inputs)
+        }
+
+        fn _get_component_mut(&mut self) -> &mut ComponentA {
+            &mut self.component
         }
     }
 
     #[test]
     fn test_component_registry() {
         let mut registry = ComponentRegistry::default();
-        let component = ComponentA { inputs: vec![1] };
+        let component_1 = ComponentA { n_instances: 0 };
+        let component_2 = ComponentA { n_instances: 0 };
+        let cpu_generator_id = "cpu";
+        let simd_generator_id = "simd";
 
-        registry.register_component("test", component);
+        let cpu_trace_generator = ComponentACpuTraceGenerator {
+            component: component_1,
+            inputs: vec![],
+        };
+        let simd_trace_generator = ComponentASimdTraceGenerator {
+            component: component_2,
+            inputs: vec![],
+        };
+        registry.register_component(cpu_generator_id, cpu_trace_generator);
+        registry.register_component(simd_generator_id, simd_trace_generator);
+        let cpu_inputs = vec![(m31!(1), m31!(1)), (m31!(2), m31!(2))];
+        let simd_inputs = vec![(PackedM31::broadcast(m31!(1)), PackedM31::broadcast(m31!(1)))];
 
-        assert_eq!(registry.get_component::<ComponentA>("test").inputs, vec![1]);
+        registry
+            .get_component_mut::<ComponentACpuTraceGenerator>(cpu_generator_id)
+            .add_inputs(&cpu_inputs);
+        registry
+            .get_component_mut::<ComponentASimdTraceGenerator>(simd_generator_id)
+            .add_inputs(&simd_inputs);
     }
 }
