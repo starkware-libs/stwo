@@ -14,7 +14,7 @@ impl_downcast!(ComponentGen);
 
 // A trait to generate a a trace.
 // Generates the trace given a list of inputs collects inputs for subcomponents.
-trait TraceGenerator<B: Backend> {
+pub trait TraceGenerator<B: Backend> {
     type ComponentInputs;
 
     /// Add inputs for the trace generation of the component.
