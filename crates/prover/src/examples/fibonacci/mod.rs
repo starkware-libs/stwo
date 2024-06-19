@@ -125,7 +125,7 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::VerificationError;
+    use crate::core::prover::{VerificationError, BASE_TRACE};
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
     use crate::core::{InteractionElements, LookupValues};
@@ -167,7 +167,7 @@ mod tests {
         let point = CirclePoint::<SecureField>::get_point(98989892);
 
         let points = fib.air.mask_points(point);
-        let mask_values = zip(&component_traces[0].polys[0], &points[0])
+        let mask_values = zip(&component_traces[0].polys[BASE_TRACE], &points[0])
             .map(|(poly, points)| {
                 points
                     .iter()
@@ -238,7 +238,8 @@ mod tests {
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
-        invalid_proof.commitment_scheme_proof.queried_values.0[0][0][3] += BaseField::one();
+        invalid_proof.commitment_scheme_proof.queried_values.0[BASE_TRACE][0][3] +=
+            BaseField::one();
 
         let error = fib.verify(invalid_proof).unwrap_err();
         assert_matches!(error, VerificationError::Merkle(_));
@@ -268,7 +269,7 @@ mod tests {
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
-        invalid_proof.commitment_scheme_proof.queried_values.0[0][0].pop();
+        invalid_proof.commitment_scheme_proof.queried_values.0[BASE_TRACE][0].pop();
 
         let error = fib.verify(invalid_proof).unwrap_err();
         assert_matches!(error, VerificationError::Merkle(_));
