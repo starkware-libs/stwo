@@ -21,7 +21,7 @@ pub use air_ext::{AirExt, AirProverExt};
 /// For instance, all interaction elements are assumed to be present in it.
 /// Therefore, an AIR is generated only after the initial trace commitment phase.
 // TODO(spapini): consider renaming this struct.
-pub trait Air {
+pub trait Air: AirTraceVerifier {
     fn components(&self) -> Vec<&dyn Component>;
 }
 
