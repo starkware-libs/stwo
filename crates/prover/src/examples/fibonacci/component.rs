@@ -80,6 +80,10 @@ impl Component for FibonacciComponent {
         self.log_size + 1
     }
 
+    fn n_interaction_phases(&self) -> u32 {
+        1
+    }
+
     fn trace_log_degree_bounds(&self) -> Vec<u32> {
         vec![self.log_size]
     }
