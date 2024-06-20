@@ -265,8 +265,8 @@ __global__ void eval_at_point_first_pass(uint32_t* g_coeffs, qm31 *temp, qm31 *f
 
     // Thread syncing happens within a block. 
     // Split the problem to feed them to multiple blocks.
-    if(coeffs_size >= 2048) {
-        coeffs_size = 2048;
+    if(coeffs_size >= 512) {
+        coeffs_size = 512;
     }
     
     extern __shared__ uint32_t s_coeffs[];
@@ -321,8 +321,8 @@ __global__ void eval_at_point_second_pass(qm31* temp, qm31 *factors, int level_s
 
     // Thread syncing happens within a block. 
     // Split the problem to feed them to multiple blocks.
-    if(level_size >= 2048) {
-        level_size = 2048;
+    if(level_size >= 512) {
+        level_size = 512;
     }
     
     extern __shared__ qm31 s_level[];

@@ -90,7 +90,7 @@ impl PolyOps for GpuBackend {
             let mut size = poly.coeffs.len();
             let mut result = 0;
             while size > 1 {
-                size = (size + 2047) / 2048;
+                size = (size + 511) / 512;
                 result += size;
             }
             result
@@ -103,7 +103,7 @@ impl PolyOps for GpuBackend {
             let mut temp: CudaSlice<SecureField> = DEVICE.alloc(temp_memory_size).unwrap();
 
             let coeffs_length = poly.coeffs.len() as u32;
-            let config = Self::launch_config_for_num_elems(coeffs_length >> 1, 1024, 2048 * 4 + 2048 * 8);
+            let config = Self::launch_config_for_num_elems(coeffs_length >> 1, 256, 512 * 4 + 512 * 8);
             let mut num_blocks = config.grid_dim.0;
             let mut output_offset = temp_memory_size - num_blocks as usize;
 
@@ -139,8 +139,8 @@ impl PolyOps for GpuBackend {
                 .unwrap();
             let mut level_offset = output_offset;
             while num_blocks > 1 {
-                mappings_offset -= 11;
-                let config = Self::launch_config_for_num_elems(num_blocks >> 1, 1024, 2048 * 4 * 4);
+                mappings_offset -= 9;
+                let config = Self::launch_config_for_num_elems(num_blocks >> 1, 256, 512 * 4 * 4);
                 output_offset = level_offset - config.grid_dim.0 as usize;
                 kernel
                     .clone()
