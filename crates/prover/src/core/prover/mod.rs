@@ -2,7 +2,7 @@ use itertools::Itertools;
 use thiserror::Error;
 use tracing::{span, Level};
 
-use super::air::{AirProver, AirTraceVerifier, AirTraceWriter};
+use super::air::{AirProver, AirTraceWriter};
 use super::backend::Backend;
 use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
@@ -196,7 +196,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
 
 pub fn verify(
     proof: StarkProof,
-    air: &(impl Air + AirTraceVerifier),
+    air: &impl Air,
     channel: &mut Channel,
 ) -> Result<(), VerificationError> {
     // Read trace commitment.
