@@ -964,6 +964,7 @@ dependencies = [
  "itertools 0.12.1",
  "num-traits",
  "rand",
+ "rayon",
  "starknet-crypto",
  "starknet-ff",
  "test-log",
