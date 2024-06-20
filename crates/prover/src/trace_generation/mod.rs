@@ -1,3 +1,5 @@
+#[cfg(test)]
+pub mod example;
 pub mod registry;
 
 use downcast_rs::{impl_downcast, Downcast};
