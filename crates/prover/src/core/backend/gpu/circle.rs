@@ -103,7 +103,8 @@ impl PolyOps for GpuBackend {
             let mut temp: CudaSlice<SecureField> = DEVICE.alloc(temp_memory_size).unwrap();
 
             let coeffs_length = poly.coeffs.len() as u32;
-            let config = Self::launch_config_for_num_elems(coeffs_length >> 1, 256, 512 * 4 + 512 * 8);
+            let config =
+                Self::launch_config_for_num_elems(coeffs_length >> 1, 256, 512 * 4 + 512 * 8);
             let mut num_blocks = config.grid_dim.0;
             let mut output_offset = temp_memory_size - num_blocks as usize;
 
@@ -167,7 +168,10 @@ impl PolyOps for GpuBackend {
             // TODO: find a better way of doing this without launching a kernel.
             let kernel = DEVICE.get_func("circle", "get_result_from_temp").unwrap();
             kernel
-                .launch(Self::launch_config_for_num_elems(1, 1, 0), (&temp, &mut device_result))
+                .launch(
+                    Self::launch_config_for_num_elems(1, 1, 0),
+                    (&temp, &mut device_result),
+                )
                 .unwrap();
             DEVICE.synchronize().unwrap();
             let result = DEVICE.dtoh_sync_copy(&device_result).unwrap();

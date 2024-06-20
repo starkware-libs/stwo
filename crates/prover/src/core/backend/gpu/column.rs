@@ -23,12 +23,7 @@ impl FieldOps<BaseField> for GpuBackend {
         unsafe {
             let res = batch_inverse.launch(
                 config,
-                (
-                    from.as_slice(),
-                    dst.as_mut_slice(),
-                    size,
-                    log_size,
-                ),
+                (from.as_slice(), dst.as_mut_slice(), size, log_size),
             );
             res
         }
@@ -43,19 +38,15 @@ impl FieldOps<SecureField> for GpuBackend {
         let log_size = u32::BITS - (size as u32).leading_zeros() - 1;
 
         // Shared memory need to store a tree up to the level with 32 elements
-        let config = Self::launch_config_for_num_elems(size as u32 >> 1, 512, 1024 * 4 * 4 * 2 - 32 * 4);
+        let config =
+            Self::launch_config_for_num_elems(size as u32 >> 1, 512, 1024 * 4 * 4 * 2 - 32 * 4);
         let batch_inverse = DEVICE
             .get_func("column", "batch_inverse_secure_field")
             .unwrap();
         unsafe {
             let res = batch_inverse.launch(
                 config,
-                (
-                    from.as_slice(),
-                    dst.as_mut_slice(),
-                    size,
-                    log_size,
-                ),
+                (from.as_slice(), dst.as_mut_slice(), size, log_size),
             );
             res
         }

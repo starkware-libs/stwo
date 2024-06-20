@@ -74,7 +74,11 @@ impl GpuBackend {
     /// - block_dim == `num_threads`
     /// - grid_dim == `(n + num_threads - 1) / num_threads`
     /// - shared_mem_bytes == `shared_mem_bytes`
-    pub fn launch_config_for_num_elems(n: u32, num_threads: u32, shared_mem_bytes: u32) -> LaunchConfig {
+    pub fn launch_config_for_num_elems(
+        n: u32,
+        num_threads: u32,
+        shared_mem_bytes: u32,
+    ) -> LaunchConfig {
         let num_blocks = (n + num_threads - 1) / num_threads;
         LaunchConfig {
             grid_dim: (num_blocks, 1, 1),

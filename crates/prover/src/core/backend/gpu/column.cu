@@ -183,10 +183,10 @@ __global__ void batch_inverse(T *from, T *dst, int size, int log_size, T *s_from
         size >>= 1; // Next level is half the size.
         step++;
     }
-
+    
     // Compute inverse of the root.
     __syncthreads();
-    if(index < 32){
+    if(index < (size << 1)){
         s_inner_tree[from_offset + index] = inv(s_inner_tree[from_offset + index]);
     }
     
