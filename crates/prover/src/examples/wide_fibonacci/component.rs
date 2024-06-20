@@ -9,6 +9,7 @@ use crate::core::constraints::{coset_vanishing, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
+use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::shifted_secure_combination;
@@ -69,8 +70,11 @@ impl Component for WideFibComponent {
         2
     }
 
-    fn trace_log_degree_bounds(&self) -> Vec<u32> {
-        vec![self.log_column_size(); self.n_columns()]
+    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+        TreeVec::new(vec![
+            vec![self.log_column_size(); self.n_columns()],
+            vec![self.log_column_size(); 1],
+        ])
     }
 
     fn mask_points(

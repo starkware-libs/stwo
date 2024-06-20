@@ -11,6 +11,7 @@ use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, FieldExpOps};
+use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
@@ -84,8 +85,8 @@ impl Component for FibonacciComponent {
         1
     }
 
-    fn trace_log_degree_bounds(&self) -> Vec<u32> {
-        vec![self.log_size]
+    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+        TreeVec::new(vec![vec![self.log_size], vec![]])
     }
 
     fn mask_points(

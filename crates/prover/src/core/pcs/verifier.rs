@@ -44,7 +44,7 @@ impl CommitmentSchemeVerifier {
     pub fn commit(
         &mut self,
         commitment: Blake2sHash,
-        log_sizes: Vec<u32>,
+        log_sizes: &[u32],
         channel: &mut ProofChannel,
     ) {
         channel.mix_digest(commitment);
