@@ -37,7 +37,7 @@ impl PolyOps for GpuBackend {
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         let domain = coset.circle_domain();
         let size = values.len();
-        let config = Self::launch_config_for_num_elems(size as u32, 1024, 0);
+        let config = Self::launch_config_for_num_elems(size as u32, 256, 0);
         let kernel = DEVICE.get_func("circle", "sort_values").unwrap();
         let mut sorted_values = BaseFieldCudaColumn::new(unsafe { DEVICE.alloc(size).unwrap() });
         unsafe {
@@ -214,7 +214,7 @@ impl PolyOps for GpuBackend {
     fn precompute_twiddles(mut coset: Coset) -> TwiddleTree<Self> {
         let root_coset = coset;
         // Compute twiddles
-        let config = Self::launch_config_for_num_elems(coset.size() as u32, 1024, 0);
+        let config = Self::launch_config_for_num_elems(coset.size() as u32, 256, 0);
         let kernel = DEVICE.get_func("circle", "precompute_twiddles").unwrap();
 
         let mut twiddles = BaseFieldCudaColumn::new(unsafe { DEVICE.alloc(coset.size()).unwrap() });
@@ -291,7 +291,7 @@ pub fn load_circle(device: &Arc<CudaDevice>) {
 impl GpuBackend {
     fn ifft_circle_part(values: &mut BaseFieldCudaColumn, twiddle_tree: &TwiddleTree<GpuBackend>) {
         let size = values.len();
-        let config = Self::launch_config_for_num_elems(size as u32, 1024, 0);
+        let config = Self::launch_config_for_num_elems(size as u32, 256, 0);
         let kernel = DEVICE.get_func("circle", "ifft_circle_part").unwrap();
         unsafe {
             kernel.launch(
@@ -308,7 +308,7 @@ impl GpuBackend {
 
     fn rfft_circle_part(values: &mut BaseFieldCudaColumn, twiddle_tree: &TwiddleTree<GpuBackend>) {
         let size = values.len();
-        let config = Self::launch_config_for_num_elems(size as u32, 1024, 0);
+        let config = Self::launch_config_for_num_elems(size as u32, 256, 0);
         let kernel = DEVICE.get_func("circle", "rfft_circle_part").unwrap();
         unsafe {
             kernel.launch(
@@ -330,7 +330,7 @@ impl GpuBackend {
         let mut layer_domain_size = size >> 1;
         let mut layer_domain_offset = 0;
         for i in 1..log_values_size {
-            let config = Self::launch_config_for_num_elems(size, 1024, 0);
+            let config = Self::launch_config_for_num_elems(size, 256, 0);
             let kernel = DEVICE.get_func("circle", "ifft_line_part").unwrap();
             unsafe {
                 kernel.launch(
