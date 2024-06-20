@@ -166,8 +166,10 @@ __global__ void batch_inverse(T *from, T *dst, int size, int log_size, T *s_from
     // If size = 4 inner tree stores:
     // |       Level 1         |        Root           |
     // | a_0 * a_1 | a_2 * a_3 | a_0 * a_1 * a_2 * a_3 |
+    // Construct tree up to the level with 32 leaves to leverage
+    // SIMD synchronization within a warp
     int step = 1;
-    while(step < log_size) {
+    while(step + 5 < log_size) {
         __syncthreads();
 
         if(index < size) {
@@ -184,14 +186,14 @@ __global__ void batch_inverse(T *from, T *dst, int size, int log_size, T *s_from
 
     // Compute inverse of the root.
     __syncthreads();
-    if(index == 0){
-        s_inner_tree[dst_offset - 1] = inv(s_inner_tree[dst_offset - 1]);
+    if(index < 32){
+        s_inner_tree[from_offset + index] = inv(s_inner_tree[from_offset + index]);
     }
     
     // Backward Pass: compute the inverses of the children using the parents.
-    step = 0;
-    size = 1;
-    from_offset = dst_offset - 1;
+    step = 5;
+    size = 32;
+    //from_offset = dst_offset - 1;
     dst_offset = from_offset - (size << 1);
     while(step < log_size - 1) {
         __syncthreads();

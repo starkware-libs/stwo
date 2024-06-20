@@ -15,7 +15,8 @@ impl FieldOps<BaseField> for GpuBackend {
         let size = from.len();
         let log_size = u32::BITS - (size as u32).leading_zeros() - 1;
 
-        let config = Self::launch_config_for_num_elems(size as u32 >> 1, 256, 512 * 4 * 2);
+        // Shared memory need to store a tree up to the level with 32 elements
+        let config = Self::launch_config_for_num_elems(size as u32 >> 1, 256, 512 * 4 * 2 - 32);
         let batch_inverse = DEVICE
             .get_func("column", "batch_inverse_basefield")
             .unwrap();
@@ -41,7 +42,8 @@ impl FieldOps<SecureField> for GpuBackend {
         let size = from.len();
         let log_size = u32::BITS - (size as u32).leading_zeros() - 1;
 
-        let config = Self::launch_config_for_num_elems(size as u32 >> 1, 512, 1024 * 4 * 4 * 2);
+        // Shared memory need to store a tree up to the level with 32 elements
+        let config = Self::launch_config_for_num_elems(size as u32 >> 1, 512, 1024 * 4 * 4 * 2 - 32 * 4);
         let batch_inverse = DEVICE
             .get_func("column", "batch_inverse_secure_field")
             .unwrap();
