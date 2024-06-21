@@ -26,12 +26,13 @@ __device__ uint32_t mul(uint32_t a, uint32_t b) {
 
 __device__ uint32_t add(uint32_t a, uint32_t b) {
     // TODO: use add from m31.cu
-    return ((uint64_t) a + (uint64_t) b) % P;
+    uint64_t sum = ((uint64_t) a + (uint64_t) b);
+    return min(sum, sum - P);
 }
 
 __device__ uint32_t sub(uint32_t a, uint32_t b) {
     // TODO: use sub from m31.cu
-    return ((uint64_t) a + (uint64_t) (P - b)) % P;
+    return add(a, P - b);
 }
 
 __device__ uint32_t neg(uint32_t a) {
@@ -84,8 +85,14 @@ __device__ cm31 inv(cm31 t) {
 /*##### Q31 ##### */
 
 __device__ qm31 mul(qm31 x, qm31 y) {
-    return {add(mul(x.a, y.a), mul(R, mul(x.b, y.b))), add(mul(x.a, y.b), mul(x.b, y.a))};
-}
+    // Karatsuba multiplication
+    cm31 v0 = mul(x.a, y.a);
+    cm31 v1 = mul(x.b, y.b);
+    cm31 v2 = mul(add(x.a, x.b), add(y.a, y.b));
+    return {
+        add(v0, mul(R, v1)),
+        sub(v2, add(v0, v1))
+    };}
 
 __device__ qm31 inv(qm31 t) {
     cm31 b2 = mul(t.b, t.b);

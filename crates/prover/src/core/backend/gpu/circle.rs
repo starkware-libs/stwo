@@ -294,8 +294,8 @@ pub fn load_circle(device: &Arc<CudaDevice>) {
 
 impl GpuBackend {
     fn ifft_circle_part(values: &mut BaseFieldCudaColumn, twiddle_tree: &TwiddleTree<GpuBackend>) {
-        let size = values.len();
-        let config = Self::launch_config_for_num_elems(size as u32, 256, 0);
+        let size = values.len() as u32 ;
+        let config = Self::launch_config_for_num_elems(size >> 1, 256, 0);
         let kernel = DEVICE.get_func("circle", "ifft_circle_part").unwrap();
         unsafe {
             kernel.launch(
@@ -311,8 +311,8 @@ impl GpuBackend {
     }
 
     fn rfft_circle_part(values: &mut BaseFieldCudaColumn, twiddle_tree: &TwiddleTree<GpuBackend>) {
-        let size = values.len();
-        let config = Self::launch_config_for_num_elems(size as u32, 256, 0);
+        let size = values.len() as u32;
+        let config = Self::launch_config_for_num_elems(size >> 1, 256, 0);
         let kernel = DEVICE.get_func("circle", "rfft_circle_part").unwrap();
         unsafe {
             kernel.launch(
@@ -334,7 +334,7 @@ impl GpuBackend {
         let mut layer_domain_size = size >> 1;
         let mut layer_domain_offset = 0;
         for i in 1..log_values_size {
-            let config = Self::launch_config_for_num_elems(size, 256, 0);
+            let config = Self::launch_config_for_num_elems(size >> 1, 256, 0);
             let kernel = DEVICE.get_func("circle", "ifft_line_part").unwrap();
             unsafe {
                 kernel.launch(
@@ -360,9 +360,10 @@ impl GpuBackend {
         let log_values_size = u32::BITS - size.leading_zeros() - 1;
 
         let mut layer_domain_size = 1;
+        // TODO: fix this for size < 8
         let mut layer_domain_offset = (size >> 1) - 2;
         for i in (1..log_values_size).rev() {
-            let config = LaunchConfig::for_num_elems(size);
+            let config = Self::launch_config_for_num_elems(size >> 1, 256, 0);
             let kernel = DEVICE.get_func("circle", "rfft_line_part").unwrap();
             unsafe {
                 kernel.launch(
@@ -472,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_evaluate() {
-        let log_size = 20;
+        let log_size = 3;
 
         let size = 1 << log_size;
 

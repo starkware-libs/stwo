@@ -43,16 +43,17 @@ __device__ uint32_t m31_mul(uint32_t a, uint32_t b) {
 
 __device__ uint32_t m31_add(uint32_t a, uint32_t b) {
     // TODO: use add from m31.cu
-    return ((uint64_t) a + (uint64_t) b) % P;
+    uint64_t sum = ((uint64_t) a + (uint64_t) b);
+    return min(sum, sum - P);
 }
 
 __device__ uint32_t m31_sub(uint32_t a, uint32_t b) {
     // TODO: use sub from m31.cu
-    return ((uint64_t) a + (uint64_t) (P - b)) % P;
+    return m31_add(a, P - b);
 }
 
 __device__ uint32_t m31_neg(uint32_t a) {
-    // TODO: use sub from m31.cu
+    // TODO: use neg from m31.cu
     return P - a;
 }
 
@@ -67,18 +68,19 @@ __device__ cm31 cm31_add(cm31 x, cm31 y) {
     return {m31_add(x.a, y.a), m31_add(x.b, y.b)};
 }
 
+__device__ cm31 cm31_sub(cm31 x, cm31 y) {
+    return {m31_sub(x.a, y.a), m31_sub(x.b, y.b)};
+}
 /*##### Q31 ##### */
 
 __device__ qm31 qm31_mul(qm31 x, qm31 y) {
+    // Karatsuba multiplication
+    cm31 v0 = cm31_mul(x.a, y.a);
+    cm31 v1 = cm31_mul(x.b, y.b);
+    cm31 v2 = cm31_mul(cm31_add(x.a, x.b), cm31_add(y.a, y.b));
     return {
-        cm31_add(
-            cm31_mul(x.a, y.a),
-            cm31_mul(R, cm31_mul(x.b, y.b))
-        ),
-        cm31_add(
-            cm31_mul(x.a, y.b),
-            cm31_mul(x.b, y.a)
-        )
+        cm31_add(v0, cm31_mul(R, v1)),
+        cm31_sub(v2, cm31_add(v0, v1))
     };
 }
 
@@ -176,12 +178,11 @@ extern "C"
 __global__ void ifft_circle_part(uint32_t *values, uint32_t *inverse_twiddles_tree, int values_size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    
     if (idx < (values_size >> 1)) {
         uint32_t val0 = values[2 * idx];
         uint32_t val1 = values[2 * idx + 1];
         uint32_t twiddle = get_twiddle(inverse_twiddles_tree, idx);
-        
+
         values[2 * idx] = m31_add(val0, val1);
         values[2 * idx + 1] = m31_mul(m31_sub(val0, val1), twiddle);
     }
@@ -194,8 +195,8 @@ __global__ void ifft_line_part(uint32_t *values, uint32_t *inverse_twiddles_tree
 
     if (idx < (values_size >> 1)) {
         int number_polynomials = 1 << layer;
-        int h = idx / number_polynomials;
-        int l = idx % number_polynomials;
+        int h = idx >> layer;
+        int l = idx & (number_polynomials - 1);
         int idx0 = (h << (layer + 1)) + l;
         int idx1 = idx0 + number_polynomials;
 
