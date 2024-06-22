@@ -1,5 +1,6 @@
 use std::env;
 use std::path::PathBuf;
+//use std::io::Write;
 
 fn main() {
     let nvcc = match env::var("NVCC") {
@@ -19,8 +20,8 @@ fn main() {
         for cuda_file in source_files {
             let mut ptx = cuda_file.file_stem().unwrap().to_owned();
             ptx.push(".ptx");
-            let mut out_dir = out_dir.clone();
-            out_dir.push(ptx);
+             let mut out_dir = out_dir.clone();
+             out_dir.push(ptx.clone());
 
             println!("cargo:rerun-if-changed={}", cuda_file.to_str().unwrap());
 
@@ -28,12 +29,13 @@ fn main() {
                 .arg("-ptx")
                 .arg(&cuda_file)
                 .arg("--output-file")
-                .arg(out_dir)
+                .arg(&out_dir)
                 .arg("--include-path")
                 .arg(&cuda_dir)
                 .output()
                 .expect("Failed to execute nvcc");
         }
+        //force_rebuild(&out_dir); 
     }
     println!("cargo:rerun-if-env-changed=NVCC");
 }
@@ -55,3 +57,11 @@ fn get_cuda_files(dir: &str) -> Vec<PathBuf> {
 
     cuda_files
 }
+
+// // For Testing
+// fn force_rebuild(out_dir: &PathBuf) {
+//     let timestamp = std::path::Path::new(&out_dir).join("timestamp.txt");
+//     let mut f = std::fs::File::create(&timestamp).unwrap();
+//     write!(f, "{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()).unwrap();
+//     println!("cargo:rerun-if-changed={}", timestamp.display());
+// }

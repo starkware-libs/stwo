@@ -24,7 +24,7 @@ pub trait LoadBaseField {
 impl LoadBaseField for Device {
     fn load(&self) {
         let ptx_dir = PathBuf::from(env::var("OUT_DIR").unwrap() + "/m31.ptx");
-
+        //let ptx_dir = PathBuf::from("/mnt/c/Users/Dexle/Source/Repos/stwo/crates/prover/src/core/backend/gpu/m31.ptx");
         let ptx = Ptx::from_file(ptx_dir);
         self.load_ptx(
             ptx,
@@ -34,7 +34,7 @@ impl LoadBaseField for Device {
         .unwrap();
     }
 }
-
+ 
 #[derive(Debug)]
 #[repr(C)]
 pub struct PackedBaseField(pub GpuM31);

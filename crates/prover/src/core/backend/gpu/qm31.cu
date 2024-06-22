@@ -50,7 +50,7 @@
 //     out[2] = ad_p_bc[1];
 // }
 
-__global__ void mul(unsigned int *lhs, unsigned int *rhs, unsigned int *out, int size) {
+extern "C" __global__ void mul(unsigned int *lhs, unsigned int *rhs, unsigned int *out, int size) {
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid < size) {
         out[tid] = add_m31(lhs[tid], rhs[tid]);
