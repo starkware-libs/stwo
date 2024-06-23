@@ -46,7 +46,7 @@ mod tests {
     use crate::core::poly::BitReversedOrder;
     use crate::core::{ColumnVec, InteractionElements, LookupValues};
     use crate::m31;
-    use crate::trace_generation::TraceGenerator;
+    use crate::trace_generation::ComponentTraceGenerator;
     pub struct ComponentA {
         pub n_instances: usize,
     }
@@ -97,7 +97,7 @@ mod tests {
     }
     impl ComponentGen for ComponentACpuTraceGenerator {}
 
-    impl TraceGenerator<CpuBackend> for ComponentACpuTraceGenerator {
+    impl ComponentTraceGenerator<CpuBackend> for ComponentACpuTraceGenerator {
         type Component = ComponentA;
         type Inputs = ComponentACpuInputs;
 
@@ -112,10 +112,18 @@ mod tests {
             self.inputs.extend(inputs)
         }
 
-        fn component(&self) -> ComponentA {
+        fn component(self) -> ComponentA {
             ComponentA {
                 n_instances: self.inputs.len(),
             }
+        }
+
+        fn write_interaction_trace(
+            &self,
+            _trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
+            _elements: &InteractionElements,
+        ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+            unimplemented!("TestTraceGenerator::write_interaction_trace")
         }
     }
 
@@ -125,7 +133,7 @@ mod tests {
     }
     impl ComponentGen for ComponentASimdTraceGenerator {}
 
-    impl TraceGenerator<SimdBackend> for ComponentASimdTraceGenerator {
+    impl ComponentTraceGenerator<SimdBackend> for ComponentASimdTraceGenerator {
         type Component = ComponentA;
         type Inputs = ComponentASimdInputs;
 
@@ -140,10 +148,18 @@ mod tests {
             self.inputs.extend(inputs)
         }
 
-        fn component(&self) -> ComponentA {
+        fn component(self) -> ComponentA {
             ComponentA {
                 n_instances: self.inputs.len() * N_LANES,
             }
+        }
+
+        fn write_interaction_trace(
+            &self,
+            _trace: &ColumnVec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+            _elements: &InteractionElements,
+        ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+            unimplemented!("TestTraceGenerator::write_interaction_trace")
         }
     }
 

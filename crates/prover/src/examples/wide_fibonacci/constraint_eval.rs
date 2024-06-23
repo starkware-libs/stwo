@@ -9,10 +9,7 @@ use super::component::{
 };
 use super::trace_gen::write_trace_row;
 use crate::core::air::accumulation::{ColumnAccumulator, DomainEvaluationAccumulator};
-use crate::core::air::{
-    AirProver, AirTraceVerifier, AirTraceWriter, Component, ComponentProver, ComponentTrace,
-    ComponentTraceWriter,
-};
+use crate::core::air::{AirProver, Component, ComponentProver, ComponentTrace};
 use crate::core::backend::CpuBackend;
 use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::circle::Coset;
@@ -29,6 +26,7 @@ use crate::core::utils::{
 };
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
+use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
 // TODO(AlonH): Rename file to `cpu.rs`.
 
@@ -40,7 +38,7 @@ impl AirTraceVerifier for WideFibAir {
     }
 }
 
-impl AirTraceWriter<CpuBackend> for WideFibAir {
+impl AirTraceGenerator<CpuBackend> for WideFibAir {
     fn interact(
         &self,
         trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
