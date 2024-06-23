@@ -2,7 +2,7 @@ use itertools::Itertools;
 
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::air::mask::fixed_mask_points;
-use crate::core::air::{Air, Component, ComponentTraceWriter};
+use crate::core::air::{Air, Component};
 use crate::core::backend::cpu::CpuCircleEvaluation;
 use crate::core::backend::CpuBackend;
 use crate::core::circle::{CirclePoint, Coset};
@@ -17,6 +17,8 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::utils::shifted_secure_combination;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::examples::wide_fibonacci::trace_gen::write_lookup_column;
+use crate::trace_generation::registry::ComponentRegistry;
+use crate::trace_generation::ComponentTraceGenerator;
 
 pub const LOG_N_COLUMNS: usize = 8;
 pub const N_COLUMNS: usize = 1 << LOG_N_COLUMNS;
@@ -252,7 +254,18 @@ impl Component for WideFibComponent {
     }
 }
 
-impl ComponentTraceWriter<CpuBackend> for WideFibComponent {
+impl ComponentTraceGenerator<CpuBackend> for WideFibComponent {
+    type ComponentInputs = ();
+
+    fn add_inputs(&mut self, _inputs: &Self::ComponentInputs) {}
+
+    fn write_trace(
+        _component_id: &str,
+        _registry: &mut ComponentRegistry,
+    ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+        vec![]
+    }
+
     fn write_interaction_trace(
         &self,
         trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,

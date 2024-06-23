@@ -2,7 +2,7 @@ use itertools::Itertools;
 use thiserror::Error;
 use tracing::{span, Level};
 
-use super::air::{AirProver, AirTraceWriter};
+use super::air::AirProver;
 use super::backend::Backend;
 use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
@@ -26,6 +26,7 @@ use crate::core::vcs::hasher::Hasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::verifier::MerkleVerificationError;
 use crate::core::ComponentVec;
+use crate::trace_generation::AirTraceGenerator;
 
 type Channel = Blake2sChannel;
 type ChannelHasher = Blake2sHasher;
@@ -55,7 +56,7 @@ pub struct AdditionalProofData {
 }
 
 pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
-    air: &impl AirTraceWriter<B>,
+    air: &impl AirTraceGenerator<B>,
     channel: &mut Channel,
     twiddles: &TwiddleTree<B>,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
@@ -149,7 +150,7 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
 }
 
 pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
-    air: &impl AirTraceWriter<B>,
+    air: &impl AirTraceGenerator<B>,
     channel: &mut Channel,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> Result<StarkProof, ProvingError> {
@@ -355,10 +356,7 @@ mod tests {
     use num_traits::Zero;
 
     use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-    use crate::core::air::{
-        Air, AirProver, AirTraceVerifier, AirTraceWriter, Component, ComponentProver,
-        ComponentTrace, ComponentTraceWriter,
-    };
+    use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::backend::CpuBackend;
     use crate::core::channel::Blake2sChannel;
@@ -374,6 +372,8 @@ mod tests {
     use crate::core::test_utils::test_channel;
     use crate::core::{ColumnVec, InteractionElements, LookupValues};
     use crate::qm31;
+    use crate::trace_generation::registry::ComponentRegistry;
+    use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
     struct TestAir<C: ComponentProver<CpuBackend>> {
         component: C,
@@ -391,7 +391,7 @@ mod tests {
         }
     }
 
-    impl AirTraceWriter<CpuBackend> for TestAir<TestComponent> {
+    impl AirTraceGenerator<CpuBackend> for TestAir<TestComponent> {
         fn interact(
             &self,
             _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
@@ -456,7 +456,18 @@ mod tests {
         }
     }
 
-    impl ComponentTraceWriter<CpuBackend> for TestComponent {
+    impl ComponentTraceGenerator<CpuBackend> for TestComponent {
+        type ComponentInputs = ();
+
+        fn add_inputs(&mut self, _inputs: &Self::ComponentInputs) {}
+
+        fn write_trace(
+            _component_id: &str,
+            _registry: &mut ComponentRegistry,
+        ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+            vec![]
+        }
+
         fn write_interaction_trace(
             &self,
             _trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
