@@ -37,7 +37,7 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::CircleEvaluation;
     use crate::core::poly::BitReversedOrder;
-    use crate::core::ColumnVec;
+    use crate::core::{ColumnVec, InteractionElements};
     use crate::trace_generation::TraceGenerator;
 
     #[derive(Default)]
@@ -59,6 +59,14 @@ mod tests {
             _registry: &mut ComponentRegistry,
         ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
             unimplemented!("TestTraceGenerator::write_trace")
+        }
+
+        fn write_interaction_trace(
+            &self,
+            _trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
+            _elements: &InteractionElements,
+        ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+            unimplemented!("TestTraceGenerator::write_interaction_trace")
         }
     }
 
