@@ -1,15 +1,14 @@
 use itertools::{zip_eq, Itertools};
 
 use super::component::FibonacciComponent;
-use crate::core::air::{
-    Air, AirProver, AirTraceVerifier, AirTraceWriter, Component, ComponentProver,
-};
+use crate::core::air::{Air, AirProver, Component, ComponentProver};
 use crate::core::backend::CpuBackend;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
 use crate::core::{ColumnVec, InteractionElements};
+use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier};
 
 pub struct FibonacciAir {
     pub component: FibonacciComponent,
@@ -33,7 +32,7 @@ impl AirTraceVerifier for FibonacciAir {
     }
 }
 
-impl AirTraceWriter<CpuBackend> for FibonacciAir {
+impl AirTraceGenerator<CpuBackend> for FibonacciAir {
     fn interact(
         &self,
         _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
@@ -82,7 +81,7 @@ impl AirTraceVerifier for MultiFibonacciAir {
     }
 }
 
-impl AirTraceWriter<CpuBackend> for MultiFibonacciAir {
+impl AirTraceGenerator<CpuBackend> for MultiFibonacciAir {
     fn interact(
         &self,
         _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
