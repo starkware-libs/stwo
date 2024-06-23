@@ -13,7 +13,7 @@ mod tests {
     use super::component::{Input, WideFibAir, WideFibComponent, LOG_N_COLUMNS};
     use super::constraint_eval::gen_trace;
     use crate::core::air::accumulation::DomainEvaluationAccumulator;
-    use crate::core::air::{Component, ComponentProver, ComponentTrace, ComponentTraceWriter};
+    use crate::core::air::{Component, ComponentProver, ComponentTrace};
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::backend::CpuBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
@@ -30,6 +30,7 @@ mod tests {
     use crate::core::vcs::hasher::Hasher;
     use crate::core::InteractionElements;
     use crate::examples::wide_fibonacci::trace_gen::write_lookup_column;
+    use crate::trace_generation::ComponentTraceGenerator;
     use crate::{m31, qm31};
 
     pub fn assert_constraints_on_row(row: &[BaseField]) {

@@ -8,10 +8,7 @@ use tracing::{span, Level};
 
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::fixed_mask_points;
-use crate::core::air::{
-    Air, AirProver, AirTraceVerifier, AirTraceWriter, Component, ComponentProver, ComponentTrace,
-    ComponentTraceWriter,
-};
+use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
 use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -27,6 +24,7 @@ use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
+use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
@@ -73,7 +71,7 @@ impl AirTraceVerifier for PoseidonAir {
     }
 }
 
-impl AirTraceWriter<SimdBackend> for PoseidonAir {
+impl AirTraceGenerator<SimdBackend> for PoseidonAir {
     fn interact(
         &self,
         _trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -358,13 +356,31 @@ pub fn gen_trace(
         .collect_vec()
 }
 
-impl ComponentTraceWriter<SimdBackend> for PoseidonComponent {
+impl ComponentTraceGenerator<SimdBackend> for PoseidonComponent {
+    type Component = Self;
+    type Inputs = ();
+
+    fn add_inputs(&mut self, _inputs: &Self::Inputs) {
+        todo!()
+    }
+
+    fn write_trace(
+        _component_id: &str,
+        _registry: &mut crate::trace_generation::registry::ComponentGenerationRegistry,
+    ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+        todo!()
+    }
+
     fn write_interaction_trace(
         &self,
         _trace: &ColumnVec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         _elements: &InteractionElements,
     ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
         vec![]
+    }
+
+    fn component(&self) -> Self::Component {
+        todo!()
     }
 }
 
