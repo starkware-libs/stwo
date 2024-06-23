@@ -5,10 +5,7 @@ use tracing::{span, Level};
 use super::component::LOG_N_COLUMNS;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::fixed_mask_points;
-use crate::core::air::{
-    Air, AirProver, AirTraceVerifier, AirTraceWriter, Component, ComponentProver, ComponentTrace,
-    ComponentTraceWriter,
-};
+use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
 use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -26,6 +23,8 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::prover::BASE_TRACE;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::examples::wide_fibonacci::component::{ALPHA_ID, N_COLUMNS, Z_ID};
+use crate::trace_generation::registry::ComponentRegistry;
+use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
 // TODO(AlonH): Remove this once the Cpu and Simd implementations are aligned.
 pub struct SimdWideFibComponent {
@@ -66,7 +65,7 @@ impl AirTraceVerifier for SimdWideFibAir {
     }
 }
 
-impl AirTraceWriter<SimdBackend> for SimdWideFibAir {
+impl AirTraceGenerator<SimdBackend> for SimdWideFibAir {
     fn interact(
         &self,
         _trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -162,7 +161,18 @@ pub fn gen_trace(
 }
 
 // TODO(AlonH): Implement.
-impl ComponentTraceWriter<SimdBackend> for SimdWideFibComponent {
+impl ComponentTraceGenerator<SimdBackend> for SimdWideFibComponent {
+    type ComponentInputs = ();
+
+    fn add_inputs(&mut self, _inputs: &Self::ComponentInputs) {}
+
+    fn write_trace(
+        _component_id: &str,
+        _registry: &mut ComponentRegistry,
+    ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+        vec![]
+    }
+
     fn write_interaction_trace(
         &self,
         _trace: &ColumnVec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,

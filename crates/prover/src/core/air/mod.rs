@@ -1,6 +1,5 @@
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
-use super::channel::Blake2sChannel;
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
@@ -8,6 +7,7 @@ use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
 use super::{ColumnVec, InteractionElements, LookupValues};
+use crate::trace_generation::AirTraceVerifier;
 
 pub mod accumulation;
 mod air_ext;
@@ -23,20 +23,6 @@ pub use air_ext::{AirExt, AirProverExt};
 // TODO(spapini): consider renaming this struct.
 pub trait Air: AirTraceVerifier {
     fn components(&self) -> Vec<&dyn Component>;
-}
-
-pub trait AirTraceVerifier {
-    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements;
-}
-
-pub trait AirTraceWriter<B: Backend>: AirTraceVerifier {
-    fn interact(
-        &self,
-        trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-        elements: &InteractionElements,
-    ) -> Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
-
-    fn to_air_prover(&self) -> &impl AirProver<B>;
 }
 
 pub trait AirProver<B: Backend>: Air {
@@ -76,14 +62,6 @@ pub trait Component {
         interaction_elements: &InteractionElements,
         lookup_values: &LookupValues,
     );
-}
-
-pub trait ComponentTraceWriter<B: Backend> {
-    fn write_interaction_trace(
-        &self,
-        trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
-        elements: &InteractionElements,
-    ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
 }
 
 pub trait ComponentProver<B: Backend>: Component {

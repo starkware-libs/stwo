@@ -4,7 +4,7 @@ use num_traits::One;
 
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::shifted_mask_points;
-use crate::core::air::{Component, ComponentProver, ComponentTrace, ComponentTraceWriter};
+use crate::core::air::{Component, ComponentProver, ComponentTrace};
 use crate::core::backend::CpuBackend;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
@@ -17,6 +17,8 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::prover::BASE_TRACE;
 use crate::core::utils::bit_reverse_index;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
+use crate::trace_generation::registry::ComponentRegistry;
+use crate::trace_generation::ComponentTraceGenerator;
 
 pub struct FibonacciComponent {
     pub log_size: u32,
@@ -128,7 +130,18 @@ impl Component for FibonacciComponent {
     }
 }
 
-impl ComponentTraceWriter<CpuBackend> for FibonacciComponent {
+impl ComponentTraceGenerator<CpuBackend> for FibonacciComponent {
+    type ComponentInputs = ();
+
+    fn add_inputs(&mut self, _inputs: &Self::ComponentInputs) {}
+
+    fn write_trace(
+        _component_id: &str,
+        _registry: &mut ComponentRegistry,
+    ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+        vec![]
+    }
+
     fn write_interaction_trace(
         &self,
         _trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
