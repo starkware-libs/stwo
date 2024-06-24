@@ -5,6 +5,7 @@ use super::{Air, AirProver, ComponentTrace};
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::pcs::{CommitmentTreeProver, TreeVec};
 use crate::core::poly::circle::SecureCirclePoly;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
@@ -31,13 +32,24 @@ pub trait AirExt: Air {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
-    ) -> ComponentVec<Vec<CirclePoint<SecureField>>> {
-        let mut component_points = ComponentVec(Vec::new());
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        let mut trace_component_points = vec![];
+        let mut interaction_component_points = vec![];
         for component in self.components() {
             let points = component.mask_points(point);
-            component_points.push(points);
+            trace_component_points.extend(points[0].clone());
+            interaction_component_points.extend(points[1].clone());
         }
-        component_points
+        let mut points = TreeVec::new(vec![trace_component_points]);
+        if !interaction_component_points
+            .iter()
+            .all(|column| column.is_empty())
+        {
+            points.push(interaction_component_points);
+        }
+        // Add the composition polynomial mask points.
+        points.push(vec![vec![point]; SECURE_EXTENSION_DEGREE]);
+        points
     }
 
     fn eval_composition_polynomial_at_point(
