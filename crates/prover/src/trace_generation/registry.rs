@@ -85,6 +85,13 @@ mod tests {
         ) {
             todo!()
         }
+
+        fn verify_lookups(
+            &self,
+            _lookup_values: &LookupValues,
+        ) -> Result<(), crate::core::prover::VerificationError> {
+            todo!()
+        }
     }
 
     type ComponentACpuInputs = Vec<(M31, M31)>;

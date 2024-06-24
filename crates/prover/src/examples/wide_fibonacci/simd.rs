@@ -20,7 +20,7 @@ use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::BASE_TRACE;
+use crate::core::prover::{VerificationError, BASE_TRACE};
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::examples::wide_fibonacci::component::N_COLUMNS;
 use crate::trace_generation::registry::ComponentGenerationRegistry;
@@ -127,6 +127,10 @@ impl Component for SimdWideFibComponent {
             let numerator = mask[0][i][0].square() + mask[0][i + 1][0].square() - mask[0][i + 2][0];
             evaluation_accumulator.accumulate(numerator * denom_inverse);
         }
+    }
+
+    fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
+        Ok(())
     }
 }
 

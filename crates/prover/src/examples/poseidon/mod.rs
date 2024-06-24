@@ -23,6 +23,7 @@ use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
+use crate::core::prover::VerificationError;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
@@ -139,6 +140,10 @@ impl Component for PoseidonComponent {
             eval.eval();
         }
         assert_eq!(eval.col_index, N_COLUMNS);
+    }
+
+    fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
+        Ok(())
     }
 }
 

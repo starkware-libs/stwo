@@ -222,6 +222,8 @@ pub fn verify(
         );
     }
 
+    air.verify_lookups(&proof.lookup_values)?;
+
     channel.mix_felts(
         &proof
             .lookup_values
@@ -330,6 +332,8 @@ pub enum ProvingError {
 pub enum VerificationError {
     #[error("Proof has invalid structure: {0}.")]
     InvalidStructure(String),
+    #[error("{0} lookup values do not match.")]
+    InvalidLookup(String),
     #[error(transparent)]
     Merkle(#[from] MerkleVerificationError),
     #[error(
@@ -347,6 +351,7 @@ pub enum VerificationError {
 mod tests {
     use num_traits::Zero;
 
+    use super::VerificationError;
     use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
     use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
     use crate::core::backend::cpu::CpuCircleEvaluation;
@@ -447,6 +452,10 @@ mod tests {
             _lookup_values: &LookupValues,
         ) {
             evaluation_accumulator.accumulate(qm31!(0, 0, 0, 1))
+        }
+
+        fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
+            Ok(())
         }
     }
 

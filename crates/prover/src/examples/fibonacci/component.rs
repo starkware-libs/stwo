@@ -14,7 +14,7 @@ use crate::core::fields::{ExtensionOf, FieldExpOps};
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::BASE_TRACE;
+use crate::core::prover::{VerificationError, BASE_TRACE};
 use crate::core::utils::bit_reverse_index;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::trace_generation::registry::ComponentGenerationRegistry;
@@ -119,6 +119,10 @@ impl Component for FibonacciComponent {
             point,
             &mask[0][0][..1].try_into().unwrap(),
         ));
+    }
+
+    fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
+        Ok(())
     }
 }
 

@@ -6,6 +6,7 @@ use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
+use super::prover::VerificationError;
 use super::{ColumnVec, InteractionElements, LookupValues};
 
 pub mod accumulation;
@@ -58,6 +59,9 @@ pub trait Component {
         interaction_elements: &InteractionElements,
         lookup_values: &LookupValues,
     );
+
+    /// Verifies the lookups used by the component.
+    fn verify_lookups(&self, lookup_values: &LookupValues) -> Result<(), VerificationError>;
 }
 
 pub trait ComponentProver<B: Backend>: Component {
