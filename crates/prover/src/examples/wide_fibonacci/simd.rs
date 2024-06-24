@@ -50,6 +50,7 @@ impl SimdWideFibComponent {
 }
 
 // TODO(AlonH): Remove this once the Cpu and Simd implementations are aligned.
+#[derive(Clone)]
 pub struct SimdWideFibAir {
     pub component: SimdWideFibComponent,
 }
@@ -75,8 +76,12 @@ impl AirTraceGenerator<SimdBackend> for SimdWideFibAir {
         vec![]
     }
 
-    fn to_air_prover(&self) -> &impl AirProver<SimdBackend> {
-        self
+    fn to_air_prover(&self) -> impl AirProver<SimdBackend> {
+        self.clone()
+    }
+
+    fn composition_log_degree_bound(&self) -> u32 {
+        self.component.max_constraint_log_degree_bound()
     }
 }
 
