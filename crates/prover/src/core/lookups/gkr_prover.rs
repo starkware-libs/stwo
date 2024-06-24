@@ -89,6 +89,8 @@ impl<B: ColumnOps<SecureField>> Deref for EqEvals<B> {
 /// numerators and denominators.
 ///
 /// [LogUp]: https://eprint.iacr.org/2023/1284.pdf
+#[derive(Educe)]
+#[educe(Debug, Clone)]
 pub enum Layer<B: GkrOps> {
     GrandProduct(Mle<B, SecureField>),
     LogUpGeneric {
