@@ -26,7 +26,8 @@ pub trait LoadSecureBaseField {
 
 impl LoadSecureBaseField for Device {
     fn load(&self) {
-        let ptx_dir = PathBuf::from(env::var("OUT_DIR").unwrap() + "/qm31.ptx");
+
+        let ptx_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap() + "/ptx/qm31.ptx");
         let ptx = Ptx::from_file(ptx_dir);
         self.load_ptx(ptx, "secure_field_functions", &["mul", "is_zero"])
             .unwrap();

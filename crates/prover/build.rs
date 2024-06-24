@@ -8,20 +8,15 @@ fn main() {
         Err(_) => which::which("nvcc"),
     };
     if nvcc.is_ok() {
-        let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-        let cuda_dir = std::env::current_dir()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned()
-            + "/src/core/backend/gpu";
-        let source_files = get_cuda_files(&cuda_dir);
+        let cuda_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap() + "/src/core/backend/gpu");
+        let ptx_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap() + "/src/core/backend/gpu/ptx");
 
+        let source_files = get_cuda_files(cuda_dir.clone().to_str().unwrap());
         for cuda_file in source_files {
             let mut ptx = cuda_file.file_stem().unwrap().to_owned();
             ptx.push(".ptx");
-             let mut out_dir = out_dir.clone();
-             out_dir.push(ptx.clone());
+            let mut out_dir = ptx_dir.clone();
+            out_dir.push(ptx.clone());
 
             println!("cargo:rerun-if-changed={}", cuda_file.to_str().unwrap());
 
@@ -57,6 +52,7 @@ fn get_cuda_files(dir: &str) -> Vec<PathBuf> {
 
     cuda_files
 }
+
 
 // // For Testing
 // fn force_rebuild(out_dir: &PathBuf) {

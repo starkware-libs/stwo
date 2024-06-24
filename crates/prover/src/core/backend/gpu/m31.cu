@@ -1,4 +1,4 @@
-#include "m31.h"
+#include "m31.cuh"
 
 extern "C" __global__ void mul(unsigned int *a, unsigned int *b, unsigned int *out, int size) {
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;

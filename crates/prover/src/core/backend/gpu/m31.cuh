@@ -1,19 +1,19 @@
-// m31.h
+// m31.cuh
 #ifndef M31_H
 #define M31_H
 
-extern "C" __device__ unsigned int mul_m31(unsigned int lhs, unsigned int rhs);
-extern "C" __device__ void reduce_m31(unsigned int *f);
-extern "C" __device__ unsigned int sub_m31(unsigned int lhs, unsigned int rhs);
-extern "C" __device__ void neg_m31(unsigned int *f);
-extern "C" __device__ unsigned int add_m31(unsigned int lhs, unsigned int rhs);
+__device__ unsigned int mul_m31(unsigned int lhs, unsigned int rhs);
+__device__ void reduce_m31(unsigned int *f);
+__device__ unsigned int sub_m31(unsigned int lhs, unsigned int rhs);
+__device__ void neg_m31(unsigned int *f);
+__device__ unsigned int add_m31(unsigned int lhs, unsigned int rhs);
 
 #endif 
 
 __device__ __constant__ unsigned int MODULUS = (1 << 31) - 1; 
 
 // TODO: Check if using Shared memory per block over device for optimizations
-extern "C" __device__  unsigned int mul_m31(unsigned int lhs, unsigned int rhs) {
+__device__  unsigned int mul_m31(unsigned int lhs, unsigned int rhs) {
     unsigned long long int a_e;
     unsigned long long int b_e;
     unsigned long long int prod_e;
@@ -34,20 +34,20 @@ extern "C" __device__  unsigned int mul_m31(unsigned int lhs, unsigned int rhs) 
     return min(out, out - MODULUS);
 }
 
-extern "C" __device__ unsigned int add_m31(unsigned int lhs, unsigned int rhs) {
+__device__ unsigned int add_m31(unsigned int lhs, unsigned int rhs) {
     unsigned int out = lhs + rhs; 
     return min(out, out - MODULUS);
 }
 
-extern "C" __device__ void reduce_m31(unsigned int *f) {
+__device__ void reduce_m31(unsigned int *f) {
     *f = min(*f, *f - MODULUS);
 }
 
-extern "C" __device__  unsigned int sub_m31(unsigned int lhs, unsigned int rhs) {
+__device__  unsigned int sub_m31(unsigned int lhs, unsigned int rhs) {
     unsigned int out = lhs - rhs; 
     return min(out, out + MODULUS);
 }
 
-extern "C" __device__  void neg_m31(unsigned int *f) {
+__device__  void neg_m31(unsigned int *f) {
     *f = MODULUS - *f;
 }
