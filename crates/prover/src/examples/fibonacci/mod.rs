@@ -17,6 +17,7 @@ use crate::core::vcs::hasher::Hasher;
 pub mod air;
 mod component;
 
+#[derive(Clone)]
 pub struct Fibonacci {
     pub air: FibonacciAir,
 }
@@ -97,7 +98,8 @@ impl MultiFibonacci {
     pub fn prove(&self) -> Result<StarkProof, ProvingError> {
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&self.claims)));
-        prove(&self.air, channel, self.get_trace())
+        let trace = self.get_trace();
+        prove(&self.air, channel, trace)
     }
 
     pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
@@ -120,15 +122,22 @@ mod tests {
     use super::{Fibonacci, MultiFibonacci};
     use crate::core::air::accumulation::PointEvaluationAccumulator;
     use crate::core::air::{AirExt, AirProverExt, Component, ComponentTrace};
+    use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::fields::IntoSlice;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::{VerificationError, BASE_TRACE};
+    use crate::core::prover::{prove, VerificationError, BASE_TRACE};
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
+    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::hasher::Hasher;
     use crate::core::{InteractionElements, LookupValues};
+    use crate::examples::fibonacci::air::FibonacciAirGenerator;
+    use crate::examples::fibonacci::component::FibonacciInput;
+    use crate::trace_generation::AirTraceGenerator;
     use crate::{m31, qm31};
 
     pub fn generate_test_queries(n_queries: usize, trace_length: usize) -> Vec<usize> {
@@ -230,6 +239,21 @@ mod tests {
 
         let proof = fib.prove().unwrap();
         fib.verify(proof).unwrap();
+    }
+
+    #[test]
+    fn test_fib_prove_2() {
+        const FIB_LOG_SIZE: u32 = 5;
+        const CLAIM: BaseField = m31!(443693538);
+        let mut fib_trace_generator = FibonacciAirGenerator::new(&FibonacciInput {
+            log_size: FIB_LOG_SIZE,
+            claim: CLAIM,
+        });
+
+        let trace = fib_trace_generator.write_trace();
+        let channel =
+            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[CLAIM])));
+        prove(&fib_trace_generator, channel, trace).unwrap();
     }
 
     #[test]

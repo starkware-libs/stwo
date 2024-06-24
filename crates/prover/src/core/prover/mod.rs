@@ -172,8 +172,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
 
     // Check that the composition polynomial is not too big.
     // TODO(AlonH): Get traces log degree bounds from trace writer.
-    let composition_polynomial_log_degree_bound =
-        air.to_air_prover().composition_log_degree_bound();
+    let composition_polynomial_log_degree_bound = air.composition_log_degree_bound();
     if composition_polynomial_log_degree_bound + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
         return Err(ProvingError::MaxCompositionDegreeExceeded {
             degree: composition_polynomial_log_degree_bound,
@@ -192,7 +191,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
         evaluate_and_commit_on_trace(air, channel, &twiddles, trace)?;
 
     generate_proof(
-        air.to_air_prover(),
+        &air.to_air_prover(),
         channel,
         &interaction_elements,
         &twiddles,
@@ -368,6 +367,7 @@ mod tests {
     use crate::trace_generation::registry::ComponentGenerationRegistry;
     use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
+    #[derive(Clone)]
     struct TestAir<C: ComponentProver<CpuBackend>> {
         component: C,
     }
@@ -393,8 +393,12 @@ mod tests {
             vec![]
         }
 
-        fn to_air_prover(&self) -> &impl AirProver<CpuBackend> {
-            self
+        fn to_air_prover(&self) -> impl AirProver<CpuBackend> {
+            self.clone()
+        }
+
+        fn composition_log_degree_bound(&self) -> u32 {
+            self.component.max_constraint_log_degree_bound()
         }
     }
 

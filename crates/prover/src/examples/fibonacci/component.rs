@@ -18,7 +18,7 @@ use crate::core::prover::BASE_TRACE;
 use crate::core::utils::bit_reverse_index;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::trace_generation::registry::ComponentGenerationRegistry;
-use crate::trace_generation::ComponentTraceGenerator;
+use crate::trace_generation::{ComponentGen, ComponentTraceGenerator};
 
 #[derive(Clone)]
 pub struct FibonacciComponent {
@@ -126,17 +126,60 @@ impl Component for FibonacciComponent {
     }
 }
 
-impl ComponentTraceGenerator<CpuBackend> for FibonacciComponent {
-    type Component = Self;
-    type Inputs = ();
+#[derive(Copy, Clone)]
+pub struct FibonacciInput {
+    pub log_size: u32,
+    pub claim: BaseField,
+}
 
-    fn add_inputs(&mut self, _inputs: &Self::Inputs) {}
+#[derive(Clone)]
+pub struct FibonacciTraceGenerator {
+    input: Option<FibonacciInput>,
+}
+
+impl ComponentGen for FibonacciTraceGenerator {}
+
+impl FibonacciTraceGenerator {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self { input: None }
+    }
+
+    pub fn inputs_set(&self) -> bool {
+        self.input.is_some()
+    }
+}
+
+impl ComponentTraceGenerator<CpuBackend> for FibonacciTraceGenerator {
+    type Component = FibonacciComponent;
+    type Inputs = FibonacciInput;
+
+    fn add_inputs(&mut self, inputs: &Self::Inputs) {
+        assert!(!self.inputs_set(), "Fibonacci input already set.");
+        self.input = Some(*inputs);
+    }
 
     fn write_trace(
-        _component_id: &str,
-        _registry: &mut ComponentGenerationRegistry,
+        component_id: &str,
+        registry: &mut ComponentGenerationRegistry,
     ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
-        vec![]
+        let trace_generator = registry.get_generator_mut::<Self>(component_id);
+        assert!(trace_generator.inputs_set(), "Fibonacci input not set.");
+        let trace_domain = CanonicCoset::new(trace_generator.input.unwrap().log_size);
+        let mut trace = Vec::with_capacity(trace_domain.size());
+
+        // Fill trace with fibonacci squared.
+        let mut a = BaseField::one();
+        let mut b = BaseField::one();
+        for _ in 0..trace_domain.size() {
+            trace.push(a);
+            let tmp = a.square() + b.square();
+            a = b;
+            b = tmp;
+        }
+
+        // Returns as a CircleEvaluation.
+        vec![CircleEvaluation::new_canonical_ordered(trace_domain, trace)]
     }
 
     fn write_interaction_trace(
@@ -148,7 +191,8 @@ impl ComponentTraceGenerator<CpuBackend> for FibonacciComponent {
     }
 
     fn component(&self) -> Self::Component {
-        self.clone()
+        assert!(self.inputs_set(), "Fibonacci input not set.");
+        FibonacciComponent::new(self.input.unwrap().log_size, self.input.unwrap().claim)
     }
 }
 
