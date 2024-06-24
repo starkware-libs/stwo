@@ -23,14 +23,12 @@ pub trait LoadBaseField {
 
 impl LoadBaseField for Device {
     fn load(&self) {
-        let ptx_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap() + "/ptx/m31.ptx");
-        println!("ptx: {:?}", ptx_dir); 
-        //let ptx_dir = PathBuf::from("/mnt/c/Users/Dexle/Source/Repos/stwo/crates/prover/src/core/backend/gpu/ptx/m31.ptx");
+        let ptx_dir = PathBuf::from(env::var("PTX_DIR").unwrap() + "/m31.ptx");
         let ptx = Ptx::from_file(ptx_dir);
         self.load_ptx(
             ptx,
             "base_field_functions",
-            &["mul", "reduce", "add", "sub", "neg"],
+            &["mul", "reduce", "add", "sub", "neg", "is_zero"],
         )
         .unwrap();
     }
@@ -278,18 +276,32 @@ impl SubAssign for PackedM31 {
 // Returns a single zero
 impl Zero for PackedM31 {
     fn zero() -> Self {
-        Self(DEVICE.alloc_zeros::<u32>(1).unwrap())
+        PackedM31::broadcast(M31(0), None)
     }
 
-    // TODO:: Optimize? It currently does a htod copy
     fn is_zero(&self) -> bool {
-        self.clone().to_vec().iter().all(M31::is_zero)
+        let kernel = self
+            .0
+            .device()
+            .get_func("base_field_functions", "is_zero")
+            .unwrap();
+        let bool = self.0.device().htod_copy(vec![true]).unwrap(); 
+        let cfg = LaunchConfig::for_num_elems(self.0.len() as u32);
+
+        unsafe {
+            kernel
+                .clone()
+                .launch(cfg, (&self.0, &bool, self.0.len()))
+        }
+        .unwrap();
+
+        self.0.device().dtoh_sync_copy(&bool).unwrap().pop().unwrap()
     }
 }
 
 impl One for PackedM31 {
     fn one() -> Self {
-        Self(DEVICE.htod_copy([1; 1].to_vec()).unwrap())
+        PackedM31::broadcast(M31(1), None)
     }
 }
 
@@ -308,6 +320,7 @@ impl One for PackedM31 {
 
 #[cfg(test)]
 mod tests {
+    use num_traits::Zero;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
@@ -404,5 +417,15 @@ mod tests {
                 .map(|(&l, &r)| l + r)
                 .collect::<Vec<M31>>()
         );
+    }
+
+    #[test]
+    fn test_zero() {
+        let zero_arr = PackedM31::zero();
+        let (non_zero_arr, _) = setup(SIZE);
+        let non_zero_arr = PackedM31::from_array(non_zero_arr);
+
+        assert!(zero_arr.is_zero());
+        assert!(!non_zero_arr.is_zero());
     }
 }

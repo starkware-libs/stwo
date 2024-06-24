@@ -10,6 +10,7 @@ fn main() {
     if nvcc.is_ok() {
         let cuda_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap() + "/src/core/backend/gpu");
         let ptx_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap() + "/src/core/backend/gpu/ptx");
+        println!("cargo:rustc-env=PTX_DIR={}", ptx_dir.clone().to_str().unwrap()); // set env var for hard path
 
         let source_files = get_cuda_files(cuda_dir.clone().to_str().unwrap());
         for cuda_file in source_files {

@@ -7,6 +7,7 @@ __device__ void reduce_m31(unsigned int *f);
 __device__ unsigned int sub_m31(unsigned int lhs, unsigned int rhs);
 __device__ void neg_m31(unsigned int *f);
 __device__ unsigned int add_m31(unsigned int lhs, unsigned int rhs);
+extern "C" __global__ void is_zero(unsigned int *arr, bool *res, int size);
 
 #endif 
 
@@ -50,4 +51,10 @@ __device__  unsigned int sub_m31(unsigned int lhs, unsigned int rhs) {
 
 __device__  void neg_m31(unsigned int *f) {
     *f = MODULUS - *f;
+}
+
+extern "C" __global__ void is_zero(unsigned int *arr, bool *res, int size) {
+    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < size && arr[tid]) 
+        *res = false; 
 }

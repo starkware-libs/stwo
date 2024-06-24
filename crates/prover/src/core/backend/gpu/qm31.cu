@@ -8,8 +8,3 @@ extern "C" __global__ void mul(unsigned int *lhs, unsigned int *rhs, unsigned in
     }
 }
 
-extern "C" __global__ void is_zero(unsigned int *arr, bool *res, int size) {
-    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (tid < size && arr[tid]) 
-        *res = false; 
-}
