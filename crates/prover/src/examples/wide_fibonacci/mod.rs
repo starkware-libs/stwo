@@ -235,7 +235,7 @@ mod tests {
         let air = WideFibAir { component };
         let prover_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let proof = prove::<CpuBackend>(&air, prover_channel, trace).unwrap();
+        let proof = prove::<CpuBackend>(air.clone(), prover_channel, trace).unwrap();
 
         let verifier_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));

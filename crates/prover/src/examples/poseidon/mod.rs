@@ -41,6 +41,7 @@ const EXTERNAL_ROUND_CONSTS: [[BaseField; N_STATE]; 2 * N_HALF_FULL_ROUNDS] =
 const INTERNAL_ROUND_CONSTS: [BaseField; N_PARTIAL_ROUNDS] =
     [BaseField::from_u32_unchecked(1234); N_PARTIAL_ROUNDS];
 
+#[derive(Clone)]
 pub struct PoseidonComponent {
     pub log_n_instances: u32,
 }
@@ -55,6 +56,7 @@ impl PoseidonComponent {
     }
 }
 
+#[derive(Clone)]
 pub struct PoseidonAir {
     pub component: PoseidonComponent,
 }
@@ -80,8 +82,12 @@ impl AirTraceGenerator<SimdBackend> for PoseidonAir {
         vec![]
     }
 
-    fn to_air_prover(&self) -> &impl AirProver<SimdBackend> {
+    fn to_air_prover(self) -> impl AirProver<SimdBackend> {
         self
+    }
+
+    fn composition_log_degree_bound(&self) -> u32 {
+        self.component.max_constraint_log_degree_bound()
     }
 }
 
@@ -561,7 +567,7 @@ mod tests {
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         let air = PoseidonAir { component };
-        let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
+        let proof = prove::<SimdBackend>(air.clone(), channel, trace).unwrap();
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         verify(proof, &air, channel).unwrap();

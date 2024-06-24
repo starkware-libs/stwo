@@ -157,7 +157,7 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
 }
 
 pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
-    air: &impl AirTraceGenerator<B>,
+    air: impl AirTraceGenerator<B>,
     channel: &mut Channel,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> Result<StarkProof, ProvingError> {
@@ -173,8 +173,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
 
     // Check that the composition polynomial is not too big.
     // TODO(AlonH): Get traces log degree bounds from trace writer.
-    let composition_polynomial_log_degree_bound =
-        air.to_air_prover().composition_log_degree_bound();
+    let composition_polynomial_log_degree_bound = air.composition_log_degree_bound();
     if composition_polynomial_log_degree_bound + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
         return Err(ProvingError::MaxCompositionDegreeExceeded {
             degree: composition_polynomial_log_degree_bound,
@@ -190,10 +189,10 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     span.exit();
 
     let (mut commitment_scheme, interaction_elements) =
-        evaluate_and_commit_on_trace(air, channel, &twiddles, trace)?;
+        evaluate_and_commit_on_trace(&air, channel, &twiddles, trace)?;
 
     generate_proof(
-        air.to_air_prover(),
+        &air.to_air_prover(),
         channel,
         &interaction_elements,
         &twiddles,
@@ -390,6 +389,7 @@ mod tests {
     use crate::trace_generation::registry::ComponentGenerationRegistry;
     use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
+    #[derive(Clone)]
     struct TestAir<C: ComponentProver<CpuBackend>> {
         component: C,
     }
@@ -415,8 +415,12 @@ mod tests {
             vec![]
         }
 
-        fn to_air_prover(&self) -> &impl AirProver<CpuBackend> {
+        fn to_air_prover(self) -> impl AirProver<CpuBackend> {
             self
+        }
+
+        fn composition_log_degree_bound(&self) -> u32 {
+            self.component.max_constraint_log_degree_bound()
         }
     }
 
@@ -426,6 +430,7 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
     struct TestComponent {
         log_size: u32,
         max_constraint_log_degree_bound: u32,
@@ -527,7 +532,7 @@ mod tests {
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
-        let proof_error = prove(&air, &mut test_channel(), trace).unwrap_err();
+        let proof_error = prove(air, &mut test_channel(), trace).unwrap_err();
         assert!(matches!(
             proof_error,
             ProvingError::MaxTraceDegreeExceeded {
@@ -554,7 +559,7 @@ mod tests {
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
-        let proof_error = prove(&air, &mut test_channel(), trace).unwrap_err();
+        let proof_error = prove(air, &mut test_channel(), trace).unwrap_err();
         assert!(matches!(
             proof_error,
             ProvingError::MaxCompositionDegreeExceeded {
@@ -576,7 +581,7 @@ mod tests {
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
-        let proof = prove(&air, &mut test_channel(), trace).unwrap_err();
+        let proof = prove(air, &mut test_channel(), trace).unwrap_err();
         assert!(matches!(proof, ProvingError::ConstraintsNotSatisfied));
     }
 }

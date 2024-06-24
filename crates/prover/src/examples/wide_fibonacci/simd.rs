@@ -27,6 +27,7 @@ use crate::trace_generation::registry::ComponentGenerationRegistry;
 use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
 // TODO(AlonH): Remove this once the Cpu and Simd implementations are aligned.
+#[derive(Clone)]
 pub struct SimdWideFibComponent {
     pub log_fibonacci_size: u32,
     pub log_n_instances: u32,
@@ -49,6 +50,7 @@ impl SimdWideFibComponent {
 }
 
 // TODO(AlonH): Remove this once the Cpu and Simd implementations are aligned.
+#[derive(Clone)]
 pub struct SimdWideFibAir {
     pub component: SimdWideFibComponent,
 }
@@ -74,8 +76,12 @@ impl AirTraceGenerator<SimdBackend> for SimdWideFibAir {
         vec![]
     }
 
-    fn to_air_prover(&self) -> &impl AirProver<SimdBackend> {
+    fn to_air_prover(self) -> impl AirProver<SimdBackend> {
         self
+    }
+
+    fn composition_log_degree_bound(&self) -> u32 {
+        self.component.max_constraint_log_degree_bound()
     }
 }
 
@@ -280,7 +286,7 @@ mod tests {
         span.exit();
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         let air = SimdWideFibAir { component };
-        let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
+        let proof = prove::<SimdBackend>(air.clone(), channel, trace).unwrap();
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         verify(proof, &air, channel).unwrap();
