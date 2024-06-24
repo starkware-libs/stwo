@@ -8,7 +8,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::pcs::{CommitmentTreeProver, TreeVec};
 use crate::core::poly::circle::SecureCirclePoly;
-use crate::core::prover::{BASE_TRACE, INTERACTION_TRACE};
+use crate::core::prover::{VerificationError, BASE_TRACE, INTERACTION_TRACE};
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::{ColumnVec, ComponentVec, InteractionElements, LookupValues};
@@ -122,6 +122,12 @@ pub trait AirExt: Air {
                 });
         }
         component_traces
+    }
+
+    fn verify_lookups(&self, lookup_values: &LookupValues) -> Result<(), VerificationError> {
+        self.components()
+            .iter()
+            .try_for_each(|component| component.verify_lookups(lookup_values))
     }
 }
 
