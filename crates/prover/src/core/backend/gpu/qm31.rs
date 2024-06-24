@@ -28,7 +28,7 @@ impl LoadSecureBaseField for Device {
     fn load(&self) {
         let ptx_dir = PathBuf::from(env::var("OUT_DIR").unwrap() + "/qm31.ptx");
         let ptx = Ptx::from_file(ptx_dir);
-        self.load_ptx(ptx, "secure_field_functions", &["mul"])
+        self.load_ptx(ptx, "secure_field_functions", &["mul", "is_zero"])
             .unwrap();
     }
 }
@@ -89,7 +89,7 @@ impl Add for PackedQM31 {
             .device()
             .get_func("base_field_functions", "add")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
+        let cfg = LaunchConfig::for_num_elems(self.0.len() as u32);
         let out = unsafe { self.0.device().alloc::<M31>(self.0.len()) }.unwrap();
 
         unsafe {
@@ -114,7 +114,7 @@ impl AddAssign for PackedQM31 {
             .device()
             .get_func("base_field_functions", "add")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
+        let cfg = LaunchConfig::for_num_elems(self.0.len() as u32);
 
         unsafe {
             kernel
@@ -140,7 +140,7 @@ impl Mul for PackedQM31 {
             .device()
             .get_func("secure_field_functions", "mul")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
+        let cfg = LaunchConfig::for_num_elems((self.0.len() / 4) as u32);
         let out = unsafe { self.0.device().alloc::<M31>(self.0.len()) }.unwrap();
 
         unsafe {
@@ -164,8 +164,7 @@ impl MulAssign for PackedQM31 {
             .device()
             .get_func("secure_field_functions", "mul")
             .unwrap();
-        println!("size :{:?}", self.0.len());
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems((self.0.len() + 0) as u32);
+        let cfg = LaunchConfig::for_num_elems((self.0.len() / 4) as u32);
 
         unsafe {
             kernel
@@ -188,7 +187,7 @@ impl Neg for PackedQM31 {
             .device()
             .get_func("base_field_functions", "neg")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
+        let cfg = LaunchConfig::for_num_elems(self.0.len() as u32);
 
         unsafe { kernel.clone().launch(cfg, (&self.0, self.0.len())) }.unwrap();
 
@@ -210,7 +209,7 @@ impl Sub for PackedQM31 {
             .device()
             .get_func("base_field_functions", "sub")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
+        let cfg = LaunchConfig::for_num_elems(self.0.len() as u32);
         let out = unsafe { self.0.device().alloc::<M31>(self.0.len()) }.unwrap();
 
         unsafe {
@@ -235,7 +234,7 @@ impl SubAssign for PackedQM31 {
             .device()
             .get_func("base_field_functions", "sub")
             .unwrap();
-        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
+        let cfg = LaunchConfig::for_num_elems(self.0.len() as u32);
 
         unsafe {
             kernel
@@ -248,34 +247,38 @@ impl SubAssign for PackedQM31 {
     }
 }
 
-// // Returns a single zero
-// impl Zero for PackedQM31 {
-//     fn zero() -> Self {
-//         let a = PackedM31::zero();
-//         let b = PackedM31::zero();
-//         let c = PackedM31::zero();
-//         let d = PackedM31::zero();
-//         PackedQM31([a, b, c, d])
-//     }
+impl Zero for PackedQM31 {
+    // Returns 256 QM31 fields as zeroes 
+    fn zero() -> Self {
+        PackedQM31::broadcast(M31(0), None)
+    }
 
-//     fn is_zero(&self) -> bool {
-//         let a = self.0[0].clone().to_vec().iter().all(M31::is_zero);
-//         let b = self.0[0].clone().to_vec().iter().all(M31::is_zero);
-//         let c = self.0[0].clone().to_vec().iter().all(M31::is_zero);
-//         let d = self.0[0].clone().to_vec().iter().all(M31::is_zero);
-//         a && b && c && d
-//     }
-// }
+    fn is_zero(&self) -> bool {
+        let kernel = self
+            .0
+            .device()
+            .get_func("secure_field_functions", "is_zero")
+            .unwrap();
+        let bool = self.0.device().htod_copy(vec![true]).unwrap(); 
+        let cfg = LaunchConfig::for_num_elems(self.0.len() as u32);
 
-// impl One for PackedQM31 {
-//     fn one() -> Self {
-//         let a = PackedM31::one();
-//         let b = PackedM31::one();
-//         let c = PackedM31::one();
-//         let d = PackedM31::one();
-//         PackedQM31([a, b, c, d])
-//     }
-// }
+        unsafe {
+            kernel
+                .clone()
+                .launch(cfg, (&self.0, &bool, self.0.len()))
+        }
+        .unwrap();
+
+        self.0.device().dtoh_sync_copy(&bool).unwrap().pop().unwrap()
+    }
+}
+
+impl One for PackedQM31 {
+    // Returns 256 QM31 fields as ones 
+    fn one() -> Self {
+        PackedQM31::broadcast(M31(1), None)
+    }
+}
 
 // // TODO:: Implement
 // impl FieldExpOps for TestPackedQM31 {
@@ -287,6 +290,7 @@ impl SubAssign for PackedQM31 {
 
 #[cfg(test)]
 mod tests {
+    use num_traits::Zero;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
@@ -339,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_multiplication() {
-        let (lhs, rhs) = setup(4);
+        let (lhs, rhs) = setup(SIZE);
         let mut packed_lhs = PackedQM31::from_array(lhs.clone());
         let packed_rhs = PackedQM31::from_array(rhs.clone());
 
@@ -365,5 +369,15 @@ mod tests {
             packed_lhs.to_array(),
             lhs.iter().map(|&l| -l).collect::<Vec<QM31>>()
         );
+    }
+
+    #[test]
+    fn test_zero() {
+        let zero_arr = PackedQM31::zero();
+        let (non_zero_arr, _) = setup(SIZE);
+        let non_zero_arr = PackedQM31::from_array(non_zero_arr);
+
+        assert!(zero_arr.is_zero());
+        assert!(!non_zero_arr.is_zero());
     }
 }

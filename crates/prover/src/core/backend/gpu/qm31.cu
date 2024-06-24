@@ -57,3 +57,9 @@ extern "C" __global__ void mul(unsigned int *lhs, unsigned int *rhs, unsigned in
         mul_qm31(lhs + idx, rhs + idx, out + idx);
     }
 }
+
+extern "C" __global__ void is_zero(unsigned int *arr, bool *res, int size) {
+    unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < size && arr[tid]) 
+        *res = false; 
+}
