@@ -170,6 +170,7 @@ impl WideFibComponent {
     }
 }
 
+#[derive(Clone)]
 pub struct WideFibAir {
     pub component: WideFibComponent,
 }

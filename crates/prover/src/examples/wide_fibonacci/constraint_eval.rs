@@ -48,8 +48,12 @@ impl AirTraceGenerator<CpuBackend> for WideFibAir {
             .write_interaction_trace(&trace.iter().collect(), elements)
     }
 
-    fn to_air_prover(&self) -> &impl AirProver<CpuBackend> {
-        self
+    fn to_air_prover(&self) -> impl AirProver<CpuBackend> {
+        self.clone()
+    }
+
+    fn composition_log_degree_bound(&self) -> u32 {
+        self.component.max_constraint_log_degree_bound()
     }
 }
 
