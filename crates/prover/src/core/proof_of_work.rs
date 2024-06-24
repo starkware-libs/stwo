@@ -1,7 +1,7 @@
 use thiserror::Error;
 use tracing::{span, Level};
 
-use super::channel::Blake2sChannel;
+use super::channel::Poseidon252Channel;
 use crate::core::channel::Channel;
 use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::core::vcs::hasher::Hasher;
@@ -22,9 +22,9 @@ impl ProofOfWork {
         Self { n_bits }
     }
 
-    pub fn prove(&self, channel: &mut Blake2sChannel) -> ProofOfWorkProof {
+    pub fn prove(&self, channel: &mut Poseidon252Channel) -> ProofOfWorkProof {
         let _span = span!(Level::INFO, "Proof of work").entered();
-        let seed = channel.get_digest().as_ref().to_vec();
+        let seed = channel.get_digest().as_ref().to_bytes_be().to_vec();
         let proof = self.grind(seed);
         channel.mix_nonce(proof.nonce);
         proof
@@ -32,10 +32,10 @@ impl ProofOfWork {
 
     pub fn verify(
         &self,
-        channel: &mut Blake2sChannel,
+        channel: &mut Poseidon252Channel,
         proof: &ProofOfWorkProof,
     ) -> Result<(), ProofOfWorkVerificationError> {
-        let seed = channel.get_digest().as_ref().to_vec();
+        let seed = channel.get_digest().as_ref().to_bytes_be().to_vec();
         let verified = check_leading_zeros(
             self.hash_with_nonce(&seed, proof.nonce).as_ref(),
             self.n_bits,
@@ -94,13 +94,14 @@ pub enum ProofOfWorkVerificationError {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::channel::{Blake2sChannel, Channel};
+    use starknet_ff::FieldElement as FieldElement252;
+
+    use crate::core::channel::{Channel, Poseidon252Channel};
     use crate::core::proof_of_work::{ProofOfWork, ProofOfWorkProof};
-    use crate::core::vcs::blake2_hash::Blake2sHash;
 
     #[test]
     fn test_verify_proof_of_work_success() {
-        let mut channel = Blake2sChannel::new(Blake2sHash::from(vec![0; 32]));
+        let mut channel = Poseidon252Channel::new(FieldElement252::default());
         let proof_of_work_prover = ProofOfWork { n_bits: 11 };
         let proof = ProofOfWorkProof { nonce: 133 };
 
@@ -109,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_verify_proof_of_work_fail() {
-        let mut channel = Blake2sChannel::new(Blake2sHash::from(vec![0; 32]));
+        let mut channel = Poseidon252Channel::new(FieldElement252::default());
         let proof_of_work_prover = ProofOfWork { n_bits: 1 };
         let invalid_proof = ProofOfWorkProof { nonce: 0 };
 
@@ -121,8 +122,8 @@ mod tests {
     #[test]
     fn test_proof_of_work() {
         let n_bits = 12;
-        let mut prover_channel = Blake2sChannel::new(Blake2sHash::default());
-        let mut verifier_channel = Blake2sChannel::new(Blake2sHash::default());
+        let mut prover_channel = Poseidon252Channel::new(FieldElement252::default());
+        let mut verifier_channel = Poseidon252Channel::new(FieldElement252::default());
         let prover = ProofOfWork::new(n_bits);
         let verifier = ProofOfWork::new(n_bits);
 

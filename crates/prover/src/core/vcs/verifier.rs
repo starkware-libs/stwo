@@ -57,6 +57,11 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
         queried_values: ColumnVec<Vec<BaseField>>,
         decommitment: MerkleDecommitment<H>,
     ) -> Result<(), MerkleVerificationError> {
+        println!("Decom:");
+        println!("queries_per_log_size: {queries_per_log_size:#?}");
+        println!("queried_values: {queried_values:#?}");
+        println!("decommitment: {decommitment:#?}\n");
+
         let max_log_size = self.column_log_sizes.iter().max().copied().unwrap_or(0);
 
         // Prepare read buffers.

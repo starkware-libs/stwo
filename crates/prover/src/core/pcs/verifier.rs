@@ -1,8 +1,8 @@
 use std::iter::zip;
 
 use itertools::Itertools;
+use starknet_ff::FieldElement as FieldElement252;
 
-use super::super::channel::Blake2sChannel;
 use super::super::circle::CirclePoint;
 use super::super::fields::qm31::SecureField;
 use super::super::fri::{CirclePolyDegreeBound, FriConfig, FriVerifier};
@@ -13,19 +13,18 @@ use super::super::prover::{
 use super::quotients::{fri_answers, PointSample};
 use super::utils::TreeVec;
 use super::CommitmentSchemeProof;
-use crate::core::channel::Channel;
+use crate::core::channel::{Channel, Poseidon252Channel};
 use crate::core::prover::VerificationError;
-use crate::core::vcs::blake2_hash::Blake2sHash;
-use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher;
 use crate::core::vcs::verifier::MerkleVerifier;
 use crate::core::ColumnVec;
 
-type ProofChannel = Blake2sChannel;
+type ProofChannel = Poseidon252Channel;
 
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
 #[derive(Default)]
 pub struct CommitmentSchemeVerifier {
-    pub trees: TreeVec<MerkleVerifier<Blake2sMerkleHasher>>,
+    pub trees: TreeVec<MerkleVerifier<Poseidon252MerkleHasher>>,
 }
 
 impl CommitmentSchemeVerifier {
@@ -43,7 +42,7 @@ impl CommitmentSchemeVerifier {
     /// Reads a commitment from the prover.
     pub fn commit(
         &mut self,
-        commitment: Blake2sHash,
+        commitment: FieldElement252,
         log_sizes: Vec<u32>,
         channel: &mut ProofChannel,
     ) {

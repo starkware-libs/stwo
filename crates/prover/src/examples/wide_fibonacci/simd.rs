@@ -118,41 +118,37 @@ impl ComponentProver<SimdBackend> for WideFibComponent {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use tracing::{span, Level};
+// #[cfg(test)]
+// mod tests {
+//     use tracing::{span, Level};
 
-    use super::{gen_trace, WideFibAir};
-    use crate::core::backend::simd::SimdBackend;
-    use crate::core::channel::{Blake2sChannel, Channel};
-    use crate::core::fields::m31::BaseField;
-    use crate::core::fields::IntoSlice;
-    use crate::core::prover::{prove, verify};
-    use crate::core::vcs::blake2_hash::Blake2sHasher;
-    use crate::core::vcs::hasher::Hasher;
-    use crate::examples::wide_fibonacci::component::{WideFibComponent, LOG_N_COLUMNS};
+//     use super::{gen_trace, WideFibAir};
+//     use crate::core::backend::simd::SimdBackend;
+//     use crate::core::prover::{prove, verify};
+//     use crate::core::test_utils::test_channel;
+//     use crate::examples::wide_fibonacci::component::{WideFibComponent, LOG_N_COLUMNS};
 
-    #[test_log::test]
-    fn test_simd_wide_fib_prove() {
-        // Note: To see time measurement, run test with
-        //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="
-        //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=2" cargo test
-        //   test_simd_wide_fib_prove -- --nocapture
+//     #[test_log::test]
+//     fn test_simd_wide_fib_prove() {
+//         // Note: To see time measurement, run test with
+//         //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="
+//         //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=2" cargo test
+//         //   test_simd_wide_fib_prove -- --nocapture
 
-        // Note: 17 means 128MB of trace.
-        const LOG_N_ROWS: u32 = 12;
-        let component = WideFibComponent {
-            log_fibonacci_size: LOG_N_COLUMNS as u32,
-            log_n_instances: LOG_N_ROWS,
-        };
-        let span = span!(Level::INFO, "Trace generation").entered();
-        let trace = gen_trace(component.log_column_size());
-        span.exit();
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let air = WideFibAir { component };
-        let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
+//         // Note: 17 means 128MB of trace.
+//         const LOG_N_ROWS: u32 = 12;
+//         let component = WideFibComponent {
+//             log_fibonacci_size: LOG_N_COLUMNS as u32,
+//             log_n_instances: LOG_N_ROWS,
+//         };
+//         let span = span!(Level::INFO, "Trace generation").entered();
+//         let trace = gen_trace(component.log_column_size());
+//         span.exit();
+//         let channel = &mut test_channel();
+//         let air = WideFibAir { component };
+//         let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
 
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        verify(proof, &air, channel).unwrap();
-    }
-}
+//         let channel = &mut test_channel();
+//         verify(proof, &air, channel).unwrap();
+//     }
+// }

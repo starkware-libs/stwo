@@ -1076,13 +1076,13 @@ mod tests {
     use crate::core::queries::{Queries, SparseSubCircleDomain};
     use crate::core::test_utils::test_channel;
     use crate::core::utils::bit_reverse_index;
-    use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+    use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher;
     use crate::m31;
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 1;
 
-    type FriProver = super::FriProver<CpuBackend, Blake2sMerkleHasher>;
+    type FriProver = super::FriProver<CpuBackend, Poseidon252MerkleHasher>;
 
     #[test]
     fn fold_line_works() {

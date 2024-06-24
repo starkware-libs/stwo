@@ -1,34 +1,34 @@
 use itertools::Itertools;
+use starknet_ff::FieldElement as FieldElement252;
 use thiserror::Error;
 use tracing::{span, Level};
 
 use super::air::AirProver;
 use super::backend::Backend;
+use super::channel::Poseidon252Channel;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::poly::circle::{CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::poly::twiddles::TwiddleTree;
 use super::proof_of_work::ProofOfWorkVerificationError;
+use super::vcs::poseidon252_merkle::Poseidon252MerkleHasher;
 use super::ColumnVec;
 use crate::core::air::{Air, AirExt, AirProverExt};
 use crate::core::backend::CpuBackend;
-use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
+use crate::core::channel::Channel as ChannelTrait;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
-use crate::core::vcs::blake2_hash::Blake2sHasher;
-use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
-use crate::core::vcs::hasher::Hasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::verifier::MerkleVerificationError;
 use crate::core::ComponentVec;
 
-type Channel = Blake2sChannel;
-type ChannelHasher = Blake2sHasher;
-type MerkleHasher = Blake2sMerkleHasher;
+type Channel = Poseidon252Channel;
+// type ChannelHasher = Blake2sHasher;
+type MerkleHasher = Poseidon252MerkleHasher;
 
 pub const LOG_BLOWUP_FACTOR: u32 = 1;
 pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 0;
@@ -37,7 +37,7 @@ pub const N_QUERIES: usize = 3;
 
 #[derive(Debug)]
 pub struct StarkProof {
-    pub commitments: TreeVec<<ChannelHasher as Hasher>::Hash>,
+    pub commitments: TreeVec<FieldElement252>,
     pub commitment_scheme_proof: CommitmentSchemeProof,
 }
 

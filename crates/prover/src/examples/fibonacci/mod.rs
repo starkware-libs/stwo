@@ -1,18 +1,17 @@
 use std::iter::zip;
 
 use num_traits::One;
+use starknet_ff::FieldElement as FieldElement252;
 
 use self::air::{FibonacciAir, MultiFibonacciAir};
 use self::component::FibonacciComponent;
 use crate::core::backend::cpu::CpuCircleEvaluation;
-use crate::core::channel::{Blake2sChannel, Channel};
+use crate::core::channel::{Channel, Poseidon252Channel};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{FieldExpOps, IntoSlice};
+use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, verify, ProvingError, StarkProof, VerificationError};
-use crate::core::vcs::blake2_hash::Blake2sHasher;
-use crate::core::vcs::hasher::Hasher;
 
 pub mod air;
 mod component;
@@ -51,18 +50,12 @@ impl Fibonacci {
 
     pub fn prove(&self) -> Result<StarkProof, ProvingError> {
         let trace = self.get_trace();
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self
-            .air
-            .component
-            .claim])));
+        let channel = &mut Poseidon252Channel::new(FieldElement252::default());
         prove(&self.air, channel, vec![trace])
     }
 
     pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self
-            .air
-            .component
-            .claim])));
+        let channel = &mut Poseidon252Channel::new(FieldElement252::default());
         verify(proof, &self.air, channel)
     }
 }
@@ -95,14 +88,12 @@ impl MultiFibonacci {
     }
 
     pub fn prove(&self) -> Result<StarkProof, ProvingError> {
-        let channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&self.claims)));
+        let channel = &mut Poseidon252Channel::new(FieldElement252::default());
         prove(&self.air, channel, self.get_trace())
     }
 
     pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
-        let channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&self.claims)));
+        let channel = &mut Poseidon252Channel::new(FieldElement252::default());
         verify(proof, &self.air, channel)
     }
 }

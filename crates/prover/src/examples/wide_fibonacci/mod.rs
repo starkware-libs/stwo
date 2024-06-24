@@ -7,6 +7,7 @@ pub mod trace_gen;
 mod tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
+    use starknet_ff::FieldElement as FieldElement252;
 
     use super::component::{Input, WideFibAir, WideFibComponent, LOG_N_COLUMNS};
     use super::constraint_eval::gen_trace;
@@ -14,16 +15,13 @@ mod tests {
     use crate::core::air::{Component, ComponentProver, ComponentTrace};
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::backend::CpuBackend;
-    use crate::core::channel::{Blake2sChannel, Channel};
+    use crate::core::channel::{Channel, Poseidon252Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::QM31;
-    use crate::core::fields::IntoSlice;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{prove, verify};
     use crate::core::utils::shifted_secure_combination;
-    use crate::core::vcs::blake2_hash::Blake2sHasher;
-    use crate::core::vcs::hasher::Hasher;
     use crate::examples::wide_fibonacci::trace_gen::write_lookup_column;
     use crate::m31;
 
@@ -173,9 +171,9 @@ mod tests {
         //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 cargo test
         //   test_prove -- --nocapture
 
-        const LOG_N_INSTANCES: u32 = 0;
+        const LOG_N_INSTANCES: u32 = 16;
         let component = WideFibComponent {
-            log_fibonacci_size: 3 + LOG_N_COLUMNS as u32,
+            log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: LOG_N_INSTANCES,
         };
         let private_input = (0..(1 << LOG_N_INSTANCES))
@@ -192,12 +190,10 @@ mod tests {
             .map(|eval| CpuCircleEvaluation::<_, BitReversedOrder>::new(trace_domain, eval))
             .collect_vec();
         let air = WideFibAir { component };
-        let prover_channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+        let prover_channel = &mut Poseidon252Channel::new(FieldElement252::default());
         let proof = prove::<CpuBackend>(&air, prover_channel, trace).unwrap();
 
-        let verifier_channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+        let verifier_channel = &mut Poseidon252Channel::new(FieldElement252::default());
         verify(proof, &air, verifier_channel).unwrap();
     }
 }
