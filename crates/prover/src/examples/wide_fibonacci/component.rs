@@ -34,6 +34,7 @@ pub const LOOKUP_VALUE_N_MINUS_1_ID: &str = "wide_fibonacci_n-1";
 /// 2^`self.log_fibonacci_size`. The numbers are computes over [N_COLUMNS] trace columns. The
 /// number of rows (i.e the size of the columns) is determined by the parameters above (see
 /// [WideFibComponent::log_column_size()]).
+#[derive(Clone)]
 pub struct WideFibComponent {
     pub log_fibonacci_size: u32,
     pub log_n_instances: u32,
@@ -169,6 +170,7 @@ impl WideFibComponent {
     }
 }
 
+#[derive(Clone)]
 pub struct WideFibAir {
     pub component: WideFibComponent,
 }

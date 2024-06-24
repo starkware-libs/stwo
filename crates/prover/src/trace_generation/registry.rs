@@ -112,18 +112,18 @@ mod tests {
             self.inputs.extend(inputs)
         }
 
-        fn component(self) -> ComponentA {
-            ComponentA {
-                n_instances: self.inputs.len(),
-            }
-        }
-
         fn write_interaction_trace(
             &self,
             _trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
             _elements: &InteractionElements,
         ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
             unimplemented!("TestTraceGenerator::write_interaction_trace")
+        }
+
+        fn component(self) -> ComponentA {
+            ComponentA {
+                n_instances: self.inputs.len(),
+            }
         }
     }
 

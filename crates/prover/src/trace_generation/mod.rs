@@ -47,12 +47,18 @@ pub trait AirTraceVerifier {
     fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements;
 }
 
-pub trait AirTraceGenerator<B: Backend>: AirTraceVerifier {
+pub trait AirTraceGenerator<B: Backend>: AirTraceVerifier + Clone {
+    fn composition_log_degree_bound(&self) -> u32;
+
+    fn write_trace(&mut self) -> Vec<CircleEvaluation<B, BaseField, BitReversedOrder>> {
+        vec![]
+    }
+
     fn interact(
         &self,
         trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
     ) -> Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
 
-    fn to_air_prover(&self) -> &impl AirProver<B>;
+    fn to_air_prover(self) -> impl AirProver<B>;
 }
