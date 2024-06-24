@@ -7,6 +7,7 @@ use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::FieldOps;
 use super::fri::FriOps;
+use super::lookups::gkr_prover::GkrOps;
 use super::pcs::quotients::QuotientOps;
 use super::poly::circle::PolyOps;
 
@@ -23,6 +24,7 @@ pub trait Backend:
     + QuotientOps
     + FriOps
     + AccumulationOps
+    + GkrOps
 {
 }
 
