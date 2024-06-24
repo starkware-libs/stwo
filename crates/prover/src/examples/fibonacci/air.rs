@@ -7,7 +7,8 @@ use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
-use crate::core::{ColumnVec, InteractionElements};
+use crate::core::prover::VerificationError;
+use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::trace_generation::registry::ComponentGenerationRegistry;
 use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
@@ -79,6 +80,10 @@ impl Air for FibonacciAir {
     fn components(&self) -> Vec<&dyn Component> {
         vec![&self.component]
     }
+
+    fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
+        Ok(())
+    }
 }
 
 impl AirTraceVerifier for FibonacciAir {
@@ -132,6 +137,10 @@ impl Air for MultiFibonacciAir {
             .iter()
             .map(|c| c as &dyn Component)
             .collect_vec()
+    }
+
+    fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
+        Ok(())
     }
 }
 

@@ -6,6 +6,7 @@ use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
+use super::prover::VerificationError;
 use super::{ColumnVec, InteractionElements, LookupValues};
 
 pub mod accumulation;
@@ -22,6 +23,9 @@ pub use air_ext::{AirExt, AirProverExt};
 // TODO(spapini): consider renaming this struct.
 pub trait Air {
     fn components(&self) -> Vec<&dyn Component>;
+
+    /// Verifies the lookups done in the Air.
+    fn verify_lookups(&self, lookup_values: &LookupValues) -> Result<(), VerificationError>;
 }
 
 pub trait AirProver<B: Backend>: Air {
