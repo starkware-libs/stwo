@@ -10,7 +10,8 @@ extern "C" __device__ unsigned int add_m31(unsigned int lhs, unsigned int rhs);
 
 #endif 
 
-__device__ __constant__ int MODULUS = (1 << 31) - 1; 
+__device__ __constant__ unsigned int MODULUS = (1 << 31) - 1; 
+
 // TODO: Check if using Shared memory per block over device for optimizations
 extern "C" __device__  unsigned int mul_m31(unsigned int lhs, unsigned int rhs) {
     unsigned long long int a_e;
@@ -24,7 +25,6 @@ extern "C" __device__  unsigned int mul_m31(unsigned int lhs, unsigned int rhs) 
 
     prod_e = a_e * b_e;
     
-    // TODO:: look at optimizing through union (check performance)
     prod_lows = static_cast<unsigned int>(prod_e & 0x7FFFFFFF);
 
     prod_highs = static_cast<unsigned int>(prod_e >> 31);
@@ -36,7 +36,6 @@ extern "C" __device__  unsigned int mul_m31(unsigned int lhs, unsigned int rhs) 
 
 extern "C" __device__ unsigned int add_m31(unsigned int lhs, unsigned int rhs) {
     unsigned int out = lhs + rhs; 
-    
     return min(out, out - MODULUS);
 }
 

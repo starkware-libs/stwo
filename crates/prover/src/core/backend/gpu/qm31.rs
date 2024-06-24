@@ -342,17 +342,14 @@ mod tests {
         let (lhs, rhs) = setup(4);
         let mut packed_lhs = PackedQM31::from_array(lhs.clone());
         let packed_rhs = PackedQM31::from_array(rhs.clone());
-        println!("{:?}", lhs);
-        println!("{:?}", rhs);
-        println!("{:?}", packed_lhs.clone().to_array());
-        println!("{:?}", packed_rhs.clone().to_array());
+
         packed_lhs *= packed_rhs;
 
         assert_eq!(
             packed_lhs.to_array(),
             lhs.iter()
                 .zip(rhs.iter())
-                .map(|(&l, &r)| l + r)
+                .map(|(&l, &r)| l * r)
                 .collect::<Vec<QM31>>()
         );
     }
@@ -369,22 +366,4 @@ mod tests {
             lhs.iter().map(|&l| -l).collect::<Vec<QM31>>()
         );
     }
-
-    // #[test]
-    // fn test_addition_ref() {
-    //     let (lhs, rhs) = setup(SIZE);
-
-    //     let packed_lhs = PackedQM31::from_array(lhs.clone());
-    //     let packed_rhs = PackedQM31::from_array(rhs.clone());
-
-    //     packed_lhs.add_assign_ref(&packed_rhs);
-
-    //     assert_eq!(
-    //         packed_lhs.to_array(),
-    //         lhs.iter()
-    //             .zip(rhs.iter())
-    //             .map(|(&l, &r)| l + r)
-    //             .collect::<Vec<M31>>()
-    //     );
-    // }
 }
