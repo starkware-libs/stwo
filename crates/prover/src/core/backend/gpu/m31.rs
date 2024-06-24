@@ -15,7 +15,6 @@ use crate::core::fields::m31::{pow2147483645, M31};
 use crate::core::fields::FieldExpOps;
 
 type GpuM31 = CudaSlice<u32>;
-type PackedM31 = PackedBaseField;
 
 pub trait LoadBaseField {
     fn load(&self);
@@ -36,7 +35,7 @@ impl LoadBaseField for Device {
  
 #[derive(Debug)]
 #[repr(C)]
-pub struct PackedBaseField(pub GpuM31);
+pub struct PackedM31(pub GpuM31);
 
 impl PackedM31 {
     /// Constructs a new instance with all vector elements set to `value`.

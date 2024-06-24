@@ -1,6 +1,5 @@
 use std::env;
 use std::path::PathBuf;
-//use std::io::Write;
 
 fn main() {
     let nvcc = match env::var("NVCC") {

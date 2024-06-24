@@ -1,18 +1,12 @@
 use std::env;
-#[allow(unused_imports)]
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::path::PathBuf;
 
 use cudarc::driver::{CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::Ptx;
-#[allow(unused_imports)]
-use itertools::Itertools;
-#[allow(unused_imports)]
 use num_traits::{One, Zero};
 
 use super::{Device, DEVICE};
-#[allow(unused_imports)]
-use crate::core::backend::gpu::m31::PackedBaseField as PackedM31;
 use crate::core::fields::cm31::CM31;
 #[allow(unused_imports)]
 use crate::core::fields::m31::{pow2147483645, M31};
@@ -64,6 +58,41 @@ impl PackedQM31 {
                 QM31(CM31(a, b), CM31(c, d))
             })
             .collect()
+    }
+
+    /// Adding by reference since CudaSlice cannot implement Copy and Add operator from standard
+    /// crates consume the object.
+    pub fn add_assign_ref(&self, rhs: &Self) {
+        let kernel = self
+            .0
+            .device()
+            .get_func("base_field_functions", "add")
+            .unwrap();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
+        unsafe { kernel.launch(cfg, (&self.0, &rhs.0, &self.0, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
+    }
+
+    pub fn mul_assign_ref(&self, rhs: &Self) {
+        let kernel = self
+            .0
+            .device()
+            .get_func("secure_field_functions", "mul")
+            .unwrap();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
+        unsafe { kernel.launch(cfg, (&self.0, &rhs.0, &self.0, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
+    }
+
+    pub fn sub_assign_ref(&self, rhs: &Self) {
+        let kernel = self
+            .0
+            .device()
+            .get_func("base_field_functions", "sub")
+            .unwrap();
+        let cfg: LaunchConfig = LaunchConfig::for_num_elems(self.0.len() as u32);
+        unsafe { kernel.launch(cfg, (&self.0, &rhs.0, &self.0, self.0.len())) }.unwrap();
+        DEVICE.synchronize().unwrap();
     }
 }
 
