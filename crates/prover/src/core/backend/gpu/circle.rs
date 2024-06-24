@@ -37,7 +37,7 @@ impl PolyOps for GpuBackend {
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         let domain = coset.circle_domain();
         let size = values.len();
-        let config = LaunchConfig::for_num_elems(size as u32);
+        let config = Self::launch_config_for_num_elems(size as u32, 256, 0);
         let kernel = DEVICE.get_func("circle", "sort_values").unwrap();
         let mut sorted_values = BaseFieldCudaColumn::new(unsafe { DEVICE.alloc(size).unwrap() });
         unsafe {
@@ -86,29 +86,97 @@ impl PolyOps for GpuBackend {
         mappings.reverse();
         let mappings_size = mappings.len();
 
-        unsafe {
-            let mut cuda_result: CudaSlice<SecureField> = DEVICE.alloc_zeros(1).unwrap();
-            let config = LaunchConfig::for_num_elems((poly.coeffs.len() >> 1) as u32);
-            let mut device_mappings: CudaSlice<SecureField> = DEVICE.htod_copy(mappings).unwrap();
-            let kernel = DEVICE.get_func("circle", "eval_at_point").unwrap();
+        let temp_memory_size = {
+            let mut size = poly.coeffs.len();
+            let mut result = 0;
+            while size > 1 {
+                size = (size + 511) / 512;
+                result += size;
+            }
+            result
+        };
 
-            let mut temp: CudaSlice<SecureField> =
-                DEVICE.alloc_zeros(poly.coeffs.len() >> 1).unwrap();
+        unsafe {
+            // Gpu slices
+            let mut device_result: CudaSlice<SecureField> = DEVICE.alloc(1).unwrap();
+            let device_mappings: CudaSlice<SecureField> = DEVICE.htod_copy(mappings).unwrap();
+            let mut temp: CudaSlice<SecureField> = DEVICE.alloc(temp_memory_size).unwrap();
+
+            let coeffs_length = poly.coeffs.len() as u32;
+            let config =
+                Self::launch_config_for_num_elems(coeffs_length >> 1, 256, 512 * 4 + 512 * 8);
+            let mut num_blocks = config.grid_dim.0;
+            let mut output_offset = temp_memory_size - num_blocks as usize;
+
+            // First pass: starts from the coefficients of the polynomial as the leaves of the tree
+            // and each cuda block computes an inner node in the folding tree. The leaves are
+            // elements of `BaseField`, but all inner nodes are elements of
+            // `SecureField`.
+            let kernel = DEVICE
+                .get_func("circle", "eval_at_point_first_pass")
+                .unwrap();
             kernel
+                .clone()
                 .launch(
                     config,
                     (
                         poly.coeffs.as_slice(),
                         &mut temp,
-                        &mut device_mappings,
+                        &device_mappings,
                         poly.coeffs.len(),
                         mappings_size,
                         point,
-                        &mut cuda_result,
+                        output_offset,
                     ),
                 )
                 .unwrap();
-            let result = DEVICE.dtoh_sync_copy(&cuda_result).unwrap();
+
+            // Second pass. Constructs the upper levels of the tree until it reaches the root.
+            // The difference with the first pass is that leaves in this part are elements of
+            // `SecureField`.
+            let mut mappings_offset = mappings_size - 1;
+            let kernel = DEVICE
+                .get_func("circle", "eval_at_point_second_pass")
+                .unwrap();
+            let mut level_offset = output_offset;
+            while num_blocks > 1 {
+                mappings_offset -= 9;
+                let config = Self::launch_config_for_num_elems(num_blocks >> 1, 256, 512 * 4 * 4);
+                output_offset = level_offset - config.grid_dim.0 as usize;
+                kernel
+                    .clone()
+                    .launch(
+                        config,
+                        (
+                            &mut temp,
+                            &device_mappings,
+                            num_blocks,
+                            mappings_offset,
+                            point,
+                            level_offset,
+                            output_offset,
+                        ),
+                    )
+                    .unwrap();
+                num_blocks = config.grid_dim.0;
+                level_offset = output_offset;
+            }
+            assert_eq!(output_offset, 0);
+
+            // Copy the root of the folding tree to `device_result`. This is done
+            // to avoid copying the entire `temp` slice, which is slow.
+            // TODO: find a better way of doing this without launching a kernel.
+            let kernel = DEVICE.get_func("circle", "get_result_from_temp").unwrap();
+            kernel
+                .launch(
+                    Self::launch_config_for_num_elems(1, 1, 0),
+                    (&temp, &mut device_result),
+                )
+                .unwrap();
+            DEVICE.synchronize().unwrap();
+            let result = DEVICE.dtoh_sync_copy(&device_result).unwrap();
+            assert_eq!(result.len(), 1);
+
             result[0]
         }
     }
@@ -148,9 +216,9 @@ impl PolyOps for GpuBackend {
     }
 
     fn precompute_twiddles(mut coset: Coset) -> TwiddleTree<Self> {
-        let root_coset = coset.clone();
+        let root_coset = coset;
         // Compute twiddles
-        let config = LaunchConfig::for_num_elems(coset.size() as u32);
+        let config = Self::launch_config_for_num_elems(coset.size() as u32, 256, 0);
         let kernel = DEVICE.get_func("circle", "precompute_twiddles").unwrap();
 
         let mut twiddles = BaseFieldCudaColumn::new(unsafe { DEVICE.alloc(coset.size()).unwrap() });
@@ -182,7 +250,7 @@ impl PolyOps for GpuBackend {
 
         // Put a one in the last position.
         let kernel = DEVICE.get_func("circle", "put_one").unwrap();
-        let config = LaunchConfig::for_num_elems(1);
+        let config = Self::launch_config_for_num_elems(1, 1, 0);
         unsafe {
             kernel
                 .clone()
@@ -216,7 +284,9 @@ pub fn load_circle(device: &Arc<CudaDevice>) {
                 "rfft_circle_part",
                 "rfft_line_part",
                 "rescale",
-                "eval_at_point",
+                "eval_at_point_first_pass",
+                "eval_at_point_second_pass",
+                "get_result_from_temp",
             ],
         )
         .unwrap();
@@ -224,8 +294,8 @@ pub fn load_circle(device: &Arc<CudaDevice>) {
 
 impl GpuBackend {
     fn ifft_circle_part(values: &mut BaseFieldCudaColumn, twiddle_tree: &TwiddleTree<GpuBackend>) {
-        let size = values.len();
-        let config = LaunchConfig::for_num_elems(size as u32);
+        let size = values.len() as u32 ;
+        let config = Self::launch_config_for_num_elems(size >> 1, 256, 0);
         let kernel = DEVICE.get_func("circle", "ifft_circle_part").unwrap();
         unsafe {
             kernel.launch(
@@ -241,8 +311,8 @@ impl GpuBackend {
     }
 
     fn rfft_circle_part(values: &mut BaseFieldCudaColumn, twiddle_tree: &TwiddleTree<GpuBackend>) {
-        let size = values.len();
-        let config = LaunchConfig::for_num_elems(size as u32);
+        let size = values.len() as u32;
+        let config = Self::launch_config_for_num_elems(size >> 1, 256, 0);
         let kernel = DEVICE.get_func("circle", "rfft_circle_part").unwrap();
         unsafe {
             kernel.launch(
@@ -264,7 +334,7 @@ impl GpuBackend {
         let mut layer_domain_size = size >> 1;
         let mut layer_domain_offset = 0;
         for i in 1..log_values_size {
-            let config = LaunchConfig::for_num_elems(size);
+            let config = Self::launch_config_for_num_elems(size >> 1, 256, 0);
             let kernel = DEVICE.get_func("circle", "ifft_line_part").unwrap();
             unsafe {
                 kernel.launch(
@@ -290,9 +360,10 @@ impl GpuBackend {
         let log_values_size = u32::BITS - size.leading_zeros() - 1;
 
         let mut layer_domain_size = 1;
+        // TODO: fix this for size < 8
         let mut layer_domain_offset = (size >> 1) - 2;
         for i in (1..log_values_size).rev() {
-            let config = LaunchConfig::for_num_elems(size);
+            let config = Self::launch_config_for_num_elems(size >> 1, 256, 0);
             let kernel = DEVICE.get_func("circle", "rfft_line_part").unwrap();
             unsafe {
                 kernel.launch(
@@ -402,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_evaluate() {
-        let log_size = 20;
+        let log_size = 3;
 
         let size = 1 << log_size;
 
@@ -427,27 +498,25 @@ mod tests {
 
     #[test]
     fn test_eval_at_point() {
-        let log_size = 10;
+        let log_size = 23;
 
         let size = 1 << log_size;
-
-        let cpu_values = (1..(size + 1) as u32).map(BaseField::from).collect_vec();
-        let gpu_values = BaseFieldCudaColumn::from_vec(cpu_values.clone());
-
         let coset = CanonicCoset::new(log_size);
-        let cpu_evaluations = CpuBackend::new_canonical_ordered(coset, cpu_values);
-        let gpu_evaluations = GpuBackend::new_canonical_ordered(coset, gpu_values);
-
-        let cpu_twiddles = CpuBackend::precompute_twiddles(coset.half_coset());
-        let gpu_twiddles = GpuBackend::precompute_twiddles(coset.half_coset());
-
-        let cpu_poly = CpuBackend::interpolate(cpu_evaluations, &cpu_twiddles);
-        let gpu_poly = GpuBackend::interpolate(gpu_evaluations, &gpu_twiddles);
-
         let point = SECURE_FIELD_CIRCLE_GEN;
 
-        let expected_result = CpuBackend::eval_at_point(&cpu_poly, point.clone());
+        let cpu_values = (1..(size + 1) as u32).map(BaseField::from).collect_vec();
+
+        let gpu_values = BaseFieldCudaColumn::from_vec(cpu_values.clone());
+        let gpu_evaluations = GpuBackend::new_canonical_ordered(coset, gpu_values);
+        let gpu_twiddles = GpuBackend::precompute_twiddles(coset.half_coset());
+        let gpu_poly = GpuBackend::interpolate(gpu_evaluations, &gpu_twiddles);
         let result = GpuBackend::eval_at_point(&gpu_poly, point);
+
+        let cpu_evaluations = CpuBackend::new_canonical_ordered(coset, cpu_values);
+        let cpu_twiddles = CpuBackend::precompute_twiddles(coset.half_coset());
+        let cpu_poly = CpuBackend::interpolate(cpu_evaluations, &cpu_twiddles);
+
+        let expected_result = CpuBackend::eval_at_point(&cpu_poly, point.clone());
 
         assert_eq!(result, expected_result);
     }

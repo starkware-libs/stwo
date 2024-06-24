@@ -2,6 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use stwo_prover::core::backend::cpu::CpuBackend;
+use stwo_prover::core::backend::gpu::GpuBackend;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::circle::CirclePoint;
 use stwo_prover::core::fields::m31::BaseField;
@@ -26,6 +27,7 @@ fn bench_eval_at_secure_point<B: PolyOps>(c: &mut Criterion, id: &str) {
 fn eval_at_secure_point_benches(c: &mut Criterion) {
     bench_eval_at_secure_point::<SimdBackend>(c, "simd");
     bench_eval_at_secure_point::<CpuBackend>(c, "cpu");
+    bench_eval_at_secure_point::<GpuBackend>(c, "gpu");
 }
 
 criterion_group!(

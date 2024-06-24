@@ -43,16 +43,17 @@ __device__ uint32_t m31_mul(uint32_t a, uint32_t b) {
 
 __device__ uint32_t m31_add(uint32_t a, uint32_t b) {
     // TODO: use add from m31.cu
-    return ((uint64_t) a + (uint64_t) b) % P;
+    uint64_t sum = ((uint64_t) a + (uint64_t) b);
+    return min(sum, sum - P);
 }
 
 __device__ uint32_t m31_sub(uint32_t a, uint32_t b) {
     // TODO: use sub from m31.cu
-    return ((uint64_t) a + (uint64_t) (P - b)) % P;
+    return m31_add(a, P - b);
 }
 
 __device__ uint32_t m31_neg(uint32_t a) {
-    // TODO: use sub from m31.cu
+    // TODO: use neg from m31.cu
     return P - a;
 }
 
@@ -67,18 +68,19 @@ __device__ cm31 cm31_add(cm31 x, cm31 y) {
     return {m31_add(x.a, y.a), m31_add(x.b, y.b)};
 }
 
+__device__ cm31 cm31_sub(cm31 x, cm31 y) {
+    return {m31_sub(x.a, y.a), m31_sub(x.b, y.b)};
+}
 /*##### Q31 ##### */
 
 __device__ qm31 qm31_mul(qm31 x, qm31 y) {
+    // Karatsuba multiplication
+    cm31 v0 = cm31_mul(x.a, y.a);
+    cm31 v1 = cm31_mul(x.b, y.b);
+    cm31 v2 = cm31_mul(cm31_add(x.a, x.b), cm31_add(y.a, y.b));
     return {
-        cm31_add(
-            cm31_mul(x.a, y.a),
-            cm31_mul(R, cm31_mul(x.b, y.b))
-        ),
-        cm31_add(
-            cm31_mul(x.a, y.b),
-            cm31_mul(x.b, y.a)
-        )
+        cm31_add(v0, cm31_mul(R, v1)),
+        cm31_sub(v2, cm31_add(v0, v1))
     };
 }
 
@@ -176,12 +178,11 @@ extern "C"
 __global__ void ifft_circle_part(uint32_t *values, uint32_t *inverse_twiddles_tree, int values_size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    
     if (idx < (values_size >> 1)) {
         uint32_t val0 = values[2 * idx];
         uint32_t val1 = values[2 * idx + 1];
         uint32_t twiddle = get_twiddle(inverse_twiddles_tree, idx);
-        
+
         values[2 * idx] = m31_add(val0, val1);
         values[2 * idx + 1] = m31_mul(m31_sub(val0, val1), twiddle);
     }
@@ -194,8 +195,8 @@ __global__ void ifft_line_part(uint32_t *values, uint32_t *inverse_twiddles_tree
 
     if (idx < (values_size >> 1)) {
         int number_polynomials = 1 << layer;
-        int h = idx / number_polynomials;
-        int l = idx % number_polynomials;
+        int h = idx >> layer;
+        int l = idx & (number_polynomials - 1);
         int idx0 = (h << (layer + 1)) + l;
         int idx1 = idx0 + number_polynomials;
 
@@ -258,32 +259,48 @@ __global__ void rescale(uint32_t *values, int size, uint32_t factor) {
 }
 
 extern "C"
-__global__ void eval_at_point(uint32_t* coeffs, qm31 *level, qm31 *factors, int coeffs_size, int factors_size, qm31 point, qm31 *output) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void eval_at_point_first_pass(uint32_t* g_coeffs, qm31 *temp, qm31 *factors, int coeffs_size, int factors_size, qm31 point, int output_offset) {
+    int idx = threadIdx.x;
 
+    qm31 *output = &temp[output_offset];
+
+    // Thread syncing happens within a block. 
+    // Split the problem to feed them to multiple blocks.
+    if(coeffs_size >= 512) {
+        coeffs_size = 512;
+    }
+    
+    extern __shared__ uint32_t s_coeffs[];
+    extern __shared__ qm31 s_level[];
+
+    s_coeffs[idx] = g_coeffs[2 * blockIdx.x * blockDim.x + idx];
+    s_coeffs[idx + blockDim.x] = g_coeffs[2 * blockIdx.x * blockDim.x + idx + blockDim.x];
+    __syncthreads();
+    
     int level_size = coeffs_size >> 1;
     int factor_idx = factors_size - 1;
 
     if(idx < level_size) {
-        uint32_t alpha = coeffs[2 * idx];
-        uint32_t beta = coeffs[2 * idx + 1];
+        uint32_t alpha = s_coeffs[2 * idx];
+        uint32_t beta = s_coeffs[2 * idx + 1];
         qm31 factor = factors[factor_idx];
         __syncthreads();
         qm31 result = { 
             {m31_add(m31_mul(beta, factor.a.a), alpha), m31_mul(factor.a.b, beta)}, 
             {m31_mul(beta,  factor.b.a), m31_mul(beta, factor.b.b)} 
         };
-        level[idx] = result;
+        s_level[idx] = result;
     }
     factor_idx -= 1;
     level_size >>= 1;
 
     while(level_size > 0) {
         if(idx < level_size) {
-            qm31 a = level[2 * idx];
-            qm31 b = level[2 * idx + 1];
             __syncthreads();
-            level[idx] = qm31_add(a, qm31_mul(b, factors[factor_idx]));
+            qm31 a = s_level[2 * idx];
+            qm31 b = s_level[2 * idx + 1];
+            __syncthreads();
+            s_level[idx] = qm31_add(a, qm31_mul(b, factors[factor_idx]));
         }
         factor_idx -= 1;
         level_size >>= 1;
@@ -292,6 +309,53 @@ __global__ void eval_at_point(uint32_t* coeffs, qm31 *level, qm31 *factors, int 
     __syncthreads();
 
     if(idx == 0) {
-        output[0] = level[0];
+        output[blockIdx.x] = s_level[0];
+    }
+}
+
+extern "C"
+__global__ void eval_at_point_second_pass(qm31* temp, qm31 *factors, int level_size, int factor_offset, qm31 point, int level_offset, int output_offset) {
+    int idx = threadIdx.x;
+
+    qm31 *level = &temp[level_offset];
+    qm31 *output = &temp[output_offset];
+
+    // Thread syncing happens within a block. 
+    // Split the problem to feed them to multiple blocks.
+    if(level_size >= 512) {
+        level_size = 512;
+    }
+    
+    extern __shared__ qm31 s_level[];
+
+    s_level[idx] = level[2 * blockIdx.x * blockDim.x + idx];
+    s_level[idx + blockDim.x] = level[2 * blockIdx.x * blockDim.x + idx + blockDim.x];
+
+    level_size >>= 1;
+
+    int factor_idx = factor_offset;
+
+    while(level_size > 0) {
+        if(idx < level_size) {
+            __syncthreads();
+            qm31 a = s_level[2 * idx];
+            qm31 b = s_level[2 * idx + 1];
+            __syncthreads();
+            s_level[idx] = qm31_add(a, qm31_mul(b, factors[factor_idx]));
+        }
+        factor_idx -= 1;
+        level_size >>= 1;
+    }
+    __syncthreads();
+
+    if(idx == 0) {
+        output[blockIdx.x] = s_level[0];
+    }
+}
+
+extern "C"
+__global__ void get_result_from_temp(qm31 *temp, qm31 *result) {
+    if (threadIdx.x == 0) {
+        result[0] = temp[0];
     }
 }

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use cudarc::driver::{CudaDevice, CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaDevice, CudaSlice, DeviceSlice, LaunchAsync};
 use cudarc::nvrtc::compile_ptx;
+use itertools::Itertools;
 
 use super::{GpuBackend, DEVICE};
 use crate::core::backend::Column;
@@ -9,27 +10,22 @@ use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::{SecureField, QM31};
 use crate::core::fields::FieldOps;
 
-
 impl FieldOps<BaseField> for GpuBackend {
     fn batch_inverse(from: &Self::Column, dst: &mut Self::Column) {
         let size = from.len();
         let log_size = u32::BITS - (size as u32).leading_zeros() - 1;
 
-        let config = LaunchConfig::for_num_elems(size as u32 >> 1);
+        // Shared memory:
+        // 512 bytes to store the `from` chunk in shared memory.
+        // 512 - 32 bytes to store the inner tree up to the level with 32 elements.
+        let config = Self::launch_config_for_num_elems(size as u32 >> 1, 256, 512 * 4  + (512 - 32) * 4);
         let batch_inverse = DEVICE
             .get_func("column", "batch_inverse_basefield")
             .unwrap();
         unsafe {
-            let mut inner_tree: CudaSlice<M31> = DEVICE.alloc(size).unwrap();
             let res = batch_inverse.launch(
                 config,
-                (
-                    from.as_slice(),
-                    dst.as_mut_slice(),
-                    &mut inner_tree,
-                    size,
-                    log_size,
-                ),
+                (from.as_slice(), dst.as_mut_slice(), size, log_size),
             );
             res
         }
@@ -43,21 +39,17 @@ impl FieldOps<SecureField> for GpuBackend {
         let size = from.len();
         let log_size = u32::BITS - (size as u32).leading_zeros() - 1;
 
-        let config = LaunchConfig::for_num_elems(size as u32 >> 1);
+        // Shared memory:
+        // 1024 * 4 bytes to store the `from` chunk in shared memory.
+        // (1024 - 32) * 4 bytes to store the inner tree up to the level with 32 elements.
+        let config = Self::launch_config_for_num_elems(size as u32 >> 1, 512, 1024 * 4 * 4 + (1024 - 32) * 4 * 4);
         let batch_inverse = DEVICE
             .get_func("column", "batch_inverse_secure_field")
             .unwrap();
         unsafe {
-            let mut inner_tree: CudaSlice<QM31> = DEVICE.alloc(size).unwrap();
             let res = batch_inverse.launch(
                 config,
-                (
-                    from.as_slice(),
-                    dst.as_mut_slice(),
-                    &mut inner_tree,
-                    size,
-                    log_size,
-                ),
+                (from.as_slice(), dst.as_mut_slice(), size, log_size),
             );
             res
         }
@@ -89,8 +81,8 @@ impl BaseFieldCudaColumn {
 }
 
 impl FromIterator<BaseField> for BaseFieldCudaColumn {
-    fn from_iter<T: IntoIterator<Item = BaseField>>(_iter: T) -> Self {
-        todo!()
+    fn from_iter<T: IntoIterator<Item = BaseField>>(iter: T) -> Self {
+        BaseFieldCudaColumn::new(DEVICE.htod_copy(iter.into_iter().collect_vec()).unwrap())
     }
 }
 
@@ -182,8 +174,8 @@ mod tests {
     use crate::core::fields::FieldOps;
 
     #[test]
-    fn test_batch_inverse() {
-        let size: usize = 1 << 12;
+    fn test_batch_inverse_basefield() {
+        let size: usize = 1 << 24;
         let from = (1..(size + 1) as u32).map(|x| M31(x)).collect_vec();
         let dst = from.clone();
         let mut dst_expected = dst.clone();
@@ -198,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_batch_inverse_secure_field() {
-        let size: usize = 1 << 12;
+        let size: usize = 1 << 25;
 
         let from_raw = (1..(size + 1) as u32).collect::<Vec<u32>>();
 

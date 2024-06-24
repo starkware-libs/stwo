@@ -65,7 +65,7 @@ pub fn simd_batch_inverse_secure_field(c: &mut Criterion) {
         .collect();
 
     let res = data.clone();
-    c.bench_function("simd batch_inverse secure field 28bit", |b| {
+    c.bench_function("simd batch_inverse secure field 26bit", |b| {
         b.iter_batched(
             || res.clone(),
             |mut res| <SimdBackend as FieldOps<SecureField>>::batch_inverse(&data, &mut res),
@@ -82,7 +82,7 @@ pub fn gpu_batch_inverse_secure_field(c: &mut Criterion) {
     let data = SecureFieldCudaColumn::from_vec((0..SIZE).map(|_| rng.gen()).collect());
 
     let res = data.clone();
-    c.bench_function("gpu batch_inverse secure field 28bit", |b| {
+    c.bench_function("gpu batch_inverse secure field 26bit", |b| {
         b.iter_batched(
             || res.clone(),
             |mut res| <GpuBackend as FieldOps<SecureField>>::batch_inverse(&data, &mut res),
