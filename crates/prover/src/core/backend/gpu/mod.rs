@@ -20,11 +20,7 @@ use qm31::LoadSecureBaseField;
 use self::m31::LoadBaseField;
 use super::Backend;
 
-// TODO:: cleanup unwraps with error handling?
-// (We can replace lazy statics with unsafe global references)
 static DEVICE: Lazy<Arc<CudaDevice>> = Lazy::new(|| CudaDevice::new(0).unwrap().load());
-// static MODULUS: Lazy<CudaSlice<u32>> =
-//     Lazy::new(|| DEVICE.htod_copy([P; VECTOR_SIZE].to_vec()).unwrap());
 
 type Device = Arc<CudaDevice>;
 
