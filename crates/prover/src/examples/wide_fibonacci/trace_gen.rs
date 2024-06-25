@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use num_traits::One;
+use num_traits::{One, Zero};
 
 use super::component::Input;
 use crate::core::fields::m31::BaseField;
@@ -49,6 +49,21 @@ pub fn write_lookup_column(
         })
         .collect_vec();
 
+    let denominators = (0..n_rows)
+        .map(|i| {
+            shifted_secure_combination(
+                &[
+                    natural_ordered_trace[n_columns - 2][i],
+                    natural_ordered_trace[n_columns - 1][i],
+                ],
+                alpha,
+                z,
+            )
+        })
+        .collect_vec();
+    let mut denominator_inverses = vec![SecureField::zero(); denominators.len()];
+    SecureField::batch_inverse(&denominators, &mut denominator_inverses);
+
     (0..n_rows)
         .map(|i| {
             let numerator = shifted_secure_combination(
@@ -56,16 +71,7 @@ pub fn write_lookup_column(
                 alpha,
                 z,
             );
-            let denominator = shifted_secure_combination(
-                &[
-                    natural_ordered_trace[n_columns - 2][i],
-                    natural_ordered_trace[n_columns - 1][i],
-                ],
-                alpha,
-                z,
-            );
-            // TODO(AlonH): Use batch inversion.
-            let cell = (numerator / denominator) * prev_value;
+            let cell = (numerator * denominator_inverses[i]) * prev_value;
             prev_value = cell;
             cell
         })
