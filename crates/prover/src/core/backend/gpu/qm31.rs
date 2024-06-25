@@ -1,12 +1,13 @@
 use std::env;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use cudarc::driver::{CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaDevice, CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::Ptx;
 use num_traits::{One, Zero};
 
-use super::{Device, DEVICE};
+use super::DEVICE;
 use crate::core::fields::cm31::CM31;
 #[allow(unused_imports)]
 use crate::core::fields::m31::{pow2147483645, M31};
@@ -14,17 +15,10 @@ use crate::core::fields::qm31::QM31;
 #[allow(unused_imports)]
 use crate::core::fields::FieldExpOps;
 
-pub trait LoadSecureBaseField {
-    fn load(&self);
-}
-
-impl LoadSecureBaseField for Device {
-    fn load(&self) {
-        let ptx_dir = PathBuf::from(env::var("PTX_DIR").unwrap() + "/qm31.ptx");
-        let ptx = Ptx::from_file(ptx_dir);
-        self.load_ptx(ptx, "secure_field_functions", &["mul", "is_zero"])
+pub fn load_secure_field(device: &Arc<CudaDevice>) {
+    let ptx = Ptx::from_file(PathBuf::from(env::var("PTX_DIR").unwrap() + "/qm31.ptx"));
+    device.load_ptx(ptx, "secure_field_functions", &["mul", "is_zero"])
             .unwrap();
-    }
 }
 
 // Flattened PackedQM31
@@ -60,7 +54,7 @@ impl PackedQM31 {
             .collect()
     }
 
-    /// Adding by reference since CudaSlice cannot implement Copy and Add operator from standard
+    /// Operations by reference since CudaSlice cannot implement Copy and Add operator from standard
     /// crates consume the object.
     pub fn add_assign_ref(&self, rhs: &Self) {
         let kernel = self

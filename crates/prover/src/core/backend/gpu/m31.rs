@@ -2,13 +2,14 @@ use std::env;
 // CUDA implementation of arbitrary size packed m31
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use cudarc::driver::{CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
+use cudarc::driver::{CudaDevice, CudaSlice, DeviceSlice, LaunchAsync, LaunchConfig};
 use cudarc::nvrtc::Ptx;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
-use super::{Device, DEVICE};
+use super::DEVICE;
 #[allow(unused_imports)]
 use crate::core::fields::m31::{pow2147483645, M31};
 #[allow(unused_imports)]
@@ -16,21 +17,14 @@ use crate::core::fields::FieldExpOps;
 
 type GpuM31 = CudaSlice<u32>;
 
-pub trait LoadBaseField {
-    fn load(&self);
-}
-
-impl LoadBaseField for Device {
-    fn load(&self) {
-        let ptx_dir = PathBuf::from(env::var("PTX_DIR").unwrap() + "/m31.ptx");
-        let ptx = Ptx::from_file(ptx_dir);
-        self.load_ptx(
+pub fn load_base_field(device: &Arc<CudaDevice>) {
+        let ptx = Ptx::from_file(PathBuf::from(env::var("PTX_DIR").unwrap() + "/m31.ptx"));
+        device.load_ptx(
             ptx,
             "base_field_functions",
             &["mul", "reduce", "add", "sub", "neg", "is_zero"],
         )
         .unwrap();
-    }
 }
  
 #[derive(Debug)]

@@ -7,7 +7,6 @@ mod fri;
 pub mod m31;
 pub mod qm31;
 mod quotients;
-// pub mod packedm31;
 
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -15,9 +14,7 @@ use std::sync::Arc;
 use cudarc::driver::CudaDevice;
 // use error::Error;
 use once_cell::sync::Lazy;
-use qm31::LoadSecureBaseField;
 
-use self::m31::LoadBaseField;
 use super::Backend;
 
 static DEVICE: Lazy<Arc<CudaDevice>> = Lazy::new(|| CudaDevice::new(0).unwrap().load());
@@ -31,8 +28,8 @@ trait Load {
 impl Load for Device {
     fn load(self) -> Self {
         bit_reverse::load_bit_reverse_ptx(&self);
-        LoadBaseField::load(&self);
-        LoadSecureBaseField::load(&self);
+        m31::load_base_field(&self);
+        qm31::load_secure_field(&self);
         self
     }
 }
