@@ -161,7 +161,6 @@ pub fn gen_trace(
         .collect_vec()
 }
 
-// TODO(AlonH): Implement.
 impl ComponentTraceWriter<SimdBackend> for SimdWideFibComponent {
     fn write_interaction_trace(
         &self,

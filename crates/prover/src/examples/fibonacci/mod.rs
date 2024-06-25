@@ -32,7 +32,6 @@ impl Fibonacci {
     pub fn get_trace(&self) -> CpuCircleEvaluation<BaseField, BitReversedOrder> {
         // Trace.
         let trace_domain = CanonicCoset::new(self.air.component.log_size);
-        // TODO(AlonH): Consider using Vec::new instead of Vec::with_capacity throughout file.
         let mut trace = Vec::with_capacity(trace_domain.size());
 
         // Fill trace with fibonacci squared.
