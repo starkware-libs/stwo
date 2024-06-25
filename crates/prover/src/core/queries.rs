@@ -8,8 +8,6 @@ use super::circle::Coset;
 use super::poly::circle::CircleDomain;
 use super::utils::bit_reverse_index;
 
-// TODO(AlonH): Move file to fri directory.
-
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
 /// An ordered set of query indices over a bit reversed [CircleDomain].
