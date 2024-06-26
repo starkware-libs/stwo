@@ -29,7 +29,7 @@ pub trait TraceGenerator<B: Backend> {
     /// Should be called only after all the inputs are available.
     // TODO(ShaharS): change `component_id` to a struct that contains the id and the component name.
     fn write_trace(
-        &self,
+        component_id: &str,
         registry: &mut ComponentGenerationRegistry,
     ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
 
