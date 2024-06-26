@@ -1,2 +1,2 @@
-mod gkr;
+pub mod gkr;
 mod mle;
