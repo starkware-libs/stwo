@@ -92,4 +92,10 @@ impl ComponentProver<CpuBackend> for MultilinearEvalAtPoint {
     ) {
         todo!()
     }
+
+    fn lookup_values(
+        &self,
+        _trace: &crate::core::air::ComponentTrace<'_, CpuBackend>,
+    ) -> crate::core::LookupValues {
+    }
 }

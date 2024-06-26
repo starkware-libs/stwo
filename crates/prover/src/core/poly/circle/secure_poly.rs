@@ -14,7 +14,7 @@ pub struct SecureCirclePoly<B: FieldOps<BaseField>>(pub [CirclePoly<B>; SECURE_E
 
 impl<B: PolyOps> SecureCirclePoly<B> {
     pub fn eval_at_point(&self, point: CirclePoint<SecureField>) -> SecureField {
-        eval_from_partial_evals(self.eval_columns_at_point(point))
+        eval_poly_from_partial_evals(self.eval_columns_at_point(point))
     }
 
     pub fn eval_columns_at_point(
@@ -44,7 +44,7 @@ impl<B: FieldOps<BaseField>> Deref for SecureCirclePoly<B> {
 
 /// Evaluates the polynomial at a point, given evaluations of its composing base field
 /// polynomials at that point.
-pub fn eval_from_partial_evals(evals: [SecureField; SECURE_EXTENSION_DEGREE]) -> SecureField {
+pub fn eval_poly_from_partial_evals(evals: [SecureField; SECURE_EXTENSION_DEGREE]) -> SecureField {
     let mut res = evals[0];
     res += evals[1] * SecureField::from_u32_unchecked(0, 1, 0, 0);
     res += evals[2] * SecureField::from_u32_unchecked(0, 0, 1, 0);

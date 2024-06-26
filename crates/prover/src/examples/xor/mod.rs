@@ -1,20 +1,72 @@
+use std::collections::BTreeSet;
+use std::iter::zip;
+
 use num_traits::{One, Zero};
 use rand::Rng;
+use xor_reference_component::XorReferenceComponent;
+use xor_table_component::XorTableComponent;
 
+use crate::core::air::{
+    Air, AirProver, AirTraceVerifier, AirTraceWriter, Component, ComponentProver,
+};
 use crate::core::backend::CpuBackend;
+use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::{BitReversedOrder, NaturalOrder};
-use crate::core::ColumnVec;
+use crate::core::{ColumnVec, InteractionElements};
 
 // pub mod air;
 pub mod multilinear_eval_at_point;
-// pub mod unordered_xor_component;
-// pub mod xor_table_component;
+pub mod xor_reference_component;
+pub mod xor_table_component;
 
 const LOG_TRACE_LEN: u32 = u8::BITS + u8::BITS;
 
 const TRACE_LEN: usize = 1 << LOG_TRACE_LEN;
+
+pub struct XorAir;
+
+impl Air for XorAir {
+    fn components(&self) -> Vec<&dyn Component> {
+        vec![&XorReferenceComponent, &XorTableComponent]
+    }
+}
+
+impl AirTraceVerifier for XorAir {
+    fn interaction_elements(
+        &self,
+        channel: &mut crate::core::channel::Blake2sChannel,
+    ) -> InteractionElements {
+        let ids = self
+            .components()
+            .iter()
+            .flat_map(|c| c.interaction_element_ids())
+            .collect::<BTreeSet<String>>();
+        let elements = channel.draw_felts(ids.len());
+        InteractionElements::new(zip(ids, elements).collect())
+    }
+}
+
+impl AirTraceWriter<CpuBackend> for XorAir {
+    fn interact(
+        &self,
+        _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
+        _elements: &InteractionElements,
+    ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+        todo!()
+    }
+
+    fn to_air_prover(&self) -> &impl AirProver<CpuBackend> {
+        self
+    }
+}
+
+impl AirProver<CpuBackend> for XorAir {
+    fn prover_components(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
+        vec![&XorReferenceComponent, &XorTableComponent]
+    }
+}
 
 /// Rectangular trace.
 pub struct BaseTrace {
@@ -92,21 +144,22 @@ impl BaseTrace {
 
 #[cfg(test)]
 mod tests {
-    // use rand::rngs::SmallRng;
-    // use rand::SeedableRng;
+    use rand::rngs::SmallRng;
+    use rand::SeedableRng;
 
-    // // use super::air::XorAir;
-    // use super::BaseTrace;
-    // use crate::core::prover::prove;
-    // use crate::core::test_utils::test_channel;
+    // use super::air::XorAir;
+    use super::BaseTrace;
+    use crate::core::prover::prove;
+    use crate::core::test_utils::test_channel;
+    use crate::examples::xor::XorAir;
 
-    // #[test]
-    // fn xor_lookup_example() {
-    //     let mut rng = SmallRng::seed_from_u64(0);
-    //     let base_trace = BaseTrace::gen_random(&mut rng);
+    #[test]
+    fn xor_lookup_example() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        let base_trace = BaseTrace::gen_random(&mut rng);
 
-    //     let _proof = prove(&XorAir, &mut test_channel(), base_trace.into_column_vec());
+        let _proof = prove(&XorAir, &mut test_channel(), base_trace.into_column_vec());
 
-    //     todo!()
-    // }
+        todo!()
+    }
 }

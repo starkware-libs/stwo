@@ -20,9 +20,9 @@ use crate::core::lookups::mle::Mle;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::{ColumnVec, InteractionElements};
-use crate::examples::xor::unordered_xor_component::UnorderedXorComponent;
-use crate::examples::xor::xor_table_component::XorTableComponent;
-use crate::examples::xor::{LOG_TRACE_LEN, TRACE_LEN};
+use crate::examples::xor2::unordered_xor_component::UnorderedXorComponent;
+use crate::examples::xor2::xor_table_component::XorTableComponent;
+use crate::examples::xor2::{LOG_TRACE_LEN, TRACE_LEN};
 
 pub struct XorAir;
 

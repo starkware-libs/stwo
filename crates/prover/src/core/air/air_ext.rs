@@ -131,13 +131,13 @@ pub trait AirExt: Air {
         &self,
         multilinear_eval_claims_by_instance: &[Vec<SecureField>],
     ) -> BTreeMap<u32, Vec<SecureField>> {
-        let mut remaining_claims = &multilinear_eval_claims_by_instance;
+        let mut remaining_claims = multilinear_eval_claims_by_instance;
         let mut iop_claims_by_n_vars = BTreeMap::<u32, Vec<SecureField>>::new();
 
         for component in self.components() {
             let n_lookups_instances = component.gkr_lookup_instance_configs().len();
             let claims: &[Vec<SecureField>];
-            (claims, *remaining_claims) = remaining_claims.split_at(n_lookups_instances);
+            (claims, remaining_claims) = remaining_claims.split_at(n_lookups_instances);
 
             for (n_vars, claims) in component.eval_at_point_iop_claims_by_n_variables(claims) {
                 iop_claims_by_n_vars

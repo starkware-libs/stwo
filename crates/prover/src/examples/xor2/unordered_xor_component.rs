@@ -9,7 +9,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
-use crate::examples::xor::xor_table_component::{XOR_ALPHA_ID, XOR_Z_ID};
+use crate::examples::xor2::xor_table_component::{XOR_ALPHA_ID, XOR_Z_ID};
 
 /// Component full of random 8-bit XOR operations.
 pub struct UnorderedXorComponent;

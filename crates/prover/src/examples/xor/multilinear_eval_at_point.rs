@@ -12,7 +12,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::lookups::utils::horner_eval;
 use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::{eval_from_partial_evals, CanonicCoset};
+use crate::core::poly::circle::{eval_poly_from_partial_evals, CanonicCoset};
 
 pub struct BatchMultilinearEvalIopVerfier {
     eval_claims_by_n_variables: BTreeMap<u32, Vec<SecureField>>,
@@ -47,7 +47,7 @@ impl Component for BatchMultilinearEvalIopVerfier {
     fn n_constraints(&self) -> usize {
         let mut n_constraints = 0;
 
-        for (&n_variables, _) in &self.eval_claims_by_n_variables {
+        for _n_variables in self.eval_claims_by_n_variables.keys() {
             // Column for eq evals has a constraint per variable
             // TODO: n_constraints += n_variables as usize;
             // Constraint to check constant coefficient on sumcheck g poly.
@@ -58,11 +58,7 @@ impl Component for BatchMultilinearEvalIopVerfier {
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.eval_claims_by_n_variables
-            .iter()
-            .map(|(n_vars, _)| n_vars + 1)
-            .max()
-            .unwrap()
+        self.eval_claims_by_n_variables.keys().map(|n_vars| n_vars + 1).max().unwrap()
     }
 
     fn n_interaction_phases(&self) -> u32 {
@@ -72,7 +68,7 @@ impl Component for BatchMultilinearEvalIopVerfier {
     fn trace_log_degree_bounds(&self) -> crate::core::pcs::TreeVec<crate::core::ColumnVec<u32>> {
         let mut interaction_trace_log_degree_bounds = Vec::new();
 
-        for (&n_variables, _) in &self.eval_claims_by_n_variables {
+        for &n_variables in self.eval_claims_by_n_variables.keys() {
             // Three trace columns per multilinear n variables:
             // 1. eq evals (eq_evals) (secure column)
             interaction_trace_log_degree_bounds.push(n_variables);
@@ -102,7 +98,7 @@ impl Component for BatchMultilinearEvalIopVerfier {
     > {
         let mut interaction_trace_mask_points = Vec::new();
 
-        for (&n_variables, _) in &self.eval_claims_by_n_variables {
+        for &n_variables in self.eval_claims_by_n_variables.keys() {
             let trace_step = CanonicCoset::new(n_variables).step().into_ef();
 
             let eq_evals_col_mask_points = (0..n_variables)
@@ -157,13 +153,13 @@ impl Component for BatchMultilinearEvalIopVerfier {
             // TODO: Evaluate eq eval constraints.
 
             // Let `g(x, y) = g0(x) + y * g1(x)`
-            let g_at_p = eval_from_partial_evals([
+            let g_at_p = eval_poly_from_partial_evals([
                 g_col0_mask[0],
                 g_col1_mask[0],
                 g_col2_mask[0],
                 g_col3_mask[0],
             ]);
-            let g_at_neg_p = eval_from_partial_evals([
+            let g_at_neg_p = eval_poly_from_partial_evals([
                 g_col0_mask[1],
                 g_col1_mask[1],
                 g_col2_mask[1],
@@ -171,7 +167,7 @@ impl Component for BatchMultilinearEvalIopVerfier {
             ]);
             let g0_at_p_x = (g_at_p + g_at_neg_p) / BaseField::from(2);
 
-            // Since we constrain at `(0, 1)` we are essentially checking `g(0, 0) = claim`.
+            // Since we vanish on `(0, 1)` we are essentially checking `g(0, 0) = claim`.
             let g_constant_coeff_numerator = g0_at_p_x - claim;
             let g_constant_coeff_denominator =
                 point_vanishing(CirclePoint::<BaseField>::zero(), point);

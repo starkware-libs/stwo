@@ -1,4 +1,7 @@
+use std::collections::BTreeMap;
+
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use thiserror::Error;
 use tracing::{span, Level};
 
@@ -6,10 +9,9 @@ use super::air::{AirProver, AirTraceVerifier, AirTraceWriter};
 use super::backend::Backend;
 use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
+use super::lookups::gkr_verifier::GkrBatchProof;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
-use super::poly::circle::{
-    eval_from_partial_evals, CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE,
-};
+use super::poly::circle::{eval_poly_from_partial_evals, CanonicCoset, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::poly::twiddles::TwiddleTree;
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::{ColumnVec, InteractionElements, LookupValues};
@@ -19,6 +21,7 @@ use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::lookups::gkr_verifier::Gate;
 use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
@@ -45,6 +48,7 @@ pub const INTERACTION_TRACE: usize = 1;
 pub struct StarkProof {
     pub commitments: TreeVec<<ChannelHasher as Hasher>::Hash>,
     pub lookup_values: LookupValues,
+    pub gkr_proof: GkrBatchProof,
     pub commitment_scheme_proof: CommitmentSchemeProof,
 }
 
@@ -304,7 +308,7 @@ fn sampled_values_to_mask(
 
     let composition_partial_sampled_values =
         sampled_values.last().ok_or(InvalidOodsSampleStructure)?;
-    let composition_oods_value = eval_from_partial_evals(
+    let composition_oods_value = eval_poly_from_partial_evals(
         composition_partial_sampled_values
             .iter()
             .flatten()
@@ -315,6 +319,62 @@ fn sampled_values_to_mask(
     );
 
     Ok((ComponentVec(trace_oods_values), composition_oods_value))
+}
+
+fn verify_lookups(air: &impl Air, gkr_outputs_by_instance: &[Vec<SecureField>]) {
+    let mut gkr_outputs_by_instance = gkr_outputs_by_instance.iter();
+
+    let mut logups = BTreeMap::new();
+    let mut grand_products = BTreeMap::new();
+
+    for component in air.components() {
+        for lookup_config in component.gkr_lookup_instance_configs() {
+            // TODO: Error instead of panic here.
+            let lookup_output = gkr_outputs_by_instance.next().unwrap();
+
+            match (lookup_config.variant, &**lookup_output) {
+                (Gate::_LogUp, &[numerator, denominator]) => {
+                    // TODO: Completeness problem? Error instead of panic here.
+                    assert!(!denominator.is_zero());
+                    let quotient = numerator / denominator;
+                    let logup_entry = logups
+                        .entry(lookup_config.table_id)
+                        .or_insert_with(SecureField::zero);
+
+                    if lookup_config.is_table {
+                        *logup_entry += quotient;
+                    } else {
+                        *logup_entry -= quotient;
+                    }
+                }
+                (Gate::_GrandProduct, &[product]) => {
+                    let grand_product_entry = grand_products
+                        .entry(lookup_config.table_id)
+                        .or_insert_with(SecureField::one);
+
+                    if lookup_config.is_table {
+                        *grand_product_entry *= product;
+                    } else {
+                        // TODO: Panic here bad.
+                        assert!(!product.is_zero());
+                        *grand_product_entry /= product;
+                    }
+                }
+                // TODO: Error instead of panic here.
+                _ => panic!(),
+            }
+        }
+    }
+
+    for (lookup_id, logup_sum) in logups {
+        // TODO: Error instead of panic here.
+        assert!(logup_sum.is_zero(), "`{lookup_id}` lookup invalid.");
+    }
+
+    for (lookup_id, grand_product) in grand_products {
+        // TODO: Error instead of panic here.
+        assert!(grand_product.is_one(), "`{lookup_id}` lookup invalid.");
+    }
 }
 
 /// Error when the sampled values have an invalid structure.
@@ -467,7 +527,7 @@ mod tests {
 
         fn eval_at_point_iop_claims_by_n_variables(
             &self,
-            multilinear_eval_claims_by_instance: &[Vec<SecureField>],
+            _multilinear_eval_claims_by_instance: &[Vec<SecureField>],
         ) -> std::collections::BTreeMap<u32, Vec<SecureField>> {
             BTreeMap::new()
         }

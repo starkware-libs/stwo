@@ -92,7 +92,8 @@ pub trait Component {
 pub struct LookupInstanceConfig {
     // TODO: Consider changing Gate to LookupType.
     pub variant: Gate,
-    pub is_lookup_table: bool,
+    pub is_table: bool,
+    pub table_id: String,
 }
 
 pub trait ComponentTraceWriter<B: Backend> {

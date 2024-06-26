@@ -134,7 +134,7 @@ impl Component for FibonacciComponent {
 
     fn eval_at_point_iop_claims_by_n_variables(
         &self,
-        multilinear_eval_claims_by_instance: &[Vec<SecureField>],
+        _multilinear_eval_claims_by_instance: &[Vec<SecureField>],
     ) -> std::collections::BTreeMap<u32, Vec<SecureField>> {
         BTreeMap::new()
     }
