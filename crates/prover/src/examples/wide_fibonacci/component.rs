@@ -12,7 +12,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureCirclePoly};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::shifted_secure_combination;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
@@ -99,10 +99,9 @@ impl WideFibComponent {
         lookup_values: &LookupValues,
     ) {
         let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
-        let value =
-            SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
-                mask[self.n_columns() + i][0]
-            }));
+        let value = SecureField::from_separate_evals(std::array::from_fn(|i| {
+            mask[self.n_columns() + i][0]
+        }));
         let numerator = (value
             * shifted_secure_combination(
                 &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
@@ -146,14 +145,12 @@ impl WideFibComponent {
         interaction_elements: &InteractionElements,
     ) {
         let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
-        let value =
-            SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
-                mask[self.n_columns() + i][0]
-            }));
-        let prev_value =
-            SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
-                mask[self.n_columns() + i][1]
-            }));
+        let value = SecureField::from_separate_evals(std::array::from_fn(|i| {
+            mask[self.n_columns() + i][0]
+        }));
+        let prev_value = SecureField::from_separate_evals(std::array::from_fn(|i| {
+            mask[self.n_columns() + i][1]
+        }));
         let numerator = (value
             * shifted_secure_combination(
                 &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
