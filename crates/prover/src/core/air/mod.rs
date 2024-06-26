@@ -1,9 +1,12 @@
+use std::collections::BTreeMap;
+
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
 use super::channel::Blake2sChannel;
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
+use super::lookups::gkr_verifier::Gate;
 use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
@@ -76,6 +79,20 @@ pub trait Component {
         interaction_elements: &InteractionElements,
         lookup_values: &LookupValues,
     );
+
+    fn gkr_lookup_instance_configs(&self) -> Vec<LookupInstanceConfig>;
+
+    // TODO: Docs. Mention something about how for lookups.
+    fn eval_at_point_iop_claims_by_n_variables(
+        &self,
+        multilinear_eval_claims_by_instance: &[Vec<SecureField>],
+    ) -> BTreeMap<u32, Vec<SecureField>>;
+}
+
+pub struct LookupInstanceConfig {
+    // TODO: Consider changing Gate to LookupType.
+    pub variant: Gate,
+    pub is_lookup_table: bool,
 }
 
 pub trait ComponentTraceWriter<B: Backend> {

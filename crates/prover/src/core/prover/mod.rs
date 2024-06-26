@@ -7,7 +7,9 @@ use super::backend::Backend;
 use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
-use super::poly::circle::{CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+use super::poly::circle::{
+    eval_from_partial_evals, CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE,
+};
 use super::poly::twiddles::TwiddleTree;
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::{ColumnVec, InteractionElements, LookupValues};
@@ -302,7 +304,7 @@ fn sampled_values_to_mask(
 
     let composition_partial_sampled_values =
         sampled_values.last().ok_or(InvalidOodsSampleStructure)?;
-    let composition_oods_value = SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(
+    let composition_oods_value = eval_from_partial_evals(
         composition_partial_sampled_values
             .iter()
             .flatten()
@@ -354,6 +356,8 @@ pub enum VerificationError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use num_traits::Zero;
 
     use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -455,6 +459,17 @@ mod tests {
             _lookup_values: &LookupValues,
         ) {
             evaluation_accumulator.accumulate(qm31!(0, 0, 0, 1))
+        }
+
+        fn gkr_lookup_instance_configs(&self) -> Vec<crate::core::air::LookupInstanceConfig> {
+            vec![]
+        }
+
+        fn eval_at_point_iop_claims_by_n_variables(
+            &self,
+            multilinear_eval_claims_by_instance: &[Vec<SecureField>],
+        ) -> std::collections::BTreeMap<u32, Vec<SecureField>> {
+            BTreeMap::new()
         }
     }
 

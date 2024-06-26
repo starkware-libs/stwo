@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use itertools::{zip_eq, Itertools};
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -122,6 +124,30 @@ pub trait AirExt: Air {
                 });
         }
         component_traces
+    }
+
+    /// Maps multilinear eval claims that require verification via univariate means.
+    fn eval_at_point_iop_claims_by_n_variables(
+        &self,
+        multilinear_eval_claims_by_instance: &[Vec<SecureField>],
+    ) -> BTreeMap<u32, Vec<SecureField>> {
+        let mut remaining_claims = &multilinear_eval_claims_by_instance;
+        let mut iop_claims_by_n_vars = BTreeMap::<u32, Vec<SecureField>>::new();
+
+        for component in self.components() {
+            let n_lookups_instances = component.gkr_lookup_instance_configs().len();
+            let claims: &[Vec<SecureField>];
+            (claims, *remaining_claims) = remaining_claims.split_at(n_lookups_instances);
+
+            for (n_vars, claims) in component.eval_at_point_iop_claims_by_n_variables(claims) {
+                iop_claims_by_n_vars
+                    .entry(n_vars)
+                    .or_default()
+                    .extend(claims)
+            }
+        }
+
+        iop_claims_by_n_vars
     }
 }
 

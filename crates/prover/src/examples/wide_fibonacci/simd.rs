@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use tracing::{span, Level};
@@ -126,6 +128,17 @@ impl Component for SimdWideFibComponent {
             let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
             evaluation_accumulator.accumulate(numerator * denom_inverse);
         }
+    }
+
+    fn eval_at_point_iop_claims_by_n_variables(
+        &self,
+        multilinear_eval_claims_by_instance: &[Vec<SecureField>],
+    ) -> std::collections::BTreeMap<u32, Vec<SecureField>> {
+        BTreeMap::new()
+    }
+
+    fn gkr_lookup_instance_configs(&self) -> Vec<crate::core::air::LookupInstanceConfig> {
+        vec![]
     }
 }
 

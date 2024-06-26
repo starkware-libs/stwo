@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::ops::Div;
 
 use num_traits::One;
@@ -125,6 +126,17 @@ impl Component for FibonacciComponent {
                 &mask[0][..1].try_into().unwrap(),
             ),
         );
+    }
+
+    fn gkr_lookup_instance_configs(&self) -> Vec<crate::core::air::LookupInstanceConfig> {
+        vec![]
+    }
+
+    fn eval_at_point_iop_claims_by_n_variables(
+        &self,
+        multilinear_eval_claims_by_instance: &[Vec<SecureField>],
+    ) -> std::collections::BTreeMap<u32, Vec<SecureField>> {
+        BTreeMap::new()
     }
 }
 
