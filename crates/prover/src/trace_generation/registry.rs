@@ -101,7 +101,7 @@ mod tests {
         type Inputs = ComponentACpuInputs;
 
         fn write_trace(
-            &self,
+            _component_id: &str,
             _registry: &mut ComponentGenerationRegistry,
         ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
             unimplemented!("TestTraceGenerator::write_trace")
@@ -129,7 +129,7 @@ mod tests {
         type Inputs = ComponentASimdInputs;
 
         fn write_trace(
-            &self,
+            _component_id: &str,
             _registry: &mut ComponentGenerationRegistry,
         ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
             unimplemented!("TestTraceGenerator::write_trace")
