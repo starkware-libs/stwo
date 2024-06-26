@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, fs};
 use std::path::PathBuf;
 
 fn main() {
@@ -9,6 +9,11 @@ fn main() {
     if nvcc.is_ok() {
         let cuda_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap() + "/src/core/backend/gpu");
         let ptx_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap() + "/src/core/backend/gpu/ptx");
+
+        if !ptx_dir.exists() {
+            fs::create_dir_all(&ptx_dir).unwrap();
+        }
+        
         println!("cargo:rustc-env=PTX_DIR={}", ptx_dir.clone().to_str().unwrap()); // set env var for hard path
 
         let source_files = get_cuda_files(cuda_dir.clone().to_str().unwrap());
