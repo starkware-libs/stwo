@@ -3,6 +3,7 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use super::secure_column::SECURE_EXTENSION_DEGREE;
 use super::{ComplexConjugate, FieldExpOps};
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
@@ -33,12 +34,22 @@ impl QM31 {
         Self(CM31::from_m31(a, b), CM31::from_m31(c, d))
     }
 
-    pub fn from_m31_array(array: [M31; 4]) -> Self {
+    pub fn from_m31_array(array: [M31; SECURE_EXTENSION_DEGREE]) -> Self {
         Self::from_m31(array[0], array[1], array[2], array[3])
     }
 
-    pub fn to_m31_array(self) -> [M31; 4] {
+    pub fn to_m31_array(self) -> [M31; SECURE_EXTENSION_DEGREE] {
         [self.0 .0, self.0 .1, self.1 .0, self.1 .1]
+    }
+
+    /// Returns the combined value, given the values of its composing base field polynomials at that
+    /// point.
+    pub fn from_partial_evals(evals: [Self; SECURE_EXTENSION_DEGREE]) -> Self {
+        let mut res = evals[0];
+        res += evals[1] * Self::from_u32_unchecked(0, 1, 0, 0);
+        res += evals[2] * Self::from_u32_unchecked(0, 0, 1, 0);
+        res += evals[3] * Self::from_u32_unchecked(0, 0, 0, 1);
+        res
     }
 }
 

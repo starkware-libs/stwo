@@ -7,7 +7,7 @@ use super::backend::Backend;
 use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
-use super::poly::circle::{CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+use super::poly::circle::{CanonicCoset, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::poly::twiddles::TwiddleTree;
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::{ColumnVec, InteractionElements, LookupValues};
@@ -293,7 +293,7 @@ fn sampled_values_to_mask(
         })
         .collect_vec();
 
-    let composition_oods_value = SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(
+    let composition_oods_value = SecureField::from_partial_evals(
         composition_values
             .iter()
             .flatten()
