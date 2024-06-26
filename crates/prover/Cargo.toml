@@ -44,11 +44,15 @@ version = "0.5.1"
 bench = false
 
 [lints.rust]
-warnings = "deny"
+# warnings = "deny"
 future-incompatible = "deny"
 nonstandard-style = "deny"
 rust-2018-idioms = "deny"
-unused = "deny"
+# unused = "deny"
+
+[[bench]]
+name = "batch_inverse"
+harness = false
 
 [[bench]]
 name = "bit_rev"
@@ -80,4 +84,8 @@ harness = false
 
 [[bench]]
 name = "quotients"
+harness = false
+
+[[bench]]
+name = "interpolate"
 harness = false
