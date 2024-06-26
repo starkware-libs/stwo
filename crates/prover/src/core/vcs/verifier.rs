@@ -57,10 +57,13 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
         queried_values: ColumnVec<Vec<BaseField>>,
         decommitment: MerkleDecommitment<H>,
     ) -> Result<(), MerkleVerificationError> {
-        println!("Decom:");
-        println!("queries_per_log_size: {queries_per_log_size:#?}");
-        println!("queried_values: {queried_values:#?}");
-        println!("decommitment: {decommitment:#?}\n");
+        output_verification(
+            self.root,
+            &self.column_log_sizes,
+            &queries_per_log_size,
+            &queried_values,
+            &decommitment,
+        );
 
         let max_log_size = self.column_log_sizes.iter().max().copied().unwrap_or(0);
 
@@ -196,4 +199,57 @@ pub enum MerkleVerificationError {
     ColumnValuesTooShort,
     #[error("Root mismatch.")]
     RootMismatch,
+}
+
+fn output_verification<H: MerkleHasher>(
+    root: H::Hash,
+    column_log_sizes: &[u32],
+    queries_per_log_size: &BTreeMap<u32, Vec<usize>>,
+    queried_values: &ColumnVec<Vec<BaseField>>,
+    decommitment: &MerkleDecommitment<H>,
+) {
+    println!(
+        "
+        {{
+            let root = {root};
+            let column_log_sizes = array!{column_log_sizes:?};
+            let decommitment = MerkleDecommitment {{
+                hash_witness: array!
+                    [{}]
+                ,
+                column_witness: array!
+                    [{}]
+                ,
+            }};
+            let mut queries_per_log_size = Default::default();
+    ",
+        decommitment
+            .hash_witness
+            .iter()
+            .map(|x| format!("{x}"))
+            .join(", "),
+        decommitment
+            .column_witness
+            .iter()
+            .map(|x| format!("{x}"))
+            .join(", "),
+    );
+    for (k, v) in queries_per_log_size {
+        println!(
+            "        queries_per_log_size.insert({k}, NullableTrait::new(array!{v:?}.span()));"
+        );
+    }
+    println!("let queried_values = array![");
+    for values in queried_values {
+        println!("array!{values:?}.span(),");
+    }
+    println!(
+        "
+            ];
+            MerkleVerifier {{ root, column_log_sizes, }}
+                .verify(queries_per_log_size, queried_values, decommitment,)
+                .expect('verification failed');
+        }}
+    "
+    );
 }
