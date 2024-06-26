@@ -21,7 +21,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, SecureCirclePoly};
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{BASE_TRACE, INTERACTION_TRACE};
 use crate::core::utils::{
@@ -185,10 +185,9 @@ impl WideFibComponent {
 
         #[allow(clippy::needless_range_loop)]
         for i in 0..trace_eval_domain.size() {
-            let value =
-                SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
-                    trace_evals[INTERACTION_TRACE][j][i].into()
-                }));
+            let value = SecureField::from_m31_array(std::array::from_fn(|j| {
+                trace_evals[INTERACTION_TRACE][j][i]
+            }));
             first_point_numerators[i] = accum.random_coeff_powers[self.n_columns() - 1]
                 * ((value
                     * shifted_secure_combination(
@@ -253,19 +252,17 @@ impl WideFibComponent {
 
         #[allow(clippy::needless_range_loop)]
         for i in 0..trace_eval_domain.size() {
-            let value =
-                SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
-                    trace_evals[INTERACTION_TRACE][j][i].into()
-                }));
+            let value = SecureField::from_m31_array(std::array::from_fn(|j| {
+                trace_evals[INTERACTION_TRACE][j][i]
+            }));
             let prev_index = previous_bit_reversed_circle_domain_index(
                 i,
                 zero_domain.log_size,
                 trace_eval_domain.log_size(),
             );
-            let prev_value =
-                SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|j| {
-                    trace_evals[INTERACTION_TRACE][j][prev_index].into()
-                }));
+            let prev_value = SecureField::from_m31_array(std::array::from_fn(|j| {
+                trace_evals[INTERACTION_TRACE][j][prev_index]
+            }));
             numerators[i] = accum.random_coeff_powers[self.n_columns()]
                 * ((value
                     * shifted_secure_combination(
