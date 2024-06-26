@@ -14,6 +14,7 @@ use super::quotients::{fri_answers, PointSample};
 use super::utils::TreeVec;
 use super::CommitmentSchemeProof;
 use crate::core::channel::Channel;
+use crate::core::lookups::gkr_verifier::GkrArtifact;
 use crate::core::prover::VerificationError;
 use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
@@ -61,6 +62,8 @@ impl CommitmentSchemeVerifier {
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
         proof: CommitmentSchemeProof,
         channel: &mut ProofChannel,
+        gkr_artifact: GkrArtifact,
+        gkr_random_coeff: SecureField,
     ) -> Result<(), VerificationError> {
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let random_coeff = channel.draw_felt();

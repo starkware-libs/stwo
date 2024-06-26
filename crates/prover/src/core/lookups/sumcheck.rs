@@ -186,7 +186,7 @@ pub struct SumcheckProof {
 pub const MAX_DEGREE: usize = 3;
 
 /// Sum-check protocol verification error.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum SumcheckError {
     #[error("degree of the polynomial in round {round} is too high")]
     DegreeInvalid { round: RoundIndex },

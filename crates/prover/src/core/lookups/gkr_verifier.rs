@@ -149,6 +149,7 @@ pub fn partially_verify_batch(
 }
 
 /// Batch GKR proof.
+#[derive(Debug, Clone)]
 pub struct GkrBatchProof {
     /// Sum-check proof for each layer.
     pub sumcheck_proofs: Vec<SumcheckProof>,
@@ -245,7 +246,7 @@ impl GkrMask {
 }
 
 /// Error encountered during GKR protocol verification.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum GkrError {
     /// The proof is malformed.
     #[error("proof data is invalid")]

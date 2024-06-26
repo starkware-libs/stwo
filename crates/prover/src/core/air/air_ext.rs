@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use itertools::{zip_eq, Itertools};
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -10,6 +12,7 @@ use crate::core::poly::circle::SecureCirclePoly;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::{ColumnVec, ComponentVec, InteractionElements, LookupValues};
+use crate::examples::xor::multilinear_eval_at_point::BatchMultilinearEvalIopVerfier;
 
 pub trait AirExt: Air {
     fn composition_log_degree_bound(&self) -> u32 {
@@ -56,6 +59,7 @@ pub trait AirExt: Air {
         random_coeff: SecureField,
         interaction_elements: &InteractionElements,
         lookup_values: &LookupValues,
+        eval_at_point_verifier: BatchMultilinearEvalIopVerfier,
     ) -> SecureField {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         zip_eq(self.components(), &mask_values.0).for_each(|(component, mask)| {
@@ -67,8 +71,165 @@ pub trait AirExt: Air {
                 lookup_values,
             )
         });
+
         evaluation_accumulator.finalize()
     }
+
+    /// Maps multilinear eval claims that require verification via univariate means.
+    fn eval_at_point_iop_claims_by_n_variables(
+        &self,
+        multilinear_eval_claims_by_instance: &[Vec<SecureField>],
+    ) -> BTreeMap<u32, Vec<SecureField>> {
+        let mut remaining_claims = &multilinear_eval_claims_by_instance;
+        let mut iop_claims_by_n_vars = BTreeMap::<u32, Vec<SecureField>>::new();
+
+        for component in self.components() {
+            let n_lookups_instances = component.gkr_lookup_instance_configs().len();
+            let claims: &[Vec<SecureField>];
+            (claims, *remaining_claims) = remaining_claims.split_at(n_lookups_instances);
+
+            for (n_vars, claims) in component.eval_at_point_iop_claims_by_n_variables(claims) {
+                iop_claims_by_n_vars
+                    .entry(n_vars)
+                    .or_default()
+                    .extend(claims)
+            }
+        }
+
+        iop_claims_by_n_vars
+    }
+
+    // fn univariate_inner_product_claim_by_log_size(
+    //     &self,
+    //     gkr_artifact: &GkrArtifact,
+    //     gkr_composition_random_coeff: SecureField,
+    // ) -> BTreeMap<u32, SecureField> {
+    //     let mut gkr_claims_to_verify_by_instance =
+    // gkr_artifact.claims_to_verify_by_instance.iter();     let mut gkr_n_variables_by_instance
+    // = gkr_artifact.n_variables_by_instance.iter();     let mut claims_by_log_size =
+    // BTreeMap::<u32, Vec<SecureField>>::new();
+
+    //     for component in self.components() {
+    //         for lookup_config in component.lookup_configs() {
+    //             let log_size = *gkr_n_variables_by_instance.next().unwrap() as u32;
+    //             let instance_claim = gkr_claims_to_verify_by_instance.next().unwrap();
+
+    //             // Only include claims that need to be checked via univariate IOP.
+    //             // Claims that can be checked with succinct multilinear polynomials are omitted.
+    //             match (lookup_config.evaluator, &**instance_claim) {
+    //                 (LookupEvaluator::GrandProduct(ColumnEvaluator::Univariate(_)), &[claim])
+    //                 | (
+    //                     LookupEvaluator::LogUp {
+    //                         numerator: ColumnEvaluator::Univariate(_),
+    //                         denominator: ColumnEvaluator::Multilinear(_),
+    //                     },
+    //                     &[claim, _],
+    //                 )
+    //                 | (
+    //                     LookupEvaluator::LogUp {
+    //                         numerator: ColumnEvaluator::Multilinear(_),
+    //                         denominator: ColumnEvaluator::Univariate(_),
+    //                     },
+    //                     &[_, claim],
+    //                 ) => claims_by_log_size.entry(log_size).or_default().push(claim),
+
+    //                 (
+    //                     LookupEvaluator::LogUp {
+    //                         numerator: ColumnEvaluator::Univariate(_),
+    //                         denominator: ColumnEvaluator::Multilinear(_),
+    //                     },
+    //                     &[numerator_claim, denominator_claim],
+    //                 ) => claims_by_log_size
+    //                     .entry(log_size)
+    //                     .or_default()
+    //                     .append(&mut vec![numerator_claim, denominator_claim]),
+    //                 _ => {}
+    //             }
+    //         }
+    //     }
+
+    //     // Perform a random linear combination of claims for each size.
+    //     let inner_prod_claim_by_log_size = claims_by_log_size
+    //         .into_iter()
+    //         .map(|(log_size, claims)| {
+    //             (log_size, horner_eval(&claims, gkr_composition_random_coeff))
+    //         })
+    //         .collect();
+
+    //     inner_prod_claim_by_log_size
+    // }
+
+    // fn verify_succinct_multilinear_gkr_layer_claims(
+    //     &self,
+    //     point: CirclePoint<SecureField>,
+    //     interaction_elements: &InteractionElements,
+    //     mask_values: &ComponentVec<Vec<SecureField>>,
+    //     gkr_artifact: &GkrArtifact,
+    //     gkr_composition_random_coeff: SecureField,
+    // ) -> Result<(), ()> {
+    //     let gkr_r = gkr_artifact.ood_point;
+    //     let mut gkr_claims_to_verify_by_instance =
+    // gkr_artifact.claims_to_verify_by_instance.iter();     let mut
+    // univariate_ood_evals_by_log_size = BTreeMap::new();
+
+    //     zip_eq(self.components(), &mask_values.0).for_each(|(component, mask)| {
+    //         for lookup_config in component.lookup_configs() {
+    //             let claim = gkr_claims_to_verify_by_instance.next().unwrap();
+
+    //             match (&lookup_config.evaluator, &**claim) {
+    //                 (LookupEvaluator::GrandProduct(col_evaluator), &[claimed_eval]) => {
+    //                     let expected_eval = match col_evaluator {
+    //                         ColumnEvaluator::Univariate(poly) => {
+    //                             let eval = poly.eval(interaction_elements, mask);
+    //                             univariate_ood_evals.push(eval);
+    //                             eval
+    //                         }
+    //                         ColumnEvaluator::Multilinear(poly) => {
+    //                             poly.eval(interaction_elements, &gkr_r)
+    //                         }
+    //                     };
+
+    //                     // TODO: Error here not panic.
+    //                     assert_eq!(claimed_eval, expected_eval);
+    //                 }
+    //                 (
+    //                     LookupEvaluator::LogUp {
+    //                         numerator,
+    //                         denominator,
+    //                     },
+    //                     &[claimed_numerator_eval, claimed_denominator_eval],
+    //                 ) => {
+    //                     let expected_numerator_eval = match numerator {
+    //                         ColumnEvaluator::Univariate(poly) => {
+    //                             let eval = poly.eval(interaction_elements, mask);
+    //                             univariate_ood_evals.push(eval);
+    //                             eval
+    //                         }
+    //                         ColumnEvaluator::Multilinear(poly) => {
+    //                             poly.eval(interaction_elements, &gkr_r)
+    //                         }
+    //                     };
+
+    //                     let expected_denominator_eval = match denominator {
+    //                         ColumnEvaluator::Univariate(poly) => {
+    //                             let eval = poly.eval(interaction_elements, mask);
+    //                             univariate_ood_evals.push(eval);
+    //                             eval
+    //                         }
+    //                         ColumnEvaluator::Multilinear(poly) => {
+    //                             poly.eval(interaction_elements, &gkr_r)
+    //                         }
+    //                     };
+
+    //                     // TODO: Error here not panic.
+    //                     assert_eq!(claimed_numerator_eval, expected_numerator_eval);
+    //                     assert_eq!(claimed_denominator_eval, expected_denominator_eval);
+    //                 }
+    //             }
+    //         }
+    //     });
+    //     Ok(())
+    // }
 
     fn column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
         let mut trace_tree = vec![];

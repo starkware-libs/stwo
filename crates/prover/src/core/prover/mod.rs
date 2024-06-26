@@ -1,17 +1,21 @@
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use thiserror::Error;
 use tracing::{span, Level};
 
-use super::air::{AirProver, AirTraceVerifier, AirTraceWriter};
+use super::air::{AirProver, AirTraceVerifier, AirTraceWriter, LookupEvaluator, LookupVariant};
 use super::backend::Backend;
 use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
+use super::lookups::gkr_verifier::{
+    partially_verify_batch, Gate, GkrArtifact, GkrBatchProof, GkrError,
+};
 use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::poly::circle::{CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::poly::twiddles::TwiddleTree;
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::{ColumnVec, InteractionElements, LookupValues};
-use crate::core::air::{Air, AirExt, AirProverExt};
+use crate::core::air::{Air, AirExt, AirProverExt, LookupInstanceConfig};
 use crate::core::backend::CpuBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
@@ -26,6 +30,7 @@ use crate::core::vcs::hasher::Hasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::verifier::MerkleVerificationError;
 use crate::core::ComponentVec;
+use crate::examples::xor::multilinear_eval_at_point::BatchMultilinearEvalIopVerfier;
 
 type Channel = Blake2sChannel;
 type ChannelHasher = Blake2sHasher;
@@ -40,6 +45,7 @@ pub const N_QUERIES: usize = 3;
 pub struct StarkProof {
     pub commitments: TreeVec<<ChannelHasher as Hasher>::Hash>,
     pub lookup_values: LookupValues,
+    pub gkr_proof: GkrBatchProof,
     pub commitment_scheme_proof: CommitmentSchemeProof,
 }
 
@@ -56,7 +62,16 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     channel: &mut Channel,
     twiddles: &TwiddleTree<B>,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-) -> Result<(CommitmentSchemeProver<B>, InteractionElements), ProvingError> {
+) -> Result<
+    (
+        CommitmentSchemeProver<B>,
+        InteractionElements,
+        GkrBatchProof,
+        GkrArtifact,
+        SecureField,
+    ),
+    ProvingError,
+> {
     let span = span!(Level::INFO, "Trace interpolation").entered();
     // TODO(AlonH): Remove clone.
     let trace_polys = trace
@@ -72,20 +87,31 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     span.exit();
 
     let interaction_elements = air.interaction_elements(channel);
-    let interaction_trace_polys = air.interact(&trace, &interaction_elements);
+    let (interaction_trace_polys, gkr_proof, gkr_artifact, gkr_random_coeff) =
+        air.interact(channel, &trace, &interaction_elements);
     if !interaction_trace_polys.is_empty() {
         commitment_scheme.commit(interaction_trace_polys, channel, twiddles);
     }
 
-    Ok((commitment_scheme, interaction_elements))
+    Ok((
+        commitment_scheme,
+        interaction_elements,
+        gkr_proof,
+        gkr_artifact,
+        gkr_random_coeff,
+    ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     air: &impl AirProver<B>,
     channel: &mut Channel,
     interaction_elements: &InteractionElements,
     twiddles: &TwiddleTree<B>,
     commitment_scheme: &mut CommitmentSchemeProver<B>,
+    gkr_proof: GkrBatchProof,
+    _gkr_artifact: GkrArtifact,
+    _gkr_random_coeff: SecureField,
 ) -> Result<StarkProof, ProvingError> {
     // Evaluate and commit on composition polynomial.
     let random_coeff = channel.draw_felt();
@@ -138,6 +164,7 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     Ok(StarkProof {
         commitments: commitment_scheme.roots(),
         lookup_values,
+        gkr_proof,
         commitment_scheme_proof,
     })
 }
@@ -175,7 +202,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     );
     span.exit();
 
-    let (mut commitment_scheme, interaction_elements) =
+    let (mut commitment_scheme, interaction_elements, gkr_proof, gkr_artifact, gkr_random_coeff) =
         evaluate_and_commit_on_trace(air, channel, &twiddles, trace)?;
 
     generate_proof(
@@ -184,6 +211,9 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
         &interaction_elements,
         &twiddles,
         &mut commitment_scheme,
+        gkr_proof,
+        gkr_artifact,
+        gkr_random_coeff,
     )
 }
 
@@ -198,11 +228,22 @@ pub fn verify(
     commitment_scheme.commit(proof.commitments[0], &column_log_sizes[0], channel);
     let interaction_elements = air.interaction_elements(channel);
 
+    verify_lookup_outputs(air, &proof.gkr_proof.output_claims_by_instance);
+
+    let gkr_artifact = partially_verify_batch(gkr_gates(air), &proof.gkr_proof, channel)?;
+
+    let gkr_composition_random_coeff = channel.draw_felt();
+
     if air.n_interaction_phases() == 2 {
         commitment_scheme.commit(proof.commitments[1], &column_log_sizes[1], channel);
     }
 
-    let random_coeff = channel.draw_felt();
+    let eval_at_point_iop_claims_by_n_vars =
+        air.eval_at_point_iop_claims_by_n_variables(&gkr_artifact.claims_to_verify_by_instance);
+    let eval_at_point_iop_verifier =
+        BatchMultilinearEvalIopVerfier::new(channel, eval_at_point_iop_claims_by_n_vars);
+
+    let constraint_composition_random_coeff = channel.draw_felt();
 
     // Read composition polynomial commitment.
     commitment_scheme.commit(
@@ -233,15 +274,77 @@ pub fn verify(
         != air.eval_composition_polynomial_at_point(
             oods_point,
             &trace_oods_values,
-            random_coeff,
+            constraint_composition_random_coeff,
             &interaction_elements,
             &proof.lookup_values,
+            eval_at_point_verifier,
         )
     {
         return Err(VerificationError::OodsNotMatching);
     }
 
-    commitment_scheme.verify_values(sample_points, proof.commitment_scheme_proof, channel)
+    commitment_scheme.verify_values(
+        sample_points,
+        proof.commitment_scheme_proof,
+        channel,
+        &gkr_artifact,
+        gkr_random_coeff,
+    )
+}
+
+fn gkr_gates(air: &impl Air) -> Vec<Gate> {
+    let mut gates = Vec::new();
+
+    for component in air.components() {
+        for lookup_config in component.gkr_lookup_instance_configs() {
+            gates.push(lookup_config.variant);
+        }
+    }
+
+    gates
+}
+
+fn verify_lookup_outputs(air: &impl Air, gkr_outputs_by_instance: &[Vec<SecureField>]) {
+    let mut gkr_outputs_by_instance = gkr_outputs_by_instance.iter();
+
+    let mut logup_acc = SecureField::zero();
+    let mut grand_product_acc = SecureField::one();
+
+    for component in air.components() {
+        for lookup_config in component.gkr_lookup_instance_configs() {
+            // TODO: Error instead of panic here.
+            let lookup_output = gkr_outputs_by_instance.next().unwrap();
+
+            match (lookup_config.variant, &**lookup_output) {
+                (Gate::LogUp, &[numerator, denominator]) => {
+                    // TODO: Completeness problem? Error instead of panic here.
+                    assert!(!denominator.is_zero());
+                    let quotient = numerator / denominator;
+
+                    if lookup_config.is_lookup_table {
+                        logup_acc += quotient;
+                    } else {
+                        logup_acc -= quotient;
+                    }
+                }
+                (Gate::GrandProduct, &[product]) => {
+                    if lookup_config.is_lookup_table {
+                        grand_product_acc *= product;
+                    } else {
+                        // TODO: Panic here bad.
+                        assert!(!product.is_zero());
+                        grand_product_acc /= product;
+                    }
+                }
+                // TODO: Error instead of panic here.
+                _ => panic!(),
+            }
+        }
+    }
+
+    // TODO: Error instead of panic here.
+    assert!(logup_acc.is_zero(), "logup outputs invalid");
+    assert!(grand_product_acc.is_one(), "grand product invalid");
 }
 
 /// Structures the tree-wise sampled values into component-wise OODS values and a composition
@@ -333,6 +436,8 @@ pub enum VerificationError {
     #[error(transparent)]
     Fri(#[from] FriVerificationError),
     #[error(transparent)]
+    Gkr(#[from] GkrError),
+    #[error(transparent)]
     ProofOfWork(#[from] ProofOfWorkVerificationError),
 }
 
@@ -351,6 +456,7 @@ mod tests {
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::lookups::gkr_verifier::{GkrArtifact, GkrBatchProof};
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::{
         CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, SecureEvaluation,
@@ -376,15 +482,25 @@ mod tests {
         fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
             InteractionElements::default()
         }
+
+        // fn gkr_instance_types(&self) -> Vec<crate::core::lookups::gkr_verifier::Gate> {
+        //     vec![]
+        // }
     }
 
     impl AirTraceWriter<CpuBackend> for TestAir<TestComponent> {
         fn interact(
             &self,
+            _channel: &mut Blake2sChannel,
             _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
             _elements: &InteractionElements,
-        ) -> Vec<CirclePoly<CpuBackend>> {
-            vec![]
+        ) -> (
+            Vec<CirclePoly<CpuBackend>>,
+            GkrBatchProof,
+            GkrArtifact,
+            SecureField,
+        ) {
+            todo!()
         }
 
         fn to_air_prover(&self) -> &impl AirProver<CpuBackend> {
@@ -440,6 +556,26 @@ mod tests {
             _lookup_values: &LookupValues,
         ) {
             evaluation_accumulator.accumulate(qm31!(0, 0, 0, 1))
+        }
+
+        fn verify_succinct_multilinear_gkr_layer_claims(
+            &self,
+            point: &[SecureField],
+            interaction_elements: &InteractionElements,
+            gkr_claims_to_verify_by_instance: &[Vec<SecureField>],
+        ) -> bool {
+            todo!()
+        }
+
+        fn eval_at_point_iop_claims_by_n_variables(
+            &self,
+            multilinear_eval_claims_by_instance: &[Vec<SecureField>],
+        ) -> std::collections::BTreeMap<u32, SecureField> {
+            todo!()
+        }
+
+        fn gkr_lookup_instance_configs(&self) -> Vec<LookupInstanceConfig> {
+            todo!()
         }
     }
 
