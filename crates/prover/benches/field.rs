@@ -2,11 +2,12 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use num_traits::One;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use stwo_prover::core::backend::gpu::m31::PackedBaseField as GpuPackedBaseField;
+use stwo_prover::core::backend::gpu::m31::PackedM31 as GpuM31;
+use stwo_prover::core::backend::gpu::qm31::PackedQM31 as GpuQM31;
 use stwo_prover::core::backend::simd::m31::{PackedBaseField, N_LANES};
 use stwo_prover::core::fields::cm31::CM31;
 use stwo_prover::core::fields::m31::{BaseField, M31};
-use stwo_prover::core::fields::qm31::SecureField;
+use stwo_prover::core::fields::qm31::{SecureField, QM31};
 
 pub const N_ELEMENTS: usize = 1 << 16;
 pub const N_STATE_ELEMENTS: usize = 8;
@@ -143,16 +144,18 @@ pub fn simd_m31_operations_bench(c: &mut Criterion) {
     });
 }
 
-pub fn gpu_packed_operations_bench(c: &mut Criterion) {
-    const OVER_ESTIMATION: usize = N_ELEMENTS * N_STATE_ELEMENTS * N_LANES;
-    fn setup(size: usize) -> (GpuPackedBaseField, GpuPackedBaseField) {
+pub fn gpu_m31_operations_bench(c: &mut Criterion) {
+    const FLAT_ELEMENT_VECTOR_SIZE: usize = N_ELEMENTS / N_LANES / 128; 
+    const FLAT_STATE_VECTOR_SIZE: usize = N_LANES * 128; 
+
+    fn setup(size: usize) -> (GpuM31, GpuM31) {
         let mut rng: SmallRng = SmallRng::seed_from_u64(0);
         let (element_values, state_values) =
             std::iter::repeat_with(|| (rng.gen::<M31>(), M31::one()))
                 .take(size)
                 .unzip();
-        let elements: GpuPackedBaseField = GpuPackedBaseField::from_array(element_values);
-        let states = GpuPackedBaseField::from_array(state_values);
+        let elements = GpuM31::from_array(element_values);
+        let states = GpuM31::from_array(state_values);
         (elements, states)
     }
     // TODO:: Convert to CUDA function with respective thread blocks for 2d array flattened
@@ -194,19 +197,22 @@ pub fn gpu_packed_operations_bench(c: &mut Criterion) {
     //     )
     // });
 
-    c.bench_function("mul_gpu_non_amortized", |b| {
-        let (elements, states) = setup(OVER_ESTIMATION);
+    // flatten 128 loops into state * 128 and elements / 128 
+    c.bench_function("mul_gpu_m31_non_amortized", |b| {
+        let (elements, states) = setup(FLAT_STATE_VECTOR_SIZE);
         b.iter(|| {
-            for _ in 0..128 {
+            for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
                 states.mul_assign_ref(&elements);
             }
+            
         })
     });
-    c.bench_function("mul_gpu_amortized", |b| {
+
+    c.bench_function("mul_gpu_m31_amortized", |b| {
         b.iter_batched(
-            || setup(OVER_ESTIMATION),
+            || setup(FLAT_STATE_VECTOR_SIZE),
             |(elements, states)| {
-                for _ in 0..128 {
+                for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
                     states.mul_assign_ref(&elements);
                 }
             },
@@ -214,20 +220,21 @@ pub fn gpu_packed_operations_bench(c: &mut Criterion) {
         )
     });
 
-    c.bench_function("add_gpu_non_amortized", |b| {
-        let (elements, states) = setup(OVER_ESTIMATION);
+    c.bench_function("add_gpu_m31_non_amortized", |b| {
+        let (elements, states) = setup(FLAT_STATE_VECTOR_SIZE);
         b.iter(|| {
-            for _ in 0..128 {
+            for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
                 states.add_assign_ref(&elements);
             }
+            
         })
     });
 
-    c.bench_function("add_gpu_amortized", |b| {
+    c.bench_function("add_gpu_m31_amortized", |b| {
         b.iter_batched(
-            || setup(OVER_ESTIMATION),
+            || setup(FLAT_STATE_VECTOR_SIZE),
             |(elements, states)| {
-                for _ in 0..128 {
+                for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
                     states.add_assign_ref(&elements);
                 }
             },
@@ -235,20 +242,105 @@ pub fn gpu_packed_operations_bench(c: &mut Criterion) {
         )
     });
 
-    c.bench_function("sub_gpu_non_amortized", |b| {
-        let (elements, states) = setup(OVER_ESTIMATION);
+    c.bench_function("sub_gpu_m31_non_amortized", |b| {
+        let (elements, states) = setup(FLAT_STATE_VECTOR_SIZE);
         b.iter(|| {
-            for _ in 0..128 {
+            for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
                 states.sub_assign_ref(&elements);
             }
+            
         })
     });
 
-    c.bench_function("sub_gpu_amortized", |b| {
+    c.bench_function("sub_gpu_m31_amortized", |b| {
         b.iter_batched(
-            || setup(OVER_ESTIMATION),
+            || setup(FLAT_STATE_VECTOR_SIZE),
             |(elements, states)| {
-                for _ in 0..128 {
+                for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
+                    states.sub_assign_ref(&elements);
+                }
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+}
+
+
+pub fn gpu_qm31_operations_bench(c: &mut Criterion) {
+    const FLAT_ELEMENT_VECTOR_SIZE: usize = N_ELEMENTS / N_LANES / 128 / 4; 
+    const FLAT_STATE_VECTOR_SIZE: usize = N_LANES * 128 * 4; 
+
+    fn setup(size: usize) -> (GpuQM31, GpuQM31) {
+        let mut rng: SmallRng = SmallRng::seed_from_u64(0);
+        let (element_values, state_values) =
+            std::iter::repeat_with(|| (rng.gen::<QM31>(), QM31::one()))
+                .take(size)
+                .unzip();
+        let elements = GpuQM31::from_array(element_values);
+        let states = GpuQM31::from_array(state_values);
+        (elements, states)
+    }
+
+    // flatten 128 loops into state * 128 * 4 and elements / 128 / 4
+    c.bench_function("mul_gpu_qm31_non_amortized", |b| {
+        let (elements, states) = setup(FLAT_STATE_VECTOR_SIZE);
+        b.iter(|| {
+            for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
+                states.mul_assign_ref(&elements);
+            }
+            
+        })
+    });
+
+    c.bench_function("mul_gpu_qm31_amortized", |b| {
+        b.iter_batched(
+            || setup(FLAT_STATE_VECTOR_SIZE),
+            |(elements, states)| {
+                for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
+                    states.mul_assign_ref(&elements);
+                }
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    c.bench_function("add_gpu_qm31_non_amortized", |b| {
+        let (elements, states) = setup(FLAT_STATE_VECTOR_SIZE);
+        b.iter(|| {
+            for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
+                states.add_assign_ref(&elements);
+            }
+            
+        })
+    });
+
+    c.bench_function("add_gpu_qm31_amortized", |b| {
+        b.iter_batched(
+            || setup(FLAT_STATE_VECTOR_SIZE),
+            |(elements, states)| {
+                for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
+                    states.add_assign_ref(&elements);
+                }
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    c.bench_function("sub_gpu_qm31_non_amortized", |b| {
+        let (elements, states) = setup(FLAT_STATE_VECTOR_SIZE);
+        b.iter(|| {
+            for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
+                states.sub_assign_ref(&elements);
+            }
+            
+        })
+    });
+
+    c.bench_function("sub_gpu_qm31_amortized", |b| {
+        b.iter_batched(
+            || setup(FLAT_STATE_VECTOR_SIZE),
+            |(elements, states)| {
+                for _ in 0..FLAT_ELEMENT_VECTOR_SIZE {
                     states.sub_assign_ref(&elements);
                 }
             },
@@ -261,5 +353,5 @@ criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
     targets =  m31_operations_bench, cm31_operations_bench, qm31_operations_bench,
-        simd_m31_operations_bench,  gpu_packed_operations_bench);
+        simd_m31_operations_bench,  gpu_m31_operations_bench, gpu_qm31_operations_bench);
 criterion_main!(benches);

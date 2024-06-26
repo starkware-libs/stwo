@@ -20,10 +20,14 @@ tracing.workspace = true
 cudarc.workspace = true
 once_cell.workspace = true
 
+[build-dependencies]
+which = "^6.0.1"
+
 [dev-dependencies]
 aligned = "0.4.2"
 test-log = { version = "0.2.15", features = ["trace"] }
 tracing-subscriber = "0.3.18"
+
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies.criterion]
 features = ["html_reports"]
