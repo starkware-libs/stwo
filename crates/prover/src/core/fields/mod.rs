@@ -2,7 +2,7 @@ use std::fmt::{Debug, Display};
 use std::iter::{Product, Sum};
 use std::ops::{Mul, MulAssign, Neg};
 
-use num_traits::{NumAssign, NumAssignOps, NumOps, One};
+use num_traits::{NumAssign, NumAssignOps, NumOps, One, Zero};
 
 use super::backend::ColumnOps;
 
@@ -111,6 +111,8 @@ pub trait Field:
     + for<'a> Product<&'a Self>
     + Sum
     + for<'a> Sum<&'a Self>
+    + Zero
+    + One
 {
     fn double(&self) -> Self {
         (*self) + (*self)
