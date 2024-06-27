@@ -42,6 +42,7 @@ Thanks goes to these wonderful people:
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/alonh5"><img src="https://avatars.githubusercontent.com/u/91828241?v=4?s=100" width="100px;" alt="Alon Haramati"/><br /><sub><b>Alon Haramati</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=alonh5" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/ohad-starkware"><img src="https://avatars.githubusercontent.com/u/137686240?v=4?s=100" width="100px;" alt="Ohad"/><br /><sub><b>Ohad</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=ohad-starkware" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/alon-dotan-starkware"><img src="https://avatars.githubusercontent.com/u/54667168?v=4?s=100" width="100px;" alt="alon-dotan-starkware"/><br /><sub><b>alon-dotan-starkware</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=alon-dotan-starkware" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://www.chenweikeng.com/"><img src="https://avatars.githubusercontent.com/u/14937807?v=4?s=100" width="100px;" alt="Weikeng Chen"/><br /><sub><b>Weikeng Chen</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=weikengchen" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
