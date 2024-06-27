@@ -99,6 +99,15 @@
       "contributions": [
         "code"
       ]
+    },
+    {
+      "login": "roi-amaler-starkware",
+      "name": "roi-amaler-starkware",
+      "avatar_url": "https://avatars.githubusercontent.com/u/72684158?v=4",
+      "profile": "https://github.com/roi-amaler-starkware",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "contributorsPerLine": 7,
