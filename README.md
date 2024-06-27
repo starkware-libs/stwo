@@ -46,6 +46,7 @@ Thanks goes to these wonderful people:
     </tr>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/suiwater"><img src="https://avatars.githubusercontent.com/u/161927344?v=4?s=100" width="100px;" alt="water"/><br /><sub><b>water</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=suiwater" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/carlogf"><img src="https://avatars.githubusercontent.com/u/24361728?v=4?s=100" width="100px;" alt="carlogf"/><br /><sub><b>carlogf</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=carlogf" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
