@@ -66,7 +66,6 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
                 })
                 .collect();
         }
-        println!("B");
 
         if let Some(prev_layer) = prev_layer {
             assert_eq!(prev_layer.len(), 1 << (log_size + 1));
