@@ -1,6 +1,6 @@
-![STWO](resources/img/logo.png)
-
 <div align="center">
+
+![STWO](resources/img/logo.png)
 
 <a href="https://github.com/starkware-libs/stwo/actions/workflows/ci.yaml"><img alt="GitHub Workflow Status (with event)" src="https://img.shields.io/github/actions/workflow/status/starkware-libs/stwo/ci.yaml?style=for-the-badge" height=30></a>
 <a href="https://codecov.io/gh/starkware-libs/stwo" >
