@@ -61,7 +61,7 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     let trace_polys = trace
         .clone()
         .into_iter()
-        .map(|poly| poly.interpolate_with_twiddles(twiddles))
+        .map(|eval| eval.interpolate_with_twiddles(twiddles))
         .collect();
     span.exit();
 
@@ -71,17 +71,14 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     span.exit();
 
     let interaction_elements = air.interaction_elements(channel);
-    let interaction_traces = air.interact(&trace, &interaction_elements);
-    let interaction_trace_polys = interaction_traces
-        .0
-        .into_iter()
-        .flat_map(|trace| {
-            trace
-                .into_iter()
-                .map(|poly| poly.interpolate_with_twiddles(twiddles))
-        })
-        .collect_vec();
-    if !interaction_trace_polys.is_empty() {
+    let interaction_trace = air.interact(&trace, &interaction_elements);
+    if !interaction_trace.is_empty() {
+        let span = span!(Level::INFO, "Interaction trace interpolation").entered();
+        let interaction_trace_polys = interaction_trace
+            .into_iter()
+            .map(|eval| eval.interpolate_with_twiddles(twiddles))
+            .collect();
+        span.exit();
         commitment_scheme.commit(interaction_trace_polys, channel, twiddles);
     }
 
@@ -356,7 +353,7 @@ mod tests {
     use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{prove, ProvingError};
     use crate::core::test_utils::test_channel;
-    use crate::core::{ColumnVec, ComponentVec, InteractionElements};
+    use crate::core::{ColumnVec, InteractionElements};
     use crate::qm31;
 
     struct TestAir<C: ComponentProver<CpuBackend>> {
@@ -380,8 +377,8 @@ mod tests {
             &self,
             _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
             _elements: &InteractionElements,
-        ) -> ComponentVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
-            ComponentVec(vec![vec![]])
+        ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+            vec![]
         }
 
         fn to_air_prover(&self) -> &impl AirProver<CpuBackend> {
