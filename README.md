@@ -37,6 +37,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
   <tbody>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/spapinistarkware"><img src="https://avatars.githubusercontent.com/u/43779613?v=4?s=100" width="100px;" alt="Shahar Papini"/><br /><sub><b>Shahar Papini</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=spapinistarkware" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/shaharsamocha"><img src="https://avatars.githubusercontent.com/u/18914050?v=4?s=100" width="100px;" alt="shaharsamocha"/><br /><sub><b>shaharsamocha</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=shaharsamocha" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
