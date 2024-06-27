@@ -1,10 +1,11 @@
 use std::fmt;
 
 use blake2::{Blake2s256, Digest};
+use bytemuck::{Pod, Zeroable};
 
 // Wrapper for the blake2s hash type.
-#[repr(align(32))]
-#[derive(Clone, Copy, PartialEq, Default, Eq)]
+#[repr(C, align(32))]
+#[derive(Clone, Copy, PartialEq, Default, Eq, Pod, Zeroable)]
 pub struct Blake2sHash([u8; 32]);
 
 impl From<Blake2sHash> for Vec<u8> {
