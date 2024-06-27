@@ -12,6 +12,8 @@ use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, FieldExpOps};
+use crate::core::lookups::gkr_prover::Layer;
+use crate::core::lookups::mle::Mle;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -185,5 +187,20 @@ impl ComponentProver<CpuBackend> for FibonacciComponent {
                 accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
             }
         }
+    }
+
+    fn build_lookup_instances(
+        &self,
+        _trace: ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
+        _interaction_elements: &InteractionElements,
+    ) -> Vec<crate::core::lookups::gkr_prover::Layer<CpuBackend>> {
+        vec![]
+    }
+
+    fn lookup_multilinears_for_eval_at_point_iop(
+        &self,
+        _lookup_layers: Vec<Layer<CpuBackend>>,
+    ) -> Vec<Mle<CpuBackend, SecureField>> {
+        vec![]
     }
 }

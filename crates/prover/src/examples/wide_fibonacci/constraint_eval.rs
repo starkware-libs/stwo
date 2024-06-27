@@ -20,6 +20,8 @@ use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing}
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
+use crate::core::lookups::gkr_prover::Layer;
+use crate::core::lookups::mle::Mle;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{
     eval_poly_from_partial_evals, CanonicCoset, CircleDomain, CircleEvaluation,
@@ -362,6 +364,21 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
             ),
         ]);
         LookupValues::new(values)
+    }
+
+    fn build_lookup_instances(
+        &self,
+        _trace: ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
+        _interaction_elements: &InteractionElements,
+    ) -> Vec<crate::core::lookups::gkr_prover::Layer<CpuBackend>> {
+        vec![]
+    }
+
+    fn lookup_multilinears_for_eval_at_point_iop(
+        &self,
+        _lookup_layers: Vec<Layer<CpuBackend>>,
+    ) -> Vec<Mle<CpuBackend, SecureField>> {
+        vec![]
     }
 }
 

@@ -4,29 +4,37 @@ use std::iter::zip;
 use itertools::Itertools;
 
 use crate::core::air::Component;
+use crate::core::backend::MultilinearEvalAtPointIopOps;
 use crate::core::channel::Channel;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::point_vanishing;
 use crate::core::fields::m31::BaseField;
+use crate::core::poly::BitReversedOrder;
+use crate::examples::xor::CircleEvaluation;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use crate::core::lookups::mle::Mle;
 use crate::core::lookups::utils::horner_eval;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{eval_poly_from_partial_evals, CanonicCoset};
+use crate::core::ColumnVec;
 
 pub struct BatchMultilinearEvalIopVerfier {
     eval_claims_by_n_variables: BTreeMap<u32, Vec<SecureField>>,
     aggregation_coeff: SecureField,
+    _multilinear_eval_point: Vec<SecureField>,
 }
 
 impl BatchMultilinearEvalIopVerfier {
     pub fn new(
         channel: &mut impl Channel,
         eval_claims_by_n_variables: BTreeMap<u32, Vec<SecureField>>,
+        multilinear_eval_point: Vec<SecureField>,
     ) -> Self {
         Self {
             eval_claims_by_n_variables,
             aggregation_coeff: channel.draw_felt(),
+            _multilinear_eval_point: multilinear_eval_point,
         }
     }
 
@@ -96,26 +104,8 @@ impl Component for BatchMultilinearEvalIopVerfier {
     ) -> crate::core::pcs::TreeVec<
         crate::core::ColumnVec<Vec<crate::core::circle::CirclePoint<SecureField>>>,
     > {
-        let mut interaction_trace_mask_points = Vec::new();
-
-        for &n_variables in self.eval_claims_by_n_variables.keys() {
-            let trace_step = CanonicCoset::new(n_variables).step().into_ef();
-
-            let eq_evals_col_mask_points = (0..n_variables)
-                .map(|i| point + trace_step.repeated_double(i))
-                .collect_vec();
-            let g_mask_points = [point, -point];
-            let h_mask_points = vec![];
-
-            interaction_trace_mask_points
-                .extend([&eq_evals_col_mask_points; SECURE_EXTENSION_DEGREE].map(|v| v.to_vec()));
-            interaction_trace_mask_points
-                .extend([&g_mask_points; SECURE_EXTENSION_DEGREE].map(|v| v.to_vec()));
-            interaction_trace_mask_points
-                .extend([&h_mask_points; SECURE_EXTENSION_DEGREE].map(|v| v.to_vec()));
-        }
-
-        TreeVec::new(vec![vec![], interaction_trace_mask_points])
+        let multilinear_n_variables = self.eval_claims_by_n_variables.keys().copied().collect();
+        TreeVec::new(vec![vec![], interaction_mask_points(point, multilinear_n_variables)])
     }
 
     fn interaction_element_ids(&self) -> Vec<String> {
@@ -186,4 +176,65 @@ impl Component for BatchMultilinearEvalIopVerfier {
     ) -> BTreeMap<u32, Vec<SecureField>> {
         BTreeMap::new()
     }
+}
+
+pub struct BatchMultilinearEvalIopProver<B: MultilinearEvalAtPointIopOps> {
+    pub aggregation_coeff: SecureField,
+    pub poly_by_n_variables: BTreeMap<u32, Mle<B, SecureField>>,
+    pub multilinear_eval_point: Vec<SecureField>
+}
+
+impl<B: MultilinearEvalAtPointIopOps> BatchMultilinearEvalIopProver<B> {
+    pub fn build(channel: &mut impl Channel, polynomials: Vec<Mle<B, SecureField>>, multilinear_eval_point: Vec<SecureField>) -> Self {
+        let mut polys_by_n_variables = BTreeMap::<u32, Vec<Mle<B, SecureField>>>::new();
+
+        // Group by number of variables.
+        for poly in polynomials {
+            polys_by_n_variables.entry(poly.n_variables() as u32).or_default().push(poly);
+        }
+
+        let aggregation_coeff = channel.draw_felt();
+        let poly_by_n_variables = polys_by_n_variables.into_iter().map(|(n_variables, polys)| {
+            let columns = polys.into_iter().map(Mle::into_evals).collect();
+            let mle_agg = Mle::new(B::random_linear_combination(columns, aggregation_coeff));
+            (n_variables, mle_agg)
+        }).collect();
+
+        Self { aggregation_coeff, poly_by_n_variables, multilinear_eval_point }
+    }
+
+    pub fn write_interaction_trace(&self) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> {
+        B::write_interaction_trace(self)
+    }
+
+    pub fn interaction_mask_points(&self, point: CirclePoint<SecureField>) -> Vec<Vec<CirclePoint<SecureField>>> {
+        let multilinear_n_variables = self.poly_by_n_variables.keys().copied().collect();
+        interaction_mask_points(point, multilinear_n_variables)
+    }
+}
+
+fn interaction_mask_points(point: CirclePoint<SecureField>, multilinear_n_variables: Vec<u32>) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
+    let mut mask_points = Vec::new();
+
+        for n_variables in multilinear_n_variables {
+            let trace_step = CanonicCoset::new(n_variables).step().into_ef();
+
+            // For checking eq evals
+            let mut eq_evals_col_mask_points = (0..n_variables)
+                .map(|i| point + trace_step.repeated_double(i))
+                .collect_vec();
+            // For checking univariate sumcheck
+            eq_evals_col_mask_points.push(point);
+            let g_mask_points = [point, -point];
+            let h_mask_points = vec![point];
+
+            mask_points
+                .extend([&eq_evals_col_mask_points; SECURE_EXTENSION_DEGREE].map(|v| v.to_vec()));
+            mask_points
+                .extend([&g_mask_points; SECURE_EXTENSION_DEGREE].map(|v| v.to_vec()));
+            mask_points
+                .extend([&h_mask_points; SECURE_EXTENSION_DEGREE].map(|v| v.to_vec()));
+        }
+
+        mask_points
 }

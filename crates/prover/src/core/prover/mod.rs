@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::iter::zip;
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
@@ -9,7 +10,8 @@ use super::air::{AirProver, AirTraceVerifier, AirTraceWriter};
 use super::backend::Backend;
 use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
-use super::lookups::gkr_verifier::GkrBatchProof;
+use super::lookups::gkr_prover::prove_batch;
+use super::lookups::gkr_verifier::{partially_verify_batch, GkrBatchProof};
 use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::poly::circle::{eval_poly_from_partial_evals, CanonicCoset, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::poly::twiddles::TwiddleTree;
@@ -31,6 +33,9 @@ use crate::core::vcs::hasher::Hasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::verifier::MerkleVerificationError;
 use crate::core::ComponentVec;
+use crate::examples::xor::multilinear_eval_at_point::{
+    BatchMultilinearEvalIopProver, BatchMultilinearEvalIopVerfier,
+};
 
 type Channel = Blake2sChannel;
 type ChannelHasher = Blake2sHasher;
@@ -48,7 +53,7 @@ pub const INTERACTION_TRACE: usize = 1;
 pub struct StarkProof {
     pub commitments: TreeVec<<ChannelHasher as Hasher>::Hash>,
     pub lookup_values: LookupValues,
-    pub gkr_proof: GkrBatchProof,
+    pub gkr_proof: Option<GkrBatchProof>,
     pub commitment_scheme_proof: CommitmentSchemeProof,
 }
 
@@ -60,12 +65,21 @@ pub struct AdditionalProofData {
     pub oods_quotients: Vec<CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>>,
 }
 
+#[allow(clippy::type_complexity)]
 pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     air: &impl AirTraceWriter<B>,
     channel: &mut Channel,
     twiddles: &TwiddleTree<B>,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-) -> Result<(CommitmentSchemeProver<B>, InteractionElements), ProvingError> {
+) -> Result<
+    (
+        CommitmentSchemeProver<B>,
+        InteractionElements,
+        Option<GkrBatchProof>,
+        Option<BatchMultilinearEvalIopProver<B>>,
+    ),
+    ProvingError,
+> {
     let span = span!(Level::INFO, "Trace interpolation").entered();
     // TODO(AlonH): Remove clone.
     let trace_polys = trace
@@ -81,7 +95,54 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     span.exit();
 
     let interaction_elements = air.interaction_elements(channel);
-    let interaction_trace = air.interact(&trace, &interaction_elements);
+
+    let prover_components = air.to_air_prover().prover_components();
+    let mut trace_iter = trace.iter();
+    let mut lookup_instances_by_component = Vec::new();
+
+    for component in &prover_components {
+        let n_base_trace_columns = component.trace_log_degree_bounds()[BASE_TRACE].len();
+        let trace = (&mut trace_iter).take(n_base_trace_columns).collect();
+        let component_instances = component.build_lookup_instances(trace, &interaction_elements);
+        lookup_instances_by_component.push(component_instances);
+    }
+
+    let lookup_instances = lookup_instances_by_component
+        .iter()
+        .flat_map(|v| v.clone())
+        .collect_vec();
+
+    let mut gkr_proof = None;
+    let mut multilinear_eval_at_point_prover = None;
+
+    if !lookup_instances.is_empty() {
+        let (_gkr_proof, gkr_artifact) = prove_batch(channel, lookup_instances);
+        gkr_proof = Some(_gkr_proof);
+
+        let mut polynomials_for_eval_at_point_iop = Vec::new();
+
+        for (component, lookup_instances) in zip(prover_components, lookup_instances_by_component) {
+            let mles = component.lookup_multilinears_for_eval_at_point_iop(lookup_instances);
+            polynomials_for_eval_at_point_iop.extend(mles);
+        }
+
+        multilinear_eval_at_point_prover = Some(BatchMultilinearEvalIopProver::build(
+            channel,
+            polynomials_for_eval_at_point_iop,
+            gkr_artifact.ood_point,
+        ));
+    }
+
+    let mut interaction_trace = air.interact(&trace, &interaction_elements);
+
+    // Add trace columns for multilinear eval at point IOP
+    if let Some(multilinear_eval_at_point_prover) = multilinear_eval_at_point_prover.as_ref() {
+        println!("interaction_trace len: {}", interaction_trace.len());
+        let eval_at_point_iop_columns = multilinear_eval_at_point_prover.write_interaction_trace();
+        println!("yooo: {}", eval_at_point_iop_columns.len());
+        interaction_trace.extend(eval_at_point_iop_columns);
+    }
+
     if !interaction_trace.is_empty() {
         let span = span!(Level::INFO, "Interaction trace interpolation").entered();
         let interaction_trace_polys = interaction_trace
@@ -92,7 +153,12 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
         commitment_scheme.commit(interaction_trace_polys, channel, twiddles);
     }
 
-    Ok((commitment_scheme, interaction_elements))
+    Ok((
+        commitment_scheme,
+        interaction_elements,
+        gkr_proof,
+        multilinear_eval_at_point_prover,
+    ))
 }
 
 pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
@@ -101,6 +167,8 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     interaction_elements: &InteractionElements,
     twiddles: &TwiddleTree<B>,
     commitment_scheme: &mut CommitmentSchemeProver<B>,
+    gkr_proof: Option<GkrBatchProof>,
+    multilinear_eval_at_point_prover: Option<BatchMultilinearEvalIopProver<B>>,
 ) -> Result<StarkProof, ProvingError> {
     let component_traces = air.component_traces(&commitment_scheme.trees);
     let lookup_values = air.lookup_values(&component_traces);
@@ -125,7 +193,22 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let sample_points = air.mask_points(oods_point);
+    let mut sample_points = air.mask_points(oods_point);
+
+    // Add mask points for eval at point IOP.
+    if let Some(multilinear_eval_at_point_prover) = multilinear_eval_at_point_prover.as_ref() {
+        // TODO: Fix.
+        if sample_points.len() == 2 {
+            sample_points = TreeVec::new(vec![
+                sample_points.0[0].clone(),
+                vec![],
+                sample_points.0[1].clone(),
+            ]);
+        }
+
+        sample_points[INTERACTION_TRACE]
+            .extend(multilinear_eval_at_point_prover.interaction_mask_points(oods_point))
+    }
 
     // Prove the trace and composition OODS values, and retrieve them.
     let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel, twiddles);
@@ -151,6 +234,7 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     Ok(StarkProof {
         commitments: commitment_scheme.roots(),
         lookup_values,
+        gkr_proof,
         commitment_scheme_proof,
     })
 }
@@ -188,7 +272,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     );
     span.exit();
 
-    let (mut commitment_scheme, interaction_elements) =
+    let (mut commitment_scheme, interaction_elements, gkr_proof, multilinear_eval_at_point_prover) =
         evaluate_and_commit_on_trace(air, channel, &twiddles, trace)?;
 
     generate_proof(
@@ -197,6 +281,8 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
         &interaction_elements,
         &twiddles,
         &mut commitment_scheme,
+        gkr_proof,
+        multilinear_eval_at_point_prover,
     )
 }
 
@@ -214,6 +300,19 @@ pub fn verify(
         channel,
     );
     let interaction_elements = air.interaction_elements(channel);
+
+    let _eval_at_point_iop_verifier = proof.gkr_proof.as_ref().map(|gkr_proof| {
+        verify_lookups(air, &gkr_proof.output_claims_by_instance);
+        // TODO(andrew): Error here instead of panic.
+        let gkr_artifact = partially_verify_batch(gkr_gates(air), gkr_proof, channel).unwrap();
+        let eval_at_point_iop_claims_by_n_vars =
+            air.eval_at_point_iop_claims_by_n_variables(&gkr_artifact.claims_to_verify_by_instance);
+        BatchMultilinearEvalIopVerfier::new(
+            channel,
+            eval_at_point_iop_claims_by_n_vars,
+            gkr_artifact.ood_point,
+        )
+    });
 
     if air.n_interaction_phases() == 2 {
         commitment_scheme.commit(
@@ -239,6 +338,7 @@ pub fn verify(
     // Get mask sample points relative to oods point.
     let sample_points = air.mask_points(oods_point);
 
+    println!("made here");
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) = sampled_values_to_mask(
         air,
@@ -247,6 +347,7 @@ pub fn verify(
     .map_err(|_| {
         VerificationError::InvalidStructure("Unexpected sampled_values structure".to_string())
     })?;
+    println!("made here2");
 
     if composition_oods_value
         != air.eval_composition_polynomial_at_point(
@@ -321,6 +422,18 @@ fn sampled_values_to_mask(
     Ok((ComponentVec(trace_oods_values), composition_oods_value))
 }
 
+fn gkr_gates(air: &impl Air) -> Vec<Gate> {
+    let mut gates = Vec::new();
+
+    for component in air.components() {
+        for lookup_config in component.gkr_lookup_instance_configs() {
+            gates.push(lookup_config.variant);
+        }
+    }
+
+    gates
+}
+
 fn verify_lookups(air: &impl Air, gkr_outputs_by_instance: &[Vec<SecureField>]) {
     let mut gkr_outputs_by_instance = gkr_outputs_by_instance.iter();
 
@@ -333,9 +446,10 @@ fn verify_lookups(air: &impl Air, gkr_outputs_by_instance: &[Vec<SecureField>]) 
             let lookup_output = gkr_outputs_by_instance.next().unwrap();
 
             match (lookup_config.variant, &**lookup_output) {
-                (Gate::_LogUp, &[numerator, denominator]) => {
+                (Gate::LogUp, &[numerator, denominator]) => {
                     // TODO: Completeness problem? Error instead of panic here.
                     assert!(!denominator.is_zero());
+
                     let quotient = numerator / denominator;
                     let logup_entry = logups
                         .entry(lookup_config.table_id)
@@ -347,7 +461,7 @@ fn verify_lookups(air: &impl Air, gkr_outputs_by_instance: &[Vec<SecureField>]) 
                         *logup_entry -= quotient;
                     }
                 }
-                (Gate::_GrandProduct, &[product]) => {
+                (Gate::GrandProduct, &[product]) => {
                     let grand_product_entry = grand_products
                         .entry(lookup_config.table_id)
                         .or_insert_with(SecureField::one);
@@ -431,6 +545,8 @@ mod tests {
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::lookups::gkr_prover::Layer;
+    use crate::core::lookups::mle::Mle;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::{
         CanonicCoset, CircleDomain, CircleEvaluation, MAX_CIRCLE_DOMAIN_LOG_SIZE,
@@ -552,6 +668,21 @@ mod tests {
             _lookup_values: &LookupValues,
         ) {
             // Does nothing.
+        }
+
+        fn build_lookup_instances(
+            &self,
+            _trace: ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
+            _interaction_elements: &InteractionElements,
+        ) -> Vec<Layer<CpuBackend>> {
+            vec![]
+        }
+
+        fn lookup_multilinears_for_eval_at_point_iop(
+            &self,
+            _lookup_instances: Vec<Layer<CpuBackend>>,
+        ) -> Vec<Mle<CpuBackend, SecureField>> {
+            vec![]
         }
     }
 

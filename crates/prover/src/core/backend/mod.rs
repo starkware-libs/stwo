@@ -7,8 +7,12 @@ use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::FieldOps;
 use super::fri::FriOps;
+use super::lookups::gkr_prover::GkrOps;
 use super::pcs::quotients::QuotientOps;
-use super::poly::circle::PolyOps;
+use super::poly::circle::{CircleEvaluation, PolyOps};
+use super::poly::BitReversedOrder;
+use super::ColumnVec;
+use crate::examples::xor::multilinear_eval_at_point::BatchMultilinearEvalIopProver;
 
 pub mod cpu;
 pub mod simd;
@@ -23,7 +27,27 @@ pub trait Backend:
     + QuotientOps
     + FriOps
     + AccumulationOps
+    + GkrOps
+    + MultilinearEvalAtPointIopOps
 {
+}
+
+// TODO: Remove. This is just added to get something working.
+pub trait MultilinearEvalAtPointIopOps:
+    GkrOps + FieldOps<SecureField> + FieldOps<BaseField> + Sized
+{
+    fn random_linear_combination(
+        _columns: Vec<Col<Self, SecureField>>,
+        _random_coeff: SecureField,
+    ) -> Col<Self, SecureField> {
+        todo!()
+    }
+
+    fn write_interaction_trace(
+        _prover: &BatchMultilinearEvalIopProver<Self>,
+    ) -> ColumnVec<CircleEvaluation<Self, BaseField, BitReversedOrder>> {
+        todo!()
+    }
 }
 
 pub trait ColumnOps<T> {

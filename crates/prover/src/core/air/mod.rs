@@ -6,7 +6,9 @@ use super::channel::Blake2sChannel;
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
+use super::lookups::gkr_prover::Layer;
 use super::lookups::gkr_verifier::Gate;
+use super::lookups::mle::Mle;
 use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
@@ -119,6 +121,17 @@ pub trait ComponentProver<B: Backend>: Component {
     fn lookup_values(&self, _trace: &ComponentTrace<'_, B>) -> LookupValues {
         LookupValues::default()
     }
+
+    fn build_lookup_instances(
+        &self,
+        trace: ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        interaction_elements: &InteractionElements,
+    ) -> Vec<Layer<B>>;
+
+    fn lookup_multilinears_for_eval_at_point_iop(
+        &self,
+        lookup_instances: Vec<Layer<B>>,
+    ) -> Vec<Mle<B, SecureField>>;
 }
 
 /// A component trace is a set of polynomials for each column on that component.

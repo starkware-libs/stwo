@@ -54,7 +54,7 @@ impl AirTraceWriter<CpuBackend> for XorAir {
         _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
         _elements: &InteractionElements,
     ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
-        todo!()
+        vec![]
     }
 
     fn to_air_prover(&self) -> &impl AirProver<CpuBackend> {
@@ -149,7 +149,7 @@ mod tests {
 
     // use super::air::XorAir;
     use super::BaseTrace;
-    use crate::core::prover::prove;
+    use crate::core::prover::{prove, verify};
     use crate::core::test_utils::test_channel;
     use crate::examples::xor::XorAir;
 
@@ -158,8 +158,11 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         let base_trace = BaseTrace::gen_random(&mut rng);
 
-        let _proof = prove(&XorAir, &mut test_channel(), base_trace.into_column_vec());
+        let stark_proof =
+            prove(&XorAir, &mut test_channel(), base_trace.into_column_vec()).unwrap();
+        let verification_result = verify(stark_proof, &XorAir, &mut test_channel());
 
+        println!("verified: {}", verification_result.is_ok());
         todo!()
     }
 }

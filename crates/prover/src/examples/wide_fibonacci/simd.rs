@@ -22,6 +22,8 @@ use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, FieldOps};
+use crate::core::lookups::gkr_prover::Layer;
+use crate::core::lookups::mle::Mle;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -243,6 +245,21 @@ impl ComponentProver<SimdBackend> for SimdWideFibComponent {
                 )
             }
         }
+    }
+
+    fn build_lookup_instances(
+        &self,
+        _trace: ColumnVec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+        _interaction_elements: &InteractionElements,
+    ) -> Vec<crate::core::lookups::gkr_prover::Layer<SimdBackend>> {
+        vec![]
+    }
+
+    fn lookup_multilinears_for_eval_at_point_iop(
+        &self,
+        _lookup_layers: Vec<Layer<SimdBackend>>,
+    ) -> Vec<Mle<SimdBackend, SecureField>> {
+        vec![]
     }
 }
 

@@ -40,6 +40,15 @@ pub trait AirExt: Air {
         let mut interaction_component_points = vec![];
         for component in self.components() {
             let points = component.mask_points(point);
+
+            // if let Some(base_trace_mask) = points.get(BASE_TRACE) {
+            //     trace_component_points.extend(base_trace_mask.clone());
+            // }
+
+            // if let Some(interaction_mask) = points.get(INTERACTION_TRACE) {
+            //     interaction_component_points.extend(interaction_mask.clone());
+            // }
+
             trace_component_points.extend(points[BASE_TRACE].clone());
             interaction_component_points.extend(points[INTERACTION_TRACE].clone());
         }

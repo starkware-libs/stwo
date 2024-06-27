@@ -1,12 +1,20 @@
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
+
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, ComponentTrace, LookupInstanceConfig};
-use crate::core::backend::CpuBackend;
+use crate::core::backend::{ColumnOps, CpuBackend};
 use crate::core::circle::CirclePoint;
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::FieldExpOps;
+use crate::core::lookups::gkr_prover::Layer;
 use crate::core::lookups::gkr_verifier::Gate;
+use crate::core::lookups::mle::Mle;
 use crate::core::pcs::TreeVec;
+use crate::core::poly::circle::CircleEvaluation;
+use crate::core::poly::BitReversedOrder;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 
 pub const XOR_LOOKUP_TABLE_ID: &str = "XOR_8_BIT";
@@ -28,14 +36,14 @@ impl Component for XorTableComponent {
     }
 
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
-        TreeVec::new(vec![vec![u8::BITS + u8::BITS]])
+        TreeVec::new(vec![vec![u8::BITS + u8::BITS], vec![]])
     }
 
     fn mask_points(
         &self,
         _point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        TreeVec::new(vec![])
+        TreeVec::new(vec![vec![vec![]], vec![]])
     }
 
     fn interaction_element_ids(&self) -> Vec<String> {
@@ -50,16 +58,15 @@ impl Component for XorTableComponent {
         _interaction_elements: &InteractionElements,
         _lookup_values: &LookupValues,
     ) {
-        todo!()
     }
 
     fn n_interaction_phases(&self) -> u32 {
-        1
+        0
     }
 
     fn gkr_lookup_instance_configs(&self) -> Vec<LookupInstanceConfig> {
         vec![LookupInstanceConfig {
-            variant: Gate::_LogUp,
+            variant: Gate::LogUp,
             is_table: true,
             table_id: XOR_LOOKUP_TABLE_ID.to_string(),
         }]
@@ -85,6 +92,53 @@ impl ComponentProver<CpuBackend> for XorTableComponent {
         _interaction_elements: &InteractionElements,
         _lookup_values: &LookupValues,
     ) {
+    }
+
+    fn build_lookup_instances(
+        &self,
+        trace: ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
+        interaction_elements: &InteractionElements,
+    ) -> Vec<Layer<CpuBackend>> {
+        let z = interaction_elements[XOR_Z_ID];
+        let alpha = interaction_elements[XOR_ALPHA_ID];
+
+        let xor_multiplicities = &trace[0];
+
+        let numerators = xor_multiplicities.to_vec();
+        let mut denominators = (0..256 * 256)
+            .map(|i| {
+                let lhs = i & 0xFF;
+                let rhs = i >> 8;
+                let res = lhs ^ rhs;
+                z - BaseField::from(lhs)
+                    - alpha * BaseField::from(rhs)
+                    - alpha.square() * BaseField::from(res)
+            })
+            .collect_vec();
+        CpuBackend::bit_reverse_column(&mut denominators);
+
+        vec![Layer::LogUpMultiplicities {
+            numerators: Mle::new(numerators),
+            denominators: Mle::new(denominators),
+        }]
+    }
+
+    fn lookup_multilinears_for_eval_at_point_iop(
+        &self,
+        lookup_layers: Vec<Layer<CpuBackend>>,
+    ) -> Vec<Mle<CpuBackend, SecureField>> {
+        match lookup_layers.into_iter().next().unwrap() {
+            Layer::LogUpMultiplicities {
+                numerators,
+                denominators: _,
+            } => {
+                let numerator_evals = numerators.into_evals();
+                vec![Mle::new(
+                    numerator_evals.into_iter().map(|e| e.into()).collect(),
+                )]
+            }
+            _ => panic!(),
+        }
     }
 }
 

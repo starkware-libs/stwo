@@ -1,4 +1,4 @@
-use super::Backend;
+use super::{Backend, MultilinearEvalAtPointIopOps};
 
 pub mod accumulation;
 pub mod bit_reverse;
@@ -18,3 +18,6 @@ mod utils;
 pub struct SimdBackend;
 
 impl Backend for SimdBackend {}
+
+// TODO: Remove.
+impl MultilinearEvalAtPointIopOps for SimdBackend {}
