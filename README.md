@@ -28,7 +28,7 @@ See [LICENSE](LICENSE) for more information.
 
 ## Contributors ✨
 
-Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+Thanks goes to these wonderful people:
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
@@ -40,6 +40,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/shaharsamocha"><img src="https://avatars.githubusercontent.com/u/18914050?v=4?s=100" width="100px;" alt="shaharsamocha"/><br /><sub><b>shaharsamocha</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=shaharsamocha" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/andrewmilson"><img src="https://avatars.githubusercontent.com/u/6158251?v=4?s=100" width="100px;" alt="Andrew Milson"/><br /><sub><b>Andrew Milson</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=andrewmilson" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/alonh5"><img src="https://avatars.githubusercontent.com/u/91828241?v=4?s=100" width="100px;" alt="Alon Haramati"/><br /><sub><b>Alon Haramati</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=alonh5" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ohad-starkware"><img src="https://avatars.githubusercontent.com/u/137686240?v=4?s=100" width="100px;" alt="Ohad"/><br /><sub><b>Ohad</b></sub></a><br /><a href="https://github.com/starkware-libs/stwo/commits?author=ohad-starkware" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
@@ -48,5 +49,3 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
 <!-- prettier-ignore-end -->
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
-
-This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!
