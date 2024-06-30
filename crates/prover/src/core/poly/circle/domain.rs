@@ -1,5 +1,7 @@
 use std::iter::Chain;
 
+use itertools::Itertools;
+
 use crate::core::circle::{
     CirclePoint, CirclePointIndex, Coset, CosetIterator, M31_CIRCLE_LOG_ORDER,
 };
@@ -76,6 +78,23 @@ impl CircleDomain {
     /// [crate::core::circle::M31_CIRCLE_GEN].
     pub fn is_canonic(&self) -> bool {
         self.half_coset.initial_index * 4 == self.half_coset.step_size
+    }
+
+    /// Splits a circle domain into a smaller [CircleDomain]s, shifted by offsets.
+    pub fn split(&self, log_parts: u32) -> (CircleDomain, Vec<CirclePointIndex>) {
+        assert!(log_parts <= self.half_coset.log_size);
+        let domain = CircleDomain::new(Coset::new(
+            self.half_coset.initial_index,
+            self.half_coset.log_size - log_parts,
+        ));
+        let offsets = (0..1 << log_parts)
+            .map(|i| self.half_coset.step_size * i)
+            .collect_vec();
+        (domain, offsets)
+    }
+
+    pub fn shift(&self, shift: CirclePointIndex) -> CircleDomain {
+        CircleDomain::new(self.half_coset.shift(shift))
     }
 }
 
