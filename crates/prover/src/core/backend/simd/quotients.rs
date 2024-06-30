@@ -7,7 +7,9 @@ use super::column::SecureFieldVec;
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
-use crate::core::backend::cpu::quotients::{batch_random_coeffs, QuotientConstants};
+use crate::core::backend::cpu::quotients::{
+    batch_random_coeffs, column_line_coeffs, QuotientConstants,
+};
 use crate::core::backend::{Col, Column};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
@@ -54,6 +56,8 @@ impl QuotientOps for SimdBackend {
     }
 }
 
+// TODO(Ohad): no longer using pair_vanishing, remove domain_point_vec and line_coeffs, or write a
+// function that deals with quotients over pair_vanishing polynomials.
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
     columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
@@ -62,8 +66,9 @@ pub fn accumulate_row_quotients(
     _domain_point_vec: (PackedBaseField, PackedBaseField),
 ) -> PackedSecureField {
     let mut row_accumulator = PackedSecureField::zero();
-    for (sample_batch, batch_coeff, denominator_inverses) in izip!(
+    for (sample_batch, _, batch_coeff, denominator_inverses) in izip!(
         sample_batches,
+        &quotient_constants.line_coeffs,
         &quotient_constants.batch_random_coeffs,
         &quotient_constants.denominator_inverses
     ) {
@@ -151,9 +156,11 @@ fn quotient_constants(
     random_coeff: SecureField,
     domain: CircleDomain,
 ) -> QuotientConstants<SimdBackend> {
+    let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
     let batch_random_coeffs = batch_random_coeffs(sample_batches, random_coeff);
     let denominator_inverses = denominator_inverses(sample_batches, domain);
     QuotientConstants {
+        line_coeffs,
         batch_random_coeffs,
         denominator_inverses,
     }
