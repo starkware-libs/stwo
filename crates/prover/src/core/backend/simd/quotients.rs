@@ -2,6 +2,8 @@ use std::iter::zip;
 
 use itertools::izip;
 use num_traits::{One, Zero};
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::column::SecureFieldVec;
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
@@ -27,11 +29,18 @@ impl QuotientOps for SimdBackend {
         sample_batches: &[ColumnSampleBatch],
     ) -> SecureEvaluation<Self> {
         assert!(domain.log_size() >= LOG_N_LANES);
-        let mut values = SecureColumn::<Self>::zeros(domain.size());
+        let values = SecureColumn::<Self>::zeros(domain.size());
         let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
 
+        #[cfg(not(feature = "parallel"))]
+        let iter = 0..(1 << (domain.log_size() - LOG_N_LANES));
+        #[cfg(feature = "parallel")]
+        let iter = (0..(1 << (domain.log_size() - LOG_N_LANES))).into_par_iter();
+
         // TODO(spapini): bit reverse iterator.
-        for vec_row in 0..1 << (domain.log_size() - LOG_N_LANES) {
+        iter.for_each(|vec_row| {
+            let values_ptr = &values as *const SecureColumn<Self>;
+            let values_ptr = values_ptr as *mut SecureColumn<Self>;
             // TODO(spapini): Optimize this, for the small number of columns case.
             let points = std::array::from_fn(|i| {
                 domain.at(bit_reverse_index(
@@ -48,8 +57,8 @@ impl QuotientOps for SimdBackend {
                 vec_row,
                 (domain_points_x, domain_points_y),
             );
-            unsafe { values.set_packed(vec_row, row_accumulator) };
-        }
+            unsafe { (*values_ptr).set_packed(vec_row, row_accumulator) };
+        });
         SecureEvaluation { domain, values }
     }
 }

@@ -164,6 +164,7 @@ impl PolyOps for SimdBackend {
         CirclePoly::new(values)
     }
 
+    // TODO(spapini): Parallelize.
     fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField {
         // If the polynomial is small, fallback to evaluate directly.
         // TODO(Ohad): it's possible to avoid falling back. Consider fixing.
@@ -275,6 +276,7 @@ impl PolyOps for SimdBackend {
         )
     }
 
+    // TODO(spapini): Parallelize.
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self> {
         let mut twiddles = Vec::with_capacity(coset.size());
         let mut itwiddles = Vec::with_capacity(coset.size());

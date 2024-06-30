@@ -4,9 +4,13 @@ use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
 use num_traits::Zero;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use tracing::{span, Level};
 
-use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
+use crate::core::air::accumulation::{
+    ColumnAccumulator, DomainEvaluationAccumulator, PointEvaluationAccumulator,
+};
 use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{
     Air, AirProver, AirTraceVerifier, AirTraceWriter, Component, ComponentProver, ComponentTrace,
@@ -291,10 +295,21 @@ pub fn gen_trace(
     log_size: u32,
 ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
     assert!(log_size >= LOG_N_LANES);
-    let mut trace = (0..N_COLUMNS)
+    let trace = (0..N_COLUMNS)
         .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
         .collect_vec();
-    for vec_index in 0..(1 << (log_size - LOG_N_LANES)) {
+
+    // TODO(spapini): when doing multithreading, do it over a.
+    #[cfg(not(feature = "parallel"))]
+    let iter = 0..(1 << (log_size - LOG_N_LANES));
+    #[cfg(feature = "parallel")]
+    let iter = (0..(1 << (log_size - LOG_N_LANES))).into_par_iter();
+
+    iter.for_each(|vec_index| {
+        let trace_ref = (&trace) as *const Vec<Col<SimdBackend, BaseField>>;
+        #[allow(invalid_reference_casting)]
+        let trace = unsafe { &mut *(trace_ref as *mut Vec<Col<SimdBackend, BaseField>>) };
+
         // Initial state.
         let mut col_index = 0;
         for rep_i in 0..N_INSTANCES_PER_ROW {
@@ -345,7 +360,7 @@ pub fn gen_trace(
                 });
             });
         }
-    }
+    });
     let domain = CanonicCoset::new(log_size).circle_domain();
     trace
         .into_iter()
@@ -434,7 +449,12 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
         let mut pows = accum.random_coeff_powers.clone();
         pows.reverse();
 
-        for vec_row in 0..(1 << (eval_domain.log_size() - LOG_N_LANES)) {
+        // TODO(spapini): when doing multithreading, do it over a.
+        #[cfg(not(feature = "parallel"))]
+        let iter = 0..(1 << (eval_domain.log_size() - LOG_N_LANES));
+        #[cfg(feature = "parallel")]
+        let iter = (0..(1 << (eval_domain.log_size() - LOG_N_LANES))).into_par_iter();
+        iter.for_each(|vec_row| {
             let mut evaluator = PoseidonEvalAtDomain {
                 trace_eval: &trace_eval,
                 vec_row,
@@ -448,6 +468,9 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
             }
             let row_res = evaluator.row_res;
 
+            let accum_ref = (&accum) as *const ColumnAccumulator<'_, _>;
+            #[allow(invalid_reference_casting)]
+            let accum = unsafe { &mut *(accum_ref as *mut ColumnAccumulator<'_, _>) };
             unsafe {
                 accum.col.set_packed(
                     vec_row,
@@ -455,7 +478,7 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
                 )
             }
             assert_eq!(evaluator.constraint_index, n_constraints);
-        }
+        });
     }
 }
 
@@ -480,7 +503,7 @@ mod tests {
         //   test_simd_poseidon_prove -- --nocapture
 
         // Note: 15 means 208MB of trace.
-        const LOG_N_ROWS: u32 = 12;
+        const LOG_N_ROWS: u32 = 15;
         let component = PoseidonComponent {
             log_n_instances: LOG_N_ROWS,
         };
