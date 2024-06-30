@@ -12,12 +12,13 @@ use crate::core::backend::{Col, Column};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
+use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::{ComplexConjugate, FieldOps};
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
-use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
+use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::bit_reverse_index;
+use crate::core::prover::LOG_BLOWUP_FACTOR;
+use crate::core::utils::{bit_reverse, bit_reverse_index};
 
 impl QuotientOps for SimdBackend {
     fn accumulate_quotients(
@@ -26,17 +27,21 @@ impl QuotientOps for SimdBackend {
         random_coeff: SecureField,
         sample_batches: &[ColumnSampleBatch],
     ) -> SecureEvaluation<Self> {
-        assert!(domain.log_size() >= LOG_N_LANES);
-        let mut values = SecureColumn::<Self>::zeros(domain.size());
-        let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
+        // Split the domain into a subdomain and a shift coset.
+        // TODO(spapini): Move to the caller when Columns support slices.
+        let (subdomain, mut subdomain_shifts) = domain.split(LOG_BLOWUP_FACTOR);
+
+        assert!(subdomain.log_size() >= LOG_N_LANES);
+        let mut values = SecureColumn::<Self>::zeros(subdomain.size());
+        let quotient_constants = quotient_constants(sample_batches, random_coeff, subdomain);
 
         // TODO(spapini): bit reverse iterator.
-        for vec_row in 0..1 << (domain.log_size() - LOG_N_LANES) {
+        for vec_row in 0..1 << (subdomain.log_size() - LOG_N_LANES) {
             // TODO(spapini): Optimize this, for the small number of columns case.
             let points = std::array::from_fn(|i| {
-                domain.at(bit_reverse_index(
+                subdomain.at(bit_reverse_index(
                     (vec_row << LOG_N_LANES) + i,
-                    domain.log_size(),
+                    subdomain.log_size(),
                 ))
             });
             let domain_points_x = PackedBaseField::from_array(points.map(|p| p.x));
@@ -50,7 +55,49 @@ impl QuotientOps for SimdBackend {
             );
             unsafe { values.set_packed(vec_row, row_accumulator) };
         }
-        SecureEvaluation { domain, values }
+
+        // Extend the evaluation to the full domain.
+        let mut extended_eval = SecureColumn::<Self>::zeros(domain.size());
+
+        let mut i = 0;
+        let values = values.columns;
+        let twiddles = SimdBackend::precompute_twiddles(subdomain.half_coset);
+        let subeval_polys = values.map(|c| {
+            i += 1;
+            CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(subdomain, c)
+                .interpolate_with_twiddles(&twiddles)
+        });
+
+        // Since we traverse the domain in bit-reversed order, we need bit-reverse the shifts.
+        // To see why, consider the index of a point in the natural order of the domain
+        // (least to most):
+        //   b0 b1 b2 b3 b4 b5
+        // b0 adds P, b1 adds 2P, etc.. (b5 is special and flips the sign of the point).
+        // Splitting the coset to 4 parts yields:
+        //   subdomain: b2 b3 b4 b5, shifts: b0 b1.
+        // b2 b3 b4 b5 is indeed a circle domain, with a bigger jump.
+        // Traversing the domain in bit-reversed order, after we finish with b5, b4, b3, b2,
+        // we need to change b1 and then b0. This is the bit reverse of the shift b0 b1.
+        bit_reverse(&mut subdomain_shifts);
+
+        // TODO(spapini): Try to optimize out all these copies.
+        for (ci, &c) in subdomain_shifts.iter().enumerate() {
+            let subdomain = subdomain.shift(c);
+
+            let twiddles = SimdBackend::precompute_twiddles(subdomain.half_coset);
+            #[allow(clippy::needless_range_loop)]
+            for i in 0..SECURE_EXTENSION_DEGREE {
+                // Sanity check.
+                let eval = subeval_polys[i].evaluate_with_twiddles(subdomain, &twiddles);
+                extended_eval.columns[i].data[(ci * eval.data.len())..((ci + 1) * eval.data.len())]
+                    .copy_from_slice(&eval.data);
+            }
+        }
+
+        SecureEvaluation {
+            domain,
+            values: extended_eval,
+        }
     }
 }
 
@@ -172,21 +219,28 @@ mod tests {
     use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
     use crate::core::poly::BitReversedOrder;
+    use crate::core::prover::LOG_BLOWUP_FACTOR;
     use crate::qm31;
 
     #[test]
     fn test_accumulate_quotients() {
         const LOG_SIZE: u32 = 8;
-        let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
-        let e0: BaseFieldVec = (0..domain.size()).map(BaseField::from).collect();
-        let e1: BaseFieldVec = (0..domain.size()).map(|i| BaseField::from(2 * i)).collect();
-        let columns = vec![
-            CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, e0),
-            CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, e1),
+        let small_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+        let domain = CanonicCoset::new(LOG_SIZE + LOG_BLOWUP_FACTOR).circle_domain();
+        let e0: BaseFieldVec = (0..small_domain.size()).map(BaseField::from).collect();
+        let e1: BaseFieldVec = (0..small_domain.size())
+            .map(|i| BaseField::from(2 * i))
+            .collect();
+        let polys = vec![
+            CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(small_domain, e0)
+                .interpolate(),
+            CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(small_domain, e1)
+                .interpolate(),
         ];
+        let columns = vec![polys[0].evaluate(domain), polys[1].evaluate(domain)];
         let random_coeff = qm31!(1, 2, 3, 4);
-        let a = qm31!(3, 6, 9, 12);
-        let b = qm31!(4, 8, 12, 16);
+        let a = polys[0].eval_at_point(SECURE_FIELD_CIRCLE_GEN);
+        let b = polys[1].eval_at_point(SECURE_FIELD_CIRCLE_GEN);
         let samples = vec![ColumnSampleBatch {
             point: SECURE_FIELD_CIRCLE_GEN,
             columns_and_values: vec![(0, a), (1, b)],
