@@ -2,6 +2,8 @@ use std::array;
 use std::simd::u32x8;
 
 use num_traits::Zero;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::SimdBackend;
@@ -33,9 +35,16 @@ impl FriOps for SimdBackend {
         let domain = eval.domain();
         let itwiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles)[0];
 
-        let mut folded_values = SecureColumn::<Self>::zeros(1 << (log_size - 1));
+        let folded_values = SecureColumn::<Self>::zeros(1 << (log_size - 1));
 
-        for vec_index in 0..(1 << (log_size - 1 - LOG_N_LANES)) {
+        #[cfg(not(feature = "parallel"))]
+        let iter = 0..(1 << (log_size - 1 - LOG_N_LANES));
+        #[cfg(feature = "parallel")]
+        let iter = (0..(1 << (log_size - 1 - LOG_N_LANES))).into_par_iter();
+
+        iter.for_each(|vec_index| {
+            let folded_values_ptr = &folded_values as *const SecureColumn<Self>;
+            let folded_values_ptr = folded_values_ptr as *mut SecureColumn<Self>;
             let value = unsafe {
                 let twiddle_dbl: [u32; 16] =
                     array::from_fn(|i| *itwiddles.get_unchecked(vec_index * 16 + i));
@@ -49,8 +58,8 @@ impl FriOps for SimdBackend {
                 let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].1));
                 val0 + PackedSecureField::broadcast(alpha) * val1
             };
-            unsafe { folded_values.set_packed(vec_index, value) };
-        }
+            unsafe { (*folded_values_ptr).set_packed(vec_index, value) };
+        });
 
         LineEvaluation::new(domain.double(), folded_values)
     }

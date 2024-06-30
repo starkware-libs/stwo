@@ -1,5 +1,12 @@
 use std::simd::Swizzle;
 
+pub struct SendMutU32Ptr(pub *mut u32);
+unsafe impl Send for SendMutU32Ptr {}
+unsafe impl Sync for SendMutU32Ptr {}
+pub struct SendConstU32Ptr(pub *const u32);
+unsafe impl Send for SendConstU32Ptr {}
+unsafe impl Sync for SendConstU32Ptr {}
+
 /// Used with [`Swizzle::concat_swizzle`] to interleave the even values of two vectors.
 pub struct InterleaveEvens;
 

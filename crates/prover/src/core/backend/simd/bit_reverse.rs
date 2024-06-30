@@ -1,5 +1,8 @@
 use std::array;
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 use super::column::{BaseFieldVec, SecureFieldVec};
 use super::m31::PackedBaseField;
 use super::SimdBackend;
@@ -53,7 +56,17 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
     let a_bits = log_size - 2 * W_BITS - VEC_BITS;
 
     // TODO(spapini): when doing multithreading, do it over a.
-    for a in 0u32..1 << a_bits {
+    #[cfg(not(feature = "parallel"))]
+    let iter = 0u32..1 << a_bits;
+    #[cfg(feature = "parallel")]
+    let iter = (0u32..1 << a_bits).into_par_iter();
+
+    let data = &*data;
+    iter.for_each(|a| {
+        let data_ptr = data.as_ptr() as *const PackedBaseField;
+        let data = unsafe {
+            std::slice::from_raw_parts_mut(data_ptr as *mut PackedBaseField, 1 << log_size)
+        };
         for w_l in 0u32..1 << W_BITS {
             let w_l_rev = w_l.reverse_bits() >> (u32::BITS - W_BITS);
             for w_h in 0..w_l_rev + 1 {
@@ -99,7 +112,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
                 }
             }
         }
-    }
+    });
 }
 
 /// Bit reverses 256 M31 values, packed in 16 words of 16 elements each.
