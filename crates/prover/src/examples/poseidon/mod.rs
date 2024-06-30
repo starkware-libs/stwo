@@ -140,27 +140,31 @@ impl Component for PoseidonComponent {
     }
 }
 
-// Applies the external round matrix.
-// See https://eprint.iacr.org/2023/323.pdf 5.1 and Appendix B.
+#[inline(always)]
+/// Applies the M4 MDS matrix described in <https://eprint.iacr.org/2023/323.pdf> 5.1.
+fn apply_m4<F>(x: [F; 4]) -> [F; 4]
+where
+    F: Copy + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
+{
+    let t0 = x[0] + x[1];
+    let t02 = t0 + t0;
+    let t1 = x[2] + x[3];
+    let t12 = t1 + t1;
+    let t2 = x[1] + x[1] + t1;
+    let t3 = x[3] + x[3] + t0;
+    let t4 = t12 + t12 + t3;
+    let t5 = t02 + t02 + t2;
+    let t6 = t3 + t5;
+    let t7 = t2 + t4;
+    [t6, t5, t7, t4]
+}
+
+/// Applies the external round matrix.
+/// See <https://eprint.iacr.org/2023/323.pdf> 5.1 and Appendix B.
 fn apply_external_round_matrix<F>(state: &mut [F; 16])
 where
     F: Copy + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
 {
-    // Applies M4 from the paper.
-    let apply_m4 = |x: [F; 4]| {
-        let t0 = x[0] + x[1];
-        let t02 = t0 + t0;
-        let t1 = x[2] + x[3];
-        let t12 = t1 + t1;
-        let t2 = x[1] + x[1] + t1;
-        let t3 = x[3] + x[3] + t0;
-        let t4 = t12 + t12 + t3;
-        let t5 = t02 + t02 + t2;
-        let t6 = t3 + t5;
-        let t7 = t2 + t4;
-        [t6, t5, t7, t4]
-    };
-
     // Applies circ(2M4, M4, M4, M4).
     for i in 0..4 {
         [
@@ -185,7 +189,7 @@ where
 
 // Applies the internal round matrix.
 //   mu_i = 2^{i+1} + 1.
-// See https://eprint.iacr.org/2023/323.pdf 5.2 .
+// See <https://eprint.iacr.org/2023/323.pdf> 5.2.
 fn apply_internal_round_matrix<F>(state: &mut [F; 16])
 where
     F: Copy + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
@@ -225,7 +229,6 @@ fn pow5<F: FieldExpOps>(x: F) -> F {
     x4 * x
 }
 
-// TODO(spapini): Round constants.
 trait PoseidonEval {
     type F: FieldExpOps
         + Copy
@@ -461,6 +464,8 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+    use num_traits::One;
     use tracing::{span, Level};
 
     use crate::core::backend::simd::SimdBackend;
@@ -470,17 +475,57 @@ mod tests {
     use crate::core::prover::{prove, verify};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
-    use crate::examples::poseidon::{gen_trace, PoseidonAir, PoseidonComponent};
+    use crate::examples::poseidon::{
+        apply_internal_round_matrix, apply_m4, gen_trace, PoseidonAir, PoseidonComponent,
+    };
+    use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
 
-    #[test_log::test]
+    #[test]
+    fn test_apply_m4() {
+        let m4 = RowMajorMatrix::<BaseField, 4>::new(
+            [5, 7, 1, 3, 4, 6, 1, 1, 1, 3, 5, 7, 1, 1, 4, 6]
+                .map(BaseField::from_u32_unchecked)
+                .into_iter()
+                .collect_vec(),
+        );
+        let state = (0..4)
+            .map(BaseField::from_u32_unchecked)
+            .collect_vec()
+            .try_into()
+            .unwrap();
+
+        assert_eq!(apply_m4(state), m4.mul(state));
+    }
+
+    #[test]
+    fn test_apply_internal() {
+        let mut state: [BaseField; 16] = (0..16)
+            .map(|i| BaseField::from_u32_unchecked(i * 3 + 187))
+            .collect_vec()
+            .try_into()
+            .unwrap();
+        let mut internal_matrix = [[BaseField::one(); 16]; 16];
+        #[allow(clippy::needless_range_loop)]
+        for i in 0..16 {
+            internal_matrix[i][i] += BaseField::from_u32_unchecked(1 << (i + 1));
+        }
+        let matrix = RowMajorMatrix::<BaseField, 16>::new(internal_matrix.flatten().to_vec());
+
+        let expected_state = matrix.mul(state);
+        apply_internal_round_matrix(&mut state);
+
+        assert_eq!(state, expected_state);
+    }
+
+    #[test]
     fn test_simd_poseidon_prove() {
         // Note: To see time measurement, run test with
         //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="
         //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=3" cargo test
         //   test_simd_poseidon_prove -- --nocapture
 
-        // Note: 15 means 208MB of trace.
-        const LOG_N_ROWS: u32 = 12;
+        // 2**`LOG_N_ROWS` * `N_INSTANCES_PER_ROW` hash instances.
+        const LOG_N_ROWS: u32 = 8;
         let component = PoseidonComponent {
             log_n_instances: LOG_N_ROWS,
         };
