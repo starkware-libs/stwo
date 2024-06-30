@@ -28,7 +28,8 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::{ColumnVec, InteractionElements};
 
-const N_INSTANCES_PER_ROW: usize = 8;
+const N_LOG_INSTANCES_PER_ROW: usize = 3;
+const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
 const N_STATE: usize = 16;
 const N_PARTIAL_ROUNDS: usize = 14;
 const N_HALF_FULL_ROUNDS: usize = 4;
@@ -464,10 +465,13 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+
     use itertools::Itertools;
     use num_traits::One;
     use tracing::{span, Level};
 
+    use super::N_LOG_INSTANCES_PER_ROW;
     use crate::core::backend::simd::SimdBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
@@ -517,17 +521,21 @@ mod tests {
         assert_eq!(state, expected_state);
     }
 
-    #[test]
+    #[test_log::test]
     fn test_simd_poseidon_prove() {
         // Note: To see time measurement, run test with
         //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="
         //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=3" cargo test
         //   test_simd_poseidon_prove -- --nocapture
 
-        // 2**`LOG_N_ROWS` * `N_INSTANCES_PER_ROW` hash instances.
-        const LOG_N_ROWS: u32 = 8;
+        // Get from environment variable:
+        let log_n_instances = env::var("LOG_N_INSTANCES")
+            .unwrap_or_else(|_| "8".to_string())
+            .parse::<u32>()
+            .unwrap();
+        let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
         let component = PoseidonComponent {
-            log_n_instances: LOG_N_ROWS,
+            log_n_instances: log_n_rows,
         };
         let span = span!(Level::INFO, "Trace generation").entered();
         let trace = gen_trace(component.log_column_size());
