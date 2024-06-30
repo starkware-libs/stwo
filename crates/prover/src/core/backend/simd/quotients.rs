@@ -1,7 +1,5 @@
-use std::iter::zip;
-
-use itertools::izip;
-use num_traits::{One, Zero};
+use itertools::{izip, zip_eq, Itertools};
+use num_traits::Zero;
 
 use super::column::SecureFieldVec;
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
@@ -15,7 +13,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
-use crate::core::fields::FieldOps;
+use crate::core::fields::{ComplexConjugate, FieldOps};
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -56,27 +54,35 @@ impl QuotientOps for SimdBackend {
     }
 }
 
-// TODO(Ohad): no longer using pair_vanishing, remove domain_point_vec and line_coeffs, or write a
-// function that deals with quotients over pair_vanishing polynomials.
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
     columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
     quotient_constants: &QuotientConstants<SimdBackend>,
     vec_row: usize,
-    _domain_point_vec: (PackedBaseField, PackedBaseField),
+    domain_point_vec: (PackedBaseField, PackedBaseField),
 ) -> PackedSecureField {
     let mut row_accumulator = PackedSecureField::zero();
-    for (sample_batch, _, batch_coeff, denominator_inverses) in izip!(
+    for (sample_batch, line_coeffs, batch_coeff, denominator_inverses) in izip!(
         sample_batches,
         &quotient_constants.line_coeffs,
         &quotient_constants.batch_random_coeffs,
         &quotient_constants.denominator_inverses
     ) {
         let mut numerator = PackedSecureField::zero();
-        for (column_index, sampled_value) in sample_batch.columns_and_values.iter() {
+        for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
+        {
             let column = &columns[*column_index];
-            let value = column.data[vec_row];
-            numerator += PackedSecureField::broadcast(-*sampled_value) + value;
+            let value = PackedSecureField::broadcast(*c) * column.data[vec_row];
+            // The numerator is a line equation passing through
+            //   (sample_point.y, sample_value), (conj(sample_point), conj(sample_value))
+            // evaluated at (domain_point.y, value).
+            // When substituting a polynomial in this line equation, we get a polynomial with a root
+            // at sample_point and conj(sample_point) if the original polynomial had the values
+            // sample_value and conj(sample_value) at these points.
+            // TODO(AlonH): Use single point vanishing to save a multiplication.
+            let linear_term = PackedSecureField::broadcast(*a) * domain_point_vec.1
+                + PackedSecureField::broadcast(*b);
+            numerator += value - linear_term;
         }
 
         row_accumulator = row_accumulator * PackedSecureField::broadcast(*batch_coeff)
@@ -85,64 +91,52 @@ pub fn accumulate_row_quotients(
     row_accumulator
 }
 
-/// Point vanishing for the packed representation of the points. skips the division.
-/// See [crate::core::constraints::point_vanishing_fraction] for more details.
-fn packed_point_vanishing_fraction(
-    excluded: CirclePoint<SecureField>,
-    p: (PackedBaseField, PackedBaseField),
-) -> (PackedSecureField, PackedSecureField) {
-    let e_conjugate = excluded.conjugate();
-    let h_x = PackedSecureField::broadcast(e_conjugate.x) * p.0
-        - PackedSecureField::broadcast(e_conjugate.y) * p.1;
-    let h_y = PackedSecureField::broadcast(e_conjugate.y) * p.0
-        + PackedSecureField::broadcast(e_conjugate.x) * p.1;
-    (h_y, PackedSecureField::one() + h_x)
+/// Pair vanishing for the packed representation of the points. See
+/// [crate::core::constraints::pair_vanishing] for more details.
+fn packed_pair_vanishing(
+    excluded0: CirclePoint<SecureField>,
+    excluded1: CirclePoint<SecureField>,
+    packed_p: (PackedBaseField, PackedBaseField),
+) -> PackedSecureField {
+    PackedSecureField::broadcast(excluded0.y - excluded1.y) * packed_p.0
+        + PackedSecureField::broadcast(excluded1.x - excluded0.x) * packed_p.1
+        + PackedSecureField::broadcast(excluded0.x * excluded1.y - excluded0.y * excluded1.x)
 }
 
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
 ) -> Vec<Col<SimdBackend, SecureField>> {
-    let mut numerators = Vec::new();
-    let mut denominators = Vec::new();
+    let flat_denominators: SecureFieldVec = sample_batches
+        .iter()
+        .flat_map(|sample_batch| {
+            (0..(1 << (domain.log_size() - LOG_N_LANES)))
+                .map(|vec_row| {
+                    // TODO(spapini): Optimize this, for the small number of columns case.
+                    let points = std::array::from_fn(|i| {
+                        domain.at(bit_reverse_index(
+                            (vec_row << LOG_N_LANES) + i,
+                            domain.log_size(),
+                        ))
+                    });
+                    let domain_points_x = PackedBaseField::from_array(points.map(|p| p.x));
+                    let domain_points_y = PackedBaseField::from_array(points.map(|p| p.y));
+                    let domain_point_vec = (domain_points_x, domain_points_y);
+                    packed_pair_vanishing(
+                        sample_batch.point,
+                        sample_batch.point.complex_conjugate(),
+                        domain_point_vec,
+                    )
+                })
+                .collect_vec()
+        })
+        .collect();
 
-    for sample_batch in sample_batches {
-        for vec_row in 0..1 << (domain.log_size() - LOG_N_LANES) {
-            // TODO(spapini): Optimize this, for the small number of columns case.
-            let points = std::array::from_fn(|i| {
-                domain.at(bit_reverse_index(
-                    (vec_row << LOG_N_LANES) + i,
-                    domain.log_size(),
-                ))
-            });
-            let domain_points_x = PackedBaseField::from_array(points.map(|p| p.x));
-            let domain_points_y = PackedBaseField::from_array(points.map(|p| p.y));
-            let domain_point_vec = (domain_points_x, domain_points_y);
-            let (denominator, numerator) =
-                packed_point_vanishing_fraction(sample_batch.point, domain_point_vec);
-            denominators.push(denominator);
-            numerators.push(numerator);
-        }
-    }
-
-    let denominators = SecureFieldVec {
-        length: denominators.len() * N_LANES,
-        data: denominators,
-    };
-
-    let numerators = SecureFieldVec {
-        length: numerators.len() * N_LANES,
-        data: numerators,
-    };
-
-    let mut flat_denominator_inverses = SecureFieldVec::zeros(denominators.len());
+    let mut flat_denominator_inverses = SecureFieldVec::zeros(flat_denominators.len());
     <SimdBackend as FieldOps<SecureField>>::batch_inverse(
-        &denominators,
+        &flat_denominators,
         &mut flat_denominator_inverses,
     );
-
-    zip(&mut flat_denominator_inverses.data, &numerators.data)
-        .for_each(|(inv, denom_denom)| *inv *= *denom_denom);
 
     flat_denominator_inverses
         .data
