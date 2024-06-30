@@ -119,6 +119,13 @@ impl AddAssign for PackedM31 {
     }
 }
 
+impl AddAssign<M31> for PackedM31 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: M31) {
+        *self = *self + PackedM31::broadcast(rhs);
+    }
+}
+
 impl Mul for PackedM31 {
     type Output = Self;
 
@@ -139,6 +146,15 @@ impl Mul for PackedM31 {
                 _mul_simd(self, rhs)
             }
         }
+    }
+}
+
+impl Mul<BaseField> for PackedM31 {
+    type Output = Self;
+
+    #[inline(always)]
+    fn mul(self, rhs: BaseField) -> Self::Output {
+        self * PackedM31::broadcast(rhs)
     }
 }
 
