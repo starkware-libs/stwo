@@ -3,11 +3,14 @@
 use std::simd::{simd_swizzle, u32x16, u32x2, u32x4};
 
 use itertools::Itertools;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::{
     compute_first_twiddles, mul_twiddle, transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE,
 };
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::backend::simd::utils::SendMutU32Ptr;
 use crate::core::circle::Coset;
 use crate::core::fields::FieldExpOps;
 use crate::core::utils::bit_reverse;
@@ -81,7 +84,15 @@ pub unsafe fn ifft_lower_with_vecwise(
 
     assert_eq!(twiddle_dbl[0].len(), 1 << (log_size - 2));
 
-    for index_h in 0..1 << (log_size - fft_layers) {
+    #[cfg(not(feature = "parallel"))]
+    let iter = 0..(1 << (log_size - fft_layers));
+    #[cfg(feature = "parallel")]
+    let iter = (0..(1 << (log_size - fft_layers))).into_par_iter();
+
+    let values = SendMutU32Ptr(values);
+    iter.for_each(|index_h| {
+        let values_ref = &values;
+        let values = values_ref.0;
         ifft_vecwise_loop(values, twiddle_dbl, fft_layers - VECWISE_FFT_BITS, index_h);
         for layer in (VECWISE_FFT_BITS..fft_layers).step_by(3) {
             match fft_layers - layer {
@@ -102,7 +113,7 @@ pub unsafe fn ifft_lower_with_vecwise(
                 }
             }
         }
-    }
+    });
 }
 
 /// Computes partial ifft on `2^log_size` M31 elements, skipping the vecwise layers (lower 4 bits of
@@ -131,7 +142,15 @@ pub unsafe fn ifft_lower_without_vecwise(
 ) {
     assert!(log_size >= LOG_N_LANES as usize);
 
-    for index_h in 0..1 << (log_size - fft_layers - LOG_N_LANES as usize) {
+    #[cfg(not(feature = "parallel"))]
+    let iter = 0..(1 << (log_size - fft_layers - LOG_N_LANES as usize));
+    #[cfg(feature = "parallel")]
+    let iter = (0..(1 << (log_size - fft_layers - LOG_N_LANES as usize))).into_par_iter();
+
+    let values = SendMutU32Ptr(values);
+    iter.for_each(|index_h| {
+        let values_ref = &values;
+        let values = values_ref.0;
         for layer in (0..fft_layers).step_by(3) {
             let fixed_layer = layer + LOG_N_LANES as usize;
             match fft_layers - layer {
@@ -152,7 +171,7 @@ pub unsafe fn ifft_lower_without_vecwise(
                 }
             }
         }
-    }
+    });
 }
 
 /// Runs the first 5 ifft layers across the entire array.

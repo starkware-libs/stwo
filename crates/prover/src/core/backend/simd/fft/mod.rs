@@ -1,8 +1,11 @@
 use std::simd::{simd_swizzle, u32x16, u32x8};
 
-use super::m31::PackedBaseField;
-use crate::core::fields::m31::P;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
+use super::m31::PackedBaseField;
+use super::utils::SendMutU32Ptr;
+use crate::core::fields::m31::P;
 pub mod ifft;
 pub mod rfft;
 
@@ -28,8 +31,16 @@ pub const MIN_FFT_LOG_SIZE: u32 = 5;
 ///
 /// Behavior is undefined if `values` does not have the same alignment as [`u32x16`].
 pub unsafe fn transpose_vecs(values: *mut u32, log_n_vecs: usize) {
+    #[cfg(not(feature = "parallel"))]
+    let iter = 0..(1 << (log_n_vecs & 1));
+    #[cfg(feature = "parallel")]
+    let iter = (0..(1 << (log_n_vecs & 1))).into_par_iter();
+    let values = SendMutU32Ptr(values);
+
     let half = log_n_vecs / 2;
-    for b in 0..1 << (log_n_vecs & 1) {
+    iter.for_each(|b| {
+        let values_ref = &values;
+        let values = values_ref.0;
         for a in 0..1 << half {
             for c in 0..1 << half {
                 let i = (a << (log_n_vecs - half)) | (b << half) | c;
@@ -43,7 +54,7 @@ pub unsafe fn transpose_vecs(values: *mut u32, log_n_vecs: usize) {
                 store(values.add(j << 4), val0);
             }
         }
-    }
+    });
 }
 
 /// Computes the twiddles for the first fft layer from the second, and loads both to SIMD registers.
