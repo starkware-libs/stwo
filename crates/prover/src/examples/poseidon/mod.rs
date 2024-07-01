@@ -3,7 +3,7 @@
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use tracing::{span, Level};
 
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -14,14 +14,17 @@ use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::channel::Channel;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure_column::SecureColumn;
 use crate::core::fields::{FieldExpOps, FieldOps};
-use crate::core::pcs::{ChunkLocation, TreeVec};
+use crate::core::pcs::{ChunkLocation, TreeBuilder, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
+use crate::core::utils::shifted_secure_combination;
 use crate::core::ColumnVec;
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
@@ -40,17 +43,109 @@ const INTERNAL_ROUND_CONSTS: [BaseField; N_PARTIAL_ROUNDS] =
     [BaseField::from_u32_unchecked(1234); N_PARTIAL_ROUNDS];
 
 pub struct PoseidonComponent {
-    pub log_n_instances: u32,
-    pub location: ChunkLocation,
+    log_n_rows: u32,
+    trace_location: ChunkLocation,
+    lookup_location: ChunkLocation,
+    _interaction_elements: LookupElements,
 }
 
-impl PoseidonComponent {
-    pub fn log_column_size(&self) -> u32 {
-        self.log_n_instances
+// Move to somewhere generic.
+pub struct LookupElements {
+    alpha: SecureField,
+    z: SecureField,
+}
+impl LookupElements {
+    pub fn draw(channel: &mut impl Channel) -> Self {
+        let felts = channel.draw_felts(2);
+        Self {
+            alpha: felts[0],
+            z: felts[1],
+        }
     }
+}
 
-    pub fn n_columns(&self) -> usize {
-        N_COLUMNS
+pub struct PoseidonBuilder {
+    log_n_rows: u32,
+}
+impl PoseidonBuilder {
+    pub fn new(log_n_rows: u32) -> Self {
+        Self { log_n_rows }
+    }
+    pub fn gen(self, tree_builder: &mut TreeBuilder<'_, '_, SimdBackend>) -> PoseidonLookupBuilder {
+        let trace = gen_trace(self.log_n_rows);
+        let input_lookup_columns: [_; N_STATE] = std::array::from_fn(|i| trace[i].clone());
+        let output_lookup_columns: [_; N_STATE] =
+            std::array::from_fn(|i| trace[N_COLUMNS - N_STATE + i].clone());
+        let trace_location = tree_builder.extend_evals(trace);
+        PoseidonLookupBuilder {
+            log_n_rows: self.log_n_rows,
+            trace_location,
+            input_lookup_columns,
+            output_lookup_columns,
+        }
+    }
+}
+pub struct PoseidonLookupBuilder {
+    log_n_rows: u32,
+    trace_location: ChunkLocation,
+    input_lookup_columns: [CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>; N_STATE],
+    output_lookup_columns: [CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>; N_STATE],
+}
+impl PoseidonLookupBuilder {
+    pub fn gen(
+        self,
+        tree_builder: &mut TreeBuilder<'_, '_, SimdBackend>,
+        interaction_elements: LookupElements,
+    ) -> PoseidonComponent {
+        // TODO(spapini): Do it simd.
+        let n_rows = self.input_lookup_columns[0].len();
+        let mut prev_value = SecureField::one();
+        let values: SecureColumn<SimdBackend> = (0..n_rows)
+            .map(|i| {
+                let input_state = self
+                    .input_lookup_columns
+                    .iter()
+                    .map(|col| col.at(i))
+                    .collect_vec();
+                let output_state = self
+                    .output_lookup_columns
+                    .iter()
+                    .map(|col| col.at(i))
+                    .collect_vec();
+                let numerator = shifted_secure_combination(
+                    &input_state,
+                    interaction_elements.alpha,
+                    interaction_elements.z,
+                );
+                let denominator = shifted_secure_combination(
+                    &output_state,
+                    interaction_elements.alpha,
+                    interaction_elements.z,
+                );
+                // TODO(AlonH): Use batch inversion.
+                let cell = (numerator / denominator) * prev_value;
+                prev_value = cell;
+                cell
+            })
+            .collect();
+
+        let cols = values
+            .columns
+            .into_iter()
+            .map(|c| {
+                CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(
+                    CanonicCoset::new(self.log_n_rows).circle_domain(),
+                    c,
+                )
+            })
+            .collect_vec();
+        let lookup_location = tree_builder.extend_evals(cols);
+        PoseidonComponent {
+            log_n_rows: self.log_n_rows,
+            trace_location: self.trace_location,
+            lookup_location,
+            _interaction_elements: interaction_elements,
+        }
     }
 }
 
@@ -70,7 +165,7 @@ impl Component for PoseidonComponent {
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.log_column_size() + LOG_EXPAND
+        self.log_n_rows + LOG_EXPAND
     }
 
     fn mask_points(
@@ -79,12 +174,8 @@ impl Component for PoseidonComponent {
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
         TreeVec::new(vec![
             fixed_mask_points(&vec![vec![0_usize]; N_COLUMNS], point),
-            vec![],
+            vec![vec![]; 4],
         ])
-    }
-
-    fn interaction_element_ids(&self) -> Vec<String> {
-        vec![]
     }
 
     fn evaluate_constraint_quotients_at_point(
@@ -93,7 +184,7 @@ impl Component for PoseidonComponent {
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     ) {
-        let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
+        let constraint_zero_domain = CanonicCoset::new(self.log_n_rows).coset;
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
         let mut eval = PoseidonEvalAtPoint {
@@ -109,7 +200,7 @@ impl Component for PoseidonComponent {
     }
 
     fn chunk_locations(&self) -> Vec<ChunkLocation> {
-        vec![self.location]
+        vec![self.trace_location, self.lookup_location]
     }
 }
 
@@ -364,8 +455,8 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
         trace: &ComponentTrace<'_, SimdBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
     ) {
-        assert_eq!(trace.polys[0].len(), self.n_columns());
-        let eval_domain = CanonicCoset::new(self.log_column_size() + LOG_EXPAND).circle_domain();
+        assert_eq!(trace.polys[0].len(), N_COLUMNS);
+        let eval_domain = CanonicCoset::new(self.log_n_rows + LOG_EXPAND).circle_domain();
 
         // Create a new evaluation.
         let span = span!(Level::INFO, "Deg8 eval").entered();
@@ -382,7 +473,7 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
 
         // Denoms.
         let span = span!(Level::INFO, "Constraint eval denominators").entered();
-        let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
+        let zero_domain = CanonicCoset::new(self.log_n_rows).coset;
         let mut denoms =
             BaseFieldVec::from_iter(eval_domain.iter().map(|p| coset_vanishing(zero_domain, p)));
         <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
@@ -430,20 +521,19 @@ mod tests {
 
     use itertools::Itertools;
     use num_traits::One;
-    use tracing::{span, Level};
 
     use super::{LOG_EXPAND, N_COLUMNS, N_LOG_INSTANCES_PER_ROW};
     use crate::core::backend::simd::SimdBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
-    use crate::core::pcs::{ChunkLocation, CommitmentSchemeProver, CommitmentSchemeVerifier};
+    use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
     use crate::core::poly::circle::{CanonicCoset, PolyOps};
     use crate::core::prover::{prove, verify, LOG_BLOWUP_FACTOR};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::examples::poseidon::{
-        apply_internal_round_matrix, apply_m4, gen_trace, PoseidonAir, PoseidonComponent,
+        apply_internal_round_matrix, apply_m4, LookupElements, PoseidonAir, PoseidonBuilder,
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
 
@@ -497,34 +587,29 @@ mod tests {
             .parse::<u32>()
             .unwrap();
         let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
-        // TODO(spapini): Use a builder.
-        let component = PoseidonComponent {
-            log_n_instances: log_n_rows,
-            location: ChunkLocation {
-                tree_index: 0,
-                col_start: 0,
-                col_end: N_COLUMNS,
-            },
-        };
-        let span = span!(Level::INFO, "Trace generation").entered();
-        let trace = gen_trace(component.log_column_size());
-        span.exit();
 
+        // Prove.
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         let twiddles = SimdBackend::precompute_twiddles(
             CanonicCoset::new(log_n_rows + LOG_BLOWUP_FACTOR + LOG_EXPAND).half_coset(),
         );
-        let mut commitment_scheme = CommitmentSchemeProver::<SimdBackend>::new(LOG_BLOWUP_FACTOR);
+        let commitment_scheme =
+            &mut CommitmentSchemeProver::<SimdBackend>::new(LOG_BLOWUP_FACTOR, &twiddles);
 
-        // Commit.
-        let polys = trace
-            .into_iter()
-            .map(|eval| eval.interpolate_with_twiddles(&twiddles))
-            .collect_vec();
-        commitment_scheme.commit(polys, channel, &twiddles);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        let poseidon = PoseidonBuilder::new(log_n_rows).gen(&mut tree_builder);
+        tree_builder.commit(channel);
 
-        let air = PoseidonAir { component };
-        let proof = prove::<SimdBackend>(&air, &mut commitment_scheme, channel, &twiddles).unwrap();
+        let lookup_elements = LookupElements::draw(channel);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        let poseidon = poseidon.gen(&mut tree_builder, lookup_elements);
+        tree_builder.commit(channel);
+
+        let air = PoseidonAir {
+            component: poseidon,
+        };
+
+        let proof = prove::<SimdBackend>(&air, commitment_scheme, channel).unwrap();
 
         // Verify.
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
@@ -532,7 +617,14 @@ mod tests {
         let commitment_scheme = &mut CommitmentSchemeVerifier::new();
         commitment_scheme.commit(
             proof.commitments[0],
-            &[air.component.log_column_size(); N_COLUMNS],
+            &[air.component.log_n_rows; N_COLUMNS],
+            channel,
+        );
+        // TODO: we should create the component again.
+        let _lookup_elements = LookupElements::draw(channel);
+        commitment_scheme.commit(
+            proof.commitments[1],
+            &[air.component.log_n_rows; 4],
             channel,
         );
 
