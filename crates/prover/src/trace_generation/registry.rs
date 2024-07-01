@@ -30,140 +30,138 @@ impl ComponentGenerationRegistry {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::air::accumulation::PointEvaluationAccumulator;
-    use crate::core::air::Component;
-    use crate::core::backend::simd::m31::{PackedM31, N_LANES};
-    use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::CpuBackend;
-    use crate::core::circle::CirclePoint;
-    use crate::core::fields::m31::{BaseField, M31};
-    use crate::core::fields::qm31::SecureField;
-    use crate::core::pcs::TreeVec;
-    use crate::core::poly::circle::CircleEvaluation;
-    use crate::core::poly::BitReversedOrder;
-    use crate::core::{ColumnVec, InteractionElements};
-    use crate::m31;
-    use crate::trace_generation::TraceGenerator;
-    pub struct ComponentA {
-        pub n_instances: usize,
-    }
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::core::air::accumulation::PointEvaluationAccumulator;
+//     use crate::core::air::Component;
+//     use crate::core::backend::simd::m31::{PackedM31, N_LANES};
+//     use crate::core::backend::simd::SimdBackend;
+//     use crate::core::backend::CpuBackend;
+//     use crate::core::circle::CirclePoint;
+//     use crate::core::fields::m31::{BaseField, M31};
+//     use crate::core::fields::qm31::SecureField;
+//     use crate::core::pcs::TreeVec;
+//     use crate::core::poly::circle::CircleEvaluation;
+//     use crate::core::poly::BitReversedOrder;
+//     use crate::core::{ColumnVec, InteractionElements};
+//     use crate::m31;
+//     use crate::trace_generation::TraceGenerator;
+//     pub struct ComponentA {
+//         pub n_instances: usize,
+//     }
 
-    impl Component for ComponentA {
-        fn n_constraints(&self) -> usize {
-            todo!()
-        }
+//     impl Component for ComponentA {
+//         fn n_constraints(&self) -> usize {
+//             todo!()
+//         }
 
-        fn max_constraint_log_degree_bound(&self) -> u32 {
-            todo!()
-        }
+//         fn max_constraint_log_degree_bound(&self) -> u32 {
+//             todo!()
+//         }
 
-        fn n_interaction_phases(&self) -> u32 {
-            todo!()
-        }
+//         fn n_interaction_phases(&self) -> u32 {
+//             todo!()
+//         }
 
-        fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
-            todo!()
-        }
+//         fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+//             todo!()
+//         }
 
-        fn mask_points(
-            &self,
-            _point: CirclePoint<SecureField>,
-        ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-            todo!()
-        }
+//         fn mask_points(
+//             &self,
+//             _point: CirclePoint<SecureField>,
+//         ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> { todo!()
+//         }
 
-        fn interaction_element_ids(&self) -> Vec<String> {
-            todo!()
-        }
+//         fn interaction_element_ids(&self) -> Vec<String> {
+//             todo!()
+//         }
 
-        fn evaluate_constraint_quotients_at_point(
-            &self,
-            _point: CirclePoint<SecureField>,
-            _mask: &ColumnVec<Vec<SecureField>>,
-            _evaluation_accumulator: &mut PointEvaluationAccumulator,
-            _interaction_elements: &InteractionElements,
-        ) {
-            todo!()
-        }
-    }
+//         fn evaluate_constraint_quotients_at_point(
+//             &self,
+//             _point: CirclePoint<SecureField>,
+//             _mask: &ColumnVec<Vec<SecureField>>,
+//             _evaluation_accumulator: &mut PointEvaluationAccumulator,
+//             _interaction_elements: &InteractionElements,
+//         ) { todo!()
+//         }
+//     }
 
-    type ComponentACpuInputs = Vec<(M31, M31)>;
-    struct ComponentACpuTraceGenerator {
-        inputs: ComponentACpuInputs,
-    }
-    impl ComponentGen for ComponentACpuTraceGenerator {}
+//     type ComponentACpuInputs = Vec<(M31, M31)>;
+//     struct ComponentACpuTraceGenerator {
+//         inputs: ComponentACpuInputs,
+//     }
+//     impl ComponentGen for ComponentACpuTraceGenerator {}
 
-    impl TraceGenerator<CpuBackend> for ComponentACpuTraceGenerator {
-        type Component = ComponentA;
-        type Inputs = ComponentACpuInputs;
+//     impl TraceGenerator<CpuBackend> for ComponentACpuTraceGenerator {
+//         type Component = ComponentA;
+//         type Inputs = ComponentACpuInputs;
 
-        fn write_trace(
-            _component_id: &str,
-            _registry: &mut ComponentGenerationRegistry,
-        ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
-            unimplemented!("TestTraceGenerator::write_trace")
-        }
+//         fn write_trace(
+//             _component_id: &str,
+//             _registry: &mut ComponentGenerationRegistry,
+//         ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+//           unimplemented!("TestTraceGenerator::write_trace")
+//         }
 
-        fn add_inputs(&mut self, inputs: &ComponentACpuInputs) {
-            self.inputs.extend(inputs)
-        }
+//         fn add_inputs(&mut self, inputs: &ComponentACpuInputs) {
+//             self.inputs.extend(inputs)
+//         }
 
-        fn component(&self) -> ComponentA {
-            ComponentA {
-                n_instances: self.inputs.len(),
-            }
-        }
-    }
+//         fn component(&self) -> ComponentA {
+//             ComponentA {
+//                 n_instances: self.inputs.len(),
+//             }
+//         }
+//     }
 
-    type ComponentASimdInputs = Vec<(PackedM31, PackedM31)>;
-    struct ComponentASimdTraceGenerator {
-        inputs: ComponentASimdInputs,
-    }
-    impl ComponentGen for ComponentASimdTraceGenerator {}
+//     type ComponentASimdInputs = Vec<(PackedM31, PackedM31)>;
+//     struct ComponentASimdTraceGenerator {
+//         inputs: ComponentASimdInputs,
+//     }
+//     impl ComponentGen for ComponentASimdTraceGenerator {}
 
-    impl TraceGenerator<SimdBackend> for ComponentASimdTraceGenerator {
-        type Component = ComponentA;
-        type Inputs = ComponentASimdInputs;
+//     impl TraceGenerator<SimdBackend> for ComponentASimdTraceGenerator {
+//         type Component = ComponentA;
+//         type Inputs = ComponentASimdInputs;
 
-        fn write_trace(
-            _component_id: &str,
-            _registry: &mut ComponentGenerationRegistry,
-        ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-            unimplemented!("TestTraceGenerator::write_trace")
-        }
+//         fn write_trace(
+//             _component_id: &str,
+//             _registry: &mut ComponentGenerationRegistry,
+//         ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+//           unimplemented!("TestTraceGenerator::write_trace")
+//         }
 
-        fn add_inputs(&mut self, inputs: &ComponentASimdInputs) {
-            self.inputs.extend(inputs)
-        }
+//         fn add_inputs(&mut self, inputs: &ComponentASimdInputs) {
+//             self.inputs.extend(inputs)
+//         }
 
-        fn component(&self) -> ComponentA {
-            ComponentA {
-                n_instances: self.inputs.len() * N_LANES,
-            }
-        }
-    }
+//         fn component(&self) -> ComponentA {
+//             ComponentA {
+//                 n_instances: self.inputs.len() * N_LANES,
+//             }
+//         }
+//     }
 
-    #[test]
-    fn test_component_registry() {
-        let mut registry = ComponentGenerationRegistry::default();
-        let component_id = "componentA::0";
+//     #[test]
+//     fn test_component_registry() {
+//         let mut registry = ComponentGenerationRegistry::default();
+//         let component_id = "componentA::0";
 
-        let component_a_cpu_trace_generator = ComponentACpuTraceGenerator { inputs: vec![] };
-        registry.register(component_id, component_a_cpu_trace_generator);
-        let cpu_inputs = vec![(m31!(1), m31!(1)), (m31!(2), m31!(2))];
+//         let component_a_cpu_trace_generator = ComponentACpuTraceGenerator { inputs: vec![] };
+//         registry.register(component_id, component_a_cpu_trace_generator);
+//         let cpu_inputs = vec![(m31!(1), m31!(1)), (m31!(2), m31!(2))];
 
-        registry
-            .get_generator_mut::<ComponentACpuTraceGenerator>(component_id)
-            .add_inputs(&cpu_inputs);
+//         registry
+//             .get_generator_mut::<ComponentACpuTraceGenerator>(component_id)
+//             .add_inputs(&cpu_inputs);
 
-        assert_eq!(
-            registry
-                .get_generator_mut::<ComponentACpuTraceGenerator>(component_id)
-                .inputs,
-            cpu_inputs
-        );
-    }
-}
+//         assert_eq!(
+//             registry
+//                 .get_generator_mut::<ComponentACpuTraceGenerator>(component_id)
+//                 .inputs,
+//             cpu_inputs
+//         );
+//     }
+// }

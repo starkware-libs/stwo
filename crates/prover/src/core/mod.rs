@@ -1,7 +1,4 @@
-use std::collections::BTreeMap;
-use std::ops::{Deref, DerefMut, Index};
-
-use self::fields::qm31::SecureField;
+use std::ops::{Deref, DerefMut};
 
 pub mod air;
 pub mod backend;
@@ -58,27 +55,5 @@ impl<T> Deref for ComponentVec<T> {
 impl<T> DerefMut for ComponentVec<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
-    }
-}
-
-#[derive(Default)]
-pub struct InteractionElements(BTreeMap<String, SecureField>);
-
-impl InteractionElements {
-    pub fn new(elements: BTreeMap<String, SecureField>) -> Self {
-        Self(elements)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
-
-impl Index<&str> for InteractionElements {
-    type Output = SecureField;
-
-    fn index(&self, index: &str) -> &Self::Output {
-        // TODO(AlonH): Return an error if the key is not found.
-        &self.0[index]
     }
 }

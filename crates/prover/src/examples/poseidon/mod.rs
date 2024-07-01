@@ -8,25 +8,21 @@ use tracing::{span, Level};
 
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::fixed_mask_points;
-use crate::core::air::{
-    Air, AirProver, AirTraceVerifier, AirTraceWriter, Component, ComponentProver, ComponentTrace,
-    ComponentTraceWriter,
-};
+use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
 use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column, ColumnOps};
-use crate::core::channel::Blake2sChannel;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, FieldOps};
-use crate::core::pcs::TreeVec;
+use crate::core::pcs::{ChunkLocation, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
-use crate::core::{ColumnVec, InteractionElements};
+use crate::core::ColumnVec;
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
@@ -45,6 +41,7 @@ const INTERNAL_ROUND_CONSTS: [BaseField; N_PARTIAL_ROUNDS] =
 
 pub struct PoseidonComponent {
     pub log_n_instances: u32,
+    pub location: ChunkLocation,
 }
 
 impl PoseidonComponent {
@@ -67,26 +64,6 @@ impl Air for PoseidonAir {
     }
 }
 
-impl AirTraceVerifier for PoseidonAir {
-    fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
-        InteractionElements::default()
-    }
-}
-
-impl AirTraceWriter<SimdBackend> for PoseidonAir {
-    fn interact(
-        &self,
-        _trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-        _elements: &InteractionElements,
-    ) -> Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-        vec![]
-    }
-
-    fn to_air_prover(&self) -> &impl AirProver<SimdBackend> {
-        self
-    }
-}
-
 impl Component for PoseidonComponent {
     fn n_constraints(&self) -> usize {
         (N_COLUMNS_PER_REP - N_STATE) * N_INSTANCES_PER_ROW
@@ -94,14 +71,6 @@ impl Component for PoseidonComponent {
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
         self.log_column_size() + LOG_EXPAND
-    }
-
-    fn n_interaction_phases(&self) -> u32 {
-        1
-    }
-
-    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
-        TreeVec::new(vec![vec![self.log_column_size(); N_COLUMNS], vec![]])
     }
 
     fn mask_points(
@@ -121,15 +90,14 @@ impl Component for PoseidonComponent {
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
+        mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
-        _interaction_elements: &InteractionElements,
     ) {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
         let mut eval = PoseidonEvalAtPoint {
-            mask,
+            mask: &mask[0],
             evaluation_accumulator,
             col_index: 0,
             denom_inverse,
@@ -138,6 +106,10 @@ impl Component for PoseidonComponent {
             eval.eval();
         }
         assert_eq!(eval.col_index, N_COLUMNS);
+    }
+
+    fn chunk_locations(&self) -> Vec<ChunkLocation> {
+        vec![self.location]
     }
 }
 
@@ -357,16 +329,6 @@ pub fn gen_trace(
         .collect_vec()
 }
 
-impl ComponentTraceWriter<SimdBackend> for PoseidonComponent {
-    fn write_interaction_trace(
-        &self,
-        _trace: &ColumnVec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-        _elements: &InteractionElements,
-    ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-        vec![]
-    }
-}
-
 struct PoseidonEvalAtDomain<'a> {
     trace_eval: &'a TreeVec<Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
     vec_row: usize,
@@ -401,7 +363,6 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
         &self,
         trace: &ComponentTrace<'_, SimdBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
-        _interaction_elements: &InteractionElements,
     ) {
         assert_eq!(trace.polys[0].len(), self.n_columns());
         let eval_domain = CanonicCoset::new(self.log_column_size() + LOG_EXPAND).circle_domain();
@@ -471,12 +432,14 @@ mod tests {
     use num_traits::One;
     use tracing::{span, Level};
 
-    use super::N_LOG_INSTANCES_PER_ROW;
+    use super::{LOG_EXPAND, N_COLUMNS, N_LOG_INSTANCES_PER_ROW};
     use crate::core::backend::simd::SimdBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
-    use crate::core::prover::{prove, verify};
+    use crate::core::pcs::{ChunkLocation, CommitmentSchemeProver, CommitmentSchemeVerifier};
+    use crate::core::poly::circle::{CanonicCoset, PolyOps};
+    use crate::core::prover::{prove, verify, LOG_BLOWUP_FACTOR};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::examples::poseidon::{
@@ -534,18 +497,45 @@ mod tests {
             .parse::<u32>()
             .unwrap();
         let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
+        // TODO(spapini): Use a builder.
         let component = PoseidonComponent {
             log_n_instances: log_n_rows,
+            location: ChunkLocation {
+                tree_index: 0,
+                col_start: 0,
+                col_end: N_COLUMNS,
+            },
         };
         let span = span!(Level::INFO, "Trace generation").entered();
         let trace = gen_trace(component.log_column_size());
         span.exit();
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let air = PoseidonAir { component };
-        let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
+        let twiddles = SimdBackend::precompute_twiddles(
+            CanonicCoset::new(log_n_rows + LOG_BLOWUP_FACTOR + LOG_EXPAND).half_coset(),
+        );
+        let mut commitment_scheme = CommitmentSchemeProver::<SimdBackend>::new(LOG_BLOWUP_FACTOR);
 
+        // Commit.
+        let polys = trace
+            .into_iter()
+            .map(|eval| eval.interpolate_with_twiddles(&twiddles))
+            .collect_vec();
+        commitment_scheme.commit(polys, channel, &twiddles);
+
+        let air = PoseidonAir { component };
+        let proof = prove::<SimdBackend>(&air, &mut commitment_scheme, channel, &twiddles).unwrap();
+
+        // Verify.
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        verify(proof, &air, channel).unwrap();
+        // Read trace commitment.
+        let commitment_scheme = &mut CommitmentSchemeVerifier::new();
+        commitment_scheme.commit(
+            proof.commitments[0],
+            &[air.component.log_column_size(); N_COLUMNS],
+            channel,
+        );
+
+        verify(proof, &air, commitment_scheme, channel).unwrap();
     }
 }
