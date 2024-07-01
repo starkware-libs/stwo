@@ -17,6 +17,7 @@ use super::super::prover::{
 use super::super::ColumnVec;
 use super::quotients::{compute_fri_quotients, PointSample};
 use super::utils::TreeVec;
+use super::ChunkLocation;
 use crate::core::backend::Backend;
 use crate::core::channel::Channel;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
@@ -30,28 +31,33 @@ type MerkleHasher = Blake2sMerkleHasher;
 type ProofChannel = Blake2sChannel;
 
 /// The prover side of a FRI polynomial commitment scheme. See [super].
-pub struct CommitmentSchemeProver<B: Backend + MerkleOps<MerkleHasher>> {
+pub struct CommitmentSchemeProver<'a, B: Backend + MerkleOps<MerkleHasher>> {
     pub trees: TreeVec<CommitmentTreeProver<B>>,
     pub log_blowup_factor: u32,
+    twiddles: &'a TwiddleTree<B>,
 }
 
-impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
-    pub fn new(log_blowup_factor: u32) -> Self {
+impl<'a, B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<'a, B> {
+    pub fn new(log_blowup_factor: u32, twiddles: &'a TwiddleTree<B>) -> Self {
         CommitmentSchemeProver {
             trees: TreeVec::default(),
             log_blowup_factor,
+            twiddles,
         }
     }
 
-    pub fn commit(
-        &mut self,
-        polynomials: ColumnVec<CirclePoly<B>>,
-        channel: &mut ProofChannel,
-        twiddles: &TwiddleTree<B>,
-    ) {
+    fn commit(&mut self, polynomials: ColumnVec<CirclePoly<B>>, channel: &mut ProofChannel) {
         let tree =
-            CommitmentTreeProver::new(polynomials, self.log_blowup_factor, channel, twiddles);
+            CommitmentTreeProver::new(polynomials, self.log_blowup_factor, channel, self.twiddles);
         self.trees.push(tree);
+    }
+
+    pub fn tree_builder(&mut self) -> TreeBuilder<'_, 'a, B> {
+        TreeBuilder {
+            tree_index: self.trees.len(),
+            commitment_scheme: self,
+            polys: Vec::default(),
+        }
     }
 
     pub fn roots(&self) -> TreeVec<Blake2sHash> {
@@ -74,7 +80,6 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
         &self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
         channel: &mut ProofChannel,
-        twiddles: &TwiddleTree<B>,
     ) -> CommitmentSchemeProof {
         // Evaluate polynomials on open points.
         let span = span!(Level::INFO, "Evaluate columns out of domain").entered();
@@ -103,7 +108,7 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
         // Run FRI commitment phase on the oods quotients.
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
         let fri_prover =
-            FriProver::<B, MerkleHasher>::commit(channel, fri_config, &quotients, twiddles);
+            FriProver::<B, MerkleHasher>::commit(channel, fri_config, &quotients, self.twiddles);
 
         // Proof of work.
         let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
@@ -130,6 +135,45 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
             proof_of_work,
             fri_proof,
         }
+    }
+}
+
+pub struct TreeBuilder<'a, 'b, B: Backend + MerkleOps<MerkleHasher>> {
+    tree_index: usize,
+    commitment_scheme: &'a mut CommitmentSchemeProver<'b, B>,
+    polys: ColumnVec<CirclePoly<B>>,
+}
+impl<'a, 'b, B: Backend + MerkleOps<MerkleHasher>> TreeBuilder<'a, 'b, B> {
+    pub fn extend_evals(
+        &mut self,
+        columns: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    ) -> ChunkLocation {
+        let col_start = self.polys.len();
+        let polys = columns
+            .into_iter()
+            .map(|eval| eval.interpolate_with_twiddles(self.commitment_scheme.twiddles))
+            .collect_vec();
+        self.polys.extend(polys);
+        ChunkLocation {
+            tree_index: self.tree_index,
+            col_start,
+            col_end: self.polys.len(),
+        }
+    }
+
+    pub fn extend_polys(&mut self, polys: ColumnVec<CirclePoly<B>>) -> ChunkLocation {
+        let col_start = self.polys.len();
+        self.polys.extend(polys);
+        ChunkLocation {
+            tree_index: self.tree_index,
+            col_start,
+            col_end: self.polys.len(),
+        }
+    }
+
+    pub fn commit(self, channel: &mut ProofChannel) {
+        // TODO: Log.
+        self.commitment_scheme.commit(self.polys, channel);
     }
 }
 
