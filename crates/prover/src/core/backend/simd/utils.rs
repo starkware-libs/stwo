@@ -1,5 +1,7 @@
 use std::simd::Swizzle;
 
+use rayon::prelude::*;
+
 /// Used with [`Swizzle::concat_swizzle`] to interleave the even values of two vectors.
 pub struct InterleaveEvens;
 
@@ -22,6 +24,24 @@ const fn parity_interleave<const N: usize>(odd: bool) -> [usize; N] {
         i += 1;
     }
     res
+}
+
+pub trait MaybeParIter: IntoParallelIterator + IntoIterator {
+    type Iter;
+    fn maybe_par_iter(self) -> <Self as MaybeParIter>::Iter;
+}
+impl<I: IntoParallelIterator + IntoIterator> MaybeParIter for I {
+    #[cfg(feature = "parallel")]
+    type Iter = <Self as IntoParallelIterator>::Iter;
+    #[cfg(not(feature = "parallel"))]
+    type Iter = <Self as IntoIterator>::IntoIter;
+
+    fn maybe_par_iter(self) -> <Self as MaybeParIter>::Iter {
+        #[cfg(feature = "parallel")]
+        return self.into_par_iter();
+        #[cfg(not(feature = "parallel"))]
+        self.into_iter()
+    }
 }
 
 #[cfg(test)]
