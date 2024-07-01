@@ -4,15 +4,39 @@ use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
 use itertools::{izip, Itertools};
 use num_traits::Zero;
 
+use super::bit_reverse::{bit_reverse_m31, MIN_LOG_SIZE};
 use super::cm31::PackedCM31;
 use super::m31::{PackedBaseField, N_LANES};
 use super::qm31::{PackedQM31, PackedSecureField};
 use super::SimdBackend;
-use crate::core::backend::{Column, CpuBackend};
+use crate::core::backend::{Column, ColumnOps, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
+use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::{FieldExpOps, FieldOps};
+use crate::core::utils::bit_reverse as cpu_bit_reverse;
+
+impl ColumnOps<BaseField> for SimdBackend {
+    type Column = BaseFieldVec;
+
+    fn bit_reverse_column(column: &mut Self::Column) {
+        // Fallback to cpu bit_reverse.
+        if column.data.len().ilog2() < MIN_LOG_SIZE {
+            cpu_bit_reverse(column.as_mut_slice());
+            return;
+        }
+
+        bit_reverse_m31(&mut column.data);
+    }
+}
+
+impl ColumnOps<SecureField> for SimdBackend {
+    type Column = SecureFieldVec;
+
+    fn bit_reverse_column(_column: &mut SecureFieldVec) {
+        todo!()
+    }
+}
 
 impl FieldOps<BaseField> for SimdBackend {
     fn batch_inverse(column: &BaseFieldVec, dst: &mut BaseFieldVec) {
@@ -54,7 +78,6 @@ impl BaseFieldVec {
         res
     }
 }
-
 impl Column<BaseField> for BaseFieldVec {
     fn zeros(length: usize) -> Self {
         let data = vec![PackedBaseField::zeroed(); length.div_ceil(N_LANES)];
@@ -156,9 +179,12 @@ impl FromIterator<PackedSecureField> for SecureFieldVec {
     }
 }
 
-impl SecureColumn<SimdBackend> {
+pub struct SecureColumnSlice<'a>(pub [&'a [PackedBaseField]; SECURE_EXTENSION_DEGREE]);
+pub struct SecureColumnMutSlice<'a>(pub [&'a mut [PackedBaseField]; SECURE_EXTENSION_DEGREE]);
+
+impl<'a> SecureColumnSlice<'a> {
     pub fn packed_len(&self) -> usize {
-        self.columns[0].data.len()
+        self.0[0].len()
     }
 
     /// # Safety
@@ -167,36 +193,68 @@ impl SecureColumn<SimdBackend> {
     pub unsafe fn packed_at(&self, vec_index: usize) -> PackedSecureField {
         PackedQM31([
             PackedCM31([
-                *self.columns[0].data.get_unchecked(vec_index),
-                *self.columns[1].data.get_unchecked(vec_index),
+                *self.0[0].get_unchecked(vec_index),
+                *self.0[1].get_unchecked(vec_index),
             ]),
             PackedCM31([
-                *self.columns[2].data.get_unchecked(vec_index),
-                *self.columns[3].data.get_unchecked(vec_index),
+                *self.0[2].get_unchecked(vec_index),
+                *self.0[3].get_unchecked(vec_index),
             ]),
         ])
     }
 
+    pub fn to_vec(&self) -> Vec<SecureField> {
+        izip!(
+            cast_slice(self.0[0]),
+            cast_slice(self.0[1]),
+            cast_slice(self.0[2]),
+            cast_slice(self.0[3]),
+        )
+        .map(|(a, b, c, d)| SecureField::from_m31_array([*a, *b, *c, *d]))
+        .collect()
+    }
+}
+
+impl<'a> SecureColumnMutSlice<'a> {
     /// # Safety
     ///
     /// `vec_index` must be a valid index.
     pub unsafe fn set_packed(&mut self, vec_index: usize, value: PackedSecureField) {
         let PackedQM31([PackedCM31([a, b]), PackedCM31([c, d])]) = value;
-        *self.columns[0].data.get_unchecked_mut(vec_index) = a;
-        *self.columns[1].data.get_unchecked_mut(vec_index) = b;
-        *self.columns[2].data.get_unchecked_mut(vec_index) = c;
-        *self.columns[3].data.get_unchecked_mut(vec_index) = d;
+        *self.0[0].get_unchecked_mut(vec_index) = a;
+        *self.0[1].get_unchecked_mut(vec_index) = b;
+        *self.0[2].get_unchecked_mut(vec_index) = c;
+        *self.0[3].get_unchecked_mut(vec_index) = d;
     }
+}
 
+impl SecureColumn<SimdBackend> {
+    pub fn as_ref(&self) -> SecureColumnSlice<'_> {
+        assert_eq!(self.columns[0].length, self.columns[0].data.len() * N_LANES);
+        SecureColumnSlice(std::array::from_fn(|i| &self.columns[i].data[..]))
+    }
+    pub fn as_mut(&mut self) -> SecureColumnMutSlice<'_> {
+        assert_eq!(self.columns[0].length, self.columns[0].data.len() * N_LANES);
+        let cols = self.columns.get_many_mut([0, 1, 2, 3]).unwrap();
+        SecureColumnMutSlice(cols.map(|c| &mut c.data[..]))
+    }
+    pub fn packed_len(&self) -> usize {
+        self.as_ref().packed_len()
+    }
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
+    pub unsafe fn packed_at(&self, vec_index: usize) -> PackedSecureField {
+        self.as_ref().packed_at(vec_index)
+    }
     pub fn to_vec(&self) -> Vec<SecureField> {
-        izip!(
-            self.columns[0].to_cpu(),
-            self.columns[1].to_cpu(),
-            self.columns[2].to_cpu(),
-            self.columns[3].to_cpu(),
-        )
-        .map(|(a, b, c, d)| SecureField::from_m31_array([a, b, c, d]))
-        .collect()
+        self.as_ref().to_vec()
+    }
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
+    pub unsafe fn set_packed(&mut self, vec_index: usize, value: PackedSecureField) {
+        self.as_mut().set_packed(vec_index, value)
     }
 }
 
