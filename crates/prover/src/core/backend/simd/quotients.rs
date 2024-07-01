@@ -2,12 +2,15 @@ use std::iter::zip;
 
 use itertools::izip;
 use num_traits::{One, Zero};
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::column::SecureFieldVec;
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
 use crate::core::backend::cpu::quotients::{batch_random_coeffs, QuotientConstants};
+use crate::core::backend::simd::utils::MaybeParIter;
 use crate::core::backend::{Col, Column};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
@@ -31,25 +34,34 @@ impl QuotientOps for SimdBackend {
         let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
 
         // TODO(spapini): bit reverse iterator.
-        for vec_row in 0..1 << (domain.log_size() - LOG_N_LANES) {
-            // TODO(spapini): Optimize this, for the small number of columns case.
-            let points = std::array::from_fn(|i| {
-                domain.at(bit_reverse_index(
-                    (vec_row << LOG_N_LANES) + i,
-                    domain.log_size(),
-                ))
+        const PACK_CHUNK_SIZE: usize = 1 << 5;
+        values
+            .as_mut()
+            .chunks_mut(PACK_CHUNK_SIZE)
+            .maybe_par_iter()
+            .enumerate()
+            .for_each(|(chunk_i, mut chunk)| {
+                for i in 0..chunk.as_ref().packed_len() {
+                    let vec_row = chunk_i * PACK_CHUNK_SIZE + i;
+                    // TODO(spapini): Optimize this, for the small number of columns case.
+                    let points = std::array::from_fn(|i| {
+                        domain.at(bit_reverse_index(
+                            (vec_row << LOG_N_LANES) + i,
+                            domain.log_size(),
+                        ))
+                    });
+                    let domain_points_x = PackedBaseField::from_array(points.map(|p| p.x));
+                    let domain_points_y = PackedBaseField::from_array(points.map(|p| p.y));
+                    let row_accumulator = accumulate_row_quotients(
+                        sample_batches,
+                        columns,
+                        &quotient_constants,
+                        vec_row,
+                        (domain_points_x, domain_points_y),
+                    );
+                    unsafe { chunk.set_packed(i, row_accumulator) };
+                }
             });
-            let domain_points_x = PackedBaseField::from_array(points.map(|p| p.x));
-            let domain_points_y = PackedBaseField::from_array(points.map(|p| p.y));
-            let row_accumulator = accumulate_row_quotients(
-                sample_batches,
-                columns,
-                &quotient_constants,
-                vec_row,
-                (domain_points_x, domain_points_y),
-            );
-            unsafe { values.set_packed(vec_row, row_accumulator) };
-        }
         SecureEvaluation { domain, values }
     }
 }

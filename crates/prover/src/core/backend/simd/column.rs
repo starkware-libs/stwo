@@ -226,8 +226,18 @@ impl<'a> SecureColumnMutSlice<'a> {
         *self.0[2].get_unchecked_mut(vec_index) = c;
         *self.0[3].get_unchecked_mut(vec_index) = d;
     }
+    pub fn chunks_mut(&mut self, chunk_pack_size: usize) -> Vec<SecureColumnMutSlice<'_>> {
+        let mut_refs = self.0.get_many_mut([0, 1, 2, 3]).unwrap();
+        let [a, b, c, d] = mut_refs.map(|c| c.chunks_mut(chunk_pack_size).collect_vec());
+        izip!(a, b, c, d)
+            .map(|(a, b, c, d)| SecureColumnMutSlice([a, b, c, d]))
+            .collect()
+    }
+    pub fn as_ref(&self) -> SecureColumnSlice<'_> {
+        let refs = std::array::from_fn(|i| &self.0[i]);
+        SecureColumnSlice(refs.map(|c| &**c))
+    }
 }
-
 impl SecureColumn<SimdBackend> {
     pub fn as_ref(&self) -> SecureColumnSlice<'_> {
         assert_eq!(self.columns[0].length, self.columns[0].data.len() * N_LANES);
