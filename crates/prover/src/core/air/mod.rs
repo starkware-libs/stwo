@@ -1,19 +1,18 @@
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
-use super::channel::Blake2sChannel;
 use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::pcs::TreeVec;
+use super::pcs::{ChunkLocation, TreeVec};
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
-use super::{ColumnVec, InteractionElements};
+use super::ColumnVec;
 
 pub mod accumulation;
 mod air_ext;
 pub mod mask;
 
-pub use air_ext::{AirExt, AirProverExt};
+pub use air_ext::{cmp_to_cmt, cmt_to_cmp, AirExt, AirProverExt};
 
 /// Arithmetic Intermediate Representation (AIR).
 /// An Air instance is assumed to already contain all the information needed to
@@ -23,20 +22,6 @@ pub use air_ext::{AirExt, AirProverExt};
 // TODO(spapini): consider renaming this struct.
 pub trait Air {
     fn components(&self) -> Vec<&dyn Component>;
-}
-
-pub trait AirTraceVerifier {
-    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements;
-}
-
-pub trait AirTraceWriter<B: Backend>: AirTraceVerifier {
-    fn interact(
-        &self,
-        trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-        elements: &InteractionElements,
-    ) -> Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
-
-    fn to_air_prover(&self) -> &impl AirProver<B>;
 }
 
 pub trait AirProver<B: Backend>: Air {
@@ -50,12 +35,7 @@ pub trait Component {
 
     fn max_constraint_log_degree_bound(&self) -> u32;
 
-    /// Returns the number of interaction phases done by the component.
-    fn n_interaction_phases(&self) -> u32;
-
-    /// Returns the degree bounds of each trace column. The returned TreeVec should be of size
-    /// `n_interaction_phases`.
-    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>>;
+    fn chunk_locations(&self) -> Vec<ChunkLocation>;
 
     /// Returns the mask points for each trace column. The returned TreeVec should be of size
     /// `n_interaction_phases`.
@@ -71,18 +51,9 @@ pub trait Component {
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
+        mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
-        interaction_elements: &InteractionElements,
     );
-}
-
-pub trait ComponentTraceWriter<B: Backend> {
-    fn write_interaction_trace(
-        &self,
-        trace: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
-        elements: &InteractionElements,
-    ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
 }
 
 pub trait ComponentProver<B: Backend>: Component {
@@ -92,7 +63,6 @@ pub trait ComponentProver<B: Backend>: Component {
         &self,
         trace: &ComponentTrace<'_, B>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
-        interaction_elements: &InteractionElements,
     );
 }
 
