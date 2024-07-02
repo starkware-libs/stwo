@@ -530,7 +530,7 @@ mod tests {
 
         // Get from environment variable:
         let log_n_instances = env::var("LOG_N_INSTANCES")
-            .unwrap_or_else(|_| "8".to_string())
+            .unwrap_or_else(|_| "10".to_string())
             .parse::<u32>()
             .unwrap();
         let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;

@@ -60,6 +60,12 @@ pub fn accumulate_row_quotients(
         {
             let column = &columns[*column_index];
             let value = column[row] * *c;
+            // The numerator is a line equation passing through
+            //   (sample_point.y, sample_value), (conj(sample_point), conj(sample_value))
+            // evaluated at (domain_point.y, value).
+            // When substituting a polynomial in this line equation, we get a polynomial with a root
+            // at sample_point and conj(sample_point) if the original polynomial had the values
+            // sample_value and conj(sample_value) at these points.
             let linear_term = *a * domain_point.y + *b;
             numerator += value - linear_term;
         }
