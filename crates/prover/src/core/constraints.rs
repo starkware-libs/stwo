@@ -2,7 +2,10 @@ use num_traits::One;
 
 use super::circle::{CirclePoint, Coset};
 use super::fields::m31::BaseField;
+use super::fields::qm31::SecureField;
 use super::fields::ExtensionOf;
+use super::pcs::quotients::PointSample;
+use crate::core::fields::ComplexConjugate;
 
 /// Evaluates a vanishing polynomial of the coset at a point.
 pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoint<F>) -> F {
@@ -68,16 +71,45 @@ pub fn point_vanishing<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
     h.y / (EF::one() + h.x)
 }
 
-/// Evaluates a vanishing polynomial of the vanish_point at a point.
-/// Note that this function has a pole on the antipode of the vanish_point.
-/// Returns the result in a fraction form: (numerator, denominator).
-// TODO(Ohad): reorganize these functions.
-pub fn point_vanishing_fraction<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
-    vanish_point: CirclePoint<EF>,
-    p: CirclePoint<F>,
-) -> (EF, EF) {
-    let h = p.into_ef() - vanish_point;
-    (h.y, (EF::one() + h.x))
+/// Evaluates a point on a line between a point and its complex conjugate.
+/// Relies on the fact that every polynomial F over the base field holds:
+/// F(p*) == F(p)* (* being the complex conjugate).
+pub fn complex_conjugate_line(
+    point: CirclePoint<SecureField>,
+    value: SecureField,
+    p: CirclePoint<BaseField>,
+) -> SecureField {
+    // TODO(AlonH): This assertion will fail at a probability of 1 to 2^62. Use a better solution.
+    assert_ne!(
+        point.y,
+        point.y.complex_conjugate(),
+        "Cannot evaluate a line with a single point ({point:?})."
+    );
+    value
+        + (value.complex_conjugate() - value) * (-point.y + p.y)
+            / (point.complex_conjugate().y - point.y)
+}
+
+/// Evaluates the coefficients of a line between a point and its complex conjugate. Specifically,
+/// `a, b, and c, s.t. a*x + b -c*y = 0` for (x,y) being (sample.y, sample.value) and
+/// (conj(sample.y), conj(sample.value)).
+/// Relies on the fact that every polynomial F over the base
+/// field holds: F(p*) == F(p)* (* being the complex conjugate).
+pub fn complex_conjugate_line_coeffs(
+    sample: &PointSample,
+    alpha: SecureField,
+) -> (SecureField, SecureField, SecureField) {
+    // TODO(AlonH): This assertion will fail at a probability of 1 to 2^62. Use a better solution.
+    assert_ne!(
+        sample.point.y,
+        sample.point.y.complex_conjugate(),
+        "Cannot evaluate a line with a single point ({:?}).",
+        sample.point
+    );
+    let a = sample.value.complex_conjugate() - sample.value;
+    let c = sample.point.complex_conjugate().y - sample.point.y;
+    let b = sample.value * c - a * sample.point.y;
+    (alpha * a, alpha * b, alpha * c)
 }
 
 #[cfg(test)]
@@ -85,11 +117,15 @@ mod tests {
     use num_traits::Zero;
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
-    use crate::core::backend::cpu::CpuCirclePoly;
+    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
-    use crate::core::constraints::pair_vanishing;
+    use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
     use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::qm31::SecureField;
     use crate::core::fields::{ComplexConjugate, FieldExpOps};
+    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::poly::NaturalOrder;
+    use crate::core::test_utils::secure_eval_to_base_eval;
     use crate::m31;
 
     #[test]
@@ -170,5 +206,45 @@ mod tests {
             polynomial.eval_at_point(oods_point.complex_conjugate()),
             polynomial.eval_at_point(oods_point).complex_conjugate()
         );
+    }
+
+    #[test]
+    fn test_point_vanishing_degree() {
+        // Create a polynomial over a circle domain.
+        let log_domain_size = 7;
+        let domain_size = 1 << log_domain_size;
+        let polynomial = CpuCirclePoly::new((0..domain_size).map(|i| m31!(i)).collect());
+
+        // Create a larger domain.
+        let log_large_domain_size = log_domain_size + 1;
+        let large_domain_size = 1 << log_large_domain_size;
+        let large_domain = CanonicCoset::new(log_large_domain_size).circle_domain();
+
+        // Create a vanish point that is not in the large domain.
+        let vanish_point = CirclePoint::get_point(97);
+        let vanish_point_value = polynomial.eval_at_point(vanish_point);
+
+        // Compute the quotient polynomial.
+        let mut quotient_polynomial_values = Vec::with_capacity(large_domain_size as usize);
+        for point in large_domain.iter() {
+            let line = complex_conjugate_line(vanish_point, vanish_point_value, point);
+            let mut value = polynomial.eval_at_point(point.into_ef()) - line;
+            value /= pair_vanishing(
+                vanish_point,
+                vanish_point.complex_conjugate(),
+                point.into_ef(),
+            );
+            quotient_polynomial_values.push(value);
+        }
+        let quotient_evaluation = CpuCircleEvaluation::<SecureField, NaturalOrder>::new(
+            large_domain,
+            quotient_polynomial_values,
+        );
+        let quotient_polynomial = secure_eval_to_base_eval(&quotient_evaluation)
+            .bit_reverse()
+            .interpolate();
+
+        // Check that the quotient polynomial is indeed in the wanted fft space.
+        assert!(quotient_polynomial.is_in_fft_space(log_domain_size));
     }
 }
