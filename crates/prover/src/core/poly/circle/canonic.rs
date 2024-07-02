@@ -63,6 +63,10 @@ impl CanonicCoset {
         self.coset.step_size
     }
 
+    pub fn step(&self) -> CirclePoint<BaseField> {
+        self.coset.step
+    }
+
     pub fn index_at(&self, index: usize) -> CirclePointIndex {
         self.coset.index_at(index)
     }
