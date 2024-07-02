@@ -1,5 +1,7 @@
 use std::iter::Chain;
 
+use itertools::Itertools;
+
 use crate::core::circle::{
     CirclePoint, CirclePointIndex, Coset, CosetIterator, M31_CIRCLE_LOG_ORDER,
 };
@@ -77,6 +79,23 @@ impl CircleDomain {
     pub fn is_canonic(&self) -> bool {
         self.half_coset.initial_index * 4 == self.half_coset.step_size
     }
+
+    /// Splits a circle domain into a smaller [CircleDomain]s, shifted by offsets.
+    pub fn split(&self, log_parts: u32) -> (CircleDomain, Vec<CirclePointIndex>) {
+        assert!(log_parts <= self.half_coset.log_size);
+        let subdomain = CircleDomain::new(Coset::new(
+            self.half_coset.initial_index,
+            self.half_coset.log_size - log_parts,
+        ));
+        let shifts = (0..1 << log_parts)
+            .map(|i| self.half_coset.step_size * i)
+            .collect_vec();
+        (subdomain, shifts)
+    }
+
+    pub fn shift(&self, shift: CirclePointIndex) -> CircleDomain {
+        CircleDomain::new(self.half_coset.shift(shift))
+    }
 }
 
 impl IntoIterator for CircleDomain {
@@ -101,6 +120,8 @@ type CircleDomainIndexIterator =
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+
     use super::CircleDomain;
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::poly::circle::CanonicCoset;
@@ -134,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_at_circle_domain() {
+    fn test_at_circle_domain() {
         let domain = CanonicCoset::new(7).circle_domain();
         let half_domain_size = domain.size() / 2;
 
@@ -142,5 +163,26 @@ mod tests {
             assert_eq!(domain.index_at(i), -domain.index_at(i + half_domain_size));
             assert_eq!(domain.at(i), domain.at(i + half_domain_size).conjugate());
         }
+    }
+
+    #[test]
+    fn test_domain_split() {
+        let domain = CanonicCoset::new(5).circle_domain();
+        let (subdomain, shifts) = domain.split(2);
+
+        let domain_points = domain.iter().collect::<Vec<_>>();
+        let points_for_each_domain = shifts
+            .iter()
+            .map(|&shift| (subdomain.shift(shift)).iter().collect_vec())
+            .collect::<Vec<_>>();
+        // Interleave the points from each subdomain.
+        let extended_points = (0..(1 << 3))
+            .flat_map(|point_ind| {
+                (0..(1 << 2))
+                    .map(|shift_ind| points_for_each_domain[shift_ind][point_ind])
+                    .collect_vec()
+            })
+            .collect_vec();
+        assert_eq!(domain_points, extended_points);
     }
 }
