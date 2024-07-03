@@ -8,9 +8,9 @@ pub struct ComponentGenerationRegistry {
 }
 
 impl ComponentGenerationRegistry {
-    pub fn register(&mut self, component_id: &str, component: impl ComponentGen) {
+    pub fn register(&mut self, component_id: &str, component_generator: impl ComponentGen) {
         self.components
-            .insert(component_id.to_string(), Box::new(component));
+            .insert(component_id.to_string(), Box::new(component_generator));
     }
 
     pub fn get_generator<T: ComponentGen>(&self, component_id: &str) -> &T {
