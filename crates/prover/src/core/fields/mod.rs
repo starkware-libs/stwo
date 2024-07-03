@@ -152,6 +152,14 @@ pub trait ComplexConjugate {
     fn complex_conjugate(&self) -> Self;
 }
 
+pub trait ComplexOf<F: Field> {
+    /// Obtain the real part.
+    fn get_real(&self) -> F;
+
+    /// Obtain the imaginary part.
+    fn get_imag(&self) -> F;
+}
+
 pub trait ExtensionOf<F: Field>: Field + From<F> + NumOps<F> + NumAssignOps<F> {
     const EXTENSION_DEGREE: usize;
 }

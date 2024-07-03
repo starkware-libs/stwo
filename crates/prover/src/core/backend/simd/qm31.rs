@@ -198,6 +198,32 @@ impl Sub<PackedM31> for PackedQM31 {
     }
 }
 
+impl Add<PackedCM31> for PackedQM31 {
+    type Output = Self;
+
+    fn add(self, rhs: PackedCM31) -> Self::Output {
+        Self([self.a() + rhs, self.b()])
+    }
+}
+
+impl Mul<PackedCM31> for PackedQM31 {
+    type Output = Self;
+
+    fn mul(self, rhs: PackedCM31) -> Self::Output {
+        let Self([a, b]) = self;
+        Self([a * rhs, b * rhs])
+    }
+}
+
+impl Sub<PackedCM31> for PackedQM31 {
+    type Output = Self;
+
+    fn sub(self, rhs: PackedCM31) -> Self::Output {
+        let Self([a, b]) = self;
+        Self([a - rhs, b])
+    }
+}
+
 impl SubAssign for PackedQM31 {
     fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;

@@ -3,8 +3,9 @@ use num_traits::One;
 use super::circle::{CirclePoint, Coset};
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::ExtensionOf;
+use super::fields::{ExtensionOf, FieldExpOps};
 use super::pcs::quotients::PointSample;
+use crate::core::fields::cm31::CM31;
 use crate::core::fields::ComplexConjugate;
 
 /// Evaluates a vanishing polynomial of the coset at a point.
@@ -95,10 +96,7 @@ pub fn complex_conjugate_line(
 /// (conj(sample.y), conj(sample.value)).
 /// Relies on the fact that every polynomial F over the base
 /// field holds: F(p*) == F(p)* (* being the complex conjugate).
-pub fn complex_conjugate_line_coeffs(
-    sample: &PointSample,
-    alpha: SecureField,
-) -> (SecureField, SecureField, SecureField) {
+pub fn complex_conjugate_line_coeffs(sample: &PointSample) -> (CM31, CM31) {
     // TODO(AlonH): This assertion will fail at a probability of 1 to 2^62. Use a better solution.
     assert_ne!(
         sample.point.y,
@@ -106,10 +104,13 @@ pub fn complex_conjugate_line_coeffs(
         "Cannot evaluate a line with a single point ({:?}).",
         sample.point
     );
-    let a = sample.value.complex_conjugate() - sample.value;
-    let c = sample.point.complex_conjugate().y - sample.point.y;
-    let b = sample.value * c - a * sample.point.y;
-    (alpha * a, alpha * b, alpha * c)
+    let a = sample.value.1;
+    let c = sample.point.y.1;
+    let b = sample.value.0 * sample.point.y.1 - sample.point.y.0 * sample.value.1;
+
+    let normalized_a = a * c.inverse();
+    let normalized_b = b * c.inverse();
+    (normalized_a, normalized_b)
 }
 
 #[cfg(test)]

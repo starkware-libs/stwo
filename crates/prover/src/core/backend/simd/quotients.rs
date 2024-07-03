@@ -2,19 +2,20 @@ use itertools::{izip, zip_eq, Itertools};
 use num_traits::Zero;
 use tracing::{span, Level};
 
-use super::column::SecureFieldVec;
+use super::column::CM31Vec;
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
 use crate::core::backend::cpu::quotients::{
     batch_random_coeffs, column_line_coeffs, QuotientConstants,
 };
+use crate::core::backend::simd::cm31::PackedCM31;
 use crate::core::backend::{Col, Column};
-use crate::core::circle::CirclePoint;
+use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
-use crate::core::fields::{ComplexConjugate, FieldOps};
+use crate::core::fields::{ComplexOf, FieldExpOps, FieldOps};
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -109,6 +110,7 @@ fn accumulate_quotients_on_subdomain(
             &quotient_constants,
             quad_row,
             spaced_ys,
+            random_coeff,
         );
         #[allow(clippy::needless_range_loop)]
         for i in 0..4 {
@@ -140,6 +142,7 @@ pub fn accumulate_row_quotients(
     quotient_constants: &QuotientConstants<SimdBackend>,
     quad_row: usize,
     spaced_ys: PackedBaseField,
+    random_coeff: SecureField,
 ) -> [PackedSecureField; 4] {
     let mut row_accumulator = [PackedSecureField::zero(); 4];
     for (sample_batch, line_coeffs, batch_coeff, denominator_inverses) in izip!(
@@ -149,12 +152,9 @@ pub fn accumulate_row_quotients(
         &quotient_constants.denominator_inverses
     ) {
         let mut numerator = [PackedSecureField::zero(); 4];
-        for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
-        {
+        for ((column_index, _), (a, b)) in zip_eq(&sample_batch.columns_and_values, line_coeffs) {
             let column = &columns[*column_index];
-            let cvalues: [_; 4] = std::array::from_fn(|i| {
-                PackedSecureField::broadcast(*c) * column.data[(quad_row << 2) + i]
-            });
+            let cvalues: [_; 4] = std::array::from_fn(|i| column.data[(quad_row << 2) + i]);
 
             // The numerator is the line equation:
             //   c * value - a * point.y - b;
@@ -168,7 +168,7 @@ pub fn accumulate_row_quotients(
             // We use this fact to save multiplications.
             // spaced_ys are the y value in jumps of 4:
             //   P0.y, P1.y, P2.y, ...
-            let spaced_ay = PackedSecureField::broadcast(*a) * spaced_ys;
+            let spaced_ay = PackedCM31::broadcast(*a) * spaced_ys;
             //   t0:t1 = a*P0.y, -a*P0.y, a*P1.y, -a*P1.y, ...
             let (t0, t1) = spaced_ay.interleave(-spaced_ay);
             //   t2:t3:t4:t5 = a*P0.y, -a*P0.y, -a*P0.y, a*P0.y, a*P1.y, -a*P1.y, ...
@@ -176,7 +176,8 @@ pub fn accumulate_row_quotients(
             let (t4, t5) = t1.interleave(-t1);
             let ay = [t2, t3, t4, t5];
             for i in 0..4 {
-                numerator[i] += cvalues[i] - ay[i] - PackedSecureField::broadcast(*b);
+                numerator[i] *= PackedSecureField::broadcast(random_coeff);
+                numerator[i] = numerator[i] + (-ay[i] + cvalues[i] - PackedCM31::broadcast(*b));
             }
         }
 
@@ -191,22 +192,23 @@ pub fn accumulate_row_quotients(
 /// Pair vanishing for the packed representation of the points. See
 /// [crate::core::constraints::pair_vanishing] for more details.
 fn packed_pair_vanishing(
-    excluded0: CirclePoint<SecureField>,
-    excluded1: CirclePoint<SecureField>,
+    d: CM31,
+    cross_term: CM31,
     packed_p: (PackedBaseField, PackedBaseField),
-) -> PackedSecureField {
-    PackedSecureField::broadcast(excluded0.y - excluded1.y) * packed_p.0
-        + PackedSecureField::broadcast(excluded1.x - excluded0.x) * packed_p.1
-        + PackedSecureField::broadcast(excluded0.x * excluded1.y - excluded0.y * excluded1.x)
+) -> PackedCM31 {
+    PackedCM31::broadcast(cross_term) + packed_p.0 - PackedCM31::broadcast(d) * packed_p.1
 }
 
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
-) -> Vec<Col<SimdBackend, SecureField>> {
-    let flat_denominators: SecureFieldVec = sample_batches
+) -> Vec<Col<SimdBackend, CM31>> {
+    let flat_denominators: CM31Vec = sample_batches
         .iter()
         .flat_map(|sample_batch| {
+            let d = sample_batch.point.x.get_imag() * sample_batch.point.y.get_imag().inverse();
+            let cross_term = d * sample_batch.point.y.get_real() - sample_batch.point.x.get_real();
+
             (0..(1 << (domain.log_size() - LOG_N_LANES)))
                 .map(|vec_row| {
                     // TODO(spapini): Optimize this, for the small number of columns case.
@@ -219,18 +221,14 @@ fn denominator_inverses(
                     let domain_points_x = PackedBaseField::from_array(points.map(|p| p.x));
                     let domain_points_y = PackedBaseField::from_array(points.map(|p| p.y));
                     let domain_point_vec = (domain_points_x, domain_points_y);
-                    packed_pair_vanishing(
-                        sample_batch.point,
-                        sample_batch.point.complex_conjugate(),
-                        domain_point_vec,
-                    )
+                    packed_pair_vanishing(d, cross_term, domain_point_vec)
                 })
                 .collect_vec()
         })
         .collect();
 
-    let mut flat_denominator_inverses = SecureFieldVec::zeros(flat_denominators.len());
-    <SimdBackend as FieldOps<SecureField>>::batch_inverse(
+    let mut flat_denominator_inverses = CM31Vec::zeros(flat_denominators.len());
+    <SimdBackend as FieldOps<CM31>>::batch_inverse(
         &flat_denominators,
         &mut flat_denominator_inverses,
     );
@@ -247,7 +245,7 @@ fn quotient_constants(
     random_coeff: SecureField,
     domain: CircleDomain,
 ) -> QuotientConstants<SimdBackend> {
-    let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
+    let line_coeffs = column_line_coeffs(sample_batches);
     let batch_random_coeffs = batch_random_coeffs(sample_batches, random_coeff);
     let denominator_inverses = denominator_inverses(sample_batches, domain);
     QuotientConstants {

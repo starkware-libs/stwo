@@ -530,22 +530,52 @@ mod tests {
 
         // Get from environment variable:
         let log_n_instances = env::var("LOG_N_INSTANCES")
-            .unwrap_or_else(|_| "10".to_string())
+            .unwrap_or_else(|_| "16".to_string())
             .parse::<u32>()
             .unwrap();
         let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
-        let component = PoseidonComponent {
-            log_n_instances: log_n_rows,
-        };
-        let span = span!(Level::INFO, "Trace generation").entered();
-        let trace = gen_trace(component.log_column_size());
-        span.exit();
 
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let air = PoseidonAir { component };
-        let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            (0..64).into_par_iter().for_each(|i| {
+                let component = PoseidonComponent {
+                    log_n_instances: log_n_rows,
+                };
+                let span = span!(Level::INFO, "Trace generation").entered();
+                let trace = gen_trace(component.log_column_size());
+                span.exit();
 
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        verify(proof, &air, channel).unwrap();
+                let channel =
+                    &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[
+                        BaseField::from(i),
+                    ])));
+                let air = PoseidonAir { component };
+                let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
+
+                let channel =
+                    &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[
+                        BaseField::from(i),
+                    ])));
+                verify(proof, &air, channel).unwrap();
+            });
+        }
+
+        #[cfg(not(feature = "parallel"))]
+        {
+            let component = PoseidonComponent {
+                log_n_instances: log_n_rows,
+            };
+            let span = span!(Level::INFO, "Trace generation").entered();
+            let trace = gen_trace(component.log_column_size());
+            span.exit();
+
+            let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+            let air = PoseidonAir { component };
+            let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
+
+            let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+            verify(proof, &air, channel).unwrap();
+        }
     }
 }

@@ -9,6 +9,7 @@ use super::fields::FieldOps;
 use super::fri::FriOps;
 use super::pcs::quotients::QuotientOps;
 use super::poly::circle::PolyOps;
+use crate::core::fields::cm31::CM31;
 
 pub mod cpu;
 pub mod simd;
@@ -18,6 +19,7 @@ pub trait Backend:
     + Clone
     + Debug
     + FieldOps<BaseField>
+    + FieldOps<CM31>
     + FieldOps<SecureField>
     + PolyOps
     + QuotientOps

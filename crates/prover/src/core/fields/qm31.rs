@@ -3,7 +3,7 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
-use super::{ComplexConjugate, FieldExpOps};
+use super::{ComplexConjugate, ComplexOf, FieldExpOps};
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
@@ -75,6 +75,32 @@ impl FieldExpOps for QM31 {
         let denom = self.0.square() - (b2 + b2 + ib2);
         let denom_inverse = denom.inverse();
         Self(self.0 * denom_inverse, -self.1 * denom_inverse)
+    }
+}
+
+impl ComplexOf<CM31> for QM31 {
+    fn get_real(&self) -> CM31 {
+        self.0
+    }
+
+    fn get_imag(&self) -> CM31 {
+        self.1
+    }
+}
+
+impl Add<CM31> for QM31 {
+    type Output = QM31;
+
+    fn add(self, rhs: CM31) -> Self::Output {
+        Self(self.0 + rhs, self.1)
+    }
+}
+
+impl Mul<CM31> for QM31 {
+    type Output = QM31;
+
+    fn mul(self, rhs: CM31) -> Self::Output {
+        Self(self.0 * rhs, self.1 * rhs)
     }
 }
 

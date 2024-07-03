@@ -1,6 +1,7 @@
 use std::array;
 use std::ops::{Add, Mul, MulAssign, Neg, Sub};
 
+use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
 
 use super::m31::{PackedM31, N_LANES};
@@ -10,6 +11,14 @@ use crate::core::fields::FieldExpOps;
 /// SIMD implementation of [`CM31`].
 #[derive(Copy, Clone, Debug)]
 pub struct PackedCM31(pub [PackedM31; 2]);
+
+unsafe impl Pod for PackedCM31 {}
+
+unsafe impl Zeroable for PackedCM31 {
+    fn zeroed() -> Self {
+        unsafe { core::mem::zeroed() }
+    }
+}
 
 impl PackedCM31 {
     /// Constructs a new instance with all vector elements set to `value`.

@@ -160,6 +160,7 @@ pub fn fri_answers_for_log_size(
                 &quotient_constants,
                 row,
                 domain_point,
+                random_coeff,
             );
             values.push(value);
         }
