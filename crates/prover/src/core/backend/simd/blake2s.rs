@@ -130,7 +130,7 @@ fn rotate<const N: u32>(x: u32x16) -> u32x16 {
 
 // `inline(always)` can cause code parsing errors for wasm: "locals exceed maximum".
 #[cfg_attr(not(target_arch = "wasm32"), inline(always))]
-fn round(v: &mut [u32x16; 16], m: [u32x16; 16], r: usize) {
+pub fn round(v: &mut [u32x16; 16], m: [u32x16; 16], r: usize) {
     v[0] += m[SIGMA[r][0] as usize];
     v[1] += m[SIGMA[r][2] as usize];
     v[2] += m[SIGMA[r][4] as usize];
