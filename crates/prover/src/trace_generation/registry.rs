@@ -75,10 +75,6 @@ mod tests {
             todo!()
         }
 
-        fn interaction_element_ids(&self) -> Vec<String> {
-            todo!()
-        }
-
         fn evaluate_constraint_quotients_at_point(
             &self,
             _point: CirclePoint<SecureField>,

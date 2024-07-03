@@ -22,7 +22,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::BASE_TRACE;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
-use crate::examples::wide_fibonacci::component::{ALPHA_ID, N_COLUMNS, Z_ID};
+use crate::examples::wide_fibonacci::component::N_COLUMNS;
 use crate::trace_generation::registry::ComponentGenerationRegistry;
 use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
@@ -110,10 +110,6 @@ impl Component for SimdWideFibComponent {
             fixed_mask_points(&vec![vec![0_usize]; self.n_columns()], point),
             vec![],
         ])
-    }
-
-    fn interaction_element_ids(&self) -> Vec<String> {
-        vec![ALPHA_ID.to_string(), Z_ID.to_string()]
     }
 
     fn evaluate_constraint_quotients_at_point(
