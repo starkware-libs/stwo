@@ -3,10 +3,13 @@ use std::mem::transmute;
 
 use bytemuck::{cast_slice, Zeroable};
 use num_traits::One;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE};
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
+use super::utils::SendMutU32Ptr;
 use super::SimdBackend;
 use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::{Col, CpuBackend};
@@ -20,6 +23,7 @@ use crate::core::poly::circle::{
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
+use crate::core::utils::bit_reverse_index;
 
 impl SimdBackend {
     // TODO(Ohad): optimize.
@@ -276,22 +280,45 @@ impl PolyOps for SimdBackend {
     }
 
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self> {
-        let mut twiddles = Vec::with_capacity(coset.size());
-        let mut itwiddles = Vec::with_capacity(coset.size());
+        let mut twiddles = vec![0; coset.size()];
+        let mut itwiddles = vec![0; coset.size()];
+        let mut doubling_coset = coset.clone();
 
-        // TODO(spapini): Optimize.
-        for layer in &rfft::get_twiddle_dbls(coset) {
-            twiddles.extend(layer);
+        let twiddles_wrapped_pointer = SendMutU32Ptr(twiddles.as_mut_ptr());
+        let itwiddles_wrapped_pointer = SendMutU32Ptr(itwiddles.as_mut_ptr());
+
+        let n = coset.log_size();
+        for i in 0..n {
+            let chunk_log_size = n - i - 1;
+            let chunk_length = 1 << chunk_log_size;
+
+            #[cfg(not(feature = "parallel"))]
+            let iter = 0..chunk_length;
+
+            #[cfg(feature = "parallel")]
+            let iter = (0..chunk_length).into_par_iter();
+
+            iter.for_each(|k| {
+                let mut offset = 0;
+                for j in 0..i {
+                    offset += 1 << (n - j - 1);
+                }
+
+                let twiddles_pointer = (&twiddles_wrapped_pointer).0;
+                let itwiddles_pointer = (&itwiddles_wrapped_pointer).0;
+
+                let bit_reverse_index = bit_reverse_index(k, chunk_log_size) + offset;
+                unsafe {
+                    let twiddles_element_ptr = twiddles_pointer.add(bit_reverse_index);
+                    let itwiddles_element_ptr = itwiddles_pointer.add(bit_reverse_index);
+
+                    *twiddles_element_ptr = doubling_coset.at(k).x.0 * 2;
+                    *itwiddles_element_ptr = doubling_coset.at(k).x.inverse().0 * 2;
+                }
+            });
+
+            doubling_coset = doubling_coset.double();
         }
-        // Pad by any value, to make the size a power of 2.
-        twiddles.push(1);
-        assert_eq!(twiddles.len(), coset.size());
-        for layer in &ifft::get_itwiddle_dbls(coset) {
-            itwiddles.extend(layer);
-        }
-        // Pad by any value, to make the size a power of 2.
-        itwiddles.push(1);
-        assert_eq!(itwiddles.len(), coset.size());
 
         TwiddleTree {
             root_coset: coset,
@@ -334,10 +361,12 @@ mod tests {
     use crate::core::backend::simd::circle::slow_eval_at_point;
     use crate::core::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
     use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::Column;
+    use crate::core::backend::{Column, CpuBackend};
     use crate::core::circle::CirclePoint;
-    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::m31::{BaseField, M31};
+    use crate::core::fields::FieldExpOps;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PolyOps};
+    use crate::core::poly::line::LineDomain;
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
 
     #[test]
@@ -432,5 +461,26 @@ mod tests {
 
             assert_eq!(eval, slow_eval_at_point(&poly, p), "log_size = {log_size}");
         }
+    }
+
+    #[test]
+    fn test_precompute_twiddles() {
+        let log_size = 4;
+        let canonic_coset = CanonicCoset::new(log_size + 1).half_coset();
+        let domain = LineDomain::new(canonic_coset);
+        let coset = domain.coset();
+
+        let cpu_twiddles = CpuBackend::precompute_twiddles(coset).twiddles;
+
+        let iterator = SimdBackend::precompute_twiddles(coset).twiddles;
+        let simd_twiddles: Vec<M31> = iterator
+            .iter()
+            .map(|value| M31::from_u32_unchecked(*value) * M31::from_u32_unchecked(2).inverse())
+            .collect();
+
+        assert_eq!(
+            cpu_twiddles.split_last().unwrap().1,
+            simd_twiddles.split_last().unwrap().1
+        );
     }
 }
