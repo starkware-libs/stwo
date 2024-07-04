@@ -5,13 +5,13 @@ use bytemuck::{cast_slice, Zeroable};
 use num_traits::One;
 
 use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE};
-use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
+use super::m31::{PackedBaseField, PackedM31, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
 use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::{Col, CpuBackend};
 use crate::core::circle::{CirclePoint, Coset};
-use crate::core::fields::m31::BaseField;
+use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, FieldExpOps};
 use crate::core::poly::circle::{
@@ -276,21 +276,19 @@ impl PolyOps for SimdBackend {
     }
 
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self> {
-        let mut twiddles = Vec::with_capacity(coset.size());
-        let mut itwiddles = Vec::with_capacity(coset.size());
+        let mut twiddles = vec![1; coset.size()];
+        let mut itwiddles = vec![1; coset.size()];
 
-        // TODO(spapini): Optimize.
-        for layer in &rfft::get_twiddle_dbls(coset) {
-            twiddles.extend(layer);
+        compute_twiddles_of_first_coset(&coset, &mut twiddles, &mut itwiddles);
+
+        compute_twiddles_of_doubled_cosets(&coset, &mut twiddles, &mut itwiddles);
+
+        // multiply everyone by 2.
+        for i in 0..coset.size() {
+            twiddles[i] = 2 * twiddles[i];
+            itwiddles[i] = 2 * itwiddles[i];
         }
-        // Pad by any value, to make the size a power of 2.
-        twiddles.push(1);
         assert_eq!(twiddles.len(), coset.size());
-        for layer in &ifft::get_itwiddle_dbls(coset) {
-            itwiddles.extend(layer);
-        }
-        // Pad by any value, to make the size a power of 2.
-        itwiddles.push(1);
         assert_eq!(itwiddles.len(), coset.size());
 
         TwiddleTree {
@@ -299,6 +297,109 @@ impl PolyOps for SimdBackend {
             itwiddles,
         }
     }
+}
+
+fn compute_twiddles_of_doubled_cosets(
+    coset: &Coset,
+    twiddles: &mut Vec<u32>,
+    itwiddles: &mut Vec<u32>,
+) {
+    let mut offset = 1 << (coset.log_size() - 1); // Index where each chunk starts.
+
+    for i in 1..coset.log_size() {
+        let chunk_log_size: u32 = coset.log_size() - i - 1;
+        let chunk_length = 1 << chunk_log_size;
+
+        let previous_offset = offset - 2 * chunk_length; // index where the previous chunk started
+
+        // use simd for large chunks
+        if chunk_length >= N_LANES {
+            let iter = 0..(1 << (chunk_log_size - LOG_N_LANES));
+            iter.for_each(|k| {
+                let next_twiddles: [M31; N_LANES] = (0..N_LANES)
+                    .map(|j| {
+                        M31::from_u32_unchecked(twiddles[previous_offset + 2 * N_LANES * k + 2 * j])
+                    })
+                    .collect::<Vec<M31>>()
+                    .try_into()
+                    .expect("Expected N_LANES elements");
+                let mut packed_twiddles: PackedM31 = PackedM31::from_array(next_twiddles);
+
+                packed_twiddles = (packed_twiddles * packed_twiddles).double() - PackedM31::one();
+
+                let packed_itwiddles = packed_twiddles.inverse();
+
+                let packed_twiddles_array = (packed_twiddles).to_array();
+                let packed_itwiddles_array = (packed_itwiddles).to_array();
+                for j in 0..N_LANES {
+                    twiddles[offset + N_LANES * k + j] = packed_twiddles_array[j].0;
+                    itwiddles[offset + N_LANES * k + j] = packed_itwiddles_array[j].0;
+                }
+            });
+        } else {
+            let iter = 0..(chunk_length);
+            iter.for_each(|k| {
+                let next_twiddle = CirclePoint::double_x(M31::from_u32_unchecked(
+                    twiddles[previous_offset + 2 * k],
+                ));
+
+                twiddles[offset + k] = next_twiddle.0;
+                itwiddles[offset + k] = next_twiddle.inverse().0;
+            });
+        }
+        offset += 1 << (coset.log_size() - i - 1);
+    }
+}
+
+// Computes the first chunk of twiddles in bit-reverse order.
+fn compute_twiddles_of_first_coset(
+    coset: &Coset,
+    twiddles: &mut Vec<u32>,
+    itwiddles: &mut Vec<u32>,
+) {
+    let steps = precompute_bit_reverse_steps(&coset);
+
+    // Put first twiddle of first coset.
+    let mut first_chunk = vec![coset.at(0)];
+    twiddles[0] = coset.at(0).x.0;
+    itwiddles[0] = coset.at(0).x.inverse().0;
+
+    // We want the bit reversed first (coset_size / 2) twiddles,
+    // so we go through every other element of the coset.
+    let mut j = 1;
+    for i in (0..((coset.size()) - 2)).step_by(2) {
+        let last_twiddle = first_chunk.last().unwrap().clone();
+        let step_1 = steps[i.trailing_ones() as usize];
+        let step_2 = steps[(i + 1).trailing_ones() as usize];
+        let next_twiddle = last_twiddle + step_1 + step_2;
+
+        first_chunk.push(next_twiddle);
+
+        twiddles[j] = next_twiddle.x.0;
+        itwiddles[j] = next_twiddle.x.inverse().0;
+
+        j = j + 1;
+    }
+}
+
+// Computes which integer to add to get the next bit_reversed index.
+// This value depends only on the number of trailing ones of the current index.
+fn bit_reversed_step_index(trailing_ones: u32, coset_log_size: u32) -> u32 {
+    let value_index = (3 << (coset_log_size - 1 - trailing_ones)) & ((1 << (coset_log_size)) - 1);
+    value_index
+}
+
+// Compute the coset elements needed to get from one element to the next in bit_reverse order.
+fn precompute_bit_reverse_steps(coset: &Coset) -> Vec<CirclePoint<M31>> {
+    let mut steps = vec![];
+    for i in 0..coset.log_size() as usize {
+        steps.push(
+            coset
+                .step
+                .mul(bit_reversed_step_index(i as u32, coset.log_size()) as u128),
+        );
+    }
+    steps
 }
 
 fn slow_eval_at_point(
@@ -331,13 +432,15 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
+    use super::bit_reversed_step_index;
     use crate::core::backend::simd::circle::slow_eval_at_point;
     use crate::core::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
     use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::Column;
+    use crate::core::backend::{Column, CpuBackend};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PolyOps};
+    use crate::core::poly::line::LineDomain;
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
 
     #[test]
@@ -432,5 +535,60 @@ mod tests {
 
             assert_eq!(eval, slow_eval_at_point(&poly, p), "log_size = {log_size}");
         }
+    }
+
+    #[test]
+    fn test_precompute_twiddles() {
+        let log_size = 6;
+        let canonic_coset = CanonicCoset::new(log_size + 1).half_coset();
+        let domain = LineDomain::new(canonic_coset);
+        let coset = domain.coset();
+
+        let cpu_twiddle_tree = CpuBackend::precompute_twiddles(coset);
+        let cpu_twiddles: Vec<u32> = cpu_twiddle_tree
+            .twiddles
+            .iter()
+            .map(|value| 2 * value.0)
+            .collect();
+        let cpu_itwiddles: Vec<u32> = cpu_twiddle_tree
+            .itwiddles
+            .iter()
+            .map(|value| 2 * value.0)
+            .collect();
+        let simd_twiddle_tree = SimdBackend::precompute_twiddles(coset);
+        let simd_twiddles: Vec<u32> = simd_twiddle_tree.twiddles;
+        let simd_itwiddles: Vec<u32> = simd_twiddle_tree.itwiddles;
+
+        // assert each chunk separately
+        let mut offset = 0;
+        let mut chunk_log_size = log_size;
+        for _k in 0..(log_size) {
+            chunk_log_size = chunk_log_size - 1;
+            let chunk_size = 1 << chunk_log_size;
+            assert_eq!(
+                cpu_twiddles[offset..(offset + chunk_size)],
+                simd_twiddles[offset..(offset + chunk_size)]
+            );
+            assert_eq!(
+                cpu_itwiddles[offset..(offset + chunk_size)],
+                simd_itwiddles[offset..(offset + chunk_size)]
+            );
+
+            offset = offset + chunk_size;
+        }
+    }
+
+    #[test]
+    fn test_bit_reverse_step_index() {
+        assert_eq!(8, bit_reversed_step_index((0 as u32).trailing_ones(), 4));
+        assert_eq!(12, bit_reversed_step_index((1 as u32).trailing_ones(), 4));
+        assert_eq!(8, bit_reversed_step_index((2 as u32).trailing_ones(), 4));
+        assert_eq!(6, bit_reversed_step_index((3 as u32).trailing_ones(), 4));
+        assert_eq!(3, bit_reversed_step_index((7 as u32).trailing_ones(), 4));
+
+        assert_eq!(4, bit_reversed_step_index((0 as u32).trailing_ones(), 3));
+        assert_eq!(6, bit_reversed_step_index((1 as u32).trailing_ones(), 3));
+        assert_eq!(4, bit_reversed_step_index((2 as u32).trailing_ones(), 3));
+        assert_eq!(3, bit_reversed_step_index((3 as u32).trailing_ones(), 3));
     }
 }
