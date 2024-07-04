@@ -10,7 +10,7 @@ use crate::core::pcs::{CommitmentTreeProver, TreeVec};
 use crate::core::poly::circle::SecureCirclePoly;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::MerkleOps;
-use crate::core::{ColumnVec, ComponentVec, InteractionElements};
+use crate::core::{ColumnVec, InteractionElements};
 
 pub trait AirExt: Air {
     fn composition_log_degree_bound(&self) -> u32 {
@@ -55,12 +55,12 @@ pub trait AirExt: Air {
     fn eval_composition_polynomial_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask_values: &ComponentVec<Vec<SecureField>>,
+        mask_values: &Vec<TreeVec<Vec<Vec<SecureField>>>>,
         random_coeff: SecureField,
         interaction_elements: &InteractionElements,
     ) -> SecureField {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
-        zip_eq(self.components(), &mask_values.0).for_each(|(component, mask)| {
+        zip_eq(self.components(), mask_values).for_each(|(component, mask)| {
             component.evaluate_constraint_quotients_at_point(
                 point,
                 mask,

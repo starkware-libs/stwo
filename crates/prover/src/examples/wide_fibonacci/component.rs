@@ -66,7 +66,7 @@ impl WideFibComponent {
     fn evaluate_lookup_boundary_constraint_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
+        mask: &TreeVec<Vec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         constraint_zero_domain: Coset,
         interaction_elements: &InteractionElements,
@@ -74,15 +74,18 @@ impl WideFibComponent {
         let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
         let value =
             SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
-                mask[self.n_columns() + i][0]
+                mask[1][i][0]
             }));
         let numerator = (value
             * shifted_secure_combination(
-                &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
+                &[
+                    mask[0][self.n_columns() - 2][0],
+                    mask[0][self.n_columns() - 1][0],
+                ],
                 alpha,
                 z,
             ))
-            - shifted_secure_combination(&[mask[0][0], mask[1][0]], alpha, z);
+            - shifted_secure_combination(&[mask[0][0][0], mask[0][1][0]], alpha, z);
         let denom = point_vanishing(constraint_zero_domain.at(0), point);
         evaluation_accumulator.accumulate(numerator / denom);
     }
@@ -90,7 +93,7 @@ impl WideFibComponent {
     fn evaluate_lookup_step_constraints_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
+        mask: &TreeVec<Vec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         constraint_zero_domain: Coset,
         interaction_elements: &InteractionElements,
@@ -98,19 +101,22 @@ impl WideFibComponent {
         let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
         let value =
             SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
-                mask[self.n_columns() + i][0]
+                mask[1][i][0]
             }));
         let prev_value =
             SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(std::array::from_fn(|i| {
-                mask[self.n_columns() + i][1]
+                mask[1][i][1]
             }));
         let numerator = (value
             * shifted_secure_combination(
-                &[mask[self.n_columns() - 2][0], mask[self.n_columns() - 1][0]],
+                &[
+                    mask[0][self.n_columns() - 2][0],
+                    mask[0][self.n_columns() - 1][0],
+                ],
                 alpha,
                 z,
             ))
-            - (prev_value * shifted_secure_combination(&[mask[0][0], mask[1][0]], alpha, z));
+            - (prev_value * shifted_secure_combination(&[mask[0][0][0], mask[0][1][0]], alpha, z));
         let denom = coset_vanishing(constraint_zero_domain, point)
             / point_excluder(constraint_zero_domain.at(0), point);
         evaluation_accumulator.accumulate(numerator / denom);
@@ -165,7 +171,7 @@ impl Component for WideFibComponent {
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
+        mask: &TreeVec<Vec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         interaction_elements: &InteractionElements,
     ) {
@@ -186,7 +192,7 @@ impl Component for WideFibComponent {
         );
         self.evaluate_trace_step_constraints_at_point(
             point,
-            mask,
+            &mask[0],
             evaluation_accumulator,
             constraint_zero_domain,
         );
