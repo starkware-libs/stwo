@@ -104,6 +104,14 @@ impl<F: Field> CirclePoint<F> {
             y: self.y.into(),
         }
     }
+
+    pub fn mul_signed(&self, off: isize) -> CirclePoint<F> {
+        if off > 0 {
+            self.mul(off as u128)
+        } else {
+            self.conjugate().mul(-off as u128)
+        }
+    }
 }
 
 impl<F: Field> Add for CirclePoint<F> {
