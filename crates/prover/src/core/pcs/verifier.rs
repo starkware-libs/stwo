@@ -91,8 +91,8 @@ impl CommitmentSchemeVerifier {
         // Verify merkle decommitments.
         self.trees
             .as_ref()
-            .zip(proof.decommitments)
-            .zip(proof.queried_values.clone())
+            .zip_eq(proof.decommitments)
+            .zip_eq(proof.queried_values.clone())
             .map(|((tree, decommitment), queried_values)| {
                 let queries = fri_query_domains
                     .iter()

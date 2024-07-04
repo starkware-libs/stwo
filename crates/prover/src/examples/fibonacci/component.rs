@@ -110,19 +110,17 @@ impl Component for FibonacciComponent {
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
+        mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         _interaction_elements: &InteractionElements,
     ) {
         evaluation_accumulator.accumulate(
-            self.step_constraint_eval_quotient_by_mask(point, &mask[0][..].try_into().unwrap()),
+            self.step_constraint_eval_quotient_by_mask(point, &mask[0][0][..].try_into().unwrap()),
         );
-        evaluation_accumulator.accumulate(
-            self.boundary_constraint_eval_quotient_by_mask(
-                point,
-                &mask[0][..1].try_into().unwrap(),
-            ),
-        );
+        evaluation_accumulator.accumulate(self.boundary_constraint_eval_quotient_by_mask(
+            point,
+            &mask[0][0][..1].try_into().unwrap(),
+        ));
     }
 }
 

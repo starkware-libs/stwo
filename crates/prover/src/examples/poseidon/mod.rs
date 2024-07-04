@@ -121,7 +121,7 @@ impl Component for PoseidonComponent {
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
+        mask: &TreeVec<Vec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         _interaction_elements: &InteractionElements,
     ) {
@@ -129,7 +129,7 @@ impl Component for PoseidonComponent {
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
         let mut eval = PoseidonEvalAtPoint {
-            mask,
+            mask: &mask[0],
             evaluation_accumulator,
             col_index: 0,
             denom_inverse,

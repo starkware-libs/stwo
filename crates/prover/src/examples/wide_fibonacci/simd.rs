@@ -113,7 +113,7 @@ impl Component for SimdWideFibComponent {
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
+        mask: &TreeVec<Vec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         _interaction_elements: &InteractionElements,
     ) {
@@ -121,7 +121,7 @@ impl Component for SimdWideFibComponent {
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
         for i in 0..self.n_columns() - 2 {
-            let numerator = mask[i][0].square() + mask[i + 1][0].square() - mask[i + 2][0];
+            let numerator = mask[0][i][0].square() + mask[0][i + 1][0].square() - mask[0][i + 2][0];
             evaluation_accumulator.accumulate(numerator * denom_inverse);
         }
     }

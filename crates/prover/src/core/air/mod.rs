@@ -71,7 +71,7 @@ pub trait Component {
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
+        mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         interaction_elements: &InteractionElements,
     );

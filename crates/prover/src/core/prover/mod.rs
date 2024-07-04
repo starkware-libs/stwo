@@ -25,7 +25,6 @@ use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::hasher::Hasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::verifier::MerkleVerificationError;
-use crate::core::ComponentVec;
 
 type Channel = Blake2sChannel;
 type ChannelHasher = Blake2sHasher;
@@ -237,52 +236,32 @@ pub fn verify(
     commitment_scheme.verify_values(sample_points, proof.commitment_scheme_proof, channel)
 }
 
+#[allow(clippy::type_complexity)]
 /// Structures the tree-wise sampled values into component-wise OODS values and a composition
 /// polynomial OODS value.
 fn sampled_values_to_mask(
     air: &impl Air,
     sampled_values: &TreeVec<ColumnVec<Vec<SecureField>>>,
-) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), InvalidOodsSampleStructure> {
-    // Retrieve sampled mask values for each component.
-    let flat_trace_values = &mut sampled_values
-        .first()
-        .ok_or(InvalidOodsSampleStructure)?
-        .iter();
-    let mut trace_oods_values = vec![];
-    air.components().iter().for_each(|component| {
-        let n_trace_points = component.mask_points(CirclePoint::zero())[0].len();
-        trace_oods_values.push(
-            flat_trace_values
-                .take(n_trace_points)
-                .cloned()
-                .collect_vec(),
-        )
-    });
+) -> Result<(Vec<TreeVec<Vec<Vec<SecureField>>>>, SecureField), InvalidOodsSampleStructure> {
+    let mut sampled_values = sampled_values.as_ref();
+    let composition_values = sampled_values.pop().ok_or(InvalidOodsSampleStructure)?;
 
-    if air.n_interaction_phases() == 2 {
-        let interaction_values = &mut sampled_values
-            .get(1)
-            .ok_or(InvalidOodsSampleStructure)?
-            .iter();
+    let mut sample_iters = sampled_values.map(|tree_value| tree_value.iter());
+    let trace_oods_values = air
+        .components()
+        .iter()
+        .map(|component| {
+            component
+                .mask_points(CirclePoint::zero())
+                .zip(sample_iters.as_mut())
+                .map(|(mask_per_tree, tree_iter)| {
+                    tree_iter.take(mask_per_tree.len()).cloned().collect_vec()
+                })
+        })
+        .collect_vec();
 
-        air.components()
-            .iter()
-            .zip_eq(&mut trace_oods_values)
-            .for_each(|(component, values)| {
-                let n_interaction_points = component.mask_points(CirclePoint::zero())[1].len();
-                values.extend(
-                    interaction_values
-                        .take(n_interaction_points)
-                        .cloned()
-                        .collect_vec(),
-                )
-            });
-    }
-
-    let composition_partial_sampled_values =
-        sampled_values.last().ok_or(InvalidOodsSampleStructure)?;
     let composition_oods_value = SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(
-        composition_partial_sampled_values
+        composition_values
             .iter()
             .flatten()
             .cloned()
@@ -291,7 +270,7 @@ fn sampled_values_to_mask(
             .map_err(|_| InvalidOodsSampleStructure)?,
     );
 
-    Ok((ComponentVec(trace_oods_values), composition_oods_value))
+    Ok((trace_oods_values, composition_oods_value))
 }
 
 /// Error when the sampled values have an invalid structure.
@@ -428,7 +407,7 @@ mod tests {
         fn evaluate_constraint_quotients_at_point(
             &self,
             _point: CirclePoint<SecureField>,
-            _mask: &crate::core::ColumnVec<Vec<SecureField>>,
+            _mask: &TreeVec<Vec<Vec<SecureField>>>,
             evaluation_accumulator: &mut PointEvaluationAccumulator,
             _interaction_elements: &InteractionElements,
         ) {
