@@ -1,11 +1,10 @@
 use std::iter::Peekable;
-use std::ops::Add;
+use std::ops::{Add, Mul, Sub};
 
 use num_traits::{One, Zero};
 
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::ExtensionOf;
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
     fn assign(self, other: impl IntoIterator<Item = T>)
@@ -68,13 +67,23 @@ pub(crate) fn previous_bit_reversed_circle_domain_index(
     domain_log_size: u32,
     eval_log_size: u32,
 ) -> usize {
+    offset_bit_reversed_circle_domain_index(i, domain_log_size, eval_log_size, -1)
+}
+
+pub(crate) fn offset_bit_reversed_circle_domain_index(
+    i: usize,
+    domain_log_size: u32,
+    eval_log_size: u32,
+    offset: isize,
+) -> usize {
     let mut prev_index = bit_reverse_index(i, eval_log_size);
     let half_size = 1 << (eval_log_size - 1);
-    let step_size = (eval_log_size - domain_log_size) as usize;
+    let step_size = offset * (1 << (eval_log_size - domain_log_size - 1)) as isize;
     if prev_index < half_size {
-        prev_index = (prev_index + half_size - step_size) % half_size;
+        prev_index = (prev_index as isize + step_size).rem_euclid(half_size as isize) as usize;
     } else {
-        prev_index = ((prev_index + step_size) % half_size) + half_size;
+        prev_index =
+            ((prev_index as isize - step_size).rem_euclid(half_size as isize) as usize) + half_size;
     }
     bit_reverse_index(prev_index, eval_log_size)
 }
@@ -135,17 +144,13 @@ pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureF
 
 /// Securely combines the given values using the given random alpha and z.
 /// Alpha and z should be secure field elements for soundness.
-pub fn shifted_secure_combination<F: ExtensionOf<BaseField>>(
-    values: &[F],
-    alpha: SecureField,
-    z: SecureField,
-) -> SecureField
+pub fn shifted_secure_combination<F: Copy, EF>(values: &[F], alpha: EF, z: EF) -> EF
 where
-    SecureField: Add<F, Output = SecureField>,
+    EF: Copy + Zero + Mul<EF, Output = EF> + Add<F, Output = EF> + Sub<EF, Output = EF>,
 {
     let res = values
         .iter()
-        .fold(SecureField::zero(), |acc, &value| acc * alpha + value);
+        .fold(EF::zero(), |acc, &value| acc * alpha + value);
     res - z
 }
 
