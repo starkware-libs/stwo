@@ -12,6 +12,7 @@
     assert_matches,
     portable_simd
 )]
+pub mod builder;
 pub mod core;
 pub mod examples;
 pub mod hash_functions;
