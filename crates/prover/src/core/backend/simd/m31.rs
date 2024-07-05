@@ -8,8 +8,10 @@ use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
 use rand::distributions::{Distribution, Standard};
 
+use super::qm31::PackedQM31;
 use crate::core::backend::simd::utils::{InterleaveEvens, InterleaveOdds};
 use crate::core::fields::m31::{pow2147483645, BaseField, M31, P};
+use crate::core::fields::qm31::QM31;
 use crate::core::fields::FieldExpOps;
 
 pub const LOG_N_LANES: u32 = 4;
@@ -149,12 +151,30 @@ impl Mul for PackedM31 {
     }
 }
 
-impl Mul<BaseField> for PackedM31 {
+impl Mul<M31> for PackedM31 {
     type Output = Self;
 
     #[inline(always)]
-    fn mul(self, rhs: BaseField) -> Self::Output {
+    fn mul(self, rhs: M31) -> Self::Output {
         self * PackedM31::broadcast(rhs)
+    }
+}
+
+impl Add<QM31> for PackedM31 {
+    type Output = PackedQM31;
+
+    #[inline(always)]
+    fn add(self, rhs: QM31) -> Self::Output {
+        PackedQM31::broadcast(rhs) + self
+    }
+}
+
+impl Mul<QM31> for PackedM31 {
+    type Output = PackedQM31;
+
+    #[inline(always)]
+    fn mul(self, rhs: QM31) -> Self::Output {
+        PackedQM31::broadcast(rhs) * self
     }
 }
 
