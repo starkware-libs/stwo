@@ -93,17 +93,17 @@ impl Component for SimdWideFibComponent {
     }
 
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
-        TreeVec::new(vec![vec![self.log_column_size(); self.n_columns()], vec![]])
+        TreeVec::new(vec![vec![self.log_column_size(); self.n_columns()]])
     }
 
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        TreeVec::new(vec![
-            fixed_mask_points(&vec![vec![0_usize]; self.n_columns()], point),
-            vec![],
-        ])
+        TreeVec::new(vec![fixed_mask_points(
+            &vec![vec![0_usize]; self.n_columns()],
+            point,
+        )])
     }
 
     fn interaction_element_ids(&self) -> Vec<String> {

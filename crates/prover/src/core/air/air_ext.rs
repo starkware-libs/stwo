@@ -33,23 +33,19 @@ pub trait AirExt: Air {
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        let mut trace_component_points = vec![];
-        let mut interaction_component_points = vec![];
+        let mut mask = TreeVec::default();
         for component in self.components() {
             let points = component.mask_points(point);
-            trace_component_points.extend(points[0].clone());
-            interaction_component_points.extend(points[1].clone());
-        }
-        let mut points = TreeVec::new(vec![trace_component_points]);
-        if !interaction_component_points
-            .iter()
-            .all(|column| column.is_empty())
-        {
-            points.push(interaction_component_points);
+            if mask.len() < points.len() {
+                mask.resize(points.len(), vec![]);
+            }
+            mask.as_mut().zip_eq(points).map(|(mask, points)| {
+                mask.extend(points);
+            });
         }
         // Add the composition polynomial mask points.
-        points.push(vec![vec![point]; SECURE_EXTENSION_DEGREE]);
-        points
+        mask.push(vec![vec![point]; SECURE_EXTENSION_DEGREE]);
+        mask
     }
 
     fn eval_composition_polynomial_at_point(
@@ -72,17 +68,17 @@ pub trait AirExt: Air {
     }
 
     fn column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
-        let mut trace_tree = vec![];
-        let mut interaction_tree = vec![];
+        let mut sizes = TreeVec::default();
         self.components().iter().for_each(|component| {
             let bounds = component.trace_log_degree_bounds();
-            trace_tree.extend(bounds[0].clone());
-            interaction_tree.extend(bounds[1].clone());
+            if sizes.len() < bounds.len() {
+                sizes.resize(bounds.len(), vec![]);
+            }
+            sizes
+                .as_mut()
+                .zip_eq(bounds)
+                .map(|(sizes, bounds)| sizes.extend(bounds));
         });
-        let mut sizes = TreeVec::new(vec![trace_tree]);
-        if !interaction_tree.is_empty() {
-            sizes.push(interaction_tree);
-        }
         sizes
     }
 
