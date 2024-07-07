@@ -49,9 +49,25 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
         channel: &mut ProofChannel,
         twiddles: &TwiddleTree<B>,
     ) {
+        let _span = span!(Level::INFO, "Commitment").entered();
         let tree =
             CommitmentTreeProver::new(polynomials, self.log_blowup_factor, channel, twiddles);
         self.trees.push(tree);
+    }
+
+    pub fn commit_on_evals(
+        &mut self,
+        evals: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        channel: &mut Blake2sChannel,
+        twiddles: &TwiddleTree<B>,
+    ) {
+        let span = span!(Level::INFO, "Interpolation").entered();
+        let polys = evals
+            .into_iter()
+            .map(|eval| eval.interpolate_with_twiddles(twiddles))
+            .collect();
+        span.exit();
+        self.commit(polys, channel, twiddles);
     }
 
     pub fn roots(&self) -> TreeVec<Blake2sHash> {
@@ -157,7 +173,7 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentTreeProver<B> {
         channel: &mut ProofChannel,
         twiddles: &TwiddleTree<B>,
     ) -> Self {
-        let span = span!(Level::INFO, "Commitment evaluation").entered();
+        let span = span!(Level::INFO, "Extension").entered();
         let evaluations = polynomials
             .iter()
             .map(|poly| {
@@ -170,7 +186,7 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentTreeProver<B> {
 
         span.exit();
 
-        let _span = span!(Level::INFO, "Commitment merkle").entered();
+        let _span = span!(Level::INFO, "Merkle").entered();
         let tree = MerkleProver::commit(evaluations.iter().map(|eval| &eval.values).collect());
         channel.mix_digest(tree.root());
 

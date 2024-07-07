@@ -367,7 +367,7 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
         let eval_domain = CanonicCoset::new(self.log_column_size() + LOG_EXPAND).circle_domain();
 
         // Create a new evaluation.
-        let span = span!(Level::INFO, "Deg8 eval").entered();
+        let span = span!(Level::INFO, "Deg4 eval").entered();
         let twiddles = SimdBackend::precompute_twiddles(
             CanonicCoset::new(self.max_constraint_log_degree_bound())
                 .circle_domain()

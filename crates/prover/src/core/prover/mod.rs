@@ -60,30 +60,17 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     twiddles: &TwiddleTree<B>,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> Result<(CommitmentSchemeProver<B>, InteractionElements), ProvingError> {
-    let span = span!(Level::INFO, "Trace interpolation").entered();
-    // TODO(AlonH): Clone only the columns needed for interaction.
-    let trace_polys = trace
-        .clone()
-        .into_iter()
-        .map(|eval| eval.interpolate_with_twiddles(twiddles))
-        .collect();
-    span.exit();
-
     let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
-    let span = span!(Level::INFO, "Trace commitment").entered();
-    commitment_scheme.commit(trace_polys, channel, twiddles);
+    // TODO(spapini): Remove clone.
+    let span = span!(Level::INFO, "Trace").entered();
+    commitment_scheme.commit_on_evals(trace.clone(), channel, twiddles);
     span.exit();
 
     let interaction_elements = air.interaction_elements(channel);
     let interaction_trace = air.interact(&trace, &interaction_elements);
     if !interaction_trace.is_empty() {
-        let span = span!(Level::INFO, "Interaction trace interpolation").entered();
-        let interaction_trace_polys = interaction_trace
-            .into_iter()
-            .map(|eval| eval.interpolate_with_twiddles(twiddles))
-            .collect();
-        span.exit();
-        commitment_scheme.commit(interaction_trace_polys, channel, twiddles);
+        let _span = span!(Level::INFO, "Interaction").entered();
+        commitment_scheme.commit_on_evals(interaction_trace, channel, twiddles);
     }
 
     Ok((commitment_scheme, interaction_elements))
@@ -101,16 +88,17 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
 
     // Evaluate and commit on composition polynomial.
     let random_coeff = channel.draw_felt();
-    let span = span!(Level::INFO, "Composition generation").entered();
+
+    let span = span!(Level::INFO, "Composition").entered();
+    let span1 = span!(Level::INFO, "Generation").entered();
     let composition_polynomial_poly = air.compute_composition_polynomial(
         random_coeff,
         &component_traces,
         interaction_elements,
         &lookup_values,
     );
-    span.exit();
+    span1.exit();
 
-    let span = span!(Level::INFO, "Composition commitment").entered();
     commitment_scheme.commit(composition_polynomial_poly.to_vec(), channel, twiddles);
     span.exit();
 
