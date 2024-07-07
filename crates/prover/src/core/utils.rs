@@ -61,16 +61,17 @@ pub(crate) fn bit_reverse_index(i: usize, log_size: u32) -> usize {
 }
 
 /// Returns the index of the previous element in a bit reversed
-/// [super::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a domain of
-/// size `domain_log_size`.
+/// [super::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a smaller domain
+/// of size `domain_log_size`.
 pub(crate) fn previous_bit_reversed_circle_domain_index(
     i: usize,
     domain_log_size: u32,
     eval_log_size: u32,
 ) -> usize {
+    assert!(domain_log_size < eval_log_size);
+    let step_size = 1 << (eval_log_size - domain_log_size - 1) as usize;
     let mut prev_index = bit_reverse_index(i, eval_log_size);
     let half_size = 1 << (eval_log_size - 1);
-    let step_size = (eval_log_size - domain_log_size) as usize;
     if prev_index < half_size {
         prev_index = (prev_index + half_size - step_size) % half_size;
     } else {
@@ -159,7 +160,7 @@ mod tests {
     use crate::core::fields::FieldExpOps;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
-    use crate::core::utils::bit_reverse;
+    use crate::core::utils::{bit_reverse, previous_bit_reversed_circle_domain_index};
     use crate::{m31, qm31};
 
     #[test]
@@ -208,24 +209,24 @@ mod tests {
         let evaluation = CpuCircleEvaluation::<_, NaturalOrder>::new(domain, values.clone());
         let bit_reversed_evaluation = evaluation.clone().bit_reverse();
 
+        //    1 . 7
+        //  .       .
+        // 6         0
+        // .         .
+        // 2         4
+        //  .       .
+        //    5 . 3
         let neighbor_pairs = (0..n)
-            .map(|i| {
+            .map(|index| {
                 let prev_index =
-                    super::previous_bit_reversed_circle_domain_index(i, log_size - 1, log_size);
+                    previous_bit_reversed_circle_domain_index(index, log_size - 1, log_size);
                 (
-                    bit_reversed_evaluation[i],
+                    bit_reversed_evaluation[index],
                     bit_reversed_evaluation[prev_index],
                 )
             })
             .sorted()
             .collect_vec();
-        //    1 O 7
-        //  O       O
-        // 6         0
-        // O         O
-        // 2         4
-        //  O       O
-        //    5 O 3
         let mut expected_neighbor_pairs = vec![
             (m31!(0), m31!(3)),
             (m31!(7), m31!(4)),
@@ -239,5 +240,10 @@ mod tests {
         expected_neighbor_pairs.sort();
 
         assert_eq!(neighbor_pairs, expected_neighbor_pairs);
+
+        (0..n).for_each(|index| {
+            let prev_index = previous_bit_reversed_circle_domain_index(index, 0, log_size);
+            assert_eq!(index, prev_index);
+        });
     }
 }
