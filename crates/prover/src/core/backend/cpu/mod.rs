@@ -47,6 +47,9 @@ impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
     fn at(&self, index: usize) -> T {
         self[index].clone()
     }
+    fn set(&mut self, index: usize, value: T) {
+        self[index] = value;
+    }
 }
 
 pub type CpuCirclePoly = CirclePoly<CpuBackend>;
