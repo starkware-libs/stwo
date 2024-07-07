@@ -76,7 +76,8 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     Ok((commitment_scheme, interaction_elements))
 }
 
-pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
+// TODO(spapini): Rename to prove, and rename prover to prove_and_commit.
+pub fn prove_without_commit<B: Backend + MerkleOps<MerkleHasher>>(
     air: &impl AirProver<B>,
     channel: &mut Channel,
     interaction_elements: &InteractionElements,
@@ -180,7 +181,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
             .collect_vec(),
     );
 
-    generate_proof(
+    prove_without_commit(
         &air,
         channel,
         &interaction_elements,
@@ -220,6 +221,22 @@ pub fn verify(
             .map(|v| SecureField::from(*v))
             .collect_vec(),
     );
+    verify_without_commit(
+        air,
+        channel,
+        &interaction_elements,
+        &mut commitment_scheme,
+        proof,
+    )
+}
+
+pub fn verify_without_commit(
+    air: &impl Air,
+    channel: &mut Blake2sChannel,
+    interaction_elements: &InteractionElements,
+    commitment_scheme: &mut CommitmentSchemeVerifier,
+    proof: StarkProof,
+) -> Result<(), VerificationError> {
     let random_coeff = channel.draw_felt();
 
     // Read composition polynomial commitment.
@@ -249,7 +266,7 @@ pub fn verify(
             oods_point,
             &trace_oods_values,
             random_coeff,
-            &interaction_elements,
+            interaction_elements,
             &proof.lookup_values,
         )
     {

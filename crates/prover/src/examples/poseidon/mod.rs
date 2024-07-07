@@ -437,19 +437,22 @@ mod tests {
     use num_traits::One;
     use tracing::{span, Level};
 
-    use super::{PoseidonEval, N_LOG_INSTANCES_PER_ROW};
+    use super::N_LOG_INSTANCES_PER_ROW;
     use crate::constraint_framework::assert_constraints;
+    use crate::core::air::AirExt;
     use crate::core::backend::simd::SimdBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
-    use crate::core::pcs::TreeVec;
-    use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::{prove, verify};
+    use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, TreeVec};
+    use crate::core::poly::circle::{CanonicCoset, PolyOps};
+    use crate::core::prover::{prove_without_commit, verify_without_commit, LOG_BLOWUP_FACTOR};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
+    use crate::core::InteractionElements;
     use crate::examples::poseidon::{
         apply_internal_round_matrix, apply_m4, gen_trace, PoseidonAir, PoseidonComponent,
+        PoseidonEval, LOG_EXPAND,
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
 
@@ -519,16 +522,55 @@ mod tests {
             .parse::<u32>()
             .unwrap();
         let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
-        let component = PoseidonComponent { log_n_rows };
-        let span = span!(Level::INFO, "Trace generation").entered();
-        let trace = gen_trace(component.log_column_size());
+
+        // Precompute twiddles.
+        let span = span!(Level::INFO, "Precompute twiddles").entered();
+        let twiddles = SimdBackend::precompute_twiddles(
+            CanonicCoset::new(log_n_rows + LOG_EXPAND + LOG_BLOWUP_FACTOR)
+                .circle_domain()
+                .half_coset,
+        );
         span.exit();
 
+        // Setup protocol.
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let air = PoseidonAir { component };
-        let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
+        let commitment_scheme = &mut CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
 
+        // Trace.
+        let span = span!(Level::INFO, "Trace").entered();
+        let span1 = span!(Level::INFO, "Generation").entered();
+        let trace = gen_trace(log_n_rows);
+        span1.exit();
+        commitment_scheme.commit_on_evals(trace, channel, &twiddles);
+        span.exit();
+
+        // Prove constraints.
+        let component = PoseidonComponent { log_n_rows };
+        let air = PoseidonAir { component };
+        let proof = prove_without_commit::<SimdBackend>(
+            &air,
+            channel,
+            &InteractionElements::default(),
+            &twiddles,
+            commitment_scheme,
+        )
+        .unwrap();
+
+        // Verify.
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        verify(proof, &air, channel).unwrap();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::new();
+
+        // Decommit.
+        let sizes = air.column_log_sizes();
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+
+        verify_without_commit(
+            &air,
+            channel,
+            &InteractionElements::default(),
+            commitment_scheme,
+            proof,
+        )
+        .unwrap();
     }
 }
