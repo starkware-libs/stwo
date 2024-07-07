@@ -78,7 +78,8 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     Ok((commitment_scheme, interaction_elements))
 }
 
-pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
+// TODO(spapini): Rename to prove, and rename prover to prove_and_commit.
+pub fn prove_without_commit<B: Backend + MerkleOps<MerkleHasher>>(
     air: &impl AirProver<B>,
     channel: &mut Channel,
     interaction_elements: &InteractionElements,
@@ -182,7 +183,7 @@ pub fn commit_and_prove<B: Backend + MerkleOps<MerkleHasher>>(
             .collect_vec(),
     );
 
-    prove(
+    prove_without_commit(
         &air,
         channel,
         &interaction_elements,
@@ -227,7 +228,7 @@ pub fn commit_and_verify(
             .map(|v| SecureField::from(*v))
             .collect_vec(),
     );
-    verify(
+    verify_without_commit(
         air,
         channel,
         &interaction_elements,
@@ -236,7 +237,7 @@ pub fn commit_and_verify(
     )
 }
 
-pub fn verify(
+pub fn verify_without_commit(
     air: &impl Air,
     channel: &mut Blake2sChannel,
     interaction_elements: &InteractionElements,
