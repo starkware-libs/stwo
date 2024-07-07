@@ -183,7 +183,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     )
 }
 
-pub fn verify(
+pub fn decommit_and_verify(
     proof: StarkProof,
     air: &(impl Air + AirTraceVerifier),
     channel: &mut Channel,
@@ -198,6 +198,22 @@ pub fn verify(
         commitment_scheme.commit(proof.commitments[1], &column_log_sizes[1], channel);
     }
 
+    verify(
+        air,
+        channel,
+        &interaction_elements,
+        &mut commitment_scheme,
+        proof,
+    )
+}
+
+pub fn verify(
+    air: &impl Air,
+    channel: &mut Blake2sChannel,
+    interaction_elements: &InteractionElements,
+    commitment_scheme: &mut CommitmentSchemeVerifier,
+    proof: StarkProof,
+) -> Result<(), VerificationError> {
     let random_coeff = channel.draw_felt();
 
     // Read composition polynomial commitment.
@@ -227,7 +243,7 @@ pub fn verify(
             oods_point,
             &trace_oods_values,
             random_coeff,
-            &interaction_elements,
+            interaction_elements,
         )
     {
         return Err(VerificationError::OodsNotMatching);

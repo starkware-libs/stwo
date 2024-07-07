@@ -22,7 +22,7 @@ mod tests {
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::{prove, verify};
+    use crate::core::prover::{prove, decommit_and_verify};
     use crate::core::utils::{
         bit_reverse, circle_domain_order_to_coset_order, shifted_secure_combination,
     };
@@ -232,6 +232,6 @@ mod tests {
 
         let verifier_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        verify(proof, &air, verifier_channel).unwrap();
+        decommit_and_verify(proof, &air, verifier_channel).unwrap();
     }
 }

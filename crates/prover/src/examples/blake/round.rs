@@ -4,9 +4,8 @@ use num_traits::{One, Zero};
 use tracing::{span, Level};
 
 use super::eval::{AssertEvalAtRow, ConstraintCounter, EvalAtRow};
-use super::lookup::LogupAtRow;
+use super::lookup::{LogupAtRow, LookupElements};
 use super::round_constraints::BlakeEvalAtRow;
-use super::LookupElements;
 use crate::core::air::accumulation::{
     ColumnAccumulator, DomainEvaluationAccumulator, PointEvaluationAccumulator,
 };
@@ -31,18 +30,18 @@ use crate::examples::blake::eval::{EvalAtDomain, EvalAtPoint};
 pub struct BlakeRoundComponent {
     pub log_size: u32,
     pub lookup_elements: LookupElements,
-    pub claimed_xor_sums: Vec<SecureField>,
+    pub claimed_xor_sum: SecureField,
 }
 impl BlakeRoundComponent {
     pub fn new(
         log_size: u32,
         lookup_elements: LookupElements,
-        claimed_xor_sums: Vec<SecureField>,
+        claimed_xor_sum: SecureField,
     ) -> Self {
         Self {
             log_size,
             lookup_elements,
-            claimed_xor_sums,
+            claimed_xor_sum,
         }
     }
 }
@@ -107,28 +106,26 @@ impl Component for BlakeRoundComponent {
         let denom_inverse = denom.inverse();
         let mut eval = EvalAtPoint::new(mask.as_ref(), evaluation_accumulator, denom_inverse);
         let [is_first] = eval.next_interaction_mask(2, [0]);
-        let mut blake_eval = BlakeEvalAtRow {
+        let blake_eval = BlakeEvalAtRow {
             eval,
             lookup_elements: self.lookup_elements,
-            xor_logup: LogupAtRow::new(1, 2, &self.claimed_xor_sums, is_first),
+            xor_logup: LogupAtRow::new(1, self.claimed_xor_sum, is_first),
         };
         blake_eval.eval();
     }
 }
 
 pub fn blake_counter() -> ConstraintCounter {
-    let dummy_claimed_values = [SecureField::zero(); 512];
     let mut counter = BlakeEvalAtRow {
         eval: ConstraintCounter::default(),
         lookup_elements: LookupElements {
             z: SecureField::one(),
             alpha: SecureField::one(),
         },
-        xor_logup: LogupAtRow::new(1, 2, &dummy_claimed_values, BaseField::zero()),
+        xor_logup: LogupAtRow::new(1, SecureField::zero(), BaseField::zero()),
     };
     counter.eval.next_interaction_mask(2, [0]);
-    counter.eval();
-    counter.eval
+    counter.eval()
 }
 
 impl ComponentProver<SimdBackend> for BlakeRoundComponent {
@@ -146,6 +143,7 @@ impl ComponentProver<SimdBackend> for BlakeRoundComponent {
         );
 
         // TODO:
+        let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
         for vec_row in 0..(1 << (domain_eval.eval_domain.log_size() - LOG_N_LANES)) {
             let mut eval = EvalAtDomain::new(
                 &domain_eval.trace.evals,
@@ -156,14 +154,14 @@ impl ComponentProver<SimdBackend> for BlakeRoundComponent {
             );
             // Constant column is_first.
             let [is_first] = eval.next_interaction_mask(2, [0]);
-            let xor_logup = LogupAtRow::new(1, 2, &self.claimed_xor_sums, is_first);
-            let mut blake_eval = BlakeEvalAtRow {
+            let xor_logup = LogupAtRow::new(1, self.claimed_xor_sum, is_first);
+            let blake_eval = BlakeEvalAtRow {
                 eval,
                 lookup_elements: self.lookup_elements,
                 xor_logup,
             };
-            blake_eval.eval();
-            domain_eval.finalize_row(vec_row, blake_eval.eval.row_res);
+            let eval = blake_eval.eval();
+            domain_eval.finalize_row(vec_row, eval.row_res);
         }
     }
 }
@@ -211,7 +209,6 @@ impl<'a> DomainEvaluator<'a> {
 
         span.exit();
 
-        let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
         let [mut accum] =
             evaluation_accumulator.columns([(constraint_log_degree_bound, n_constraints)]);
         accum.random_coeff_powers.reverse();
@@ -238,7 +235,7 @@ impl<'a> DomainEvaluator<'a> {
 pub fn check_constraints_on_trace(
     log_size: u32,
     lookup_elements: LookupElements,
-    claimed_sums: &[SecureField],
+    claimed_xor_sum: SecureField,
     trace: TreeVec<&[CirclePoly<SimdBackend>]>,
 ) {
     let trace_domain = CanonicCoset::new(log_size);
@@ -258,14 +255,12 @@ pub fn check_constraints_on_trace(
             col_index: vec![0; 2],
             row: i,
         };
-        // TODO: take constant col.
-        let mut blake_eval = BlakeEvalAtRow {
+        let blake_eval = BlakeEvalAtRow {
             eval,
             lookup_elements,
             xor_logup: LogupAtRow::new(
                 1,
-                2,
-                claimed_sums,
+                claimed_xor_sum,
                 if i == 0 {
                     BaseField::one()
                 } else {

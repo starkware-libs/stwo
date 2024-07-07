@@ -99,6 +99,9 @@ impl<'a> EvalAtRow for EvalAtDomain<'a> {
         self.col_index[interaction] += 1;
         offsets.map(|off| {
             // TODO: Optimize.
+            if off == 0 {
+                return self.trace_eval[interaction][col_index].data[self.vec_row];
+            }
             PackedBaseField::from_array(std::array::from_fn(|i| {
                 let index = offset_bit_reversed_circle_domain_index(
                     (self.vec_row << LOG_N_LANES) + i,

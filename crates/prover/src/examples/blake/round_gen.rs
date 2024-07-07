@@ -3,8 +3,9 @@ use std::simd::{u32x16, Simd};
 use bytemuck::cast_slice_mut;
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use tracing::{span, Level};
 
-use super::LookupElements;
+use super::lookup::LookupElements;
 use crate::core::backend::simd::column::{BaseFieldVec, SecureFieldVec};
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -16,7 +17,9 @@ use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::{circle_domain_order_to_coset_order, shifted_secure_combination};
+use crate::core::utils::{
+    bit_reverse_index, circle_domain_order_to_coset_order, shifted_secure_combination,
+};
 use crate::core::ColumnVec;
 use crate::examples::blake::round::blake_counter;
 
@@ -220,35 +223,24 @@ fn set_secure_col(vec: &mut SecureColumn<SimdBackend>, i: usize, val: SecureFiel
     }
 }
 
-// TODO: Do this SIMD.
 pub fn gen_interaction_trace(
     log_size: u32,
     mut lookup_exprs: Vec<BaseFieldVec>,
     lookup_elements: LookupElements,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    Vec<SecureField>,
+    SecureField,
 ) {
-    let lookup_exprs = lookup_exprs
-        .into_iter()
-        .map(|mut c| {
-            <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut c);
-            let c = (0..c.len()).map(|i| c.at(i)).collect_vec();
-            circle_domain_order_to_coset_order(&c)
-        })
-        .collect_vec();
-
+    let span = span!(Level::INFO, "Generate interaction trace").entered();
     let LookupElements { z, alpha } = lookup_elements;
+    let alpha = PackedSecureField::broadcast(alpha);
+    let z = PackedSecureField::broadcast(z);
+    assert_eq!(lookup_exprs.len() % 6, 0);
     let mut trace =
         vec![SecureColumn::<SimdBackend>::zeros(1 << log_size); lookup_exprs.len() / 3 / 2];
 
     let mut temp_denom = SecureFieldVec::zeros(1 << log_size);
     let mut temp_denom_inv = SecureFieldVec::zeros(1 << log_size);
-
-    println!(
-        "secure interaction columns: {:?}",
-        lookup_exprs.len() / 3 / 2
-    );
 
     for (i, [l0, l1]) in lookup_exprs
         .iter()
@@ -257,27 +249,16 @@ pub fn gen_interaction_trace(
         .enumerate()
     {
         // First row.
-        let p0 = shifted_secure_combination(&l0.map(|l| l.at(0)), alpha, z);
-        let p1 = shifted_secure_combination(&l1.map(|l| l.at(0)), alpha, z);
-        let mut num = p0 + p1;
-        let mut denom = p0 * p1;
-        set_secure_col(&mut trace[i], 0, num);
-        set_secure_vec(&mut temp_denom, 0, denom);
-
-        // Next rows.
         #[allow(clippy::needless_range_loop)]
-        for row in 1..(1 << log_size) {
-            let p0 = shifted_secure_combination(&l0.map(|l| l.at(row)), alpha, z);
-            let p1 = shifted_secure_combination(&l1.map(|l| l.at(row)), alpha, z);
-
-            let cur_num = p0 + p1;
-            let cur_denom = p0 * p1;
-            num = num * cur_denom + cur_num * denom;
-            denom *= cur_denom;
-
-            set_secure_col(&mut trace[i], row, num);
-            set_secure_vec(&mut temp_denom, row, denom);
+        for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
+            let p0 = shifted_secure_combination(&l0.map(|l| l.data[vec_row]), alpha, z);
+            let p1 = shifted_secure_combination(&l1.map(|l| l.data[vec_row]), alpha, z);
+            let mut num = p0 + p1;
+            let mut denom = p0 * p1;
+            unsafe { trace[i].set_packed(vec_row, num) };
+            temp_denom.data[vec_row] = denom;
         }
+
         FieldExpOps::batch_inverse(&temp_denom.data, &mut temp_denom_inv.data);
 
         // Multiply
@@ -290,20 +271,37 @@ pub fn gen_interaction_trace(
         }
     }
 
-    let claimed_xor_sums = trace.iter().map(|c| c.at((1 << log_size) - 1)).collect();
+    // Cumulative sum on the last column.
+    let span1 = span!(Level::INFO, "Cumulative").entered();
+    // TODO: optimize.
+    let mut cur = SecureField::zero();
+    let col = trace.last_mut().unwrap();
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..(1 << log_size) {
+        let index = if i & 1 == 0 {
+            i / 2
+        } else {
+            (1 << (log_size - 1)) + ((1 << log_size) - 1 - i) / 2
+        };
+        let index = bit_reverse_index(index, log_size);
+        cur += col.at(index);
+        set_secure_col(col, index, cur);
+    }
+
+    let claimed_xor_sum = cur;
 
     let trace = trace
         .into_iter()
         .flat_map(|eval| {
             eval.columns.map(|c| {
-                CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new_canonical_ordered(
-                    CanonicCoset::new(log_size),
+                CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(
+                    CanonicCoset::new(log_size).circle_domain(),
                     c,
                 )
             })
         })
         .collect_vec();
-    (trace, claimed_xor_sums)
+    (trace, claimed_xor_sum)
 }
 
 pub fn get_constant_trace(

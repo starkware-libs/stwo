@@ -238,7 +238,7 @@ mod tests {
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
-    use crate::core::prover::{prove, verify};
+    use crate::core::prover::{decommit_and_verify, prove};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
@@ -265,6 +265,6 @@ mod tests {
         let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        verify(proof, &air, channel).unwrap();
+        decommit_and_verify(proof, &air, channel).unwrap();
     }
 }

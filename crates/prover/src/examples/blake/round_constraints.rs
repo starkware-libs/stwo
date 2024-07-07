@@ -1,17 +1,16 @@
-use num_traits::{One, Zero};
+use num_traits::One;
 
 use super::eval::EvalAtRow;
-use super::lookup::LogupAtRow;
-use super::{Fu32, LookupElements};
-use crate::core::utils::shifted_secure_combination;
+use super::lookup::{LogupAtRow, LookupElements};
+use super::Fu32;
 
-pub struct BlakeEvalAtRow<'a, E: EvalAtRow> {
+pub struct BlakeEvalAtRow<E: EvalAtRow> {
     pub eval: E,
     pub lookup_elements: LookupElements,
-    pub xor_logup: LogupAtRow<'a, E>,
+    pub xor_logup: LogupAtRow<2, E>,
 }
-impl<'a, E: EvalAtRow> BlakeEvalAtRow<'a, E> {
-    pub fn eval(&mut self) {
+impl<E: EvalAtRow> BlakeEvalAtRow<E> {
+    pub fn eval(mut self) -> E {
         let mut v: [Fu32<E::F>; 16] = std::array::from_fn(|_| self.next_u32());
         // let _input_v = v.clone();
         self.g(0, v.get_many_mut([0, 4, 8, 12]).unwrap());
@@ -23,7 +22,9 @@ impl<'a, E: EvalAtRow> BlakeEvalAtRow<'a, E> {
         self.g(6, v.get_many_mut([2, 7, 8, 13]).unwrap());
         self.g(7, v.get_many_mut([3, 4, 9, 14]).unwrap());
 
-        // TODO: yield BlakeRound(round, input_v, v);
+        // TODO: yield BlakeRound(round, input_v, v);\
+        self.xor_logup.finalize(&mut self.eval);
+        self.eval
     }
     fn next_u32(&mut self) -> Fu32<E::F> {
         let l = self.eval.next_mask();
@@ -134,11 +135,12 @@ impl<'a, E: EvalAtRow> BlakeEvalAtRow<'a, E> {
     fn xor(&mut self, _w: u32, a: E::F, b: E::F) -> E::F {
         // TODO: Separate lookups by w.
         let c = self.eval.next_mask();
-        let LookupElements { z, alpha } = self.lookup_elements;
-        let shifted_value =
-            shifted_secure_combination(&[a, b, c], E::EF::zero() + alpha, E::EF::zero() + z);
-        self.xor_logup
-            .push(&mut self.eval, E::EF::one(), shifted_value);
+        self.xor_logup.push_lookup(
+            &mut self.eval,
+            E::EF::one(),
+            &[a, b, c],
+            self.lookup_elements,
+        );
         c
     }
 }

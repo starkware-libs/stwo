@@ -17,17 +17,10 @@ use crate::core::air::{
 use crate::core::backend::simd::SimdBackend;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
 use crate::core::{ColumnVec, InteractionElements};
-
-#[derive(Copy, Clone, Debug)]
-pub struct LookupElements {
-    pub z: SecureField,
-    pub alpha: SecureField,
-}
 
 pub struct BlakeAir {
     pub component: BlakeRoundComponent,
@@ -81,21 +74,23 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::core::air::AirExt;
     use crate::core::backend::simd::SimdBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
-    use crate::core::pcs::CommitmentSchemeProver;
+    use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
     use crate::core::poly::circle::{CanonicCoset, PolyOps};
-    use crate::core::prover::{generate_proof, LOG_BLOWUP_FACTOR};
+    use crate::core::prover::{generate_proof, verify, LOG_BLOWUP_FACTOR};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::core::InteractionElements;
-    use crate::examples::blake::round::{check_constraints_on_trace, BlakeRoundComponent};
+    use crate::examples::blake::lookup::LookupElements;
+    use crate::examples::blake::round::BlakeRoundComponent;
     use crate::examples::blake::round_gen::{
         gen_interaction_trace, get_constant_trace, BlakeTraceGenerator,
     };
-    use crate::examples::blake::{BlakeAir, LookupElements};
+    use crate::examples::blake::BlakeAir;
 
     #[test_log::test]
     fn test_simd_blake_prove() {
@@ -105,62 +100,50 @@ mod tests {
         //   test_simd_blake_prove -- --nocapture
 
         // Note: 15 means 208MB of trace.
-        const LOG_N_ROWS: u32 = 10;
+        const LOG_N_ROWS: u32 = 16;
         let twiddles = SimdBackend::precompute_twiddles(
             CanonicCoset::new(LOG_N_ROWS + 1 + LOG_BLOWUP_FACTOR)
                 .circle_domain()
                 .half_coset,
         );
 
-        // TODO: Add public input.
+        // Setup protocol.
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
 
-        // Generate trace.
+        // Trace.
         let (trace, lookup_exprs) = BlakeTraceGenerator::gen_trace(LOG_N_ROWS);
-        let polys = trace
-            .into_iter()
-            .map(|eval| eval.interpolate_with_twiddles(&twiddles))
-            .collect();
-        commitment_scheme.commit(polys, channel, &twiddles);
+        commitment_scheme.commit_on_evals(trace, channel, &twiddles);
 
         // Draw lookup elements.
-        let [z, alpha] = channel.draw_felts(2).try_into().unwrap();
-        let lookup_elements = LookupElements { z, alpha };
+        let lookup_elements = LookupElements::draw(channel);
 
-        let (trace, claimed_xor_sums) =
+        // Interaction trace.
+        let (trace, claimed_xor_sum) =
             gen_interaction_trace(LOG_N_ROWS, lookup_exprs, lookup_elements);
-        let polys = trace
-            .into_iter()
-            .map(|eval| eval.interpolate_with_twiddles(&twiddles))
-            .collect();
-        commitment_scheme.commit(polys, channel, &twiddles);
+        commitment_scheme.commit_on_evals(trace, channel, &twiddles);
 
         // Constant trace.
         let trace = get_constant_trace(LOG_N_ROWS);
-        let polys = trace
-            .into_iter()
-            .map(|eval| eval.interpolate_with_twiddles(&twiddles))
-            .collect();
-        commitment_scheme.commit(polys, channel, &twiddles);
+        commitment_scheme.commit_on_evals(trace, channel, &twiddles);
 
-        // Check constraints - sanity check.
-        check_constraints_on_trace(
-            LOG_N_ROWS,
-            lookup_elements,
-            &claimed_xor_sums,
-            commitment_scheme.trees.as_ref().map(|t| &t.polynomials[..]),
-        );
+        // // Check constraints - sanity check.
+        // check_constraints_on_trace(
+        //     LOG_N_ROWS,
+        //     lookup_elements,
+        //     claimed_xor_sum,
+        //     commitment_scheme.trees.as_ref().map(|t| &t.polynomials[..]),
+        // );
 
         // Prove constraints.
         let component = BlakeRoundComponent {
             log_size: LOG_N_ROWS,
             lookup_elements,
-            claimed_xor_sums,
+            claimed_xor_sum,
         };
         let air = BlakeAir { component };
 
-        let _proof = generate_proof::<SimdBackend>(
+        let proof = generate_proof::<SimdBackend>(
             &air,
             channel,
             &InteractionElements::default(),
@@ -169,8 +152,28 @@ mod tests {
         )
         .unwrap();
         // TODO: Send the statement:
-        //   N_LOGS, claimed_xor_sums, lookup_elements.
+        //   claimed_xor_sum.
 
-        // TODO: Verify.
+        // Verify.
+        // Setup protocol.
+        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+        let commitment_scheme = &mut CommitmentSchemeVerifier::new();
+
+        // Decommit.
+        let sizes = air.column_log_sizes();
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        commitment_scheme.commit(proof.commitments[2], &[LOG_N_ROWS], channel);
+
+        // assert_eq!(proof.claimed_xor_sum0, proof.claimed_xor_sum1)
+
+        verify(
+            &air,
+            channel,
+            &InteractionElements::default(),
+            commitment_scheme,
+            proof,
+        )
+        .unwrap();
     }
 }

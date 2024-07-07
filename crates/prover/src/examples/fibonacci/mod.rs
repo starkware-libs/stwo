@@ -10,7 +10,9 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{prove, verify, ProvingError, StarkProof, VerificationError};
+use crate::core::prover::{
+    decommit_and_verify, prove, ProvingError, StarkProof, VerificationError,
+};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::hasher::Hasher;
 
@@ -63,7 +65,7 @@ impl Fibonacci {
             .air
             .component
             .claim])));
-        verify(proof, &self.air, channel)
+        decommit_and_verify(proof, &self.air, channel)
     }
 }
 
@@ -103,7 +105,7 @@ impl MultiFibonacci {
     pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&self.claims)));
-        verify(proof, &self.air, channel)
+        decommit_and_verify(proof, &self.air, channel)
     }
 }
 
