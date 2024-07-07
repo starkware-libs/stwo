@@ -111,10 +111,10 @@ impl Component for PoseidonComponent {
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        TreeVec::new(vec![fixed_mask_points(
-            &vec![vec![0_usize]; N_COLUMNS],
-            point,
-        )])
+        TreeVec::new(vec![
+            fixed_mask_points(&vec![vec![0_usize]; N_COLUMNS], point),
+            vec![vec![point]],
+        ])
     }
 
     fn evaluate_constraint_quotients_at_point(
@@ -439,6 +439,7 @@ mod tests {
 
     use super::N_LOG_INSTANCES_PER_ROW;
     use crate::constraint_framework::assert_constraints;
+    use crate::constraint_framework::constant_cols::gen_is_first;
     use crate::core::air::AirExt;
     use crate::core::backend::simd::SimdBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
@@ -544,6 +545,11 @@ mod tests {
         commitment_scheme.commit_on_evals(trace, channel, &twiddles);
         span.exit();
 
+        // Constant trace.
+        let span = span!(Level::INFO, "Constant").entered();
+        commitment_scheme.commit_on_evals(vec![gen_is_first(log_n_rows)], channel, &twiddles);
+        span.exit();
+
         // Prove constraints.
         let component = PoseidonComponent { log_n_rows };
         let air = PoseidonAir { component };
@@ -562,7 +568,10 @@ mod tests {
 
         // Decommit.
         let sizes = air.column_log_sizes();
+        // Trace columns.
         commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        // Constant columns.
+        commitment_scheme.commit(proof.commitments[1], &[log_n_rows], channel);
 
         verify_without_commit(
             &air,
