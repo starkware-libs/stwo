@@ -2,6 +2,7 @@
 mod assert;
 pub mod constant_cols;
 mod info;
+pub mod logup;
 mod point;
 mod simd_domain;
 
