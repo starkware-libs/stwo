@@ -118,10 +118,6 @@ impl Component for PoseidonComponent {
         )])
     }
 
-    fn interaction_element_ids(&self) -> Vec<String> {
-        vec![]
-    }
-
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,

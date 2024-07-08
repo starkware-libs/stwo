@@ -104,10 +104,6 @@ impl Component for FibonacciComponent {
         )])
     }
 
-    fn interaction_element_ids(&self) -> Vec<String> {
-        vec![]
-    }
-
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,

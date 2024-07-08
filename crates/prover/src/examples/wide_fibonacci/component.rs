@@ -55,6 +55,10 @@ impl WideFibComponent {
         N_COLUMNS
     }
 
+    pub fn interaction_element_ids(&self) -> Vec<String> {
+        vec![ALPHA_ID.to_string(), Z_ID.to_string()]
+    }
+
     fn evaluate_trace_boundary_constraints_at_point(
         &self,
         point: CirclePoint<SecureField>,
@@ -209,10 +213,6 @@ impl Component for WideFibComponent {
             fixed_mask_points(&vec![vec![0_usize]; self.n_columns()], point),
             vec![vec![point, point - domain.step().into_ef()]; SECURE_EXTENSION_DEGREE],
         ])
-    }
-
-    fn interaction_element_ids(&self) -> Vec<String> {
-        vec![ALPHA_ID.to_string(), Z_ID.to_string()]
     }
 
     fn evaluate_constraint_quotients_at_point(
