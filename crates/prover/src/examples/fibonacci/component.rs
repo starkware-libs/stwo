@@ -86,21 +86,18 @@ impl Component for FibonacciComponent {
     }
 
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
-        TreeVec::new(vec![vec![self.log_size], vec![]])
+        TreeVec::new(vec![vec![self.log_size]])
     }
 
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        TreeVec::new(vec![
-            shifted_mask_points(
-                &vec![vec![0, 1, 2]],
-                &[CanonicCoset::new(self.log_size)],
-                point,
-            ),
-            vec![],
-        ])
+        TreeVec::new(vec![shifted_mask_points(
+            &vec![vec![0, 1, 2]],
+            &[CanonicCoset::new(self.log_size)],
+            point,
+        )])
     }
 
     fn interaction_element_ids(&self) -> Vec<String> {

@@ -33,23 +33,21 @@ pub trait AirExt: Air {
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        let mut trace_component_points = vec![];
-        let mut interaction_component_points = vec![];
+        let mut air_points = TreeVec::default();
         for component in self.components() {
-            let points = component.mask_points(point);
-            trace_component_points.extend(points[0].clone());
-            interaction_component_points.extend(points[1].clone());
-        }
-        let mut points = TreeVec::new(vec![trace_component_points]);
-        if !interaction_component_points
-            .iter()
-            .all(|column| column.is_empty())
-        {
-            points.push(interaction_component_points);
+            let component_points = component.mask_points(point);
+            if air_points.len() < component_points.len() {
+                air_points.resize(component_points.len(), vec![]);
+            }
+            air_points.as_mut().zip_eq(component_points).map(
+                |(air_tree_points, component_tree_points)| {
+                    air_tree_points.extend(component_tree_points);
+                },
+            );
         }
         // Add the composition polynomial mask points.
-        points.push(vec![vec![point]; SECURE_EXTENSION_DEGREE]);
-        points
+        air_points.push(vec![vec![point]; SECURE_EXTENSION_DEGREE]);
+        air_points
     }
 
     fn eval_composition_polynomial_at_point(
@@ -72,18 +70,19 @@ pub trait AirExt: Air {
     }
 
     fn column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
-        let mut trace_tree = vec![];
-        let mut interaction_tree = vec![];
+        let mut air_sizes = TreeVec::default();
         self.components().iter().for_each(|component| {
-            let bounds = component.trace_log_degree_bounds();
-            trace_tree.extend(bounds[0].clone());
-            interaction_tree.extend(bounds[1].clone());
+            let component_sizes = component.trace_log_degree_bounds();
+            if air_sizes.len() < component_sizes.len() {
+                air_sizes.resize(component_sizes.len(), vec![]);
+            }
+            air_sizes.as_mut().zip_eq(component_sizes).map(
+                |(air_tree_sizes, component_tree_sizes)| {
+                    air_tree_sizes.extend(component_tree_sizes)
+                },
+            );
         });
-        let mut sizes = TreeVec::new(vec![trace_tree]);
-        if !interaction_tree.is_empty() {
-            sizes.push(interaction_tree);
-        }
-        sizes
+        air_sizes
     }
 
     fn component_traces<'a, B: Backend + MerkleOps<Blake2sMerkleHasher>>(

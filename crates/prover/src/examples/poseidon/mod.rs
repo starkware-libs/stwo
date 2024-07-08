@@ -101,17 +101,17 @@ impl Component for PoseidonComponent {
     }
 
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
-        TreeVec::new(vec![vec![self.log_column_size(); N_COLUMNS], vec![]])
+        TreeVec::new(vec![vec![self.log_column_size(); N_COLUMNS]])
     }
 
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        TreeVec::new(vec![
-            fixed_mask_points(&vec![vec![0_usize]; N_COLUMNS], point),
-            vec![],
-        ])
+        TreeVec::new(vec![fixed_mask_points(
+            &vec![vec![0_usize]; N_COLUMNS],
+            point,
+        )])
     }
 
     fn interaction_element_ids(&self) -> Vec<String> {
