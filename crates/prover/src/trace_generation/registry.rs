@@ -82,7 +82,7 @@ mod tests {
         fn evaluate_constraint_quotients_at_point(
             &self,
             _point: CirclePoint<SecureField>,
-            _mask: &ColumnVec<Vec<SecureField>>,
+            _mask: &TreeVec<Vec<Vec<SecureField>>>,
             _evaluation_accumulator: &mut PointEvaluationAccumulator,
             _interaction_elements: &InteractionElements,
         ) {

@@ -179,7 +179,7 @@ mod tests {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         fib.air.component.evaluate_constraint_quotients_at_point(
             point,
-            &mask_values,
+            &TreeVec::new(vec![mask_values]),
             &mut evaluation_accumulator,
             &InteractionElements::new(BTreeMap::new()),
         );
