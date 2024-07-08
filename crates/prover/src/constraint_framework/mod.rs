@@ -2,6 +2,8 @@
 mod assert;
 pub mod constant_cols;
 mod domain;
+mod info;
+pub mod logup;
 mod point;
 
 use std::fmt::Debug;
@@ -9,6 +11,7 @@ use std::ops::{Add, AddAssign, Mul, Sub};
 
 pub use assert::{assert_constraints, AssertEvaluator};
 pub use domain::DomainEvaluator;
+pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
 

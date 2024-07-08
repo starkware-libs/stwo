@@ -2,7 +2,6 @@ use super::m31::BaseField;
 use super::qm31::SecureField;
 use super::{ExtensionOf, FieldOps};
 use crate::core::backend::{Col, Column, CpuBackend};
-use crate::core::utils::IteratorMutExt;
 
 pub const SECURE_EXTENSION_DEGREE: usize =
     <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE;
@@ -14,13 +13,6 @@ pub struct SecureColumn<B: FieldOps<BaseField>> {
     pub columns: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
 impl SecureColumn<CpuBackend> {
-    pub fn set(&mut self, index: usize, value: SecureField) {
-        self.columns
-            .iter_mut()
-            .map(|c| &mut c[index])
-            .assign(value.to_m31_array());
-    }
-
     // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
     pub fn to_vec(&self) -> Vec<SecureField> {
         (0..self.len()).map(|i| self.at(i)).collect()
@@ -48,6 +40,12 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
     pub fn to_cpu(&self) -> SecureColumn<CpuBackend> {
         SecureColumn {
             columns: self.columns.clone().map(|c| c.to_cpu()),
+        }
+    }
+
+    pub fn set(&mut self, index: usize, value: SecureField) {
+        for i in 0..SECURE_EXTENSION_DEGREE {
+            self.columns[i].set(index, value.to_m31_array()[i]);
         }
     }
 }
