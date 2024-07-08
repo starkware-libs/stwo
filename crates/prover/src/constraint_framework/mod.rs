@@ -8,7 +8,7 @@ mod simd_domain;
 
 use std::array;
 use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Mul, Sub};
+use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 pub use assert::{assert_constraints, AssertEvaluator};
 pub use info::InfoEvaluator;
@@ -45,6 +45,7 @@ pub trait EvalAtRow {
         + Copy
         + Debug
         + Zero
+        + Neg<Output = Self::EF>
         + Add<SecureField, Output = Self::EF>
         + Sub<SecureField, Output = Self::EF>
         + Mul<SecureField, Output = Self::EF>
