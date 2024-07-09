@@ -437,11 +437,14 @@ mod tests {
     use num_traits::One;
     use tracing::{span, Level};
 
-    use super::N_LOG_INSTANCES_PER_ROW;
+    use super::{PoseidonEval, N_LOG_INSTANCES_PER_ROW};
+    use crate::constraint_framework::assert_constraints;
     use crate::core::backend::simd::SimdBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
+    use crate::core::pcs::TreeVec;
+    use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::{prove, verify};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
@@ -485,6 +488,22 @@ mod tests {
         apply_internal_round_matrix(&mut state);
 
         assert_eq!(state, expected_state);
+    }
+
+    #[test]
+    fn test_poseidon_constraints() {
+        const LOG_N_ROWS: u32 = 8;
+        let component = PoseidonComponent {
+            log_n_rows: LOG_N_ROWS,
+        };
+        let trace = gen_trace(component.log_column_size());
+        let trace_polys = TreeVec::new(vec![trace
+            .into_iter()
+            .map(|c| c.interpolate())
+            .collect_vec()]);
+        assert_constraints(&trace_polys, CanonicCoset::new(LOG_N_ROWS), |eval| {
+            PoseidonEval { eval }.eval();
+        });
     }
 
     #[test_log::test]

@@ -1,10 +1,12 @@
 /// ! This module contains helpers to express and use constraints for components.
+mod assert;
 mod domain;
 mod point;
 
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
+pub use assert::{assert_constraints, AssertEvaluator};
 pub use domain::DomainEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
