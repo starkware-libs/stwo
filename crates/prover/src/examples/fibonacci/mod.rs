@@ -242,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fib_prove_2() {
+    fn test_fib_air_generator() {
         const FIB_LOG_SIZE: u32 = 5;
         const CLAIM: BaseField = m31!(443693538);
         let mut fib_trace_generator = FibonacciAirGenerator::new(&FibonacciInput {
@@ -253,7 +253,10 @@ mod tests {
         let trace = fib_trace_generator.write_trace();
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[CLAIM])));
-        prove(&fib_trace_generator, channel, trace).unwrap();
+        let proof = prove(&fib_trace_generator, channel, trace).unwrap();
+
+        let fib = Fibonacci::new(FIB_LOG_SIZE, CLAIM);
+        fib.verify(proof).unwrap();
     }
 
     #[test]
