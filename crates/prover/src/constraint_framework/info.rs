@@ -9,7 +9,7 @@ use crate::core::pcs::TreeVec;
 
 /// Collects information about the constraints.
 /// This includes mask offsets and columns at each interaction, and the number of constraints.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct InfoEvaluator {
     pub mask_offsets: TreeVec<Vec<Vec<isize>>>,
     pub n_constraints: usize,

@@ -19,11 +19,11 @@ use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 
-const IV: [u32; 8] = [
+pub const IV: [u32; 8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
 ];
 
-const SIGMA: [[u8; 16]; 10] = [
+pub const SIGMA: [[u8; 16]; 10] = [
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
     [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
     [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
@@ -130,7 +130,7 @@ fn rotate<const N: u32>(x: u32x16) -> u32x16 {
 
 // `inline(always)` can cause code parsing errors for wasm: "locals exceed maximum".
 #[cfg_attr(not(target_arch = "wasm32"), inline(always))]
-fn round(v: &mut [u32x16; 16], m: [u32x16; 16], r: usize) {
+pub fn round(v: &mut [u32x16; 16], m: [u32x16; 16], r: usize) {
     v[0] += m[SIGMA[r][0] as usize];
     v[1] += m[SIGMA[r][2] as usize];
     v[2] += m[SIGMA[r][4] as usize];

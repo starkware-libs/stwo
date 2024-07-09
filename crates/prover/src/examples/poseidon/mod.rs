@@ -26,7 +26,6 @@ use crate::core::pcs::{CommitmentSchemeProver, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof, VerificationError, LOG_BLOWUP_FACTOR};
-use crate::core::utils::shifted_secure_combination;
 use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::hasher::Hasher;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
@@ -106,10 +105,7 @@ impl AirTraceGenerator<SimdBackend> for PoseidonAir {
 pub fn poseidon_info() -> InfoEvaluator {
     let mut counter = PoseidonEval {
         eval: InfoEvaluator::default(),
-        lookup_elements: LookupElements {
-            z: SecureField::one(),
-            alpha: SecureField::one(),
-        },
+        lookup_elements: &LookupElements::dummy(N_STATE * 2),
         logup: LogupAtRow::new(1, SecureField::zero(), BaseField::zero()),
     };
     counter.eval.next_interaction_mask(2, [0]);
@@ -171,7 +167,7 @@ impl Component for PoseidonComponent {
         let poseidon_eval = PoseidonEval {
             eval,
             logup: LogupAtRow::new(1, self.claimed_sum, is_first),
-            lookup_elements: self.lookup_elements,
+            lookup_elements: &self.lookup_elements,
         };
         let eval = poseidon_eval.eval();
         assert_eq!(eval.col_index[0], N_COLUMNS);
@@ -247,13 +243,13 @@ fn pow5<F: FieldExpOps>(x: F) -> F {
     x4 * x
 }
 
-struct PoseidonEval<E: EvalAtRow> {
+struct PoseidonEval<'a, E: EvalAtRow> {
     eval: E,
     logup: LogupAtRow<2, E>,
-    lookup_elements: LookupElements,
+    lookup_elements: &'a LookupElements,
 }
 
-impl<E: EvalAtRow> PoseidonEval<E> {
+impl<'a, E: EvalAtRow> PoseidonEval<'a, E> {
     fn eval(mut self) -> E {
         for _ in 0..N_INSTANCES_PER_ROW {
             let mut state: [_; N_STATE] = std::array::from_fn(|_| self.eval.next_trace_mask());
@@ -412,35 +408,27 @@ pub fn gen_trace(
 pub fn gen_interaction_trace(
     log_size: u32,
     lookup_data: LookupData,
-    lookup_elements: LookupElements,
+    lookup_elements: &LookupElements,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     SecureField,
 ) {
     let _span = span!(Level::INFO, "Generate interaction trace").entered();
-    let LookupElements { z, alpha } = lookup_elements;
-    let alpha = PackedSecureField::broadcast(alpha);
-    let broadcast = PackedSecureField::broadcast(z);
-    let z = broadcast;
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
     #[allow(clippy::needless_range_loop)]
     for rep_i in 0..N_INSTANCES_PER_ROW {
         let mut col_gen = logup_gen.new_col();
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
-            let q0 = shifted_secure_combination(
+            let q0: PackedSecureField = lookup_elements.combine(
                 &lookup_data.initial_state[rep_i]
                     .each_ref()
                     .map(|s| s.data[vec_row]),
-                alpha,
-                z,
             );
-            let q1 = shifted_secure_combination(
+            let q1: PackedSecureField = lookup_elements.combine(
                 &lookup_data.final_state[rep_i]
                     .each_ref()
                     .map(|s| s.data[vec_row]),
-                alpha,
-                z,
             );
             // 1 / q0 - 1 / q1 = (q1 - q0) / (q0 * q1).
             col_gen.write_frac(vec_row, q1 - q0, q0 * q1);
@@ -535,7 +523,7 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
             let poseidon_eval = PoseidonEval {
                 eval,
                 logup: LogupAtRow::new(1, self.claimed_sum, is_first),
-                lookup_elements: self.lookup_elements,
+                lookup_elements: &self.lookup_elements,
             };
             let eval = poseidon_eval.eval();
             let row_res = eval.row_res;
@@ -579,13 +567,12 @@ pub fn prove_poseidon(log_n_instances: u32) -> (PoseidonAir, StarkProof) {
     span.exit();
 
     // Draw lookup element.
-    let lookup_elements = LookupElements::draw(channel);
+    let lookup_elements = LookupElements::draw(channel, N_STATE * 2);
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
-    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, lookup_data, lookup_elements);
+    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, lookup_data, &lookup_elements);
     commitment_scheme.commit_on_evals(trace, channel, &twiddles);
-    span.exit();
 
     // Constant trace.
     let span = span!(Level::INFO, "Constant").entered();
@@ -633,10 +620,9 @@ mod tests {
     use crate::core::InteractionElements;
     use crate::examples::poseidon::{
         apply_internal_round_matrix, apply_m4, gen_interaction_trace, gen_trace, prove_poseidon,
-        PoseidonEval,
+        PoseidonEval, N_STATE,
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
-    use crate::qm31;
 
     #[test]
     fn test_apply_m4() {
@@ -681,10 +667,7 @@ mod tests {
 
         // Trace.
         let (trace0, interaction_data) = gen_trace(LOG_N_ROWS);
-        let lookup_elements = LookupElements {
-            z: qm31!(1, 2, 3, 4),
-            alpha: qm31!(5, 6, 7, 8),
-        };
+        let lookup_elements = &LookupElements::dummy(N_STATE * 2);
         let (trace1, claimed_sum) =
             gen_interaction_trace(LOG_N_ROWS, interaction_data, lookup_elements);
         let trace2 = vec![gen_is_first(LOG_N_ROWS)];
@@ -730,7 +713,7 @@ mod tests {
         // Trace columns.
         commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
         // Draw lookup element.
-        let lookup_elements = LookupElements::draw(channel);
+        let lookup_elements = LookupElements::draw(channel, N_STATE * 2);
         assert_eq!(lookup_elements, air.component.lookup_elements);
         // TODO(spapini): Check claimed sum against first and last instances.
         // Interaction columns.
