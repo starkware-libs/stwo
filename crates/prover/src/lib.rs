@@ -12,6 +12,7 @@
     assert_matches,
     portable_simd
 )]
+pub mod constraint_framework;
 pub mod core;
 pub mod examples;
 pub mod math;
