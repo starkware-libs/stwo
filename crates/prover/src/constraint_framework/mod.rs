@@ -1,10 +1,12 @@
-mod point;
 /// ! This module contains helpers to express and use constraints for components.
+mod assert;
+mod point;
 mod simd_domain;
 
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
+pub use assert::{assert_constraints, AssertEvaluator};
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
 pub use simd_domain::SimdDomainEvaluator;
