@@ -1,8 +1,13 @@
+mod point;
 /// ! This module contains helpers to express and use constraints for components.
+mod simd_domain;
+
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use num_traits::{One, Zero};
+pub use point::PointEvaluator;
+pub use simd_domain::SimdDomainEvaluator;
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
