@@ -3,9 +3,12 @@ use std::ops::Add;
 
 use num_traits::{One, Zero};
 
+use super::circle::CirclePoint;
+use super::constraints::point_vanishing;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::ExtensionOf;
+use super::fields::{ExtensionOf, FieldExpOps};
+use super::poly::circle::CircleDomain;
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
     fn assign(self, other: impl IntoIterator<Item = T>)
@@ -148,6 +151,21 @@ where
         .iter()
         .fold(SecureField::zero(), |acc, &value| acc * alpha + value);
     res - z
+}
+
+pub fn point_vanish_denominator_inverses(
+    domain: CircleDomain,
+    vanish_point: CirclePoint<BaseField>,
+) -> Vec<BaseField> {
+    let mut denoms = vec![];
+    for point in domain.iter() {
+        // TODO(AlonH): Use `point_vanishing_fraction` instead of `point_vanishing` everywhere.
+        denoms.push(point_vanishing(vanish_point, point));
+    }
+    bit_reverse(&mut denoms);
+    let mut denom_inverses = vec![BaseField::zero(); 1 << (domain.log_size())];
+    BaseField::batch_inverse(&denoms, &mut denom_inverses);
+    denom_inverses
 }
 
 #[cfg(test)]
