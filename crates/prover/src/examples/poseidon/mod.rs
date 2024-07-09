@@ -68,14 +68,15 @@ impl Air for PoseidonAir {
 }
 
 impl AirTraceVerifier for PoseidonAir {
-    fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
+    fn interact(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
         InteractionElements::default()
     }
 }
 
 impl AirTraceWriter<SimdBackend> for PoseidonAir {
-    fn interact(
+    fn write_interaction_trace(
         &self,
+        _channel: &mut Blake2sChannel,
         _trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         _elements: &InteractionElements,
     ) -> Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {

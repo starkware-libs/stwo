@@ -149,6 +149,7 @@ pub fn partially_verify_batch(
 }
 
 /// Batch GKR proof.
+#[derive(Debug, Clone)]
 pub struct GkrBatchProof {
     /// Sum-check proof for each layer.
     pub sumcheck_proofs: Vec<SumcheckProof>,

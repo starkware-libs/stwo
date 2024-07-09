@@ -26,12 +26,13 @@ pub trait Air {
 }
 
 pub trait AirTraceVerifier {
-    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements;
+    fn interact(&self, channel: &mut Blake2sChannel) -> InteractionElements;
 }
 
 pub trait AirTraceWriter<B: Backend>: AirTraceVerifier {
-    fn interact(
+    fn write_interaction_trace(
         &self,
+        channel: &mut Blake2sChannel,
         trace: &ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
     ) -> Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>;

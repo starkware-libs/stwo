@@ -28,14 +28,15 @@ impl Air for FibonacciAir {
 }
 
 impl AirTraceVerifier for FibonacciAir {
-    fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
+    fn interact(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
         InteractionElements::default()
     }
 }
 
 impl AirTraceWriter<CpuBackend> for FibonacciAir {
-    fn interact(
+    fn write_interaction_trace(
         &self,
+        _channel: &mut Blake2sChannel,
         _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
         _elements: &InteractionElements,
     ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
@@ -77,14 +78,15 @@ impl Air for MultiFibonacciAir {
 }
 
 impl AirTraceVerifier for MultiFibonacciAir {
-    fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
+    fn interact(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
         InteractionElements::default()
     }
 }
 
 impl AirTraceWriter<CpuBackend> for MultiFibonacciAir {
-    fn interact(
+    fn write_interaction_trace(
         &self,
+        _channel: &mut Blake2sChannel,
         _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
         _elements: &InteractionElements,
     ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {

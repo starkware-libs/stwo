@@ -74,8 +74,8 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     commitment_scheme.commit(trace_polys, channel, twiddles);
     span.exit();
 
-    let interaction_elements = air.interaction_elements(channel);
-    let interaction_trace = air.interact(&trace, &interaction_elements);
+    let interaction_elements = air.interact(channel);
+    let interaction_trace = air.write_interaction_trace(channel, &trace, &interaction_elements);
     if !interaction_trace.is_empty() {
         let span = span!(Level::INFO, "Interaction trace interpolation").entered();
         let interaction_trace_polys = interaction_trace
@@ -213,7 +213,7 @@ pub fn verify(
         &column_log_sizes[BASE_TRACE],
         channel,
     );
-    let interaction_elements = air.interaction_elements(channel);
+    let interaction_elements = air.interact(channel);
 
     if air.n_interaction_phases() == 2 {
         commitment_scheme.commit(
@@ -401,14 +401,15 @@ mod tests {
     }
 
     impl AirTraceVerifier for TestAir<TestComponent> {
-        fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
+        fn interact(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
             InteractionElements::default()
         }
     }
 
     impl AirTraceWriter<CpuBackend> for TestAir<TestComponent> {
-        fn interact(
+        fn write_interaction_trace(
             &self,
+            _channel: &mut Blake2sChannel,
             _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
             _elements: &InteractionElements,
         ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {

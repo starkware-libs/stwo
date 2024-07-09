@@ -33,7 +33,7 @@ use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
 // TODO(AlonH): Rename file to `cpu.rs`.
 
 impl AirTraceVerifier for WideFibAir {
-    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements {
+    fn interact(&self, channel: &mut Blake2sChannel) -> InteractionElements {
         let ids = self.component.interaction_element_ids();
         let elements = channel.draw_felts(ids.len());
         InteractionElements::new(BTreeMap::from_iter(zip_eq(ids, elements)))
@@ -41,8 +41,9 @@ impl AirTraceVerifier for WideFibAir {
 }
 
 impl AirTraceWriter<CpuBackend> for WideFibAir {
-    fn interact(
+    fn write_interaction_trace(
         &self,
+        _channel: &mut Blake2sChannel,
         trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
         elements: &InteractionElements,
     ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
