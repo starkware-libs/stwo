@@ -15,7 +15,7 @@ pub fn simd_poseidon(c: &mut Criterion) {
     group.bench_function(format!("poseidon2 2^{} instances", LOG_N_ROWS + 3), |b| {
         b.iter(|| {
             let component = PoseidonComponent {
-                log_n_instances: LOG_N_ROWS,
+                log_n_rows: LOG_N_ROWS,
             };
             let trace = gen_trace(component.log_column_size());
             let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
