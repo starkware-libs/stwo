@@ -3,15 +3,14 @@
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
-use num_traits::Zero;
 use tracing::{span, Level};
 
+use crate::constraint_framework::{DomainEvaluator, EvalAtRow, PointEvaluator};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
 use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::channel::Blake2sChannel;
@@ -43,12 +42,12 @@ const INTERNAL_ROUND_CONSTS: [BaseField; N_PARTIAL_ROUNDS] =
 
 #[derive(Clone)]
 pub struct PoseidonComponent {
-    pub log_n_instances: u32,
+    pub log_n_rows: u32,
 }
 
 impl PoseidonComponent {
     pub fn log_column_size(&self) -> u32 {
-        self.log_n_instances
+        self.log_n_rows
     }
 
     pub fn n_columns(&self) -> usize {
@@ -129,16 +128,13 @@ impl Component for PoseidonComponent {
         let constraint_zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
-        let mut eval = PoseidonEvalAtPoint {
-            mask: &mask[0],
-            evaluation_accumulator,
-            col_index: 0,
-            denom_inverse,
+        let mut eval = PoseidonEval {
+            eval: PointEvaluator::new(mask.as_ref(), evaluation_accumulator, denom_inverse),
         };
         for _ in 0..N_INSTANCES_PER_ROW {
             eval.eval();
         }
-        assert_eq!(eval.col_index, N_COLUMNS);
+        assert_eq!(eval.eval.col_index[0], N_COLUMNS);
     }
 }
 
@@ -205,46 +201,19 @@ where
     });
 }
 
-struct PoseidonEvalAtPoint<'a> {
-    mask: &'a ColumnVec<Vec<SecureField>>,
-    evaluation_accumulator: &'a mut PointEvaluationAccumulator,
-    col_index: usize,
-    denom_inverse: SecureField,
-}
-impl<'a> PoseidonEval for PoseidonEvalAtPoint<'a> {
-    type F = SecureField;
-
-    fn next_mask(&mut self) -> Self::F {
-        let res = self.mask[self.col_index][0];
-        self.col_index += 1;
-        res
-    }
-    fn add_constraint(&mut self, constraint: Self::F) {
-        self.evaluation_accumulator
-            .accumulate(constraint * self.denom_inverse);
-    }
-}
-
 fn pow5<F: FieldExpOps>(x: F) -> F {
     let x2 = x * x;
     let x4 = x2 * x2;
     x4 * x
 }
 
-trait PoseidonEval {
-    type F: FieldExpOps
-        + Copy
-        + AddAssign<Self::F>
-        + Add<Self::F, Output = Self::F>
-        + Sub<Self::F, Output = Self::F>
-        + Mul<BaseField, Output = Self::F>
-        + AddAssign<BaseField>;
+struct PoseidonEval<E: EvalAtRow> {
+    eval: E,
+}
 
-    fn next_mask(&mut self) -> Self::F;
-    fn add_constraint(&mut self, constraint: Self::F);
-
+impl<E: EvalAtRow> PoseidonEval<E> {
     fn eval(&mut self) {
-        let mut state: [_; N_STATE] = std::array::from_fn(|_| self.next_mask());
+        let mut state: [_; N_STATE] = std::array::from_fn(|_| self.eval.next_mask());
 
         // 4 full rounds.
         (0..N_HALF_FULL_ROUNDS).for_each(|round| {
@@ -254,8 +223,8 @@ trait PoseidonEval {
             apply_external_round_matrix(&mut state);
             state = std::array::from_fn(|i| pow5(state[i]));
             state.iter_mut().for_each(|s| {
-                let m = self.next_mask();
-                self.add_constraint(*s - m);
+                let m = self.eval.next_mask();
+                self.eval.add_constraint(*s - m);
                 *s = m;
             });
         });
@@ -265,8 +234,8 @@ trait PoseidonEval {
             state[0] += INTERNAL_ROUND_CONSTS[round];
             apply_internal_round_matrix(&mut state);
             state[0] = pow5(state[0]);
-            let m = self.next_mask();
-            self.add_constraint(state[0] - m);
+            let m = self.eval.next_mask();
+            self.eval.add_constraint(state[0] - m);
             state[0] = m;
         });
 
@@ -278,8 +247,8 @@ trait PoseidonEval {
             apply_external_round_matrix(&mut state);
             state = std::array::from_fn(|i| pow5(state[i]));
             state.iter_mut().for_each(|s| {
-                let m = self.next_mask();
-                self.add_constraint(*s - m);
+                let m = self.eval.next_mask();
+                self.eval.add_constraint(*s - m);
                 *s = m;
             });
         });
@@ -386,35 +355,6 @@ impl ComponentTraceGenerator<SimdBackend> for PoseidonComponent {
     }
 }
 
-struct PoseidonEvalAtDomain<'a> {
-    trace_eval: &'a TreeVec<Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
-    vec_row: usize,
-    random_coeff_powers: &'a [SecureField],
-    row_res: PackedSecureField,
-    col_index: usize,
-    constraint_index: usize,
-}
-impl<'a> PoseidonEval for PoseidonEvalAtDomain<'a> {
-    type F = PackedBaseField;
-
-    fn next_mask(&mut self) -> Self::F {
-        let res = unsafe {
-            *self.trace_eval[0]
-                .get_unchecked(self.col_index)
-                .data
-                .get_unchecked(self.vec_row)
-        };
-        self.col_index += 1;
-        res
-    }
-    fn add_constraint(&mut self, constraint: Self::F) {
-        self.row_res +=
-            PackedSecureField::broadcast(self.random_coeff_powers[self.constraint_index])
-                * constraint;
-        self.constraint_index += 1;
-    }
-}
-
 impl ComponentProver<SimdBackend> for PoseidonComponent {
     fn evaluate_constraint_quotients_on_domain(
         &self,
@@ -437,6 +377,7 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
             .polys
             .as_cols_ref()
             .map_cols(|col| col.evaluate_with_twiddles(eval_domain, &twiddles));
+        let trace_eval_ref = trace_eval.as_ref().map(|t| t.iter().collect_vec());
         span.exit();
 
         // Denoms.
@@ -459,18 +400,19 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
         pows.reverse();
 
         for vec_row in 0..(1 << (eval_domain.log_size() - LOG_N_LANES)) {
-            let mut evaluator = PoseidonEvalAtDomain {
-                trace_eval: &trace_eval,
-                vec_row,
-                random_coeff_powers: &pows,
-                row_res: PackedSecureField::zero(),
-                col_index: 0,
-                constraint_index: 0,
+            let mut evaluator = PoseidonEval {
+                eval: DomainEvaluator::new(
+                    &trace_eval_ref,
+                    vec_row,
+                    &pows,
+                    self.log_n_rows,
+                    self.log_n_rows + LOG_EXPAND,
+                ),
             };
             for _ in 0..N_INSTANCES_PER_ROW {
                 evaluator.eval();
             }
-            let row_res = evaluator.row_res;
+            let row_res = evaluator.eval.row_res;
 
             unsafe {
                 accum.col.set_packed(
@@ -478,7 +420,7 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
                     accum.col.packed_at(vec_row) + row_res * denom_inverses.data[vec_row],
                 )
             }
-            assert_eq!(evaluator.constraint_index, n_constraints);
+            assert_eq!(evaluator.eval.constraint_index, n_constraints);
         }
     }
 
@@ -558,9 +500,7 @@ mod tests {
             .parse::<u32>()
             .unwrap();
         let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
-        let component = PoseidonComponent {
-            log_n_instances: log_n_rows,
-        };
+        let component = PoseidonComponent { log_n_rows };
         let span = span!(Level::INFO, "Trace generation").entered();
         let trace = gen_trace(component.log_column_size());
         span.exit();

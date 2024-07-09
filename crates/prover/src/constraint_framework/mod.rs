@@ -1,8 +1,13 @@
 /// ! This module contains helpers to express and use constraints for components.
+mod domain;
+mod point;
+
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
+pub use domain::DomainEvaluator;
 use num_traits::{One, Zero};
+pub use point::PointEvaluator;
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
