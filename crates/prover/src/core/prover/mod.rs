@@ -4,12 +4,13 @@ use tracing::{span, Level};
 
 use super::air::AirProver;
 use super::backend::Backend;
+use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
-use super::poly::circle::{CanonicCoset, SecureCirclePoly, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+use super::poly::circle::{CanonicCoset, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use super::poly::twiddles::TwiddleTree;
 use super::proof_of_work::ProofOfWorkVerificationError;
-use super::ColumnVec;
+use super::{ColumnVec, InteractionElements, LookupValues};
 use crate::core::air::{Air, AirExt, AirProverExt};
 use crate::core::backend::CpuBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
@@ -24,7 +25,7 @@ use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::hasher::Hasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::verifier::MerkleVerificationError;
-use crate::core::ComponentVec;
+use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier};
 
 type Channel = Blake2sChannel;
 type ChannelHasher = Blake2sHasher;
@@ -35,9 +36,13 @@ pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 0;
 pub const PROOF_OF_WORK_BITS: u32 = 12;
 pub const N_QUERIES: usize = 3;
 
+pub const BASE_TRACE: usize = 0;
+pub const INTERACTION_TRACE: usize = 1;
+
 #[derive(Debug)]
 pub struct StarkProof {
     pub commitments: TreeVec<<ChannelHasher as Hasher>::Hash>,
+    pub lookup_values: LookupValues,
     pub commitment_scheme_proof: CommitmentSchemeProof,
 }
 
@@ -50,14 +55,17 @@ pub struct AdditionalProofData {
 }
 
 pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
+    air: &impl AirTraceGenerator<B>,
     channel: &mut Channel,
     twiddles: &TwiddleTree<B>,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-) -> Result<CommitmentSchemeProver<B>, ProvingError> {
+) -> Result<(CommitmentSchemeProver<B>, InteractionElements), ProvingError> {
     let span = span!(Level::INFO, "Trace interpolation").entered();
+    // TODO(AlonH): Clone only the columns needed for interaction.
     let trace_polys = trace
+        .clone()
         .into_iter()
-        .map(|poly| poly.interpolate_with_twiddles(twiddles))
+        .map(|eval| eval.interpolate_with_twiddles(twiddles))
         .collect();
     span.exit();
 
@@ -66,25 +74,46 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     commitment_scheme.commit(trace_polys, channel, twiddles);
     span.exit();
 
-    Ok(commitment_scheme)
+    let interaction_elements = air.interaction_elements(channel);
+    let interaction_trace = air.interact(&trace, &interaction_elements);
+    if !interaction_trace.is_empty() {
+        let span = span!(Level::INFO, "Interaction trace interpolation").entered();
+        let interaction_trace_polys = interaction_trace
+            .into_iter()
+            .map(|eval| eval.interpolate_with_twiddles(twiddles))
+            .collect();
+        span.exit();
+        commitment_scheme.commit(interaction_trace_polys, channel, twiddles);
+    }
+
+    Ok((commitment_scheme, interaction_elements))
 }
 
 pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     air: &impl AirProver<B>,
     channel: &mut Channel,
+    interaction_elements: &InteractionElements,
     twiddles: &TwiddleTree<B>,
     commitment_scheme: &mut CommitmentSchemeProver<B>,
 ) -> Result<StarkProof, ProvingError> {
+    let component_traces = air.component_traces(&commitment_scheme.trees);
+    let lookup_values = air.lookup_values(&component_traces);
+    channel.mix_felts(
+        &lookup_values
+            .0
+            .values()
+            .map(|v| SecureField::from(*v))
+            .collect_vec(),
+    );
+
     // Evaluate and commit on composition polynomial.
     let random_coeff = channel.draw_felt();
-
     let span = span!(Level::INFO, "Composition generation").entered();
     let composition_polynomial_poly = air.compute_composition_polynomial(
         random_coeff,
-        &air.component_traces(
-            &commitment_scheme.trees[0].polynomials,
-            &commitment_scheme.trees[0].evaluations,
-        ),
+        &component_traces,
+        interaction_elements,
+        &lookup_values,
     );
     span.exit();
 
@@ -98,12 +127,6 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     // Get mask sample points relative to oods point.
     let sample_points = air.mask_points(oods_point);
 
-    // TODO(spapini): Change when we support multiple interactions.
-    // First tree - trace.
-    let mut sample_points = TreeVec::new(vec![sample_points.flatten()]);
-    // Second tree - composition polynomial.
-    sample_points.push(vec![vec![oods_point]; 4]);
-
     // Prove the trace and composition OODS values, and retrieve them.
     let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel, twiddles);
 
@@ -111,22 +134,29 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     // values. This is a sanity check.
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) =
-        sampled_values_to_mask(air, commitment_scheme_proof.sampled_values.clone()).unwrap();
+        sampled_values_to_mask(air, &commitment_scheme_proof.sampled_values).unwrap();
 
     if composition_oods_value
-        != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
+        != air.eval_composition_polynomial_at_point(
+            oods_point,
+            &trace_oods_values,
+            random_coeff,
+            interaction_elements,
+            &lookup_values,
+        )
     {
         return Err(ProvingError::ConstraintsNotSatisfied);
     }
 
     Ok(StarkProof {
         commitments: commitment_scheme.roots(),
+        lookup_values,
         commitment_scheme_proof,
     })
 }
 
 pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
-    air: &impl AirProver<B>,
+    air: &impl AirTraceGenerator<B>,
     channel: &mut Channel,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 ) -> Result<StarkProof, ProvingError> {
@@ -141,6 +171,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     }
 
     // Check that the composition polynomial is not too big.
+    // TODO(AlonH): Get traces log degree bounds from trace writer.
     let composition_polynomial_log_degree_bound = air.composition_log_degree_bound();
     if composition_polynomial_log_degree_bound + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
         return Err(ProvingError::MaxCompositionDegreeExceeded {
@@ -150,31 +181,61 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
 
     let span = span!(Level::INFO, "Precompute twiddle").entered();
     let twiddles = B::precompute_twiddles(
-        CanonicCoset::new(air.composition_log_degree_bound() + LOG_BLOWUP_FACTOR)
+        CanonicCoset::new(composition_polynomial_log_degree_bound + LOG_BLOWUP_FACTOR)
             .circle_domain()
             .half_coset,
     );
     span.exit();
 
-    let mut commitment_scheme = evaluate_and_commit_on_trace(channel, &twiddles, trace)?;
+    let (mut commitment_scheme, interaction_elements) =
+        evaluate_and_commit_on_trace(air, channel, &twiddles, trace)?;
 
-    generate_proof(air, channel, &twiddles, &mut commitment_scheme)
+    generate_proof(
+        &air.to_air_prover(),
+        channel,
+        &interaction_elements,
+        &twiddles,
+        &mut commitment_scheme,
+    )
 }
 
 pub fn verify(
     proof: StarkProof,
-    air: &impl Air,
+    air: &(impl Air + AirTraceVerifier),
     channel: &mut Channel,
 ) -> Result<(), VerificationError> {
     // Read trace commitment.
     let mut commitment_scheme = CommitmentSchemeVerifier::new();
-    commitment_scheme.commit(proof.commitments[0], air.column_log_sizes(), channel);
+    let column_log_sizes = air.column_log_sizes();
+    commitment_scheme.commit(
+        proof.commitments[BASE_TRACE],
+        &column_log_sizes[BASE_TRACE],
+        channel,
+    );
+    let interaction_elements = air.interaction_elements(channel);
+
+    if air.n_interaction_phases() == 2 {
+        commitment_scheme.commit(
+            proof.commitments[INTERACTION_TRACE],
+            &column_log_sizes[INTERACTION_TRACE],
+            channel,
+        );
+    }
+
+    channel.mix_felts(
+        &proof
+            .lookup_values
+            .0
+            .values()
+            .map(|v| SecureField::from(*v))
+            .collect_vec(),
+    );
     let random_coeff = channel.draw_felt();
 
     // Read composition polynomial commitment.
     commitment_scheme.commit(
-        proof.commitments[1],
-        vec![air.composition_log_degree_bound(); 4],
+        *proof.commitments.last().unwrap(),
+        &[air.composition_log_degree_bound(); SECURE_EXTENSION_DEGREE],
         channel,
     );
 
@@ -182,25 +243,25 @@ pub fn verify(
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let trace_sample_points = air.mask_points(oods_point);
-
-    // TODO(spapini): Change when we support multiple interactions.
-    // First tree - trace.
-    let mut sample_points = TreeVec::new(vec![trace_sample_points.flatten()]);
-    // Second tree - composition polynomial.
-    sample_points.push(vec![vec![oods_point]; 4]);
+    let sample_points = air.mask_points(oods_point);
 
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) = sampled_values_to_mask(
         air,
-        proof.commitment_scheme_proof.sampled_values.clone(),
+        &proof.commitment_scheme_proof.sampled_values,
     )
     .map_err(|_| {
         VerificationError::InvalidStructure("Unexpected sampled_values structure".to_string())
     })?;
 
     if composition_oods_value
-        != air.eval_composition_polynomial_at_point(oods_point, &trace_oods_values, random_coeff)
+        != air.eval_composition_polynomial_at_point(
+            oods_point,
+            &trace_oods_values,
+            random_coeff,
+            &interaction_elements,
+            &proof.lookup_values,
+        )
     {
         return Err(VerificationError::OodsNotMatching);
     }
@@ -208,38 +269,38 @@ pub fn verify(
     commitment_scheme.verify_values(sample_points, proof.commitment_scheme_proof, channel)
 }
 
+#[allow(clippy::type_complexity)]
 /// Structures the tree-wise sampled values into component-wise OODS values and a composition
 /// polynomial OODS value.
 fn sampled_values_to_mask(
     air: &impl Air,
-    mut sampled_values: TreeVec<ColumnVec<Vec<SecureField>>>,
-) -> Result<(ComponentVec<Vec<SecureField>>, SecureField), InvalidOodsSampleStructure> {
-    let composition_partial_sampled_values =
-        sampled_values.pop().ok_or(InvalidOodsSampleStructure)?;
-    let composition_oods_value = SecureCirclePoly::<CpuBackend>::eval_from_partial_evals(
-        composition_partial_sampled_values
+    sampled_values: &TreeVec<ColumnVec<Vec<SecureField>>>,
+) -> Result<(Vec<TreeVec<Vec<Vec<SecureField>>>>, SecureField), InvalidOodsSampleStructure> {
+    let mut sampled_values = sampled_values.as_ref();
+    let composition_values = sampled_values.pop().ok_or(InvalidOodsSampleStructure)?;
+
+    let mut sample_iters = sampled_values.map(|tree_value| tree_value.iter());
+    let trace_oods_values = air
+        .components()
+        .iter()
+        .map(|component| {
+            component
+                .mask_points(CirclePoint::zero())
+                .zip(sample_iters.as_mut())
+                .map(|(mask_per_tree, tree_iter)| {
+                    tree_iter.take(mask_per_tree.len()).cloned().collect_vec()
+                })
+        })
+        .collect_vec();
+
+    let composition_oods_value = SecureField::from_partial_evals(
+        composition_values
             .iter()
             .flatten()
             .cloned()
             .collect_vec()
             .try_into()
             .map_err(|_| InvalidOodsSampleStructure)?,
-    );
-
-    // Retrieve sampled mask values for each component.
-    let flat_trace_values = &mut sampled_values
-        .pop()
-        .ok_or(InvalidOodsSampleStructure)?
-        .into_iter();
-    let trace_oods_values = ComponentVec(
-        air.components()
-            .iter()
-            .map(|c| {
-                flat_trace_values
-                    .take(c.mask_points(CirclePoint::zero()).len())
-                    .collect_vec()
-            })
-            .collect(),
     );
 
     Ok((trace_oods_values, composition_oods_value))
@@ -287,23 +348,26 @@ mod tests {
     use num_traits::Zero;
 
     use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-    use crate::core::air::{
-        Air, AirProver, Component, ComponentProver, ComponentTrace, ComponentTraceWriter,
-    };
+    use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::backend::CpuBackend;
+    use crate::core::channel::Blake2sChannel;
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::{
         CanonicCoset, CircleDomain, CircleEvaluation, MAX_CIRCLE_DOMAIN_LOG_SIZE,
     };
     use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{prove, ProvingError};
     use crate::core::test_utils::test_channel;
-    use crate::core::{ColumnVec, InteractionElements};
+    use crate::core::{ColumnVec, InteractionElements, LookupValues};
     use crate::qm31;
+    use crate::trace_generation::registry::ComponentGenerationRegistry;
+    use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
+    #[derive(Clone)]
     struct TestAir<C: ComponentProver<CpuBackend>> {
         component: C,
     }
@@ -314,12 +378,37 @@ mod tests {
         }
     }
 
+    impl AirTraceVerifier for TestAir<TestComponent> {
+        fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
+            InteractionElements::default()
+        }
+    }
+
+    impl AirTraceGenerator<CpuBackend> for TestAir<TestComponent> {
+        fn interact(
+            &self,
+            _trace: &ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
+            _elements: &InteractionElements,
+        ) -> Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+            vec![]
+        }
+
+        fn to_air_prover(&self) -> impl AirProver<CpuBackend> {
+            self.clone()
+        }
+
+        fn composition_log_degree_bound(&self) -> u32 {
+            self.component.max_constraint_log_degree_bound()
+        }
+    }
+
     impl AirProver<CpuBackend> for TestAir<TestComponent> {
         fn prover_components(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
             vec![&self.component]
         }
     }
 
+    #[derive(Clone)]
     struct TestComponent {
         log_size: u32,
         max_constraint_log_degree_bound: u32,
@@ -334,38 +423,56 @@ mod tests {
             self.max_constraint_log_degree_bound
         }
 
-        fn trace_log_degree_bounds(&self) -> Vec<u32> {
-            vec![self.log_size]
+        fn n_interaction_phases(&self) -> u32 {
+            1
+        }
+
+        fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+            TreeVec::new(vec![vec![self.log_size]])
         }
 
         fn mask_points(
             &self,
             point: CirclePoint<SecureField>,
-        ) -> crate::core::ColumnVec<Vec<CirclePoint<SecureField>>> {
-            vec![vec![point]]
-        }
-
-        fn interaction_element_ids(&self) -> Vec<String> {
-            vec![]
+        ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+            TreeVec::new(vec![vec![vec![point]]])
         }
 
         fn evaluate_constraint_quotients_at_point(
             &self,
             _point: CirclePoint<SecureField>,
-            _mask: &crate::core::ColumnVec<Vec<SecureField>>,
+            _mask: &TreeVec<Vec<Vec<SecureField>>>,
             evaluation_accumulator: &mut PointEvaluationAccumulator,
+            _interaction_elements: &InteractionElements,
+            _lookup_values: &LookupValues,
         ) {
             evaluation_accumulator.accumulate(qm31!(0, 0, 0, 1))
         }
     }
 
-    impl ComponentTraceWriter<CpuBackend> for TestComponent {
+    impl ComponentTraceGenerator<CpuBackend> for TestComponent {
+        type Component = Self;
+        type Inputs = ();
+
+        fn add_inputs(&mut self, _inputs: &Self::Inputs) {}
+
+        fn write_trace(
+            _component_id: &str,
+            _registry: &mut ComponentGenerationRegistry,
+        ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+            vec![]
+        }
+
         fn write_interaction_trace(
             &self,
             _trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
             _elements: &InteractionElements,
         ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
             vec![]
+        }
+
+        fn component(&self) -> Self::Component {
+            self.clone()
         }
     }
 
@@ -374,8 +481,14 @@ mod tests {
             &self,
             _trace: &ComponentTrace<'_, CpuBackend>,
             _evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
+            _interaction_elements: &InteractionElements,
+            _lookup_values: &LookupValues,
         ) {
             // Does nothing.
+        }
+
+        fn lookup_values(&self, _trace: &ComponentTrace<'_, CpuBackend>) -> LookupValues {
+            LookupValues::default()
         }
     }
 

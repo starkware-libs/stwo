@@ -17,10 +17,17 @@ impl<T> TreeVec<T> {
     }
     pub fn zip<U>(self, other: impl Into<TreeVec<U>>) -> TreeVec<(T, U)> {
         let other = other.into();
+        TreeVec(self.0.into_iter().zip(other.0).collect())
+    }
+    pub fn zip_eq<U>(self, other: impl Into<TreeVec<U>>) -> TreeVec<(T, U)> {
+        let other = other.into();
         TreeVec(zip_eq(self.0, other.0).collect())
     }
     pub fn as_ref(&self) -> TreeVec<&T> {
         TreeVec(self.iter().collect())
+    }
+    pub fn as_mut(&mut self) -> TreeVec<&mut T> {
+        TreeVec(self.iter_mut().collect())
     }
 }
 

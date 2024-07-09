@@ -17,6 +17,7 @@ use crate::core::vcs::hasher::Hasher;
 pub mod air;
 mod component;
 
+#[derive(Clone)]
 pub struct Fibonacci {
     pub air: FibonacciAir,
 }
@@ -97,7 +98,8 @@ impl MultiFibonacci {
     pub fn prove(&self) -> Result<StarkProof, ProvingError> {
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&self.claims)));
-        prove(&self.air, channel, self.get_trace())
+        let trace = self.get_trace();
+        prove(&self.air, channel, trace)
     }
 
     pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
@@ -120,13 +122,22 @@ mod tests {
     use super::{Fibonacci, MultiFibonacci};
     use crate::core::air::accumulation::PointEvaluationAccumulator;
     use crate::core::air::{AirExt, AirProverExt, Component, ComponentTrace};
+    use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::fields::IntoSlice;
+    use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::VerificationError;
+    use crate::core::prover::{prove, VerificationError, BASE_TRACE};
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
+    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::hasher::Hasher;
+    use crate::core::{InteractionElements, LookupValues};
+    use crate::examples::fibonacci::air::FibonacciAirGenerator;
+    use crate::examples::fibonacci::component::FibonacciInput;
+    use crate::trace_generation::AirTraceGenerator;
     use crate::{m31, qm31};
 
     pub fn generate_test_queries(n_queries: usize, trace_length: usize) -> Vec<usize> {
@@ -146,20 +157,26 @@ mod tests {
         let trace_poly = trace.interpolate();
         let trace_eval =
             trace_poly.evaluate(CanonicCoset::new(trace_poly.log_size() + 1).circle_domain());
-        let trace = ComponentTrace::new(vec![&trace_poly], vec![&trace_eval]);
+        let trace = ComponentTrace::new(
+            TreeVec::new(vec![vec![&trace_poly]]),
+            TreeVec::new(vec![vec![&trace_eval]]),
+        );
 
         let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
         let component_traces = vec![trace];
-        let composition_polynomial_poly = fib
-            .air
-            .compute_composition_polynomial(random_coeff, &component_traces);
+        let composition_polynomial_poly = fib.air.compute_composition_polynomial(
+            random_coeff,
+            &component_traces,
+            &InteractionElements::default(),
+            &LookupValues::default(),
+        );
 
         // Evaluate this polynomial at another point out of the evaluation domain and compare to
         // what we expect.
         let point = CirclePoint::<SecureField>::get_point(98989892);
 
         let points = fib.air.mask_points(point);
-        let mask_values = zip(&component_traces[0].polys, &points[0])
+        let mask_values = zip(&component_traces[0].polys[BASE_TRACE], &points[0])
             .map(|(poly, points)| {
                 points
                     .iter()
@@ -171,10 +188,13 @@ mod tests {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         fib.air.component.evaluate_constraint_quotients_at_point(
             point,
-            &mask_values,
+            &TreeVec::new(vec![mask_values]),
             &mut evaluation_accumulator,
+            &InteractionElements::default(),
+            &LookupValues::default(),
         );
         let oods_value = evaluation_accumulator.finalize();
+
         assert_eq!(oods_value, composition_polynomial_poly.eval_at_point(point));
     }
 
@@ -222,12 +242,28 @@ mod tests {
     }
 
     #[test]
+    fn test_fib_prove_2() {
+        const FIB_LOG_SIZE: u32 = 5;
+        const CLAIM: BaseField = m31!(443693538);
+        let mut fib_trace_generator = FibonacciAirGenerator::new(&FibonacciInput {
+            log_size: FIB_LOG_SIZE,
+            claim: CLAIM,
+        });
+
+        let trace = fib_trace_generator.write_trace();
+        let channel =
+            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[CLAIM])));
+        prove(&fib_trace_generator, channel, trace).unwrap();
+    }
+
+    #[test]
     fn test_prove_invalid_trace_value() {
         const FIB_LOG_SIZE: u32 = 5;
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
-        invalid_proof.commitment_scheme_proof.queried_values.0[0][0][3] += BaseField::one();
+        invalid_proof.commitment_scheme_proof.queried_values.0[BASE_TRACE][0][3] +=
+            BaseField::one();
 
         let error = fib.verify(invalid_proof).unwrap_err();
         assert_matches!(error, VerificationError::Merkle(_));
@@ -257,7 +293,7 @@ mod tests {
         let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
 
         let mut invalid_proof = fib.prove().unwrap();
-        invalid_proof.commitment_scheme_proof.queried_values.0[0][0].pop();
+        invalid_proof.commitment_scheme_proof.queried_values.0[BASE_TRACE][0].pop();
 
         let error = fib.verify(invalid_proof).unwrap_err();
         assert_matches!(error, VerificationError::Merkle(_));

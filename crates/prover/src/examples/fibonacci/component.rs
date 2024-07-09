@@ -4,18 +4,23 @@ use num_traits::One;
 
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::shifted_mask_points;
-use crate::core::air::{Component, ComponentProver, ComponentTrace, ComponentTraceWriter};
+use crate::core::air::{Component, ComponentProver, ComponentTrace};
 use crate::core::backend::CpuBackend;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, FieldExpOps};
+use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::prover::BASE_TRACE;
 use crate::core::utils::bit_reverse_index;
-use crate::core::{ColumnVec, InteractionElements};
+use crate::core::{ColumnVec, InteractionElements, LookupValues};
+use crate::trace_generation::registry::ComponentGenerationRegistry;
+use crate::trace_generation::{ComponentGen, ComponentTraceGenerator};
 
+#[derive(Clone)]
 pub struct FibonacciComponent {
     pub log_size: u32,
     pub claim: BaseField,
@@ -80,50 +85,110 @@ impl Component for FibonacciComponent {
         self.log_size + 1
     }
 
-    fn trace_log_degree_bounds(&self) -> Vec<u32> {
-        vec![self.log_size]
+    fn n_interaction_phases(&self) -> u32 {
+        1
+    }
+
+    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+        TreeVec::new(vec![vec![self.log_size]])
     }
 
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
-    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
-        shifted_mask_points(
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        TreeVec::new(vec![shifted_mask_points(
             &vec![vec![0, 1, 2]],
             &[CanonicCoset::new(self.log_size)],
             point,
-        )
-    }
-
-    fn interaction_element_ids(&self) -> Vec<String> {
-        vec![]
+        )])
     }
 
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask: &ColumnVec<Vec<SecureField>>,
+        mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
+        _interaction_elements: &InteractionElements,
+        _lookup_values: &LookupValues,
     ) {
         evaluation_accumulator.accumulate(
-            self.step_constraint_eval_quotient_by_mask(point, &mask[0][..].try_into().unwrap()),
+            self.step_constraint_eval_quotient_by_mask(point, &mask[0][0][..].try_into().unwrap()),
         );
-        evaluation_accumulator.accumulate(
-            self.boundary_constraint_eval_quotient_by_mask(
-                point,
-                &mask[0][..1].try_into().unwrap(),
-            ),
-        );
+        evaluation_accumulator.accumulate(self.boundary_constraint_eval_quotient_by_mask(
+            point,
+            &mask[0][0][..1].try_into().unwrap(),
+        ));
     }
 }
 
-impl ComponentTraceWriter<CpuBackend> for FibonacciComponent {
+#[derive(Copy, Clone)]
+pub struct FibonacciInput {
+    pub log_size: u32,
+    pub claim: BaseField,
+}
+
+#[derive(Clone)]
+pub struct FibonacciTraceGenerator {
+    input: Option<FibonacciInput>,
+}
+
+impl ComponentGen for FibonacciTraceGenerator {}
+
+impl FibonacciTraceGenerator {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self { input: None }
+    }
+
+    pub fn inputs_set(&self) -> bool {
+        self.input.is_some()
+    }
+}
+
+impl ComponentTraceGenerator<CpuBackend> for FibonacciTraceGenerator {
+    type Component = FibonacciComponent;
+    type Inputs = FibonacciInput;
+
+    fn add_inputs(&mut self, inputs: &Self::Inputs) {
+        assert!(!self.inputs_set(), "Fibonacci input already set.");
+        self.input = Some(*inputs);
+    }
+
+    fn write_trace(
+        component_id: &str,
+        registry: &mut ComponentGenerationRegistry,
+    ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+        let trace_generator = registry.get_generator_mut::<Self>(component_id);
+        assert!(trace_generator.inputs_set(), "Fibonacci input not set.");
+        let trace_domain = CanonicCoset::new(trace_generator.input.unwrap().log_size);
+        let mut trace = Vec::with_capacity(trace_domain.size());
+
+        // Fill trace with fibonacci squared.
+        let mut a = BaseField::one();
+        let mut b = BaseField::one();
+        for _ in 0..trace_domain.size() {
+            trace.push(a);
+            let tmp = a.square() + b.square();
+            a = b;
+            b = tmp;
+        }
+
+        // Returns as a CircleEvaluation.
+        vec![CircleEvaluation::new_canonical_ordered(trace_domain, trace)]
+    }
+
     fn write_interaction_trace(
         &self,
         _trace: &ColumnVec<&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>,
         _elements: &InteractionElements,
     ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
         vec![]
+    }
+
+    fn component(&self) -> Self::Component {
+        assert!(self.inputs_set(), "Fibonacci input not set.");
+        FibonacciComponent::new(self.input.unwrap().log_size, self.input.unwrap().claim)
     }
 }
 
@@ -132,8 +197,10 @@ impl ComponentProver<CpuBackend> for FibonacciComponent {
         &self,
         trace: &ComponentTrace<'_, CpuBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
+        _interaction_elements: &InteractionElements,
+        _lookup_values: &LookupValues,
     ) {
-        let poly = &trace.polys[0];
+        let poly = &trace.polys[BASE_TRACE][0];
         let trace_domain = CanonicCoset::new(self.log_size);
         let trace_eval_domain = CanonicCoset::new(self.log_size + 1).circle_domain();
         let trace_eval = poly.evaluate(trace_eval_domain).bit_reverse();
@@ -160,5 +227,9 @@ impl ComponentProver<CpuBackend> for FibonacciComponent {
                 accum.accumulate(bit_reverse_index(i + off, constraint_log_degree_bound), res);
             }
         }
+    }
+
+    fn lookup_values(&self, _trace: &ComponentTrace<'_, CpuBackend>) -> LookupValues {
+        LookupValues::default()
     }
 }

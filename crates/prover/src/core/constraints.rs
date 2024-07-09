@@ -64,23 +64,11 @@ pub fn pair_vanishing<F: ExtensionOf<BaseField>>(
 /// Evaluates a vanishing polynomial of the vanish_point at a point.
 /// Note that this function has a pole on the antipode of the vanish_point.
 pub fn point_vanishing<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
-    vanish_point: CirclePoint<EF>,
-    p: CirclePoint<F>,
+    vanish_point: CirclePoint<F>,
+    p: CirclePoint<EF>,
 ) -> EF {
-    let h = p.into_ef() - vanish_point;
+    let h = p - vanish_point.into_ef();
     h.y / (EF::one() + h.x)
-}
-
-/// Evaluates a vanishing polynomial of the vanish_point at a point.
-/// Note that this function has a pole on the antipode of the vanish_point.
-/// Returns the result in a fraction form: (numerator, denominator).
-// TODO(Ohad): reorganize these functions.
-pub fn point_vanishing_fraction<F: ExtensionOf<BaseField>, EF: ExtensionOf<F>>(
-    vanish_point: CirclePoint<EF>,
-    p: CirclePoint<F>,
-) -> (EF, EF) {
-    let h = p.into_ef() - vanish_point;
-    (h.y, (EF::one() + h.x))
 }
 
 /// Evaluates a point on a line between a point and its complex conjugate.

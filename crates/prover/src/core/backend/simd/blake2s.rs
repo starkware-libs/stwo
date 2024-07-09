@@ -6,7 +6,10 @@ use std::iter::repeat;
 use std::mem::transmute;
 use std::simd::u32x16;
 
+use bytemuck::cast_slice;
 use itertools::Itertools;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::m31::{LOG_N_LANES, N_LANES};
 use super::SimdBackend;
@@ -47,8 +50,14 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         prev_layer: Option<&Vec<Blake2sHash>>,
         columns: &[&Col<Self, BaseField>],
     ) -> Vec<Blake2sHash> {
-        if log_size < N_LANES as u32 {
-            return (0..1 << log_size)
+        if log_size < LOG_N_LANES {
+            #[cfg(not(feature = "parallel"))]
+            let iter = 0..1 << log_size;
+
+            #[cfg(feature = "parallel")]
+            let iter = (0..1 << log_size).into_par_iter();
+
+            return iter
                 .map(|i| {
                     Blake2sMerkleHasher::hash_node(
                         prev_layer.map(|prev_layer| (prev_layer[2 * i], prev_layer[2 * i + 1])),
@@ -65,13 +74,22 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         let zeros = u32x16::splat(0);
 
         // Commit to columns.
-        let mut res = Vec::with_capacity(1 << log_size);
-        for i in 0..(1 << (log_size - LOG_N_LANES)) {
+        let mut res = vec![Blake2sHash::default(); 1 << log_size];
+        #[cfg(not(feature = "parallel"))]
+        let iter = res.chunks_mut(1 << LOG_N_LANES);
+
+        #[cfg(feature = "parallel")]
+        let iter = res.par_chunks_mut(1 << LOG_N_LANES);
+
+        iter.enumerate().for_each(|(i, chunk)| {
             let mut state: [u32x16; 8] = unsafe { std::mem::zeroed() };
             // Hash prev_layer, if exists.
             if let Some(prev_layer) = prev_layer {
-                let ptr = prev_layer[(i << 5)..((i + 1) << 5)].as_ptr() as *const u32x16;
-                let msgs: [u32x16; 16] = array::from_fn(|j| unsafe { *ptr.add(j) });
+                let prev_chunk_u32s = cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]);
+                // Note: prev_layer might be unaligned.
+                let msgs: [u32x16; 16] = array::from_fn(|j| {
+                    u32x16::from_array(std::array::from_fn(|k| prev_chunk_u32s[16 * j + k]))
+                });
                 state = compress16(state, transpose_msgs(msgs), zeros, zeros, zeros, zeros);
             }
 
@@ -96,8 +114,8 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
                 state = compress16(state, msgs, zeros, zeros, zeros, zeros);
             }
             let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
-            res.extend_from_slice(&state);
-        }
+            chunk.copy_from_slice(&state);
+        });
         res
     }
 }

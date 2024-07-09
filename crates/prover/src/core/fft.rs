@@ -1,13 +1,20 @@
-use super::fields::m31::BaseField;
-use super::fields::ExtensionOf;
+use std::ops::{Add, AddAssign, Mul, Sub};
 
-pub fn butterfly<F: ExtensionOf<BaseField>>(v0: &mut F, v1: &mut F, twid: BaseField) {
+use super::fields::m31::BaseField;
+
+pub fn butterfly<F>(v0: &mut F, v1: &mut F, twid: BaseField)
+where
+    F: Copy + AddAssign<F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
+{
     let tmp = *v1 * twid;
     *v1 = *v0 - tmp;
     *v0 += tmp;
 }
 
-pub fn ibutterfly<F: ExtensionOf<BaseField>>(v0: &mut F, v1: &mut F, itwid: BaseField) {
+pub fn ibutterfly<F>(v0: &mut F, v1: &mut F, itwid: BaseField)
+where
+    F: Copy + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
+{
     let tmp = *v0;
     *v0 = tmp + *v1;
     *v1 = (tmp - *v1) * itwid;
