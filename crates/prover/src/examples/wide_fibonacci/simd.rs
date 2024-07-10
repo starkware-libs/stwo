@@ -162,7 +162,6 @@ pub fn gen_trace(
         .collect_vec()
 }
 
-// TODO(AlonH): Implement.
 impl ComponentTraceGenerator<SimdBackend> for SimdWideFibComponent {
     type Component = Self;
     type Inputs = ();
