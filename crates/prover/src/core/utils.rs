@@ -66,7 +66,7 @@ pub(crate) fn bit_reverse_index(i: usize, log_size: u32) -> usize {
 /// Returns the index of the previous element in a bit reversed
 /// [super::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a smaller domain
 /// of size `domain_log_size`.
-pub(crate) fn previous_bit_reversed_circle_domain_index(
+pub fn previous_bit_reversed_circle_domain_index(
     i: usize,
     domain_log_size: u32,
     eval_log_size: u32,
@@ -74,7 +74,10 @@ pub(crate) fn previous_bit_reversed_circle_domain_index(
     offset_bit_reversed_circle_domain_index(i, domain_log_size, eval_log_size, -1)
 }
 
-pub(crate) fn offset_bit_reversed_circle_domain_index(
+/// Returns the index of the offset element in a bit reversed
+/// [super::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a smaller domain
+/// of size `domain_log_size`.
+pub fn offset_bit_reversed_circle_domain_index(
     i: usize,
     domain_log_size: u32,
     eval_log_size: u32,
