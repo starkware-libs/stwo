@@ -98,13 +98,6 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
 ) -> Result<StarkProof, ProvingError> {
     let component_traces = air.component_traces(&commitment_scheme.trees);
     let lookup_values = air.lookup_values(&component_traces);
-    channel.mix_felts(
-        &lookup_values
-            .0
-            .values()
-            .map(|v| SecureField::from(*v))
-            .collect_vec(),
-    );
 
     // Evaluate and commit on composition polynomial.
     let random_coeff = channel.draw_felt();
@@ -190,8 +183,17 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     let (mut commitment_scheme, interaction_elements) =
         evaluate_and_commit_on_trace(air, channel, &twiddles, trace)?;
 
+    let air = air.to_air_prover();
+    channel.mix_felts(
+        &air.lookup_values(&air.component_traces(&commitment_scheme.trees))
+            .0
+            .values()
+            .map(|v| SecureField::from(*v))
+            .collect_vec(),
+    );
+
     generate_proof(
-        &air.to_air_prover(),
+        &air,
         channel,
         &interaction_elements,
         &twiddles,

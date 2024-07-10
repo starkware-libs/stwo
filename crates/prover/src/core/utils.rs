@@ -1,5 +1,5 @@
 use std::iter::Peekable;
-use std::ops::Add;
+use std::ops::{Add, Mul, Sub};
 
 use num_traits::{One, Zero};
 
@@ -7,7 +7,7 @@ use super::circle::CirclePoint;
 use super::constraints::point_vanishing;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::{ExtensionOf, FieldExpOps};
+use super::fields::FieldExpOps;
 use super::poly::circle::CircleDomain;
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
@@ -71,14 +71,23 @@ pub(crate) fn previous_bit_reversed_circle_domain_index(
     domain_log_size: u32,
     eval_log_size: u32,
 ) -> usize {
-    assert!(domain_log_size < eval_log_size);
-    let step_size = 1 << (eval_log_size - domain_log_size - 1) as usize;
+    offset_bit_reversed_circle_domain_index(i, domain_log_size, eval_log_size, -1)
+}
+
+pub(crate) fn offset_bit_reversed_circle_domain_index(
+    i: usize,
+    domain_log_size: u32,
+    eval_log_size: u32,
+    offset: isize,
+) -> usize {
     let mut prev_index = bit_reverse_index(i, eval_log_size);
     let half_size = 1 << (eval_log_size - 1);
+    let step_size = offset * (1 << (eval_log_size - domain_log_size - 1)) as isize;
     if prev_index < half_size {
-        prev_index = (prev_index + half_size - step_size) % half_size;
+        prev_index = (prev_index as isize + step_size).rem_euclid(half_size as isize) as usize;
     } else {
-        prev_index = ((prev_index + step_size) % half_size) + half_size;
+        prev_index =
+            ((prev_index as isize - step_size).rem_euclid(half_size as isize) as usize) + half_size;
     }
     bit_reverse_index(prev_index, eval_log_size)
 }
@@ -139,17 +148,13 @@ pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureF
 
 /// Securely combines the given values using the given random alpha and z.
 /// Alpha and z should be secure field elements for soundness.
-pub fn shifted_secure_combination<F: ExtensionOf<BaseField>>(
-    values: &[F],
-    alpha: SecureField,
-    z: SecureField,
-) -> SecureField
+pub fn shifted_secure_combination<F: Copy, EF>(values: &[F], alpha: EF, z: EF) -> EF
 where
-    SecureField: Add<F, Output = SecureField>,
+    EF: Copy + Zero + Mul<EF, Output = EF> + Add<F, Output = EF> + Sub<EF, Output = EF>,
 {
     let res = values
         .iter()
-        .fold(SecureField::zero(), |acc, &value| acc * alpha + value);
+        .fold(EF::zero(), |acc, &value| acc * alpha + value);
     res - z
 }
 
@@ -173,12 +178,15 @@ mod tests {
     use itertools::Itertools;
     use num_traits::One;
 
+    use super::{
+        offset_bit_reversed_circle_domain_index, previous_bit_reversed_circle_domain_index,
+    };
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::FieldExpOps;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
-    use crate::core::utils::{bit_reverse, previous_bit_reversed_circle_domain_index};
+    use crate::core::utils::bit_reverse;
     use crate::{m31, qm31};
 
     #[test]
@@ -216,6 +224,31 @@ mod tests {
         let powers = super::generate_secure_powers(felt, max_log_size);
 
         assert_eq!(powers, vec![]);
+    }
+
+    #[test]
+    fn test_offset_bit_reversed_circle_domain_index() {
+        let domain_log_size = 3;
+        let eval_log_size = 6;
+        let initial_index = 5;
+
+        let actual = offset_bit_reversed_circle_domain_index(
+            initial_index,
+            domain_log_size,
+            eval_log_size,
+            -2,
+        );
+        let expected_prev = previous_bit_reversed_circle_domain_index(
+            initial_index,
+            domain_log_size,
+            eval_log_size,
+        );
+        let expected_prev2 = previous_bit_reversed_circle_domain_index(
+            expected_prev,
+            domain_log_size,
+            eval_log_size,
+        );
+        assert_eq!(actual, expected_prev2);
     }
 
     #[test]
