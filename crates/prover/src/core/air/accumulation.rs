@@ -173,7 +173,6 @@ mod tests {
         // Generate a vector of random sizes with a constant seed.
         let mut rng = SmallRng::seed_from_u64(0);
         const MAX_LOG_SIZE: u32 = 10;
-        const MASK: u32 = P;
         let log_sizes = (0..100)
             .map(|_| rng.gen_range(4..MAX_LOG_SIZE))
             .collect::<Vec<_>>();
@@ -181,7 +180,7 @@ mod tests {
         // Generate random evaluations.
         let evaluations = log_sizes
             .iter()
-            .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() & MASK))
+            .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() % P))
             .collect::<Vec<_>>();
         let alpha = qm31!(2, 3, 4, 5);
 
@@ -207,7 +206,6 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         const LOG_SIZE_MIN: u32 = 4;
         const LOG_SIZE_BOUND: u32 = 10;
-        const MASK: u32 = P;
         let mut log_sizes = (0..100)
             .map(|_| rng.gen_range(LOG_SIZE_MIN..LOG_SIZE_BOUND))
             .collect::<Vec<_>>();
@@ -218,7 +216,7 @@ mod tests {
             .iter()
             .map(|log_size| {
                 (0..(1 << *log_size))
-                    .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() & MASK))
+                    .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() % P))
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
