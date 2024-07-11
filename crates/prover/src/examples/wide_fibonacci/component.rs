@@ -193,10 +193,6 @@ impl Component for WideFibComponent {
         self.log_column_size() + 1
     }
 
-    fn n_interaction_phases(&self) -> u32 {
-        2
-    }
-
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
         TreeVec::new(vec![
             vec![self.log_column_size(); self.n_columns()],

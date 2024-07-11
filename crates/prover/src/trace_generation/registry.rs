@@ -60,10 +60,6 @@ mod tests {
             todo!()
         }
 
-        fn n_interaction_phases(&self) -> u32 {
-            todo!()
-        }
-
         fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
             todo!()
         }

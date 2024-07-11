@@ -216,7 +216,7 @@ pub fn verify(
     );
     let interaction_elements = air.interaction_elements(channel);
 
-    if air.n_interaction_phases() == 2 {
+    if air.column_log_sizes().len() == 2 {
         commitment_scheme.commit(
             proof.commitments[INTERACTION_TRACE],
             &column_log_sizes[INTERACTION_TRACE],
@@ -423,10 +423,6 @@ mod tests {
 
         fn max_constraint_log_degree_bound(&self) -> u32 {
             self.max_constraint_log_degree_bound
-        }
-
-        fn n_interaction_phases(&self) -> u32 {
-            1
         }
 
         fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {

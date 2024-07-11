@@ -100,10 +100,6 @@ impl Component for PoseidonComponent {
         self.log_column_size() + LOG_EXPAND
     }
 
-    fn n_interaction_phases(&self) -> u32 {
-        1
-    }
-
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
         TreeVec::new(vec![vec![self.log_column_size(); N_COLUMNS]])
     }
