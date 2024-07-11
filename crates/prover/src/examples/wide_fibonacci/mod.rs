@@ -22,7 +22,6 @@ mod tests {
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::{commit_and_prove, commit_and_verify};
     use crate::core::utils::{
         bit_reverse, circle_domain_order_to_coset_order, shifted_secure_combination,
     };
@@ -30,7 +29,7 @@ mod tests {
     use crate::core::vcs::hasher::Hasher;
     use crate::core::InteractionElements;
     use crate::examples::wide_fibonacci::trace_gen::write_lookup_column;
-    use crate::trace_generation::ComponentTraceGenerator;
+    use crate::trace_generation::{commit_and_prove, commit_and_verify, ComponentTraceGenerator};
     use crate::{m31, qm31};
 
     pub fn assert_constraints_on_row(row: &[BaseField]) {

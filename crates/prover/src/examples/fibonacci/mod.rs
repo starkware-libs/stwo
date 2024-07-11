@@ -10,11 +10,10 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{
-    commit_and_prove, commit_and_verify, ProvingError, StarkProof, VerificationError,
-};
+use crate::core::prover::{ProvingError, StarkProof, VerificationError};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::hasher::Hasher;
+use crate::trace_generation::{commit_and_prove, commit_and_verify};
 
 pub mod air;
 mod component;
@@ -130,7 +129,7 @@ mod tests {
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::{commit_and_prove, commit_and_verify, VerificationError, BASE_TRACE};
+    use crate::core::prover::VerificationError;
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
@@ -138,7 +137,9 @@ mod tests {
     use crate::core::{InteractionElements, LookupValues};
     use crate::examples::fibonacci::air::FibonacciAirGenerator;
     use crate::examples::fibonacci::component::FibonacciInput;
-    use crate::trace_generation::AirTraceGenerator;
+    use crate::trace_generation::{
+        commit_and_prove, commit_and_verify, AirTraceGenerator, BASE_TRACE,
+    };
     use crate::{m31, qm31};
 
     pub fn generate_test_queries(n_queries: usize, trace_length: usize) -> Vec<usize> {
