@@ -76,7 +76,7 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
 
     let interaction_elements = air.interaction_elements(channel);
     let interaction_trace = air.interact(&trace, &interaction_elements);
-    if !interaction_trace.is_empty() {
+    if !interaction_elements.is_empty() {
         let span = span!(Level::INFO, "Interaction trace interpolation").entered();
         let interaction_trace_polys = interaction_trace
             .into_iter()
@@ -89,7 +89,7 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     Ok((commitment_scheme, interaction_elements))
 }
 
-pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
+pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     air: &impl AirProver<B>,
     channel: &mut Channel,
     interaction_elements: &InteractionElements,
@@ -148,7 +148,7 @@ pub fn generate_proof<B: Backend + MerkleOps<MerkleHasher>>(
     })
 }
 
-pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
+pub fn commit_and_prove<B: Backend + MerkleOps<MerkleHasher>>(
     air: &impl AirTraceGenerator<B>,
     channel: &mut Channel,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
@@ -192,7 +192,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
             .collect_vec(),
     );
 
-    generate_proof(
+    prove(
         &air,
         channel,
         &interaction_elements,
@@ -201,13 +201,16 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     )
 }
 
-pub fn verify(
+pub fn commit_and_verify(
     proof: StarkProof,
     air: &(impl Air + AirTraceVerifier),
     channel: &mut Channel,
 ) -> Result<(), VerificationError> {
     // Read trace commitment.
     let mut commitment_scheme = CommitmentSchemeVerifier::new();
+
+    // TODO(spapini): Retrieve column_log_sizes from AirTraceVerifier, and remove the dependency on
+    // Air.
     let column_log_sizes = air.column_log_sizes();
     commitment_scheme.commit(
         proof.commitments[BASE_TRACE],
@@ -216,7 +219,7 @@ pub fn verify(
     );
     let interaction_elements = air.interaction_elements(channel);
 
-    if air.column_log_sizes().len() == 2 {
+    if !interaction_elements.is_empty() {
         commitment_scheme.commit(
             proof.commitments[INTERACTION_TRACE],
             &column_log_sizes[INTERACTION_TRACE],
@@ -232,6 +235,22 @@ pub fn verify(
             .map(|v| SecureField::from(*v))
             .collect_vec(),
     );
+    verify(
+        air,
+        channel,
+        &interaction_elements,
+        &mut commitment_scheme,
+        proof,
+    )
+}
+
+pub fn verify(
+    air: &impl Air,
+    channel: &mut Blake2sChannel,
+    interaction_elements: &InteractionElements,
+    commitment_scheme: &mut CommitmentSchemeVerifier,
+    proof: StarkProof,
+) -> Result<(), VerificationError> {
     let random_coeff = channel.draw_felt();
 
     // Read composition polynomial commitment.
@@ -261,7 +280,7 @@ pub fn verify(
             oods_point,
             &trace_oods_values,
             random_coeff,
-            &interaction_elements,
+            interaction_elements,
             &proof.lookup_values,
         )
     {
@@ -362,7 +381,7 @@ mod tests {
         CanonicCoset, CircleDomain, CircleEvaluation, MAX_CIRCLE_DOMAIN_LOG_SIZE,
     };
     use crate::core::poly::BitReversedOrder;
-    use crate::core::prover::{prove, ProvingError};
+    use crate::core::prover::{commit_and_prove, ProvingError};
     use crate::core::test_utils::test_channel;
     use crate::core::{ColumnVec, InteractionElements, LookupValues};
     use crate::qm31;
@@ -508,7 +527,7 @@ mod tests {
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
-        let proof_error = prove(&air, &mut test_channel(), trace).unwrap_err();
+        let proof_error = commit_and_prove(&air, &mut test_channel(), trace).unwrap_err();
         assert!(matches!(
             proof_error,
             ProvingError::MaxTraceDegreeExceeded {
@@ -535,7 +554,7 @@ mod tests {
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
-        let proof_error = prove(&air, &mut test_channel(), trace).unwrap_err();
+        let proof_error = commit_and_prove(&air, &mut test_channel(), trace).unwrap_err();
         assert!(matches!(
             proof_error,
             ProvingError::MaxCompositionDegreeExceeded {
@@ -557,7 +576,7 @@ mod tests {
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
-        let proof = prove(&air, &mut test_channel(), trace).unwrap_err();
+        let proof = commit_and_prove(&air, &mut test_channel(), trace).unwrap_err();
         assert!(matches!(proof, ProvingError::ConstraintsNotSatisfied));
     }
 }

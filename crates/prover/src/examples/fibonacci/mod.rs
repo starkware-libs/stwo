@@ -10,7 +10,9 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{prove, verify, ProvingError, StarkProof, VerificationError};
+use crate::core::prover::{
+    commit_and_prove, commit_and_verify, ProvingError, StarkProof, VerificationError,
+};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::hasher::Hasher;
 
@@ -55,7 +57,7 @@ impl Fibonacci {
             .air
             .component
             .claim])));
-        prove(&self.air, channel, vec![trace])
+        commit_and_prove(&self.air, channel, vec![trace])
     }
 
     pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
@@ -63,7 +65,7 @@ impl Fibonacci {
             .air
             .component
             .claim])));
-        verify(proof, &self.air, channel)
+        commit_and_verify(proof, &self.air, channel)
     }
 }
 
@@ -98,13 +100,13 @@ impl MultiFibonacci {
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&self.claims)));
         let trace = self.get_trace();
-        prove(&self.air, channel, trace)
+        commit_and_prove(&self.air, channel, trace)
     }
 
     pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&self.claims)));
-        verify(proof, &self.air, channel)
+        commit_and_verify(proof, &self.air, channel)
     }
 }
 
@@ -128,7 +130,7 @@ mod tests {
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::{prove, verify, VerificationError, BASE_TRACE};
+    use crate::core::prover::{commit_and_prove, commit_and_verify, VerificationError, BASE_TRACE};
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
@@ -252,12 +254,12 @@ mod tests {
         let trace = fib_trace_generator.write_trace();
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[CLAIM])));
-        let proof = prove(&fib_trace_generator, channel, trace).unwrap();
+        let proof = commit_and_prove(&fib_trace_generator, channel, trace).unwrap();
 
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[CLAIM])));
         let fib_air = Fibonacci::new(FIB_LOG_SIZE, CLAIM).air;
-        verify(proof, &fib_air, channel).unwrap();
+        commit_and_verify(proof, &fib_air, channel).unwrap();
     }
 
     #[test]
