@@ -501,7 +501,7 @@ mod tests {
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
-    use crate::core::prover::{prove, verify};
+    use crate::core::prover::{commit_and_prove, commit_and_verify};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::examples::poseidon::{
@@ -568,9 +568,9 @@ mod tests {
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         let air = PoseidonAir { component };
-        let proof = prove::<SimdBackend>(&air, channel, trace).unwrap();
+        let proof = commit_and_prove::<SimdBackend>(&air, channel, trace).unwrap();
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        verify(proof, &air, channel).unwrap();
+        commit_and_verify(proof, &air, channel).unwrap();
     }
 }
