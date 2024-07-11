@@ -3,7 +3,7 @@ use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::channel::{Blake2sChannel, Channel};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::IntoSlice;
-use stwo_prover::core::prover::prove;
+use stwo_prover::core::prover::commit_and_prove;
 use stwo_prover::core::vcs::blake2_hash::Blake2sHasher;
 use stwo_prover::core::vcs::hasher::Hasher;
 use stwo_prover::examples::poseidon::{gen_trace, PoseidonAir, PoseidonComponent};
@@ -20,7 +20,7 @@ pub fn simd_poseidon(c: &mut Criterion) {
             let trace = gen_trace(component.log_column_size());
             let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
             let air = PoseidonAir { component };
-            prove::<SimdBackend>(&air, channel, trace).unwrap()
+            commit_and_prove::<SimdBackend>(&air, channel, trace).unwrap()
         });
     });
 }
