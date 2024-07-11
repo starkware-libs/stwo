@@ -496,13 +496,13 @@ mod tests {
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
-    use crate::core::prover::{commit_and_prove, commit_and_verify};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::examples::poseidon::{
         apply_internal_round_matrix, apply_m4, gen_trace, PoseidonAir, PoseidonComponent,
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
+    use crate::trace_generation::{commit_and_prove, commit_and_verify};
 
     #[test]
     fn test_apply_m4() {

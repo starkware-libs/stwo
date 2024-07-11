@@ -20,11 +20,12 @@ use crate::core::fields::{FieldExpOps, FieldOps};
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::BASE_TRACE;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::examples::wide_fibonacci::component::N_COLUMNS;
 use crate::trace_generation::registry::ComponentGenerationRegistry;
-use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
+use crate::trace_generation::{
+    AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator, BASE_TRACE,
+};
 
 // TODO(AlonH): Remove this once the Cpu and Simd implementations are aligned.
 #[derive(Clone)]
@@ -257,11 +258,11 @@ mod tests {
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
-    use crate::core::prover::{commit_and_prove, commit_and_verify};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
     use crate::examples::wide_fibonacci::simd::{gen_trace, SimdWideFibAir, SimdWideFibComponent};
+    use crate::trace_generation::{commit_and_prove, commit_and_verify};
 
     #[test_log::test]
     fn test_simd_wide_fib_prove() {
