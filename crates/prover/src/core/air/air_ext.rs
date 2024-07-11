@@ -21,14 +21,6 @@ pub trait AirExt: Air {
             .unwrap()
     }
 
-    fn n_interaction_phases(&self) -> u32 {
-        self.components()
-            .iter()
-            .map(|component| component.n_interaction_phases())
-            .max()
-            .unwrap()
-    }
-
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
