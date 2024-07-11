@@ -1,7 +1,9 @@
 //! GKR batch prover for Grand Product and LogUp lookup arguments.
+use std::borrow::Cow;
 use std::iter::{successors, zip};
 use std::ops::Deref;
 
+use educe::Educe;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use thiserror::Error;
@@ -10,12 +12,14 @@ use super::gkr_verifier::{GkrArtifact, GkrBatchProof, GkrMask};
 use super::mle::{Mle, MleOps};
 use super::sumcheck::MultivariatePolyOracle;
 use super::utils::{eq, random_linear_combination, UnivariatePoly};
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
 use crate::core::channel::Channel;
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::FieldExpOps;
 use crate::core::lookups::sumcheck;
 
-pub trait GkrOps: MleOps<SecureField> {
+pub trait GkrOps: MleOps<BaseField> + MleOps<SecureField> {
     /// Returns evaluations `eq(x, y) * v` for all `x` in `{0, 1}^n`.
     ///
     /// Note [`Mle`] stores values in bit-reversed order.
@@ -44,6 +48,8 @@ pub trait GkrOps: MleOps<SecureField> {
 /// `evals[1] = eq((0, ..., 0, 1), y)`, etc.
 ///
 /// [`eq(x, y)`]: crate::core::lookups::utils::eq
+#[derive(Educe)]
+#[educe(Debug, Clone)]
 pub struct EqEvals<B: ColumnOps<SecureField>> {
     y: Vec<SecureField>,
     evals: Mle<B, SecureField>,
@@ -83,22 +89,48 @@ impl<B: ColumnOps<SecureField>> Deref for EqEvals<B> {
 /// numerators and denominators.
 ///
 /// [LogUp]: https://eprint.iacr.org/2023/1284.pdf
+#[derive(Educe)]
+#[educe(Debug, Clone)]
 pub enum Layer<B: GkrOps> {
-    _LogUp(B),
-    _GrandProduct(B),
+    GrandProduct(Mle<B, SecureField>),
+    LogUpGeneric {
+        numerators: Mle<B, SecureField>,
+        denominators: Mle<B, SecureField>,
+    },
+    LogUpMultiplicities {
+        numerators: Mle<B, BaseField>,
+        denominators: Mle<B, SecureField>,
+    },
+    /// All numerators implicitly equal "1".
+    LogUpSingles {
+        denominators: Mle<B, SecureField>,
+    },
 }
 
 impl<B: GkrOps> Layer<B> {
     /// Returns the number of variables used to interpolate the layer's gate values.
-    fn n_variables(&self) -> usize {
-        todo!()
+    pub fn n_variables(&self) -> usize {
+        match self {
+            Self::GrandProduct(mle)
+            | Self::LogUpSingles { denominators: mle }
+            | Self::LogUpMultiplicities {
+                denominators: mle, ..
+            }
+            | Self::LogUpGeneric {
+                denominators: mle, ..
+            } => mle.n_variables(),
+        }
+    }
+
+    fn is_output_layer(&self) -> bool {
+        self.n_variables() == 0
     }
 
     /// Produces the next layer from the current layer.
     ///
     /// The next layer is strictly half the size of the current layer.
     /// Returns [`None`] if called on an output layer.
-    fn next_layer(&self) -> Option<Layer<B>> {
+    pub fn next_layer(&self) -> Option<Self> {
         if self.is_output_layer() {
             return None;
         }
@@ -106,13 +138,66 @@ impl<B: GkrOps> Layer<B> {
         Some(B::next_layer(self))
     }
 
-    fn is_output_layer(&self) -> bool {
-        self.n_variables() == 0
-    }
-
     /// Returns each column output if the layer is an output layer, otherwise returns an `Err`.
     fn try_into_output_layer_values(self) -> Result<Vec<SecureField>, NotOutputLayerError> {
-        todo!()
+        if !self.is_output_layer() {
+            return Err(NotOutputLayerError);
+        }
+
+        Ok(match self {
+            Layer::LogUpSingles { denominators } => {
+                let numerator = SecureField::one();
+                let denominator = denominators.at(0);
+                vec![numerator, denominator]
+            }
+            Layer::LogUpMultiplicities {
+                numerators,
+                denominators,
+            } => {
+                let numerator = numerators.at(0).into();
+                let denominator = denominators.at(0);
+                vec![numerator, denominator]
+            }
+            Layer::LogUpGeneric {
+                numerators,
+                denominators,
+            } => {
+                let numerator = numerators.at(0);
+                let denominator = denominators.at(0);
+                vec![numerator, denominator]
+            }
+            Layer::GrandProduct(col) => {
+                vec![col.at(0)]
+            }
+        })
+    }
+
+    /// Returns a transformed layer with the first variable of each column fixed to `assignment`.
+    fn fix_first_variable(self, x0: SecureField) -> Self {
+        if self.n_variables() == 0 {
+            return self;
+        }
+
+        match self {
+            Self::GrandProduct(mle) => Self::GrandProduct(mle.fix_first_variable(x0)),
+            Self::LogUpGeneric {
+                numerators,
+                denominators,
+            } => Self::LogUpGeneric {
+                numerators: numerators.fix_first_variable(x0),
+                denominators: denominators.fix_first_variable(x0),
+            },
+            Self::LogUpMultiplicities {
+                numerators,
+                denominators,
+            } => Self::LogUpGeneric {
+                numerators: numerators.fix_first_variable(x0),
+                denominators: denominators.fix_first_variable(x0),
+            },
+            Self::LogUpSingles { denominators } => Self::LogUpSingles {
+                denominators: denominators.fix_first_variable(x0),
+            },
+        }
     }
 
     /// Represents the next GKR layer evaluation as a multivariate polynomial which uses this GKR
@@ -144,10 +229,43 @@ impl<B: GkrOps> Layer<B> {
     /// hypercube that interpolates `c_i`.
     fn into_multivariate_poly(
         self,
-        _lambda: SecureField,
-        _eq_evals: &EqEvals<B>,
+        lambda: SecureField,
+        eq_evals: &EqEvals<B>,
     ) -> GkrMultivariatePolyOracle<'_, B> {
-        todo!()
+        GkrMultivariatePolyOracle {
+            eq_evals: Cow::Borrowed(eq_evals),
+            input_layer: self,
+            eq_fixed_var_correction: SecureField::one(),
+            lambda,
+        }
+    }
+
+    /// Returns a copy of this layer with the [`CpuBackend`].
+    ///
+    /// This operation is expensive but can be useful for small traces that are difficult to handle
+    /// depending on the backend. For example, the SIMD backend offloads to the CPU backend when
+    /// trace length becomes smaller than the SIMD lane count.
+    pub fn to_cpu(&self) -> Layer<CpuBackend> {
+        match self {
+            Layer::GrandProduct(mle) => Layer::GrandProduct(Mle::new(mle.to_cpu())),
+            Layer::LogUpGeneric {
+                numerators,
+                denominators,
+            } => Layer::LogUpGeneric {
+                numerators: Mle::new(numerators.to_cpu()),
+                denominators: Mle::new(denominators.to_cpu()),
+            },
+            Layer::LogUpMultiplicities {
+                numerators,
+                denominators,
+            } => Layer::LogUpMultiplicities {
+                numerators: Mle::new(numerators.to_cpu()),
+                denominators: Mle::new(denominators.to_cpu()),
+            },
+            Layer::LogUpSingles { denominators } => Layer::LogUpSingles {
+                denominators: Mle::new(denominators.to_cpu()),
+            },
+        }
     }
 }
 
@@ -157,26 +275,44 @@ struct NotOutputLayerError;
 /// A multivariate polynomial that expresses the relation between two consecutive GKR layers.
 pub struct GkrMultivariatePolyOracle<'a, B: GkrOps> {
     /// `eq_evals` passed by `Layer::into_multivariate_poly()`.
-    pub eq_evals: &'a EqEvals<B>,
+    pub eq_evals: Cow<'a, EqEvals<B>>,
     pub input_layer: Layer<B>,
     pub eq_fixed_var_correction: SecureField,
+    /// Used by LogUp to perform a random linear combination of the numerators and denominators.
+    pub lambda: SecureField,
 }
 
 impl<'a, B: GkrOps> MultivariatePolyOracle for GkrMultivariatePolyOracle<'a, B> {
     fn n_variables(&self) -> usize {
-        todo!()
+        self.input_layer.n_variables() - 1
     }
 
-    fn sum_as_poly_in_first_variable(&self, _claim: SecureField) -> UnivariatePoly<SecureField> {
-        todo!()
+    fn sum_as_poly_in_first_variable(&self, claim: SecureField) -> UnivariatePoly<SecureField> {
+        B::sum_as_poly_in_first_variable(self, claim)
     }
 
-    fn fix_first_variable(self, _challenge: SecureField) -> Self {
-        todo!()
+    fn fix_first_variable(self, challenge: SecureField) -> Self {
+        if self.is_constant() {
+            return self;
+        }
+
+        let z0 = self.eq_evals.y()[self.eq_evals.y().len() - self.n_variables()];
+        let eq_fixed_var_correction = self.eq_fixed_var_correction * eq(&[challenge], &[z0]);
+
+        Self {
+            eq_evals: self.eq_evals,
+            eq_fixed_var_correction,
+            input_layer: self.input_layer.fix_first_variable(challenge),
+            lambda: self.lambda,
+        }
     }
 }
 
 impl<'a, B: GkrOps> GkrMultivariatePolyOracle<'a, B> {
+    fn is_constant(&self) -> bool {
+        self.n_variables() == 0
+    }
+
     /// Returns all input layer columns restricted to a line.
     ///
     /// Let `l` be the line satisfying `l(0) = b*` and `l(1) = c*`. Oracles that represent constants
@@ -188,7 +324,51 @@ impl<'a, B: GkrOps> GkrMultivariatePolyOracle<'a, B> {
     ///
     /// For more context see <https://people.cs.georgetown.edu/jthaler/ProofsArgsAndZK.pdf> page 64.
     fn try_into_mask(self) -> Result<GkrMask, NotConstantPolyError> {
-        todo!()
+        if !self.is_constant() {
+            return Err(NotConstantPolyError);
+        }
+
+        let columns = match self.input_layer {
+            Layer::GrandProduct(mle) => vec![mle.to_cpu().try_into().unwrap()],
+            Layer::LogUpGeneric {
+                numerators,
+                denominators,
+            } => {
+                let numerators = numerators.to_cpu().try_into().unwrap();
+                let denominators = denominators.to_cpu().try_into().unwrap();
+                vec![numerators, denominators]
+            }
+            // Should never get called.
+            Layer::LogUpMultiplicities { .. } => unimplemented!(),
+            Layer::LogUpSingles { denominators } => {
+                let numerators = [SecureField::one(); 2];
+                let denominators = denominators.to_cpu().try_into().unwrap();
+                vec![numerators, denominators]
+            }
+        };
+
+        Ok(GkrMask::new(columns))
+    }
+
+    /// Returns a copy of this oracle with the [`CpuBackend`].
+    ///
+    /// This operation is expensive but can be useful for small oracles that are difficult to handle
+    /// depending on the backend. For example, the SIMD backend offloads to the CPU backend when
+    /// trace length becomes smaller than the SIMD lane count.
+    pub fn to_cpu(&self) -> GkrMultivariatePolyOracle<'a, CpuBackend> {
+        // TODO(andrew): This block is not ideal.
+        let n_eq_evals = 1 << (self.n_variables() - 1);
+        let eq_evals = Cow::Owned(EqEvals {
+            evals: Mle::new((0..n_eq_evals).map(|i| self.eq_evals.at(i)).collect()),
+            y: self.eq_evals.y.to_vec(),
+        });
+
+        GkrMultivariatePolyOracle {
+            eq_evals,
+            eq_fixed_var_correction: self.eq_fixed_var_correction,
+            input_layer: self.input_layer.to_cpu(),
+            lambda: self.lambda,
+        }
     }
 }
 
@@ -318,4 +498,73 @@ fn gen_layers<B: GkrOps>(input_layer: Layer<B>) -> Vec<Layer<B>> {
     let layers = successors(Some(input_layer), |layer| layer.next_layer()).collect_vec();
     assert_eq!(layers.len(), n_variables + 1);
     layers
+}
+
+/// Corrects and interpolates GKR instance sumcheck round polynomials that are generated with the
+/// precomputed `eq(x, y)` evaluations provided by `Layer::into_multivariate_poly()`.
+///
+/// Let `y` be a fixed vector of length `n` and let `z` be a subvector comprising of the last `k`
+/// elements of `y`. Returns the univariate polynomial `f(t) = sum_x eq((t, x), z) * p(t, x)` for
+/// `x` in the boolean hypercube `{0, 1}^(k-1)` when provided with:
+///
+/// * `claim` equalling `f(0) + f(1)`.
+/// * `eval_at_0/2` equalling `sum_x eq(({0}^(n-k+1), x), y) * p(t, x)` at `t=0,2` respectively.
+///
+/// Note that `f` must have degree <= 3.
+///
+/// For more context see `Layer::into_multivariate_poly()` docs.
+/// See also <https://ia.cr/2024/108> (section 3.2).
+///
+/// # Panics
+///
+/// Panics if:
+/// * `k` is zero or greater than the length of `y`.
+/// * `z_0` is zero.
+pub fn correct_sum_as_poly_in_first_variable(
+    eval_at_0: SecureField,
+    eval_at_2: SecureField,
+    claim: SecureField,
+    y: &[SecureField],
+    k: usize,
+) -> UnivariatePoly<SecureField> {
+    assert_ne!(k, 0);
+    let n = y.len();
+    assert!(k <= n);
+
+    let z = &y[n - k..];
+
+    // Corrects the difference between two sums:
+    // 1. `sum_x eq(({0}^(n-k+1), x), y) * p(t, x)`
+    // 2. `sum_x eq((0, x), z) * p(t, x)`
+    let eq_y_to_z_correction_factor = eq(&vec![SecureField::zero(); n - k], &y[0..n - k]).inverse();
+
+    // Corrects the difference between two sums:
+    // 1. `sum_x eq((0, x), z) * p(t, x)`
+    // 2. `sum_x eq((t, x), z) * p(t, x)`
+    let eq_correction_factor_at = |t| eq(&[t], &[z[0]]) / eq(&[SecureField::zero()], &[z[0]]);
+
+    // Let `v(t) = sum_x eq((0, x), z) * p(t, x)`. Apply trick from
+    // <https://ia.cr/2024/108> (section 3.2) to obtain `f` from `v`.
+    let t0: SecureField = BaseField::zero().into();
+    let t1: SecureField = BaseField::one().into();
+    let t2: SecureField = BaseField::from(2).into();
+    let t3: SecureField = BaseField::from(3).into();
+
+    // Obtain evals `v(0)`, `v(1)`, `v(2)`.
+    let mut y0 = eq_y_to_z_correction_factor * eval_at_0;
+    let mut y1 = (claim - y0) / eq_correction_factor_at(t1);
+    let mut y2 = eq_y_to_z_correction_factor * eval_at_2;
+
+    // Interpolate `v` to find `v(3)`. Note `v` has degree <= 2.
+    let v = UnivariatePoly::interpolate_lagrange(&[t0, t1, t2], &[y0, y1, y2]);
+    let mut y3 = v.eval_at_point(t3);
+
+    // Obtain evals of `f(0)`, `f(1)`, `f(2)`, `f(3)`.
+    y0 *= eq_correction_factor_at(t0);
+    y1 *= eq_correction_factor_at(t1);
+    y2 *= eq_correction_factor_at(t2);
+    y3 *= eq_correction_factor_at(t3);
+
+    // Interpolate `f(t)`. Note `f(t)` has degree <= 3.
+    UnivariatePoly::interpolate_lagrange(&[t0, t1, t2, t3], &[y0, y1, y2, y3])
 }
