@@ -8,7 +8,6 @@ use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::poly::circle::MAX_CIRCLE_DOMAIN_LOG_SIZE;
-use super::poly::twiddles::TwiddleTree;
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::{ColumnVec, InteractionElements, LookupValues};
 use crate::core::air::{Air, AirExt, AirProverExt};
@@ -53,8 +52,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     air: &impl AirProver<B>,
     channel: &mut Channel,
     interaction_elements: &InteractionElements,
-    twiddles: &TwiddleTree<B>,
-    commitment_scheme: &mut CommitmentSchemeProver<B>,
+    commitment_scheme: &mut CommitmentSchemeProver<'_, B>,
 ) -> Result<StarkProof, ProvingError> {
     let component_traces = air.component_traces(&commitment_scheme.trees);
     let lookup_values = air.lookup_values(&component_traces);
@@ -72,7 +70,9 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     );
     span1.exit();
 
-    commitment_scheme.commit(composition_polynomial_poly.to_vec(), channel, twiddles);
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_polys(composition_polynomial_poly.to_vec());
+    tree_builder.commit(channel);
     span.exit();
 
     // Draw OODS point.
@@ -82,7 +82,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     let sample_points = air.mask_points(oods_point);
 
     // Prove the trace and composition OODS values, and retrieve them.
-    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel, twiddles);
+    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
 
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.
