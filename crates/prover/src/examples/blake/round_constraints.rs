@@ -5,6 +5,7 @@ use super::Fu32;
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::EvalAtRow;
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::FieldExpOps;
 
 pub struct BlakeRoundEval<'a, E: EvalAtRow> {
     pub eval: E,
@@ -43,8 +44,8 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         self.eval
     }
     fn next_u32(&mut self) -> Fu32<E::F> {
-        let l = self.eval.next_mask();
-        let h = self.eval.next_mask();
+        let l = self.eval.next_trace_mask();
+        let h = self.eval.next_trace_mask();
         Fu32 { l, h }
     }
     fn g(&mut self, _round: u32, v: [&mut Fu32<E::F>; 4], m0: Fu32<E::F>, m1: Fu32<E::F>) {
@@ -65,16 +66,18 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     /// The caller is responsible for checking:
     /// res.{l,h} not in [2^16, 2^17) or in [-2^16,0)
     fn add2_u32_unchecked(&mut self, a: Fu32<E::F>, b: Fu32<E::F>) -> Fu32<E::F> {
-        let carry_l = self.eval.next_mask();
+        let sl = self.eval.next_trace_mask();
+        let sh = self.eval.next_trace_mask();
+
+        let carry_l =
+            (a.l + b.l - sl) * E::F::from(BaseField::from_u32_unchecked(1 << 16).inverse());
         self.eval.add_constraint(carry_l * carry_l - carry_l);
 
-        let carry_h = self.eval.next_mask();
+        let carry_h = (a.h + b.h + carry_l - sh)
+            * E::F::from(BaseField::from_u32_unchecked(1 << 16).inverse());
         self.eval.add_constraint(carry_h * carry_h - carry_h);
 
-        Fu32 {
-            l: a.l + b.l - carry_l * E::F::from(BaseField::from_u32_unchecked(1 << 16)),
-            h: a.h + b.h + carry_l - carry_h * E::F::from(BaseField::from_u32_unchecked(1 << 16)),
-        }
+        Fu32 { l: sl, h: sh }
     }
 
     /// Adds three u32s, returning the sum.
@@ -82,31 +85,32 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     /// Caller is responsible for checking:
     /// res.{l,h} not in [2^16, 3*2^16) or in [-2^17,0)
     fn add3_u32_unchecked(&mut self, a: Fu32<E::F>, b: Fu32<E::F>, c: Fu32<E::F>) -> Fu32<E::F> {
-        let carry_l = self.eval.next_mask();
+        let sl = self.eval.next_trace_mask();
+        let sh = self.eval.next_trace_mask();
+
+        let carry_l =
+            (a.l + b.l + c.l - sl) * E::F::from(BaseField::from_u32_unchecked(1 << 16).inverse());
         self.eval.add_constraint(
             carry_l
                 * (carry_l - E::F::from(BaseField::from_u32_unchecked(1 << 0)))
                 * (carry_l - E::F::from(BaseField::from_u32_unchecked(1 << 1))),
         );
 
-        let carry_h = self.eval.next_mask();
+        let carry_h = (a.h + b.h + c.h + carry_l - sh)
+            * E::F::from(BaseField::from_u32_unchecked(1 << 16).inverse());
         self.eval.add_constraint(
             carry_h
                 * (carry_h - E::F::from(BaseField::from_u32_unchecked(1 << 0)))
                 * (carry_h - E::F::from(BaseField::from_u32_unchecked(1 << 1))),
         );
 
-        Fu32 {
-            l: a.l + b.l + c.l - carry_l * E::F::from(BaseField::from_u32_unchecked(1 << 16)),
-            h: a.h + b.h + c.h + carry_l
-                - carry_h * E::F::from(BaseField::from_u32_unchecked(1 << 16)),
-        }
+        Fu32 { l: sl, h: sh }
     }
 
     /// Splits a felt at r.
     /// Caller is responsible for checking that the ranges of h * 2^r and l don't overlap.
     fn split_unchecked(&mut self, a: E::F, r: u32) -> (E::F, E::F) {
-        let h = self.eval.next_mask();
+        let h = self.eval.next_trace_mask();
         let l = a - h * E::F::from(BaseField::from_u32_unchecked(1 << r));
         (l, h)
     }
@@ -152,7 +156,7 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     /// Checks that a,b in in [0,2^w) and computes their xor.
     fn xor(&mut self, _w: u32, a: E::F, b: E::F) -> E::F {
         // TODO: Separate lookups by w.
-        let c = self.eval.next_mask();
+        let c = self.eval.next_trace_mask();
         self.logup.push_lookup(
             &mut self.eval,
             E::EF::one(),

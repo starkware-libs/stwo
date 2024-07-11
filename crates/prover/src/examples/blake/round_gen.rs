@@ -67,15 +67,13 @@ impl<'a> TraceGeneratorRow<'a> {
         self.col_index += 1;
     }
 
-    fn append_u32(&mut self, val: [u32x16; 2]) {
-        self.append_felt(val[0]);
-        self.append_felt(val[1]);
+    fn append_u32(&mut self, val: u32x16) {
+        self.append_felt(val & u32x16::splat(0xffff));
+        self.append_felt(val >> 16);
     }
 
-    fn generate(&mut self, v: [u32x16; 16], m: [u32x16; 16]) {
-        let mut v = v.map(|state| [state & u32x16::splat(0xffff), state >> 16]);
+    fn generate(&mut self, mut v: [u32x16; 16], m: [u32x16; 16]) {
         let input_v = v;
-        let m = m.map(|state| [state & u32x16::splat(0xffff), state >> 16]);
         v.iter().for_each(|s| {
             self.append_u32(*s);
         });
@@ -92,19 +90,16 @@ impl<'a> TraceGeneratorRow<'a> {
         self.g(6, v.get_many_mut([2, 7, 8, 13]).unwrap(), m[12], m[13]);
         self.g(7, v.get_many_mut([3, 4, 9, 14]).unwrap(), m[14], m[15]);
 
-        chain![
-            input_v.iter().copied().flatten(),
-            v.iter().copied().flatten(),
-            m.iter().copied().flatten()
-        ]
-        .enumerate()
-        .for_each(|(i, val)| {
-            self.gen.round_lookups[i].data[self.vec_row] =
-                unsafe { PackedBaseField::from_simd_unchecked(val) }
-        });
+        chain![input_v.iter(), v.iter(), m.iter()]
+            .flat_map(|s| [s & u32x16::splat(0xffff), s >> 16])
+            .enumerate()
+            .for_each(|(i, val)| {
+                self.gen.round_lookups[i].data[self.vec_row] =
+                    unsafe { PackedBaseField::from_simd_unchecked(val) }
+            });
     }
 
-    fn g(&mut self, _round: u32, v: [&mut [u32x16; 2]; 4], m0: [u32x16; 2], m1: [u32x16; 2]) {
+    fn g(&mut self, _round: u32, v: [&mut u32x16; 4], m0: u32x16, m1: u32x16) {
         let [a, b, c, d] = v;
 
         *a = self.add3_u32s(*a, *b, m0);
@@ -117,58 +112,52 @@ impl<'a> TraceGeneratorRow<'a> {
         *b = self.xor_rotr_u32(*b, *c, 7);
     }
 
-    fn add2_u32s(&mut self, a: [u32x16; 2], b: [u32x16; 2]) -> [u32x16; 2] {
-        let sl = a[0] + b[0];
-        let carryl = sl >> 16;
-        self.append_felt(carryl);
-
-        let sh = a[1] + b[1] + carryl;
-        let carryh = sh >> 16;
-        self.append_felt(carryh);
-
-        [sl & u32x16::splat(0xffff), sh & u32x16::splat(0xffff)]
+    fn add2_u32s(&mut self, a: u32x16, b: u32x16) -> u32x16 {
+        let s = a + b;
+        self.append_u32(s);
+        s
     }
 
-    fn add3_u32s(&mut self, a: [u32x16; 2], b: [u32x16; 2], c: [u32x16; 2]) -> [u32x16; 2] {
-        let sl = a[0] + b[0] + c[0];
-        let carryl = sl >> 16;
-        self.append_felt(carryl);
-
-        let sh = a[1] + b[1] + c[1] + carryl;
-        let carryh = sh >> 16;
-        self.append_felt(carryh);
-
-        [sl & u32x16::splat(0xffff), sh & u32x16::splat(0xffff)]
+    fn add3_u32s(&mut self, a: u32x16, b: u32x16, c: u32x16) -> u32x16 {
+        let s = a + b + c;
+        self.append_u32(s);
+        s
     }
 
-    fn xor_rotr_u32(&mut self, a: [u32x16; 2], b: [u32x16; 2], r: u32) -> [u32x16; 2] {
-        let (all, alh) = self.split(a[0], r);
-        let (ahl, ahh) = self.split(a[1], r);
-        let (bll, blh) = self.split(b[0], r);
-        let (bhl, bhh) = self.split(b[1], r);
+    fn xor_rotr_u32(&mut self, a: u32x16, b: u32x16, r: u32) -> u32x16 {
+        let c = a ^ b;
+        let cr = (c >> r) | (c << (32 - r));
+
+        let (all, alh) = self.split(a & u32x16::splat(0xffff), r);
+        let (ahl, ahh) = self.split(a >> 16, r);
+        let (bll, blh) = self.split(b & u32x16::splat(0xffff), r);
+        let (bhl, bhh) = self.split(b >> 16, r);
 
         // These also guarantee that all elements are in range.
-        let xorll = self.xor(r, all, bll);
-        let xorlh = self.xor(16 - r, alh, blh);
-        let xorhl = self.xor(r, ahl, bhl);
-        let xorhh = self.xor(16 - r, ahh, bhh);
+        let _xorll = self.xor(r, all, bll);
+        let _xorlh = self.xor(16 - r, alh, blh);
+        let _xorhl = self.xor(r, ahl, bhl);
+        let _xorhh = self.xor(16 - r, ahh, bhh);
 
-        [(xorhl << (16 - r)) + xorlh, (xorll << (16 - r)) + xorhh]
+        cr
     }
 
-    fn xor_rotr16_u32(&mut self, a: [u32x16; 2], b: [u32x16; 2]) -> [u32x16; 2] {
-        let (all, alh) = self.split(a[0], 8);
-        let (ahl, ahh) = self.split(a[1], 8);
-        let (bll, blh) = self.split(b[0], 8);
-        let (bhl, bhh) = self.split(b[1], 8);
+    fn xor_rotr16_u32(&mut self, a: u32x16, b: u32x16) -> u32x16 {
+        let c = a ^ b;
+        let cr = (c >> 16) | (c << 16);
+
+        let (all, alh) = self.split(a & u32x16::splat(0xffff), 8);
+        let (ahl, ahh) = self.split(a >> 16, 8);
+        let (bll, blh) = self.split(b & u32x16::splat(0xffff), 8);
+        let (bhl, bhh) = self.split(b >> 16, 8);
 
         // These also guarantee that all elements are in range.
-        let xorll = self.xor(8, all, bll);
-        let xorlh = self.xor(8, alh, blh);
-        let xorhl = self.xor(8, ahl, bhl);
-        let xorhh = self.xor(8, ahh, bhh);
+        let _xorll = self.xor(8, all, bll);
+        let _xorlh = self.xor(8, alh, blh);
+        let _xorhl = self.xor(8, ahl, bhl);
+        let _xorhh = self.xor(8, ahh, bhh);
 
-        [(xorhh << 8) + xorhl, (xorlh << 8) + xorll]
+        cr
     }
 
     fn split(&mut self, a: u32x16, r: u32) -> (u32x16, u32x16) {

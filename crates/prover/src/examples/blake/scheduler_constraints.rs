@@ -58,8 +58,8 @@ impl<'a, E: EvalAtRow> BlakeSchedulerEval<'a, E> {
         self.eval
     }
     fn next_u32(&mut self) -> Fu32<E::F> {
-        let l = self.eval.next_mask();
-        let h = self.eval.next_mask();
+        let l = self.eval.next_trace_mask();
+        let h = self.eval.next_trace_mask();
         Fu32 { l, h }
     }
 }
