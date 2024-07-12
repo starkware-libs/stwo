@@ -28,7 +28,7 @@ impl EvalAtRow for InfoEvaluator {
         if self.mask_offsets.len() <= interaction {
             self.mask_offsets.resize(interaction + 1, vec![]);
         }
-        self.mask_offsets[interaction].push(offsets.into_iter().collect());
+        self.mask_offsets[interaction].push(offsets.to_vec());
         [BaseField::one(); N]
     }
     fn add_constraint<G>(&mut self, _constraint: G)

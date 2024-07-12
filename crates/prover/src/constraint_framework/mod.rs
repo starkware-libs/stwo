@@ -17,6 +17,7 @@ pub use point::PointEvaluator;
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::fields::FieldExpOps;
 
 /// A trait for evaluating expressions at some point or row.
@@ -67,5 +68,5 @@ pub trait EvalAtRow {
         Self::EF: Mul<G, Output = Self::EF>;
 
     /// Combines 4 base field values into a single extension field value.
-    fn combine_ef(values: [Self::F; 4]) -> Self::EF;
+    fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF;
 }

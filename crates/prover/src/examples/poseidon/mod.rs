@@ -1,5 +1,5 @@
 //! AIR for Poseidon2 hash function from <https://eprint.iacr.org/2023/323.pdf>.
-
+use std::hint::black_box;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
@@ -43,9 +43,9 @@ const N_COLUMNS: usize = N_INSTANCES_PER_ROW * N_COLUMNS_PER_REP;
 const LOG_EXPAND: u32 = 2;
 // TODO(spapini): Pick better constants.
 const EXTERNAL_ROUND_CONSTS: [[BaseField; N_STATE]; 2 * N_HALF_FULL_ROUNDS] =
-    [[BaseField::from_u32_unchecked(1234); N_STATE]; 2 * N_HALF_FULL_ROUNDS];
+    black_box([[BaseField::from_u32_unchecked(1234); N_STATE]; 2 * N_HALF_FULL_ROUNDS]);
 const INTERNAL_ROUND_CONSTS: [BaseField; N_PARTIAL_ROUNDS] =
-    [BaseField::from_u32_unchecked(1234); N_PARTIAL_ROUNDS];
+    black_box([BaseField::from_u32_unchecked(1234); N_PARTIAL_ROUNDS]);
 
 #[derive(Clone)]
 pub struct PoseidonComponent {
