@@ -20,14 +20,15 @@ use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{BASE_TRACE, INTERACTION_TRACE};
 use crate::core::utils::{
     bit_reverse, point_vanish_denominator_inverses, previous_bit_reversed_circle_domain_index,
     shifted_secure_combination,
 };
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
-use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
+use crate::trace_generation::{
+    AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator, BASE_TRACE, INTERACTION_TRACE,
+};
 
 // TODO(AlonH): Rename file to `cpu.rs`.
 

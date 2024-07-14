@@ -3,10 +3,10 @@ use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::channel::{Blake2sChannel, Channel};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::IntoSlice;
-use stwo_prover::core::prover::commit_and_prove;
 use stwo_prover::core::vcs::blake2_hash::Blake2sHasher;
 use stwo_prover::core::vcs::hasher::Hasher;
 use stwo_prover::examples::poseidon::{gen_trace, PoseidonAir, PoseidonComponent};
+use stwo_prover::trace_generation::commit_and_prove;
 
 pub fn simd_poseidon(c: &mut Criterion) {
     const LOG_N_ROWS: u32 = 15;

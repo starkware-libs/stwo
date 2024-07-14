@@ -86,7 +86,7 @@ impl Index<&str> for InteractionElements {
 }
 
 #[derive(Default, Debug)]
-pub struct LookupValues(BTreeMap<String, BaseField>);
+pub struct LookupValues(pub BTreeMap<String, BaseField>);
 
 impl LookupValues {
     pub fn new(values: BTreeMap<String, BaseField>) -> Self {
