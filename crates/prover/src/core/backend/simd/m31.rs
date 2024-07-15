@@ -10,7 +10,7 @@ use rand::distributions::{Distribution, Standard};
 
 use super::qm31::PackedQM31;
 use crate::core::backend::simd::utils::{InterleaveEvens, InterleaveOdds};
-use crate::core::fields::m31::{pow2147483645, BaseField, M31, P};
+use crate::core::fields::m31::{pow2147483645, M31, P};
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::FieldExpOps;
 
@@ -247,14 +247,16 @@ unsafe impl Zeroable for PackedM31 {
     }
 }
 
-impl From<[BaseField; N_LANES]> for PackedM31 {
-    fn from(v: [BaseField; N_LANES]) -> Self {
+impl From<[M31; N_LANES]> for PackedM31 {
+    fn from(v: [M31; N_LANES]) -> Self {
         Self::from_array(v)
     }
 }
 
-impl From<BaseField> for PackedM31 {
-    fn from(v: BaseField) -> Self {
+// TODO: This implementation is dangerous. It isn't clear what From<M31> should do. Should it: Only
+// set the first lang? Broadcast the eleemnt? This was implemented to satisfy
+impl From<M31> for PackedM31 {
+    fn from(v: M31) -> Self {
         Self::broadcast(v)
     }
 }
@@ -560,7 +562,7 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::PackedM31;
-    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::m31::M31;
     use crate::core::fields::FieldExpOps;
 
     #[test]
@@ -624,7 +626,7 @@ mod tests {
 
     #[test]
     fn store_works() {
-        let v = PackedM31::from_array(array::from_fn(BaseField::from));
+        let v = PackedM31::from_array(array::from_fn(M31::from));
 
         let mut res: Aligned<A64, [u32; 16]> = Aligned([0; 16]);
         unsafe { v.store(res.as_mut_ptr()) };

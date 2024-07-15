@@ -963,6 +963,7 @@ dependencies = [
  "hex",
  "itertools 0.12.1",
  "num-traits",
+ "once_cell",
  "rand",
  "rayon",
  "starknet-crypto",

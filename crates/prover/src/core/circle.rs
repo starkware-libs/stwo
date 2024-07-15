@@ -63,19 +63,6 @@ impl<F: Field> CirclePoint<F> {
         res
     }
 
-    pub fn mul(&self, mut scalar: u128) -> CirclePoint<F> {
-        let mut res = Self::zero();
-        let mut cur = *self;
-        while scalar > 0 {
-            if scalar & 1 == 1 {
-                res = res + cur;
-            }
-            cur = cur.double();
-            scalar >>= 1;
-        }
-        res
-    }
-
     pub fn repeated_double(&self, n: u32) -> Self {
         let mut res = *self;
         for _ in 0..n {
@@ -104,14 +91,6 @@ impl<F: Field> CirclePoint<F> {
             y: self.y.into(),
         }
     }
-
-    pub fn mul_signed(&self, off: isize) -> CirclePoint<F> {
-        if off > 0 {
-            self.mul(off as u128)
-        } else {
-            self.conjugate().mul(-off as u128)
-        }
-    }
 }
 
 impl<F: Field> Add for CirclePoint<F> {
@@ -137,6 +116,35 @@ impl<F: Field> Sub for CirclePoint<F> {
 
     fn sub(self, rhs: Self) -> Self::Output {
         self + (-rhs)
+    }
+}
+
+impl<F: Field> Mul<isize> for CirclePoint<F> {
+    type Output = Self;
+
+    fn mul(self, rhs: isize) -> Self::Output {
+        if rhs > 0 {
+            self.mul(rhs as u128)
+        } else {
+            self.conjugate().mul(-rhs as u128)
+        }
+    }
+}
+
+impl<F: Field> Mul<u128> for CirclePoint<F> {
+    type Output = Self;
+
+    fn mul(self, mut rhs: u128) -> Self::Output {
+        let mut res = Self::zero();
+        let mut cur = self;
+        while rhs != 0 {
+            if rhs & 1 == 1 {
+                res = res + cur;
+            }
+            cur = cur.double();
+            rhs >>= 1;
+        }
+        res
     }
 }
 
@@ -549,10 +557,10 @@ mod tests {
             SECURE_FIELD_CIRCLE_GEN.x.square() + SECURE_FIELD_CIRCLE_GEN.y.square(),
             SecureField::one()
         );
-        assert_eq!(SECURE_FIELD_CIRCLE_GEN.mul(P4 - 1), CirclePoint::zero());
+        assert_eq!(SECURE_FIELD_CIRCLE_GEN * (P4 - 1), CirclePoint::zero());
         for (p, _) in prime_factors.iter() {
             assert_ne!(
-                SECURE_FIELD_CIRCLE_GEN.mul((P4 - 1) / *p),
+                SECURE_FIELD_CIRCLE_GEN * ((P4 - 1) / *p),
                 CirclePoint::zero()
             );
         }

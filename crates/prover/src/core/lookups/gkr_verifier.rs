@@ -149,6 +149,7 @@ pub fn partially_verify_batch(
 }
 
 /// Batch GKR proof.
+#[derive(Debug, Clone)]
 pub struct GkrBatchProof {
     /// Sum-check proof for each layer.
     pub sumcheck_proofs: Vec<SumcheckProof>,
@@ -159,6 +160,7 @@ pub struct GkrBatchProof {
 }
 
 /// Values of interest obtained from the execution of the GKR protocol.
+#[derive(Debug, Clone)]
 pub struct GkrArtifact {
     /// Out-of-domain (OOD) point for evaluating columns in the input layer.
     pub ood_point: Vec<SecureField>,

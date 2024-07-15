@@ -147,7 +147,7 @@ impl Component for PoseidonComponent {
                 .map(|col_mask| {
                     col_mask
                         .iter()
-                        .map(|off| point + trace_step.mul_signed(*off).into_ef())
+                        .map(|&off| point + (trace_step * off).into_ef())
                         .collect()
                 })
                 .collect()
