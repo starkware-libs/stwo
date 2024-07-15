@@ -65,6 +65,10 @@ name = "field"
 
 [[bench]]
 harness = false
+name = "lookups"
+
+[[bench]]
+harness = false
 name = "matrix"
 
 [[bench]]

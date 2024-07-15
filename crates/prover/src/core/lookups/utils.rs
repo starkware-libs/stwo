@@ -1,7 +1,7 @@
-use std::iter::zip;
+use std::iter::{zip, Sum};
 use std::ops::{Add, Deref, Mul, Neg, Sub};
 
-use num_traits::Zero;
+use num_traits::{One, Zero};
 
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
@@ -192,6 +192,84 @@ where
     SecureField: ExtensionOf<F>,
 {
     assignment * (eval1 - eval0) + eval0
+}
+
+/// Projective fraction.
+#[derive(Debug, Clone, Copy)]
+pub struct Fraction<N, D> {
+    pub numerator: N,
+    pub denominator: D,
+}
+
+impl<N, D> Fraction<N, D> {
+    pub fn new(numerator: N, denominator: D) -> Self {
+        Self {
+            numerator,
+            denominator,
+        }
+    }
+}
+
+impl<N, D: Add<Output = D> + Add<N, Output = D> + Mul<N, Output = D> + Mul<Output = D> + Copy> Add
+    for Fraction<N, D>
+{
+    type Output = Fraction<D, D>;
+
+    fn add(self, rhs: Self) -> Fraction<D, D> {
+        Fraction {
+            numerator: rhs.denominator * self.numerator + self.denominator * rhs.numerator,
+            denominator: self.denominator * rhs.denominator,
+        }
+    }
+}
+
+impl<N: Zero, D: One + Zero> Zero for Fraction<N, D>
+where
+    Self: Add<Output = Self>,
+{
+    fn zero() -> Self {
+        Self {
+            numerator: N::zero(),
+            denominator: D::one(),
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.numerator.is_zero() && !self.denominator.is_zero()
+    }
+}
+
+impl<N, D> Sum for Fraction<N, D>
+where
+    Self: Zero,
+{
+    fn sum<I: Iterator<Item = Self>>(mut iter: I) -> Self {
+        let first = iter.next().unwrap_or_else(Self::zero);
+        iter.fold(first, |a, b| a + b)
+    }
+}
+
+/// Represents the fraction `1 / x`
+pub struct Reciprocal<T> {
+    x: T,
+}
+
+impl<T> Reciprocal<T> {
+    pub fn new(x: T) -> Self {
+        Self { x }
+    }
+}
+
+impl<T: Add<Output = T> + Mul<Output = T> + Copy> Add for Reciprocal<T> {
+    type Output = Fraction<T, T>;
+
+    fn add(self, rhs: Self) -> Fraction<T, T> {
+        // `1/a + 1/b = (a + b)/(a * b)`
+        Fraction {
+            numerator: self.x + rhs.x,
+            denominator: self.x * rhs.x,
+        }
+    }
 }
 
 #[cfg(test)]

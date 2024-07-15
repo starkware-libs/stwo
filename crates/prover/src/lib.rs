@@ -9,6 +9,7 @@
     stdsimd,
     get_many_mut,
     int_roundings,
+    slice_first_last_chunk,
     slice_flatten,
     assert_matches,
     portable_simd
