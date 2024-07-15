@@ -50,7 +50,9 @@ mod tests {
     use crate::examples::xor::eq_evals;
     use crate::examples::xor::eq_evals::constraints::PointMeta;
     use crate::examples::xor::mle_eval::{mle_eval_check, EqEvalsMaskAt, EqEvalsMaskIs};
-    use crate::examples::xor::prefix_sum::{prefix_sum, PrefixSumMaskAt, PrefixSumMaskIs};
+    use crate::examples::xor::prefix_sum::{
+        inclusive_prefix_sum, PrefixSumMaskAt, PrefixSumMaskIs,
+    };
 
     const EVAL_TRACE: usize = 0;
     const CONST_TRACE: usize = 1;
@@ -118,7 +120,7 @@ mod tests {
         let mle_terms_coset_order =
             circle_domain_order_to_coset_order(&mle_terms_circle_domain_order);
 
-        let mle_terms_prefix_sum_coset_order = prefix_sum(&mle_terms_coset_order);
+        let mle_terms_prefix_sum_coset_order = inclusive_prefix_sum(&mle_terms_coset_order);
         let mle_terms_prefix_sum_circle_domain_order =
             coset_order_to_circle_domain_order(&mle_terms_prefix_sum_coset_order);
         let mut mle_terms_prefix_sum = mle_terms_prefix_sum_circle_domain_order;

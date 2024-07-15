@@ -80,6 +80,10 @@ name = "fri"
 harness = false
 
 [[bench]]
+name = "prefix_sum"
+harness = false
+
+[[bench]]
 name = "eval_at_point"
 harness = false
 

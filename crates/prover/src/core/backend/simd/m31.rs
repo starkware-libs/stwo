@@ -28,7 +28,7 @@ pub type PackedBaseField = PackedM31;
 // TODO: Remove `pub` visibility
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
-pub struct PackedM31(Simd<u32, N_LANES>);
+pub struct PackedM31(pub Simd<u32, N_LANES>);
 
 impl PackedM31 {
     /// Constructs a new instance with all vector elements set to `value`.
@@ -59,6 +59,10 @@ impl PackedM31 {
     pub fn deinterleave(self, other: Self) -> (Self, Self) {
         let (a, b) = self.0.deinterleave(other.0);
         (Self(a), Self(b))
+    }
+
+    pub fn reverse(self) -> Self {
+        Self(self.0.reverse())
     }
 
     /// Sums all the elements in the vector.
