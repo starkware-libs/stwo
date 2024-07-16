@@ -446,6 +446,7 @@ mod tests {
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
+    use crate::core::prover::StarkProof;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::examples::poseidon::{
@@ -529,6 +530,56 @@ mod tests {
         let air = PoseidonAir { component };
         let proof = commit_and_prove::<SimdBackend>(&air, channel, trace).unwrap();
 
+        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+        commit_and_verify(proof, &air, channel).unwrap();
+    }
+
+
+    #[test_log::test]
+    fn test_simd_poseidon_prove_with_serde() {
+        // Note: To see time measurement, run test with
+        //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="
+        //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=3" cargo test
+        //   test_simd_poseidon_prove -- --nocapture
+
+        // Get from environment variable:
+        let log_n_instances = env::var("LOG_N_INSTANCES")
+            .unwrap_or_else(|_| "10".to_string())
+            .parse::<u32>()
+            .unwrap();
+        let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
+        let component = PoseidonComponent { log_n_rows };
+        let span = span!(Level::INFO, "Trace generation").entered();
+        let trace = gen_trace(component.log_column_size());
+        span.exit();
+
+        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+        let air = PoseidonAir { component };
+        let proof = commit_and_prove::<SimdBackend>(&air, channel, trace).unwrap();
+
+        // Deserialize & Serialize test
+        let serialize= serde_json::to_string(&proof).unwrap();
+        let deserialized:StarkProof= serde_json::from_str(&serialize).unwrap();
+
+        // Commitments
+        assert_eq!(proof.commitments.0, deserialized.commitments.0);
+        assert_eq!(deserialized.commitments[0], proof.commitments[0]);
+        // Lookup values
+        assert_eq!(deserialized.lookup_values.0, proof.lookup_values.0, "error lookup values");
+        // Commitment scheme proof => Last layer poly
+       
+        assert_eq!(proof.commitment_scheme_proof.fri_proof.last_layer_poly, deserialized.commitment_scheme_proof.fri_proof.last_layer_poly);
+        // Commitment scheme proof
+        // Last Queried values
+    
+        assert_eq!(proof.commitment_scheme_proof.queried_values.0, proof.commitment_scheme_proof.queried_values.0);
+        // Proof of work Nonce
+        assert_eq!(proof.commitment_scheme_proof.proof_of_work.nonce, deserialized.commitment_scheme_proof.proof_of_work.nonce);
+        // Decommitments
+        assert_eq!(proof.commitment_scheme_proof.decommitments[0], deserialized.commitment_scheme_proof.decommitments[0]);
+        // Sampled values
+        assert_eq!(proof.commitment_scheme_proof.sampled_values.0, deserialized.commitment_scheme_proof.sampled_values.0);
+        
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         commit_and_verify(proof, &air, channel).unwrap();
     }
