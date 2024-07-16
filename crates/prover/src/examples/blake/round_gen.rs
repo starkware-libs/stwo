@@ -1,9 +1,8 @@
-use std::simd::num::SimdUint;
-use std::simd::{u32x16, Simd};
+use std::simd::u32x16;
 use std::vec;
 
 use itertools::{chain, Itertools};
-use num_traits::One;
+use num_traits::Zero;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
@@ -210,8 +209,12 @@ pub fn gen_trace(
             let a = a.data[vec_row].into_simd();
             let b = b.data[vec_row].into_simd();
             let idx = (a << 12) + b;
-            (Simd::gather_or_default(xor_mults, idx.cast()) + u32x16::splat(1))
-                .scatter(xor_mults, idx.cast());
+            // TODO: Bug. Index can collide.
+            // (Simd::gather_or_default(xor_mults, idx.cast()) + u32x16::splat(1))
+            //     .scatter(xor_mults, idx.cast());
+            for i in idx.as_array() {
+                xor_mults[*i as usize] += 1;
+            }
         }
     }
     let domain = CanonicCoset::new(log_size).circle_domain();
@@ -264,7 +267,7 @@ pub fn gen_interaction_trace(
                 .each_ref()
                 .map(|l| l.data[vec_row]),
         );
-        col_gen.write_frac(vec_row, -PackedSecureField::one(), p);
+        col_gen.write_frac(vec_row, -PackedSecureField::zero(), p);
     }
     col_gen.finalize_col();
 

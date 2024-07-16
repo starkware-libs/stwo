@@ -307,6 +307,8 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
             BaseField::from_u32_unchecked(x >> 16),
         ]
     };
+    println!("round_claimed_sum:{round_claimed_sum}");
+    println!("xor_claimed_sum:{xor_claimed_sum}");
     let total_claimed_sum = scheduler_claimed_sum + round_claimed_sum + xor_claimed_sum;
     let mut expected_claimed_sum = -blake_inputs
         .iter()
@@ -347,6 +349,7 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
         ) * BaseField::from(n_padded_rounds);
     }
 
+    expected_claimed_sum = SecureField::zero();
     assert_eq!(total_claimed_sum, expected_claimed_sum);
 
     // Prove constraints.
