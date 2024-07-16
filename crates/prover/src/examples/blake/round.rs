@@ -2,24 +2,20 @@ use num_traits::Zero;
 use tracing::{span, Level};
 
 use super::round_constraints::BlakeRoundEval;
+use super::DomainEvalHelper;
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::{DomainEvaluator, EvalAtRow, InfoEvaluator, PointEvaluator};
-use crate::core::air::accumulation::{
-    ColumnAccumulator, DomainEvaluationAccumulator, PointEvaluationAccumulator,
-};
+use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, ComponentTrace};
-use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::LOG_N_LANES;
-use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Column, ColumnOps};
-use crate::core::circle::{CirclePoint, Coset};
+use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{FieldExpOps, FieldOps};
+use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+use crate::core::poly::circle::CanonicCoset;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 
 pub fn blake_round_info() -> InfoEvaluator {
@@ -42,8 +38,7 @@ pub struct BlakeRoundComponent {
 }
 impl Component for BlakeRoundComponent {
     fn n_constraints(&self) -> usize {
-        let counter = blake_round_info();
-        counter.n_constraints
+        blake_round_info().n_constraints
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
@@ -115,6 +110,8 @@ impl ComponentProver<SimdBackend> for BlakeRoundComponent {
         _lookup_values: &LookupValues,
     ) {
         let mut domain_eval = DomainEvalHelper::new(
+            self.log_size,
+            self.log_size + 1,
             trace,
             evaluation_accumulator,
             self.max_constraint_log_degree_bound(),
@@ -147,61 +144,5 @@ impl ComponentProver<SimdBackend> for BlakeRoundComponent {
 
     fn lookup_values(&self, _trace: &ComponentTrace<'_, SimdBackend>) -> LookupValues {
         LookupValues::default()
-    }
-}
-
-struct DomainEvalHelper<'a> {
-    eval_domain: CircleDomain,
-    trace_domain: Coset,
-    trace: &'a ComponentTrace<'a, SimdBackend>,
-    denom_inv: BaseFieldVec,
-    accum: ColumnAccumulator<'a, SimdBackend>,
-}
-impl<'a> DomainEvalHelper<'a> {
-    fn new(
-        trace: &'a ComponentTrace<'a, SimdBackend>,
-        evaluation_accumulator: &'a mut DomainEvaluationAccumulator<SimdBackend>,
-        constraint_log_degree_bound: u32,
-        n_constraints: usize,
-    ) -> Self {
-        let log_eval_domain_size = trace.evals[0][0].domain.log_size();
-        assert_eq!(
-            log_eval_domain_size, constraint_log_degree_bound,
-            "Extension not yet supported in generic evaluator"
-        );
-        let eval_domain = trace.evals[0][0].domain;
-        let row_log_size = trace.polys[0][0].log_size();
-
-        // Denoms.
-        let trace_domain = CanonicCoset::new(row_log_size).coset;
-        let span = span!(Level::INFO, "Constraint eval denominators").entered();
-
-        let mut denoms =
-            BaseFieldVec::from_iter(eval_domain.iter().map(|p| coset_vanishing(trace_domain, p)));
-        <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
-        let mut denom_inv = BaseFieldVec::zeros(denoms.len());
-        <SimdBackend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inv);
-
-        span.exit();
-
-        let [mut accum] =
-            evaluation_accumulator.columns([(constraint_log_degree_bound, n_constraints)]);
-        accum.random_coeff_powers.reverse();
-
-        Self {
-            eval_domain,
-            trace_domain,
-            trace,
-            denom_inv,
-            accum,
-        }
-    }
-    fn finalize_row(&mut self, vec_row: usize, row_res: PackedSecureField) {
-        unsafe {
-            self.accum.col.set_packed(
-                vec_row,
-                self.accum.col.packed_at(vec_row) + row_res * self.denom_inv.data[vec_row],
-            )
-        }
     }
 }

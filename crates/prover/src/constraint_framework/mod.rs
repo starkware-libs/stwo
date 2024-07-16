@@ -17,7 +17,6 @@ pub use simd_domain::SimdDomainEvaluator;
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::fields::FieldExpOps;
 
 /// A trait for evaluating expressions at some point or row.
@@ -29,6 +28,7 @@ pub trait EvalAtRow {
     type F: FieldExpOps
         + Copy
         + Debug
+        + Neg<Output = Self::F>
         + AddAssign<Self::F>
         + AddAssign<BaseField>
         + Add<Self::F, Output = Self::F>
@@ -57,11 +57,10 @@ pub trait EvalAtRow {
 
     /// Returns the next mask value for the first interaction at offset 0.
     fn next_trace_mask(&mut self) -> Self::F {
-        let [mask_item] = self.next_interaction_mask(0, [0]);
-        mask_item
+        self.next_interaction_mask(0, [0])[0]
     }
 
-    /// Returns the mask values of the given offsets for the next column in the interaction.
+    /// Returns the next mask values for a given interaction.
     fn next_interaction_mask<const N: usize>(
         &mut self,
         interaction: usize,
@@ -74,5 +73,5 @@ pub trait EvalAtRow {
         Self::EF: Mul<G, Output = Self::EF>;
 
     /// Combines 4 base field values into a single extension field value.
-    fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF;
+    fn combine_ef(values: [Self::F; 4]) -> Self::EF;
 }

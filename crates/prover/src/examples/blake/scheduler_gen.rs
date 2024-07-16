@@ -118,7 +118,7 @@ pub fn gen_interaction_trace(
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     SecureField,
 ) {
-    let _span = span!(Level::INFO, "Generate interaction trace").entered();
+    let _span = span!(Level::INFO, "Generate scheduler interaction trace").entered();
 
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 

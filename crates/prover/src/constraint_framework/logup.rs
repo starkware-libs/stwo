@@ -9,7 +9,7 @@ use crate::core::backend::simd::column::SecureFieldVec;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Backend, Column};
+use crate::core::backend::Column;
 use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -226,8 +226,7 @@ impl<'a> LogupColGenerator<'a> {
     }
 }
 
-// TODO(spapini): Consider adding optional Ops.
-pub fn eval_order_prefix_sum<B: Backend>(col: &mut SecureColumn<B>, log_size: u32) -> SecureField {
+pub fn eval_order_prefix_sum(col: &mut SecureColumn<SimdBackend>, log_size: u32) -> SecureField {
     let _span = span!(Level::INFO, "Prefix sum").entered();
 
     let mut cur = SecureField::zero();

@@ -5,7 +5,7 @@ use itertools::{izip, Itertools};
 use num_traits::Zero;
 
 use super::cm31::PackedCM31;
-use super::m31::{PackedBaseField, N_LANES};
+use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::{PackedQM31, PackedSecureField};
 use super::SimdBackend;
 use crate::core::backend::{Column, CpuBackend};
@@ -35,6 +35,10 @@ pub struct BaseFieldVec {
 }
 
 impl BaseFieldVec {
+    pub fn new(data: Vec<PackedBaseField>) -> Self {
+        let length = data.len() << LOG_N_LANES;
+        Self { data, length }
+    }
     /// Extracts a slice containing the entire vector of [`BaseField`]s.
     pub fn as_slice(&self) -> &[BaseField] {
         &cast_slice(&self.data)[..self.length]

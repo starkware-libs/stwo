@@ -81,6 +81,19 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     // Get mask sample points relative to oods point.
     let sample_points = air.mask_points(oods_point);
 
+    println!(
+        "Trace sizes: {:?}",
+        commitment_scheme
+            .trees
+            .iter()
+            .map(|t| t.polynomials.len())
+            .collect_vec()
+    );
+    println!(
+        "Mask sizes: {:?}",
+        sample_points.as_cols_ref().map(|x| x.len())
+    );
+
     // Prove the trace and composition OODS values, and retrieve them.
     let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel, twiddles);
 
