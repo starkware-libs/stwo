@@ -1,7 +1,4 @@
 #![allow(warnings)]
-
-
-
 #![feature(
     array_chunks,
     iter_array_chunks,

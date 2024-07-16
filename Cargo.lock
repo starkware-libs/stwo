@@ -155,7 +155,7 @@ dependencies = [
  "bitflags 2.6.0",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "lazy_static",
  "lazycell",
  "log",
@@ -690,6 +690,7 @@ dependencies = [
 [[package]]
 name = "icicle-core"
 version = "2.7.1"
+source = "git+https://github.com/ingonyama-zk/icicle.git#ea71faf1fa1e4095f7d2b77aa88d3562aeaf103b"
 dependencies = [
  "criterion 0.3.6",
  "hex",
@@ -700,6 +701,7 @@ dependencies = [
 [[package]]
 name = "icicle-cuda-runtime"
 version = "2.7.1"
+source = "git+https://github.com/ingonyama-zk/icicle.git#ea71faf1fa1e4095f7d2b77aa88d3562aeaf103b"
 dependencies = [
  "bindgen",
  "bitflags 1.3.2",
@@ -708,6 +710,7 @@ dependencies = [
 [[package]]
 name = "icicle-m31"
 version = "2.7.1"
+source = "git+https://github.com/ingonyama-zk/icicle.git#ea71faf1fa1e4095f7d2b77aa88d3562aeaf103b"
 dependencies = [
  "cmake",
  "icicle-core",
