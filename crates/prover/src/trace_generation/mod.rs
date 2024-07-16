@@ -1,6 +1,8 @@
+mod prove;
 pub mod registry;
 
 use downcast_rs::{impl_downcast, Downcast};
+pub use prove::{commit_and_prove, commit_and_verify};
 use registry::ComponentGenerationRegistry;
 
 use crate::core::air::{AirProver, Component};
@@ -10,6 +12,9 @@ use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
 use crate::core::{ColumnVec, InteractionElements};
+
+pub const BASE_TRACE: usize = 0;
+pub const INTERACTION_TRACE: usize = 1;
 
 pub trait ComponentGen: Downcast {}
 impl_downcast!(ComponentGen);

@@ -121,6 +121,14 @@ pub(crate) fn coset_order_to_circle_domain_order(values: &[BaseField]) -> Vec<Ba
     circle_domain_order
 }
 
+pub fn coset_order_to_circle_domain_order_index(index: usize, log_size: u32) -> usize {
+    if index & 1 == 0 {
+        index / 2
+    } else {
+        (1 << log_size) - (index + 1) / 2
+    }
+}
+
 /// Performs a naive bit-reversal permutation inplace.
 ///
 /// # Panics

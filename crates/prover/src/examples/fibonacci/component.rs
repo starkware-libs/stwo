@@ -14,11 +14,10 @@ use crate::core::fields::{ExtensionOf, FieldExpOps};
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::BASE_TRACE;
 use crate::core::utils::bit_reverse_index;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::trace_generation::registry::ComponentGenerationRegistry;
-use crate::trace_generation::{ComponentGen, ComponentTraceGenerator};
+use crate::trace_generation::{ComponentGen, ComponentTraceGenerator, BASE_TRACE};
 
 #[derive(Clone)]
 pub struct FibonacciComponent {
