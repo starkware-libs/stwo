@@ -1,7 +1,7 @@
-use std::iter::zip;
+use std::iter::{zip, Sum};
 use std::ops::{Add, Deref, Mul, Neg, Sub};
 
-use num_traits::Zero;
+use num_traits::{One, Zero};
 
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
@@ -192,6 +192,57 @@ where
     SecureField: ExtensionOf<F>,
 {
     assignment * (eval1 - eval0) + eval0
+}
+
+/// Projective fraction.
+#[derive(Debug, Clone, Copy)]
+pub struct Fraction<F> {
+    pub numerator: F,
+    pub denominator: SecureField,
+}
+
+impl<F> Fraction<F> {
+    pub fn new(numerator: F, denominator: SecureField) -> Self {
+        Self {
+            numerator,
+            denominator,
+        }
+    }
+}
+
+impl<F> Add for Fraction<F>
+where
+    F: Field,
+    SecureField: ExtensionOf<F> + Field,
+{
+    type Output = Fraction<SecureField>;
+
+    fn add(self, rhs: Self) -> Fraction<SecureField> {
+        Fraction {
+            numerator: rhs.denominator * self.numerator + self.denominator * rhs.numerator,
+            denominator: self.denominator * rhs.denominator,
+        }
+    }
+}
+
+impl Zero for Fraction<SecureField> {
+    fn zero() -> Self {
+        Self {
+            numerator: SecureField::zero(),
+            denominator: SecureField::one(),
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.numerator.is_zero() && !self.denominator.is_zero()
+    }
+}
+
+impl Sum for Fraction<SecureField> {
+    fn sum<I: Iterator<Item = Self>>(mut iter: I) -> Self {
+        let first = iter.next().unwrap_or_else(Self::zero);
+        iter.fold(first, |a, b| a + b)
+    }
 }
 
 #[cfg(test)]
