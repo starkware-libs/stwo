@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut, Index};
 
 use fields::m31::BaseField;
+use serde::{Deserialize, Serialize};
 
 use self::fields::qm31::SecureField;
 
@@ -85,7 +86,7 @@ impl Index<&str> for InteractionElements {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct LookupValues(pub BTreeMap<String, BaseField>);
 
 impl LookupValues {

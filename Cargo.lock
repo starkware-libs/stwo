@@ -965,6 +965,8 @@ dependencies = [
  "num-traits",
  "rand",
  "rayon",
+ "serde",
+ "serde_json",
  "starknet-crypto",
  "starknet-ff",
  "test-log",

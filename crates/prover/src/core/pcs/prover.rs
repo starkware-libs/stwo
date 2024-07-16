@@ -25,6 +25,7 @@ use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
+use serde::{Serialize, Deserialize};
 
 type MerkleHasher = Blake2sMerkleHasher;
 type ProofChannel = Blake2sChannel;
@@ -149,7 +150,7 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CommitmentSchemeProof {
     pub sampled_values: TreeVec<ColumnVec<Vec<SecureField>>>,
     pub decommitments: TreeVec<MerkleDecommitment<MerkleHasher>>,

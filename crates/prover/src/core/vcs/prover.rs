@@ -203,7 +203,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     }
 }
 
-#[derive(Debug, Educe)]
+#[derive(Debug, Serialize, Deserialize)]
 #[educe(Clone)]
 pub struct MerkleDecommitment<H: MerkleHasher> {
     /// Hash values that the verifier needs but cannot deduce from previous computations, in the

@@ -1,5 +1,6 @@
 use thiserror::Error;
 use tracing::{span, Level};
+use serde::{Serialize, Deserialize};
 
 use super::channel::Blake2sChannel;
 use crate::core::channel::Channel;
@@ -12,7 +13,7 @@ pub struct ProofOfWork {
     pub n_bits: u32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProofOfWorkProof {
     pub nonce: u64,
 }
