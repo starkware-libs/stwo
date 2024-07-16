@@ -117,11 +117,6 @@ impl ComponentProver<SimdBackend> for TableComponent {
         _interaction_elements: &InteractionElements,
         _lookup_values: &LookupValues,
     ) {
-        println!("Trace: {:?}", trace.evals.as_ref().map(|x| x.len()));
-        println!(
-            "Expected: {:?}",
-            self.trace_log_degree_bounds().map(|x| x.len())
-        );
         let mut domain_eval = DomainEvalHelper::new(
             self.log_size,
             self.log_size + 1,
@@ -254,11 +249,6 @@ pub fn gen_interaction_trace(
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     SecureField,
 ) {
-    println!(
-        "xor lookup_data: {:?}x{:?}",
-        lookup_data.inputs.len(),
-        lookup_data.inputs[0].len()
-    );
     let _span = span!(Level::INFO, "Generate table trace").entered();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
     for [(inputs0, mults0), (inputs1, mults1)] in lookup_data

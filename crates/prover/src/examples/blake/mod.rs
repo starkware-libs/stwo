@@ -4,7 +4,9 @@ use std::simd::u32x16;
 
 use bytemuck::cast_slice_mut;
 use itertools::{chain, multizip, Itertools};
+use num_traits::Zero;
 use round::BlakeRoundComponent;
+use round_gen::BlakeRoundInput;
 use scheduler::BlakeSchedulerComponent;
 use scheduler_gen::BlakeInput;
 use table::TableComponent;
@@ -15,7 +17,7 @@ use crate::constraint_framework::logup::LookupElements;
 use crate::core::air::accumulation::{ColumnAccumulator, DomainEvaluationAccumulator};
 use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
 use crate::core::backend::simd::column::BaseFieldVec;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Column, ColumnOps};
@@ -23,11 +25,13 @@ use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::circle::Coset;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, FieldOps, IntoSlice};
 use crate::core::pcs::CommitmentSchemeProver;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PolyOps};
 use crate::core::prover::{prove_without_commit, StarkProof, LOG_BLOWUP_FACTOR};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
+use crate::core::vcs::blake2s_ref;
 use crate::core::vcs::hasher::Hasher;
 use crate::core::InteractionElements;
 
@@ -202,7 +206,6 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
     let span = span!(Level::INFO, "Table Interaction Generation").entered();
     let (xor_trace, xor_claimed_sum) =
         table::gen_interaction_trace(XOR_LOG_SIZE, xor_lookup_data, &xor_lookup_elements);
-    println!("xor interaction trace: {:?}", xor_trace.len());
     let round_trace1 = round_trace.clone();
 
     span.exit();
@@ -296,6 +299,55 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
     //         .eval();
     //     },
     // );
+
+    // Check claimed sum.
+    let to_felts = |x: u32| {
+        [
+            BaseField::from_u32_unchecked(x & 0xffff),
+            BaseField::from_u32_unchecked(x >> 16),
+        ]
+    };
+    let total_claimed_sum = scheduler_claimed_sum + round_claimed_sum + xor_claimed_sum;
+    let mut expected_claimed_sum = -blake_inputs
+        .iter()
+        .flat_map(|inp| {
+            (0..N_LANES).map(|i| {
+                let v0 = inp.v.each_ref().map(|x| x[i]);
+                let m = inp.m.each_ref().map(|x| x[i]);
+                let mut v = v0;
+                for r in 0..N_ROUNDS {
+                    blake2s_ref::round(&mut v, m, r);
+                }
+                blake_lookup_elements.combine::<BaseField, SecureField>(
+                    &chain![
+                        v0.into_iter().flat_map(to_felts),
+                        v.into_iter().flat_map(to_felts),
+                        m.into_iter().flat_map(to_felts),
+                    ]
+                    .collect_vec(),
+                )
+            })
+        })
+        .fold(SecureField::zero(), |acc, x| acc + x);
+    // Add round padding.
+    {
+        let padded_input = BlakeRoundInput::default();
+        let n_padded_rounds = (1 << (log_size + 3)) - N_ROUNDS * (1 << log_size);
+        let v0 = [0; 16];
+        let m = [0; 16];
+        let mut v = v0;
+        blake2s_ref::round(&mut v, m, 0);
+        expected_claimed_sum += -round_lookup_elements.combine::<BaseField, SecureField>(
+            &chain![
+                v0.into_iter().flat_map(to_felts),
+                v.into_iter().flat_map(to_felts),
+                m.into_iter().flat_map(to_felts),
+            ]
+            .collect_vec(),
+        ) * BaseField::from(n_padded_rounds);
+    }
+
+    assert_eq!(total_claimed_sum, expected_claimed_sum);
 
     // Prove constraints.
     let scheduler_component = BlakeSchedulerComponent {

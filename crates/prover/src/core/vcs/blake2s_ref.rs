@@ -49,7 +49,7 @@ fn rot7(x: u32) -> u32 {
 }
 
 #[inline(always)]
-fn round(v: &mut [u32; 16], m: [u32; 16], r: usize) {
+pub fn round(v: &mut [u32; 16], m: [u32; 16], r: usize) {
     v[0] = add(v[0], m[SIGMA[r][0] as usize]);
     v[1] = add(v[1], m[SIGMA[r][2] as usize]);
     v[2] = add(v[2], m[SIGMA[r][4] as usize]);
