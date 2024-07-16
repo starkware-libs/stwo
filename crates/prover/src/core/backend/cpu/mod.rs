@@ -7,13 +7,15 @@ pub mod quotients;
 
 use std::fmt::Debug;
 
+use serde::{Deserialize, Serialize};
+
 use super::{Backend, Column, ColumnOps, FieldOps};
 use crate::core::fields::Field;
 use crate::core::lookups::mle::Mle;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::utils::bit_reverse;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct CpuBackend;
 
 impl Backend for CpuBackend {}

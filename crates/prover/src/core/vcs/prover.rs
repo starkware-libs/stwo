@@ -1,7 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
-use educe::Educe;
+use serde::{Deserialize, Serialize};
 use itertools::Itertools;
 
 use super::ops::{MerkleHasher, MerkleOps};
@@ -203,8 +203,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[educe(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MerkleDecommitment<H: MerkleHasher> {
     /// Hash values that the verifier needs but cannot deduce from previous computations, in the
     /// order they are needed.
