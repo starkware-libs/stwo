@@ -29,16 +29,15 @@ impl<E: EvalAtRow> PrefixSumMask<E> {
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use num_traits::One;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
     use test_log::test;
 
     use super::inclusive_prefix_sum_check;
+    use crate::constraint_framework::constant_columns::gen_is_first;
     use crate::constraint_framework::{assert_constraints, EvalAtRow};
     use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
     use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::{Col, Column};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::secure_column::SecureColumn;
@@ -117,10 +116,6 @@ mod tests {
     fn gen_constants_trace(
         log_size: u32,
     ) -> Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-        let trace_domain = CanonicCoset::new(log_size).circle_domain();
-        // Column is `1` at the first trace point and `0` on all other trace points.
-        let mut is_first = Col::<SimdBackend, BaseField>::zeros(1 << log_size);
-        is_first.as_mut_slice()[0] = BaseField::one();
-        vec![CircleEvaluation::new(trace_domain, is_first)]
+        vec![gen_is_first(log_size)]
     }
 }
