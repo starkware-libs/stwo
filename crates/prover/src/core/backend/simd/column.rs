@@ -1,4 +1,4 @@
-use std::mem;
+use std::{array, mem};
 
 use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
 use itertools::{izip, Itertools};
@@ -11,7 +11,7 @@ use super::SimdBackend;
 use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
+use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::{FieldExpOps, FieldOps};
 
 impl FieldOps<BaseField> for SimdBackend {
@@ -99,6 +99,31 @@ pub struct SecureFieldVec {
     pub data: Vec<PackedSecureField>,
     /// The number of [`SecureField`]s in the vector.
     pub length: usize,
+}
+
+impl SecureFieldVec {
+    pub fn into_secure_column(self) -> SecureColumn<SimdBackend> {
+        if self.len() < N_LANES {
+            return self.to_cpu().into_iter().collect();
+        }
+
+        let length = self.length;
+        let packed_length = self.data.len();
+        let mut columns: [Vec<PackedBaseField>; SECURE_EXTENSION_DEGREE] =
+            array::from_fn(|_| Vec::with_capacity(packed_length));
+
+        for v in self.data {
+            let [v0, v1, v2, v3] = v.into_packed_m31s();
+            columns[0].push(v0);
+            columns[1].push(v1);
+            columns[2].push(v2);
+            columns[3].push(v3);
+        }
+
+        SecureColumn {
+            columns: columns.map(|col| BaseFieldVec { data: col, length }),
+        }
+    }
 }
 
 impl Column<SecureField> for SecureFieldVec {
