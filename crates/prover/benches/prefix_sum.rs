@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use stwo_prover::core::backend::simd::column::BaseFieldVec;
-use stwo_prover::core::backend::simd::prefix_sum::inclusive_prefix_sum_simd;
+use stwo_prover::core::backend::simd::prefix_sum::inclusive_prefix_sum;
 use stwo_prover::core::fields::m31::BaseField;
 
 pub fn simd_prefix_sum_bench(c: &mut Criterion) {
@@ -9,7 +9,7 @@ pub fn simd_prefix_sum_bench(c: &mut Criterion) {
     c.bench_function(&format!("simd prefix_sum 2^{LOG_SIZE}"), |b| {
         b.iter_batched(
             || evals.clone(),
-            inclusive_prefix_sum_simd,
+            inclusive_prefix_sum,
             BatchSize::LargeInput,
         );
     });
