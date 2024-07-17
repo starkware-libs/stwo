@@ -121,11 +121,15 @@ pub(crate) fn coset_order_to_circle_domain_order<F: Field>(values: &[F]) -> Vec<
     circle_domain_order
 }
 
-pub fn coset_order_to_circle_domain_order_index(index: usize, log_size: u32) -> usize {
-    if index & 1 == 0 {
-        index / 2
+/// Converts an index within a [`Coset`] to the corresponding index in a [`CircleDomain`].
+///
+/// [`CircleDomain`]: crate::core::poly::circle::CircleDomain
+/// [`Coset`]: crate::core::circle::Coset
+pub fn coset_index_to_circle_domain_index(coset_index: usize, log_domain_size: u32) -> usize {
+    if coset_index % 2 == 0 {
+        coset_index / 2
     } else {
-        (1 << log_size) - (index + 1) / 2
+        ((2 << log_domain_size) - coset_index) / 2
     }
 }
 

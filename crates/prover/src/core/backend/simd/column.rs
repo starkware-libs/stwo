@@ -1,4 +1,5 @@
-use std::mem;
+use std::iter::zip;
+use std::{array, mem};
 
 use bytemuck::allocation::cast_vec;
 use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
@@ -215,6 +216,29 @@ pub struct SecureColumn {
     pub length: usize,
 }
 
+impl SecureColumn {
+    // Separates a single column of `PackedSecureField` elements into `SECURE_EXTENSION_DEGREE` many
+    // `PackedBaseField` coordinate columns.
+    pub fn into_secure_column(self) -> SecureColumnByCoords<SimdBackend> {
+        if self.len() < N_LANES {
+            return self.to_cpu().into_iter().collect();
+        }
+
+        let length = self.length;
+        let packed_length = self.data.len();
+        let mut columns = array::from_fn(|_| Vec::with_capacity(packed_length));
+
+        for v in self.data {
+            let packed_coords = v.into_packed_m31s();
+            zip(&mut columns, packed_coords).for_each(|(col, packed_coord)| col.push(packed_coord));
+        }
+
+        SecureColumnByCoords {
+            columns: columns.map(|col| BaseColumn { data: col, length }),
+        }
+    }
+}
+
 impl Column<SecureField> for SecureColumn {
     fn zeros(length: usize) -> Self {
         Self {
@@ -276,9 +300,8 @@ impl FromIterator<SecureField> for SecureColumn {
 
 impl FromIterator<PackedSecureField> for SecureColumn {
     fn from_iter<I: IntoIterator<Item = PackedSecureField>>(iter: I) -> Self {
-        let data = (&mut iter.into_iter()).collect_vec();
+        let data = iter.into_iter().collect_vec();
         let length = data.len() * N_LANES;
-
         Self { data, length }
     }
 }
