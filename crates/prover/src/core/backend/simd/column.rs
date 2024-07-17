@@ -102,6 +102,8 @@ pub struct SecureFieldVec {
 }
 
 impl SecureFieldVec {
+    // Separates a single column of `PackedSecureField` elements into `SECURE_EXTENSION_DEGREE` many
+    // `PackedBaseField` coordinate columns.
     pub fn into_secure_column(self) -> SecureColumn<SimdBackend> {
         if self.len() < N_LANES {
             return self.to_cpu().into_iter().collect();
