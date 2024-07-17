@@ -4,7 +4,7 @@ use tracing::{span, Level};
 
 use super::DomainEvalHelper;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
-use crate::constraint_framework::{DomainEvaluator, EvalAtRow, InfoEvaluator, PointEvaluator};
+use crate::constraint_framework::{EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, ComponentTrace};
 use crate::core::backend::simd::column::BaseFieldVec;
@@ -50,10 +50,6 @@ impl Component for TableComponent {
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
         self.log_size + 1
-    }
-
-    fn n_interaction_phases(&self) -> u32 {
-        1
     }
 
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
@@ -129,7 +125,7 @@ impl ComponentProver<SimdBackend> for TableComponent {
         // TODO:
         let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
         for vec_row in 0..(1 << (domain_eval.eval_domain.log_size() - LOG_N_LANES)) {
-            let mut eval = DomainEvaluator::new(
+            let mut eval = SimdDomainEvaluator::new(
                 &domain_eval.trace.evals,
                 vec_row,
                 &domain_eval.accum.random_coeff_powers,

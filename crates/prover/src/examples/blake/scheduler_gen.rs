@@ -154,7 +154,7 @@ pub fn gen_interaction_trace(
                 .each_ref()
                 .map(|l| l.data[vec_row]),
         );
-        col_gen.write_frac(vec_row, p1, p0 * p1);
+        col_gen.write_frac(vec_row, p1 - p0, p0 * p1);
     }
     col_gen.finalize_col();
 

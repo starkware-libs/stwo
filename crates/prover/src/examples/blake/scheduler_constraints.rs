@@ -44,7 +44,7 @@ impl<'a, E: EvalAtRow> BlakeSchedulerEval<'a, E> {
         // TODO: support multiplicities.
         self.logup.push_lookup(
             &mut self.eval,
-            E::EF::one() - E::EF::one(),
+            -E::EF::one(),
             &chain![
                 input_state.iter().copied().flat_map(Fu32::to_felts),
                 output_state.iter().copied().flat_map(Fu32::to_felts),

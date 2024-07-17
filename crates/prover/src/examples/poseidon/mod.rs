@@ -573,6 +573,7 @@ pub fn prove_poseidon(log_n_instances: u32) -> (PoseidonAir, StarkProof) {
     let span = span!(Level::INFO, "Interaction").entered();
     let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, lookup_data, &lookup_elements);
     commitment_scheme.commit_on_evals(trace, channel, &twiddles);
+    span.exit();
 
     // Constant trace.
     let span = span!(Level::INFO, "Constant").entered();

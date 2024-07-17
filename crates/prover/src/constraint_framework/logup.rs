@@ -7,6 +7,7 @@ use tracing::{span, Level};
 use super::EvalAtRow;
 use crate::core::backend::simd::column::SecureFieldVec;
 use crate::core::backend::simd::m31::LOG_N_LANES;
+use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum_simd;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Column;
@@ -174,7 +175,16 @@ impl LogupTraceGenerator {
         ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         SecureField,
     ) {
-        let claimed_xor_sum = eval_order_prefix_sum(self.trace.last_mut().unwrap(), self.log_size);
+        let prefix_sum_cols = self
+            .trace
+            .pop()
+            .unwrap()
+            .columns
+            .map(inclusive_prefix_sum_simd);
+        self.trace.push(SecureColumn {
+            columns: prefix_sum_cols,
+        });
+        let claimed_xor_sum = self.trace.last().unwrap().at(1);
 
         let trace = self
             .trace
