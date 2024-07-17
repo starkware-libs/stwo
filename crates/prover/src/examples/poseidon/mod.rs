@@ -448,7 +448,7 @@ mod tests {
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, TreeVec};
     use crate::core::poly::circle::{CanonicCoset, PolyOps};
-    use crate::core::prover::{prove, verify, LOG_BLOWUP_FACTOR};
+    use crate::core::prover::{prove, verify, StarkProof, LOG_BLOWUP_FACTOR};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::core::InteractionElements;
@@ -457,6 +457,7 @@ mod tests {
         PoseidonEval, LOG_EXPAND,
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
+    use crate::trace_generation::{commit_and_prove, commit_and_verify};
 
     #[test]
     fn test_apply_m4() {
