@@ -1,5 +1,5 @@
 use itertools::{chain, Itertools};
-use num_traits::{One, Zero};
+use num_traits::One;
 
 use super::Fu32;
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
@@ -30,8 +30,7 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
 
         self.logup.push_lookup(
             &mut self.eval,
-            -E::EF::zero(),
-            // -E::EF::one(),
+            -E::EF::one(),
             &chain![
                 input_v.iter().copied().flat_map(Fu32::to_felts),
                 v.iter().copied().flat_map(Fu32::to_felts),

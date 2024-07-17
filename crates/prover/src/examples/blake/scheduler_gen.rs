@@ -132,7 +132,7 @@ pub fn gen_interaction_trace(
             let p1: PackedSecureField =
                 round_lookup_elements.combine(&l1.each_ref().map(|l| l.data[vec_row]));
             #[allow(clippy::eq_op)]
-            col_gen.write_frac(vec_row, p0 - p0, p0 * p1);
+            col_gen.write_frac(vec_row, p0 + p1, p0 * p1);
         }
 
         col_gen.finalize_col();
@@ -154,8 +154,7 @@ pub fn gen_interaction_trace(
                 .each_ref()
                 .map(|l| l.data[vec_row]),
         );
-        #[allow(clippy::eq_op)]
-        col_gen.write_frac(vec_row, p1 - p1, p0 * p1);
+        col_gen.write_frac(vec_row, p1, p0 * p1);
     }
     col_gen.finalize_col();
 

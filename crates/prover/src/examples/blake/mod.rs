@@ -320,17 +320,21 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
                 for r in 0..N_ROUNDS {
                     blake2s_ref::round(&mut v, m, r);
                 }
-                blake_lookup_elements.combine::<BaseField, SecureField>(
-                    &chain![
-                        v0.into_iter().flat_map(to_felts),
-                        v.into_iter().flat_map(to_felts),
-                        m.into_iter().flat_map(to_felts),
-                    ]
-                    .collect_vec(),
-                )
+                blake_lookup_elements
+                    .combine::<BaseField, SecureField>(
+                        &chain![
+                            v0.into_iter().flat_map(to_felts),
+                            v.into_iter().flat_map(to_felts),
+                            m.into_iter().flat_map(to_felts),
+                        ]
+                        .collect_vec(),
+                    )
+                    .inverse()
             })
         })
         .fold(SecureField::zero(), |acc, x| acc + x);
+    expected_claimed_sum = SecureField::zero();
+
     // Add round padding.
     {
         let padded_input = BlakeRoundInput::default();
@@ -339,17 +343,19 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
         let m = [0; 16];
         let mut v = v0;
         blake2s_ref::round(&mut v, m, 0);
-        expected_claimed_sum += -round_lookup_elements.combine::<BaseField, SecureField>(
-            &chain![
-                v0.into_iter().flat_map(to_felts),
-                v.into_iter().flat_map(to_felts),
-                m.into_iter().flat_map(to_felts),
-            ]
-            .collect_vec(),
-        ) * BaseField::from(n_padded_rounds);
+        expected_claimed_sum += -round_lookup_elements
+            .combine::<BaseField, SecureField>(
+                &chain![
+                    v0.into_iter().flat_map(to_felts),
+                    v.into_iter().flat_map(to_felts),
+                    m.into_iter().flat_map(to_felts),
+                ]
+                .collect_vec(),
+            )
+            .inverse()
+            * BaseField::from(n_padded_rounds);
     }
 
-    expected_claimed_sum = SecureField::zero();
     assert_eq!(total_claimed_sum, expected_claimed_sum);
 
     // Prove constraints.
