@@ -3,6 +3,7 @@ mod blake2s;
 mod circle;
 mod fri;
 mod lookups;
+pub mod packed_field;
 pub mod quotients;
 
 use std::fmt::Debug;

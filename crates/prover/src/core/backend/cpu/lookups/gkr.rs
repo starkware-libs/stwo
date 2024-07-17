@@ -2,6 +2,7 @@ use std::ops::{Add, Index};
 
 use num_traits::{One, Zero};
 
+use crate::core::backend::cpu::packed_field::PackedField;
 use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -72,35 +73,40 @@ impl GkrOps for CpuBackend {
 /// Evaluates `sum_x eq(({0}^|r|, 0, x), y) * inp(r, t, x, 0) * inp(r, t, x, 1)` at `t=0` and `t=2`.
 ///
 /// Output of the form: `(eval_at_0, eval_at_2)`.
-fn eval_grand_product_sum(
-    eq_evals: &EqEvals<CpuBackend>,
-    input_layer: &Mle<CpuBackend, SecureField>,
-    n_terms: usize,
+fn eval_grand_product_sum<F: PackedField<Field = SecureField>>(
+    bit_rev_eq_evals: &[F],
+    bit_rev_inp_evals: &[F],
+    n_packed_terms: usize,
 ) -> (SecureField, SecureField) {
-    let mut eval_at_0 = SecureField::zero();
-    let mut eval_at_2 = SecureField::zero();
+    let mut packed_eval_at_0 = F::zero();
+    let mut packed_eval_at_2 = F::zero();
 
-    for i in 0..n_terms {
-        // Input polynomial at points `(r, {0, 1, 2}, bits(i), {0, 1})`.
-        let inp_at_r0i0 = input_layer[i * 2];
-        let inp_at_r0i1 = input_layer[i * 2 + 1];
-        let inp_at_r1i0 = input_layer[(n_terms + i) * 2];
-        let inp_at_r1i1 = input_layer[(n_terms + i) * 2 + 1];
+    for i in 0..n_packed_terms {
+        // Input polynomial at points `(r, {0, 1, 2}, bits(i), v, {0, 1})`
+        // for all `v` in `{0, 1}^LOG_N_PACKED_LANES`.
+        let (inp_at_r0iv0, inp_at_r0iv1) =
+            bit_rev_inp_evals[i * 2].deinterleave(bit_rev_inp_evals[i * 2 + 1]);
+        let (inp_at_r1iv0, inp_at_r1iv1) = bit_rev_inp_evals[(n_packed_terms + i) * 2]
+            .deinterleave(bit_rev_inp_evals[(n_packed_terms + i) * 2 + 1]);
         // Note `inp(r, t, x) = eq(t, 0) * inp(r, 0, x) + eq(t, 1) * inp(r, 1, x)`
         //   => `inp(r, 2, x) = 2 * inp(r, 1, x) - inp(r, 0, x)`
-        let inp_at_r2i0 = inp_at_r1i0.double() - inp_at_r0i0;
-        let inp_at_r2i1 = inp_at_r1i1.double() - inp_at_r0i1;
+        let inp_at_r2iv0 = inp_at_r1iv0.double() - inp_at_r0iv0;
+        let inp_at_r2iv1 = inp_at_r1iv1.double() - inp_at_r0iv1;
 
-        // Product polynomial `prod(x) = inp(x, 0) * inp(x, 1)` at points `(r, {0, 2}, bits(i))`.
-        let prod_at_r2i = inp_at_r2i0 * inp_at_r2i1;
-        let prod_at_r0i = inp_at_r0i0 * inp_at_r0i1;
+        // Product polynomial `prod(x) = inp(x, 0) * inp(x, 1)` at points `(r, {0, 2}, bits(i), v)`.
+        // for all `v` in `{0, 1}^LOG_N_PACKED_LANES`.
+        let prod_at_r2iv = inp_at_r2iv0 * inp_at_r2iv1;
+        let prod_at_r0iv = inp_at_r0iv0 * inp_at_r0iv1;
 
-        let eq_eval_at_0i = eq_evals[i];
-        eval_at_0 += eq_eval_at_0i * prod_at_r0i;
-        eval_at_2 += eq_eval_at_0i * prod_at_r2i;
+        let eq_eval_at_0iv = bit_rev_eq_evals[i];
+        packed_eval_at_0 += eq_eval_at_0iv * prod_at_r0iv;
+        packed_eval_at_2 += eq_eval_at_0iv * prod_at_r2iv;
     }
 
-    (eval_at_0, eval_at_2)
+    (
+        packed_eval_at_0.pointwise_sum(),
+        packed_eval_at_2.pointwise_sum(),
+    )
 }
 
 /// Evaluates `sum_x eq(({0}^|r|, 0, x), y) * (inp_numer(r, t, x, 0) * inp_denom(r, t, x, 1) +
