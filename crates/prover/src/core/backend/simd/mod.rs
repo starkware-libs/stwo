@@ -8,6 +8,7 @@ pub mod cm31;
 pub mod column;
 pub mod fft;
 pub mod fri;
+pub mod lookups;
 pub mod m31;
 pub mod prefix_sum;
 pub mod qm31;
