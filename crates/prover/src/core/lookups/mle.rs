@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use educe::Educe;
 
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Buffer, Col, ColumnOps};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;
 
@@ -61,7 +61,7 @@ impl<B: ColumnOps<F>, F: Field> Deref for Mle<B, F> {
 #[cfg(test)]
 mod test {
     use super::{Mle, MleOps};
-    use crate::core::backend::Column;
+    use crate::core::backend::Buffer;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::{ExtensionOf, Field};
 

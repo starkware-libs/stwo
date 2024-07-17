@@ -334,7 +334,7 @@ mod tests {
     use crate::core::backend::simd::circle::slow_eval_at_point;
     use crate::core::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
     use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::Column;
+    use crate::core::backend::Buffer;
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PolyOps};

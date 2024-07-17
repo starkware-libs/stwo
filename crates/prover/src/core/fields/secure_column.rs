@@ -1,7 +1,7 @@
 use super::m31::BaseField;
 use super::qm31::SecureField;
 use super::{ExtensionOf, FieldOps};
-use crate::core::backend::{Col, Column, CpuBackend};
+use crate::core::backend::{Buffer, Col, CpuBackend};
 use crate::core::utils::IteratorMutExt;
 
 pub const SECURE_EXTENSION_DEGREE: usize =

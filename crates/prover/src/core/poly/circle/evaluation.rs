@@ -5,7 +5,7 @@ use educe::Educe;
 
 use super::{CanonicCoset, CircleDomain, CirclePoly, PolyOps};
 use crate::core::backend::cpu::CpuCircleEvaluation;
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Buffer, Col};
 use crate::core::circle::{CirclePointIndex, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, FieldOps};

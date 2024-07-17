@@ -13,7 +13,7 @@ use rayon::prelude::*;
 
 use super::m31::{LOG_N_LANES, N_LANES};
 use super::SimdBackend;
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Buffer, Col, ColumnOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;

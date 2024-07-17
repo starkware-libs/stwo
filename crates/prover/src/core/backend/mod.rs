@@ -27,21 +27,21 @@ pub trait Backend:
 }
 
 pub trait ColumnOps<T> {
-    type Column: Column<T>;
+    type Column: Buffer<T>;
     fn bit_reverse_column(column: &mut Self::Column);
 }
 
 pub type Col<B, T> = <B as ColumnOps<T>>::Column;
 
-// TODO(spapini): Consider removing the generic parameter and only support BaseField.
-pub trait Column<T>: Clone + Debug + FromIterator<T> {
-    /// Creates a new column of zeros with the given length.
+/// Given a type T, a buffer of Ts laid out in some canonical way.
+pub trait Buffer<T>: Clone + Debug + FromIterator<T> {
+    /// Creates a new buffer of zeros with the given length.
     fn zeros(len: usize) -> Self;
-    /// Returns a cpu vector of the column.
+    /// Returns a cpu vector of the buffer.
     fn to_cpu(&self) -> Vec<T>;
-    /// Returns the length of the column.
+    /// Returns the length of the buffer.
     fn len(&self) -> usize;
-    /// Returns true if the column is empty.
+    /// Returns true if the buffer is empty.
     fn is_empty(&self) -> bool {
         self.len() == 0
     }

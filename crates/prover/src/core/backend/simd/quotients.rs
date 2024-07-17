@@ -9,7 +9,7 @@ use super::SimdBackend;
 use crate::core::backend::cpu::quotients::{
     batch_random_coeffs, column_line_coeffs, QuotientConstants,
 };
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Buffer, Col};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -263,7 +263,7 @@ mod tests {
 
     use crate::core::backend::simd::column::BaseFieldVec;
     use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::{Column, CpuBackend};
+    use crate::core::backend::{Buffer, CpuBackend};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
     use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};

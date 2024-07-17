@@ -1,7 +1,7 @@
 use num_traits::{One, Zero};
 
 use super::EvalAtRow;
-use crate::core::backend::{Backend, Column};
+use crate::core::backend::{Backend, Buffer};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;

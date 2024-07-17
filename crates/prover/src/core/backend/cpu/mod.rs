@@ -7,7 +7,7 @@ pub mod quotients;
 
 use std::fmt::Debug;
 
-use super::{Backend, Column, ColumnOps, FieldOps};
+use super::{Backend, Buffer, ColumnOps, FieldOps};
 use crate::core::fields::Field;
 use crate::core::lookups::mle::Mle;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
@@ -34,7 +34,7 @@ impl<F: Field> FieldOps<F> for CpuBackend {
     }
 }
 
-impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
+impl<T: Debug + Clone + Default> Buffer<T> for Vec<T> {
     fn zeros(len: usize) -> Self {
         vec![T::default(); len]
     }
@@ -59,7 +59,7 @@ mod tests {
     use rand::prelude::*;
     use rand::rngs::SmallRng;
 
-    use crate::core::backend::{Column, CpuBackend, FieldOps};
+    use crate::core::backend::{Buffer, CpuBackend, FieldOps};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::FieldExpOps;
 
@@ -68,7 +68,7 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         let column = rng.gen::<[QM31; 16]>().to_vec();
         let expected = column.iter().map(|e| e.inverse()).collect_vec();
-        let mut dst = Column::zeros(column.len());
+        let mut dst = Buffer::zeros(column.len());
 
         CpuBackend::batch_inverse(&column, &mut dst);
 

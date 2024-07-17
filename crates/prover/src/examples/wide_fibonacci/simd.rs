@@ -10,7 +10,7 @@ use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Buffer, Col, ColumnOps};
 use crate::core::channel::Blake2sChannel;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;

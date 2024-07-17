@@ -6,7 +6,7 @@ use itertools::Itertools;
 
 use super::ops::{MerkleHasher, MerkleOps};
 use super::utils::{next_decommitment_node, option_flatten_peekable};
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Buffer, Col};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
 use crate::core::ColumnVec;

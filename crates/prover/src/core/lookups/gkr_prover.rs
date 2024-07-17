@@ -10,7 +10,7 @@ use super::gkr_verifier::{GkrArtifact, GkrBatchProof, GkrMask};
 use super::mle::{Mle, MleOps};
 use super::sumcheck::MultivariatePolyOracle;
 use super::utils::{eq, random_linear_combination, UnivariatePoly};
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Buffer, Col, ColumnOps};
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;

@@ -1,5 +1,5 @@
 use super::{CircleDomain, CircleEvaluation, PolyOps};
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Buffer, Col};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;

@@ -147,7 +147,7 @@ mod tests {
     use crate::core::backend::simd::column::BaseFieldVec;
     use crate::core::backend::simd::m31::{PackedM31, N_LANES};
     use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::{Column, ColumnOps};
+    use crate::core::backend::{Buffer, ColumnOps};
     use crate::core::fields::m31::BaseField;
     use crate::core::utils::bit_reverse as cpu_bit_reverse;
 

@@ -8,7 +8,7 @@ use super::cm31::PackedCM31;
 use super::m31::{PackedBaseField, N_LANES};
 use super::qm31::{PackedQM31, PackedSecureField};
 use super::SimdBackend;
-use crate::core::backend::{Column, CpuBackend};
+use crate::core::backend::{Buffer, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
@@ -55,7 +55,8 @@ impl BaseFieldVec {
     }
 }
 
-impl Column<BaseField> for BaseFieldVec {
+/// BaseFieldVec as a buffer of M31s packed vertically in N_LANES chunks.
+impl Buffer<BaseField> for BaseFieldVec {
     fn zeros(length: usize) -> Self {
         let data = vec![PackedBaseField::zeroed(); length.div_ceil(N_LANES)];
         Self { data, length }
@@ -93,7 +94,8 @@ impl FromIterator<BaseField> for BaseFieldVec {
     }
 }
 
-/// A efficient structure for storing and operating on a arbitrary number of [`SecureField`] values.
+/// An efficient structure for storing and operating on a arbitrary number of [`SecureField`]
+/// values.
 #[derive(Clone, Debug)]
 pub struct SecureFieldVec {
     pub data: Vec<PackedSecureField>,
@@ -101,7 +103,9 @@ pub struct SecureFieldVec {
     pub length: usize,
 }
 
-impl Column<SecureField> for SecureFieldVec {
+/// SecureFieldVec as a row major buffer, with each SecureField individually ("horizontally")
+/// packed.
+impl Buffer<SecureField> for SecureFieldVec {
     fn zeros(length: usize) -> Self {
         Self {
             data: vec![PackedSecureField::zeroed(); length.div_ceil(N_LANES)],
@@ -217,7 +221,7 @@ mod tests {
 
     use super::BaseFieldVec;
     use crate::core::backend::simd::column::SecureFieldVec;
-    use crate::core::backend::Column;
+    use crate::core::backend::Buffer;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
 
