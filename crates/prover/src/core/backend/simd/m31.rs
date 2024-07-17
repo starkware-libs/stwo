@@ -61,6 +61,11 @@ impl PackedM31 {
         (Self(a), Self(b))
     }
 
+    /// Reverses the order of the elements in the vector.
+    pub fn reverse(self) -> Self {
+        Self(self.0.reverse())
+    }
+
     /// Sums all the elements in the vector.
     pub fn pointwise_sum(self) -> M31 {
         self.to_array().into_iter().sum()
