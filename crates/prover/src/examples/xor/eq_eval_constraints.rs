@@ -149,7 +149,7 @@ impl<const N_VARIABLES: usize> PointMeta<N_VARIABLES> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use std::array;
 
     use num_traits::One;
