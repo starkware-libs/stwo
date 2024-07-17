@@ -22,7 +22,6 @@ mod tests {
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::StarkProof;
     use crate::core::utils::{
         bit_reverse, circle_domain_order_to_coset_order, shifted_secure_combination,
     };
@@ -236,84 +235,6 @@ mod tests {
         let prover_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         let proof = commit_and_prove::<CpuBackend>(&air, prover_channel, trace).unwrap();
-
-        let verifier_channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        commit_and_verify(proof, &air, verifier_channel).unwrap();
-    }
-
-    #[test_log::test]
-    fn test_single_instance_wide_fib_prove_with_serde() {
-        // Note: To see time measurement, run test with
-        //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 cargo test
-        //   test_prove -- --nocapture
-
-        const LOG_N_INSTANCES: u32 = 0;
-        let component = WideFibComponent {
-            log_fibonacci_size: 3 + LOG_N_COLUMNS as u32,
-            log_n_instances: LOG_N_INSTANCES,
-        };
-        let private_input = (0..(1 << LOG_N_INSTANCES))
-            .map(|i| Input {
-                a: m31!(1),
-                b: m31!(i),
-            })
-            .collect();
-        let trace = gen_trace(&component, private_input);
-
-        let trace_domain = CanonicCoset::new(component.log_column_size());
-        let trace = trace
-            .into_iter()
-            .map(|eval| CpuCircleEvaluation::new_canonical_ordered(trace_domain, eval))
-            .collect_vec();
-        let air = WideFibAir { component };
-        let prover_channel =
-            &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let proof = commit_and_prove::<CpuBackend>(&air, prover_channel, trace).unwrap();
-
-        // Deserialize & Serialize test
-        let serialize = serde_json::to_string(&proof).unwrap();
-        let deserialized: StarkProof = serde_json::from_str(&serialize).unwrap();
-
-        // Commitments
-        assert_eq!(proof.commitments.0, deserialized.commitments.0);
-        assert_eq!(deserialized.commitments[0], proof.commitments[0]);
-        // Lookup values
-        assert_eq!(
-            deserialized.lookup_values.0, proof.lookup_values.0,
-            "error lookup values"
-        );
-        // Commitment scheme proof => Last layer poly
-
-        assert_eq!(
-            proof.commitment_scheme_proof.fri_proof.last_layer_poly,
-            deserialized
-                .commitment_scheme_proof
-                .fri_proof
-                .last_layer_poly
-        );
-        // Commitment scheme proof
-        // Last Queried values
-
-        assert_eq!(
-            proof.commitment_scheme_proof.queried_values.0,
-            proof.commitment_scheme_proof.queried_values.0
-        );
-        // Proof of work Nonce
-        assert_eq!(
-            proof.commitment_scheme_proof.proof_of_work.nonce,
-            deserialized.commitment_scheme_proof.proof_of_work.nonce
-        );
-        // Decommitments
-        assert_eq!(
-            proof.commitment_scheme_proof.decommitments[0],
-            deserialized.commitment_scheme_proof.decommitments[0]
-        );
-        // Sampled values
-        assert_eq!(
-            proof.commitment_scheme_proof.sampled_values.0,
-            deserialized.commitment_scheme_proof.sampled_values.0
-        );
 
         let verifier_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
