@@ -1,8 +1,8 @@
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 
 use super::ops::{MerkleHasher, MerkleOps};
 use super::utils::{next_decommitment_node, option_flatten_peekable};

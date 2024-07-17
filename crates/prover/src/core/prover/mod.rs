@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{span, Level};
 
@@ -24,7 +25,6 @@ use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::hasher::Hasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::verifier::MerkleVerificationError;
-use serde::{Serialize, Deserialize};
 
 type Channel = Blake2sChannel;
 type ChannelHasher = Blake2sHasher;

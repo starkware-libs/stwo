@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{span, Level};
-use serde::{Serialize, Deserialize};
 
 use super::channel::Blake2sChannel;
 use crate::core::channel::Channel;

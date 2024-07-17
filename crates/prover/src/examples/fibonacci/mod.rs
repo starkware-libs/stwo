@@ -118,7 +118,6 @@ mod tests {
     use num_traits::One;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
-    use serde_json;
 
     use super::{Fibonacci, MultiFibonacci};
     use crate::core::air::accumulation::PointEvaluationAccumulator;
@@ -130,7 +129,7 @@ mod tests {
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::{StarkProof, VerificationError};
+    use crate::core::prover::VerificationError;
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
@@ -243,40 +242,6 @@ mod tests {
         let proof = fib.prove().unwrap();
         fib.verify(proof).unwrap();
     }
-
-    #[test]
-    fn test_fib_prove_and_serialize() {
-        const FIB_LOG_SIZE: u32 = 5;
-        let fib = Fibonacci::new(FIB_LOG_SIZE, m31!(443693538));
-
-        let proof = fib.prove().unwrap();
-
-        let serialized= serde_json::to_string(&proof).unwrap();
-        let deserialized:StarkProof= serde_json::from_str(&serialized).unwrap();
-
-        // Commitments
-        assert_eq!(proof.commitments.0, deserialized.commitments.0);
-        assert_eq!(deserialized.commitments[0], proof.commitments[0]);
-        // Lookup values
-        assert_eq!(deserialized.lookup_values.0, proof.lookup_values.0, "error lookup values");
-        // Last layer poly
-       
-        assert_eq!(proof.commitment_scheme_proof.fri_proof.last_layer_poly, deserialized.commitment_scheme_proof.fri_proof.last_layer_poly);
-        // Commitment scheme proof
-        
-        // Last Queried values
-    
-        assert_eq!(proof.commitment_scheme_proof.queried_values.0, proof.commitment_scheme_proof.queried_values.0);
-        // Proof of work Nonce
-        assert_eq!(proof.commitment_scheme_proof.proof_of_work.nonce, deserialized.commitment_scheme_proof.proof_of_work.nonce);
-        // Decommitments
-        assert_eq!(proof.commitment_scheme_proof.decommitments[0], deserialized.commitment_scheme_proof.decommitments[0]);
-        // Sampled values
-        assert_eq!(proof.commitment_scheme_proof.sampled_values.0, deserialized.commitment_scheme_proof.sampled_values.0);
-
-        fib.verify(proof).unwrap();
-    }
-
 
     #[test]
     fn test_fib_air_generator() {

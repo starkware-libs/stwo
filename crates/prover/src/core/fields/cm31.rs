@@ -3,10 +3,11 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use serde::{Deserialize, Serialize};
+
 use super::{ComplexConjugate, FieldExpOps};
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
-use serde::{Deserialize, Serialize};
 pub const P2: u64 = 4611686014132420609; // (2 ** 31 - 1) ** 2
 
 /// Complex extension field of M31.

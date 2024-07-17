@@ -6,6 +6,7 @@ use std::ops::RangeInclusive;
 
 use itertools::Itertools;
 use num_traits::Zero;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{span, Level};
 
@@ -30,7 +31,6 @@ use crate::core::utils::bit_reverse_index;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
 use crate::core::vcs::verifier::{MerkleVerificationError, MerkleVerifier};
-use serde::{Serialize, Deserialize};
 
 /// FRI proof config
 // TODO(andrew): Support different step sizes.

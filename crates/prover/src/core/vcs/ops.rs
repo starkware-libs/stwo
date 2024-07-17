@@ -12,8 +12,15 @@ use crate::core::fields::m31::BaseField;
 /// children hashes.
 /// At each layer, the tree may have multiple columns of the same length as the layer.
 /// Each node in that layer contains one value from each column.
-pub trait MerkleHasher: Debug + Clone + PartialEq  + Eq {
-    type Hash: Copy + Clone + Eq + std::fmt::Debug + for<'de> Deserialize<'de> + Serialize + Eq + PartialEq;
+pub trait MerkleHasher: Debug + Clone + PartialEq + Eq {
+    type Hash: Copy
+        + Clone
+        + Eq
+        + std::fmt::Debug
+        + for<'de> Deserialize<'de>
+        + Serialize
+        + Eq
+        + PartialEq;
     /// Hashes a single Merkle node. See [MerkleHasher] for more details.
     fn hash_node(
         children_hashes: Option<(Self::Hash, Self::Hash)>,
@@ -21,9 +28,10 @@ pub trait MerkleHasher: Debug + Clone + PartialEq  + Eq {
     ) -> Self::Hash;
 }
 
-
 /// Trait for performing Merkle operations on a commitment scheme.
-pub trait MerkleOps<H: MerkleHasher>: ColumnOps<BaseField> + ColumnOps<H::Hash>  + for<'de> Deserialize<'de> + Serialize {
+pub trait MerkleOps<H: MerkleHasher>:
+    ColumnOps<BaseField> + ColumnOps<H::Hash> + for<'de> Deserialize<'de> + Serialize
+{
     /// Commits on an entire layer of the Merkle tree.
     /// See [MerkleHasher] for more details.
     ///

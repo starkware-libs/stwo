@@ -534,7 +534,6 @@ mod tests {
         commit_and_verify(proof, &air, channel).unwrap();
     }
 
-
     #[test_log::test]
     fn test_simd_poseidon_prove_with_serde() {
         // Note: To see time measurement, run test with
@@ -558,28 +557,49 @@ mod tests {
         let proof = commit_and_prove::<SimdBackend>(&air, channel, trace).unwrap();
 
         // Deserialize & Serialize test
-        let serialize= serde_json::to_string(&proof).unwrap();
-        let deserialized:StarkProof= serde_json::from_str(&serialize).unwrap();
+        let serialize = serde_json::to_string(&proof).unwrap();
+        let deserialized: StarkProof = serde_json::from_str(&serialize).unwrap();
 
         // Commitments
         assert_eq!(proof.commitments.0, deserialized.commitments.0);
         assert_eq!(deserialized.commitments[0], proof.commitments[0]);
         // Lookup values
-        assert_eq!(deserialized.lookup_values.0, proof.lookup_values.0, "error lookup values");
+        assert_eq!(
+            deserialized.lookup_values.0, proof.lookup_values.0,
+            "error lookup values"
+        );
         // Commitment scheme proof => Last layer poly
-       
-        assert_eq!(proof.commitment_scheme_proof.fri_proof.last_layer_poly, deserialized.commitment_scheme_proof.fri_proof.last_layer_poly);
+
+        assert_eq!(
+            proof.commitment_scheme_proof.fri_proof.last_layer_poly,
+            deserialized
+                .commitment_scheme_proof
+                .fri_proof
+                .last_layer_poly
+        );
         // Commitment scheme proof
         // Last Queried values
-    
-        assert_eq!(proof.commitment_scheme_proof.queried_values.0, proof.commitment_scheme_proof.queried_values.0);
+
+        assert_eq!(
+            proof.commitment_scheme_proof.queried_values.0,
+            proof.commitment_scheme_proof.queried_values.0
+        );
         // Proof of work Nonce
-        assert_eq!(proof.commitment_scheme_proof.proof_of_work.nonce, deserialized.commitment_scheme_proof.proof_of_work.nonce);
+        assert_eq!(
+            proof.commitment_scheme_proof.proof_of_work.nonce,
+            deserialized.commitment_scheme_proof.proof_of_work.nonce
+        );
         // Decommitments
-        assert_eq!(proof.commitment_scheme_proof.decommitments[0], deserialized.commitment_scheme_proof.decommitments[0]);
+        assert_eq!(
+            proof.commitment_scheme_proof.decommitments[0],
+            deserialized.commitment_scheme_proof.decommitments[0]
+        );
         // Sampled values
-        assert_eq!(proof.commitment_scheme_proof.sampled_values.0, deserialized.commitment_scheme_proof.sampled_values.0);
-        
+        assert_eq!(
+            proof.commitment_scheme_proof.sampled_values.0,
+            deserialized.commitment_scheme_proof.sampled_values.0
+        );
+
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         commit_and_verify(proof, &air, channel).unwrap();
     }
