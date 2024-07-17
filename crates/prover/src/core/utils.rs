@@ -7,7 +7,7 @@ use super::circle::CirclePoint;
 use super::constraints::point_vanishing;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::FieldExpOps;
+use super::fields::{Field, FieldExpOps};
 use super::poly::circle::CircleDomain;
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
@@ -108,7 +108,7 @@ pub(crate) fn circle_domain_order_to_coset_order(values: &[BaseField]) -> Vec<Ba
     coset_order
 }
 
-pub(crate) fn coset_order_to_circle_domain_order(values: &[BaseField]) -> Vec<BaseField> {
+pub(crate) fn coset_order_to_circle_domain_order<F: Field>(values: &[F]) -> Vec<F> {
     let mut circle_domain_order = Vec::with_capacity(values.len());
     let n = values.len();
     let half_len = n / 2;
