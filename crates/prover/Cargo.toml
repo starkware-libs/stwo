@@ -52,12 +52,16 @@ rust-2018-idioms = "deny"
 unused = "deny"
 
 [[bench]]
-name = "bit_rev"
 harness = false
+name = "bit_rev"
 
 [[bench]]
-name = "fft"
 harness = false
+name = "eval_at_point"
+
+[[bench]]
+harness = false
+name = "fft"
 
 [[bench]]
 harness = false
@@ -65,24 +69,24 @@ name = "field"
 
 [[bench]]
 harness = false
+name = "fri"
+
+[[bench]]
+harness = false
 name = "matrix"
 
 [[bench]]
+harness = false
 name = "merkle"
-harness = false
 
 [[bench]]
-name = "fri"
 harness = false
-
-[[bench]]
-name = "eval_at_point"
-harness = false
-
-[[bench]]
-name = "quotients"
-harness = false
-
-[[bench]]
 name = "poseidon"
+
+[[bench]]
 harness = false
+name = "prefix_sum"
+
+[[bench]]
+harness = false
+name = "quotients"
