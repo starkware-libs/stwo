@@ -6,7 +6,7 @@ use num_traits::Zero;
 
 use crate::core::backend::simd::m31::{PackedBaseField, N_LANES};
 use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Buf, Buffer};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::{
     bit_reverse, circle_domain_order_to_coset_order, coset_order_to_circle_domain_order,
@@ -18,8 +18,8 @@ use crate::core::utils::{
 /// Based on parallel Blelloch prefix sum:
 /// <https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda>
 pub fn inclusive_prefix_sum_simd(
-    bit_rev_circle_domain_evals: Col<SimdBackend, BaseField>,
-) -> Col<SimdBackend, BaseField> {
+    bit_rev_circle_domain_evals: Buf<SimdBackend, BaseField>,
+) -> Buf<SimdBackend, BaseField> {
     if bit_rev_circle_domain_evals.len() < N_LANES * 4 {
         return inclusive_prefix_sum_slow(bit_rev_circle_domain_evals);
     }
@@ -121,8 +121,8 @@ fn down_sweep_val<F: Sub<Output = F> + Copy>(lo: &mut F, hi: &mut F) {
 }
 
 fn inclusive_prefix_sum_slow(
-    bit_rev_circle_domain_evals: Col<SimdBackend, BaseField>,
-) -> Col<SimdBackend, BaseField> {
+    bit_rev_circle_domain_evals: Buf<SimdBackend, BaseField>,
+) -> Buf<SimdBackend, BaseField> {
     // Obtain values in coset order.
     let mut coset_order_eval = bit_rev_circle_domain_evals.into_cpu_vec();
     bit_reverse(&mut coset_order_eval);
@@ -148,7 +148,7 @@ mod tests {
     use super::inclusive_prefix_sum_simd;
     use crate::core::backend::simd::column::BaseFieldVec;
     use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum_slow;
-    use crate::core::backend::Column;
+    use crate::core::backend::Buffer;
 
     #[test]
     fn exclusive_prefix_sum_simd_with_log_size_3_works() {

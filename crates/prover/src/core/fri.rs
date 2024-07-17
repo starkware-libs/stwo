@@ -1060,7 +1060,7 @@ mod tests {
 
     use super::{get_opening_positions, FriVerificationError, SparseCircleEvaluation};
     use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
-    use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
+    use crate::core::backend::{Buf, Buffer, BufferOps, CpuBackend};
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -1515,9 +1515,9 @@ mod tests {
             values: SecureColumn {
                 columns: [
                     values.values,
-                    Col::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
-                    Col::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
-                    Col::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
+                    Buf::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
+                    Buf::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
+                    Buf::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
                 ],
             },
         }
@@ -1584,9 +1584,9 @@ mod tests {
             values: SecureColumn {
                 columns: [
                     values.values,
-                    Col::<CpuBackend, BaseField>::zeros(1 << log_domain_size),
-                    Col::<CpuBackend, BaseField>::zeros(1 << log_domain_size),
-                    Col::<CpuBackend, BaseField>::zeros(1 << log_domain_size),
+                    Buf::<CpuBackend, BaseField>::zeros(1 << log_domain_size),
+                    Buf::<CpuBackend, BaseField>::zeros(1 << log_domain_size),
+                    Buf::<CpuBackend, BaseField>::zeros(1 << log_domain_size),
                 ],
             },
         }

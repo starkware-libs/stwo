@@ -6,7 +6,7 @@ use itertools::Itertools;
 
 use super::ops::{MerkleHasher, MerkleOps};
 use super::utils::{next_decommitment_node, option_flatten_peekable};
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Buf, Buffer};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
 use crate::core::ColumnVec;
@@ -16,7 +16,7 @@ pub struct MerkleProver<B: MerkleOps<H>, H: MerkleHasher> {
     /// The first layer is the root layer.
     /// The last layer is the largest layer.
     /// See [MerkleOps::commit_on_layer] for more details.
-    pub layers: Vec<Col<B, H::Hash>>,
+    pub layers: Vec<Buf<B, H::Hash>>,
 }
 /// The MerkleProver struct represents a prover for a Merkle commitment scheme.
 /// It is generic over the types `B` and `H`, which represent the Merkle operations and Merkle
@@ -37,14 +37,14 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     /// # Returns
     ///
     /// A new instance of `MerkleProver` with the committed layers.
-    pub fn commit(columns: Vec<&Col<B, BaseField>>) -> Self {
+    pub fn commit(columns: Vec<&Buf<B, BaseField>>) -> Self {
         assert!(!columns.is_empty());
 
         let columns = &mut columns
             .into_iter()
             .sorted_by_key(|c| Reverse(c.len()))
             .peekable();
-        let mut layers: Vec<Col<B, H::Hash>> = Vec::new();
+        let mut layers: Vec<Buf<B, H::Hash>> = Vec::new();
 
         let max_log_size = columns.peek().unwrap().len().ilog2();
         for log_size in (0..=max_log_size).rev() {
@@ -76,7 +76,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     pub fn decommit(
         &self,
         queries_per_log_size: BTreeMap<u32, Vec<usize>>,
-        columns: Vec<&Col<B, BaseField>>,
+        columns: Vec<&Buf<B, BaseField>>,
     ) -> (ColumnVec<Vec<BaseField>>, MerkleDecommitment<H>) {
         // Check that queries are sorted and deduped.
         // TODO(andrew): Consider using a Queries struct to prevent this.
@@ -170,7 +170,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     /// Given queried values by layer, rearranges in the order of input columns.
     fn rearrange_queried_values(
         queried_values_by_layer: Vec<Vec<Vec<BaseField>>>,
-        columns: Vec<&Col<B, BaseField>>,
+        columns: Vec<&Buf<B, BaseField>>,
     ) -> Vec<Vec<BaseField>> {
         // Turn each column queried values into an iterator.
         let mut queried_values_by_layer = queried_values_by_layer

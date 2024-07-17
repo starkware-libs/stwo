@@ -1,7 +1,7 @@
 use super::m31::BaseField;
 use super::qm31::SecureField;
 use super::{ExtensionOf, FieldOps};
-use crate::core::backend::{Col, Column, CpuBackend};
+use crate::core::backend::{Buf, Buffer, CpuBackend};
 use crate::core::utils::IteratorMutExt;
 
 pub const SECURE_EXTENSION_DEGREE: usize =
@@ -11,7 +11,7 @@ pub const SECURE_EXTENSION_DEGREE: usize =
 /// field elements.
 #[derive(Clone, Debug)]
 pub struct SecureColumn<B: FieldOps<BaseField>> {
-    pub columns: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
+    pub columns: [Buf<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
 impl SecureColumn<CpuBackend> {
     pub fn set(&mut self, index: usize, value: SecureField) {
@@ -33,7 +33,7 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
 
     pub fn zeros(len: usize) -> Self {
         Self {
-            columns: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)),
+            columns: std::array::from_fn(|_| Buf::<B, BaseField>::zeros(len)),
         }
     }
 

@@ -2,7 +2,7 @@ use itertools::{izip, zip_eq};
 use num_traits::{One, Zero};
 
 use super::CpuBackend;
-use crate::core::backend::{Backend, Col};
+use crate::core::backend::{Backend, Buf};
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::{complex_conjugate_line_coeffs, pair_vanishing};
 use crate::core::fields::m31::BaseField;
@@ -119,7 +119,7 @@ pub fn batch_random_coeffs(
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
-) -> Vec<Col<CpuBackend, SecureField>> {
+) -> Vec<Buf<CpuBackend, SecureField>> {
     let mut flat_denominators = Vec::with_capacity(sample_batches.len() * domain.size());
     for sample_batch in sample_batches {
         for row in 0..domain.size() {
@@ -169,7 +169,7 @@ pub struct QuotientConstants<B: Backend> {
     /// [self::batch_random_coeffs].
     pub batch_random_coeffs: Vec<SecureField>,
     /// The inverses of the denominators of the quotients.
-    pub denominator_inverses: Vec<Col<B, SecureField>>,
+    pub denominator_inverses: Vec<Buf<B, SecureField>>,
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
-use crate::core::backend::Col;
+use crate::core::backend::Buf;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -17,7 +17,7 @@ pub trait PolyOps: FieldOps<BaseField> + Sized {
     /// Used by the [`CircleEvaluation::new_canonical_ordered()`] function.
     fn new_canonical_ordered(
         coset: CanonicCoset,
-        values: Col<Self, BaseField>,
+        values: Buf<Self, BaseField>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder>;
 
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.

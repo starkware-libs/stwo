@@ -13,7 +13,7 @@ use rayon::prelude::*;
 
 use super::m31::{LOG_N_LANES, N_LANES};
 use super::SimdBackend;
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Buf, Buffer, BufferOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
@@ -36,10 +36,10 @@ const SIGMA: [[u8; 16]; 10] = [
     [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0],
 ];
 
-impl ColumnOps<Blake2sHash> for SimdBackend {
-    type Column = Vec<Blake2sHash>;
+impl BufferOps<Blake2sHash> for SimdBackend {
+    type Buffer = Vec<Blake2sHash>;
 
-    fn bit_reverse_column(_column: &mut Self::Column) {
+    fn bit_reverse_column(_column: &mut Self::Buffer) {
         unimplemented!()
     }
 }
@@ -48,7 +48,7 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
     fn commit_on_layer(
         log_size: u32,
         prev_layer: Option<&Vec<Blake2sHash>>,
-        columns: &[&Col<Self, BaseField>],
+        columns: &[&Buf<Self, BaseField>],
     ) -> Vec<Blake2sHash> {
         if log_size < LOG_N_LANES {
             #[cfg(not(feature = "parallel"))]

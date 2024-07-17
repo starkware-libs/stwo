@@ -10,7 +10,7 @@ use super::gkr_verifier::{GkrArtifact, GkrBatchProof, GkrMask};
 use super::mle::{Mle, MleOps};
 use super::sumcheck::MultivariatePolyOracle;
 use super::utils::{eq, random_linear_combination, UnivariatePoly};
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Buf, Buffer, BufferOps};
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -46,7 +46,7 @@ pub trait GkrOps: MleOps<BaseField> + MleOps<SecureField> {
 /// `evals[1] = eq((0, ..., 0, 1), y)`, etc.
 ///
 /// [`eq(x, y)`]: crate::core::lookups::utils::eq
-pub struct EqEvals<B: ColumnOps<SecureField>> {
+pub struct EqEvals<B: BufferOps<SecureField>> {
     y: Vec<SecureField>,
     evals: Mle<B, SecureField>,
 }
@@ -71,10 +71,10 @@ impl<B: GkrOps> EqEvals<B> {
     }
 }
 
-impl<B: ColumnOps<SecureField>> Deref for EqEvals<B> {
-    type Target = Col<B, SecureField>;
+impl<B: BufferOps<SecureField>> Deref for EqEvals<B> {
+    type Target = Buf<B, SecureField>;
 
-    fn deref(&self) -> &Col<B, SecureField> {
+    fn deref(&self) -> &Buf<B, SecureField> {
         &self.evals
     }
 }

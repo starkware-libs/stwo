@@ -7,7 +7,7 @@ pub mod quotients;
 
 use std::fmt::Debug;
 
-use super::{Backend, Column, ColumnOps, FieldOps};
+use super::{Backend, Buffer, BufferOps, FieldOps};
 use crate::core::fields::Field;
 use crate::core::lookups::mle::Mle;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
@@ -18,10 +18,10 @@ pub struct CpuBackend;
 
 impl Backend for CpuBackend {}
 
-impl<T: Debug + Clone + Default> ColumnOps<T> for CpuBackend {
-    type Column = Vec<T>;
+impl<T: Debug + Clone + Default> BufferOps<T> for CpuBackend {
+    type Buffer = Vec<T>;
 
-    fn bit_reverse_column(column: &mut Self::Column) {
+    fn bit_reverse_column(column: &mut Self::Buffer) {
         bit_reverse(column)
     }
 }
@@ -29,12 +29,12 @@ impl<T: Debug + Clone + Default> ColumnOps<T> for CpuBackend {
 impl<F: Field> FieldOps<F> for CpuBackend {
     /// Batch inversion using the Montgomery's trick.
     // TODO(Ohad): Benchmark this function.
-    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column) {
+    fn batch_inverse(column: &Self::Buffer, dst: &mut Self::Buffer) {
         F::batch_inverse(column, &mut dst[..]);
     }
 }
 
-impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
+impl<T: Debug + Clone + Default> Buffer<T> for Vec<T> {
     fn zeros(len: usize) -> Self {
         vec![T::default(); len]
     }
@@ -59,7 +59,7 @@ mod tests {
     use rand::prelude::*;
     use rand::rngs::SmallRng;
 
-    use crate::core::backend::{Column, CpuBackend, FieldOps};
+    use crate::core::backend::{Buffer, CpuBackend, FieldOps};
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::FieldExpOps;
 
@@ -68,7 +68,7 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         let column = rng.gen::<[QM31; 16]>().to_vec();
         let expected = column.iter().map(|e| e.inverse()).collect_vec();
-        let mut dst = Column::zeros(column.len());
+        let mut dst = Buffer::zeros(column.len());
 
         CpuBackend::batch_inverse(&column, &mut dst);
 
