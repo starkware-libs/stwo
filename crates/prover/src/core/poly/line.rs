@@ -8,7 +8,7 @@ use num_traits::Zero;
 
 use super::circle::CircleDomain;
 use super::utils::fold;
-use crate::core::backend::{ColumnOps, CpuBackend};
+use crate::core::backend::{BufferOps, CpuBackend};
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
@@ -277,7 +277,7 @@ mod tests {
     use itertools::Itertools;
 
     use super::LineDomain;
-    use crate::core::backend::{ColumnOps, CpuBackend};
+    use crate::core::backend::{BufferOps, CpuBackend};
     use crate::core::circle::{CirclePoint, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::line::{LineEvaluation, LinePoly};

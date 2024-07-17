@@ -4,16 +4,16 @@ use std::ops::{Mul, MulAssign, Neg};
 
 use num_traits::{NumAssign, NumAssignOps, NumOps, One};
 
-use super::backend::ColumnOps;
+use super::backend::BufferOps;
 
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
 pub mod secure_column;
 
-pub trait FieldOps<F: Field>: ColumnOps<F> {
+pub trait FieldOps<F: Field>: BufferOps<F> {
     // TODO(Ohad): change to use a mutable slice.
-    fn batch_inverse(column: &Self::Column, dst: &mut Self::Column);
+    fn batch_inverse(column: &Self::Buffer, dst: &mut Self::Buffer);
 }
 
 pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {

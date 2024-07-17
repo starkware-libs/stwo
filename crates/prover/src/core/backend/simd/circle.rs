@@ -9,7 +9,7 @@ use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
 use crate::core::backend::simd::column::BaseFieldVec;
-use crate::core::backend::{Col, CpuBackend};
+use crate::core::backend::{Buf, CpuBackend};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -129,13 +129,13 @@ impl PolyOps for SimdBackend {
 
     fn new_canonical_ordered(
         coset: CanonicCoset,
-        values: Col<Self, BaseField>,
+        values: Buf<Self, BaseField>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(spapini): Optimize.
         let eval = CpuBackend::new_canonical_ordered(coset, values.into_cpu_vec());
         CircleEvaluation::new(
             eval.domain,
-            Col::<SimdBackend, BaseField>::from_iter(eval.values),
+            Buf::<SimdBackend, BaseField>::from_iter(eval.values),
         )
     }
 
@@ -334,7 +334,7 @@ mod tests {
     use crate::core::backend::simd::circle::slow_eval_at_point;
     use crate::core::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
     use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::Column;
+    use crate::core::backend::Buffer;
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PolyOps};

@@ -6,7 +6,7 @@
 use itertools::Itertools;
 use tracing::{span, Level};
 
-use crate::core::backend::{Backend, Col, Column, CpuBackend};
+use crate::core::backend::{Backend, Buf, Buffer, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumn;
@@ -150,7 +150,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         }
         cur_poly.unwrap_or_else(|| {
             SecureCirclePoly(std::array::from_fn(|_| {
-                CirclePoly::new(Col::<B, BaseField>::zeros(1 << log_size))
+                CirclePoly::new(Buf::<B, BaseField>::zeros(1 << log_size))
             }))
         })
     }

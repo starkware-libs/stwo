@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::core::backend::{Col, ColumnOps};
+use crate::core::backend::{Buf, BufferOps};
 use crate::core::fields::m31::BaseField;
 
 /// A Merkle node hash is a hash of:
@@ -20,7 +20,7 @@ pub trait MerkleHasher: Debug {
 }
 
 /// Trait for performing Merkle operations on a commitment scheme.
-pub trait MerkleOps<H: MerkleHasher>: ColumnOps<BaseField> + ColumnOps<H::Hash> {
+pub trait MerkleOps<H: MerkleHasher>: BufferOps<BaseField> + BufferOps<H::Hash> {
     /// Commits on an entire layer of the Merkle tree.
     /// See [MerkleHasher] for more details.
     ///
@@ -36,7 +36,7 @@ pub trait MerkleOps<H: MerkleHasher>: ColumnOps<BaseField> + ColumnOps<H::Hash> 
     /// Returns the next Merkle layer hashes.
     fn commit_on_layer(
         log_size: u32,
-        prev_layer: Option<&Col<Self, H::Hash>>,
-        columns: &[&Col<Self, BaseField>],
-    ) -> Col<Self, H::Hash>;
+        prev_layer: Option<&Buf<Self, H::Hash>>,
+        columns: &[&Buf<Self, BaseField>],
+    ) -> Buf<Self, H::Hash>;
 }

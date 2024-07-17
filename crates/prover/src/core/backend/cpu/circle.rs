@@ -1,7 +1,7 @@
 use num_traits::Zero;
 
 use super::CpuBackend;
-use crate::core::backend::{Col, ColumnOps};
+use crate::core::backend::{Buf, BufferOps};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
@@ -20,7 +20,7 @@ impl PolyOps for CpuBackend {
 
     fn new_canonical_ordered(
         coset: CanonicCoset,
-        values: Col<Self, BaseField>,
+        values: Buf<Self, BaseField>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         let domain = coset.circle_domain();
         assert_eq!(values.len(), domain.size());

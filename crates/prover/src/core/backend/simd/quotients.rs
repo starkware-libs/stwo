@@ -9,7 +9,7 @@ use super::SimdBackend;
 use crate::core::backend::cpu::quotients::{
     batch_random_coeffs, column_line_coeffs, QuotientConstants,
 };
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Buf, Buffer};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -203,7 +203,7 @@ fn packed_pair_vanishing(
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
-) -> Vec<Col<SimdBackend, SecureField>> {
+) -> Vec<Buf<SimdBackend, SecureField>> {
     let flat_denominators: SecureFieldVec = sample_batches
         .iter()
         .flat_map(|sample_batch| {
@@ -263,7 +263,7 @@ mod tests {
 
     use crate::core::backend::simd::column::BaseFieldVec;
     use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::{Column, CpuBackend};
+    use crate::core::backend::{Buffer, CpuBackend};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
     use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};

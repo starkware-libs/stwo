@@ -2,11 +2,11 @@ use std::ops::Deref;
 
 use educe::Educe;
 
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Buf, Buffer, BufferOps};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;
 
-pub trait MleOps<F: Field>: ColumnOps<F> + Sized {
+pub trait MleOps<F: Field>: BufferOps<F> + Sized {
     /// Returns a transformed [`Mle`] where the first variable is fixed to `assignment`.
     fn fix_first_variable(mle: Mle<Self, F>, assignment: SecureField) -> Mle<Self, SecureField>
     where
@@ -17,8 +17,8 @@ pub trait MleOps<F: Field>: ColumnOps<F> + Sized {
 /// hypercube in bit-reversed order.
 #[derive(Educe)]
 #[educe(Debug, Clone)]
-pub struct Mle<B: ColumnOps<F>, F: Field> {
-    evals: Col<B, F>,
+pub struct Mle<B: BufferOps<F>, F: Field> {
+    evals: Buf<B, F>,
 }
 
 impl<B: MleOps<F>, F: Field> Mle<B, F> {
@@ -27,12 +27,12 @@ impl<B: MleOps<F>, F: Field> Mle<B, F> {
     /// # Panics
     ///
     /// Panics if the number of evaluations is not a power of two.
-    pub fn new(evals: Col<B, F>) -> Self {
+    pub fn new(evals: Buf<B, F>) -> Self {
         assert!(evals.len().is_power_of_two());
         Self { evals }
     }
 
-    pub fn into_evals(self) -> Col<B, F> {
+    pub fn into_evals(self) -> Buf<B, F> {
         self.evals
     }
 
@@ -50,10 +50,10 @@ impl<B: MleOps<F>, F: Field> Mle<B, F> {
     }
 }
 
-impl<B: ColumnOps<F>, F: Field> Deref for Mle<B, F> {
-    type Target = Col<B, F>;
+impl<B: BufferOps<F>, F: Field> Deref for Mle<B, F> {
+    type Target = Buf<B, F>;
 
-    fn deref(&self) -> &Col<B, F> {
+    fn deref(&self) -> &Buf<B, F> {
         &self.evals
     }
 }
@@ -61,7 +61,7 @@ impl<B: ColumnOps<F>, F: Field> Deref for Mle<B, F> {
 #[cfg(test)]
 mod test {
     use super::{Mle, MleOps};
-    use crate::core::backend::Column;
+    use crate::core::backend::Buffer;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::{ExtensionOf, Field};
 

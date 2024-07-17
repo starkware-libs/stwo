@@ -12,7 +12,7 @@ use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrac
 use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Buf, Buffer, BufferOps};
 use crate::core::channel::Blake2sChannel;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
@@ -268,7 +268,7 @@ pub fn gen_trace(
     let _span = span!(Level::INFO, "Generation").entered();
     assert!(log_size >= LOG_N_LANES);
     let mut trace = (0..N_COLUMNS)
-        .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
+        .map(|_| Buf::<SimdBackend, BaseField>::zeros(1 << log_size))
         .collect_vec();
     for vec_index in 0..(1 << (log_size - LOG_N_LANES)) {
         // Initial state.
@@ -387,7 +387,7 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
         let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let mut denoms =
             BaseFieldVec::from_iter(eval_domain.iter().map(|p| coset_vanishing(zero_domain, p)));
-        <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
+        <SimdBackend as BufferOps<BaseField>>::bit_reverse_column(&mut denoms);
         let mut denom_inverses = BaseFieldVec::zeros(denoms.len());
         <SimdBackend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inverses);
         span.exit();

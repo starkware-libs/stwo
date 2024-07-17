@@ -578,7 +578,7 @@ mod tests {
     use crate::core::backend::simd::column::BaseFieldVec;
     use crate::core::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE};
     use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
-    use crate::core::backend::Column;
+    use crate::core::backend::Buffer;
     use crate::core::fft::butterfly as ground_truth_butterfly;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};

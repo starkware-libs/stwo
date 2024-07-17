@@ -1,5 +1,5 @@
 use super::{CircleDomain, CircleEvaluation, PolyOps};
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Buf, Buffer};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -15,7 +15,7 @@ pub struct CirclePoly<B: FieldOps<BaseField>> {
     /// monomial basis. The FFT basis is a tensor product of the twiddles:
     /// y, x, pi(x), pi^2(x), ..., pi^{log_size-2}(x).
     /// pi(x) := 2x^2 - 1.
-    pub coeffs: Col<B, BaseField>,
+    pub coeffs: Buf<B, BaseField>,
     /// The number of coefficients stored as `log2(len(coeffs))`.
     log_size: u32,
 }
@@ -28,7 +28,7 @@ impl<B: PolyOps> CirclePoly<B> {
     /// # Panics
     ///
     /// Panics if the number of coefficients isn't a power of two.
-    pub fn new(coeffs: Col<B, BaseField>) -> Self {
+    pub fn new(coeffs: Buf<B, BaseField>) -> Self {
         assert!(coeffs.len().is_power_of_two());
         let log_size = coeffs.len().ilog2();
         Self { log_size, coeffs }

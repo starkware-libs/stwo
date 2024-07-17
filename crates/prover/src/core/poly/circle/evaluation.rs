@@ -5,7 +5,7 @@ use educe::Educe;
 
 use super::{CanonicCoset, CircleDomain, CirclePoly, PolyOps};
 use crate::core::backend::cpu::CpuCircleEvaluation;
-use crate::core::backend::{Col, Column};
+use crate::core::backend::{Buf, Buffer};
 use crate::core::circle::{CirclePointIndex, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, FieldOps};
@@ -19,12 +19,12 @@ use crate::core::utils::bit_reverse_index;
 #[educe(Clone, Debug)]
 pub struct CircleEvaluation<B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder = NaturalOrder> {
     pub domain: CircleDomain,
-    pub values: Col<B, F>,
+    pub values: Buf<B, F>,
     _eval_order: PhantomData<EvalOrder>,
 }
 
 impl<B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<B, F, EvalOrder> {
-    pub fn new(domain: CircleDomain, values: Col<B, F>) -> Self {
+    pub fn new(domain: CircleDomain, values: Buf<B, F>) -> Self {
         assert_eq!(domain.size(), values.len());
         Self {
             domain,
@@ -76,7 +76,7 @@ impl<B: PolyOps> CircleEvaluation<B, BaseField, BitReversedOrder> {
     ///   G_8, G_8 + G_4, G_8 + 2G_4, G_8 + 3G_4.
     /// The circle domain will be ordered like this:
     ///   G_8, G_8 + 2G_4, -G_8, -G_8 - 2G_4.
-    pub fn new_canonical_ordered(coset: CanonicCoset, values: Col<B, BaseField>) -> Self {
+    pub fn new_canonical_ordered(coset: CanonicCoset, values: Buf<B, BaseField>) -> Self {
         B::new_canonical_ordered(coset, values)
     }
 
@@ -110,7 +110,7 @@ impl<B: FieldOps<F>, F: ExtensionOf<BaseField>> CircleEvaluation<B, F, BitRevers
 impl<B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder> Deref
     for CircleEvaluation<B, F, EvalOrder>
 {
-    type Target = Col<B, F>;
+    type Target = Buf<B, F>;
 
     fn deref(&self) -> &Self::Target {
         &self.values
