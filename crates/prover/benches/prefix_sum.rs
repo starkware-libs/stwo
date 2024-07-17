@@ -1,0 +1,19 @@
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use stwo_prover::core::backend::simd::column::BaseFieldVec;
+use stwo_prover::core::backend::simd::prefix_sum::exclusive_prefix_sum_simd;
+use stwo_prover::core::fields::m31::BaseField;
+
+pub fn simd_prefix_sum_bench(c: &mut Criterion) {
+    const LOG_SIZE: u32 = 24;
+    let evals: BaseFieldVec = (0..1 << LOG_SIZE).map(BaseField::from).collect();
+    c.bench_function(&format!("simd prefix_sum 2^{LOG_SIZE}"), |b| {
+        b.iter_batched(
+            || evals.clone(),
+            exclusive_prefix_sum_simd,
+            BatchSize::LargeInput,
+        );
+    });
+}
+
+criterion_group!(benches, simd_prefix_sum_bench);
+criterion_main!(benches);

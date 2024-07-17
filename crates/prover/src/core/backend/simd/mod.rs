@@ -9,6 +9,7 @@ pub mod column;
 pub mod fft;
 pub mod fri;
 pub mod m31;
+pub mod prefix_sum;
 pub mod qm31;
 pub mod quotients;
 mod utils;
