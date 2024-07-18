@@ -158,7 +158,7 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
         cast_slice_mut(&mut xor_mults.data[..]),
     );
     let n_padded_rounds = (1 << (log_size + 3 - LOG_N_LANES)) - round_trace.len();
-    let round_trace0 = round_trace.clone();
+    // let round_trace0 = round_trace.clone();
 
     // Xor table trace.
     let a_col: BaseFieldVec = (0..(1 << 24))
@@ -207,13 +207,11 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
         &xor_lookup_elements,
         &round_lookup_elements,
     );
-    let round_trace1 = round_trace.clone();
 
     span.exit();
     let span = span!(Level::INFO, "Table Interaction Generation").entered();
     let (xor_trace, xor_claimed_sum) =
         table::gen_interaction_trace(XOR_LOG_SIZE, xor_lookup_data, &xor_lookup_elements);
-    let round_trace1 = round_trace.clone();
 
     span.exit();
     let span = span!(Level::INFO, "Interaction Commitment").entered();
