@@ -1,11 +1,12 @@
 use num_traits::Zero;
+use serde::{Deserialize, Serialize};
 
 use super::blake2_hash::Blake2sHash;
 use super::blake2s_ref::compress;
 use super::ops::MerkleHasher;
 use crate::core::fields::m31::BaseField;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct Blake2sMerkleHasher;
 impl MerkleHasher for Blake2sMerkleHasher {
     type Hash = Blake2sHash;

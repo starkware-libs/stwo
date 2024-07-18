@@ -3,16 +3,17 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use serde::{Deserialize, Serialize};
+
 use super::{ComplexConjugate, FieldExpOps};
 use crate::core::fields::m31::M31;
 use crate::{impl_extension_field, impl_field};
-
 pub const P2: u64 = 4611686014132420609; // (2 ** 31 - 1) ** 2
 
 /// Complex extension field of M31.
 /// Equivalent to M31\[x\] over (x^2 + 1) as the irreducible polynomial.
 /// Represented as (a, b) of a + bi.
-#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub struct CM31(pub M31, pub M31);
 
 impl_field!(CM31, P2);

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use tracing::{span, Level};
 
 use super::super::channel::Blake2sChannel;
@@ -25,7 +26,6 @@ use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
-use serde::{Serialize, Deserialize};
 
 type MerkleHasher = Blake2sMerkleHasher;
 type ProofChannel = Blake2sChannel;

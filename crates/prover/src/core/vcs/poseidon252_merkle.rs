@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use num_traits::Zero;
+use serde::{Deserialize, Serialize};
 use starknet_crypto::poseidon_hash_many;
 use starknet_ff::FieldElement as FieldElement252;
 
@@ -9,7 +10,7 @@ use crate::core::fields::m31::BaseField;
 
 const ELEMENTS_IN_BLOCK: usize = 8;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct Poseidon252MerkleHasher;
 impl MerkleHasher for Poseidon252MerkleHasher {
     type Hash = FieldElement252;
