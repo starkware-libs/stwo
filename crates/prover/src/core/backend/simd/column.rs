@@ -72,6 +72,12 @@ impl Column<BaseField> for BaseFieldVec {
     fn at(&self, index: usize) -> BaseField {
         self.data[index / N_LANES].to_array()[index % N_LANES]
     }
+
+    fn set(&mut self, index: usize, value: BaseField) {
+        let mut packed = self.data[index / N_LANES].to_array();
+        packed[index % N_LANES] = value;
+        self.data[index / N_LANES] = PackedBaseField::from_array(packed)
+    }
 }
 
 impl FromIterator<BaseField> for BaseFieldVec {
@@ -123,6 +129,12 @@ impl Column<SecureField> for SecureFieldVec {
 
     fn at(&self, index: usize) -> SecureField {
         self.data[index / N_LANES].to_array()[index % N_LANES]
+    }
+
+    fn set(&mut self, index: usize, value: SecureField) {
+        let mut packed = self.data[index / N_LANES].to_array();
+        packed[index % N_LANES] = value;
+        self.data[index / N_LANES] = PackedSecureField::from_array(packed)
     }
 }
 
