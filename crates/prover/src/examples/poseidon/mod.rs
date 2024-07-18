@@ -1,5 +1,6 @@
 //! AIR for Poseidon2 hash function from <https://eprint.iacr.org/2023/323.pdf>.
 
+use std::array;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
@@ -12,23 +13,25 @@ use crate::core::air::{
     Air, AirProver, AirTraceVerifier, AirTraceWriter, Component, ComponentProver, ComponentTrace,
     ComponentTraceWriter,
 };
-use crate::core::backend::simd::column::BaseFieldVec;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::backend::simd::m31::{PackedBaseField, PackedM31, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Col, Column, ColumnOps};
+// use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Col, Column};
 use crate::core::channel::Blake2sChannel;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{FieldExpOps, FieldOps};
+// use crate::core::fields::{FieldExpOps, FieldOps};
+use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
+use crate::core::utils::bit_reverse;
 use crate::core::{ColumnVec, InteractionElements};
 
-const N_LOG_INSTANCES_PER_ROW: usize = 3;
+const N_LOG_INSTANCES_PER_ROW: usize = 2;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
 const N_STATE: usize = 16;
 const N_PARTIAL_ROUNDS: usize = 14;
@@ -420,13 +423,20 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
         span.exit();
 
         // Denoms.
-        let span = span!(Level::INFO, "Constraint eval denominators").entered();
+        // let span = span!(Level::INFO, "Constraint eval denominators").entered();
+        // let mut denoms =
+        //     BaseFieldVec::from_iter(eval_domain.iter().map(|p| coset_vanishing(zero_domain, p)));
+        // <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
+        // let mut denom_inverses = BaseFieldVec::zeros(denoms.len());
+        // <SimdBackend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inverses);
+        // span.exit();
+
+        let span = span!(Level::INFO, "Constraint eval denominators (small)").entered();
         let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
-        let mut denoms =
-            BaseFieldVec::from_iter(eval_domain.iter().map(|p| coset_vanishing(zero_domain, p)));
-        <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
-        let mut denom_inverses = BaseFieldVec::zeros(denoms.len());
-        <SimdBackend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inverses);
+        let denoms_inv: [BaseField; 1 << LOG_EXPAND] =
+            array::from_fn(|i| coset_vanishing(zero_domain, eval_domain.at(i)).inverse());
+        let mut packed_denoms_inv = denoms_inv.map(PackedM31::broadcast);
+        bit_reverse(&mut packed_denoms_inv);
         span.exit();
 
         let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
@@ -455,7 +465,9 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
             unsafe {
                 accum.col.set_packed(
                     vec_row,
-                    accum.col.packed_at(vec_row) + row_res * denom_inverses.data[vec_row],
+                    accum.col.packed_at(vec_row)
+                        + row_res
+                            * packed_denoms_inv[vec_row >> (zero_domain.log_size() - LOG_N_LANES)],
                 )
             }
             assert_eq!(evaluator.constraint_index, n_constraints);
