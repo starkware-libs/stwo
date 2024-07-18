@@ -1,9 +1,11 @@
 /// ! This module contains helpers to express and use constraints for components.
 mod assert;
+pub mod constant_columns;
 mod info;
 mod point;
 mod simd_domain;
 
+use std::array;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
@@ -62,6 +64,17 @@ pub trait EvalAtRow {
         interaction: usize,
         offsets: [isize; N],
     ) -> [Self::F; N];
+
+    /// Returns the extension mask values of the given offsets for the next extension degree many
+    /// columns in the interaction.
+    fn next_extension_interaction_mask<const N: usize>(
+        &mut self,
+        interaction: usize,
+        offsets: [isize; N],
+    ) -> [Self::EF; N] {
+        let res_col_major = array::from_fn(|_| self.next_interaction_mask(interaction, offsets));
+        array::from_fn(|i| Self::combine_ef(res_col_major.map(|c| c[i])))
+    }
 
     /// Adds a constraint to the component.
     fn add_constraint<G>(&mut self, constraint: G)

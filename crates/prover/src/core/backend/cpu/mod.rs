@@ -2,7 +2,7 @@ mod accumulation;
 mod blake2s;
 mod circle;
 mod fri;
-mod lookups;
+pub mod lookups;
 pub mod quotients;
 
 use std::fmt::Debug;
@@ -46,6 +46,9 @@ impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
     }
     fn at(&self, index: usize) -> T {
         self[index].clone()
+    }
+    fn set(&mut self, index: usize, value: T) {
+        self[index] = value;
     }
 }
 
