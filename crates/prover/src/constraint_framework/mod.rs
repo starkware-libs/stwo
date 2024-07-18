@@ -1,5 +1,6 @@
 /// ! This module contains helpers to express and use constraints for components.
 mod assert;
+pub mod constant_columns;
 mod info;
 mod point;
 mod simd_domain;
