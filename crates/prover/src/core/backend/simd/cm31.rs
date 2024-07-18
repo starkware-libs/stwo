@@ -1,6 +1,7 @@
 use std::array;
 use std::ops::{Add, Mul, MulAssign, Neg, Sub};
 
+use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
 
 use super::m31::{PackedM31, N_LANES};
@@ -102,6 +103,14 @@ impl Zero for PackedCM31 {
 
     fn is_zero(&self) -> bool {
         self.a().is_zero() && self.b().is_zero()
+    }
+}
+
+unsafe impl Pod for PackedCM31 {}
+
+unsafe impl Zeroable for PackedCM31 {
+    fn zeroed() -> Self {
+        unsafe { core::mem::zeroed() }
     }
 }
 

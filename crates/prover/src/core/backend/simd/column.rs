@@ -9,6 +9,7 @@ use super::m31::{PackedBaseField, N_LANES};
 use super::qm31::{PackedQM31, PackedSecureField};
 use super::SimdBackend;
 use crate::core::backend::{Column, CpuBackend};
+use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
@@ -103,6 +104,72 @@ impl FromIterator<BaseField> for BaseColumn {
                 data.push(PackedBaseField::from_array(last));
             }
         }
+
+        Self { data, length }
+    }
+}
+
+// A efficient structure for storing and operating on a arbitrary number of [`SecureField`] values.
+#[derive(Clone, Debug)]
+pub struct CM31Column {
+    pub data: Vec<PackedCM31>,
+    pub length: usize,
+}
+
+impl Column<CM31> for CM31Column {
+    fn zeros(length: usize) -> Self {
+        Self {
+            data: vec![PackedCM31::zeroed(); length.div_ceil(N_LANES)],
+            length,
+        }
+    }
+
+    fn to_cpu(&self) -> Vec<CM31> {
+        self.data
+            .iter()
+            .flat_map(|x| x.to_array())
+            .take(self.length)
+            .collect()
+    }
+
+    fn len(&self) -> usize {
+        self.length
+    }
+
+    fn at(&self, index: usize) -> CM31 {
+        self.data[index / N_LANES].to_array()[index % N_LANES]
+    }
+
+    fn set(&mut self, index: usize, value: CM31) {
+        let mut packed = self.data[index / N_LANES].to_array();
+        packed[index % N_LANES] = value;
+        self.data[index / N_LANES] = PackedCM31::from_array(packed)
+    }
+}
+
+impl FromIterator<CM31> for CM31Column {
+    fn from_iter<I: IntoIterator<Item = CM31>>(iter: I) -> Self {
+        let mut chunks = iter.into_iter().array_chunks();
+        let mut data = (&mut chunks).map(PackedCM31::from_array).collect_vec();
+        let mut length = data.len() * N_LANES;
+
+        if let Some(remainder) = chunks.into_remainder() {
+            if !remainder.is_empty() {
+                length += remainder.len();
+                let mut last = [CM31::zero(); N_LANES];
+                last[..remainder.len()].copy_from_slice(remainder.as_slice());
+                data.push(PackedCM31::from_array(last));
+            }
+        }
+
+        Self { data, length }
+    }
+}
+
+impl FromIterator<PackedCM31> for CM31Column {
+    fn from_iter<I: IntoIterator<Item = PackedCM31>>(iter: I) -> Self {
+        let data = (&mut iter.into_iter()).collect_vec();
+        let length = data.len() * N_LANES;
 
         Self { data, length }
     }
