@@ -189,6 +189,15 @@ impl Mul<PackedM31> for PackedQM31 {
     }
 }
 
+impl Mul<PackedCM31> for PackedQM31 {
+    type Output = Self;
+
+    fn mul(self, rhs: PackedCM31) -> Self::Output {
+        let Self([a, b]) = self;
+        Self([a * rhs, b * rhs])
+    }
+}
+
 impl Sub<PackedM31> for PackedQM31 {
     type Output = Self;
 
