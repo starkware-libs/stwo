@@ -5,7 +5,8 @@ use super::Fu32;
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::EvalAtRow;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::FieldExpOps;
+
+const I16: BaseField = BaseField::from_u32_unchecked(1 << 15);
 
 pub struct BlakeRoundEval<'a, E: EvalAtRow> {
     pub eval: E,
@@ -69,12 +70,10 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         let sl = self.eval.next_trace_mask();
         let sh = self.eval.next_trace_mask();
 
-        let carry_l =
-            (a.l + b.l - sl) * E::F::from(BaseField::from_u32_unchecked(1 << 16).inverse());
+        let carry_l = (a.l + b.l - sl) * E::F::from(I16);
         self.eval.add_constraint(carry_l * carry_l - carry_l);
 
-        let carry_h = (a.h + b.h + carry_l - sh)
-            * E::F::from(BaseField::from_u32_unchecked(1 << 16).inverse());
+        let carry_h = (a.h + b.h + carry_l - sh) * E::F::from(I16);
         self.eval.add_constraint(carry_h * carry_h - carry_h);
 
         Fu32 { l: sl, h: sh }
@@ -88,16 +87,14 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         let sl = self.eval.next_trace_mask();
         let sh = self.eval.next_trace_mask();
 
-        let carry_l =
-            (a.l + b.l + c.l - sl) * E::F::from(BaseField::from_u32_unchecked(1 << 16).inverse());
+        let carry_l = (a.l + b.l + c.l - sl) * E::F::from(I16);
         self.eval.add_constraint(
             carry_l
                 * (carry_l - E::F::from(BaseField::from_u32_unchecked(1 << 0)))
                 * (carry_l - E::F::from(BaseField::from_u32_unchecked(1 << 1))),
         );
 
-        let carry_h = (a.h + b.h + c.h + carry_l - sh)
-            * E::F::from(BaseField::from_u32_unchecked(1 << 16).inverse());
+        let carry_h = (a.h + b.h + c.h + carry_l - sh) * E::F::from(I16);
         self.eval.add_constraint(
             carry_h
                 * (carry_h - E::F::from(BaseField::from_u32_unchecked(1 << 0)))

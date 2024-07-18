@@ -93,7 +93,7 @@ fn accumulate_quotients_on_subdomain(
     [crate::core::poly::circle::CirclePoly<SimdBackend>; 4],
 ) {
     assert!(subdomain.log_size() >= LOG_N_LANES + 2);
-    let mut values = SecureColumn::<SimdBackend>::zeros(subdomain.size());
+    let mut values = unsafe { SecureColumn::<SimdBackend>::uninit(subdomain.size()) };
     let quotient_constants = quotient_constants(sample_batches, random_coeff, subdomain);
 
     let span = span!(Level::INFO, "Quotient accumulation").entered();
@@ -124,7 +124,7 @@ fn accumulate_quotients_on_subdomain(
     let span = span!(Level::INFO, "Quotient extension").entered();
 
     // Extend the evaluation to the full domain.
-    let extended_eval = SecureColumn::<SimdBackend>::zeros(domain.size());
+    let extended_eval = unsafe { SecureColumn::<SimdBackend>::uninit(domain.size()) };
 
     let mut i = 0;
     let values = values.columns;
@@ -213,7 +213,7 @@ fn denominator_inverses(
         })
         .collect();
 
-    let mut flat_denominator_inverses = CMFieldVec::zeros(flat_denominators.len());
+    let mut flat_denominator_inverses = unsafe { CMFieldVec::uninit(flat_denominators.len()) };
     FieldExpOps::batch_inverse(
         &flat_denominators.data,
         &mut flat_denominator_inverses.data[..],

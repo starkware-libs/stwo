@@ -151,8 +151,8 @@ pub struct LogupTraceGenerator {
 impl LogupTraceGenerator {
     pub fn new(log_size: u32) -> Self {
         let trace = vec![];
-        let denom = SecureFieldVec::zeros(1 << log_size);
-        let denom_inv = SecureFieldVec::zeros(1 << log_size);
+        let denom = unsafe { SecureFieldVec::uninit(1 << log_size) };
+        let denom_inv = unsafe { SecureFieldVec::uninit(1 << log_size) };
         Self {
             log_size,
             trace,
@@ -165,7 +165,7 @@ impl LogupTraceGenerator {
         let log_size = self.log_size;
         LogupColGenerator {
             gen: self,
-            numerator: SecureColumn::<SimdBackend>::zeros(1 << log_size),
+            numerator: unsafe { SecureColumn::<SimdBackend>::uninit(1 << log_size) },
         }
     }
 

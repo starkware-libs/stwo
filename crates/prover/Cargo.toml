@@ -3,6 +3,9 @@ name = "stwo-prover"
 version.workspace = true
 edition.workspace = true
 
+[profile.release]
+debug = true
+
 [features]
 parallel = ["rayon"]
 

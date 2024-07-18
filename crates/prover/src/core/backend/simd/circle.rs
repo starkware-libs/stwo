@@ -235,7 +235,7 @@ impl PolyOps for SimdBackend {
         // Evaluate on a big domains by evaluating on several subdomains.
         let log_subdomains = log_size - fft_log_size;
 
-        // Alllocate the destination buffer without initializing.
+        // Allocate the destination buffer without initializing.
         let mut values = Vec::with_capacity(domain.size() >> LOG_N_LANES);
         #[allow(clippy::uninit_vec)]
         unsafe {

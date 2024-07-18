@@ -32,9 +32,9 @@ impl BlakeSchedulerLookupData {
     fn new(log_size: u32) -> Self {
         Self {
             round_lookups: std::array::from_fn(|_| {
-                std::array::from_fn(|_| BaseFieldVec::zeros(1 << log_size))
+                std::array::from_fn(|_| unsafe { BaseFieldVec::uninit(1 << log_size) })
             }),
-            blake_lookups: std::array::from_fn(|_| BaseFieldVec::zeros(1 << log_size)),
+            blake_lookups: std::array::from_fn(|_| unsafe { BaseFieldVec::uninit(1 << log_size) }),
         }
     }
 }
@@ -51,7 +51,7 @@ pub fn gen_trace(
     let mut round_inputs = Vec::with_capacity(inputs.len() * N_ROUNDS);
 
     let mut trace = (0..blake_scheduler_info().mask_offsets[0].len())
-        .map(|_| BaseFieldVec::zeros(1 << log_size))
+        .map(|_| unsafe { BaseFieldVec::uninit(1 << log_size) })
         .collect_vec();
 
     for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {

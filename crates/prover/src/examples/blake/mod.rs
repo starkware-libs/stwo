@@ -432,7 +432,7 @@ impl<'a> DomainEvalHelper<'a> {
         let mut denoms =
             BaseFieldVec::from_iter(eval_domain.iter().map(|p| coset_vanishing(trace_domain, p)));
         <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
-        let mut denom_inv = BaseFieldVec::zeros(denoms.len());
+        let mut denom_inv = unsafe { BaseFieldVec::uninit(denoms.len()) };
         <SimdBackend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inv);
 
         span.exit();

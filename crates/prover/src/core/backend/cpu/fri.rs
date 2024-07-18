@@ -27,7 +27,7 @@ impl FriOps for CpuBackend {
 
     fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField) {
         let lambda = Self::decomposition_coefficient(eval);
-        let mut g_values = SecureColumn::<Self>::zeros(eval.len());
+        let mut g_values = unsafe { SecureColumn::<Self>::uninit(eval.len()) };
 
         let domain_size = eval.len();
         let half_domain_size = domain_size / 2;

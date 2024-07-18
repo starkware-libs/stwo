@@ -33,13 +33,13 @@ impl TraceGenerator {
     fn new(log_size: u32) -> Self {
         assert!(log_size >= LOG_N_LANES);
         let trace = (0..blake_round_info().mask_offsets[0].len())
-            .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
+            .map(|_| unsafe { Col::<SimdBackend, BaseField>::uninit(1 << log_size) })
             .collect_vec();
         Self {
             log_size,
             trace,
             xor_lookups: vec![],
-            round_lookups: std::array::from_fn(|_| BaseFieldVec::zeros(1 << log_size)),
+            round_lookups: std::array::from_fn(|_| unsafe { BaseFieldVec::uninit(1 << log_size) }),
         }
     }
 
@@ -170,8 +170,8 @@ impl<'a> TraceGeneratorRow<'a> {
         let c = a ^ b;
         self.append_felt(c);
         if self.gen.xor_lookups.len() <= self.xor_lookups_index {
-            self.gen.xor_lookups.push(std::array::from_fn(|_| {
-                BaseFieldVec::zeros(1 << self.gen.log_size)
+            self.gen.xor_lookups.push(std::array::from_fn(|_| unsafe {
+                BaseFieldVec::uninit(1 << self.gen.log_size)
             }));
         }
         self.gen.xor_lookups[self.xor_lookups_index][0].data[self.vec_row] =

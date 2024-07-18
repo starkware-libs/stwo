@@ -66,6 +66,13 @@ impl Column<BaseField> for BaseFieldVec {
         Self { data, length }
     }
 
+    #[allow(clippy::uninit_vec)]
+    unsafe fn uninit(length: usize) -> Self {
+        let mut data = Vec::with_capacity(length.div_ceil(N_LANES));
+        data.set_len(length.div_ceil(N_LANES));
+        Self { data, length }
+    }
+
     fn to_cpu(&self) -> Vec<BaseField> {
         self.as_slice().to_vec()
     }
@@ -117,6 +124,13 @@ impl Column<CM31> for CMFieldVec {
             data: vec![PackedCM31::zeroed(); length.div_ceil(N_LANES)],
             length,
         }
+    }
+
+    #[allow(clippy::uninit_vec)]
+    unsafe fn uninit(length: usize) -> Self {
+        let mut data = Vec::with_capacity(length.div_ceil(N_LANES));
+        data.set_len(length.div_ceil(N_LANES));
+        Self { data, length }
     }
 
     fn to_cpu(&self) -> Vec<CM31> {
@@ -184,6 +198,13 @@ impl Column<SecureField> for SecureFieldVec {
             data: vec![PackedSecureField::zeroed(); length.div_ceil(N_LANES)],
             length,
         }
+    }
+
+    #[allow(clippy::uninit_vec)]
+    unsafe fn uninit(length: usize) -> Self {
+        let mut data = Vec::with_capacity(length.div_ceil(N_LANES));
+        data.set_len(length.div_ceil(N_LANES));
+        Self { data, length }
     }
 
     fn to_cpu(&self) -> Vec<SecureField> {
