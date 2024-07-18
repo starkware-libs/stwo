@@ -2,15 +2,14 @@ use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Sub};
 use std::simd::u32x16;
 
-use bytemuck::cast_slice_mut;
-use itertools::{chain, multizip, Itertools};
+use itertools::{chain, Itertools};
 use num_traits::Zero;
 use round::BlakeRoundComponent;
 use round_gen::BlakeRoundInput;
 use scheduler::BlakeSchedulerComponent;
 use scheduler_gen::BlakeInput;
-use table::TableComponent;
 use tracing::{span, Level};
+use xor_table::{XorAccumulator, XorTableComponent};
 
 use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::LookupElements;
@@ -28,7 +27,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, FieldOps, IntoSlice};
 use crate::core::pcs::CommitmentSchemeProver;
-use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation, PolyOps};
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, PolyOps};
 use crate::core::prover::{prove, StarkProof, LOG_BLOWUP_FACTOR};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::blake2s_ref;
@@ -44,7 +43,7 @@ mod round_gen;
 mod scheduler;
 mod scheduler_constraints;
 mod scheduler_gen;
-mod table;
+mod xor_table;
 
 #[derive(Clone, Copy, Debug)]
 struct Fu32<F>
@@ -78,7 +77,7 @@ where
 pub struct BlakeAir {
     pub scheduler_component: BlakeSchedulerComponent,
     pub round_component: BlakeRoundComponent,
-    pub xor_component: TableComponent,
+    pub xor_component: XorTableComponent,
 }
 
 impl Air for BlakeAir {
@@ -117,12 +116,11 @@ fn to_felts(x: u32x16) -> [PackedBaseField; 2] {
 
 #[allow(unused)]
 pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
-    const XOR_LOG_SIZE: u32 = 20;
     assert!(log_size >= LOG_N_LANES);
 
     // Precompute twiddles.
     let span = span!(Level::INFO, "Precompute twiddles").entered();
-    let log_max_rows = (log_size + 3).max(XOR_LOG_SIZE);
+    let log_max_rows = (log_size + 3).max(xor_table::COLUMN_BITS);
     let twiddles = SimdBackend::precompute_twiddles(
         CanonicCoset::new(log_max_rows + 1 + LOG_BLOWUP_FACTOR)
             .circle_domain()
@@ -151,30 +149,14 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
     // Round trace.
     span.exit();
     let span = span!(Level::INFO, "Round Generation").entered();
-    let mut xor_mults = BaseFieldVec::zeros(1 << 24);
-    let (round_trace, round_lookup_data) = round_gen::gen_trace(
-        log_size + 3,
-        &round_inputs,
-        cast_slice_mut(&mut xor_mults.data[..]),
-    );
+    let mut xor_accum = XorAccumulator::default();
+    let (round_trace, round_lookup_data) =
+        round_gen::gen_trace(log_size + 3, &round_inputs, &mut xor_accum);
     let n_padded_rounds = (1 << (log_size + 3 - LOG_N_LANES)) - round_trace.len();
     // let round_trace0 = round_trace.clone();
 
     // Xor table trace.
-    let a_col: BaseFieldVec = (0..(1 << 24))
-        .map(|i| BaseField::from_u32_unchecked((i >> 12) as u32))
-        .collect();
-    let b_col: BaseFieldVec = (0..(1 << 24))
-        .map(|i| BaseField::from_u32_unchecked((i & 0xfff) as u32))
-        .collect();
-    let c_col: BaseFieldVec = (0..(1 << 24))
-        .map(|i| BaseField::from_u32_unchecked(((i >> 12) ^ (i & 0xfff)) as u32))
-        .collect();
-    let (xor_trace, xor_lookup_data) = table::generate_trace(
-        XOR_LOG_SIZE,
-        vec![a_col.clone(), b_col.clone(), c_col.clone()],
-        xor_mults,
-    );
+    let (xor_trace, xor_lookup_data) = xor_table::generate_trace(xor_accum);
 
     span.exit();
     let span = span!(Level::INFO, "Trace Commitment").entered();
@@ -210,8 +192,8 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
 
     span.exit();
     let span = span!(Level::INFO, "Table Interaction Generation").entered();
-    let (xor_trace, xor_claimed_sum) =
-        table::gen_interaction_trace(XOR_LOG_SIZE, xor_lookup_data, &xor_lookup_elements);
+    let (xor_trace, xor_constant_trace, xor_claimed_sum) =
+        xor_table::gen_interaction_trace(xor_lookup_data, &xor_lookup_elements);
 
     span.exit();
     let span = span!(Level::INFO, "Interaction Commitment").entered();
@@ -229,29 +211,9 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
             [
                 gen_is_first(log_size),
                 gen_is_first(log_size + 3),
-                gen_is_first(XOR_LOG_SIZE),
+                gen_is_first(xor_table::COLUMN_BITS),
             ],
-            multizip((
-                a_col.data.chunks(1 << (XOR_LOG_SIZE - LOG_N_LANES)),
-                b_col.data.chunks(1 << (XOR_LOG_SIZE - LOG_N_LANES)),
-                c_col.data.chunks(1 << (XOR_LOG_SIZE - LOG_N_LANES))
-            ))
-            .flat_map(|(a, b, c)| {
-                [
-                    CircleEvaluation::new(
-                        CanonicCoset::new(XOR_LOG_SIZE).circle_domain(),
-                        BaseFieldVec::new(a.to_vec()),
-                    ),
-                    CircleEvaluation::new(
-                        CanonicCoset::new(XOR_LOG_SIZE).circle_domain(),
-                        BaseFieldVec::new(b.to_vec()),
-                    ),
-                    CircleEvaluation::new(
-                        CanonicCoset::new(XOR_LOG_SIZE).circle_domain(),
-                        BaseFieldVec::new(c.to_vec()),
-                    ),
-                ]
-            })
+            xor_constant_trace,
         ]
         .collect_vec(),
         channel,
@@ -375,10 +337,7 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
         round_lookup_elements,
         claimed_sum: round_claimed_sum,
     };
-    let xor_component = TableComponent {
-        log_size: XOR_LOG_SIZE,
-        n_cols: 3,
-        n_reps: 1 << (24 - XOR_LOG_SIZE),
+    let xor_component = XorTableComponent {
         lookup_elements: xor_lookup_elements,
         claimed_sum: xor_claimed_sum,
     };

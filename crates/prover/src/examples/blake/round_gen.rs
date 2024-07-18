@@ -5,6 +5,7 @@ use itertools::{chain, Itertools};
 use num_traits::One;
 use tracing::{span, Level};
 
+use super::xor_table::XorAccumulator;
 use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
 use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -194,7 +195,7 @@ pub struct BlakeRoundInput {
 pub fn gen_trace(
     log_size: u32,
     inputs: &[BlakeRoundInput],
-    xor_mults: &mut [u32],
+    xor_accum: &mut XorAccumulator,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     BlakeLookupData,
@@ -208,13 +209,7 @@ pub fn gen_trace(
         for [a, b, _c] in &generator.xor_lookups {
             let a = a.data[vec_row].into_simd();
             let b = b.data[vec_row].into_simd();
-            let idx = (a << 12) + b;
-            // TODO: Bug. Index can collide.
-            // (Simd::gather_or_default(xor_mults, idx.cast()) + u32x16::splat(1))
-            //     .scatter(xor_mults, idx.cast());
-            for i in idx.as_array() {
-                xor_mults[*i as usize] += 1;
-            }
+            xor_accum.add(a, b);
         }
     }
     let domain = CanonicCoset::new(log_size).circle_domain();
