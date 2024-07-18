@@ -9,20 +9,20 @@ use crate::constraint_framework::{EvalAtRow, PointEvaluator, SimdDomainEvaluator
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
-use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Col, Column, ColumnOps};
+use crate::core::backend::{Col, Column};
 use crate::core::channel::Blake2sChannel;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{FieldExpOps, FieldOps};
+use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::VerificationError;
+use crate::core::utils::bit_reverse;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
@@ -367,6 +367,11 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
     ) {
         assert_eq!(trace.polys[0].len(), self.n_columns());
         let eval_domain = CanonicCoset::new(self.log_column_size() + LOG_EXPAND).circle_domain();
+        let n_cosets = 1 << LOG_EXPAND;
+
+        // Because evaluations of a vanishing polynomial on a coset of the vanishing coset is a
+        // constant, we only need to evaluate a representative per coset.
+        let eval_vals = (0..n_cosets).map(|i| eval_domain.at(i)).collect_vec();
 
         // Create a new evaluation.
         let span = span!(Level::INFO, "Deg4 eval").entered();
@@ -385,11 +390,11 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
         // Denoms.
         let span = span!(Level::INFO, "Constraint eval denominators").entered();
         let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
-        let mut denoms =
-            BaseFieldVec::from_iter(eval_domain.iter().map(|p| coset_vanishing(zero_domain, p)));
-        <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
-        let mut denom_inverses = BaseFieldVec::zeros(denoms.len());
-        <SimdBackend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inverses);
+        let mut denom_inverses = eval_vals
+            .iter()
+            .map(|p| PackedBaseField::broadcast(coset_vanishing(zero_domain, *p).inverse()))
+            .collect_vec();
+        bit_reverse(&mut denom_inverses);
         span.exit();
 
         let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
@@ -419,7 +424,10 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
             unsafe {
                 accum.col.set_packed(
                     vec_row,
-                    accum.col.packed_at(vec_row) + row_res * denom_inverses.data[vec_row],
+                    accum.col.packed_at(vec_row)
+                        + row_res
+                            * denom_inverses[(vec_row * n_cosets)
+                                >> (self.log_column_size() + LOG_EXPAND - LOG_N_LANES) as usize],
                 )
             }
             assert_eq!(evaluator.eval.constraint_index, n_constraints);
