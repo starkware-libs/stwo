@@ -24,41 +24,47 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 
-pub const LIMB_BITS: u32 = 10;
+// pub const LIMB_BITS: u32 = 10;
 pub const LIMB_EXPAND_BITS: u32 = 2;
-pub const COLUMN_BITS: u32 = 2 * LIMB_BITS;
+// pub const COLUMN_BITS: u32 = 2 * LIMB_BITS;
+const fn limb_bits<const ELEM_BITS: u32>() -> u32 {
+    ELEM_BITS - LIMB_EXPAND_BITS
+}
+const fn column_bits<const ELEM_BITS: u32>() -> u32 {
+    2 * limb_bits::<ELEM_BITS>()
+}
 
-pub struct XorAccumulator {
+pub struct XorAccumulator<const ELEM_BITS: u32> {
     pub mults: [BaseFieldVec; 1 << (2 * (LIMB_EXPAND_BITS))],
 }
-impl Default for XorAccumulator {
+impl<const ELEM_BITS: u32> Default for XorAccumulator<ELEM_BITS> {
     fn default() -> Self {
         Self {
-            mults: std::array::from_fn(|_| BaseFieldVec::zeros(1 << COLUMN_BITS)),
+            mults: std::array::from_fn(|_| BaseFieldVec::zeros(1 << column_bits::<ELEM_BITS>())),
         }
     }
 }
-impl XorAccumulator {
+impl<const ELEM_BITS: u32> XorAccumulator<ELEM_BITS> {
     pub fn add(&mut self, a: u32x16, b: u32x16) {
-        let al = a & u32x16::splat((1 << LIMB_BITS) - 1);
-        let ah = a >> LIMB_BITS;
-        let bl = b & u32x16::splat((1 << LIMB_BITS) - 1);
-        let bh = b >> LIMB_BITS;
+        let al = a & u32x16::splat((1 << limb_bits::<ELEM_BITS>()) - 1);
+        let ah = a >> limb_bits::<ELEM_BITS>();
+        let bl = b & u32x16::splat((1 << limb_bits::<ELEM_BITS>()) - 1);
+        let bh = b >> limb_bits::<ELEM_BITS>();
         let idxh = (ah << LIMB_EXPAND_BITS) + bh;
-        let idxl = (al << LIMB_BITS) + bl;
+        let idxl = (al << limb_bits::<ELEM_BITS>()) + bl;
         for (ih, il) in idxh.as_array().iter().zip(idxl.as_array().iter()) {
             self.mults[*ih as usize].as_mut_slice()[*il as usize].0 += 1;
         }
     }
 }
 
-pub struct XorTableComponent {
+pub struct XorTableComponent<const ELEM_BITS: u32> {
     pub lookup_elements: LookupElements,
     pub claimed_sum: SecureField,
 }
 
-fn xor_table_info() -> InfoEvaluator {
-    let mut counter = XorTableEval {
+fn xor_table_info<const ELEM_BITS: u32>() -> InfoEvaluator {
+    let mut counter = XorTableEval::<'_, _, ELEM_BITS> {
         eval: InfoEvaluator::default(),
         lookup_elements: &LookupElements::dummy(3),
         logup: LogupAtRow::new(1, SecureField::zero(), BaseField::zero()),
@@ -68,21 +74,21 @@ fn xor_table_info() -> InfoEvaluator {
     counter.eval()
 }
 
-impl Component for XorTableComponent {
+impl<const ELEM_BITS: u32> Component for XorTableComponent<ELEM_BITS> {
     fn n_constraints(&self) -> usize {
-        xor_table_info().n_constraints
+        xor_table_info::<ELEM_BITS>().n_constraints
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        COLUMN_BITS + 1
+        column_bits::<ELEM_BITS>() + 1
     }
 
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
         TreeVec::new(
-            xor_table_info()
+            xor_table_info::<ELEM_BITS>()
                 .mask_offsets
                 .iter()
-                .map(|tree_masks| vec![COLUMN_BITS; tree_masks.len()])
+                .map(|tree_masks| vec![column_bits::<ELEM_BITS>(); tree_masks.len()])
                 .collect(),
         )
     }
@@ -91,8 +97,8 @@ impl Component for XorTableComponent {
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        let info = xor_table_info();
-        let trace_step = CanonicCoset::new(COLUMN_BITS).step();
+        let info = xor_table_info::<ELEM_BITS>();
+        let trace_step = CanonicCoset::new(column_bits::<ELEM_BITS>()).step();
         info.mask_offsets.map(|tree_mask| {
             tree_mask
                 .iter()
@@ -114,12 +120,12 @@ impl Component for XorTableComponent {
         _interaction_elements: &InteractionElements,
         _lookup_values: &LookupValues,
     ) {
-        let constraint_zero_domain = CanonicCoset::new(COLUMN_BITS).coset;
+        let constraint_zero_domain = CanonicCoset::new(column_bits::<ELEM_BITS>()).coset;
         let denom = coset_vanishing(constraint_zero_domain, point);
         let denom_inverse = denom.inverse();
         let mut eval = PointEvaluator::new(mask.as_ref(), evaluation_accumulator, denom_inverse);
         let [is_first] = eval.next_interaction_mask(2, [0]);
-        let blake_eval = XorTableEval {
+        let blake_eval = XorTableEval::<'_, _, ELEM_BITS> {
             eval,
             lookup_elements: &self.lookup_elements,
             logup: LogupAtRow::new(1, self.claimed_sum, is_first),
@@ -128,7 +134,7 @@ impl Component for XorTableComponent {
     }
 }
 
-impl ComponentProver<SimdBackend> for XorTableComponent {
+impl<const ELEM_BITS: u32> ComponentProver<SimdBackend> for XorTableComponent<ELEM_BITS> {
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &ComponentTrace<'_, SimdBackend>,
@@ -137,8 +143,8 @@ impl ComponentProver<SimdBackend> for XorTableComponent {
         _lookup_values: &LookupValues,
     ) {
         let mut domain_eval = DomainEvalHelper::new(
-            COLUMN_BITS,
-            COLUMN_BITS + 1,
+            column_bits::<ELEM_BITS>(),
+            column_bits::<ELEM_BITS>() + 1,
             trace,
             evaluation_accumulator,
             self.max_constraint_log_degree_bound(),
@@ -158,7 +164,7 @@ impl ComponentProver<SimdBackend> for XorTableComponent {
             // Constant column is_first.
             let [is_first] = eval.next_interaction_mask(2, [0]);
             let logup = LogupAtRow::new(1, self.claimed_sum, is_first);
-            let table_eval = XorTableEval {
+            let table_eval = XorTableEval::<'_, _, ELEM_BITS> {
                 eval,
                 lookup_elements: &self.lookup_elements,
                 logup,
@@ -176,12 +182,12 @@ impl ComponentProver<SimdBackend> for XorTableComponent {
     }
 }
 
-pub struct XorTableEval<'a, E: EvalAtRow> {
+pub struct XorTableEval<'a, E: EvalAtRow, const ELEM_BITS: u32> {
     pub eval: E,
     pub lookup_elements: &'a LookupElements,
     pub logup: LogupAtRow<2, E>,
 }
-impl<'a, E: EvalAtRow> XorTableEval<'a, E> {
+impl<'a, E: EvalAtRow, const ELEM_BITS: u32> XorTableEval<'a, E, ELEM_BITS> {
     pub fn eval(mut self) -> E {
         let [a] = self.eval.next_interaction_mask(2, [0]);
         let [b] = self.eval.next_interaction_mask(2, [0]);
@@ -190,9 +196,13 @@ impl<'a, E: EvalAtRow> XorTableEval<'a, E> {
             for j in 0..1 << LIMB_EXPAND_BITS {
                 let multiplicity = self.eval.next_trace_mask();
 
-                let a = a + E::F::from(BaseField::from_u32_unchecked(i << LIMB_BITS));
-                let b = b + E::F::from(BaseField::from_u32_unchecked(j << LIMB_BITS));
-                let c = c + E::F::from(BaseField::from_u32_unchecked((i ^ j) << LIMB_BITS));
+                let a =
+                    a + E::F::from(BaseField::from_u32_unchecked(i << limb_bits::<ELEM_BITS>()));
+                let b =
+                    b + E::F::from(BaseField::from_u32_unchecked(j << limb_bits::<ELEM_BITS>()));
+                let c = c + E::F::from(BaseField::from_u32_unchecked(
+                    (i ^ j) << limb_bits::<ELEM_BITS>(),
+                ));
 
                 self.logup.push_lookup(
                     &mut self.eval,
@@ -208,22 +218,25 @@ impl<'a, E: EvalAtRow> XorTableEval<'a, E> {
     }
 }
 
-pub struct XorTableLookupData {
-    pub xor_accum: XorAccumulator,
+pub struct XorTableLookupData<const ELEM_BITS: u32> {
+    pub xor_accum: XorAccumulator<ELEM_BITS>,
 }
 
-pub fn generate_trace(
-    xor_accum: XorAccumulator,
+pub fn generate_trace<const ELEM_BITS: u32>(
+    xor_accum: XorAccumulator<ELEM_BITS>,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    XorTableLookupData,
+    XorTableLookupData<ELEM_BITS>,
 ) {
     (
         xor_accum
             .mults
             .iter()
             .map(|mult| {
-                CircleEvaluation::new(CanonicCoset::new(COLUMN_BITS).circle_domain(), mult.clone())
+                CircleEvaluation::new(
+                    CanonicCoset::new(column_bits::<ELEM_BITS>()).circle_domain(),
+                    mult.clone(),
+                )
             })
             .collect_vec(),
         XorTableLookupData { xor_accum },
@@ -231,17 +244,18 @@ pub fn generate_trace(
 }
 
 #[allow(clippy::type_complexity)]
-pub fn gen_interaction_trace(
-    lookup_data: XorTableLookupData,
+pub fn gen_interaction_trace<const ELEM_BITS: u32>(
+    lookup_data: XorTableLookupData<ELEM_BITS>,
     lookup_elements: &LookupElements,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     SecureField,
 ) {
+    let limb_bits = limb_bits::<ELEM_BITS>();
     let _span = span!(Level::INFO, "Generate table trace").entered();
     let vec_off = u32x16::from_array(std::array::from_fn(|i| i as u32));
-    let mut logup_gen = LogupTraceGenerator::new(COLUMN_BITS);
+    let mut logup_gen = LogupTraceGenerator::new(column_bits::<ELEM_BITS>());
     for [(i0, mults0), (i1, mults1)] in lookup_data
         .xor_accum
         .mults
@@ -256,14 +270,14 @@ pub fn gen_interaction_trace(
         let bh1 = i1 as u32 & ((1 << LIMB_EXPAND_BITS) - 1);
 
         #[allow(clippy::needless_range_loop)]
-        for vec_row in 0..(1 << (COLUMN_BITS - LOG_N_LANES)) {
+        for vec_row in 0..(1 << (column_bits::<ELEM_BITS>() - LOG_N_LANES)) {
             // vec_row is LIMB_BITS of a, and LIMB_BITS - LOG_N_LANES of b.
-            let al = vec_row >> (LIMB_BITS - LOG_N_LANES);
-            let a0 = u32x16::splat((ah0 << LIMB_BITS) | al);
-            let a1 = u32x16::splat((ah1 << LIMB_BITS) | al);
-            let bm = vec_row & ((1 << (LIMB_BITS - LOG_N_LANES)) - 1);
-            let b0 = u32x16::splat((bh0 << LIMB_BITS) | (bm << LOG_N_LANES)) | vec_off;
-            let b1 = u32x16::splat((bh1 << LIMB_BITS) | (bm << LOG_N_LANES)) | vec_off;
+            let al = vec_row >> (limb_bits - LOG_N_LANES);
+            let a0 = u32x16::splat((ah0 << limb_bits) | al);
+            let a1 = u32x16::splat((ah1 << limb_bits) | al);
+            let bm = vec_row & ((1 << (limb_bits - LOG_N_LANES)) - 1);
+            let b0 = u32x16::splat((bh0 << limb_bits) | (bm << LOG_N_LANES)) | vec_off;
+            let b1 = u32x16::splat((bh1 << limb_bits) | (bm << LOG_N_LANES)) | vec_off;
 
             let c0 = a0 ^ b0;
             let c1 = a1 ^ b1;
@@ -280,19 +294,24 @@ pub fn gen_interaction_trace(
         col_gen.finalize_col();
     }
 
-    let a_col: BaseFieldVec = (0..(1 << COLUMN_BITS))
-        .map(|i| BaseField::from_u32_unchecked((i >> LIMB_BITS) as u32))
+    let a_col: BaseFieldVec = (0..(1 << (column_bits::<ELEM_BITS>())))
+        .map(|i| BaseField::from_u32_unchecked((i >> limb_bits) as u32))
         .collect();
-    let b_col: BaseFieldVec = (0..(1 << COLUMN_BITS))
-        .map(|i| BaseField::from_u32_unchecked((i & ((1 << LIMB_BITS) - 1)) as u32))
+    let b_col: BaseFieldVec = (0..(1 << (column_bits::<ELEM_BITS>())))
+        .map(|i| BaseField::from_u32_unchecked((i & ((1 << limb_bits) - 1)) as u32))
         .collect();
-    let c_col: BaseFieldVec = (0..(1 << COLUMN_BITS))
+    let c_col: BaseFieldVec = (0..(1 << (column_bits::<ELEM_BITS>())))
         .map(|i| {
-            BaseField::from_u32_unchecked(((i >> LIMB_BITS) ^ (i & ((1 << LIMB_BITS) - 1))) as u32)
+            BaseField::from_u32_unchecked(((i >> limb_bits) ^ (i & ((1 << limb_bits) - 1))) as u32)
         })
         .collect();
     let constant_trace = [a_col, b_col, c_col]
-        .map(|x| CircleEvaluation::new(CanonicCoset::new(COLUMN_BITS).circle_domain(), x))
+        .map(|x| {
+            CircleEvaluation::new(
+                CanonicCoset::new(column_bits::<ELEM_BITS>()).circle_domain(),
+                x,
+            )
+        })
         .to_vec();
     let (interaction_trace, claimed_sum) = logup_gen.finalize();
     (interaction_trace, constant_trace, claimed_sum)
@@ -300,7 +319,8 @@ pub fn gen_interaction_trace(
 
 #[test]
 fn test_xor_table() {
-    let mut xor_accum = XorAccumulator::default();
+    const ELEM_BITS: u32 = 10;
+    let mut xor_accum = XorAccumulator::<ELEM_BITS>::default();
     xor_accum.add(u32x16::splat(1), u32x16::splat(2));
     let (trace, lookup_data) = generate_trace(xor_accum);
     let lookup_elements = LookupElements::dummy(3);
@@ -308,17 +328,17 @@ fn test_xor_table() {
         gen_interaction_trace(lookup_data, &lookup_elements);
     constant_trace.insert(
         0,
-        crate::constraint_framework::constant_columns::gen_is_first(COLUMN_BITS),
+        crate::constraint_framework::constant_columns::gen_is_first(column_bits::<ELEM_BITS>()),
     );
     let trace = TreeVec::new(vec![trace, interaction_trace, constant_trace]);
     let trace_polys = trace.map_cols(|c| c.interpolate());
     crate::constraint_framework::assert_constraints(
         &trace_polys,
-        CanonicCoset::new(COLUMN_BITS),
+        CanonicCoset::new(column_bits::<ELEM_BITS>()),
         |mut eval| {
             let [is_first] = eval.next_interaction_mask(2, [0]);
             let logup = LogupAtRow::new(1, claimed_sum, is_first);
-            let table_eval = XorTableEval {
+            let table_eval = XorTableEval::<'_, _, ELEM_BITS> {
                 eval,
                 lookup_elements: &lookup_elements,
                 logup,

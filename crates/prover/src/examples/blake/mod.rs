@@ -77,7 +77,7 @@ where
 pub struct BlakeAir {
     pub scheduler_component: BlakeSchedulerComponent,
     pub round_component: BlakeRoundComponent,
-    pub xor_component: XorTableComponent,
+    pub xor_component: XorTableComponent<12>,
 }
 
 impl Air for BlakeAir {
@@ -120,7 +120,7 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
 
     // Precompute twiddles.
     let span = span!(Level::INFO, "Precompute twiddles").entered();
-    let log_max_rows = (log_size + 3).max(xor_table::COLUMN_BITS);
+    let log_max_rows = (log_size + 3).max(20);
     let twiddles = SimdBackend::precompute_twiddles(
         CanonicCoset::new(log_max_rows + 1 + LOG_BLOWUP_FACTOR)
             .circle_domain()
@@ -211,7 +211,7 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
             [
                 gen_is_first(log_size),
                 gen_is_first(log_size + 3),
-                gen_is_first(xor_table::COLUMN_BITS),
+                gen_is_first(20),
             ],
             xor_constant_trace,
         ]
@@ -337,7 +337,7 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
         round_lookup_elements,
         claimed_sum: round_claimed_sum,
     };
-    let xor_component = XorTableComponent {
+    let xor_component = XorTableComponent::<12> {
         lookup_elements: xor_lookup_elements,
         claimed_sum: xor_claimed_sum,
     };

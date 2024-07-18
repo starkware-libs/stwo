@@ -195,7 +195,7 @@ pub struct BlakeRoundInput {
 pub fn gen_trace(
     log_size: u32,
     inputs: &[BlakeRoundInput],
-    xor_accum: &mut XorAccumulator,
+    xor_accum: &mut XorAccumulator<12>,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     BlakeLookupData,
