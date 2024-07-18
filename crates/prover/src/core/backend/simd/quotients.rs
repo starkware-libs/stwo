@@ -18,7 +18,7 @@ use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::LOG_BLOWUP_FACTOR;
-use crate::core::utils::{bit_reverse, bit_reverse_index};
+use crate::core::utils::bit_reverse;
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
@@ -97,17 +97,15 @@ fn accumulate_quotients_on_subdomain(
     let quotient_constants = quotient_constants(sample_batches, random_coeff, subdomain);
 
     let span = span!(Level::INFO, "Quotient accumulation").entered();
-    // TODO(spapini): bit reverse iterator.
-    for quad_row in 0..1 << (subdomain.log_size() - LOG_N_LANES - 2) {
+    for (quad_row, points) in CircleDomainBitRevIterator::new(subdomain)
+        .array_chunks::<4>()
+        .enumerate()
+    {
+        // for quad_row in 0..1 << (subdomain.log_size() - LOG_N_LANES - 2) {
         // TODO(spapini): Use optimized domain iteration.
-        let spaced_ys = PackedBaseField::from_array(std::array::from_fn(|i| {
-            subdomain
-                .at(bit_reverse_index(
-                    (quad_row << (LOG_N_LANES + 2)) + (i << 2),
-                    subdomain.log_size(),
-                ))
-                .y
-        }));
+        let (y01, _) = points[0].y.deinterleave(points[1].y);
+        let (y23, _) = points[2].y.deinterleave(points[3].y);
+        let (spaced_ys, _) = y01.deinterleave(y23);
         let row_accumulator = accumulate_row_quotients(
             sample_batches,
             columns,
