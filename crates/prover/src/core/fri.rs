@@ -434,7 +434,10 @@ impl<H: MerkleHasher> FriVerifier<H> {
         queries: &Queries,
         decommitted_values: Vec<SparseCircleEvaluation>,
     ) -> Result<(), FriVerificationError> {
-        assert_eq!(queries.log_domain_size, self.expected_query_log_domain_size);
+        assert_eq!(
+            queries.log_domain_size, self.expected_query_log_domain_size,
+            "queries' domain size is invalid"
+        );
         assert_eq!(decommitted_values.len(), self.column_bounds.len());
 
         let (last_layer_queries, last_layer_query_evals) =
@@ -1425,7 +1428,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic = "queries' domain size is invalid"]
     fn decommit_queries_on_invalid_domain_fails_verification() {
         const LOG_DEGREE: u32 = 3;
         let evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
