@@ -20,14 +20,14 @@ use crate::core::ColumnVec;
 use crate::examples::blake::round::blake_round_info;
 
 pub struct BlakeLookupData {
-    xor_lookups: Vec<[BaseFieldVec; 3]>,
+    xor_lookups: Vec<(u32, [BaseFieldVec; 3])>,
     round_lookups: [BaseFieldVec; 16 * 3 * 2],
 }
 
 pub struct TraceGenerator {
     log_size: u32,
     trace: Vec<BaseFieldVec>,
-    xor_lookups: Vec<[BaseFieldVec; 3]>,
+    xor_lookups: Vec<(u32, [BaseFieldVec; 3])>,
     round_lookups: [BaseFieldVec; 16 * 3 * 2],
 }
 impl TraceGenerator {
@@ -167,19 +167,20 @@ impl<'a> TraceGeneratorRow<'a> {
         (l, h)
     }
 
-    fn xor(&mut self, _w: u32, a: u32x16, b: u32x16) -> u32x16 {
+    fn xor(&mut self, w: u32, a: u32x16, b: u32x16) -> u32x16 {
         let c = a ^ b;
         self.append_felt(c);
         if self.gen.xor_lookups.len() <= self.xor_lookups_index {
-            self.gen.xor_lookups.push(std::array::from_fn(|_| unsafe {
-                BaseFieldVec::uninit(1 << self.gen.log_size)
-            }));
+            self.gen.xor_lookups.push((
+                w,
+                std::array::from_fn(|_| unsafe { BaseFieldVec::uninit(1 << self.gen.log_size) }),
+            ));
         }
-        self.gen.xor_lookups[self.xor_lookups_index][0].data[self.vec_row] =
+        self.gen.xor_lookups[self.xor_lookups_index].1[0].data[self.vec_row] =
             unsafe { PackedBaseField::from_simd_unchecked(a) };
-        self.gen.xor_lookups[self.xor_lookups_index][1].data[self.vec_row] =
+        self.gen.xor_lookups[self.xor_lookups_index].1[1].data[self.vec_row] =
             unsafe { PackedBaseField::from_simd_unchecked(b) };
-        self.gen.xor_lookups[self.xor_lookups_index][2].data[self.vec_row] =
+        self.gen.xor_lookups[self.xor_lookups_index].1[2].data[self.vec_row] =
             unsafe { PackedBaseField::from_simd_unchecked(c) };
         self.xor_lookups_index += 1;
         c
@@ -206,10 +207,10 @@ pub fn gen_trace(
         let mut row_gen = generator.gen_row(vec_row);
         let BlakeRoundInput { v, m } = inputs.get(vec_row).copied().unwrap_or_default();
         row_gen.generate(v, m);
-        for [a, b, _c] in &generator.xor_lookups {
+        for (w, [a, b, _c]) in &generator.xor_lookups {
             let a = a.data[vec_row].into_simd();
             let b = b.data[vec_row].into_simd();
-            xor_accum.xor12.add(a, b);
+            xor_accum.add(*w, a, b);
         }
     }
     let domain = CanonicCoset::new(log_size).circle_domain();
@@ -238,16 +239,16 @@ pub fn gen_interaction_trace(
     let _span = span!(Level::INFO, "Generate interaction trace").entered();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
-    for [l0, l1] in lookup_data.xor_lookups.array_chunks::<2>() {
+    for [(w0, l0), (w1, l1)] in lookup_data.xor_lookups.array_chunks::<2>() {
         let mut col_gen = logup_gen.new_col();
 
         #[allow(clippy::needless_range_loop)]
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
             let p0: PackedSecureField = xor_lookup_elements
-                .xor12
+                .get(*w0)
                 .combine(&l0.each_ref().map(|l| l.data[vec_row]));
             let p1: PackedSecureField = xor_lookup_elements
-                .xor12
+                .get(*w1)
                 .combine(&l1.each_ref().map(|l| l.data[vec_row]));
             col_gen.write_frac(vec_row, p0 + p1, p0 * p1);
         }

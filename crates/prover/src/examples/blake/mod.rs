@@ -15,24 +15,22 @@ use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::LookupElements;
 use crate::core::air::accumulation::{ColumnAccumulator, DomainEvaluationAccumulator};
 use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
-use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Column, ColumnOps};
 use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::circle::Coset;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{FieldExpOps, FieldOps, IntoSlice};
+use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::pcs::CommitmentSchemeProver;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, PolyOps};
 use crate::core::prover::{prove, StarkProof, LOG_BLOWUP_FACTOR};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::blake2s_ref;
 use crate::core::vcs::hasher::Hasher;
-use crate::core::InteractionElements;
+use crate::core::{utils, InteractionElements};
 
 // Blake3.
 pub const N_ROUNDS: usize = 7;
@@ -77,11 +75,11 @@ where
 pub struct BlakeAir {
     pub scheduler_component: BlakeSchedulerComponent,
     pub round_component: BlakeRoundComponent,
-    pub xor12: XorTableComponent<12>,
-    pub xor9: XorTableComponent<9>,
-    pub xor8: XorTableComponent<8>,
-    pub xor7: XorTableComponent<7>,
-    pub xor4: XorTableComponent<4>,
+    pub xor12: XorTableComponent<12, 2>,
+    pub xor9: XorTableComponent<9, 2>,
+    pub xor8: XorTableComponent<8, 2>,
+    pub xor7: XorTableComponent<7, 2>,
+    pub xor4: XorTableComponent<4, 0>,
 }
 
 impl Air for BlakeAir {
@@ -128,11 +126,23 @@ fn to_felts(x: u32x16) -> [PackedBaseField; 2] {
 
 #[derive(Default)]
 struct XorAccums {
-    xor12: XorAccumulator<12>,
-    xor9: XorAccumulator<9>,
-    xor8: XorAccumulator<8>,
-    xor7: XorAccumulator<7>,
-    xor4: XorAccumulator<4>,
+    xor12: XorAccumulator<12, 2>,
+    xor9: XorAccumulator<9, 2>,
+    xor8: XorAccumulator<8, 2>,
+    xor7: XorAccumulator<7, 2>,
+    xor4: XorAccumulator<4, 0>,
+}
+impl XorAccums {
+    fn add(&mut self, w: u32, a: u32x16, b: u32x16) {
+        match w {
+            12 => self.xor12.add(a, b),
+            9 => self.xor9.add(a, b),
+            8 => self.xor8.add(a, b),
+            7 => self.xor7.add(a, b),
+            4 => self.xor4.add(a, b),
+            _ => panic!("Invalid w"),
+        }
+    }
 }
 #[derive(Clone)]
 pub struct XorLookupElements {
@@ -150,6 +160,17 @@ impl XorLookupElements {
             xor8: LookupElements::draw(channel, 3),
             xor7: LookupElements::draw(channel, 3),
             xor4: LookupElements::draw(channel, 3),
+        }
+    }
+
+    fn get(&self, w: u32) -> &LookupElements {
+        match w {
+            12 => &self.xor12,
+            9 => &self.xor9,
+            8 => &self.xor8,
+            7 => &self.xor7,
+            4 => &self.xor4,
+            _ => panic!("Invalid w"),
         }
     }
 }
@@ -413,23 +434,23 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
         round_lookup_elements,
         claimed_sum: round_claimed_sum,
     };
-    let xor12 = XorTableComponent::<12> {
+    let xor12 = XorTableComponent::<12, 2> {
         lookup_elements: xor_lookup_elements.xor12,
         claimed_sum: xor_claimed_sum12,
     };
-    let xor9 = XorTableComponent::<9> {
+    let xor9 = XorTableComponent::<9, 2> {
         lookup_elements: xor_lookup_elements.xor9,
         claimed_sum: xor_claimed_sum9,
     };
-    let xor8 = XorTableComponent::<8> {
+    let xor8 = XorTableComponent::<8, 2> {
         lookup_elements: xor_lookup_elements.xor8,
         claimed_sum: xor_claimed_sum8,
     };
-    let xor7 = XorTableComponent::<7> {
+    let xor7 = XorTableComponent::<7, 2> {
         lookup_elements: xor_lookup_elements.xor7,
         claimed_sum: xor_claimed_sum7,
     };
-    let xor4 = XorTableComponent::<4> {
+    let xor4 = XorTableComponent::<4, 0> {
         lookup_elements: xor_lookup_elements.xor4,
         claimed_sum: xor_claimed_sum4,
     };
@@ -459,7 +480,7 @@ struct DomainEvalHelper<'a> {
     eval_domain: CircleDomain,
     trace_domain: Coset,
     trace: &'a ComponentTrace<'a, SimdBackend>,
-    denom_inv: BaseFieldVec,
+    denom_inv: [BaseField; 2],
     accum: ColumnAccumulator<'a, SimdBackend>,
 }
 impl<'a> DomainEvalHelper<'a> {
@@ -482,11 +503,9 @@ impl<'a> DomainEvalHelper<'a> {
         let trace_domain = CanonicCoset::new(row_log_size).coset;
         let span = span!(Level::INFO, "Constraint eval denominators").entered();
 
-        let mut denoms =
-            BaseFieldVec::from_iter(eval_domain.iter().map(|p| coset_vanishing(trace_domain, p)));
-        <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
-        let mut denom_inv = unsafe { BaseFieldVec::uninit(denoms.len()) };
-        <SimdBackend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inv);
+        let mut denom_inv =
+            std::array::from_fn(|i| coset_vanishing(trace_domain, eval_domain.at(i)).inverse());
+        utils::bit_reverse(&mut denom_inv);
 
         span.exit();
 
@@ -504,9 +523,12 @@ impl<'a> DomainEvalHelper<'a> {
     }
     fn finalize_row(&mut self, vec_row: usize, row_res: PackedSecureField) {
         unsafe {
+            let denom_inv = PackedBaseField::broadcast(
+                self.denom_inv[vec_row >> (self.trace_domain.log_size() - LOG_N_LANES)],
+            );
             self.accum.col.set_packed(
                 vec_row,
-                self.accum.col.packed_at(vec_row) + row_res * self.denom_inv.data[vec_row],
+                self.accum.col.packed_at(vec_row) + row_res * denom_inv,
             )
         }
     }

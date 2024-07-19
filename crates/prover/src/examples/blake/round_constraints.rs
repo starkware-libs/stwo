@@ -151,15 +151,12 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     }
 
     /// Checks that a,b in in [0,2^w) and computes their xor.
-    fn xor(&mut self, _w: u32, a: E::F, b: E::F) -> E::F {
+    fn xor(&mut self, w: u32, a: E::F, b: E::F) -> E::F {
         // TODO: Separate lookups by w.
         let c = self.eval.next_trace_mask();
-        self.logup.push_lookup(
-            &mut self.eval,
-            E::EF::one(),
-            &[a, b, c],
-            &self.xor_lookup_elements.xor12,
-        );
+        let lookup_elements = self.xor_lookup_elements.get(w);
+        self.logup
+            .push_lookup(&mut self.eval, E::EF::one(), &[a, b, c], lookup_elements);
         c
     }
 }
