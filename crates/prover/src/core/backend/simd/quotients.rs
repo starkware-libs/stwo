@@ -9,7 +9,7 @@ use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
 use crate::core::backend::cpu::quotients::{batch_random_coeffs, column_line_coeffs};
-use crate::core::backend::Column;
+use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
@@ -36,6 +36,29 @@ impl QuotientOps for SimdBackend {
         // Split the domain into a subdomain and a shift coset.
         // TODO(spapini): Move to the caller when Columns support slices.
         let (subdomain, mut subdomain_shifts) = domain.split(LOG_BLOWUP_FACTOR);
+        if subdomain.log_size() < LOG_N_LANES + 2 {
+            let columns = columns
+                .iter()
+                .map(|c| {
+                    CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(
+                        c.domain,
+                        c.values.to_cpu(),
+                    )
+                })
+                .collect_vec();
+            let res = CpuBackend::accumulate_quotients(
+                domain,
+                &columns.iter().collect_vec(),
+                random_coeff,
+                sample_batches,
+            );
+            return SecureEvaluation::<SimdBackend> {
+                domain,
+                values: SecureColumn::<SimdBackend> {
+                    columns: res.values.columns.map(|c| c.into_iter().collect()),
+                },
+            };
+        }
 
         // Bit reverse the shifts.
         // Since we traverse the domain in bit-reversed order, we need bit-reverse the shifts.

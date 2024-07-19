@@ -5,6 +5,7 @@ use num_traits::Zero;
 use tracing::{span, Level};
 
 use super::DomainEvalHelper;
+use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::{EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -30,7 +31,7 @@ pub const LIMB_EXPAND_BITS: u32 = 2;
 const fn limb_bits<const ELEM_BITS: u32>() -> u32 {
     ELEM_BITS - LIMB_EXPAND_BITS
 }
-const fn column_bits<const ELEM_BITS: u32>() -> u32 {
+pub const fn column_bits<const ELEM_BITS: u32>() -> u32 {
     2 * limb_bits::<ELEM_BITS>()
 }
 
@@ -305,7 +306,7 @@ pub fn gen_interaction_trace<const ELEM_BITS: u32>(
             BaseField::from_u32_unchecked(((i >> limb_bits) ^ (i & ((1 << limb_bits) - 1))) as u32)
         })
         .collect();
-    let constant_trace = [a_col, b_col, c_col]
+    let mut constant_trace = [a_col, b_col, c_col]
         .map(|x| {
             CircleEvaluation::new(
                 CanonicCoset::new(column_bits::<ELEM_BITS>()).circle_domain(),
@@ -313,6 +314,7 @@ pub fn gen_interaction_trace<const ELEM_BITS: u32>(
             )
         })
         .to_vec();
+    constant_trace.insert(0, gen_is_first(column_bits::<ELEM_BITS>()));
     let (interaction_trace, claimed_sum) = logup_gen.finalize();
     (interaction_trace, constant_trace, claimed_sum)
 }

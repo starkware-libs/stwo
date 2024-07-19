@@ -5,7 +5,7 @@ use itertools::{chain, Itertools};
 use num_traits::One;
 use tracing::{span, Level};
 
-use super::xor_table::XorAccumulator;
+use super::{XorAccums, XorLookupElements};
 use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
 use crate::core::backend::simd::column::BaseFieldVec;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -195,7 +195,7 @@ pub struct BlakeRoundInput {
 pub fn gen_trace(
     log_size: u32,
     inputs: &[BlakeRoundInput],
-    xor_accum: &mut XorAccumulator<12>,
+    xor_accum: &mut XorAccums,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     BlakeLookupData,
@@ -209,7 +209,7 @@ pub fn gen_trace(
         for [a, b, _c] in &generator.xor_lookups {
             let a = a.data[vec_row].into_simd();
             let b = b.data[vec_row].into_simd();
-            xor_accum.add(a, b);
+            xor_accum.xor12.add(a, b);
         }
     }
     let domain = CanonicCoset::new(log_size).circle_domain();
@@ -229,7 +229,7 @@ pub fn gen_trace(
 pub fn gen_interaction_trace(
     log_size: u32,
     lookup_data: BlakeLookupData,
-    xor_lookup_elements: &LookupElements,
+    xor_lookup_elements: &XorLookupElements,
     round_lookup_elements: &LookupElements,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -243,10 +243,12 @@ pub fn gen_interaction_trace(
 
         #[allow(clippy::needless_range_loop)]
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
-            let p0: PackedSecureField =
-                xor_lookup_elements.combine(&l0.each_ref().map(|l| l.data[vec_row]));
-            let p1: PackedSecureField =
-                xor_lookup_elements.combine(&l1.each_ref().map(|l| l.data[vec_row]));
+            let p0: PackedSecureField = xor_lookup_elements
+                .xor12
+                .combine(&l0.each_ref().map(|l| l.data[vec_row]));
+            let p1: PackedSecureField = xor_lookup_elements
+                .xor12
+                .combine(&l1.each_ref().map(|l| l.data[vec_row]));
             col_gen.write_frac(vec_row, p0 + p1, p0 * p1);
         }
 

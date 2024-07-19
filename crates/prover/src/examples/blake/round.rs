@@ -2,7 +2,7 @@ use num_traits::Zero;
 use tracing::{span, Level};
 
 use super::round_constraints::BlakeRoundEval;
-use super::DomainEvalHelper;
+use super::{DomainEvalHelper, XorLookupElements};
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::{EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -21,7 +21,13 @@ use crate::core::{ColumnVec, InteractionElements, LookupValues};
 pub fn blake_round_info() -> InfoEvaluator {
     let mut counter = BlakeRoundEval {
         eval: InfoEvaluator::default(),
-        xor_lookup_elements: &LookupElements::dummy(3),
+        xor_lookup_elements: &XorLookupElements {
+            xor12: LookupElements::dummy(3),
+            xor9: LookupElements::dummy(3),
+            xor8: LookupElements::dummy(3),
+            xor7: LookupElements::dummy(3),
+            xor4: LookupElements::dummy(3),
+        },
         round_lookup_elements: &LookupElements::dummy(16 * 3 * 2),
         logup: LogupAtRow::new(1, SecureField::zero(), BaseField::zero()),
     };
@@ -32,7 +38,7 @@ pub fn blake_round_info() -> InfoEvaluator {
 
 pub struct BlakeRoundComponent {
     pub log_size: u32,
-    pub xor_lookup_elements: LookupElements,
+    pub xor_lookup_elements: XorLookupElements,
     pub round_lookup_elements: LookupElements,
     pub claimed_sum: SecureField,
 }

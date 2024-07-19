@@ -77,7 +77,11 @@ where
 pub struct BlakeAir {
     pub scheduler_component: BlakeSchedulerComponent,
     pub round_component: BlakeRoundComponent,
-    pub xor_component: XorTableComponent<12>,
+    pub xor12: XorTableComponent<12>,
+    pub xor9: XorTableComponent<9>,
+    pub xor8: XorTableComponent<8>,
+    pub xor7: XorTableComponent<7>,
+    pub xor4: XorTableComponent<4>,
 }
 
 impl Air for BlakeAir {
@@ -85,7 +89,11 @@ impl Air for BlakeAir {
         vec![
             &self.scheduler_component,
             &self.round_component,
-            &self.xor_component,
+            &self.xor12,
+            &self.xor9,
+            &self.xor8,
+            &self.xor7,
+            &self.xor4,
         ]
     }
 
@@ -102,7 +110,11 @@ impl AirProver<SimdBackend> for BlakeAir {
         vec![
             &self.scheduler_component,
             &self.round_component,
-            &self.xor_component,
+            &self.xor12,
+            &self.xor9,
+            &self.xor8,
+            &self.xor7,
+            &self.xor4,
         ]
     }
 }
@@ -112,6 +124,34 @@ fn to_felts(x: u32x16) -> [PackedBaseField; 2] {
         unsafe { PackedBaseField::from_simd_unchecked(x & u32x16::splat(0xffff)) },
         unsafe { PackedBaseField::from_simd_unchecked(x >> 16) },
     ]
+}
+
+#[derive(Default)]
+struct XorAccums {
+    xor12: XorAccumulator<12>,
+    xor9: XorAccumulator<9>,
+    xor8: XorAccumulator<8>,
+    xor7: XorAccumulator<7>,
+    xor4: XorAccumulator<4>,
+}
+#[derive(Clone)]
+pub struct XorLookupElements {
+    xor12: LookupElements,
+    xor9: LookupElements,
+    xor8: LookupElements,
+    xor7: LookupElements,
+    xor4: LookupElements,
+}
+impl XorLookupElements {
+    fn draw(channel: &mut Blake2sChannel) -> Self {
+        Self {
+            xor12: LookupElements::draw(channel, 3),
+            xor9: LookupElements::draw(channel, 3),
+            xor8: LookupElements::draw(channel, 3),
+            xor7: LookupElements::draw(channel, 3),
+            xor4: LookupElements::draw(channel, 3),
+        }
+    }
 }
 
 #[allow(unused)]
@@ -149,19 +189,32 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
     // Round trace.
     span.exit();
     let span = span!(Level::INFO, "Round Generation").entered();
-    let mut xor_accum = XorAccumulator::default();
+    let mut xor_accums = XorAccums::default();
     let (round_trace, round_lookup_data) =
-        round_gen::gen_trace(log_size + 3, &round_inputs, &mut xor_accum);
+        round_gen::gen_trace(log_size + 3, &round_inputs, &mut xor_accums);
     let n_padded_rounds = (1 << (log_size + 3 - LOG_N_LANES)) - round_trace.len();
     // let round_trace0 = round_trace.clone();
 
-    // Xor table trace.
-    let (xor_trace, xor_lookup_data) = xor_table::generate_trace(xor_accum);
+    // Xor table traces.
+    let (xor_trace12, xor_lookup_data12) = xor_table::generate_trace(xor_accums.xor12);
+    let (xor_trace9, xor_lookup_data9) = xor_table::generate_trace(xor_accums.xor9);
+    let (xor_trace8, xor_lookup_data8) = xor_table::generate_trace(xor_accums.xor8);
+    let (xor_trace7, xor_lookup_data7) = xor_table::generate_trace(xor_accums.xor7);
+    let (xor_trace4, xor_lookup_data4) = xor_table::generate_trace(xor_accums.xor4);
 
     span.exit();
     let span = span!(Level::INFO, "Trace Commitment").entered();
     commitment_scheme.commit_on_evals(
-        chain![scheduler_trace, round_trace, xor_trace,].collect_vec(),
+        chain![
+            scheduler_trace,
+            round_trace,
+            xor_trace12,
+            xor_trace9,
+            xor_trace8,
+            xor_trace7,
+            xor_trace4,
+        ]
+        .collect_vec(),
         channel,
         &twiddles,
     );
@@ -169,7 +222,7 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
     // Draw lookup element.
     let blake_lookup_elements = LookupElements::draw(channel, 2 * 16 * 3);
     let round_lookup_elements = LookupElements::draw(channel, 2 * 16 * 3);
-    let xor_lookup_elements = LookupElements::draw(channel, 3);
+    let xor_lookup_elements = XorLookupElements::draw(channel);
 
     // Interaction trace.
     span.exit();
@@ -192,13 +245,30 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
 
     span.exit();
     let span = span!(Level::INFO, "Table Interaction Generation").entered();
-    let (xor_trace, xor_constant_trace, xor_claimed_sum) =
-        xor_table::gen_interaction_trace(xor_lookup_data, &xor_lookup_elements);
+    let (xor_trace12, xor_constant_trace12, xor_claimed_sum12) =
+        xor_table::gen_interaction_trace(xor_lookup_data12, &xor_lookup_elements.xor12);
+    let (xor_trace9, xor_constant_trace9, xor_claimed_sum9) =
+        xor_table::gen_interaction_trace(xor_lookup_data9, &xor_lookup_elements.xor9);
+    let (xor_trace8, xor_constant_trace8, xor_claimed_sum8) =
+        xor_table::gen_interaction_trace(xor_lookup_data8, &xor_lookup_elements.xor8);
+    let (xor_trace7, xor_constant_trace7, xor_claimed_sum7) =
+        xor_table::gen_interaction_trace(xor_lookup_data7, &xor_lookup_elements.xor7);
+    let (xor_trace4, xor_constant_trace4, xor_claimed_sum4) =
+        xor_table::gen_interaction_trace(xor_lookup_data4, &xor_lookup_elements.xor4);
 
     span.exit();
     let span = span!(Level::INFO, "Interaction Commitment").entered();
     commitment_scheme.commit_on_evals(
-        chain![scheduler_trace, round_trace, xor_trace,].collect_vec(),
+        chain![
+            scheduler_trace,
+            round_trace,
+            xor_trace12,
+            xor_trace9,
+            xor_trace8,
+            xor_trace7,
+            xor_trace4,
+        ]
+        .collect_vec(),
         channel,
         &twiddles,
     );
@@ -208,12 +278,12 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
     let span = span!(Level::INFO, "Constant Trace Generation").entered();
     commitment_scheme.commit_on_evals(
         chain![
-            [
-                gen_is_first(log_size),
-                gen_is_first(log_size + 3),
-                gen_is_first(20),
-            ],
-            xor_constant_trace,
+            [gen_is_first(log_size), gen_is_first(log_size + 3),],
+            xor_constant_trace12,
+            xor_constant_trace9,
+            xor_constant_trace8,
+            xor_constant_trace7,
+            xor_constant_trace4,
         ]
         .collect_vec(),
         channel,
@@ -275,7 +345,13 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
                 BaseField::from_u32_unchecked(x >> 16),
             ]
         };
-        let total_claimed_sum = scheduler_claimed_sum + round_claimed_sum + xor_claimed_sum;
+        let total_claimed_sum = scheduler_claimed_sum
+            + round_claimed_sum
+            + xor_claimed_sum12
+            + xor_claimed_sum9
+            + xor_claimed_sum8
+            + xor_claimed_sum7
+            + xor_claimed_sum4;
         let mut expected_claimed_sum = -blake_inputs
             .iter()
             .flat_map(|inp| {
@@ -337,14 +413,34 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
         round_lookup_elements,
         claimed_sum: round_claimed_sum,
     };
-    let xor_component = XorTableComponent::<12> {
-        lookup_elements: xor_lookup_elements,
-        claimed_sum: xor_claimed_sum,
+    let xor12 = XorTableComponent::<12> {
+        lookup_elements: xor_lookup_elements.xor12,
+        claimed_sum: xor_claimed_sum12,
+    };
+    let xor9 = XorTableComponent::<9> {
+        lookup_elements: xor_lookup_elements.xor9,
+        claimed_sum: xor_claimed_sum9,
+    };
+    let xor8 = XorTableComponent::<8> {
+        lookup_elements: xor_lookup_elements.xor8,
+        claimed_sum: xor_claimed_sum8,
+    };
+    let xor7 = XorTableComponent::<7> {
+        lookup_elements: xor_lookup_elements.xor7,
+        claimed_sum: xor_claimed_sum7,
+    };
+    let xor4 = XorTableComponent::<4> {
+        lookup_elements: xor_lookup_elements.xor4,
+        claimed_sum: xor_claimed_sum4,
     };
     let air = BlakeAir {
         scheduler_component,
         round_component,
-        xor_component,
+        xor12,
+        xor9,
+        xor8,
+        xor7,
+        xor4,
     };
     let proof = prove::<SimdBackend>(
         &air,
@@ -430,7 +526,7 @@ mod tests {
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::hasher::Hasher;
     use crate::core::InteractionElements;
-    use crate::examples::blake::prove_blake;
+    use crate::examples::blake::{prove_blake, XorLookupElements};
 
     #[test_log::test]
     fn test_simd_blake_prove() {
@@ -460,8 +556,7 @@ mod tests {
         // Draw lookup element.
         let _blake_lookup_elements = LookupElements::draw(channel, 2 * 16 * 3);
         let _round_lookup_elements = LookupElements::draw(channel, 2 * 16 * 3);
-        let xor_lookup_elements = LookupElements::draw(channel, 3);
-        assert_eq!(xor_lookup_elements, air.round_component.xor_lookup_elements);
+        let _xor_lookup_elements = XorLookupElements::draw(channel);
         // TODO(spapini): Check claimed sum against first and last instances.
         // Interaction columns.
         commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);

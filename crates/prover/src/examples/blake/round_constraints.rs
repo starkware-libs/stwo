@@ -1,7 +1,7 @@
 use itertools::{chain, Itertools};
 use num_traits::One;
 
-use super::Fu32;
+use super::{Fu32, XorLookupElements};
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::EvalAtRow;
 use crate::core::fields::m31::BaseField;
@@ -10,7 +10,7 @@ const I16: BaseField = BaseField::from_u32_unchecked(1 << 15);
 
 pub struct BlakeRoundEval<'a, E: EvalAtRow> {
     pub eval: E,
-    pub xor_lookup_elements: &'a LookupElements,
+    pub xor_lookup_elements: &'a XorLookupElements,
     pub round_lookup_elements: &'a LookupElements,
     pub logup: LogupAtRow<2, E>,
 }
@@ -158,7 +158,7 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
             &mut self.eval,
             E::EF::one(),
             &[a, b, c],
-            self.xor_lookup_elements,
+            &self.xor_lookup_elements.xor12,
         );
         c
     }

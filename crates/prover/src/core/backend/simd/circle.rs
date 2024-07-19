@@ -4,7 +4,7 @@ use std::mem::transmute;
 use bytemuck::{cast_slice, Zeroable};
 use num_traits::One;
 
-use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE};
+use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
@@ -146,6 +146,15 @@ impl PolyOps for SimdBackend {
         let mut values = eval.values;
         let log_size = values.length.ilog2();
 
+        if log_size < MIN_FFT_LOG_SIZE {
+            let eval = CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::new(
+                eval.domain,
+                values.into_cpu_vec(),
+            );
+
+            return CirclePoly::new(eval.interpolate().coeffs.into_iter().collect());
+        }
+
         let twiddles = domain_line_twiddles_from_tree(eval.domain, &twiddles.itwiddles);
 
         // Safe because [PackedBaseField] is aligned on 64 bytes.
@@ -229,6 +238,12 @@ impl PolyOps for SimdBackend {
             log_size >= fft_log_size,
             "Can only evaluate on larger domains"
         );
+        if fft_log_size < MIN_FFT_LOG_SIZE {
+            assert!(log_size <= CACHED_FFT_LOG_SIZE);
+            let poly = CirclePoly::<CpuBackend>::new(poly.coeffs.clone().into_cpu_vec());
+            let eval = poly.evaluate(domain);
+            return CircleEvaluation::new(eval.domain, eval.values.into_iter().collect());
+        }
 
         let twiddles = domain_line_twiddles_from_tree(domain, &twiddles.twiddles);
 
