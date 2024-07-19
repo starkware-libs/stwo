@@ -75,7 +75,7 @@ where
 pub struct BlakeAir {
     pub scheduler_component: BlakeSchedulerComponent,
     pub round_component: BlakeRoundComponent,
-    pub xor12: XorTableComponent<12, 2>,
+    pub xor12: XorTableComponent<12, 4>,
     pub xor9: XorTableComponent<9, 2>,
     pub xor8: XorTableComponent<8, 2>,
     pub xor7: XorTableComponent<7, 2>,
@@ -126,7 +126,7 @@ fn to_felts(x: u32x16) -> [PackedBaseField; 2] {
 
 #[derive(Default)]
 struct XorAccums {
-    xor12: XorAccumulator<12, 2>,
+    xor12: XorAccumulator<12, 4>,
     xor9: XorAccumulator<9, 2>,
     xor8: XorAccumulator<8, 2>,
     xor7: XorAccumulator<7, 2>,
@@ -247,7 +247,6 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
 
     // Interaction trace.
     span.exit();
-    let span = span!(Level::INFO, "Scheduler Interaction Generation").entered();
     let (scheduler_trace, scheduler_claimed_sum) = scheduler_gen::gen_interaction_trace(
         log_size,
         scheduler_lookup_data,
@@ -255,8 +254,6 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
         &blake_lookup_elements,
     );
 
-    span.exit();
-    let span = span!(Level::INFO, "Round Interaction Generation").entered();
     let (round_trace, round_claimed_sum) = round_gen::gen_interaction_trace(
         log_size + 3,
         round_lookup_data,
@@ -264,8 +261,7 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
         &round_lookup_elements,
     );
 
-    span.exit();
-    let span = span!(Level::INFO, "Table Interaction Generation").entered();
+    let span = span!(Level::INFO, "Tables Interaction Generation").entered();
     let (xor_trace12, xor_constant_trace12, xor_claimed_sum12) =
         xor_table::gen_interaction_trace(xor_lookup_data12, &xor_lookup_elements.xor12);
     let (xor_trace9, xor_constant_trace9, xor_claimed_sum9) =
@@ -434,7 +430,7 @@ pub fn prove_blake(log_size: u32) -> (BlakeAir, StarkProof) {
         round_lookup_elements,
         claimed_sum: round_claimed_sum,
     };
-    let xor12 = XorTableComponent::<12, 2> {
+    let xor12 = XorTableComponent::<12, 4> {
         lookup_elements: xor_lookup_elements.xor12,
         claimed_sum: xor_claimed_sum12,
     };
@@ -501,13 +497,10 @@ impl<'a> DomainEvalHelper<'a> {
 
         // Denoms.
         let trace_domain = CanonicCoset::new(row_log_size).coset;
-        let span = span!(Level::INFO, "Constraint eval denominators").entered();
 
         let mut denom_inv =
             std::array::from_fn(|i| coset_vanishing(trace_domain, eval_domain.at(i)).inverse());
         utils::bit_reverse(&mut denom_inv);
-
-        span.exit();
 
         let [mut accum] =
             evaluation_accumulator.columns([(constraint_log_degree_bound, n_constraints)]);
@@ -550,12 +543,20 @@ mod tests {
     use crate::core::InteractionElements;
     use crate::examples::blake::{prove_blake, XorLookupElements};
 
+    // #[test]
     #[test_log::test]
     fn test_simd_blake_prove() {
         // Note: To see time measurement, run test with
         //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="
         //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=3" cargo test
         //   test_simd_blake_prove -- --nocapture
+
+        // use tracing_chrome::ChromeLayerBuilder;
+        // use tracing_subscriber::prelude::*;
+        // // use tracing_subscriber::registry::Registry;
+
+        // let (chrome_layer, _guard) = ChromeLayerBuilder::new().build();
+        // tracing_subscriber::registry().with(chrome_layer).init();
 
         // Get from environment variable:
         let log_n_instances = env::var("LOG_N_INSTANCES")

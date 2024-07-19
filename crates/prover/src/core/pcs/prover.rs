@@ -61,7 +61,7 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
         channel: &mut ProofChannel,
         twiddles: &TwiddleTree<B>,
     ) {
-        let span = span!(Level::INFO, "Interpolation for commitment").entered();
+        let span = span!(Level::INFO, "Interpolation").entered();
         let polys = evals
             .into_iter()
             .map(|eval| eval.interpolate_with_twiddles(twiddles))
@@ -92,8 +92,9 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
         channel: &mut ProofChannel,
         twiddles: &TwiddleTree<B>,
     ) -> CommitmentSchemeProof {
+        let _span = span!(Level::INFO, "Prove PCS").entered();
         // Evaluate polynomials on open points.
-        let span = span!(Level::INFO, "Evaluate columns out of domain").entered();
+        let span1 = span!(Level::INFO, "Evaluate columns out of domain").entered();
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
@@ -106,7 +107,7 @@ impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentSchemeProver<B> {
                     })
                     .collect_vec()
             });
-        span.exit();
+        span1.exit();
         let sampled_values = samples
             .as_cols_ref()
             .map_cols(|x| x.iter().map(|o| o.value).collect());

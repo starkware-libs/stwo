@@ -119,7 +119,7 @@ fn accumulate_quotients_on_subdomain(
     let mut values = unsafe { SecureColumn::<SimdBackend>::uninit(subdomain.size()) };
     let quotient_constants = quotient_constants(sample_batches, random_coeff, subdomain);
 
-    let span = span!(Level::INFO, "Quotient accumulation").entered();
+    let span = span!(Level::INFO, "Accumulation").entered();
     for (quad_row, points) in CircleDomainBitRevIterator::new(subdomain)
         .array_chunks::<4>()
         .enumerate()
@@ -142,7 +142,7 @@ fn accumulate_quotients_on_subdomain(
         }
     }
     span.exit();
-    let span = span!(Level::INFO, "Quotient extension").entered();
+    let span = span!(Level::INFO, "Extension").entered();
 
     // Extend the evaluation to the full domain.
     let extended_eval = unsafe { SecureColumn::<SimdBackend>::uninit(domain.size()) };

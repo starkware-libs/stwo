@@ -236,7 +236,7 @@ pub fn gen_interaction_trace(
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     SecureField,
 ) {
-    let _span = span!(Level::INFO, "Generate interaction trace").entered();
+    let _span = span!(Level::INFO, "Generate round interaction trace").entered();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
     for [(w0, l0), (w1, l1)] in lookup_data.xor_lookups.array_chunks::<2>() {

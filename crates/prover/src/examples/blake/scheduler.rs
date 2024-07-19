@@ -115,7 +115,6 @@ impl ComponentProver<SimdBackend> for BlakeSchedulerComponent {
             self.n_constraints(),
         );
 
-        // TODO:
         let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
         for vec_row in 0..(1 << (domain_eval.eval_domain.log_size() - LOG_N_LANES)) {
             let mut eval = SimdDomainEvaluator::new(

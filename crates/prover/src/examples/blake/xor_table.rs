@@ -266,7 +266,7 @@ pub fn gen_interaction_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
     SecureField,
 ) {
     let limb_bits = limb_bits::<ELEM_BITS, EXPAND_BITS>();
-    let _span = span!(Level::INFO, "Generate table trace").entered();
+    let _span = span!(Level::INFO, "Xor interaction trace").entered();
     let vec_off = u32x16::from_array(std::array::from_fn(|i| i as u32));
     let mut logup_gen = LogupTraceGenerator::new(column_bits::<ELEM_BITS, EXPAND_BITS>());
     let mut iter = lookup_data

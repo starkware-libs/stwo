@@ -77,7 +77,7 @@ pub fn compute_fri_quotients<B: QuotientOps>(
     samples: &[Vec<PointSample>],
     random_coeff: SecureField,
 ) -> Vec<SecureEvaluation<B>> {
-    let _span = span!(Level::INFO, "Compute FRI quotients").entered();
+    let _span = span!(Level::INFO, "FRI quotients").entered();
     zip(columns, samples)
         .sorted_by_key(|(c, _)| Reverse(c.domain.log_size()))
         .group_by(|(c, _)| c.domain.log_size())
