@@ -16,7 +16,7 @@ pub use component::FrameworkComponent;
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
-pub use simd_domain::SimdDomainEvaluator;
+pub use simd_domain::{DomainEvalHelper, SimdDomainEvaluator};
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -33,6 +33,7 @@ pub trait EvalAtRow {
         + Copy
         + Debug
         + Zero
+        + Neg<Output = Self::F>
         + AddAssign<Self::F>
         + AddAssign<BaseField>
         + Add<Self::F, Output = Self::F>
@@ -49,6 +50,7 @@ pub trait EvalAtRow {
         + Copy
         + Debug
         + Zero
+        + From<Self::F>
         + Neg<Output = Self::EF>
         + Add<SecureField, Output = Self::EF>
         + Sub<SecureField, Output = Self::EF>

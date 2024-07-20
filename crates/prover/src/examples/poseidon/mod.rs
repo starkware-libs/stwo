@@ -71,7 +71,7 @@ impl FrameworkComponent for PoseidonComponent {
         let poseidon_eval = PoseidonEval {
             eval,
             logup: LogupAtRow::new(1, self.claimed_sum, is_first),
-            lookup_elements: self.lookup_elements,
+            lookup_elements: &self.lookup_elements,
         };
         poseidon_eval.eval()
     }
@@ -146,20 +146,20 @@ fn pow5<F: FieldExpOps>(x: F) -> F {
     x4 * x
 }
 
-struct PoseidonEval<E: EvalAtRow> {
+struct PoseidonEval<'a, E: EvalAtRow> {
     eval: E,
     logup: LogupAtRow<2, E>,
-    lookup_elements: LookupElements,
+    lookup_elements: &'a LookupElements,
 }
 
-impl<E: EvalAtRow> PoseidonEval<E> {
+impl<'a, E: EvalAtRow> PoseidonEval<'a, E> {
     fn eval(mut self) -> E {
         for _ in 0..N_INSTANCES_PER_ROW {
             let mut state: [_; N_STATE] = std::array::from_fn(|_| self.eval.next_trace_mask());
 
             // Require state lookup.
             self.logup
-                .push_lookup(&mut self.eval, E::EF::one(), &state, &self.lookup_elements);
+                .push_lookup(&mut self.eval, E::EF::one(), &state, self.lookup_elements);
 
             // 4 full rounds.
             (0..N_HALF_FULL_ROUNDS).for_each(|round| {
@@ -201,7 +201,7 @@ impl<E: EvalAtRow> PoseidonEval<E> {
 
             // Provide state lookup.
             self.logup
-                .push_lookup(&mut self.eval, -E::EF::one(), &state, &self.lookup_elements);
+                .push_lookup(&mut self.eval, -E::EF::one(), &state, self.lookup_elements);
         }
 
         self.logup.finalize(&mut self.eval);
@@ -311,7 +311,7 @@ pub fn gen_trace(
 pub fn gen_interaction_trace(
     log_size: u32,
     lookup_data: LookupData,
-    lookup_elements: LookupElements,
+    lookup_elements: &LookupElements,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     SecureField,
@@ -373,7 +373,7 @@ pub fn prove_poseidon(log_n_instances: u32) -> (PoseidonAir, StarkProof<Blake2sM
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
-    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, lookup_data, lookup_elements);
+    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, lookup_data, &lookup_elements);
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -428,7 +428,6 @@ mod tests {
         PoseidonEval,
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
-    use crate::qm31;
 
     #[test]
     fn test_apply_m4() {
@@ -473,12 +472,9 @@ mod tests {
 
         // Trace.
         let (trace0, interaction_data) = gen_trace(LOG_N_ROWS);
-        let lookup_elements = LookupElements {
-            z: qm31!(1, 2, 3, 4),
-            alpha: qm31!(5, 6, 7, 8),
-        };
+        let lookup_elements = LookupElements::dummy();
         let (trace1, claimed_sum) =
-            gen_interaction_trace(LOG_N_ROWS, interaction_data, lookup_elements);
+            gen_interaction_trace(LOG_N_ROWS, interaction_data, &lookup_elements);
         let trace2 = vec![gen_is_first(LOG_N_ROWS)];
 
         let traces = TreeVec::new(vec![trace0, trace1, trace2]);
@@ -489,7 +485,7 @@ mod tests {
             PoseidonEval {
                 eval,
                 logup: LogupAtRow::new(1, claimed_sum, is_first),
-                lookup_elements,
+                lookup_elements: &lookup_elements,
             }
             .eval();
         });

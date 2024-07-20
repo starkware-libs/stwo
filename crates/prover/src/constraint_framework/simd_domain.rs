@@ -1,17 +1,23 @@
 use std::ops::Mul;
 
+use itertools::Itertools;
 use num_traits::Zero;
 
 use super::EvalAtRow;
+use crate::core::air::accumulation::{ColumnAccumulator, DomainEvaluationAccumulator};
+use crate::core::air::ComponentTrace;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Column;
+use crate::core::circle::Coset;
+use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::CircleEvaluation;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::offset_bit_reversed_circle_domain_index;
 
@@ -98,5 +104,60 @@ impl<'a> EvalAtRow for SimdDomainEvaluator<'a> {
 
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
         PackedSecureField::from_packed_m31s(values)
+    }
+}
+
+pub struct DomainEvalHelper<'a> {
+    pub eval_domain: CircleDomain,
+    pub trace_domain: Coset,
+    pub trace: &'a ComponentTrace<'a, SimdBackend>,
+    pub denom_inv: Vec<BaseField>,
+    pub accum: ColumnAccumulator<'a, SimdBackend>,
+}
+impl<'a> DomainEvalHelper<'a> {
+    pub fn new(
+        trace_log_size: u32,
+        eval_log_size: u32,
+        trace: &'a ComponentTrace<'a, SimdBackend>,
+        evaluation_accumulator: &'a mut DomainEvaluationAccumulator<SimdBackend>,
+        constraint_log_degree_bound: u32,
+        n_constraints: usize,
+    ) -> Self {
+        assert_eq!(
+            eval_log_size, constraint_log_degree_bound,
+            "Extension not yet supported in generic evaluator"
+        );
+        let eval_domain = CanonicCoset::new(eval_log_size).circle_domain();
+        let row_log_size = trace_log_size;
+
+        // Denoms.
+        let trace_domain = CanonicCoset::new(row_log_size).coset;
+
+        let denom_inv = (0..(1 << (eval_log_size - trace_log_size)))
+            .map(|i| coset_vanishing(trace_domain, eval_domain.at(i)).inverse())
+            .collect_vec();
+
+        let [mut accum] =
+            evaluation_accumulator.columns([(constraint_log_degree_bound, n_constraints)]);
+        accum.random_coeff_powers.reverse();
+
+        Self {
+            eval_domain,
+            trace_domain,
+            trace,
+            denom_inv,
+            accum,
+        }
+    }
+    pub fn finalize_row(&mut self, vec_row: usize, row_res: PackedSecureField) {
+        unsafe {
+            let denom_inv = PackedBaseField::broadcast(
+                self.denom_inv[vec_row >> (self.trace_domain.log_size() - LOG_N_LANES)],
+            );
+            self.accum.col.set_packed(
+                vec_row,
+                self.accum.col.packed_at(vec_row) + row_res * denom_inv,
+            )
+        }
     }
 }
