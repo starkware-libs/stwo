@@ -2,7 +2,7 @@ use itertools::{izip, zip_eq, Itertools};
 use num_traits::Zero;
 use tracing::{span, Level};
 
-use super::column::SecureFieldVec;
+use super::column::SecureColumn;
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
@@ -13,7 +13,7 @@ use crate::core::backend::{Col, Column};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::{ComplexConjugate, FieldOps};
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
@@ -84,11 +84,11 @@ fn accumulate_quotients_on_subdomain(
     domain: CircleDomain,
 ) -> (
     span::EnteredSpan,
-    SecureColumn<SimdBackend>,
+    SecureColumnByCoords<SimdBackend>,
     [crate::core::poly::circle::CirclePoly<SimdBackend>; 4],
 ) {
     assert!(subdomain.log_size() >= LOG_N_LANES + 2);
-    let mut values = SecureColumn::<SimdBackend>::zeros(subdomain.size());
+    let mut values = SecureColumnByCoords::<SimdBackend>::zeros(subdomain.size());
     let quotient_constants = quotient_constants(sample_batches, random_coeff, subdomain);
 
     let span = span!(Level::INFO, "Quotient accumulation").entered();
@@ -119,7 +119,7 @@ fn accumulate_quotients_on_subdomain(
     let span = span!(Level::INFO, "Quotient extension").entered();
 
     // Extend the evaluation to the full domain.
-    let extended_eval = SecureColumn::<SimdBackend>::zeros(domain.size());
+    let extended_eval = SecureColumnByCoords::<SimdBackend>::zeros(domain.size());
 
     let mut i = 0;
     let values = values.columns;
@@ -204,7 +204,7 @@ fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
 ) -> Vec<Col<SimdBackend, SecureField>> {
-    let flat_denominators: SecureFieldVec = sample_batches
+    let flat_denominators: SecureColumn = sample_batches
         .iter()
         .flat_map(|sample_batch| {
             (0..(1 << (domain.log_size() - LOG_N_LANES)))
@@ -229,7 +229,7 @@ fn denominator_inverses(
         })
         .collect();
 
-    let mut flat_denominator_inverses = SecureFieldVec::zeros(flat_denominators.len());
+    let mut flat_denominator_inverses = SecureColumn::zeros(flat_denominators.len());
     <SimdBackend as FieldOps<SecureField>>::batch_inverse(
         &flat_denominators,
         &mut flat_denominator_inverses,
@@ -261,7 +261,7 @@ fn quotient_constants(
 mod tests {
     use itertools::Itertools;
 
-    use crate::core::backend::simd::column::BaseFieldVec;
+    use crate::core::backend::simd::column::BaseColumn;
     use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::{Column, CpuBackend};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
@@ -277,8 +277,8 @@ mod tests {
         const LOG_SIZE: u32 = 8;
         let small_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
         let domain = CanonicCoset::new(LOG_SIZE + LOG_BLOWUP_FACTOR).circle_domain();
-        let e0: BaseFieldVec = (0..small_domain.size()).map(BaseField::from).collect();
-        let e1: BaseFieldVec = (0..small_domain.size())
+        let e0: BaseColumn = (0..small_domain.size()).map(BaseField::from).collect();
+        let e1: BaseColumn = (0..small_domain.size())
             .map(|i| BaseField::from(2 * i))
             .collect();
         let polys = vec![

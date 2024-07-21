@@ -41,7 +41,7 @@ mod tests {
     use crate::core::backend::{Col, Column};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::secure_column::SecureColumn;
+    use crate::core::fields::secure_column::SecureColumnByCoords;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
     use crate::core::poly::BitReversedOrder;
@@ -90,7 +90,7 @@ mod tests {
         let vals_circle_domain_order = coset_order_to_circle_domain_order(&vals);
         let mut vals_bit_rev_circle_domain_order = vals_circle_domain_order;
         bit_reverse(&mut vals_bit_rev_circle_domain_order);
-        let vals_secure_col: SecureColumn<SimdBackend> =
+        let vals_secure_col: SecureColumnByCoords<SimdBackend> =
             vals_bit_rev_circle_domain_order.into_iter().collect();
         let [vals_col0, vals_col1, vals_col2, vals_col3] = vals_secure_col.columns;
 

@@ -6,7 +6,7 @@ use crate::core::backend::CpuBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldOps;
 use crate::core::poly::BitReversedOrder;
 
@@ -45,10 +45,10 @@ impl<B: FieldOps<BaseField>> Deref for SecureCirclePoly<B> {
 #[derive(Clone)]
 pub struct SecureEvaluation<B: FieldOps<BaseField>> {
     pub domain: CircleDomain,
-    pub values: SecureColumn<B>,
+    pub values: SecureColumnByCoords<B>,
 }
 impl<B: FieldOps<BaseField>> Deref for SecureEvaluation<B> {
-    type Target = SecureColumn<B>;
+    type Target = SecureColumnByCoords<B>;
 
     fn deref(&self) -> &Self::Target {
         &self.values

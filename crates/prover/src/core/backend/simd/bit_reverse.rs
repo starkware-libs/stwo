@@ -1,6 +1,6 @@
 use std::array;
 
-use super::column::{BaseFieldVec, SecureFieldVec};
+use super::column::{BaseColumn, SecureColumn};
 use super::m31::PackedBaseField;
 use super::SimdBackend;
 use crate::core::backend::ColumnOps;
@@ -15,7 +15,7 @@ const W_BITS: u32 = 3;
 pub const MIN_LOG_SIZE: u32 = 2 * W_BITS + VEC_BITS;
 
 impl ColumnOps<BaseField> for SimdBackend {
-    type Column = BaseFieldVec;
+    type Column = BaseColumn;
 
     fn bit_reverse_column(column: &mut Self::Column) {
         // Fallback to cpu bit_reverse.
@@ -29,9 +29,9 @@ impl ColumnOps<BaseField> for SimdBackend {
 }
 
 impl ColumnOps<SecureField> for SimdBackend {
-    type Column = SecureFieldVec;
+    type Column = SecureColumn;
 
-    fn bit_reverse_column(_column: &mut SecureFieldVec) {
+    fn bit_reverse_column(_column: &mut SecureColumn) {
         todo!()
     }
 }
@@ -144,7 +144,7 @@ mod tests {
     use itertools::Itertools;
 
     use super::{bit_reverse16, bit_reverse_m31, MIN_LOG_SIZE};
-    use crate::core::backend::simd::column::BaseFieldVec;
+    use crate::core::backend::simd::column::BaseColumn;
     use crate::core::backend::simd::m31::{PackedM31, N_LANES};
     use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::{Column, ColumnOps};
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn test_bit_reverse16() {
-        let values: BaseFieldVec = (0..N_LANES * 16).map(BaseField::from).collect();
+        let values: BaseColumn = (0..N_LANES * 16).map(BaseField::from).collect();
         let mut expected = values.to_cpu();
         cpu_bit_reverse(&mut expected);
 
@@ -169,7 +169,7 @@ mod tests {
         let mut expected = data.clone();
         cpu_bit_reverse(&mut expected);
 
-        let mut res: BaseFieldVec = data.into_iter().collect();
+        let mut res: BaseColumn = data.into_iter().collect();
         bit_reverse_m31(&mut res.data[..]);
 
         assert_eq!(res.to_cpu(), expected);
@@ -182,7 +182,7 @@ mod tests {
         let mut expected = column.clone();
         cpu_bit_reverse(&mut expected);
 
-        let mut res = column.iter().copied().collect::<BaseFieldVec>();
+        let mut res = column.iter().copied().collect::<BaseColumn>();
         <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut res);
 
         assert_eq!(res.to_cpu(), expected);
@@ -195,7 +195,7 @@ mod tests {
         let mut expected = column.clone();
         cpu_bit_reverse(&mut expected);
 
-        let mut res = column.iter().copied().collect::<BaseFieldVec>();
+        let mut res = column.iter().copied().collect::<BaseColumn>();
         <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut res);
 
         assert_eq!(res.to_cpu(), expected);

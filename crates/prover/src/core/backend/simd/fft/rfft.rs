@@ -575,7 +575,7 @@ mod tests {
         fft, fft3, fft_lower_with_vecwise, get_twiddle_dbls, simd_butterfly, vecwise_butterflies,
     };
     use crate::core::backend::cpu::CpuCirclePoly;
-    use crate::core::backend::simd::column::BaseFieldVec;
+    use crate::core::backend::simd::column::BaseColumn;
     use crate::core::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE};
     use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
     use crate::core::backend::Column;
@@ -697,7 +697,7 @@ mod tests {
             let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
             let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
 
-            let mut res = values.iter().copied().collect::<BaseFieldVec>();
+            let mut res = values.iter().copied().collect::<BaseColumn>();
             unsafe {
                 fft_lower_with_vecwise(
                     transmute(res.data.as_ptr()),
@@ -720,7 +720,7 @@ mod tests {
             let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
             let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
 
-            let mut res = values.iter().copied().collect::<BaseFieldVec>();
+            let mut res = values.iter().copied().collect::<BaseColumn>();
             unsafe {
                 transpose_vecs(transmute(res.data.as_mut_ptr()), log_size as usize - 4);
                 fft(
