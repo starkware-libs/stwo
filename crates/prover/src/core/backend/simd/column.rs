@@ -11,7 +11,7 @@ use super::SimdBackend;
 use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumnByCoords;
+use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::{FieldExpOps, FieldOps};
 
 impl FieldOps<BaseField> for SimdBackend {
@@ -193,6 +193,39 @@ impl FromIterator<PackedSecureField> for SecureColumn {
     }
 }
 
+/// A mutable slice of a SecureColumnByCoords.
+pub struct SecureColumnByCoordsMutSlice<'a>(pub [BaseColumnMutSlice<'a>; SECURE_EXTENSION_DEGREE]);
+
+// TODO(alont): Is there a way to eliminate this code duplication?
+impl<'a> SecureColumnByCoordsMutSlice<'a> {
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
+    pub unsafe fn packed_at(&self, vec_index: usize) -> PackedSecureField {
+        PackedQM31([
+            PackedCM31([
+                *self.0[0].0.get_unchecked(vec_index),
+                *self.0[1].0.get_unchecked(vec_index),
+            ]),
+            PackedCM31([
+                *self.0[2].0.get_unchecked(vec_index),
+                *self.0[3].0.get_unchecked(vec_index),
+            ]),
+        ])
+    }
+
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
+    pub unsafe fn set_packed(&mut self, vec_index: usize, value: PackedSecureField) {
+        let PackedQM31([PackedCM31([a, b]), PackedCM31([c, d])]) = value;
+        *self.0[0].0.get_unchecked_mut(vec_index) = a;
+        *self.0[1].0.get_unchecked_mut(vec_index) = b;
+        *self.0[2].0.get_unchecked_mut(vec_index) = c;
+        *self.0[3].0.get_unchecked_mut(vec_index) = d;
+    }
+}
+
 impl SecureColumnByCoords<SimdBackend> {
     pub fn packed_len(&self) -> usize {
         self.columns[0].data.len()
@@ -235,6 +268,20 @@ impl SecureColumnByCoords<SimdBackend> {
         .map(|(a, b, c, d)| SecureField::from_m31_array([a, b, c, d]))
         .collect()
     }
+
+    /// Returns a vector of `SecureColumnByCoordsMutSlice`s, each mutably owning
+    /// `SECURE_EXTENSION_DEGREE` slices of `chunk_size` `PackedBasedField`s
+    /// (i.e, `chuck_size` * `N_LANES` secure field elements, by coordinates).
+    pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<SecureColumnByCoordsMutSlice<'_>> {
+        let [a, b, c, d] = self
+            .columns
+            .get_many_mut([0, 1, 2, 3])
+            .unwrap()
+            .map(|x| x.chunks_mut(chunk_size));
+        izip!(a, b, c, d)
+            .map(|(a, b, c, d)| SecureColumnByCoordsMutSlice([a, b, c, d]))
+            .collect_vec()
+    }
 }
 
 impl FromIterator<SecureField> for SecureColumnByCoords<SimdBackend> {
@@ -255,9 +302,11 @@ mod tests {
     use super::BaseColumn;
     use crate::core::backend::simd::column::SecureColumn;
     use crate::core::backend::simd::m31::N_LANES;
+    use crate::core::backend::simd::qm31::PackedQM31;
     use crate::core::backend::Column;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::fields::secure_column::SecureColumnByCoords;
 
     #[test]
     fn base_field_vec_from_iter_works() {
@@ -290,5 +339,29 @@ mod tests {
 
         assert_eq!(col.at(2 * CHUNK_SIZE * N_LANES + 19), BaseField::from(1234));
         assert_eq!(col.at(3 * CHUNK_SIZE * N_LANES + 1), BaseField::from(5678));
+    }
+
+    #[test]
+    fn test_secure_column_by_coords_chunks_mut() {
+        let a: [BaseField; N_LANES * 16] = array::from_fn(BaseField::from);
+        let b: [BaseField; N_LANES * 16] = array::from_fn(BaseField::from);
+        let c: [BaseField; N_LANES * 16] = array::from_fn(BaseField::from);
+        let d: [BaseField; N_LANES * 16] = array::from_fn(BaseField::from);
+        let mut col = SecureColumnByCoords {
+            columns: [a, b, c, d].map(|values| values.into_iter().collect::<BaseColumn>()),
+        };
+
+        let mut rng = SmallRng::seed_from_u64(0);
+        let rand0 = PackedQM31::from_array(rng.gen());
+        let rand1 = PackedQM31::from_array(rng.gen());
+
+        let mut chunks = col.chunks_mut(4);
+        unsafe {
+            chunks[2].set_packed(3, rand0);
+            chunks[3].set_packed(1, rand1);
+
+            assert_eq!(col.packed_at(2 * 4 + 3).to_array(), rand0.to_array());
+            assert_eq!(col.packed_at(3 * 4 + 1).to_array(), rand1.to_array());
+        }
     }
 }
