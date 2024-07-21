@@ -53,6 +53,15 @@ impl BaseColumn {
         mem::forget(self);
         res
     }
+
+    /// Returns a vector of `BaseColumnMutSlice`s, each mutably owning
+    /// `chunk_size` `PackedBasedField`s (i.e, `chuck_size` * `N_LANES` elements).
+    pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<BaseColumnMutSlice<'_>> {
+        self.data
+            .chunks_mut(chunk_size)
+            .map(BaseColumnMutSlice)
+            .collect_vec()
+    }
 }
 
 impl Column<BaseField> for BaseColumn {
@@ -96,6 +105,21 @@ impl FromIterator<BaseField> for BaseColumn {
         }
 
         Self { data, length }
+    }
+}
+
+/// A mutable slice of a BaseColumn.
+pub struct BaseColumnMutSlice<'a>(pub &'a mut [PackedBaseField]);
+
+impl<'a> BaseColumnMutSlice<'a> {
+    pub fn at(&self, index: usize) -> BaseField {
+        self.0[index / N_LANES].to_array()[index % N_LANES]
+    }
+
+    pub fn set(&mut self, index: usize, value: BaseField) {
+        let mut packed = self.0[index / N_LANES].to_array();
+        packed[index % N_LANES] = value;
+        self.0[index / N_LANES] = PackedBaseField::from_array(packed)
     }
 }
 
@@ -230,6 +254,7 @@ mod tests {
 
     use super::BaseColumn;
     use crate::core::backend::simd::column::SecureColumn;
+    use crate::core::backend::simd::m31::N_LANES;
     use crate::core::backend::Column;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -251,5 +276,19 @@ mod tests {
         let res = values.into_iter().collect::<SecureColumn>();
 
         assert_eq!(res.to_cpu(), values);
+    }
+
+    #[test]
+    fn test_base_column_chunks_mut() {
+        let values: [BaseField; N_LANES * 7] = array::from_fn(BaseField::from);
+        let mut col = values.into_iter().collect::<BaseColumn>();
+
+        const CHUNK_SIZE: usize = 2;
+        let mut chunks = col.chunks_mut(CHUNK_SIZE);
+        chunks[2].set(19, BaseField::from(1234));
+        chunks[3].set(1, BaseField::from(5678));
+
+        assert_eq!(col.at(2 * CHUNK_SIZE * N_LANES + 19), BaseField::from(1234));
+        assert_eq!(col.at(3 * CHUNK_SIZE * N_LANES + 1), BaseField::from(5678));
     }
 }
