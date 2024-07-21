@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use stwo_prover::core::backend::CpuBackend;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::fields::secure_column::SecureColumn;
+use stwo_prover::core::fields::secure_column::SecureColumnByCoords;
 use stwo_prover::core::fri::FriOps;
 use stwo_prover::core::poly::circle::{CanonicCoset, PolyOps};
 use stwo_prover::core::poly::line::{LineDomain, LineEvaluation};
@@ -12,7 +12,7 @@ fn folding_benchmark(c: &mut Criterion) {
     let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE + 1).half_coset());
     let evals = LineEvaluation::new(
         domain,
-        SecureColumn {
+        SecureColumnByCoords {
             columns: std::array::from_fn(|i| {
                 vec![BaseField::from_u32_unchecked(i as u32); 1 << LOG_SIZE]
             }),

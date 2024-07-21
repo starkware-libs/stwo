@@ -7,7 +7,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::constraints::{complex_conjugate_line_coeffs, pair_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
+use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::{ComplexConjugate, FieldExpOps};
 use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
@@ -21,7 +21,7 @@ impl QuotientOps for CpuBackend {
         random_coeff: SecureField,
         sample_batches: &[ColumnSampleBatch],
     ) -> SecureEvaluation<Self> {
-        let mut values = SecureColumn::zeros(domain.size());
+        let mut values = SecureColumnByCoords::zeros(domain.size());
         let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
 
         // TODO(spapini): bit reverse iterator.

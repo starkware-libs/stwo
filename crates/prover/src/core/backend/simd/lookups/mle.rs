@@ -2,7 +2,7 @@ use core::ops::Sub;
 use std::iter::zip;
 use std::ops::{Add, Mul};
 
-use crate::core::backend::simd::column::SecureFieldVec;
+use crate::core::backend::simd::column::SecureColumn;
 use crate::core::backend::simd::m31::N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
@@ -72,7 +72,7 @@ impl MleOps<SecureField> for SimdBackend {
         let length = packed_evals.len() * N_LANES;
         let data = packed_evals;
 
-        Mle::new(SecureFieldVec { data, length })
+        Mle::new(SecureColumn { data, length })
     }
 }
 

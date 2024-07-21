@@ -5,7 +5,7 @@ use std::mem::{size_of_val, transmute};
 
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use itertools::Itertools;
-use stwo_prover::core::backend::simd::column::BaseFieldVec;
+use stwo_prover::core::backend::simd::column::BaseColumn;
 use stwo_prover::core::backend::simd::fft::ifft::{
     get_itwiddle_dbls, ifft, ifft3_loop, ifft_vecwise_loop,
 };
@@ -22,7 +22,7 @@ pub fn simd_ifft(c: &mut Criterion) {
         let domain = CanonicCoset::new(log_size).circle_domain();
         let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
         let twiddle_dbls_refs = twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec();
-        let values: BaseFieldVec = (0..domain.size()).map(BaseField::from).collect();
+        let values: BaseColumn = (0..domain.size()).map(BaseField::from).collect();
         group.throughput(Throughput::Bytes(size_of_val(&*values.data) as u64));
         group.bench_function(BenchmarkId::new("simd ifft", log_size), |b| {
             b.iter_batched(
@@ -46,7 +46,7 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
     let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
     let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
     let twiddle_dbls_refs = twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec();
-    let values: BaseFieldVec = (0..domain.size()).map(BaseField::from).collect();
+    let values: BaseColumn = (0..domain.size()).map(BaseField::from).collect();
 
     let mut group = c.benchmark_group("ifft parts");
 
@@ -84,8 +84,7 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
     });
 
     const TRANSPOSE_LOG_SIZE: u32 = 20;
-    let transpose_values: BaseFieldVec =
-        (0..1 << TRANSPOSE_LOG_SIZE).map(BaseField::from).collect();
+    let transpose_values: BaseColumn = (0..1 << TRANSPOSE_LOG_SIZE).map(BaseField::from).collect();
     group.throughput(Throughput::Bytes(4 << TRANSPOSE_LOG_SIZE));
     group.bench_function(format!("simd transpose_vecs 2^{TRANSPOSE_LOG_SIZE}"), |b| {
         b.iter_batched(
@@ -107,7 +106,7 @@ pub fn simd_rfft(c: &mut Criterion) {
     let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
     let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
     let twiddle_dbls_refs = twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec();
-    let values: BaseFieldVec = (0..domain.size()).map(BaseField::from).collect();
+    let values: BaseColumn = (0..domain.size()).map(BaseField::from).collect();
 
     c.bench_function("simd rfft 20bit", |b| {
         b.iter_with_large_drop(|| unsafe {

@@ -9,7 +9,7 @@ use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, point_excluder, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::{SecureColumn, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
@@ -278,7 +278,7 @@ impl ComponentTraceGenerator<CpuBackend> for WideFibComponent {
         let (alpha, z) = (elements[ALPHA_ID], elements[Z_ID]);
         // TODO(AlonH): Return a secure column directly.
         let values = write_lookup_column(&trace_values, alpha, z);
-        let secure_column: SecureColumn<CpuBackend> = values.into_iter().collect();
+        let secure_column: SecureColumnByCoords<CpuBackend> = values.into_iter().collect();
         secure_column
             .columns
             .into_iter()

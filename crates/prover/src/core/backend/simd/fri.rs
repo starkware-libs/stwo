@@ -11,7 +11,7 @@ use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::Column;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
+use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fri::{self, FriOps};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
@@ -33,7 +33,7 @@ impl FriOps for SimdBackend {
         let domain = eval.domain();
         let itwiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles)[0];
 
-        let mut folded_values = SecureColumn::<Self>::zeros(1 << (log_size - 1));
+        let mut folded_values = SecureColumnByCoords::<Self>::zeros(1 << (log_size - 1));
 
         for vec_index in 0..(1 << (log_size - 1 - LOG_N_LANES)) {
             let value = unsafe {
@@ -99,7 +99,7 @@ impl FriOps for SimdBackend {
     fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField) {
         let lambda = decomposition_coefficient(eval);
         let broadcasted_lambda = PackedSecureField::broadcast(lambda);
-        let mut g_values = SecureColumn::<Self>::zeros(eval.len());
+        let mut g_values = SecureColumnByCoords::<Self>::zeros(eval.len());
 
         let range = eval.len().div_ceil(N_LANES);
         let half_range = range / 2;
@@ -158,12 +158,12 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::backend::simd::column::BaseFieldVec;
+    use crate::core::backend::simd::column::BaseColumn;
     use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::{Column, CpuBackend};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::secure_column::SecureColumn;
+    use crate::core::fields::secure_column::SecureColumnByCoords;
     use crate::core::fri::FriOps;
     use crate::core::poly::circle::{CanonicCoset, CirclePoly, PolyOps, SecureEvaluation};
     use crate::core::poly::line::{LineDomain, LineEvaluation};
@@ -200,8 +200,10 @@ mod tests {
         let alpha = qm31!(1, 3, 5, 7);
         let circle_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
         let line_domain = LineDomain::new(circle_domain.half_coset);
-        let mut cpu_fold =
-            LineEvaluation::new(line_domain, SecureColumn::zeros(1 << (LOG_SIZE - 1)));
+        let mut cpu_fold = LineEvaluation::new(
+            line_domain,
+            SecureColumnByCoords::zeros(1 << (LOG_SIZE - 1)),
+        );
         CpuBackend::fold_circle_into_line(
             &mut cpu_fold,
             &SecureEvaluation {
@@ -212,8 +214,10 @@ mod tests {
             &CpuBackend::precompute_twiddles(line_domain.coset()),
         );
 
-        let mut simd_fold =
-            LineEvaluation::new(line_domain, SecureColumn::zeros(1 << (LOG_SIZE - 1)));
+        let mut simd_fold = LineEvaluation::new(
+            line_domain,
+            SecureColumnByCoords::zeros(1 << (LOG_SIZE - 1)),
+        );
         SimdBackend::fold_circle_into_line(
             &mut simd_fold,
             &SecureEvaluation {
@@ -233,12 +237,12 @@ mod tests {
         const DOMAIN_LOG_HALF_SIZE: u32 = DOMAIN_LOG_SIZE - 1;
         let s = CanonicCoset::new(DOMAIN_LOG_SIZE);
         let domain = s.circle_domain();
-        let mut coeffs = BaseFieldVec::zeros(1 << DOMAIN_LOG_SIZE);
+        let mut coeffs = BaseColumn::zeros(1 << DOMAIN_LOG_SIZE);
         // Polynomial is out of FFT space.
         coeffs.as_mut_slice()[1 << DOMAIN_LOG_HALF_SIZE] = BaseField::one();
         let poly = CirclePoly::<SimdBackend>::new(coeffs);
         let values = poly.evaluate(domain);
-        let avx_column = SecureColumn::<SimdBackend> {
+        let avx_column = SecureColumnByCoords::<SimdBackend> {
             columns: [
                 values.values.clone(),
                 values.values.clone(),

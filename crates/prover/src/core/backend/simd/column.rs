@@ -11,30 +11,30 @@ use super::SimdBackend;
 use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
+use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::{FieldExpOps, FieldOps};
 
 impl FieldOps<BaseField> for SimdBackend {
-    fn batch_inverse(column: &BaseFieldVec, dst: &mut BaseFieldVec) {
+    fn batch_inverse(column: &BaseColumn, dst: &mut BaseColumn) {
         PackedBaseField::batch_inverse(&column.data, &mut dst.data);
     }
 }
 
 impl FieldOps<SecureField> for SimdBackend {
-    fn batch_inverse(column: &SecureFieldVec, dst: &mut SecureFieldVec) {
+    fn batch_inverse(column: &SecureColumn, dst: &mut SecureColumn) {
         PackedSecureField::batch_inverse(&column.data, &mut dst.data);
     }
 }
 
-/// A efficient structure for storing and operating on a arbitrary number of [`BaseField`] values.
+/// An efficient structure for storing and operating on a arbitrary number of [`BaseField`] values.
 #[derive(Clone, Debug)]
-pub struct BaseFieldVec {
+pub struct BaseColumn {
     pub data: Vec<PackedBaseField>,
     /// The number of [`BaseField`]s in the vector.
     pub length: usize,
 }
 
-impl BaseFieldVec {
+impl BaseColumn {
     /// Extracts a slice containing the entire vector of [`BaseField`]s.
     pub fn as_slice(&self) -> &[BaseField] {
         &cast_slice(&self.data)[..self.length]
@@ -55,7 +55,7 @@ impl BaseFieldVec {
     }
 }
 
-impl Column<BaseField> for BaseFieldVec {
+impl Column<BaseField> for BaseColumn {
     fn zeros(length: usize) -> Self {
         let data = vec![PackedBaseField::zeroed(); length.div_ceil(N_LANES)];
         Self { data, length }
@@ -80,7 +80,7 @@ impl Column<BaseField> for BaseFieldVec {
     }
 }
 
-impl FromIterator<BaseField> for BaseFieldVec {
+impl FromIterator<BaseField> for BaseColumn {
     fn from_iter<I: IntoIterator<Item = BaseField>>(iter: I) -> Self {
         let mut chunks = iter.into_iter().array_chunks();
         let mut data = (&mut chunks).map(PackedBaseField::from_array).collect_vec();
@@ -99,15 +99,16 @@ impl FromIterator<BaseField> for BaseFieldVec {
     }
 }
 
-/// A efficient structure for storing and operating on a arbitrary number of [`SecureField`] values.
+/// An efficient structure for storing and operating on a arbitrary number of [`SecureField`]
+/// values.
 #[derive(Clone, Debug)]
-pub struct SecureFieldVec {
+pub struct SecureColumn {
     pub data: Vec<PackedSecureField>,
     /// The number of [`SecureField`]s in the vector.
     pub length: usize,
 }
 
-impl Column<SecureField> for SecureFieldVec {
+impl Column<SecureField> for SecureColumn {
     fn zeros(length: usize) -> Self {
         Self {
             data: vec![PackedSecureField::zeroed(); length.div_ceil(N_LANES)],
@@ -138,7 +139,7 @@ impl Column<SecureField> for SecureFieldVec {
     }
 }
 
-impl FromIterator<SecureField> for SecureFieldVec {
+impl FromIterator<SecureField> for SecureColumn {
     fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
         let mut chunks = iter.into_iter().array_chunks();
         let mut data = (&mut chunks)
@@ -159,7 +160,7 @@ impl FromIterator<SecureField> for SecureFieldVec {
     }
 }
 
-impl FromIterator<PackedSecureField> for SecureFieldVec {
+impl FromIterator<PackedSecureField> for SecureColumn {
     fn from_iter<I: IntoIterator<Item = PackedSecureField>>(iter: I) -> Self {
         let data = (&mut iter.into_iter()).collect_vec();
         let length = data.len() * N_LANES;
@@ -168,7 +169,7 @@ impl FromIterator<PackedSecureField> for SecureFieldVec {
     }
 }
 
-impl SecureColumn<SimdBackend> {
+impl SecureColumnByCoords<SimdBackend> {
     pub fn packed_len(&self) -> usize {
         self.columns[0].data.len()
     }
@@ -212,11 +213,11 @@ impl SecureColumn<SimdBackend> {
     }
 }
 
-impl FromIterator<SecureField> for SecureColumn<SimdBackend> {
+impl FromIterator<SecureField> for SecureColumnByCoords<SimdBackend> {
     fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
-        let cpu_col = SecureColumn::<CpuBackend>::from_iter(iter);
+        let cpu_col = SecureColumnByCoords::<CpuBackend>::from_iter(iter);
         let columns = cpu_col.columns.map(|col| col.into_iter().collect());
-        SecureColumn { columns }
+        SecureColumnByCoords { columns }
     }
 }
 
@@ -227,8 +228,8 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use super::BaseFieldVec;
-    use crate::core::backend::simd::column::SecureFieldVec;
+    use super::BaseColumn;
+    use crate::core::backend::simd::column::SecureColumn;
     use crate::core::backend::Column;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -237,7 +238,7 @@ mod tests {
     fn base_field_vec_from_iter_works() {
         let values: [BaseField; 30] = array::from_fn(BaseField::from);
 
-        let res = values.into_iter().collect::<BaseFieldVec>();
+        let res = values.into_iter().collect::<BaseColumn>();
 
         assert_eq!(res.to_cpu(), values);
     }
@@ -247,7 +248,7 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         let values: [SecureField; 30] = rng.gen();
 
-        let res = values.into_iter().collect::<SecureFieldVec>();
+        let res = values.into_iter().collect::<SecureColumn>();
 
         assert_eq!(res.to_cpu(), values);
     }

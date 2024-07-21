@@ -7,13 +7,13 @@ use crate::core::utils::IteratorMutExt;
 pub const SECURE_EXTENSION_DEGREE: usize =
     <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE;
 
-/// An array of `SECURE_EXTENSION_DEGREE` base field columns, that represents a column of secure
-/// field elements.
+/// A column major array of `SECURE_EXTENSION_DEGREE` base field columns, that represents a column
+/// of secure field element coordinates.
 #[derive(Clone, Debug)]
-pub struct SecureColumn<B: FieldOps<BaseField>> {
+pub struct SecureColumnByCoords<B: FieldOps<BaseField>> {
     pub columns: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
-impl SecureColumn<CpuBackend> {
+impl SecureColumnByCoords<CpuBackend> {
     pub fn set(&mut self, index: usize, value: SecureField) {
         self.columns
             .iter_mut()
@@ -26,7 +26,7 @@ impl SecureColumn<CpuBackend> {
         (0..self.len()).map(|i| self.at(i)).collect()
     }
 }
-impl<B: FieldOps<BaseField>> SecureColumn<B> {
+impl<B: FieldOps<BaseField>> SecureColumnByCoords<B> {
     pub fn at(&self, index: usize) -> SecureField {
         SecureField::from_m31_array(std::array::from_fn(|i| self.columns[i].at(index)))
     }
@@ -45,18 +45,18 @@ impl<B: FieldOps<BaseField>> SecureColumn<B> {
         self.columns[0].is_empty()
     }
 
-    pub fn to_cpu(&self) -> SecureColumn<CpuBackend> {
-        SecureColumn {
+    pub fn to_cpu(&self) -> SecureColumnByCoords<CpuBackend> {
+        SecureColumnByCoords {
             columns: self.columns.clone().map(|c| c.to_cpu()),
         }
     }
 }
 
-pub struct SecureColumnIter<'a> {
-    column: &'a SecureColumn<CpuBackend>,
+pub struct SecureColumnByCoordsIter<'a> {
+    column: &'a SecureColumnByCoords<CpuBackend>,
     index: usize,
 }
-impl Iterator for SecureColumnIter<'_> {
+impl Iterator for SecureColumnByCoordsIter<'_> {
     type Item = SecureField;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -69,18 +69,18 @@ impl Iterator for SecureColumnIter<'_> {
         }
     }
 }
-impl<'a> IntoIterator for &'a SecureColumn<CpuBackend> {
+impl<'a> IntoIterator for &'a SecureColumnByCoords<CpuBackend> {
     type Item = SecureField;
-    type IntoIter = SecureColumnIter<'a>;
+    type IntoIter = SecureColumnByCoordsIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
-        SecureColumnIter {
+        SecureColumnByCoordsIter {
             column: self,
             index: 0,
         }
     }
 }
-impl FromIterator<SecureField> for SecureColumn<CpuBackend> {
+impl FromIterator<SecureField> for SecureColumnByCoords<CpuBackend> {
     fn from_iter<I: IntoIterator<Item = SecureField>>(iter: I) -> Self {
         let mut columns = std::array::from_fn(|_| vec![]);
         for value in iter.into_iter() {
@@ -89,11 +89,11 @@ impl FromIterator<SecureField> for SecureColumn<CpuBackend> {
                 columns[j].push(vals[j]);
             }
         }
-        SecureColumn { columns }
+        SecureColumnByCoords { columns }
     }
 }
-impl From<SecureColumn<CpuBackend>> for Vec<SecureField> {
-    fn from(column: SecureColumn<CpuBackend>) -> Self {
+impl From<SecureColumnByCoords<CpuBackend>> for Vec<SecureField> {
+    fn from(column: SecureColumnByCoords<CpuBackend>) -> Self {
         column.into_iter().collect()
     }
 }

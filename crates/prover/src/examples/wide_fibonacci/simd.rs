@@ -6,7 +6,7 @@ use super::component::LOG_N_COLUMNS;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
-use crate::core::backend::simd::column::BaseFieldVec;
+use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
@@ -208,9 +208,9 @@ impl ComponentProver<SimdBackend> for SimdWideFibComponent {
         // TODO(spapini): Make this prettier.
         let zero_domain = CanonicCoset::new(self.log_column_size()).coset;
         let mut denoms =
-            BaseFieldVec::from_iter(eval_domain.iter().map(|p| coset_vanishing(zero_domain, p)));
+            BaseColumn::from_iter(eval_domain.iter().map(|p| coset_vanishing(zero_domain, p)));
         <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut denoms);
-        let mut denom_inverses = BaseFieldVec::zeros(denoms.len());
+        let mut denom_inverses = BaseColumn::zeros(denoms.len());
         <SimdBackend as FieldOps<BaseField>>::batch_inverse(&denoms, &mut denom_inverses);
         span.exit();
 
