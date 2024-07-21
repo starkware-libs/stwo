@@ -1,7 +1,7 @@
 use super::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
+use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fri::{fold_circle_into_line, fold_line, FriOps};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
@@ -27,7 +27,7 @@ impl FriOps for CpuBackend {
 
     fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField) {
         let lambda = Self::decomposition_coefficient(eval);
-        let mut g_values = SecureColumn::<Self>::zeros(eval.len());
+        let mut g_values = SecureColumnByCoords::<Self>::zeros(eval.len());
 
         let domain_size = eval.len();
         let half_domain_size = domain_size / 2;
@@ -93,7 +93,7 @@ mod tests {
     use crate::core::backend::CpuBackend;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::secure_column::SecureColumn;
+    use crate::core::fields::secure_column::SecureColumnByCoords;
     use crate::core::fri::FriOps;
     use crate::core::poly::circle::{CanonicCoset, SecureEvaluation};
     use crate::m31;
@@ -113,7 +113,7 @@ mod tests {
 
             let poly = CpuCirclePoly::new(coeffs);
             let values = poly.evaluate(domain);
-            let secure_column = SecureColumn {
+            let secure_column = SecureColumnByCoords {
                 columns: [
                     values.values.clone(),
                     values.values.clone(),

@@ -1,7 +1,7 @@
 use std::iter::zip;
 
 use crate::core::backend::cpu::lookups::gkr::gen_eq_evals as cpu_gen_eq_evals;
-use crate::core::backend::simd::column::SecureFieldVec;
+use crate::core::backend::simd::column::SecureColumn;
 use crate::core::backend::simd::m31::{LOG_N_LANES, N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
@@ -20,7 +20,7 @@ impl GkrOps for SimdBackend {
 
         // Start DP with CPU backend to avoid dealing with instances smaller than a SIMD vector.
         let (y_last_chunk, y_rem) = y.split_last_chunk::<{ LOG_N_LANES as usize }>().unwrap();
-        let initial = SecureFieldVec::from_iter(cpu_gen_eq_evals(y_last_chunk, v));
+        let initial = SecureColumn::from_iter(cpu_gen_eq_evals(y_last_chunk, v));
         assert_eq!(initial.len(), N_LANES);
 
         let packed_len = 1 << y_rem.len();
@@ -44,7 +44,7 @@ impl GkrOps for SimdBackend {
         }
 
         let length = packed_len * N_LANES;
-        Mle::new(SecureFieldVec { data, length })
+        Mle::new(SecureColumn { data, length })
     }
 
     fn next_layer(_layer: &Layer<Self>) -> Layer<Self> {

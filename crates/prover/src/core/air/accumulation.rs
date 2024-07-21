@@ -9,7 +9,7 @@ use tracing::{span, Level};
 use crate::core::backend::{Backend, Col, Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumn;
+use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::FieldOps;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
@@ -52,7 +52,7 @@ pub struct DomainEvaluationAccumulator<B: Backend> {
     /// Each `sub_accumulation` holds the sum over all columns i of that log_size, of
     /// `evaluation_i * alpha^(N - 1 - i)`
     /// where `N` is the total number of evaluations.
-    sub_accumulations: Vec<Option<SecureColumn<B>>>,
+    sub_accumulations: Vec<Option<SecureColumnByCoords<B>>>,
 }
 
 impl<B: Backend> DomainEvaluationAccumulator<B> {
@@ -87,7 +87,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
                     .split_off(self.random_coeff_powers.len() - n_cols);
                 ColumnAccumulator {
                     random_coeff_powers: random_coeffs,
-                    col: col.get_or_insert_with(|| SecureColumn::zeros(1 << log_size)),
+                    col: col.get_or_insert_with(|| SecureColumnByCoords::zeros(1 << log_size)),
                 }
             })
             .collect_vec()
@@ -104,7 +104,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
 pub trait AccumulationOps: FieldOps<BaseField> + Sized {
     /// Accumulates other into column:
     ///   column = column + other.
-    fn accumulate(column: &mut SecureColumn<Self>, other: &SecureColumn<Self>);
+    fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>);
 }
 
 impl<B: Backend> DomainEvaluationAccumulator<B> {
@@ -129,7 +129,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
                 continue;
             };
             if let Some(prev_poly) = cur_poly {
-                let eval = SecureColumn {
+                let eval = SecureColumnByCoords {
                     columns: prev_poly.0.map(|c| {
                         c.evaluate_with_twiddles(
                             CanonicCoset::new(log_size as u32).circle_domain(),
@@ -159,7 +159,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
 /// A domain accumulator for polynomials of a single size.
 pub struct ColumnAccumulator<'a, B: Backend> {
     pub random_coeff_powers: Vec<SecureField>,
-    pub col: &'a mut SecureColumn<B>,
+    pub col: &'a mut SecureColumnByCoords<B>,
 }
 impl<'a> ColumnAccumulator<'a, CpuBackend> {
     pub fn accumulate(&mut self, index: usize, evaluation: SecureField) {

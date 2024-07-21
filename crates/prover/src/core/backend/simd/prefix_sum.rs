@@ -146,7 +146,7 @@ mod tests {
     use test_log::test;
 
     use super::inclusive_prefix_sum;
-    use crate::core::backend::simd::column::BaseFieldVec;
+    use crate::core::backend::simd::column::BaseColumn;
     use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum_slow;
     use crate::core::backend::Column;
 
@@ -154,7 +154,7 @@ mod tests {
     fn exclusive_prefix_sum_simd_with_log_size_3_works() {
         const LOG_N: u32 = 3;
         let mut rng = SmallRng::seed_from_u64(0);
-        let evals: BaseFieldVec = (0..1 << LOG_N).map(|_| rng.gen()).collect();
+        let evals: BaseColumn = (0..1 << LOG_N).map(|_| rng.gen()).collect();
         let expected = inclusive_prefix_sum_slow(evals.clone());
 
         let res = inclusive_prefix_sum(evals);
@@ -166,7 +166,7 @@ mod tests {
     fn exclusive_prefix_sum_simd_with_log_size_6_works() {
         const LOG_N: u32 = 6;
         let mut rng = SmallRng::seed_from_u64(0);
-        let evals: BaseFieldVec = (0..1 << LOG_N).map(|_| rng.gen()).collect();
+        let evals: BaseColumn = (0..1 << LOG_N).map(|_| rng.gen()).collect();
         let expected = inclusive_prefix_sum_slow(evals.clone());
 
         let res = inclusive_prefix_sum(evals);
@@ -178,7 +178,7 @@ mod tests {
     fn exclusive_prefix_sum_simd_with_log_size_8_works() {
         const LOG_N: u32 = 8;
         let mut rng = SmallRng::seed_from_u64(0);
-        let evals: BaseFieldVec = (0..1 << LOG_N).map(|_| rng.gen()).collect();
+        let evals: BaseColumn = (0..1 << LOG_N).map(|_| rng.gen()).collect();
         let expected = inclusive_prefix_sum_slow(evals.clone());
 
         let res = inclusive_prefix_sum(evals);
