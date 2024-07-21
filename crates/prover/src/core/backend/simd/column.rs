@@ -53,6 +53,15 @@ impl BaseColumn {
         mem::forget(self);
         res
     }
+
+    /// Returns a vector of `BaseColumnMutSlice`s, each mutably owning
+    /// `chunk_size` `PackedBasedField`s (i.e, `chuck_size` * `N_LANES` elements).
+    pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<BaseColumnMutSlice<'_>> {
+        self.data
+            .chunks_mut(chunk_size)
+            .map(BaseColumnMutSlice)
+            .collect_vec()
+    }
 }
 
 impl Column<BaseField> for BaseColumn {
@@ -96,6 +105,23 @@ impl FromIterator<BaseField> for BaseColumn {
         }
 
         Self { data, length }
+    }
+}
+
+/// A mutable slice of a BaseColumn.
+pub struct BaseColumnMutSlice<'a>(pub &'a mut [PackedBaseField]);
+
+impl<'a> BaseColumnMutSlice<'a> {
+    #[allow(dead_code)]
+    fn at(&self, index: usize) -> BaseField {
+        self.0[index / N_LANES].to_array()[index % N_LANES]
+    }
+
+    #[allow(dead_code)]
+    fn set(&mut self, index: usize, value: BaseField) {
+        let mut packed = self.0[index / N_LANES].to_array();
+        packed[index % N_LANES] = value;
+        self.0[index / N_LANES] = PackedBaseField::from_array(packed)
     }
 }
 
@@ -250,5 +276,18 @@ mod tests {
         let res = values.into_iter().collect::<SecureColumn>();
 
         assert_eq!(res.to_cpu(), values);
+    }
+
+    #[test]
+    fn test_base_column_chunks_mut() {
+        let values: [BaseField; 16 * 7] = array::from_fn(BaseField::from);
+        let mut col = values.into_iter().collect::<BaseColumn>();
+
+        let mut chunks = col.chunks_mut(2);
+        chunks[2].set(3, BaseField::from(1234));
+        chunks[3].set(1, BaseField::from(5678));
+
+        assert_eq!(col.at(2 * 2 * 16 + 3), BaseField::from(1234));
+        assert_eq!(col.at(3 * 2 * 16 + 1), BaseField::from(5678));
     }
 }
