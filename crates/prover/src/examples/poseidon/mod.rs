@@ -4,6 +4,8 @@ use std::array;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use tracing::{span, Level};
 
 use crate::constraint_framework::{EvalAtRow, PointEvaluator, SimdDomainEvaluator};
@@ -404,30 +406,43 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
         let mut pows = accum.random_coeff_powers.clone();
         pows.reverse();
 
-        for vec_row in 0..(1 << (eval_domain.log_size() - LOG_N_LANES)) {
-            let mut evaluator = PoseidonEval {
-                eval: SimdDomainEvaluator::new(
-                    &trace_eval_ref,
-                    vec_row,
-                    &pows,
-                    self.log_n_rows,
-                    self.log_n_rows + LOG_EXPAND,
-                ),
-            };
-            for _ in 0..N_INSTANCES_PER_ROW {
-                evaluator.eval();
-            }
+        const CHUNK_SIZE: usize = 16;
+        assert_eq!(accum.col.columns[0].length % (CHUNK_SIZE << LOG_N_LANES), 0);
 
-            let packed_denom_inv =
-                packed_denoms_inv[vec_row >> (zero_domain.log_size() - LOG_N_LANES)];
-            let quotient = evaluator.eval.row_res * packed_denom_inv;
-            unsafe {
-                accum
-                    .col
-                    .set_packed(vec_row, accum.col.packed_at(vec_row) + quotient)
+        #[cfg(not(feature = "parallel"))]
+        let iter = (0..(1 << (eval_domain.log_size() - LOG_N_LANES)))
+            .step_by(CHUNK_SIZE)
+            .zip(accum.col.chunks_mut(CHUNK_SIZE));
+
+        #[cfg(feature = "parallel")]
+        let iter = (0..(1 << (eval_domain.log_size() - LOG_N_LANES)))
+            .into_par_iter()
+            .step_by(CHUNK_SIZE)
+            .zip(accum.col.chunks_mut(CHUNK_SIZE));
+
+        iter.for_each(|(chunk_offset, mut col_chunk)| {
+            for offset in 0..CHUNK_SIZE {
+                let vec_row = chunk_offset + offset;
+                let mut evaluator = PoseidonEval {
+                    eval: SimdDomainEvaluator::new(
+                        &trace_eval_ref,
+                        vec_row,
+                        &pows,
+                        self.log_n_rows,
+                        self.log_n_rows + LOG_EXPAND,
+                    ),
+                };
+                for _ in 0..N_INSTANCES_PER_ROW {
+                    evaluator.eval();
+                }
+
+                let packed_denom_inv =
+                    packed_denoms_inv[vec_row >> (zero_domain.log_size() - LOG_N_LANES)];
+                let quotient = evaluator.eval.row_res * packed_denom_inv;
+                unsafe { col_chunk.set_packed(offset, col_chunk.packed_at(offset) + quotient) };
+                assert_eq!(evaluator.eval.constraint_index, n_constraints);
             }
-            assert_eq!(evaluator.eval.constraint_index, n_constraints);
-        }
+        });
     }
 
     fn lookup_values(&self, _trace: &ComponentTrace<'_, SimdBackend>) -> LookupValues {
