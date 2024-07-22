@@ -11,7 +11,7 @@ use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column, ColumnOps};
-use crate::core::channel::Blake2sChannel;
+use crate::core::channel::Channel;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
@@ -68,7 +68,7 @@ impl Air for SimdWideFibAir {
 }
 
 impl AirTraceVerifier for SimdWideFibAir {
-    fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
+    fn interaction_elements(&self, _channel: &mut impl Channel) -> InteractionElements {
         InteractionElements::default()
     }
 }
@@ -259,12 +259,11 @@ impl ComponentProver<SimdBackend> for SimdWideFibComponent {
 mod tests {
     use tracing::{span, Level};
 
-    use crate::core::backend::simd::SimdBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
-    use crate::core::vcs::hasher::Hasher;
+    use crate::core::vcs::hasher::BlakeHasher;
     use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
     use crate::examples::wide_fibonacci::simd::{gen_trace, SimdWideFibAir, SimdWideFibComponent};
     use crate::trace_generation::{commit_and_prove, commit_and_verify};
@@ -287,7 +286,7 @@ mod tests {
         span.exit();
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         let air = SimdWideFibAir { component };
-        let proof = commit_and_prove::<SimdBackend>(&air, channel, trace).unwrap();
+        let proof = commit_and_prove(&air, channel, trace).unwrap();
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         commit_and_verify(proof, &air, channel).unwrap();

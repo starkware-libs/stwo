@@ -2,7 +2,6 @@ use std::iter::zip;
 
 use itertools::Itertools;
 
-use super::super::channel::Blake2sChannel;
 use super::super::circle::CirclePoint;
 use super::super::fields::qm31::SecureField;
 use super::super::fri::{CirclePolyDegreeBound, FriConfig, FriVerifier};
@@ -13,22 +12,19 @@ use super::super::prover::{
 use super::quotients::{fri_answers, PointSample};
 use super::utils::TreeVec;
 use super::CommitmentSchemeProof;
-use crate::core::channel::Channel;
+use crate::core::channel::Channel as ChannelTrait;
 use crate::core::prover::VerificationError;
-use crate::core::vcs::blake2_hash::Blake2sHash;
-use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::verifier::MerkleVerifier;
 use crate::core::ColumnVec;
 
-type ProofChannel = Blake2sChannel;
-
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
 #[derive(Default)]
-pub struct CommitmentSchemeVerifier {
-    pub trees: TreeVec<MerkleVerifier<Blake2sMerkleHasher>>,
+pub struct CommitmentSchemeVerifier<H: MerkleHasher> {
+    pub trees: TreeVec<MerkleVerifier<H>>,
 }
 
-impl CommitmentSchemeVerifier {
+impl<H: MerkleHasher> CommitmentSchemeVerifier<H> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -41,12 +37,11 @@ impl CommitmentSchemeVerifier {
     }
 
     /// Reads a commitment from the prover.
-    pub fn commit(
-        &mut self,
-        commitment: Blake2sHash,
-        log_sizes: &[u32],
-        channel: &mut ProofChannel,
-    ) {
+    pub fn commit<C>(&mut self, commitment: C::Digest, log_sizes: &[u32], channel: &mut C)
+    where
+        C: ChannelTrait,
+        H: MerkleHasher<Hash = C::Digest>,
+    {
         channel.mix_digest(commitment);
         let extended_log_sizes = log_sizes
             .iter()
@@ -56,12 +51,16 @@ impl CommitmentSchemeVerifier {
         self.trees.push(verifier);
     }
 
-    pub fn verify_values(
+    pub fn verify_values<C>(
         &self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
-        proof: CommitmentSchemeProof,
-        channel: &mut ProofChannel,
-    ) -> Result<(), VerificationError> {
+        proof: CommitmentSchemeProof<H>,
+        channel: &mut C,
+    ) -> Result<(), VerificationError>
+    where
+        C: ChannelTrait,
+        H: MerkleHasher<Hash = C::Digest>,
+    {
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let random_coeff = channel.draw_felt();
 

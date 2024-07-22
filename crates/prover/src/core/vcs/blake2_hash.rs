@@ -3,6 +3,9 @@ use std::fmt;
 use blake2::{Blake2s256, Digest};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
+
+use super::hasher::BlakeHasher;
+
 // Wrapper for the blake2s hash type.
 #[repr(C, align(32))]
 #[derive(Clone, Copy, PartialEq, Default, Eq, Pod, Zeroable, Deserialize, Serialize)]
@@ -62,7 +65,7 @@ impl super::hasher::Name for Blake2sHash {
     const NAME: std::borrow::Cow<'static, str> = std::borrow::Cow::Borrowed("BLAKE2");
 }
 
-impl super::hasher::Hash<u8> for Blake2sHash {}
+impl super::hasher::Hash for Blake2sHash {}
 
 // Wrapper for the blake2s Hashing functionalities.
 #[derive(Clone, Debug, Default)]
@@ -70,11 +73,10 @@ pub struct Blake2sHasher {
     state: Blake2s256,
 }
 
-impl super::hasher::Hasher for Blake2sHasher {
-    type Hash = Blake2sHash;
+impl BlakeHasher for Blake2sHasher {
     const BLOCK_SIZE: usize = 64;
     const OUTPUT_SIZE: usize = 32;
-    type NativeType = u8;
+    type Hash = Blake2sHash;
 
     fn new() -> Self {
         Self {
@@ -102,12 +104,11 @@ impl super::hasher::Hasher for Blake2sHasher {
 #[cfg(test)]
 mod tests {
     use super::Blake2sHasher;
-    use crate::core::vcs::blake2_hash;
-    use crate::core::vcs::hasher::Hasher;
+    use crate::core::vcs::hasher::BlakeHasher;
 
     #[test]
     fn single_hash_test() {
-        let hash_a = blake2_hash::Blake2sHasher::hash(b"a");
+        let hash_a = Blake2sHasher::hash(b"a");
         assert_eq!(
             hash_a.to_string(),
             "4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e90"

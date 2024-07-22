@@ -3,7 +3,7 @@ use itertools::{zip_eq, Itertools};
 use super::component::{FibonacciComponent, FibonacciInput, FibonacciTraceGenerator};
 use crate::core::air::{Air, AirProver, Component, ComponentProver};
 use crate::core::backend::CpuBackend;
-use crate::core::channel::Blake2sChannel;
+use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
@@ -27,7 +27,7 @@ impl FibonacciAirGenerator {
 }
 
 impl AirTraceVerifier for FibonacciAirGenerator {
-    fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
+    fn interaction_elements(&self, _channel: &mut impl Channel) -> InteractionElements {
         InteractionElements::default()
     }
 }
@@ -87,7 +87,7 @@ impl Air for FibonacciAir {
 }
 
 impl AirTraceVerifier for FibonacciAir {
-    fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
+    fn interaction_elements(&self, _channel: &mut impl Channel) -> InteractionElements {
         InteractionElements::default()
     }
 }
@@ -145,7 +145,7 @@ impl Air for MultiFibonacciAir {
 }
 
 impl AirTraceVerifier for MultiFibonacciAir {
-    fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
+    fn interaction_elements(&self, _channel: &mut impl Channel) -> InteractionElements {
         InteractionElements::default()
     }
 }

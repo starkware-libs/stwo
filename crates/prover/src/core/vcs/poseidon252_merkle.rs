@@ -4,9 +4,11 @@ use serde::{Deserialize, Serialize};
 use starknet_crypto::poseidon_hash_many;
 use starknet_ff::FieldElement as FieldElement252;
 
+use super::hasher::Name;
 use super::ops::{MerkleHasher, MerkleOps};
 use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
+use crate::core::vcs::hasher::Hash;
 
 const ELEMENTS_IN_BLOCK: usize = 8;
 
@@ -60,6 +62,11 @@ impl MerkleOps<Poseidon252MerkleHasher> for CpuBackend {
             .collect()
     }
 }
+
+impl Name for FieldElement252 {
+    const NAME: std::borrow::Cow<'static, str> = std::borrow::Cow::Borrowed("Poseidon252");
+}
+impl Hash for FieldElement252 {}
 
 #[cfg(test)]
 mod tests {

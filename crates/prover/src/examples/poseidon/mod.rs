@@ -15,7 +15,7 @@ use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrac
 use crate::core::backend::simd::m31::{PackedBaseField, PackedM31, LOG_N_LANES};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column};
-use crate::core::channel::Blake2sChannel;
+use crate::core::channel::Channel;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
@@ -75,7 +75,7 @@ impl Air for PoseidonAir {
 }
 
 impl AirTraceVerifier for PoseidonAir {
-    fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
+    fn interaction_elements(&self, _channel: &mut impl Channel) -> InteractionElements {
         InteractionElements::default()
     }
 }
@@ -468,9 +468,10 @@ mod tests {
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, TreeVec};
     use crate::core::poly::circle::{CanonicCoset, PolyOps};
-    use crate::core::prover::{prove, verify, LOG_BLOWUP_FACTOR};
+    use crate::core::prover::{prove, verify, StarkProof, LOG_BLOWUP_FACTOR};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
-    use crate::core::vcs::hasher::Hasher;
+    use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+    use crate::core::vcs::hasher::BlakeHasher;
     use crate::core::InteractionElements;
     use crate::examples::poseidon::{
         apply_internal_round_matrix, apply_m4, gen_trace, PoseidonAir, PoseidonComponent,
@@ -576,7 +577,7 @@ mod tests {
         // Prove constraints.
         let component = PoseidonComponent { log_n_rows };
         let air = PoseidonAir { component };
-        let proof = prove::<SimdBackend>(
+        let proof: StarkProof<Blake2sMerkleHasher> = prove(
             &air,
             channel,
             &InteractionElements::default(),

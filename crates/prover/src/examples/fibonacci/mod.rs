@@ -12,9 +12,9 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{ProvingError, StarkProof, VerificationError};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
-use crate::core::vcs::hasher::Hasher;
+use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs::hasher::BlakeHasher;
 use crate::trace_generation::{commit_and_prove, commit_and_verify};
-
 pub mod air;
 mod component;
 
@@ -50,7 +50,7 @@ impl Fibonacci {
         CircleEvaluation::new_canonical_ordered(trace_domain, trace)
     }
 
-    pub fn prove(&self) -> Result<StarkProof, ProvingError> {
+    pub fn prove(&self) -> Result<StarkProof<Blake2sMerkleHasher>, ProvingError> {
         let trace = self.get_trace();
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self
             .air
@@ -59,7 +59,7 @@ impl Fibonacci {
         commit_and_prove(&self.air, channel, vec![trace])
     }
 
-    pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
+    pub fn verify(&self, proof: StarkProof<Blake2sMerkleHasher>) -> Result<(), VerificationError> {
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[self
             .air
             .component
@@ -95,14 +95,14 @@ impl MultiFibonacci {
             .collect()
     }
 
-    pub fn prove(&self) -> Result<StarkProof, ProvingError> {
+    pub fn prove(&self) -> Result<StarkProof<Blake2sMerkleHasher>, ProvingError> {
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&self.claims)));
         let trace = self.get_trace();
         commit_and_prove(&self.air, channel, trace)
     }
 
-    pub fn verify(&self, proof: StarkProof) -> Result<(), VerificationError> {
+    pub fn verify(&self, proof: StarkProof<Blake2sMerkleHasher>) -> Result<(), VerificationError> {
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&self.claims)));
         commit_and_verify(proof, &self.air, channel)
@@ -129,11 +129,12 @@ mod tests {
     use crate::core::fields::IntoSlice;
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::VerificationError;
+    use crate::core::prover::{StarkProof, VerificationError};
     use crate::core::queries::Queries;
     use crate::core::utils::bit_reverse;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
-    use crate::core::vcs::hasher::Hasher;
+    use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+    use crate::core::vcs::hasher::BlakeHasher;
     use crate::core::{InteractionElements, LookupValues};
     use crate::examples::fibonacci::air::FibonacciAirGenerator;
     use crate::examples::fibonacci::component::FibonacciInput;
@@ -255,7 +256,8 @@ mod tests {
         let trace = fib_trace_generator.write_trace();
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[CLAIM])));
-        let proof = commit_and_prove(&fib_trace_generator, channel, trace).unwrap();
+        let proof: StarkProof<Blake2sMerkleHasher> =
+            commit_and_prove(&fib_trace_generator, channel, trace).unwrap();
 
         let channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[CLAIM])));
