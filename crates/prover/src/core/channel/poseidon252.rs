@@ -3,7 +3,7 @@ use std::iter;
 use starknet_crypto::{poseidon_hash, poseidon_hash_many};
 use starknet_ff::FieldElement as FieldElement252;
 
-use super::{Channel, ChannelTime};
+use super::{Channel, ChannelTime, Serializable};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
@@ -119,6 +119,12 @@ impl Channel for Poseidon252Channel {
             res.try_into().unwrap()
         });
         bytes.to_vec()
+    }
+}
+
+impl Serializable for FieldElement252 {
+    fn to_bytes(self) -> Vec<u8> {
+        self.as_ref().to_bytes_be().to_vec()
     }
 }
 

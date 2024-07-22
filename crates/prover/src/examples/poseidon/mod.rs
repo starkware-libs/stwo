@@ -24,7 +24,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof, LOG_BLOWUP_FACTOR};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
-use crate::core::vcs::hasher::Hasher;
+use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::{ColumnVec, InteractionElements};
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
@@ -343,7 +343,7 @@ pub fn gen_interaction_trace(
     logup_gen.finalize()
 }
 
-pub fn prove_poseidon(log_n_instances: u32) -> (PoseidonAir, StarkProof) {
+pub fn prove_poseidon(log_n_instances: u32) -> (PoseidonAir, StarkProof<Blake2sMerkleHasher>) {
     assert!(log_n_instances >= N_LOG_INSTANCES_PER_ROW as u32);
     let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
 
@@ -393,7 +393,7 @@ pub fn prove_poseidon(log_n_instances: u32) -> (PoseidonAir, StarkProof) {
         claimed_sum,
     };
     let air = PoseidonAir { component };
-    let proof = prove::<SimdBackend>(
+    let proof = prove::<SimdBackend, _, _>(
         &air,
         channel,
         &InteractionElements::default(),
@@ -422,7 +422,6 @@ mod tests {
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::verify;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
-    use crate::core::vcs::hasher::Hasher;
     use crate::core::InteractionElements;
     use crate::examples::poseidon::{
         apply_internal_round_matrix, apply_m4, gen_interaction_trace, gen_trace, prove_poseidon,

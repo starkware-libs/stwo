@@ -8,8 +8,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::pcs::{CommitmentTreeProver, TreeVec};
 use crate::core::poly::circle::SecureCirclePoly;
-use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
-use crate::core::vcs::ops::MerkleOps;
+use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 
 pub trait AirExt: Air {
@@ -79,9 +78,9 @@ pub trait AirExt: Air {
         air_sizes
     }
 
-    fn component_traces<'a, B: Backend + MerkleOps<Blake2sMerkleHasher>>(
+    fn component_traces<'a, B: Backend + MerkleOps<H>, H: MerkleHasher>(
         &'a self,
-        trees: &'a [CommitmentTreeProver<B>],
+        trees: &'a [CommitmentTreeProver<B, H>],
     ) -> Vec<ComponentTrace<'_, B>> {
         let mut poly_iters = trees
             .iter()
