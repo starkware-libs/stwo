@@ -102,12 +102,12 @@ pub trait AirExt: Air {
                     .collect_vec();
                 let polys = col_sizes_per_tree
                     .iter()
-                    .zip(poly_iters.iter_mut())
+                    .zip_eq(poly_iters.iter_mut())
                     .map(|(n_columns, iter)| iter.take(*n_columns).collect_vec())
                     .collect_vec();
                 let evals = col_sizes_per_tree
                     .iter()
-                    .zip(eval_iters.iter_mut())
+                    .zip_eq(eval_iters.iter_mut())
                     .map(|(n_columns, iter)| iter.take(*n_columns).collect_vec())
                     .collect_vec();
                 ComponentTrace {
