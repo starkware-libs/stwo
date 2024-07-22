@@ -7,6 +7,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CirclePoly};
+use crate::core::utils::circle_domain_order_to_coset_order;
 
 /// Evaluates expressions at a trace domain row, and asserts constraints. Mainly used for testing.
 pub struct AssertEvaluator<'a> {
@@ -66,10 +67,13 @@ pub fn assert_constraints<B: Backend>(
     let traces = trace_polys.as_ref().map(|tree| {
         tree.iter()
             .map(|poly| {
-                poly.evaluate(trace_domain.circle_domain())
-                    .bit_reverse()
-                    .values
-                    .to_cpu()
+                circle_domain_order_to_coset_order(
+                    &poly
+                        .evaluate(trace_domain.circle_domain())
+                        .bit_reverse()
+                        .values
+                        .to_cpu(),
+                )
             })
             .collect()
     });

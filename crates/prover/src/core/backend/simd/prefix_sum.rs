@@ -17,7 +17,7 @@ use crate::core::utils::{
 ///
 /// Based on parallel Blelloch prefix sum:
 /// <https://developer.nvidia.com/gpugems/gpugems3/part-vi-gpu-computing/chapter-39-parallel-prefix-sum-scan-cuda>
-pub fn inclusive_prefix_sum_simd(
+pub fn inclusive_prefix_sum(
     bit_rev_circle_domain_evals: Col<SimdBackend, BaseField>,
 ) -> Col<SimdBackend, BaseField> {
     if bit_rev_circle_domain_evals.len() < N_LANES * 4 {
@@ -145,7 +145,7 @@ mod tests {
     use rand::{Rng, SeedableRng};
     use test_log::test;
 
-    use super::inclusive_prefix_sum_simd;
+    use super::inclusive_prefix_sum;
     use crate::core::backend::simd::column::BaseFieldVec;
     use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum_slow;
     use crate::core::backend::Column;
@@ -157,7 +157,7 @@ mod tests {
         let evals: BaseFieldVec = (0..1 << LOG_N).map(|_| rng.gen()).collect();
         let expected = inclusive_prefix_sum_slow(evals.clone());
 
-        let res = inclusive_prefix_sum_simd(evals);
+        let res = inclusive_prefix_sum(evals);
 
         assert_eq!(res.to_cpu(), expected.to_cpu());
     }
@@ -169,7 +169,7 @@ mod tests {
         let evals: BaseFieldVec = (0..1 << LOG_N).map(|_| rng.gen()).collect();
         let expected = inclusive_prefix_sum_slow(evals.clone());
 
-        let res = inclusive_prefix_sum_simd(evals);
+        let res = inclusive_prefix_sum(evals);
 
         assert_eq!(res.to_cpu(), expected.to_cpu());
     }
@@ -181,7 +181,7 @@ mod tests {
         let evals: BaseFieldVec = (0..1 << LOG_N).map(|_| rng.gen()).collect();
         let expected = inclusive_prefix_sum_slow(evals.clone());
 
-        let res = inclusive_prefix_sum_simd(evals);
+        let res = inclusive_prefix_sum(evals);
 
         assert_eq!(res.to_cpu(), expected.to_cpu());
     }
