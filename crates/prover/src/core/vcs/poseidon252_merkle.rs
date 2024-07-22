@@ -7,6 +7,7 @@ use starknet_ff::FieldElement as FieldElement252;
 use super::ops::{MerkleHasher, MerkleOps};
 use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
+use crate::core::vcs::hash::Hash;
 
 const ELEMENTS_IN_BLOCK: usize = 8;
 
@@ -60,6 +61,8 @@ impl MerkleOps<Poseidon252MerkleHasher> for CpuBackend {
             .collect()
     }
 }
+
+impl Hash for FieldElement252 {}
 
 #[cfg(test)]
 mod tests {

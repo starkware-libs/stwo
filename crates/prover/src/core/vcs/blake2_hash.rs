@@ -3,6 +3,7 @@ use std::fmt;
 use blake2::{Blake2s256, Digest};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
+
 // Wrapper for the blake2s hash type.
 #[repr(C, align(32))]
 #[derive(Clone, Copy, PartialEq, Default, Eq, Pod, Zeroable, Deserialize, Serialize)]
@@ -58,11 +59,7 @@ impl fmt::Debug for Blake2sHash {
     }
 }
 
-impl super::hasher::Name for Blake2sHash {
-    const NAME: std::borrow::Cow<'static, str> = std::borrow::Cow::Borrowed("BLAKE2");
-}
-
-impl super::hasher::Hash<u8> for Blake2sHash {}
+impl super::hash::Hash for Blake2sHash {}
 
 // Wrapper for the blake2s Hashing functionalities.
 #[derive(Clone, Debug, Default)]
@@ -70,44 +67,50 @@ pub struct Blake2sHasher {
     state: Blake2s256,
 }
 
-impl super::hasher::Hasher for Blake2sHasher {
-    type Hash = Blake2sHash;
-    const BLOCK_SIZE: usize = 64;
-    const OUTPUT_SIZE: usize = 32;
-    type NativeType = u8;
-
-    fn new() -> Self {
+impl Blake2sHasher {
+    pub fn new() -> Self {
         Self {
             state: Blake2s256::new(),
         }
     }
 
-    fn reset(&mut self) {
-        blake2::Digest::reset(&mut self.state);
-    }
-
-    fn update(&mut self, data: &[u8]) {
+    pub fn update(&mut self, data: &[u8]) {
         blake2::Digest::update(&mut self.state, data);
     }
 
-    fn finalize(self) -> Blake2sHash {
+    pub fn finalize(self) -> Blake2sHash {
         Blake2sHash(self.state.finalize().into())
     }
 
-    fn finalize_reset(&mut self) -> Blake2sHash {
-        Blake2sHash(self.state.finalize_reset().into())
+    pub fn concat_and_hash(v1: &Blake2sHash, v2: &Blake2sHash) -> Blake2sHash {
+        let mut hasher = Self::new();
+        hasher.update(v1.as_ref());
+        hasher.update(v2.as_ref());
+        hasher.finalize()
+    }
+
+    pub fn hash(data: &[u8]) -> Blake2sHash {
+        let mut hasher = Self::new();
+        hasher.update(data);
+        hasher.finalize()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Blake2sHasher;
-    use crate::core::vcs::blake2_hash;
-    use crate::core::vcs::hasher::Hasher;
+    use blake2::Digest;
+
+    use super::{Blake2sHash, Blake2sHasher};
+
+    impl Blake2sHasher {
+        fn finalize_reset(&mut self) -> Blake2sHash {
+            Blake2sHash(self.state.finalize_reset().into())
+        }
+    }
 
     #[test]
     fn single_hash_test() {
-        let hash_a = blake2_hash::Blake2sHasher::hash(b"a");
+        let hash_a = Blake2sHasher::hash(b"a");
         assert_eq!(
             hash_a.to_string(),
             "4a0d129873403037c2cd9b9048203687f6233fb6738956e0349bd4320fec3e90"

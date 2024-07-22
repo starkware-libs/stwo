@@ -1,9 +1,11 @@
 use super::fields::qm31::SecureField;
 
-mod blake2s;
 #[cfg(not(target_arch = "wasm32"))]
 mod poseidon252;
+#[cfg(not(target_arch = "wasm32"))]
+pub use poseidon252::Poseidon252Channel;
 
+mod blake2s;
 pub use blake2s::Blake2sChannel;
 
 pub const EXTENSION_FELTS_PER_HASH: usize = 2;
@@ -26,7 +28,7 @@ impl ChannelTime {
 }
 
 pub trait Channel {
-    type Digest;
+    type Digest: Serializable + Copy;
 
     const BYTES_PER_HASH: usize;
 
@@ -44,4 +46,8 @@ pub trait Channel {
     fn draw_felts(&mut self, n_felts: usize) -> Vec<SecureField>;
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
+}
+
+pub trait Serializable {
+    fn to_bytes(self) -> Vec<u8>;
 }

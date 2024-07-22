@@ -213,7 +213,6 @@ mod tests {
     use crate::core::lookups::mle::Mle;
     use crate::core::lookups::sumcheck::{partially_verify, prove_batch};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
-    use crate::core::vcs::hasher::Hasher;
 
     #[test]
     fn sumcheck_works() {

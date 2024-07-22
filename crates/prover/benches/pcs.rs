@@ -29,7 +29,12 @@ fn benched_fn<B: Backend + MerkleOps<Blake2sMerkleHasher>>(
         .map(|eval| eval.interpolate_with_twiddles(twiddles))
         .collect();
 
-    CommitmentTreeProver::<B>::new(polys, LOG_BLOWUP_FACTOR, channel, twiddles);
+    CommitmentTreeProver::<B, Blake2sMerkleHasher>::new(
+        polys,
+        LOG_BLOWUP_FACTOR,
+        channel,
+        twiddles,
+    );
 }
 
 fn bench_pcs<B: Backend + MerkleOps<Blake2sMerkleHasher>>(c: &mut Criterion, id: &str) {

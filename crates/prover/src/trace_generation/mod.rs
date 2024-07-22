@@ -7,7 +7,7 @@ use registry::ComponentGenerationRegistry;
 
 use crate::core::air::{AirProver, Component};
 use crate::core::backend::Backend;
-use crate::core::channel::Blake2sChannel;
+use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
@@ -51,7 +51,7 @@ pub trait ComponentTraceGenerator<B: Backend> {
 }
 
 pub trait AirTraceVerifier {
-    fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements;
+    fn interaction_elements(&self, channel: &mut impl Channel) -> InteractionElements;
 
     /// Verifies the lookups done in the Air.
     fn verify_lookups(&self, lookup_values: &LookupValues) -> Result<(), VerificationError>;

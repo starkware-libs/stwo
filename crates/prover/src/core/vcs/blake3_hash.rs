@@ -1,9 +1,11 @@
 use std::fmt;
 
-use super::hasher::Name;
+use serde::{Deserialize, Serialize};
+
+use crate::core::vcs::hash::Hash;
 
 // Wrapper for the blake3 hash type.
-#[derive(Clone, Copy, PartialEq, Default, Eq)]
+#[derive(Clone, Copy, PartialEq, Default, Eq, Serialize, Deserialize)]
 pub struct Blake3Hash([u8; 32]);
 
 impl From<Blake3Hash> for Vec<u8> {
@@ -50,11 +52,7 @@ impl fmt::Debug for Blake3Hash {
     }
 }
 
-impl Name for Blake3Hash {
-    const NAME: std::borrow::Cow<'static, str> = std::borrow::Cow::Borrowed("BLAKE3");
-}
-
-impl super::hasher::Hash<u8> for Blake3Hash {}
+impl Hash for Blake3Hash {}
 
 // Wrapper for the blake3 Hashing functionalities.
 #[derive(Clone, Default)]
@@ -62,30 +60,36 @@ pub struct Blake3Hasher {
     state: blake3::Hasher,
 }
 
-impl super::hasher::Hasher for Blake3Hasher {
-    type Hash = Blake3Hash;
-    const BLOCK_SIZE: usize = 64;
-    const OUTPUT_SIZE: usize = 32;
-    type NativeType = u8;
-
-    fn new() -> Self {
+impl Blake3Hasher {
+    pub fn new() -> Self {
         Self {
             state: blake3::Hasher::new(),
         }
     }
-
-    fn reset(&mut self) {
-        self.state.reset();
-    }
-
-    fn update(&mut self, data: &[u8]) {
+    pub fn update(&mut self, data: &[u8]) {
         self.state.update(data);
     }
 
-    fn finalize(self) -> Blake3Hash {
+    pub fn finalize(self) -> Blake3Hash {
         Blake3Hash(self.state.finalize().into())
     }
 
+    pub fn concat_and_hash(v1: &Blake3Hash, v2: &Blake3Hash) -> Blake3Hash {
+        let mut hasher = Self::new();
+        hasher.update(v1.as_ref());
+        hasher.update(v2.as_ref());
+        hasher.finalize()
+    }
+
+    pub fn hash(data: &[u8]) -> Blake3Hash {
+        let mut hasher = Self::new();
+        hasher.update(data);
+        hasher.finalize()
+    }
+}
+
+#[cfg(test)]
+impl Blake3Hasher {
     fn finalize_reset(&mut self) -> Blake3Hash {
         let res = Blake3Hash(self.state.finalize().into());
         self.state.reset();
@@ -96,7 +100,6 @@ impl super::hasher::Hasher for Blake3Hasher {
 #[cfg(test)]
 mod tests {
     use crate::core::vcs::blake3_hash::Blake3Hasher;
-    use crate::core::vcs::hasher::Hasher;
 
     #[test]
     fn single_hash_test() {
