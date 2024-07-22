@@ -1,9 +1,12 @@
+use std::fmt::Debug;
 use std::mem;
+use std::ops::{Deref, DerefMut};
 
 use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
 use itertools::{izip, Itertools};
 use num_traits::Zero;
 
+use super::allocator::Aligned512Bit;
 use super::cm31::PackedCM31;
 use super::m31::{PackedBaseField, N_LANES};
 use super::qm31::{PackedQM31, PackedSecureField};
@@ -217,6 +220,59 @@ impl FromIterator<SecureField> for SecureColumn<SimdBackend> {
         let cpu_col = SecureColumn::<CpuBackend>::from_iter(iter);
         let columns = cpu_col.columns.map(|col| col.into_iter().collect());
         SecureColumn { columns }
+    }
+}
+
+// TODO: Docs.
+// TODO: Consider just making generic aligned vec. Instead of digest.
+// Note wrapper type is so FromIterator can be implemented.
+// Can't implement on Vec<D, Aligned512Bit>.
+#[derive(Debug, Clone)]
+pub struct DigestVec<D>(Vec<D, Aligned512Bit>);
+
+impl<D> Deref for DigestVec<D> {
+    type Target = Vec<D, Aligned512Bit>;
+
+    fn deref(&self) -> &Vec<D, Aligned512Bit> {
+        &self.0
+    }
+}
+
+impl<D> DerefMut for DigestVec<D> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<D> FromIterator<D> for DigestVec<D> {
+    fn from_iter<T: IntoIterator<Item = D>>(iter: T) -> Self {
+        let mut res = Vec::new_in(Aligned512Bit);
+        res.extend(iter);
+        Self(res)
+    }
+}
+
+impl<D: Debug + Clone + Default> Column<D> for DigestVec<D> {
+    fn zeros(len: usize) -> Self {
+        let mut res = Vec::with_capacity_in(len, Aligned512Bit);
+        res.resize(len, D::default());
+        Self(res)
+    }
+
+    fn to_cpu(&self) -> Vec<D> {
+        self.0.to_vec()
+    }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn at(&self, index: usize) -> D {
+        self.0[index].clone()
+    }
+
+    fn set(&mut self, index: usize, value: D) {
+        self.0[index] = value
     }
 }
 

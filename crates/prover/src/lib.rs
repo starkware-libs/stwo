@@ -1,4 +1,5 @@
 #![feature(
+    allocator_api,
     array_chunks,
     iter_array_chunks,
     exact_size_is_empty,
@@ -8,6 +9,7 @@
     stdsimd,
     get_many_mut,
     int_roundings,
+    slice_as_chunks,
     slice_first_last_chunk,
     slice_flatten,
     assert_matches,

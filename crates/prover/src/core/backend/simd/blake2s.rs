@@ -1,16 +1,16 @@
 //! A SIMD implementation of the BLAKE2s compression function.
 //! Based on <https://github.com/oconnor663/blake2_simd/blob/master/blake2s/src/avx2.rs>.
 
-use std::array;
 use std::iter::repeat;
 use std::mem::transmute;
 use std::simd::u32x16;
 
-use bytemuck::cast_slice;
+// use bytemuck::cast_slice;
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+use super::column::DigestVec;
 use super::m31::{LOG_N_LANES, N_LANES};
 use super::SimdBackend;
 use crate::core::backend::{Col, Column, ColumnOps};
@@ -37,7 +37,7 @@ const SIGMA: [[u8; 16]; 10] = [
 ];
 
 impl ColumnOps<Blake2sHash> for SimdBackend {
-    type Column = Vec<Blake2sHash>;
+    type Column = DigestVec<Blake2sHash>;
 
     fn bit_reverse_column(_column: &mut Self::Column) {
         unimplemented!()
@@ -47,9 +47,9 @@ impl ColumnOps<Blake2sHash> for SimdBackend {
 impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
     fn commit_on_layer(
         log_size: u32,
-        prev_layer: Option<&Vec<Blake2sHash>>,
+        prev_layer: Option<&DigestVec<Blake2sHash>>,
         columns: &[&Col<Self, BaseField>],
-    ) -> Vec<Blake2sHash> {
+    ) -> DigestVec<Blake2sHash> {
         if log_size < LOG_N_LANES {
             #[cfg(not(feature = "parallel"))]
             let iter = 0..1 << log_size;
@@ -74,7 +74,7 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         let zeros = u32x16::splat(0);
 
         // Commit to columns.
-        let mut res = vec![Blake2sHash::default(); 1 << log_size];
+        let mut res = DigestVec::zeros(1 << log_size);
         #[cfg(not(feature = "parallel"))]
         let iter = res.chunks_mut(1 << LOG_N_LANES);
 
@@ -85,11 +85,10 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
             let mut state: [u32x16; 8] = unsafe { std::mem::zeroed() };
             // Hash prev_layer, if exists.
             if let Some(prev_layer) = prev_layer {
-                let prev_chunk_u32s = cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]);
-                // Note: prev_layer might be unaligned.
-                let msgs: [u32x16; 16] = array::from_fn(|j| {
-                    u32x16::from_array(std::array::from_fn(|k| prev_chunk_u32s[16 * j + k]))
-                });
+                let (chunks, _rem) = prev_layer[(i << 5)..((i + 1) << 5)].as_chunks::<2>();
+                let chunks: &[u32x16] = unsafe { transmute(chunks) };
+                // TODO: Check these are vectorized reads.
+                let msgs: [u32x16; 16] = chunks.try_into().unwrap();
                 state = compress16(state, transpose_msgs(msgs), zeros, zeros, zeros, zeros);
             }
 

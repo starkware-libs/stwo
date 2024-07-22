@@ -1,6 +1,7 @@
 use super::Backend;
 
 pub mod accumulation;
+pub mod allocator;
 pub mod bit_reverse;
 pub mod blake2s;
 pub mod circle;
