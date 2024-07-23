@@ -6,6 +6,7 @@ use std::ops::RangeInclusive;
 
 use itertools::Itertools;
 use num_traits::Zero;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{span, Level};
 
@@ -670,7 +671,7 @@ impl LinePolyDegreeBound {
 }
 
 /// A FRI proof.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FriProof<H: MerkleHasher> {
     pub inner_layers: Vec<FriLayerProof<H>>,
     pub last_layer_poly: LinePoly,
@@ -686,7 +687,7 @@ pub const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
 /// Stores a subset of evaluations in a fri layer with their corresponding merkle decommitments.
 ///
 /// The subset corresponds to the set of evaluations needed by a FRI verifier.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FriLayerProof<H: MerkleHasher> {
     /// The subset stored corresponds to the set of evaluations the verifier doesn't have but needs
     /// to fold and verify the merkle decommitment.

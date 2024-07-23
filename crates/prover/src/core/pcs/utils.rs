@@ -1,11 +1,12 @@
 use std::ops::{Deref, DerefMut};
 
 use itertools::zip_eq;
+use serde::{Deserialize, Serialize};
 
 use crate::core::ColumnVec;
 
 /// A container that holds an element for each commitment tree.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TreeVec<T>(pub Vec<T>);
 
 impl<T> TreeVec<T> {

@@ -5,6 +5,7 @@ use std::ops::{Deref, DerefMut};
 
 use itertools::Itertools;
 use num_traits::Zero;
+use serde::{Deserialize, Serialize};
 
 use super::circle::CircleDomain;
 use super::utils::fold;
@@ -107,7 +108,7 @@ type LineDomainIterator =
     Map<CosetIterator<CirclePoint<BaseField>>, fn(CirclePoint<BaseField>) -> BaseField>;
 
 /// A univariate polynomial defined on a [LineDomain].
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct LinePoly {
     /// Coefficients of the polynomial in [line_ifft] algorithm's basis.
     ///

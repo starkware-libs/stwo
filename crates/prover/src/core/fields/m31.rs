@@ -5,16 +5,30 @@ use std::ops::{
 
 use bytemuck::{Pod, Zeroable};
 use rand::distributions::{Distribution, Standard};
+use serde::{Deserialize, Serialize};
 
 use super::{ComplexConjugate, FieldExpOps};
 use crate::impl_field;
-
 pub const MODULUS_BITS: u32 = 31;
 pub const N_BYTES_FELT: usize = 4;
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
 
 #[repr(transparent)]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Pod, Zeroable)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Pod,
+    Zeroable,
+    Serialize,
+    Deserialize,
+)]
 pub struct M31(pub u32);
 pub type BaseField = M31;
 

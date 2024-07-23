@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{span, Level};
 
@@ -12,7 +13,7 @@ pub struct ProofOfWork {
     pub n_bits: u32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProofOfWorkProof {
     pub nonce: u64,
 }

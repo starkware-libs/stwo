@@ -2,10 +2,10 @@ use std::fmt;
 
 use blake2::{Blake2s256, Digest};
 use bytemuck::{Pod, Zeroable};
-
+use serde::{Deserialize, Serialize};
 // Wrapper for the blake2s hash type.
 #[repr(C, align(32))]
-#[derive(Clone, Copy, PartialEq, Default, Eq, Pod, Zeroable)]
+#[derive(Clone, Copy, PartialEq, Default, Eq, Pod, Zeroable, Deserialize, Serialize)]
 pub struct Blake2sHash([u8; 32]);
 
 impl From<Blake2sHash> for Vec<u8> {
