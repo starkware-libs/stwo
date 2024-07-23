@@ -106,7 +106,10 @@ impl Component for PoseidonComponent {
     }
 
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
-        TreeVec::new(vec![vec![self.log_column_size(); N_COLUMNS]])
+        TreeVec::new(vec![
+            vec![self.log_column_size(); N_COLUMNS],
+            vec![self.log_column_size()],
+        ])
     }
 
     fn mask_points(
