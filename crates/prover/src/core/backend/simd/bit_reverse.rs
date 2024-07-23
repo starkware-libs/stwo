@@ -191,13 +191,39 @@ mod tests {
     #[test]
     fn bit_reverse_large_column_works() {
         const LOG_SIZE: u32 = MIN_LOG_SIZE;
-        let column = (0..1 << LOG_SIZE).map(BaseField::from).collect_vec();
+        const TEST_SIZE: usize = 1 << LOG_SIZE;
+        let column = (0..TEST_SIZE).map(BaseField::from).collect_vec();
         let mut expected = column.clone();
         cpu_bit_reverse(&mut expected);
+
+        use std::mem::transmute;
+
+        use icicle_core::vec_ops::{
+            bit_reverse, bit_reverse_inplace, BitReverseConfig, VecOps, VecOpsConfig,
+        };
+        use icicle_cuda_runtime::memory::{DeviceVec, HostSlice};
+        use icicle_m31::field::ScalarField;
+
+        let mut input_vec: Vec<ScalarField> = vec![];
+        for i in 0..TEST_SIZE {
+            // TODO: just for the sake of correctness check - perf optimisation can be done without
+            // data conversion
+            input_vec.push(unsafe { transmute(column[i]) });
+        }
+
+        let input = HostSlice::from_mut_slice(&mut input_vec);
+        let cfg = BitReverseConfig::default();
+        bit_reverse_inplace(input, &cfg).unwrap();
+
+        let mut a: Vec<BaseField> = vec![];
+        for i in 0..TEST_SIZE {
+            a.push(unsafe { transmute(input_vec[i]) });
+        }
 
         let mut res = column.iter().copied().collect::<BaseFieldVec>();
         <SimdBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut res);
 
         assert_eq!(res.to_cpu(), expected);
+        assert_eq!(a, expected);
     }
 }
