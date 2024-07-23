@@ -1,40 +1,11 @@
 use std::array;
 
-use super::column::{BaseFieldVec, SecureFieldVec};
-use super::m31::PackedBaseField;
-use super::SimdBackend;
-use crate::core::backend::ColumnOps;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::utils::{bit_reverse as cpu_bit_reverse, bit_reverse_index};
-
-const VEC_BITS: u32 = 4;
+use super::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::utils::bit_reverse_index;
 
 const W_BITS: u32 = 3;
 
-pub const MIN_LOG_SIZE: u32 = 2 * W_BITS + VEC_BITS;
-
-impl ColumnOps<BaseField> for SimdBackend {
-    type Column = BaseFieldVec;
-
-    fn bit_reverse_column(column: &mut Self::Column) {
-        // Fallback to cpu bit_reverse.
-        if column.data.len().ilog2() < MIN_LOG_SIZE {
-            cpu_bit_reverse(column.as_mut_slice());
-            return;
-        }
-
-        bit_reverse_m31(&mut column.data);
-    }
-}
-
-impl ColumnOps<SecureField> for SimdBackend {
-    type Column = SecureFieldVec;
-
-    fn bit_reverse_column(_column: &mut SecureFieldVec) {
-        todo!()
-    }
-}
+pub const MIN_LOG_SIZE: u32 = 2 * W_BITS + LOG_N_LANES;
 
 /// Bit reverses M31 values.
 ///
@@ -44,13 +15,13 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
     assert!(data.len().ilog2() >= MIN_LOG_SIZE);
 
     // Indices in the array are of the form v_h w_h a w_l v_l, with
-    // |v_h| = |v_l| = VEC_BITS, |w_h| = |w_l| = W_BITS, |a| = n - 2*W_BITS - VEC_BITS.
+    // |v_h| = |v_l| = LOG_N_LANES, |w_h| = |w_l| = W_BITS, |a| = n - 2*W_BITS - LOG_N_LANES.
     // The loops go over a, w_l, w_h, and then swaps the 16 by 16 values at:
     //   * w_h a w_l *   <->   * rev(w_h a w_l) *.
     // These are 1 or 2 chunks of 2^W_BITS contiguous `u32x16` vectors.
 
     let log_size = data.len().ilog2();
-    let a_bits = log_size - 2 * W_BITS - VEC_BITS;
+    let a_bits = log_size - 2 * W_BITS - LOG_N_LANES;
 
     // TODO(spapini): when doing multithreading, do it over a.
     for a in 0u32..1 << a_bits {
@@ -58,7 +29,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
             let w_l_rev = w_l.reverse_bits() >> (u32::BITS - W_BITS);
             for w_h in 0..w_l_rev + 1 {
                 let idx = ((((w_h << a_bits) | a) << W_BITS) | w_l) as usize;
-                let idx_rev = bit_reverse_index(idx, log_size - VEC_BITS);
+                let idx_rev = bit_reverse_index(idx, log_size - LOG_N_LANES);
 
                 // In order to not swap twice, only swap if idx <= idx_rev.
                 if idx > idx_rev {
