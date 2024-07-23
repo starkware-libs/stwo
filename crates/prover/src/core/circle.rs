@@ -1,8 +1,10 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
+use num_traits::One;
+
 use super::fields::m31::{BaseField, M31};
 use super::fields::qm31::SecureField;
-use super::fields::{ComplexConjugate, ExtensionOf, Field};
+use super::fields::{ComplexConjugate, ExtensionOf, Field, FieldExpOps};
 use crate::core::channel::Channel;
 use crate::core::fields::qm31::P4;
 use crate::math::utils::egcd;
@@ -155,27 +157,18 @@ impl CirclePoint<SecureField> {
         SECURE_FIELD_CIRCLE_GEN.mul(index)
     }
 
-    #[allow(clippy::assertions_on_constants)]
     pub fn get_random_point<C: Channel>(channel: &mut C) -> Self {
-        const BYTES_PER_U128: usize = 16;
-        // `SECURE_FIELD_CIRCLE_ORDER` fits a little over 16 times in a `u128`.
-        const C: u128 = 16;
-        // TODO(AlonH): Consider using static-assertions crate.
-        assert!(C::BYTES_PER_HASH >= BYTES_PER_U128);
+        let t = channel.draw_felt();
+        let t_square = t.square();
 
-        // Repeats hashing with an increasing counter until getting a good result.
-        // Retry probability for each round is ~ 2^(-29).
-        loop {
-            let random_bytes = channel.draw_random_bytes();
-            for i in 0..C::BYTES_PER_HASH / BYTES_PER_U128 {
-                let u128_bytes = &random_bytes[BYTES_PER_U128 * i..BYTES_PER_U128 * (i + 1)];
-                let random_u128: u128 = u128::from_le_bytes(u128_bytes.try_into().unwrap());
-                if random_u128 < C * SECURE_FIELD_CIRCLE_ORDER {
-                    // A circle point can be uniformly sampled.
-                    return Self::get_point(random_u128 % SECURE_FIELD_CIRCLE_ORDER);
-                }
-            }
-        }
+        let one_plus_tsquared_inv = t_square.add(SecureField::one()).inverse();
+
+        let x = SecureField::one()
+            .add(t_square.neg())
+            .mul(one_plus_tsquared_inv);
+        let y = t.double().mul(one_plus_tsquared_inv);
+
+        Self { x, y }
     }
 }
 
