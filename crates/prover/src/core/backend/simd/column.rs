@@ -3,6 +3,8 @@ use std::mem;
 use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
 use itertools::{izip, Itertools};
 use num_traits::Zero;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::cm31::PackedCM31;
 use super::m31::{PackedBaseField, N_LANES};
@@ -57,9 +59,9 @@ impl BaseColumn {
 
     /// Returns a vector of `BaseColumnMutSlice`s, each mutably owning
     /// `chunk_size` `PackedBasedField`s (i.e, `chuck_size` * `N_LANES` elements).
-    pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<BaseColumnMutSlice<'_>> {
+    pub fn chunks_mut<const CHUNK_SIZE: usize>(&mut self) -> Vec<BaseColumnMutSlice<'_>> {
         self.data
-            .chunks_mut(chunk_size)
+            .chunks_mut(CHUNK_SIZE)
             .map(BaseColumnMutSlice)
             .collect_vec()
     }
@@ -338,15 +340,39 @@ impl SecureColumnByCoords<SimdBackend> {
     /// Returns a vector of `SecureColumnByCoordsMutSlice`s, each mutably owning
     /// `SECURE_EXTENSION_DEGREE` slices of `chunk_size` `PackedBasedField`s
     /// (i.e, `chuck_size` * `N_LANES` secure field elements, by coordinates).
-    pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<SecureColumnByCoordsMutSlice<'_>> {
+    pub fn chunks_mut<const CHUNK_SIZE: usize>(&mut self) -> Vec<SecureColumnByCoordsMutSlice<'_>> {
         let [a, b, c, d] = self
             .columns
             .get_many_mut([0, 1, 2, 3])
             .unwrap()
-            .map(|x| x.chunks_mut(chunk_size));
+            .map(|x| x.chunks_mut::<CHUNK_SIZE>());
         izip!(a, b, c, d)
             .map(|(a, b, c, d)| SecureColumnByCoordsMutSlice([a, b, c, d]))
             .collect_vec()
+    }
+
+    /// Returns an iterator, parallel if enabled, of (chunk_offset, chunk).
+    #[cfg(not(feature = "parallel"))]
+    pub fn enumerate_chunks_mut<const CHUNK_SIZE: usize>(
+        &mut self,
+    ) -> impl Iterator<Item = (usize, SecureColumnByCoordsMutSlice<'_>)> {
+        let len = self.packed_len();
+        assert_eq!(len % CHUNK_SIZE, 0);
+        (0..len)
+            .step_by(CHUNK_SIZE)
+            .zip(self.chunks_mut::<CHUNK_SIZE>())
+    }
+
+    #[cfg(feature = "parallel")]
+    pub fn enumerate_chunks_mut<const CHUNK_SIZE: usize>(
+        &mut self,
+    ) -> impl IndexedParallelIterator<Item = (usize, SecureColumnByCoordsMutSlice<'_>)> {
+        let len = self.packed_len();
+        assert_eq!(len % CHUNK_SIZE, 0);
+        (0..len)
+            .into_par_iter()
+            .step_by(CHUNK_SIZE)
+            .zip(self.chunks_mut::<CHUNK_SIZE>())
     }
 }
 
@@ -399,7 +425,7 @@ mod tests {
         let mut col = values.into_iter().collect::<BaseColumn>();
 
         const CHUNK_SIZE: usize = 2;
-        let mut chunks = col.chunks_mut(CHUNK_SIZE);
+        let mut chunks = col.chunks_mut::<CHUNK_SIZE>();
         chunks[2].set(19, BaseField::from(1234));
         chunks[3].set(1, BaseField::from(5678));
 
@@ -423,7 +449,7 @@ mod tests {
         let rand1 = PackedQM31::from_array(rng.gen());
 
         const CHUNK_SIZE: usize = 4;
-        let mut chunks = col.chunks_mut(CHUNK_SIZE);
+        let mut chunks = col.chunks_mut::<CHUNK_SIZE>();
         unsafe {
             chunks[2].set_packed(3, rand0);
             chunks[3].set_packed(1, rand1);
