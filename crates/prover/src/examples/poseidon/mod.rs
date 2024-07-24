@@ -409,40 +409,32 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
         const CHUNK_SIZE: usize = 16;
         assert_eq!(accum.col.columns[0].length % (CHUNK_SIZE << LOG_N_LANES), 0);
 
-        #[cfg(not(feature = "parallel"))]
-        let iter = (0..(1 << (eval_domain.log_size() - LOG_N_LANES)))
-            .step_by(CHUNK_SIZE)
-            .zip(accum.col.chunks_mut(CHUNK_SIZE));
+        accum
+            .col
+            .enumerate_chunks_mut(CHUNK_SIZE)
+            .for_each(|(chunk_offset, mut col_chunk)| {
+                for offset in 0..CHUNK_SIZE {
+                    let vec_row = chunk_offset + offset;
+                    let mut evaluator = PoseidonEval {
+                        eval: SimdDomainEvaluator::new(
+                            &trace_eval_ref,
+                            vec_row,
+                            &pows,
+                            self.log_n_rows,
+                            self.log_n_rows + LOG_EXPAND,
+                        ),
+                    };
+                    for _ in 0..N_INSTANCES_PER_ROW {
+                        evaluator.eval();
+                    }
 
-        #[cfg(feature = "parallel")]
-        let iter = (0..(1 << (eval_domain.log_size() - LOG_N_LANES)))
-            .into_par_iter()
-            .step_by(CHUNK_SIZE)
-            .zip(accum.col.chunks_mut(CHUNK_SIZE));
-
-        iter.for_each(|(chunk_offset, mut col_chunk)| {
-            for offset in 0..CHUNK_SIZE {
-                let vec_row = chunk_offset + offset;
-                let mut evaluator = PoseidonEval {
-                    eval: SimdDomainEvaluator::new(
-                        &trace_eval_ref,
-                        vec_row,
-                        &pows,
-                        self.log_n_rows,
-                        self.log_n_rows + LOG_EXPAND,
-                    ),
-                };
-                for _ in 0..N_INSTANCES_PER_ROW {
-                    evaluator.eval();
+                    let packed_denom_inv =
+                        packed_denoms_inv[vec_row >> (zero_domain.log_size() - LOG_N_LANES)];
+                    let quotient = evaluator.eval.row_res * packed_denom_inv;
+                    unsafe { col_chunk.set_packed(offset, col_chunk.packed_at(offset) + quotient) };
+                    assert_eq!(evaluator.eval.constraint_index, n_constraints);
                 }
-
-                let packed_denom_inv =
-                    packed_denoms_inv[vec_row >> (zero_domain.log_size() - LOG_N_LANES)];
-                let quotient = evaluator.eval.row_res * packed_denom_inv;
-                unsafe { col_chunk.set_packed(offset, col_chunk.packed_at(offset) + quotient) };
-                assert_eq!(evaluator.eval.constraint_index, n_constraints);
-            }
-        });
+            });
     }
 
     fn lookup_values(&self, _trace: &ComponentTrace<'_, SimdBackend>) -> LookupValues {
@@ -540,7 +532,7 @@ mod tests {
 
         // Get from environment variable:
         let log_n_instances = env::var("LOG_N_INSTANCES")
-            .unwrap_or_else(|_| "10".to_string())
+            .unwrap_or_else(|_| "12".to_string())
             .parse::<u32>()
             .unwrap();
         let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;

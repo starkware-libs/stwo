@@ -1,5 +1,7 @@
 use itertools::{izip, zip_eq, Itertools};
 use num_traits::Zero;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use tracing::{span, Level};
 
 use super::column::SecureColumn;
@@ -92,29 +94,37 @@ fn accumulate_quotients_on_subdomain(
     let quotient_constants = quotient_constants(sample_batches, random_coeff, subdomain);
 
     let span = span!(Level::INFO, "Quotient accumulation").entered();
+
+    const CHUNK_SIZE: usize = 4;
+
     // TODO(spapini): bit reverse iterator.
-    for quad_row in 0..1 << (subdomain.log_size() - LOG_N_LANES - 2) {
-        // TODO(spapini): Use optimized domain iteration.
-        let spaced_ys = PackedBaseField::from_array(std::array::from_fn(|i| {
-            subdomain
-                .at(bit_reverse_index(
-                    (quad_row << (LOG_N_LANES + 2)) + (i << 2),
-                    subdomain.log_size(),
-                ))
-                .y
-        }));
-        let row_accumulator = accumulate_row_quotients(
-            sample_batches,
-            columns,
-            &quotient_constants,
-            quad_row,
-            spaced_ys,
-        );
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..4 {
-            unsafe { values.set_packed((quad_row << 2) + i, row_accumulator[i]) };
-        }
-    }
+    values
+        .enumerate_chunks_mut(CHUNK_SIZE << 2)
+        .for_each(|(chunk_offset, mut chunk)| {
+            for quad_row_offset in 0..CHUNK_SIZE {
+                let quad_row = ((CHUNK_SIZE >> 2) * (chunk_offset >> 2)) + quad_row_offset;
+                // TODO(spapini): Use optimized domain iteration.
+                let spaced_ys = PackedBaseField::from_array(std::array::from_fn(|i| {
+                    subdomain
+                        .at(bit_reverse_index(
+                            (quad_row << (LOG_N_LANES + 2)) + (i << 2),
+                            subdomain.log_size(),
+                        ))
+                        .y
+                }));
+                let row_accumulator = accumulate_row_quotients(
+                    sample_batches,
+                    columns,
+                    &quotient_constants,
+                    quad_row,
+                    spaced_ys,
+                );
+                #[allow(clippy::needless_range_loop)]
+                for i in 0..4 {
+                    unsafe { chunk.set_packed((quad_row_offset << 2) + i, row_accumulator[i]) };
+                }
+            }
+        });
     span.exit();
     let span = span!(Level::INFO, "Quotient extension").entered();
 
