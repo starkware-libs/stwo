@@ -289,22 +289,37 @@ impl SecureColumnByCoords<SimdBackend> {
     pub fn enumerate_chunks_mut(
         &mut self,
         chunk_size: usize,
-    ) -> impl Iterator<Item = (usize, SecureColumnByCoordsMutSlice<'_>)> {
-        assert_eq!(self.packed_len() % chunk_size, 0);
-        (0..).step_by(chunk_size).zip(self.chunks_mut(chunk_size))
+    ) -> impl Iterator<Item = (usize, usize, SecureColumnByCoordsMutSlice<'_>)> {
+        use std::iter::{once, repeat};
+
+        let len = self.packed_len();
+        let n_full_chunks = (len - 1) / chunk_size;
+        izip!(
+            (0..len).step_by(chunk_size),
+            repeat(chunk_size)
+                .take(n_full_chunks)
+                .chain(once(len - chunk_size * n_full_chunks)),
+            self.chunks_mut(chunk_size)
+        )
     }
 
     #[cfg(feature = "parallel")]
     pub fn enumerate_chunks_mut(
         &mut self,
         chunk_size: usize,
-    ) -> impl ParallelIterator<Item = (usize, SecureColumnByCoordsMutSlice<'_>)> {
+    ) -> impl ParallelIterator<Item = (usize, usize, SecureColumnByCoordsMutSlice<'_>)> {
+        use rayon::iter::{once, repeat};
+
         let len = self.packed_len();
-        assert_eq!(len % chunk_size, 0);
-        (0..len)
+        let n_full_chunks = (len - 1) / chunk_size;
+        (
+            (0..len).into_par_iter().step_by(chunk_size),
+            repeat(chunk_size)
+                .take(n_full_chunks)
+                .chain(once(len - chunk_size * n_full_chunks)),
+            self.chunks_mut(chunk_size),
+        )
             .into_par_iter()
-            .step_by(chunk_size)
-            .zip(self.chunks_mut(chunk_size))
     }
 }
 

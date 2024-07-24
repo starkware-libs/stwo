@@ -98,10 +98,9 @@ fn accumulate_quotients_on_subdomain(
     const CHUNK_SIZE: usize = 4;
 
     // TODO(spapini): bit reverse iterator.
-    values
-        .enumerate_chunks_mut(CHUNK_SIZE << 2)
-        .for_each(|(chunk_offset, mut chunk)| {
-            for quad_row_offset in 0..CHUNK_SIZE {
+    values.enumerate_chunks_mut(CHUNK_SIZE << 2).for_each(
+        |(chunk_offset, cur_chunk_size, mut chunk)| {
+            for quad_row_offset in 0..(cur_chunk_size >> 2) {
                 let quad_row = ((CHUNK_SIZE >> 2) * (chunk_offset >> 2)) + quad_row_offset;
                 // TODO(spapini): Use optimized domain iteration.
                 let spaced_ys = PackedBaseField::from_array(std::array::from_fn(|i| {
@@ -124,7 +123,8 @@ fn accumulate_quotients_on_subdomain(
                     unsafe { chunk.set_packed((quad_row_offset << 2) + i, row_accumulator[i]) };
                 }
             }
-        });
+        },
+    );
     span.exit();
     let span = span!(Level::INFO, "Quotient extension").entered();
 

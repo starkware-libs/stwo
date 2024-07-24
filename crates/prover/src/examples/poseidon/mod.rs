@@ -407,13 +407,10 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
         pows.reverse();
 
         const CHUNK_SIZE: usize = 16;
-        assert_eq!(accum.col.columns[0].length % (CHUNK_SIZE << LOG_N_LANES), 0);
 
-        accum
-            .col
-            .enumerate_chunks_mut(CHUNK_SIZE)
-            .for_each(|(chunk_offset, mut col_chunk)| {
-                for offset in 0..CHUNK_SIZE {
+        accum.col.enumerate_chunks_mut(CHUNK_SIZE).for_each(
+            |(chunk_offset, cur_chunk_size, mut col_chunk)| {
+                for offset in 0..cur_chunk_size {
                     let vec_row = chunk_offset + offset;
                     let mut evaluator = PoseidonEval {
                         eval: SimdDomainEvaluator::new(
@@ -434,7 +431,8 @@ impl ComponentProver<SimdBackend> for PoseidonComponent {
                     unsafe { col_chunk.set_packed(offset, col_chunk.packed_at(offset) + quotient) };
                     assert_eq!(evaluator.eval.constraint_index, n_constraints);
                 }
-            });
+            },
+        );
     }
 
     fn lookup_values(&self, _trace: &ComponentTrace<'_, SimdBackend>) -> LookupValues {
@@ -532,7 +530,7 @@ mod tests {
 
         // Get from environment variable:
         let log_n_instances = env::var("LOG_N_INSTANCES")
-            .unwrap_or_else(|_| "12".to_string())
+            .unwrap_or_else(|_| "10".to_string())
             .parse::<u32>()
             .unwrap();
         let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
