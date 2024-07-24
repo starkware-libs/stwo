@@ -3,6 +3,8 @@ use std::mem;
 use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
 use itertools::{izip, Itertools};
 use num_traits::Zero;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::cm31::PackedCM31;
 use super::m31::{PackedBaseField, N_LANES};
@@ -280,6 +282,29 @@ impl SecureColumnByCoords<SimdBackend> {
         izip!(a, b, c, d)
             .map(|(a, b, c, d)| SecureColumnByCoordsMutSlice([a, b, c, d]))
             .collect_vec()
+    }
+
+    /// Returns an iterator, parallel if enabled, of (chunk_offset, chunk).
+    #[cfg(not(feature = "parallel"))]
+    pub fn enumerate_chunks_mut(
+        &mut self,
+        chunk_size: usize,
+    ) -> impl Iterator<Item = (usize, SecureColumnByCoordsMutSlice<'_>)> {
+        assert_eq!(self.packed_len() % chunk_size, 0);
+        (0..).step_by(chunk_size).zip(self.chunks_mut(chunk_size))
+    }
+
+    #[cfg(feature = "parallel")]
+    pub fn enumerate_chunks_mut(
+        &mut self,
+        chunk_size: usize,
+    ) -> impl ParallelIterator<Item = (usize, SecureColumnByCoordsMutSlice<'_>)> {
+        let len = self.packed_len();
+        assert_eq!(len % chunk_size, 0);
+        (0..len)
+            .into_par_iter()
+            .step_by(chunk_size)
+            .zip(self.chunks_mut(chunk_size))
     }
 }
 
