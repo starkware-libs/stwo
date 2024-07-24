@@ -42,7 +42,7 @@ impl CanonicCoset {
 
     /// Gets the [CircleDomain] representing the same point set (in another order).
     pub fn circle_domain(&self) -> CircleDomain {
-        CircleDomain::new(Coset::half_odds(self.coset.log_size - 1))
+        CircleDomain::new(self.half_coset())
     }
 
     /// Returns the log size of the coset.
