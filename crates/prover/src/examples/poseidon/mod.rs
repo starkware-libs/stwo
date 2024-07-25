@@ -553,7 +553,9 @@ mod tests {
 
         // Constant trace.
         let span = span!(Level::INFO, "Constant").entered();
-        commitment_scheme.commit_on_evals(vec![gen_is_first(log_n_rows)], channel, &twiddles);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(vec![gen_is_first(log_n_rows)]);
+        tree_builder.commit(channel);
         span.exit();
 
         // Prove constraints.
