@@ -53,6 +53,12 @@ impl QM31 {
         res += evals[3] * Self::from_u32_unchecked(0, 0, 0, 1);
         res
     }
+
+    // Note: Adding this as a Mul impl drives rust insane, and it tries to infer Qm31*Qm31 as
+    // QM31*CM31.
+    pub fn mul_cm31(self, rhs: CM31) -> Self {
+        Self(self.0 * rhs, self.1 * rhs)
+    }
 }
 
 impl Display for QM31 {
