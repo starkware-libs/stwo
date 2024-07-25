@@ -124,7 +124,7 @@ fn next_grand_product_layer(layer: &Mle<SimdBackend, SecureField>) -> Layer<Simd
         })
         .collect();
 
-    Layer::GrandProduct(Mle::new(SecureFieldVec {
+    Layer::GrandProduct(Mle::new(SecureColumn {
         data,
         length: next_layer_len,
     }))
