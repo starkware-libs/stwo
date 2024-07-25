@@ -4,6 +4,7 @@ use tracing::{span, Level};
 
 use super::cm31::PackedCM31;
 use super::column::CM31Column;
+use super::domain::CircleDomainBitRevIterator;
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
@@ -209,19 +210,8 @@ fn denominator_inverses(
 
             // Line equation through pr +-u pi.
             // (p-pr)*
-            (0..(1 << (domain.log_size() - LOG_N_LANES)))
-                .map(|vec_row| {
-                    // TODO(spapini): Optimize this, for the small number of columns case.
-                    let points = std::array::from_fn(|i| {
-                        domain.at(bit_reverse_index(
-                            (vec_row << LOG_N_LANES) + i,
-                            domain.log_size(),
-                        ))
-                    });
-                    let domain_points_x = PackedBaseField::from_array(points.map(|p| p.x));
-                    let domain_points_y = PackedBaseField::from_array(points.map(|p| p.y));
-                    (prx - domain_points_x) * piy - (pry - domain_points_y) * pix
-                })
+            CircleDomainBitRevIterator::new(domain)
+                .map(|points| (prx - points.x) * piy - (pry - points.y) * pix)
                 .collect_vec()
         })
         .collect();
