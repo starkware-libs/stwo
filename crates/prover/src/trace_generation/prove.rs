@@ -66,25 +66,21 @@ pub fn commit_and_prove<B: Backend + MerkleOps<MerkleHasher>>(
             .collect_vec(),
     );
 
-    prove(
-        &air,
-        channel,
-        &interaction_elements,
-        &twiddles,
-        &mut commitment_scheme,
-    )
+    prove(&air, channel, &interaction_elements, &mut commitment_scheme)
 }
 
-pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
+pub fn evaluate_and_commit_on_trace<'a, B: Backend + MerkleOps<MerkleHasher>>(
     air: &impl AirTraceGenerator<B>,
     channel: &mut Channel,
-    twiddles: &TwiddleTree<B>,
+    twiddles: &'a TwiddleTree<B>,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-) -> Result<(CommitmentSchemeProver<B>, InteractionElements), ProvingError> {
-    let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
+) -> Result<(CommitmentSchemeProver<'a, B>, InteractionElements), ProvingError> {
+    let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR, twiddles);
     // TODO(spapini): Remove clone.
     let span = span!(Level::INFO, "Trace").entered();
-    commitment_scheme.commit_on_evals(trace.clone(), channel, twiddles);
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(trace.clone());
+    tree_builder.commit(channel);
     span.exit();
 
     let interaction_elements = air.interaction_elements(channel);
@@ -93,7 +89,9 @@ pub fn evaluate_and_commit_on_trace<B: Backend + MerkleOps<MerkleHasher>>(
     // retrieveing the column log sizes.
     if !interaction_trace.is_empty() {
         let _span = span!(Level::INFO, "Interaction").entered();
-        commitment_scheme.commit_on_evals(interaction_trace, channel, twiddles);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(interaction_trace);
+        tree_builder.commit(channel);
     }
 
     Ok((commitment_scheme, interaction_elements))

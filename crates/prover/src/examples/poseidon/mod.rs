@@ -541,12 +541,14 @@ mod tests {
 
         // Setup protocol.
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let commitment_scheme = &mut CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR);
+        let commitment_scheme = &mut CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR, &twiddles);
 
         // Trace.
         let span = span!(Level::INFO, "Trace").entered();
         let trace = gen_trace(log_n_rows);
-        commitment_scheme.commit_on_evals(trace, channel, &twiddles);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(trace);
+        tree_builder.commit(channel);
         span.exit();
 
         // Constant trace.
@@ -561,7 +563,6 @@ mod tests {
             &air,
             channel,
             &InteractionElements::default(),
-            &twiddles,
             commitment_scheme,
         )
         .unwrap();
