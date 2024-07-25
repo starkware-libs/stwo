@@ -1,20 +1,22 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
+use num_traits::Zero;
+
 use super::fields::m31::{BaseField, M31};
 use super::fields::qm31::SecureField;
-use super::fields::{ComplexConjugate, ExtensionOf, Field};
+use super::fields::{ComplexConjugate, Field, FieldExpOps};
 use crate::core::channel::Channel;
 use crate::core::fields::qm31::P4;
 use crate::math::utils::egcd;
 
 /// A point on the complex circle. Treaed as an additive group.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CirclePoint<F: Field> {
+pub struct CirclePoint<F> {
     pub x: F,
     pub y: F,
 }
 
-impl<F: Field> CirclePoint<F> {
+impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>> CirclePoint<F> {
     pub fn zero() -> Self {
         Self {
             x: F::one(),
@@ -37,7 +39,8 @@ impl<F: Field> CirclePoint<F> {
     /// assert_eq!(CirclePoint::double_x(p.x), (p + p).x);
     /// ```
     pub fn double_x(x: F) -> F {
-        x.square().double() - F::one()
+        let sx = x.square();
+        sx + sx - F::one()
     }
 
     /// Returns the log order of a point.
@@ -51,12 +54,15 @@ impl<F: Field> CirclePoint<F> {
     /// use stwo_prover::core::fields::m31::M31;
     /// assert_eq!(M31_CIRCLE_GEN.log_order(), M31_CIRCLE_LOG_ORDER);
     /// ```
-    pub fn log_order(&self) -> u32 {
+    pub fn log_order(&self) -> u32
+    where
+        F: PartialEq + Eq,
+    {
         // we only need the x-coordinate to check order since the only point
         // with x=1 is the circle's identity
         let mut res = 0;
         let mut cur = self.x;
-        while !cur.is_one() {
+        while cur != F::one() {
             cur = Self::double_x(cur);
             res += 1;
         }
@@ -98,7 +104,7 @@ impl<F: Field> CirclePoint<F> {
         }
     }
 
-    pub fn into_ef<EF: ExtensionOf<F>>(&self) -> CirclePoint<EF> {
+    pub fn into_ef<EF: From<F>>(&self) -> CirclePoint<EF> {
         CirclePoint {
             x: self.x.into(),
             y: self.y.into(),
@@ -114,7 +120,9 @@ impl<F: Field> CirclePoint<F> {
     }
 }
 
-impl<F: Field> Add for CirclePoint<F> {
+impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>> Add
+    for CirclePoint<F>
+{
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -124,7 +132,9 @@ impl<F: Field> Add for CirclePoint<F> {
     }
 }
 
-impl<F: Field> Neg for CirclePoint<F> {
+impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>> Neg
+    for CirclePoint<F>
+{
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -132,7 +142,9 @@ impl<F: Field> Neg for CirclePoint<F> {
     }
 }
 
-impl<F: Field> Sub for CirclePoint<F> {
+impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>> Sub
+    for CirclePoint<F>
+{
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
