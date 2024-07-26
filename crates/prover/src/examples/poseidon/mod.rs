@@ -29,15 +29,15 @@ use crate::core::utils::bit_reverse;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 use crate::trace_generation::{AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator};
 
-const N_LOG_INSTANCES_PER_ROW: usize = 3;
-const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
-const N_STATE: usize = 16;
-const N_PARTIAL_ROUNDS: usize = 14;
-const N_HALF_FULL_ROUNDS: usize = 4;
-const FULL_ROUNDS: usize = 2 * N_HALF_FULL_ROUNDS;
-const N_COLUMNS_PER_REP: usize = N_STATE * (1 + FULL_ROUNDS) + N_PARTIAL_ROUNDS;
-const N_COLUMNS: usize = N_INSTANCES_PER_ROW * N_COLUMNS_PER_REP;
-const LOG_EXPAND: u32 = 2;
+pub const N_LOG_INSTANCES_PER_ROW: usize = 3;
+pub const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
+pub const N_STATE: usize = 16;
+pub const N_PARTIAL_ROUNDS: usize = 14;
+pub const N_HALF_FULL_ROUNDS: usize = 4;
+pub const FULL_ROUNDS: usize = 2 * N_HALF_FULL_ROUNDS;
+pub const N_COLUMNS_PER_REP: usize = N_STATE * (1 + FULL_ROUNDS) + N_PARTIAL_ROUNDS;
+pub const N_COLUMNS: usize = N_INSTANCES_PER_ROW * N_COLUMNS_PER_REP;
+pub const LOG_EXPAND: u32 = 2;
 // TODO(spapini): Pick better constants.
 const EXTERNAL_ROUND_CONSTS: [[BaseField; N_STATE]; 2 * N_HALF_FULL_ROUNDS] =
     [[BaseField::from_u32_unchecked(1234); N_STATE]; 2 * N_HALF_FULL_ROUNDS];
@@ -147,10 +147,7 @@ impl Component for PoseidonComponent {
 
 #[inline(always)]
 /// Applies the M4 MDS matrix described in <https://eprint.iacr.org/2023/323.pdf> 5.1.
-fn apply_m4<F>(x: [F; 4]) -> [F; 4]
-where
-    F: Copy + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
-{
+fn apply_m4<F: Copy + Add<Output = F>>(x: [F; 4]) -> [F; 4] {
     let t0 = x[0] + x[1];
     let t02 = t0 + t0;
     let t1 = x[2] + x[3];
@@ -214,12 +211,12 @@ fn pow5<F: FieldExpOps>(x: F) -> F {
     x4 * x
 }
 
-struct PoseidonEval<E: EvalAtRow> {
-    eval: E,
+pub struct PoseidonEval<E: EvalAtRow> {
+    pub eval: E,
 }
 
 impl<E: EvalAtRow> PoseidonEval<E> {
-    fn eval(&mut self) {
+    pub fn eval(&mut self) {
         let mut state: [_; N_STATE] = std::array::from_fn(|_| self.eval.next_trace_mask());
 
         // 4 full rounds.
