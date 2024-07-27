@@ -1,4 +1,7 @@
 #![feature(lazy_cell)]
+mod accumulation;
+mod m31;
+
 use std::fmt::Debug;
 use std::sync::{Arc, LazyLock};
 
@@ -12,10 +15,17 @@ use stwo_prover::core::fields::m31::BaseField;
 pub struct CudaBackend;
 static CUDA_CTX: LazyLock<Arc<CudaDevice>> = LazyLock::new(|| {
     let device = CudaDevice::new(0).unwrap();
+
     let ptx = cudarc::nvrtc::compile_ptx(include_str!("kernels/bit_rev.cu")).unwrap();
     device
         .load_ptx(ptx, "bit_rev", &["bit_rev_kernel"])
         .unwrap();
+
+    let ptx = cudarc::nvrtc::compile_ptx(include_str!("kernels/accumulate.cu")).unwrap();
+    device
+        .load_ptx(ptx, "accumulate", &["accumulate_kernel"])
+        .unwrap();
+
     device
 });
 
