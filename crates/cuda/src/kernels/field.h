@@ -1,16 +1,20 @@
 const unsigned int P = 0x7fffffff;
 
-__device__ unsigned int add31(unsigned int a, unsigned int b)
+struct M31
 {
-    unsigned int s = a + b;
-    return (s > P) ? (s - P) : s;
-}
+    unsigned int val;
 
-// TODO: Do this better.
-__device__ unsigned int mul31(unsigned int a, unsigned int b)
-{
-    unsigned long long mul = ((unsigned long long)a) * b;
-    unsigned int h = mul >> 31;
-    unsigned int l = mul & P;
-    return add31(l, h);
-}
+    __device__ M31 add(M31 other)
+    {
+        unsigned int s = this->val + other.val;
+        return M31{(s > P) ? (s - P) : s};
+    }
+
+    __device__ M31 mul(M31 other)
+    {
+        unsigned long long mul = ((unsigned long long)this->val) * other.val;
+        unsigned int h = mul >> 31;
+        unsigned int l = mul & P;
+        return M31{M31{l}.add(M31{h})};
+    }
+};
