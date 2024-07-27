@@ -13,6 +13,7 @@ use cudarc::driver::{
 use cudarc::nvrtc::CompileOptions;
 use stwo_prover::core::backend::{Column, ColumnOps};
 use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::qm31::SecureField;
 
 pub struct CudaBackend;
 static CUDA_CTX: LazyLock<Arc<CudaDevice>> = LazyLock::new(|| {
@@ -42,7 +43,16 @@ static CUDA_CTX: LazyLock<Arc<CudaDevice>> = LazyLock::new(|| {
         cudarc::nvrtc::compile_ptx_with_opts(include_str!("kernels/batch_inv.cu"), opts.clone())
             .unwrap();
     device
-        .load_ptx(ptx, "batch_inv", &["upsweep_kernel", "downsweep_kernel"])
+        .load_ptx(
+            ptx,
+            "batch_inv",
+            &[
+                "upsweep_m31_kernel",
+                "downsweep_m31_kernel",
+                "upsweep_qm31_kernel",
+                "downsweep_qm31_kernel",
+            ],
+        )
         .unwrap();
 
     device
@@ -77,6 +87,14 @@ impl ColumnOps<BaseField> for CudaBackend {
             shared_mem_bytes: 0,
         };
         unsafe { kernel.launch(cfg, (&mut column.buffer, m_bits)) }.unwrap();
+    }
+}
+
+impl ColumnOps<SecureField> for CudaBackend {
+    type Column = CudaColumn<SecureField>;
+
+    fn bit_reverse_column(_column: &mut Self::Column) {
+        todo!()
     }
 }
 
@@ -133,7 +151,7 @@ fn test_bit_reverse() {
     use stwo_prover::core::fields::m31::BaseField;
     for log_size in 10..=16 {
         let mut data: CudaColumn<_> = (0..(1 << log_size)).map(BaseField::from).collect();
-        CudaBackend::bit_reverse_column(&mut data);
+        <CudaBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut data);
         let actual = data.to_cpu();
 
         let mut data: Vec<_> = (0..(1 << log_size)).map(BaseField::from).collect();

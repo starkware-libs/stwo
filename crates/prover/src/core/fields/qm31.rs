@@ -3,6 +3,7 @@ use std::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
+use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
 use super::secure_column::SECURE_EXTENSION_DEGREE;
@@ -17,7 +18,21 @@ pub const R: CM31 = CM31::from_u32_unchecked(2, 1);
 /// Extension field of CM31.
 /// Equivalent to CM31\[x\] over (x^2 - 2 - i) as the irreducible polynomial.
 /// Represented as ((a, b), (c, d)) of (a + bi) + (c + di)u.
-#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[derive(
+    Copy,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Deserialize,
+    Serialize,
+    Pod,
+    Zeroable,
+)]
+#[repr(C)]
 pub struct QM31(pub CM31, pub CM31);
 pub type SecureField = QM31;
 
