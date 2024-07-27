@@ -19,7 +19,7 @@ use stwo_prover::core::fields::qm31::SecureField;
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct CudaBackend;
-static CUDA_CTX: LazyLock<Arc<CudaDevice>> = LazyLock::new(|| {
+pub static CUDA_CTX: LazyLock<Arc<CudaDevice>> = LazyLock::new(|| {
     let device = CudaDevice::new(0).unwrap();
     let mut opts = CompileOptions::default();
 
