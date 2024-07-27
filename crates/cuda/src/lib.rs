@@ -3,27 +3,46 @@ mod accumulation;
 mod m31;
 
 use std::fmt::Debug;
+use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 
 use bytemuck::{cast_vec, Pod, Zeroable};
 use cudarc::driver::{
     CudaDevice, CudaSlice, DeviceRepr, DeviceSlice, LaunchAsync, LaunchConfig, ValidAsZeroBits,
 };
-use stwo_prover::core::backend::{Column, ColumnOps, CpuBackend};
+use cudarc::nvrtc::CompileOptions;
+use stwo_prover::core::backend::{Column, ColumnOps};
 use stwo_prover::core::fields::m31::BaseField;
 
 pub struct CudaBackend;
 static CUDA_CTX: LazyLock<Arc<CudaDevice>> = LazyLock::new(|| {
     let device = CudaDevice::new(0).unwrap();
+    let mut opts = CompileOptions::default();
 
-    let ptx = cudarc::nvrtc::compile_ptx(include_str!("kernels/bit_rev.cu")).unwrap();
+    let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    d.push("src/kernels");
+    opts.include_paths
+        .push(d.into_os_string().into_string().unwrap());
+
+    let ptx =
+        cudarc::nvrtc::compile_ptx_with_opts(include_str!("kernels/bit_rev.cu"), opts.clone())
+            .unwrap();
     device
         .load_ptx(ptx, "bit_rev", &["bit_rev_kernel"])
         .unwrap();
 
-    let ptx = cudarc::nvrtc::compile_ptx(include_str!("kernels/accumulate.cu")).unwrap();
+    let ptx =
+        cudarc::nvrtc::compile_ptx_with_opts(include_str!("kernels/accumulate.cu"), opts.clone())
+            .unwrap();
     device
         .load_ptx(ptx, "accumulate", &["accumulate_kernel"])
+        .unwrap();
+
+    let ptx =
+        cudarc::nvrtc::compile_ptx_with_opts(include_str!("kernels/batch_inv.cu"), opts.clone())
+            .unwrap();
+    device
+        .load_ptx(ptx, "batch_inv", &["upsweep_kernel", "downsweep_kernel"])
         .unwrap();
 
     device
@@ -110,6 +129,7 @@ fn test_buffers() {
 
 #[test]
 fn test_bit_reverse() {
+    use stwo_prover::core::backend::CpuBackend;
     use stwo_prover::core::fields::m31::BaseField;
     for log_size in 10..=16 {
         let mut data: CudaColumn<_> = (0..(1 << log_size)).map(BaseField::from).collect();

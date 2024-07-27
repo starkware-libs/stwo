@@ -1,8 +1,10 @@
-const int P = (1 << 31) - 1;
-extern "C" __global__ void accumulate_kernel(int *dst, int *src)
+#include "field.h"
+
+extern "C" __global__ void accumulate_kernel(unsigned int *dst, unsigned int *src, unsigned int n)
 {
     int idx = threadIdx.x + (blockIdx.x * blockDim.x);
-    int cur = dst[idx] + src[idx];
-    cur = (cur > P) ? cur - P : cur;
+    if (idx >= n)
+        return;
+    unsigned int cur = add31(dst[idx], src[idx]);
     dst[idx] = cur;
 }

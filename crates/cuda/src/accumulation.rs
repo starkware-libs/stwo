@@ -1,6 +1,5 @@
 use cudarc::driver::{LaunchAsync, LaunchConfig};
 use stwo_prover::core::air::accumulation::AccumulationOps;
-use stwo_prover::core::backend::CpuBackend;
 use stwo_prover::core::fields::secure_column::SecureColumnByCoords;
 
 use crate::{CudaBackend, CUDA_CTX};
@@ -11,12 +10,13 @@ impl AccumulationOps for CudaBackend {
         let kernel = CUDA_CTX
             .get_func("accumulate", "accumulate_kernel")
             .unwrap();
-        let cfg = LaunchConfig::for_num_elems(column.len() as u32);
+        let n = column.len() as u32;
+        let cfg = LaunchConfig::for_num_elems(n);
         for i in 0..4 {
             unsafe {
                 kernel.clone().launch(
                     cfg,
-                    (&mut column.columns[i].buffer, &other.columns[i].buffer),
+                    (&mut column.columns[i].buffer, &other.columns[i].buffer, n),
                 )
             }
             .unwrap();
@@ -26,6 +26,7 @@ impl AccumulationOps for CudaBackend {
 
 #[test]
 fn test_accumulate() {
+    use stwo_prover::core::backend::CpuBackend;
     use stwo_prover::core::fields::m31::BaseField;
     fn add_for_test<B: AccumulationOps>(log_size: u32) -> SecureColumnByCoords<B> {
         let mut secure_col0 = SecureColumnByCoords {
