@@ -20,3 +20,7 @@ num-traits.workspace = true
 [[bench]]
 harness = false
 name = "merkle"
+
+[[bench]]
+harness = false
+name = "bit_rev"

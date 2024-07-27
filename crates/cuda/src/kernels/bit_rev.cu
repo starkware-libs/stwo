@@ -19,16 +19,17 @@ extern "C" __global__ void bit_rev_kernel(int *data, int m_bits)
     }
 
     // Coaslesced read into shared memory.
-    temp[(v_lr << V_BITS) | v_hr] = data[(v_h << (V_BITS + m_bits)) | (m << V_BITS) | v_l];
+    // We use (v_hr ^ v_lr) for lwoer bits of shared memory index, to avoid bank conflicts.
+    temp[(v_lr << V_BITS) | (v_hr ^ v_lr)] = data[(v_h << (V_BITS + m_bits)) | (m << V_BITS) | v_l];
     __syncthreads();
 
     int temp2 = data[(v_h << (V_BITS + m_bits)) | (mr << V_BITS) | v_l];
-    data[(v_h << (V_BITS + m_bits)) | (mr << V_BITS) | v_l] = temp[(v_h << V_BITS) | v_l];
-    temp[(v_h << V_BITS) | v_l] = temp2;
+    data[(v_h << (V_BITS + m_bits)) | (mr << V_BITS) | v_l] = temp[(v_h << V_BITS) | (v_l ^ v_h)];
+    temp[(v_h << V_BITS) | (v_l ^ v_h)] = temp2;
 
     if (m != mr)
     {
         __syncthreads();
-        data[(v_h << (V_BITS + m_bits)) | (m << V_BITS) | v_l] = temp[(v_lr << V_BITS) | v_hr];
+        data[(v_h << (V_BITS + m_bits)) | (m << V_BITS) | v_l] = temp[(v_lr << V_BITS) | (v_hr ^ v_lr)];
     }
 }
