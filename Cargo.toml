@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/prover"]
+members = ["crates/prover", "crates/cuda"]
 resolver = "2"
 
 [workspace.package]
@@ -14,7 +14,7 @@ hex = "0.4.3"
 itertools = "0.12.0"
 num-traits = "0.2.17"
 thiserror = "1.0.56"
-bytemuck = "1.14.3"
+bytemuck = { version = "1.14.3", features = ["extern_crate_alloc"] }
 tracing = "0.1.40"
 
 [profile.bench]
