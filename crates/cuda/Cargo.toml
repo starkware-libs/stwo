@@ -9,4 +9,5 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 bytemuck.workspace = true
 cudarc = { version = "0.11.8", features = ["cuda-version-from-build-system"] }
+serde.workspace = true
 stwo-prover = { path = "../prover" }

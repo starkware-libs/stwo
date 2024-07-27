@@ -1,5 +1,6 @@
 #![feature(lazy_cell)]
 mod accumulation;
+mod blake2s;
 mod m31;
 
 use std::fmt::Debug;
@@ -11,10 +12,12 @@ use cudarc::driver::{
     CudaDevice, CudaSlice, DeviceRepr, DeviceSlice, LaunchAsync, LaunchConfig, ValidAsZeroBits,
 };
 use cudarc::nvrtc::CompileOptions;
+use serde::{Deserialize, Serialize};
 use stwo_prover::core::backend::{Column, ColumnOps};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
 
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct CudaBackend;
 static CUDA_CTX: LazyLock<Arc<CudaDevice>> = LazyLock::new(|| {
     let device = CudaDevice::new(0).unwrap();
@@ -53,6 +56,13 @@ static CUDA_CTX: LazyLock<Arc<CudaDevice>> = LazyLock::new(|| {
                 "downsweep_qm31_kernel",
             ],
         )
+        .unwrap();
+
+    let ptx =
+        cudarc::nvrtc::compile_ptx_with_opts(include_str!("kernels/blake2s.cu"), opts.clone())
+            .unwrap();
+    device
+        .load_ptx(ptx, "blake2s", &["commit_layer_no_parent"])
         .unwrap();
 
     device

@@ -16,6 +16,7 @@ num-traits = "0.2.17"
 thiserror = "1.0.56"
 bytemuck = { version = "1.14.3", features = ["extern_crate_alloc"] }
 tracing = "0.1.40"
+serde = { version = "1.0", features = ["derive"] }
 
 [profile.bench]
 codegen-units = 1
