@@ -21,13 +21,6 @@ impl MerkleOps<Blake2sMerkleHasher> for CudaBackend {
         prev_layer: Option<&Col<Self, Blake2sHash>>,
         columns: &[&Col<Self, BaseField>],
     ) -> Col<Self, Blake2sHash> {
-        if prev_layer.is_some() {
-            unimplemented!();
-        }
-
-        let kernel = CUDA_CTX
-            .get_func("blake2s", "commit_layer_no_parent")
-            .unwrap();
         let cfg = LaunchConfig::for_num_elems(1 << log_size);
 
         // Allocate pointer buf.
@@ -39,40 +32,81 @@ impl MerkleOps<Blake2sMerkleHasher> for CudaBackend {
                     .collect(),
             )
             .unwrap();
-
         let mut res = Col::<Self, Blake2sHash>::zeros(1 << log_size);
-        unsafe {
-            kernel.clone().launch(
-                cfg,
-                (&mut res.buffer, &col_ptrs, 1 << log_size, columns.len()),
-            )
+
+        if let Some(prev_layer) = prev_layer {
+            let kernel = CUDA_CTX
+                .get_func("blake2s", "commit_layer_with_parent")
+                .unwrap();
+            unsafe {
+                kernel.clone().launch(
+                    cfg,
+                    (
+                        &mut res.buffer,
+                        &prev_layer.buffer,
+                        &col_ptrs,
+                        1 << log_size,
+                        columns.len(),
+                    ),
+                )
+            }
+            .unwrap();
+        } else {
+            let kernel = CUDA_CTX
+                .get_func("blake2s", "commit_layer_no_parent")
+                .unwrap();
+            unsafe {
+                kernel.clone().launch(
+                    cfg,
+                    (&mut res.buffer, &col_ptrs, 1 << log_size, columns.len()),
+                )
+            }
+            .unwrap();
         }
-        .unwrap();
+
         res
     }
 }
 
 #[test]
-fn test_blake2s_no_parent() {
+fn test_blake2s() {
     use stwo_prover::core::backend::CpuBackend;
 
-    const LOG_SIZE: u32 = 10;
+    // First layer.
+    const LOG_SIZE: u32 = 9;
     let cols: Vec<Col<CudaBackend, BaseField>> = (0..35)
         .map(|i| {
-            (0..(1 << LOG_SIZE))
+            (0..(1 << (LOG_SIZE + 1)))
                 .map(|j| BaseField::from(i * j))
                 .collect()
         })
         .collect();
+    let cpu_cols: Vec<_> = cols.iter().map(|c| c.to_cpu()).collect();
 
-    let actual = CudaBackend::commit_on_layer(LOG_SIZE, None, &cols.iter().collect::<Vec<_>>());
-
-    let cols: Vec<_> = cols.iter().map(|c| c.to_cpu()).collect();
-    let expected = <CpuBackend as MerkleOps<Blake2sMerkleHasher>>::commit_on_layer(
-        LOG_SIZE,
+    let layer = CudaBackend::commit_on_layer(LOG_SIZE + 1, None, &cols.iter().collect::<Vec<_>>());
+    let cpu_layer = <CpuBackend as MerkleOps<Blake2sMerkleHasher>>::commit_on_layer(
+        LOG_SIZE + 1,
         None,
-        &cols.iter().collect::<Vec<_>>(),
+        &cpu_cols.iter().collect::<Vec<_>>(),
+    );
+    assert_eq!(layer.to_cpu(), cpu_layer);
+
+    // Next layer.
+    let cols: Vec<Col<CudaBackend, BaseField>> = (0..16)
+        .map(|i| {
+            (0..(1 << LOG_SIZE))
+                .map(|j| BaseField::from(i * j + 8))
+                .collect()
+        })
+        .collect();
+    let cpu_cols: Vec<_> = cols.iter().map(|c| c.to_cpu()).collect();
+    let layer =
+        CudaBackend::commit_on_layer(LOG_SIZE, Some(&layer), &cols.iter().collect::<Vec<_>>());
+    let cpu_layer = <CpuBackend as MerkleOps<Blake2sMerkleHasher>>::commit_on_layer(
+        LOG_SIZE,
+        Some(&cpu_layer),
+        &cpu_cols.iter().collect::<Vec<_>>(),
     );
 
-    assert_eq!(actual.to_cpu(), expected);
+    assert_eq!(layer.to_cpu(), cpu_layer);
 }

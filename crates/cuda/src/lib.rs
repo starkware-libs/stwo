@@ -62,7 +62,11 @@ static CUDA_CTX: LazyLock<Arc<CudaDevice>> = LazyLock::new(|| {
         cudarc::nvrtc::compile_ptx_with_opts(include_str!("kernels/blake2s.cu"), opts.clone())
             .unwrap();
     device
-        .load_ptx(ptx, "blake2s", &["commit_layer_no_parent"])
+        .load_ptx(
+            ptx,
+            "blake2s",
+            &["commit_layer_no_parent", "commit_layer_with_parent"],
+        )
         .unwrap();
 
     device

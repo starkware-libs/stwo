@@ -6,14 +6,8 @@ struct H
 };
 __device__ void compress(H *state, unsigned int m[16]);
 
-extern "C" __global__ void
-commit_layer_no_parent(H *dst, unsigned int **cols, int n, int n_cols)
+__device__ void compress_cols(H *state, unsigned int **cols, int n_cols, unsigned int idx)
 {
-    int idx = threadIdx.x + (blockIdx.x * blockDim.x);
-    if (idx >= n)
-        return;
-
-    H state = {0};
     int i;
     for (i = 0; i + 15 < n_cols; i += 16)
     {
@@ -22,12 +16,11 @@ commit_layer_no_parent(H *dst, unsigned int **cols, int n, int n_cols)
         {
             msg[j] = cols[i + j][idx];
         }
-        compress(&state, msg);
+        compress(state, msg);
     }
 
     if (i == n_cols)
     {
-        dst[idx] = state;
         return;
     }
 
@@ -37,7 +30,39 @@ commit_layer_no_parent(H *dst, unsigned int **cols, int n, int n_cols)
     {
         msg[j] = cols[i][idx];
     }
+    compress(state, msg);
+}
+
+extern "C" __global__ void
+commit_layer_no_parent(H *dst, unsigned int **cols, int n, int n_cols)
+{
+    int idx = threadIdx.x + (blockIdx.x * blockDim.x);
+    if (idx >= n)
+        return;
+
+    H state = {0};
+    compress_cols(&state, cols, n_cols, idx);
+
+    dst[idx] = state;
+}
+
+extern "C" __global__ void
+commit_layer_with_parent(H *dst, H *parent, unsigned int **cols, int n, int n_cols)
+{
+    int idx = threadIdx.x + (blockIdx.x * blockDim.x);
+    if (idx >= n)
+        return;
+
+    H state = {0};
+    unsigned int msg[16] = {0};
+    for (int j = 0; j < 8; j++)
+    {
+        msg[j] = parent[idx * 2].s[j];
+        msg[j + 8] = parent[idx * 2 + 1].s[j];
+    }
     compress(&state, msg);
+
+    compress_cols(&state, cols, n_cols, idx);
     dst[idx] = state;
 }
 
