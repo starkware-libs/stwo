@@ -63,7 +63,14 @@ impl<'a> EvalAtRow for SimdDomainEvaluator<'a> {
         offsets.map(|off| {
             // If the offset is 0, we can just return the value directly from this row.
             if off == 0 {
-                return self.trace_eval[interaction][col_index].data[self.vec_row];
+                return unsafe {
+                    *self
+                        .trace_eval
+                        .get_unchecked(interaction)
+                        .get_unchecked(col_index)
+                        .data
+                        .get_unchecked(self.vec_row)
+                };
             }
             // Otherwise, we need to look up the value at the offset.
             // Since the domain is bit-reversed circle domain ordered, we need to look up the value

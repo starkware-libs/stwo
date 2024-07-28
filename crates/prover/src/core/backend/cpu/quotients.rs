@@ -21,7 +21,7 @@ impl QuotientOps for CpuBackend {
         random_coeff: SecureField,
         sample_batches: &[ColumnSampleBatch],
     ) -> SecureEvaluation<Self> {
-        let mut values = SecureColumnByCoords::zeros(domain.size());
+        let mut values = unsafe { SecureColumnByCoords::uninit(domain.size()) };
         let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
 
         // TODO(spapini): bit reverse iterator.

@@ -4,5 +4,8 @@
 /logs
 build
 dist
-target
+target*
 */.vscode/*
+flamegraph.svg
+perf.data
+perf.data.old
