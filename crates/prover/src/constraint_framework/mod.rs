@@ -1,5 +1,6 @@
 /// ! This module contains helpers to express and use constraints for components.
 mod assert;
+mod component;
 pub mod constant_columns;
 mod info;
 pub mod logup;
@@ -11,6 +12,7 @@ use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 pub use assert::{assert_constraints, AssertEvaluator};
+pub use component::FrameworkComponent;
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
