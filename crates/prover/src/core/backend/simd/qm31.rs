@@ -279,6 +279,23 @@ impl Distribution<PackedQM31> for Standard {
     }
 }
 
+impl From<PackedM31> for PackedQM31 {
+    fn from(value: PackedM31) -> Self {
+        PackedQM31::from_packed_m31s([
+            value,
+            PackedM31::zero(),
+            PackedM31::zero(),
+            PackedM31::zero(),
+        ])
+    }
+}
+
+impl From<QM31> for PackedQM31 {
+    fn from(value: QM31) -> Self {
+        PackedQM31::broadcast(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::array;
