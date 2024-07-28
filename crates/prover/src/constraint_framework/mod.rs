@@ -56,6 +56,7 @@ pub trait EvalAtRow {
         + Mul<Self::F, Output = Self::EF>
         + Sub<Self::EF, Output = Self::EF>
         + Mul<Self::EF, Output = Self::EF>
+        + From<SecureField>
         + From<Self::F>;
 
     /// Returns the next mask value for the first interaction at offset 0.
