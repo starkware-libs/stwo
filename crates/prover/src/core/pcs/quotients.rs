@@ -150,7 +150,7 @@ pub fn fri_answers_for_log_size(
             );
             column_evals.push(eval);
         }
-        // TODO(spapini): bit reverse iterator.
+
         let mut values = Vec::new();
         for row in 0..domain.size() {
             let domain_point = domain.at(bit_reverse_index(row, log_size));
