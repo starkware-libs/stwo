@@ -116,7 +116,7 @@ mod tests {
         xor_accum.add_input(u32x16::splat(1), u32x16::splat(2));
 
         let (trace, lookup_data) = generate_trace(xor_accum);
-        let lookup_elements = LookupElements::dummy();
+        let lookup_elements = LookupElements::dummy(3);
         let (interaction_trace, claimed_sum) =
             generate_interaction_trace(lookup_data, &lookup_elements);
         let constant_trace = generate_constant_trace::<ELEM_BITS, EXPAND_BITS>();
