@@ -55,7 +55,7 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         eval: &mut E,
         numerator: E::EF,
         values: &[E::F],
-        lookup_elements: LookupElements,
+        lookup_elements: &LookupElements,
     ) {
         let shifted_value = shifted_secure_combination(
             values,
@@ -135,6 +135,12 @@ impl LookupElements {
             + From<SecureField>,
     {
         shifted_secure_combination(values, EF::from(self.alpha), EF::from(self.z))
+    }
+    pub fn dummy() -> Self {
+        Self {
+            z: SecureField::one(),
+            alpha: SecureField::one(),
+        }
     }
 }
 
