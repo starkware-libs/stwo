@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Mul, Sub};
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
@@ -17,7 +17,6 @@ use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::shifted_secure_combination;
 use crate::core::ColumnVec;
 
 /// Evaluates constraints for batched logups.
@@ -57,11 +56,7 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         values: &[E::F],
         lookup_elements: &LookupElements,
     ) {
-        let shifted_value = shifted_secure_combination(
-            values,
-            E::EF::from(lookup_elements.alpha),
-            E::EF::from(lookup_elements.z),
-        );
+        let shifted_value = lookup_elements.combine(values);
         self.push_frac(eval, numerator, shifted_value);
     }
 
@@ -115,32 +110,46 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
 }
 
 /// Interaction elements for the logup protocol.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LookupElements {
     pub z: SecureField,
     pub alpha: SecureField,
+    powers: Vec<SecureField>,
 }
 impl LookupElements {
-    pub fn draw(channel: &mut Blake2sChannel) -> Self {
+    pub fn draw(channel: &mut Blake2sChannel, n_powers: usize) -> Self {
         let [z, alpha] = channel.draw_felts(2).try_into().unwrap();
-        Self { z, alpha }
+        Self {
+            z,
+            alpha,
+            powers: (0..n_powers)
+                .scan(SecureField::one(), |acc, _| {
+                    let res = *acc;
+                    *acc *= alpha;
+                    Some(res)
+                })
+                .collect(),
+        }
     }
     pub fn combine<F: Copy, EF>(&self, values: &[F]) -> EF
     where
-        EF: Copy
-            + Zero
-            + Mul<EF, Output = EF>
-            + Add<F, Output = EF>
-            + Sub<EF, Output = EF>
-            + From<SecureField>,
+        EF: Copy + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
     {
-        shifted_secure_combination(values, EF::from(self.alpha), EF::from(self.z))
+        EF::from(values[0])
+            + values[1..]
+                .iter()
+                .zip(self.powers.iter())
+                .fold(EF::zero(), |acc, (&value, &power)| {
+                    acc + EF::from(power) * value
+                })
+            - EF::from(self.z)
     }
     #[cfg(test)]
-    pub fn dummy() -> Self {
+    pub fn dummy(n_powers: usize) -> Self {
         Self {
             z: SecureField::one(),
             alpha: SecureField::one(),
+            powers: vec![SecureField::one(); n_powers],
         }
     }
 }
