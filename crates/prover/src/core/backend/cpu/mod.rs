@@ -40,6 +40,12 @@ impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
     fn zeros(len: usize) -> Self {
         vec![T::default(); len]
     }
+    #[allow(clippy::uninit_vec)]
+    unsafe fn uninitialized(length: usize) -> Self {
+        let mut data = Vec::with_capacity(length);
+        data.set_len(length);
+        data
+    }
     fn to_cpu(&self) -> Vec<T> {
         self.clone()
     }

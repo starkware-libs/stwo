@@ -37,6 +37,10 @@ pub type Col<B, T> = <B as ColumnOps<T>>::Column;
 pub trait Column<T>: Clone + Debug + FromIterator<T> {
     /// Creates a new column of zeros with the given length.
     fn zeros(len: usize) -> Self;
+    /// Creates a new column of uninitialized values with the given length.
+    /// # Safety
+    /// The caller must ensure that the column is populated before being used.
+    unsafe fn uninitialized(len: usize) -> Self;
     /// Returns a cpu vector of the column.
     fn to_cpu(&self) -> Vec<T>;
     /// Returns the length of the column.

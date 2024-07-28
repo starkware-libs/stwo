@@ -29,6 +29,13 @@ impl<B: FieldOps<BaseField>> SecureColumnByCoords<B> {
         }
     }
 
+    /// # Safety
+    pub unsafe fn uninitialized(len: usize) -> Self {
+        Self {
+            columns: std::array::from_fn(|_| Col::<B, BaseField>::uninitialized(len)),
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.columns[0].len()
     }
