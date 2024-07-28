@@ -163,7 +163,7 @@ impl<E: EvalAtRow> PoseidonEval<E> {
 
             // Require state lookup.
             self.logup
-                .push_lookup(&mut self.eval, E::EF::one(), &state, self.lookup_elements);
+                .push_lookup(&mut self.eval, E::EF::one(), &state, &self.lookup_elements);
 
             // 4 full rounds.
             (0..N_HALF_FULL_ROUNDS).for_each(|round| {
@@ -205,7 +205,7 @@ impl<E: EvalAtRow> PoseidonEval<E> {
 
             // Provide state lookup.
             self.logup
-                .push_lookup(&mut self.eval, -E::EF::one(), &state, self.lookup_elements);
+                .push_lookup(&mut self.eval, -E::EF::one(), &state, &self.lookup_elements);
         }
 
         self.logup.finalize(&mut self.eval);
