@@ -1,11 +1,10 @@
 use air::RangeCheckAir;
-use num_traits::One;
 
 use self::component::RangeCheckComponent;
 use crate::core::backend::cpu::CpuCircleEvaluation;
 use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::{FieldExpOps, IntoSlice};
+use crate::core::fields::IntoSlice;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{ProvingError, StarkProof, VerificationError};
@@ -32,17 +31,9 @@ impl RangeCheck {
     pub fn get_trace(&self) -> CpuCircleEvaluation<BaseField, BitReversedOrder> {
         // Trace.
         let trace_domain = CanonicCoset::new(self.air.component.log_size);
-        let mut trace = Vec::with_capacity(trace_domain.size());
+        let trace = Vec::with_capacity(trace_domain.size());
 
-        // Fill trace with fibonacci squared.
-        let mut a = BaseField::one();
-        let mut b = BaseField::one();
-        for _ in 0..trace_domain.size() {
-            trace.push(a);
-            let tmp = a.square() + b.square();
-            a = b;
-            b = tmp;
-        }
+        // Fill trace with range_check.
 
         // Returns as a CircleEvaluation.
         CircleEvaluation::new_canonical_ordered(trace_domain, trace)

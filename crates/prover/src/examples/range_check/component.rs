@@ -120,7 +120,7 @@ impl ComponentTraceGenerator<CpuBackend> for RangeCheckTraceGenerator {
     type Inputs = RangeCheckInput;
 
     fn add_inputs(&mut self, inputs: &Self::Inputs) {
-        assert!(!self.inputs_set(), "Fibonacci input already set.");
+        assert!(!self.inputs_set(), "range_check input already set.");
         self.input = Some(*inputs);
     }
 
@@ -129,11 +129,11 @@ impl ComponentTraceGenerator<CpuBackend> for RangeCheckTraceGenerator {
         registry: &mut ComponentGenerationRegistry,
     ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
         let trace_generator = registry.get_generator_mut::<Self>(component_id);
-        assert!(trace_generator.inputs_set(), "Fibonacci input not set.");
+        assert!(trace_generator.inputs_set(), "range_check input not set.");
         let trace_domain = CanonicCoset::new(trace_generator.input.unwrap().log_size);
         let trace = Vec::with_capacity(trace_domain.size());
 
-        // Fill trace with fibonacci squared.
+        // Fill trace with range_check.
 
         // Returns as a CircleEvaluation.
         vec![CircleEvaluation::new_canonical_ordered(trace_domain, trace)]
@@ -148,7 +148,7 @@ impl ComponentTraceGenerator<CpuBackend> for RangeCheckTraceGenerator {
     }
 
     fn component(&self) -> Self::Component {
-        assert!(self.inputs_set(), "Fibonacci input not set.");
+        assert!(self.inputs_set(), "range_check input not set.");
         RangeCheckComponent::new(self.input.unwrap().log_size, self.input.unwrap().value)
     }
 }
