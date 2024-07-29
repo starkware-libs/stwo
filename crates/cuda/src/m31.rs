@@ -29,40 +29,59 @@ fn batch_inverse<F: Field>(
 ) where
     CudaColumn<F>: Column<F>,
 {
-    let mut src = src.clone();
     let log_size = src.len().trailing_zeros();
     assert_eq!(src.len(), 1 << log_size);
     assert_eq!(src.len(), dst.len());
-
-    // Copy src to dst.
-    CUDA_CTX
-        .dtod_copy(&mut src.buffer, &mut dst.buffer)
-        .unwrap();
 
     // Upsweep.
     let upsweep = CUDA_CTX.get_func("batch_inv", upsweep_kernel).unwrap();
     for i in (0..log_size).rev() {
         // From i+1 to i.
+        // Memory layout: 2^i other values, 2^i ith layer, 2^(i+1) (i+1)th layer, ... .
+        let bot_layer = dst.buffer.slice(1 << i..2 << i);
+        let top_layer = if i == log_size - 1 {
+            src.buffer.slice(..)
+        } else {
+            dst.buffer.slice(2 << i..4 << i)
+        };
+
         unsafe {
             upsweep.clone().launch(
                 LaunchConfig::for_num_elems(1 << i),
-                (&mut src.buffer, &mut dst.buffer, 1 << i),
+                (&top_layer, &bot_layer, 1 << i),
             )
         }
         .unwrap();
     }
 
-    // Inverse the first element.
-    dst.set(0, dst.at(0).inverse());
+    // Inverse the root element.
+    dst.set(1, dst.at(1).inverse());
 
     // Downsweep.
     let downsweep = CUDA_CTX.get_func("batch_inv", downsweep_kernel).unwrap();
     for i in 0..log_size {
-        // From i to i+1.
+        // Memory layout: 2^i other values, 2^i ith layer, 2^(i+1) (i+1)th layer, ... .
+        let bot_layer = dst.buffer.slice(1 << i..2 << i);
+        let top_layer = if i == log_size - 1 {
+            src.buffer.slice(..)
+        } else {
+            dst.buffer.slice(2 << i..4 << i)
+        };
+        let dst_layer = if i == log_size - 1 {
+            dst.buffer.slice(..)
+        } else {
+            dst.buffer.slice(2 << i..4 << i)
+        };
+
         unsafe {
             downsweep.clone().launch(
                 LaunchConfig::for_num_elems(1 << i),
-                (&src.buffer, &mut dst.buffer, 1 << i),
+                (
+                    &top_layer.slice(..),
+                    &bot_layer.slice(..),
+                    &dst_layer.slice(..),
+                    1 << i,
+                ),
             )
         }
         .unwrap();
