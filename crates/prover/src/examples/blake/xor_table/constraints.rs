@@ -1,4 +1,4 @@
-use super::limb_bits;
+use super::{limb_bits, XorElements};
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::EvalAtRow;
 use crate::core::fields::m31::BaseField;
@@ -6,7 +6,7 @@ use crate::core::fields::m31::BaseField;
 /// Constraints for the xor table.
 pub struct XorTableEval<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32> {
     pub eval: E,
-    pub lookup_elements: &'a LookupElements,
+    pub lookup_elements: &'a XorElements,
     pub logup: LogupAtRow<2, E>,
 }
 impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>

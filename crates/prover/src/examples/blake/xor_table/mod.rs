@@ -69,8 +69,9 @@ impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> XorAccumulator<ELEM_BITS, EXP
 }
 
 /// Component that evaluates the xor table.
+pub type XorElements = LookupElements<3>;
 pub struct XorTableComponent<const ELEM_BITS: u32, const EXPAND_BITS: u32> {
-    pub lookup_elements: LookupElements,
+    pub lookup_elements: XorElements,
     pub claimed_sum: SecureField,
 }
 impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> FrameworkComponent
@@ -116,7 +117,7 @@ mod tests {
         xor_accum.add_input(u32x16::splat(1), u32x16::splat(2));
 
         let (trace, lookup_data) = generate_trace(xor_accum);
-        let lookup_elements = LookupElements::dummy(3);
+        let lookup_elements = crate::examples::blake::xor_table::XorElements::dummy();
         let (interaction_trace, claimed_sum) =
             generate_interaction_trace(lookup_data, &lookup_elements);
         let constant_trace = generate_constant_trace::<ELEM_BITS, EXPAND_BITS>();
