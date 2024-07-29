@@ -11,9 +11,7 @@ pub mod quotients;
 mod utils;
 mod verifier;
 
-pub use self::prover::{
-    CommitmentSchemeProof, CommitmentSchemeProver, CommitmentTreeProver, TreeBuilder,
-};
+pub use self::prover::{CommitmentSchemeProof, CommitmentSchemeProver, CommitmentTreeProver};
 pub use self::utils::TreeVec;
 pub use self::verifier::CommitmentSchemeVerifier;
 
