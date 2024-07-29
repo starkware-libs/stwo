@@ -91,3 +91,7 @@ name = "prefix_sum"
 [[bench]]
 harness = false
 name = "quotients"
+
+[[bench]]
+harness = false
+name = "pcs"
