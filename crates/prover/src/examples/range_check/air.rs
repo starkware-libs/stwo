@@ -56,7 +56,10 @@ impl AirTraceGenerator<CpuBackend> for RangeCheckAirGenerator {
         let component_generator = self
             .registry
             .get_generator::<RangeCheckTraceGenerator>("range_check");
-        assert!(component_generator.inputs_set(), "range_check input not set.");
+        assert!(
+            component_generator.inputs_set(),
+            "range_check input not set."
+        );
         component_generator
             .component()
             .max_constraint_log_degree_bound()
