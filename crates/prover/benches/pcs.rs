@@ -1,3 +1,4 @@
+use core::arch::x86_64::_rdtsc;
 use std::iter;
 
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
@@ -16,6 +17,18 @@ use stwo_prover::core::vcs::ops::MerkleOps;
 const LOG_COSET_SIZE: u32 = 20;
 const LOG_BLOWUP_FACTOR: u32 = 1;
 const N_POLYS: usize = 16;
+
+fn measure_cycles<F>(f: F) -> u64
+where
+    F: FnOnce(),
+{
+    unsafe {
+        let start = _rdtsc();
+        f();
+        let end = _rdtsc();
+        end - start
+    }
+}
 
 fn benched_fn<B: Backend + MerkleOps<Blake2sMerkleHasher>>(
     evals: Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
@@ -54,11 +67,15 @@ fn bench_pcs<B: Backend + MerkleOps<Blake2sMerkleHasher>>(c: &mut Criterion, id:
             b.iter_batched(
                 || evals.clone(),
                 |evals| {
-                    benched_fn::<B>(
-                        black_box(evals),
-                        black_box(&mut channel),
-                        black_box(&twiddles),
-                    )
+                    let cycles = measure_cycles(|| {
+                        benched_fn::<B>(
+                            black_box(evals),
+                            black_box(&mut channel),
+                            black_box(&twiddles),
+                        )
+                    });
+                    println!("Clock cycles for this batch: {}", cycles);
+                    black_box(cycles)
                 },
                 BatchSize::LargeInput,
             );
