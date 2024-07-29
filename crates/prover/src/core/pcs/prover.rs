@@ -199,7 +199,7 @@ pub struct CommitmentTreeProver<B: Backend + MerkleOps<MerkleHasher>> {
 }
 
 impl<B: Backend + MerkleOps<MerkleHasher>> CommitmentTreeProver<B> {
-    fn new(
+    pub fn new(
         polynomials: ColumnVec<CirclePoly<B>>,
         log_blowup_factor: u32,
         channel: &mut ProofChannel,
