@@ -49,12 +49,12 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
             is_first,
         }
     }
-    pub fn push_lookup(
+    pub fn push_lookup<const N: usize>(
         &mut self,
         eval: &mut E,
         numerator: E::EF,
         values: &[E::F],
-        lookup_elements: &LookupElements,
+        lookup_elements: &LookupElements<N>,
     ) {
         let shifted_value = lookup_elements.combine(values);
         self.push_frac(eval, numerator, shifted_value);
@@ -111,25 +111,21 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
 
 /// Interaction elements for the logup protocol.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LookupElements {
+pub struct LookupElements<const N: usize> {
     pub z: SecureField,
     pub alpha: SecureField,
-    powers: Vec<SecureField>,
+    powers: [SecureField; N],
 }
-impl LookupElements {
-    pub fn draw(channel: &mut Blake2sChannel, n_powers: usize) -> Self {
+impl<const N: usize> LookupElements<N> {
+    pub fn draw(channel: &mut Blake2sChannel) -> Self {
         let [z, alpha] = channel.draw_felts(2).try_into().unwrap();
-        Self {
-            z,
-            alpha,
-            powers: (0..n_powers)
-                .scan(SecureField::one(), |acc, _| {
-                    let res = *acc;
-                    *acc *= alpha;
-                    Some(res)
-                })
-                .collect(),
-        }
+        let mut cur = SecureField::one();
+        let powers = std::array::from_fn(|_| {
+            let res = cur;
+            cur *= alpha;
+            res
+        });
+        Self { z, alpha, powers }
     }
     pub fn combine<F: Copy, EF>(&self, values: &[F]) -> EF
     where
@@ -144,12 +140,11 @@ impl LookupElements {
                 })
             - EF::from(self.z)
     }
-    #[cfg(test)]
-    pub fn dummy(n_powers: usize) -> Self {
+    pub fn dummy() -> Self {
         Self {
             z: SecureField::one(),
             alpha: SecureField::one(),
-            powers: vec![SecureField::one(); n_powers],
+            powers: [SecureField::one(); N],
         }
     }
 }

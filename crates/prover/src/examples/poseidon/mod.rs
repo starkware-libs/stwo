@@ -53,10 +53,11 @@ impl Air for PoseidonAir {
     }
 }
 
+pub type PoseidonElements = LookupElements<{ N_STATE * 2 }>;
 #[derive(Clone)]
 pub struct PoseidonComponent {
     pub log_n_rows: u32,
-    pub lookup_elements: LookupElements,
+    pub lookup_elements: PoseidonElements,
     pub claimed_sum: SecureField,
 }
 impl FrameworkComponent for PoseidonComponent {
@@ -149,7 +150,7 @@ fn pow5<F: FieldExpOps>(x: F) -> F {
 struct PoseidonEval<'a, E: EvalAtRow> {
     eval: E,
     logup: LogupAtRow<2, E>,
-    lookup_elements: &'a LookupElements,
+    lookup_elements: &'a PoseidonElements,
 }
 
 impl<'a, E: EvalAtRow> PoseidonEval<'a, E> {
@@ -311,7 +312,7 @@ pub fn gen_trace(
 pub fn gen_interaction_trace(
     log_size: u32,
     lookup_data: LookupData,
-    lookup_elements: &LookupElements,
+    lookup_elements: &PoseidonElements,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     SecureField,
@@ -369,7 +370,7 @@ pub fn prove_poseidon(log_n_instances: u32) -> (PoseidonAir, StarkProof<Blake2sM
     span.exit();
 
     // Draw lookup element.
-    let lookup_elements = LookupElements::draw(channel, N_STATE * 2);
+    let lookup_elements = PoseidonElements::draw(channel);
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
@@ -425,7 +426,7 @@ mod tests {
     use crate::core::InteractionElements;
     use crate::examples::poseidon::{
         apply_internal_round_matrix, apply_m4, gen_interaction_trace, gen_trace, prove_poseidon,
-        PoseidonEval, N_STATE,
+        PoseidonElements, PoseidonEval,
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
 
@@ -472,7 +473,7 @@ mod tests {
 
         // Trace.
         let (trace0, interaction_data) = gen_trace(LOG_N_ROWS);
-        let lookup_elements = LookupElements::dummy(N_STATE * 2);
+        let lookup_elements = LookupElements::dummy();
         let (trace1, claimed_sum) =
             gen_interaction_trace(LOG_N_ROWS, interaction_data, &lookup_elements);
         let trace2 = vec![gen_is_first(LOG_N_ROWS)];
@@ -518,7 +519,7 @@ mod tests {
         // Trace columns.
         commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
         // Draw lookup element.
-        let lookup_elements = LookupElements::draw(channel, N_STATE * 2);
+        let lookup_elements = PoseidonElements::draw(channel);
         assert_eq!(lookup_elements, air.component.lookup_elements);
         // TODO(spapini): Check claimed sum against first and last instances.
         // Interaction columns.
