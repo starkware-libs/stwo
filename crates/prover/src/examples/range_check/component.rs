@@ -40,21 +40,11 @@ impl RangeCheckComponent {
 
         let constraint_zero_domain = Coset::subgroup(self.log_size);
         let constraint_value = mask[0]
-            - (mask[1] * two.pow(0)
-                + mask[2] * two.pow(1)
-                + mask[3] * two.pow(2)
-                + mask[4] * two.pow(3)
-                + mask[5] * two.pow(4)
-                + mask[6] * two.pow(5)
-                + mask[7] * two.pow(6)
-                + mask[8] * two.pow(7)
-                + mask[9] * two.pow(8)
-                + mask[10] * two.pow(9)
-                + mask[11] * two.pow(10)
-                + mask[12] * two.pow(11)
-                + mask[13] * two.pow(12)
-                + mask[14] * two.pow(13)
-                + mask[15] * two.pow(14));
+            - mask[1..]
+                .iter()
+                .enumerate()
+                .map(|(i, &val)| val * two.pow(i as u128))
+                .sum::<F>();
         let num = constraint_value;
         let denom = point_vanishing(constraint_zero_domain.at(0).into_ef(), point);
         num / denom
@@ -68,24 +58,10 @@ impl RangeCheckComponent {
     ) -> F {
         let constraint_zero_domain = Coset::subgroup(self.log_size);
         let constraint_value = mask[0].square() - mask[0];
-        // let selector = point_vanishing(constraint_zero_domain.at(0).into_ef(), point);
         let num = constraint_value;
-        let denom = point_vanishing(constraint_zero_domain.at(1).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(2).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(3).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(4).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(5).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(6).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(7).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(8).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(9).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(10).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(11).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(12).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(13).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(14).into_ef(), point)
-            * point_vanishing(constraint_zero_domain.at(15).into_ef(), point);
-        // let denom = coset_vanishing(constraint_zero_domain, point);
+        let denom = (1..16)
+            .map(|i| point_vanishing(constraint_zero_domain.at(i), point))
+            .product::<F>();
         num / denom
     }
 }
@@ -109,7 +85,7 @@ impl Component for RangeCheckComponent {
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
         TreeVec::new(vec![shifted_mask_points(
-            &vec![vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]],
+            &vec![(0..16).collect::<Vec<_>>()],
             &[CanonicCoset::new(self.log_size)],
             point,
         )])
@@ -233,24 +209,12 @@ impl ComponentProver<CpuBackend> for RangeCheckComponent {
             let eval = trace_eval.fetch_eval_on_coset(point_coset.shift(trace_domain.index_at(0)));
             let mul = trace_domain.step_size().div(point_coset.step_size);
             for (i, point) in point_coset.iter().enumerate() {
-                let mask = [
-                    eval[i],
-                    eval[i as isize + mul],
-                    eval[i as isize + 2 * mul],
-                    eval[i as isize + 3 * mul],
-                    eval[i as isize + 4 * mul],
-                    eval[i as isize + 5 * mul],
-                    eval[i as isize + 6 * mul],
-                    eval[i as isize + 7 * mul],
-                    eval[i as isize + 8 * mul],
-                    eval[i as isize + 9 * mul],
-                    eval[i as isize + 10 * mul],
-                    eval[i as isize + 11 * mul],
-                    eval[i as isize + 12 * mul],
-                    eval[i as isize + 13 * mul],
-                    eval[i as isize + 14 * mul],
-                    eval[i as isize + 15 * mul],
-                ];
+                let mask: [M31; 16] = (0..16)
+                    .map(|j| eval[i as isize + j * mul])
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
+
                 let mut res = self.boundary_constraint_eval_quotient_by_mask(point, &[mask[0]])
                     * accum.random_coeff_powers[0];
                 res += self.step_constraint_eval_quotient_by_mask(point, &mask)
