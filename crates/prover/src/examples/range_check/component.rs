@@ -36,9 +36,10 @@ impl RangeCheckComponent {
         point: CirclePoint<F>,
         mask: &[F; 16],
     ) -> F {
-        let two = F::from(M31::from(2_u32));
-
+        let two = F::one().double();
         let constraint_zero_domain = Coset::subgroup(self.log_size);
+        // Check if value at mask[0] equals value represented by 15 next bits little endian.
+        // If value can be represented with 15 bits, it means that it is in range of 0..2^15
         let constraint_value = mask[0]
             - mask[1..]
                 .iter()
@@ -46,6 +47,7 @@ impl RangeCheckComponent {
                 .map(|(i, &val)| val * two.pow(i as u128))
                 .sum::<F>();
         let num = constraint_value;
+        // Apply this step constrain on first row
         let denom = point_vanishing(constraint_zero_domain.at(0).into_ef(), point);
         num / denom
     }
@@ -57,8 +59,10 @@ impl RangeCheckComponent {
         mask: &[F; 1],
     ) -> F {
         let constraint_zero_domain = Coset::subgroup(self.log_size);
+        // Check if mask value is a binary 0 | 1
         let constraint_value = mask[0].square() - mask[0];
         let num = constraint_value;
+        // Apply this boundary constrain on 1..16 trace rows
         let denom = (1..16)
             .map(|i| point_vanishing(constraint_zero_domain.at(i), point))
             .product::<F>();
@@ -152,12 +156,11 @@ impl ComponentTraceGenerator<CpuBackend> for RangeCheckTraceGenerator {
         let mut trace = Vec::with_capacity(trace_domain.size());
 
         if let Some(input) = trace_generator.input {
-            let mut value_bits = input.value.0;
-
-            // Push the initial value to the trace.
+            // Push the value to the trace.
             trace.push(input.value);
 
-            // Fill trace with range_check.
+            // Fill trace with binary representation of value.
+            let mut value_bits = input.value.0;
             for _ in 0..15 {
                 trace.push(M31::from(value_bits & 0x1));
                 value_bits >>= 1;
