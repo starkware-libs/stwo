@@ -67,25 +67,32 @@ impl RangeCheck {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::RangeCheck;
     use crate::m31;
 
-    #[test]
-    fn test_range_check_prove() {
-        const RANGE_CHECK_LOG_SIZE: u32 = 4;
-        let range_check = RangeCheck::new(RANGE_CHECK_LOG_SIZE, m31!(32767));
+    const RANGE_CHECK_LOG_SIZE: u32 = 4;
 
-        let proof = range_check.prove().unwrap();
-        range_check.verify(proof).unwrap();
-    }
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 50, // Number of test cases to generate
+            .. ProptestConfig::default()
+        })]
 
-    #[test]
-    #[should_panic]
-    fn test_range_check_prove_overflow() {
-        const RANGE_CHECK_LOG_SIZE: u32 = 4;
-        let range_check = RangeCheck::new(RANGE_CHECK_LOG_SIZE, m31!(32768));
+        #[test]
+        fn test_range_check_prove(valid_value in 0..32768_u32) {
+            let range_check = RangeCheck::new(RANGE_CHECK_LOG_SIZE, m31!(valid_value));
+            let proof = range_check.prove().unwrap();
+            range_check.verify(proof).unwrap();
+        }
 
-        let proof = range_check.prove().unwrap();
-        range_check.verify(proof).unwrap();
+        #[test]
+        #[should_panic]
+        fn test_range_check_prove_overflow(invalid_value in 32768..u32::MAX) {
+            let range_check = RangeCheck::new(RANGE_CHECK_LOG_SIZE, m31!(invalid_value));
+            let proof = range_check.prove().unwrap();
+            range_check.verify(proof).unwrap();
+        }
     }
 }
