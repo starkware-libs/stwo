@@ -139,7 +139,17 @@ mod tests {
     #[test]
     fn test_range_check_prove() {
         const RANGE_CHECK_LOG_SIZE: u32 = 4;
-        let range_check = RangeCheck::new(RANGE_CHECK_LOG_SIZE, m31!(20));
+        let range_check = RangeCheck::new(RANGE_CHECK_LOG_SIZE, m31!(32767));
+
+        let proof = range_check.prove().unwrap();
+        range_check.verify(proof).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_range_check_prove_overflow() {
+        const RANGE_CHECK_LOG_SIZE: u32 = 4;
+        let range_check = RangeCheck::new(RANGE_CHECK_LOG_SIZE, m31!(32768));
 
         let proof = range_check.prove().unwrap();
         range_check.verify(proof).unwrap();
