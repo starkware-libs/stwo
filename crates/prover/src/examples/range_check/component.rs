@@ -29,8 +29,6 @@ impl RangeCheckComponent {
     }
 
     /// Evaluates the step constraint quotient polynomial on a single point.
-    /// The step constraint is defined as:
-    ///   mask[0]^2 + mask[1]^2 - mask[2]
     fn step_constraint_eval_quotient_by_mask<F: ExtensionOf<BaseField>>(
         &self,
         point: CirclePoint<F>,
