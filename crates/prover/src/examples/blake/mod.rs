@@ -1,19 +1,18 @@
 //! AIR for blake2s and blake3.
 //! See <https://en.wikipedia.org/wiki/BLAKE_(hash_function)>
 
-#![allow(unused)]
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Sub};
 use std::simd::u32x16;
 
 use xor_table::{XorAccumulator, XorElements};
 
-use crate::constraint_framework::logup::LookupElements;
 use crate::core::backend::simd::m31::PackedBaseField;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::FieldExpOps;
 
+mod air;
 mod round;
 mod scheduler;
 mod xor_table;
@@ -22,7 +21,11 @@ const STATE_SIZE: usize = 16;
 const MESSAGE_SIZE: usize = 16;
 const N_FELTS_IN_U32: usize = 2;
 const N_ROUND_INPUT_FELTS: usize = (STATE_SIZE + STATE_SIZE + MESSAGE_SIZE) * N_FELTS_IN_U32;
+
+// Parameters for Blake2s. Change these for blake3.
 const N_ROUNDS: usize = 10;
+/// A splitting N_ROUNDS into several powers of 2.
+const ROUND_LOG_SPLIT: [u32; 2] = [3, 1];
 
 #[derive(Default)]
 struct XorAccums {

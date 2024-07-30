@@ -2,7 +2,7 @@ use itertools::{chain, Itertools};
 use num_traits::One;
 
 use super::BlakeElements;
-use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
+use crate::constraint_framework::logup::LogupAtRow;
 use crate::constraint_framework::EvalAtRow;
 use crate::core::vcs::blake2s_ref::SIGMA;
 use crate::examples::blake::round::RoundElements;

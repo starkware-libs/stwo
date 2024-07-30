@@ -28,7 +28,7 @@ impl ChannelTime {
 }
 
 pub trait Channel {
-    type Digest: Serializable + Copy;
+    type Digest: Serializable + Copy + Default;
 
     const BYTES_PER_HASH: usize;
 

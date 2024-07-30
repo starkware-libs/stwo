@@ -2,7 +2,7 @@ use itertools::{chain, Itertools};
 use num_traits::One;
 
 use super::{BlakeXorElements, RoundElements};
-use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
+use crate::constraint_framework::logup::LogupAtRow;
 use crate::constraint_framework::EvalAtRow;
 use crate::core::fields::m31::BaseField;
 use crate::examples::blake::{Fu32, STATE_SIZE};
