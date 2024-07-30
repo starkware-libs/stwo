@@ -1,4 +1,3 @@
-use std::f32::consts::E;
 use std::simd::u32x16;
 
 use itertools::{chain, Itertools};
@@ -6,9 +5,9 @@ use num_traits::One;
 use tracing::{span, Level};
 
 use super::{blake_scheduler_info, BlakeElements};
-use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
+use crate::constraint_framework::logup::LogupTraceGenerator;
 use crate::core::backend::simd::column::BaseColumn;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::{blake2s, SimdBackend};
 use crate::core::backend::Column;
@@ -51,6 +50,7 @@ pub fn gen_trace(
     BlakeSchedulerLookupData,
     Vec<BlakeRoundInput>,
 ) {
+    let _span = span!(Level::INFO, "Scheduler Generation").entered();
     let mut lookup_data = BlakeSchedulerLookupData::new(log_size);
     let mut round_inputs = Vec::with_capacity(inputs.len() * N_ROUNDS);
 

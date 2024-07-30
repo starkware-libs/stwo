@@ -6,7 +6,7 @@ use num_traits::One;
 use tracing::{span, Level};
 
 use super::{BlakeXorElements, RoundElements};
-use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
+use crate::constraint_framework::logup::LogupTraceGenerator;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -18,9 +18,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 use crate::examples::blake::round::blake_round_info;
-use crate::examples::blake::{
-    to_felts, XorAccums, MESSAGE_SIZE, N_FELTS_IN_U32, N_ROUND_INPUT_FELTS, STATE_SIZE,
-};
+use crate::examples::blake::{to_felts, XorAccums, N_ROUND_INPUT_FELTS, STATE_SIZE};
 
 pub struct BlakeRoundLookupData {
     /// A vector of (w, [a_col, b_col, c_col]) for each xor lookup.
@@ -214,6 +212,7 @@ pub fn generate_trace(
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     BlakeRoundLookupData,
 ) {
+    let _span = span!(Level::INFO, "Round Generation").entered();
     let mut generator = TraceGenerator::new(log_size);
 
     for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {

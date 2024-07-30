@@ -2,15 +2,16 @@ mod constraints;
 mod gen;
 
 use constraints::BlakeSchedulerEval;
+pub use gen::{gen_interaction_trace, gen_trace, BlakeInput};
 use num_traits::Zero;
 
 use super::round::RoundElements;
-use super::{N_ROUND_INPUT_FELTS, STATE_SIZE};
+use super::N_ROUND_INPUT_FELTS;
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, InfoEvaluator};
 use crate::core::fields::qm31::SecureField;
 
-type BlakeElements = LookupElements<N_ROUND_INPUT_FELTS>;
+pub type BlakeElements = LookupElements<N_ROUND_INPUT_FELTS>;
 
 pub fn blake_scheduler_info() -> InfoEvaluator {
     let component = BlakeSchedulerComponent {
@@ -54,16 +55,11 @@ mod tests {
     use itertools::Itertools;
 
     use crate::constraint_framework::constant_columns::gen_is_first;
-    use crate::constraint_framework::logup::LookupElements;
     use crate::constraint_framework::FrameworkComponent;
-    use crate::core::backend::simd::SimdBackend;
-    use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
-    use crate::core::poly::BitReversedOrder;
+    use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::round::RoundElements;
     use crate::examples::blake::scheduler::r#gen::{gen_interaction_trace, gen_trace, BlakeInput};
     use crate::examples::blake::scheduler::{BlakeElements, BlakeSchedulerComponent};
-    use crate::examples::blake::XorAccums;
 
     #[test]
     fn test_blake_scheduler() {
@@ -74,7 +70,7 @@ mod tests {
         let (trace, lookup_data, _round_inputs) = gen_trace(
             LOG_SIZE,
             &(0..(1 << LOG_SIZE))
-                .map(|i| BlakeInput {
+                .map(|_| BlakeInput {
                     v: std::array::from_fn(|i| Simd::splat(i as u32)),
                     m: std::array::from_fn(|i| Simd::splat((i + 1) as u32)),
                 })
