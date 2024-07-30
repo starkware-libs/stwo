@@ -5,7 +5,7 @@ use super::{BlakeXorElements, RoundElements};
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::EvalAtRow;
 use crate::core::fields::m31::BaseField;
-use crate::examples::blake::Fu32;
+use crate::examples::blake::{Fu32, STATE_SIZE};
 
 const INV16: BaseField = BaseField::from_u32_unchecked(1 << 15);
 const TWO: BaseField = BaseField::from_u32_unchecked(2);
@@ -18,9 +18,9 @@ pub struct BlakeRoundEval<'a, E: EvalAtRow> {
 }
 impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     pub fn eval(mut self) -> E {
-        let mut v: [Fu32<E::F>; 16] = std::array::from_fn(|_| self.next_u32());
+        let mut v: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
         let input_v = v;
-        let m: [Fu32<E::F>; 16] = std::array::from_fn(|_| self.next_u32());
+        let m: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
 
         self.g(v.get_many_mut([0, 4, 8, 12]).unwrap(), m[0], m[1]);
         self.g(v.get_many_mut([1, 5, 9, 13]).unwrap(), m[2], m[3]);
