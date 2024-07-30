@@ -6,12 +6,16 @@ use std::simd::u32x16;
 use xor_table::XorAccumulator;
 
 use crate::constraint_framework::logup::LookupElements;
+use crate::core::backend::simd::m31::PackedBaseField;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::FieldExpOps;
 
 mod round;
+mod scheduler;
 mod xor_table;
+
+const N_ROUNDS: usize = 10;
 
 #[derive(Default)]
 struct XorAccums {
@@ -92,4 +96,11 @@ where
     fn to_felts(self) -> [F; 2] {
         [self.l, self.h]
     }
+}
+
+fn to_felts(x: &u32x16) -> [PackedBaseField; 2] {
+    [
+        unsafe { PackedBaseField::from_simd_unchecked(x & u32x16::splat(0xffff)) },
+        unsafe { PackedBaseField::from_simd_unchecked(x >> 16) },
+    ]
 }
