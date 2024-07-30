@@ -1,4 +1,4 @@
-use itertools::{zip_eq, Itertools};
+use itertools::zip_eq;
 
 use super::component::{FibonacciComponent, FibonacciInput, FibonacciTraceGenerator};
 use crate::core::air::{Air, AirProver, Component, ComponentProver};
@@ -49,12 +49,13 @@ impl AirTraceGenerator<CpuBackend> for FibonacciAirGenerator {
         vec![]
     }
 
-    fn to_air_prover(&self) -> impl AirProver<CpuBackend> {
+    fn to_air_prover(&self) -> AirProver<CpuBackend> {
         let component_generator = self
             .registry
             .get_generator::<FibonacciTraceGenerator>("fibonacci");
-        FibonacciAir {
-            component: component_generator.component(),
+        let component = component_generator.component();
+        AirProver {
+            prover_components: vec![Box::new(component)],
         }
     }
 
@@ -105,18 +106,14 @@ impl AirTraceGenerator<CpuBackend> for FibonacciAir {
         vec![]
     }
 
-    fn to_air_prover(&self) -> impl AirProver<CpuBackend> {
-        self.clone()
+    fn to_air_prover(&self) -> AirProver<CpuBackend> {
+        AirProver {
+            prover_components: vec![Box::new(self.component.clone())],
+        }
     }
 
     fn composition_log_degree_bound(&self) -> u32 {
         self.component.max_constraint_log_degree_bound()
-    }
-}
-
-impl AirProver<CpuBackend> for FibonacciAir {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
-        vec![&self.component]
     }
 }
 
@@ -140,7 +137,7 @@ impl Air for MultiFibonacciAir {
         self.components
             .iter()
             .map(|c| c as &dyn Component)
-            .collect_vec()
+            .collect()
     }
 }
 
@@ -163,8 +160,14 @@ impl AirTraceGenerator<CpuBackend> for MultiFibonacciAir {
         vec![]
     }
 
-    fn to_air_prover(&self) -> impl AirProver<CpuBackend> {
-        self.clone()
+    fn to_air_prover(&self) -> AirProver<CpuBackend> {
+        AirProver {
+            prover_components: self
+                .components
+                .iter()
+                .map(|c| Box::new(c.clone()) as Box<dyn ComponentProver<CpuBackend>>)
+                .collect(),
+        }
     }
 
     fn composition_log_degree_bound(&self) -> u32 {
@@ -173,14 +176,5 @@ impl AirTraceGenerator<CpuBackend> for MultiFibonacciAir {
             .map(|component| component.max_constraint_log_degree_bound())
             .max()
             .unwrap()
-    }
-}
-
-impl AirProver<CpuBackend> for MultiFibonacciAir {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
-        self.components
-            .iter()
-            .map(|c| c as &dyn ComponentProver<CpuBackend>)
-            .collect_vec()
     }
 }

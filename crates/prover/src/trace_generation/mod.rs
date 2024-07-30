@@ -71,5 +71,5 @@ pub trait AirTraceGenerator<B: Backend>: AirTraceVerifier {
         elements: &InteractionElements,
     ) -> Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>;
 
-    fn to_air_prover(&self) -> impl AirProver<B>;
+    fn to_air_prover(&self) -> AirProver< B>;
 }

@@ -1,13 +1,12 @@
 use itertools::{zip_eq, Itertools};
 
-use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use super::{Air, AirProver, ComponentTrace};
+use super::accumulation::PointEvaluationAccumulator;
+use super::{Air, ComponentTrace};
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::pcs::{CommitmentTreeProver, TreeVec};
-use crate::core::poly::circle::SecureCirclePoly;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
@@ -120,42 +119,3 @@ pub trait AirExt: Air {
 }
 
 impl<A: Air + ?Sized> AirExt for A {}
-
-pub trait AirProverExt<B: Backend>: AirProver<B> {
-    fn compute_composition_polynomial(
-        &self,
-        random_coeff: SecureField,
-        component_traces: &[ComponentTrace<'_, B>],
-        interaction_elements: &InteractionElements,
-        lookup_values: &LookupValues,
-    ) -> SecureCirclePoly<B> {
-        let total_constraints: usize = self
-            .prover_components()
-            .iter()
-            .map(|c| c.n_constraints())
-            .sum();
-        let mut accumulator = DomainEvaluationAccumulator::new(
-            random_coeff,
-            self.composition_log_degree_bound(),
-            total_constraints,
-        );
-        zip_eq(self.prover_components(), component_traces).for_each(|(component, trace)| {
-            component.evaluate_constraint_quotients_on_domain(
-                trace,
-                &mut accumulator,
-                interaction_elements,
-                lookup_values,
-            )
-        });
-        accumulator.finalize()
-    }
-
-    fn lookup_values(&self, component_traces: &[ComponentTrace<'_, B>]) -> LookupValues {
-        let mut values = LookupValues::default();
-        zip_eq(self.prover_components(), component_traces)
-            .for_each(|(component, trace)| values.extend(component.lookup_values(trace)));
-        values
-    }
-}
-
-impl<B: Backend, A: AirProver<B>> AirProverExt<B> for A {}

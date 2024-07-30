@@ -9,7 +9,7 @@ use tracing::{span, Level};
 use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent};
-use crate::core::air::{Air, AirProver, Component, ComponentProver};
+use crate::core::air::{Air, AirProver, Component};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -209,12 +209,6 @@ impl<E: EvalAtRow> PoseidonEval<E> {
     }
 }
 
-impl AirProver<SimdBackend> for PoseidonAir {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {
-        vec![&self.component]
-    }
-}
-
 pub struct LookupData {
     initial_state: [[BaseColumn; N_STATE]; N_INSTANCES_PER_ROW],
     final_state: [[BaseColumn; N_STATE]; N_INSTANCES_PER_ROW],
@@ -392,16 +386,18 @@ pub fn prove_poseidon(log_n_instances: u32) -> (PoseidonAir, StarkProof) {
         lookup_elements,
         claimed_sum,
     };
-    let air = PoseidonAir { component };
+    let air = AirProver {
+        prover_components: vec![Box::new(component.clone())],
+    };
     let proof = prove::<SimdBackend>(
-        &air,
+        air,
         channel,
         &InteractionElements::default(),
         commitment_scheme,
     )
     .unwrap();
 
-    (air, proof)
+    (PoseidonAir { component }, proof)
 }
 
 #[cfg(test)]
@@ -529,7 +525,8 @@ mod tests {
         // Interaction columns.
         commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
         // Constant columns.
-        commitment_scheme.commit(proof.commitments[2], &[air.component.log_n_rows], channel);
+        // TODO(AlonH): Get constant column sizes better.
+        commitment_scheme.commit(proof.commitments[2], &[sizes[0][0]], channel);
 
         verify(
             &air,

@@ -11,7 +11,7 @@ use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::poly::circle::MAX_CIRCLE_DOMAIN_LOG_SIZE;
 use super::proof_of_work::ProofOfWorkVerificationError;
 use super::{ColumnVec, InteractionElements, LookupValues};
-use crate::core::air::{Air, AirExt, AirProverExt};
+use crate::core::air::{Air, AirExt};
 use crate::core::backend::CpuBackend;
 use crate::core::channel::{Blake2sChannel, Channel as ChannelTrait};
 use crate::core::circle::CirclePoint;
@@ -50,7 +50,7 @@ pub struct AdditionalProofData {
 }
 
 pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
-    air: &impl AirProver<B>,
+    air: AirProver<B>,
     channel: &mut Channel,
     interaction_elements: &InteractionElements,
     commitment_scheme: &mut CommitmentSchemeProver<'_, B>,
@@ -89,7 +89,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
     // values. This is a sanity check.
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) =
-        sampled_values_to_mask(air, &commitment_scheme_proof.sampled_values).unwrap();
+        sampled_values_to_mask(&air, &commitment_scheme_proof.sampled_values).unwrap();
 
     if composition_oods_value
         != air.eval_composition_polynomial_at_point(

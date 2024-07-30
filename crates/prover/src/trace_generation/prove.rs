@@ -2,7 +2,7 @@ use itertools::Itertools;
 use tracing::{span, Level};
 
 use super::{AirTraceGenerator, AirTraceVerifier, BASE_TRACE, INTERACTION_TRACE};
-use crate::core::air::{Air, AirExt, AirProverExt};
+use crate::core::air::{Air, AirExt};
 use crate::core::backend::Backend;
 use crate::core::channel::{Blake2sChannel, Channel as _};
 use crate::core::fields::m31::BaseField;
@@ -66,7 +66,7 @@ pub fn commit_and_prove<B: Backend + MerkleOps<MerkleHasher>>(
             .collect_vec(),
     );
 
-    prove(&air, channel, &interaction_elements, &mut commitment_scheme)
+    prove(air, channel, &interaction_elements, &mut commitment_scheme)
 }
 
 pub fn evaluate_and_commit_on_trace<'a, B: Backend + MerkleOps<MerkleHasher>>(
@@ -197,18 +197,14 @@ mod tests {
             vec![]
         }
 
-        fn to_air_prover(&self) -> impl AirProver<CpuBackend> {
-            self.clone()
+        fn to_air_prover(&self) -> AirProver<CpuBackend> {
+            AirProver {
+                prover_components: vec![Box::new(self.component.clone())],
+            }
         }
 
         fn composition_log_degree_bound(&self) -> u32 {
             self.component.max_constraint_log_degree_bound()
-        }
-    }
-
-    impl AirProver<CpuBackend> for TestAir<TestComponent> {
-        fn prover_components(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
-            vec![&self.component]
         }
     }
 

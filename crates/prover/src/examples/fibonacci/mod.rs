@@ -121,7 +121,7 @@ mod tests {
 
     use super::{Fibonacci, MultiFibonacci};
     use crate::core::air::accumulation::PointEvaluationAccumulator;
-    use crate::core::air::{AirExt, AirProverExt, Component, ComponentTrace};
+    use crate::core::air::{AirExt, Component, ComponentTrace};
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
@@ -166,7 +166,7 @@ mod tests {
 
         let random_coeff = qm31!(2213980, 2213981, 2213982, 2213983);
         let component_traces = vec![trace];
-        let composition_polynomial_poly = fib.air.compute_composition_polynomial(
+        let composition_polynomial_poly = fib.air.to_air_prover().compute_composition_polynomial(
             random_coeff,
             &component_traces,
             &InteractionElements::default(),

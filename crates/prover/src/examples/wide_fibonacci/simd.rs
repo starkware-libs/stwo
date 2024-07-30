@@ -82,8 +82,10 @@ impl AirTraceGenerator<SimdBackend> for SimdWideFibAir {
         vec![]
     }
 
-    fn to_air_prover(&self) -> impl AirProver<SimdBackend> {
-        self.clone()
+    fn to_air_prover(&self) -> AirProver<SimdBackend> {
+        AirProver {
+            prover_components: vec![Box::new(self.component.clone())],
+        }
     }
 
     fn composition_log_degree_bound(&self) -> u32 {
@@ -129,12 +131,6 @@ impl Component for SimdWideFibComponent {
             let numerator = mask[0][i][0].square() + mask[0][i + 1][0].square() - mask[0][i + 2][0];
             evaluation_accumulator.accumulate(numerator * denom_inverse);
         }
-    }
-}
-
-impl AirProver<SimdBackend> for SimdWideFibAir {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {
-        vec![&self.component]
     }
 }
 

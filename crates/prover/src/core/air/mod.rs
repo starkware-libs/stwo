@@ -4,7 +4,7 @@ use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
-use super::poly::circle::{CircleEvaluation, CirclePoly};
+use super::poly::circle::{CircleEvaluation, CirclePoly, SecureCirclePoly};
 use super::poly::BitReversedOrder;
 use super::{ColumnVec, InteractionElements, LookupValues};
 
@@ -12,7 +12,8 @@ pub mod accumulation;
 mod air_ext;
 pub mod mask;
 
-pub use air_ext::{AirExt, AirProverExt};
+pub use air_ext::AirExt;
+use itertools::zip_eq;
 
 /// Arithmetic Intermediate Representation (AIR).
 /// An Air instance is assumed to already contain all the information needed to
@@ -24,8 +25,54 @@ pub trait Air {
     fn components(&self) -> Vec<&dyn Component>;
 }
 
-pub trait AirProver<B: Backend>: Air {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<B>>;
+pub struct AirProver<B: Backend> {
+    pub prover_components: Vec<Box<dyn ComponentProver<B>>>,
+}
+
+impl<B: Backend> AirProver<B> {
+    pub fn compute_composition_polynomial(
+        &self,
+        random_coeff: SecureField,
+        component_traces: &[ComponentTrace<'_, B>],
+        interaction_elements: &InteractionElements,
+        lookup_values: &LookupValues,
+    ) -> SecureCirclePoly<B> {
+        let total_constraints: usize = self
+            .prover_components
+            .iter()
+            .map(|c| c.n_constraints())
+            .sum();
+        let mut accumulator = DomainEvaluationAccumulator::new(
+            random_coeff,
+            self.composition_log_degree_bound(),
+            total_constraints,
+        );
+        zip_eq(&self.prover_components, component_traces).for_each(|(component, trace)| {
+            component.evaluate_constraint_quotients_on_domain(
+                trace,
+                &mut accumulator,
+                interaction_elements,
+                lookup_values,
+            )
+        });
+        accumulator.finalize()
+    }
+
+    pub fn lookup_values(&self, component_traces: &[ComponentTrace<'_, B>]) -> LookupValues {
+        let mut values = LookupValues::default();
+        zip_eq(&self.prover_components, component_traces)
+            .for_each(|(component, trace)| values.extend(component.lookup_values(trace)));
+        values
+    }
+}
+
+impl<B: Backend> Air for AirProver<B> {
+    fn components(&self) -> Vec<&dyn Component> {
+        self.prover_components
+            .iter()
+            .map(|c| c.as_ref() as &dyn Component)
+            .collect()
+    }
 }
 
 /// A component is a set of trace columns of various sizes along with a set of
