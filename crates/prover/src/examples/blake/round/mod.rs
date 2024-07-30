@@ -3,13 +3,12 @@ mod gen;
 
 use constraints::BlakeRoundEval;
 use num_traits::Zero;
-pub use r#gen::BlakeRoundInput;
+pub use r#gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
 
-use super::{BlakeXorElements, N_ROUND_INPUT_FELTS, STATE_SIZE};
+use super::{BlakeXorElements, N_ROUND_INPUT_FELTS};
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, InfoEvaluator};
 use crate::core::fields::qm31::SecureField;
-use crate::examples::blake::XorAccums;
 
 pub fn blake_round_info() -> InfoEvaluator {
     let component = BlakeRoundComponent {
@@ -36,7 +35,7 @@ impl FrameworkComponent for BlakeRoundComponent {
     fn max_constraint_log_degree_bound(&self) -> u32 {
         self.log_size + 1
     }
-    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+    fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
         let blake_eval = BlakeRoundEval {
             eval,
             xor_lookup_elements: &self.xor_lookup_elements,
@@ -54,12 +53,8 @@ mod tests {
     use itertools::Itertools;
 
     use crate::constraint_framework::constant_columns::gen_is_first;
-    use crate::constraint_framework::logup::LookupElements;
     use crate::constraint_framework::FrameworkComponent;
-    use crate::core::backend::simd::SimdBackend;
-    use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
-    use crate::core::poly::BitReversedOrder;
+    use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::round::r#gen::{
         generate_interaction_trace, generate_trace, BlakeRoundInput,
     };
@@ -76,7 +71,7 @@ mod tests {
         let (trace, lookup_data) = generate_trace(
             LOG_SIZE,
             &(0..(1 << LOG_SIZE))
-                .map(|i| BlakeRoundInput {
+                .map(|_| BlakeRoundInput {
                     v: std::array::from_fn(|i| Simd::splat(i as u32)),
                     m: std::array::from_fn(|i| Simd::splat((i + 1) as u32)),
                 })
