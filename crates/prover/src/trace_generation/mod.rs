@@ -11,7 +11,8 @@ use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
-use crate::core::{ColumnVec, InteractionElements};
+use crate::core::prover::VerificationError;
+use crate::core::{ColumnVec, InteractionElements, LookupValues};
 
 pub const BASE_TRACE: usize = 0;
 pub const INTERACTION_TRACE: usize = 1;
@@ -51,6 +52,9 @@ pub trait ComponentTraceGenerator<B: Backend> {
 
 pub trait AirTraceVerifier {
     fn interaction_elements(&self, channel: &mut Blake2sChannel) -> InteractionElements;
+
+    /// Verifies the lookups done in the Air.
+    fn verify_lookups(&self, lookup_values: &LookupValues) -> Result<(), VerificationError>;
 }
 
 pub trait AirTraceGenerator<B: Backend>: AirTraceVerifier {

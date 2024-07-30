@@ -24,6 +24,7 @@ use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::hasher::Hasher;
 use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::verifier::MerkleVerificationError;
+use crate::trace_generation::AirTraceVerifier;
 
 type Channel = Blake2sChannel;
 type ChannelHasher = Blake2sHasher;
@@ -111,7 +112,7 @@ pub fn prove<B: Backend + MerkleOps<MerkleHasher>>(
 }
 
 pub fn verify(
-    air: &impl Air,
+    air: &(impl Air + AirTraceVerifier),
     channel: &mut Blake2sChannel,
     interaction_elements: &InteractionElements,
     commitment_scheme: &mut CommitmentSchemeVerifier,

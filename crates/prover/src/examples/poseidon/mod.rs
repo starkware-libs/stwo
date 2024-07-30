@@ -75,15 +75,15 @@ impl Air for PoseidonAir {
     fn components(&self) -> Vec<&dyn Component> {
         vec![&self.component]
     }
-
-    fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
-        Ok(())
-    }
 }
 
 impl AirTraceVerifier for PoseidonAir {
     fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
         InteractionElements::default()
+    }
+
+    fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
+        Ok(())
     }
 }
 
