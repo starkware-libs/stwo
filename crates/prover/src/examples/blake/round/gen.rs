@@ -18,7 +18,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 use crate::examples::blake::round::blake_round_info;
-use crate::examples::blake::XorAccums;
+use crate::examples::blake::{to_felts, XorAccums};
 
 pub struct BlakeLookupData {
     xor_lookups: Vec<(u32, [BaseColumn; 3])>,
@@ -94,12 +94,9 @@ impl<'a> TraceGeneratorRow<'a> {
         self.g(v.get_many_mut([3, 4, 9, 14]).unwrap(), m[14], m[15]);
 
         chain![input_v.iter(), v.iter(), m.iter()]
-            .flat_map(|s| [s & u32x16::splat(0xffff), s >> 16])
+            .flat_map(to_felts)
             .enumerate()
-            .for_each(|(i, val)| {
-                self.gen.round_lookups[i].data[self.vec_row] =
-                    unsafe { PackedBaseField::from_simd_unchecked(val) }
-            });
+            .for_each(|(i, val)| self.gen.round_lookups[i].data[self.vec_row] = val);
     }
 
     fn g(&mut self, v: [&mut u32x16; 4], m0: u32x16, m1: u32x16) {
