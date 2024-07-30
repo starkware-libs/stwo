@@ -17,6 +17,7 @@ use std::simd::u32x16;
 
 use constraints::XorTableEval;
 use itertools::Itertools;
+pub use r#gen::{generate_constant_trace, generate_interaction_trace, generate_trace};
 
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent};

@@ -1,19 +1,18 @@
 //! AIR for blake2s and blake3.
 //! See <https://en.wikipedia.org/wiki/BLAKE_(hash_function)>
 
-#![allow(unused)]
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Sub};
 use std::simd::u32x16;
 
 use xor_table::{XorAccumulator, XorElements};
 
-use crate::constraint_framework::logup::LookupElements;
 use crate::core::backend::simd::m31::PackedBaseField;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::FieldExpOps;
 
+mod air;
 mod round;
 mod scheduler;
 mod xor_table;

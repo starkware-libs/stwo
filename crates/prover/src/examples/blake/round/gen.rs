@@ -6,7 +6,7 @@ use num_traits::One;
 use tracing::{span, Level};
 
 use super::{BlakeXorElements, RoundElements};
-use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
+use crate::constraint_framework::logup::LogupTraceGenerator;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -212,6 +212,7 @@ pub fn generate_trace(
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     BlakeRoundLookupData,
 ) {
+    let _span = span!(Level::INFO, "Round Generation").entered();
     let mut generator = TraceGenerator::new(log_size);
 
     for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
