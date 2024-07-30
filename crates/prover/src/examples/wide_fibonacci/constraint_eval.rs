@@ -20,6 +20,7 @@ use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::prover::VerificationError;
 use crate::core::utils::{
     bit_reverse, point_vanish_denominator_inverses, previous_bit_reversed_circle_domain_index,
     shifted_secure_combination,
@@ -37,6 +38,10 @@ impl AirTraceVerifier for WideFibAir {
         let ids = self.component.interaction_element_ids();
         let elements = channel.draw_felts(ids.len());
         InteractionElements::new(BTreeMap::from_iter(zip_eq(ids, elements)))
+    }
+
+    fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
+        Ok(())
     }
 }
 

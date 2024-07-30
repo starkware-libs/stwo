@@ -22,10 +22,10 @@ use crate::core::fields::{FieldExpOps, IntoSlice};
 use crate::core::pcs::CommitmentSchemeProver;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{prove, StarkProof, VerificationError, LOG_BLOWUP_FACTOR};
+use crate::core::prover::{prove, StarkProof, LOG_BLOWUP_FACTOR};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::hasher::Hasher;
-use crate::core::{ColumnVec, InteractionElements, LookupValues};
+use crate::core::{ColumnVec, InteractionElements};
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
@@ -50,10 +50,6 @@ pub struct PoseidonAir {
 impl Air for PoseidonAir {
     fn components(&self) -> Vec<&dyn Component> {
         vec![&self.component]
-    }
-
-    fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
-        Ok(())
     }
 }
 
