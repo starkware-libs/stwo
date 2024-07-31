@@ -131,6 +131,7 @@ pub fn commit_and_verify(
             .map(|v| SecureField::from(*v))
             .collect_vec(),
     );
+    air.verify_lookups(&proof.lookup_values)?;
     verify(
         air,
         channel,
@@ -175,15 +176,15 @@ mod tests {
         fn components(&self) -> Vec<&dyn Component> {
             vec![&self.component]
         }
-
-        fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
-            Ok(())
-        }
     }
 
     impl AirTraceVerifier for TestAir<TestComponent> {
         fn interaction_elements(&self, _channel: &mut Blake2sChannel) -> InteractionElements {
             InteractionElements::default()
+        }
+
+        fn verify_lookups(&self, _lookup_values: &LookupValues) -> Result<(), VerificationError> {
+            Ok(())
         }
     }
 

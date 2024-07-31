@@ -153,7 +153,6 @@ pub fn verify(
         return Err(VerificationError::OodsNotMatching);
     }
 
-    air.verify_lookups(&proof.lookup_values)?;
     commitment_scheme.verify_values(sample_points, proof.commitment_scheme_proof, channel)
 }
 
