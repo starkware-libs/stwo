@@ -32,6 +32,7 @@ pub trait EvalAtRow {
     type F: FieldExpOps
         + Copy
         + Debug
+        + Zero
         + AddAssign<Self::F>
         + AddAssign<BaseField>
         + Add<Self::F, Output = Self::F>
