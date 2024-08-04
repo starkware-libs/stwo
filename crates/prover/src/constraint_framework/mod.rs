@@ -40,6 +40,7 @@ pub trait EvalAtRow {
         + Mul<BaseField, Output = Self::F>
         + Add<SecureField, Output = Self::EF>
         + Mul<SecureField, Output = Self::EF>
+        + Neg<Output = Self::F>
         + From<BaseField>;
 
     /// A field type representing the closure of `F` with multiplying by [SecureField]. Constraints
@@ -56,7 +57,8 @@ pub trait EvalAtRow {
         + Mul<Self::F, Output = Self::EF>
         + Sub<Self::EF, Output = Self::EF>
         + Mul<Self::EF, Output = Self::EF>
-        + From<SecureField>;
+        + From<SecureField>
+        + From<Self::F>;
 
     /// Returns the next mask value for the first interaction at offset 0.
     fn next_trace_mask(&mut self) -> Self::F {
