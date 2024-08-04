@@ -6,27 +6,11 @@ use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
-use super::{ColumnVec, InteractionElements, LookupValues};
+use super::ColumnVec;
 
 pub mod accumulation;
-mod air_ext;
+pub mod air_ext;
 pub mod mask;
-
-pub use air_ext::{AirExt, AirProverExt};
-
-/// Arithmetic Intermediate Representation (AIR).
-/// An Air instance is assumed to already contain all the information needed to
-/// evaluate the constraints.
-/// For instance, all interaction elements are assumed to be present in it.
-/// Therefore, an AIR is generated only after the initial trace commitment phase.
-// TODO(spapini): consider renaming this struct.
-pub trait Air {
-    fn components(&self) -> Vec<&dyn Component>;
-}
-
-pub trait AirProver<B: Backend>: Air {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<B>>;
-}
 
 /// A component is a set of trace columns of various sizes along with a set of
 /// constraints on them.
@@ -52,8 +36,6 @@ pub trait Component {
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
-        interaction_elements: &InteractionElements,
-        lookup_values: &LookupValues,
     );
 }
 
@@ -64,12 +46,7 @@ pub trait ComponentProver<B: Backend>: Component {
         &self,
         trace: &ComponentTrace<'_, B>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
-        interaction_elements: &InteractionElements,
-        lookup_values: &LookupValues,
     );
-
-    /// Returns the values needed to evaluate the components lookup boundary constraints.
-    fn lookup_values(&self, _trace: &ComponentTrace<'_, B>) -> LookupValues;
 }
 
 /// A component trace is a set of polynomials for each column on that component.
