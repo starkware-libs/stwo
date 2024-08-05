@@ -5,7 +5,6 @@ use tracing::{span, Level};
 use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::{assert_constraints, EvalAtRow, FrameworkComponent};
-use crate::core::air::{Air, AirProver, Component, ComponentProver};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -22,21 +21,6 @@ use crate::core::prover::{prove, StarkProof, LOG_BLOWUP_FACTOR};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::{ColumnVec, InteractionElements};
-
-#[derive(Clone)]
-pub struct PlonkAir {
-    pub component: PlonkComponent,
-}
-impl Air for PlonkAir {
-    fn components(&self) -> Vec<&dyn Component> {
-        vec![&self.component]
-    }
-}
-impl AirProver<SimdBackend> for PlonkAir {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {
-        vec![&self.component]
-    }
-}
 
 #[derive(Clone)]
 pub struct PlonkComponent {
@@ -159,7 +143,7 @@ pub fn gen_interaction_trace(
 }
 
 #[allow(unused)]
-pub fn prove_fibonacci_plonk(log_n_rows: u32) -> (PlonkAir, StarkProof<Blake2sMerkleHasher>) {
+pub fn prove_fibonacci_plonk(log_n_rows: u32) -> (PlonkComponent, StarkProof<Blake2sMerkleHasher>) {
     assert!(log_n_rows >= LOG_N_LANES);
 
     // Prepare a fibonacci circuit.
@@ -249,16 +233,15 @@ pub fn prove_fibonacci_plonk(log_n_rows: u32) -> (PlonkAir, StarkProof<Blake2sMe
         component.evaluate(eval);
     });
 
-    let air = PlonkAir { component };
     let proof = prove::<SimdBackend, _, _>(
-        &air,
+        &[&component],
         channel,
         &InteractionElements::default(),
         commitment_scheme,
     )
     .unwrap();
 
-    (air, proof)
+    (component, proof)
 }
 
 #[cfg(test)]
@@ -266,7 +249,7 @@ mod tests {
     use std::env;
 
     use crate::constraint_framework::logup::LookupElements;
-    use crate::core::air::AirExt;
+    use crate::core::air::Component;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
@@ -285,7 +268,7 @@ mod tests {
             .unwrap();
 
         // Prove.
-        let (air, proof) = prove_fibonacci_plonk(log_n_instances);
+        let (component, proof) = prove_fibonacci_plonk(log_n_instances);
 
         // Verify.
         // TODO: Create Air instance independently.
@@ -294,12 +277,12 @@ mod tests {
 
         // Decommit.
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-        let sizes = air.column_log_sizes();
+        let sizes = component.trace_log_degree_bounds();
         // Trace columns.
         commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
         // Draw lookup element.
-        let lookup_elements = LookupElements::draw(channel);
-        assert_eq!(lookup_elements, air.component.lookup_elements);
+        let lookup_elements = LookupElements::<2>::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
         // TODO(spapini): Check claimed sum against first and last instances.
         // Interaction columns.
         commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
@@ -307,7 +290,7 @@ mod tests {
         commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
 
         verify(
-            &air,
+            &[&component],
             channel,
             &InteractionElements::default(),
             commitment_scheme,
