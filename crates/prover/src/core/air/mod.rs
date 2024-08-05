@@ -1,3 +1,5 @@
+pub use components::{ComponentProvers, Components};
+
 use self::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::backend::Backend;
 use super::circle::CirclePoint;
@@ -9,10 +11,8 @@ use super::poly::BitReversedOrder;
 use super::{ColumnVec, InteractionElements, LookupValues};
 
 pub mod accumulation;
-mod air_ext;
+mod components;
 pub mod mask;
-
-pub use air_ext::{AirExt, AirProverExt};
 
 /// Arithmetic Intermediate Representation (AIR).
 /// An Air instance is assumed to already contain all the information needed to
