@@ -9,7 +9,6 @@ use tracing::{span, Level};
 use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent};
-use crate::core::air::{Air, AirProver, Component, ComponentProver};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -42,18 +41,8 @@ const EXTERNAL_ROUND_CONSTS: [[BaseField; N_STATE]; 2 * N_HALF_FULL_ROUNDS] =
 const INTERNAL_ROUND_CONSTS: [BaseField; N_PARTIAL_ROUNDS] =
     [BaseField::from_u32_unchecked(1234); N_PARTIAL_ROUNDS];
 
-#[derive(Clone)]
-pub struct PoseidonAir {
-    pub component: PoseidonComponent,
-}
-
-impl Air for PoseidonAir {
-    fn components(&self) -> Vec<&dyn Component> {
-        vec![&self.component]
-    }
-}
-
 pub type PoseidonElements = LookupElements<{ N_STATE * 2 }>;
+
 #[derive(Clone)]
 pub struct PoseidonComponent {
     pub log_n_rows: u32,
@@ -210,12 +199,6 @@ impl<'a, E: EvalAtRow> PoseidonEval<'a, E> {
     }
 }
 
-impl AirProver<SimdBackend> for PoseidonAir {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {
-        vec![&self.component]
-    }
-}
-
 pub struct LookupData {
     initial_state: [[BaseColumn; N_STATE]; N_INSTANCES_PER_ROW],
     final_state: [[BaseColumn; N_STATE]; N_INSTANCES_PER_ROW],
@@ -344,7 +327,9 @@ pub fn gen_interaction_trace(
     logup_gen.finalize()
 }
 
-pub fn prove_poseidon(log_n_instances: u32) -> (PoseidonAir, StarkProof<Blake2sMerkleHasher>) {
+pub fn prove_poseidon(
+    log_n_instances: u32,
+) -> (PoseidonComponent, StarkProof<Blake2sMerkleHasher>) {
     assert!(log_n_instances >= N_LOG_INSTANCES_PER_ROW as u32);
     let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
 
@@ -393,16 +378,15 @@ pub fn prove_poseidon(log_n_instances: u32) -> (PoseidonAir, StarkProof<Blake2sM
         lookup_elements,
         claimed_sum,
     };
-    let air = PoseidonAir { component };
     let proof = prove::<SimdBackend, _, _>(
-        &air,
+        &[&component],
         channel,
         &InteractionElements::default(),
         commitment_scheme,
     )
     .unwrap();
 
-    (air, proof)
+    (component, proof)
 }
 
 #[cfg(test)]
@@ -415,7 +399,7 @@ mod tests {
     use crate::constraint_framework::constant_columns::gen_is_first;
     use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
     use crate::constraint_framework::{assert_constraints, EvalAtRow};
-    use crate::core::air::AirExt;
+    use crate::core::air::Component;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
@@ -506,7 +490,7 @@ mod tests {
             .unwrap();
 
         // Prove.
-        let (air, proof) = prove_poseidon(log_n_instances);
+        let (component, proof) = prove_poseidon(log_n_instances);
 
         // Verify.
         // TODO: Create Air instance independently.
@@ -515,20 +499,19 @@ mod tests {
 
         // Decommit.
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-        let sizes = air.column_log_sizes();
+        let sizes = component.trace_log_degree_bounds();
         // Trace columns.
         commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
         // Draw lookup element.
-        let lookup_elements = PoseidonElements::draw(channel);
-        assert_eq!(lookup_elements, air.component.lookup_elements);
+        let _lookup_elements = PoseidonElements::draw(channel);
         // TODO(spapini): Check claimed sum against first and last instances.
         // Interaction columns.
         commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
         // Constant columns.
-        commitment_scheme.commit(proof.commitments[2], &[air.component.log_n_rows], channel);
+        commitment_scheme.commit(proof.commitments[2], &[component.log_n_rows], channel);
 
         verify(
-            &air,
+            &[&component],
             channel,
             &InteractionElements::default(),
             commitment_scheme,
