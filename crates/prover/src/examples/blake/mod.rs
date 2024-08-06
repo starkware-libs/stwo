@@ -9,7 +9,7 @@ use std::simd::u32x16;
 use xor_table::{XorAccumulator, XorElements};
 
 use crate::constraint_framework::logup::LookupElements;
-use crate::core::channel::Blake2sChannel;
+use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::FieldExpOps;
 
@@ -46,7 +46,7 @@ pub struct BlakeXorElements {
     xor4: XorElements,
 }
 impl BlakeXorElements {
-    fn draw(channel: &mut Blake2sChannel) -> Self {
+    fn draw(channel: &mut impl Channel) -> Self {
         Self {
             xor12: XorElements::draw(channel),
             xor9: XorElements::draw(channel),
