@@ -10,7 +10,7 @@ use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Column;
-use crate::core::channel::{Blake2sChannel, Channel};
+use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
@@ -117,7 +117,7 @@ pub struct LookupElements<const N: usize> {
     alpha_powers: [SecureField; N],
 }
 impl<const N: usize> LookupElements<N> {
-    pub fn draw(channel: &mut Blake2sChannel) -> Self {
+    pub fn draw(channel: &mut impl Channel) -> Self {
         let [z, alpha] = channel.draw_felts(2).try_into().unwrap();
         let mut cur = SecureField::one();
         let alpha_powers = std::array::from_fn(|_| {
