@@ -18,21 +18,23 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 use crate::examples::blake::round::blake_round_info;
-use crate::examples::blake::XorAccums;
+use crate::examples::blake::{
+    to_felts, XorAccums, MESSAGE_SIZE, N_FELTS_IN_U32, N_ROUND_INPUT_FELTS, STATE_SIZE,
+};
 
 pub struct BlakeRoundLookupData {
     /// A vector of (w, [a_col, b_col, c_col]) for each xor lookup.
     /// w is the xor width. c_col is the xor col of a_col and b_col.
     xor_lookups: Vec<(u32, [BaseColumn; 3])>,
     /// A column of round lookup values (v_in, v_out, m).
-    round_lookup: [BaseColumn; 16 * 3 * 2],
+    round_lookup: [BaseColumn; N_ROUND_INPUT_FELTS],
 }
 
 pub struct TraceGenerator {
     log_size: u32,
     trace: Vec<BaseColumn>,
     xor_lookups: Vec<(u32, [BaseColumn; 3])>,
-    round_lookup: [BaseColumn; 16 * 3 * 2],
+    round_lookup: [BaseColumn; N_ROUND_INPUT_FELTS],
 }
 impl TraceGenerator {
     fn new(log_size: u32) -> Self {
@@ -98,12 +100,9 @@ impl<'a> TraceGeneratorRow<'a> {
         self.g(v.get_many_mut([3, 4, 9, 14]).unwrap(), m[14], m[15]);
 
         chain![input_v.iter(), v.iter(), m.iter()]
-            .flat_map(|s| [s & u32x16::splat(0xffff), s >> 16])
+            .flat_map(to_felts)
             .enumerate()
-            .for_each(|(i, val)| {
-                self.gen.round_lookup[i].data[self.vec_row] =
-                    unsafe { PackedBaseField::from_simd_unchecked(val) }
-            });
+            .for_each(|(i, felt)| self.gen.round_lookup[i].data[self.vec_row] = felt);
     }
 
     fn g(&mut self, v: [&mut u32x16; 4], m0: u32x16, m1: u32x16) {
@@ -203,8 +202,8 @@ impl<'a> TraceGeneratorRow<'a> {
 
 #[derive(Copy, Clone, Default)]
 pub struct BlakeRoundInput {
-    pub v: [u32x16; 16],
-    pub m: [u32x16; 16],
+    pub v: [u32x16; STATE_SIZE],
+    pub m: [u32x16; STATE_SIZE],
 }
 
 pub fn generate_trace(
