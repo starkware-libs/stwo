@@ -2,7 +2,7 @@ use itertools::Itertools;
 use tracing::{span, Level};
 
 use super::{AirTraceGenerator, AirTraceVerifier, BASE_TRACE, INTERACTION_TRACE};
-use crate::core::air::{Air, AirExt, AirProverExt};
+use crate::core::air::{Air, AirProver, ComponentProvers, Components};
 use crate::core::backend::Backend;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
@@ -58,16 +58,23 @@ where
     let (mut commitment_scheme, interaction_elements) =
         evaluate_and_commit_on_trace(air, channel, &twiddles, trace)?;
 
-    let air = air.to_air_prover();
+    let air_prover = &air.to_air_prover();
+    let components = ComponentProvers(air_prover.component_provers());
     channel.mix_felts(
-        &air.lookup_values(&air.component_traces(&commitment_scheme.trees))
+        &components
+            .lookup_values(&components.component_traces(&commitment_scheme.trees))
             .0
             .values()
             .map(|v| SecureField::from(*v))
             .collect_vec(),
     );
 
-    prove(&air, channel, &interaction_elements, &mut commitment_scheme)
+    prove(
+        &components.0,
+        channel,
+        &interaction_elements,
+        &mut commitment_scheme,
+    )
 }
 
 pub fn evaluate_and_commit_on_trace<'a, B, H, C>(
@@ -117,7 +124,8 @@ where
 
     // TODO(spapini): Retrieve column_log_sizes from AirTraceVerifier, and remove the dependency on
     // Air.
-    let column_log_sizes = air.column_log_sizes();
+    let components = Components(air.components());
+    let column_log_sizes = components.column_log_sizes();
     commitment_scheme.commit(
         proof.commitments[BASE_TRACE],
         &column_log_sizes[BASE_TRACE],
@@ -125,7 +133,7 @@ where
     );
     let interaction_elements = air.interaction_elements(channel);
 
-    if air.column_log_sizes().len() == 2 {
+    if components.column_log_sizes().len() == 2 {
         commitment_scheme.commit(
             proof.commitments[INTERACTION_TRACE],
             &column_log_sizes[INTERACTION_TRACE],
@@ -143,7 +151,7 @@ where
     );
     air.verify_lookups(&proof.lookup_values)?;
     verify(
-        air,
+        &components.0,
         channel,
         &interaction_elements,
         &mut commitment_scheme,
@@ -218,7 +226,7 @@ mod tests {
     }
 
     impl AirProver<CpuBackend> for TestAir<TestComponent> {
-        fn prover_components(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
+        fn component_provers(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
             vec![&self.component]
         }
     }

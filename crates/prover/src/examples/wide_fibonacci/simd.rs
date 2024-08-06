@@ -133,7 +133,7 @@ impl Component for SimdWideFibComponent {
 }
 
 impl AirProver<SimdBackend> for SimdWideFibAir {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {
+    fn component_provers(&self) -> Vec<&dyn ComponentProver<SimdBackend>> {
         vec![&self.component]
     }
 }

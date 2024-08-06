@@ -65,7 +65,7 @@ impl AirTraceGenerator<CpuBackend> for WideFibAir {
 }
 
 impl AirProver<CpuBackend> for WideFibAir {
-    fn prover_components(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
+    fn component_provers(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
         vec![&self.component]
     }
 }
