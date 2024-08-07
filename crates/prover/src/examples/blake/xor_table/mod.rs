@@ -17,13 +17,26 @@ use std::simd::u32x16;
 
 use constraints::XorTableEval;
 use itertools::Itertools;
+use num_traits::Zero;
 pub use r#gen::{generate_constant_trace, generate_interaction_trace, generate_trace};
 
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
-use crate::constraint_framework::{EvalAtRow, FrameworkComponent};
+use crate::constraint_framework::{EvalAtRow, FrameworkComponent, InfoEvaluator};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::Column;
 use crate::core::fields::qm31::SecureField;
+use crate::core::pcs::TreeVec;
+
+pub fn trace_sizes<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> TreeVec<Vec<u32>> {
+    let component = XorTableComponent::<ELEM_BITS, EXPAND_BITS> {
+        lookup_elements: LookupElements::<3>::dummy(),
+        claimed_sum: SecureField::zero(),
+    };
+    let info = component.evaluate(InfoEvaluator::default());
+    info.mask_offsets
+        .as_cols_ref()
+        .map_cols(|_| column_bits::<ELEM_BITS, EXPAND_BITS>())
+}
 
 const fn limb_bits<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> u32 {
     ELEM_BITS - EXPAND_BITS

@@ -1,7 +1,7 @@
 use std::simd::u32x16;
 
 use itertools::{chain, Itertools};
-use num_traits::One;
+use num_traits::Zero;
 use tracing::{span, Level};
 
 use super::{blake_scheduler_info, BlakeElements};
@@ -158,9 +158,11 @@ pub fn gen_interaction_trace(
                     .each_ref()
                     .map(|l| l.data[vec_row]),
             );
-            col_gen.write_frac(vec_row, p_blake - p_round, p_round * p_blake);
+            // TODO(spapini): Change blake numerator to p_blake - p_round.
+            col_gen.write_frac(vec_row, p_blake, p_round * p_blake);
         } else {
-            col_gen.write_frac(vec_row, -PackedSecureField::one(), p_blake);
+            // TODO(spapini): Change numerator to -1.
+            col_gen.write_frac(vec_row, PackedSecureField::zero(), p_blake);
         }
     }
     col_gen.finalize_col();

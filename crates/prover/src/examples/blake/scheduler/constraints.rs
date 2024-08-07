@@ -1,5 +1,5 @@
 use itertools::{chain, Itertools};
-use num_traits::One;
+use num_traits::{One, Zero};
 
 use super::BlakeElements;
 use crate::constraint_framework::logup::LogupAtRow;
@@ -42,10 +42,11 @@ impl<'a, E: EvalAtRow> BlakeSchedulerEval<'a, E> {
         let input_state = &states[0];
         let output_state = &states[N_ROUNDS];
 
-        // TODO: support multiplicities.
+        // TODO(spapini): Support multiplicities.
+        // TODO(spapini): Change to -1.
         self.logup.push_lookup(
             &mut self.eval,
-            -E::EF::one(),
+            E::EF::zero(),
             &chain![
                 input_state.iter().copied().flat_map(Fu32::to_felts),
                 output_state.iter().copied().flat_map(Fu32::to_felts),
