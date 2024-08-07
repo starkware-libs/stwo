@@ -11,7 +11,7 @@ parallel = ["rayon"]
 [dependencies]
 blake2.workspace = true
 blake3.workspace = true
-bytemuck = { workspace = true, features = ["derive"] }
+bytemuck = { workspace = true, features = ["derive", "extern_crate_alloc"] }
 cfg-if = "1.0.0"
 downcast-rs = "1.2"
 educe.workspace = true
