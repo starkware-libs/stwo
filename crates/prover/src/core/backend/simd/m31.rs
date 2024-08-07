@@ -166,6 +166,15 @@ impl Mul<M31> for PackedM31 {
     }
 }
 
+impl Add<M31> for PackedM31 {
+    type Output = PackedM31;
+
+    #[inline(always)]
+    fn add(self, rhs: M31) -> Self::Output {
+        PackedM31::broadcast(rhs) + self
+    }
+}
+
 impl Add<QM31> for PackedM31 {
     type Output = PackedQM31;
 
