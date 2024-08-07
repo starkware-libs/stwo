@@ -6,7 +6,9 @@ use tracing::{span, Level};
 use super::{EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, ComponentTrace};
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::backend::simd::column::VeryPackedSecureColumnByCoords;
+use crate::core::backend::simd::m31::LOG_N_LANES;
+use crate::core::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
@@ -123,7 +125,9 @@ impl<C: FrameworkComponent> ComponentProver<SimdBackend> for C {
         accum.random_coeff_powers.reverse();
 
         let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
-        for vec_row in 0..(1 << (eval_domain.log_size() - LOG_N_LANES)) {
+        let col = unsafe { VeryPackedSecureColumnByCoords::transform_under_mut(accum.col) };
+
+        for vec_row in 0..(1 << (eval_domain.log_size() - LOG_N_LANES - LOG_N_VERY_PACKED_ELEMS)) {
             let trace_cols = trace.as_cols_ref().map_cols(|c| c.as_ref());
 
             // Evaluate constrains at row.
@@ -138,12 +142,11 @@ impl<C: FrameworkComponent> ComponentProver<SimdBackend> for C {
 
             // Finalize row.
             unsafe {
-                let denom_inv = PackedBaseField::broadcast(
-                    denom_inv[vec_row >> (trace_domain.log_size() - LOG_N_LANES)],
+                let denom_inv = VeryPackedBaseField::broadcast(
+                    denom_inv[vec_row
+                        >> (trace_domain.log_size() - LOG_N_LANES - LOG_N_VERY_PACKED_ELEMS)],
                 );
-                accum
-                    .col
-                    .set_packed(vec_row, accum.col.packed_at(vec_row) + row_res * denom_inv)
+                col.set_packed(vec_row, col.packed_at(vec_row) + row_res * denom_inv)
             }
         }
     }
