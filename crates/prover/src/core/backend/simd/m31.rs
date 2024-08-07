@@ -1,3 +1,4 @@
+use std::iter::Sum;
 use std::mem::transmute;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::ptr;
@@ -267,6 +268,12 @@ impl From<BaseField> for PackedM31 {
 impl Distribution<PackedM31> for Standard {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> PackedM31 {
         PackedM31::from_array(rng.gen())
+    }
+}
+
+impl Sum for PackedM31 {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::zero(), Add::add)
     }
 }
 
