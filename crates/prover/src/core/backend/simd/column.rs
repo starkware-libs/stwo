@@ -389,7 +389,7 @@ pub struct VeryPackedBaseColumn {
 }
 
 impl VeryPackedBaseColumn {
-    /// Transforms a &BaseColumn to a &VeryPackedBaseColumn.
+    /// Transforms a `&BaseColumn` to a `&VeryPackedBaseColumn`.
     /// # Safety
     ///
     /// The resulting pointer does not update the underlying `data`'s length.
@@ -533,8 +533,8 @@ impl VeryPackedSecureColumnByCoords {
         .collect()
     }
 
-    /// Transforms a &mut SecureColumnByCoords<SimdBackend> to a &mut
-    /// VeryPackedSecureColumnByCoords.
+    /// Transforms a `&mut SecureColumnByCoords<SimdBackend>` to a
+    /// `&mut VeryPackedSecureColumnByCoords`.
     ///
     /// # Safety
     ///
