@@ -2,7 +2,6 @@ use itertools::{chain, Itertools};
 use num_traits::One;
 use tracing::{span, Level};
 
-use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::{assert_constraints, EvalAtRow, FrameworkComponent};
 use crate::core::backend::simd::column::BaseColumn;
@@ -39,8 +38,7 @@ impl FrameworkComponent for PlonkComponent {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(2, [0]);
-        let mut logup = LogupAtRow::<2, _>::new(1, self.claimed_sum, is_first);
+        let mut logup = LogupAtRow::<2, _>::new(1, self.claimed_sum, self.log_n_rows);
 
         let [a_wire] = eval.next_interaction_mask(2, [0]);
         let [b_wire] = eval.next_interaction_mask(2, [0]);
@@ -201,17 +199,14 @@ pub fn prove_fibonacci_plonk(log_n_rows: u32) -> (PlonkComponent, StarkProof<Bla
     let span = span!(Level::INFO, "Constant").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(
-        chain!(
-            [gen_is_first(log_n_rows)],
-            [circuit.a_wire, circuit.b_wire, circuit.c_wire, circuit.op]
-                .into_iter()
-                .map(|col| {
-                    CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(
-                        CanonicCoset::new(log_n_rows).circle_domain(),
-                        col,
-                    )
-                })
-        )
+        chain!([circuit.a_wire, circuit.b_wire, circuit.c_wire, circuit.op]
+            .into_iter()
+            .map(|col| {
+                CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(
+                    CanonicCoset::new(log_n_rows).circle_domain(),
+                    col,
+                )
+            }))
         .collect_vec(),
     );
     tree_builder.commit(channel);

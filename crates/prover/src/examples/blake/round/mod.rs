@@ -37,12 +37,11 @@ impl FrameworkComponent for BlakeRoundComponent {
         self.log_size + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(2, [0]);
         let blake_eval = BlakeRoundEval {
             eval,
             xor_lookup_elements: &self.xor_lookup_elements,
             round_lookup_elements: &self.round_lookup_elements,
-            logup: LogupAtRow::new(1, self.claimed_sum, is_first),
+            logup: LogupAtRow::new(1, self.claimed_sum, self.log_size),
         };
         blake_eval.eval()
     }

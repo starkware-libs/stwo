@@ -36,12 +36,11 @@ impl FrameworkComponent for BlakeSchedulerComponent {
         self.log_size + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(2, [0]);
         let blake_eval = BlakeSchedulerEval {
             eval,
             blake_lookup_elements: &self.blake_lookup_elements,
             round_lookup_elements: &self.round_lookup_elements,
-            logup: LogupAtRow::new(1, self.claimed_sum, is_first),
+            logup: LogupAtRow::new(1, self.claimed_sum, self.log_size),
         };
         blake_eval.eval()
     }
@@ -53,7 +52,6 @@ mod tests {
 
     use itertools::Itertools;
 
-    use crate::constraint_framework::constant_columns::gen_is_first;
     use crate::constraint_framework::logup::LookupElements;
     use crate::constraint_framework::FrameworkComponent;
     use crate::core::backend::simd::SimdBackend;
@@ -90,7 +88,7 @@ mod tests {
             &blake_lookup_elements,
         );
 
-        let trace = TreeVec::new(vec![trace, interaction_trace, vec![gen_is_first(LOG_SIZE)]]);
+        let trace = TreeVec::new(vec![trace, interaction_trace]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
 
         let component = BlakeSchedulerComponent {

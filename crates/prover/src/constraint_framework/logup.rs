@@ -5,7 +5,7 @@ use num_traits::{One, Zero};
 
 use super::EvalAtRow;
 use crate::core::backend::simd::column::SecureColumn;
-use crate::core::backend::simd::m31::LOG_N_LANES;
+use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
@@ -13,7 +13,7 @@ use crate::core::backend::Column;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumnByCoords;
+use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -30,23 +30,21 @@ pub struct LogupAtRow<const BATCH_SIZE: usize, E: EvalAtRow> {
     pub queue: [(E::EF, E::EF); BATCH_SIZE],
     /// Number of fractions in the queue.
     pub queue_size: usize,
-    /// The claimed sum of all the fractions.
-    pub claimed_sum: SecureField,
+    /// A constant to subtract from each row, to make the totall sum of the last column zero.
+    /// In other words, claimed_sum / 2^log_size.
+    /// This is used to make the constraint uniform.
+    pub cumsum_shift: SecureField,
     /// The evaluation of the last cumulative sum column.
     pub prev_col_cumsum: E::EF,
-    /// The value of the `is_first` constant column at current row.
-    /// See [`super::constant_columns::gen_is_first()`].
-    pub is_first: E::F,
 }
 impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
-    pub fn new(interaction: usize, claimed_sum: SecureField, is_first: E::F) -> Self {
+    pub fn new(interaction: usize, claimed_sum: SecureField, log_size: u32) -> Self {
         Self {
             interaction,
             queue: [(E::EF::zero(), E::EF::zero()); BATCH_SIZE],
             queue_size: 0,
-            claimed_sum,
+            cumsum_shift: claimed_sum / BaseField::from_u32_unchecked(1 << log_size),
             prev_col_cumsum: E::EF::zero(),
-            is_first,
         }
     }
     pub fn push_lookup<const N: usize>(
@@ -101,11 +99,13 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         let cur_cumsum = E::combine_ef(cumsum_mask.map(|[cur_row, _prev_row]| cur_row));
         let prev_row_cumsum = E::combine_ef(cumsum_mask.map(|[_cur_row, prev_row]| prev_row));
 
-        // Fix `prev_row_cumsum` by subtracting `claimed_sum` if this is the first row.
-        let fixed_prev_row_cumsum = prev_row_cumsum - self.is_first * self.claimed_sum;
-        let diff = cur_cumsum - fixed_prev_row_cumsum - self.prev_col_cumsum;
+        let diff = cur_cumsum - prev_row_cumsum - self.prev_col_cumsum;
+        // Instead of checking diff = num / denom, check diff = num / denom - cumsum_shift.
+        // This makes (num / denom - cumsum_shift) have sum zero, which makes the constraint
+        // uniform - apply on all rows.
+        let fixed_diff = diff + self.cumsum_shift;
 
-        eval.add_constraint(diff * denom - num);
+        eval.add_constraint(fixed_diff * denom - num);
     }
 }
 
@@ -193,13 +193,27 @@ impl LogupTraceGenerator {
         ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         SecureField,
     ) {
+        // Compute claimed sum.
+        let mut last_col_coords = self.trace.pop().unwrap().columns;
+        let packed_sums: [PackedBaseField; SECURE_EXTENSION_DEGREE] = last_col_coords
+            .each_ref()
+            .map(|c| c.data.iter().copied().sum());
+        let base_sums = packed_sums.map(|s| s.pointwise_sum());
+        let claimed_sum = SecureField::from_m31_array(base_sums);
+
+        // Shift the last column to make the sum zero.
+        let cumsum_shift = claimed_sum / BaseField::from_u32_unchecked(1 << self.log_size);
+        last_col_coords.iter_mut().enumerate().for_each(|(i, c)| {
+            c.data
+                .iter_mut()
+                .for_each(|x| *x -= PackedBaseField::broadcast(cumsum_shift.to_m31_array()[i]))
+        });
+
         // Prefix sum the last column.
-        let last_col_coords = self.trace.pop().unwrap().columns;
         let coord_prefix_sum = last_col_coords.map(inclusive_prefix_sum);
         self.trace.push(SecureColumnByCoords {
             columns: coord_prefix_sum,
         });
-        let claimed_sum = self.trace.last().unwrap().at(1);
 
         let trace = self
             .trace
