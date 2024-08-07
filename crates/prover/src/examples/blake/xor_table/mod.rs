@@ -84,11 +84,10 @@ impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> FrameworkComponent
         column_bits::<ELEM_BITS, EXPAND_BITS>() + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(2, [0]);
         let xor_eval = XorTableEval::<'_, _, ELEM_BITS, EXPAND_BITS> {
             eval,
             lookup_elements: &self.lookup_elements,
-            logup: LogupAtRow::new(1, self.claimed_sum, is_first),
+            logup: LogupAtRow::new(1, self.claimed_sum, self.log_size()),
         };
         xor_eval.eval()
     }

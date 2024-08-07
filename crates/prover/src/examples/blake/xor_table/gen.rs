@@ -4,7 +4,6 @@ use itertools::Itertools;
 use tracing::{span, Level};
 
 use super::{column_bits, limb_bits, XorAccumulator, XorElements};
-use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -157,14 +156,13 @@ pub fn generate_constant_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
             BaseField::from_u32_unchecked(((i >> limb_bits) ^ (i & ((1 << limb_bits) - 1))) as u32)
         })
         .collect();
-    let mut constant_trace = [a_col, b_col, c_col]
+
+    [a_col, b_col, c_col]
         .map(|x| {
             CircleEvaluation::new(
                 CanonicCoset::new(column_bits::<ELEM_BITS, EXPAND_BITS>()).circle_domain(),
                 x,
             )
         })
-        .to_vec();
-    constant_trace.insert(0, gen_is_first(column_bits::<ELEM_BITS, EXPAND_BITS>()));
-    constant_trace
+        .to_vec()
 }
