@@ -1,5 +1,6 @@
 use std::mem;
 
+use bytemuck::allocation::cast_vec;
 use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
 use itertools::{izip, Itertools};
 use num_traits::Zero;
@@ -7,6 +8,7 @@ use num_traits::Zero;
 use super::cm31::PackedCM31;
 use super::m31::{PackedBaseField, N_LANES};
 use super::qm31::{PackedQM31, PackedSecureField};
+use super::very_packed_m31::{VeryPackedBaseField, VeryPackedSecureField, N_VERY_PACKED_ELEMS};
 use super::SimdBackend;
 use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::cm31::CM31;
@@ -56,7 +58,7 @@ impl BaseColumn {
     }
 
     /// Returns a vector of `BaseColumnMutSlice`s, each mutably owning
-    /// `chunk_size` `PackedBasedField`s (i.e, `chuck_size` * `N_LANES` elements).
+    /// `chunk_size` `PackedBaseField`s (i.e, `chuck_size` * `N_LANES` elements).
     pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<BaseColumnMutSlice<'_>> {
         self.data
             .chunks_mut(chunk_size)
@@ -357,7 +359,7 @@ impl SecureColumnByCoords<SimdBackend> {
     }
 
     /// Returns a vector of `SecureColumnByCoordsMutSlice`s, each mutably owning
-    /// `SECURE_EXTENSION_DEGREE` slices of `chunk_size` `PackedBasedField`s
+    /// `SECURE_EXTENSION_DEGREE` slices of `chunk_size` `PackedBaseField`s
     /// (i.e, `chuck_size` * `N_LANES` secure field elements, by coordinates).
     pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<SecureColumnByCoordsMutSlice<'_>> {
         let [a, b, c, d] = self
@@ -376,6 +378,169 @@ impl FromIterator<SecureField> for SecureColumnByCoords<SimdBackend> {
         let cpu_col = SecureColumnByCoords::<CpuBackend>::from_iter(iter);
         let columns = cpu_col.columns.map(|col| col.into_iter().collect());
         SecureColumnByCoords { columns }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct VeryPackedBaseColumn {
+    pub data: Vec<VeryPackedBaseField>,
+    /// The number of [`BaseField`]s in the vector.
+    pub length: usize,
+}
+
+impl VeryPackedBaseColumn {
+    /// Transforms a &BaseColumn to a &VeryPackedBaseColumn.
+    /// # Safety
+    ///
+    /// The resulting pointer does not update the underlying `data`'s length.
+    pub unsafe fn transform_under_ref(value: &BaseColumn) -> &Self {
+        &*(std::ptr::addr_of!(*value) as *const VeryPackedBaseColumn)
+    }
+}
+
+impl From<BaseColumn> for VeryPackedBaseColumn {
+    fn from(value: BaseColumn) -> Self {
+        Self {
+            data: cast_vec(value.data),
+            length: value.length,
+        }
+    }
+}
+
+impl From<VeryPackedBaseColumn> for BaseColumn {
+    fn from(value: VeryPackedBaseColumn) -> Self {
+        Self {
+            data: cast_vec(value.data),
+            length: value.length,
+        }
+    }
+}
+
+impl FromIterator<BaseField> for VeryPackedBaseColumn {
+    fn from_iter<I: IntoIterator<Item = BaseField>>(iter: I) -> Self {
+        BaseColumn::from_iter(iter).into()
+    }
+}
+
+impl Column<BaseField> for VeryPackedBaseColumn {
+    fn zeros(length: usize) -> Self {
+        BaseColumn::zeros(length).into()
+    }
+
+    #[allow(clippy::uninit_vec)]
+    unsafe fn uninitialized(length: usize) -> Self {
+        BaseColumn::uninitialized(length).into()
+    }
+
+    fn to_cpu(&self) -> Vec<BaseField> {
+        todo!()
+    }
+
+    fn len(&self) -> usize {
+        self.length
+    }
+
+    fn at(&self, index: usize) -> BaseField {
+        let chunk_size = N_LANES * N_VERY_PACKED_ELEMS;
+        self.data[index / chunk_size].to_array()[index % chunk_size]
+    }
+
+    fn set(&mut self, index: usize, value: BaseField) {
+        let chunk_size = N_LANES * N_VERY_PACKED_ELEMS;
+        let mut packed = self.data[index / chunk_size].to_array();
+        packed[index % chunk_size] = value;
+        self.data[index / chunk_size] = VeryPackedBaseField::from_array(packed)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct VeryPackedSecureColumnByCoords {
+    pub columns: [VeryPackedBaseColumn; SECURE_EXTENSION_DEGREE],
+}
+
+impl From<SecureColumnByCoords<SimdBackend>> for VeryPackedSecureColumnByCoords {
+    fn from(value: SecureColumnByCoords<SimdBackend>) -> Self {
+        Self {
+            columns: value
+                .columns
+                .into_iter()
+                .map(VeryPackedBaseColumn::from)
+                .collect_vec()
+                .try_into()
+                .unwrap(),
+        }
+    }
+}
+
+impl From<VeryPackedSecureColumnByCoords> for SecureColumnByCoords<SimdBackend> {
+    fn from(value: VeryPackedSecureColumnByCoords) -> Self {
+        Self {
+            columns: value
+                .columns
+                .into_iter()
+                .map(BaseColumn::from)
+                .collect_vec()
+                .try_into()
+                .unwrap(),
+        }
+    }
+}
+
+impl VeryPackedSecureColumnByCoords {
+    pub fn packed_len(&self) -> usize {
+        self.columns[0].data.len()
+    }
+
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
+    pub unsafe fn packed_at(&self, vec_index: usize) -> VeryPackedSecureField {
+        VeryPackedSecureField::from_fn(|i| {
+            PackedQM31([
+                PackedCM31([
+                    self.columns[0].data.get_unchecked(vec_index).0[i],
+                    self.columns[1].data.get_unchecked(vec_index).0[i],
+                ]),
+                PackedCM31([
+                    self.columns[2].data.get_unchecked(vec_index).0[i],
+                    self.columns[3].data.get_unchecked(vec_index).0[i],
+                ]),
+            ])
+        })
+    }
+
+    /// # Safety
+    ///
+    /// `vec_index` must be a valid index.
+    pub unsafe fn set_packed(&mut self, vec_index: usize, value: VeryPackedSecureField) {
+        for i in 0..N_VERY_PACKED_ELEMS {
+            let PackedQM31([PackedCM31([a, b]), PackedCM31([c, d])]) = value.0[i];
+            self.columns[0].data.get_unchecked_mut(vec_index).0[i] = a;
+            self.columns[1].data.get_unchecked_mut(vec_index).0[i] = b;
+            self.columns[2].data.get_unchecked_mut(vec_index).0[i] = c;
+            self.columns[3].data.get_unchecked_mut(vec_index).0[i] = d;
+        }
+    }
+
+    pub fn to_vec(&self) -> Vec<SecureField> {
+        izip!(
+            self.columns[0].to_cpu(),
+            self.columns[1].to_cpu(),
+            self.columns[2].to_cpu(),
+            self.columns[3].to_cpu(),
+        )
+        .map(|(a, b, c, d)| SecureField::from_m31_array([a, b, c, d]))
+        .collect()
+    }
+
+    /// Transforms a &mut SecureColumnByCoords<SimdBackend> to a &mut
+    /// VeryPackedSecureColumnByCoords.
+    ///
+    /// # Safety
+    ///
+    /// The resulting pointer does not update the underlying columns' `data`'s lengths.
+    pub unsafe fn transform_under_mut(value: &mut SecureColumnByCoords<SimdBackend>) -> &mut Self {
+        &mut *(std::ptr::addr_of!(*value) as *mut VeryPackedSecureColumnByCoords)
     }
 }
 

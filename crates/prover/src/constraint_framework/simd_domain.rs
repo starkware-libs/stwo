@@ -3,8 +3,11 @@ use std::ops::Mul;
 use num_traits::Zero;
 
 use super::EvalAtRow;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use crate::core::backend::simd::qm31::PackedSecureField;
+use crate::core::backend::simd::column::VeryPackedBaseColumn;
+use crate::core::backend::simd::m31::LOG_N_LANES;
+use crate::core::backend::simd::very_packed_m31::{
+    VeryPackedBaseField, VeryPackedSecureField, LOG_N_VERY_PACKED_ELEMS,
+};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Column;
 use crate::core::fields::m31::BaseField;
@@ -23,7 +26,7 @@ pub struct SimdDomainEvaluator<'a> {
     /// The row index of the simd-vector row to evaluate the constraints at.
     pub vec_row: usize,
     pub random_coeff_powers: &'a [SecureField],
-    pub row_res: PackedSecureField,
+    pub row_res: VeryPackedSecureField,
     pub constraint_index: usize,
     pub domain_log_size: u32,
     pub eval_domain_log_size: u32,
@@ -41,7 +44,7 @@ impl<'a> SimdDomainEvaluator<'a> {
             column_index_per_interaction: vec![0; trace_eval.len()],
             vec_row,
             random_coeff_powers,
-            row_res: PackedSecureField::zero(),
+            row_res: VeryPackedSecureField::zero(),
             constraint_index: 0,
             domain_log_size,
             eval_domain_log_size: eval_log_size,
@@ -49,8 +52,8 @@ impl<'a> SimdDomainEvaluator<'a> {
     }
 }
 impl<'a> EvalAtRow for SimdDomainEvaluator<'a> {
-    type F = PackedBaseField;
-    type EF = PackedSecureField;
+    type F = VeryPackedBaseField;
+    type EF = VeryPackedSecureField;
 
     // TODO(spapini): Remove all boundary checks.
     fn next_interaction_mask<const N: usize>(
@@ -63,21 +66,22 @@ impl<'a> EvalAtRow for SimdDomainEvaluator<'a> {
         offsets.map(|off| {
             // If the offset is 0, we can just return the value directly from this row.
             if off == 0 {
-                return unsafe {
-                    *self
+                unsafe {
+                    let col = &self
                         .trace_eval
                         .get_unchecked(interaction)
                         .get_unchecked(col_index)
-                        .data
-                        .get_unchecked(self.vec_row)
+                        .values;
+                    let very_packed_col = VeryPackedBaseColumn::transform_under_ref(col);
+                    return *very_packed_col.data.get_unchecked(self.vec_row);
                 };
             }
             // Otherwise, we need to look up the value at the offset.
             // Since the domain is bit-reversed circle domain ordered, we need to look up the value
             // at the bit-reversed natural order index at an offset.
-            PackedBaseField::from_array(std::array::from_fn(|i| {
+            VeryPackedBaseField::from_array(std::array::from_fn(|i| {
                 let row_index = offset_bit_reversed_circle_domain_index(
-                    (self.vec_row << LOG_N_LANES) + i,
+                    (self.vec_row << (LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS)) + i,
                     self.domain_log_size,
                     self.eval_domain_log_size,
                     off,
@@ -91,12 +95,12 @@ impl<'a> EvalAtRow for SimdDomainEvaluator<'a> {
         Self::EF: Mul<G, Output = Self::EF>,
     {
         self.row_res +=
-            PackedSecureField::broadcast(self.random_coeff_powers[self.constraint_index])
+            VeryPackedSecureField::broadcast(self.random_coeff_powers[self.constraint_index])
                 * constraint;
         self.constraint_index += 1;
     }
 
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
-        PackedSecureField::from_packed_m31s(values)
+        VeryPackedSecureField::from_very_packed_m31s(values)
     }
 }
