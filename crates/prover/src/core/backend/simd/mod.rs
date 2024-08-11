@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use super::Backend;
+use super::{Backend, BackendForChannel};
+use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
 pub mod accumulation;
 pub mod bit_reverse;
@@ -11,6 +12,7 @@ pub mod column;
 pub mod domain;
 pub mod fft;
 pub mod fri;
+mod grind;
 pub mod lookups;
 pub mod m31;
 pub mod prefix_sum;
@@ -22,3 +24,4 @@ mod utils;
 pub struct SimdBackend;
 
 impl Backend for SimdBackend {}
+impl BackendForChannel<Blake2sMerkleChannel> for SimdBackend {}

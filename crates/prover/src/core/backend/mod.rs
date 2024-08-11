@@ -3,12 +3,15 @@ use std::fmt::Debug;
 pub use cpu::CpuBackend;
 
 use super::air::accumulation::AccumulationOps;
+use super::channel::MerkleChannel;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::FieldOps;
 use super::fri::FriOps;
 use super::pcs::quotients::QuotientOps;
 use super::poly::circle::PolyOps;
+use super::proof_of_work::GrindOps;
+use super::vcs::ops::MerkleOps;
 
 pub mod cpu;
 pub mod simd;
@@ -23,6 +26,11 @@ pub trait Backend:
     + QuotientOps
     + FriOps
     + AccumulationOps
+{
+}
+
+pub trait BackendForChannel<MC: MerkleChannel>:
+    Backend + MerkleOps<MC::H> + GrindOps<MC::C>
 {
 }
 

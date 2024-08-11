@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use super::blake2_hash::Blake2sHash;
 use super::blake2s_ref::compress;
 use super::ops::MerkleHasher;
+use crate::core::channel::{Blake2sChannel, MerkleChannel};
 use crate::core::fields::m31::BaseField;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
@@ -35,6 +36,19 @@ impl MerkleHasher for Blake2sMerkleHasher {
             state = compress(state, unsafe { std::mem::transmute(chunk) }, 0, 0, 0, 0);
         }
         state.map(|x| x.to_le_bytes()).flatten().into()
+    }
+}
+
+#[derive(Default)]
+pub struct Blake2sMerkleChannel;
+
+impl MerkleChannel for Blake2sMerkleChannel {
+    type C = Blake2sChannel;
+    type H = Blake2sMerkleHasher;
+
+    fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasher>::Hash) {
+        channel.digest = super::blake2_hash::Blake2sHasher::concat_and_hash(&channel.digest, &root);
+        channel.channel_time.inc_challenges();
     }
 }
 
