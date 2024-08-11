@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 // Wrapper for the blake2s hash type.
 #[repr(C, align(32))]
 #[derive(Clone, Copy, PartialEq, Default, Eq, Pod, Zeroable, Deserialize, Serialize)]
-pub struct Blake2sHash([u8; 32]);
+pub struct Blake2sHash(pub [u8; 32]);
 
 impl From<Blake2sHash> for Vec<u8> {
     fn from(value: Blake2sHash) -> Self {

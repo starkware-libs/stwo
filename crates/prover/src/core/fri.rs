@@ -11,7 +11,7 @@ use thiserror::Error;
 use tracing::{span, Level};
 
 use super::backend::CpuBackend;
-use super::channel::Channel;
+use super::channel::{Channel, MerkleChannel};
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
@@ -123,15 +123,15 @@ pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized + FieldOps<SecureField> 
     fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField);
 }
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
-pub struct FriProver<B: FriOps + MerkleOps<H>, H: MerkleHasher> {
+pub struct FriProver<B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> {
     config: FriConfig,
-    inner_layers: Vec<FriLayerProver<B, H>>,
+    inner_layers: Vec<FriLayerProver<B, MC::H>>,
     last_layer_poly: LinePoly,
     /// Unique sizes of committed columns sorted in descending order.
     column_log_sizes: Vec<u32>,
 }
 
-impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
+impl<B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<B, MC> {
     /// Commits to multiple [CircleEvaluation]s.
     ///
     /// `columns` must be provided in descending order by size.
@@ -153,7 +153,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
     /// [`CircleDomain`]: super::poly::circle::CircleDomain
     // TODO(andrew): Add docs for all evaluations needing to be from canonic domains.
     pub fn commit(
-        channel: &mut impl Channel<Digest = H::Hash>,
+        channel: &mut MC::C,
         config: FriConfig,
         columns: &[SecureEvaluation<B>],
         twiddles: &TwiddleTree<B>,
@@ -185,11 +185,11 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
     ///
     /// Returns all inner layers and the evaluation of the last layer.
     fn commit_inner_layers(
-        channel: &mut impl Channel<Digest = H::Hash>,
+        channel: &mut MC::C,
         config: FriConfig,
         columns: &[SecureEvaluation<B>],
         twiddles: &TwiddleTree<B>,
-    ) -> (Vec<FriLayerProver<B, H>>, LineEvaluation<B>) {
+    ) -> (Vec<FriLayerProver<B, MC::H>>, LineEvaluation<B>) {
         // Returns the length of the [LineEvaluation] a [CircleEvaluation] gets folded into.
         let folded_len = |e: &SecureEvaluation<B>| e.len() >> CIRCLE_TO_LINE_FOLD_STEP;
 
@@ -224,7 +224,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
 
             let layer_lambda = layer_lambda_acc.finalize();
             let layer = FriLayerProver::new(layer_evaluation, layer_lambda);
-            channel.mix_digest(layer.merkle_tree.root());
+            MC::mix_root(channel, layer.merkle_tree.root());
             channel.mix_felts(&[layer_lambda]);
             let folding_alpha = channel.draw_felt();
             let folded_layer_evaluation = B::fold_line(&layer.evaluation, folding_alpha, twiddles);
@@ -250,7 +250,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
     /// * The evaluation domain size exceeds the maximum last layer domain size.
     /// * The evaluation is not of sufficiently low degree.
     fn commit_last_layer(
-        channel: &mut impl Channel<Digest = H::Hash>,
+        channel: &mut MC::C,
         config: FriConfig,
         evaluation: LineEvaluation<B>,
     ) -> LinePoly {
@@ -274,8 +274,8 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
     /// Returned column opening positions are mapped by their log size.
     pub fn decommit(
         self,
-        channel: &mut impl Channel<Digest = H::Hash>,
-    ) -> (FriProof<H>, BTreeMap<u32, SparseSubCircleDomain>) {
+        channel: &mut MC::C,
+    ) -> (FriProof<MC::H>, BTreeMap<u32, SparseSubCircleDomain>) {
         let max_column_log_size = self.column_log_sizes[0];
         let queries = Queries::generate(channel, max_column_log_size, self.config.n_queries);
         let positions = get_opening_positions(&queries, &self.column_log_sizes);
@@ -286,7 +286,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
     /// # Panics
     ///
     /// Panics if the queries were sampled on the wrong domain size.
-    fn decommit_on_queries(self, queries: &Queries) -> FriProof<H> {
+    fn decommit_on_queries(self, queries: &Queries) -> FriProof<MC::H> {
         let max_column_log_size = self.column_log_sizes[0];
         assert_eq!(queries.log_domain_size, max_column_log_size);
         let first_layer_queries = queries.fold(CIRCLE_TO_LINE_FOLD_STEP);
@@ -309,7 +309,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriProver<B, H> {
     }
 }
 
-pub struct FriVerifier<H: MerkleHasher> {
+pub struct FriVerifier<MC: MerkleChannel> {
     config: FriConfig,
     /// Alpha used to fold all circle polynomials to univariate polynomials.
     circle_poly_alpha: SecureField,
@@ -317,7 +317,7 @@ pub struct FriVerifier<H: MerkleHasher> {
     expected_query_log_domain_size: u32,
     /// The list of degree bounds of all committed circle polynomials.
     column_bounds: Vec<CirclePolyDegreeBound>,
-    inner_layers: Vec<FriLayerVerifier<H>>,
+    inner_layers: Vec<FriLayerVerifier<MC::H>>,
     last_layer_domain: LineDomain,
     last_layer_poly: LinePoly,
     /// The queries used for decommitment. Initialized when calling
@@ -325,7 +325,7 @@ pub struct FriVerifier<H: MerkleHasher> {
     queries: Option<Queries>,
 }
 
-impl<H: MerkleHasher> FriVerifier<H> {
+impl<MC: MerkleChannel> FriVerifier<MC> {
     /// Verifies the commitment stage of FRI.
     ///
     /// `column_bounds` should be the committed circle polynomial degree bounds in descending order.
@@ -343,9 +343,9 @@ impl<H: MerkleHasher> FriVerifier<H> {
     /// * The degree bounds are not sorted in descending order.
     /// * A degree bound is less than or equal to the last layer's degree bound.
     pub fn commit(
-        channel: &mut impl Channel<Digest = H::Hash>,
+        channel: &mut MC::C,
         config: FriConfig,
-        proof: FriProof<H>,
+        proof: FriProof<MC::H>,
         column_bounds: Vec<CirclePolyDegreeBound>,
     ) -> Result<Self, FriVerificationError> {
         assert!(column_bounds.is_sorted_by_key(|b| Reverse(*b)));
@@ -364,7 +364,7 @@ impl<H: MerkleHasher> FriVerifier<H> {
         ));
 
         for (layer_index, proof) in proof.inner_layers.into_iter().enumerate() {
-            channel.mix_digest(proof.commitment);
+            MC::mix_root(channel, proof.commitment);
 
             // The merkle verification, combined with the decomposition being unique, asserts the
             // decomposition correctness.
@@ -552,7 +552,7 @@ impl<H: MerkleHasher> FriVerifier<H> {
     /// The order of the opening positions corresponds to the order of the column commitment.
     pub fn column_query_positions(
         &mut self,
-        channel: &mut impl Channel<Digest = H::Hash>,
+        channel: &mut MC::C,
     ) -> BTreeMap<u32, SparseSubCircleDomain> {
         let column_log_sizes = self
             .column_bounds
@@ -1068,7 +1068,7 @@ mod tests {
     use crate::core::fields::secure_column::SecureColumnByCoords;
     use crate::core::fields::Field;
     use crate::core::fri::{
-        fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig, FriVerifier,
+        fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig,
         CIRCLE_TO_LINE_FOLD_STEP,
     };
     use crate::core::poly::circle::{CanonicCoset, CircleDomain, PolyOps, SecureEvaluation};
@@ -1077,13 +1077,14 @@ mod tests {
     use crate::core::queries::{Queries, SparseSubCircleDomain};
     use crate::core::test_utils::test_channel;
     use crate::core::utils::bit_reverse_index;
-    use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+    use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::m31;
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 1;
 
-    type FriProver = super::FriProver<CpuBackend, Blake2sMerkleHasher>;
+    type FriProver = super::FriProver<CpuBackend, Blake2sMerkleChannel>;
+    type FriVerifier = super::FriVerifier<Blake2sMerkleChannel>;
 
     #[test]
     fn fold_line_works() {

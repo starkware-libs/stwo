@@ -4,22 +4,20 @@ use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use stwo_prover::core::backend::simd::SimdBackend;
-use stwo_prover::core::backend::{Backend, CpuBackend};
-use stwo_prover::core::channel::{Blake2sChannel, Channel};
+use stwo_prover::core::backend::{BackendForChannel, CpuBackend};
+use stwo_prover::core::channel::Blake2sChannel;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::pcs::CommitmentTreeProver;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::twiddles::TwiddleTree;
 use stwo_prover::core::poly::BitReversedOrder;
-use stwo_prover::core::vcs::blake2_hash::Blake2sHash;
-use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleHasher;
-use stwo_prover::core::vcs::ops::MerkleOps;
+use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
 const LOG_COSET_SIZE: u32 = 20;
 const LOG_BLOWUP_FACTOR: u32 = 1;
 const N_POLYS: usize = 16;
 
-fn benched_fn<B: Backend + MerkleOps<Blake2sMerkleHasher>>(
+fn benched_fn<B: BackendForChannel<Blake2sMerkleChannel>>(
     evals: Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
     channel: &mut Blake2sChannel,
     twiddles: &TwiddleTree<B>,
@@ -29,7 +27,7 @@ fn benched_fn<B: Backend + MerkleOps<Blake2sMerkleHasher>>(
         .map(|eval| eval.interpolate_with_twiddles(twiddles))
         .collect();
 
-    CommitmentTreeProver::<B, Blake2sMerkleHasher>::new(
+    CommitmentTreeProver::<B, Blake2sMerkleChannel>::new(
         polys,
         LOG_BLOWUP_FACTOR,
         channel,
@@ -37,11 +35,11 @@ fn benched_fn<B: Backend + MerkleOps<Blake2sMerkleHasher>>(
     );
 }
 
-fn bench_pcs<B: Backend + MerkleOps<Blake2sMerkleHasher>>(c: &mut Criterion, id: &str) {
+fn bench_pcs<B: BackendForChannel<Blake2sMerkleChannel>>(c: &mut Criterion, id: &str) {
     let small_domain = CanonicCoset::new(LOG_COSET_SIZE);
     let big_domain = CanonicCoset::new(LOG_COSET_SIZE + LOG_BLOWUP_FACTOR);
     let twiddles = B::precompute_twiddles(big_domain.half_coset());
-    let mut channel = Blake2sChannel::new(Blake2sHash::default());
+    let mut channel = Blake2sChannel::default();
     let mut rng = SmallRng::seed_from_u64(0);
 
     let evals: Vec<CircleEvaluation<B, BaseField, BitReversedOrder>> = iter::repeat_with(|| {
