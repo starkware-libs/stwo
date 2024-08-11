@@ -9,7 +9,7 @@ impl<C: Channel> GrindOps<C> for CpuBackend {
         loop {
             let mut channel = channel.clone();
             channel.mix_nonce(nonce);
-            if channel.leading_zeros() >= pow_bits {
+            if channel.trailing_zeros() >= pow_bits {
                 return nonce;
             }
             nonce += 1;

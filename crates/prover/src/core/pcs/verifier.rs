@@ -83,7 +83,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
 
         // Verify proof of work.
         channel.mix_nonce(proof.proof_of_work);
-        if channel.leading_zeros() < self.config.pow_bits {
+        if channel.trailing_zeros() < self.config.pow_bits {
             return Err(VerificationError::ProofOfWork);
         }
 
