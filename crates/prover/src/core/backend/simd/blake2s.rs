@@ -290,7 +290,7 @@ fn untranspose_states(mut states: [u32x16; 8]) -> [u32x16; 8] {
 }
 
 /// Compresses 16 blake2s instances.
-fn compress16(
+pub fn compress16(
     h_vecs: [u32x16; 8],
     msg_vecs: [u32x16; 16],
     count_low: u32x16,

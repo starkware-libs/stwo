@@ -105,7 +105,9 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         let fri_prover = FriProver::<B, MC>::commit(channel, fri_config, &quotients, self.twiddles);
 
         // Proof of work.
+        let span1 = span!(Level::INFO, "Grind").entered();
         let proof_of_work = B::grind(channel, PROOF_OF_WORK_BITS);
+        span1.exit();
         channel.mix_nonce(proof_of_work);
 
         // FRI decommitment phase.
