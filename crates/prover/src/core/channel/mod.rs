@@ -31,7 +31,7 @@ impl ChannelTime {
 pub trait Channel: Default + Clone {
     const BYTES_PER_HASH: usize;
 
-    fn leading_zeros(&self) -> u32;
+    fn trailing_zeros(&self) -> u32;
 
     // Mix functions.
     fn mix_felts(&mut self, felts: &[SecureField]);

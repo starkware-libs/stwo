@@ -56,9 +56,9 @@ impl Poseidon252Channel {
 impl Channel for Poseidon252Channel {
     const BYTES_PER_HASH: usize = BYTES_PER_FELT252;
 
-    fn leading_zeros(&self) -> u32 {
+    fn trailing_zeros(&self) -> u32 {
         let bytes = self.digest.to_bytes_be();
-        u128::from_le_bytes(std::array::from_fn(|i| bytes[i])).leading_zeros()
+        u128::from_le_bytes(std::array::from_fn(|i| bytes[i])).trailing_zeros()
     }
 
     // TODO(spapini): Optimize.
