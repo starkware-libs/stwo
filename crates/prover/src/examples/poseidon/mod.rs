@@ -13,15 +13,14 @@ use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column};
-use crate::core::channel::{Blake2sChannel, Channel as _};
+use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{FieldExpOps, IntoSlice};
+use crate::core::fields::FieldExpOps;
 use crate::core::pcs::CommitmentSchemeProver;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof, LOG_BLOWUP_FACTOR};
-use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::{ColumnVec, InteractionElements};
 
@@ -341,7 +340,7 @@ pub fn prove_poseidon(
     span.exit();
 
     // Setup protocol.
-    let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+    let channel = &mut Blake2sChannel::default();
     let commitment_scheme = &mut CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR, &twiddles);
 
     // Trace.
@@ -369,7 +368,7 @@ pub fn prove_poseidon(
         lookup_elements,
         claimed_sum,
     };
-    let proof = prove::<SimdBackend, _, _>(
+    let proof = prove::<SimdBackend, _>(
         &[&component],
         channel,
         &InteractionElements::default(),
@@ -390,13 +389,12 @@ mod tests {
     use crate::constraint_framework::assert_constraints;
     use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
     use crate::core::air::Component;
-    use crate::core::channel::{Blake2sChannel, Channel};
+    use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::IntoSlice;
     use crate::core::pcs::{CommitmentSchemeVerifier, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::verify;
-    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::InteractionElements;
     use crate::examples::poseidon::{
         apply_internal_round_matrix, apply_m4, gen_interaction_trace, gen_trace, prove_poseidon,
@@ -482,8 +480,8 @@ mod tests {
 
         // Verify.
         // TODO: Create Air instance independently.
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let commitment_scheme = &mut CommitmentSchemeVerifier::new();
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new();
 
         // Decommit.
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.

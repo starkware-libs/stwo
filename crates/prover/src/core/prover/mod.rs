@@ -4,12 +4,12 @@ use thiserror::Error;
 use tracing::{span, Level};
 
 use super::air::{Component, ComponentProver, ComponentProvers, Components};
-use super::backend::Backend;
+use super::backend::BackendForChannel;
+use super::channel::MerkleChannel;
 use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::poly::circle::MAX_CIRCLE_DOMAIN_LOG_SIZE;
-use super::proof_of_work::ProofOfWorkVerificationError;
 use super::vcs::ops::MerkleHasher;
 use super::{ColumnVec, InteractionElements, LookupValues};
 use crate::core::backend::CpuBackend;
@@ -19,7 +19,6 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
-use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::verifier::MerkleVerificationError;
 
 pub const LOG_BLOWUP_FACTOR: u32 = 1;
@@ -42,17 +41,12 @@ pub struct AdditionalProofData {
     pub oods_quotients: Vec<CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>>,
 }
 
-pub fn prove<B, C, H>(
+pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     components: &[&dyn ComponentProver<B>],
-    channel: &mut C,
+    channel: &mut MC::C,
     interaction_elements: &InteractionElements,
-    commitment_scheme: &mut CommitmentSchemeProver<'_, B, H>,
-) -> Result<StarkProof<H>, ProvingError>
-where
-    B: Backend + MerkleOps<H>,
-    C: Channel,
-    H: MerkleHasher<Hash = C::Digest>,
-{
+    commitment_scheme: &mut CommitmentSchemeProver<'_, B, MC>,
+) -> Result<StarkProof<MC::H>, ProvingError> {
     let component_provers = ComponentProvers(components.to_vec());
     let component_traces = component_provers.component_traces(&commitment_scheme.trees);
     let lookup_values = component_provers.lookup_values(&component_traces);
@@ -116,17 +110,13 @@ where
     })
 }
 
-pub fn verify<C, H>(
+pub fn verify<MC: MerkleChannel>(
     components: &[&dyn Component],
-    channel: &mut C,
+    channel: &mut MC::C,
     interaction_elements: &InteractionElements,
-    commitment_scheme: &mut CommitmentSchemeVerifier<H>,
-    proof: StarkProof<H>,
-) -> Result<(), VerificationError>
-where
-    C: Channel,
-    H: MerkleHasher<Hash = C::Digest>,
-{
+    commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
+    proof: StarkProof<MC::H>,
+) -> Result<(), VerificationError> {
     let components = Components(components.to_vec());
     let random_coeff = channel.draw_felt();
 
@@ -241,6 +231,6 @@ pub enum VerificationError {
     OodsNotMatching,
     #[error(transparent)]
     Fri(#[from] FriVerificationError),
-    #[error(transparent)]
-    ProofOfWork(#[from] ProofOfWorkVerificationError),
+    #[error("Proof of work verification failed.")]
+    ProofOfWork,
 }

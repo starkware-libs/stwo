@@ -3,7 +3,7 @@ use std::iter;
 use starknet_crypto::{poseidon_hash, poseidon_hash_many};
 use starknet_ff::FieldElement as FieldElement252;
 
-use super::{Channel, ChannelTime, Serializable};
+use super::{Channel, ChannelTime};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
@@ -12,12 +12,20 @@ pub const BYTES_PER_FELT252: usize = 31;
 pub const FELTS_PER_HASH: usize = 8;
 
 /// A channel that can be used to draw random elements from a Poseidon252 hash.
+#[derive(Clone, Default)]
 pub struct Poseidon252Channel {
     digest: FieldElement252,
-    channel_time: ChannelTime,
+    pub channel_time: ChannelTime,
 }
 
 impl Poseidon252Channel {
+    pub fn digest(&self) -> FieldElement252 {
+        self.digest
+    }
+    pub fn update_digest(&mut self, new_digest: FieldElement252) {
+        self.digest = new_digest;
+        self.channel_time.inc_challenges();
+    }
     fn draw_felt252(&mut self) -> FieldElement252 {
         let res = poseidon_hash(self.digest, self.channel_time.n_sent.into());
         self.channel_time.inc_sent();
@@ -46,23 +54,11 @@ impl Poseidon252Channel {
 }
 
 impl Channel for Poseidon252Channel {
-    type Digest = FieldElement252;
     const BYTES_PER_HASH: usize = BYTES_PER_FELT252;
 
-    fn new(digest: Self::Digest) -> Self {
-        Poseidon252Channel {
-            digest,
-            channel_time: ChannelTime::default(),
-        }
-    }
-
-    fn get_digest(&self) -> Self::Digest {
-        self.digest
-    }
-
-    fn mix_digest(&mut self, digest: Self::Digest) {
-        self.digest = poseidon_hash(self.digest, digest);
-        self.channel_time.inc_challenges();
+    fn leading_zeros(&self) -> u32 {
+        let bytes = self.digest.to_bytes_be();
+        u128::from_le_bytes(std::array::from_fn(|i| bytes[i])).leading_zeros()
     }
 
     // TODO(spapini): Optimize.
@@ -88,7 +84,8 @@ impl Channel for Poseidon252Channel {
     }
 
     fn mix_nonce(&mut self, nonce: u64) {
-        self.mix_digest(nonce.into())
+        self.digest = poseidon_hash(self.digest, nonce.into());
+        self.channel_time.inc_challenges();
     }
 
     fn draw_felt(&mut self) -> SecureField {
@@ -122,17 +119,9 @@ impl Channel for Poseidon252Channel {
     }
 }
 
-impl Serializable for FieldElement252 {
-    fn to_bytes(self) -> Vec<u8> {
-        self.as_ref().to_bytes_be().to_vec()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
-
-    use starknet_ff::FieldElement as FieldElement252;
 
     use crate::core::channel::poseidon252::Poseidon252Channel;
     use crate::core::channel::Channel;
@@ -140,20 +129,8 @@ mod tests {
     use crate::m31;
 
     #[test]
-    fn test_initialize_channel() {
-        let initial_digest = FieldElement252::default();
-        let channel = Poseidon252Channel::new(initial_digest);
-
-        // Assert that the channel is initialized correctly.
-        assert_eq!(channel.digest, initial_digest);
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 0);
-    }
-
-    #[test]
     fn test_channel_time() {
-        let initial_digest = FieldElement252::default();
-        let mut channel = Poseidon252Channel::new(initial_digest);
+        let mut channel = Poseidon252Channel::default();
 
         assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 0);
@@ -165,21 +142,11 @@ mod tests {
         channel.draw_felts(9);
         assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 6);
-
-        channel.mix_digest(FieldElement252::default());
-        assert_eq!(channel.channel_time.n_challenges, 1);
-        assert_eq!(channel.channel_time.n_sent, 0);
-
-        channel.draw_felt();
-        assert_eq!(channel.channel_time.n_challenges, 1);
-        assert_eq!(channel.channel_time.n_sent, 1);
-        assert_ne!(channel.digest, initial_digest);
     }
 
     #[test]
     fn test_draw_random_bytes() {
-        let initial_digest = FieldElement252::default();
-        let mut channel = Poseidon252Channel::new(initial_digest);
+        let mut channel = Poseidon252Channel::default();
 
         let first_random_bytes = channel.draw_random_bytes();
 
@@ -189,8 +156,7 @@ mod tests {
 
     #[test]
     pub fn test_draw_felt() {
-        let initial_digest = FieldElement252::default();
-        let mut channel = Poseidon252Channel::new(initial_digest);
+        let mut channel = Poseidon252Channel::default();
 
         let first_random_felt = channel.draw_felt();
 
@@ -200,8 +166,7 @@ mod tests {
 
     #[test]
     pub fn test_draw_felts() {
-        let initial_digest = FieldElement252::default();
-        let mut channel = Poseidon252Channel::new(initial_digest);
+        let mut channel = Poseidon252Channel::default();
 
         let mut random_felts = channel.draw_felts(5);
         random_felts.extend(channel.draw_felts(4));
@@ -214,24 +179,9 @@ mod tests {
     }
 
     #[test]
-    pub fn test_mix_digest() {
-        let initial_digest = FieldElement252::default();
-        let mut channel = Poseidon252Channel::new(initial_digest);
-
-        for _ in 0..10 {
-            channel.draw_random_bytes();
-            channel.draw_felt();
-        }
-
-        // Reseed channel and check the digest was changed.
-        channel.mix_digest(FieldElement252::default());
-        assert_ne!(initial_digest, channel.digest);
-    }
-
-    #[test]
     pub fn test_mix_felts() {
-        let initial_digest = FieldElement252::default();
-        let mut channel = Poseidon252Channel::new(initial_digest);
+        let mut channel = Poseidon252Channel::default();
+        let initial_digest = channel.digest;
         let felts: Vec<SecureField> = (0..2)
             .map(|i| SecureField::from(m31!(i + 1923782)))
             .collect();

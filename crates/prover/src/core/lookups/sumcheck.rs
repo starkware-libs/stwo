@@ -212,7 +212,6 @@ mod tests {
     use crate::core::fields::Field;
     use crate::core::lookups::mle::Mle;
     use crate::core::lookups::sumcheck::{partially_verify, prove_batch};
-    use crate::core::vcs::blake2_hash::Blake2sHasher;
 
     #[test]
     fn sumcheck_works() {
@@ -288,7 +287,6 @@ mod tests {
     }
 
     fn test_channel() -> Blake2sChannel {
-        let seed = Blake2sHasher::hash(&[]);
-        Blake2sChannel::new(seed)
+        Blake2sChannel::default()
     }
 }

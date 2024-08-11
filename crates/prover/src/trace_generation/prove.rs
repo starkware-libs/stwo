@@ -3,8 +3,8 @@ use tracing::{span, Level};
 
 use super::{AirTraceGenerator, AirTraceVerifier, BASE_TRACE, INTERACTION_TRACE};
 use crate::core::air::{Air, AirProver, ComponentProvers, Components};
-use crate::core::backend::Backend;
-use crate::core::channel::Channel;
+use crate::core::backend::BackendForChannel;
+use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
@@ -14,19 +14,13 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{
     prove, verify, ProvingError, StarkProof, VerificationError, LOG_BLOWUP_FACTOR,
 };
-use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 use crate::core::{ColumnVec, InteractionElements};
 
-pub fn commit_and_prove<B, H, C>(
+pub fn commit_and_prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     air: &impl AirTraceGenerator<B>,
-    channel: &mut C,
+    channel: &mut MC::C,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-) -> Result<StarkProof<H>, ProvingError>
-where
-    B: Backend + MerkleOps<H>,
-    C: Channel,
-    H: MerkleHasher<Hash = C::Digest>,
-{
+) -> Result<StarkProof<MC::H>, ProvingError> {
     // Check that traces are not too big.
     for (i, trace) in trace.iter().enumerate() {
         if trace.domain.log_size() + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
@@ -77,17 +71,12 @@ where
     )
 }
 
-pub fn evaluate_and_commit_on_trace<'a, B, H, C>(
+pub fn evaluate_and_commit_on_trace<'a, B: BackendForChannel<MC>, MC: MerkleChannel>(
     air: &impl AirTraceGenerator<B>,
-    channel: &mut C,
+    channel: &mut MC::C,
     twiddles: &'a TwiddleTree<B>,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-) -> Result<(CommitmentSchemeProver<'a, B, H>, InteractionElements), ProvingError>
-where
-    B: Backend + MerkleOps<H>,
-    C: Channel,
-    H: MerkleHasher<Hash = C::Digest>,
-{
+) -> Result<(CommitmentSchemeProver<'a, B, MC>, InteractionElements), ProvingError> {
     let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR, twiddles);
     // TODO(spapini): Remove clone.
     let span = span!(Level::INFO, "Trace").entered();
@@ -110,17 +99,13 @@ where
     Ok((commitment_scheme, interaction_elements))
 }
 
-pub fn commit_and_verify<H, C>(
-    proof: StarkProof<H>,
+pub fn commit_and_verify<MC: MerkleChannel>(
+    proof: StarkProof<MC::H>,
     air: &(impl Air + AirTraceVerifier),
-    channel: &mut C,
-) -> Result<(), VerificationError>
-where
-    C: Channel,
-    H: MerkleHasher<Hash = C::Digest>,
-{
+    channel: &mut MC::C,
+) -> Result<(), VerificationError> {
     // Read trace commitment.
-    let mut commitment_scheme = CommitmentSchemeVerifier::new();
+    let mut commitment_scheme = CommitmentSchemeVerifier::<MC>::new();
 
     // TODO(spapini): Retrieve column_log_sizes from AirTraceVerifier, and remove the dependency on
     // Air.
@@ -178,7 +163,7 @@ mod tests {
     use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{ProvingError, VerificationError};
     use crate::core::test_utils::test_channel;
-    use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+    use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::{ColumnVec, InteractionElements, LookupValues};
     use crate::qm31;
     use crate::trace_generation::registry::ComponentGenerationRegistry;
@@ -330,7 +315,7 @@ mod tests {
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
         let proof_error =
-            commit_and_prove::<_, Blake2sMerkleHasher, _>(&air, &mut test_channel(), trace)
+            commit_and_prove::<_, Blake2sMerkleChannel>(&air, &mut test_channel(), trace)
                 .unwrap_err();
         assert!(matches!(
             proof_error,
@@ -359,7 +344,7 @@ mod tests {
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
         let proof_error =
-            commit_and_prove::<_, Blake2sMerkleHasher, _>(&air, &mut test_channel(), trace)
+            commit_and_prove::<_, Blake2sMerkleChannel>(&air, &mut test_channel(), trace)
                 .unwrap_err();
         assert!(matches!(
             proof_error,
@@ -382,7 +367,7 @@ mod tests {
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
-        let proof = commit_and_prove::<_, Blake2sMerkleHasher, _>(&air, &mut test_channel(), trace)
+        let proof = commit_and_prove::<_, Blake2sMerkleChannel>(&air, &mut test_channel(), trace)
             .unwrap_err();
         assert!(matches!(proof, ProvingError::ConstraintsNotSatisfied));
     }

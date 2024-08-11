@@ -2,6 +2,7 @@ mod accumulation;
 mod blake2s;
 mod circle;
 mod fri;
+mod grind;
 pub mod lookups;
 pub mod quotients;
 
@@ -9,16 +10,22 @@ use std::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Backend, Column, ColumnOps, FieldOps};
+use super::{Backend, BackendForChannel, Column, ColumnOps, FieldOps};
 use crate::core::fields::Field;
 use crate::core::lookups::mle::Mle;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::utils::bit_reverse;
+use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct CpuBackend;
 
 impl Backend for CpuBackend {}
+impl BackendForChannel<Blake2sMerkleChannel> for CpuBackend {}
+#[cfg(not(target_arch = "wasm32"))]
+impl BackendForChannel<Poseidon252MerkleChannel> for CpuBackend {}
 
 impl<T: Debug + Clone + Default> ColumnOps<T> for CpuBackend {
     type Column = Vec<T>;

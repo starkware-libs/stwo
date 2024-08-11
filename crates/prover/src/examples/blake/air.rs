@@ -12,12 +12,13 @@ use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
-use crate::core::channel::Channel;
+use crate::core::backend::BackendForChannel;
+use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, PolyOps};
 use crate::core::prover::{prove, verify, StarkProof, VerificationError, LOG_BLOWUP_FACTOR};
-use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
+use crate::core::vcs::ops::MerkleHasher;
 use crate::core::InteractionElements;
 use crate::examples::blake::round::RoundElements;
 use crate::examples::blake::scheduler::{self, blake_scheduler_info, BlakeElements, BlakeInput};
@@ -197,11 +198,9 @@ impl BlakeComponents {
 }
 
 #[allow(unused)]
-pub fn prove_blake<C, H>(log_size: u32) -> (BlakeProof<H>)
+pub fn prove_blake<MC: MerkleChannel>(log_size: u32) -> (BlakeProof<MC::H>)
 where
-    SimdBackend: MerkleOps<H>,
-    C: Channel,
-    H: MerkleHasher<Hash = C::Digest>,
+    SimdBackend: BackendForChannel<MC>,
 {
     assert!(log_size >= LOG_N_LANES);
     assert_eq!(
@@ -231,7 +230,7 @@ where
         .collect_vec();
 
     // Setup protocol.
-    let channel = &mut C::new(C::Digest::default());
+    let channel = &mut MC::C::default();
     let commitment_scheme = &mut CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR, &twiddles);
 
     let span = span!(Level::INFO, "Trace").entered();
@@ -373,7 +372,7 @@ where
 
     // Prove constraints.
     let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
-    let stark_proof = prove::<SimdBackend, _, _>(
+    let stark_proof = prove::<SimdBackend, _>(
         &components.component_provers(),
         channel,
         &InteractionElements::default(),
@@ -389,19 +388,15 @@ where
 }
 
 #[allow(unused)]
-pub fn verify_blake<C, H>(
+pub fn verify_blake<MC: MerkleChannel>(
     BlakeProof {
         stmt0,
         stmt1,
         stark_proof,
-    }: BlakeProof<H>,
-) -> Result<(), VerificationError>
-where
-    C: Channel,
-    H: MerkleHasher<Hash = C::Digest>,
-{
-    let channel = &mut C::new(C::Digest::default());
-    let commitment_scheme = &mut CommitmentSchemeVerifier::new();
+    }: BlakeProof<MC::H>,
+) -> Result<(), VerificationError> {
+    let channel = &mut MC::C::default();
+    let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new();
 
     let log_sizes = stmt0.log_sizes();
 
@@ -446,8 +441,7 @@ where
 mod tests {
     use std::env;
 
-    use crate::core::channel::Blake2sChannel;
-    use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+    use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::blake::air::{prove_blake, verify_blake};
 
     // Note: this test is slow. Only run in release.
@@ -466,9 +460,9 @@ mod tests {
             .unwrap();
 
         // Prove.
-        let proof = prove_blake::<Blake2sChannel, Blake2sMerkleHasher>(log_n_instances);
+        let proof = prove_blake::<Blake2sMerkleChannel>(log_n_instances);
 
         // Verify.
-        verify_blake::<Blake2sChannel, _>(proof).unwrap();
+        verify_blake::<Blake2sMerkleChannel>(proof).unwrap();
     }
 }
