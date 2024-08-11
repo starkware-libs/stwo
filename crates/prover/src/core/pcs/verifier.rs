@@ -5,14 +5,13 @@ use itertools::Itertools;
 use super::super::circle::CirclePoint;
 use super::super::fields::qm31::SecureField;
 use super::super::fri::{CirclePolyDegreeBound, FriConfig, FriVerifier};
-use super::super::proof_of_work::ProofOfWork;
 use super::super::prover::{
     LOG_BLOWUP_FACTOR, LOG_LAST_LAYER_DEGREE_BOUND, N_QUERIES, PROOF_OF_WORK_BITS,
 };
 use super::quotients::{fri_answers, PointSample};
 use super::utils::TreeVec;
 use super::CommitmentSchemeProof;
-use crate::core::channel::Channel;
+use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::prover::VerificationError;
 use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::verifier::MerkleVerifier;
@@ -20,11 +19,11 @@ use crate::core::ColumnVec;
 
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
 #[derive(Default)]
-pub struct CommitmentSchemeVerifier<H: MerkleHasher> {
-    pub trees: TreeVec<MerkleVerifier<H>>,
+pub struct CommitmentSchemeVerifier<MC: MerkleChannel> {
+    pub trees: TreeVec<MerkleVerifier<MC::H>>,
 }
 
-impl<H: MerkleHasher> CommitmentSchemeVerifier<H> {
+impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -37,12 +36,13 @@ impl<H: MerkleHasher> CommitmentSchemeVerifier<H> {
     }
 
     /// Reads a commitment from the prover.
-    pub fn commit<C>(&mut self, commitment: C::Digest, log_sizes: &[u32], channel: &mut C)
-    where
-        C: Channel,
-        H: MerkleHasher<Hash = C::Digest>,
-    {
-        channel.mix_digest(commitment);
+    pub fn commit(
+        &mut self,
+        commitment: <MC::H as MerkleHasher>::Hash,
+        log_sizes: &[u32],
+        channel: &mut MC::C,
+    ) {
+        MC::mix_root(channel, commitment);
         let extended_log_sizes = log_sizes
             .iter()
             .map(|&log_size| log_size + LOG_BLOWUP_FACTOR)
@@ -51,16 +51,12 @@ impl<H: MerkleHasher> CommitmentSchemeVerifier<H> {
         self.trees.push(verifier);
     }
 
-    pub fn verify_values<C>(
+    pub fn verify_values(
         &self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
-        proof: CommitmentSchemeProof<H>,
-        channel: &mut C,
-    ) -> Result<(), VerificationError>
-    where
-        C: Channel,
-        H: MerkleHasher<Hash = C::Digest>,
-    {
+        proof: CommitmentSchemeProof<MC::H>,
+        channel: &mut MC::C,
+    ) -> Result<(), VerificationError> {
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let random_coeff = channel.draw_felt();
 
@@ -79,10 +75,14 @@ impl<H: MerkleHasher> CommitmentSchemeVerifier<H> {
 
         // FRI commitment phase on OODS quotients.
         let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-        let mut fri_verifier = FriVerifier::commit(channel, fri_config, proof.fri_proof, bounds)?;
+        let mut fri_verifier =
+            FriVerifier::<MC>::commit(channel, fri_config, proof.fri_proof, bounds)?;
 
         // Verify proof of work.
-        ProofOfWork::new(PROOF_OF_WORK_BITS).verify(channel, &proof.proof_of_work)?;
+        channel.mix_nonce(proof.proof_of_work);
+        if channel.leading_zeros() < PROOF_OF_WORK_BITS {
+            return Err(VerificationError::ProofOfWork);
+        }
 
         // Get FRI query domains.
         let fri_query_domains = fri_verifier.column_query_positions(channel);

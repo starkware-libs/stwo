@@ -1,11 +1,12 @@
 use itertools::Itertools;
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
-use starknet_crypto::poseidon_hash_many;
+use starknet_crypto::{poseidon_hash, poseidon_hash_many};
 use starknet_ff::FieldElement as FieldElement252;
 
 use super::ops::{MerkleHasher, MerkleOps};
 use crate::core::backend::CpuBackend;
+use crate::core::channel::{MerkleChannel, Poseidon252Channel};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::hash::Hash;
 
@@ -63,6 +64,19 @@ impl MerkleOps<Poseidon252MerkleHasher> for CpuBackend {
 }
 
 impl Hash for FieldElement252 {}
+
+#[derive(Default)]
+pub struct Poseidon252MerkleChannel;
+
+impl MerkleChannel for Poseidon252MerkleChannel {
+    type C = Poseidon252Channel;
+    type H = Poseidon252MerkleHasher;
+
+    fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasher>::Hash) {
+        channel.digest = poseidon_hash(channel.digest, root);
+        channel.channel_time.inc_challenges();
+    }
+}
 
 #[cfg(test)]
 mod tests {
