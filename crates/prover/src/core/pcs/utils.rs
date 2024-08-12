@@ -89,6 +89,27 @@ impl<T> TreeVec<ColumnVec<T>> {
     pub fn flatten(self) -> ColumnVec<T> {
         self.0.into_iter().flatten().collect()
     }
+
+    /// Appends the columns of another [`TreeVec<ColumVec<T>>`] to this one.
+    pub fn append_cols(&mut self, mut other: TreeVec<ColumnVec<T>>) {
+        let n_trees = self.0.len().max(other.0.len());
+        self.0.resize_with(n_trees, Default::default);
+        for (self_col, other_col) in self.0.iter_mut().zip(other.0.iter_mut()) {
+            self_col.append(other_col);
+        }
+    }
+
+    /// Concatenates the columns of multiple [`TreeVec<ColumVec<T>>`] into a single
+    /// [`TreeVec<ColumVec<T>>`].
+    pub fn concat_cols(
+        trees: impl Iterator<Item = TreeVec<ColumnVec<T>>>,
+    ) -> TreeVec<ColumnVec<T>> {
+        let mut result = TreeVec::default();
+        for tree in trees {
+            result.append_cols(tree);
+        }
+        result
+    }
 }
 
 impl<'a, T> From<&'a TreeVec<ColumnVec<T>>> for TreeVec<ColumnVec<&'a T>> {
