@@ -79,7 +79,8 @@ where
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let sample_points = component_provers.components().mask_points(oods_point);
+    let mut sample_points = component_provers.components().mask_points(oods_point);
+    sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
 
     // Prove the trace and composition OODS values, and retrieve them.
     let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
@@ -139,7 +140,8 @@ where
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let sample_points = components.mask_points(oods_point);
+    let mut sample_points = components.mask_points(oods_point);
+    sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
 
     // TODO(spapini): Save clone.
     let (trace_oods_values, composition_oods_value) =

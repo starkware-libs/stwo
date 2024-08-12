@@ -5,7 +5,6 @@ use super::{Component, ComponentProver, ComponentTrace};
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::pcs::{CommitmentTreeProver, TreeVec};
 use crate::core::poly::circle::SecureCirclePoly;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
@@ -26,21 +25,7 @@ impl<'a> Components<'a> {
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        let mut air_points = TreeVec::default();
-        for component in &self.0 {
-            let component_points = component.mask_points(point);
-            if air_points.len() < component_points.len() {
-                air_points.resize(component_points.len(), vec![]);
-            }
-            air_points.as_mut().zip_eq(component_points).map(
-                |(air_tree_points, component_tree_points)| {
-                    air_tree_points.extend(component_tree_points);
-                },
-            );
-        }
-        // Add the composition polynomial mask points.
-        air_points.push(vec![vec![point]; SECURE_EXTENSION_DEGREE]);
-        air_points
+        TreeVec::concat_cols(self.0.iter().map(|component| component.mask_points(point)))
     }
 
     pub fn eval_composition_polynomial_at_point(
@@ -65,19 +50,11 @@ impl<'a> Components<'a> {
     }
 
     pub fn column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
-        let mut air_sizes = TreeVec::default();
-        self.0.iter().for_each(|component| {
-            let component_sizes = component.trace_log_degree_bounds();
-            if air_sizes.len() < component_sizes.len() {
-                air_sizes.resize(component_sizes.len(), vec![]);
-            }
-            air_sizes.as_mut().zip_eq(component_sizes).map(
-                |(air_tree_sizes, component_tree_sizes)| {
-                    air_tree_sizes.extend(component_tree_sizes)
-                },
-            );
-        });
-        air_sizes
+        TreeVec::concat_cols(
+            self.0
+                .iter()
+                .map(|component| component.trace_log_degree_bounds()),
+        )
     }
 }
 
