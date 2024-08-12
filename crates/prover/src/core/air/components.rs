@@ -2,12 +2,12 @@ use itertools::{zip_eq, Itertools};
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Component, ComponentProver, ComponentTrace};
-use crate::core::backend::Backend;
+use crate::core::backend::{Backend, BackendForChannel};
+use crate::core::channel::MerkleChannel;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::{CommitmentTreeProver, TreeVec};
 use crate::core::poly::circle::SecureCirclePoly;
-use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 use crate::core::{ColumnVec, InteractionElements, LookupValues};
 
 pub struct Components<'a>(pub Vec<&'a dyn Component>);
@@ -88,12 +88,12 @@ impl<'a, B: Backend> ComponentProvers<'a, B> {
         accumulator.finalize()
     }
 
-    pub fn component_traces<'b, H: MerkleHasher>(
+    pub fn component_traces<'b, MC: MerkleChannel>(
         &'b self,
-        trees: &'b [CommitmentTreeProver<B, H>],
+        trees: &'b [CommitmentTreeProver<B, MC>],
     ) -> Vec<ComponentTrace<'b, B>>
     where
-        B: MerkleOps<H>,
+        B: BackendForChannel<MC>,
     {
         let mut poly_iters = trees
             .iter()

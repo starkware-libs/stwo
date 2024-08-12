@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use super::blake2_hash::Blake2sHash;
 use super::blake2s_ref::compress;
 use super::ops::MerkleHasher;
+use crate::core::channel::{Blake2sChannel, MerkleChannel};
 use crate::core::fields::m31::BaseField;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
@@ -38,10 +39,27 @@ impl MerkleHasher for Blake2sMerkleHasher {
     }
 }
 
+#[derive(Default)]
+pub struct Blake2sMerkleChannel;
+
+impl MerkleChannel for Blake2sMerkleChannel {
+    type C = Blake2sChannel;
+    type H = Blake2sMerkleHasher;
+
+    fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasher>::Hash) {
+        channel.update_digest(super::blake2_hash::Blake2sHasher::concat_and_hash(
+            &channel.digest(),
+            &root,
+        ));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use num_traits::Zero;
 
+    use super::Blake2sMerkleChannel;
+    use crate::core::channel::{Blake2sChannel, MerkleChannel};
     use crate::core::fields::m31::BaseField;
     use crate::core::vcs::blake2_merkle::{Blake2sHash, Blake2sMerkleHasher};
     use crate::core::vcs::test_utils::prepare_merkle;
@@ -118,5 +136,13 @@ mod tests {
             verifier.verify(queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::ColumnValuesTooShort
         );
+    }
+
+    #[test]
+    fn test_merkle_channel() {
+        let mut channel = Blake2sChannel::default();
+        let (_queries, _decommitment, _values, verifier) = prepare_merkle::<Blake2sMerkleHasher>();
+        Blake2sMerkleChannel::mix_root(&mut channel, verifier.root);
+        assert_eq!(channel.channel_time.n_challenges, 1);
     }
 }

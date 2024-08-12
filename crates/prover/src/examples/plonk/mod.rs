@@ -9,15 +9,13 @@ use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Column;
-use crate::core::channel::{Blake2sChannel, Channel};
+use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::IntoSlice;
 use crate::core::pcs::CommitmentSchemeProver;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof, LOG_BLOWUP_FACTOR};
-use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::{ColumnVec, InteractionElements};
 
@@ -173,7 +171,7 @@ pub fn prove_fibonacci_plonk(log_n_rows: u32) -> (PlonkComponent, StarkProof<Bla
     span.exit();
 
     // Setup protocol.
-    let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
+    let channel = &mut Blake2sChannel::default();
     let commitment_scheme = &mut CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR, &twiddles);
 
     // Trace.
@@ -228,7 +226,7 @@ pub fn prove_fibonacci_plonk(log_n_rows: u32) -> (PlonkComponent, StarkProof<Bla
         component.evaluate(eval);
     });
 
-    let proof = prove::<SimdBackend, _, _>(
+    let proof = prove::<SimdBackend, _>(
         &[&component],
         channel,
         &InteractionElements::default(),
@@ -245,12 +243,10 @@ mod tests {
 
     use crate::constraint_framework::logup::LookupElements;
     use crate::core::air::Component;
-    use crate::core::channel::{Blake2sChannel, Channel};
-    use crate::core::fields::m31::BaseField;
-    use crate::core::fields::IntoSlice;
+    use crate::core::channel::Blake2sChannel;
     use crate::core::pcs::CommitmentSchemeVerifier;
     use crate::core::prover::verify;
-    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::InteractionElements;
     use crate::examples::plonk::prove_fibonacci_plonk;
 
@@ -267,8 +263,8 @@ mod tests {
 
         // Verify.
         // TODO: Create Air instance independently.
-        let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let commitment_scheme = &mut CommitmentSchemeVerifier::new();
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new();
 
         // Decommit.
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
