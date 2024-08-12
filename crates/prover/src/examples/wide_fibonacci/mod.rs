@@ -21,7 +21,7 @@ mod tests {
     use crate::core::channel::Poseidon252Channel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::pcs::TreeVec;
+    use crate::core::pcs::{PcsConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::utils::{
         bit_reverse, circle_domain_order_to_coset_order, shifted_secure_combination,
@@ -216,6 +216,7 @@ mod tests {
         //   test_prove -- --nocapture
 
         const LOG_N_INSTANCES: u32 = 0;
+        let config = PcsConfig::default();
         let component = WideFibComponent {
             log_fibonacci_size: 3 + LOG_N_COLUMNS as u32,
             log_n_instances: LOG_N_INSTANCES,
@@ -235,12 +236,16 @@ mod tests {
             .collect_vec();
         let air = WideFibAir { component };
         let prover_channel = &mut Blake2sChannel::default();
-        let proof =
-            commit_and_prove::<CpuBackend, Blake2sMerkleChannel>(&air, prover_channel, trace)
-                .unwrap();
+        let proof = commit_and_prove::<CpuBackend, Blake2sMerkleChannel>(
+            &air,
+            prover_channel,
+            trace,
+            config,
+        )
+        .unwrap();
 
         let verifier_channel = &mut Blake2sChannel::default();
-        commit_and_verify::<Blake2sMerkleChannel>(proof, &air, verifier_channel).unwrap();
+        commit_and_verify::<Blake2sMerkleChannel>(proof, &air, verifier_channel, config).unwrap();
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -249,6 +254,7 @@ mod tests {
         use crate::core::backend::CpuBackend;
 
         const LOG_N_INSTANCES: u32 = 0;
+        let config = PcsConfig::default();
         let component = WideFibComponent {
             log_fibonacci_size: 3 + LOG_N_COLUMNS as u32,
             log_n_instances: LOG_N_INSTANCES,
@@ -268,11 +274,16 @@ mod tests {
             .collect_vec();
         let air = WideFibAir { component };
         let prover_channel = &mut Poseidon252Channel::default();
-        let proof =
-            commit_and_prove::<CpuBackend, Poseidon252MerkleChannel>(&air, prover_channel, trace)
-                .unwrap();
+        let proof = commit_and_prove::<CpuBackend, Poseidon252MerkleChannel>(
+            &air,
+            prover_channel,
+            trace,
+            config,
+        )
+        .unwrap();
 
         let verifier_channel = &mut Poseidon252Channel::default();
-        commit_and_verify::<Poseidon252MerkleChannel>(proof, &air, verifier_channel).unwrap();
+        commit_and_verify::<Poseidon252MerkleChannel>(proof, &air, verifier_channel, config)
+            .unwrap();
     }
 }

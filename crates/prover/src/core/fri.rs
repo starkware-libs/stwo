@@ -35,9 +35,9 @@ use crate::core::vcs::verifier::{MerkleVerificationError, MerkleVerifier};
 // TODO(andrew): Support different step sizes.
 #[derive(Debug, Clone, Copy)]
 pub struct FriConfig {
-    log_blowup_factor: u32,
-    log_last_layer_degree_bound: u32,
-    n_queries: usize,
+    pub log_blowup_factor: u32,
+    pub log_last_layer_degree_bound: u32,
+    pub n_queries: usize,
     // TODO(andrew): fold_steps.
 }
 

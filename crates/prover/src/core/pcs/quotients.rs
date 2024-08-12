@@ -30,6 +30,7 @@ pub trait QuotientOps: PolyOps {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
         sample_batches: &[ColumnSampleBatch],
+        log_blowup_factor: u32,
     ) -> SecureEvaluation<Self>;
 }
 
@@ -76,6 +77,7 @@ pub fn compute_fri_quotients<B: QuotientOps>(
     columns: &[&CircleEvaluation<B, BaseField, BitReversedOrder>],
     samples: &[Vec<PointSample>],
     random_coeff: SecureField,
+    log_blowup_factor: u32,
 ) -> Vec<SecureEvaluation<B>> {
     let _span = span!(Level::INFO, "Compute FRI quotients").entered();
     zip(columns, samples)
@@ -87,7 +89,13 @@ pub fn compute_fri_quotients<B: QuotientOps>(
             let domain = CanonicCoset::new(log_size).circle_domain();
             // TODO: slice.
             let sample_batches = ColumnSampleBatch::new_vec(&samples);
-            B::accumulate_quotients(domain, &columns, random_coeff, &sample_batches)
+            B::accumulate_quotients(
+                domain,
+                &columns,
+                random_coeff,
+                &sample_batches,
+                log_blowup_factor,
+            )
         })
         .collect()
 }
@@ -187,16 +195,21 @@ mod tests {
     #[test]
     fn test_quotients_are_low_degree() {
         const LOG_SIZE: u32 = 7;
+        const LOG_BLOWUP_FACTOR: u32 = 1;
         let polynomial = CpuCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
         let eval_domain = CanonicCoset::new(LOG_SIZE + 1).circle_domain();
         let eval = polynomial.evaluate(eval_domain);
         let point = SECURE_FIELD_CIRCLE_GEN;
         let value = polynomial.eval_at_point(point);
         let coeff = qm31!(1, 2, 3, 4);
-        let quot_eval =
-            compute_fri_quotients(&[&eval], &[vec![PointSample { point, value }]], coeff)
-                .pop()
-                .unwrap();
+        let quot_eval = compute_fri_quotients(
+            &[&eval],
+            &[vec![PointSample { point, value }]],
+            coeff,
+            LOG_BLOWUP_FACTOR,
+        )
+        .pop()
+        .unwrap();
         let quot_poly_base_field =
             CpuCircleEvaluation::new(eval_domain, quot_eval.values.columns[0].clone())
                 .interpolate();

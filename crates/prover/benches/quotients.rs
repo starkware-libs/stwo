@@ -36,6 +36,7 @@ fn bench_quotients<B: QuotientOps, const LOG_N_ROWS: u32, const LOG_N_COLS: u32>
                     black_box(&col_refs),
                     black_box(random_coeff),
                     black_box(&samples),
+                    1,
                 )
             })
         },
