@@ -15,9 +15,9 @@ use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::BackendForChannel;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::fields::qm31::SecureField;
-use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, TreeVec};
+use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, PolyOps};
-use crate::core::prover::{prove, verify, StarkProof, VerificationError, LOG_BLOWUP_FACTOR};
+use crate::core::prover::{prove, verify, StarkProof, VerificationError};
 use crate::core::vcs::ops::MerkleHasher;
 use crate::core::InteractionElements;
 use crate::examples::blake::round::RoundElements;
@@ -198,7 +198,7 @@ impl BlakeComponents {
 }
 
 #[allow(unused)]
-pub fn prove_blake<MC: MerkleChannel>(log_size: u32) -> (BlakeProof<MC::H>)
+pub fn prove_blake<MC: MerkleChannel>(log_size: u32, config: PcsConfig) -> (BlakeProof<MC::H>)
 where
     SimdBackend: BackendForChannel<MC>,
 {
@@ -214,7 +214,7 @@ where
     let log_max_rows =
         (log_size + *ROUND_LOG_SPLIT.iter().max().unwrap()).max(XOR_TABLE_MAX_LOG_SIZE);
     let twiddles = SimdBackend::precompute_twiddles(
-        CanonicCoset::new(log_max_rows + 1 + LOG_BLOWUP_FACTOR)
+        CanonicCoset::new(log_max_rows + 1 + config.fri_config.log_blowup_factor)
             .circle_domain()
             .half_coset,
     );
@@ -231,7 +231,7 @@ where
 
     // Setup protocol.
     let channel = &mut MC::C::default();
-    let commitment_scheme = &mut CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR, &twiddles);
+    let commitment_scheme = &mut CommitmentSchemeProver::new(config, &twiddles);
 
     let span = span!(Level::INFO, "Trace").entered();
 
@@ -394,9 +394,10 @@ pub fn verify_blake<MC: MerkleChannel>(
         stmt1,
         stark_proof,
     }: BlakeProof<MC::H>,
+    config: PcsConfig,
 ) -> Result<(), VerificationError> {
     let channel = &mut MC::C::default();
-    let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new();
+    let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(config);
 
     let log_sizes = stmt0.log_sizes();
 
@@ -441,6 +442,7 @@ pub fn verify_blake<MC: MerkleChannel>(
 mod tests {
     use std::env;
 
+    use crate::core::pcs::PcsConfig;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::blake::air::{prove_blake, verify_blake};
 
@@ -458,11 +460,12 @@ mod tests {
             .unwrap_or_else(|_| "6".to_string())
             .parse::<u32>()
             .unwrap();
+        let config = PcsConfig::default();
 
         // Prove.
-        let proof = prove_blake::<Blake2sMerkleChannel>(log_n_instances);
+        let proof = prove_blake::<Blake2sMerkleChannel>(log_n_instances, config);
 
         // Verify.
-        verify_blake::<Blake2sMerkleChannel>(proof).unwrap();
+        verify_blake::<Blake2sMerkleChannel>(proof, config).unwrap();
     }
 }

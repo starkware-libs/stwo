@@ -12,7 +12,7 @@ pub const MAX_CIRCLE_DOMAIN_LOG_SIZE: u32 = M31_CIRCLE_LOG_ORDER - 1;
 /// A valid domain for circle polynomial interpolation and evaluation.
 /// Valid domains are a disjoint union of two conjugate cosets: +-C + <G_n>.
 /// The ordering defined on this domain is C + iG_n, and then -C - iG_n.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CircleDomain {
     pub half_coset: Coset,
 }
