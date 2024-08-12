@@ -54,15 +54,10 @@ impl<C: FrameworkComponent> Component for C {
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
         let info = self.evaluate(InfoEvaluator::default());
         let trace_step = CanonicCoset::new(self.log_size()).step();
-        info.mask_offsets.map(|tree_mask| {
-            tree_mask
+        info.mask_offsets.map_cols(|col_mask| {
+            col_mask
                 .iter()
-                .map(|col_mask| {
-                    col_mask
-                        .iter()
-                        .map(|off| point + trace_step.mul_signed(*off).into_ef())
-                        .collect()
-                })
+                .map(|off| point + trace_step.mul_signed(*off).into_ef())
                 .collect()
         })
     }
