@@ -16,7 +16,6 @@ use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::LOG_BLOWUP_FACTOR;
 use crate::core::{utils, ColumnVec, InteractionElements, LookupValues};
 
 /// A component defined solely in means of the constraints framework.
@@ -97,9 +96,14 @@ impl<C: FrameworkComponent> ComponentProver<SimdBackend> for C {
         // Extend trace if necessary.
         // TODO(spapini): Don't extend when eval_size < committed_size. Instead, pick a good
         // subdomain.
+        let need_to_extend = trace
+            .evals
+            .iter()
+            .flatten()
+            .any(|c| c.domain != eval_domain);
         let trace: TreeVec<
             Vec<Cow<'_, CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
-        > = if eval_domain.log_size() != self.log_size() + LOG_BLOWUP_FACTOR {
+        > = if need_to_extend {
             let _span = span!(Level::INFO, "Extension").entered();
             let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
             trace

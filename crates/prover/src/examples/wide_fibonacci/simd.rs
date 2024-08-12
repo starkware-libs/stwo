@@ -262,6 +262,7 @@ mod tests {
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
+    use crate::core::pcs::PcsConfig;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::examples::wide_fibonacci::component::LOG_N_COLUMNS;
     use crate::examples::wide_fibonacci::simd::{gen_trace, SimdWideFibAir, SimdWideFibComponent};
@@ -276,6 +277,7 @@ mod tests {
 
         // Note: 17 means 128MB of trace.
         const LOG_N_ROWS: u32 = 12;
+        let config = PcsConfig::default();
         let component = SimdWideFibComponent {
             log_fibonacci_size: LOG_N_COLUMNS as u32,
             log_n_instances: LOG_N_ROWS,
@@ -285,9 +287,9 @@ mod tests {
         span.exit();
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         let air = SimdWideFibAir { component };
-        let proof = commit_and_prove(&air, channel, trace).unwrap();
+        let proof = commit_and_prove(&air, channel, trace, config).unwrap();
 
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        commit_and_verify(proof, &air, channel).unwrap();
+        commit_and_verify(proof, &air, channel, config).unwrap();
     }
 }

@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use thiserror::Error;
 use tracing::{span, Level};
 
 use super::{AirTraceGenerator, AirTraceVerifier, BASE_TRACE, INTERACTION_TRACE};
@@ -7,13 +8,11 @@ use crate::core::backend::Backend;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
+use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, MAX_CIRCLE_DOMAIN_LOG_SIZE};
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{
-    prove, verify, ProvingError, StarkProof, VerificationError, LOG_BLOWUP_FACTOR,
-};
+use crate::core::prover::{prove, verify, ProvingError, StarkProof, VerificationError};
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 use crate::core::{ColumnVec, InteractionElements};
 
@@ -21,7 +20,8 @@ pub fn commit_and_prove<B, H, C>(
     air: &impl AirTraceGenerator<B>,
     channel: &mut C,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-) -> Result<StarkProof<H>, ProvingError>
+    config: PcsConfig,
+) -> Result<StarkProof<H>, CommitAndProveError>
 where
     B: Backend + MerkleOps<H>,
     C: Channel,
@@ -29,8 +29,10 @@ where
 {
     // Check that traces are not too big.
     for (i, trace) in trace.iter().enumerate() {
-        if trace.domain.log_size() + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
-            return Err(ProvingError::MaxTraceDegreeExceeded {
+        if trace.domain.log_size() + config.fri_config.log_blowup_factor
+            > MAX_CIRCLE_DOMAIN_LOG_SIZE
+        {
+            return Err(CommitAndProveError::MaxTraceDegreeExceeded {
                 trace_index: i,
                 degree: trace.domain.log_size(),
             });
@@ -40,8 +42,10 @@ where
     // Check that the composition polynomial is not too big.
     // TODO(AlonH): Get traces log degree bounds from trace writer.
     let composition_polynomial_log_degree_bound = air.composition_log_degree_bound();
-    if composition_polynomial_log_degree_bound + LOG_BLOWUP_FACTOR > MAX_CIRCLE_DOMAIN_LOG_SIZE {
-        return Err(ProvingError::MaxCompositionDegreeExceeded {
+    if composition_polynomial_log_degree_bound + config.fri_config.log_blowup_factor
+        > MAX_CIRCLE_DOMAIN_LOG_SIZE
+    {
+        return Err(CommitAndProveError::MaxCompositionDegreeExceeded {
             degree: composition_polynomial_log_degree_bound,
         });
     }
@@ -49,14 +53,16 @@ where
     let span = span!(Level::INFO, "Precompute twiddle").entered();
     let composition_polynomial_log_degree_bound = air.composition_log_degree_bound();
     let twiddles = B::precompute_twiddles(
-        CanonicCoset::new(composition_polynomial_log_degree_bound + LOG_BLOWUP_FACTOR)
-            .circle_domain()
-            .half_coset,
+        CanonicCoset::new(
+            composition_polynomial_log_degree_bound + config.fri_config.log_blowup_factor,
+        )
+        .circle_domain()
+        .half_coset,
     );
     span.exit();
 
     let (mut commitment_scheme, interaction_elements) =
-        evaluate_and_commit_on_trace(air, channel, &twiddles, trace)?;
+        evaluate_and_commit_on_trace(air, channel, &twiddles, trace, config)?;
 
     let air_prover = &air.to_air_prover();
     let components = ComponentProvers(air_prover.component_provers());
@@ -69,12 +75,12 @@ where
             .collect_vec(),
     );
 
-    prove(
+    Ok(prove(
         &components.0,
         channel,
         &interaction_elements,
         &mut commitment_scheme,
-    )
+    )?)
 }
 
 pub fn evaluate_and_commit_on_trace<'a, B, H, C>(
@@ -82,13 +88,14 @@ pub fn evaluate_and_commit_on_trace<'a, B, H, C>(
     channel: &mut C,
     twiddles: &'a TwiddleTree<B>,
     trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    config: PcsConfig,
 ) -> Result<(CommitmentSchemeProver<'a, B, H>, InteractionElements), ProvingError>
 where
     B: Backend + MerkleOps<H>,
     C: Channel,
     H: MerkleHasher<Hash = C::Digest>,
 {
-    let mut commitment_scheme = CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR, twiddles);
+    let mut commitment_scheme = CommitmentSchemeProver::new(config, twiddles);
     // TODO(spapini): Remove clone.
     let span = span!(Level::INFO, "Trace").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
@@ -114,13 +121,14 @@ pub fn commit_and_verify<H, C>(
     proof: StarkProof<H>,
     air: &(impl Air + AirTraceVerifier),
     channel: &mut C,
+    config: PcsConfig,
 ) -> Result<(), VerificationError>
 where
     C: Channel,
     H: MerkleHasher<Hash = C::Digest>,
 {
     // Read trace commitment.
-    let mut commitment_scheme = CommitmentSchemeVerifier::new();
+    let mut commitment_scheme = CommitmentSchemeVerifier::new(config);
 
     // TODO(spapini): Retrieve column_log_sizes from AirTraceVerifier, and remove the dependency on
     // Air.
@@ -159,6 +167,22 @@ where
     )
 }
 
+#[derive(Clone, Copy, Debug, Error)]
+pub enum CommitAndProveError {
+    #[error(transparent)]
+    ProvingError(#[from] ProvingError),
+    #[error(
+        "Expanded trace column {trace_index} log degree bound ({degree}) exceeded max log degree ({}).",
+        MAX_CIRCLE_DOMAIN_LOG_SIZE
+    )]
+    MaxTraceDegreeExceeded { trace_index: usize, degree: u32 },
+    #[error(
+        "Expanded composition polynomial log degree bound ({degree}) exceeded max log degree ({}).",
+        MAX_CIRCLE_DOMAIN_LOG_SIZE
+    )]
+    MaxCompositionDegreeExceeded { degree: u32 },
+}
+
 #[cfg(test)]
 mod tests {
     use num_traits::Zero;
@@ -171,7 +195,7 @@ mod tests {
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::pcs::TreeVec;
+    use crate::core::pcs::{PcsConfig, TreeVec};
     use crate::core::poly::circle::{
         CanonicCoset, CircleDomain, CircleEvaluation, MAX_CIRCLE_DOMAIN_LOG_SIZE,
     };
@@ -181,6 +205,7 @@ mod tests {
     use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
     use crate::core::{ColumnVec, InteractionElements, LookupValues};
     use crate::qm31;
+    use crate::trace_generation::prove::CommitAndProveError;
     use crate::trace_generation::registry::ComponentGenerationRegistry;
     use crate::trace_generation::{
         commit_and_prove, AirTraceGenerator, AirTraceVerifier, ComponentTraceGenerator,
@@ -329,12 +354,16 @@ mod tests {
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
-        let proof_error =
-            commit_and_prove::<_, Blake2sMerkleHasher, _>(&air, &mut test_channel(), trace)
-                .unwrap_err();
+        let proof_error = commit_and_prove::<_, Blake2sMerkleHasher, _>(
+            &air,
+            &mut test_channel(),
+            trace,
+            PcsConfig::default(),
+        )
+        .unwrap_err();
         assert!(matches!(
             proof_error,
-            ProvingError::MaxTraceDegreeExceeded {
+            CommitAndProveError::MaxTraceDegreeExceeded {
                 trace_index: 0,
                 degree: LOG_DOMAIN_SIZE
             }
@@ -358,12 +387,16 @@ mod tests {
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
-        let proof_error =
-            commit_and_prove::<_, Blake2sMerkleHasher, _>(&air, &mut test_channel(), trace)
-                .unwrap_err();
+        let proof_error = commit_and_prove::<_, Blake2sMerkleHasher, _>(
+            &air,
+            &mut test_channel(),
+            trace,
+            PcsConfig::default(),
+        )
+        .unwrap_err();
         assert!(matches!(
             proof_error,
-            ProvingError::MaxCompositionDegreeExceeded {
+            CommitAndProveError::MaxCompositionDegreeExceeded {
                 degree: COMPOSITION_POLYNOMIAL_DEGREE
             }
         ));
@@ -382,8 +415,16 @@ mod tests {
         let values = vec![BaseField::zero(); 1 << LOG_DOMAIN_SIZE];
         let trace = vec![CpuCircleEvaluation::new(domain, values)];
 
-        let proof = commit_and_prove::<_, Blake2sMerkleHasher, _>(&air, &mut test_channel(), trace)
-            .unwrap_err();
-        assert!(matches!(proof, ProvingError::ConstraintsNotSatisfied));
+        let proof = commit_and_prove::<_, Blake2sMerkleHasher, _>(
+            &air,
+            &mut test_channel(),
+            trace,
+            PcsConfig::default(),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            proof,
+            CommitAndProveError::ProvingError(ProvingError::ConstraintsNotSatisfied)
+        ));
     }
 }

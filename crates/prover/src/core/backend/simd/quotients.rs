@@ -17,7 +17,6 @@ use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::LOG_BLOWUP_FACTOR;
 use crate::core::utils::bit_reverse;
 
 pub struct QuotientConstants {
@@ -32,10 +31,11 @@ impl QuotientOps for SimdBackend {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
         sample_batches: &[ColumnSampleBatch],
+        log_blowup_factor: u32,
     ) -> SecureEvaluation<Self> {
         // Split the domain into a subdomain and a shift coset.
         // TODO(spapini): Move to the caller when Columns support slices.
-        let (subdomain, mut subdomain_shifts) = domain.split(LOG_BLOWUP_FACTOR);
+        let (subdomain, mut subdomain_shifts) = domain.split(log_blowup_factor);
 
         // Bit reverse the shifts.
         // Since we traverse the domain in bit-reversed order, we need bit-reverse the shifts.
@@ -257,12 +257,12 @@ mod tests {
     use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
     use crate::core::poly::BitReversedOrder;
-    use crate::core::prover::LOG_BLOWUP_FACTOR;
     use crate::qm31;
 
     #[test]
     fn test_accumulate_quotients() {
         const LOG_SIZE: u32 = 8;
+        const LOG_BLOWUP_FACTOR: u32 = 1;
         let small_domain = CanonicCoset::new(LOG_SIZE).circle_domain();
         let domain = CanonicCoset::new(LOG_SIZE + LOG_BLOWUP_FACTOR).circle_domain();
         let e0: BaseColumn = (0..small_domain.size()).map(BaseField::from).collect();
@@ -297,6 +297,7 @@ mod tests {
             &cpu_columns.iter().collect_vec(),
             random_coeff,
             &samples,
+            LOG_BLOWUP_FACTOR,
         )
         .values
         .to_vec();
@@ -306,6 +307,7 @@ mod tests {
             &columns.iter().collect_vec(),
             random_coeff,
             &samples,
+            LOG_BLOWUP_FACTOR,
         )
         .values
         .to_vec();

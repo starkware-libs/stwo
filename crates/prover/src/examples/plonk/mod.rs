@@ -13,10 +13,10 @@ use crate::core::channel::{Blake2sChannel, Channel};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::IntoSlice;
-use crate::core::pcs::CommitmentSchemeProver;
+use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{prove, StarkProof, LOG_BLOWUP_FACTOR};
+use crate::core::prover::{prove, StarkProof};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::{ColumnVec, InteractionElements};
@@ -141,7 +141,10 @@ pub fn gen_interaction_trace(
 }
 
 #[allow(unused)]
-pub fn prove_fibonacci_plonk(log_n_rows: u32) -> (PlonkComponent, StarkProof<Blake2sMerkleHasher>) {
+pub fn prove_fibonacci_plonk(
+    log_n_rows: u32,
+    config: PcsConfig,
+) -> (PlonkComponent, StarkProof<Blake2sMerkleHasher>) {
     assert!(log_n_rows >= LOG_N_LANES);
 
     // Prepare a fibonacci circuit.
@@ -166,7 +169,7 @@ pub fn prove_fibonacci_plonk(log_n_rows: u32) -> (PlonkComponent, StarkProof<Bla
     // Precompute twiddles.
     let span = span!(Level::INFO, "Precompute twiddles").entered();
     let twiddles = SimdBackend::precompute_twiddles(
-        CanonicCoset::new(log_n_rows + LOG_BLOWUP_FACTOR + 1)
+        CanonicCoset::new(log_n_rows + config.fri_config.log_blowup_factor + 1)
             .circle_domain()
             .half_coset,
     );
@@ -174,7 +177,7 @@ pub fn prove_fibonacci_plonk(log_n_rows: u32) -> (PlonkComponent, StarkProof<Bla
 
     // Setup protocol.
     let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-    let commitment_scheme = &mut CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR, &twiddles);
+    let commitment_scheme = &mut CommitmentSchemeProver::new(config, &twiddles);
 
     // Trace.
     let span = span!(Level::INFO, "Trace").entered();
@@ -248,7 +251,8 @@ mod tests {
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
-    use crate::core::pcs::CommitmentSchemeVerifier;
+    use crate::core::fri::FriConfig;
+    use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
     use crate::core::prover::verify;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::InteractionElements;
@@ -261,14 +265,18 @@ mod tests {
             .unwrap_or_else(|_| "10".to_string())
             .parse::<u32>()
             .unwrap();
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 4, 64),
+        };
 
         // Prove.
-        let (component, proof) = prove_fibonacci_plonk(log_n_instances);
+        let (component, proof) = prove_fibonacci_plonk(log_n_instances, config);
 
         // Verify.
         // TODO: Create Air instance independently.
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let commitment_scheme = &mut CommitmentSchemeVerifier::new();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::new(config);
 
         // Decommit.
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.

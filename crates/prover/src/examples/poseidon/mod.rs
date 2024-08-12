@@ -17,10 +17,10 @@ use crate::core::channel::{Blake2sChannel, Channel as _};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{FieldExpOps, IntoSlice};
-use crate::core::pcs::CommitmentSchemeProver;
+use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{prove, StarkProof, LOG_BLOWUP_FACTOR};
+use crate::core::prover::{prove, StarkProof};
 use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::{ColumnVec, InteractionElements};
@@ -327,6 +327,7 @@ pub fn gen_interaction_trace(
 
 pub fn prove_poseidon(
     log_n_instances: u32,
+    config: PcsConfig,
 ) -> (PoseidonComponent, StarkProof<Blake2sMerkleHasher>) {
     assert!(log_n_instances >= N_LOG_INSTANCES_PER_ROW as u32);
     let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
@@ -334,7 +335,7 @@ pub fn prove_poseidon(
     // Precompute twiddles.
     let span = span!(Level::INFO, "Precompute twiddles").entered();
     let twiddles = SimdBackend::precompute_twiddles(
-        CanonicCoset::new(log_n_rows + LOG_EXPAND + LOG_BLOWUP_FACTOR)
+        CanonicCoset::new(log_n_rows + LOG_EXPAND + config.fri_config.log_blowup_factor)
             .circle_domain()
             .half_coset,
     );
@@ -342,7 +343,7 @@ pub fn prove_poseidon(
 
     // Setup protocol.
     let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-    let commitment_scheme = &mut CommitmentSchemeProver::new(LOG_BLOWUP_FACTOR, &twiddles);
+    let commitment_scheme = &mut CommitmentSchemeProver::new(config, &twiddles);
 
     // Trace.
     let span = span!(Level::INFO, "Trace").entered();
@@ -393,7 +394,8 @@ mod tests {
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::IntoSlice;
-    use crate::core::pcs::{CommitmentSchemeVerifier, TreeVec};
+    use crate::core::fri::FriConfig;
+    use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::verify;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
@@ -476,14 +478,18 @@ mod tests {
             .unwrap_or_else(|_| "10".to_string())
             .parse::<u32>()
             .unwrap();
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 1, 64),
+        };
 
         // Prove.
-        let (component, proof) = prove_poseidon(log_n_instances);
+        let (component, proof) = prove_poseidon(log_n_instances, config);
 
         // Verify.
         // TODO: Create Air instance independently.
         let channel = &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        let commitment_scheme = &mut CommitmentSchemeVerifier::new();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::new(config);
 
         // Decommit.
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.

@@ -7,17 +7,14 @@ use tracing::{span, Level};
 use super::super::circle::CirclePoint;
 use super::super::fields::m31::BaseField;
 use super::super::fields::qm31::SecureField;
-use super::super::fri::{FriConfig, FriProof, FriProver};
+use super::super::fri::{FriProof, FriProver};
 use super::super::poly::circle::CanonicCoset;
 use super::super::poly::BitReversedOrder;
 use super::super::proof_of_work::{ProofOfWork, ProofOfWorkProof};
-use super::super::prover::{
-    LOG_BLOWUP_FACTOR, LOG_LAST_LAYER_DEGREE_BOUND, N_QUERIES, PROOF_OF_WORK_BITS,
-};
 use super::super::ColumnVec;
 use super::quotients::{compute_fri_quotients, PointSample};
 use super::utils::TreeVec;
-use super::TreeColumnSpan;
+use super::{PcsConfig, TreeColumnSpan};
 use crate::core::backend::Backend;
 use crate::core::channel::Channel;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
@@ -28,15 +25,15 @@ use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
 /// The prover side of a FRI polynomial commitment scheme. See [super].
 pub struct CommitmentSchemeProver<'a, B: Backend + MerkleOps<H>, H: MerkleHasher> {
     pub trees: TreeVec<CommitmentTreeProver<B, H>>,
-    pub log_blowup_factor: u32,
+    pub config: PcsConfig,
     twiddles: &'a TwiddleTree<B>,
 }
 
 impl<'a, B: Backend + MerkleOps<H>, H: MerkleHasher> CommitmentSchemeProver<'a, B, H> {
-    pub fn new(log_blowup_factor: u32, twiddles: &'a TwiddleTree<B>) -> Self {
+    pub fn new(config: PcsConfig, twiddles: &'a TwiddleTree<B>) -> Self {
         CommitmentSchemeProver {
             trees: TreeVec::default(),
-            log_blowup_factor,
+            config,
             twiddles,
         }
     }
@@ -47,8 +44,12 @@ impl<'a, B: Backend + MerkleOps<H>, H: MerkleHasher> CommitmentSchemeProver<'a, 
         channel: &mut impl Channel<Digest = H::Hash>,
     ) {
         let _span = span!(Level::INFO, "Commitment").entered();
-        let tree =
-            CommitmentTreeProver::new(polynomials, self.log_blowup_factor, channel, self.twiddles);
+        let tree = CommitmentTreeProver::new(
+            polynomials,
+            self.config.fri_config.log_blowup_factor,
+            channel,
+            self.twiddles,
+        );
         self.trees.push(tree);
     }
 
@@ -103,14 +104,19 @@ impl<'a, B: Backend + MerkleOps<H>, H: MerkleHasher> CommitmentSchemeProver<'a, 
 
         // Compute oods quotients for boundary constraints on the sampled points.
         let columns = self.evaluations().flatten();
-        let quotients = compute_fri_quotients(&columns, &samples.flatten(), channel.draw_felt());
+        let quotients = compute_fri_quotients(
+            &columns,
+            &samples.flatten(),
+            channel.draw_felt(),
+            self.config.fri_config.log_blowup_factor,
+        );
 
         // Run FRI commitment phase on the oods quotients.
-        let fri_config = FriConfig::new(LOG_LAST_LAYER_DEGREE_BOUND, LOG_BLOWUP_FACTOR, N_QUERIES);
-        let fri_prover = FriProver::commit(channel, fri_config, &quotients, self.twiddles);
+        let fri_prover =
+            FriProver::commit(channel, self.config.fri_config, &quotients, self.twiddles);
 
         // Proof of work.
-        let proof_of_work = ProofOfWork::new(PROOF_OF_WORK_BITS).prove(channel);
+        let proof_of_work = ProofOfWork::new(self.config.pow_bits).prove(channel);
 
         // FRI decommitment phase.
         let (fri_proof, fri_query_domains) = fri_prover.decommit(channel);

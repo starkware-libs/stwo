@@ -23,7 +23,7 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::IntoSlice;
-    use crate::core::pcs::TreeVec;
+    use crate::core::pcs::{PcsConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::StarkProof;
     use crate::core::utils::{
@@ -220,6 +220,7 @@ mod tests {
         //   test_prove -- --nocapture
 
         const LOG_N_INSTANCES: u32 = 0;
+        let config = PcsConfig::default();
         let component = WideFibComponent {
             log_fibonacci_size: 3 + LOG_N_COLUMNS as u32,
             log_n_instances: LOG_N_INSTANCES,
@@ -241,17 +242,18 @@ mod tests {
         let prover_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
         let proof: StarkProof<Blake2sMerkleHasher> =
-            commit_and_prove(&air, prover_channel, trace).unwrap();
+            commit_and_prove(&air, prover_channel, trace, config).unwrap();
 
         let verifier_channel =
             &mut Blake2sChannel::new(Blake2sHasher::hash(BaseField::into_slice(&[])));
-        commit_and_verify(proof, &air, verifier_channel).unwrap();
+        commit_and_verify(proof, &air, verifier_channel, config).unwrap();
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test_log::test]
     fn test_single_instance_wide_fib_prove_with_poseidon() {
         const LOG_N_INSTANCES: u32 = 0;
+        let config = PcsConfig::default();
         let component = WideFibComponent {
             log_fibonacci_size: 3 + LOG_N_COLUMNS as u32,
             log_n_instances: LOG_N_INSTANCES,
@@ -272,9 +274,9 @@ mod tests {
         let air = WideFibAir { component };
         let prover_channel = &mut Poseidon252Channel::new(FieldElement252::default());
         let proof: StarkProof<Poseidon252MerkleHasher> =
-            commit_and_prove(&air, prover_channel, trace).unwrap();
+            commit_and_prove(&air, prover_channel, trace, config).unwrap();
 
         let verifier_channel = &mut Poseidon252Channel::new(FieldElement252::default());
-        commit_and_verify(proof, &air, verifier_channel).unwrap();
+        commit_and_verify(proof, &air, verifier_channel, config).unwrap();
     }
 }
