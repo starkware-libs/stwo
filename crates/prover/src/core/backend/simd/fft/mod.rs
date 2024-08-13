@@ -111,7 +111,7 @@ fn mul_twiddle(v: PackedBaseField, twiddle_dbl: u32x16) -> PackedBaseField {
             crate::core::backend::simd::m31::_mul_doubled_wasm(v, twiddle_dbl)
         } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))] {
             crate::core::backend::simd::m31::_mul_doubled_avx512(v, twiddle_dbl)
-        } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx2f"))] {
+        } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
             crate::core::backend::simd::m31::_mul_doubled_avx2(v, twiddle_dbl)
         } else {
             crate::core::backend::simd::m31::_mul_doubled_simd(v, twiddle_dbl)

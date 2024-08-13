@@ -148,7 +148,7 @@ impl Mul for PackedM31 {
                 _mul_wasm(self, rhs)
             } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))] {
                 _mul_avx512(self, rhs)
-            } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx2f"))] {
+            } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
                 _mul_avx2(self, rhs)
             } else {
                 _mul_simd(self, rhs)
