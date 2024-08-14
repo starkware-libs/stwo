@@ -8,7 +8,6 @@ use tracing::{span, Level};
 use super::round::{blake_round_info, BlakeRoundComponent};
 use super::scheduler::BlakeSchedulerComponent;
 use super::xor_table::XorTableComponent;
-use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
@@ -53,11 +52,7 @@ impl BlakeStatement0 {
         sizes.push(xor_table::trace_sizes::<7, 2>());
         sizes.push(xor_table::trace_sizes::<4, 0>());
 
-        TreeVec::new(
-            (0..=2)
-                .map(|i| sizes.iter().flat_map(|x| x[i].clone()).collect())
-                .collect(),
-        )
+        TreeVec::concat_cols(sizes.into_iter())
     }
     fn mix_into(&self, channel: &mut impl Channel) {
         // TODO(spapini): Do this better.
@@ -348,8 +343,6 @@ where
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(
         chain![
-            [gen_is_first(log_size)],
-            ROUND_LOG_SPLIT.map(|l| gen_is_first(log_size + l)),
             xor_table::generate_constant_trace::<12, 4>(),
             xor_table::generate_constant_trace::<9, 2>(),
             xor_table::generate_constant_trace::<8, 2>(),

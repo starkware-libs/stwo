@@ -37,7 +37,8 @@ pub fn fold<F: Field, E: ExtensionOf<F>>(values: &[F], folding_factors: &[E]) ->
 ///
 /// # Examples
 ///
-/// ```rust,ignore
+/// ```rust
+/// # use stwo_prover::core::poly::utils::repeat_value;
 /// assert_eq!(repeat_value(&[1, 2, 3], 2), vec![1, 1, 2, 2, 3, 3]);
 /// ```
 pub fn repeat_value<T: Copy>(values: &[T], duplicity: usize) -> Vec<T> {
