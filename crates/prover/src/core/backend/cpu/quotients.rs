@@ -20,6 +20,7 @@ impl QuotientOps for CpuBackend {
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
         sample_batches: &[ColumnSampleBatch],
+        _log_blowup_factor: u32,
     ) -> SecureEvaluation<Self> {
         let mut values = unsafe { SecureColumnByCoords::uninitialized(domain.size()) };
         let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
@@ -185,6 +186,7 @@ mod tests {
     #[test]
     fn test_quotients_are_low_degree() {
         const LOG_SIZE: u32 = 7;
+        const LOG_BLOWUP_FACTOR: u32 = 1;
         let polynomial = CpuCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
         let eval_domain = CanonicCoset::new(LOG_SIZE + 1).circle_domain();
         let eval = polynomial.evaluate(eval_domain);
@@ -199,6 +201,7 @@ mod tests {
                 point,
                 columns_and_values: vec![(0, value)],
             }],
+            LOG_BLOWUP_FACTOR,
         );
         let quot_poly_base_field =
             CpuCircleEvaluation::new(eval_domain, quot_eval.columns[0].clone()).interpolate();

@@ -9,7 +9,6 @@ use super::channel::MerkleChannel;
 use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
-use super::poly::circle::MAX_CIRCLE_DOMAIN_LOG_SIZE;
 use super::vcs::ops::MerkleHasher;
 use super::{ColumnVec, InteractionElements, LookupValues};
 use crate::core::backend::CpuBackend;
@@ -20,11 +19,6 @@ use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
 use crate::core::vcs::verifier::MerkleVerificationError;
-
-pub const LOG_BLOWUP_FACTOR: u32 = 1;
-pub const LOG_LAST_LAYER_DEGREE_BOUND: u32 = 0;
-pub const PROOF_OF_WORK_BITS: u32 = 12;
-pub const N_QUERIES: usize = 3;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StarkProof<H: MerkleHasher> {
@@ -202,16 +196,6 @@ pub struct InvalidOodsSampleStructure;
 
 #[derive(Clone, Copy, Debug, Error)]
 pub enum ProvingError {
-    #[error(
-        "Trace column {trace_index} log degree bound ({degree}) exceeded max log degree ({}).",
-        MAX_CIRCLE_DOMAIN_LOG_SIZE - LOG_BLOWUP_FACTOR
-    )]
-    MaxTraceDegreeExceeded { trace_index: usize, degree: u32 },
-    #[error(
-        "Composition polynomial log degree bound ({degree}) exceeded max log degree ({}).",
-        MAX_CIRCLE_DOMAIN_LOG_SIZE - LOG_BLOWUP_FACTOR
-    )]
-    MaxCompositionDegreeExceeded { degree: u32 },
     #[error("Constraints not satisfied.")]
     ConstraintsNotSatisfied,
 }

@@ -16,10 +16,25 @@ pub use self::prover::{
 };
 pub use self::utils::TreeVec;
 pub use self::verifier::CommitmentSchemeVerifier;
+use super::fri::FriConfig;
 
 #[derive(Copy, Debug, Clone)]
 pub struct TreeColumnSpan {
     pub tree_index: usize,
     pub col_start: usize,
     pub col_end: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PcsConfig {
+    pub pow_bits: u32,
+    pub fri_config: FriConfig,
+}
+impl Default for PcsConfig {
+    fn default() -> Self {
+        Self {
+            pow_bits: 5,
+            fri_config: FriConfig::new(0, 1, 3),
+        }
+    }
 }
