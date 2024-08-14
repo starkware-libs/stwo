@@ -17,6 +17,8 @@ mod round;
 mod scheduler;
 mod xor_table;
 
+pub use air::{prove_blake, verify_blake};
+
 const STATE_SIZE: usize = 16;
 const MESSAGE_SIZE: usize = 16;
 const N_FELTS_IN_U32: usize = 2;

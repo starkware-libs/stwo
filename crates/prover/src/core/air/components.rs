@@ -114,12 +114,12 @@ impl<'a, B: Backend> ComponentProvers<'a, B> {
                     .collect_vec();
                 let polys = col_sizes_per_tree
                     .iter()
-                    .zip_eq(poly_iters.iter_mut())
+                    .zip(poly_iters.iter_mut())
                     .map(|(n_columns, iter)| iter.take(*n_columns).collect_vec())
                     .collect_vec();
                 let evals = col_sizes_per_tree
                     .iter()
-                    .zip_eq(eval_iters.iter_mut())
+                    .zip(eval_iters.iter_mut())
                     .map(|(n_columns, iter)| iter.take(*n_columns).collect_vec())
                     .collect_vec();
                 ComponentTrace {
