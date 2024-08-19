@@ -67,6 +67,19 @@ jobs:
           CARGO_TARGET_WASM32_WASI_RUNNER: "wasmtime run --"
           RUSTFLAGS: -C target-feature=+simd128
 
+  run-wasm32-unknown-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2024-01-04
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --target wasm32-unknown-unknown
+        env:
+          RUSTFLAGS: -C target-feature=+simd128
+
   run-neon-tests:
     runs-on: macos-latest-xlarge
     steps:
