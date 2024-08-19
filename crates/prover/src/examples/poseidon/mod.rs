@@ -386,6 +386,8 @@ mod tests {
 
     use itertools::Itertools;
     use num_traits::One;
+    #[cfg(target_arch = "wasm32")]
+    use wasm_bindgen_test::*;
 
     use crate::constraint_framework::assert_constraints;
     use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
@@ -403,6 +405,19 @@ mod tests {
         PoseidonElements, PoseidonEval,
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_poseidon_prove_wasm() {
+        const LOG_N_INSTANCES: u32 = 10;
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 1, 64),
+        };
+
+        // Prove.
+        prove_poseidon(LOG_N_INSTANCES, config);
+    }
 
     #[test]
     fn test_apply_m4() {
