@@ -66,38 +66,23 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         }
 
         // Compute sum_i pi/qi over batch, as a fraction, num/denom.
-        let (num, denom) = self
-            .queue
-            .iter()
-            .copied()
-            .fold((E::EF::zero(), E::EF::one()), |(p0, q0), (pi, qi)| {
-                (p0 * qi + pi * q0, qi * q0)
-            });
+        let (num, denom) = self.fold_queue();
 
         self.queue[0] = (numerator, denominator);
         self.queue_size = 1;
 
         // Add a constraint that num / denom = diff.
-        let cur_cumsum = E::combine_ef(std::array::from_fn(|_| {
-            eval.next_interaction_mask(self.interaction, [0])[0]
-        }));
+        let cur_cumsum = eval.next_extension_interaction_mask(self.interaction, [0])[0];
         let diff = cur_cumsum - self.prev_col_cumsum;
         self.prev_col_cumsum = cur_cumsum;
         eval.add_constraint(diff * denom - num);
     }
 
     pub fn finalize(self, eval: &mut E) {
-        let (num, denom) = self.queue[0..self.queue_size]
-            .iter()
-            .copied()
-            .fold((E::EF::zero(), E::EF::one()), |(p0, q0), (pi, qi)| {
-                (p0 * qi + pi * q0, qi * q0)
-            });
+        let (num, denom) = self.fold_queue();
 
-        let cumsum_mask =
-            std::array::from_fn(|_| eval.next_interaction_mask(self.interaction, [0, -1]));
-        let cur_cumsum = E::combine_ef(cumsum_mask.map(|[cur_row, _prev_row]| cur_row));
-        let prev_row_cumsum = E::combine_ef(cumsum_mask.map(|[_cur_row, prev_row]| prev_row));
+        let [cur_cumsum, prev_row_cumsum] =
+            eval.next_extension_interaction_mask(self.interaction, [0, -1]);
 
         let diff = cur_cumsum - prev_row_cumsum - self.prev_col_cumsum;
         // Instead of checking diff = num / denom, check diff = num / denom - cumsum_shift.
@@ -106,6 +91,15 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         let fixed_diff = diff + self.cumsum_shift;
 
         eval.add_constraint(fixed_diff * denom - num);
+    }
+
+    fn fold_queue(&self) -> (E::EF, E::EF) {
+        self.queue[0..self.queue_size]
+            .iter()
+            .copied()
+            .fold((E::EF::zero(), E::EF::one()), |(p0, q0), (pi, qi)| {
+                (p0 * qi + pi * q0, qi * q0)
+            })
     }
 }
 
