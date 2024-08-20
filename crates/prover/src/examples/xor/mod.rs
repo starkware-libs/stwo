@@ -1,3 +1,1 @@
-pub mod eq_eval_constraints;
-pub mod mle_eval_constraints;
-pub mod prefix_sum_constraints;
+pub mod gkr_lookups;
