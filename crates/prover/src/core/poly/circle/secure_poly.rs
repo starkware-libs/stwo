@@ -1,13 +1,14 @@
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 use super::{CircleDomain, CircleEvaluation, CirclePoly, PolyOps};
-use crate::core::backend::cpu::CpuCircleEvaluation;
 use crate::core::backend::CpuBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldOps;
+use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 
 pub struct SecureCirclePoly<B: FieldOps<BaseField>>(pub [CirclePoly<B>; SECURE_EXTENSION_DEGREE]);
@@ -32,6 +33,16 @@ impl<B: PolyOps> SecureCirclePoly<B> {
     pub fn log_size(&self) -> u32 {
         self[0].log_size()
     }
+
+    pub fn evaluate_with_twiddles(
+        &self,
+        domain: CircleDomain,
+        twiddles: &TwiddleTree<B>,
+    ) -> SecureEvaluation<B, BitReversedOrder> {
+        let polys = self.0.each_ref();
+        let columns = polys.map(|poly| poly.evaluate_with_twiddles(domain, twiddles).values);
+        SecureEvaluation::new(domain, SecureColumnByCoords { columns })
+    }
 }
 
 impl<B: FieldOps<BaseField>> Deref for SecureCirclePoly<B> {
@@ -42,12 +53,29 @@ impl<B: FieldOps<BaseField>> Deref for SecureCirclePoly<B> {
     }
 }
 
+/// A [`SecureField`] evaluation defined on a [CircleDomain].
+///
+/// The evaluation is stored as a column major array of [`SECURE_EXTENSION_DEGREE`] many base field
+/// evaluations. The evaluations are ordered according to the [CircleDomain] ordering.
 #[derive(Clone)]
-pub struct SecureEvaluation<B: FieldOps<BaseField>> {
+pub struct SecureEvaluation<B: FieldOps<BaseField>, EvalOrder> {
     pub domain: CircleDomain,
     pub values: SecureColumnByCoords<B>,
+    _eval_order: PhantomData<EvalOrder>,
 }
-impl<B: FieldOps<BaseField>> Deref for SecureEvaluation<B> {
+
+impl<B: FieldOps<BaseField>, EvalOrder> SecureEvaluation<B, EvalOrder> {
+    pub fn new(domain: CircleDomain, values: SecureColumnByCoords<B>) -> Self {
+        assert_eq!(domain.size(), values.len());
+        Self {
+            domain,
+            values,
+            _eval_order: PhantomData,
+        }
+    }
+}
+
+impl<B: FieldOps<BaseField>, EvalOrder> Deref for SecureEvaluation<B, EvalOrder> {
     type Target = SecureColumnByCoords<B>;
 
     fn deref(&self) -> &Self::Target {
@@ -55,26 +83,29 @@ impl<B: FieldOps<BaseField>> Deref for SecureEvaluation<B> {
     }
 }
 
-impl<B: FieldOps<BaseField>> DerefMut for SecureEvaluation<B> {
+impl<B: FieldOps<BaseField>, EvalOrder> DerefMut for SecureEvaluation<B, EvalOrder> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.values
     }
 }
 
-impl SecureEvaluation<CpuBackend> {
-    // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
-    pub fn to_cpu(self) -> CpuCircleEvaluation<SecureField, BitReversedOrder> {
-        CpuCircleEvaluation::new(self.domain, self.values.to_vec())
+impl<B: PolyOps> SecureEvaluation<B, BitReversedOrder> {
+    /// Computes a minimal [`SecureCirclePoly`] that evaluates to the same values as this
+    /// evaluation, using precomputed twiddles.
+    pub fn interpolate_with_twiddles(self, twiddles: &TwiddleTree<B>) -> SecureCirclePoly<B> {
+        let domain = self.domain;
+        let cols = self.values.columns;
+        SecureCirclePoly(cols.map(|c| {
+            CircleEvaluation::<B, BaseField, BitReversedOrder>::new(domain, c)
+                .interpolate_with_twiddles(twiddles)
+        }))
     }
 }
 
-impl From<CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>>
-    for SecureEvaluation<CpuBackend>
+impl<EvalOrder> From<CircleEvaluation<CpuBackend, SecureField, EvalOrder>>
+    for SecureEvaluation<CpuBackend, EvalOrder>
 {
-    fn from(evaluation: CircleEvaluation<CpuBackend, SecureField, BitReversedOrder>) -> Self {
-        Self {
-            domain: evaluation.domain,
-            values: evaluation.values.into_iter().collect(),
-        }
+    fn from(evaluation: CircleEvaluation<CpuBackend, SecureField, EvalOrder>) -> Self {
+        Self::new(evaluation.domain, evaluation.values.into_iter().collect())
     }
 }
