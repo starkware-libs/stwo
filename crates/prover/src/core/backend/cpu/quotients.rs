@@ -21,7 +21,7 @@ impl QuotientOps for CpuBackend {
         random_coeff: SecureField,
         sample_batches: &[ColumnSampleBatch],
         _log_blowup_factor: u32,
-    ) -> SecureEvaluation<Self> {
+    ) -> SecureEvaluation<Self, BitReversedOrder> {
         let mut values = unsafe { SecureColumnByCoords::uninitialized(domain.size()) };
         let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
 
@@ -36,7 +36,7 @@ impl QuotientOps for CpuBackend {
             );
             values.set(row, row_value);
         }
-        SecureEvaluation { domain, values }
+        SecureEvaluation::new(domain, values)
     }
 }
 

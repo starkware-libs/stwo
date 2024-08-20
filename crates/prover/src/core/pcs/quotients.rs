@@ -31,7 +31,7 @@ pub trait QuotientOps: PolyOps {
         random_coeff: SecureField,
         sample_batches: &[ColumnSampleBatch],
         log_blowup_factor: u32,
-    ) -> SecureEvaluation<Self>;
+    ) -> SecureEvaluation<Self, BitReversedOrder>;
 }
 
 /// A batch of column samplings at a point.
@@ -78,7 +78,7 @@ pub fn compute_fri_quotients<B: QuotientOps>(
     samples: &[Vec<PointSample>],
     random_coeff: SecureField,
     log_blowup_factor: u32,
-) -> Vec<SecureEvaluation<B>> {
+) -> Vec<SecureEvaluation<B, BitReversedOrder>> {
     let _span = span!(Level::INFO, "Compute FRI quotients").entered();
     zip(columns, samples)
         .sorted_by_key(|(c, _)| Reverse(c.domain.log_size()))

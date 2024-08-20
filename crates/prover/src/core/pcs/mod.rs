@@ -18,7 +18,7 @@ pub use self::utils::TreeVec;
 pub use self::verifier::CommitmentSchemeVerifier;
 use super::fri::FriConfig;
 
-#[derive(Copy, Debug, Clone)]
+#[derive(Copy, Debug, Clone, PartialEq, Eq)]
 pub struct TreeColumnSpan {
     pub tree_index: usize,
     pub col_start: usize,
