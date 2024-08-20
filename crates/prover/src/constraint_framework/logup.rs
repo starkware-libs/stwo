@@ -245,6 +245,11 @@ impl<'a> LogupColGenerator<'a> {
         numerator: PackedSecureField,
         denom: PackedSecureField,
     ) {
+        assert!(
+            denom.to_array().iter().any(|x| *x == SecureField::zero()),
+            "{:?}",
+            ("denom at vec_row {} is zero {}", denom, vec_row)
+        );
         unsafe {
             self.numerator.set_packed(vec_row, numerator);
             *self.gen.denom.data.get_unchecked_mut(vec_row) = denom;
