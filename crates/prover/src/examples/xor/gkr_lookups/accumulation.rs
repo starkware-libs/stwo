@@ -18,13 +18,13 @@ pub const MIN_LOG_BLOWUP_FACTOR: u32 = 1;
 /// IOP for multilinear eval at point.
 pub const MAX_MLE_N_VARIABLES: u32 = M31_CIRCLE_LOG_ORDER - MIN_LOG_BLOWUP_FACTOR;
 
-/// Accumulates [`Mle`]s grouped by their number of variables.
+/// Collection of [`Mle`]s grouped by their number of variables.
 pub struct MleCollection<B: Backend> {
     mles_by_n_variables: Vec<Option<Vec<DynMle<B>>>>,
 }
 
 impl<B: Backend> MleCollection<B> {
-    /// Appends an [`Mle`] to the collection.
+    /// Appends an [`Mle`] to the back of the collection.
     pub fn push(&mut self, mle: impl Into<DynMle<B>>) {
         let mle = mle.into();
         let mles = self.mles_by_n_variables[mle.n_variables()].get_or_insert(Vec::new());
@@ -35,6 +35,7 @@ impl<B: Backend> MleCollection<B> {
 impl MleCollection<SimdBackend> {
     /// Performs a random linear combination of all MLEs, grouped by their number of variables.
     ///
+    /// For `n` accumulated MLEs in a group, the `i`th MLE is multiplied by `alpha^(n-1-i)`.
     /// MLEs are returned in ascending order by number of variables.
     pub fn random_linear_combine_by_n_variables(
         self,
@@ -53,13 +54,13 @@ impl MleCollection<SimdBackend> {
 /// Panics if `mles` is empty or all MLEs don't have the same number of variables.
 fn mle_random_linear_combination(
     mles: Vec<DynMle<SimdBackend>>,
-    alpha: SecureField,
+    random_coeff: SecureField,
 ) -> Mle<SimdBackend, SecureField> {
     assert!(!mles.is_empty());
     let n_variables = mles[0].n_variables();
     assert!(mles.iter().all(|mle| mle.n_variables() == n_variables));
-    let alpha_powers = generate_secure_powers(alpha, mles.len()).into_iter().rev();
-    let mut mle_and_coeff = zip(mles, alpha_powers);
+    let coeff_powers = generate_secure_powers(random_coeff, mles.len());
+    let mut mle_and_coeff = zip(mles, coeff_powers.into_iter().rev());
 
     // The last value can initialize the accumulator.
     let (mle, coeff) = mle_and_coeff.next_back().unwrap();
