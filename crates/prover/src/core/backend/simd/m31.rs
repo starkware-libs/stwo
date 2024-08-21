@@ -27,7 +27,7 @@ pub type PackedBaseField = PackedM31;
 ///
 /// Implemented with [`std::simd`] to support multiple targets (avx512, neon, wasm etc.).
 // TODO: Remove `pub` visibility
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(transparent)]
 pub struct PackedM31(Simd<u32, N_LANES>);
 

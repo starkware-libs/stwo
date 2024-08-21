@@ -17,6 +17,7 @@ use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::utils::short_circuit_mul;
 use crate::core::ColumnVec;
 
 /// Evaluates constraints for batched logups.
@@ -167,7 +168,9 @@ pub struct LogupTraceGenerator {
 impl LogupTraceGenerator {
     pub fn new(log_size: u32) -> Self {
         let trace = vec![];
-        let denom = SecureColumn::zeros(1 << log_size);
+        let denom = SecureColumn::from_iter(
+            std::iter::repeat(PackedSecureField::one()).take(1 << (log_size - LOG_N_LANES)),
+        );
         let denom_inv = SecureColumn::zeros(1 << log_size);
         Self {
             log_size,
@@ -238,16 +241,22 @@ pub struct LogupColGenerator<'a> {
     numerator: SecureColumnByCoords<SimdBackend>,
 }
 impl<'a> LogupColGenerator<'a> {
-    /// Write a fraction to the column at a row.
-    pub fn write_frac(
+    /// Add a fraction to the column at a row.
+    pub fn add_frac(
         &mut self,
         vec_row: usize,
         numerator: PackedSecureField,
         denom: PackedSecureField,
     ) {
         unsafe {
-            self.numerator.set_packed(vec_row, numerator);
-            *self.gen.denom.data.get_unchecked_mut(vec_row) = denom;
+            let cur_num = self.numerator.packed_at(vec_row);
+            let cur_denom = *self.gen.denom.data.get_unchecked(vec_row);
+
+            self.numerator.set_packed(
+                vec_row,
+                short_circuit_mul(numerator, cur_denom) + short_circuit_mul(denom, cur_num),
+            );
+            *self.gen.denom.data.get_unchecked_mut(vec_row) = short_circuit_mul(denom, cur_denom);
         }
     }
 

@@ -185,6 +185,24 @@ pub fn point_vanish_denominator_inverses(
     denom_inverses
 }
 
+/// Multiplies two values, short-circuiting if one of them is zero or one.
+pub fn short_circuit_mul<S, T, R>(a: S, b: T) -> R
+where
+    S: Zero + One + Mul<T, Output = R> + PartialEq,
+    T: Zero + One + PartialEq,
+    R: Zero + From<S> + From<T>,
+{
+    if a.is_zero() || b.is_zero() {
+        R::zero()
+    } else if a.is_one() {
+        b.into()
+    } else if b.is_one() {
+        a.into()
+    } else {
+        a * b
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;

@@ -14,7 +14,7 @@ use crate::core::fields::FieldExpOps;
 pub type PackedSecureField = PackedQM31;
 
 /// SIMD implementation of [`QM31`].
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct PackedQM31(pub [PackedCM31; 2]);
 
 impl PackedQM31 {

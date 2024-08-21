@@ -262,7 +262,7 @@ pub fn generate_interaction_trace(
             let p1: PackedSecureField = xor_lookup_elements
                 .get(*w1)
                 .combine(&l1.each_ref().map(|l| l.data[vec_row]));
-            col_gen.write_frac(vec_row, p0 + p1, p0 * p1);
+            col_gen.add_frac(vec_row, p0 + p1, p0 * p1);
         }
 
         col_gen.finalize_col();
@@ -273,7 +273,7 @@ pub fn generate_interaction_trace(
     for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
         let p = round_lookup_elements
             .combine(&lookup_data.round_lookup.each_ref().map(|l| l.data[vec_row]));
-        col_gen.write_frac(vec_row, -PackedSecureField::one(), p);
+        col_gen.add_frac(vec_row, -PackedSecureField::one(), p);
     }
     col_gen.finalize_col();
 

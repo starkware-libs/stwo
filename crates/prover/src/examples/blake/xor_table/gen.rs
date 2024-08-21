@@ -97,7 +97,7 @@ pub fn generate_interaction_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
 
             let num = p1 * mults0.data[vec_row as usize] + p0 * mults1.data[vec_row as usize];
             let denom = p0 * p1;
-            col_gen.write_frac(vec_row as usize, -num, denom);
+            col_gen.add_frac(vec_row as usize, -num, denom);
         }
         col_gen.finalize_col();
     }
@@ -125,7 +125,7 @@ pub fn generate_interaction_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
 
                 let num = mults.data[vec_row as usize];
                 let denom = p;
-                col_gen.write_frac(vec_row as usize, PackedSecureField::from(-num), denom);
+                col_gen.add_frac(vec_row as usize, PackedSecureField::from(-num), denom);
             }
             col_gen.finalize_col();
         }
