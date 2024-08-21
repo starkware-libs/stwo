@@ -83,18 +83,23 @@ fn eval_eq_constraints<E: EvalAtRow, const N_VARIABLES: usize>(
     eval.add_constraint(half_coset0_initial_check + half_coset1_final_check);
 
     // Check all variables except the last (last variable is handled by the constraint above).
-    #[allow(clippy::needless_range_loop)]
-    for variable_i in 0..N_VARIABLES.saturating_sub(1) {
+    let step_constraints = (0..N_VARIABLES.saturating_sub(1)).map(|variable_i| {
         let half_coset0_next = next_next;
         let half_coset1_prev = next_next;
         let [half_coset0_step, half_coset1_step] =
             eval.next_interaction_mask(selector_interaction, [0, -1]);
         let carry_quotient = mle_eval_point.eq_carry_quotients[variable_i];
-        // Safe to combine these constraints as `is_step.half_coset0` and `is_step.half_coset1`
+        // Safe to combine these constraints as `half_coset0_step` and `half_coset1_step`
         // are never non-zero at the same time on the trace.
         let half_coset0_check = (curr - half_coset0_next * carry_quotient) * half_coset0_step;
         let half_coset1_check = (curr * carry_quotient - half_coset1_prev) * half_coset1_step;
-        eval.add_constraint(half_coset0_check + half_coset1_check);
+        half_coset0_check + half_coset1_check
+    });
+
+    // Safe to combine into a single constraint as the step selectors are never non-zero on the
+    // trace at the same time.
+    if let Some(steps_constraint) = step_constraints.reduce(|a, b| a + b) {
+        eval.add_constraint(steps_constraint)
     }
 
     curr
