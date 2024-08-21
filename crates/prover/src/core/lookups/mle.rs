@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use educe::Educe;
 
@@ -55,6 +55,12 @@ impl<B: ColumnOps<F>, F: Field> Deref for Mle<B, F> {
 
     fn deref(&self) -> &Col<B, F> {
         &self.evals
+    }
+}
+
+impl<B: ColumnOps<F>, F: Field> DerefMut for Mle<B, F> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.evals
     }
 }
 
