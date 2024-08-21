@@ -10,21 +10,18 @@ use crate::core::lookups::utils::eq;
 ///
 /// Returns the evaluation at offset 0 on the column.
 ///
-/// Given a column `c(P)` defined on a circle domain D, and an MLE evaluation point `(r0, r1, ...)`
-/// evaluates constraints that guarantee: `c(D[b0,b1,...]) = eq((b0,b1,...), (r0,r1,...))`
+/// Given a column `c(P)` defined on a circle domain `D`, and an MLE eval point `(r0, r1, ...)`
+/// evaluates constraints that guarantee: `c(D[b0, b1, ...]) = eq((b0, b1, ...), (r0, r1, ...))`.
 ///
 /// See <https://eprint.iacr.org/2023/1284.pdf> (Section 5.1).
-pub fn eval_eq_constraints<
-    E: EvalAtRow,
-    const N_VARIABLES: usize,
-    const EQ_EVALS_TRACE: usize,
-    const SELECTOR_TRACE: usize,
->(
+pub fn eval_eq_constraints<E: EvalAtRow, const N_VARIABLES: usize>(
+    eq_interaction: usize,
+    selector_interaction: usize,
     eval: &mut E,
     mle_eval_point: MleEvalPoint<N_VARIABLES>,
 ) -> E::EF {
-    let [curr, next_next] = eval.next_extension_interaction_mask(EQ_EVALS_TRACE, [0, 2]);
-    let [is_first, is_second] = eval.next_interaction_mask(SELECTOR_TRACE, [0, -1]);
+    let [curr, next_next] = eval.next_extension_interaction_mask(eq_interaction, [0, 2]);
+    let [is_first, is_second] = eval.next_interaction_mask(selector_interaction, [0, -1]);
 
     // Check the initial value on half_coset0 and final value on half_coset1.
     // Combining these constraints is safe because `is_first` and `is_second` are never
@@ -39,7 +36,7 @@ pub fn eval_eq_constraints<
         let half_coset0_next = next_next;
         let half_coset1_prev = next_next;
         let [half_coset0_step, half_coset1_step] =
-            eval.next_interaction_mask(SELECTOR_TRACE, [0, -1]);
+            eval.next_interaction_mask(selector_interaction, [0, -1]);
         let carry_quotient = mle_eval_point.eq_carry_quotients[variable_i];
         // Safe to combine these constraints as `is_step.half_coset0` and `is_step.half_coset1`
         // are never non-zero at the same time on the trace.
@@ -123,10 +120,7 @@ pub mod tests {
         let mle_eval_point = MleEvalPoint::new(eval_point);
 
         assert_constraints(&trace_polys, trace_domain, |mut eval| {
-            eval_eq_constraints::<_, N_VARIABLES, EVALS_TRACE, CONST_TRACE>(
-                &mut eval,
-                mle_eval_point,
-            );
+            eval_eq_constraints(EVALS_TRACE, CONST_TRACE, &mut eval, mle_eval_point);
         });
     }
 
@@ -143,10 +137,7 @@ pub mod tests {
         let mle_eval_point = MleEvalPoint::new(eval_point);
 
         assert_constraints(&trace_polys, trace_domain, |mut eval| {
-            eval_eq_constraints::<_, N_VARIABLES, EVALS_TRACE, CONST_TRACE>(
-                &mut eval,
-                mle_eval_point,
-            );
+            eval_eq_constraints(EVALS_TRACE, CONST_TRACE, &mut eval, mle_eval_point);
         });
     }
 
@@ -163,10 +154,7 @@ pub mod tests {
         let mle_eval_point = MleEvalPoint::new(eval_point);
 
         assert_constraints(&trace_polys, trace_domain, |mut eval| {
-            eval_eq_constraints::<_, N_VARIABLES, EVALS_TRACE, CONST_TRACE>(
-                &mut eval,
-                mle_eval_point,
-            );
+            eval_eq_constraints(EVALS_TRACE, CONST_TRACE, &mut eval, mle_eval_point);
         });
     }
 
