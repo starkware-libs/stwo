@@ -73,6 +73,13 @@ impl<B: FieldOps<BaseField>, EvalOrder> SecureEvaluation<B, EvalOrder> {
             _eval_order: PhantomData,
         }
     }
+
+    pub fn into_coordinate_evals(
+        self,
+    ) -> [CircleEvaluation<B, BaseField, EvalOrder>; SECURE_EXTENSION_DEGREE] {
+        let Self { domain, values, .. } = self;
+        values.columns.map(|c| CircleEvaluation::new(domain, c))
+    }
 }
 
 impl<B: FieldOps<BaseField>, EvalOrder> Deref for SecureEvaluation<B, EvalOrder> {
