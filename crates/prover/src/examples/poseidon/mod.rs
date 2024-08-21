@@ -404,6 +404,19 @@ mod tests {
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
 
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    #[wasm_bindgen_test::wasm_bindgen_test]
+    fn test_poseidon_prove_wasm() {
+        const LOG_N_INSTANCES: u32 = 10;
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 1, 64),
+        };
+
+        // Prove.
+        prove_poseidon(LOG_N_INSTANCES, config);
+    }
+
     #[test]
     fn test_apply_m4() {
         let m4 = RowMajorMatrix::<BaseField, 4>::new(
