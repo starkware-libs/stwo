@@ -11,7 +11,7 @@ use crate::core::lookups::utils::eq;
 ///
 /// `mle_coeffs_col_eval` should be the evaluation of the column containing the coefficients of the
 /// MLE in the multilinear Lagrange basis. `mle_claim_shift` should equal `claim / 2^N_VARIABLES`.
-pub fn eval_mle_eval_constrants<E: EvalAtRow, const N_VARIABLES: usize>(
+pub fn eval_mle_eval_constraints<E: EvalAtRow, const N_VARIABLES: usize>(
     mle_interaction: usize,
     selector_interaction: usize,
     eval: &mut E,
@@ -130,7 +130,7 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::{
-        eval_eq_constraints, eval_mle_eval_constrants, eval_prefix_sum_constraints, MleEvalPoint,
+        eval_eq_constraints, eval_mle_eval_constraints, eval_prefix_sum_constraints, MleEvalPoint,
     };
     use crate::constraint_framework::constant_columns::{gen_is_first, gen_is_step_with_offset};
     use crate::constraint_framework::{assert_constraints, EvalAtRow};
@@ -171,7 +171,7 @@ mod tests {
 
         assert_constraints(&trace_polys, trace_domain, |mut eval| {
             let [mle_coeff_col_eval] = eval.next_extension_interaction_mask(EVAL_TRACE, [0]);
-            eval_mle_eval_constrants(
+            eval_mle_eval_constraints(
                 EVAL_TRACE,
                 CONST_TRACE,
                 &mut eval,
