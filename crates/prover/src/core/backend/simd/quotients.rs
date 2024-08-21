@@ -32,7 +32,7 @@ impl QuotientOps for SimdBackend {
         random_coeff: SecureField,
         sample_batches: &[ColumnSampleBatch],
         log_blowup_factor: u32,
-    ) -> SecureEvaluation<Self> {
+    ) -> SecureEvaluation<Self, BitReversedOrder> {
         // Split the domain into a subdomain and a shift coset.
         // TODO(spapini): Move to the caller when Columns support slices.
         let (subdomain, mut subdomain_shifts) = domain.split(log_blowup_factor);
@@ -74,10 +74,7 @@ impl QuotientOps for SimdBackend {
         }
         span.exit();
 
-        SecureEvaluation {
-            domain,
-            values: extended_eval,
-        }
+        SecureEvaluation::new(domain, extended_eval)
     }
 }
 

@@ -109,7 +109,7 @@ pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized + FieldOps<SecureField> 
     // TODO(andrew): Fold directly into FRI layer to prevent allocation.
     fn fold_circle_into_line(
         dst: &mut LineEvaluation<Self>,
-        src: &SecureEvaluation<Self>,
+        src: &SecureEvaluation<Self, BitReversedOrder>,
         alpha: SecureField,
         twiddles: &TwiddleTree<Self>,
     );
@@ -119,7 +119,9 @@ pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized + FieldOps<SecureField> 
     /// FRI-space: polynomials of total degree n/2.
     /// Based on lemma #12 from the CircleStark paper: f(P) = g(P)+ lambda * alternating(P),
     /// where lambda is the cosset diff of eval, and g is a polynomial in the fft-space.
-    fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField);
+    fn decompose(
+        eval: &SecureEvaluation<Self, BitReversedOrder>,
+    ) -> (SecureEvaluation<Self, BitReversedOrder>, SecureField);
 }
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
 pub struct FriProver<B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> {
@@ -154,7 +156,7 @@ impl<B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<B, MC> {
     pub fn commit(
         channel: &mut MC::C,
         config: FriConfig,
-        columns: &[SecureEvaluation<B>],
+        columns: &[SecureEvaluation<B, BitReversedOrder>],
         twiddles: &TwiddleTree<B>,
     ) -> Self {
         let _span = span!(Level::INFO, "FRI commitment").entered();
@@ -186,11 +188,12 @@ impl<B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<B, MC> {
     fn commit_inner_layers(
         channel: &mut MC::C,
         config: FriConfig,
-        columns: &[SecureEvaluation<B>],
+        columns: &[SecureEvaluation<B, BitReversedOrder>],
         twiddles: &TwiddleTree<B>,
     ) -> (Vec<FriLayerProver<B, MC::H>>, LineEvaluation<B>) {
         // Returns the length of the [LineEvaluation] a [CircleEvaluation] gets folded into.
-        let folded_len = |e: &SecureEvaluation<B>| e.len() >> CIRCLE_TO_LINE_FOLD_STEP;
+        let folded_len =
+            |e: &SecureEvaluation<B, BitReversedOrder>| e.len() >> CIRCLE_TO_LINE_FOLD_STEP;
 
         let first_layer_size = folded_len(&columns[0]);
         let first_layer_domain = LineDomain::new(Coset::half_odds(first_layer_size.ilog2()));
@@ -538,21 +541,6 @@ fn get_opening_positions(
     positions
 }
 
-pub trait FriChannel {
-    type Digest;
-
-    type Field;
-
-    /// Reseeds the channel with a commitment to an inner FRI layer.
-    fn reseed_with_inner_layer(&mut self, commitment: &Self::Digest);
-
-    /// Reseeds the channel with the FRI last layer polynomial.
-    fn reseed_with_last_layer(&mut self, last_layer: &LinePoly);
-
-    /// Draws a random field element.
-    fn draw(&mut self) -> Self::Field;
-}
-
 #[derive(Clone, Copy, Debug, Error)]
 pub enum FriVerificationError {
     #[error("proof contains an invalid number of FRI layers")]
@@ -876,10 +864,7 @@ impl SparseCircleEvaluation {
                 let mut buffer = LineEvaluation::new_zero(buffer_domain);
                 fold_circle_into_line(
                     &mut buffer,
-                    &SecureEvaluation {
-                        domain: e.domain,
-                        values: e.values.into_iter().collect(),
-                    },
+                    &SecureEvaluation::new(e.domain, e.values.into_iter().collect()),
                     alpha,
                 );
                 buffer.values.at(0)
@@ -957,7 +942,7 @@ pub fn fold_line(
 /// See [`FriOps::fold_circle_into_line`].
 pub fn fold_circle_into_line(
     dst: &mut LineEvaluation<CpuBackend>,
-    src: &SecureEvaluation<CpuBackend>,
+    src: &SecureEvaluation<CpuBackend, BitReversedOrder>,
     alpha: SecureField,
 ) {
     assert_eq!(src.len() >> CIRCLE_TO_LINE_FOLD_STEP, dst.len());
@@ -993,11 +978,10 @@ mod tests {
 
     use super::{get_opening_positions, FriVerificationError, SparseCircleEvaluation};
     use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
-    use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
+    use crate::core::backend::{ColumnOps, CpuBackend};
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::secure_column::SecureColumnByCoords;
     use crate::core::fields::Field;
     use crate::core::fri::{
         fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig,
@@ -1005,7 +989,7 @@ mod tests {
     };
     use crate::core::poly::circle::{CircleDomain, PolyOps, SecureEvaluation};
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
-    use crate::core::poly::NaturalOrder;
+    use crate::core::poly::{BitReversedOrder, NaturalOrder};
     use crate::core::queries::{Queries, SparseSubCircleDomain};
     use crate::core::test_utils::test_channel;
     use crate::core::utils::bit_reverse_index;
@@ -1089,10 +1073,10 @@ mod tests {
     fn committing_evaluation_from_invalid_domain_fails() {
         let invalid_domain = CircleDomain::new(Coset::new(CirclePointIndex::generator(), 3));
         assert!(!invalid_domain.is_canonic(), "must be an invalid domain");
-        let evaluation = SecureEvaluation {
-            domain: invalid_domain,
-            values: vec![SecureField::one(); 1 << 4].into_iter().collect(),
-        };
+        let evaluation = SecureEvaluation::new(
+            invalid_domain,
+            vec![SecureField::one(); 1 << 4].into_iter().collect(),
+        );
 
         FriProver::commit(
             &mut test_channel(),
@@ -1388,22 +1372,12 @@ mod tests {
     fn polynomial_evaluation(
         log_degree: u32,
         log_blowup_factor: u32,
-    ) -> SecureEvaluation<CpuBackend> {
+    ) -> SecureEvaluation<CpuBackend, BitReversedOrder> {
         let poly = CpuCirclePoly::new(vec![BaseField::one(); 1 << log_degree]);
         let coset = Coset::half_odds(log_degree + log_blowup_factor - 1);
         let domain = CircleDomain::new(coset);
         let values = poly.evaluate(domain);
-        SecureEvaluation {
-            domain,
-            values: SecureColumnByCoords {
-                columns: [
-                    values.values,
-                    Col::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
-                    Col::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
-                    Col::<CpuBackend, BaseField>::zeros(1 << (log_degree + log_blowup_factor)),
-                ],
-            },
-        }
+        SecureEvaluation::new(domain, values.into_iter().map(SecureField::from).collect())
     }
 
     /// Returns the log degree bound of a polynomial.
@@ -1415,7 +1389,7 @@ mod tests {
 
     // TODO: Remove after SubcircleDomain integration.
     fn query_polynomial(
-        polynomial: &SecureEvaluation<CpuBackend>,
+        polynomial: &SecureEvaluation<CpuBackend, BitReversedOrder>,
         queries: &Queries,
     ) -> SparseCircleEvaluation {
         let polynomial_log_size = polynomial.domain.log_size();
@@ -1425,7 +1399,7 @@ mod tests {
     }
 
     fn open_polynomial(
-        polynomial: &SecureEvaluation<CpuBackend>,
+        polynomial: &SecureEvaluation<CpuBackend, BitReversedOrder>,
         positions: &SparseSubCircleDomain,
     ) -> SparseCircleEvaluation {
         let coset_evals = positions

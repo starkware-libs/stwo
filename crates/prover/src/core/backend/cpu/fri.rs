@@ -6,6 +6,7 @@ use crate::core::fri::{fold_circle_into_line, fold_line, FriOps};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
+use crate::core::poly::BitReversedOrder;
 
 // TODO(spapini): Optimized these functions as well.
 impl FriOps for CpuBackend {
@@ -18,14 +19,16 @@ impl FriOps for CpuBackend {
     }
     fn fold_circle_into_line(
         dst: &mut LineEvaluation<Self>,
-        src: &SecureEvaluation<Self>,
+        src: &SecureEvaluation<Self, BitReversedOrder>,
         alpha: SecureField,
         _twiddles: &TwiddleTree<Self>,
     ) {
         fold_circle_into_line(dst, src, alpha)
     }
 
-    fn decompose(eval: &SecureEvaluation<Self>) -> (SecureEvaluation<Self>, SecureField) {
+    fn decompose(
+        eval: &SecureEvaluation<Self, BitReversedOrder>,
+    ) -> (SecureEvaluation<Self, BitReversedOrder>, SecureField) {
         let lambda = Self::decomposition_coefficient(eval);
         let mut g_values = unsafe { SecureColumnByCoords::<Self>::uninitialized(eval.len()) };
 
@@ -43,10 +46,7 @@ impl FriOps for CpuBackend {
             g_values.set(i, val);
         }
 
-        let g = SecureEvaluation {
-            domain: eval.domain,
-            values: g_values,
-        };
+        let g = SecureEvaluation::new(eval.domain, g_values);
         (g, lambda)
     }
 }
@@ -67,7 +67,7 @@ impl CpuBackend {
     /// This function assumes the blowupfactor is 2
     ///
     /// [`CirclePoly`]: crate::core::poly::circle::CirclePoly
-    fn decomposition_coefficient(eval: &SecureEvaluation<Self>) -> SecureField {
+    fn decomposition_coefficient(eval: &SecureEvaluation<Self, BitReversedOrder>) -> SecureField {
         let domain_size = 1 << eval.domain.log_size();
         let half_domain_size = domain_size / 2;
 
@@ -96,6 +96,7 @@ mod tests {
     use crate::core::fields::secure_column::SecureColumnByCoords;
     use crate::core::fri::FriOps;
     use crate::core::poly::circle::{CanonicCoset, SecureEvaluation};
+    use crate::core::poly::BitReversedOrder;
     use crate::m31;
 
     #[test]
@@ -121,10 +122,10 @@ mod tests {
                     values.values.clone(),
                 ],
             };
-            let secure_eval = SecureEvaluation::<CpuBackend> {
+            let secure_eval = SecureEvaluation::<CpuBackend, BitReversedOrder>::new(
                 domain,
-                values: secure_column.clone(),
-            };
+                secure_column.clone(),
+            );
 
             let (g, lambda) = CpuBackend::decompose(&secure_eval);
 
