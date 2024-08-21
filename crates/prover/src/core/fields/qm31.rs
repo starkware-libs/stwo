@@ -85,6 +85,24 @@ impl Mul for QM31 {
     }
 }
 
+impl From<usize> for QM31 {
+    fn from(value: usize) -> Self {
+        M31::from(value).into()
+    }
+}
+
+impl From<u32> for QM31 {
+    fn from(value: u32) -> Self {
+        M31::from(value).into()
+    }
+}
+
+impl From<i32> for QM31 {
+    fn from(value: i32) -> Self {
+        M31::from(value).into()
+    }
+}
+
 impl TryInto<M31> for QM31 {
     type Error = ();
 
