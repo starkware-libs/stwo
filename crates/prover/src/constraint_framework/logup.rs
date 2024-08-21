@@ -36,6 +36,7 @@ pub struct LogupAtRow<const BATCH_SIZE: usize, E: EvalAtRow> {
     pub cumsum_shift: SecureField,
     /// The evaluation of the last cumulative sum column.
     pub prev_col_cumsum: E::EF,
+    is_finalized: bool,
 }
 impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
     pub fn new(interaction: usize, claimed_sum: SecureField, log_size: u32) -> Self {
@@ -45,6 +46,7 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
             queue_size: 0,
             cumsum_shift: claimed_sum / BaseField::from_u32_unchecked(1 << log_size),
             prev_col_cumsum: E::EF::zero(),
+            is_finalized: false,
         }
     }
     pub fn push_lookup<const N: usize>(
@@ -78,7 +80,8 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         eval.add_constraint(diff * denom - num);
     }
 
-    pub fn finalize(self, eval: &mut E) {
+    pub fn finalize(mut self, eval: &mut E) {
+        assert!(!self.is_finalized, "LogupAtRow was already finalized");
         let (num, denom) = self.fold_queue();
 
         let [cur_cumsum, prev_row_cumsum] =
@@ -91,6 +94,8 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         let fixed_diff = diff + self.cumsum_shift;
 
         eval.add_constraint(fixed_diff * denom - num);
+
+        self.is_finalized = true;
     }
 
     fn fold_queue(&self) -> (E::EF, E::EF) {
@@ -100,6 +105,14 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
             .fold((E::EF::zero(), E::EF::one()), |(p0, q0), (pi, qi)| {
                 (p0 * qi + pi * q0, qi * q0)
             })
+    }
+}
+
+/// Ensures that the LogupAtRow is finalized.
+/// LogupAtRow should be finalized exactly once.
+impl<const BATCH_SIZE: usize, E: EvalAtRow> Drop for LogupAtRow<BATCH_SIZE, E> {
+    fn drop(&mut self) {
+        assert!(self.is_finalized, "LogupAtRow was not finalized");
     }
 }
 
@@ -264,5 +277,25 @@ impl<'a> LogupColGenerator<'a> {
         }
 
         self.gen.trace.push(self.numerator)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use num_traits::One;
+
+    use super::LogupAtRow;
+    use crate::constraint_framework::InfoEvaluator;
+    use crate::core::fields::qm31::SecureField;
+
+    #[test]
+    #[should_panic]
+    fn test_logup_not_finalized_panic() {
+        let mut logup = LogupAtRow::<2, InfoEvaluator>::new(1, SecureField::one(), 7);
+        logup.push_frac(
+            &mut InfoEvaluator::default(),
+            SecureField::one(),
+            SecureField::one(),
+        );
     }
 }
