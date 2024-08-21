@@ -82,18 +82,44 @@ fn eval_eq_constraints<E: EvalAtRow, const N_VARIABLES: usize>(
     let half_coset1_final_check = (curr - mle_eval_point.eq_1_p) * is_second;
     eval.add_constraint(half_coset0_initial_check + half_coset1_final_check);
 
-    // Check all variables except the last (last variable is handled by the constraint above).
-    #[allow(clippy::needless_range_loop)]
-    for variable_i in 0..N_VARIABLES.saturating_sub(1) {
+    if N_VARIABLES > 1 {
+        let mut is_half_coset0 = E::F::zero();
+        let mut half_coset0_carry_quotient = E::EF::zero();
+
+        let mut is_half_coset1 = E::F::zero();
+        let mut half_coset1_carry_quotient = E::EF::zero();
+
+        for mle_variable_i in 0..N_VARIABLES - 1 {
+            // Note the step selectors for each half coset fit into each other:
+            // - Variable 0 step selector column vals: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, ...]
+            // - Variable 1 step selector column vals: [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, ...]
+            // - Variable 2 step selector column vals: [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, ...]
+            // - Variable 3 step selector column vals: [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, ...]
+            // ...
+            let [is_half_coset0_step, is_half_coset1_step] =
+                eval.next_interaction_mask(selector_interaction, [0, -1]);
+
+            // All selectors added together gives a virtual selector for the entire half coset.
+            is_half_coset0 += is_half_coset0_step;
+            is_half_coset1 += is_half_coset1_step;
+
+            // Multiplying each individual selector by its corresponding carry quotient and adding
+            // everything together gives a virtual column of all carry quotients.
+            let carry_quotient = mle_eval_point.eq_carry_quotients[mle_variable_i];
+            half_coset0_carry_quotient += is_half_coset0_step * carry_quotient;
+            half_coset1_carry_quotient += is_half_coset1_step * carry_quotient;
+        }
+
         let half_coset0_next = next_next;
+        let half_coset0_check =
+            curr * is_half_coset0 - half_coset0_next * half_coset0_carry_quotient;
+
         let half_coset1_prev = next_next;
-        let [half_coset0_step, half_coset1_step] =
-            eval.next_interaction_mask(selector_interaction, [0, -1]);
-        let carry_quotient = mle_eval_point.eq_carry_quotients[variable_i];
-        // Safe to combine these constraints as `is_step.half_coset0` and `is_step.half_coset1`
-        // are never non-zero at the same time on the trace.
-        let half_coset0_check = (curr - half_coset0_next * carry_quotient) * half_coset0_step;
-        let half_coset1_check = (curr * carry_quotient - half_coset1_prev) * half_coset1_step;
+        let half_coset1_check =
+            curr * half_coset1_carry_quotient - half_coset1_prev * is_half_coset1;
+
+        // Safe to combine these constraints as all the step selectors (for both cosets) are never
+        // non-zero at the same time on the trace.
         eval.add_constraint(half_coset0_check + half_coset1_check);
     }
 
