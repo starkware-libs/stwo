@@ -18,6 +18,7 @@ use crate::core::utils::generate_secure_powers;
 /// Accumulates N evaluations of u_i(P0) at a single point.
 /// Computes f(P0), the combined polynomial at that point.
 /// For n accumulated evaluations, the i'th evaluation is multiplied by alpha^(N-1-i).
+#[derive(Debug, Clone)]
 pub struct PointEvaluationAccumulator {
     random_coeff: SecureField,
     accumulation: SecureField,
