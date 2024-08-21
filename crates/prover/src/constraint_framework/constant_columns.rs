@@ -8,8 +8,18 @@ use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 
 /// Generates a column with a single one at the first position, and zeros elsewhere.
 pub fn gen_is_first<B: Backend>(log_size: u32) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
+    gen_is_offset(log_size, 0)
+}
+
+/// Generates a column with a single one at the `offset`, and zeros elsewhere.
+pub fn gen_is_offset<B: Backend>(
+    log_size: u32,
+    offset: isize,
+) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
     let mut col = Col::<B, BaseField>::zeros(1 << log_size);
-    col.set(0, BaseField::one());
+    let offset = offset.rem_euclid(col.len() as isize) as usize;
+    let circle_domain_offset = coset_index_to_circle_domain_index(offset, log_size);
+    col.set(circle_domain_offset, BaseField::one());
     CircleEvaluation::new(CanonicCoset::new(log_size).circle_domain(), col)
 }
 
