@@ -9,7 +9,7 @@ use crate::core::fields::cm31::CM31;
 use crate::core::fields::FieldExpOps;
 
 /// SIMD implementation of [`CM31`].
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct PackedCM31(pub [PackedM31; 2]);
 
 impl PackedCM31 {

@@ -122,7 +122,7 @@ pub fn gen_interaction_trace(
             lookup_elements.combine(&[circuit.a_wire.data[vec_row], circuit.a_val.data[vec_row]]);
         let q1: PackedSecureField =
             lookup_elements.combine(&[circuit.b_wire.data[vec_row], circuit.b_val.data[vec_row]]);
-        col_gen.write_frac(vec_row, q0 + q1, q0 * q1);
+        col_gen.add_frac(vec_row, q0 + q1, q0 * q1);
     }
     col_gen.finalize_col();
 
@@ -131,7 +131,7 @@ pub fn gen_interaction_trace(
         let p = -circuit.mult.data[vec_row];
         let q: PackedSecureField =
             lookup_elements.combine(&[circuit.c_wire.data[vec_row], circuit.c_val.data[vec_row]]);
-        col_gen.write_frac(vec_row, p.into(), q);
+        col_gen.add_frac(vec_row, p.into(), q);
     }
     col_gen.finalize_col();
 
