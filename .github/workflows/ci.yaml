@@ -78,7 +78,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: jetli/wasm-pack-action@v0.4.0
         with:
-          version: 'latest'
+          version: "latest"
       - run: cd crates/prover && wasm-pack test --node
         env:
           RUSTFLAGS: -C target-feature=+simd128
@@ -154,7 +154,7 @@ jobs:
         with:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test --release -- --ignored
+      - run: cargo +nightly-2024-01-04 test --release --features="slow-tests"
 
   udeps:
     runs-on: ubuntu-latest

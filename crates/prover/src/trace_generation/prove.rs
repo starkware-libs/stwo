@@ -325,7 +325,7 @@ mod tests {
 
     // Ignored because it takes too long and too much memory (in the CI) to run.
     #[test]
-    #[ignore]
+    #[cfg_attr(not(feature = "slow-tests"), ignore)]
     fn test_trace_too_big() {
         const LOG_DOMAIN_SIZE: u32 = MAX_CIRCLE_DOMAIN_LOG_SIZE;
         let air = TestAir {

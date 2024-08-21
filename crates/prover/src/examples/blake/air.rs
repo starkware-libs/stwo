@@ -440,7 +440,7 @@ mod tests {
     use crate::examples::blake::air::{prove_blake, verify_blake};
 
     // Note: this test is slow. Only run in release.
-    #[ignore]
+    #[cfg_attr(not(feature = "slow-tests"), ignore)]
     #[test_log::test]
     fn test_simd_blake_prove() {
         // Note: To see time measurement, run test with
