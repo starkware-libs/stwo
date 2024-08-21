@@ -66,6 +66,12 @@ impl BaseColumn {
             .map(BaseColumnMutSlice)
             .collect_vec()
     }
+
+    pub fn into_secure_column(self) -> SecureColumn {
+        let length = self.len();
+        let data = self.data.into_iter().map(PackedSecureField::from).collect();
+        SecureColumn { data, length }
+    }
 }
 
 impl Column<BaseField> for BaseColumn {
