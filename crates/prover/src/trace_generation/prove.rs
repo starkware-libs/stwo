@@ -62,7 +62,7 @@ pub fn commit_and_prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let components = ComponentProvers(air_prover.component_provers());
     channel.mix_felts(
         &components
-            .lookup_values(&components.component_traces(&commitment_scheme.trees))
+            .lookup_values(&commitment_scheme.trace())
             .0
             .values()
             .map(|v| SecureField::from(*v))
@@ -175,7 +175,7 @@ mod tests {
     use num_traits::Zero;
 
     use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-    use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
+    use crate::core::air::{Air, AirProver, Component, ComponentProver, Trace};
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::backend::CpuBackend;
     use crate::core::channel::Channel;
@@ -310,7 +310,7 @@ mod tests {
     impl ComponentProver<CpuBackend> for TestComponent {
         fn evaluate_constraint_quotients_on_domain(
             &self,
-            _trace: &ComponentTrace<'_, CpuBackend>,
+            _trace: &Trace<'_, CpuBackend>,
             _evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
             _interaction_elements: &InteractionElements,
             _lookup_values: &LookupValues,
@@ -318,7 +318,7 @@ mod tests {
             // Does nothing.
         }
 
-        fn lookup_values(&self, _trace: &ComponentTrace<'_, CpuBackend>) -> LookupValues {
+        fn lookup_values(&self, _trace: &Trace<'_, CpuBackend>) -> LookupValues {
             LookupValues::default()
         }
     }

@@ -7,7 +7,9 @@ use num_traits::One;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
-use crate::constraint_framework::{EvalAtRow, FrameworkComponent};
+use crate::constraint_framework::{
+    EvalAtRow, FrameworkComponent, FrameworkEval, TreeColumnSpanProvider,
+};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -39,28 +41,27 @@ const EXTERNAL_ROUND_CONSTS: [[BaseField; N_STATE]; 2 * N_HALF_FULL_ROUNDS] =
 const INTERNAL_ROUND_CONSTS: [BaseField; N_PARTIAL_ROUNDS] =
     [BaseField::from_u32_unchecked(1234); N_PARTIAL_ROUNDS];
 
+pub type PoseidonComponent = FrameworkComponent<PoseidonEval>;
+
 pub type PoseidonElements = LookupElements<{ N_STATE * 2 }>;
 
 #[derive(Clone)]
-pub struct PoseidonComponent {
+pub struct PoseidonEval {
     pub log_n_rows: u32,
     pub lookup_elements: PoseidonElements,
     pub claimed_sum: SecureField,
 }
-impl FrameworkComponent for PoseidonComponent {
+impl FrameworkEval for PoseidonEval {
     fn log_size(&self) -> u32 {
         self.log_n_rows
     }
     fn max_constraint_log_degree_bound(&self) -> u32 {
         self.log_n_rows + LOG_EXPAND
     }
-    fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
-        let poseidon_eval = PoseidonEval {
-            eval,
-            logup: LogupAtRow::new(1, self.claimed_sum, self.log_n_rows),
-            lookup_elements: &self.lookup_elements,
-        };
-        poseidon_eval.eval()
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        let logup = LogupAtRow::new(1, self.claimed_sum, self.log_n_rows);
+        eval_poseidon_constraints(&mut eval, logup, &self.lookup_elements);
+        eval
     }
 }
 
@@ -133,67 +134,60 @@ fn pow5<F: FieldExpOps>(x: F) -> F {
     x4 * x
 }
 
-struct PoseidonEval<'a, E: EvalAtRow> {
-    eval: E,
-    logup: LogupAtRow<2, E>,
-    lookup_elements: &'a PoseidonElements,
-}
+pub fn eval_poseidon_constraints<E: EvalAtRow>(
+    eval: &mut E,
+    mut logup: LogupAtRow<2, E>,
+    lookup_elements: &PoseidonElements,
+) {
+    for _ in 0..N_INSTANCES_PER_ROW {
+        let mut state: [_; N_STATE] = std::array::from_fn(|_| eval.next_trace_mask());
 
-impl<'a, E: EvalAtRow> PoseidonEval<'a, E> {
-    fn eval(mut self) -> E {
-        for _ in 0..N_INSTANCES_PER_ROW {
-            let mut state: [_; N_STATE] = std::array::from_fn(|_| self.eval.next_trace_mask());
+        // Require state lookup.
+        logup.push_lookup(eval, E::EF::one(), &state, lookup_elements);
 
-            // Require state lookup.
-            self.logup
-                .push_lookup(&mut self.eval, E::EF::one(), &state, self.lookup_elements);
-
-            // 4 full rounds.
-            (0..N_HALF_FULL_ROUNDS).for_each(|round| {
-                (0..N_STATE).for_each(|i| {
-                    state[i] += EXTERNAL_ROUND_CONSTS[round][i];
-                });
-                apply_external_round_matrix(&mut state);
-                state = std::array::from_fn(|i| pow5(state[i]));
-                state.iter_mut().for_each(|s| {
-                    let m = self.eval.next_trace_mask();
-                    self.eval.add_constraint(*s - m);
-                    *s = m;
-                });
+        // 4 full rounds.
+        (0..N_HALF_FULL_ROUNDS).for_each(|round| {
+            (0..N_STATE).for_each(|i| {
+                state[i] += EXTERNAL_ROUND_CONSTS[round][i];
             });
-
-            // Partial rounds.
-            (0..N_PARTIAL_ROUNDS).for_each(|round| {
-                state[0] += INTERNAL_ROUND_CONSTS[round];
-                apply_internal_round_matrix(&mut state);
-                state[0] = pow5(state[0]);
-                let m = self.eval.next_trace_mask();
-                self.eval.add_constraint(state[0] - m);
-                state[0] = m;
+            apply_external_round_matrix(&mut state);
+            state = std::array::from_fn(|i| pow5(state[i]));
+            state.iter_mut().for_each(|s| {
+                let m = eval.next_trace_mask();
+                eval.add_constraint(*s - m);
+                *s = m;
             });
+        });
 
-            // 4 full rounds.
-            (0..N_HALF_FULL_ROUNDS).for_each(|round| {
-                (0..N_STATE).for_each(|i| {
-                    state[i] += EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i];
-                });
-                apply_external_round_matrix(&mut state);
-                state = std::array::from_fn(|i| pow5(state[i]));
-                state.iter_mut().for_each(|s| {
-                    let m = self.eval.next_trace_mask();
-                    self.eval.add_constraint(*s - m);
-                    *s = m;
-                });
+        // Partial rounds.
+        (0..N_PARTIAL_ROUNDS).for_each(|round| {
+            state[0] += INTERNAL_ROUND_CONSTS[round];
+            apply_internal_round_matrix(&mut state);
+            state[0] = pow5(state[0]);
+            let m = eval.next_trace_mask();
+            eval.add_constraint(state[0] - m);
+            state[0] = m;
+        });
+
+        // 4 full rounds.
+        (0..N_HALF_FULL_ROUNDS).for_each(|round| {
+            (0..N_STATE).for_each(|i| {
+                state[i] += EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i];
             });
+            apply_external_round_matrix(&mut state);
+            state = std::array::from_fn(|i| pow5(state[i]));
+            state.iter_mut().for_each(|s| {
+                let m = eval.next_trace_mask();
+                eval.add_constraint(*s - m);
+                *s = m;
+            });
+        });
 
-            // Provide state lookup.
-            self.logup
-                .push_lookup(&mut self.eval, -E::EF::one(), &state, self.lookup_elements);
-        }
-
-        self.logup.finalize(&mut self.eval);
-        self.eval
+        // Provide state lookup.
+        logup.push_lookup(eval, -E::EF::one(), &state, lookup_elements);
     }
+
+    logup.finalize(eval);
 }
 
 pub struct LookupData {
@@ -364,11 +358,14 @@ pub fn prove_poseidon(
     span.exit();
 
     // Prove constraints.
-    let component = PoseidonComponent {
-        log_n_rows,
-        lookup_elements,
-        claimed_sum,
-    };
+    let component = PoseidonComponent::new(
+        &mut TreeColumnSpanProvider::default(),
+        PoseidonEval {
+            log_n_rows,
+            lookup_elements,
+            claimed_sum,
+        },
+    );
     let proof = prove::<SimdBackend, _>(
         &[&component],
         channel,
@@ -399,8 +396,8 @@ mod tests {
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::core::InteractionElements;
     use crate::examples::poseidon::{
-        apply_internal_round_matrix, apply_m4, gen_interaction_trace, gen_trace, prove_poseidon,
-        PoseidonElements, PoseidonEval,
+        apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,
+        gen_trace, prove_poseidon, PoseidonElements,
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
 
@@ -467,13 +464,12 @@ mod tests {
         let traces = TreeVec::new(vec![trace0, trace1]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
-        assert_constraints(&trace_polys, CanonicCoset::new(LOG_N_ROWS), |eval| {
-            PoseidonEval {
-                eval,
-                logup: LogupAtRow::new(1, claimed_sum, LOG_N_ROWS),
-                lookup_elements: &lookup_elements,
-            }
-            .eval();
+        assert_constraints(&trace_polys, CanonicCoset::new(LOG_N_ROWS), |mut eval| {
+            eval_poseidon_constraints(
+                &mut eval,
+                LogupAtRow::new(1, claimed_sum, LOG_N_ROWS),
+                &lookup_elements,
+            );
         });
     }
 
