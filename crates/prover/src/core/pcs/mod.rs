@@ -25,6 +25,14 @@ pub struct TreeColumnSpan {
     pub col_end: usize,
 }
 
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// pub struct TreeColumnSpan {
+//     pub tree_index: usize,
+//     pub col_range: ColumnRange,
+// }
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// pub struct ColumnRange(Range<usize>);
+
 #[derive(Debug, Clone, Copy)]
 pub struct PcsConfig {
     pub pow_bits: u32,

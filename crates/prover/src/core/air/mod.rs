@@ -62,30 +62,22 @@ pub trait ComponentProver<B: Backend>: Component {
     /// Accumulates quotients in `evaluation_accumulator`.
     fn evaluate_constraint_quotients_on_domain(
         &self,
-        trace: &ComponentTrace<'_, B>,
+        trace: &Trace<'_, B>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
         interaction_elements: &InteractionElements,
         lookup_values: &LookupValues,
     );
 
     /// Returns the values needed to evaluate the components lookup boundary constraints.
-    fn lookup_values(&self, _trace: &ComponentTrace<'_, B>) -> LookupValues;
+    fn lookup_values(&self, _trace: &Trace<'_, B>) -> LookupValues;
 }
 
-/// A component trace is a set of polynomials for each column on that component.
+/// The set of polynomials that make up the trace.
+///
 /// Each polynomial is stored both in a coefficients, and evaluations form (for efficiency)
-pub struct ComponentTrace<'a, B: Backend> {
+pub struct Trace<'a, B: Backend> {
     /// Polynomials for each column.
     pub polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
-    /// Evaluations for each column (evaluated on the commitment domains).
+    /// Evaluations for each column (evaluated on their commitment domains).
     pub evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
-}
-
-impl<'a, B: Backend> ComponentTrace<'a, B> {
-    pub fn new(
-        polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
-        evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
-    ) -> Self {
-        Self { polys, evals }
-    }
 }
