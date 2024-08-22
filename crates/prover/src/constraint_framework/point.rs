@@ -9,14 +9,14 @@ use crate::core::ColumnVec;
 
 /// Evaluates expressions at a point out of domain.
 pub struct PointEvaluator<'a> {
-    pub mask: TreeVec<&'a ColumnVec<Vec<SecureField>>>,
+    pub mask: TreeVec<ColumnVec<&'a Vec<SecureField>>>,
     pub evaluation_accumulator: &'a mut PointEvaluationAccumulator,
     pub col_index: Vec<usize>,
     pub denom_inverse: SecureField,
 }
 impl<'a> PointEvaluator<'a> {
     pub fn new(
-        mask: TreeVec<&'a ColumnVec<Vec<SecureField>>>,
+        mask: TreeVec<ColumnVec<&'a Vec<SecureField>>>,
         evaluation_accumulator: &'a mut PointEvaluationAccumulator,
         denom_inverse: SecureField,
     ) -> Self {

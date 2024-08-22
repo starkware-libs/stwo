@@ -13,7 +13,7 @@ mod tests {
     use super::component::{Input, WideFibAir, WideFibComponent, LOG_N_COLUMNS};
     use super::constraint_eval::gen_trace;
     use crate::core::air::accumulation::DomainEvaluationAccumulator;
-    use crate::core::air::{Component, ComponentProver, ComponentTrace};
+    use crate::core::air::{Component, ComponentProver, Trace};
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::backend::CpuBackend;
     use crate::core::channel::Blake2sChannel;
@@ -183,7 +183,7 @@ mod tests {
             .iter()
             .map(|poly| poly.evaluate(eval_domain))
             .collect_vec();
-        let trace = ComponentTrace {
+        let trace = Trace {
             polys: TreeVec::new(vec![
                 trace_polys.iter().collect_vec(),
                 interaction_poly.iter().collect_vec(),

@@ -1,8 +1,10 @@
+use std::collections::BTreeSet;
 use std::ops::{Deref, DerefMut};
 
 use itertools::zip_eq;
 use serde::{Deserialize, Serialize};
 
+use super::TreeSubspan;
 use crate::core::ColumnVec;
 
 /// A container that holds an element for each commitment tree.
@@ -67,6 +69,7 @@ impl<T> TreeVec<ColumnVec<T>> {
                 .collect(),
         )
     }
+
     /// Zips two [`TreeVec<ColumVec<T>>`] with the same structure (number of columns in each tree).
     /// The resulting [`TreeVec<ColumVec<T>>`] has the same structure, with each value being a tuple
     /// of the corresponding values from the input [`TreeVec<ColumVec<T>>`].
@@ -81,9 +84,11 @@ impl<T> TreeVec<ColumnVec<T>> {
                 .collect(),
         )
     }
+
     pub fn as_cols_ref(&self) -> TreeVec<ColumnVec<&T>> {
         TreeVec(self.iter().map(|column| column.iter().collect()).collect())
     }
+
     /// Flattens the [`TreeVec<ColumVec<T>>`] into a single [`ColumnVec`] with all the columns
     /// combined.
     pub fn flatten(self) -> ColumnVec<T> {
@@ -109,6 +114,32 @@ impl<T> TreeVec<ColumnVec<T>> {
             result.append_cols(tree);
         }
         result
+    }
+
+    /// Extracts a sub-tree based on the specified locations.
+    ///
+    /// # Panics
+    ///
+    /// If two or more locations have the same tree index.
+    pub fn sub_tree(&self, locations: &[TreeSubspan]) -> TreeVec<ColumnVec<&T>> {
+        let tree_indicies: BTreeSet<usize> = locations.iter().map(|l| l.tree_index).collect();
+        assert_eq!(tree_indicies.len(), locations.len());
+        let max_tree_index = tree_indicies.iter().max().unwrap_or(&0);
+        let mut res = TreeVec(vec![Vec::new(); max_tree_index + 1]);
+
+        for &location in locations {
+            // TODO(andrew): Throwing error here might be better instead.
+            let chunk = self.get_chunk(location).unwrap();
+            res[location.tree_index] = chunk;
+        }
+
+        res
+    }
+
+    fn get_chunk(&self, location: TreeSubspan) -> Option<ColumnVec<&T>> {
+        let tree = self.0.get(location.tree_index)?;
+        let chunk = tree.get(location.col_start..location.col_end)?;
+        Some(chunk.iter().collect())
     }
 }
 

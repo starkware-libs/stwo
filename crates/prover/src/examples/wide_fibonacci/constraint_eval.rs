@@ -9,7 +9,7 @@ use super::component::{
 };
 use super::trace_gen::write_trace_row;
 use crate::core::air::accumulation::{ColumnAccumulator, DomainEvaluationAccumulator};
-use crate::core::air::{AirProver, Component, ComponentProver, ComponentTrace};
+use crate::core::air::{AirProver, Component, ComponentProver, Trace};
 use crate::core::backend::CpuBackend;
 use crate::core::channel::Channel;
 use crate::core::circle::Coset;
@@ -256,7 +256,7 @@ impl WideFibComponent {
 impl ComponentProver<CpuBackend> for WideFibComponent {
     fn evaluate_constraint_quotients_on_domain(
         &self,
-        trace: &ComponentTrace<'_, CpuBackend>,
+        trace: &Trace<'_, CpuBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
         interaction_elements: &InteractionElements,
         lookup_values: &LookupValues,
@@ -300,7 +300,7 @@ impl ComponentProver<CpuBackend> for WideFibComponent {
         );
     }
 
-    fn lookup_values(&self, trace: &ComponentTrace<'_, CpuBackend>) -> LookupValues {
+    fn lookup_values(&self, trace: &Trace<'_, CpuBackend>) -> LookupValues {
         let domain = CanonicCoset::new(self.log_column_size());
         let trace_poly = &trace.polys[BASE_TRACE];
         let values = BTreeMap::from_iter([
