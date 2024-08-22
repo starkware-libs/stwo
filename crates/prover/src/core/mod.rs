@@ -28,6 +28,9 @@ pub mod vcs;
 /// A vector in which each element relates (by index) to a column in the trace.
 pub type ColumnVec<T> = Vec<T>;
 
+/// A slice where each element relates (by index) to a column in the trace.
+pub type ColumnSlice<'a, T> = &'a [T];
+
 /// A vector of [ColumnVec]s. Each [ColumnVec] relates (by index) to a component in the air.
 #[derive(Debug, Clone)]
 pub struct ComponentVec<T>(pub Vec<ColumnVec<T>>);

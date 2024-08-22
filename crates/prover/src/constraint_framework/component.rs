@@ -1,4 +1,6 @@
 use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::ops::Deref;
 
 use itertools::Itertools;
 use tracing::{span, Level};
@@ -15,36 +17,91 @@ use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::pcs::TreeVec;
+use crate::core::pcs::{TreeColumnSpan, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::{utils, ColumnVec, InteractionElements, LookupValues};
 
 /// A component defined solely in means of the constraints framework.
-/// Implementing this trait introduces implementations for [Component] and [ComponentProver] for the
-/// SIMD backend.
+/// Implementing this trait introduces implementations for [`Component`] and [`ComponentProver`] for
+/// the SIMD backend.
 /// Note that the constraint framework only support components with columns of the same size.
 pub trait FrameworkComponent {
     fn log_size(&self) -> u32;
+
     fn max_constraint_log_degree_bound(&self) -> u32;
+
     fn evaluate<E: EvalAtRow>(&self, eval: E) -> E;
 }
 
-impl<C: FrameworkComponent> Component for C {
+pub struct FrameworkComponentFactory {
+    next_tree_offsets: BTreeMap<usize, usize>,
+}
+
+impl Default for FrameworkComponentFactory {
+    fn default() -> Self {
+        Self {
+            next_tree_offsets: BTreeMap::new(),
+        }
+    }
+}
+
+impl FrameworkComponentFactory {
+    pub fn create<C: FrameworkComponent>(&mut self, component: C) -> FrameworkComponentImpl<C> {
+        let mask_offset_trees = component.evaluate(InfoEvaluator::default()).mask_offsets;
+
+        let trace_locations = mask_offset_trees
+            .iter()
+            .enumerate()
+            .filter_map(|(tree_index, tree)| {
+                if tree.is_empty() {
+                    return None;
+                }
+
+                let n_columns = tree.len();
+                let next_tree_offset = self.next_tree_offsets.entry(tree_index).or_default();
+                let col_start = *next_tree_offset;
+                let col_end = col_start + n_columns;
+                *next_tree_offset = col_end;
+
+                Some(TreeColumnSpan {
+                    tree_index,
+                    col_start,
+                    col_end,
+                })
+            })
+            .collect();
+
+        FrameworkComponentImpl {
+            component,
+            trace_locations,
+        }
+    }
+}
+
+pub struct FrameworkComponentImpl<C: FrameworkComponent> {
+    component: C,
+    trace_locations: Vec<TreeColumnSpan>,
+}
+
+impl<C: FrameworkComponent> Component for FrameworkComponentImpl<C> {
     fn n_constraints(&self) -> usize {
-        self.evaluate(InfoEvaluator::default()).n_constraints
+        self.component
+            .evaluate(InfoEvaluator::default())
+            .n_constraints
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        FrameworkComponent::max_constraint_log_degree_bound(self)
+        self.component.max_constraint_log_degree_bound()
     }
 
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
         TreeVec::new(
-            self.evaluate(InfoEvaluator::default())
+            self.component
+                .evaluate(InfoEvaluator::default())
                 .mask_offsets
                 .iter()
-                .map(|tree_masks| vec![self.log_size(); tree_masks.len()])
+                .map(|tree_masks| vec![self.component.log_size(); tree_masks.len()])
                 .collect(),
         )
     }
@@ -53,8 +110,8 @@ impl<C: FrameworkComponent> Component for C {
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        let info = self.evaluate(InfoEvaluator::default());
-        let trace_step = CanonicCoset::new(self.log_size()).step();
+        let info = self.component.evaluate(InfoEvaluator::default());
+        let trace_step = CanonicCoset::new(self.component.log_size()).step();
         info.mask_offsets.map_cols(|col_mask| {
             col_mask
                 .iter()
@@ -71,15 +128,15 @@ impl<C: FrameworkComponent> Component for C {
         _interaction_elements: &InteractionElements,
         _lookup_values: &LookupValues,
     ) {
-        self.evaluate(PointEvaluator::new(
-            mask.as_ref(),
+        self.component.evaluate(PointEvaluator::new(
+            mask.sub_tree(&self.trace_locations),
             evaluation_accumulator,
-            coset_vanishing(CanonicCoset::new(self.log_size()).coset, point).inverse(),
+            coset_vanishing(CanonicCoset::new(self.component.log_size()).coset, point).inverse(),
         ));
     }
 }
 
-impl<C: FrameworkComponent> ComponentProver<SimdBackend> for C {
+impl<C: FrameworkComponent> ComponentProver<SimdBackend> for FrameworkComponentImpl<C> {
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &ComponentTrace<'_, SimdBackend>,
@@ -88,7 +145,7 @@ impl<C: FrameworkComponent> ComponentProver<SimdBackend> for C {
         _lookup_values: &LookupValues,
     ) {
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
-        let trace_domain = CanonicCoset::new(self.log_size());
+        let trace_domain = CanonicCoset::new(self.component.log_size());
 
         // Extend trace if necessary.
         // TODO(spapini): Don't extend when eval_size < committed_size. Instead, pick a good
@@ -137,7 +194,7 @@ impl<C: FrameworkComponent> ComponentProver<SimdBackend> for C {
                 trace_domain.log_size(),
                 eval_domain.log_size(),
             );
-            let row_res = self.evaluate(eval).row_res;
+            let row_res = self.component.evaluate(eval).row_res;
 
             // Finalize row.
             unsafe {
@@ -152,5 +209,13 @@ impl<C: FrameworkComponent> ComponentProver<SimdBackend> for C {
 
     fn lookup_values(&self, _trace: &ComponentTrace<'_, SimdBackend>) -> LookupValues {
         LookupValues::default()
+    }
+}
+
+impl<C: FrameworkComponent> Deref for FrameworkComponentImpl<C> {
+    type Target = C;
+
+    fn deref(&self) -> &C {
+        &self.component
     }
 }

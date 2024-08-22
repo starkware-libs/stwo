@@ -1,9 +1,11 @@
+use std::collections::BTreeSet;
 use std::ops::{Deref, DerefMut};
 
 use itertools::zip_eq;
 use serde::{Deserialize, Serialize};
 
-use crate::core::ColumnVec;
+use super::TreeColumnSpan;
+use crate::core::{ColumnSlice, ColumnVec};
 
 /// A container that holds an element for each commitment tree.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +111,29 @@ impl<T> TreeVec<ColumnVec<T>> {
             result.append_cols(tree);
         }
         result
+    }
+
+    pub fn get_chunk(&self, location: TreeColumnSpan) -> Option<ColumnSlice<'_, T>> {
+        let tree = self.0.get(location.tree_index)?;
+        tree.get(location.col_start..location.col_end)
+    }
+
+    /// # Panics
+    ///
+    /// If two or more locations have the same tree index.
+    pub fn sub_tree(&self, locations: &[TreeColumnSpan]) -> TreeVec<ColumnSlice<'_, T>> {
+        let tree_indicies: BTreeSet<usize> = locations.iter().map(|l| l.tree_index).collect();
+        assert_eq!(tree_indicies.len(), locations.len());
+        let max_tree_index = tree_indicies.iter().max().unwrap_or(&0);
+        let mut res = TreeVec(vec![&[][..]; max_tree_index + 1]);
+
+        for &location in locations {
+            // TODO(andrew): Throwing error here might be better instead.
+            let chunk = self.get_chunk(location).unwrap();
+            res[location.tree_index] = chunk;
+        }
+
+        res
     }
 }
 

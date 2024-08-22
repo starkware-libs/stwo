@@ -3,7 +3,10 @@ use num_traits::One;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
-use crate::constraint_framework::{assert_constraints, EvalAtRow, FrameworkComponent};
+use crate::constraint_framework::{
+    assert_constraints, EvalAtRow, FrameworkComponent, FrameworkComponentFactory,
+    FrameworkComponentImpl,
+};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -12,7 +15,7 @@ use crate::core::backend::Column;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
+use crate::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeColumnSpan};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof};
@@ -24,6 +27,9 @@ pub struct PlonkComponent {
     pub log_n_rows: u32,
     pub lookup_elements: LookupElements<2>,
     pub claimed_sum: SecureField,
+    pub base_trace_location: TreeColumnSpan,
+    pub interaction_trace_location: TreeColumnSpan,
+    pub constants_trace_location: TreeColumnSpan,
 }
 
 impl FrameworkComponent for PlonkComponent {
@@ -142,7 +148,10 @@ pub fn gen_interaction_trace(
 pub fn prove_fibonacci_plonk(
     log_n_rows: u32,
     config: PcsConfig,
-) -> (PlonkComponent, StarkProof<Blake2sMerkleHasher>) {
+) -> (
+    FrameworkComponentImpl<PlonkComponent>,
+    StarkProof<Blake2sMerkleHasher>,
+) {
     assert!(log_n_rows >= LOG_N_LANES);
 
     // Prepare a fibonacci circuit.
@@ -181,7 +190,7 @@ pub fn prove_fibonacci_plonk(
     let span = span!(Level::INFO, "Trace").entered();
     let trace = gen_trace(log_n_rows, &circuit);
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(trace);
+    let base_trace_location = tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
     span.exit();
 
@@ -192,14 +201,14 @@ pub fn prove_fibonacci_plonk(
     let span = span!(Level::INFO, "Interaction").entered();
     let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, &circuit, &lookup_elements);
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(trace);
+    let interaction_trace_location = tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
     span.exit();
 
     // Constant trace.
     let span = span!(Level::INFO, "Constant").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(
+    let constants_trace_location = tree_builder.extend_evals(
         chain!([circuit.a_wire, circuit.b_wire, circuit.c_wire, circuit.op]
             .into_iter()
             .map(|col| {
@@ -214,11 +223,15 @@ pub fn prove_fibonacci_plonk(
     span.exit();
 
     // Prove constraints.
-    let component = PlonkComponent {
+    let mut component_factory = FrameworkComponentFactory::default();
+    let component = component_factory.create(PlonkComponent {
         log_n_rows,
         lookup_elements,
         claimed_sum,
-    };
+        base_trace_location,
+        interaction_trace_location,
+        constants_trace_location,
+    });
 
     // Sanity check. Remove for production.
     let trace_polys = commitment_scheme

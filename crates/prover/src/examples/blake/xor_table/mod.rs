@@ -25,7 +25,7 @@ use crate::constraint_framework::{EvalAtRow, FrameworkComponent, InfoEvaluator};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::Column;
 use crate::core::fields::qm31::SecureField;
-use crate::core::pcs::TreeVec;
+use crate::core::pcs::{TreeColumnSpan, TreeVec};
 
 pub fn trace_sizes<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> TreeVec<Vec<u32>> {
     let component = XorTableComponent::<ELEM_BITS, EXPAND_BITS> {

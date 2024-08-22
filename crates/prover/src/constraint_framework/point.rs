@@ -5,18 +5,18 @@ use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::pcs::TreeVec;
-use crate::core::ColumnVec;
+use crate::core::ColumnSlice;
 
 /// Evaluates expressions at a point out of domain.
 pub struct PointEvaluator<'a> {
-    pub mask: TreeVec<&'a ColumnVec<Vec<SecureField>>>,
+    pub mask: TreeVec<ColumnSlice<'a, Vec<SecureField>>>,
     pub evaluation_accumulator: &'a mut PointEvaluationAccumulator,
     pub col_index: Vec<usize>,
     pub denom_inverse: SecureField,
 }
 impl<'a> PointEvaluator<'a> {
     pub fn new(
-        mask: TreeVec<&'a ColumnVec<Vec<SecureField>>>,
+        mask: TreeVec<&'a [Vec<SecureField>]>,
         evaluation_accumulator: &'a mut PointEvaluationAccumulator,
         denom_inverse: SecureField,
     ) -> Self {

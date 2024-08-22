@@ -12,7 +12,7 @@ use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 pub use assert::{assert_constraints, AssertEvaluator};
-pub use component::FrameworkComponent;
+pub use component::{FrameworkComponent, FrameworkComponentFactory, FrameworkComponentImpl};
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;

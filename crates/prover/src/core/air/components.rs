@@ -31,21 +31,21 @@ impl<'a> Components<'a> {
     pub fn eval_composition_polynomial_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        mask_values: &Vec<TreeVec<Vec<Vec<SecureField>>>>,
+        mask_values: &TreeVec<Vec<Vec<SecureField>>>,
         random_coeff: SecureField,
         interaction_elements: &InteractionElements,
         lookup_values: &LookupValues,
     ) -> SecureField {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
-        zip_eq(&self.0, mask_values).for_each(|(component, mask)| {
+        for component in &self.0 {
             component.evaluate_constraint_quotients_at_point(
                 point,
-                mask,
+                mask_values,
                 &mut evaluation_accumulator,
                 interaction_elements,
                 lookup_values,
             )
-        });
+        }
         evaluation_accumulator.finalize()
     }
 

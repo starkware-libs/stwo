@@ -8,6 +8,7 @@ use tracing::{span, Level};
 use super::round::{blake_round_info, BlakeRoundComponent};
 use super::scheduler::BlakeSchedulerComponent;
 use super::xor_table::XorTableComponent;
+use crate::constraint_framework::{FrameworkComponentFactory, FrameworkComponentImpl};
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
@@ -110,53 +111,56 @@ pub struct BlakeProof<H: MerkleHasher> {
 }
 
 pub struct BlakeComponents {
-    scheduler_component: BlakeSchedulerComponent,
-    round_components: Vec<BlakeRoundComponent>,
-    xor12: XorTableComponent<12, 4>,
-    xor9: XorTableComponent<9, 2>,
-    xor8: XorTableComponent<8, 2>,
-    xor7: XorTableComponent<7, 2>,
-    xor4: XorTableComponent<4, 0>,
+    scheduler_component: FrameworkComponentImpl<BlakeSchedulerComponent>,
+    round_components: Vec<FrameworkComponentImpl<BlakeRoundComponent>>,
+    xor12: FrameworkComponentImpl<XorTableComponent<12, 4>>,
+    xor9: FrameworkComponentImpl<XorTableComponent<9, 2>>,
+    xor8: FrameworkComponentImpl<XorTableComponent<8, 2>>,
+    xor7: FrameworkComponentImpl<XorTableComponent<7, 2>>,
+    xor4: FrameworkComponentImpl<XorTableComponent<4, 0>>,
 }
 impl BlakeComponents {
     fn new(stmt0: &BlakeStatement0, all_elements: &AllElements, stmt1: &BlakeStatement1) -> Self {
+        let mut component_factory = FrameworkComponentFactory::default();
         Self {
-            scheduler_component: BlakeSchedulerComponent {
+            scheduler_component: component_factory.create(BlakeSchedulerComponent {
                 log_size: stmt0.log_size,
                 blake_lookup_elements: all_elements.blake_elements.clone(),
                 round_lookup_elements: all_elements.round_elements.clone(),
                 claimed_sum: stmt1.scheduler_claimed_sum,
-            },
+            }),
             round_components: ROUND_LOG_SPLIT
                 .iter()
                 .zip(stmt1.round_claimed_sums.clone())
-                .map(|(l, claimed_sum)| BlakeRoundComponent {
-                    log_size: stmt0.log_size + l,
-                    xor_lookup_elements: all_elements.xor_elements.clone(),
-                    round_lookup_elements: all_elements.round_elements.clone(),
-                    claimed_sum,
+                .map(|(l, claimed_sum)| {
+                    component_factory.create(BlakeRoundComponent {
+                        log_size: stmt0.log_size + l,
+                        xor_lookup_elements: all_elements.xor_elements.clone(),
+                        round_lookup_elements: all_elements.round_elements.clone(),
+                        claimed_sum,
+                    })
                 })
                 .collect(),
-            xor12: XorTableComponent {
+            xor12: component_factory.create(XorTableComponent {
                 lookup_elements: all_elements.xor_elements.xor12.clone(),
                 claimed_sum: stmt1.xor12_claimed_sum,
-            },
-            xor9: XorTableComponent {
+            }),
+            xor9: component_factory.create(XorTableComponent {
                 lookup_elements: all_elements.xor_elements.xor9.clone(),
                 claimed_sum: stmt1.xor9_claimed_sum,
-            },
-            xor8: XorTableComponent {
+            }),
+            xor8: component_factory.create(XorTableComponent {
                 lookup_elements: all_elements.xor_elements.xor8.clone(),
                 claimed_sum: stmt1.xor8_claimed_sum,
-            },
-            xor7: XorTableComponent {
+            }),
+            xor7: component_factory.create(XorTableComponent {
                 lookup_elements: all_elements.xor_elements.xor7.clone(),
                 claimed_sum: stmt1.xor7_claimed_sum,
-            },
-            xor4: XorTableComponent {
+            }),
+            xor4: component_factory.create(XorTableComponent {
                 lookup_elements: all_elements.xor_elements.xor4.clone(),
                 claimed_sum: stmt1.xor4_claimed_sum,
-            },
+            }),
         }
     }
     fn components(&self) -> Vec<&dyn Component> {

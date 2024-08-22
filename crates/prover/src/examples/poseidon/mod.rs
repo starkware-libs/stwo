@@ -7,7 +7,9 @@ use num_traits::One;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
-use crate::constraint_framework::{EvalAtRow, FrameworkComponent};
+use crate::constraint_framework::{
+    EvalAtRow, FrameworkComponent, FrameworkComponentFactory, FrameworkComponentImpl,
+};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -327,7 +329,10 @@ pub fn gen_interaction_trace(
 pub fn prove_poseidon(
     log_n_instances: u32,
     config: PcsConfig,
-) -> (PoseidonComponent, StarkProof<Blake2sMerkleHasher>) {
+) -> (
+    FrameworkComponentImpl<PoseidonComponent>,
+    StarkProof<Blake2sMerkleHasher>,
+) {
     assert!(log_n_instances >= N_LOG_INSTANCES_PER_ROW as u32);
     let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
 
@@ -364,11 +369,12 @@ pub fn prove_poseidon(
     span.exit();
 
     // Prove constraints.
-    let component = PoseidonComponent {
+    let mut component_factory = FrameworkComponentFactory::default();
+    let component = component_factory.create(PoseidonComponent {
         log_n_rows,
         lookup_elements,
         claimed_sum,
-    };
+    });
     let proof = prove::<SimdBackend, _>(
         &[&component],
         channel,
