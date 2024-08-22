@@ -15,20 +15,19 @@ mod gen;
 
 use std::simd::u32x16;
 
-use constraints::XorTableEval;
 use itertools::Itertools;
 use num_traits::Zero;
 pub use r#gen::{generate_constant_trace, generate_interaction_trace, generate_trace};
 
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
-use crate::constraint_framework::{EvalAtRow, FrameworkComponent, InfoEvaluator};
+use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::Column;
 use crate::core::fields::qm31::SecureField;
-use crate::core::pcs::TreeVec;
+use crate::core::pcs::{TreeColumnSpan, TreeVec};
 
 pub fn trace_sizes<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> TreeVec<Vec<u32>> {
-    let component = XorTableComponent::<ELEM_BITS, EXPAND_BITS> {
+    let component = XorTableEval::<ELEM_BITS, EXPAND_BITS> {
         lookup_elements: LookupElements::<3>::dummy(),
         claimed_sum: SecureField::zero(),
     };
@@ -83,13 +82,19 @@ impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> XorAccumulator<ELEM_BITS, EXP
 }
 
 /// Component that evaluates the xor table.
+pub type XorTableComponent<const ELEM_BITS: u32, const EXPAND_BITS: u32> =
+    FrameworkComponent<XorTableEval<ELEM_BITS, EXPAND_BITS>>;
+
 pub type XorElements = LookupElements<3>;
-pub struct XorTableComponent<const ELEM_BITS: u32, const EXPAND_BITS: u32> {
+
+/// Evaluates the xor table.
+pub struct XorTableEval<const ELEM_BITS: u32, const EXPAND_BITS: u32> {
     pub lookup_elements: XorElements,
     pub claimed_sum: SecureField,
 }
-impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> FrameworkComponent
-    for XorTableComponent<ELEM_BITS, EXPAND_BITS>
+
+impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> FrameworkEval
+    for XorTableEval<ELEM_BITS, EXPAND_BITS>
 {
     fn log_size(&self) -> u32 {
         column_bits::<ELEM_BITS, EXPAND_BITS>()
@@ -98,7 +103,7 @@ impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> FrameworkComponent
         column_bits::<ELEM_BITS, EXPAND_BITS>() + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let xor_eval = XorTableEval::<'_, _, ELEM_BITS, EXPAND_BITS> {
+        let xor_eval = constraints::XorTableEval::<'_, _, ELEM_BITS, EXPAND_BITS> {
             eval,
             lookup_elements: &self.lookup_elements,
             logup: LogupAtRow::new(1, self.claimed_sum, self.log_size()),
@@ -112,12 +117,12 @@ mod tests {
     use std::simd::u32x16;
 
     use crate::constraint_framework::logup::LookupElements;
-    use crate::constraint_framework::{assert_constraints, FrameworkComponent};
+    use crate::constraint_framework::{assert_constraints, FrameworkEval};
     use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::xor_table::r#gen::{
         generate_constant_trace, generate_interaction_trace, generate_trace,
     };
-    use crate::examples::blake::xor_table::{column_bits, XorAccumulator, XorTableComponent};
+    use crate::examples::blake::xor_table::{column_bits, XorAccumulator, XorTableEval};
 
     #[test]
     fn test_xor_table() {
@@ -138,7 +143,7 @@ mod tests {
         let trace = TreeVec::new(vec![trace, interaction_trace, constant_trace]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
 
-        let component = XorTableComponent::<ELEM_BITS, EXPAND_BITS> {
+        let component = XorTableEval::<ELEM_BITS, EXPAND_BITS> {
             lookup_elements,
             claimed_sum,
         };
