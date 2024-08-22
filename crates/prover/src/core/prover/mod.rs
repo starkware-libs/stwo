@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{span, Level};
@@ -10,7 +9,7 @@ use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::vcs::ops::MerkleHasher;
-use super::{ColumnVec, InteractionElements, LookupValues};
+use super::{InteractionElements, LookupValues};
 use crate::core::backend::CpuBackend;
 use crate::core::channel::Channel;
 use crate::core::circle::CirclePoint;
@@ -42,8 +41,8 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     commitment_scheme: &mut CommitmentSchemeProver<'_, B, MC>,
 ) -> Result<StarkProof<MC::H>, ProvingError> {
     let component_provers = ComponentProvers(components.to_vec());
-    let component_traces = component_provers.component_traces(&commitment_scheme.trees);
-    let lookup_values = component_provers.lookup_values(&component_traces);
+    let trace = commitment_scheme.trace();
+    let lookup_values = component_provers.lookup_values(&trace);
 
     // Evaluate and commit on composition polynomial.
     let random_coeff = channel.draw_felt();
@@ -52,7 +51,7 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let span1 = span!(Level::INFO, "Generation").entered();
     let composition_polynomial_poly = component_provers.compute_composition_polynomial(
         random_coeff,
-        &component_traces,
+        &trace,
         interaction_elements,
         &lookup_values,
     );
@@ -74,21 +73,18 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     // Prove the trace and composition OODS values, and retrieve them.
     let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
 
+    // TODO(spapini): Save clone.
+    let sampled_oods_values = &commitment_scheme_proof.sampled_values;
+    let composition_oods_eval = extract_composition_eval(sampled_oods_values).unwrap();
+
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.
-    // TODO(spapini): Save clone.
-    let (trace_oods_values, composition_oods_value) = sampled_values_to_mask(
-        &component_provers.components(),
-        &commitment_scheme_proof.sampled_values,
-    )
-    .unwrap();
-
-    if composition_oods_value
+    if composition_oods_eval
         != component_provers
             .components()
             .eval_composition_polynomial_at_point(
                 oods_point,
-                &trace_oods_values,
+                sampled_oods_values,
                 random_coeff,
                 interaction_elements,
                 &lookup_values,
@@ -130,18 +126,15 @@ pub fn verify<MC: MerkleChannel>(
     sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
 
     // TODO(spapini): Save clone.
-    let (trace_oods_values, composition_oods_value) =
-        sampled_values_to_mask(&components, &proof.commitment_scheme_proof.sampled_values)
-            .map_err(|_| {
-                VerificationError::InvalidStructure(
-                    "Unexpected sampled_values structure".to_string(),
-                )
-            })?;
+    let sampled_oods_values = &proof.commitment_scheme_proof.sampled_values;
+    let composition_oods_eval = extract_composition_eval(sampled_oods_values).map_err(|_| {
+        VerificationError::InvalidStructure("Unexpected sampled_values structure".to_string())
+    })?;
 
-    if composition_oods_value
+    if composition_oods_eval
         != components.eval_composition_polynomial_at_point(
             oods_point,
-            &trace_oods_values,
+            sampled_oods_values,
             random_coeff,
             interaction_elements,
             &proof.lookup_values,
@@ -153,41 +146,30 @@ pub fn verify<MC: MerkleChannel>(
     commitment_scheme.verify_values(sample_points, proof.commitment_scheme_proof, channel)
 }
 
-#[allow(clippy::type_complexity)]
-/// Structures the tree-wise sampled values into component-wise OODS values and a composition
-/// polynomial OODS value.
-fn sampled_values_to_mask(
-    components: &Components<'_>,
-    sampled_values: &TreeVec<ColumnVec<Vec<SecureField>>>,
-) -> Result<(Vec<TreeVec<Vec<Vec<SecureField>>>>, SecureField), InvalidOodsSampleStructure> {
-    let mut sampled_values = sampled_values.as_ref();
-    let composition_values = sampled_values.pop().ok_or(InvalidOodsSampleStructure)?;
+/// Extracts the composition trace evaluation from the mask.
+fn extract_composition_eval(
+    mask: &TreeVec<Vec<Vec<SecureField>>>,
+) -> Result<SecureField, InvalidOodsSampleStructure> {
+    let mut composition_cols = mask.last().into_iter().flatten();
 
-    let mut sample_iters = sampled_values.map(|tree_value| tree_value.iter());
-    let trace_oods_values = components
-        .0
-        .iter()
-        .map(|component| {
-            component
-                .mask_points(CirclePoint::zero())
-                .zip(sample_iters.as_mut())
-                .map(|(mask_per_tree, tree_iter)| {
-                    tree_iter.take(mask_per_tree.len()).cloned().collect_vec()
-                })
-        })
-        .collect_vec();
+    let col0 = &**composition_cols.next().ok_or(InvalidOodsSampleStructure)?;
+    let col1 = &**composition_cols.next().ok_or(InvalidOodsSampleStructure)?;
+    let col2 = &**composition_cols.next().ok_or(InvalidOodsSampleStructure)?;
+    let col3 = &**composition_cols.next().ok_or(InvalidOodsSampleStructure)?;
 
-    let composition_oods_value = SecureField::from_partial_evals(
-        composition_values
-            .iter()
-            .flatten()
-            .cloned()
-            .collect_vec()
-            .try_into()
-            .map_err(|_| InvalidOodsSampleStructure)?,
-    );
+    // Too many columns.
+    if composition_cols.next().is_some() {
+        return Err(InvalidOodsSampleStructure);
+    }
 
-    Ok((trace_oods_values, composition_oods_value))
+    let [eval0] = col0.try_into().map_err(|_| InvalidOodsSampleStructure)?;
+    let [eval1] = col1.try_into().map_err(|_| InvalidOodsSampleStructure)?;
+    let [eval2] = col2.try_into().map_err(|_| InvalidOodsSampleStructure)?;
+    let [eval3] = col3.try_into().map_err(|_| InvalidOodsSampleStructure)?;
+
+    Ok(SecureField::from_partial_evals([
+        eval0, eval1, eval2, eval3,
+    ]))
 }
 
 /// Error when the sampled values have an invalid structure.
