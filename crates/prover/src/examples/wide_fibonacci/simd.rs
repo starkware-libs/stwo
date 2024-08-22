@@ -5,7 +5,7 @@ use tracing::{span, Level};
 use super::component::LOG_N_COLUMNS;
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::mask::fixed_mask_points;
-use crate::core::air::{Air, AirProver, Component, ComponentProver, ComponentTrace};
+use crate::core::air::{Air, AirProver, Component, ComponentProver, Trace};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -193,7 +193,7 @@ impl ComponentTraceGenerator<SimdBackend> for SimdWideFibComponent {
 impl ComponentProver<SimdBackend> for SimdWideFibComponent {
     fn evaluate_constraint_quotients_on_domain(
         &self,
-        trace: &ComponentTrace<'_, SimdBackend>,
+        trace: &Trace<'_, SimdBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
         _interaction_elements: &InteractionElements,
         _lookup_values: &LookupValues,
@@ -250,7 +250,7 @@ impl ComponentProver<SimdBackend> for SimdWideFibComponent {
         }
     }
 
-    fn lookup_values(&self, _trace: &ComponentTrace<'_, SimdBackend>) -> LookupValues {
+    fn lookup_values(&self, _trace: &Trace<'_, SimdBackend>) -> LookupValues {
         LookupValues::default()
     }
 }

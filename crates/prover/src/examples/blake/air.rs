@@ -5,9 +5,10 @@ use num_traits::Zero;
 use serde::Serialize;
 use tracing::{span, Level};
 
-use super::round::{blake_round_info, BlakeRoundComponent};
-use super::scheduler::BlakeSchedulerComponent;
-use super::xor_table::XorTableComponent;
+use super::round::{blake_round_info, BlakeRoundComponent, BlakeRoundEval};
+use super::scheduler::{BlakeSchedulerComponent, BlakeSchedulerEval};
+use super::xor_table::{XorTableComponent, XorTableEval};
+use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
@@ -120,43 +121,67 @@ pub struct BlakeComponents {
 }
 impl BlakeComponents {
     fn new(stmt0: &BlakeStatement0, all_elements: &AllElements, stmt1: &BlakeStatement1) -> Self {
+        let tree_span_provider = &mut TraceLocationAllocator::default();
         Self {
-            scheduler_component: BlakeSchedulerComponent {
-                log_size: stmt0.log_size,
-                blake_lookup_elements: all_elements.blake_elements.clone(),
-                round_lookup_elements: all_elements.round_elements.clone(),
-                claimed_sum: stmt1.scheduler_claimed_sum,
-            },
+            scheduler_component: BlakeSchedulerComponent::new(
+                tree_span_provider,
+                BlakeSchedulerEval {
+                    log_size: stmt0.log_size,
+                    blake_lookup_elements: all_elements.blake_elements.clone(),
+                    round_lookup_elements: all_elements.round_elements.clone(),
+                    claimed_sum: stmt1.scheduler_claimed_sum,
+                },
+            ),
             round_components: ROUND_LOG_SPLIT
                 .iter()
                 .zip(stmt1.round_claimed_sums.clone())
-                .map(|(l, claimed_sum)| BlakeRoundComponent {
-                    log_size: stmt0.log_size + l,
-                    xor_lookup_elements: all_elements.xor_elements.clone(),
-                    round_lookup_elements: all_elements.round_elements.clone(),
-                    claimed_sum,
+                .map(|(l, claimed_sum)| {
+                    BlakeRoundComponent::new(
+                        tree_span_provider,
+                        BlakeRoundEval {
+                            log_size: stmt0.log_size + l,
+                            xor_lookup_elements: all_elements.xor_elements.clone(),
+                            round_lookup_elements: all_elements.round_elements.clone(),
+                            claimed_sum,
+                        },
+                    )
                 })
                 .collect(),
-            xor12: XorTableComponent {
-                lookup_elements: all_elements.xor_elements.xor12.clone(),
-                claimed_sum: stmt1.xor12_claimed_sum,
-            },
-            xor9: XorTableComponent {
-                lookup_elements: all_elements.xor_elements.xor9.clone(),
-                claimed_sum: stmt1.xor9_claimed_sum,
-            },
-            xor8: XorTableComponent {
-                lookup_elements: all_elements.xor_elements.xor8.clone(),
-                claimed_sum: stmt1.xor8_claimed_sum,
-            },
-            xor7: XorTableComponent {
-                lookup_elements: all_elements.xor_elements.xor7.clone(),
-                claimed_sum: stmt1.xor7_claimed_sum,
-            },
-            xor4: XorTableComponent {
-                lookup_elements: all_elements.xor_elements.xor4.clone(),
-                claimed_sum: stmt1.xor4_claimed_sum,
-            },
+            xor12: XorTableComponent::new(
+                tree_span_provider,
+                XorTableEval {
+                    lookup_elements: all_elements.xor_elements.xor12.clone(),
+                    claimed_sum: stmt1.xor12_claimed_sum,
+                },
+            ),
+            xor9: XorTableComponent::new(
+                tree_span_provider,
+                XorTableEval {
+                    lookup_elements: all_elements.xor_elements.xor9.clone(),
+                    claimed_sum: stmt1.xor9_claimed_sum,
+                },
+            ),
+            xor8: XorTableComponent::new(
+                tree_span_provider,
+                XorTableEval {
+                    lookup_elements: all_elements.xor_elements.xor8.clone(),
+                    claimed_sum: stmt1.xor8_claimed_sum,
+                },
+            ),
+            xor7: XorTableComponent::new(
+                tree_span_provider,
+                XorTableEval {
+                    lookup_elements: all_elements.xor_elements.xor7.clone(),
+                    claimed_sum: stmt1.xor7_claimed_sum,
+                },
+            ),
+            xor4: XorTableComponent::new(
+                tree_span_provider,
+                XorTableEval {
+                    lookup_elements: all_elements.xor_elements.xor4.clone(),
+                    claimed_sum: stmt1.xor4_claimed_sum,
+                },
+            ),
         }
     }
     fn components(&self) -> Vec<&dyn Component> {

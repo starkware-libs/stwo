@@ -1,7 +1,8 @@
 #![allow(incomplete_features)]
 #![feature(
-    array_methods,
     array_chunks,
+    array_methods,
+    array_try_from_fn,
     assert_matches,
     exact_size_is_empty,
     generic_const_exprs,

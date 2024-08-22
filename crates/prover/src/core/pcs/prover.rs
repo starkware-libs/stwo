@@ -13,7 +13,8 @@ use super::super::poly::BitReversedOrder;
 use super::super::ColumnVec;
 use super::quotients::{compute_fri_quotients, PointSample};
 use super::utils::TreeVec;
-use super::{PcsConfig, TreeColumnSpan};
+use super::{PcsConfig, TreeSubspan};
+use crate::core::air::Trace;
 use crate::core::backend::BackendForChannel;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
@@ -66,10 +67,18 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .map(|tree| tree.polynomials.iter().collect())
     }
 
-    fn evaluations(&self) -> TreeVec<ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>> {
+    pub fn evaluations(
+        &self,
+    ) -> TreeVec<ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>> {
         self.trees
             .as_ref()
             .map(|tree| tree.evaluations.iter().collect())
+    }
+
+    pub fn trace(&self) -> Trace<'_, B> {
+        let polys = self.polynomials();
+        let evals = self.evaluations();
+        Trace { polys, evals }
     }
 
     pub fn prove_values(
@@ -159,7 +168,7 @@ impl<'a, 'b, B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'a, 'b, B,
     pub fn extend_evals(
         &mut self,
         columns: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-    ) -> TreeColumnSpan {
+    ) -> TreeSubspan {
         let span = span!(Level::INFO, "Interpolation for commitment").entered();
         let col_start = self.polys.len();
         let polys = columns
@@ -168,17 +177,17 @@ impl<'a, 'b, B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'a, 'b, B,
             .collect_vec();
         span.exit();
         self.polys.extend(polys);
-        TreeColumnSpan {
+        TreeSubspan {
             tree_index: self.tree_index,
             col_start,
             col_end: self.polys.len(),
         }
     }
 
-    pub fn extend_polys(&mut self, polys: ColumnVec<CirclePoly<B>>) -> TreeColumnSpan {
+    pub fn extend_polys(&mut self, polys: ColumnVec<CirclePoly<B>>) -> TreeSubspan {
         let col_start = self.polys.len();
         self.polys.extend(polys);
-        TreeColumnSpan {
+        TreeSubspan {
             tree_index: self.tree_index,
             col_start,
             col_end: self.polys.len(),
