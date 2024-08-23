@@ -99,7 +99,7 @@ pub fn generate_interaction_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
             let denom = p0 * p1;
             col_gen.write_frac(vec_row as usize, -num, denom);
         }
-        col_gen.finalize_col();
+        col_gen.finalize_col(&mut logup_gen);
     }
 
     // If there is an odd number of lookup expressions, handle the last one.
@@ -127,7 +127,7 @@ pub fn generate_interaction_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
                 let denom = p;
                 col_gen.write_frac(vec_row as usize, PackedSecureField::from(-num), denom);
             }
-            col_gen.finalize_col();
+            col_gen.finalize_col(&mut logup_gen);
         }
     }
 

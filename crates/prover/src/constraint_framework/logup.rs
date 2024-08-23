@@ -166,31 +166,16 @@ pub struct LogupTraceGenerator {
     log_size: u32,
     /// Current allocated interaction columns.
     trace: Vec<SecureColumnByCoords<SimdBackend>>,
-    /// Denominator expressions (z + sum_i alpha^i * x_i) being generated for the current lookup.
-    denom: SecureColumn,
-    /// Preallocated buffer for the Inverses of the denominators.
-    denom_inv: SecureColumn,
 }
 impl LogupTraceGenerator {
     pub fn new(log_size: u32) -> Self {
         let trace = vec![];
-        let denom = SecureColumn::zeros(1 << log_size);
-        let denom_inv = SecureColumn::zeros(1 << log_size);
-        Self {
-            log_size,
-            trace,
-            denom,
-            denom_inv,
-        }
+        Self { log_size, trace }
     }
 
     /// Allocate a new lookup column.
-    pub fn new_col(&mut self) -> LogupColGenerator<'_> {
-        let log_size = self.log_size;
-        LogupColGenerator {
-            gen: self,
-            numerator: SecureColumnByCoords::<SimdBackend>::zeros(1 << log_size),
-        }
+    pub fn new_col(&mut self) -> LogupColGenerator {
+        LogupColGenerator::new(self.log_size)
     }
 
     /// Finalize the trace. Returns the trace and the claimed sum of the last column.
@@ -239,12 +224,21 @@ impl LogupTraceGenerator {
 }
 
 /// Trace generator for a single lookup column.
-pub struct LogupColGenerator<'a> {
-    gen: &'a mut LogupTraceGenerator,
+pub struct LogupColGenerator {
+    log_size: u32,
     /// Numerator expressions (i.e. multiplicities) being generated for the current lookup.
     numerator: SecureColumnByCoords<SimdBackend>,
+    /// Denominator expressions (z + sum_i alpha^i * x_i) being generated for the current lookup.
+    denom: SecureColumn,
 }
-impl<'a> LogupColGenerator<'a> {
+impl LogupColGenerator {
+    fn new(log_size: u32) -> Self {
+        Self {
+            log_size,
+            numerator: SecureColumnByCoords::<SimdBackend>::zeros(1 << log_size),
+            denom: SecureColumn::zeros(1 << log_size),
+        }
+    }
     /// Write a fraction to the column at a row.
     pub fn write_frac(
         &mut self,
@@ -254,20 +248,20 @@ impl<'a> LogupColGenerator<'a> {
     ) {
         unsafe {
             self.numerator.set_packed(vec_row, numerator);
-            *self.gen.denom.data.get_unchecked_mut(vec_row) = denom;
+            *self.denom.data.get_unchecked_mut(vec_row) = denom;
         }
     }
 
     /// Finalizes generating the column.
-    pub fn finalize_col(mut self) {
-        FieldExpOps::batch_inverse(&self.gen.denom.data, &mut self.gen.denom_inv.data);
+    pub fn finalize_col(mut self, gen: &mut LogupTraceGenerator) {
+        let mut denom_inv = SecureColumn::zeros(1 << self.log_size);
+        FieldExpOps::batch_inverse(&self.denom.data, &mut denom_inv.data);
 
-        for vec_row in 0..(1 << (self.gen.log_size - LOG_N_LANES)) {
+        for vec_row in 0..(1 << (self.log_size - LOG_N_LANES)) {
             unsafe {
-                let value = self.numerator.packed_at(vec_row)
-                    * *self.gen.denom_inv.data.get_unchecked(vec_row);
-                let prev_value = self
-                    .gen
+                let value =
+                    self.numerator.packed_at(vec_row) * *denom_inv.data.get_unchecked(vec_row);
+                let prev_value = gen
                     .trace
                     .last()
                     .map(|col| col.packed_at(vec_row))
@@ -276,7 +270,7 @@ impl<'a> LogupColGenerator<'a> {
             };
         }
 
-        self.gen.trace.push(self.numerator)
+        gen.trace.push(self.numerator)
     }
 }
 

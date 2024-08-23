@@ -138,7 +138,7 @@ pub fn gen_interaction_trace(
             col_gen.write_frac(vec_row, p0 + p1, p0 * p1);
         }
 
-        col_gen.finalize_col();
+        col_gen.finalize_col(&mut logup_gen);
     }
 
     // Last pair. If the number of round is odd (as in blake3), we combine that last round lookup
@@ -165,7 +165,7 @@ pub fn gen_interaction_trace(
             col_gen.write_frac(vec_row, PackedSecureField::zero(), p_blake);
         }
     }
-    col_gen.finalize_col();
+    col_gen.finalize_col(&mut logup_gen);
 
     logup_gen.finalize()
 }

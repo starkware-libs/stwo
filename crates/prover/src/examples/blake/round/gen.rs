@@ -265,7 +265,7 @@ pub fn generate_interaction_trace(
             col_gen.write_frac(vec_row, p0 + p1, p0 * p1);
         }
 
-        col_gen.finalize_col();
+        col_gen.finalize_col(&mut logup_gen);
     }
 
     let mut col_gen = logup_gen.new_col();
@@ -275,7 +275,7 @@ pub fn generate_interaction_trace(
             .combine(&lookup_data.round_lookup.each_ref().map(|l| l.data[vec_row]));
         col_gen.write_frac(vec_row, -PackedSecureField::one(), p);
     }
-    col_gen.finalize_col();
+    col_gen.finalize_col(&mut logup_gen);
 
     logup_gen.finalize()
 }
