@@ -20,4 +20,7 @@ pub mod constraint_framework;
 pub mod core;
 pub mod examples;
 pub mod math;
-pub mod trace_generation;
+// TODO: Add back once InteractionElements and LookupValues get refactored out. InteractionElements
+// removed in favour of storing interaction elements the components directly with LookupElements.
+// LookupValues removed in favour of storing lookup values on a claim struct.
+// pub mod trace_generation;

@@ -1,5 +1,6 @@
 use itertools::Itertools;
 
+use crate::constraint_framework::logup::LookupElements;
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::air::mask::fixed_mask_points;
 use crate::core::air::{Air, Component};
@@ -30,6 +31,8 @@ pub const LOOKUP_VALUE_1_ID: &str = "wide_fibonacci_1";
 pub const LOOKUP_VALUE_N_MINUS_2_ID: &str = "wide_fibonacci_n-2";
 pub const LOOKUP_VALUE_N_MINUS_1_ID: &str = "wide_fibonacci_n-1";
 
+pub type WideFibElements = LookupElements<2>;
+
 /// Component that computes 2^`self.log_n_instances` instances of fibonacci sequences of size
 /// 2^`self.log_fibonacci_size`. The numbers are computes over [N_COLUMNS] trace columns. The
 /// number of rows (i.e the size of the columns) is determined by the parameters above (see
@@ -38,6 +41,11 @@ pub const LOOKUP_VALUE_N_MINUS_1_ID: &str = "wide_fibonacci_n-1";
 pub struct WideFibComponent {
     pub log_fibonacci_size: u32,
     pub log_n_instances: u32,
+    pub lookup_elements: WideFibElements,
+    pub lookup_value_0: SecureField,
+    pub lookup_value_1: SecureField,
+    pub lookup_value_n_minus_2: SecureField,
+    pub lookup_value_n_minus_1: SecureField,
 }
 
 impl WideFibComponent {
@@ -104,10 +112,10 @@ impl WideFibComponent {
         mask: &TreeVec<Vec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         constraint_zero_domain: Coset,
-        interaction_elements: &InteractionElements,
-        lookup_values: &LookupValues,
+        _interaction_elements: &InteractionElements,
+        _lookup_values: &LookupValues,
     ) {
-        let (alpha, z) = (interaction_elements[ALPHA_ID], interaction_elements[Z_ID]);
+        let WideFibElements { alpha, z, .. } = self.lookup_elements;
         let value = SecureField::from_partial_evals(std::array::from_fn(|i| mask[1][i][0]));
         let numerator = (value
             * shifted_secure_combination(
@@ -124,21 +132,11 @@ impl WideFibComponent {
 
         let numerator = (value
             * shifted_secure_combination(
-                &[
-                    lookup_values[LOOKUP_VALUE_N_MINUS_2_ID],
-                    lookup_values[LOOKUP_VALUE_N_MINUS_1_ID],
-                ],
+                &[self.lookup_value_n_minus_2, self.lookup_value_n_minus_1],
                 alpha,
                 z,
             ))
-            - shifted_secure_combination(
-                &[
-                    lookup_values[LOOKUP_VALUE_0_ID],
-                    lookup_values[LOOKUP_VALUE_1_ID],
-                ],
-                alpha,
-                z,
-            );
+            - shifted_secure_combination(&[self.lookup_value_0, self.lookup_value_1], alpha, z);
         let denom = point_vanishing(
             constraint_zero_domain.at(constraint_zero_domain.size() - 1),
             point,
