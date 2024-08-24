@@ -8,7 +8,7 @@ use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
-use super::{ColumnVec, InteractionElements, LookupValues};
+use super::ColumnVec;
 
 pub mod accumulation;
 mod components;
@@ -52,8 +52,6 @@ pub trait Component {
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
-        interaction_elements: &InteractionElements,
-        lookup_values: &LookupValues,
     );
 }
 
@@ -64,12 +62,7 @@ pub trait ComponentProver<B: Backend>: Component {
         &self,
         trace: &Trace<'_, B>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<B>,
-        interaction_elements: &InteractionElements,
-        lookup_values: &LookupValues,
     );
-
-    /// Returns the values needed to evaluate the components lookup boundary constraints.
-    fn lookup_values(&self, _trace: &Trace<'_, B>) -> LookupValues;
 }
 
 /// The set of polynomials that make up the trace.

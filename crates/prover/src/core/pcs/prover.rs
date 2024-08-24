@@ -167,30 +167,28 @@ pub struct TreeBuilder<'a, 'b, B: BackendForChannel<MC>, MC: MerkleChannel> {
 impl<'a, 'b, B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'a, 'b, B, MC> {
     pub fn extend_evals(
         &mut self,
-        columns: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        columns: impl IntoIterator<Item = CircleEvaluation<B, BaseField, BitReversedOrder>>,
     ) -> TreeColumnSpan {
         let span = span!(Level::INFO, "Interpolation for commitment").entered();
-        let col_start = self.polys.len();
         let polys = columns
             .into_iter()
             .map(|eval| eval.interpolate_with_twiddles(self.commitment_scheme.twiddles))
             .collect_vec();
         span.exit();
-        self.polys.extend(polys);
-        TreeColumnSpan {
-            tree_index: self.tree_index,
-            col_start,
-            col_end: self.polys.len(),
-        }
+        self.extend_polys(polys)
     }
 
-    pub fn extend_polys(&mut self, polys: ColumnVec<CirclePoly<B>>) -> TreeColumnSpan {
+    pub fn extend_polys(
+        &mut self,
+        columns: impl IntoIterator<Item = CirclePoly<B>>,
+    ) -> TreeColumnSpan {
         let col_start = self.polys.len();
-        self.polys.extend(polys);
+        self.polys.extend(columns);
+        let col_end = self.polys.len();
         TreeColumnSpan {
             tree_index: self.tree_index,
             col_start,
-            col_end: self.polys.len(),
+            col_end,
         }
     }
 
