@@ -135,7 +135,7 @@ pub fn gen_interaction_trace(
             let p1: PackedSecureField =
                 round_lookup_elements.combine(&l1.each_ref().map(|l| l.data[vec_row]));
             #[allow(clippy::eq_op)]
-            col_gen.write_frac(vec_row, p0 + p1, p0 * p1);
+            col_gen.set_frac(vec_row, p0 + p1, p0 * p1);
         }
 
         col_gen.finalize_col();
@@ -159,10 +159,10 @@ pub fn gen_interaction_trace(
                     .map(|l| l.data[vec_row]),
             );
             // TODO(spapini): Change blake numerator to p_blake - p_round.
-            col_gen.write_frac(vec_row, p_blake, p_round * p_blake);
+            col_gen.set_frac(vec_row, p_blake, p_round * p_blake);
         } else {
             // TODO(spapini): Change numerator to -1.
-            col_gen.write_frac(vec_row, PackedSecureField::zero(), p_blake);
+            col_gen.set_frac(vec_row, PackedSecureField::zero(), p_blake);
         }
     }
     col_gen.finalize_col();

@@ -174,8 +174,8 @@ pub struct LogupTraceGenerator {
 impl LogupTraceGenerator {
     pub fn new(log_size: u32) -> Self {
         let trace = vec![];
-        let denom = SecureColumn::zeros(1 << log_size);
-        let denom_inv = SecureColumn::zeros(1 << log_size);
+        let denom = unsafe { SecureColumn::uninitialized(1 << log_size) };
+        let denom_inv = unsafe { SecureColumn::uninitialized(1 << log_size) };
         Self {
             log_size,
             trace,
@@ -189,7 +189,7 @@ impl LogupTraceGenerator {
         let log_size = self.log_size;
         LogupColGenerator {
             gen: self,
-            numerator: SecureColumnByCoords::<SimdBackend>::zeros(1 << log_size),
+            numerator: unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(1 << log_size) },
         }
     }
 
@@ -245,8 +245,8 @@ pub struct LogupColGenerator<'a> {
     numerator: SecureColumnByCoords<SimdBackend>,
 }
 impl<'a> LogupColGenerator<'a> {
-    /// Write a fraction to the column at a row.
-    pub fn write_frac(
+    /// Set the fraction at a row.
+    pub fn set_frac(
         &mut self,
         vec_row: usize,
         numerator: PackedSecureField,
@@ -255,6 +255,24 @@ impl<'a> LogupColGenerator<'a> {
         unsafe {
             self.numerator.set_packed(vec_row, numerator);
             *self.gen.denom.data.get_unchecked_mut(vec_row) = denom;
+        }
+    }
+
+    /// Update the fraction at a row, assuming it is already set.
+    /// # Safety
+    /// The fraction at the row must be set.
+    pub unsafe fn push_frac(
+        &mut self,
+        vec_row: usize,
+        numerator: PackedBaseField,
+        denom: PackedSecureField,
+    ) {
+        let p = unsafe { self.numerator.packed_at(vec_row) };
+        let q = self.gen.denom.data[vec_row];
+        unsafe {
+            self.numerator
+                .set_packed(vec_row, p * denom + q * numerator);
+            *self.gen.denom.data.get_unchecked_mut(vec_row) = q * denom;
         }
     }
 

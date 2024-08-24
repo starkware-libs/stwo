@@ -316,7 +316,7 @@ pub fn gen_interaction_trace(
                     .map(|s| s.data[vec_row]),
             );
             // (1 / denom1) - (1 / denom1) = (denom1 - denom0) / (denom0 * denom1).
-            col_gen.write_frac(vec_row, denom1 - denom0, denom0 * denom1);
+            col_gen.set_frac(vec_row, denom1 - denom0, denom0 * denom1);
         }
         col_gen.finalize_col();
     }
