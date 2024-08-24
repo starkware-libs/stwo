@@ -1,38 +1,15 @@
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
-
-use bytemuck::{Pod, Zeroable};
-use num_traits::{One, Zero};
+use num_traits::Zero;
 
 use super::cm31::PackedCM31;
 use super::m31::{PackedM31, N_LANES};
 use super::qm31::PackedQM31;
 use crate::core::fields::cm31::CM31;
-use crate::core::fields::m31::{pow2147483645, M31};
+use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
-use crate::core::fields::FieldExpOps;
+use crate::math::vectorized::{Scalar, Vectorized};
 
 pub const LOG_N_VERY_PACKED_ELEMS: u32 = 1;
 pub const N_VERY_PACKED_ELEMS: usize = 1 << LOG_N_VERY_PACKED_ELEMS;
-
-#[derive(Copy, Clone, Debug)]
-#[repr(transparent)]
-pub struct Vectorized<A, const N: usize>(pub [A; N]);
-
-impl<A, const N: usize> Vectorized<A, N> {
-    pub fn from_fn<F>(cb: F) -> Self
-    where
-        F: FnMut(usize) -> A,
-    {
-        Vectorized(std::array::from_fn(cb))
-    }
-}
-
-unsafe impl<A, const N: usize> Zeroable for Vectorized<A, N> {
-    fn zeroed() -> Self {
-        unsafe { core::mem::zeroed() }
-    }
-}
-unsafe impl<A: Pod, const N: usize> Pod for Vectorized<A, N> {}
 
 pub type VeryPackedM31 = Vectorized<PackedM31, N_VERY_PACKED_ELEMS>;
 pub type VeryPackedCM31 = Vectorized<PackedCM31, N_VERY_PACKED_ELEMS>;
@@ -103,120 +80,9 @@ impl From<QM31> for VeryPackedQM31 {
     }
 }
 
-trait Scalar {}
 impl Scalar for M31 {}
 impl Scalar for CM31 {}
 impl Scalar for QM31 {}
 impl Scalar for PackedM31 {}
 impl Scalar for PackedCM31 {}
 impl Scalar for PackedQM31 {}
-
-impl<A: Add<B> + Copy, B: Copy, const N: usize> Add<Vectorized<B, N>> for Vectorized<A, N> {
-    type Output = Vectorized<A::Output, N>;
-
-    fn add(self, other: Vectorized<B, N>) -> Self::Output {
-        Vectorized::from_fn(|i| self.0[i] + other.0[i])
-    }
-}
-
-impl<A: Add<B> + Copy, B: Scalar + Copy, const N: usize> Add<B> for Vectorized<A, N> {
-    type Output = Vectorized<A::Output, N>;
-
-    fn add(self, other: B) -> Self::Output {
-        Vectorized::from_fn(|i| self.0[i] + other)
-    }
-}
-
-impl<A: Sub<B> + Copy, B: Copy, const N: usize> Sub<Vectorized<B, N>> for Vectorized<A, N> {
-    type Output = Vectorized<A::Output, N>;
-
-    fn sub(self, other: Vectorized<B, N>) -> Self::Output {
-        Vectorized::from_fn(|i| self.0[i] - other.0[i])
-    }
-}
-
-impl<A: Sub<B> + Copy, B: Scalar + Copy, const N: usize> Sub<B> for Vectorized<A, N> {
-    type Output = Vectorized<A::Output, N>;
-
-    fn sub(self, other: B) -> Self::Output {
-        Vectorized::from_fn(|i| self.0[i] - other)
-    }
-}
-
-impl<A: Mul<B> + Copy, B: Copy, const N: usize> Mul<Vectorized<B, N>> for Vectorized<A, N> {
-    type Output = Vectorized<A::Output, N>;
-
-    fn mul(self, other: Vectorized<B, N>) -> Self::Output {
-        Vectorized::from_fn(|i| self.0[i] * other.0[i])
-    }
-}
-
-impl<A: Mul<B> + Copy, B: Scalar + Copy, const N: usize> Mul<B> for Vectorized<A, N> {
-    type Output = Vectorized<A::Output, N>;
-
-    fn mul(self, other: B) -> Self::Output {
-        Vectorized::from_fn(|i| self.0[i] * other)
-    }
-}
-
-impl<A: AddAssign<B> + Copy, B: Copy, const N: usize> AddAssign<Vectorized<B, N>>
-    for Vectorized<A, N>
-{
-    fn add_assign(&mut self, other: Vectorized<B, N>) {
-        for i in 0..N {
-            self.0[i] += other.0[i];
-        }
-    }
-}
-
-impl<A: AddAssign<B> + Copy, B: Scalar + Copy, const N: usize> AddAssign<B> for Vectorized<A, N> {
-    fn add_assign(&mut self, other: B) {
-        for i in 0..N {
-            self.0[i] += other;
-        }
-    }
-}
-
-impl<A: MulAssign<B> + Copy, B: Copy, const N: usize> MulAssign<Vectorized<B, N>>
-    for Vectorized<A, N>
-{
-    fn mul_assign(&mut self, other: Vectorized<B, N>) {
-        for i in 0..N {
-            self.0[i] *= other.0[i];
-        }
-    }
-}
-
-impl<A: Neg + Copy, const N: usize> Neg for Vectorized<A, N> {
-    type Output = Vectorized<A::Output, N>;
-
-    #[inline(always)]
-    fn neg(self) -> Self::Output {
-        Vectorized::from_fn(|i| self.0[i].neg())
-    }
-}
-
-impl<A: Zero + Copy, const N: usize> Zero for Vectorized<A, N> {
-    fn zero() -> Self {
-        Vectorized::from_fn(|_| A::zero())
-    }
-
-    fn is_zero(&self) -> bool {
-        self.0.iter().all(A::is_zero)
-    }
-}
-
-impl<A: One + Copy, const N: usize> One for Vectorized<A, N> {
-    fn one() -> Self {
-        Vectorized::from_fn(|_| A::one())
-    }
-}
-
-impl<A: FieldExpOps + Zero, const N: usize> FieldExpOps for Vectorized<A, N> {
-    fn inverse(&self) -> Self {
-        Vectorized::from_fn(|i| {
-            assert!(!self.0[i].is_zero(), "0 has no inverse");
-            pow2147483645(self.0[i])
-        })
-    }
-}
