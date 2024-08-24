@@ -227,10 +227,7 @@ impl LogupTraceGenerator {
             .into_iter()
             .flat_map(|eval| {
                 eval.columns.map(|c| {
-                    CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(
-                        CanonicCoset::new(self.log_size).circle_domain(),
-                        c,
-                    )
+                    CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), c)
                 })
             })
             .collect_vec();
