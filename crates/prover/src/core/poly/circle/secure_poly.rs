@@ -43,6 +43,10 @@ impl<B: PolyOps> SecureCirclePoly<B> {
         let columns = polys.map(|poly| poly.evaluate_with_twiddles(domain, twiddles).values);
         SecureEvaluation::new(domain, SecureColumnByCoords { columns })
     }
+
+    pub fn into_coordinate_polys(self) -> [CirclePoly<B>; SECURE_EXTENSION_DEGREE] {
+        self.0
+    }
 }
 
 impl<B: FieldOps<BaseField>> Deref for SecureCirclePoly<B> {
