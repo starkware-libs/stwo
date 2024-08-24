@@ -282,13 +282,8 @@ mod tests {
         }];
         let cpu_columns = columns
             .iter()
-            .map(|c| {
-                CircleEvaluation::<CpuBackend, _, BitReversedOrder>::new(
-                    c.domain,
-                    c.values.to_cpu(),
-                )
-            })
-            .collect::<Vec<_>>();
+            .map(|c| CircleEvaluation::new(c.domain, c.values.to_cpu()))
+            .collect_vec();
         let cpu_result = CpuBackend::accumulate_quotients(
             domain,
             &cpu_columns.iter().collect_vec(),

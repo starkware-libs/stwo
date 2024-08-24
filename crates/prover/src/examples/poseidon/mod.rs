@@ -278,8 +278,8 @@ pub fn gen_trace(
     let domain = CanonicCoset::new(log_size).circle_domain();
     let trace = trace
         .into_iter()
-        .map(|eval| CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(domain, eval))
-        .collect_vec();
+        .map(|eval| CircleEvaluation::new(domain, eval))
+        .collect();
     (trace, lookup_data)
 }
 
@@ -367,7 +367,8 @@ pub fn prove_poseidon(
             claimed_sum,
         },
     );
-    let proof = prove::<SimdBackend, _>(&[&component], channel, commitment_scheme).unwrap();
+    let proof = prove(&[&component], channel, commitment_scheme).unwrap();
+
     (component, proof)
 }
 
