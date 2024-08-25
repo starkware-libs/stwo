@@ -74,7 +74,7 @@ pub fn generate_interaction_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
 
         // Each column has 2^(2*LIMB_BITS) rows, packed in N_LANES.
         #[allow(clippy::needless_range_loop)]
-        for vec_row in 0..(1 << (column_bits::<ELEM_BITS, EXPAND_BITS>() - LOG_N_LANES)) {
+        for vec_row in 0..1 << (column_bits::<ELEM_BITS, EXPAND_BITS>() - LOG_N_LANES) {
             // vec_row is LIMB_BITS of al and LIMB_BITS - LOG_N_LANES of bl.
             // Extract al, blh from vec_row.
             let al = vec_row >> (limb_bits - LOG_N_LANES);

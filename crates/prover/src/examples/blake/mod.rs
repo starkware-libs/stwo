@@ -12,28 +12,28 @@ use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::FieldExpOps;
 
-mod air;
-mod round;
-mod scheduler;
-mod xor_table;
+pub mod air;
+pub mod round;
+pub mod scheduler;
+pub mod xor_table;
 
-const STATE_SIZE: usize = 16;
-const MESSAGE_SIZE: usize = 16;
-const N_FELTS_IN_U32: usize = 2;
-const N_ROUND_INPUT_FELTS: usize = (STATE_SIZE + STATE_SIZE + MESSAGE_SIZE) * N_FELTS_IN_U32;
+pub const STATE_SIZE: usize = 16;
+pub const MESSAGE_SIZE: usize = 16;
+pub const N_FELTS_IN_U32: usize = 2;
+pub const N_ROUND_INPUT_FELTS: usize = (STATE_SIZE + STATE_SIZE + MESSAGE_SIZE) * N_FELTS_IN_U32;
 
 // Parameters for Blake2s. Change these for blake3.
-const N_ROUNDS: usize = 10;
+pub const N_ROUNDS: usize = 10;
 /// A splitting N_ROUNDS into several powers of 2.
-const ROUND_LOG_SPLIT: [u32; 2] = [3, 1];
+pub const ROUND_LOG_SPLIT: [u32; 2] = [3, 1];
 
 #[derive(Default)]
-struct XorAccums {
-    xor12: XorAccumulator<12, 4>,
-    xor9: XorAccumulator<9, 2>,
-    xor8: XorAccumulator<8, 2>,
-    xor7: XorAccumulator<7, 2>,
-    xor4: XorAccumulator<4, 0>,
+pub struct XorAccums {
+    pub xor12: XorAccumulator<12, 4>,
+    pub xor9: XorAccumulator<9, 2>,
+    pub xor8: XorAccumulator<8, 2>,
+    pub xor7: XorAccumulator<7, 2>,
+    pub xor4: XorAccumulator<4, 0>,
 }
 impl XorAccums {
     fn add_input(&mut self, w: u32, a: u32x16, b: u32x16) {
@@ -50,11 +50,11 @@ impl XorAccums {
 
 #[derive(Clone)]
 pub struct BlakeXorElements {
-    xor12: XorElements,
-    xor9: XorElements,
-    xor8: XorElements,
-    xor7: XorElements,
-    xor4: XorElements,
+    pub xor12: XorElements,
+    pub xor9: XorElements,
+    pub xor8: XorElements,
+    pub xor7: XorElements,
+    pub xor4: XorElements,
 }
 impl BlakeXorElements {
     fn draw(channel: &mut impl Channel) -> Self {
@@ -75,7 +75,7 @@ impl BlakeXorElements {
             xor4: XorElements::dummy(),
         }
     }
-    fn get(&self, w: u32) -> &XorElements {
+    pub fn get(&self, w: u32) -> &XorElements {
         match w {
             12 => &self.xor12,
             9 => &self.xor9,
@@ -89,7 +89,7 @@ impl BlakeXorElements {
 
 /// Utility for representing a u32 as two field elements, for constraint evaluation.
 #[derive(Clone, Copy, Debug)]
-struct Fu32<F>
+pub struct Fu32<F>
 where
     F: FieldExpOps
         + Copy
@@ -99,8 +99,8 @@ where
         + Sub<F, Output = F>
         + Mul<BaseField, Output = F>,
 {
-    l: F,
-    h: F,
+    pub l: F,
+    pub h: F,
 }
 impl<F> Fu32<F>
 where
@@ -112,7 +112,7 @@ where
         + Sub<F, Output = F>
         + Mul<BaseField, Output = F>,
 {
-    fn to_felts(self) -> [F; 2] {
+    pub fn to_felts(self) -> [F; 2] {
         [self.l, self.h]
     }
 }

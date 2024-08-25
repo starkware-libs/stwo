@@ -60,9 +60,9 @@ impl BlakeStatement0 {
 }
 
 pub struct AllElements {
-    blake_elements: BlakeElements,
-    round_elements: RoundElements,
-    xor_elements: BlakeXorElements,
+    pub blake_elements: BlakeElements,
+    pub round_elements: RoundElements,
+    pub xor_elements: BlakeXorElements,
 }
 impl AllElements {
     pub fn draw(channel: &mut impl Channel) -> Self {
@@ -222,7 +222,7 @@ where
 {
     assert!(log_size >= LOG_N_LANES);
     assert_eq!(
-        ROUND_LOG_SPLIT.map(|x| (1 << x)).into_iter().sum::<u32>() as usize,
+        ROUND_LOG_SPLIT.map(|x| 1 << x).iter().sum::<usize>(),
         N_ROUNDS
     );
 
@@ -239,7 +239,7 @@ where
     span.exit();
 
     // Prepare inputs.
-    let blake_inputs = (0..(1 << (log_size - LOG_N_LANES)))
+    let blake_inputs = (0..1 << (log_size - LOG_N_LANES))
         .map(|i| {
             let v = [u32x16::from_array(std::array::from_fn(|j| (i + 2 * j) as u32)); 16];
             let m = [u32x16::from_array(std::array::from_fn(|j| (i + 2 * j + 1) as u32)); 16];
@@ -281,18 +281,15 @@ where
 
     // Trace commitment.
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(
-        chain![
-            scheduler_trace,
-            round_traces.into_iter().flatten(),
-            xor_trace12,
-            xor_trace9,
-            xor_trace8,
-            xor_trace7,
-            xor_trace4,
-        ]
-        .collect_vec(),
-    );
+    tree_builder.extend_evals(chain![
+        scheduler_trace,
+        round_traces.into_iter().flatten(),
+        xor_trace12,
+        xor_trace9,
+        xor_trace8,
+        xor_trace7,
+        xor_trace4,
+    ]);
     tree_builder.commit(channel);
     span.exit();
 

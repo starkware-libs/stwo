@@ -5,7 +5,7 @@ use std::ops::Deref;
 use itertools::Itertools;
 use tracing::{span, Level};
 
-use super::{EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
+use super::{EvalAtRow, EvalAtRowWithMle, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, Trace};
 use crate::core::backend::simd::column::VeryPackedSecureColumnByCoords;
@@ -55,6 +55,18 @@ impl TraceLocationAllocator {
                 .collect(),
         )
     }
+}
+
+/// A component defined solely in means of the constraints framework.
+/// Implementing this trait introduces implementations for [`Component`] and [`ComponentProver`] for
+/// the SIMD backend.
+/// Note that the constraint framework only support components with columns of the same size.
+pub trait FrameworkEvalWithMle {
+    fn log_size(&self) -> u32;
+
+    fn max_constraint_log_degree_bound(&self) -> u32;
+
+    fn evaluate<E: EvalAtRowWithMle>(&self, eval: E) -> E;
 }
 
 /// A component defined solely in means of the constraints framework.

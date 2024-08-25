@@ -107,7 +107,7 @@ impl<const N: usize> LookupElements<N> {
     }
     pub fn combine<F: Copy, EF>(&self, values: &[F]) -> EF
     where
-        EF: Copy + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
+        EF: Copy + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<Output = EF>,
     {
         zip_eq(values, self.alpha_powers).fold(EF::zero(), |acc, (&value, power)| {
             acc + EF::from(power) * value
