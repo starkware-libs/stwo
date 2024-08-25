@@ -8,7 +8,7 @@ use itertools::Itertools;
 use num_traits::{One, Zero};
 use thiserror::Error;
 
-use super::gkr_verifier::{GkrArtifact, GkrBatchProof, GkrMask};
+use super::gkr_verifier::{Gate, GkrArtifact, GkrBatchProof, GkrMask};
 use super::mle::{Mle, MleOps};
 use super::sumcheck::MultivariatePolyOracle;
 use super::utils::{eq, random_linear_combination, UnivariatePoly};
@@ -409,6 +409,16 @@ pub fn prove_batch<B: GkrOps>(
         .collect_vec();
     let n_layers = *n_layers_by_instance.iter().max().unwrap();
 
+    let gate_by_instance = input_layer_by_instance
+        .iter()
+        .map(|l| match l {
+            Layer::GrandProduct(_) => Gate::GrandProduct,
+            Layer::LogUpGeneric { .. }
+            | Layer::LogUpMultiplicities { .. }
+            | Layer::LogUpSingles { .. } => Gate::LogUp,
+        })
+        .collect();
+
     // Evaluate all instance circuits and collect the layer values.
     let mut layers_by_instance = input_layer_by_instance
         .into_iter()
@@ -502,6 +512,7 @@ pub fn prove_batch<B: GkrOps>(
 
     let artifact = GkrArtifact {
         ood_point,
+        gate_by_instance,
         claims_to_verify_by_instance,
         n_variables_by_instance: n_layers_by_instance,
     };

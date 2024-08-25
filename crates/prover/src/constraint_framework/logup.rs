@@ -149,7 +149,7 @@ impl<const N: usize> LookupElements<N> {
     }
     pub fn combine<F: Copy, EF>(&self, values: &[F]) -> EF
     where
-        EF: Copy + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
+        EF: Copy + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<Output = EF>,
     {
         EF::from(values[0])
             + values[1..]

@@ -17,7 +17,9 @@ use std::simd::u32x16;
 
 use itertools::Itertools;
 use num_traits::Zero;
-pub use r#gen::{generate_constant_trace, generate_interaction_trace, generate_trace};
+pub use r#gen::{
+    generate_constant_trace, generate_interaction_trace, generate_trace, XorTableLookupData,
+};
 
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
@@ -37,7 +39,7 @@ pub fn trace_sizes<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> TreeVec<Ve
         .map_cols(|_| column_bits::<ELEM_BITS, EXPAND_BITS>())
 }
 
-const fn limb_bits<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> u32 {
+pub const fn limb_bits<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> u32 {
     ELEM_BITS - EXPAND_BITS
 }
 pub const fn column_bits<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> u32 {

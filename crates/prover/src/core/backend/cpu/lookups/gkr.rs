@@ -326,6 +326,7 @@ mod tests {
         let GkrArtifact {
             ood_point: r,
             claims_to_verify_by_instance,
+            gate_by_instance: _,
             n_variables_by_instance: _,
         } = partially_verify_batch(vec![Gate::GrandProduct], &proof, &mut test_channel())?;
 
@@ -354,6 +355,7 @@ mod tests {
         let GkrArtifact {
             ood_point,
             claims_to_verify_by_instance,
+            gate_by_instance: _,
             n_variables_by_instance: _,
         } = partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
 
@@ -391,6 +393,7 @@ mod tests {
         let GkrArtifact {
             ood_point,
             claims_to_verify_by_instance,
+            gate_by_instance: _,
             n_variables_by_instance: _,
         } = partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
 
@@ -427,6 +430,7 @@ mod tests {
         let GkrArtifact {
             ood_point,
             claims_to_verify_by_instance,
+            gate_by_instance: _,
             n_variables_by_instance: _,
         } = partially_verify_batch(vec![Gate::LogUp], &proof, &mut test_channel())?;
 

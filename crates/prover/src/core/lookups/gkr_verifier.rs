@@ -143,6 +143,7 @@ pub fn partially_verify_batch(
 
     Ok(GkrArtifact {
         ood_point,
+        gate_by_instance,
         claims_to_verify_by_instance,
         n_variables_by_instance: (0..n_instances).map(instance_n_layers).collect(),
     })
@@ -162,10 +163,112 @@ pub struct GkrBatchProof {
 pub struct GkrArtifact {
     /// Out-of-domain (OOD) point for evaluating columns in the input layer.
     pub ood_point: Vec<SecureField>,
+    /// The gate of each instance.
+    pub gate_by_instance: Vec<Gate>,
     /// The claimed evaluation at `ood_point` for each column in the input layer of each instance.
     pub claims_to_verify_by_instance: Vec<Vec<SecureField>>,
     /// The number of variables that interpolate the input layer of each instance.
     pub n_variables_by_instance: Vec<usize>,
+}
+
+impl GkrArtifact {
+    pub fn ood_point(&self, instance_n_variables: usize) -> &[SecureField] {
+        &self.ood_point[self.ood_point.len() - instance_n_variables..]
+    }
+}
+
+pub struct LookupArtifactInstanceIter<'proof, 'artifact> {
+    instance: usize,
+    gkr_proof: &'proof GkrBatchProof,
+    gkr_artifact: &'artifact GkrArtifact,
+}
+
+impl<'proof, 'artifact> LookupArtifactInstanceIter<'proof, 'artifact> {
+    pub fn new(gkr_proof: &'proof GkrBatchProof, gkr_artifact: &'artifact GkrArtifact) -> Self {
+        Self {
+            instance: 0,
+            gkr_proof,
+            gkr_artifact,
+        }
+    }
+}
+
+impl<'proof, 'artifact> Iterator for LookupArtifactInstanceIter<'proof, 'artifact> {
+    type Item = LookupArtifactInstance;
+
+    fn next(&mut self) -> Option<LookupArtifactInstance> {
+        if self.instance >= self.gkr_proof.output_claims_by_instance.len() {
+            return None;
+        }
+
+        let instance = self.instance;
+        let input_n_variables = self.gkr_artifact.n_variables_by_instance[instance];
+        let eval_point = self.gkr_artifact.ood_point(input_n_variables).to_vec();
+        let output_claim = &*self.gkr_proof.output_claims_by_instance[instance];
+        let input_claims = &*self.gkr_artifact.claims_to_verify_by_instance[instance];
+        let gate = self.gkr_artifact.gate_by_instance[instance];
+
+        let res = Some(match gate {
+            Gate::LogUp => {
+                let [numerator, denominator] = output_claim.try_into().unwrap();
+                let claimed_sum = Fraction::new(numerator, denominator);
+                let [input_numerators_claim, input_denominators_claim] =
+                    input_claims.try_into().unwrap();
+
+                LookupArtifactInstance::LogUp(LogUpArtifactInstance {
+                    eval_point,
+                    input_n_variables,
+                    input_numerators_claim,
+                    input_denominators_claim,
+                    claimed_sum,
+                })
+            }
+            Gate::GrandProduct => {
+                let [claimed_product] = output_claim.try_into().unwrap();
+                let [input_claim] = input_claims.try_into().unwrap();
+
+                LookupArtifactInstance::GrandProduct(GrandProductArtifactInstance {
+                    eval_point,
+                    input_n_variables,
+                    input_claim,
+                    claimed_product,
+                })
+            }
+        });
+
+        self.instance += 1;
+        res
+    }
+}
+
+// TODO: Consider making the GKR artifact just a Vec<LookupArtifactInstance>.
+pub enum LookupArtifactInstance {
+    GrandProduct(GrandProductArtifactInstance),
+    LogUp(LogUpArtifactInstance),
+}
+
+pub struct GrandProductArtifactInstance {
+    /// GKR input layer eval point.
+    pub eval_point: Vec<SecureField>,
+    /// Number of variables the MLE in the GKR input layer had.
+    pub input_n_variables: usize,
+    /// Claimed input MLE evaluation at `eval_point`.
+    pub input_claim: SecureField,
+    /// Output claim from the circuit.
+    pub claimed_product: SecureField,
+}
+
+pub struct LogUpArtifactInstance {
+    /// GKR input layer eval point.
+    pub eval_point: Vec<SecureField>,
+    /// Number of variables the MLEs in the GKR input layer had.
+    pub input_n_variables: usize,
+    /// Claimed input numerators MLE evaluation at `eval_point`.
+    pub input_numerators_claim: SecureField,
+    /// Claimed input denominators MLE evaluation at `eval_point`.
+    pub input_denominators_claim: SecureField,
+    /// Output claim from the circuit.
+    pub claimed_sum: Fraction<SecureField, SecureField>,
 }
 
 /// Defines how a circuit operates locally on two input rows to produce a single output row.
@@ -176,7 +279,7 @@ pub struct GkrArtifact {
 /// circuit) GKR prover implementations.
 ///
 /// [Thaler13]: https://eprint.iacr.org/2013/351.pdf
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gate {
     LogUp,
     GrandProduct,
@@ -305,11 +408,13 @@ mod tests {
 
         let GkrArtifact {
             ood_point,
+            gate_by_instance,
             claims_to_verify_by_instance,
             n_variables_by_instance,
         } = partially_verify_batch(vec![Gate::GrandProduct; 2], &proof, &mut test_channel())?;
 
         assert_eq!(n_variables_by_instance, [LOG_N, LOG_N]);
+        assert_eq!(gate_by_instance, [Gate::GrandProduct, Gate::GrandProduct]);
         assert_eq!(proof.output_claims_by_instance.len(), 2);
         assert_eq!(claims_to_verify_by_instance.len(), 2);
         assert_eq!(proof.output_claims_by_instance[0], &[product0]);
@@ -338,11 +443,13 @@ mod tests {
 
         let GkrArtifact {
             ood_point,
+            gate_by_instance,
             claims_to_verify_by_instance,
             n_variables_by_instance,
         } = partially_verify_batch(vec![Gate::GrandProduct; 2], &proof, &mut test_channel())?;
 
         assert_eq!(n_variables_by_instance, [LOG_N0, LOG_N1]);
+        assert_eq!(gate_by_instance, [Gate::GrandProduct, Gate::GrandProduct]);
         assert_eq!(proof.output_claims_by_instance.len(), 2);
         assert_eq!(claims_to_verify_by_instance.len(), 2);
         assert_eq!(proof.output_claims_by_instance[0], &[product0]);
