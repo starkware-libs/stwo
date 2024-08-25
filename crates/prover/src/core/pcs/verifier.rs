@@ -61,6 +61,13 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let random_coeff = channel.draw_felt();
 
+        if self.column_log_sizes().len() != sampled_points.len() {
+            return Err(VerificationError::InvalidStructure(format!(
+                "Column log sizes length ({0}) and sampled points length ({1}) do not match",
+                self.column_log_sizes().len(),
+                sampled_points.len()
+            )));
+        }
         let bounds = self
             .column_log_sizes()
             .zip_cols(&sampled_points)
