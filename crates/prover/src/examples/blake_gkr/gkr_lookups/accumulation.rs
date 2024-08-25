@@ -2,7 +2,7 @@ use std::iter::zip;
 use std::ops::{AddAssign, Mul};
 
 use educe::Educe;
-use num_traits::One;
+use num_traits::{One, Zero};
 
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Backend;
@@ -16,7 +16,7 @@ pub const MIN_LOG_BLOWUP_FACTOR: u32 = 1;
 
 /// Max number of variables for multilinear polynomials that get compiled into a univariate
 /// IOP for multilinear eval at point.
-pub const MAX_MLE_N_VARIABLES: u32 = M31_CIRCLE_LOG_ORDER - MIN_LOG_BLOWUP_FACTOR;
+pub const MAX_MLE_N_VARIABLES: usize = (M31_CIRCLE_LOG_ORDER - MIN_LOG_BLOWUP_FACTOR) as usize;
 
 /// Collection of [`Mle`]s grouped by their number of variables.
 pub struct MleCollection<B: Backend> {
@@ -90,7 +90,7 @@ pub fn combine<EF: AddAssign + Mul<F, Output = EF> + Copy, F: Copy>(
 impl<B: Backend> Default for MleCollection<B> {
     fn default() -> Self {
         Self {
-            mles_by_n_variables: vec![None; MAX_MLE_N_VARIABLES as usize + 1],
+            mles_by_n_variables: vec![None; MAX_MLE_N_VARIABLES + 1],
         }
     }
 }
@@ -133,6 +133,32 @@ impl DynMle<SimdBackend> {
     }
 }
 
+/// Accumulates claims of multilinear polynomials, grouped by their number of variables.
+// TODO(andrew): Consider group by eval point to make sure everything done correctly.
+pub struct MleClaimAccumulator {
+    acc_coeff: SecureField,
+    acc_by_n_variables: Vec<Option<SecureField>>,
+}
+
+impl MleClaimAccumulator {
+    pub fn new(acc_coeff: SecureField) -> Self {
+        Self {
+            acc_coeff,
+            acc_by_n_variables: vec![None; MAX_MLE_N_VARIABLES + 1],
+        }
+    }
+
+    pub fn accumulate(&mut self, n_variables: usize, evaluation: SecureField) {
+        let acc = self.acc_by_n_variables[n_variables].get_or_insert_with(SecureField::zero);
+        *acc = *acc * self.acc_coeff + evaluation;
+    }
+
+    /// Returns a mapping of number of variables to claim accumulation.
+    pub fn finalize(self) -> Vec<Option<SecureField>> {
+        self.acc_by_n_variables
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::iter::repeat;
@@ -144,7 +170,7 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::Field;
     use crate::core::lookups::mle::{Mle, MleOps};
-    use crate::examples::xor::gkr_lookups::accumulation::MleCollection;
+    use crate::examples::blake_gkr::gkr_lookups::accumulation::MleCollection;
 
     #[test]
     fn random_linear_combine_by_n_variables() {

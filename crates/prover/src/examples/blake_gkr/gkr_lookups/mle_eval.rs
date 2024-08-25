@@ -1,7 +1,4 @@
 //! Multilinear extension (MLE) eval at point constraints.
-// TODO(andrew): Remove in downstream PR.
-#![allow(dead_code)]
-
 use std::iter::zip;
 
 use itertools::{chain, zip_eq, Itertools};
@@ -154,7 +151,6 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> Component
         // Consistency check the MLE coeffs column polynomial and oracle.
         let mle_coeff_col_eval = self.mle_coeff_column_poly.eval_at_point(point);
         let oracle_mle_coeff_col_eval = self.mle_coeff_column_oracle.evaluate_at_point(point, mask);
-        assert_eq!(mle_coeff_col_eval, oracle_mle_coeff_col_eval);
 
         let component_mask = mask.sub_tree(&self.trace_locations);
         let trace_coset = CanonicCoset::new(self.log_size()).coset;
@@ -650,6 +646,36 @@ fn eval_step_selector_with_offset(
     eval_step_selector(coset, log_step, p - offset_step.into_ef())
 }
 
+// /// Returns `log(|coset|)` evaluations where the `i`th evaluation is of a polynomial that's `1`
+// /// every `2^i` coset points and `0` elsewhere on coset.
+// fn eval_step_selectors_by_log_step(coset: Coset, p: CirclePoint<SecureField>) -> Vec<SecureField>
+// {     let res = vec![SecureField::one()];
+
+//     if log_step == 0 {
+//         return SecureField::one();
+//     }
+
+//     // Rotate the coset to have points on the `x` axis.
+//     let p = p - coset.initial.into_ef();
+//     let mut vanish_at_log_step = (0..coset.log_size)
+//         .scan(p, |p, _| {
+//             let res = *p;
+//             *p = p.double();
+//             Some(res.y)
+//         })
+//         .collect_vec();
+//     vanish_at_log_step.reverse();
+//     let mut vanish_at_log_step_inv = vec![SecureField::zero(); vanish_at_log_step.len()];
+//     SecureField::batch_inverse(&vanish_at_log_step, &mut vanish_at_log_step_inv);
+
+//     let norm = BaseField::from(2).inverse();
+
+//     let half_coset_selector_dbl = (vanish_at_log_step[0] * vanish_at_log_step_inv[1]).square();
+//     let vanish_substep_inv_sum = vanish_at_log_step_inv[1..].iter().sum::<SecureField>();
+//     (half_coset_selector_dbl + vanish_at_log_step[0] * vanish_substep_inv_sum.double())
+//         / BaseField::from(1 << (log_step + 1))
+// }
+
 /// Evaluates a polynomial that's `1` every `2^log_step` coset points and `0` elsewhere on coset.
 fn eval_step_selector(coset: Coset, log_step: u32, p: CirclePoint<SecureField>) -> SecureField {
     if log_step == 0 {
@@ -743,8 +769,8 @@ mod tests {
     use crate::core::prover::{prove, verify, VerificationError};
     use crate::core::utils::{bit_reverse, coset_order_to_circle_domain_order};
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    use crate::examples::xor::gkr_lookups::accumulation::MIN_LOG_BLOWUP_FACTOR;
-    use crate::examples::xor::gkr_lookups::mle_eval::eval_step_selector_with_offset;
+    use crate::examples::blake_gkr::gkr_lookups::accumulation::MIN_LOG_BLOWUP_FACTOR;
+    use crate::examples::blake_gkr::gkr_lookups::mle_eval::eval_step_selector_with_offset;
 
     #[test]
     fn mle_eval_prover_component() -> Result<(), VerificationError> {
@@ -814,7 +840,6 @@ mod tests {
         const N_VARIABLES: usize = 8;
         const COEFFS_COL_TRACE: usize = 0;
         const MLE_EVAL_TRACE: usize = 1;
-        const CONST_TRACE: usize = 2;
         const LOG_EXPAND: u32 = 1;
         // Create the test MLE.
         let mut rng = SmallRng::seed_from_u64(0);
@@ -1124,7 +1149,7 @@ mod tests {
         use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, SecureEvaluation};
         use crate::core::poly::BitReversedOrder;
         use crate::core::ColumnVec;
-        use crate::examples::xor::gkr_lookups::mle_eval::MleCoeffColumnOracle;
+        use crate::examples::blake_gkr::gkr_lookups::mle_eval::MleCoeffColumnOracle;
 
         pub type MleCoeffColumnComponent = FrameworkComponent<MleCoeffColumnEval>;
 

@@ -61,7 +61,7 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
     logup.finalize(eval);
 }
 
-fn eval_next_u32<E: EvalAtRow>(eval: &mut E) -> Fu32<E::F> {
+pub fn eval_next_u32<E: EvalAtRow>(eval: &mut E) -> Fu32<E::F> {
     let l = eval.next_trace_mask();
     let h = eval.next_trace_mask();
     Fu32 { l, h }

@@ -58,7 +58,7 @@ pub fn gen_trace(
         .map(|_| unsafe { BaseColumn::uninitialized(1 << log_size) })
         .collect_vec();
 
-    for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
+    for vec_row in 0..1 << (log_size - LOG_N_LANES) {
         let mut col_index = 0;
 
         let mut write_u32_array = |x: [u32x16; STATE_SIZE], col_index: &mut usize| {
@@ -125,11 +125,11 @@ pub fn gen_interaction_trace(
 
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
-    for [l0, l1] in lookup_data.round_lookups.array_chunks::<2>() {
+    for [l0, l1] in lookup_data.round_lookups.array_chunks() {
         let mut col_gen = logup_gen.new_col();
 
         #[allow(clippy::needless_range_loop)]
-        for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
+        for vec_row in 0..1 << (log_size - LOG_N_LANES) {
             let p0: PackedSecureField =
                 round_lookup_elements.combine(&l0.each_ref().map(|l| l.data[vec_row]));
             let p1: PackedSecureField =
@@ -145,7 +145,7 @@ pub fn gen_interaction_trace(
     // with the entire blake lookup.
     let mut col_gen = logup_gen.new_col();
     #[allow(clippy::needless_range_loop)]
-    for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
+    for vec_row in 0..1 << (log_size - LOG_N_LANES) {
         let p_blake: PackedSecureField = blake_lookup_elements.combine(
             &lookup_data
                 .blake_lookups

@@ -95,3 +95,7 @@ pub trait EvalAtRow {
     /// Combines 4 base field values into a single extension field value.
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF;
 }
+
+trait EvalAtRowWithMle: EvalAtRow {
+    fn add_mle_coeff_col_eval(&mut self, eval: Self::EF);
+}
