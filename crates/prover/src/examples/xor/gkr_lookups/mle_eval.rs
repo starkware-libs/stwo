@@ -39,7 +39,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{self, bit_reverse_index, coset_index_to_circle_domain_index};
 use crate::core::ColumnVec;
 
-/// Component that carries out a univariate IOP for multilinear eval at point.
+/// Prover component that carries out a univariate IOP for multilinear eval at point.
 ///
 /// See <https://eprint.iacr.org/2023/1284.pdf> (Section 5.1).
 #[allow(dead_code)]
@@ -103,7 +103,7 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> MleEvalProverComponent<'twiddl
         }
     }
 
-    /// Size of this components trace columns.
+    /// Size of this component's trace columns.
     pub fn log_size(&self) -> u32 {
         self.mle_eval_point.n_variables() as u32
     }
@@ -263,6 +263,115 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> ComponentProver<SimdBackend>
             );
             unsafe { acc_col.set_packed(vec_row, acc_col.packed_at(vec_row) + row_res * denom_inv) }
         }
+    }
+}
+
+/// Verifier component that carries out a univariate IOP for multilinear eval at point.
+///
+/// See <https://eprint.iacr.org/2023/1284.pdf> (Section 5.1).
+pub struct MleEvalVerifierComponent<'oracle, O: MleCoeffColumnOracle> {
+    /// Oracle for the polynomial encoding the multilinear Lagrange basis coefficients of the MLE.
+    mle_coeff_column_oracle: &'oracle O,
+    /// Multilinear evaluation point.
+    mle_eval_point: MleEvalPoint,
+    /// Equals `mle_claim / 2^mle_n_variables`.
+    mle_claim_shift: SecureField,
+    /// Commitment tree index for the trace.
+    interaction: usize,
+    /// Location in the trace for the this component.
+    trace_location: TreeVec<TreeSubspan>,
+}
+
+impl<'oracle, O: MleCoeffColumnOracle> MleEvalVerifierComponent<'oracle, O> {
+    pub fn new(
+        location_allocator: &mut TraceLocationAllocator,
+        mle_coeff_column_oracle: &'oracle O,
+        eval_point: &[SecureField],
+        claim: SecureField,
+        interaction: usize,
+    ) -> Self {
+        let mle_eval_point = MleEvalPoint::new(eval_point);
+        let n_variables = mle_eval_point.n_variables();
+        let mle_claim_shift = claim / BaseField::from(1 << n_variables);
+
+        let trace_structure = mle_eval_info(interaction, n_variables).mask_offsets;
+        let trace_location = location_allocator.next_for_structure(&trace_structure);
+
+        Self {
+            mle_coeff_column_oracle,
+            mle_eval_point,
+            mle_claim_shift,
+            interaction,
+            trace_location,
+        }
+    }
+
+    /// Size of this component's trace columns.
+    pub fn log_size(&self) -> u32 {
+        self.mle_eval_point.n_variables() as u32
+    }
+
+    pub fn eval_info(&self) -> InfoEvaluator {
+        let n_variables = self.mle_eval_point.n_variables();
+        mle_eval_info(self.interaction, n_variables)
+    }
+}
+
+impl<'oracle, O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'oracle, O> {
+    fn n_constraints(&self) -> usize {
+        self.eval_info().n_constraints
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.log_size() + 1
+    }
+
+    fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
+        let log_size = self.log_size();
+        let InfoEvaluator { mask_offsets, .. } = self.eval_info();
+        mask_offsets.map(|tree_offsets| vec![log_size; tree_offsets.len()])
+    }
+
+    fn mask_points(
+        &self,
+        point: CirclePoint<SecureField>,
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        let trace_step = CanonicCoset::new(self.log_size()).step();
+        let InfoEvaluator { mask_offsets, .. } = self.eval_info();
+        mask_offsets.map_cols(|col_offsets| {
+            col_offsets
+                .iter()
+                .map(|offset| point + trace_step.mul_signed(*offset).into_ef())
+                .collect()
+        })
+    }
+
+    fn evaluate_constraint_quotients_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
+        accumulator: &mut PointEvaluationAccumulator,
+    ) {
+        let component_mask = mask.sub_tree(&self.trace_location);
+        let trace_coset = CanonicCoset::new(self.log_size()).coset;
+        let vanish_on_trace_eval_inv = coset_vanishing(trace_coset, point).inverse();
+        let mut eval = PointEvaluator::new(component_mask, accumulator, vanish_on_trace_eval_inv);
+
+        let mle_coeff_col_eval = self.mle_coeff_column_oracle.evaluate_at_point(point, mask);
+        let carry_quotients_col_eval = eval_carry_quotient_col(&self.mle_eval_point, point);
+        let is_first = eval_is_first(trace_coset, point);
+        let is_second = eval_is_first(trace_coset, point - trace_coset.step.into_ef());
+
+        eval_mle_eval_constraints(
+            self.interaction,
+            &mut eval,
+            mle_coeff_col_eval,
+            &self.mle_eval_point,
+            self.mle_claim_shift,
+            carry_quotients_col_eval,
+            is_first,
+            is_second,
+        )
     }
 }
 
@@ -612,8 +721,9 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::{
-        eval_carry_quotient_col, eval_eq_constraints, eval_mle_eval_constraints,
-        eval_prefix_sum_constraints, gen_carry_quotient_col, MleEvalPoint,
+        build_trace, eval_carry_quotient_col, eval_eq_constraints, eval_mle_eval_constraints,
+        eval_prefix_sum_constraints, gen_carry_quotient_col, MleEvalPoint, MleEvalProverComponent,
+        MleEvalVerifierComponent,
     };
     use crate::constraint_framework::constant_columns::{gen_is_first, gen_is_step_with_offset};
     use crate::constraint_framework::{assert_constraints, EvalAtRow, TraceLocationAllocator};
@@ -634,9 +744,7 @@ mod tests {
     use crate::core::utils::{bit_reverse, coset_order_to_circle_domain_order};
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::xor::gkr_lookups::accumulation::MIN_LOG_BLOWUP_FACTOR;
-    use crate::examples::xor::gkr_lookups::mle_eval::{
-        build_trace, eval_step_selector_with_offset, MleEvalProverComponent,
-    };
+    use crate::examples::xor::gkr_lookups::mle_eval::eval_step_selector_with_offset;
 
     #[test]
     fn mle_eval_prover_component() -> Result<(), VerificationError> {
@@ -693,6 +801,82 @@ mod tests {
 
         // Verify.
         let components = Components(components.iter().map(|&c| c as &dyn Component).collect());
+        let log_sizes = components.column_log_sizes();
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        commitment_scheme.commit(proof.commitments[0], &log_sizes[0], channel);
+        commitment_scheme.commit(proof.commitments[1], &log_sizes[1], channel);
+        verify(&components.0, channel, commitment_scheme, proof)
+    }
+
+    #[test]
+    fn mle_eval_verifier_component() -> Result<(), VerificationError> {
+        const N_VARIABLES: usize = 8;
+        const COEFFS_COL_TRACE: usize = 0;
+        const MLE_EVAL_TRACE: usize = 1;
+        const CONST_TRACE: usize = 2;
+        const LOG_EXPAND: u32 = 1;
+        // Create the test MLE.
+        let mut rng = SmallRng::seed_from_u64(0);
+        let log_size = N_VARIABLES as u32;
+        let size = 1 << log_size;
+        let mle_coeffs = (0..size).map(|_| rng.gen::<SecureField>()).collect();
+        let mle = Mle::<SimdBackend, SecureField>::new(mle_coeffs);
+        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
+        let claim = mle.eval_at_point(&eval_point);
+        // Setup protocol.
+        let twiddles = SimdBackend::precompute_twiddles(
+            CanonicCoset::new(log_size + LOG_EXPAND + MIN_LOG_BLOWUP_FACTOR)
+                .circle_domain()
+                .half_coset,
+        );
+        let config = PcsConfig::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+        let channel = &mut Blake2sChannel::default();
+        // Build trace.
+        // 1. MLE coeffs trace.
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(mle_coeff_column::build_trace(&mle));
+        tree_builder.commit(channel);
+        // 2. MLE eval trace (eq evals + prefix sum).
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(build_trace(&mle, &eval_point, claim));
+        tree_builder.commit(channel);
+        // Create components.
+        let trace_location_allocator = &mut TraceLocationAllocator::default();
+        let mle_coeffs_col_component = MleCoeffColumnComponent::new(
+            trace_location_allocator,
+            MleCoeffColumnEval::new(COEFFS_COL_TRACE, mle.n_variables()),
+        );
+        let mle_eval_component = MleEvalProverComponent::generate(
+            trace_location_allocator,
+            &mle_coeffs_col_component,
+            &eval_point,
+            mle,
+            claim,
+            &twiddles,
+            MLE_EVAL_TRACE,
+        );
+        let components: &[&dyn ComponentProver<SimdBackend>] =
+            &[&mle_coeffs_col_component, &mle_eval_component];
+        // Generate proof.
+        let proof = prove(components, channel, commitment_scheme).unwrap();
+
+        // Verify.
+        let trace_location_allocator = &mut TraceLocationAllocator::default();
+        let mle_coeffs_col_component = MleCoeffColumnComponent::new(
+            trace_location_allocator,
+            MleCoeffColumnEval::new(COEFFS_COL_TRACE, N_VARIABLES),
+        );
+        let mle_eval_component = MleEvalVerifierComponent::new(
+            trace_location_allocator,
+            &mle_coeffs_col_component,
+            &eval_point,
+            claim,
+            MLE_EVAL_TRACE,
+        );
+        let components = Components(vec![&mle_coeffs_col_component, &mle_eval_component]);
         let log_sizes = components.column_log_sizes();
         let channel = &mut Blake2sChannel::default();
         let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
