@@ -123,7 +123,7 @@ impl SimdBackend {
 // Decide if and when it's ok and what to do if it's not.
 impl PolyOps for SimdBackend {
     // The twiddles type is i32, and not BaseField. This is because the fast AVX mul implementation
-    //  requries one of the numbers to be shifted left by 1 bit. This is not a reduced
+    //  requires one of the numbers to be shifted left by 1 bit. This is not a reduced
     //  representation of the field.
     type Twiddles = Vec<u32>;
 
