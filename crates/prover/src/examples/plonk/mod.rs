@@ -12,11 +12,11 @@ use crate::core::backend::Column;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
+use crate::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeBuilder};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof};
-use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use crate::core::{ColumnVec, InteractionElements};
 
 #[derive(Clone)]
@@ -180,7 +180,8 @@ pub fn prove_fibonacci_plonk(
     // Trace.
     let span = span!(Level::INFO, "Trace").entered();
     let trace = gen_trace(log_n_rows, &circuit);
-    let mut tree_builder = commitment_scheme.tree_builder();
+    let mut tree_builder: TreeBuilder<'_, '_, SimdBackend, Blake2sMerkleChannel> =
+        commitment_scheme.tree_builder();
     tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
     span.exit();
