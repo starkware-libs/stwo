@@ -285,7 +285,8 @@ mod tests {
         span.exit();
         let channel = &mut Blake2sChannel::default();
         let air = SimdWideFibAir { component };
-        let proof = commit_and_prove(&air, channel, trace, config).unwrap();
+        let proof =
+            commit_and_prove::<_, Blake2sMerkleChannel>(&air, channel, trace, config).unwrap();
 
         let channel = &mut Blake2sChannel::default();
         commit_and_verify::<Blake2sMerkleChannel>(proof, &air, channel, config).unwrap();

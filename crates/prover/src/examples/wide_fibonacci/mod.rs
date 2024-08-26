@@ -251,8 +251,6 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test_log::test]
     fn test_single_instance_wide_fib_prove_with_poseidon() {
-        use crate::core::backend::CpuBackend;
-
         const LOG_N_INSTANCES: u32 = 0;
         let config = PcsConfig::default();
         let component = WideFibComponent {
