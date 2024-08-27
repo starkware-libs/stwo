@@ -18,7 +18,7 @@ use crate::core::fields::FieldExpOps;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
-use crate::core::{utils, ColumnVec, InteractionElements, LookupValues};
+use crate::core::{utils, ColumnVec};
 
 /// A component defined solely in means of the constraints framework.
 /// Implementing this trait introduces implementations for [Component] and [ComponentProver] for the
@@ -68,8 +68,6 @@ impl<C: FrameworkComponent> Component for C {
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
-        _interaction_elements: &InteractionElements,
-        _lookup_values: &LookupValues,
     ) {
         self.evaluate(PointEvaluator::new(
             mask.as_ref(),
@@ -84,8 +82,6 @@ impl<C: FrameworkComponent> ComponentProver<SimdBackend> for C {
         &self,
         trace: &ComponentTrace<'_, SimdBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
-        _interaction_elements: &InteractionElements,
-        _lookup_values: &LookupValues,
     ) {
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.log_size());
@@ -148,9 +144,5 @@ impl<C: FrameworkComponent> ComponentProver<SimdBackend> for C {
                 col.set_packed(vec_row, col.packed_at(vec_row) + row_res * denom_inv)
             }
         }
-    }
-
-    fn lookup_values(&self, _trace: &ComponentTrace<'_, SimdBackend>) -> LookupValues {
-        LookupValues::default()
     }
 }

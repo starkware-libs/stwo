@@ -93,7 +93,6 @@ mod tests {
     use crate::core::poly::circle::{CanonicCoset, PolyOps};
     use crate::core::prover::{prove, verify};
     use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
-    use crate::core::InteractionElements;
     use crate::examples::wide_fibonacci::{
         generate_trace, FibInput, WideFibonacciComponent, WideFibonacciEval,
     };
@@ -164,7 +163,6 @@ mod tests {
         let proof = prove::<SimdBackend, Poseidon252MerkleChannel>(
             &[&component],
             prover_channel,
-            &InteractionElements::default(),
             commitment_scheme,
         )
         .unwrap();
@@ -177,13 +175,6 @@ mod tests {
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
-        verify(
-            &[&component],
-            verifier_channel,
-            &InteractionElements::default(),
-            commitment_scheme,
-            proof,
-        )
-        .unwrap();
+        verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
     }
 }
