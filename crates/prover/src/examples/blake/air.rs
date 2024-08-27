@@ -18,7 +18,6 @@ use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConf
 use crate::core::poly::circle::{CanonicCoset, PolyOps};
 use crate::core::prover::{prove, verify, StarkProof, VerificationError};
 use crate::core::vcs::ops::MerkleHasher;
-use crate::core::InteractionElements;
 use crate::examples::blake::round::RoundElements;
 use crate::examples::blake::scheduler::{self, blake_scheduler_info, BlakeElements, BlakeInput};
 use crate::examples::blake::{
@@ -365,13 +364,9 @@ where
 
     // Prove constraints.
     let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
-    let stark_proof = prove::<SimdBackend, _>(
-        &components.component_provers(),
-        channel,
-        &InteractionElements::default(),
-        commitment_scheme,
-    )
-    .unwrap();
+    let stark_proof =
+        prove::<SimdBackend, _>(&components.component_provers(), channel, commitment_scheme)
+            .unwrap();
 
     BlakeProof {
         stmt0,
@@ -425,7 +420,6 @@ pub fn verify_blake<MC: MerkleChannel>(
     verify(
         &components.components(),
         channel,
-        &InteractionElements::default(), // Not in use.
         commitment_scheme,
         stark_proof,
     )
