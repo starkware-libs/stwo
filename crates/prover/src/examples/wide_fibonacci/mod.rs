@@ -1,287 +1,189 @@
-pub mod component;
-pub mod constraint_eval;
-pub mod simd;
-pub mod trace_gen;
+use itertools::Itertools;
+
+use crate::constraint_framework::{EvalAtRow, FrameworkComponent};
+use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::backend::simd::SimdBackend;
+use crate::core::backend::{Col, Column};
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::FieldExpOps;
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use crate::core::poly::BitReversedOrder;
+use crate::core::ColumnVec;
+
+const N_COLUMNS: usize = 100;
+
+pub struct FibInput {
+    a: PackedBaseField,
+    b: PackedBaseField,
+}
+
+#[derive(Clone)]
+pub struct WideFibonacciComponent {
+    pub log_n_rows: u32,
+}
+impl FrameworkComponent for WideFibonacciComponent {
+    fn log_size(&self) -> u32 {
+        self.log_n_rows
+    }
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.log_n_rows + 1
+    }
+    fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
+        let poseidon_eval = WideFibonacciEval { eval };
+        poseidon_eval.eval()
+    }
+}
+
+struct WideFibonacciEval<E: EvalAtRow> {
+    eval: E,
+}
+
+impl<E: EvalAtRow> WideFibonacciEval<E> {
+    fn eval(mut self) -> E {
+        let mut a = self.eval.next_trace_mask();
+        let mut b = self.eval.next_trace_mask();
+        for _ in 2..N_COLUMNS {
+            let c = self.eval.next_trace_mask();
+            self.eval.add_constraint(c - (a.square() + b.square()));
+            a = b;
+            b = c;
+        }
+        self.eval
+    }
+}
+
+pub fn generate_trace(
+    log_size: u32,
+    inputs: &[FibInput],
+) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+    assert!(log_size >= LOG_N_LANES);
+    assert_eq!(inputs.len(), 1 << (log_size - LOG_N_LANES));
+    let mut trace = (0..N_COLUMNS)
+        .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
+        .collect_vec();
+    for (vec_index, input) in inputs.iter().enumerate() {
+        let mut a = input.a;
+        let mut b = input.b;
+        trace[0].data[vec_index] = a;
+        trace[1].data[vec_index] = b;
+        trace.iter_mut().skip(2).for_each(|col| {
+            (a, b) = (b, a.square() + b.square());
+            col.data[vec_index] = b;
+        });
+    }
+    let domain = CanonicCoset::new(log_size).circle_domain();
+    trace
+        .into_iter()
+        .map(|eval| CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(domain, eval))
+        .collect_vec()
+}
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use itertools::Itertools;
-    use num_traits::{One, Zero};
+    use num_traits::One;
 
-    use super::component::{Input, WideFibAir, WideFibComponent, LOG_N_COLUMNS};
-    use super::constraint_eval::gen_trace;
-    use crate::core::air::accumulation::DomainEvaluationAccumulator;
-    use crate::core::air::{Component, ComponentProver, ComponentTrace};
-    use crate::core::backend::cpu::CpuCircleEvaluation;
-    use crate::core::backend::CpuBackend;
-    use crate::core::channel::Blake2sChannel;
-    #[cfg(not(target_arch = "wasm32"))]
+    use crate::constraint_framework::{assert_constraints, FrameworkComponent};
+    use crate::core::air::Component;
+    use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+    use crate::core::backend::simd::SimdBackend;
     use crate::core::channel::Poseidon252Channel;
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::SecureField;
-    use crate::core::pcs::{PcsConfig, TreeVec};
-    use crate::core::poly::circle::CanonicCoset;
-    use crate::core::utils::{
-        bit_reverse, circle_domain_order_to_coset_order, shifted_secure_combination,
-    };
-    use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    #[cfg(not(target_arch = "wasm32"))]
+    use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
+    use crate::core::poly::circle::{CanonicCoset, PolyOps};
+    use crate::core::prover::{prove, verify};
     use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
     use crate::core::InteractionElements;
-    use crate::examples::wide_fibonacci::trace_gen::write_lookup_column;
-    use crate::trace_generation::{commit_and_prove, commit_and_verify, ComponentTraceGenerator};
-    use crate::{m31, qm31};
-
-    pub fn assert_constraints_on_row(row: &[BaseField]) {
-        for i in 2..row.len() {
-            assert_eq!(
-                (row[i] - (row[i - 1] * row[i - 1] + row[i - 2] * row[i - 2])),
-                BaseField::zero()
-            );
-        }
-    }
-
-    pub fn assert_constraints_on_lookup_column(
-        column: &[SecureField],
-        input_trace: &[Vec<BaseField>],
-        alpha: SecureField,
-        z: SecureField,
-    ) {
-        let n_columns = input_trace.len();
-        let column_length = column.len();
-        assert_eq!(column_length, input_trace[0].len());
-        let mut prev_value = SecureField::one();
-        for (i, cell) in column.iter().enumerate() {
-            assert_eq!(
-                *cell
-                    * shifted_secure_combination(
-                        &[input_trace[n_columns - 2][i], input_trace[n_columns - 1][i]],
-                        alpha,
-                        z,
-                    ),
-                shifted_secure_combination(&[input_trace[0][i], input_trace[1][i]], alpha, z)
-                    * prev_value
-            );
-            prev_value = *cell;
-        }
-
-        // Assert the last cell in the column is equal to the combination of the first two values
-        // divided by the combination of the last two values in the sequence (all other values
-        // should cancel out).
-        assert_eq!(
-            column[column_length - 1]
-                * shifted_secure_combination(
-                    &[input_trace[n_columns - 2][1], input_trace[n_columns - 1][1]],
-                    alpha,
-                    z,
-                ),
-            (shifted_secure_combination(&[input_trace[0][0], input_trace[1][0]], alpha, z))
-        );
-    }
+    use crate::examples::wide_fibonacci::{
+        generate_trace, FibInput, WideFibonacciComponent, WideFibonacciEval,
+    };
 
     #[test]
-    fn test_trace_row_constraints() {
-        let wide_fib = WideFibComponent {
-            log_fibonacci_size: LOG_N_COLUMNS as u32,
-            log_n_instances: 1,
-        };
-        let input = Input {
-            a: m31!(0x76),
-            b: m31!(0x483),
-        };
-
-        let trace = gen_trace(&wide_fib, vec![input, input]);
-        let row_0 = trace.iter().map(|col| col[0]).collect_vec();
-        let row_1 = trace.iter().map(|col| col[1]).collect_vec();
-
-        assert_constraints_on_row(&row_0);
-        assert_constraints_on_row(&row_1);
-    }
-
-    #[test]
-    fn test_lookup_column_constraints() {
-        let wide_fib = WideFibComponent {
-            log_fibonacci_size: 4 + LOG_N_COLUMNS as u32,
-            log_n_instances: 0,
-        };
-        let input = Input {
-            a: m31!(1),
-            b: m31!(1),
-        };
-
-        let alpha = qm31!(7, 1, 3, 4);
-        let z = qm31!(11, 1, 2, 3);
-        let mut trace = gen_trace(&wide_fib, vec![input]);
-        let input_trace = trace.iter().map(|values| &values[..]).collect_vec();
-        let lookup_column = write_lookup_column(&input_trace, alpha, z);
-
-        trace = trace
-            .iter_mut()
-            .map(|column| {
-                bit_reverse(column);
-                circle_domain_order_to_coset_order(column)
-            })
-            .collect_vec();
-        assert_constraints_on_lookup_column(&lookup_column, &trace, alpha, z)
-    }
-
-    #[test]
-    fn test_composition_is_low_degree() {
-        let wide_fib = WideFibComponent {
-            log_fibonacci_size: 3 + LOG_N_COLUMNS as u32,
-            log_n_instances: 0,
-        };
-        let random_coeff = qm31!(1, 2, 3, 4);
-        let mut acc = DomainEvaluationAccumulator::new(
-            random_coeff,
-            wide_fib.max_constraint_log_degree_bound(),
-            wide_fib.n_constraints(),
-        );
-        let inputs = (0..1 << wide_fib.log_n_instances)
-            .map(|i| Input {
-                a: m31!(1),
-                b: m31!(i + 1_u32),
+    fn test_wide_fibonacci_constraints() {
+        const LOG_N_ROWS: u32 = 8;
+        let inputs = (0..(1 << (LOG_N_ROWS - LOG_N_LANES)))
+            .map(|i| FibInput {
+                a: PackedBaseField::one(),
+                b: PackedBaseField::from_array(std::array::from_fn(|j| {
+                    BaseField::from_u32_unchecked((i * 16 + j) as u32)
+                })),
             })
             .collect_vec();
 
-        let trace_values = gen_trace(&wide_fib, inputs);
+        // Trace.
+        let trace = generate_trace(LOG_N_ROWS, &inputs);
 
-        let trace_domain = CanonicCoset::new(wide_fib.log_column_size());
-        let trace = trace_values
-            .into_iter()
-            .map(|eval| CpuCircleEvaluation::new_canonical_ordered(trace_domain, eval))
-            .collect_vec();
-        let trace_polys = trace
-            .clone()
-            .into_iter()
-            .map(|eval| eval.interpolate())
-            .collect_vec();
-        let eval_domain =
-            CanonicCoset::new(wide_fib.max_constraint_log_degree_bound()).circle_domain();
-        let trace_evals = trace_polys
-            .iter()
-            .map(|poly| poly.evaluate(eval_domain))
-            .collect_vec();
-
-        let interaction_elements = InteractionElements::new(BTreeMap::from_iter(
-            wide_fib
-                .interaction_element_ids()
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(i, id)| (id, qm31!(43 + i as u32, 1, 2, 3))),
-        ));
-        let interaction_poly = wide_fib
-            .write_interaction_trace(&trace.iter().collect(), &interaction_elements)
-            .into_iter()
-            .map(|eval| eval.interpolate())
-            .collect_vec();
-
-        let interaction_trace = interaction_poly
-            .iter()
-            .map(|poly| poly.evaluate(eval_domain))
-            .collect_vec();
-        let trace = ComponentTrace {
-            polys: TreeVec::new(vec![
-                trace_polys.iter().collect_vec(),
-                interaction_poly.iter().collect_vec(),
-            ]),
-            evals: TreeVec::new(vec![
-                trace_evals.iter().collect_vec(),
-                interaction_trace.iter().collect_vec(),
-            ]),
-        };
-
-        let lookup_values = wide_fib.lookup_values(&trace);
-        wide_fib.evaluate_constraint_quotients_on_domain(
-            &trace,
-            &mut acc,
-            &interaction_elements,
-            &lookup_values,
-        );
-
-        let res = acc.finalize();
-        let poly = res.0[0].clone();
-        for coeff in poly.coeffs[(1 << wide_fib.max_constraint_log_degree_bound()) - 1..].iter() {
-            assert_eq!(*coeff, BaseField::zero());
-        }
+        let traces = TreeVec::new(vec![trace]);
+        let trace_polys =
+            traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
+        assert_constraints(&trace_polys, CanonicCoset::new(LOG_N_ROWS), |eval| {
+            WideFibonacciEval { eval }.eval();
+        });
     }
 
-    #[test_log::test]
-    fn test_single_instance_wide_fib_prove() {
-        // Note: To see time measurement, run test with
-        //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 cargo test
-        //   test_prove -- --nocapture
-
-        const LOG_N_INSTANCES: u32 = 0;
-        let config = PcsConfig::default();
-        let component = WideFibComponent {
-            log_fibonacci_size: 3 + LOG_N_COLUMNS as u32,
-            log_n_instances: LOG_N_INSTANCES,
-        };
-        let private_input = (0..(1 << LOG_N_INSTANCES))
-            .map(|i| Input {
-                a: m31!(1),
-                b: m31!(i),
-            })
-            .collect();
-        let trace = gen_trace(&component, private_input);
-
-        let trace_domain = CanonicCoset::new(component.log_column_size());
-        let trace = trace
-            .into_iter()
-            .map(|eval| CpuCircleEvaluation::new_canonical_ordered(trace_domain, eval))
-            .collect_vec();
-        let air = WideFibAir { component };
-        let prover_channel = &mut Blake2sChannel::default();
-        let proof = commit_and_prove::<CpuBackend, Blake2sMerkleChannel>(
-            &air,
-            prover_channel,
-            trace,
-            config,
-        )
-        .unwrap();
-
-        let verifier_channel = &mut Blake2sChannel::default();
-        commit_and_verify::<Blake2sMerkleChannel>(proof, &air, verifier_channel, config).unwrap();
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
     #[test_log::test]
     fn test_single_instance_wide_fib_prove_with_poseidon() {
-        const LOG_N_INSTANCES: u32 = 0;
-        let config = PcsConfig::default();
-        let component = WideFibComponent {
-            log_fibonacci_size: 3 + LOG_N_COLUMNS as u32,
-            log_n_instances: LOG_N_INSTANCES,
-        };
-        let private_input = (0..(1 << LOG_N_INSTANCES))
-            .map(|i| Input {
-                a: m31!(1),
-                b: m31!(i),
-            })
-            .collect();
-        let trace = gen_trace(&component, private_input);
+        const LOG_N_INSTANCES: u32 = 6;
 
-        let trace_domain = CanonicCoset::new(component.log_column_size());
-        let trace = trace
-            .into_iter()
-            .map(|eval| CpuCircleEvaluation::new_canonical_ordered(trace_domain, eval))
-            .collect_vec();
-        let air = WideFibAir { component };
+        let config = PcsConfig::default();
+        // Precompute twiddles.
+        let twiddles = SimdBackend::precompute_twiddles(
+            CanonicCoset::new(LOG_N_INSTANCES + 1 + config.fri_config.log_blowup_factor)
+                .circle_domain()
+                .half_coset,
+        );
+
+        // Setup protocol.
         let prover_channel = &mut Poseidon252Channel::default();
-        let proof = commit_and_prove::<CpuBackend, Poseidon252MerkleChannel>(
-            &air,
+        let commitment_scheme =
+            &mut CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(
+                config, &twiddles,
+            );
+        let component = WideFibonacciComponent {
+            log_n_rows: LOG_N_INSTANCES,
+        };
+
+        // Trace.
+        let inputs = (0..(1 << (LOG_N_INSTANCES - LOG_N_LANES)))
+            .map(|i| FibInput {
+                a: PackedBaseField::one(),
+                b: PackedBaseField::from_array(std::array::from_fn(|j| {
+                    BaseField::from_u32_unchecked((i * 16 + j) as u32)
+                })),
+            })
+            .collect_vec();
+        let trace = generate_trace(component.log_size(), &inputs);
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(trace);
+        tree_builder.commit(prover_channel);
+
+        // Prove constraints.
+        let component = WideFibonacciComponent {
+            log_n_rows: LOG_N_INSTANCES,
+        };
+        let proof = prove::<SimdBackend, Poseidon252MerkleChannel>(
+            &[&component],
             prover_channel,
-            trace,
-            config,
+            &InteractionElements::default(),
+            commitment_scheme,
         )
         .unwrap();
 
+        // Verify.
         let verifier_channel = &mut Poseidon252Channel::default();
-        commit_and_verify::<Poseidon252MerkleChannel>(proof, &air, verifier_channel, config)
-            .unwrap();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
+
+        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        let sizes = component.trace_log_degree_bounds();
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+        verify(
+            &[&component],
+            verifier_channel,
+            &InteractionElements::default(),
+            commitment_scheme,
+            proof,
+        )
+        .unwrap();
     }
 }
