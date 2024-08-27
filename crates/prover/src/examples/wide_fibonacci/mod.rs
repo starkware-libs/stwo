@@ -88,7 +88,7 @@ mod tests {
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     #[cfg(not(target_arch = "wasm32"))]
     use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
-    use crate::core::{ColumnVec, InteractionElements};
+    use crate::core::ColumnVec;
     use crate::examples::wide_fibonacci::{generate_trace, FibInput, WideFibonacciComponent};
 
     const FIB_SEQUENCE_LENGTH: usize = 100;
@@ -176,7 +176,6 @@ mod tests {
         let proof = prove::<SimdBackend, Blake2sMerkleChannel>(
             &[&component],
             prover_channel,
-            &InteractionElements::default(),
             commitment_scheme,
         )
         .unwrap();
@@ -188,14 +187,7 @@ mod tests {
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
-        verify(
-            &[&component],
-            verifier_channel,
-            &InteractionElements::default(),
-            commitment_scheme,
-            proof,
-        )
-        .unwrap();
+        verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
     }
 
     #[test]
@@ -231,7 +223,6 @@ mod tests {
         let proof = prove::<SimdBackend, Poseidon252MerkleChannel>(
             &[&component],
             prover_channel,
-            &InteractionElements::default(),
             commitment_scheme,
         )
         .unwrap();
@@ -244,13 +235,6 @@ mod tests {
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
-        verify(
-            &[&component],
-            verifier_channel,
-            &InteractionElements::default(),
-            commitment_scheme,
-            proof,
-        )
-        .unwrap();
+        verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
     }
 }
