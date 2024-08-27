@@ -8,7 +8,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::{CommitmentTreeProver, TreeVec};
 use crate::core::poly::circle::SecureCirclePoly;
-use crate::core::{ColumnVec, InteractionElements, LookupValues};
+use crate::core::ColumnVec;
 
 pub struct Components<'a>(pub Vec<&'a dyn Component>);
 
@@ -33,8 +33,6 @@ impl<'a> Components<'a> {
         point: CirclePoint<SecureField>,
         mask_values: &Vec<TreeVec<Vec<Vec<SecureField>>>>,
         random_coeff: SecureField,
-        interaction_elements: &InteractionElements,
-        lookup_values: &LookupValues,
     ) -> SecureField {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         zip_eq(&self.0, mask_values).for_each(|(component, mask)| {
@@ -42,8 +40,6 @@ impl<'a> Components<'a> {
                 point,
                 mask,
                 &mut evaluation_accumulator,
-                interaction_elements,
-                lookup_values,
             )
         });
         evaluation_accumulator.finalize()
@@ -68,8 +64,6 @@ impl<'a, B: Backend> ComponentProvers<'a, B> {
         &self,
         random_coeff: SecureField,
         component_traces: &[ComponentTrace<'_, B>],
-        interaction_elements: &InteractionElements,
-        lookup_values: &LookupValues,
     ) -> SecureCirclePoly<B> {
         let total_constraints: usize = self.0.iter().map(|c| c.n_constraints()).sum();
         let mut accumulator = DomainEvaluationAccumulator::new(
@@ -78,12 +72,7 @@ impl<'a, B: Backend> ComponentProvers<'a, B> {
             total_constraints,
         );
         zip_eq(&self.0, component_traces).for_each(|(component, trace)| {
-            component.evaluate_constraint_quotients_on_domain(
-                trace,
-                &mut accumulator,
-                interaction_elements,
-                lookup_values,
-            )
+            component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
         });
         accumulator.finalize()
     }
@@ -128,12 +117,5 @@ impl<'a, B: Backend> ComponentProvers<'a, B> {
                 }
             })
             .collect_vec()
-    }
-
-    pub fn lookup_values(&self, component_traces: &[ComponentTrace<'_, B>]) -> LookupValues {
-        let mut values = LookupValues::default();
-        zip_eq(&self.0, component_traces)
-            .for_each(|(component, trace)| values.extend(component.lookup_values(trace)));
-        values
     }
 }
