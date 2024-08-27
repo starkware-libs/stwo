@@ -63,7 +63,9 @@ pub fn domain_line_twiddles_from_tree<T>(
     domain: impl Into<LineDomain>,
     twiddle_buffer: &[T],
 ) -> Vec<&[T]> {
-    (0..domain.into().coset().log_size())
+    let domain = domain.into();
+    debug_assert!(domain.coset().size() <= twiddle_buffer.len());
+    (0..domain.coset().log_size())
         .map(|i| {
             let len = 1 << i;
             &twiddle_buffer[twiddle_buffer.len() - len * 2..twiddle_buffer.len() - len]
@@ -75,6 +77,9 @@ pub fn domain_line_twiddles_from_tree<T>(
 #[cfg(test)]
 mod tests {
     use super::repeat_value;
+    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::poly::line::LineDomain;
+    use crate::core::poly::utils::domain_line_twiddles_from_tree;
 
     #[test]
     fn repeat_value_0_times_works() {
@@ -89,5 +94,22 @@ mod tests {
     #[test]
     fn repeat_value_3_times_works() {
         assert_eq!(repeat_value(&[1, 2], 3), vec![1, 1, 1, 2, 2, 2]);
+    }
+
+    #[test]
+    fn test_domain_line_twiddles_works() {
+        let domain: LineDomain = CanonicCoset::new(4).circle_domain().into();
+        let twiddles = domain_line_twiddles_from_tree(domain, &[0, 1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(twiddles.len(), 3);
+        assert_eq!(twiddles[0], &[0, 1, 2, 3]);
+        assert_eq!(twiddles[1], &[4, 5]);
+        assert_eq!(twiddles[2], &[6]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_domain_line_twiddles_fails() {
+        let domain: LineDomain = CanonicCoset::new(5).circle_domain().into();
+        domain_line_twiddles_from_tree(domain, &[0, 1, 2, 3, 4, 5, 6, 7]);
     }
 }
