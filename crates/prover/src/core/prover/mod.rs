@@ -11,7 +11,6 @@ use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::vcs::ops::MerkleHasher;
-use super::{InteractionElements, LookupValues};
 use crate::core::backend::CpuBackend;
 use crate::core::channel::Channel;
 use crate::core::circle::CirclePoint;
@@ -24,7 +23,6 @@ use crate::core::vcs::verifier::MerkleVerificationError;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StarkProof<H: MerkleHasher> {
     pub commitments: TreeVec<H::Hash>,
-    pub lookup_values: LookupValues,
     pub commitment_scheme_proof: CommitmentSchemeProof<H>,
 }
 
@@ -39,24 +37,18 @@ pub struct AdditionalProofData {
 pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     components: &[&dyn ComponentProver<B>],
     channel: &mut MC::C,
-    interaction_elements: &InteractionElements,
     commitment_scheme: &mut CommitmentSchemeProver<'_, B, MC>,
 ) -> Result<StarkProof<MC::H>, ProvingError> {
     let component_provers = ComponentProvers(components.to_vec());
     let trace = commitment_scheme.trace();
-    let lookup_values = component_provers.lookup_values(&trace);
 
     // Evaluate and commit on composition polynomial.
     let random_coeff = channel.draw_felt();
 
     let span = span!(Level::INFO, "Composition").entered();
     let span1 = span!(Level::INFO, "Generation").entered();
-    let composition_polynomial_poly = component_provers.compute_composition_polynomial(
-        random_coeff,
-        &trace,
-        interaction_elements,
-        &lookup_values,
-    );
+    let composition_polynomial_poly =
+        component_provers.compute_composition_polynomial(random_coeff, &trace);
     span1.exit();
 
     let mut tree_builder = commitment_scheme.tree_builder();
@@ -83,20 +75,13 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     if composition_oods_eval
         != component_provers
             .components()
-            .eval_composition_polynomial_at_point(
-                oods_point,
-                sampled_oods_values,
-                random_coeff,
-                interaction_elements,
-                &lookup_values,
-            )
+            .eval_composition_polynomial_at_point(oods_point, sampled_oods_values, random_coeff)
     {
         return Err(ProvingError::ConstraintsNotSatisfied);
     }
 
     Ok(StarkProof {
         commitments: commitment_scheme.roots(),
-        lookup_values,
         commitment_scheme_proof,
     })
 }
@@ -104,7 +89,6 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
 pub fn verify<MC: MerkleChannel>(
     components: &[&dyn Component],
     channel: &mut MC::C,
-    interaction_elements: &InteractionElements,
     commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
     proof: StarkProof<MC::H>,
 ) -> Result<(), VerificationError> {
@@ -136,8 +120,6 @@ pub fn verify<MC: MerkleChannel>(
             oods_point,
             sampled_oods_values,
             random_coeff,
-            interaction_elements,
-            &proof.lookup_values,
         )
     {
         return Err(VerificationError::OodsNotMatching);
