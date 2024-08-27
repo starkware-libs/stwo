@@ -1,10 +1,4 @@
-use std::collections::BTreeMap;
-use std::ops::{Deref, DerefMut, Index};
-
-use fields::m31::BaseField;
-use serde::{Deserialize, Serialize};
-
-use self::fields::qm31::SecureField;
+use std::ops::{Deref, DerefMut};
 
 pub mod air;
 pub mod backend;
@@ -61,49 +55,5 @@ impl<T> Deref for ComponentVec<T> {
 impl<T> DerefMut for ComponentVec<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
-    }
-}
-
-#[derive(Default, Debug)]
-pub struct InteractionElements(BTreeMap<String, SecureField>);
-
-impl InteractionElements {
-    pub fn new(elements: BTreeMap<String, SecureField>) -> Self {
-        Self(elements)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-}
-
-impl Index<&str> for InteractionElements {
-    type Output = SecureField;
-
-    fn index(&self, index: &str) -> &Self::Output {
-        // TODO(AlonH): Return an error if the key is not found.
-        &self.0[index]
-    }
-}
-
-#[derive(Default, Debug, Serialize, Deserialize)]
-pub struct LookupValues(pub BTreeMap<String, BaseField>);
-
-impl LookupValues {
-    pub fn new(values: BTreeMap<String, BaseField>) -> Self {
-        Self(values)
-    }
-
-    pub fn extend(&mut self, other: Self) {
-        self.0.extend(other.0);
-    }
-}
-
-impl Index<&str> for LookupValues {
-    type Output = BaseField;
-
-    fn index(&self, index: &str) -> &Self::Output {
-        // TODO(AlonH): Return an error if the key is not found.
-        &self.0[index]
     }
 }

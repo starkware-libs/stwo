@@ -17,7 +17,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof};
 use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-use crate::core::{ColumnVec, InteractionElements};
+use crate::core::ColumnVec;
 
 #[derive(Clone)]
 pub struct PlonkComponent {
@@ -230,13 +230,7 @@ pub fn prove_fibonacci_plonk(
         component.evaluate(eval);
     });
 
-    let proof = prove::<SimdBackend, _>(
-        &[&component],
-        channel,
-        &InteractionElements::default(),
-        commitment_scheme,
-    )
-    .unwrap();
+    let proof = prove::<SimdBackend, _>(&[&component], channel, commitment_scheme).unwrap();
 
     (component, proof)
 }
@@ -252,7 +246,6 @@ mod tests {
     use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
     use crate::core::prover::verify;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    use crate::core::InteractionElements;
     use crate::examples::plonk::prove_fibonacci_plonk;
 
     #[test_log::test]
@@ -289,13 +282,6 @@ mod tests {
         // Constant columns.
         commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
 
-        verify(
-            &[&component],
-            channel,
-            &InteractionElements::default(),
-            commitment_scheme,
-            proof,
-        )
-        .unwrap();
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
     }
 }

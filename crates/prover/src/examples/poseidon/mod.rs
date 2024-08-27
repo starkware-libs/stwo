@@ -22,7 +22,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof};
 use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-use crate::core::{ColumnVec, InteractionElements};
+use crate::core::ColumnVec;
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
@@ -370,13 +370,7 @@ pub fn prove_poseidon(
         lookup_elements,
         claimed_sum,
     };
-    let proof = prove::<SimdBackend, _>(
-        &[&component],
-        channel,
-        &InteractionElements::default(),
-        commitment_scheme,
-    )
-    .unwrap();
+    let proof = prove::<SimdBackend, _>(&[&component], channel, commitment_scheme).unwrap();
 
     (component, proof)
 }
@@ -398,7 +392,6 @@ mod tests {
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::verify;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    use crate::core::InteractionElements;
     use crate::examples::poseidon::{
         apply_internal_round_matrix, apply_m4, gen_interaction_trace, gen_trace, prove_poseidon,
         PoseidonElements, PoseidonEval,
@@ -515,13 +508,6 @@ mod tests {
         // Interaction columns.
         commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
 
-        verify(
-            &[&component],
-            channel,
-            &InteractionElements::default(),
-            commitment_scheme,
-            proof,
-        )
-        .unwrap();
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
     }
 }
