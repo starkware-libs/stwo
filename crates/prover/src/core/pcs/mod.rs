@@ -19,7 +19,7 @@ pub use self::verifier::CommitmentSchemeVerifier;
 use super::fri::FriConfig;
 
 #[derive(Copy, Debug, Clone, PartialEq, Eq)]
-pub struct TreeColumnSpan {
+pub struct TreeSubspan {
     pub tree_index: usize,
     pub col_start: usize,
     pub col_end: usize,
