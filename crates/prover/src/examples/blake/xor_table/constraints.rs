@@ -40,7 +40,7 @@ impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
                 // multiplicity.
                 self.logup.push_lookup(
                     &mut self.eval,
-                    (-multiplicity).into(),
+                    -multiplicity,
                     &[a, b, c],
                     self.lookup_elements,
                 );

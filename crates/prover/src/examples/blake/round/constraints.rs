@@ -35,7 +35,7 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         // Yield `Round(input_v, output_v, message)`.
         self.logup.push_lookup(
             &mut self.eval,
-            -E::EF::one(),
+            -E::F::one(),
             &chain![
                 input_v.iter().copied().flat_map(Fu32::to_felts),
                 v.iter().copied().flat_map(Fu32::to_felts),

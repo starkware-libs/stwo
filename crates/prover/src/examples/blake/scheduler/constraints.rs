@@ -26,7 +26,7 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
         // Use triplet in round lookup.
         logup.push_lookup(
             eval,
-            E::EF::one(),
+            E::F::one(),
             &chain![
                 input_state.iter().copied().flat_map(Fu32::to_felts),
                 output_state.iter().copied().flat_map(Fu32::to_felts),
@@ -44,7 +44,7 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
     // TODO(spapini): Change to -1.
     logup.push_lookup(
         eval,
-        E::EF::zero(),
+        E::F::zero(),
         &chain![
             input_state.iter().copied().flat_map(Fu32::to_felts),
             output_state.iter().copied().flat_map(Fu32::to_felts),

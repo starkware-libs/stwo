@@ -28,7 +28,7 @@ pub struct LogupAtRow<const BATCH_SIZE: usize, E: EvalAtRow> {
     /// The index of the interaction used for the cumulative sum columns.
     pub interaction: usize,
     /// Queue of fractions waiting to be batched together.
-    pub queue: [(E::EF, E::EF); BATCH_SIZE],
+    pub queue: [Fraction<E::F, E::EF>; BATCH_SIZE],
     /// Number of fractions in the queue.
     pub queue_size: usize,
     /// A constant to subtract from each row, to make the totall sum of the last column zero.
@@ -43,7 +43,7 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
     pub fn new(interaction: usize, claimed_sum: SecureField, log_size: u32) -> Self {
         Self {
             interaction,
-            queue: [(E::EF::zero(), E::EF::zero()); BATCH_SIZE],
+            queue: [Fraction::new(E::F::zero(), E::EF::zero()); BATCH_SIZE],
             queue_size: 0,
             cumsum_shift: claimed_sum / BaseField::from_u32_unchecked(1 << log_size),
             prev_col_cumsum: E::EF::zero(),
@@ -53,17 +53,23 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
     pub fn push_lookup<const N: usize>(
         &mut self,
         eval: &mut E,
-        numerator: E::EF,
+        numerator: E::F,
         values: &[E::F],
         lookup_elements: &LookupElements<N>,
     ) {
         let shifted_value = lookup_elements.combine(values);
-        self.push_frac(eval, numerator, shifted_value);
+        self.push_frac(
+            eval,
+            Fraction {
+                numerator,
+                denominator: shifted_value,
+            },
+        );
     }
 
-    pub fn push_frac(&mut self, eval: &mut E, numerator: E::EF, denominator: E::EF) {
+    pub fn push_frac(&mut self, eval: &mut E, fraction: Fraction<E::F, E::EF>) {
         if self.queue_size < BATCH_SIZE {
-            self.queue[self.queue_size] = (numerator, denominator);
+            self.queue[self.queue_size] = fraction;
             self.queue_size += 1;
             return;
         }
@@ -71,7 +77,7 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         // Compute sum_i pi/qi over batch, as a fraction, num/denom.
         let (num, denom) = self.fold_queue();
 
-        self.queue[0] = (numerator, denominator);
+        self.queue[0] = fraction;
         self.queue_size = 1;
 
         // Add a constraint that num / denom = diff.
@@ -108,12 +114,14 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
     }
 
     fn fold_queue(&self) -> (E::EF, E::EF) {
-        self.queue[0..self.queue_size]
-            .iter()
-            .copied()
-            .fold((E::EF::zero(), E::EF::one()), |(p0, q0), (pi, qi)| {
-                (p0 * qi + pi * q0, qi * q0)
-            })
+        self.queue[0..self.queue_size].iter().copied().fold(
+            (E::EF::zero(), E::EF::one()),
+            |(p0, q0),
+             Fraction {
+                 numerator: pi,
+                 denominator: qi,
+             }| { (p0 * qi + q0 * pi, qi * q0) },
+        )
     }
 }
 
@@ -159,6 +167,15 @@ impl<const N: usize> LookupElements<N> {
                     acc + EF::from(power) * value
                 })
             - EF::from(self.z)
+    }
+    pub fn combine_frac<F: Copy, EF>(&self, mult: F, values: &[F]) -> Fraction<F, EF>
+    where
+        EF: Copy + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
+    {
+        Fraction {
+            numerator: mult,
+            denominator: self.combine(values),
+        }
     }
     // TODO(spapini): Try to remove this.
     pub fn dummy() -> Self {
@@ -300,7 +317,9 @@ mod tests {
 
     use super::LogupAtRow;
     use crate::constraint_framework::InfoEvaluator;
+    use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::lookups::utils::Fraction;
 
     #[test]
     #[should_panic]
@@ -308,8 +327,10 @@ mod tests {
         let mut logup = LogupAtRow::<2, InfoEvaluator>::new(1, SecureField::one(), 7);
         logup.push_frac(
             &mut InfoEvaluator::default(),
-            SecureField::one(),
-            SecureField::one(),
+            Fraction {
+                numerator: BaseField::one(),
+                denominator: SecureField::one(),
+            },
         );
     }
 }

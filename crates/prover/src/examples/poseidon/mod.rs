@@ -11,14 +11,14 @@ use crate::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
 };
 use crate::core::backend::simd::column::BaseColumn;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use crate::core::backend::simd::qm31::PackedSecureField;
+use crate::core::backend::simd::m31::{PackedBaseField, PackedM31, LOG_N_LANES};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column};
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
+use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
@@ -143,7 +143,7 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(
         let mut state: [_; N_STATE] = std::array::from_fn(|_| eval.next_trace_mask());
 
         // Require state lookup.
-        logup.push_lookup(eval, E::EF::one(), &state, lookup_elements);
+        logup.push_lookup(eval, E::F::one(), &state, lookup_elements);
 
         // 4 full rounds.
         (0..N_HALF_FULL_ROUNDS).for_each(|round| {
@@ -184,7 +184,7 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(
         });
 
         // Provide state lookup.
-        logup.push_lookup(eval, -E::EF::one(), &state, lookup_elements);
+        logup.push_lookup(eval, -E::F::one(), &state, lookup_elements);
     }
 
     logup.finalize(eval);
@@ -299,18 +299,24 @@ pub fn gen_interaction_trace(
         let mut col_gen = logup_gen.new_col();
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
             // Batch the 2 lookups together.
-            let denom0: PackedSecureField = lookup_elements.combine(
+            let frac0 = lookup_elements.combine_frac(
+                PackedM31::one(),
                 &lookup_data.initial_state[rep_i]
                     .each_ref()
                     .map(|s| s.data[vec_row]),
             );
-            let denom1: PackedSecureField = lookup_elements.combine(
+            let frac1 = lookup_elements.combine_frac(
+                -PackedM31::one(),
                 &lookup_data.final_state[rep_i]
                     .each_ref()
                     .map(|s| s.data[vec_row]),
             );
+            let Fraction {
+                numerator,
+                denominator,
+            } = frac0 + frac1;
             // (1 / denom1) - (1 / denom1) = (denom1 - denom0) / (denom0 * denom1).
-            col_gen.write_frac(vec_row, denom1 - denom0, denom0 * denom1);
+            col_gen.write_frac(vec_row, numerator, denominator);
         }
         col_gen.finalize_col();
     }

@@ -61,22 +61,17 @@ impl FrameworkEval for PlonkEval {
 
         logup.push_lookup(
             &mut eval,
-            E::EF::one(),
+            E::F::one(),
             &[a_wire, a_val],
             &self.lookup_elements,
         );
         logup.push_lookup(
             &mut eval,
-            E::EF::one(),
+            E::F::one(),
             &[b_wire, b_val],
             &self.lookup_elements,
         );
-        logup.push_lookup(
-            &mut eval,
-            E::EF::from(-mult),
-            &[c_wire, c_val],
-            &self.lookup_elements,
-        );
+        logup.push_lookup(&mut eval, -mult, &[c_wire, c_val], &self.lookup_elements);
 
         logup.finalize(&mut eval);
         eval
