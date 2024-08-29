@@ -27,6 +27,18 @@ pub trait PolyOps: FieldOps<BaseField> + Sized {
         itwiddles: &TwiddleTree<Self>,
     ) -> CirclePoly<Self>;
 
+    /// Computes minimal polynomials that evaluate to the same values as each evaluation in `columns`.
+    /// Used by the [`TreeBuilder::extend_evals()`] function.
+    fn interpolate_columns(
+        columns: impl IntoIterator<Item = CircleEvaluation<Self, BaseField, BitReversedOrder>>,
+        twiddles: &TwiddleTree<Self>,
+    ) -> Vec<CirclePoly<Self>> {
+        columns
+            .into_iter()
+            .map(|eval| eval.interpolate_with_twiddles(&twiddles))
+            .collect()
+    }
+
     /// Evaluates the polynomial at a single point.
     /// Used by the [`CirclePoly::eval_at_point()`] function.
     fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField;
