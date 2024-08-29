@@ -193,6 +193,14 @@ impl LogupTraceGenerator {
         }
     }
 
+    /// Fill a column from a closure that takes the vec_row index and and returns the numerator and
+    /// denominator of the fraction in that row.
+    pub fn col_from_fn(&mut self, frac: impl Fn(usize) -> (PackedSecureField, PackedSecureField)) {
+        let mut col = self.new_col();
+        col.from_fn(frac);
+        col.finalize_col()
+    }
+
     /// Finalize the trace. Returns the trace and the claimed sum of the last column.
     pub fn finalize(
         mut self,
@@ -260,6 +268,15 @@ impl<'a> LogupColGenerator<'a> {
         unsafe {
             self.numerator.set_packed(vec_row, numerator);
             *self.gen.denom.data.get_unchecked_mut(vec_row) = denom;
+        }
+    }
+
+    /// Fill the column from a closure that takes the vec_row index and returns the numerator and
+    /// denominator of the fraction in that row.
+    pub fn from_fn(&mut self, frac: impl Fn(usize) -> (PackedSecureField, PackedSecureField)) {
+        for vec_row in 0..(1 << (self.gen.log_size - LOG_N_LANES)) {
+            let (num, denom) = frac(vec_row);
+            self.write_frac(vec_row, num, denom)
         }
     }
 

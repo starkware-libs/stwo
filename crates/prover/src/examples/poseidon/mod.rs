@@ -296,8 +296,7 @@ pub fn gen_interaction_trace(
 
     #[allow(clippy::needless_range_loop)]
     for rep_i in 0..N_INSTANCES_PER_ROW {
-        let mut col_gen = logup_gen.new_col();
-        for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
+        logup_gen.col_from_fn(|vec_row| {
             // Batch the 2 lookups together.
             let denom0: PackedSecureField = lookup_elements.combine(
                 &lookup_data.initial_state[rep_i]
@@ -310,9 +309,8 @@ pub fn gen_interaction_trace(
                     .map(|s| s.data[vec_row]),
             );
             // (1 / denom1) - (1 / denom1) = (denom1 - denom0) / (denom0 * denom1).
-            col_gen.write_frac(vec_row, denom1 - denom0, denom0 * denom1);
-        }
-        col_gen.finalize_col();
+            (denom1 - denom0, denom0 * denom1)
+        });
     }
 
     logup_gen.finalize()
