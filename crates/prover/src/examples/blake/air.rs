@@ -460,6 +460,7 @@ pub fn verify_blake<MC: MerkleChannel>(
 mod tests {
     use std::env;
 
+    use crate::core::fri::FriConfig;
     use crate::core::pcs::PcsConfig;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::blake::air::{prove_blake, verify_blake};
@@ -475,14 +476,69 @@ mod tests {
 
         // Get from environment variable:
         let log_n_instances = env::var("LOG_N_INSTANCES")
-            .unwrap_or_else(|_| "6".to_string())
+            .unwrap_or_else(|_| "16".to_string())
             .parse::<u32>()
             .unwrap();
-        let config = PcsConfig::default();
+        let config = PcsConfig {
+            pow_bits: 5,
+            fri_config: FriConfig::new(0, 1, 64),
+        };
 
         // Prove.
         let proof = prove_blake::<Blake2sMerkleChannel>(log_n_instances, config);
+        let n_proof_hashes = proof
+            .stark_proof
+            .commitment_scheme_proof
+            .decommitments
+            .iter()
+            .map(|d| d.hash_witness.len())
+            .sum::<usize>();
+        let n_proof_column_witness = proof
+            .stark_proof
+            .commitment_scheme_proof
+            .decommitments
+            .iter()
+            .map(|d| d.column_witness.len())
+            .sum::<usize>();
 
+        let n_fri_hashes = proof
+            .stark_proof
+            .commitment_scheme_proof
+            .fri_proof
+            .inner_layers
+            .iter()
+            .map(|l| l.decommitment.hash_witness.len())
+            .sum::<usize>();
+        let n_fri_column_witness = proof
+            .stark_proof
+            .commitment_scheme_proof
+            .fri_proof
+            .inner_layers
+            .iter()
+            .map(|l| l.decommitment.column_witness.len())
+            .sum::<usize>();
+
+        let n_sampled_values = proof
+            .stark_proof
+            .commitment_scheme_proof
+            .sampled_values
+            .iter()
+            .map(|c| c.iter().map(|v| v.len()).sum::<usize>())
+            .sum::<usize>();
+
+        let n_queries_values = proof
+            .stark_proof
+            .commitment_scheme_proof
+            .queried_values
+            .iter()
+            .map(|c| c.iter().map(|v| v.len()).sum::<usize>())
+            .sum::<usize>();
+        println!("Proof hashes: {:?}", n_proof_hashes);
+        println!("Fri hashes: {:?}", n_fri_hashes);
+        println!("Proof column witness: {:?}", n_proof_column_witness);
+        println!("Fri column witness: {:?}", n_fri_column_witness);
+        println!("Sampled values: {:?}", n_sampled_values);
+        println!("Queries values: {:?}", n_queries_values);
         // Verify.
         verify_blake::<Blake2sMerkleChannel>(proof, config).unwrap();
     }
