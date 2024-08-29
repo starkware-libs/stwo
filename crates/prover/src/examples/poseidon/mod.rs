@@ -23,7 +23,7 @@ use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof};
-use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use crate::core::{ColumnVec, InteractionElements};
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
@@ -336,7 +336,8 @@ pub fn prove_poseidon(
 
     // Setup protocol.
     let channel = &mut Blake2sChannel::default();
-    let commitment_scheme = &mut CommitmentSchemeProver::new(config, &twiddles);
+    let commitment_scheme =
+        &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
     // Trace.
     let span = span!(Level::INFO, "Trace").entered();
