@@ -149,8 +149,8 @@ impl<'a> TraceGeneratorRow<'a> {
         let (bhl, bhh) = self.split(b >> 16, r);
 
         self.xor(r, all, bll);
-        self.xor(16 - r, alh, blh);
         self.xor(r, ahl, bhl);
+        self.xor(16 - r, alh, blh);
         self.xor(16 - r, ahh, bhh);
 
         cr
@@ -167,8 +167,8 @@ impl<'a> TraceGeneratorRow<'a> {
         let (bhl, bhh) = self.split(b >> 16, 8);
 
         self.xor(8, all, bll);
-        self.xor(8, alh, blh);
         self.xor(8, ahl, bhl);
+        self.xor(8, alh, blh);
         self.xor(8, ahh, bhh);
 
         cr

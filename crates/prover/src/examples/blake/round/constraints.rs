@@ -5,6 +5,7 @@ use super::{BlakeXorElements, RoundElements};
 use crate::constraint_framework::logup::LogupAtRow;
 use crate::constraint_framework::EvalAtRow;
 use crate::core::fields::m31::BaseField;
+use crate::core::lookups::utils::Fraction;
 use crate::examples::blake::{Fu32, STATE_SIZE};
 
 const INV16: BaseField = BaseField::from_u32_unchecked(1 << 15);
@@ -118,10 +119,8 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         let (bhl, bhh) = self.split_unchecked(b.h, r);
 
         // These also guarantee that all elements are in range.
-        let xorll = self.xor(r, all, bll);
-        let xorlh = self.xor(16 - r, alh, blh);
-        let xorhl = self.xor(r, ahl, bhl);
-        let xorhh = self.xor(16 - r, ahh, bhh);
+        let [xorll, xorhl] = self.xor2(r, [all, ahl], [bll, bhl]);
+        let [xorlh, xorhh] = self.xor2(16 - r, [alh, ahh], [blh, bhh]);
 
         Fu32 {
             l: xorhl * E::F::from(BaseField::from_u32_unchecked(1 << (16 - r))) + xorlh,
@@ -138,10 +137,8 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         let (bhl, bhh) = self.split_unchecked(b.h, 8);
 
         // These also guarantee that all elements are in range.
-        let xorll = self.xor(8, all, bll);
-        let xorlh = self.xor(8, alh, blh);
-        let xorhl = self.xor(8, ahl, bhl);
-        let xorhh = self.xor(8, ahh, bhh);
+        let [xorll, xorhl] = self.xor2(8, [all, ahl], [bll, bhl]);
+        let [xorlh, xorhh] = self.xor2(8, [alh, ahh], [blh, bhh]);
 
         Fu32 {
             l: xorhh * E::F::from(BaseField::from_u32_unchecked(1 << 8)) + xorhl,
@@ -150,12 +147,18 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     }
 
     /// Checks that a, b are in [0, 2^w) and computes their xor.
-    fn xor(&mut self, w: u32, a: E::F, b: E::F) -> E::F {
+    fn xor2(&mut self, w: u32, a: [E::F; 2], b: [E::F; 2]) -> [E::F; 2] {
         // TODO: Separate lookups by w.
-        let c = self.eval.next_trace_mask();
+        let c = [self.eval.next_trace_mask(), self.eval.next_trace_mask()];
         let lookup_elements = self.xor_lookup_elements.get(w);
-        self.logup
-            .push_lookup(&mut self.eval, E::EF::one(), &[a, b, c], lookup_elements);
+        let comb0 = lookup_elements.combine::<E::F, E::EF>(&[a[0], b[0], c[0]]);
+        let comb1 = lookup_elements.combine::<E::F, E::EF>(&[a[1], b[1], c[1]]);
+        let frac = Fraction {
+            numerator: comb0 + comb1,
+            denominator: comb0 * comb1,
+        };
+
+        self.logup.add_frac(&mut self.eval, frac);
         c
     }
 }
