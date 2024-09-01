@@ -24,13 +24,20 @@ use crate::core::{utils, ColumnVec};
 
 // TODO(andrew): Docs.
 // TODO(andrew): Consider better location for this.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct TraceLocationAllocator {
     /// Mapping of tree index to next available column offset.
     next_tree_offsets: TreeVec<usize>,
+    first_tree: usize,
 }
 
 impl TraceLocationAllocator {
+    pub fn new(first_tree: usize) -> Self {
+        Self {
+            next_tree_offsets: TreeVec::default(),
+            first_tree,
+        }
+    }
     fn next_for_structure<T>(&mut self, structure: &TreeVec<ColumnVec<T>>) -> TreeVec<TreeSubspan> {
         if structure.len() > self.next_tree_offsets.len() {
             self.next_tree_offsets.resize(structure.len(), 0);
@@ -44,7 +51,7 @@ impl TraceLocationAllocator {
                     let col_end = col_start + cols.len();
                     *offset = col_end;
                     TreeSubspan {
-                        tree_index,
+                        tree_index: tree_index + self.first_tree,
                         col_start,
                         col_end,
                     }

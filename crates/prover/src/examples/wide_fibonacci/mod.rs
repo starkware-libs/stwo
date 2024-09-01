@@ -175,7 +175,7 @@ mod tests {
 
         // Prove constraints.
         let component = WideFibonacciComponent::new(
-            &mut TraceLocationAllocator::default(),
+            &mut TraceLocationAllocator::new(0),
             WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
                 log_n_rows: LOG_N_INSTANCES,
             },
@@ -226,7 +226,7 @@ mod tests {
 
         // Prove constraints.
         let component = WideFibonacciComponent::new(
-            &mut TraceLocationAllocator::default(),
+            &mut TraceLocationAllocator::new(0),
             WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
                 log_n_rows: LOG_N_INSTANCES,
             },

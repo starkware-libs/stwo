@@ -366,7 +366,7 @@ pub fn prove_poseidon(
 
     // Prove constraints.
     let component = PoseidonComponent::new(
-        &mut TraceLocationAllocator::default(),
+        &mut TraceLocationAllocator::new(0),
         PoseidonEval {
             log_n_rows,
             lookup_elements,

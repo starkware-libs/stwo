@@ -218,7 +218,7 @@ pub fn prove_fibonacci_plonk(
 
     // Prove constraints.
     let component = PlonkComponent::new(
-        &mut TraceLocationAllocator::default(),
+        &mut TraceLocationAllocator::new(0),
         PlonkEval {
             log_n_rows,
             lookup_elements,

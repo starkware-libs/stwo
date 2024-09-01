@@ -120,7 +120,7 @@ pub struct BlakeComponents {
 }
 impl BlakeComponents {
     fn new(stmt0: &BlakeStatement0, all_elements: &AllElements, stmt1: &BlakeStatement1) -> Self {
-        let tree_span_provider = &mut TraceLocationAllocator::default();
+        let tree_span_provider = &mut TraceLocationAllocator::new(0);
         Self {
             scheduler_component: BlakeSchedulerComponent::new(
                 tree_span_provider,
