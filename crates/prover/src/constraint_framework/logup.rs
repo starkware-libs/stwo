@@ -15,6 +15,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
+use crate::core::lookups::utils::Fraction;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
@@ -78,6 +79,14 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         let diff = cur_cumsum - self.prev_col_cumsum;
         self.prev_col_cumsum = cur_cumsum;
         eval.add_constraint(diff * denom - num);
+    }
+
+    pub fn add_frac(&mut self, eval: &mut E, fraction: Fraction<E::EF, E::EF>) {
+        // Add a constraint that num / denom = diff.
+        let cur_cumsum = eval.next_extension_interaction_mask(self.interaction, [0])[0];
+        let diff = cur_cumsum - self.prev_col_cumsum;
+        self.prev_col_cumsum = cur_cumsum;
+        eval.add_constraint(diff * fraction.denominator - fraction.numerator);
     }
 
     pub fn finalize(mut self, eval: &mut E) {
