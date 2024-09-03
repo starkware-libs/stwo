@@ -14,6 +14,7 @@ use crate::core::backend::Column;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeSubspan};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
@@ -43,7 +44,7 @@ impl FrameworkEval for PlonkEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let mut logup = LogupAtRow::<2, _>::new(1, self.claimed_sum, self.log_n_rows);
+        let mut logup = LogupAtRow::<_>::new(1, self.claimed_sum, self.log_n_rows);
 
         let [a_wire] = eval.next_interaction_mask(2, [0]);
         let [b_wire] = eval.next_interaction_mask(2, [0]);
@@ -59,23 +60,19 @@ impl FrameworkEval for PlonkEval {
 
         eval.add_constraint(c_val - op * (a_val + b_val) + (E::F::one() - op) * a_val * b_val);
 
-        logup.push_lookup(
+        let denom_a: E::EF = self.lookup_elements.combine(&[a_wire, a_val]);
+        let denom_b: E::EF = self.lookup_elements.combine(&[b_wire, b_val]);
+
+        logup.write_frac(
             &mut eval,
-            E::EF::one(),
-            &[a_wire, a_val],
-            &self.lookup_elements,
+            Fraction::new(denom_a + denom_b, denom_a * denom_b),
         );
-        logup.push_lookup(
+        logup.write_frac(
             &mut eval,
-            E::EF::one(),
-            &[b_wire, b_val],
-            &self.lookup_elements,
-        );
-        logup.push_lookup(
-            &mut eval,
-            E::EF::from(-mult),
-            &[c_wire, c_val],
-            &self.lookup_elements,
+            Fraction::new(
+                (-mult).into(),
+                self.lookup_elements.combine(&[c_wire, c_val]),
+            ),
         );
 
         logup.finalize(&mut eval);

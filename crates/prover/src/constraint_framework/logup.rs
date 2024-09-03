@@ -22,76 +22,44 @@ use crate::core::ColumnVec;
 
 /// Evaluates constraints for batched logups.
 /// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = claimed_sum.
-/// BATCH_SIZE is the number of fractions to batch together. The degree of the resulting constraints
-/// will be BATCH_SIZE + 1.
-pub struct LogupAtRow<const BATCH_SIZE: usize, E: EvalAtRow> {
+pub struct LogupAtRow<E: EvalAtRow> {
     /// The index of the interaction used for the cumulative sum columns.
     pub interaction: usize,
-    /// Queue of fractions waiting to be batched together.
-    pub queue: [(E::EF, E::EF); BATCH_SIZE],
-    /// Number of fractions in the queue.
-    pub queue_size: usize,
     /// A constant to subtract from each row, to make the totall sum of the last column zero.
     /// In other words, claimed_sum / 2^log_size.
     /// This is used to make the constraint uniform.
     pub cumsum_shift: SecureField,
     /// The evaluation of the last cumulative sum column.
     pub prev_col_cumsum: E::EF,
+    cur_frac: Option<Fraction<E::EF, E::EF>>,
     is_finalized: bool,
 }
-impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
+impl<E: EvalAtRow> LogupAtRow<E> {
     pub fn new(interaction: usize, claimed_sum: SecureField, log_size: u32) -> Self {
         Self {
             interaction,
-            queue: [(E::EF::zero(), E::EF::zero()); BATCH_SIZE],
-            queue_size: 0,
             cumsum_shift: claimed_sum / BaseField::from_u32_unchecked(1 << log_size),
             prev_col_cumsum: E::EF::zero(),
+            cur_frac: None,
             is_finalized: false,
         }
     }
-    pub fn push_lookup<const N: usize>(
-        &mut self,
-        eval: &mut E,
-        numerator: E::EF,
-        values: &[E::F],
-        lookup_elements: &LookupElements<N>,
-    ) {
-        let shifted_value = lookup_elements.combine(values);
-        self.push_frac(eval, numerator, shifted_value);
-    }
 
-    pub fn push_frac(&mut self, eval: &mut E, numerator: E::EF, denominator: E::EF) {
-        if self.queue_size < BATCH_SIZE {
-            self.queue[self.queue_size] = (numerator, denominator);
-            self.queue_size += 1;
-            return;
+    pub fn write_frac(&mut self, eval: &mut E, fraction: Fraction<E::EF, E::EF>) {
+        // Add a constraint that num / denom = diff.
+        if let Some(cur_frac) = self.cur_frac {
+            let cur_cumsum = eval.next_extension_interaction_mask(self.interaction, [0])[0];
+            let diff = cur_cumsum - self.prev_col_cumsum;
+            self.prev_col_cumsum = cur_cumsum;
+            eval.add_constraint(diff * cur_frac.denominator - cur_frac.numerator);
         }
-
-        // Compute sum_i pi/qi over batch, as a fraction, num/denom.
-        let (num, denom) = self.fold_queue();
-
-        self.queue[0] = (numerator, denominator);
-        self.queue_size = 1;
-
-        // Add a constraint that num / denom = diff.
-        let cur_cumsum = eval.next_extension_interaction_mask(self.interaction, [0])[0];
-        let diff = cur_cumsum - self.prev_col_cumsum;
-        self.prev_col_cumsum = cur_cumsum;
-        eval.add_constraint(diff * denom - num);
-    }
-
-    pub fn add_frac(&mut self, eval: &mut E, fraction: Fraction<E::EF, E::EF>) {
-        // Add a constraint that num / denom = diff.
-        let cur_cumsum = eval.next_extension_interaction_mask(self.interaction, [0])[0];
-        let diff = cur_cumsum - self.prev_col_cumsum;
-        self.prev_col_cumsum = cur_cumsum;
-        eval.add_constraint(diff * fraction.denominator - fraction.numerator);
+        self.cur_frac = Some(fraction);
     }
 
     pub fn finalize(mut self, eval: &mut E) {
         assert!(!self.is_finalized, "LogupAtRow was already finalized");
-        let (num, denom) = self.fold_queue();
+
+        let frac = self.cur_frac.unwrap();
 
         let [cur_cumsum, prev_row_cumsum] =
             eval.next_extension_interaction_mask(self.interaction, [0, -1]);
@@ -101,25 +69,15 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         // This makes (num / denom - cumsum_shift) have sum zero, which makes the constraint
         // uniform - apply on all rows.
         let fixed_diff = diff + self.cumsum_shift;
-
-        eval.add_constraint(fixed_diff * denom - num);
+        eval.add_constraint(fixed_diff * frac.denominator - frac.numerator);
 
         self.is_finalized = true;
-    }
-
-    fn fold_queue(&self) -> (E::EF, E::EF) {
-        self.queue[0..self.queue_size]
-            .iter()
-            .copied()
-            .fold((E::EF::zero(), E::EF::one()), |(p0, q0), (pi, qi)| {
-                (p0 * qi + pi * q0, qi * q0)
-            })
     }
 }
 
 /// Ensures that the LogupAtRow is finalized.
 /// LogupAtRow should be finalized exactly once.
-impl<const BATCH_SIZE: usize, E: EvalAtRow> Drop for LogupAtRow<BATCH_SIZE, E> {
+impl<E: EvalAtRow> Drop for LogupAtRow<E> {
     fn drop(&mut self) {
         assert!(self.is_finalized, "LogupAtRow was not finalized");
     }
@@ -301,15 +259,15 @@ mod tests {
     use super::LogupAtRow;
     use crate::constraint_framework::InfoEvaluator;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::lookups::utils::Fraction;
 
     #[test]
     #[should_panic]
     fn test_logup_not_finalized_panic() {
-        let mut logup = LogupAtRow::<2, InfoEvaluator>::new(1, SecureField::one(), 7);
-        logup.push_frac(
+        let mut logup = LogupAtRow::<InfoEvaluator>::new(1, SecureField::one(), 7);
+        logup.write_frac(
             &mut InfoEvaluator::default(),
-            SecureField::one(),
-            SecureField::one(),
+            Fraction::new(SecureField::one(), SecureField::one()),
         );
     }
 }
