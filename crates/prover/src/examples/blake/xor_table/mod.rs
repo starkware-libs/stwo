@@ -26,7 +26,10 @@ use crate::core::backend::Column;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::{TreeSubspan, TreeVec};
 
-pub fn trace_sizes<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> TreeVec<Vec<u32>> {
+pub fn trace_sizes<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> TreeVec<Vec<u32>>
+where
+    [(); 1 << (2 * EXPAND_BITS)]:,
+{
     let component = XorTableEval::<ELEM_BITS, EXPAND_BITS> {
         lookup_elements: LookupElements::<3>::dummy(),
         claimed_sum: SecureField::zero(),
@@ -95,6 +98,8 @@ pub struct XorTableEval<const ELEM_BITS: u32, const EXPAND_BITS: u32> {
 
 impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> FrameworkEval
     for XorTableEval<ELEM_BITS, EXPAND_BITS>
+where
+    [(); 1 << (2 * EXPAND_BITS)]:,
 {
     fn log_size(&self) -> u32 {
         column_bits::<ELEM_BITS, EXPAND_BITS>()
