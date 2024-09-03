@@ -8,6 +8,7 @@ use tracing::{span, Level};
 use super::round::{blake_round_info, BlakeRoundComponent, BlakeRoundEval};
 use super::scheduler::{BlakeSchedulerComponent, BlakeSchedulerEval};
 use super::xor_table::{XorTableComponent, XorTableEval};
+use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -363,10 +364,16 @@ where
     span.exit();
 
     // Constant trace.
+    // TODO(ShaharS): share is_first column between components when constant columns support this.
     let span = span!(Level::INFO, "Constant Trace").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(
         chain![
+            vec![gen_is_first(log_size)],
+            ROUND_LOG_SPLIT
+                .iter()
+                .map(|l| gen_is_first(log_size + l))
+                .collect_vec(),
             xor_table::generate_constant_trace::<12, 4>(),
             xor_table::generate_constant_trace::<9, 2>(),
             xor_table::generate_constant_trace::<8, 2>(),
