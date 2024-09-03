@@ -27,12 +27,13 @@ impl FrameworkEval for BlakeRoundEval {
     fn max_constraint_log_degree_bound(&self) -> u32 {
         self.log_size + 1
     }
-    fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        let [is_first] = eval.next_interaction_mask(2, [0]);
         let blake_eval = constraints::BlakeRoundEval {
             eval,
             xor_lookup_elements: &self.xor_lookup_elements,
             round_lookup_elements: &self.round_lookup_elements,
-            logup: LogupAtRow::new(1, self.claimed_sum, self.log_size),
+            logup: LogupAtRow::new(1, self.claimed_sum, is_first),
         };
         blake_eval.eval()
     }
