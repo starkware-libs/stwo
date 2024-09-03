@@ -15,7 +15,7 @@ pub struct BlakeRoundEval<'a, E: EvalAtRow> {
     pub eval: E,
     pub xor_lookup_elements: &'a BlakeXorElements,
     pub round_lookup_elements: &'a RoundElements,
-    pub logup: LogupAtRow<2, E>,
+    pub logup: LogupAtRow<E>,
 }
 impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     pub fn eval(mut self) -> E {
@@ -33,16 +33,19 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         self.g(v.get_many_mut([3, 4, 9, 14]).unwrap(), m[14], m[15]);
 
         // Yield `Round(input_v, output_v, message)`.
-        self.logup.push_lookup(
+        self.logup.write_frac(
             &mut self.eval,
-            -E::EF::one(),
-            &chain![
-                input_v.iter().copied().flat_map(Fu32::to_felts),
-                v.iter().copied().flat_map(Fu32::to_felts),
-                m.iter().copied().flat_map(Fu32::to_felts)
-            ]
-            .collect_vec(),
-            self.round_lookup_elements,
+            Fraction::new(
+                -E::EF::one(),
+                self.round_lookup_elements.combine(
+                    &chain![
+                        input_v.iter().copied().flat_map(Fu32::to_felts),
+                        v.iter().copied().flat_map(Fu32::to_felts),
+                        m.iter().copied().flat_map(Fu32::to_felts)
+                    ]
+                    .collect_vec(),
+                ),
+            ),
         );
 
         self.logup.finalize(&mut self.eval);
@@ -158,7 +161,7 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
             denominator: comb0 * comb1,
         };
 
-        self.logup.add_frac(&mut self.eval, frac);
+        self.logup.write_frac(&mut self.eval, frac);
         c
     }
 }

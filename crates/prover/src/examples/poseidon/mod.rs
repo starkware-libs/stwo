@@ -3,7 +3,6 @@
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
-use num_traits::One;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
@@ -19,6 +18,7 @@ use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
+use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
@@ -136,14 +136,14 @@ fn pow5<F: FieldExpOps>(x: F) -> F {
 
 pub fn eval_poseidon_constraints<E: EvalAtRow>(
     eval: &mut E,
-    mut logup: LogupAtRow<2, E>,
+    mut logup: LogupAtRow<E>,
     lookup_elements: &PoseidonElements,
 ) {
     for _ in 0..N_INSTANCES_PER_ROW {
         let mut state: [_; N_STATE] = std::array::from_fn(|_| eval.next_trace_mask());
 
         // Require state lookup.
-        logup.push_lookup(eval, E::EF::one(), &state, lookup_elements);
+        let initial_state_denom: E::EF = lookup_elements.combine(&state);
 
         // 4 full rounds.
         (0..N_HALF_FULL_ROUNDS).for_each(|round| {
@@ -183,8 +183,16 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(
             });
         });
 
-        // Provide state lookup.
-        logup.push_lookup(eval, -E::EF::one(), &state, lookup_elements);
+        // Provide state lookups.
+        let final_state_denom: E::EF = lookup_elements.combine(&state);
+        // (1 / denom1) - (1 / denom1) = (denom1 - denom0) / (denom0 * denom1).
+        logup.write_frac(
+            eval,
+            Fraction::new(
+                final_state_denom - initial_state_denom,
+                initial_state_denom * final_state_denom,
+            ),
+        );
     }
 
     logup.finalize(eval);
