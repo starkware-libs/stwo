@@ -4,6 +4,8 @@ use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
 use num_traits::One;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
@@ -13,6 +15,7 @@ use crate::constraint_framework::{
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
+use crate::core::backend::simd::utils::UnsafeShared;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column};
 use crate::core::channel::Blake2sChannel;
@@ -214,7 +217,19 @@ pub fn gen_trace(
         }),
     };
 
-    for vec_index in 0..(1 << (log_size - LOG_N_LANES)) {
+    let iter_range = 0..1 << (log_size - LOG_N_LANES);
+
+    #[cfg(not(feature = "parallel"))]
+    let iter = iter_range;
+
+    #[cfg(feature = "parallel")]
+    let iter = iter_range.into_par_iter();
+
+    let borrowed_trace = unsafe { UnsafeShared::new(&mut trace) };
+    let borrowed_lookup_data = unsafe { UnsafeShared::new(&mut lookup_data) };
+    iter.for_each(|vec_index| {
+        let trace = unsafe { borrowed_trace.get() };
+        let lookup_data = unsafe { borrowed_lookup_data.get() };
         // Initial state.
         let mut col_index = 0;
         for rep_i in 0..N_INSTANCES_PER_ROW {
@@ -274,7 +289,7 @@ pub fn gen_trace(
                 .zip(state)
                 .for_each(|(res, state_i)| res.data[vec_index] = state_i);
         }
-    }
+    });
     let domain = CanonicCoset::new(log_size).circle_domain();
     let trace = trace
         .into_iter()
@@ -326,13 +341,11 @@ pub fn prove_poseidon(
     let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
 
     // Precompute twiddles.
-    let span = span!(Level::INFO, "Precompute twiddles").entered();
     let twiddles = SimdBackend::precompute_twiddles(
         CanonicCoset::new(log_n_rows + LOG_EXPAND + config.fri_config.log_blowup_factor)
             .circle_domain()
             .half_coset,
     );
-    span.exit();
 
     // Setup protocol.
     let channel = &mut Blake2sChannel::default();
