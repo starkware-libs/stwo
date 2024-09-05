@@ -4,6 +4,7 @@ use std::mem::transmute;
 use bytemuck::{cast_slice, Zeroable};
 use itertools::Itertools;
 use num_traits::One;
+use tracing::{span, Level};
 
 use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE};
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
@@ -280,6 +281,7 @@ impl PolyOps for SimdBackend {
 
     #[allow(clippy::int_plus_one)]
     fn precompute_twiddles(mut coset: Coset) -> TwiddleTree<Self> {
+        let _span = span!(Level::INFO, "Compute twiddles").entered();
         let root_coset = coset;
 
         // Generate xs for descending cosets, each bit reversed.

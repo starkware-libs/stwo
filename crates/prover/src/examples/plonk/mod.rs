@@ -172,13 +172,11 @@ pub fn prove_fibonacci_plonk(
     circuit.mult.set((1 << log_n_rows) - 2, 1.into());
 
     // Precompute twiddles.
-    let span = span!(Level::INFO, "Precompute twiddles").entered();
     let twiddles = SimdBackend::precompute_twiddles(
         CanonicCoset::new(log_n_rows + config.fri_config.log_blowup_factor + 1)
             .circle_domain()
             .half_coset,
     );
-    span.exit();
 
     // Setup protocol.
     let channel = &mut Blake2sChannel::default();

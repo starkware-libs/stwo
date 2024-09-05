@@ -228,7 +228,6 @@ where
     );
 
     // Precompute twiddles.
-    let span = span!(Level::INFO, "Precompute twiddles").entered();
     const XOR_TABLE_MAX_LOG_SIZE: u32 = 16;
     let log_max_rows =
         (log_size + *ROUND_LOG_SPLIT.iter().max().unwrap()).max(XOR_TABLE_MAX_LOG_SIZE);
@@ -237,7 +236,6 @@ where
             .circle_domain()
             .half_coset,
     );
-    span.exit();
 
     // Prepare inputs.
     let blake_inputs = (0..(1 << (log_size - LOG_N_LANES)))
