@@ -57,3 +57,16 @@ impl<T> DerefMut for ComponentVec<T> {
         &mut self.0
     }
 }
+
+#[macro_export]
+macro_rules! parallel_iter {
+    ($i: expr) => {{
+        #[cfg(not(feature = "parallel"))]
+        let iter = $i;
+
+        #[cfg(feature = "parallel")]
+        let iter = $i.into_par_iter();
+
+        iter
+    }};
+}
