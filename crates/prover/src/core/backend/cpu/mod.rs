@@ -1,6 +1,6 @@
 mod accumulation;
 mod blake2s;
-mod circle;
+pub mod circle;
 mod fri;
 mod grind;
 pub mod lookups;
