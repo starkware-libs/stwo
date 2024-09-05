@@ -148,29 +148,16 @@ impl PolyOps for CpuBackend {
         CircleEvaluation::new(domain, values)
     }
 
-    fn precompute_twiddles(mut coset: Coset) -> TwiddleTree<Self> {
+    fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self> {
         const CHUNK_LOG_SIZE: usize = 12;
         const CHUNK_SIZE: usize = 1 << CHUNK_LOG_SIZE;
 
         let root_coset = coset;
-        let mut twiddles = Vec::with_capacity(coset.size());
-        for _ in 0..coset.log_size() {
-            let i0 = twiddles.len();
-            twiddles.extend(
-                coset
-                    .iter()
-                    .take(coset.size() / 2)
-                    .map(|p| p.x)
-                    .collect::<Vec<_>>(),
-            );
-            bit_reverse(&mut twiddles[i0..]);
-            coset = coset.double();
-        }
-        twiddles.push(1.into());
+        let twiddles = slow_precompute_twiddles(coset);
 
         // Inverse twiddles.
         // Fallback to the non-chunked version if the domain is not big enough.
-        if CHUNK_SIZE > coset.size() {
+        if CHUNK_SIZE > root_coset.size() {
             let itwiddles = twiddles.iter().map(|&t| t.inverse()).collect();
             return TwiddleTree {
                 root_coset,
@@ -193,6 +180,25 @@ impl PolyOps for CpuBackend {
             itwiddles,
         }
     }
+}
+
+pub fn slow_precompute_twiddles(mut coset: Coset) -> Vec<BaseField> {
+    let mut twiddles = Vec::with_capacity(coset.size());
+    for _ in 0..coset.log_size() {
+        let i0 = twiddles.len();
+        twiddles.extend(
+            coset
+                .iter()
+                .take(coset.size() / 2)
+                .map(|p| p.x)
+                .collect::<Vec<_>>(),
+        );
+        bit_reverse(&mut twiddles[i0..]);
+        coset = coset.double();
+    }
+    // Pad with an arbitrary value to make the length a power of 2.
+    twiddles.push(1.into());
+    twiddles
 }
 
 fn fft_layer_loop(
