@@ -3,6 +3,8 @@ use std::iter::zip;
 use std::ops::Deref;
 
 use itertools::Itertools;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use tracing::{span, Level};
 
 use super::{EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
@@ -10,6 +12,7 @@ use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluatio
 use crate::core::air::{Component, ComponentProver, Trace};
 use crate::core::backend::simd::column::VeryPackedSecureColumnByCoords;
 use crate::core::backend::simd::m31::LOG_N_LANES;
+use crate::core::backend::simd::utils::UnsafeShared;
 use crate::core::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::circle::CirclePoint;
@@ -58,7 +61,7 @@ impl TraceLocationAllocator {
 /// Implementing this trait introduces implementations for [`Component`] and [`ComponentProver`] for
 /// the SIMD backend.
 /// Note that the constraint framework only support components with columns of the same size.
-pub trait FrameworkEval {
+pub trait FrameworkEval: std::marker::Sync {
     fn log_size(&self) -> u32;
 
     fn max_constraint_log_degree_bound(&self) -> u32;
@@ -176,7 +179,17 @@ impl<E: FrameworkEval> ComponentProver<SimdBackend> for FrameworkComponent<E> {
         let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
         let col = unsafe { VeryPackedSecureColumnByCoords::transform_under_mut(accum.col) };
 
-        for vec_row in 0..(1 << (eval_domain.log_size() - LOG_N_LANES - LOG_N_VERY_PACKED_ELEMS)) {
+        let iter_range = 0..(1 << (eval_domain.log_size() - LOG_N_LANES - LOG_N_VERY_PACKED_ELEMS));
+
+        #[cfg(not(feature = "parallel"))]
+        let iter = iter_range;
+
+        #[cfg(feature = "parallel")]
+        let iter = iter_range.into_par_iter();
+
+        let col = unsafe { UnsafeShared::new(col) };
+        iter.for_each(|vec_row| {
+            let col = unsafe { col.get() };
             let trace_cols = trace.as_cols_ref().map_cols(|c| c.as_ref());
 
             // Evaluate constrains at row.
@@ -197,7 +210,7 @@ impl<E: FrameworkEval> ComponentProver<SimdBackend> for FrameworkComponent<E> {
                 );
                 col.set_packed(vec_row, col.packed_at(vec_row) + row_res * denom_inv)
             }
-        }
+        });
     }
 }
 

@@ -24,6 +24,25 @@ const fn parity_interleave<const N: usize>(odd: bool) -> [usize; N] {
     res
 }
 
+#[derive(Clone, Copy)]
+pub struct UnsafeShared<T>(pub *mut T);
+impl<T> UnsafeShared<T> {
+    /// # Safety
+    /// The caller must ensure no data races occur.
+    pub unsafe fn new(t: &mut T) -> Self {
+        Self(t as *mut T)
+    }
+    /// # Safety
+    /// The caller must ensure no data races occur.
+    #[allow(clippy::mut_from_ref)]
+    pub unsafe fn get(&self) -> &mut T {
+        &mut *self.0
+    }
+}
+
+unsafe impl<T> Sync for UnsafeShared<T> {}
+unsafe impl<T> Send for UnsafeShared<T> {}
+
 #[cfg(test)]
 mod tests {
     use std::simd::{u32x4, Swizzle};

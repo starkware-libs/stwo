@@ -22,7 +22,7 @@ pub mod poseidon252;
 pub mod prefix_sum;
 pub mod qm31;
 pub mod quotients;
-mod utils;
+pub mod utils;
 pub mod very_packed_m31;
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
