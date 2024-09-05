@@ -1,7 +1,11 @@
 use std::simd::{simd_swizzle, u32x16, u32x8};
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 use super::m31::PackedBaseField;
 use crate::core::fields::m31::P;
+use crate::parallel_iter;
 
 pub mod ifft;
 pub mod rfft;
@@ -9,6 +13,27 @@ pub mod rfft;
 pub const CACHED_FFT_LOG_SIZE: u32 = 16;
 
 pub const MIN_FFT_LOG_SIZE: u32 = 5;
+
+// TODO(andrew): Examine usage of unsafe in SIMD FFT.
+pub struct UnsafeMutI32(pub *mut u32);
+impl UnsafeMutI32 {
+    pub fn get(&self) -> *mut u32 {
+        self.0
+    }
+}
+
+unsafe impl Send for UnsafeMutI32 {}
+unsafe impl Sync for UnsafeMutI32 {}
+
+pub struct UnsafeConstI32(pub *const u32);
+impl UnsafeConstI32 {
+    pub fn get(&self) -> *const u32 {
+        self.0
+    }
+}
+
+unsafe impl Send for UnsafeConstI32 {}
+unsafe impl Sync for UnsafeConstI32 {}
 
 // TODO(spapini): FFTs return a redundant representation, that can get the value P. need to reduce
 // it somewhere.
@@ -29,8 +54,11 @@ pub const MIN_FFT_LOG_SIZE: u32 = 5;
 /// Behavior is undefined if `values` does not have the same alignment as [`u32x16`].
 pub unsafe fn transpose_vecs(values: *mut u32, log_n_vecs: usize) {
     let half = log_n_vecs / 2;
-    for b in 0..1 << (log_n_vecs & 1) {
-        for a in 0..1 << half {
+
+    let values = UnsafeMutI32(values);
+    parallel_iter!(0..1 << half).for_each(|a| {
+        let values = values.get();
+        for b in 0..1 << (log_n_vecs & 1) {
             for c in 0..1 << half {
                 let i = (a << (log_n_vecs - half)) | (b << half) | c;
                 let j = (c << (log_n_vecs - half)) | (b << half) | a;
@@ -43,7 +71,7 @@ pub unsafe fn transpose_vecs(values: *mut u32, log_n_vecs: usize) {
                 store(values.add(j << 4), val0);
             }
         }
-    }
+    });
 }
 
 /// Computes the twiddles for the first fft layer from the second, and loads both to SIMD registers.
