@@ -389,6 +389,7 @@ where
 
     // Prove constraints.
     let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
+    dbg!("Components {:?", components.components()[0]);
     let stark_proof =
         prove::<SimdBackend, _>(&components.component_provers(), channel, commitment_scheme)
             .unwrap();
