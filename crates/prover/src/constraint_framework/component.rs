@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt::Debug;
 use std::iter::zip;
 use std::ops::Deref;
 
@@ -58,7 +59,7 @@ impl TraceLocationAllocator {
 /// Implementing this trait introduces implementations for [`Component`] and [`ComponentProver`] for
 /// the SIMD backend.
 /// Note that the constraint framework only support components with columns of the same size.
-pub trait FrameworkEval {
+pub trait FrameworkEval: Debug {
     fn log_size(&self) -> u32;
 
     fn max_constraint_log_degree_bound(&self) -> u32;
@@ -66,6 +67,7 @@ pub trait FrameworkEval {
     fn evaluate<E: EvalAtRow>(&self, eval: E) -> E;
 }
 
+#[derive(Debug)]
 pub struct FrameworkComponent<C: FrameworkEval> {
     eval: C,
     trace_locations: TreeVec<TreeSubspan>,

@@ -1,5 +1,3 @@
-use std::fmt::{self, Debug, Formatter};
-
 use itertools::Itertools;
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
@@ -76,11 +74,5 @@ impl<'a, B: Backend> ComponentProvers<'a, B> {
             component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
         }
         accumulator.finalize()
-    }
-}
-
-impl Debug for dyn Component {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Component")
     }
 }

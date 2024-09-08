@@ -30,7 +30,7 @@ pub trait AirProver<B: Backend>: Air {
 
 /// A component is a set of trace columns of various sizes along with a set of
 /// constraints on them.
-pub trait Component {
+pub trait Component: std::fmt::Debug {
     fn n_constraints(&self) -> usize;
 
     fn max_constraint_log_degree_bound(&self) -> u32;

@@ -13,6 +13,7 @@ pub type BlakeRoundComponent = FrameworkComponent<BlakeRoundEval>;
 
 pub type RoundElements = LookupElements<N_ROUND_INPUT_FELTS>;
 
+#[derive(Debug)]
 pub struct BlakeRoundEval {
     pub log_size: u32,
     pub xor_lookup_elements: BlakeXorElements,

@@ -45,7 +45,7 @@ pub type PoseidonComponent = FrameworkComponent<PoseidonEval>;
 
 pub type PoseidonElements = LookupElements<{ N_STATE * 2 }>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PoseidonEval {
     pub log_n_rows: u32,
     pub lookup_elements: PoseidonElements,

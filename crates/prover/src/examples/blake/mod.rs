@@ -48,7 +48,7 @@ impl XorAccums {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BlakeXorElements {
     xor12: XorElements,
     xor9: XorElements,

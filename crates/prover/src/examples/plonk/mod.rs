@@ -23,7 +23,7 @@ use crate::core::ColumnVec;
 
 pub type PlonkComponent = FrameworkComponent<PlonkEval>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PlonkEval {
     pub log_n_rows: u32,
     pub lookup_elements: LookupElements<2>,

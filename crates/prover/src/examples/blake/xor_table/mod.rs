@@ -88,6 +88,7 @@ pub type XorTableComponent<const ELEM_BITS: u32, const EXPAND_BITS: u32> =
 pub type XorElements = LookupElements<3>;
 
 /// Evaluates the xor table.
+#[derive(Debug)]
 pub struct XorTableEval<const ELEM_BITS: u32, const EXPAND_BITS: u32> {
     pub lookup_elements: XorElements,
     pub claimed_sum: SecureField,

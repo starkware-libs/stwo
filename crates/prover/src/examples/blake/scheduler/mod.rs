@@ -15,6 +15,7 @@ pub type BlakeSchedulerComponent = FrameworkComponent<BlakeSchedulerEval>;
 
 pub type BlakeElements = LookupElements<N_ROUND_INPUT_FELTS>;
 
+#[derive(Debug)]
 pub struct BlakeSchedulerEval {
     pub log_size: u32,
     pub blake_lookup_elements: BlakeElements,
