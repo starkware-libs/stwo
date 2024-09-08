@@ -30,6 +30,6 @@ where
                 range.into_par_iter().find_any(check_nonce)
             }
         }
-        .expect("Nonce not found")
+        .expect("Grind failed to find a solution.")
     }
 }
