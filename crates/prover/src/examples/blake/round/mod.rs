@@ -17,7 +17,7 @@ pub struct BlakeRoundEval {
     pub log_size: u32,
     pub xor_lookup_elements: BlakeXorElements,
     pub round_lookup_elements: RoundElements,
-    pub claimed_sum: SecureField,
+    pub total_sum: SecureField,
 }
 
 impl FrameworkEval for BlakeRoundEval {
@@ -33,7 +33,7 @@ impl FrameworkEval for BlakeRoundEval {
             eval,
             xor_lookup_elements: &self.xor_lookup_elements,
             round_lookup_elements: &self.round_lookup_elements,
-            logup: LogupAtRow::new(1, self.claimed_sum, is_first),
+            logup: LogupAtRow::new(1, self.total_sum, is_first),
         };
         blake_eval.eval()
     }
@@ -44,7 +44,7 @@ pub fn blake_round_info() -> InfoEvaluator {
         log_size: 1,
         xor_lookup_elements: BlakeXorElements::dummy(),
         round_lookup_elements: RoundElements::dummy(),
-        claimed_sum: SecureField::zero(),
+        total_sum: SecureField::zero(),
     };
     component.evaluate(InfoEvaluator::default())
 }
@@ -84,7 +84,7 @@ mod tests {
 
         let xor_lookup_elements = BlakeXorElements::dummy();
         let round_lookup_elements = RoundElements::dummy();
-        let (interaction_trace, claimed_sum) = generate_interaction_trace(
+        let (interaction_trace, total_sum) = generate_interaction_trace(
             LOG_SIZE,
             lookup_data,
             &xor_lookup_elements,
@@ -98,7 +98,7 @@ mod tests {
             log_size: LOG_SIZE,
             xor_lookup_elements,
             round_lookup_elements,
-            claimed_sum,
+            total_sum,
         };
         crate::constraint_framework::assert_constraints(
             &trace_polys,
