@@ -200,7 +200,7 @@ pub fn prove_fibonacci_plonk(
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
-    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, &circuit, &lookup_elements);
+    let (trace, total_sum) = gen_interaction_trace(log_n_rows, &circuit, &lookup_elements);
     let mut tree_builder = commitment_scheme.tree_builder();
     let interaction_trace_location = tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -230,7 +230,7 @@ pub fn prove_fibonacci_plonk(
         PlonkEval {
             log_n_rows,
             lookup_elements,
-            claimed_sum,
+            claimed_sum: total_sum,
             base_trace_location,
             interaction_trace_location,
             constants_trace_location,

@@ -50,7 +50,7 @@ pub type PoseidonElements = LookupElements<{ N_STATE * 2 }>;
 pub struct PoseidonEval {
     pub log_n_rows: u32,
     pub lookup_elements: PoseidonElements,
-    pub claimed_sum: SecureField,
+    pub total_sum: SecureField,
 }
 impl FrameworkEval for PoseidonEval {
     fn log_size(&self) -> u32 {
@@ -61,7 +61,7 @@ impl FrameworkEval for PoseidonEval {
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let [is_first] = eval.next_interaction_mask(2, [0]);
-        let logup = LogupAtRow::new(1, self.claimed_sum, is_first);
+        let logup = LogupAtRow::new(1, self.total_sum, is_first);
         eval_poseidon_constraints(&mut eval, logup, &self.lookup_elements);
         eval
     }
@@ -354,7 +354,7 @@ pub fn prove_poseidon(
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
-    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, lookup_data, &lookup_elements);
+    let (trace, total_sum) = gen_interaction_trace(log_n_rows, lookup_data, &lookup_elements);
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -374,7 +374,7 @@ pub fn prove_poseidon(
         PoseidonEval {
             log_n_rows,
             lookup_elements,
-            claimed_sum,
+            total_sum,
         },
     );
     let proof = prove::<SimdBackend, _>(&[&component], channel, commitment_scheme).unwrap();
@@ -462,7 +462,7 @@ mod tests {
         // Trace.
         let (trace0, interaction_data) = gen_trace(LOG_N_ROWS);
         let lookup_elements = LookupElements::dummy();
-        let (trace1, claimed_sum) =
+        let (trace1, total_sum) =
             gen_interaction_trace(LOG_N_ROWS, interaction_data, &lookup_elements);
 
         let traces = TreeVec::new(vec![trace0, trace1, vec![gen_is_first(LOG_N_ROWS)]]);
@@ -472,7 +472,7 @@ mod tests {
             let [is_first] = eval.next_interaction_mask(2, [0]);
             eval_poseidon_constraints(
                 &mut eval,
-                LogupAtRow::new(1, claimed_sum, is_first),
+                LogupAtRow::new(1, total_sum, is_first),
                 &lookup_elements,
             );
         });
