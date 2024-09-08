@@ -19,7 +19,7 @@ pub struct BlakeSchedulerEval {
     pub log_size: u32,
     pub blake_lookup_elements: BlakeElements,
     pub round_lookup_elements: RoundElements,
-    pub claimed_sum: SecureField,
+    pub total_sum: SecureField,
 }
 impl FrameworkEval for BlakeSchedulerEval {
     fn log_size(&self) -> u32 {
@@ -34,7 +34,7 @@ impl FrameworkEval for BlakeSchedulerEval {
             &mut eval,
             &self.blake_lookup_elements,
             &self.round_lookup_elements,
-            LogupAtRow::new(1, self.claimed_sum, is_first),
+            LogupAtRow::new(1, self.total_sum, is_first),
         );
         eval
     }
@@ -45,7 +45,7 @@ pub fn blake_scheduler_info() -> InfoEvaluator {
         log_size: 1,
         blake_lookup_elements: BlakeElements::dummy(),
         round_lookup_elements: RoundElements::dummy(),
-        claimed_sum: SecureField::zero(),
+        total_sum: SecureField::zero(),
     };
     component.evaluate(InfoEvaluator::default())
 }
@@ -81,7 +81,7 @@ mod tests {
 
         let round_lookup_elements = RoundElements::dummy();
         let blake_lookup_elements = BlakeElements::dummy();
-        let (interaction_trace, claimed_sum) = gen_interaction_trace(
+        let (interaction_trace, total_sum) = gen_interaction_trace(
             LOG_SIZE,
             lookup_data,
             &round_lookup_elements,
@@ -95,7 +95,7 @@ mod tests {
             log_size: LOG_SIZE,
             blake_lookup_elements,
             round_lookup_elements,
-            claimed_sum,
+            total_sum,
         };
         crate::constraint_framework::assert_constraints(
             &trace_polys,
