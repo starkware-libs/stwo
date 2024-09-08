@@ -132,8 +132,7 @@ pub fn generate_interaction_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
         }
     }
 
-    let (interaction_trace, claimed_sum) = logup_gen.finalize();
-    (interaction_trace, claimed_sum)
+    logup_gen.finalize()
 }
 
 /// Generates the constant trace for the xor table.

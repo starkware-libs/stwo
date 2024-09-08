@@ -5,7 +5,7 @@ use num_traits::{One, Zero};
 
 use super::EvalAtRow;
 use crate::core::backend::simd::column::SecureColumn;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
@@ -13,7 +13,7 @@ use crate::core::backend::Column;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
@@ -25,8 +25,8 @@ use crate::core::ColumnVec;
 pub struct LogupAtRow<E: EvalAtRow> {
     /// The index of the interaction used for the cumulative sum columns.
     pub interaction: usize,
-    /// The claimed sum of all the fractions.
-    pub claimed_sum: SecureField,
+    /// The total sum of all the fractions.
+    pub total_sum: SecureField,
     /// The evaluation of the last cumulative sum column.
     pub prev_col_cumsum: E::EF,
     cur_frac: Option<Fraction<E::EF, E::EF>>,
@@ -36,10 +36,10 @@ pub struct LogupAtRow<E: EvalAtRow> {
     pub is_first: E::F,
 }
 impl<E: EvalAtRow> LogupAtRow<E> {
-    pub fn new(interaction: usize, claimed_sum: SecureField, is_first: E::F) -> Self {
+    pub fn new(interaction: usize, total_sum: SecureField, is_first: E::F) -> Self {
         Self {
             interaction,
-            claimed_sum,
+            total_sum,
             prev_col_cumsum: E::EF::zero(),
             cur_frac: None,
             is_finalized: false,
@@ -66,8 +66,8 @@ impl<E: EvalAtRow> LogupAtRow<E> {
         let [cur_cumsum, prev_row_cumsum] =
             eval.next_extension_interaction_mask(self.interaction, [0, -1]);
 
-        // Fix `prev_row_cumsum` by subtracting `claimed_sum` if this is the first row.
-        let fixed_prev_row_cumsum = prev_row_cumsum - self.is_first * self.claimed_sum;
+        // Fix `prev_row_cumsum` by subtracting `total_sum` if this is the first row.
+        let fixed_prev_row_cumsum = prev_row_cumsum - self.is_first * self.total_sum;
         let diff = cur_cumsum - fixed_prev_row_cumsum - self.prev_col_cumsum;
 
         eval.add_constraint(diff * frac.denominator - frac.numerator);
@@ -163,19 +163,16 @@ impl LogupTraceGenerator {
         ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         SecureField,
     ) {
-        // Compute claimed sum.
-        let last_col_coords = self.trace.pop().unwrap().columns;
-        let packed_sums: [PackedBaseField; SECURE_EXTENSION_DEGREE] = last_col_coords
-            .each_ref()
-            .map(|c| c.data.iter().copied().sum());
-        let base_sums = packed_sums.map(|s| s.pointwise_sum());
-        let claimed_sum = SecureField::from_m31_array(base_sums);
-
         // Prefix sum the last column.
+        let last_col_coords = self.trace.pop().unwrap().columns;
         let coord_prefix_sum = last_col_coords.map(inclusive_prefix_sum);
-        self.trace.push(SecureColumnByCoords {
+        let secure_prefix_sum = SecureColumnByCoords {
             columns: coord_prefix_sum,
-        });
+        };
+
+        // The last element in bit-reversed circle domain order is at index 1.
+        let total_sum = secure_prefix_sum.at(1);
+        self.trace.push(secure_prefix_sum);
 
         let trace = self
             .trace
@@ -186,7 +183,7 @@ impl LogupTraceGenerator {
                 })
             })
             .collect_vec();
-        (trace, claimed_sum)
+        (trace, total_sum)
     }
 }
 
