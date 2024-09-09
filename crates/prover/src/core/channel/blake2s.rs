@@ -67,7 +67,7 @@ impl Channel for Blake2sChannel {
         self.update_digest(hasher.finalize());
     }
 
-    fn mix_nonce(&mut self, nonce: u64) {
+    fn mix_u64(&mut self, nonce: u64) {
         let digest: [u32; 8] = unsafe { std::mem::transmute(self.digest) };
         let mut msg = [0; 16];
         msg[0] = nonce as u32;
