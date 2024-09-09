@@ -18,6 +18,7 @@ use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use crate::core::ColumnVec;
 
 /// Evaluates constraints for batched logups.
@@ -202,12 +203,14 @@ impl LogupTraceGenerator {
         }
     }
 
-    /// Finalize the trace. Returns the trace and the claimed sum of the last column.
-    pub fn finalize(
+    /// Finalize the trace. Returns the trace and the prefix sum of the last column at
+    /// the corresponding `indices`.
+    pub fn finalize<const N: usize>(
         mut self,
+        indices: [usize; N],
     ) -> (
         ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-        SecureField,
+        [SecureField; N],
     ) {
         // Prefix sum the last column.
         let last_col_coords = self.trace.pop().unwrap().columns;
@@ -215,7 +218,14 @@ impl LogupTraceGenerator {
         let secure_prefix_sum = SecureColumnByCoords {
             columns: coord_prefix_sum,
         };
-        let total_sum = secure_prefix_sum.at(1);
+        let returned_prefix_sums = indices.map(|idx| {
+            // Prefix sum column is in bit-reversed circle domain order.
+            let fixed_index = bit_reverse_index(
+                coset_index_to_circle_domain_index(idx, self.log_size),
+                self.log_size,
+            );
+            secure_prefix_sum.at(fixed_index)
+        });
         self.trace.push(secure_prefix_sum);
 
         let trace = self
@@ -230,7 +240,7 @@ impl LogupTraceGenerator {
                 })
             })
             .collect_vec();
-        (trace, total_sum)
+        (trace, returned_prefix_sums)
     }
 }
 
