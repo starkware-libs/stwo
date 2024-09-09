@@ -14,7 +14,7 @@ where
 
         let check_nonce = |nonce: &u64| {
             let mut channel = channel.clone();
-            channel.mix_nonce(*nonce);
+            channel.mix_u64(*nonce);
             channel.trailing_zeros() >= pow_bits
         };
 

@@ -230,8 +230,8 @@ pub fn generate_trace(
         generator
             .trace
             .into_iter()
-            .map(|eval| CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(domain, eval))
-            .collect_vec(),
+            .map(|eval| CircleEvaluation::new(domain, eval))
+            .collect(),
         BlakeRoundLookupData {
             xor_lookups: generator.xor_lookups,
             round_lookup: generator.round_lookup,

@@ -82,7 +82,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bounds)?;
 
         // Verify proof of work.
-        channel.mix_nonce(proof.proof_of_work);
+        channel.mix_u64(proof.proof_of_work);
         if channel.trailing_zeros() < self.config.pow_bits {
             return Err(VerificationError::ProofOfWork);
         }

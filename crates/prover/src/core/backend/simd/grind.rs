@@ -69,7 +69,7 @@ impl GrindOps<Poseidon252Channel> for SimdBackend {
         let mut nonce = 0;
         loop {
             let mut channel = channel.clone();
-            channel.mix_nonce(nonce);
+            channel.mix_u64(nonce);
             if channel.trailing_zeros() >= pow_bits {
                 return nonce;
             }

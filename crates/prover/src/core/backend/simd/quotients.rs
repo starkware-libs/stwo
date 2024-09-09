@@ -9,7 +9,7 @@ use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
 use crate::core::backend::cpu::quotients::{batch_random_coeffs, column_line_coeffs};
-use crate::core::backend::Column;
+use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
@@ -36,6 +36,30 @@ impl QuotientOps for SimdBackend {
         // Split the domain into a subdomain and a shift coset.
         // TODO(spapini): Move to the caller when Columns support slices.
         let (subdomain, mut subdomain_shifts) = domain.split(log_blowup_factor);
+        if subdomain.log_size() < LOG_N_LANES + 2 {
+            // Fall back to the CPU backend for small domains.
+            let columns = columns
+                .iter()
+                .map(|circle_eval| {
+                    CircleEvaluation::<CpuBackend, _, BitReversedOrder>::new(
+                        circle_eval.domain,
+                        circle_eval.values.to_cpu(),
+                    )
+                })
+                .collect_vec();
+            let eval = CpuBackend::accumulate_quotients(
+                domain,
+                &columns.iter().collect_vec(),
+                random_coeff,
+                sample_batches,
+                log_blowup_factor,
+            );
+
+            return SecureEvaluation::new(
+                domain,
+                SecureColumnByCoords::from_iter(eval.values.to_vec()),
+            );
+        }
 
         // Bit reverse the shifts.
         // Since we traverse the domain in bit-reversed order, we need bit-reverse the shifts.
@@ -282,13 +306,8 @@ mod tests {
         }];
         let cpu_columns = columns
             .iter()
-            .map(|c| {
-                CircleEvaluation::<CpuBackend, _, BitReversedOrder>::new(
-                    c.domain,
-                    c.values.to_cpu(),
-                )
-            })
-            .collect::<Vec<_>>();
+            .map(|c| CircleEvaluation::new(c.domain, c.values.to_cpu()))
+            .collect_vec();
         let cpu_result = CpuBackend::accumulate_quotients(
             domain,
             &cpu_columns.iter().collect_vec(),

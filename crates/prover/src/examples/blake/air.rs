@@ -55,8 +55,7 @@ impl BlakeStatement0 {
         TreeVec::concat_cols(sizes.into_iter())
     }
     fn mix_into(&self, channel: &mut impl Channel) {
-        // TODO(spapini): Do this better.
-        channel.mix_nonce(self.log_size as u64);
+        channel.mix_u64(self.log_size as u64);
     }
 }
 
@@ -389,9 +388,7 @@ where
 
     // Prove constraints.
     let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
-    let stark_proof =
-        prove::<SimdBackend, _>(&components.component_provers(), channel, commitment_scheme)
-            .unwrap();
+    let stark_proof = prove(&components.component_provers(), channel, commitment_scheme).unwrap();
 
     BlakeProof {
         stmt0,
