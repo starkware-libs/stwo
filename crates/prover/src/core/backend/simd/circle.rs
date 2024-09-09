@@ -4,12 +4,12 @@ use std::mem::transmute;
 use bytemuck::{cast_slice, Zeroable};
 use num_traits::One;
 
-use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE};
+use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
 use crate::core::backend::simd::column::BaseColumn;
-use crate::core::backend::{Col, CpuBackend};
+use crate::core::backend::{Col, Column, CpuBackend};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -123,7 +123,7 @@ impl SimdBackend {
 // Decide if and when it's ok and what to do if it's not.
 impl PolyOps for SimdBackend {
     // The twiddles type is i32, and not BaseField. This is because the fast AVX mul implementation
-    //  requries one of the numbers to be shifted left by 1 bit. This is not a reduced
+    //  requires one of the numbers to be shifted left by 1 bit. This is not a reduced
     //  representation of the field.
     type Twiddles = Vec<u32>;
 
@@ -143,9 +143,13 @@ impl PolyOps for SimdBackend {
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
         twiddles: &TwiddleTree<Self>,
     ) -> CirclePoly<Self> {
-        let mut values = eval.values;
-        let log_size = values.length.ilog2();
+        let log_size = eval.values.length.ilog2();
+        if log_size < MIN_FFT_LOG_SIZE {
+            let cpu_poly = CpuBackend::interpolate(eval.to_cpu(), &twiddles.to_cpu());
+            return CirclePoly::new(cpu_poly.coeffs.into_iter().collect());
+        }
 
+        let mut values = eval.values;
         let twiddles = domain_line_twiddles_from_tree(eval.domain, &twiddles.itwiddles);
 
         // Safe because [PackedBaseField] is aligned on 64 bytes.
@@ -229,6 +233,18 @@ impl PolyOps for SimdBackend {
             log_size >= fft_log_size,
             "Can only evaluate on larger domains"
         );
+
+        if fft_log_size < MIN_FFT_LOG_SIZE {
+            let cpu_eval = CpuBackend::evaluate(
+                &CirclePoly::new(poly.coeffs.to_cpu()),
+                domain,
+                &twiddles.to_cpu(),
+            );
+            return CircleEvaluation::new(
+                cpu_eval.domain,
+                Col::<SimdBackend, BaseField>::from_iter(cpu_eval.values),
+            );
+        }
 
         let twiddles = domain_line_twiddles_from_tree(domain, &twiddles.twiddles);
 
