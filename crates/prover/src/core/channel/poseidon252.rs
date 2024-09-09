@@ -81,7 +81,7 @@ impl Channel for Poseidon252Channel {
         self.update_digest(poseidon_hash_many(&res));
     }
 
-    fn mix_nonce(&mut self, nonce: u64) {
+    fn mix_u64(&mut self, nonce: u64) {
         self.update_digest(poseidon_hash(self.digest, nonce.into()));
     }
 
