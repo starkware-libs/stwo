@@ -55,8 +55,7 @@ impl BlakeStatement0 {
         TreeVec::concat_cols(sizes.into_iter())
     }
     fn mix_into(&self, channel: &mut impl Channel) {
-        // TODO(spapini): Do this better.
-        channel.mix_nonce(self.log_size as u64);
+        channel.mix_u64(self.log_size as u64);
     }
 }
 
