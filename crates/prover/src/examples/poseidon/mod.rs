@@ -325,7 +325,8 @@ pub fn gen_interaction_trace(
         col_gen.finalize_col();
     }
 
-    logup_gen.finalize()
+    let (trace, [total_sum]) = logup_gen.finalize([(1 << log_size) - 1]);
+    (trace, total_sum)
 }
 
 pub fn prove_poseidon(
