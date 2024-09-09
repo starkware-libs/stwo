@@ -167,5 +167,5 @@ pub fn gen_interaction_trace(
     }
     col_gen.finalize_col();
 
-    logup_gen.finalize()
+    logup_gen.finalize_last()
 }
