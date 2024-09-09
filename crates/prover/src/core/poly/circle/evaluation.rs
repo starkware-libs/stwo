@@ -5,7 +5,8 @@ use educe::Educe;
 
 use super::{CanonicCoset, CircleDomain, CirclePoly, PolyOps};
 use crate::core::backend::cpu::CpuCircleEvaluation;
-use crate::core::backend::{Col, Column};
+use crate::core::backend::simd::SimdBackend;
+use crate::core::backend::{Col, Column, CpuBackend};
 use crate::core::circle::{CirclePointIndex, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, FieldOps};
@@ -104,6 +105,15 @@ impl<B: FieldOps<F>, F: ExtensionOf<BaseField>> CircleEvaluation<B, F, BitRevers
             self.domain.find(point_index).expect("Not in domain"),
             self.domain.log_size(),
         ))
+    }
+}
+
+impl<F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<SimdBackend, F, EvalOrder>
+where
+    SimdBackend: FieldOps<F>,
+{
+    pub fn to_cpu(&self) -> CircleEvaluation<CpuBackend, F, EvalOrder> {
+        CircleEvaluation::new(self.domain, self.values.to_cpu())
     }
 }
 
