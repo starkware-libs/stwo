@@ -5,6 +5,7 @@ pub mod constant_columns;
 mod info;
 pub mod logup;
 mod point;
+pub mod poly;
 mod simd_domain;
 
 use std::array;
