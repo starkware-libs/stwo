@@ -33,7 +33,7 @@ impl FrameworkEval for BlakeRoundEval {
             eval,
             xor_lookup_elements: &self.xor_lookup_elements,
             round_lookup_elements: &self.round_lookup_elements,
-            logup: LogupAtRow::new(1, self.total_sum, is_first),
+            logup: LogupAtRow::new(1, self.total_sum, None, is_first),
         };
         blake_eval.eval()
     }
