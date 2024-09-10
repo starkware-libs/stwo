@@ -61,7 +61,7 @@ impl FrameworkEval for PoseidonEval {
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let [is_first] = eval.next_interaction_mask(2, [0]);
-        let logup = LogupAtRow::new(1, self.total_sum, is_first);
+        let logup = LogupAtRow::new(1, self.total_sum, None, is_first);
         eval_poseidon_constraints(&mut eval, logup, &self.lookup_elements);
         eval
     }
@@ -482,7 +482,7 @@ mod tests {
             let [is_first] = eval.next_interaction_mask(2, [0]);
             eval_poseidon_constraints(
                 &mut eval,
-                LogupAtRow::new(1, total_sum, is_first),
+                LogupAtRow::new(1, total_sum, None, is_first),
                 &lookup_elements,
             );
         });
