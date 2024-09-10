@@ -21,6 +21,10 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use crate::core::ColumnVec;
 
+/// Represents the value of the prefix sum column at some index.
+/// Should be used to eliminate padded rows for the logup sum.
+pub type ClaimedPrefixSum = (SecureField, isize);
+
 /// Evaluates constraints for batched logups.
 /// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = claimed_sum.
 pub struct LogupAtRow<E: EvalAtRow> {
@@ -28,6 +32,10 @@ pub struct LogupAtRow<E: EvalAtRow> {
     pub interaction: usize,
     /// The total sum of all the fractions.
     pub total_sum: SecureField,
+    /// The claimed sum of the relevant fractions.
+    /// This is used for padding the component with default rows. Padding should be in bit-reverse.
+    /// None if the claimed_sum is the total_sum.
+    pub claimed_sum: Option<ClaimedPrefixSum>,
     /// The evaluation of the last cumulative sum column.
     pub prev_col_cumsum: E::EF,
     cur_frac: Option<Fraction<E::EF, E::EF>>,
@@ -37,10 +45,16 @@ pub struct LogupAtRow<E: EvalAtRow> {
     pub is_first: E::F,
 }
 impl<E: EvalAtRow> LogupAtRow<E> {
-    pub fn new(interaction: usize, total_sum: SecureField, is_first: E::F) -> Self {
+    pub fn new(
+        interaction: usize,
+        total_sum: SecureField,
+        claimed_sum: Option<ClaimedPrefixSum>,
+        is_first: E::F,
+    ) -> Self {
         Self {
             interaction,
             total_sum,
+            claimed_sum,
             prev_col_cumsum: E::EF::zero(),
             cur_frac: None,
             is_finalized: false,
@@ -64,9 +78,23 @@ impl<E: EvalAtRow> LogupAtRow<E> {
 
         let frac = self.cur_frac.unwrap();
 
-        let [cur_cumsum, prev_row_cumsum] =
-            eval.next_extension_interaction_mask(self.interaction, [0, -1]);
+        // TODO(ShaharS): remove `claimed_row_index` interaction value and get the shifted offset
+        // from the is_first column when constant columns are supported.
+        let (cur_cumsum, prev_row_cumsum) = match self.claimed_sum {
+            Some((claimed_sum, claimed_row_index)) => {
+                let [cur_cumsum, prev_row_cumsum, claimed_cumsum] = eval
+                    .next_extension_interaction_mask(self.interaction, [0, -1, claimed_row_index]);
 
+                // Constrain that the claimed_sum in case that it is not equal to the total_sum.
+                eval.add_constraint((claimed_cumsum - claimed_sum) * self.is_first);
+                (cur_cumsum, prev_row_cumsum)
+            }
+            None => {
+                let [cur_cumsum, prev_row_cumsum] =
+                    eval.next_extension_interaction_mask(self.interaction, [0, -1]);
+                (cur_cumsum, prev_row_cumsum)
+            }
+        };
         // Fix `prev_row_cumsum` by subtracting `total_sum` if this is the first row.
         let fixed_prev_row_cumsum = prev_row_cumsum - self.is_first * self.total_sum;
         let diff = cur_cumsum - fixed_prev_row_cumsum - self.prev_col_cumsum;
@@ -269,7 +297,8 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_logup_not_finalized_panic() {
-        let mut logup = LogupAtRow::<InfoEvaluator>::new(1, SecureField::one(), BaseField::one());
+        let mut logup =
+            LogupAtRow::<InfoEvaluator>::new(1, SecureField::one(), None, BaseField::one());
         logup.write_frac(
             &mut InfoEvaluator::default(),
             Fraction::new(SecureField::one(), SecureField::one()),

@@ -34,7 +34,7 @@ impl FrameworkEval for BlakeSchedulerEval {
             &mut eval,
             &self.blake_lookup_elements,
             &self.round_lookup_elements,
-            LogupAtRow::new(1, self.total_sum, is_first),
+            LogupAtRow::new(1, self.total_sum, None, is_first),
         );
         eval
     }
