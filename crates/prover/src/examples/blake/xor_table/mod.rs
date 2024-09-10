@@ -107,7 +107,7 @@ impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> FrameworkEval
         let xor_eval = constraints::XorTableEval::<'_, _, ELEM_BITS, EXPAND_BITS> {
             eval,
             lookup_elements: &self.lookup_elements,
-            logup: LogupAtRow::new(1, self.claimed_sum, is_first),
+            logup: LogupAtRow::new(1, self.claimed_sum, None, is_first),
         };
         xor_eval.eval()
     }
