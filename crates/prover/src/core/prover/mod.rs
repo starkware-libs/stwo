@@ -1,4 +1,4 @@
-use std::array;
+use std::{array, mem};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -13,8 +13,12 @@ use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::vcs::ops::MerkleHasher;
 use crate::core::channel::Channel;
 use crate::core::circle::CirclePoint;
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fri::{FriLayerProof, FriProof};
 use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
+use crate::core::vcs::hash::Hash;
+use crate::core::vcs::prover::MerkleDecommitment;
 use crate::core::vcs::verifier::MerkleVerificationError;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -163,4 +167,154 @@ pub enum VerificationError {
     Fri(#[from] FriVerificationError),
     #[error("Proof of work verification failed.")]
     ProofOfWork,
+}
+
+impl<H: MerkleHasher> StarkProof<H> {
+    /// Returns the estimate size (in bytes) of the proof.
+    pub fn size_estimate(&self) -> usize {
+        SizeEstimate::size_estimate(self)
+    }
+
+    /// Returns size estimates (in bytes) for different parts of the proof.
+    pub fn size_breakdown_estimate(&self) -> StarkProofSizeBreakdown {
+        let Self {
+            commitments,
+            commitment_scheme_proof,
+        } = self;
+
+        let CommitmentSchemeProof {
+            sampled_values,
+            decommitments,
+            queried_values,
+            proof_of_work: _,
+            fri_proof,
+        } = commitment_scheme_proof;
+
+        let FriProof {
+            inner_layers,
+            last_layer_poly,
+        } = fri_proof;
+
+        let mut inner_layers_samples_size = 0;
+        let mut inner_layers_hashes_size = 0;
+
+        for FriLayerProof {
+            evals_subset,
+            decommitment,
+            commitment,
+        } in inner_layers
+        {
+            inner_layers_samples_size += evals_subset.size_estimate();
+            inner_layers_hashes_size += decommitment.size_estimate() + commitment.size_estimate();
+        }
+
+        StarkProofSizeBreakdown {
+            oods_samples: sampled_values.size_estimate(),
+            queries_values: queried_values.size_estimate(),
+            fri_samples: last_layer_poly.size_estimate() + inner_layers_samples_size,
+            fri_decommitments: inner_layers_hashes_size,
+            trace_decommitments: commitments.size_estimate() + decommitments.size_estimate(),
+        }
+    }
+}
+
+/// Size estimate (in bytes) for different parts of the proof.
+pub struct StarkProofSizeBreakdown {
+    pub oods_samples: usize,
+    pub queries_values: usize,
+    pub fri_samples: usize,
+    pub fri_decommitments: usize,
+    pub trace_decommitments: usize,
+}
+
+trait SizeEstimate {
+    fn size_estimate(&self) -> usize;
+}
+
+impl<T: SizeEstimate> SizeEstimate for [T] {
+    fn size_estimate(&self) -> usize {
+        self.iter().map(|v| v.size_estimate()).sum()
+    }
+}
+
+impl<T: SizeEstimate> SizeEstimate for Vec<T> {
+    fn size_estimate(&self) -> usize {
+        self.iter().map(|v| v.size_estimate()).sum()
+    }
+}
+
+impl<H: Hash> SizeEstimate for H {
+    fn size_estimate(&self) -> usize {
+        mem::size_of::<Self>()
+    }
+}
+
+impl SizeEstimate for BaseField {
+    fn size_estimate(&self) -> usize {
+        mem::size_of::<Self>()
+    }
+}
+
+impl SizeEstimate for SecureField {
+    fn size_estimate(&self) -> usize {
+        mem::size_of::<Self>()
+    }
+}
+
+impl<H: MerkleHasher> SizeEstimate for MerkleDecommitment<H> {
+    fn size_estimate(&self) -> usize {
+        let Self {
+            hash_witness,
+            column_witness,
+        } = self;
+        hash_witness.size_estimate() + column_witness.size_estimate()
+    }
+}
+
+impl<H: MerkleHasher> SizeEstimate for FriLayerProof<H> {
+    fn size_estimate(&self) -> usize {
+        let Self {
+            evals_subset,
+            decommitment,
+            commitment,
+        } = self;
+        evals_subset.size_estimate() + decommitment.size_estimate() + commitment.size_estimate()
+    }
+}
+
+impl<H: MerkleHasher> SizeEstimate for FriProof<H> {
+    fn size_estimate(&self) -> usize {
+        let Self {
+            inner_layers,
+            last_layer_poly,
+        } = self;
+        inner_layers.size_estimate() + last_layer_poly.size_estimate()
+    }
+}
+
+impl<H: MerkleHasher> SizeEstimate for CommitmentSchemeProof<H> {
+    fn size_estimate(&self) -> usize {
+        let Self {
+            sampled_values,
+            decommitments,
+            queried_values,
+            proof_of_work,
+            fri_proof,
+        } = self;
+        sampled_values.size_estimate()
+            + decommitments.size_estimate()
+            + queried_values.size_estimate()
+            + mem::size_of_val(proof_of_work)
+            + fri_proof.size_estimate()
+    }
+}
+
+impl<H: MerkleHasher> SizeEstimate for StarkProof<H> {
+    fn size_estimate(&self) -> usize {
+        let Self {
+            commitments,
+            commitment_scheme_proof,
+        } = self;
+        commitments.size_estimate() + commitment_scheme_proof.size_estimate()
+    }
 }
