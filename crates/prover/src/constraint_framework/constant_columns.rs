@@ -1,10 +1,14 @@
+use std::collections::HashMap;
+
 use num_traits::One;
 
 use crate::core::backend::{Backend, Col, Column};
 use crate::core::fields::m31::BaseField;
+use crate::core::pcs::TreeLocation;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
+use crate::core::vcs::blake2_hash::Blake2sHash;
 
 /// Generates a column with a single one at the first position, and zeros elsewhere.
 pub fn gen_is_first<B: Backend>(log_size: u32) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
@@ -34,4 +38,90 @@ pub fn gen_is_step_with_offset<B: Backend>(
     }
 
     CircleEvaluation::new(CanonicCoset::new(log_size).circle_domain(), col)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConstantColumn {
+    XorTable(u32, u32, usize),
+    One(u32),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ConstantTableLocation {
+    locations: HashMap<ConstantColumn, usize>,
+}
+
+impl ConstantTableLocation {
+    pub fn add(&mut self, column: ConstantColumn, location: usize) {
+        if self.locations.contains_key(&column) {
+            panic!("Type already exists.");
+        }
+        self.locations.insert(column, location);
+    }
+
+    pub fn get_location(&self, column: ConstantColumn) -> TreeLocation {
+        TreeLocation {
+            tree_index: 0,
+            col_index: *self.locations.get(&column).unwrap_or_else(|| {
+                println!("Column not found: {:?}", column);
+                println!("Locations: {:?}", self.locations);
+                panic!()
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct StaticTree {
+    pub root: Blake2sHash,
+    pub locations: ConstantTableLocation,
+}
+
+impl StaticTree {
+    pub fn blake_tree() -> Self {
+        let root = Blake2sHash::default();
+        let mut locations = ConstantTableLocation::default();
+        locations.add(ConstantColumn::XorTable(12, 4, 0), 0);
+        locations.add(ConstantColumn::XorTable(12, 4, 1), 1);
+        locations.add(ConstantColumn::XorTable(12, 4, 2), 2);
+        locations.add(ConstantColumn::XorTable(9, 2, 0), 3);
+        locations.add(ConstantColumn::XorTable(9, 2, 1), 4);
+        locations.add(ConstantColumn::XorTable(9, 2, 2), 5);
+        locations.add(ConstantColumn::XorTable(8, 2, 0), 6);
+        locations.add(ConstantColumn::XorTable(8, 2, 1), 7);
+        locations.add(ConstantColumn::XorTable(8, 2, 2), 8);
+
+        locations.add(ConstantColumn::XorTable(7, 2, 0), 12);
+        locations.add(ConstantColumn::XorTable(7, 2, 1), 13);
+        locations.add(ConstantColumn::XorTable(7, 2, 2), 14);
+
+        locations.add(ConstantColumn::XorTable(4, 0, 0), 9);
+        locations.add(ConstantColumn::XorTable(4, 0, 1), 10);
+        locations.add(ConstantColumn::XorTable(4, 0, 2), 11);
+
+        StaticTree { root, locations }
+    }
+
+    pub fn add1(log_size: u32) -> Self {
+        let root = Blake2sHash::default();
+        let mut locations = ConstantTableLocation::default();
+        locations.add(ConstantColumn::One(log_size), 0);
+        StaticTree { root, locations }
+    }
+
+    pub fn get_location(&self, column: ConstantColumn) -> TreeLocation {
+        self.locations.get_location(column)
+    }
+
+    pub fn n_columns(&self) -> usize {
+        self.locations.locations.len()
+    }
+
+    pub fn log_sizes(&self) -> Vec<u32> {
+        self.locations
+            .locations
+            .iter()
+            .map(|(_, &log_size)| log_size as u32)
+            .collect()
+    }
 }

@@ -37,7 +37,7 @@ pub struct TraceGenerator {
 impl TraceGenerator {
     fn new(log_size: u32) -> Self {
         assert!(log_size >= LOG_N_LANES);
-        let trace = (0..blake_round_info().mask_offsets[0].len())
+        let trace = (0..blake_round_info().mask_offsets[1].len())
             .map(|_| unsafe { Col::<SimdBackend, BaseField>::uninitialized(1 << log_size) })
             .collect_vec();
         Self {

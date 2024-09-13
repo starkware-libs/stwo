@@ -20,7 +20,7 @@ use crate::core::utils::generate_secure_powers;
 /// For n accumulated evaluations, the i'th evaluation is multiplied by alpha^(N-1-i).
 pub struct PointEvaluationAccumulator {
     random_coeff: SecureField,
-    accumulation: SecureField,
+    pub accumulation: SecureField,
 }
 
 impl PointEvaluationAccumulator {

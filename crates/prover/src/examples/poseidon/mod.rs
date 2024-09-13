@@ -59,7 +59,7 @@ impl FrameworkEval for PoseidonEval {
         self.log_n_rows + LOG_EXPAND
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let logup = LogupAtRow::new(1, self.claimed_sum, self.log_n_rows);
+        let logup = LogupAtRow::new(2, self.claimed_sum, self.log_n_rows);
         eval_poseidon_constraints(&mut eval, logup, &self.lookup_elements);
         eval
     }

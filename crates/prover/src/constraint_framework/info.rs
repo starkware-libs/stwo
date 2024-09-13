@@ -2,6 +2,7 @@ use std::ops::Mul;
 
 use num_traits::One;
 
+use super::constant_columns::ConstantColumn;
 use super::EvalAtRow;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -12,6 +13,7 @@ use crate::core::pcs::TreeVec;
 #[derive(Default)]
 pub struct InfoEvaluator {
     pub mask_offsets: TreeVec<Vec<Vec<isize>>>,
+    pub external_cols: Vec<ConstantColumn>,
     pub n_constraints: usize,
 }
 impl InfoEvaluator {
@@ -44,5 +46,14 @@ impl EvalAtRow for InfoEvaluator {
 
     fn combine_ef(_values: [Self::F; 4]) -> Self::EF {
         SecureField::one()
+    }
+
+    fn constant_interaction_mask<const N: usize>(
+        &mut self,
+        col: ConstantColumn,
+        offsets: [isize; N],
+    ) -> [Self::F; N] {
+        self.external_cols.push(col);
+        self.next_interaction_mask(0, offsets)
     }
 }

@@ -13,6 +13,7 @@ use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 pub use assert::{assert_constraints, AssertEvaluator};
 pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
+use constant_columns::ConstantColumn;
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
@@ -65,16 +66,24 @@ pub trait EvalAtRow {
 
     /// Returns the next mask value for the first interaction at offset 0.
     fn next_trace_mask(&mut self) -> Self::F {
-        let [mask_item] = self.next_interaction_mask(0, [0]);
+        let [mask_item] = self.next_interaction_mask(1, [0]);
         mask_item
     }
 
-    /// Returns the mask values of the given offsets for the next column in the interaction.
+    /// Returns the mask values of the given offsets for the next owned column in the interaction.
     fn next_interaction_mask<const N: usize>(
         &mut self,
         interaction: usize,
         offsets: [isize; N],
     ) -> [Self::F; N];
+
+    fn constant_interaction_mask<const N: usize>(
+        &mut self,
+        _col: ConstantColumn,
+        offsets: [isize; N],
+    ) -> [Self::F; N] {
+        self.next_interaction_mask(0, offsets)
+    }
 
     /// Returns the extension mask values of the given offsets for the next extension degree many
     /// columns in the interaction.

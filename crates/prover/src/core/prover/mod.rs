@@ -33,7 +33,9 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     channel: &mut MC::C,
     commitment_scheme: &mut CommitmentSchemeProver<'_, B, MC>,
 ) -> Result<StarkProof<MC::H>, ProvingError> {
-    let component_provers = ComponentProvers(components.to_vec());
+    let component_provers = ComponentProvers {
+        components: components.to_vec(),
+    };
     let trace = commitment_scheme.trace();
 
     // Evaluate and commit on composition polynomial.
@@ -53,22 +55,30 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let mut sample_points = component_provers.components().mask_points(oods_point);
+    let mut sample_points = component_provers
+        .components()
+        .mask_points_by_column(oods_point);
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
 
     // Prove the trace and composition OODS values, and retrieve them.
-    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
+    let commitment_scheme_proof = commitment_scheme.prove_values(&sample_points, channel);
 
     let sampled_oods_values = &commitment_scheme_proof.sampled_values;
     let composition_oods_eval = extract_composition_eval(sampled_oods_values).unwrap();
+
+    // Evaluations from "prove_values" are ordered by commitment order. Reorg according to component
+    // usage.
+    let reorganized_sample_values = component_provers
+        .components()
+        .reorganize_const_values_by_component(oods_point, sampled_oods_values.clone());
 
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.
     if composition_oods_eval
         != component_provers
             .components()
-            .eval_composition_polynomial_at_point(oods_point, sampled_oods_values, random_coeff)
+            .eval_composition_polynomial_at_point(oods_point, &reorganized_sample_values, random_coeff)
     {
         return Err(ProvingError::ConstraintsNotSatisfied);
     }
@@ -87,7 +97,9 @@ pub fn verify<MC: MerkleChannel>(
     commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
     proof: StarkProof<MC::H>,
 ) -> Result<(), VerificationError> {
-    let components = Components(components.to_vec());
+    let components = Components {
+        components: components.to_vec(),
+    };
     let random_coeff = channel.draw_felt();
 
     // Read composition polynomial commitment.
@@ -99,9 +111,10 @@ pub fn verify<MC: MerkleChannel>(
 
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
+    println!("oods_point: {:?}", oods_point);
 
     // Get mask sample points relative to oods point.
-    let mut sample_points = components.mask_points(oods_point);
+    let mut sample_points = components.mask_points_by_column(oods_point);
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
 
@@ -109,11 +122,16 @@ pub fn verify<MC: MerkleChannel>(
     let composition_oods_eval = extract_composition_eval(sampled_oods_values).map_err(|_| {
         VerificationError::InvalidStructure("Unexpected sampled_values structure".to_string())
     })?;
+    println!("random_coeff: {:?}", random_coeff);
+
+    // Reconsturct the constant values from the condensed values.
+    let reogranized_sample_values =
+        components.reorganize_const_values_by_component(oods_point, sampled_oods_values.clone());
 
     if composition_oods_eval
         != components.eval_composition_polynomial_at_point(
             oods_point,
-            sampled_oods_values,
+            &reogranized_sample_values,
             random_coeff,
         )
     {

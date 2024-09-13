@@ -33,7 +33,7 @@ impl FrameworkEval for BlakeSchedulerEval {
             &mut eval,
             &self.blake_lookup_elements,
             &self.round_lookup_elements,
-            LogupAtRow::new(1, self.claimed_sum, self.log_size),
+            LogupAtRow::new(2, self.claimed_sum, self.log_size),
         );
         eval
     }

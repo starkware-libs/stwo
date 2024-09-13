@@ -54,7 +54,7 @@ pub fn gen_trace(
     let mut lookup_data = BlakeSchedulerLookupData::new(log_size);
     let mut round_inputs = Vec::with_capacity(inputs.len() * N_ROUNDS);
 
-    let mut trace = (0..blake_scheduler_info().mask_offsets[0].len())
+    let mut trace = (0..blake_scheduler_info().mask_offsets[1].len())
         .map(|_| unsafe { BaseColumn::uninitialized(1 << log_size) })
         .collect_vec();
 

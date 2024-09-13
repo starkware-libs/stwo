@@ -8,6 +8,7 @@ use tracing::{span, Level};
 use super::round::{blake_round_info, BlakeRoundComponent, BlakeRoundEval};
 use super::scheduler::{BlakeSchedulerComponent, BlakeSchedulerEval};
 use super::xor_table::{XorTableComponent, XorTableEval};
+use crate::constraint_framework::constant_columns::StaticTree;
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -52,7 +53,10 @@ impl BlakeStatement0 {
         sizes.push(xor_table::trace_sizes::<7, 2>());
         sizes.push(xor_table::trace_sizes::<4, 0>());
 
-        TreeVec::concat_cols(sizes.into_iter())
+        // Constant columns fix.
+        let mut res = TreeVec::concat_cols(sizes.into_iter());
+        res[0] = vec![16, 16, 16, 14, 14, 14, 12, 12, 12, 8, 8, 8, 10, 10, 10];
+        res
     }
     fn mix_into(&self, channel: &mut impl Channel) {
         channel.mix_u64(self.log_size as u64);
@@ -118,8 +122,14 @@ pub struct BlakeComponents {
     xor4: XorTableComponent<4, 0>,
 }
 impl BlakeComponents {
-    fn new(stmt0: &BlakeStatement0, all_elements: &AllElements, stmt1: &BlakeStatement1) -> Self {
+    fn new(
+        stmt0: &BlakeStatement0,
+        all_elements: &AllElements,
+        stmt1: &BlakeStatement1,
+        static_tree: StaticTree,
+    ) -> Self {
         let tree_span_provider = &mut TraceLocationAllocator::default();
+        tree_span_provider.static_table_offsets = static_tree.locations;
         Self {
             scheduler_component: BlakeSchedulerComponent::new(
                 tree_span_provider,
@@ -251,7 +261,24 @@ where
     let channel = &mut MC::C::default();
     let commitment_scheme = &mut CommitmentSchemeProver::new(config, &twiddles);
 
-    let span = span!(Level::INFO, "Trace").entered();
+    // Statement0.
+    let stmt0 = BlakeStatement0 { log_size };
+    stmt0.mix_into(channel);
+    // Constant trace.
+    let span = span!(Level::INFO, "Constant Trace").entered();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(
+        chain![
+            xor_table::generate_constant_trace::<12, 4>(),
+            xor_table::generate_constant_trace::<9, 2>(),
+            xor_table::generate_constant_trace::<8, 2>(),
+            xor_table::generate_constant_trace::<4, 0>(),
+            xor_table::generate_constant_trace::<7, 2>(),
+        ]
+        .collect_vec(),
+    );
+    tree_builder.commit(channel);
+    span.exit();
 
     // Scheduler.
     let (scheduler_trace, scheduler_lookup_data, round_inputs) =
@@ -275,11 +302,8 @@ where
     let (xor_trace7, xor_lookup_data7) = xor_table::generate_trace(xor_accums.xor7);
     let (xor_trace4, xor_lookup_data4) = xor_table::generate_trace(xor_accums.xor4);
 
-    // Statement0.
-    let stmt0 = BlakeStatement0 { log_size };
-    stmt0.mix_into(channel);
-
     // Trace commitment.
+    let span = span!(Level::INFO, "Trace").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(
         chain![
@@ -294,7 +318,6 @@ where
         .collect_vec(),
     );
     tree_builder.commit(channel);
-    span.exit();
 
     // Draw lookup element.
     let all_elements = AllElements::draw(channel);
@@ -346,6 +369,7 @@ where
         ]
         .collect_vec(),
     );
+    tree_builder.commit(channel);
 
     // Statement1.
     let stmt1 = BlakeStatement1 {
@@ -358,23 +382,6 @@ where
         xor4_claimed_sum,
     };
     stmt1.mix_into(channel);
-    tree_builder.commit(channel);
-    span.exit();
-
-    // Constant trace.
-    let span = span!(Level::INFO, "Constant Trace").entered();
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(
-        chain![
-            xor_table::generate_constant_trace::<12, 4>(),
-            xor_table::generate_constant_trace::<9, 2>(),
-            xor_table::generate_constant_trace::<8, 2>(),
-            xor_table::generate_constant_trace::<7, 2>(),
-            xor_table::generate_constant_trace::<4, 0>(),
-        ]
-        .collect_vec(),
-    );
-    tree_builder.commit(channel);
     span.exit();
 
     assert_eq!(
@@ -386,8 +393,8 @@ where
         stmt0.log_sizes().0
     );
 
-    // Prove constraints.
-    let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
+    // Prove constraints
+    let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1, StaticTree::blake_tree());
     let stark_proof = prove(&components.component_provers(), channel, commitment_scheme).unwrap();
 
     BlakeProof {
@@ -411,21 +418,22 @@ pub fn verify_blake<MC: MerkleChannel>(
 
     let log_sizes = stmt0.log_sizes();
 
-    // Trace.
+    // Constant trace.
     stmt0.mix_into(channel);
     commitment_scheme.commit(stark_proof.commitments[0], &log_sizes[0], channel);
-
+    
+    // Trace.
+    commitment_scheme.commit(stark_proof.commitments[1], &log_sizes[1], channel);
+    
     // Draw interaction elements.
     let all_elements = AllElements::draw(channel);
-
+    
     // Interaction trace.
-    stmt1.mix_into(channel);
-    commitment_scheme.commit(stark_proof.commitments[1], &log_sizes[1], channel);
-
-    // Constant trace.
     commitment_scheme.commit(stark_proof.commitments[2], &log_sizes[2], channel);
+    stmt1.mix_into(channel);
+    let static_tree = StaticTree::blake_tree();
 
-    let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
+    let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1, static_tree);
 
     // Check that all sums are correct.
     let total_sum = stmt1.scheduler_claimed_sum
