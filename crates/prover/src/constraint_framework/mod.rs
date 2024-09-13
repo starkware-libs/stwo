@@ -7,6 +7,7 @@ mod info;
 pub mod logup;
 mod point;
 pub mod poly;
+pub mod poly_eval;
 mod simd_domain;
 
 use std::array;
