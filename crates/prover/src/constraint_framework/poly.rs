@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
-use std::ops::{Add, AddAssign, Mul, Neg};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Neg};
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::FieldExpOps;
 
 /// A monic monomial consists of a list of variables and their exponents.
 #[derive(Debug, Hash, PartialEq, PartialOrd, Eq, Ord, Clone)]
@@ -29,7 +30,7 @@ impl Monomial {
 
 /// A polynomial consists of a list of monomials with coefficients.
 #[derive(Debug, Hash, PartialEq, PartialOrd, Eq, Ord, Clone)]
-struct Polynomial<F: From<BaseField>> {
+pub struct Polynomial<F: From<BaseField>> {
     monomials: BTreeMap<Monomial, F>,
 }
 
@@ -126,6 +127,16 @@ where
     }
 }
 
+impl<F, G> MulAssign<G> for Polynomial<F>
+where
+    F: Clone + Mul<Output = F> + Add<Output = F> + AddAssign + From<BaseField>,
+    G: Into<Polynomial<F>>,
+{
+    fn mul_assign(&mut self, rhs: G) {
+        *self = self.clone() * rhs.into();
+    }
+}
+
 impl<F> Mul<SecureField> for Polynomial<F>
 where
     F: Clone
@@ -157,6 +168,14 @@ impl<F: Zero + Clone + From<BaseField>> Zero for Polynomial<F> {
     }
 }
 
+impl<F: One + From<BaseField> + AddAssign + Clone + Add<Output = F>> One for Polynomial<F> {
+    fn one() -> Self {
+        Self {
+            monomials: [(Monomial::default(), F::one())].into(),
+        }
+    }
+}
+
 impl<F: Neg<Output = F> + From<BaseField>> Neg for Polynomial<F> {
     type Output = Self;
     fn neg(self) -> Self {
@@ -177,6 +196,17 @@ where
 {
     fn add_assign(&mut self, rhs: G) {
         self.monomials = (self.clone() + rhs.into()).monomials;
+    }
+}
+
+impl<F> FieldExpOps for Polynomial<F>
+where
+    F: Zero + One + Clone + Add + Mul + AddAssign + From<BaseField>,
+{
+    fn inverse(&self) -> Self {
+        assert!(!self.is_zero(), "0 has no inverse");
+        let mut res = Self::from(BaseField::one()) / self.clone();
+        res
     }
 }
 
