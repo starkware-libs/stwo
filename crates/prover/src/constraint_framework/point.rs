@@ -1,5 +1,6 @@
 use std::ops::Mul;
 
+use super::constant_columns::ConstantColumn;
 use super::EvalAtRow;
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::fields::qm31::SecureField;
@@ -53,5 +54,9 @@ impl<'a> EvalAtRow for PointEvaluator<'a> {
     }
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
         SecureField::from_partial_evals(values)
+    }
+
+    fn link_static_table(&mut self, _col: ConstantColumn) {
+        // Do nothing.
     }
 }

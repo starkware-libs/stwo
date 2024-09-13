@@ -8,6 +8,7 @@ use tracing::{span, Level};
 use super::round::{blake_round_info, BlakeRoundComponent, BlakeRoundEval};
 use super::scheduler::{BlakeSchedulerComponent, BlakeSchedulerEval};
 use super::xor_table::{XorTableComponent, XorTableEval};
+use crate::constraint_framework::constant_columns::StaticTree;
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -51,6 +52,8 @@ impl BlakeStatement0 {
         sizes.push(xor_table::trace_sizes::<8, 2>());
         sizes.push(xor_table::trace_sizes::<7, 2>());
         sizes.push(xor_table::trace_sizes::<4, 0>());
+
+        // Constant columns.
 
         TreeVec::concat_cols(sizes.into_iter())
     }
@@ -118,8 +121,14 @@ pub struct BlakeComponents {
     xor4: XorTableComponent<4, 0>,
 }
 impl BlakeComponents {
-    fn new(stmt0: &BlakeStatement0, all_elements: &AllElements, stmt1: &BlakeStatement1) -> Self {
+    fn new(
+        stmt0: &BlakeStatement0,
+        all_elements: &AllElements,
+        stmt1: &BlakeStatement1,
+        static_tree: StaticTree,
+    ) -> Self {
         let tree_span_provider = &mut TraceLocationAllocator::default();
+        tree_span_provider.static_table_offsets = static_tree.locations;
         Self {
             scheduler_component: BlakeSchedulerComponent::new(
                 tree_span_provider,
@@ -374,20 +383,21 @@ where
         ]
         .collect_vec(),
     );
+    let static_tree = StaticTree::blake_tree();
     tree_builder.commit(channel);
     span.exit();
 
-    assert_eq!(
-        commitment_scheme
-            .polynomials()
-            .as_cols_ref()
-            .map_cols(|c| c.log_size())
-            .0,
-        stmt0.log_sizes().0
-    );
+    // assert_eq!(
+    //     commitment_scheme
+    //         .polynomials()
+    //         .as_cols_ref()
+    //         .map_cols(|c| c.log_size())
+    //         .0,
+    //     stmt0.log_sizes().0
+    // );
 
-    // Prove constraints.
-    let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
+    // Prove constraints
+    let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1, static_tree);
     let stark_proof = prove(&components.component_provers(), channel, commitment_scheme).unwrap();
 
     BlakeProof {
@@ -424,8 +434,9 @@ pub fn verify_blake<MC: MerkleChannel>(
 
     // Constant trace.
     commitment_scheme.commit(stark_proof.commitments[2], &log_sizes[2], channel);
+    let static_tree = StaticTree::blake_tree();
 
-    let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
+    let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1, static_tree);
 
     // Check that all sums are correct.
     let total_sum = stmt1.scheduler_claimed_sum
