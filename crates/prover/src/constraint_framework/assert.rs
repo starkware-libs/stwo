@@ -1,5 +1,6 @@
 use num_traits::{One, Zero};
 
+use super::constant_columns::ConstantColumn;
 use super::EvalAtRow;
 use crate::core::backend::{Backend, Column};
 use crate::core::fields::m31::BaseField;
@@ -56,6 +57,10 @@ impl<'a> EvalAtRow for AssertEvaluator<'a> {
 
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
         SecureField::from_m31_array(values)
+    }
+
+    fn link_static_table(&mut self, _col: ConstantColumn) {
+        // Do nothing.
     }
 }
 

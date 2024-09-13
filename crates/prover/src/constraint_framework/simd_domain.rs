@@ -2,6 +2,7 @@ use std::ops::Mul;
 
 use num_traits::Zero;
 
+use super::constant_columns::ConstantColumn;
 use super::EvalAtRow;
 use crate::core::backend::simd::column::VeryPackedBaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -102,5 +103,9 @@ impl<'a> EvalAtRow for SimdDomainEvaluator<'a> {
 
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
         VeryPackedSecureField::from_very_packed_m31s(values)
+    }
+
+    fn link_static_table(&mut self, _col: ConstantColumn) {
+        // Do nothing.
     }
 }
