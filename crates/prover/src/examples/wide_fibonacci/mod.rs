@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn test_wide_fibonacci_constraints() {
         const LOG_N_INSTANCES: u32 = 6;
-        let traces = TreeVec::new(vec![generate_test_trace(LOG_N_INSTANCES)]);
+        let traces = TreeVec::new(vec![vec![], generate_test_trace(LOG_N_INSTANCES)]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
 
@@ -138,7 +138,7 @@ mod tests {
         let mut trace = generate_test_trace(LOG_N_INSTANCES);
         // Modify the trace such that a constraint fail.
         trace[17].values.set(2, BaseField::one());
-        let traces = TreeVec::new(vec![trace]);
+        let traces = TreeVec::new(vec![vec![], trace]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
 
@@ -166,6 +166,9 @@ mod tests {
             &mut CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(
                 config, &twiddles,
             );
+        // Constant Trace.
+        let tree_builder = commitment_scheme.tree_builder();
+        tree_builder.commit(prover_channel);
 
         // Trace.
         let trace = generate_test_trace(LOG_N_INSTANCES);
@@ -195,6 +198,7 @@ mod tests {
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
         verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
     }
 
@@ -217,6 +221,9 @@ mod tests {
             &mut CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(
                 config, &twiddles,
             );
+
+        // Constant Trace.
+        commitment_scheme.tree_builder().commit(prover_channel);
 
         // Trace.
         let trace = generate_test_trace(LOG_N_INSTANCES);
@@ -246,6 +253,8 @@ mod tests {
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+        println!("commitments: {:?}", proof.commitments);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
         verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
     }
 }

@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 use itertools::zip_eq;
 use serde::{Deserialize, Serialize};
 
-use super::TreeSubspan;
+use super::{TreeLocation, TreeSubspan};
 use crate::core::ColumnVec;
 
 /// A container that holds an element for each commitment tree.
@@ -127,13 +127,30 @@ impl<T> TreeVec<ColumnVec<T>> {
         let max_tree_index = tree_indicies.iter().max().unwrap_or(&0);
         let mut res = TreeVec(vec![Vec::new(); max_tree_index + 1]);
 
-        for &location in locations {
+        for &location in locations.iter().filter(|l| l.col_start != l.col_end) {
             // TODO(andrew): Throwing error here might be better instead.
             let chunk = self.get_chunk(location).unwrap();
             res[location.tree_index] = chunk;
         }
 
         res
+    }
+
+    pub fn sub_tree_sparse(&self, locations: &[TreeLocation]) -> TreeVec<ColumnVec<&T>> {
+        let tree_indicies: BTreeSet<usize> = locations.iter().map(|l| l.tree_index).collect();
+        let max_tree_index = tree_indicies.iter().max().unwrap_or(&0);
+        let mut res = TreeVec(vec![Vec::new(); max_tree_index + 1]);
+
+        for location in locations {
+            let column = self.get_single_column(location).expect("Invalid location");
+            res[location.tree_index].push(column);
+        }
+
+        res
+    }
+
+    fn get_single_column(&self, location: &TreeLocation) -> Option<&T> {
+        self.0.get(location.tree_index)?.get(location.col_index)
     }
 
     fn get_chunk(&self, location: TreeSubspan) -> Option<ColumnVec<&T>> {

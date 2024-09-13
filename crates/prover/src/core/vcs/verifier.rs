@@ -170,7 +170,8 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
             return Err(MerkleVerificationError::WitnessTooLong);
         }
 
-        let [(_, computed_root)] = last_layer_hashes.unwrap().try_into().unwrap();
+        // TODO(Ohad/Team): 'empty' trees will have a '000...00' root.
+        let [(_, computed_root)] = last_layer_hashes.unwrap().try_into().unwrap_or_default();
         if computed_root != self.root {
             return Err(MerkleVerificationError::RootMismatch);
         }

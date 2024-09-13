@@ -83,14 +83,14 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 
     pub fn prove_values(
         &self,
-        sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
         channel: &mut MC::C,
     ) -> CommitmentSchemeProof<MC::H> {
         // Evaluate polynomials on open points.
         let span = span!(Level::INFO, "Evaluate columns out of domain").entered();
         let samples = self
             .polynomials()
-            .zip_cols(&sampled_points)
+            .zip_cols(sampled_points)
             .map_cols(|(poly, points)| {
                 points
                     .iter()

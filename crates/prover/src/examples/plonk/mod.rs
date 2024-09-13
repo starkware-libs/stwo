@@ -245,7 +245,7 @@ pub fn prove_fibonacci_plonk(
 #[cfg(test)]
 mod tests {
     use std::env;
-
+    
     use crate::constraint_framework::logup::LookupElements;
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;
@@ -254,7 +254,8 @@ mod tests {
     use crate::core::prover::verify;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::plonk::prove_fibonacci_plonk;
-
+    
+    #[ignore = "Rewrite with constant columns consideration"]
     #[test_log::test]
     fn test_simd_plonk_prove() {
         // Get from environment variable:

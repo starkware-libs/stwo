@@ -38,7 +38,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     ///
     /// A new instance of `MerkleProver` with the committed layers.
     pub fn commit(columns: Vec<&Col<B, BaseField>>) -> Self {
-        assert!(!columns.is_empty());
+        // assert!(!columns.is_empty());
 
         let columns = &mut columns
             .into_iter()
@@ -46,7 +46,11 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
             .peekable();
         let mut layers: Vec<Col<B, H::Hash>> = Vec::new();
 
-        let max_log_size = columns.peek().unwrap().len().ilog2();
+        let max_log_size = if let Some(c) = columns.peek() {
+            c.len().ilog2()
+        } else {
+            0
+        };
         for log_size in (0..=max_log_size).rev() {
             // Take columns of the current log_size.
             let layer_columns = columns

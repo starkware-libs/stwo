@@ -53,22 +53,34 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let mut sample_points = component_provers.components().mask_points(oods_point);
+    let mut sample_points = component_provers
+        .components()
+        .mask_points_by_column(oods_point);
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
 
     // Prove the trace and composition OODS values, and retrieve them.
-    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
+    let commitment_scheme_proof = commitment_scheme.prove_values(&sample_points, channel);
 
     let sampled_oods_values = &commitment_scheme_proof.sampled_values;
     let composition_oods_eval = extract_composition_eval(sampled_oods_values).unwrap();
+
+    // Evaluations from "prove_values" are ordered by commitment order. Reorg according to component
+    // usage.
+    let reorganized_sample_values = component_provers
+        .components()
+        .reorganize_const_values_by_component(oods_point, sampled_oods_values.clone());
 
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.
     if composition_oods_eval
         != component_provers
             .components()
-            .eval_composition_polynomial_at_point(oods_point, sampled_oods_values, random_coeff)
+            .eval_composition_polynomial_at_point(
+                oods_point,
+                &reorganized_sample_values,
+                random_coeff,
+            )
     {
         return Err(ProvingError::ConstraintsNotSatisfied);
     }
@@ -101,7 +113,7 @@ pub fn verify<MC: MerkleChannel>(
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let mut sample_points = components.mask_points(oods_point);
+    let mut sample_points = components.mask_points_by_column(oods_point);
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
 
@@ -110,10 +122,13 @@ pub fn verify<MC: MerkleChannel>(
         VerificationError::InvalidStructure("Unexpected sampled_values structure".to_string())
     })?;
 
+    let reogranized_sample_values =
+        components.reorganize_const_values_by_component(oods_point, sampled_oods_values.clone());
+
     if composition_oods_eval
         != components.eval_composition_polynomial_at_point(
             oods_point,
-            sampled_oods_values,
+            &reogranized_sample_values,
             random_coeff,
         )
     {

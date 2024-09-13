@@ -1,7 +1,9 @@
+use std::collections::BTreeSet;
+
 use itertools::Itertools;
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use super::{Component, ComponentProver, Trace};
+use super::{Component, ComponentProver, Trace, CONST_INTERACTION};
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
@@ -25,6 +27,81 @@ impl<'a> Components<'a> {
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
         TreeVec::concat_cols(self.0.iter().map(|component| component.mask_points(point)))
+    }
+
+    // Returns the unique mask points for each column.
+    pub fn mask_points_by_column(
+        &self,
+        point: CirclePoint<SecureField>,
+    ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        let mut components_masks =
+            TreeVec::concat_cols(self.0.iter().map(|component| component.mask_points(point)));
+        components_masks[CONST_INTERACTION] = self.const_mask_points_by_column(point);
+        components_masks
+    }
+
+    fn const_mask_points_by_column(
+        &self,
+        point: CirclePoint<SecureField>,
+    ) -> ColumnVec<Vec<CirclePoint<SecureField>>> {
+        let mut static_column_masks: Vec<BTreeSet<CirclePoint<SecureField>>> = vec![];
+        for component in &self.0 {
+            let component_static_masks = &component.mask_points(point)[CONST_INTERACTION];
+            component_static_masks
+                .iter()
+                .zip(component.constant_column_locations())
+                .for_each(|(points, index)| {
+                    if index >= static_column_masks.len() {
+                        static_column_masks.resize_with(index + 1, Default::default);
+                    }
+                    static_column_masks[index].extend(points);
+                });
+        }
+        static_column_masks
+            .into_iter()
+            .map(|set| set.into_iter().collect())
+            .collect()
+    }
+
+    // Reorganizes the mask evaluations in the constant interaction according to the original mask
+    // points of each component.
+    pub fn reorganize_const_values_by_component(
+        &self,
+        point: CirclePoint<SecureField>,
+        mut mask_values: TreeVec<ColumnVec<Vec<SecureField>>>,
+    ) -> TreeVec<ColumnVec<Vec<SecureField>>> {
+        mask_values[CONST_INTERACTION] =
+            self.const_mask_values_by_component(point, &mask_values[CONST_INTERACTION]);
+        mask_values
+    }
+
+    fn const_mask_values_by_component(
+        &self,
+        point: CirclePoint<SecureField>,
+        mask_values: &[Vec<SecureField>],
+    ) -> ColumnVec<Vec<SecureField>> {
+        let mask_by_column = &self.mask_points_by_column(point)[CONST_INTERACTION];
+
+        let mut masks_values_by_component = vec![];
+        for component in &self.0 {
+            let component_static_masks = &component.mask_points(point)[CONST_INTERACTION];
+            component_static_masks
+                .iter()
+                .zip(component.constant_column_locations())
+                .for_each(|(points, column_idx)| {
+                    let column_masks = &mask_by_column[column_idx];
+                    masks_values_by_component.push(
+                        points
+                            .iter()
+                            .map(|&point| {
+                                mask_values[column_idx]
+                                    [column_masks.iter().position(|&p| p == point).unwrap()]
+                            })
+                            .collect_vec(),
+                    );
+                });
+        }
+        masks_values_by_component
     }
 
     pub fn eval_composition_polynomial_at_point(

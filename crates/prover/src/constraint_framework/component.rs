@@ -5,9 +5,10 @@ use std::ops::Deref;
 use itertools::Itertools;
 use tracing::{span, Level};
 
+use super::constant_columns::{ConstantColumn, ConstantTableLocation, StaticTree};
 use super::{EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Component, ComponentProver, Trace};
+use crate::core::air::{Component, ComponentProver, Trace, CONST_INTERACTION};
 use crate::core::backend::simd::column::VeryPackedSecureColumnByCoords;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
@@ -17,7 +18,7 @@ use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::pcs::{TreeSubspan, TreeVec};
+use crate::core::pcs::{TreeLocation, TreeSubspan, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::{utils, ColumnVec};
@@ -28,6 +29,7 @@ use crate::core::{utils, ColumnVec};
 pub struct TraceLocationAllocator {
     /// Mapping of tree index to next available column offset.
     next_tree_offsets: TreeVec<usize>,
+    static_table_offsets: ConstantTableLocation,
 }
 
 impl TraceLocationAllocator {
@@ -52,6 +54,23 @@ impl TraceLocationAllocator {
                 .collect(),
         )
     }
+
+    pub fn with_static_tree(tree: &StaticTree) -> Self {
+        Self {
+            next_tree_offsets: Default::default(),
+            static_table_offsets: tree.locations.clone(),
+        }
+    }
+
+    fn static_column_mappings(
+        &self,
+        constant_columns: &[ConstantColumn],
+    ) -> ColumnVec<TreeLocation> {
+        constant_columns
+            .iter()
+            .map(|col| self.static_table_offsets.get_location(*col).unwrap())
+            .collect()
+    }
 }
 
 /// A component defined solely in means of the constraints framework.
@@ -68,16 +87,21 @@ pub trait FrameworkEval {
 
 pub struct FrameworkComponent<C: FrameworkEval> {
     eval: C,
-    trace_locations: TreeVec<TreeSubspan>,
+    mask_spans: TreeVec<TreeSubspan>,
+    static_columns_locations: Vec<TreeLocation>,
 }
 
 impl<E: FrameworkEval> FrameworkComponent<E> {
     pub fn new(provider: &mut TraceLocationAllocator, eval: E) -> Self {
-        let eval_tree_structure = eval.evaluate(InfoEvaluator::default()).mask_offsets;
-        let trace_locations = provider.next_for_structure(&eval_tree_structure);
+        let info = eval.evaluate(InfoEvaluator::default());
+        let eval_tree_structure = info.mask_offsets;
+        let mask_spans = provider.next_for_structure(&eval_tree_structure);
+        let static_columns_locations = provider.static_column_mappings(&info.external_cols);
+
         Self {
             eval,
-            trace_locations,
+            mask_spans,
+            static_columns_locations,
         }
     }
 }
@@ -116,6 +140,13 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         })
     }
 
+    fn constant_column_locations(&self) -> ColumnVec<usize> {
+        self.static_columns_locations
+            .iter()
+            .map(|loc| loc.col_index)
+            .collect()
+    }
+
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
@@ -123,7 +154,7 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     ) {
         self.eval.evaluate(PointEvaluator::new(
-            mask.sub_tree(&self.trace_locations),
+            mask.sub_tree(&self.mask_spans),
             evaluation_accumulator,
             coset_vanishing(CanonicCoset::new(self.eval.log_size()).coset, point).inverse(),
         ));
@@ -139,8 +170,26 @@ impl<E: FrameworkEval> ComponentProver<SimdBackend> for FrameworkComponent<E> {
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.eval.log_size());
 
-        let component_polys = trace.polys.sub_tree(&self.trace_locations);
-        let component_evals = trace.evals.sub_tree(&self.trace_locations);
+        // Retrieve necessary columns.
+        let mut mask_spans = self.mask_spans.clone();
+
+        // Constant columns locations are static, cannot be derived from mask spans.
+        mask_spans[CONST_INTERACTION] = TreeSubspan::empty();
+
+        let component_polys = TreeVec::concat_cols(
+            [
+                trace.polys.sub_tree(&mask_spans),
+                trace.polys.sub_tree_sparse(&self.static_columns_locations),
+            ]
+            .into_iter(),
+        );
+        let component_evals = TreeVec::concat_cols(
+            [
+                trace.evals.sub_tree(&mask_spans),
+                trace.evals.sub_tree_sparse(&self.static_columns_locations),
+            ]
+            .into_iter(),
+        );
 
         // Extend trace if necessary.
         // TODO(spapini): Don't extend when eval_size < committed_size. Instead, pick a good

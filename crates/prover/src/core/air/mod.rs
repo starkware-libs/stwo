@@ -14,6 +14,8 @@ pub mod accumulation;
 mod components;
 pub mod mask;
 
+pub const CONST_INTERACTION: usize = 0;
+
 /// Arithmetic Intermediate Representation (AIR).
 /// An Air instance is assumed to already contain all the information needed to
 /// evaluate the constraints.
@@ -45,6 +47,11 @@ pub trait Component {
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>;
+
+    // TODO(Ohad): remove default implementation.
+    fn constant_column_locations(&self) -> ColumnVec<usize> {
+        vec![]
+    }
 
     /// Evaluates the constraint quotients combination of the component at a point.
     fn evaluate_constraint_quotients_at_point(

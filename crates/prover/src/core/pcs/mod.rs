@@ -25,6 +25,22 @@ pub struct TreeSubspan {
     pub col_end: usize,
 }
 
+impl TreeSubspan {
+    pub fn empty() -> Self {
+        Self {
+            tree_index: 0,
+            col_start: 0,
+            col_end: 0,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TreeLocation {
+    pub tree_index: usize,
+    pub col_index: usize,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct PcsConfig {
     pub pow_bits: u32,

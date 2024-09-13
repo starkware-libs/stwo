@@ -13,11 +13,13 @@ use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 pub use assert::{assert_constraints, AssertEvaluator};
 pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
+use constant_columns::ConstantColumn;
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
 pub use simd_domain::SimdDomainEvaluator;
 
+use crate::core::air::CONST_INTERACTION;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
@@ -65,16 +67,24 @@ pub trait EvalAtRow {
 
     /// Returns the next mask value for the first interaction at offset 0.
     fn next_trace_mask(&mut self) -> Self::F {
-        let [mask_item] = self.next_interaction_mask(0, [0]);
+        let [mask_item] = self.next_interaction_mask(1, [0]);
         mask_item
     }
 
-    /// Returns the mask values of the given offsets for the next column in the interaction.
+    /// Returns the mask values of the given offsets for the next owned column in the interaction.
     fn next_interaction_mask<const N: usize>(
         &mut self,
         interaction: usize,
         offsets: [isize; N],
     ) -> [Self::F; N];
+
+    fn constant_interaction_mask<const N: usize>(
+        &mut self,
+        _col: ConstantColumn,
+        offsets: [isize; N],
+    ) -> [Self::F; N] {
+        self.next_interaction_mask(CONST_INTERACTION, offsets)
+    }
 
     /// Returns the extension mask values of the given offsets for the next extension degree many
     /// columns in the interaction.

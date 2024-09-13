@@ -59,7 +59,7 @@ impl FrameworkEval for PoseidonEval {
         self.log_n_rows + LOG_EXPAND
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let logup = LogupAtRow::new(1, self.claimed_sum, self.log_n_rows);
+        let logup = LogupAtRow::new(2, self.claimed_sum, self.log_n_rows);
         eval_poseidon_constraints(&mut eval, logup, &self.lookup_elements);
         eval
     }
@@ -347,6 +347,11 @@ pub fn prove_poseidon(
     let commitment_scheme =
         &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
+    // Constant Trace.
+    let span = span!(Level::INFO, "Constant Trace").entered();
+    commitment_scheme.tree_builder().commit(channel);
+    span.exit();
+
     // Trace.
     let span = span!(Level::INFO, "Trace").entered();
     let (trace, lookup_data) = gen_trace(log_n_rows);
@@ -463,7 +468,7 @@ mod tests {
         let (trace1, claimed_sum) =
             gen_interaction_trace(LOG_N_ROWS, interaction_data, &lookup_elements);
 
-        let traces = TreeVec::new(vec![trace0, trace1]);
+        let traces = TreeVec::new(vec![vec![], trace0, trace1]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
         assert_constraints(&trace_polys, CanonicCoset::new(LOG_N_ROWS), |mut eval| {
@@ -505,12 +510,14 @@ mod tests {
         let sizes = component.trace_log_degree_bounds();
         // Trace columns.
         commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+
         // Draw lookup element.
         let lookup_elements = PoseidonElements::draw(channel);
         assert_eq!(lookup_elements, component.lookup_elements);
         // TODO(spapini): Check claimed sum against first and last instances.
         // Interaction columns.
-        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
 
         verify(&[&component], channel, commitment_scheme, proof).unwrap();
     }
