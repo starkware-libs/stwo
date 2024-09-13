@@ -5,6 +5,7 @@ pub use gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
 use num_traits::Zero;
 
 use super::{BlakeXorElements, N_ROUND_INPUT_FELTS};
+use crate::constraint_framework::constant_columns::ConstantColumn;
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
 use crate::core::fields::qm31::SecureField;
@@ -35,6 +36,10 @@ impl FrameworkEval for BlakeRoundEval {
             logup: LogupAtRow::new(1, self.claimed_sum, self.log_size),
         };
         blake_eval.eval()
+    }
+
+    fn constant_columns() -> Vec<ConstantColumn> {
+        vec![]
     }
 }
 

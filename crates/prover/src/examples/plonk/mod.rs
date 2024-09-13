@@ -2,6 +2,7 @@ use itertools::{chain, Itertools};
 use num_traits::One;
 use tracing::{span, Level};
 
+use crate::constraint_framework::constant_columns::ConstantColumn;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::{
     assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
@@ -77,6 +78,10 @@ impl FrameworkEval for PlonkEval {
 
         logup.finalize(&mut eval);
         eval
+    }
+
+    fn constant_columns() -> Vec<ConstantColumn> {
+        vec![]
     }
 }
 

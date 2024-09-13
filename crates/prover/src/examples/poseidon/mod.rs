@@ -5,6 +5,7 @@ use std::ops::{Add, AddAssign, Mul, Sub};
 use itertools::Itertools;
 use tracing::{span, Level};
 
+use crate::constraint_framework::constant_columns::ConstantColumn;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
@@ -62,6 +63,10 @@ impl FrameworkEval for PoseidonEval {
         let logup = LogupAtRow::new(1, self.claimed_sum, self.log_n_rows);
         eval_poseidon_constraints(&mut eval, logup, &self.lookup_elements);
         eval
+    }
+
+    fn constant_columns() -> Vec<ConstantColumn> {
+        vec![]
     }
 }
 

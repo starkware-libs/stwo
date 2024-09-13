@@ -2,7 +2,7 @@ use itertools::Itertools;
 
 use super::{limb_bits, XorElements};
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
-use crate::constraint_framework::EvalAtRow;
+use crate::constraint_framework::{EvalAtRow, InfoEvaluator};
 use crate::core::fields::m31::BaseField;
 use crate::core::lookups::utils::Fraction;
 

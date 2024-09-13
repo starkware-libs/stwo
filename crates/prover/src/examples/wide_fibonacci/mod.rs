@@ -1,5 +1,6 @@
 use itertools::Itertools;
 
+use crate::constraint_framework::constant_columns::ConstantColumn;
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::SimdBackend;
@@ -40,6 +41,10 @@ impl<const N: usize> FrameworkEval for WideFibonacciEval<N> {
             b = c;
         }
         eval
+    }
+
+    fn constant_columns() -> Vec<ConstantColumn> {
+        vec![]
     }
 }
 

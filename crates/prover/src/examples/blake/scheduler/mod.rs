@@ -7,6 +7,7 @@ use num_traits::Zero;
 
 use super::round::RoundElements;
 use super::N_ROUND_INPUT_FELTS;
+use crate::constraint_framework::constant_columns::ConstantColumn;
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
 use crate::core::fields::qm31::SecureField;
@@ -36,6 +37,10 @@ impl FrameworkEval for BlakeSchedulerEval {
             LogupAtRow::new(1, self.claimed_sum, self.log_size),
         );
         eval
+    }
+
+    fn constant_columns() -> Vec<ConstantColumn> {
+        vec![]
     }
 }
 

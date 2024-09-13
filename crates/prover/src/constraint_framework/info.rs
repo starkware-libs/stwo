@@ -19,6 +19,7 @@ impl InfoEvaluator {
         Self::default()
     }
 }
+
 impl EvalAtRow for InfoEvaluator {
     type F = BaseField;
     type EF = SecureField;

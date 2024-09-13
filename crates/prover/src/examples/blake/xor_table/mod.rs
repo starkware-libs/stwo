@@ -19,6 +19,7 @@ use itertools::Itertools;
 use num_traits::Zero;
 pub use r#gen::{generate_constant_trace, generate_interaction_trace, generate_trace};
 
+use crate::constraint_framework::constant_columns::ConstantColumn;
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
 use crate::core::backend::simd::column::BaseColumn;
@@ -109,6 +110,14 @@ impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> FrameworkEval
             logup: LogupAtRow::new(1, self.claimed_sum, self.log_size()),
         };
         xor_eval.eval()
+    }
+
+    fn constant_columns() -> Vec<ConstantColumn> {
+        vec![
+            ConstantColumn::XorTable(ELEM_BITS, EXPAND_BITS, 0),
+            ConstantColumn::XorTable(ELEM_BITS, EXPAND_BITS, 1),
+            ConstantColumn::XorTable(ELEM_BITS, EXPAND_BITS, 2),
+        ]
     }
 }
 

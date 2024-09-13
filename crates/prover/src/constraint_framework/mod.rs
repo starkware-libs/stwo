@@ -69,7 +69,7 @@ pub trait EvalAtRow {
         mask_item
     }
 
-    /// Returns the mask values of the given offsets for the next column in the interaction.
+    /// Returns the mask values of the given offsets for the next owned column in the interaction.
     fn next_interaction_mask<const N: usize>(
         &mut self,
         interaction: usize,
