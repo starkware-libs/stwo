@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 use num_traits::One;
 
 use crate::core::backend::{Backend, Col, Column};
 use crate::core::fields::m31::BaseField;
+use crate::core::pcs::TreeLocation;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
@@ -34,4 +37,31 @@ pub fn gen_is_step_with_offset<B: Backend>(
     }
 
     CircleEvaluation::new(CanonicCoset::new(log_size).circle_domain(), col)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConstantColumn {
+    XorTable(u32, u32, usize),
+    IsFirst32,
+}
+
+#[derive(Debug, Default)]
+pub struct ConstantTableLocation {
+    locations: HashMap<ConstantColumn, usize>,
+}
+
+impl ConstantTableLocation {
+    pub fn add(&mut self, column: ConstantColumn, location: usize) {
+        if self.locations.contains_key(&column) {
+            panic!("Type already exists.");
+        }
+        self.locations.insert(column, location);
+    }
+
+    pub fn get_location(&self, column: ConstantColumn) -> TreeLocation {
+        TreeLocation {
+            tree_index: 2,
+            col_index: *self.locations.get(&column).unwrap(),
+        }
+    }
 }

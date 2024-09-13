@@ -5,6 +5,7 @@ use std::ops::Deref;
 use itertools::Itertools;
 use tracing::{span, Level};
 
+use super::constant_columns::{ConstantColumn, ConstantTableLocation};
 use super::{EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, Trace};
@@ -17,7 +18,7 @@ use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::pcs::{TreeSubspan, TreeVec};
+use crate::core::pcs::{TreeLocation, TreeSubspan, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::{utils, ColumnVec};
@@ -27,18 +28,20 @@ use crate::core::{utils, ColumnVec};
 #[derive(Debug, Default)]
 pub struct TraceLocationAllocator {
     /// Mapping of tree index to next available column offset.
-    next_tree_offsets: TreeVec<usize>,
+    next_owned_tree_offsets: TreeVec<usize>,
+    pub static_table_offsets: ConstantTableLocation,
 }
 
 impl TraceLocationAllocator {
     fn next_for_structure<T>(&mut self, structure: &TreeVec<ColumnVec<T>>) -> TreeVec<TreeSubspan> {
-        if structure.len() > self.next_tree_offsets.len() {
-            self.next_tree_offsets.resize(structure.len(), 0);
+        if structure.len() > self.next_owned_tree_offsets.len() {
+            self.next_owned_tree_offsets.resize(structure.len(), 0);
         }
 
         TreeVec::new(
-            zip(&mut *self.next_tree_offsets, &**structure)
+            zip(&mut *self.next_owned_tree_offsets, &**structure)
                 .enumerate()
+                .skip_while(|(tree_index, (..))| *tree_index == 2)
                 .map(|(tree_index, (offset, cols))| {
                     let col_start = *offset;
                     let col_end = col_start + cols.len();
@@ -51,6 +54,16 @@ impl TraceLocationAllocator {
                 })
                 .collect(),
         )
+    }
+
+    fn static_column_mappings(
+        &self,
+        constant_columns: &[ConstantColumn],
+    ) -> ColumnVec<TreeLocation> {
+        constant_columns
+            .iter()
+            .map(|col| self.static_table_offsets.get_location(*col))
+            .collect()
     }
 }
 
@@ -68,16 +81,21 @@ pub trait FrameworkEval {
 
 pub struct FrameworkComponent<C: FrameworkEval> {
     eval: C,
-    trace_locations: TreeVec<TreeSubspan>,
+    owned_trace_locations: TreeVec<TreeSubspan>,
+    static_columns_locations: Vec<TreeLocation>,
 }
 
 impl<E: FrameworkEval> FrameworkComponent<E> {
     pub fn new(provider: &mut TraceLocationAllocator, eval: E) -> Self {
-        let eval_tree_structure = eval.evaluate(InfoEvaluator::default()).mask_offsets;
-        let trace_locations = provider.next_for_structure(&eval_tree_structure);
+        let info = eval.evaluate(InfoEvaluator::default());
+        let eval_tree_structure = info.mask_offsets;
+        let owned_trace_locations = provider.next_for_structure(&eval_tree_structure);
+        let static_columns_locations = provider.static_column_mappings(&info.external_cols);
+
         Self {
             eval,
-            trace_locations,
+            owned_trace_locations,
+            static_columns_locations,
         }
     }
 }
@@ -123,7 +141,7 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     ) {
         self.eval.evaluate(PointEvaluator::new(
-            mask.sub_tree(&self.trace_locations),
+            mask.sub_tree(&self.owned_trace_locations),
             evaluation_accumulator,
             coset_vanishing(CanonicCoset::new(self.eval.log_size()).coset, point).inverse(),
         ));
@@ -139,8 +157,19 @@ impl<E: FrameworkEval> ComponentProver<SimdBackend> for FrameworkComponent<E> {
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.eval.log_size());
 
-        let component_polys = trace.polys.sub_tree(&self.trace_locations);
-        let component_evals = trace.evals.sub_tree(&self.trace_locations);
+        let owned_component_polys = trace.polys.sub_tree(&self.owned_trace_locations);
+        let owned_component_evals = trace.evals.sub_tree(&self.owned_trace_locations);
+        let static_columns_polys = trace
+            .polys
+            .sub_tree_single_columns(&self.static_columns_locations);
+        let static_column_evals = trace
+            .evals
+            .sub_tree_single_columns(&self.static_columns_locations);
+
+        let component_polys =
+            TreeVec::concat_cols([owned_component_polys, static_columns_polys].into_iter());
+        let component_evals =
+            TreeVec::concat_cols([owned_component_evals, static_column_evals].into_iter());
 
         // Extend trace if necessary.
         // TODO(spapini): Don't extend when eval_size < committed_size. Instead, pick a good
