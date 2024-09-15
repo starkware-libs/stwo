@@ -258,7 +258,7 @@ impl LineEvaluation<CpuBackend> {
 /// # Panics
 ///
 /// Panics if the number of values doesn't match the size of the domain.
-fn line_ifft<F: ExtensionOf<BaseField>>(values: &mut [F], mut domain: LineDomain) {
+fn line_ifft<F: ExtensionOf<BaseField> + Copy>(values: &mut [F], mut domain: LineDomain) {
     assert_eq!(values.len(), domain.size());
     while domain.size() > 1 {
         for chunk in values.chunks_exact_mut(domain.size()) {

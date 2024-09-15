@@ -4,7 +4,7 @@ use super::fields::m31::BaseField;
 
 pub fn butterfly<F>(v0: &mut F, v1: &mut F, twid: BaseField)
 where
-    F: Copy + AddAssign<F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
+    F: AddAssign<F> + Sub<F, Output = F> + Mul<BaseField, Output = F> + Copy,
 {
     let tmp = *v1 * twid;
     *v1 = *v0 - tmp;
@@ -13,7 +13,7 @@ where
 
 pub fn ibutterfly<F>(v0: &mut F, v1: &mut F, itwid: BaseField)
 where
-    F: Copy + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
+    F: AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F> + Copy,
 {
     let tmp = *v0;
     *v0 = tmp + *v1;

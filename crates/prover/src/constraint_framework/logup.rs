@@ -64,9 +64,9 @@ impl<E: EvalAtRow> LogupAtRow<E> {
 
     pub fn write_frac(&mut self, eval: &mut E, fraction: Fraction<E::EF, E::EF>) {
         // Add a constraint that num / denom = diff.
-        if let Some(cur_frac) = self.cur_frac {
-            let cur_cumsum = eval.next_extension_interaction_mask(self.interaction, [0])[0];
-            let diff = cur_cumsum - self.prev_col_cumsum;
+        if let Some(cur_frac) = self.cur_frac.clone() {
+            let [cur_cumsum] = eval.next_extension_interaction_mask(self.interaction, [0]);
+            let diff = cur_cumsum.clone() - self.prev_col_cumsum.clone();
             self.prev_col_cumsum = cur_cumsum;
             eval.add_constraint(diff * cur_frac.denominator - cur_frac.numerator);
         }
@@ -76,7 +76,7 @@ impl<E: EvalAtRow> LogupAtRow<E> {
     pub fn finalize(mut self, eval: &mut E) {
         assert!(!self.is_finalized, "LogupAtRow was already finalized");
 
-        let frac = self.cur_frac.unwrap();
+        let frac = self.cur_frac.clone().unwrap();
 
         // TODO(ShaharS): remove `claimed_row_index` interaction value and get the shifted offset
         // from the is_first column when constant columns are supported.
@@ -89,7 +89,7 @@ impl<E: EvalAtRow> LogupAtRow<E> {
                     );
 
                 // Constrain that the claimed_sum in case that it is not equal to the total_sum.
-                eval.add_constraint((claimed_cumsum - claimed_sum) * self.is_first);
+                eval.add_constraint((claimed_cumsum - claimed_sum) * self.is_first.clone());
                 (cur_cumsum, prev_row_cumsum)
             }
             None => {
@@ -99,8 +99,8 @@ impl<E: EvalAtRow> LogupAtRow<E> {
             }
         };
         // Fix `prev_row_cumsum` by subtracting `total_sum` if this is the first row.
-        let fixed_prev_row_cumsum = prev_row_cumsum - self.is_first * self.total_sum;
-        let diff = cur_cumsum - fixed_prev_row_cumsum - self.prev_col_cumsum;
+        let fixed_prev_row_cumsum = prev_row_cumsum - self.is_first.clone() * self.total_sum;
+        let diff = cur_cumsum - fixed_prev_row_cumsum - self.prev_col_cumsum.clone();
 
         eval.add_constraint(diff * frac.denominator - frac.numerator);
 
@@ -138,9 +138,9 @@ impl<const N: usize> LookupElements<N> {
             alpha_powers,
         }
     }
-    pub fn combine<F: Copy, EF>(&self, values: &[F]) -> EF
+    pub fn combine<F: Clone, EF>(&self, values: &[F]) -> EF
     where
-        EF: Copy + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
+        EF: Clone + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
     {
         assert!(
             self.alpha_powers.len() >= values.len(),
@@ -149,8 +149,8 @@ impl<const N: usize> LookupElements<N> {
         values
             .iter()
             .zip(self.alpha_powers)
-            .fold(EF::zero(), |acc, (&value, power)| {
-                acc + EF::from(power) * value
+            .fold(EF::zero(), |acc, (value, power)| {
+                acc + EF::from(power) * value.clone()
             })
             - EF::from(self.z)
     }

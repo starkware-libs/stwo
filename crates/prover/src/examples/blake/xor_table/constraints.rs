@@ -28,15 +28,15 @@ impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
                 let (i, j) = ((i >> EXPAND_BITS) as u32, (i % (1 << EXPAND_BITS)) as u32);
                 let multiplicity = self.eval.next_trace_mask();
 
-                let a = al
+                let a = al.clone()
                     + E::F::from(BaseField::from_u32_unchecked(
                         i << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
                     ));
-                let b = bl
+                let b = bl.clone()
                     + E::F::from(BaseField::from_u32_unchecked(
                         j << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
                     ));
-                let c = cl
+                let c = cl.clone()
                     + E::F::from(BaseField::from_u32_unchecked(
                         (i ^ j) << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
                     ));
@@ -49,7 +49,7 @@ impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
             .collect_vec();
 
         for frac_chunk in frac_chunks.chunks(2) {
-            let sum_frac: Fraction<E::EF, E::EF> = frac_chunk.iter().copied().sum();
+            let sum_frac: Fraction<E::EF, E::EF> = frac_chunk.iter().cloned().sum();
             self.logup.write_frac(&mut self.eval, sum_frac);
         }
         self.logup.finalize(&mut self.eval);

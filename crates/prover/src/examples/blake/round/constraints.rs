@@ -5,7 +5,7 @@ use super::{BlakeXorElements, RoundElements};
 use crate::constraint_framework::logup::LogupAtRow;
 use crate::constraint_framework::EvalAtRow;
 use crate::core::fields::m31::BaseField;
-use crate::core::lookups::utils::Fraction;
+use crate::core::lookups::utils::{Fraction, Reciprocal};
 use crate::examples::blake::{Fu32, STATE_SIZE};
 
 const INV16: BaseField = BaseField::from_u32_unchecked(1 << 15);
@@ -20,17 +20,49 @@ pub struct BlakeRoundEval<'a, E: EvalAtRow> {
 impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     pub fn eval(mut self) -> E {
         let mut v: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
-        let input_v = v;
+        let input_v = v.clone();
         let m: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
 
-        self.g(v.get_many_mut([0, 4, 8, 12]).unwrap(), m[0], m[1]);
-        self.g(v.get_many_mut([1, 5, 9, 13]).unwrap(), m[2], m[3]);
-        self.g(v.get_many_mut([2, 6, 10, 14]).unwrap(), m[4], m[5]);
-        self.g(v.get_many_mut([3, 7, 11, 15]).unwrap(), m[6], m[7]);
-        self.g(v.get_many_mut([0, 5, 10, 15]).unwrap(), m[8], m[9]);
-        self.g(v.get_many_mut([1, 6, 11, 12]).unwrap(), m[10], m[11]);
-        self.g(v.get_many_mut([2, 7, 8, 13]).unwrap(), m[12], m[13]);
-        self.g(v.get_many_mut([3, 4, 9, 14]).unwrap(), m[14], m[15]);
+        self.g(
+            v.get_many_mut([0, 4, 8, 12]).unwrap(),
+            m[0].clone(),
+            m[1].clone(),
+        );
+        self.g(
+            v.get_many_mut([1, 5, 9, 13]).unwrap(),
+            m[2].clone(),
+            m[3].clone(),
+        );
+        self.g(
+            v.get_many_mut([2, 6, 10, 14]).unwrap(),
+            m[4].clone(),
+            m[5].clone(),
+        );
+        self.g(
+            v.get_many_mut([3, 7, 11, 15]).unwrap(),
+            m[6].clone(),
+            m[7].clone(),
+        );
+        self.g(
+            v.get_many_mut([0, 5, 10, 15]).unwrap(),
+            m[8].clone(),
+            m[9].clone(),
+        );
+        self.g(
+            v.get_many_mut([1, 6, 11, 12]).unwrap(),
+            m[10].clone(),
+            m[11].clone(),
+        );
+        self.g(
+            v.get_many_mut([2, 7, 8, 13]).unwrap(),
+            m[12].clone(),
+            m[13].clone(),
+        );
+        self.g(
+            v.get_many_mut([3, 4, 9, 14]).unwrap(),
+            m[14].clone(),
+            m[15].clone(),
+        );
 
         // Yield `Round(input_v, output_v, message)`.
         self.logup.write_frac(
@@ -39,9 +71,9 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
                 -E::EF::one(),
                 self.round_lookup_elements.combine(
                     &chain![
-                        input_v.iter().copied().flat_map(Fu32::to_felts),
-                        v.iter().copied().flat_map(Fu32::to_felts),
-                        m.iter().copied().flat_map(Fu32::to_felts)
+                        input_v.iter().cloned().flat_map(Fu32::to_felts),
+                        v.iter().cloned().flat_map(Fu32::to_felts),
+                        m.iter().cloned().flat_map(Fu32::to_felts)
                     ]
                     .collect_vec(),
                 ),
@@ -59,14 +91,14 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     fn g(&mut self, v: [&mut Fu32<E::F>; 4], m0: Fu32<E::F>, m1: Fu32<E::F>) {
         let [a, b, c, d] = v;
 
-        *a = self.add3_u32_unchecked(*a, *b, m0);
-        *d = self.xor_rotr16_u32(*a, *d);
-        *c = self.add2_u32_unchecked(*c, *d);
-        *b = self.xor_rotr_u32(*b, *c, 12);
-        *a = self.add3_u32_unchecked(*a, *b, m1);
-        *d = self.xor_rotr_u32(*a, *d, 8);
-        *c = self.add2_u32_unchecked(*c, *d);
-        *b = self.xor_rotr_u32(*b, *c, 7);
+        *a = self.add3_u32_unchecked(a.clone(), b.clone(), m0);
+        *d = self.xor_rotr16_u32(a.clone(), d.clone());
+        *c = self.add2_u32_unchecked(c.clone(), d.clone());
+        *b = self.xor_rotr_u32(b.clone(), c.clone(), 12);
+        *a = self.add3_u32_unchecked(a.clone(), b.clone(), m1);
+        *d = self.xor_rotr_u32(a.clone(), d.clone(), 8);
+        *c = self.add2_u32_unchecked(c.clone(), d.clone());
+        *b = self.xor_rotr_u32(b.clone(), c.clone(), 7);
     }
 
     /// Adds two u32s, returning the sum.
@@ -77,11 +109,13 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         let sl = self.eval.next_trace_mask();
         let sh = self.eval.next_trace_mask();
 
-        let carry_l = (a.l + b.l - sl) * E::F::from(INV16);
-        self.eval.add_constraint(carry_l * carry_l - carry_l);
+        let carry_l = (a.l + b.l - sl.clone()) * E::F::from(INV16);
+        self.eval
+            .add_constraint(carry_l.clone() * carry_l.clone() - carry_l.clone());
 
-        let carry_h = (a.h + b.h + carry_l - sh) * E::F::from(INV16);
-        self.eval.add_constraint(carry_h * carry_h - carry_h);
+        let carry_h = (a.h + b.h + carry_l - sh.clone()) * E::F::from(INV16);
+        self.eval
+            .add_constraint(carry_h.clone() * carry_h.clone() - carry_h.clone());
 
         Fu32 { l: sl, h: sh }
     }
@@ -94,22 +128,27 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         let sl = self.eval.next_trace_mask();
         let sh = self.eval.next_trace_mask();
 
-        let carry_l = (a.l + b.l + c.l - sl) * E::F::from(INV16);
-        self.eval
-            .add_constraint(carry_l * (carry_l - E::F::one()) * (carry_l - E::F::from(TWO)));
+        let carry_l = (a.l + b.l + c.l - sl.clone()) * E::F::from(INV16);
+        self.eval.add_constraint(
+            carry_l.clone() * (carry_l.clone() - E::F::one()) * (carry_l.clone() - E::F::from(TWO)),
+        );
 
-        let carry_h = (a.h + b.h + c.h + carry_l - sh) * E::F::from(INV16);
-        self.eval
-            .add_constraint(carry_h * (carry_h - E::F::one()) * (carry_h - E::F::from(TWO)));
+        let carry_h = (a.h + b.h + c.h + carry_l - sh.clone()) * E::F::from(INV16);
+        self.eval.add_constraint(
+            carry_h.clone() * (carry_h.clone() - E::F::one()) * (carry_h.clone() - E::F::from(TWO)),
+        );
 
-        Fu32 { l: sl, h: sh }
+        Fu32 {
+            l: sl,
+            h: sh.clone(),
+        }
     }
 
     /// Splits a felt at r.
     /// Caller is responsible for checking that the ranges of h * 2^r and l don't overlap.
     fn split_unchecked(&mut self, a: E::F, r: u32) -> (E::F, E::F) {
         let h = self.eval.next_trace_mask();
-        let l = a - h * E::F::from(BaseField::from_u32_unchecked(1 << r));
+        let l = a - h.clone() * E::F::from(BaseField::from_u32_unchecked(1 << r));
         (l, h)
     }
 
@@ -154,12 +193,11 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         // TODO: Separate lookups by w.
         let c = [self.eval.next_trace_mask(), self.eval.next_trace_mask()];
         let lookup_elements = self.xor_lookup_elements.get(w);
-        let comb0 = lookup_elements.combine::<E::F, E::EF>(&[a[0], b[0], c[0]]);
-        let comb1 = lookup_elements.combine::<E::F, E::EF>(&[a[1], b[1], c[1]]);
-        let frac = Fraction {
-            numerator: comb0 + comb1,
-            denominator: comb0 * comb1,
-        };
+        let comb0 =
+            lookup_elements.combine::<E::F, E::EF>(&[a[0].clone(), b[0].clone(), c[0].clone()]);
+        let comb1 =
+            lookup_elements.combine::<E::F, E::EF>(&[a[1].clone(), b[1].clone(), c[1].clone()]);
+        let frac = Reciprocal::new(comb0) + Reciprocal::new(comb1);
 
         self.logup.write_frac(&mut self.eval, frac);
         c

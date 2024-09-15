@@ -63,14 +63,17 @@ impl FrameworkEval for PlonkEval {
         let b_val = eval.next_trace_mask();
         let c_val = eval.next_trace_mask();
 
-        eval.add_constraint(c_val - op * (a_val + b_val) + (E::F::one() - op) * a_val * b_val);
+        eval.add_constraint(
+            c_val.clone() - op.clone() * (a_val.clone() + b_val.clone())
+                + (E::F::one() - op) * a_val.clone() * b_val.clone(),
+        );
 
         let denom_a: E::EF = self.lookup_elements.combine(&[a_wire, a_val]);
         let denom_b: E::EF = self.lookup_elements.combine(&[b_wire, b_val]);
 
         logup.write_frac(
             &mut eval,
-            Fraction::new(denom_a + denom_b, denom_a * denom_b),
+            Fraction::new(denom_a.clone() + denom_b.clone(), denom_a * denom_b),
         );
         logup.write_frac(
             &mut eval,
