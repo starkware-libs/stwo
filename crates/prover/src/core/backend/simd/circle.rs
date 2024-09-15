@@ -31,9 +31,9 @@ impl SimdBackend {
         );
 
         let mut product = F::one();
-        for &num in mappings.iter() {
+        for num in mappings.iter() {
             if index & 1 == 1 {
-                product *= num;
+                product *= num.clone();
             }
             index >>= 1;
             if index == 0 {
@@ -51,11 +51,11 @@ impl SimdBackend {
         // Every twiddle (i) is of the form (m[0])^b_0 * (m[1])^b_1 * ... * (m[log_size -
         // 1])^b_log_size.
         // Where (m)_j are the mappings, and b_i is the j'th bit of i.
-        let mut mappings = vec![point.y, point.x];
-        let mut x = point.x;
+        let mut mappings = vec![point.y, point.x.clone()];
+        let mut x = point.x.clone();
         for _ in 2..log_size {
             x = CirclePoint::double_x(x);
-            mappings.push(x);
+            mappings.push(x.clone());
         }
 
         // The caller function expects the mapping in natural order. i.e. (y,x,h(x),h(h(x)),...).
@@ -89,23 +89,23 @@ impl SimdBackend {
     where
         F: FieldExpOps,
     {
-        let mut denominators: Vec<F> = vec![mappings[0]];
+        let mut denominators: Vec<F> = vec![mappings[0].clone()];
 
         for i in 1..mappings.len() {
-            denominators.push(denominators[i - 1] * mappings[i]);
+            denominators.push(denominators[i - 1].clone() * mappings[i].clone());
         }
 
         let mut denom_inverses = vec![F::zero(); denominators.len()];
         F::batch_inverse(&denominators, &mut denom_inverses);
 
-        let mut steps = vec![mappings[0]];
+        let mut steps = vec![mappings[0].clone()];
 
         mappings
             .iter()
             .skip(1)
             .zip(denom_inverses.iter())
-            .for_each(|(&m, &d)| {
-                steps.push(m * d);
+            .for_each(|(m, d)| {
+                steps.push(m.clone() * d.clone());
             });
         steps.push(F::one());
         steps
@@ -115,7 +115,7 @@ impl SimdBackend {
     //      If idx(t) = 0b100..1010 , then f(t) = t * step[0]
     //      If idx(t) = 0b100..0111 , then f(t) = t * step[3]
     fn advance_twiddle<F: Field>(twiddle: F, steps: &[F], curr_idx: usize) -> F {
-        twiddle * steps[curr_idx.trailing_ones() as usize]
+        twiddle * steps[curr_idx.trailing_ones() as usize].clone()
     }
 }
 

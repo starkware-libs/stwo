@@ -56,9 +56,9 @@ pub fn pair_vanishing<F: ExtensionOf<BaseField>>(
     // | e1.x e1.y 1 |
     // This is a polynomial of degree 1 in p.x and p.y, and thus it is a line.
     // It vanishes at e0 and e1.
-    (excluded0.y - excluded1.y) * p.x
-        + (excluded1.x - excluded0.x) * p.y
-        + (excluded0.x * excluded1.y - excluded0.y * excluded1.x)
+    (excluded0.y.clone() - excluded1.y.clone()) * p.x
+        + (excluded1.x.clone() - excluded0.x.clone()) * p.y
+        + (excluded0.x.clone() * excluded1.y - excluded0.y * excluded1.x.clone())
 }
 
 /// Evaluates a vanishing polynomial of the vanish_point at a point.

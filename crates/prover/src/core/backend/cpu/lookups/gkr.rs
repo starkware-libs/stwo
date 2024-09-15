@@ -125,19 +125,19 @@ where
 
     for i in 0..n_terms {
         // Input polynomials at points `(r, {0, 1, 2}, bits(i), {0, 1})`.
-        let inp_numer_at_r0i0 = input_numerators[i * 2];
+        let inp_numer_at_r0i0 = input_numerators[i * 2].clone();
         let inp_denom_at_r0i0 = input_denominators[i * 2];
-        let inp_numer_at_r0i1 = input_numerators[i * 2 + 1];
+        let inp_numer_at_r0i1 = input_numerators[i * 2 + 1].clone();
         let inp_denom_at_r0i1 = input_denominators[i * 2 + 1];
-        let inp_numer_at_r1i0 = input_numerators[(n_terms + i) * 2];
+        let inp_numer_at_r1i0 = input_numerators[(n_terms + i) * 2].clone();
         let inp_denom_at_r1i0 = input_denominators[(n_terms + i) * 2];
-        let inp_numer_at_r1i1 = input_numerators[(n_terms + i) * 2 + 1];
+        let inp_numer_at_r1i1 = input_numerators[(n_terms + i) * 2 + 1].clone();
         let inp_denom_at_r1i1 = input_denominators[(n_terms + i) * 2 + 1];
         // Note `inp_denom(r, t, x) = eq(t, 0) * inp_denom(r, 0, x) + eq(t, 1) * inp_denom(r, 1, x)`
         //   => `inp_denom(r, 2, x) = 2 * inp_denom(r, 1, x) - inp_denom(r, 0, x)`
-        let inp_numer_at_r2i0 = inp_numer_at_r1i0.double() - inp_numer_at_r0i0;
+        let inp_numer_at_r2i0 = inp_numer_at_r1i0.double() - inp_numer_at_r0i0.clone();
         let inp_denom_at_r2i0 = inp_denom_at_r1i0.double() - inp_denom_at_r0i0;
-        let inp_numer_at_r2i1 = inp_numer_at_r1i1.double() - inp_numer_at_r0i1;
+        let inp_numer_at_r2i1 = inp_numer_at_r1i1.double() - inp_numer_at_r0i1.clone();
         let inp_denom_at_r2i1 = inp_denom_at_r1i1.double() - inp_denom_at_r0i1;
 
         // Fraction addition polynomials:
@@ -247,8 +247,8 @@ where
     let mut next_denominators = Vec::with_capacity(half_n);
 
     for i in 0..half_n {
-        let a = Fraction::new(numerators[i * 2], denominators[i * 2]);
-        let b = Fraction::new(numerators[i * 2 + 1], denominators[i * 2 + 1]);
+        let a = Fraction::new(numerators[i * 2].clone(), denominators[i * 2]);
+        let b = Fraction::new(numerators[i * 2 + 1].clone(), denominators[i * 2 + 1]);
         let res = a + b;
         next_numerators.push(res.numerator);
         next_denominators.push(res.denominator);
