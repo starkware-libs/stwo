@@ -1,10 +1,10 @@
 use std::iter::{zip, Sum};
-use std::ops::{Add, Deref, Mul, Neg, Sub};
+use std::ops::{Add, AddAssign, Deref, Mul, MulAssign, Neg, Sub};
 
 use num_traits::{One, Zero};
 
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{ExtensionOf, Field};
+use crate::core::fields::{ExtensionOf, Field, FieldExpOps};
 
 /// Univariate polynomial stored as coefficients in the monomial basis.
 #[derive(Debug, Clone)]
@@ -212,10 +212,10 @@ impl<N, D> Fraction<N, D> {
     }
 }
 
-impl<
-        N: Clone,
-        D: Add<Output = D> + Add<N, Output = D> + Mul<N, Output = D> + Mul<Output = D> + Clone,
-    > Add for Fraction<N, D>
+impl<N, D> Add for Fraction<N, D>
+where
+    N: Clone,
+    D: Add<Output = D> + Add<N, Output = D> + Mul<N, Output = D> + Mul<Output = D> + Clone,
 {
     type Output = Fraction<D, D>;
 
@@ -223,6 +223,22 @@ impl<
         Fraction {
             numerator: rhs.denominator.clone() * self.numerator.clone()
                 + self.denominator.clone() * rhs.numerator.clone(),
+            denominator: self.denominator * rhs.denominator,
+        }
+    }
+}
+
+impl<N, D> Sub for Fraction<N, D>
+where
+    N: Clone,
+    D: Sub<Output = D> + Add<N, Output = D> + Mul<N, Output = D> + Mul<Output = D> + Clone,
+{
+    type Output = Fraction<D, D>;
+
+    fn sub(self, rhs: Self) -> Fraction<D, D> {
+        Fraction {
+            numerator: rhs.denominator.clone() * self.numerator.clone()
+                - self.denominator.clone() * rhs.numerator.clone(),
             denominator: self.denominator * rhs.denominator,
         }
     }
@@ -244,6 +260,25 @@ where
     }
 }
 
+impl<N: Neg<Output = N>, D> Neg for Fraction<N, D> {
+    type Output = Self;
+    fn neg(self) -> Self {
+        Self::new(-self.numerator, self.denominator)
+    }
+}
+
+impl<N, D> AddAssign for Fraction<N, D>
+where
+    N: Mul<D, Output = N> + Add<Output = N> + Clone,
+    D: Mul<Output = D> + Clone,
+{
+    fn add_assign(&mut self, rhs: Self) {
+        self.numerator = self.numerator.clone() * rhs.denominator.clone()
+            + rhs.numerator.clone() * self.denominator.clone();
+        self.denominator = self.denominator.clone() * rhs.denominator;
+    }
+}
+
 impl<N, D> Sum for Fraction<N, D>
 where
     Self: Zero,
@@ -251,6 +286,36 @@ where
     fn sum<I: Iterator<Item = Self>>(mut iter: I) -> Self {
         let first = iter.next().unwrap_or_else(Self::zero);
         iter.fold(first, |a, b| a + b)
+    }
+}
+
+impl<N: Mul<Output = N>, D: Mul<Output = D>> Mul for Fraction<N, D> {
+    type Output = Self;
+    fn mul(self, rhs: Self) -> Self {
+        Self::new(
+            self.numerator * rhs.numerator,
+            self.denominator * rhs.denominator,
+        )
+    }
+}
+
+impl<N: MulAssign, D: MulAssign> MulAssign for Fraction<N, D> {
+    fn mul_assign(&mut self, rhs: Self) {
+        self.numerator *= rhs.numerator;
+        self.denominator *= rhs.denominator;
+    }
+}
+
+impl<N: One, D: One> One for Fraction<N, D> {
+    fn one() -> Self {
+        Self::new(N::one(), D::one())
+    }
+}
+
+impl<F: Zero + Clone + One + MulAssign> FieldExpOps for Fraction<F, F> {
+    fn inverse(&self) -> Self {
+        assert!(!self.denominator.is_zero());
+        Self::new(self.denominator.clone(), self.numerator.clone())
     }
 }
 
