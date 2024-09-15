@@ -1,13 +1,16 @@
+use itertools::Itertools;
+
 use super::{limb_bits, XorElements};
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::EvalAtRow;
 use crate::core::fields::m31::BaseField;
+use crate::core::lookups::utils::Fraction;
 
 /// Constraints for the xor table.
 pub struct XorTableEval<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32> {
     pub eval: E,
     pub lookup_elements: &'a XorElements,
-    pub logup: LogupAtRow<2, E>,
+    pub logup: LogupAtRow<E>,
 }
 impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
     XorTableEval<'a, E, ELEM_BITS, EXPAND_BITS>
@@ -19,8 +22,10 @@ impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
         let [al] = self.eval.next_interaction_mask(2, [0]);
         let [bl] = self.eval.next_interaction_mask(2, [0]);
         let [cl] = self.eval.next_interaction_mask(2, [0]);
-        for i in 0..1 << EXPAND_BITS {
-            for j in 0..1 << EXPAND_BITS {
+
+        let frac_chunks = (0..(1 << (2 * EXPAND_BITS)))
+            .map(|i| {
+                let (i, j) = ((i >> EXPAND_BITS) as u32, (i % (1 << EXPAND_BITS)) as u32);
                 let multiplicity = self.eval.next_trace_mask();
 
                 let a = al
@@ -36,15 +41,16 @@ impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
                         (i ^ j) << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
                     ));
 
-                // Add with negative multiplicity. Consumers should lookup with positive
-                // multiplicity.
-                self.logup.push_lookup(
-                    &mut self.eval,
+                Fraction::<E::EF, E::EF>::new(
                     (-multiplicity).into(),
-                    &[a, b, c],
-                    self.lookup_elements,
-                );
-            }
+                    self.lookup_elements.combine(&[a, b, c]),
+                )
+            })
+            .collect_vec();
+
+        for frac_chunk in frac_chunks.chunks(2) {
+            let sum_frac: Fraction<E::EF, E::EF> = frac_chunk.iter().copied().sum();
+            self.logup.write_frac(&mut self.eval, sum_frac);
         }
         self.logup.finalize(&mut self.eval);
         self.eval
