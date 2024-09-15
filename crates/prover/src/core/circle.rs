@@ -25,7 +25,7 @@ impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>
     }
 
     pub fn double(&self) -> Self {
-        *self + *self
+        self.clone() + self.clone()
     }
 
     /// Applies the circle's x-coordinate doubling map.
@@ -40,7 +40,7 @@ impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>
     /// ```
     pub fn double_x(x: F) -> F {
         let sx = x.square();
-        sx + sx - F::one()
+        sx.clone() + sx - F::one()
     }
 
     /// Returns the log order of a point.
@@ -61,7 +61,7 @@ impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>
         // we only need the x-coordinate to check order since the only point
         // with x=1 is the circle's identity
         let mut res = 0;
-        let mut cur = self.x;
+        let mut cur = self.x.clone();
         while cur != F::one() {
             cur = Self::double_x(cur);
             res += 1;
@@ -71,10 +71,10 @@ impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>
 
     pub fn mul(&self, mut scalar: u128) -> CirclePoint<F> {
         let mut res = Self::zero();
-        let mut cur = *self;
+        let mut cur = self.clone();
         while scalar > 0 {
             if scalar & 1 == 1 {
-                res = res + cur;
+                res = res + cur.clone();
             }
             cur = cur.double();
             scalar >>= 1;
@@ -83,7 +83,7 @@ impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>
     }
 
     pub fn repeated_double(&self, n: u32) -> Self {
-        let mut res = *self;
+        let mut res = self.clone();
         for _ in 0..n {
             res = res.double();
         }
@@ -92,22 +92,22 @@ impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>
 
     pub fn conjugate(&self) -> CirclePoint<F> {
         Self {
-            x: self.x,
-            y: -self.y,
+            x: self.x.clone(),
+            y: -self.y.clone(),
         }
     }
 
     pub fn antipode(&self) -> CirclePoint<F> {
         Self {
-            x: -self.x,
-            y: -self.y,
+            x: -self.x.clone(),
+            y: -self.y.clone(),
         }
     }
 
     pub fn into_ef<EF: From<F>>(&self) -> CirclePoint<EF> {
         CirclePoint {
-            x: self.x.into(),
-            y: self.y.into(),
+            x: self.x.clone().into(),
+            y: self.y.clone().into(),
         }
     }
 
@@ -126,7 +126,7 @@ impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let x = self.x * rhs.x - self.y * rhs.y;
+        let x = self.x.clone() * rhs.x.clone() - self.y.clone() * rhs.y.clone();
         let y = self.x * rhs.y + self.y * rhs.x;
         Self { x, y }
     }

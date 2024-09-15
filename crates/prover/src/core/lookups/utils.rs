@@ -27,20 +27,20 @@ impl<F: Field> UnivariatePoly<F> {
 
         let mut coeffs = Self::zero();
 
-        for (i, (&xi, &yi)) in zip(xs, ys).enumerate() {
-            let mut prod = yi;
+        for (i, (xi, yi)) in zip(xs, ys).enumerate() {
+            let mut prod = *yi;
 
-            for (j, &xj) in xs.iter().enumerate() {
+            for (j, xj) in xs.iter().enumerate() {
                 if i != j {
-                    prod /= xi - xj;
+                    prod /= *xi - *xj;
                 }
             }
 
             let mut term = Self::new(vec![prod]);
 
-            for (j, &xj) in xs.iter().enumerate() {
+            for (j, xj) in xs.iter().enumerate() {
                 if i != j {
-                    term = term * (Self::x() - Self::new(vec![xj]));
+                    term = term * (Self::x() - Self::new(vec![*xj]));
                 }
             }
 
@@ -98,8 +98,8 @@ impl<F: Field> Mul for UnivariatePoly<F> {
         let mut res = vec![F::zero(); self.0.len() + rhs.0.len() - 1];
 
         for (i, coeff_a) in self.0.into_iter().enumerate() {
-            for (j, &coeff_b) in rhs.0.iter().enumerate() {
-                res[i + j] += coeff_a * coeff_b;
+            for (j, coeff_b) in rhs.0.iter().enumerate() {
+                res[i + j] += coeff_a * *coeff_b;
             }
         }
 
@@ -116,8 +116,8 @@ impl<F: Field> Add for UnivariatePoly<F> {
 
         for i in 0..n {
             res.push(match (self.0.get(i), rhs.0.get(i)) {
-                (Some(&a), Some(&b)) => a + b,
-                (Some(&a), None) | (None, Some(&a)) => a,
+                (Some(a), Some(b)) => *a + *b,
+                (Some(a), None) | (None, Some(a)) => *a,
                 _ => unreachable!(),
             })
         }
@@ -166,7 +166,7 @@ impl<F: Field> Deref for UnivariatePoly<F> {
 pub fn horner_eval<F: Field>(coeffs: &[F], x: F) -> F {
     coeffs
         .iter()
-        .rfold(F::zero(), |acc, &coeff| acc * x + coeff)
+        .rfold(F::zero(), |acc, coeff| acc * x + *coeff)
 }
 
 /// Returns `v_0 + alpha * v_1 + ... + alpha^(n-1) * v_{n-1}`.
@@ -181,7 +181,7 @@ pub fn random_linear_combination(v: &[SecureField], alpha: SecureField) -> Secur
 pub fn eq<F: Field>(x: &[F], y: &[F]) -> F {
     assert_eq!(x.len(), y.len());
     zip(x, y)
-        .map(|(&xi, &yi)| xi * yi + (F::one() - xi) * (F::one() - yi))
+        .map(|(xi, yi)| *xi * *yi + (F::one() - *xi) * (F::one() - *yi))
         .product()
 }
 
@@ -195,11 +195,13 @@ where
 }
 
 /// Projective fraction.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Fraction<N, D> {
     pub numerator: N,
     pub denominator: D,
 }
+
+impl<N: Copy, D: Copy> Copy for Fraction<N, D> {}
 
 impl<N, D> Fraction<N, D> {
     pub fn new(numerator: N, denominator: D) -> Self {
@@ -210,14 +212,17 @@ impl<N, D> Fraction<N, D> {
     }
 }
 
-impl<N, D: Add<Output = D> + Add<N, Output = D> + Mul<N, Output = D> + Mul<Output = D> + Copy> Add
-    for Fraction<N, D>
+impl<
+        N: Clone,
+        D: Add<Output = D> + Add<N, Output = D> + Mul<N, Output = D> + Mul<Output = D> + Clone,
+    > Add for Fraction<N, D>
 {
     type Output = Fraction<D, D>;
 
     fn add(self, rhs: Self) -> Fraction<D, D> {
         Fraction {
-            numerator: rhs.denominator * self.numerator + self.denominator * rhs.numerator,
+            numerator: rhs.denominator.clone() * self.numerator.clone()
+                + self.denominator.clone() * rhs.numerator.clone(),
             denominator: self.denominator * rhs.denominator,
         }
     }
@@ -260,13 +265,25 @@ impl<T> Reciprocal<T> {
     }
 }
 
-impl<T: Add<Output = T> + Mul<Output = T> + Copy> Add for Reciprocal<T> {
+impl<T: Add<Output = T> + Mul<Output = T> + Clone> Add for Reciprocal<T> {
     type Output = Fraction<T, T>;
 
     fn add(self, rhs: Self) -> Fraction<T, T> {
         // `1/a + 1/b = (a + b)/(a * b)`
         Fraction {
-            numerator: self.x + rhs.x,
+            numerator: self.x.clone() + rhs.x.clone(),
+            denominator: self.x * rhs.x,
+        }
+    }
+}
+
+impl<T: Sub<Output = T> + Mul<Output = T> + Clone> Sub for Reciprocal<T> {
+    type Output = Fraction<T, T>;
+
+    fn sub(self, rhs: Self) -> Fraction<T, T> {
+        // `1/a - 1/b = (b - a)/(a * b)`
+        Fraction {
+            numerator: rhs.x.clone() - self.x.clone(),
             denominator: self.x * rhs.x,
         }
     }
