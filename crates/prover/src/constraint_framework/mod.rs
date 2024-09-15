@@ -31,7 +31,7 @@ pub trait EvalAtRow {
     /// constraints. It might be [BaseField] packed types, or even [SecureField], when evaluating
     /// the columns out of domain.
     type F: FieldExpOps
-        + Copy
+        + Clone
         + Debug
         + Zero
         + Neg<Output = Self::F>
@@ -48,7 +48,7 @@ pub trait EvalAtRow {
     /// A field type representing the closure of `F` with multiplying by [SecureField]. Constraints
     /// usually get multiplied by [SecureField] values for security.
     type EF: One
-        + Copy
+        + Clone
         + Debug
         + Zero
         + From<Self::F>
@@ -84,8 +84,11 @@ pub trait EvalAtRow {
         interaction: usize,
         offsets: [isize; N],
     ) -> [Self::EF; N] {
-        let res_col_major = array::from_fn(|_| self.next_interaction_mask(interaction, offsets));
-        array::from_fn(|i| Self::combine_ef(res_col_major.map(|c| c[i])))
+        let mut res_col_major =
+            array::from_fn(|_| self.next_interaction_mask(interaction, offsets).into_iter());
+        array::from_fn(|_| {
+            Self::combine_ef(res_col_major.each_mut().map(|iter| iter.next().unwrap()))
+        })
     }
 
     /// Adds a constraint to the component.
