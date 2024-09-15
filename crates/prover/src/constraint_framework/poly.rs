@@ -1,13 +1,12 @@
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
 
 /// A monic monomial consists of a list of variables and their exponents.
 #[derive(Debug, Hash, PartialEq, PartialOrd, Eq, Ord, Clone)]
@@ -22,9 +21,13 @@ impl Monomial {
     }
 
     fn default() -> Monomial {
-        Monomial {
-            vars: [(0, 0)].into(),
-        }
+        Monomial { vars: [].into() }
+    }
+}
+
+impl One for Monomial {
+    fn one() -> Self {
+        Monomial { vars: [].into() }
     }
 }
 
@@ -32,6 +35,21 @@ impl Monomial {
 #[derive(Debug, Hash, PartialEq, PartialOrd, Eq, Ord, Clone)]
 pub struct Polynomial<F: From<BaseField>> {
     monomials: BTreeMap<Monomial, F>,
+}
+
+impl<F: From<BaseField> + One> Polynomial<F> {
+    /// Returns the polynomial x_ind.
+    pub fn from_var_index(ind: usize) -> Polynomial<F> {
+        Self {
+            monomials: [(
+                Monomial {
+                    vars: [(ind, 1)].into(),
+                },
+                F::one(),
+            )]
+            .into(),
+        }
+    }
 }
 
 impl<F: One + From<BaseField>> From<Monomial> for Polynomial<F> {
@@ -70,6 +88,16 @@ impl<F: Zero + Add + Clone + From<BaseField>> Add for Polynomial<F> {
             }
         }
         Self { monomials }
+    }
+}
+
+impl<F> Sub for Polynomial<F>
+where
+    F: Zero + Add + Clone + From<BaseField> + Neg<Output = F>,
+{
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        self + (-rhs)
     }
 }
 
@@ -199,14 +227,29 @@ where
     }
 }
 
-impl<F> FieldExpOps for Polynomial<F>
-where
-    F: Zero + One + Clone + Add + Mul + AddAssign + From<BaseField>,
-{
-    fn inverse(&self) -> Self {
-        assert!(!self.is_zero(), "0 has no inverse");
-        let mut res = Self::from(BaseField::one()) / self.clone();
-        res
+impl From<Polynomial<BaseField>> for Polynomial<SecureField> {
+    fn from(poly: Polynomial<BaseField>) -> Self {
+        Self {
+            monomials: poly
+                .monomials
+                .into_iter()
+                .map(|(m, c)| (m, c.into()))
+                .collect(),
+        }
+    }
+}
+
+impl Add<Polynomial<BaseField>> for Polynomial<SecureField> {
+    type Output = Self;
+    fn add(self, rhs: Polynomial<BaseField>) -> Self {
+        self + Polynomial::<SecureField>::from(rhs)
+    }
+}
+
+impl Mul<Polynomial<BaseField>> for Polynomial<SecureField> {
+    type Output = Self;
+    fn mul(self, rhs: Polynomial<BaseField>) -> Self {
+        self * Polynomial::<SecureField>::from(rhs)
     }
 }
 
@@ -263,10 +306,13 @@ impl Display for Monomial {
 
 impl<F> Display for Polynomial<F>
 where
-    F: Display + Zero + Add + Clone + From<BaseField>,
+    F: Display + Zero + Add + Clone + From<BaseField> + One + PartialEq,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut is_first = true;
+        if self.is_zero() {
+            return write!(f, "0");
+        }
         for (monomial, coef) in self.monomials.iter() {
             if !coef.is_zero() {
                 if !is_first {
@@ -274,9 +320,13 @@ where
                 } else {
                     is_first = false;
                 }
-                write!(f, "{}", coef)?;
+                if !coef.is_one() {
+                    write!(f, "{}", coef)?;
+                }
                 if !monomial.vars.is_empty() {
                     write!(f, "{}", monomial)?;
+                } else if coef.is_one() {
+                    write!(f, "1")?;
                 }
             }
         }
@@ -362,6 +412,17 @@ mod tests {
                 vars: [(0, 1), (1, 3), (2, 2)].into()
             }
         );
+
+        let monomial1 = Monomial {
+            vars: [(0, 1), (1, 2)].into(),
+        };
+        let monomial2 = Monomial { vars: [].into() };
+        assert_eq!(
+            monomial1.clone() * monomial2.clone(),
+            Monomial {
+                vars: [(0, 1), (1, 2)].into()
+            }
+        );
     }
 
     #[test]
@@ -376,7 +437,12 @@ mod tests {
             vars: [(4, 1), (5, 2)].into(),
         };
         let poly1 = Polynomial::<M31> {
-            monomials: [(monomial1.clone(), M31(1)), (monomial2.clone(), M31(2))].into(),
+            monomials: [
+                (Monomial::default(), M31(12)),
+                (monomial1.clone(), M31(1)),
+                (monomial2.clone(), M31(2)),
+            ]
+            .into(),
         };
         let poly2 = Polynomial::<M31> {
             monomials: [(monomial2.clone(), M31(5)), (monomial3.clone(), -M31(8))].into(),
@@ -385,6 +451,8 @@ mod tests {
         assert_eq!(
             (poly1.clone() * poly2.clone()).monomials,
             [
+                (monomial2.clone(), M31(60)),
+                (monomial3.clone(), -M31(96)),
                 (monomial1.clone() * monomial2.clone(), M31(5)),
                 (monomial1.clone() * monomial3.clone(), -M31(8)),
                 (monomial2.clone() * monomial2.clone(), M31(10)),
