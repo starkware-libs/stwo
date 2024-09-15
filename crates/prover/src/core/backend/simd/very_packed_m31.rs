@@ -14,11 +14,11 @@ use crate::core::fields::FieldExpOps;
 pub const LOG_N_VERY_PACKED_ELEMS: u32 = 1;
 pub const N_VERY_PACKED_ELEMS: usize = 1 << LOG_N_VERY_PACKED_ELEMS;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 #[repr(transparent)]
-pub struct Vectorized<A, const N: usize>(pub [A; N]);
+pub struct Vectorized<A: Copy, const N: usize>(pub [A; N]);
 
-impl<A, const N: usize> Vectorized<A, N> {
+impl<A: Copy, const N: usize> Vectorized<A, N> {
     pub fn from_fn<F>(cb: F) -> Self
     where
         F: FnMut(usize) -> A,
@@ -27,11 +27,12 @@ impl<A, const N: usize> Vectorized<A, N> {
     }
 }
 
-unsafe impl<A, const N: usize> Zeroable for Vectorized<A, N> {
+unsafe impl<A: Copy, const N: usize> Zeroable for Vectorized<A, N> {
     fn zeroed() -> Self {
         unsafe { core::mem::zeroed() }
     }
 }
+
 unsafe impl<A: Pod, const N: usize> Pod for Vectorized<A, N> {}
 
 pub type VeryPackedM31 = Vectorized<PackedM31, N_VERY_PACKED_ELEMS>;
@@ -111,7 +112,10 @@ impl Scalar for PackedM31 {}
 impl Scalar for PackedCM31 {}
 impl Scalar for PackedQM31 {}
 
-impl<A: Add<B> + Copy, B: Copy, const N: usize> Add<Vectorized<B, N>> for Vectorized<A, N> {
+impl<A: Add<B> + Copy, B: Copy, const N: usize> Add<Vectorized<B, N>> for Vectorized<A, N>
+where
+    <A as Add<B>>::Output: Copy,
+{
     type Output = Vectorized<A::Output, N>;
 
     fn add(self, other: Vectorized<B, N>) -> Self::Output {
@@ -119,7 +123,10 @@ impl<A: Add<B> + Copy, B: Copy, const N: usize> Add<Vectorized<B, N>> for Vector
     }
 }
 
-impl<A: Add<B> + Copy, B: Scalar + Copy, const N: usize> Add<B> for Vectorized<A, N> {
+impl<A: Add<B> + Copy, B: Scalar + Copy, const N: usize> Add<B> for Vectorized<A, N>
+where
+    <A as Add<B>>::Output: Copy,
+{
     type Output = Vectorized<A::Output, N>;
 
     fn add(self, other: B) -> Self::Output {
@@ -127,7 +134,10 @@ impl<A: Add<B> + Copy, B: Scalar + Copy, const N: usize> Add<B> for Vectorized<A
     }
 }
 
-impl<A: Sub<B> + Copy, B: Copy, const N: usize> Sub<Vectorized<B, N>> for Vectorized<A, N> {
+impl<A: Sub<B> + Copy, B: Copy, const N: usize> Sub<Vectorized<B, N>> for Vectorized<A, N>
+where
+    <A as Sub<B>>::Output: Copy,
+{
     type Output = Vectorized<A::Output, N>;
 
     fn sub(self, other: Vectorized<B, N>) -> Self::Output {
@@ -135,7 +145,10 @@ impl<A: Sub<B> + Copy, B: Copy, const N: usize> Sub<Vectorized<B, N>> for Vector
     }
 }
 
-impl<A: Sub<B> + Copy, B: Scalar + Copy, const N: usize> Sub<B> for Vectorized<A, N> {
+impl<A: Sub<B> + Copy, B: Scalar + Copy, const N: usize> Sub<B> for Vectorized<A, N>
+where
+    <A as Sub<B>>::Output: Copy,
+{
     type Output = Vectorized<A::Output, N>;
 
     fn sub(self, other: B) -> Self::Output {
@@ -143,7 +156,10 @@ impl<A: Sub<B> + Copy, B: Scalar + Copy, const N: usize> Sub<B> for Vectorized<A
     }
 }
 
-impl<A: Mul<B> + Copy, B: Copy, const N: usize> Mul<Vectorized<B, N>> for Vectorized<A, N> {
+impl<A: Mul<B> + Copy, B: Copy, const N: usize> Mul<Vectorized<B, N>> for Vectorized<A, N>
+where
+    <A as Mul<B>>::Output: Copy,
+{
     type Output = Vectorized<A::Output, N>;
 
     fn mul(self, other: Vectorized<B, N>) -> Self::Output {
@@ -151,7 +167,10 @@ impl<A: Mul<B> + Copy, B: Copy, const N: usize> Mul<Vectorized<B, N>> for Vector
     }
 }
 
-impl<A: Mul<B> + Copy, B: Scalar + Copy, const N: usize> Mul<B> for Vectorized<A, N> {
+impl<A: Mul<B> + Copy, B: Scalar + Copy, const N: usize> Mul<B> for Vectorized<A, N>
+where
+    <A as Mul<B>>::Output: Copy,
+{
     type Output = Vectorized<A::Output, N>;
 
     fn mul(self, other: B) -> Self::Output {
@@ -187,7 +206,10 @@ impl<A: MulAssign<B> + Copy, B: Copy, const N: usize> MulAssign<Vectorized<B, N>
     }
 }
 
-impl<A: Neg + Copy, const N: usize> Neg for Vectorized<A, N> {
+impl<A: Neg + Copy, const N: usize> Neg for Vectorized<A, N>
+where
+    <A as Neg>::Output: Copy,
+{
     type Output = Vectorized<A::Output, N>;
 
     #[inline(always)]
@@ -212,7 +234,7 @@ impl<A: One + Copy, const N: usize> One for Vectorized<A, N> {
     }
 }
 
-impl<A: FieldExpOps + Zero, const N: usize> FieldExpOps for Vectorized<A, N> {
+impl<A: FieldExpOps + Zero + Copy, const N: usize> FieldExpOps for Vectorized<A, N> {
     fn inverse(&self) -> Self {
         Vectorized::from_fn(|i| {
             assert!(!self.0[i].is_zero(), "0 has no inverse");

@@ -27,10 +27,10 @@ pub fn fold<F: Field, E: ExtensionOf<F>>(values: &[F], folding_factors: &[E]) ->
         return values[0].into();
     }
     let (lhs_values, rhs_values) = values.split_at(n / 2);
-    let (&folding_factor, folding_factors) = folding_factors.split_first().unwrap();
+    let (folding_factor, folding_factors) = folding_factors.split_first().unwrap();
     let lhs_val = fold(lhs_values, folding_factors);
     let rhs_val = fold(rhs_values, folding_factors);
-    lhs_val + rhs_val * folding_factor
+    lhs_val + rhs_val * *folding_factor
 }
 
 /// Repeats each value sequentially `duplicity` many times.
