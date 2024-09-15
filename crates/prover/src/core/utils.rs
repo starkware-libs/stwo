@@ -255,7 +255,7 @@ mod tests {
         let n = 1 << log_size;
         let domain = CanonicCoset::new(log_size).circle_domain();
         let values = (0..n).map(|i| m31!(i as u32)).collect_vec();
-        let evaluation = CpuCircleEvaluation::<_, NaturalOrder>::new(domain, values.clone());
+        let evaluation = CpuCircleEvaluation::<_, NaturalOrder>::new(domain, values);
         let bit_reversed_evaluation = evaluation.clone().bit_reverse();
 
         //            2   ·  14
