@@ -110,10 +110,10 @@ pub(crate) fn coset_order_to_circle_domain_order<F: Field>(values: &[F]) -> Vec<
     let n = values.len();
     let half_len = n / 2;
     for i in 0..half_len {
-        circle_domain_order.push(values[i << 1]);
+        circle_domain_order.push(values[i << 1].clone());
     }
     for i in 0..half_len {
-        circle_domain_order.push(values[n - 1 - (i << 1)]);
+        circle_domain_order.push(values[n - 1 - (i << 1)].clone());
     }
     circle_domain_order
 }

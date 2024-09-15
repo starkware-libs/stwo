@@ -1,7 +1,7 @@
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::ExtensionOf;
 
-pub trait SquareMatrix<F: ExtensionOf<BaseField>, const N: usize> {
+pub trait SquareMatrix<F: ExtensionOf<BaseField> + Copy, const N: usize> {
     fn get_at(&self, i: usize, j: usize) -> F;
     fn mul(&self, v: [F; N]) -> [F; N] {
         (0..N)
@@ -20,7 +20,7 @@ pub struct RowMajorMatrix<F: ExtensionOf<BaseField>, const N: usize> {
     values: [[F; N]; N],
 }
 
-impl<F: ExtensionOf<BaseField>, const N: usize> RowMajorMatrix<F, N> {
+impl<F: ExtensionOf<BaseField> + Copy, const N: usize> RowMajorMatrix<F, N> {
     pub fn new(values: Vec<F>) -> Self {
         assert_eq!(values.len(), N * N);
         Self {
@@ -34,7 +34,7 @@ impl<F: ExtensionOf<BaseField>, const N: usize> RowMajorMatrix<F, N> {
     }
 }
 
-impl<F: ExtensionOf<BaseField>, const N: usize> SquareMatrix<F, N> for RowMajorMatrix<F, N> {
+impl<F: ExtensionOf<BaseField> + Copy, const N: usize> SquareMatrix<F, N> for RowMajorMatrix<F, N> {
     fn get_at(&self, i: usize, j: usize) -> F {
         self.values[i][j]
     }

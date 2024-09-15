@@ -88,11 +88,11 @@ impl BlakeXorElements {
 }
 
 /// Utility for representing a u32 as two field elements, for constraint evaluation.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct Fu32<F>
 where
     F: FieldExpOps
-        + Copy
+        + Clone
         + Debug
         + AddAssign<F>
         + Add<F, Output = F>
@@ -105,13 +105,14 @@ where
 impl<F> Fu32<F>
 where
     F: FieldExpOps
-        + Copy
+        + Clone
         + Debug
         + AddAssign<F>
         + Add<F, Output = F>
         + Sub<F, Output = F>
         + Mul<BaseField, Output = F>,
 {
+    #[allow(clippy::wrong_self_convention)]
     fn to_felts(self) -> [F; 2] {
         [self.l, self.h]
     }

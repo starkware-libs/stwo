@@ -25,17 +25,20 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
         let [denom_i, denom_j] = [i, j].map(|idx| {
             let input_state = &states[idx];
             let output_state = &states[idx + 1];
-            let round_messages = SIGMA[idx].map(|k| messages[k as usize]);
+            let round_messages = SIGMA[idx].map(|k| messages[k as usize].clone());
             round_lookup_elements.combine::<E::F, E::EF>(
                 &chain![
-                    input_state.iter().copied().flat_map(Fu32::to_felts),
-                    output_state.iter().copied().flat_map(Fu32::to_felts),
-                    round_messages.iter().copied().flat_map(Fu32::to_felts)
+                    input_state.iter().cloned().flat_map(Fu32::to_felts),
+                    output_state.iter().cloned().flat_map(Fu32::to_felts),
+                    round_messages.iter().cloned().flat_map(Fu32::to_felts)
                 ]
                 .collect_vec(),
             )
         });
-        logup.write_frac(eval, Fraction::new(denom_i + denom_j, denom_i * denom_j));
+        logup.write_frac(
+            eval,
+            Fraction::new(denom_i.clone() + denom_j.clone(), denom_i * denom_j),
+        );
     }
 
     let input_state = &states[0];
@@ -49,9 +52,9 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
             E::EF::zero(),
             blake_lookup_elements.combine(
                 &chain![
-                    input_state.iter().copied().flat_map(Fu32::to_felts),
-                    output_state.iter().copied().flat_map(Fu32::to_felts),
-                    messages.iter().copied().flat_map(Fu32::to_felts)
+                    input_state.iter().cloned().flat_map(Fu32::to_felts),
+                    output_state.iter().cloned().flat_map(Fu32::to_felts),
+                    messages.iter().cloned().flat_map(Fu32::to_felts)
                 ]
                 .collect_vec(),
             ),
