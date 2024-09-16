@@ -212,7 +212,7 @@ impl<A: One + Copy, const N: usize> One for Vectorized<A, N> {
     }
 }
 
-impl<A: FieldExpOps + Zero, const N: usize> FieldExpOps for Vectorized<A, N> {
+impl<A: FieldExpOps + Copy + Zero, const N: usize> FieldExpOps for Vectorized<A, N> {
     fn inverse(&self) -> Self {
         Vectorized::from_fn(|i| {
             assert!(!self.0[i].is_zero(), "0 has no inverse");

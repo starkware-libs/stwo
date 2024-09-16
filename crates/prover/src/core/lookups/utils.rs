@@ -210,14 +210,15 @@ impl<N, D> Fraction<N, D> {
     }
 }
 
-impl<N, D: Add<Output = D> + Add<N, Output = D> + Mul<N, Output = D> + Mul<Output = D> + Copy> Add
+impl<N, D: Add<Output = D> + Add<N, Output = D> + Mul<N, Output = D> + Mul<Output = D> + Clone> Add
     for Fraction<N, D>
 {
     type Output = Fraction<D, D>;
 
     fn add(self, rhs: Self) -> Fraction<D, D> {
         Fraction {
-            numerator: rhs.denominator * self.numerator + self.denominator * rhs.numerator,
+            numerator: rhs.denominator.clone() * self.numerator
+                + self.denominator.clone() * rhs.numerator,
             denominator: self.denominator * rhs.denominator,
         }
     }
@@ -260,13 +261,25 @@ impl<T> Reciprocal<T> {
     }
 }
 
-impl<T: Add<Output = T> + Mul<Output = T> + Copy> Add for Reciprocal<T> {
+impl<T: Add<Output = T> + Mul<Output = T> + Clone> Add for Reciprocal<T> {
     type Output = Fraction<T, T>;
 
     fn add(self, rhs: Self) -> Fraction<T, T> {
         // `1/a + 1/b = (a + b)/(a * b)`
         Fraction {
-            numerator: self.x + rhs.x,
+            numerator: self.x.clone() + rhs.x.clone(),
+            denominator: self.x * rhs.x,
+        }
+    }
+}
+
+impl<T: Sub<Output = T> + Mul<Output = T> + Clone> Sub for Reciprocal<T> {
+    type Output = Fraction<T, T>;
+
+    fn sub(self, rhs: Self) -> Fraction<T, T> {
+        // `1/a - 1/b = (a - b)/(a * b)`
+        Fraction {
+            numerator: self.x.clone() - rhs.x.clone(),
             denominator: self.x * rhs.x,
         }
     }

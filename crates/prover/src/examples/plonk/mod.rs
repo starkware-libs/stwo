@@ -14,7 +14,7 @@ use crate::core::backend::Column;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::lookups::utils::Fraction;
+use crate::core::lookups::utils::{Fraction, Reciprocal};
 use crate::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeSubspan};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
@@ -58,14 +58,17 @@ impl FrameworkEval for PlonkEval {
         let b_val = eval.next_trace_mask();
         let c_val = eval.next_trace_mask();
 
-        eval.add_constraint(c_val - op * (a_val + b_val) + (E::F::one() - op) * a_val * b_val);
+        eval.add_constraint(
+            c_val.clone() - op.clone() * (a_val.clone() + b_val.clone())
+                + (E::F::one() - op) * a_val.clone() * b_val.clone(),
+        );
 
         let denom_a: E::EF = self.lookup_elements.combine(&[a_wire, a_val]);
         let denom_b: E::EF = self.lookup_elements.combine(&[b_wire, b_val]);
 
         logup.write_frac(
             &mut eval,
-            Fraction::new(denom_a + denom_b, denom_a * denom_b),
+            Reciprocal::new(denom_a) + Reciprocal::new(denom_b),
         );
         logup.write_frac(
             &mut eval,
