@@ -69,9 +69,9 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
             self.round_lookup_elements,
             -E::EF::one(),
             &chain![
-                input_v.iter().cloned().flat_map(Fu32::to_felts),
-                v.iter().cloned().flat_map(Fu32::to_felts),
-                m.iter().cloned().flat_map(Fu32::to_felts)
+                input_v.iter().cloned().flat_map(Fu32::into_felts),
+                v.iter().cloned().flat_map(Fu32::into_felts),
+                m.iter().cloned().flat_map(Fu32::into_felts)
             ]
             .collect_vec(),
         )]);

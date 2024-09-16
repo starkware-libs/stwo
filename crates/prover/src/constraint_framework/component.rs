@@ -332,6 +332,11 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             .step_by(CHUNK_SIZE)
             .zip(col.chunks_mut(CHUNK_SIZE));
 
+        // Define any `self` values outside the loop to prevent the compiler thinking there is a
+        // `Sync` requirement on `Self`.
+        let self_eval = &self.eval;
+        let self_logup_sums = self.logup_sums;
+
         iter.for_each(|(chunk_idx, mut chunk)| {
             let trace_cols = trace.as_cols_ref().map_cols(|c| c.as_ref());
 
@@ -344,10 +349,10 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                     &accum.random_coeff_powers,
                     trace_domain.log_size(),
                     eval_domain.log_size(),
-                    self.eval.log_size(),
-                    self.logup_sums,
+                    self_eval.log_size(),
+                    self_logup_sums,
                 );
-                let row_res = self.eval.evaluate(eval).row_res;
+                let row_res = self_eval.evaluate(eval).row_res;
 
                 // Finalize row.
                 unsafe {
