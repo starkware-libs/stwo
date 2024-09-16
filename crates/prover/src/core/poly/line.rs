@@ -183,7 +183,7 @@ impl DerefMut for LinePoly {
 /// Evaluations of a univariate polynomial on a [LineDomain].
 // TODO(andrew): Remove EvalOrder. Bit-reversed evals are only necessary since LineEvaluation is
 // only used by FRI where evaluations are in bit-reversed order.
-// TODO(spapini): Remove pub.
+// TODO(andrew): Remove pub.
 #[derive(Clone, Debug)]
 pub struct LineEvaluation<B: FieldOps<BaseField>> {
     /// Evaluations of a univariate polynomial on `domain`.

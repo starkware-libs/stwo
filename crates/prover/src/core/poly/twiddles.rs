@@ -7,7 +7,7 @@ use crate::core::circle::Coset;
 /// its `half_coset`.
 pub struct TwiddleTree<B: PolyOps> {
     pub root_coset: Coset,
-    // TODO(spapini): Represent a slice, and grabbing, in a generic way
+    // TODO(shahars): Represent a slice, and grabbing, in a generic way
     pub twiddles: B::Twiddles,
     pub itwiddles: B::Twiddles,
 }

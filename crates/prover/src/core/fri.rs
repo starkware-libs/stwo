@@ -686,7 +686,6 @@ impl<H: MerkleHasher> FriLayerVerifier<H> {
             commitment,
             vec![self.domain.log_size(); SECURE_EXTENSION_DEGREE],
         );
-        // TODO(spapini): Propagate error.
         merkle_verifier
             .verify(
                 [(self.domain.log_size(), decommitment_positions)]
@@ -784,8 +783,6 @@ struct FriLayerProver<B: FriOps + MerkleOps<H>, H: MerkleHasher> {
 
 impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>) -> Self {
-        // TODO(spapini): Commit on slice.
-        // TODO(spapini): Merkle tree in backend.
         let merkle_tree = MerkleProver::commit(evaluation.values.columns.iter().collect_vec());
         #[allow(unreachable_code)]
         FriLayerProver {
@@ -822,7 +819,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriLayerProver<B, H> {
         }
 
         let commitment = self.merkle_tree.root();
-        // TODO(spapini): Use _evals.
+        // TODO(andrew): Use _evals.
         let (_evals, decommitment) = self.merkle_tree.decommit(
             [(self.evaluation.len().ilog2(), decommit_positions)]
                 .into_iter()

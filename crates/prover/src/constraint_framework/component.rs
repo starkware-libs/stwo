@@ -145,8 +145,8 @@ impl<E: FrameworkEval> ComponentProver<SimdBackend> for FrameworkComponent<E> {
         let component_evals = trace.evals.sub_tree(&self.trace_locations);
 
         // Extend trace if necessary.
-        // TODO(spapini): Don't extend when eval_size < committed_size. Instead, pick a good
-        // subdomain.
+        // TODO: Don't extend when eval_size < committed_size. Instead, pick a good
+        // subdomain. (For larger blowup factors).
         let need_to_extend = component_evals
             .iter()
             .flatten()

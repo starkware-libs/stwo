@@ -19,6 +19,7 @@ use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::domain_line_twiddles_from_tree;
 use crate::core::poly::BitReversedOrder;
 
+// TODO(andrew) Is this optimized?
 impl FriOps for SimdBackend {
     fn fold_line(
         eval: &LineEvaluation<Self>,

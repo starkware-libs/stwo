@@ -121,7 +121,7 @@ impl<const N: usize> LookupElements<N> {
             })
             - EF::from(self.z)
     }
-    // TODO(spapini): Try to remove this.
+
     pub fn dummy() -> Self {
         Self {
             z: SecureField::one(),
