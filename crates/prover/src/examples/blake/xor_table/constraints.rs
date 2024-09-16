@@ -23,15 +23,15 @@ impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
             for j in 0..1 << EXPAND_BITS {
                 let multiplicity = self.eval.next_trace_mask();
 
-                let a = al
+                let a = al.clone()
                     + E::F::from(BaseField::from_u32_unchecked(
                         i << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
                     ));
-                let b = bl
+                let b = bl.clone()
                     + E::F::from(BaseField::from_u32_unchecked(
                         j << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
                     ));
-                let c = cl
+                let c = cl.clone()
                     + E::F::from(BaseField::from_u32_unchecked(
                         (i ^ j) << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
                     ));

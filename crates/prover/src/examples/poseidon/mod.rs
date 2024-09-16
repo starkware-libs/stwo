@@ -26,7 +26,7 @@ use crate::core::prover::{prove, StarkProof};
 use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use crate::core::ColumnVec;
 
-const N_LOG_INSTANCES_PER_ROW: usize = 3;
+const N_LOG_INSTANCES_PER_ROW: usize = 0;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
 const N_STATE: usize = 16;
 const N_PARTIAL_ROUNDS: usize = 14;
@@ -69,18 +69,18 @@ impl FrameworkEval for PoseidonEval {
 /// Applies the M4 MDS matrix described in <https://eprint.iacr.org/2023/323.pdf> 5.1.
 fn apply_m4<F>(x: [F; 4]) -> [F; 4]
 where
-    F: Copy + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
+    F: Clone + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
 {
-    let t0 = x[0] + x[1];
-    let t02 = t0 + t0;
-    let t1 = x[2] + x[3];
-    let t12 = t1 + t1;
-    let t2 = x[1] + x[1] + t1;
-    let t3 = x[3] + x[3] + t0;
-    let t4 = t12 + t12 + t3;
-    let t5 = t02 + t02 + t2;
-    let t6 = t3 + t5;
-    let t7 = t2 + t4;
+    let t0 = x[0].clone() + x[1].clone();
+    let t02 = t0.clone() + t0.clone();
+    let t1 = x[2].clone() + x[3].clone();
+    let t12 = t1.clone() + t1.clone();
+    let t2 = x[1].clone() + x[1].clone() + t1;
+    let t3 = x[3].clone() + x[3].clone() + t0;
+    let t4 = t12.clone() + t12 + t3.clone();
+    let t5 = t02.clone() + t02 + t2.clone();
+    let t6 = t3 + t5.clone();
+    let t7 = t2 + t4.clone();
     [t6, t5, t7, t4]
 }
 
@@ -88,7 +88,7 @@ where
 /// See <https://eprint.iacr.org/2023/323.pdf> 5.1 and Appendix B.
 fn apply_external_round_matrix<F>(state: &mut [F; 16])
 where
-    F: Copy + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
+    F: Clone + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
 {
     // Applies circ(2M4, M4, M4, M4).
     for i in 0..4 {
@@ -98,16 +98,17 @@ where
             state[4 * i + 2],
             state[4 * i + 3],
         ] = apply_m4([
-            state[4 * i],
-            state[4 * i + 1],
-            state[4 * i + 2],
-            state[4 * i + 3],
+            state[4 * i].clone(),
+            state[4 * i + 1].clone(),
+            state[4 * i + 2].clone(),
+            state[4 * i + 3].clone(),
         ]);
     }
     for j in 0..4 {
-        let s = state[j] + state[j + 4] + state[j + 8] + state[j + 12];
+        let s =
+            state[j].clone() + state[j + 4].clone() + state[j + 8].clone() + state[j + 12].clone();
         for i in 0..4 {
-            state[4 * i + j] += s;
+            state[4 * i + j] += s.clone();
         }
     }
 }
@@ -117,20 +118,22 @@ where
 // See <https://eprint.iacr.org/2023/323.pdf> 5.2.
 fn apply_internal_round_matrix<F>(state: &mut [F; 16])
 where
-    F: Copy + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
+    F: Clone + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
 {
     // TODO(spapini): Check that these coefficients are good according to section  5.3 of Poseidon2
     // paper.
-    let sum = state[1..].iter().fold(state[0], |acc, s| acc + *s);
+    let sum = state[1..]
+        .iter()
+        .fold(state[0].clone(), |acc, s| acc + s.clone());
     state.iter_mut().enumerate().for_each(|(i, s)| {
         // TODO(spapini): Change to rotations.
-        *s = *s * BaseField::from_u32_unchecked(1 << (i + 1)) + sum;
+        *s = s.clone() * BaseField::from_u32_unchecked(1 << (i + 1)) + sum.clone();
     });
 }
 
 fn pow5<F: FieldExpOps>(x: F) -> F {
-    let x2 = x * x;
-    let x4 = x2 * x2;
+    let x2 = x.clone().square();
+    let x4 = x2.square();
     x4 * x
 }
 
@@ -151,10 +154,10 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(
                 state[i] += EXTERNAL_ROUND_CONSTS[round][i];
             });
             apply_external_round_matrix(&mut state);
-            state = std::array::from_fn(|i| pow5(state[i]));
+            state = std::array::from_fn(|i| pow5(state[i].clone()));
             state.iter_mut().for_each(|s| {
                 let m = eval.next_trace_mask();
-                eval.add_constraint(*s - m);
+                eval.add_constraint(s.clone() - m.clone());
                 *s = m;
             });
         });
@@ -163,9 +166,9 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(
         (0..N_PARTIAL_ROUNDS).for_each(|round| {
             state[0] += INTERNAL_ROUND_CONSTS[round];
             apply_internal_round_matrix(&mut state);
-            state[0] = pow5(state[0]);
+            state[0] = pow5(state[0].clone());
             let m = eval.next_trace_mask();
-            eval.add_constraint(state[0] - m);
+            eval.add_constraint(state[0].clone() - m.clone());
             state[0] = m;
         });
 
@@ -175,10 +178,10 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(
                 state[i] += EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i];
             });
             apply_external_round_matrix(&mut state);
-            state = std::array::from_fn(|i| pow5(state[i]));
+            state = std::array::from_fn(|i| pow5(state[i].clone()));
             state.iter_mut().for_each(|s| {
                 let m = eval.next_trace_mask();
-                eval.add_constraint(*s - m);
+                eval.add_constraint(s.clone() - m.clone());
                 *s = m;
             });
         });

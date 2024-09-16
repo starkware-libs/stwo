@@ -57,7 +57,10 @@ impl FrameworkEval for PlonkEval {
         let b_val = eval.next_trace_mask();
         let c_val = eval.next_trace_mask();
 
-        eval.add_constraint(c_val - op * (a_val + b_val) + (E::F::one() - op) * a_val * b_val);
+        eval.add_constraint(
+            c_val.clone() - op.clone() * (a_val.clone() + b_val.clone())
+                + (E::F::one() - op) * a_val.clone() * b_val.clone(),
+        );
 
         logup.push_lookup(
             &mut eval,

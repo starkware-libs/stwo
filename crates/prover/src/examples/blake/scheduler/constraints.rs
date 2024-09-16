@@ -22,15 +22,15 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
     for i in 0..N_ROUNDS {
         let input_state = &states[i];
         let output_state = &states[i + 1];
-        let round_messages = SIGMA[i].map(|j| messages[j as usize]);
+        let round_messages = SIGMA[i].map(|j| messages[j as usize].clone());
         // Use triplet in round lookup.
         logup.push_lookup(
             eval,
             E::EF::one(),
             &chain![
-                input_state.iter().copied().flat_map(Fu32::to_felts),
-                output_state.iter().copied().flat_map(Fu32::to_felts),
-                round_messages.iter().copied().flat_map(Fu32::to_felts)
+                input_state.iter().cloned().flat_map(Fu32::into_felts),
+                output_state.iter().cloned().flat_map(Fu32::into_felts),
+                round_messages.iter().cloned().flat_map(Fu32::into_felts)
             ]
             .collect_vec(),
             round_lookup_elements,
@@ -46,9 +46,9 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
         eval,
         E::EF::zero(),
         &chain![
-            input_state.iter().copied().flat_map(Fu32::to_felts),
-            output_state.iter().copied().flat_map(Fu32::to_felts),
-            messages.iter().copied().flat_map(Fu32::to_felts)
+            input_state.iter().cloned().flat_map(Fu32::into_felts),
+            output_state.iter().cloned().flat_map(Fu32::into_felts),
+            messages.iter().cloned().flat_map(Fu32::into_felts)
         ]
         .collect_vec(),
         blake_lookup_elements,

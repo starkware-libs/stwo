@@ -1,3 +1,4 @@
+use std::array;
 use std::ops::{Mul, Sub};
 
 use itertools::Itertools;
@@ -43,7 +44,7 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
     pub fn new(interaction: usize, claimed_sum: SecureField, log_size: u32) -> Self {
         Self {
             interaction,
-            queue: [(E::EF::zero(), E::EF::zero()); BATCH_SIZE],
+            queue: array::from_fn(|_| (E::EF::zero(), E::EF::zero())),
             queue_size: 0,
             cumsum_shift: claimed_sum / BaseField::from_u32_unchecked(1 << log_size),
             prev_col_cumsum: E::EF::zero(),
@@ -75,16 +76,16 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         self.queue_size = 1;
 
         // Add a constraint that num / denom = diff.
-        let cur_cumsum = eval.next_extension_interaction_mask(self.interaction, [0])[0];
-        let diff = cur_cumsum - self.prev_col_cumsum;
+        let [cur_cumsum] = eval.next_extension_interaction_mask(self.interaction, [0]);
+        let diff = cur_cumsum.clone() - self.prev_col_cumsum.clone();
         self.prev_col_cumsum = cur_cumsum;
         eval.add_constraint(diff * denom - num);
     }
 
     pub fn add_frac(&mut self, eval: &mut E, fraction: Fraction<E::EF, E::EF>) {
         // Add a constraint that num / denom = diff.
-        let cur_cumsum = eval.next_extension_interaction_mask(self.interaction, [0])[0];
-        let diff = cur_cumsum - self.prev_col_cumsum;
+        let [cur_cumsum] = eval.next_extension_interaction_mask(self.interaction, [0]);
+        let diff = cur_cumsum.clone() - self.prev_col_cumsum.clone();
         self.prev_col_cumsum = cur_cumsum;
         eval.add_constraint(diff * fraction.denominator - fraction.numerator);
     }
@@ -96,7 +97,7 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
         let [cur_cumsum, prev_row_cumsum] =
             eval.next_extension_interaction_mask(self.interaction, [0, -1]);
 
-        let diff = cur_cumsum - prev_row_cumsum - self.prev_col_cumsum;
+        let diff = cur_cumsum - prev_row_cumsum - self.prev_col_cumsum.clone();
         // Instead of checking diff = num / denom, check diff = num / denom - cumsum_shift.
         // This makes (num / denom - cumsum_shift) have sum zero, which makes the constraint
         // uniform - apply on all rows.
@@ -110,9 +111,9 @@ impl<const BATCH_SIZE: usize, E: EvalAtRow> LogupAtRow<BATCH_SIZE, E> {
     fn fold_queue(&self) -> (E::EF, E::EF) {
         self.queue[0..self.queue_size]
             .iter()
-            .copied()
+            .cloned()
             .fold((E::EF::zero(), E::EF::one()), |(p0, q0), (pi, qi)| {
-                (p0 * qi + pi * q0, qi * q0)
+                (p0 * qi.clone() + pi * q0.clone(), qi * q0)
             })
     }
 }
@@ -147,16 +148,16 @@ impl<const N: usize> LookupElements<N> {
             alpha_powers,
         }
     }
-    pub fn combine<F: Copy, EF>(&self, values: &[F]) -> EF
+    pub fn combine<F: Clone, EF>(&self, values: &[F]) -> EF
     where
-        EF: Copy + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
+        EF: Clone + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
     {
-        EF::from(values[0])
+        EF::from(values[0].clone())
             + values[1..]
                 .iter()
                 .zip(self.alpha_powers.iter())
-                .fold(EF::zero(), |acc, (&value, &power)| {
-                    acc + EF::from(power) * value
+                .fold(EF::zero(), |acc, (value, &power)| {
+                    acc + EF::from(power) * value.clone()
                 })
             - EF::from(self.z)
     }
@@ -305,8 +306,8 @@ mod tests {
         let mut logup = LogupAtRow::<2, InfoEvaluator>::new(1, SecureField::one(), 7);
         logup.push_frac(
             &mut InfoEvaluator::default(),
-            SecureField::one(),
-            SecureField::one(),
+            SecureField::one().into(),
+            SecureField::one().into(),
         );
     }
 }
