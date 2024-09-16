@@ -28,9 +28,9 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
             let round_messages = SIGMA[idx].map(|k| messages[k as usize].clone());
             round_lookup_elements.combine::<E::F, E::EF>(
                 &chain![
-                    input_state.iter().cloned().flat_map(Fu32::to_felts),
-                    output_state.iter().cloned().flat_map(Fu32::to_felts),
-                    round_messages.iter().cloned().flat_map(Fu32::to_felts)
+                    input_state.iter().cloned().flat_map(Fu32::into_felts),
+                    output_state.iter().cloned().flat_map(Fu32::into_felts),
+                    round_messages.iter().cloned().flat_map(Fu32::into_felts)
                 ]
                 .collect_vec(),
             )
@@ -48,9 +48,9 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
             E::EF::zero(),
             blake_lookup_elements.combine(
                 &chain![
-                    input_state.iter().cloned().flat_map(Fu32::to_felts),
-                    output_state.iter().cloned().flat_map(Fu32::to_felts),
-                    messages.iter().cloned().flat_map(Fu32::to_felts)
+                    input_state.iter().cloned().flat_map(Fu32::into_felts),
+                    output_state.iter().cloned().flat_map(Fu32::into_felts),
+                    messages.iter().cloned().flat_map(Fu32::into_felts)
                 ]
                 .collect_vec(),
             ),

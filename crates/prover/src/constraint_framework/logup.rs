@@ -308,11 +308,10 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_logup_not_finalized_panic() {
-        let mut logup =
-            LogupAtRow::<InfoEvaluator>::new(1, SecureField::one(), None, BaseField::one());
+        let mut logup = LogupAtRow::<InfoEvaluator>::new(1, SecureField::one(), None, One::one());
         logup.write_frac(
             &mut InfoEvaluator::default(),
-            Fraction::new(SecureField::one(), SecureField::one()),
+            Fraction::new(SecureField::one().into(), SecureField::one().into()),
         );
     }
 

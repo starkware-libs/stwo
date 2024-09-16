@@ -27,7 +27,7 @@ use crate::core::prover::{prove, StarkProof};
 use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use crate::core::ColumnVec;
 
-const N_LOG_INSTANCES_PER_ROW: usize = 3;
+const N_LOG_INSTANCES_PER_ROW: usize = 0;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
 const N_STATE: usize = 16;
 const N_PARTIAL_ROUNDS: usize = 14;
