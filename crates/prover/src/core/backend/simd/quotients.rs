@@ -34,7 +34,7 @@ impl QuotientOps for SimdBackend {
         log_blowup_factor: u32,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
         // Split the domain into a subdomain and a shift coset.
-        // TODO(spapini): Move to the caller when Columns support slices.
+        // TODO(andrew): Move to the caller when Columns support slices.
         let (subdomain, mut subdomain_shifts) = domain.split(log_blowup_factor);
         if subdomain.log_size() < LOG_N_LANES + 2 {
             // Fall back to the CPU backend for small domains.
@@ -78,7 +78,7 @@ impl QuotientOps for SimdBackend {
         );
 
         // Extend the evaluation to the full domain.
-        // TODO(spapini): Try to optimize out all these copies.
+        // TODO(Ohad): Try to optimize out all these copies.
         for (ci, &c) in subdomain_shifts.iter().enumerate() {
             let subdomain = subdomain.shift(c);
 
@@ -118,7 +118,8 @@ fn accumulate_quotients_on_subdomain(
         .array_chunks::<4>()
         .enumerate()
     {
-        // TODO(spapini): Use optimized domain iteration.
+        // TODO(andrew): Spapini said: Use optimized domain iteration. Is there a better way to do
+        // this?
         let (y01, _) = points[0].y.deinterleave(points[1].y);
         let (y23, _) = points[2].y.deinterleave(points[3].y);
         let (spaced_ys, _) = y01.deinterleave(y23);

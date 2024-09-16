@@ -74,6 +74,7 @@ impl Channel for Blake2sChannel {
         msg[1] = (nonce >> 32) as u32;
         let res = compress(std::array::from_fn(|i| digest[i]), msg, 0, 0, 0, 0);
 
+        // TODO(shahars) Channel should always finalize hash.
         self.update_digest(unsafe { std::mem::transmute(res) });
     }
 
@@ -104,8 +105,6 @@ impl Channel for Blake2sChannel {
         padded_counter[0..counter_bytes.len()].copy_from_slice(&counter_bytes);
 
         hash_input.extend_from_slice(&padded_counter);
-
-        // TODO(spapini): Are we worried about this drawing hash colliding with mix_digest?
 
         self.channel_time.inc_sent();
         Blake2sHasher::hash(&hash_input).into()

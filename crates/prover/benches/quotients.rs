@@ -11,7 +11,7 @@ use stwo_prover::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 
-// TODO(andrew): Consider removing const generics and making all sizes the same.
+// TODO(andrew): Check if deinterleave affects performance. Use optimized domain iteration if so.
 fn bench_quotients<B: QuotientOps, const LOG_N_ROWS: u32, const LOG_N_COLS: u32>(
     c: &mut Criterion,
     id: &str,

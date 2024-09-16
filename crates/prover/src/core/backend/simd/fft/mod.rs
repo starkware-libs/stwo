@@ -10,8 +10,9 @@ pub const CACHED_FFT_LOG_SIZE: u32 = 16;
 
 pub const MIN_FFT_LOG_SIZE: u32 = 5;
 
-// TODO(spapini): FFTs return a redundant representation, that can get the value P. need to reduce
-// it somewhere.
+// TODO(andrew): FFTs return a redundant representation, that can get the value P. need to deal with
+// it. Either: reduce before commitment or regenerate proof with new seed if redundant value
+// decommitted.
 
 /// Transposes the SIMD vectors in the given array.
 ///

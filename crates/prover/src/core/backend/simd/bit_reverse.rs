@@ -52,7 +52,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
     let log_size = data.len().ilog2();
     let a_bits = log_size - 2 * W_BITS - VEC_BITS;
 
-    // TODO(spapini): when doing multithreading, do it over a.
+    // TODO(AlonH): when doing multithreading, do it over a.
     for a in 0u32..1 << a_bits {
         for w_l in 0u32..1 << W_BITS {
             let w_l_rev = w_l.reverse_bits() >> (u32::BITS - W_BITS);
@@ -66,7 +66,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
                 }
 
                 // Read first chunk.
-                // TODO(spapini): Think about optimizing a_bits.
+                // TODO(andrew): Think about optimizing a_bits. What does this mean?
                 let chunk0 = array::from_fn(|i| unsafe {
                     *data.get_unchecked(idx + (i << (2 * W_BITS + a_bits)))
                 });
