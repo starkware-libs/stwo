@@ -35,7 +35,7 @@ const FULL_ROUNDS: usize = 2 * N_HALF_FULL_ROUNDS;
 const N_COLUMNS_PER_REP: usize = N_STATE * (1 + FULL_ROUNDS) + N_PARTIAL_ROUNDS;
 const N_COLUMNS: usize = N_INSTANCES_PER_ROW * N_COLUMNS_PER_REP;
 const LOG_EXPAND: u32 = 2;
-// TODO(spapini): Pick better constants.
+// TODO(shahars): Use poseidon's real constants.
 const EXTERNAL_ROUND_CONSTS: [[BaseField; N_STATE]; 2 * N_HALF_FULL_ROUNDS] =
     [[BaseField::from_u32_unchecked(1234); N_STATE]; 2 * N_HALF_FULL_ROUNDS];
 const INTERNAL_ROUND_CONSTS: [BaseField; N_PARTIAL_ROUNDS] =
@@ -119,11 +119,11 @@ fn apply_internal_round_matrix<F>(state: &mut [F; 16])
 where
     F: Copy + AddAssign<F> + Add<F, Output = F> + Sub<F, Output = F> + Mul<BaseField, Output = F>,
 {
-    // TODO(spapini): Check that these coefficients are good according to section  5.3 of Poseidon2
+    // TODO(shahars): Check that these coefficients are good according to section  5.3 of Poseidon2
     // paper.
     let sum = state[1..].iter().fold(state[0], |acc, s| acc + *s);
     state.iter_mut().enumerate().for_each(|(i, s)| {
-        // TODO(spapini): Change to rotations.
+        // TODO(andrew): Change to rotations.
         *s = *s * BaseField::from_u32_unchecked(1 << (i + 1)) + sum;
     });
 }
@@ -151,6 +151,7 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(
                 state[i] += EXTERNAL_ROUND_CONSTS[round][i];
             });
             apply_external_round_matrix(&mut state);
+            // TODO(andrew) Apply round matrix after the pow5, as is the order in the paper.
             state = std::array::from_fn(|i| pow5(state[i]));
             state.iter_mut().for_each(|s| {
                 let m = eval.next_trace_mask();
@@ -508,7 +509,6 @@ mod tests {
         // Draw lookup element.
         let lookup_elements = PoseidonElements::draw(channel);
         assert_eq!(lookup_elements, component.lookup_elements);
-        // TODO(spapini): Check claimed sum against first and last instances.
         // Interaction columns.
         commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
 

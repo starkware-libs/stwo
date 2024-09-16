@@ -55,7 +55,7 @@ impl<'a> EvalAtRow for SimdDomainEvaluator<'a> {
     type F = VeryPackedBaseField;
     type EF = VeryPackedSecureField;
 
-    // TODO(spapini): Remove all boundary checks.
+    // TODO(Ohad): Add debug boundary checks.
     fn next_interaction_mask<const N: usize>(
         &mut self,
         interaction: usize,

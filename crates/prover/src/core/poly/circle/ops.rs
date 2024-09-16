@@ -9,7 +9,7 @@ use crate::core::poly::BitReversedOrder;
 
 /// Operations on BaseField polynomials.
 pub trait PolyOps: FieldOps<BaseField> + Sized {
-    // TODO(spapini): Use a column instead of this type.
+    // TODO(alont): Use a column instead of this type.
     /// The type for precomputed twiddles.
     type Twiddles;
 

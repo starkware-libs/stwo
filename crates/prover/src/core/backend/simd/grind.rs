@@ -20,7 +20,7 @@ const GRIND_HI_BITS: u32 = 64 - GRIND_LOW_BITS;
 
 impl GrindOps<Blake2sChannel> for SimdBackend {
     fn grind(channel: &Blake2sChannel, pow_bits: u32) -> u64 {
-        // TODO(spapini): support more than 32 bits.
+        // TODO(first): support more than 32 bits.
         assert!(pow_bits <= 32, "pow_bits > 32 is not supported");
         let digest = channel.digest();
         let digest: &[u32] = cast_slice(&digest.0[..]);
@@ -62,7 +62,7 @@ fn grind_blake(digest: &[u32], hi: u64, pow_bits: u32) -> Option<u64> {
     None
 }
 
-// TODO(spapini): This is a naive implementation. Optimize it.
+// TODO(shahars): This is a naive implementation. Optimize it.
 #[cfg(not(target_arch = "wasm32"))]
 impl GrindOps<Poseidon252Channel> for SimdBackend {
     fn grind(channel: &Poseidon252Channel, pow_bits: u32) -> u64 {

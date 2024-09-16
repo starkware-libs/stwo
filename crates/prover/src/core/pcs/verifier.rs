@@ -116,8 +116,6 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             })
             .flatten();
 
-        // TODO(spapini): Properly defined column log size and dinstinguish between poly and
-        // commitment.
         let fri_answers = fri_answers(
             self.column_log_sizes().flatten().into_iter().collect(),
             &samples,

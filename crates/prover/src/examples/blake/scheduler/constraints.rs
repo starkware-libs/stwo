@@ -41,8 +41,7 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
     let input_state = &states[0];
     let output_state = &states[N_ROUNDS];
 
-    // TODO(spapini): Support multiplicities.
-    // TODO(spapini): Change to -1.
+    // TODO(alont): Remove blake interaction.
     logup.write_frac(
         eval,
         Fraction::new(

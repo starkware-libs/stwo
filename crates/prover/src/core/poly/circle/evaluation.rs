@@ -36,8 +36,9 @@ impl<B: FieldOps<F>, F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<B, F
 
 // Note: The concrete implementation of the poly operations is in the specific backend used.
 // For example, the CPU backend implementation is in `src/core/backend/cpu/poly.rs`.
+// TODO(first) Remove NaturalOrder.
 impl<F: ExtensionOf<BaseField>, B: FieldOps<F>> CircleEvaluation<B, F, NaturalOrder> {
-    // TODO(spapini): Remove. Is this even used.
+    // TODO(alont): Remove. Is this even used.
     pub fn get_at(&self, point_index: CirclePointIndex) -> F {
         self.values
             .at(self.domain.find(point_index).expect("Not in domain"))

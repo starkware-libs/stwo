@@ -43,7 +43,7 @@ pub trait ColumnOps<T> {
 
 pub type Col<B, T> = <B as ColumnOps<T>>::Column;
 
-// TODO(spapini): Consider removing the generic parameter and only support BaseField.
+// TODO(alont): Consider removing the generic parameter and only support BaseField.
 pub trait Column<T>: Clone + Debug + FromIterator<T> {
     /// Creates a new column of zeros with the given length.
     fn zeros(len: usize) -> Self;
