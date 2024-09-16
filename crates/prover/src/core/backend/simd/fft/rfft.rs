@@ -365,8 +365,7 @@ pub fn vecwise_butterflies(
     twiddle2_dbl: [u32; 4],
     twiddle3_dbl: [u32; 2],
 ) -> (PackedBaseField, PackedBaseField) {
-    // TODO(spapini): Compute twiddle0 from twiddle1.
-    // TODO(spapini): The permute can be fused with the _mm512_srli_epi64 inside the butterfly.
+    // TODO(andrew): Can the permute be fused with the _mm512_srli_epi64 inside the butterfly?
     // The implementation is the exact reverse of vecwise_ibutterflies().
     // See the comments in its body for more info.
     let t = simd_swizzle!(

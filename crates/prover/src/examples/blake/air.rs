@@ -436,7 +436,7 @@ pub fn verify_blake<MC: MerkleChannel>(
         + stmt1.xor7_claimed_sum
         + stmt1.xor4_claimed_sum;
 
-    // TODO(spapini): Add inputs to sum, and constraint them.
+    // TODO(shahars): Add inputs to sum, and constraint them.
     assert_eq!(total_sum, SecureField::zero());
 
     verify(

@@ -135,8 +135,7 @@ pub fn coset_index_to_circle_domain_index(coset_index: usize, log_domain_size: u
 /// # Panics
 ///
 /// Panics if the length of the slice is not a power of two.
-// TODO: Implement cache friendly implementation.
-// TODO(spapini): Move this to the cpu backend.
+// TODO(alont): Move this to the cpu backend.
 pub fn bit_reverse<T>(v: &mut [T]) {
     let n = v.len();
     assert!(n.is_power_of_two());

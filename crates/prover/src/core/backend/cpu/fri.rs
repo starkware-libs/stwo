@@ -8,7 +8,6 @@ use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 
-// TODO(spapini): Optimized these functions as well.
 impl FriOps for CpuBackend {
     fn fold_line(
         eval: &LineEvaluation<Self>,

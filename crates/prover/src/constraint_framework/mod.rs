@@ -25,7 +25,7 @@ use crate::core::fields::FieldExpOps;
 
 /// A trait for evaluating expressions at some point or row.
 pub trait EvalAtRow {
-    // TODO(spapini): Use a better trait for these, like 'Algebra' or something.
+    // TODO(Ohad): Use a better trait for these, like 'Algebra' or something.
     /// The field type holding values of columns for the component. These are the inputs to the
     /// constraints. It might be [BaseField] packed types, or even [SecureField], when evaluating
     /// the columns out of domain.

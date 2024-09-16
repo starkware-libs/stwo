@@ -119,7 +119,7 @@ impl SimdBackend {
     }
 }
 
-// TODO(spapini): Everything is returned in redundant representation, where values can also be P.
+// TODO(shahars): Everything is returned in redundant representation, where values can also be P.
 // Decide if and when it's ok and what to do if it's not.
 impl PolyOps for SimdBackend {
     // The twiddles type is i32, and not BaseField. This is because the fast AVX mul implementation
@@ -131,7 +131,7 @@ impl PolyOps for SimdBackend {
         coset: CanonicCoset,
         values: Col<Self, BaseField>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
-        // TODO(spapini): Optimize.
+        // TODO(Ohad): Optimize.
         let eval = CpuBackend::new_canonical_ordered(coset, values.into_cpu_vec());
         CircleEvaluation::new(
             eval.domain,
@@ -157,7 +157,7 @@ impl PolyOps for SimdBackend {
             );
         }
 
-        // TODO(spapini): Fuse this multiplication / rotation.
+        // TODO(alont): Cache this inversion.
         let inv = PackedBaseField::broadcast(BaseField::from(eval.domain.size()).inverse());
         values.data.iter_mut().for_each(|x| *x *= inv);
 
@@ -211,7 +211,7 @@ impl PolyOps for SimdBackend {
     }
 
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
-        // TODO(spapini): Optimize or get rid of extend.
+        // TODO(shahars): Get rid of extends.
         poly.evaluate(CanonicCoset::new(log_size).circle_domain())
             .interpolate()
     }
@@ -221,8 +221,7 @@ impl PolyOps for SimdBackend {
         domain: CircleDomain,
         twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
-        // TODO(spapini): Precompute twiddles.
-        // TODO(spapini): Handle small cases.
+        // TODO(AlonH): Handle small cases.
         let log_size = domain.log_size();
         let fft_log_size = poly.log_size();
         assert!(
@@ -279,7 +278,7 @@ impl PolyOps for SimdBackend {
         let mut twiddles = Vec::with_capacity(coset.size());
         let mut itwiddles = Vec::with_capacity(coset.size());
 
-        // TODO(spapini): Optimize.
+        // TODO(alont): Optimize.
         for layer in &rfft::get_twiddle_dbls(coset) {
             twiddles.extend(layer);
         }

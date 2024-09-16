@@ -16,7 +16,7 @@ pub struct SecureColumnByCoords<B: FieldOps<BaseField>> {
     pub columns: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
 impl SecureColumnByCoords<CpuBackend> {
-    // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
+    // TODO(first): Remove.
     pub fn to_vec(&self) -> Vec<SecureField> {
         (0..self.len()).map(|i| self.at(i)).collect()
     }

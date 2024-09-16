@@ -283,7 +283,6 @@ mod tests {
         // Draw lookup element.
         let lookup_elements = LookupElements::<2>::draw(channel);
         assert_eq!(lookup_elements, component.lookup_elements);
-        // TODO(spapini): Check claimed sum against first and last instances.
         // Interaction columns.
         commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
         // Constant columns.
