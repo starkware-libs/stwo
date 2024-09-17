@@ -1,7 +1,7 @@
 use std::iter::zip;
 use std::mem::transmute;
 
-use bytemuck::{cast_slice, Zeroable};
+use bytemuck::Zeroable;
 use num_traits::One;
 
 use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
@@ -334,7 +334,7 @@ fn slow_eval_at_point(
         // Swap content of a,c.
         a.swap_with_slice(&mut c[0..n0]);
     }
-    fold(cast_slice::<_, BaseField>(&poly.coeffs.data), &mappings)
+    fold(poly.coeffs.as_slice(), &mappings)
 }
 
 #[cfg(test)]

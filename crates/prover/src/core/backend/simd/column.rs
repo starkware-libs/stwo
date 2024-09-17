@@ -58,6 +58,10 @@ impl BaseColumn {
         res
     }
 
+    pub fn from_cpu(values: Vec<BaseField>) -> Self {
+        values.into_iter().collect()
+    }
+
     /// Returns a vector of `BaseColumnMutSlice`s, each mutably owning
     /// `chunk_size` `PackedBaseField`s (i.e, `chuck_size` * `N_LANES` elements).
     pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<BaseColumnMutSlice<'_>> {
@@ -399,6 +403,12 @@ impl SecureColumnByCoords<SimdBackend> {
         izip!(a, b, c, d)
             .map(|(a, b, c, d)| SecureColumnByCoordsMutSlice([a, b, c, d]))
             .collect_vec()
+    }
+
+    pub fn from_cpu(cpu: SecureColumnByCoords<CpuBackend>) -> Self {
+        Self {
+            columns: cpu.columns.map(BaseColumn::from_cpu),
+        }
     }
 }
 
