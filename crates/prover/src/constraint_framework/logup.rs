@@ -248,8 +248,11 @@ impl<'a> LogupColGenerator<'a> {
 mod tests {
     use num_traits::One;
 
-    use super::LogupAtRow;
+    use super::{LogupAtRow, LookupElements};
     use crate::constraint_framework::InfoEvaluator;
+    use crate::core::channel::Blake2sChannel;
+    use crate::core::fields::FieldExpOps;
+    use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::lookups::utils::Fraction;
 
@@ -260,6 +263,25 @@ mod tests {
         logup.write_frac(
             &mut InfoEvaluator::default(),
             Fraction::new(SecureField::one(), SecureField::one()),
+        );
+    }
+
+    #[test]
+    fn test_lookup_elements_combine() {
+        let mut channel = Blake2sChannel::default();
+        let lookup_elements = LookupElements::<3>::draw(&mut channel);
+        let values = [
+            BaseField::from_u32_unchecked(123),
+            BaseField::from_u32_unchecked(456),
+            BaseField::from_u32_unchecked(789),
+        ];
+
+        assert_eq!(
+            lookup_elements.combine::<BaseField, SecureField>(&values),
+            BaseField::from_u32_unchecked(123)
+                + BaseField::from_u32_unchecked(456) * lookup_elements.alpha
+                + BaseField::from_u32_unchecked(789) * lookup_elements.alpha.pow(2)
+                - lookup_elements.z
         );
     }
 }
