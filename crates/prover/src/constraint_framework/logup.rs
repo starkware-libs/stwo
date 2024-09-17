@@ -251,9 +251,9 @@ mod tests {
     use super::{LogupAtRow, LookupElements};
     use crate::constraint_framework::InfoEvaluator;
     use crate::core::channel::Blake2sChannel;
-    use crate::core::fields::FieldExpOps;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::fields::FieldExpOps;
     use crate::core::lookups::utils::Fraction;
 
     #[test]
