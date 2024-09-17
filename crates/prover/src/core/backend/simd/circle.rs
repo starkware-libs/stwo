@@ -334,7 +334,10 @@ fn slow_eval_at_point(
         // Swap content of a,c.
         a.swap_with_slice(&mut c[0..n0]);
     }
-    fold(cast_slice::<_, BaseField>(&poly.coeffs.data), &mappings)
+    fold(
+        &cast_slice::<_, BaseField>(&poly.coeffs.data)[..poly.coeffs.length],
+        &mappings,
+    )
 }
 
 #[cfg(test)]

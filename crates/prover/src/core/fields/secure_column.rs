@@ -4,6 +4,8 @@ use std::iter::zip;
 use super::m31::BaseField;
 use super::qm31::SecureField;
 use super::{ExtensionOf, FieldOps};
+use crate::core::backend::simd::column::BaseColumn;
+use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column, CpuBackend};
 
 pub const SECURE_EXTENSION_DEGREE: usize =
@@ -19,6 +21,12 @@ impl SecureColumnByCoords<CpuBackend> {
     // TODO(spapini): Remove when we no longer use CircleEvaluation<SecureField>.
     pub fn to_vec(&self) -> Vec<SecureField> {
         (0..self.len()).map(|i| self.at(i)).collect()
+    }
+
+    pub fn to_simd(self) -> SecureColumnByCoords<SimdBackend> {
+        SecureColumnByCoords {
+            columns: self.columns.map(BaseColumn::from_cpu_vec),
+        }
     }
 }
 impl<B: FieldOps<BaseField>> SecureColumnByCoords<B> {

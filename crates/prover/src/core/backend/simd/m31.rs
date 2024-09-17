@@ -41,6 +41,13 @@ impl PackedM31 {
         Self(Simd::from_array(values.map(|M31(v)| v)))
     }
 
+    pub fn from_slice(values: &[M31]) -> PackedM31 {
+        assert!(values.len() <= N_LANES);
+        let mut res = [M31::zero(); N_LANES];
+        res[..values.len()].copy_from_slice(values);
+        Self::from_array(res)
+    }
+
     pub fn to_array(self) -> [M31; N_LANES] {
         self.reduce().0.to_array().map(M31)
     }
