@@ -1,6 +1,6 @@
 use std::ops::{Mul, Sub};
 
-use itertools::Itertools;
+use itertools::{zip_eq, Itertools};
 use num_traits::{One, Zero};
 
 use super::EvalAtRow;
@@ -109,14 +109,9 @@ impl<const N: usize> LookupElements<N> {
     where
         EF: Copy + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
     {
-        EF::from(values[0])
-            + values[1..]
-                .iter()
-                .zip(self.alpha_powers.iter())
-                .fold(EF::zero(), |acc, (&value, &power)| {
-                    acc + EF::from(power) * value
-                })
-            - EF::from(self.z)
+        zip_eq(values, self.alpha_powers).fold(EF::zero(), |acc, (&value, power)| {
+            acc + EF::from(power) * value
+        }) - EF::from(self.z)
     }
     // TODO(spapini): Try to remove this.
     pub fn dummy() -> Self {

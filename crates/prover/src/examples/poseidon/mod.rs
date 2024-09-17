@@ -43,7 +43,7 @@ const INTERNAL_ROUND_CONSTS: [BaseField; N_PARTIAL_ROUNDS] =
 
 pub type PoseidonComponent = FrameworkComponent<PoseidonEval>;
 
-pub type PoseidonElements = LookupElements<{ N_STATE * 2 }>;
+pub type PoseidonElements = LookupElements<N_STATE>;
 
 #[derive(Clone)]
 pub struct PoseidonEval {
