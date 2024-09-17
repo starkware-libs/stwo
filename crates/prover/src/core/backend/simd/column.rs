@@ -58,6 +58,15 @@ impl BaseColumn {
         res
     }
 
+    pub fn from_cpu_vec(values: Vec<BaseField>) -> Self {
+        let length = values.len();
+        let data = values
+            .chunks(N_LANES)
+            .map(PackedBaseField::from_slice)
+            .collect();
+        Self { data, length }
+    }
+
     /// Returns a vector of `BaseColumnMutSlice`s, each mutably owning
     /// `chunk_size` `PackedBaseField`s (i.e, `chuck_size` * `N_LANES` elements).
     pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<BaseColumnMutSlice<'_>> {

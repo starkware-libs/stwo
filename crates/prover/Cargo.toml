@@ -29,6 +29,8 @@ serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 aligned = "0.4.2"
+test-case = "3.3.1"
+test-case-macros = "3.3.1"
 test-log = { version = "0.2.15", features = ["trace"] }
 tracing-subscriber = "0.3.18"
 [target.'cfg(all(target_family = "wasm", not(target_os = "wasi")))'.dev-dependencies]
@@ -38,7 +40,7 @@ wasm-bindgen-test = "0.3.43"
 features = ["html_reports"]
 version = "0.5.1"
 
-# Default features cause compile error: 
+# Default features cause compile error:
 # "Rayon cannot be used when targeting wasi32. Try disabling default features."
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies.criterion]
 default-features = false

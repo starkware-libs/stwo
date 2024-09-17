@@ -73,6 +73,7 @@ pub fn generate_trace<const N: usize>(
 mod tests {
     use itertools::Itertools;
     use num_traits::One;
+    use test_case::test_case;
 
     use super::WideFibonacciEval;
     use crate::constraint_framework::{
@@ -149,13 +150,14 @@ mod tests {
         );
     }
 
+    #[test_case(6; "SIMD")]
+    #[test_case(4; "CPU fall back")]
     #[test_log::test]
-    fn test_wide_fib_prove() {
-        const LOG_N_INSTANCES: u32 = 6;
+    fn test_wide_fib_prove_with_blake(log_n_instances: u32) {
         let config = PcsConfig::default();
         // Precompute twiddles.
         let twiddles = SimdBackend::precompute_twiddles(
-            CanonicCoset::new(LOG_N_INSTANCES + 1 + config.fri_config.log_blowup_factor)
+            CanonicCoset::new(log_n_instances + 1 + config.fri_config.log_blowup_factor)
                 .circle_domain()
                 .half_coset,
         );
@@ -168,7 +170,7 @@ mod tests {
             );
 
         // Trace.
-        let trace = generate_test_trace(LOG_N_INSTANCES);
+        let trace = generate_test_trace(log_n_instances);
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
         tree_builder.commit(prover_channel);
@@ -177,7 +179,7 @@ mod tests {
         let component = WideFibonacciComponent::new(
             &mut TraceLocationAllocator::default(),
             WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
-                log_n_rows: LOG_N_INSTANCES,
+                log_n_rows: log_n_instances,
             },
         );
 
@@ -198,15 +200,14 @@ mod tests {
         verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
     }
 
-    #[test]
+    #[test_case(6; "SIMD")]
+    #[test_case(4; "CPU fall back")]
     #[cfg(not(target_arch = "wasm32"))]
-    fn test_wide_fib_prove_with_poseidon() {
-        const LOG_N_INSTANCES: u32 = 6;
-
+    fn test_wide_fib_prove_with_poseidon(log_n_instances: u32) {
         let config = PcsConfig::default();
         // Precompute twiddles.
         let twiddles = SimdBackend::precompute_twiddles(
-            CanonicCoset::new(LOG_N_INSTANCES + 1 + config.fri_config.log_blowup_factor)
+            CanonicCoset::new(log_n_instances + 1 + config.fri_config.log_blowup_factor)
                 .circle_domain()
                 .half_coset,
         );
@@ -219,7 +220,7 @@ mod tests {
             );
 
         // Trace.
-        let trace = generate_test_trace(LOG_N_INSTANCES);
+        let trace = generate_test_trace(log_n_instances);
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
         tree_builder.commit(prover_channel);
@@ -228,7 +229,7 @@ mod tests {
         let component = WideFibonacciComponent::new(
             &mut TraceLocationAllocator::default(),
             WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
-                log_n_rows: LOG_N_INSTANCES,
+                log_n_rows: log_n_instances,
             },
         );
         let proof = prove::<SimdBackend, Poseidon252MerkleChannel>(
