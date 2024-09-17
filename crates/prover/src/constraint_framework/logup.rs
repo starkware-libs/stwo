@@ -1,6 +1,6 @@
 use std::ops::{Mul, Sub};
 
-use itertools::Itertools;
+use itertools::{zip_eq, Itertools};
 use num_traits::{One, Zero};
 
 use super::EvalAtRow;
@@ -109,14 +109,9 @@ impl<const N: usize> LookupElements<N> {
     where
         EF: Copy + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
     {
-        EF::from(values[0])
-            + values[1..]
-                .iter()
-                .zip(self.alpha_powers.iter())
-                .fold(EF::zero(), |acc, (&value, &power)| {
-                    acc + EF::from(power) * value
-                })
-            - EF::from(self.z)
+        zip_eq(values, self.alpha_powers).fold(EF::zero(), |acc, (&value, power)| {
+            acc + EF::from(power) * value
+        }) - EF::from(self.z)
     }
     // TODO(spapini): Try to remove this.
     pub fn dummy() -> Self {
@@ -253,9 +248,12 @@ impl<'a> LogupColGenerator<'a> {
 mod tests {
     use num_traits::One;
 
-    use super::LogupAtRow;
+    use super::{LogupAtRow, LookupElements};
     use crate::constraint_framework::InfoEvaluator;
+    use crate::core::channel::Blake2sChannel;
+    use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
+    use crate::core::fields::FieldExpOps;
     use crate::core::lookups::utils::Fraction;
 
     #[test]
@@ -265,6 +263,25 @@ mod tests {
         logup.write_frac(
             &mut InfoEvaluator::default(),
             Fraction::new(SecureField::one(), SecureField::one()),
+        );
+    }
+
+    #[test]
+    fn test_lookup_elements_combine() {
+        let mut channel = Blake2sChannel::default();
+        let lookup_elements = LookupElements::<3>::draw(&mut channel);
+        let values = [
+            BaseField::from_u32_unchecked(123),
+            BaseField::from_u32_unchecked(456),
+            BaseField::from_u32_unchecked(789),
+        ];
+
+        assert_eq!(
+            lookup_elements.combine::<BaseField, SecureField>(&values),
+            BaseField::from_u32_unchecked(123)
+                + BaseField::from_u32_unchecked(456) * lookup_elements.alpha
+                + BaseField::from_u32_unchecked(789) * lookup_elements.alpha.pow(2)
+                - lookup_elements.z
         );
     }
 }
