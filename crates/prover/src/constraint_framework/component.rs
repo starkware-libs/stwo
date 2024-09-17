@@ -5,6 +5,7 @@ use std::ops::Deref;
 use itertools::Itertools;
 use tracing::{span, Level};
 
+use super::cpu_domain::CpuDomainEvaluator;
 use super::{EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, Trace};
@@ -16,6 +17,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::constraints::coset_vanishing;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::{TreeSubspan, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
@@ -173,7 +175,35 @@ impl<E: FrameworkEval> ComponentProver<SimdBackend> for FrameworkComponent<E> {
             evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
         accum.random_coeff_powers.reverse();
 
-        let _span = span!(Level::INFO, "Constraint pointwise eval").entered();
+        let _span = span!(Level::INFO, "Constraint point-wise eval").entered();
+
+        if trace_domain.log_size() < LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS {
+            // Fall back to CPU if the trace is too small.
+            let mut col = accum.col.to_cpu();
+
+            for row in 0..(1 << eval_domain.log_size()) {
+                let trace_cols = trace.as_cols_ref().map_cols(|c| c.to_cpu());
+                let trace_cols = trace_cols.as_cols_ref();
+
+                // Evaluate constrains at row.
+                let eval = CpuDomainEvaluator::new(
+                    &trace_cols,
+                    row,
+                    &accum.random_coeff_powers,
+                    trace_domain.log_size(),
+                    eval_domain.log_size(),
+                );
+                let row_res = self.eval.evaluate(eval).row_res;
+
+                // Finalize row.
+                let denom_inv = denom_inv[row >> trace_domain.log_size()];
+                col.set(row, col.at(row) + row_res * denom_inv)
+            }
+            let col = SecureColumnByCoords::from_cpu(col);
+            *accum.col = col;
+            return;
+        }
+
         let col = unsafe { VeryPackedSecureColumnByCoords::transform_under_mut(accum.col) };
 
         for vec_row in 0..(1 << (eval_domain.log_size() - LOG_N_LANES - LOG_N_VERY_PACKED_ELEMS)) {
