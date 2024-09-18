@@ -389,7 +389,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "SimdBackend `MIN_FFT_LOG_SIZE` is 5"]
     fn eq_constraints_with_4_variables() {
         const N_VARIABLES: usize = 4;
         const EQ_EVAL_TRACE: usize = 0;
