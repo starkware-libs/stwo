@@ -27,6 +27,12 @@ impl<A, const N: usize> Vectorized<A, N> {
     }
 }
 
+impl<A, const N: usize> From<[A; N]> for Vectorized<A, N> {
+    fn from(array: [A; N]) -> Self {
+        Vectorized(array)
+    }
+}
+
 unsafe impl<A, const N: usize> Zeroable for Vectorized<A, N> {
     fn zeroed() -> Self {
         unsafe { core::mem::zeroed() }
@@ -78,6 +84,10 @@ impl VeryPackedQM31 {
 
     pub fn from_very_packed_m31s([a, b, c, d]: [VeryPackedM31; 4]) -> Self {
         Self::from_fn(|i| PackedQM31::from_packed_m31s([a.0[i], b.0[i], c.0[i], d.0[i]]))
+    }
+
+    pub fn into_very_packed_m31s(self) -> [VeryPackedM31; 4] {
+        std::array::from_fn(|i| VeryPackedM31::from(self.0.map(|v| v.into_packed_m31s()[i])))
     }
 }
 impl From<M31> for VeryPackedM31 {
