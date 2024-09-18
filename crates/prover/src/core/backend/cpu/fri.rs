@@ -17,6 +17,7 @@ impl FriOps for CpuBackend {
     ) -> LineEvaluation<Self> {
         fold_line(eval, alpha)
     }
+
     fn fold_circle_into_line(
         dst: &mut LineEvaluation<Self>,
         src: &SecureEvaluation<Self, BitReversedOrder>,
