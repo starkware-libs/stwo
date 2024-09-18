@@ -84,6 +84,14 @@ impl<B: FieldOps<BaseField>, EvalOrder> SecureEvaluation<B, EvalOrder> {
         let Self { domain, values, .. } = self;
         values.columns.map(|c| CircleEvaluation::new(domain, c))
     }
+
+    pub fn to_cpu(&self) -> SecureEvaluation<CpuBackend, EvalOrder> {
+        SecureEvaluation {
+            domain: self.domain,
+            values: self.values.to_cpu(),
+            _eval_order: PhantomData,
+        }
+    }
 }
 
 impl<B: FieldOps<BaseField>, EvalOrder> Deref for SecureEvaluation<B, EvalOrder> {
