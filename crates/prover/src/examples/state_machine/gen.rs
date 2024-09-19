@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use num_traits::One;
 
-use super::components::N_STATE;
+use super::components::{State, N_STATE};
 use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
@@ -13,8 +13,6 @@ use crate::core::fields::qm31::QM31;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
-
-pub type State = [M31; N_STATE];
 
 // Given `initial state`, generate a trace that row `i` is the initial state plus `i` in the
 // `inc_index` dimension.
