@@ -97,8 +97,7 @@ pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized + FieldOps<SecureField> 
     /// Let `src` be the evaluation of a circle polynomial `f` on a
     /// [`CircleDomain`] `E`. This function computes evaluations of `f' = f0
     /// + alpha * f1` on the x-coordinates of `E` such that `2f(p) = f0(px) + py * f1(px)`. The
-    /// evaluations of `f'` are accumulated into `dst` by the formula `dst = dst * alpha^2 +
-    /// f'`.
+    /// evaluations of `f'` are accumulated into `dst` by the formula `dst = dst * alpha^2 + f'`.
     ///
     /// # Panics
     ///
@@ -727,7 +726,7 @@ impl<H: MerkleHasher> FriLayerVerifier<H> {
         let mut all_subline_evals = Vec::new();
 
         // Group queries by the subline they reside in.
-        for subline_queries in queries.group_by(|a, b| a >> FOLD_STEP == b >> FOLD_STEP) {
+        for subline_queries in queries.chunk_by(|a, b| a >> FOLD_STEP == b >> FOLD_STEP) {
             let subline_start = (subline_queries[0] >> FOLD_STEP) << FOLD_STEP;
             let subline_end = subline_start + (1 << FOLD_STEP);
 
@@ -798,7 +797,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriLayerProver<B, H> {
 
         // Group queries by the subline they reside in.
         // TODO(andrew): Explain what a "subline" is at the top of the module.
-        for query_group in queries.group_by(|a, b| a >> FOLD_STEP == b >> FOLD_STEP) {
+        for query_group in queries.chunk_by(|a, b| a >> FOLD_STEP == b >> FOLD_STEP) {
             let subline_start = (query_group[0] >> FOLD_STEP) << FOLD_STEP;
             let subline_end = subline_start + (1 << FOLD_STEP);
 
