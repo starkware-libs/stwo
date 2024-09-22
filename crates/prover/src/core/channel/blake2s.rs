@@ -75,7 +75,7 @@ impl Channel for Blake2sChannel {
         let res = compress(std::array::from_fn(|i| digest[i]), msg, 0, 0, 0, 0);
 
         // TODO(shahars) Channel should always finalize hash.
-        self.update_digest(unsafe { std::mem::transmute(res) });
+        self.update_digest(unsafe { std::mem::transmute::<[u32; 8], Blake2sHash>(res) });
     }
 
     fn draw_felt(&mut self) -> SecureField {

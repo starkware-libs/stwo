@@ -33,8 +33,8 @@ impl FrameworkEval for BlakeRoundEval {
             eval,
             xor_lookup_elements: &self.xor_lookup_elements,
             round_lookup_elements: &self.round_lookup_elements,
-            total_sum: self.total_sum,
-            log_size: self.log_size,
+            _total_sum: self.total_sum,
+            _log_size: self.log_size,
         };
         blake_eval.eval()
     }

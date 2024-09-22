@@ -105,7 +105,7 @@ impl<'a> RelationTrackerEvaluator<'a> {
         self.entries
     }
 }
-impl<'a> EvalAtRow for RelationTrackerEvaluator<'a> {
+impl EvalAtRow for RelationTrackerEvaluator<'_> {
     type F = PackedBaseField;
     type EF = PackedSecureField;
 
