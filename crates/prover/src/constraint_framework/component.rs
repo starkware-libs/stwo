@@ -98,9 +98,10 @@ impl TraceLocationAllocator {
 }
 
 /// A component defined solely in means of the constraints framework.
+///
 /// Implementing this trait introduces implementations for [`Component`] and [`ComponentProver`] for
-/// the SIMD backend.
-/// Note that the constraint framework only support components with columns of the same size.
+/// the SIMD backend. Note that the constraint framework only supports components with columns of
+/// the same size.
 pub trait FrameworkEval {
     fn log_size(&self) -> u32;
 

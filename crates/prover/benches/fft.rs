@@ -29,7 +29,7 @@ pub fn simd_ifft(c: &mut Criterion) {
                 || values.clone().data,
                 |mut data| unsafe {
                     ifft(
-                        transmute(data.as_mut_ptr()),
+                        transmute::<*mut PackedBaseField, *mut u32>(data.as_mut_ptr()),
                         black_box(&twiddle_dbls_refs),
                         black_box(log_size as usize),
                     );
@@ -58,7 +58,7 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
             || values.clone().data,
             |mut values| unsafe {
                 ifft_vecwise_loop(
-                    transmute(values.as_mut_ptr()),
+                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
                     black_box(&twiddle_dbls_refs),
                     black_box(9),
                     black_box(0),
@@ -72,7 +72,7 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
             || values.clone().data,
             |mut values| unsafe {
                 ifft3_loop(
-                    transmute(values.as_mut_ptr()),
+                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
                     black_box(&twiddle_dbls_refs[3..]),
                     black_box(7),
                     black_box(4),
@@ -91,7 +91,7 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
             || transpose_values.clone().data,
             |mut values| unsafe {
                 transpose_vecs(
-                    transmute(values.as_mut_ptr()),
+                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
                     black_box(TRANSPOSE_LOG_SIZE as usize - 4),
                 )
             },
@@ -115,8 +115,10 @@ pub fn simd_rfft(c: &mut Criterion) {
             target.set_len(values.data.len());
 
             fft(
-                black_box(transmute(values.data.as_ptr())),
-                transmute(target.as_mut_ptr()),
+                black_box(transmute::<*const PackedBaseField, *const u32>(
+                    values.data.as_ptr(),
+                )),
+                transmute::<*mut PackedBaseField, *mut u32>(target.as_mut_ptr()),
                 black_box(&twiddle_dbls_refs),
                 black_box(LOG_SIZE as usize),
             )

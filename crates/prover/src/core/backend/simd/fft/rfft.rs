@@ -624,8 +624,8 @@ mod tests {
         let mut res = values;
         unsafe {
             fft3(
-                transmute(res.as_ptr()),
-                transmute(res.as_mut_ptr()),
+                transmute::<*const PackedBaseField, *const u32>(res.as_ptr()),
+                transmute::<*mut PackedBaseField, *mut u32>(res.as_mut_ptr()),
                 0,
                 LOG_N_LANES as usize,
                 twiddles0_dbl,
@@ -695,7 +695,7 @@ mod tests {
             [val0.to_array(), val1.to_array()].concat()
         };
 
-        assert_eq!(res, ground_truth_fft(domain, values.flatten()));
+        assert_eq!(res, ground_truth_fft(domain, values.as_flattened()));
     }
 
     #[test]
@@ -709,8 +709,8 @@ mod tests {
             let mut res = values.iter().copied().collect::<BaseColumn>();
             unsafe {
                 fft_lower_with_vecwise(
-                    transmute(res.data.as_ptr()),
-                    transmute(res.data.as_mut_ptr()),
+                    transmute::<*const PackedBaseField, *const u32>(res.data.as_ptr()),
+                    transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
                     &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
                     log_size as usize,
                     log_size as usize,
@@ -731,10 +731,13 @@ mod tests {
 
             let mut res = values.iter().copied().collect::<BaseColumn>();
             unsafe {
-                transpose_vecs(transmute(res.data.as_mut_ptr()), log_size as usize - 4);
+                transpose_vecs(
+                    transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
+                    log_size as usize - 4,
+                );
                 fft(
-                    transmute(res.data.as_ptr()),
-                    transmute(res.data.as_mut_ptr()),
+                    transmute::<*const PackedBaseField, *const u32>(res.data.as_ptr()),
+                    transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
                     &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
                     log_size as usize,
                 );

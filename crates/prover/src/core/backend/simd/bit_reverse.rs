@@ -165,7 +165,7 @@ mod tests {
 
         let res = bit_reverse16(values.data.try_into().unwrap());
 
-        assert_eq!(res.map(PackedM31::to_array).flatten(), expected);
+        assert_eq!(res.map(PackedM31::to_array).as_flattened(), expected);
     }
 
     #[test]

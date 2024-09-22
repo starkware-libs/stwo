@@ -10,6 +10,7 @@ use crate::examples::blake::{Fu32, STATE_SIZE};
 const INV16: BaseField = BaseField::from_u32_unchecked(1 << 15);
 const TWO: BaseField = BaseField::from_u32_unchecked(2);
 
+#[allow(dead_code)]
 pub struct BlakeRoundEval<'a, E: EvalAtRow> {
     pub eval: E,
     pub xor_lookup_elements: &'a BlakeXorElements,
@@ -17,7 +18,7 @@ pub struct BlakeRoundEval<'a, E: EvalAtRow> {
     pub total_sum: SecureField,
     pub log_size: u32,
 }
-impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
+impl<E: EvalAtRow> BlakeRoundEval<'_, E> {
     pub fn eval(mut self) -> E {
         let mut v: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
         let input_v = v.clone();

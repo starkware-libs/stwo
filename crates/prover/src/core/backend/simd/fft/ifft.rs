@@ -598,7 +598,7 @@ mod tests {
         let mut res = values;
         unsafe {
             ifft3(
-                transmute(res.as_mut_ptr()),
+                transmute::<*mut PackedBaseField, *mut u32>(res.as_mut_ptr()),
                 0,
                 LOG_N_LANES as usize,
                 twiddles0_dbl,
@@ -664,7 +664,7 @@ mod tests {
             [val0.to_array(), val1.to_array()].concat()
         };
 
-        assert_eq!(res, ground_truth_ifft(domain, values.flatten()));
+        assert_eq!(res, ground_truth_ifft(domain, values.as_flattened()));
     }
 
     #[test]
@@ -678,7 +678,7 @@ mod tests {
             let mut res = values.iter().copied().collect::<BaseColumn>();
             unsafe {
                 ifft_lower_with_vecwise(
-                    transmute(res.data.as_mut_ptr()),
+                    transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
                     &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
                     log_size as usize,
                     log_size as usize,
@@ -700,11 +700,14 @@ mod tests {
             let mut res = values.iter().copied().collect::<BaseColumn>();
             unsafe {
                 ifft(
-                    transmute(res.data.as_mut_ptr()),
+                    transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
                     &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
                     log_size as usize,
                 );
-                transpose_vecs(transmute(res.data.as_mut_ptr()), log_size as usize - 4);
+                transpose_vecs(
+                    transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
+                    log_size as usize - 4,
+                );
             }
 
             assert_eq!(res.to_cpu(), ground_truth_ifft(domain, &values));
