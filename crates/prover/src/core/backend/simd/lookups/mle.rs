@@ -30,9 +30,8 @@ impl MleOps<BaseField> for SimdBackend {
         let (evals_at_0x, evals_at_1x) = mle.data.split_at(packed_midpoint);
 
         let res = zip(evals_at_0x, evals_at_1x)
-            .enumerate()
             // MLE at points `({0, 1}, rev(bits(i)), v)` for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
-            .map(|(_i, (&packed_eval_at_0iv, &packed_eval_at_1iv))| {
+            .map(|(&packed_eval_at_0iv, &packed_eval_at_1iv)| {
                 fold_packed_mle_evals(packed_assignment, packed_eval_at_0iv, packed_eval_at_1iv)
             })
             .collect();

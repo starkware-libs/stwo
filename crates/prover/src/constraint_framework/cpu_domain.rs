@@ -46,7 +46,7 @@ impl<'a> CpuDomainEvaluator<'a> {
     }
 }
 
-impl<'a> EvalAtRow for CpuDomainEvaluator<'a> {
+impl EvalAtRow for CpuDomainEvaluator<'_> {
     type F = BaseField;
     type EF = SecureField;
 
