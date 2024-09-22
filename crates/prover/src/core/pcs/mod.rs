@@ -1,4 +1,5 @@
 //! Implements a FRI polynomial commitment scheme.
+//!
 //! This is a protocol where the prover can commit on a set of polynomials and then prove their
 //! opening on a set of points.
 //! Note: This implementation is not really a polynomial commitment scheme, because we are not in
@@ -34,7 +35,8 @@ impl Default for PcsConfig {
     fn default() -> Self {
         Self {
             pow_bits: 5,
-            fri_config: FriConfig::new(0, 1, 3),
+            // fri_config: FriConfig::new(0, 1, 3),
+            fri_config: FriConfig::new(0, 1, 50),
         }
     }
 }
