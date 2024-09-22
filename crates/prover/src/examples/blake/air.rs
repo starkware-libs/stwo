@@ -185,7 +185,6 @@ impl BlakeComponents {
                     log_size: stmt0.log_size,
                     blake_lookup_elements: all_elements.blake_elements.clone(),
                     round_lookup_elements: all_elements.round_elements.clone(),
-                    total_sum: stmt1.scheduler_claimed_sum,
                 },
                 (stmt1.scheduler_claimed_sum, None),
             ),
@@ -199,7 +198,6 @@ impl BlakeComponents {
                             log_size: stmt0.log_size + l,
                             xor_lookup_elements: all_elements.xor_elements.clone(),
                             round_lookup_elements: all_elements.round_elements.clone(),
-                            total_sum: claimed_sum,
                         },
                         (claimed_sum, None),
                     )

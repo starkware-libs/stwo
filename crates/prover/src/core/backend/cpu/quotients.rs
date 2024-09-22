@@ -73,10 +73,10 @@ pub fn accumulate_row_quotients(
     row_accumulator
 }
 
-/// Precompute the complex conjugate line coefficients for each column in each sample batch.
-/// Specifically, for the i-th (in a sample batch) column's numerator term
-/// `alpha^i * (c * F(p) - (a * p.y + b))`, we precompute and return the constants:
-/// (`alpha^i * a`, `alpha^i * b`, `alpha^i * c`).
+/// Precomputes the complex conjugate line coefficients for each column in each sample batch.
+///
+/// For the `i`-th (in a sample batch) column's numerator term `alpha^i * (c * F(p) - (a * p.y +
+/// b))`, we precompute and return the constants: (`alpha^i * a`, `alpha^i * b`, `alpha^i * c`).
 pub fn column_line_coeffs(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
@@ -101,8 +101,9 @@ pub fn column_line_coeffs(
         .collect()
 }
 
-/// Precompute the random coefficients used to linearly combine the batched quotients.
-/// Specifically, for each sample batch we compute random_coeff^(number of columns in the batch),
+/// Precomputes the random coefficients used to linearly combine the batched quotients.
+///
+/// For each sample batch we compute random_coeff^(number of columns in the batch),
 /// which is used to linearly combine the batch with the next one.
 pub fn batch_random_coeffs(
     sample_batches: &[ColumnSampleBatch],

@@ -2,14 +2,11 @@ mod constraints;
 mod gen;
 
 pub use gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
-use num_traits::Zero;
 
 use super::{BlakeXorElements, N_ROUND_INPUT_FELTS};
 use crate::constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,
 };
-use crate::core::fields::qm31::SecureField;
-
 pub type BlakeRoundComponent = FrameworkComponent<BlakeRoundEval>;
 
 relation!(RoundElements, N_ROUND_INPUT_FELTS);
@@ -18,7 +15,6 @@ pub struct BlakeRoundEval {
     pub log_size: u32,
     pub xor_lookup_elements: BlakeXorElements,
     pub round_lookup_elements: RoundElements,
-    pub total_sum: SecureField,
 }
 
 impl FrameworkEval for BlakeRoundEval {
@@ -33,8 +29,6 @@ impl FrameworkEval for BlakeRoundEval {
             eval,
             xor_lookup_elements: &self.xor_lookup_elements,
             round_lookup_elements: &self.round_lookup_elements,
-            total_sum: self.total_sum,
-            log_size: self.log_size,
         };
         blake_eval.eval()
     }
@@ -45,7 +39,6 @@ pub fn blake_round_info() -> InfoEvaluator {
         log_size: 1,
         xor_lookup_elements: BlakeXorElements::dummy(),
         round_lookup_elements: RoundElements::dummy(),
-        total_sum: SecureField::zero(),
     };
     component.evaluate(InfoEvaluator::empty())
 }
@@ -99,7 +92,6 @@ mod tests {
             log_size: LOG_SIZE,
             xor_lookup_elements,
             round_lookup_elements,
-            total_sum,
         };
         crate::constraint_framework::assert_constraints(
             &trace_polys,

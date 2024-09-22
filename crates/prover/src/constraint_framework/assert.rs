@@ -33,7 +33,7 @@ impl<'a> AssertEvaluator<'a> {
         }
     }
 }
-impl<'a> EvalAtRow for AssertEvaluator<'a> {
+impl EvalAtRow for AssertEvaluator<'_> {
     type F = BaseField;
     type EF = SecureField;
 

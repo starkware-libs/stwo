@@ -3,14 +3,12 @@ mod gen;
 
 use constraints::eval_blake_scheduler_constraints;
 pub use gen::{gen_interaction_trace, gen_trace, BlakeInput};
-use num_traits::Zero;
 
 use super::round::RoundElements;
 use super::N_ROUND_INPUT_FELTS;
 use crate::constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,
 };
-use crate::core::fields::qm31::SecureField;
 
 pub type BlakeSchedulerComponent = FrameworkComponent<BlakeSchedulerEval>;
 
@@ -20,7 +18,6 @@ pub struct BlakeSchedulerEval {
     pub log_size: u32,
     pub blake_lookup_elements: BlakeElements,
     pub round_lookup_elements: RoundElements,
-    pub total_sum: SecureField,
 }
 impl FrameworkEval for BlakeSchedulerEval {
     fn log_size(&self) -> u32 {
@@ -44,7 +41,6 @@ pub fn blake_scheduler_info() -> InfoEvaluator {
         log_size: 1,
         blake_lookup_elements: BlakeElements::dummy(),
         round_lookup_elements: RoundElements::dummy(),
-        total_sum: SecureField::zero(),
     };
     component.evaluate(InfoEvaluator::empty())
 }
@@ -94,7 +90,6 @@ mod tests {
             log_size: LOG_SIZE,
             blake_lookup_elements,
             round_lookup_elements,
-            total_sum,
         };
         crate::constraint_framework::assert_constraints(
             &trace_polys,

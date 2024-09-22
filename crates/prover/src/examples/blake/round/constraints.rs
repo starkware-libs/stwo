@@ -4,7 +4,6 @@ use num_traits::One;
 use super::{BlakeXorElements, RoundElements};
 use crate::constraint_framework::{EvalAtRow, RelationEntry};
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
 use crate::examples::blake::{Fu32, STATE_SIZE};
 
 const INV16: BaseField = BaseField::from_u32_unchecked(1 << 15);
@@ -14,10 +13,8 @@ pub struct BlakeRoundEval<'a, E: EvalAtRow> {
     pub eval: E,
     pub xor_lookup_elements: &'a BlakeXorElements,
     pub round_lookup_elements: &'a RoundElements,
-    pub total_sum: SecureField,
-    pub log_size: u32,
 }
-impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
+impl<E: EvalAtRow> BlakeRoundEval<'_, E> {
     pub fn eval(mut self) -> E {
         let mut v: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
         let input_v = v.clone();
