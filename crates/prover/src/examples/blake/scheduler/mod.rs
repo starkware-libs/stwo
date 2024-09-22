@@ -16,10 +16,12 @@ pub type BlakeSchedulerComponent = FrameworkComponent<BlakeSchedulerEval>;
 
 relation!(BlakeElements, N_ROUND_INPUT_FELTS);
 
+#[allow(dead_code)]
 pub struct BlakeSchedulerEval {
     pub log_size: u32,
     pub blake_lookup_elements: BlakeElements,
     pub round_lookup_elements: RoundElements,
+    // TODO(first): validate logup.
     pub total_sum: SecureField,
 }
 impl FrameworkEval for BlakeSchedulerEval {

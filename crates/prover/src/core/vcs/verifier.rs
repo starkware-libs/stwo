@@ -34,7 +34,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
     /// # Arguments
     ///
     /// * `queries_per_log_size` - A map from log_size to a vector of queries for columns of that
-    ///  log_size.
+    ///   log_size.
     /// * `queried_values` - A vector of queried values according to the order in
     ///   [`MerkleProver::decommit()`].
     /// * `decommitment` - The decommitment object containing the witness and column values.
@@ -50,7 +50,6 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
     /// * The computed root does not match the expected root.
     ///
     /// [`MerkleProver::decommit()`]: crate::core::...::MerkleProver::decommit
-
     pub fn verify(
         &self,
         queries_per_log_size: &BTreeMap<u32, Vec<usize>>,
