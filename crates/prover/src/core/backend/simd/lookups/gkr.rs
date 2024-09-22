@@ -25,7 +25,7 @@ impl GkrOps for SimdBackend {
         }
 
         // Start DP with CPU backend to avoid dealing with instances smaller than a SIMD vector.
-        let (y_last_chunk, y_rem) = y.split_last_chunk::<{ LOG_N_LANES as usize }>().unwrap();
+        let (y_rem, y_last_chunk) = y.split_last_chunk::<{ LOG_N_LANES as usize }>().unwrap();
         let initial = SecureColumn::from_iter(cpu_gen_eq_evals(y_last_chunk, v));
         assert_eq!(initial.len(), N_LANES);
 

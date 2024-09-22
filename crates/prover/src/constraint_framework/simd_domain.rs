@@ -57,7 +57,7 @@ impl<'a> SimdDomainEvaluator<'a> {
         }
     }
 }
-impl<'a> EvalAtRow for SimdDomainEvaluator<'a> {
+impl EvalAtRow for SimdDomainEvaluator<'_> {
     type F = VeryPackedBaseField;
     type EF = VeryPackedSecureField;
 
