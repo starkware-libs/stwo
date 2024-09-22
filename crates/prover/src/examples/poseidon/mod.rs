@@ -461,7 +461,7 @@ mod tests {
         for i in 0..16 {
             internal_matrix[i][i] += BaseField::from_u32_unchecked(1 << (i + 1));
         }
-        let matrix = RowMajorMatrix::<BaseField, 16>::new(internal_matrix.flatten().to_vec());
+        let matrix = RowMajorMatrix::<BaseField, 16>::new(internal_matrix.as_flattened().to_vec());
 
         let expected_state = matrix.mul(state);
         apply_internal_round_matrix(&mut state);
