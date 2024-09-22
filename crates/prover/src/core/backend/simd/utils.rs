@@ -1,6 +1,7 @@
 use std::simd::Swizzle;
 
 /// Used with [`Swizzle::concat_swizzle`] to interleave the even values of two vectors.
+#[allow(dead_code)]
 pub struct InterleaveEvens;
 
 impl<const N: usize> Swizzle<N> for InterleaveEvens {
@@ -8,6 +9,7 @@ impl<const N: usize> Swizzle<N> for InterleaveEvens {
 }
 
 /// Used with [`Swizzle::concat_swizzle`] to interleave the odd values of two vectors.
+#[allow(dead_code)]
 pub struct InterleaveOdds;
 
 impl<const N: usize> Swizzle<N> for InterleaveOdds {

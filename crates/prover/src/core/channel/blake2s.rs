@@ -74,7 +74,7 @@ impl Channel for Blake2sChannel {
         msg[1] = (nonce >> 32) as u32;
         let res = compress(std::array::from_fn(|i| digest[i]), msg, 0, 0, 0, 0);
 
-        self.update_digest(unsafe { std::mem::transmute(res) });
+        self.update_digest(unsafe { std::mem::transmute::<[u32; 8], Blake2sHash>(res) });
     }
 
     fn draw_felt(&mut self) -> SecureField {

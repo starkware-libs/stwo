@@ -28,9 +28,9 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
     /// # Arguments
     ///
     /// * `queries_per_log_size` - A map from log_size to a vector of queries for columns of that
-    ///  log_size.
+    ///   log_size.
     /// * `queried_values` - A vector of vectors of queried values. For each column, there is a
-    /// vector of queried values to that column.
+    ///   vector of queried values to that column.
     /// * `decommitment` - The decommitment object containing the witness and column values.
     ///
     /// # Errors

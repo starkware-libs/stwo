@@ -468,8 +468,8 @@ pub(crate) fn _mul_avx2(a: PackedM31, b: PackedM31) -> PackedM31 {
 pub(crate) fn _mul_doubled_avx2(a: PackedM31, b_double: u32x16) -> PackedM31 {
     use std::arch::x86_64::{__m256i, _mm256_mul_epu32, _mm256_srli_epi64};
 
-    let [a0, a1]: [__m256i; 2] = unsafe { transmute(a) };
-    let [b0_dbl, b1_dbl]: [__m256i; 2] = unsafe { transmute(b_double) };
+    let [a0, a1]: [__m256i; 2] = unsafe { transmute::<PackedM31, [__m256i; 2]>(a) };
+    let [b0_dbl, b1_dbl]: [__m256i; 2] = unsafe { transmute::<PackedM31, [__m256i; 2]>(b_double) };
 
     // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of
     // the first operand.
@@ -491,8 +491,10 @@ pub(crate) fn _mul_doubled_avx2(a: PackedM31, b_double: u32x16) -> PackedM31 {
     let prod1_dbl_e = unsafe { _mm256_mul_epu32(a1_e, b1_dbl_e) };
     let prod1_dbl_o = unsafe { _mm256_mul_epu32(a1_o, b1_dbl_o) };
 
-    let prod_dbl_e: u32x16 = unsafe { transmute([prod0_dbl_e, prod1_dbl_e]) };
-    let prod_dbl_o: u32x16 = unsafe { transmute([prod0_dbl_o, prod1_dbl_o]) };
+    let prod_dbl_e: u32x16 =
+        unsafe { transmute::<[__m256i; 2], u32x16>([prod0_dbl_e, prod1_dbl_e]) };
+    let prod_dbl_o: u32x16 =
+        unsafe { transmute::<[__m256i; 2], u32x16>([prod0_dbl_o, prod1_dbl_o]) };
 
     // The result of a multiplication holds a*b in as 64-bits.
     // Each 64b-bit word looks like this:
@@ -531,13 +533,17 @@ pub(crate) fn _mul_doubled_simd(a: PackedM31, b_double: u32x16) -> PackedM31 {
 
     // Set up a word s.t. the lower half of each 64-bit word has the even 32-bit words of
     // the first operand.
-    let a_e = unsafe { transmute::<_, Simd<u64, { N_LANES / 2 }>>(a.0) & MASK_EVENS };
+    let a_e =
+        unsafe { transmute::<Simd<u32, N_LANES>, Simd<u64, { N_LANES / 2 }>>(a.0) & MASK_EVENS };
     // Set up a word s.t. the lower half of each 64-bit word has the odd 32-bit words of
     // the first operand.
-    let a_o = unsafe { transmute::<_, Simd<u64, { N_LANES / 2 }>>(a) >> 32 };
+    let a_o = unsafe { transmute::<PackedM31, Simd<u64, { N_LANES / 2 }>>(a) >> 32 };
 
-    let b_dbl_e = unsafe { transmute::<_, Simd<u64, { N_LANES / 2 }>>(b_double) & MASK_EVENS };
-    let b_dbl_o = unsafe { transmute::<_, Simd<u64, { N_LANES / 2 }>>(b_double) >> 32 };
+    let b_dbl_e = unsafe {
+        transmute::<Simd<u32, N_LANES>, Simd<u64, { N_LANES / 2 }>>(b_double) & MASK_EVENS
+    };
+    let b_dbl_o =
+        unsafe { transmute::<Simd<u32, N_LANES>, Simd<u64, { N_LANES / 2 }>>(b_double) >> 32 };
 
     // To compute prod = a * b start by multiplying
     // a_e/o by b_dbl_e/o.
@@ -555,8 +561,8 @@ pub(crate) fn _mul_doubled_simd(a: PackedM31, b_double: u32x16) -> PackedM31 {
     // prod_o_dbl);
     // prod_ls -    |prod_o_l|0|prod_e_l|0|
     let mut prod_lows = InterleaveEvens::concat_swizzle(
-        unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_e_dbl) },
-        unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_o_dbl) },
+        unsafe { transmute::<Simd<u64, { N_LANES / 2 }>, Simd<u32, N_LANES>>(prod_e_dbl) },
+        unsafe { transmute::<Simd<u64, { N_LANES / 2 }>, Simd<u32, N_LANES>>(prod_o_dbl) },
     );
     // Divide by 2:
     prod_lows >>= 1;
@@ -564,8 +570,8 @@ pub(crate) fn _mul_doubled_simd(a: PackedM31, b_double: u32x16) -> PackedM31 {
 
     // Interleave the odd words of prod_e_dbl with the odd words of prod_o_dbl:
     let prod_highs = InterleaveOdds::concat_swizzle(
-        unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_e_dbl) },
-        unsafe { transmute::<_, Simd<u32, N_LANES>>(prod_o_dbl) },
+        unsafe { transmute::<Simd<u64, { N_LANES / 2 }>, Simd<u32, N_LANES>>(prod_e_dbl) },
+        unsafe { transmute::<Simd<u64, { N_LANES / 2 }>, Simd<u32, N_LANES>>(prod_o_dbl) },
     );
 
     // prod_hs -    |0|prod_o_h|0|prod_e_h|
