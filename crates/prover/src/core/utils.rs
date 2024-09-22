@@ -23,7 +23,7 @@ pub struct PeekTakeWhile<'a, I: Iterator, P: FnMut(&I::Item) -> bool> {
     iter: &'a mut Peekable<I>,
     predicate: P,
 }
-impl<'a, I: Iterator, P: FnMut(&I::Item) -> bool> Iterator for PeekTakeWhile<'a, I, P> {
+impl<I: Iterator, P: FnMut(&I::Item) -> bool> Iterator for PeekTakeWhile<'_, I, P> {
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {

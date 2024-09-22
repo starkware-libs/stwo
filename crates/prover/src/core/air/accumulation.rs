@@ -1,4 +1,5 @@
 //! Accumulators for a random linear combination of circle polynomials.
+//!
 //! Given N polynomials, u_0(P), ... u_{N-1}(P), and a random alpha, the combined polynomial is
 //! defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i(P).
@@ -162,7 +163,7 @@ pub struct ColumnAccumulator<'a, B: Backend> {
     pub random_coeff_powers: Vec<SecureField>,
     pub col: &'a mut SecureColumnByCoords<B>,
 }
-impl<'a> ColumnAccumulator<'a, CpuBackend> {
+impl ColumnAccumulator<'_, CpuBackend> {
     pub fn accumulate(&mut self, index: usize, evaluation: SecureField) {
         let val = self.col.at(index) + evaluation;
         self.col.set(index, val);
