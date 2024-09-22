@@ -252,7 +252,7 @@ pub struct LogupColGenerator<'a> {
     /// Numerator expressions (i.e. multiplicities) being generated for the current lookup.
     numerator: SecureColumnByCoords<SimdBackend>,
 }
-impl<'a> LogupColGenerator<'a> {
+impl LogupColGenerator<'_> {
     /// Write a fraction to the column at a row.
     pub fn write_frac(
         &mut self,

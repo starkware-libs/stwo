@@ -11,7 +11,7 @@ use crate::core::ColumnVec;
 
 pub struct Components<'a>(pub Vec<&'a dyn Component>);
 
-impl<'a> Components<'a> {
+impl Components<'_> {
     pub fn composition_log_degree_bound(&self) -> u32 {
         self.0
             .iter()
@@ -55,7 +55,7 @@ impl<'a> Components<'a> {
 
 pub struct ComponentProvers<'a, B: Backend>(pub Vec<&'a dyn ComponentProver<B>>);
 
-impl<'a, B: Backend> ComponentProvers<'a, B> {
+impl<B: Backend> ComponentProvers<'_, B> {
     pub fn components(&self) -> Components<'_> {
         Components(self.0.iter().map(|c| *c as &dyn Component).collect_vec())
     }

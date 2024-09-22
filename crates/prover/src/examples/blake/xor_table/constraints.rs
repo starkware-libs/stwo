@@ -13,8 +13,8 @@ pub struct XorTableEval<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BIT
     pub lookup_elements: &'a XorElements,
     pub logup: LogupAtRow<E>,
 }
-impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
-    XorTableEval<'a, E, ELEM_BITS, EXPAND_BITS>
+impl<E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
+    XorTableEval<'_, E, ELEM_BITS, EXPAND_BITS>
 {
     pub fn eval(mut self) -> E {
         // al, bl are the constant columns for the inputs: All pairs of elements in [0,

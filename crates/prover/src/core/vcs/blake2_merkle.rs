@@ -20,7 +20,7 @@ impl MerkleHasher for Blake2sMerkleHasher {
         if let Some((left, right)) = children_hashes {
             state = compress(
                 state,
-                unsafe { std::mem::transmute([left, right]) },
+                unsafe { std::mem::transmute::<[Blake2sHash; 2], [u32; 16]>([left, right]) },
                 0,
                 0,
                 0,
@@ -33,9 +33,16 @@ impl MerkleHasher for Blake2sMerkleHasher {
             .copied()
             .chain(std::iter::repeat(BaseField::zero()).take(rem));
         for chunk in padded_values.array_chunks::<16>() {
-            state = compress(state, unsafe { std::mem::transmute(chunk) }, 0, 0, 0, 0);
+            state = compress(
+                state,
+                unsafe { std::mem::transmute::<[BaseField; 16], [u32; 16]>(chunk) },
+                0,
+                0,
+                0,
+                0,
+            );
         }
-        state.map(|x| x.to_le_bytes()).flatten().into()
+        state.map(|x| x.to_le_bytes()).as_flattened().into()
     }
 }
 

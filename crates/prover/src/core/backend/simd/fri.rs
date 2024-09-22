@@ -1,5 +1,5 @@
 use std::array;
-use std::simd::u32x8;
+use std::simd::{u32x16, u32x8};
 
 use num_traits::Zero;
 
@@ -38,14 +38,15 @@ impl FriOps for SimdBackend {
         let mut folded_values = SecureColumnByCoords::<Self>::zeros(1 << (log_size - 1));
 
         for vec_index in 0..(1 << (log_size - 1 - LOG_N_LANES)) {
-            let value = unsafe {
-                let twiddle_dbl: [u32; 16] =
-                    array::from_fn(|i| *itwiddles.get_unchecked(vec_index * 16 + i));
-                let val0 = eval.values.packed_at(vec_index * 2).into_packed_m31s();
-                let val1 = eval.values.packed_at(vec_index * 2 + 1).into_packed_m31s();
+            let value = {
+                let twiddle_dbl = u32x16::from_array(array::from_fn(|i| unsafe {
+                    *itwiddles.get_unchecked(vec_index * 16 + i)
+                }));
+                let val0 = unsafe { eval.values.packed_at(vec_index * 2) }.into_packed_m31s();
+                let val1 = unsafe { eval.values.packed_at(vec_index * 2 + 1) }.into_packed_m31s();
                 let pairs: [_; 4] = array::from_fn(|i| {
                     let (a, b) = val0[i].deinterleave(val1[i]);
-                    simd_ibutterfly(a, b, std::mem::transmute(twiddle_dbl))
+                    simd_ibutterfly(a, b, twiddle_dbl)
                 });
                 let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].0));
                 let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| pairs[i].1));

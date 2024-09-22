@@ -25,7 +25,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           components: rustfmt
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
       - uses: Swatinem/rust-cache@v2
       - run: scripts/rust_fmt.sh --check
 
@@ -36,7 +36,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           components: clippy
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
       - uses: Swatinem/rust-cache@v2
       - run: scripts/clippy.sh
 
@@ -46,9 +46,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 doc
+      - run: cargo +nightly-2024-11-06 doc
 
   run-wasm32-wasi-tests:
     runs-on: ubuntu-latest
@@ -56,7 +56,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
           targets: wasm32-wasi
       - uses: taiki-e/install-action@v2
         with:
@@ -73,7 +73,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - uses: jetli/wasm-pack-action@v0.4.0
@@ -89,9 +89,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test
+      - run: cargo +nightly-2024-11-06 test
         env:
           RUSTFLAGS: -C target-feature=+neon
 
@@ -104,9 +104,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test
+      - run: cargo +nightly-2024-11-06 test
         env:
           RUSTFLAGS: -C target-cpu=native -C target-feature=+${{ matrix.target-feature }}
 
@@ -116,7 +116,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
       - name: Run benchmark
         run: ./scripts/bench.sh -- --output-format bencher | tee output.txt
       - name: Download previous benchmark data
@@ -142,7 +142,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
       - name: Run benchmark
         run: ./scripts/bench.sh --features="parallel" -- --output-format bencher | tee output.txt
       - name: Download previous benchmark data
@@ -168,9 +168,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test
+      - run: cargo +nightly-2024-11-06 test
 
   run-slow-tests:
     runs-on: ubuntu-latest
@@ -178,9 +178,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test --release --features="slow-tests"
+      - run: cargo +nightly-2024-11-06 test --release --features="slow-tests"
 
   run-tests-parallel:
     runs-on: ubuntu-latest
@@ -188,9 +188,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-11-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test --features="parallel"
+      - run: cargo +nightly-2024-11-06 test --features="parallel"
 
   machete:
     runs-on: ubuntu-latest
