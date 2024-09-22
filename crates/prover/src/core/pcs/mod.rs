@@ -1,4 +1,5 @@
 //! Implements a FRI polynomial commitment scheme.
+//!
 //! This is a protocol where the prover can commit on a set of polynomials and then prove their
 //! opening on a set of points.
 //! Note: This implementation is not really a polynomial commitment scheme, because we are not in
