@@ -114,9 +114,7 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> MleEvalProverComponent<'twiddl
     }
 }
 
-impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> Component
-    for MleEvalProverComponent<'twiddles, 'oracle, O>
-{
+impl<O: MleCoeffColumnOracle> Component for MleEvalProverComponent<'_, '_, O> {
     fn n_constraints(&self) -> usize {
         self.eval_info().n_constraints
     }
@@ -180,9 +178,7 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> Component
     }
 }
 
-impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> ComponentProver<SimdBackend>
-    for MleEvalProverComponent<'twiddles, 'oracle, O>
-{
+impl<O: MleCoeffColumnOracle> ComponentProver<SimdBackend> for MleEvalProverComponent<'_, '_, O> {
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &Trace<'_, SimdBackend>,
@@ -317,7 +313,7 @@ impl<'oracle, O: MleCoeffColumnOracle> MleEvalVerifierComponent<'oracle, O> {
     }
 }
 
-impl<'oracle, O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'oracle, O> {
+impl<O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'_, O> {
     fn n_constraints(&self) -> usize {
         self.eval_info().n_constraints
     }

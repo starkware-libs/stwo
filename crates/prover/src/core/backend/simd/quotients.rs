@@ -286,13 +286,13 @@ mod tests {
         let e1: BaseColumn = (0..small_domain.size())
             .map(|i| BaseField::from(2 * i))
             .collect();
-        let polys = vec![
+        let polys = [
             CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(small_domain, e0)
                 .interpolate(),
             CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(small_domain, e1)
                 .interpolate(),
         ];
-        let columns = vec![polys[0].evaluate(domain), polys[1].evaluate(domain)];
+        let columns = [polys[0].evaluate(domain), polys[1].evaluate(domain)];
         let random_coeff = qm31!(1, 2, 3, 4);
         let a = polys[0].eval_at_point(SECURE_FIELD_CIRCLE_GEN);
         let b = polys[1].eval_at_point(SECURE_FIELD_CIRCLE_GEN);
