@@ -17,7 +17,7 @@ pub struct BlakeRoundEval<'a, E: EvalAtRow> {
     pub round_lookup_elements: &'a RoundElements,
     pub logup: LogupAtRow<E>,
 }
-impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
+impl<E: EvalAtRow> BlakeRoundEval<'_, E> {
     pub fn eval(mut self) -> E {
         let mut v: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
         let input_v = v.clone();

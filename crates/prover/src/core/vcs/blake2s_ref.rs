@@ -1,4 +1,5 @@
 //! An AVX512 implementation of the BLAKE2s compression function.
+//!
 //! Based on <https://github.com/oconnor663/blake2_simd/blob/master/blake2s/src/avx2.rs>.
 
 pub const IV: [u32; 8] = [
@@ -30,22 +31,22 @@ fn xor(a: u32, b: u32) -> u32 {
 
 #[inline(always)]
 fn rot16(x: u32) -> u32 {
-    (x >> 16) | (x << (32 - 16))
+    x.rotate_right(16)
 }
 
 #[inline(always)]
 fn rot12(x: u32) -> u32 {
-    (x >> 12) | (x << (32 - 12))
+    x.rotate_right(12)
 }
 
 #[inline(always)]
 fn rot8(x: u32) -> u32 {
-    (x >> 8) | (x << (32 - 8))
+    x.rotate_right(8)
 }
 
 #[inline(always)]
 fn rot7(x: u32) -> u32 {
-    (x >> 7) | (x << (32 - 7))
+    x.rotate_right(7)
 }
 
 #[inline(always)]
