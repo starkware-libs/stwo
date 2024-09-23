@@ -38,7 +38,7 @@ wasm-bindgen-test = "0.3.43"
 features = ["html_reports"]
 version = "0.5.1"
 
-# Default features cause compile error: 
+# Default features cause compile error:
 # "Rayon cannot be used when targeting wasi32. Try disabling default features."
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies.criterion]
 default-features = false
@@ -55,6 +55,9 @@ future-incompatible = "deny"
 nonstandard-style = "deny"
 rust-2018-idioms = "deny"
 unused = "deny"
+
+[package.metadata.cargo-machete]
+ignored = ["downcast-rs"]
 
 [[bench]]
 harness = false
