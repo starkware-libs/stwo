@@ -1,6 +1,6 @@
 use std::ops::{Mul, Sub};
 
-use itertools::{zip_eq, Itertools};
+use itertools::Itertools;
 use num_traits::{One, Zero};
 
 use super::EvalAtRow;
@@ -109,9 +109,17 @@ impl<const N: usize> LookupElements<N> {
     where
         EF: Copy + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
     {
-        zip_eq(values, self.alpha_powers).fold(EF::zero(), |acc, (&value, power)| {
-            acc + EF::from(power) * value
-        }) - EF::from(self.z)
+        assert!(
+            self.alpha_powers.len() >= values.len(),
+            "Not enough alpha powers to combine values"
+        );
+        values
+            .iter()
+            .zip(self.alpha_powers)
+            .fold(EF::zero(), |acc, (&value, power)| {
+                acc + EF::from(power) * value
+            })
+            - EF::from(self.z)
     }
     // TODO(spapini): Try to remove this.
     pub fn dummy() -> Self {
