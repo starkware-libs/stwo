@@ -9,14 +9,13 @@ use crate::core::backend::cpu::quotients::{accumulate_row_quotients, quotient_co
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fri::SparseCircleEvaluation;
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation,
 };
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::VerificationError;
-use crate::core::queries::SparseSubCircleDomain;
 use crate::core::utils::bit_reverse_index;
+use crate::core::ColumnVec;
 
 pub trait QuotientOps: PolyOps {
     /// Accumulates the quotients of the columns at the given domain.
@@ -104,22 +103,22 @@ pub fn fri_answers(
     column_log_sizes: Vec<u32>,
     samples: &[Vec<PointSample>],
     random_coeff: SecureField,
-    query_domain_per_log_size: BTreeMap<u32, SparseSubCircleDomain>,
+    query_positions_per_log_size: &BTreeMap<u32, Vec<usize>>,
     queried_values_per_column: &[Vec<BaseField>],
-) -> Result<Vec<SparseCircleEvaluation>, VerificationError> {
+) -> Result<ColumnVec<Vec<SecureField>>, VerificationError> {
     izip!(column_log_sizes, samples, queried_values_per_column)
         .sorted_by_key(|(log_size, ..)| Reverse(*log_size))
         .group_by(|(log_size, ..)| *log_size)
         .into_iter()
         .map(|(log_size, tuples)| {
-            let (_, samples, queried_valued_per_column): (Vec<_>, Vec<_>, Vec<_>) =
+            let (_, samples, queried_values_per_column): (Vec<_>, Vec<_>, Vec<_>) =
                 multiunzip(tuples);
             fri_answers_for_log_size(
                 log_size,
                 &samples,
                 random_coeff,
-                &query_domain_per_log_size[&log_size],
-                &queried_valued_per_column,
+                &query_positions_per_log_size[&log_size],
+                &queried_values_per_column,
             )
         })
         .collect()
@@ -129,59 +128,39 @@ pub fn fri_answers_for_log_size(
     log_size: u32,
     samples: &[&Vec<PointSample>],
     random_coeff: SecureField,
-    query_domain: &SparseSubCircleDomain,
+    query_positions: &[usize],
     queried_values_per_column: &[&Vec<BaseField>],
-) -> Result<SparseCircleEvaluation, VerificationError> {
-    let commitment_domain = CanonicCoset::new(log_size).circle_domain();
+) -> Result<Vec<SecureField>, VerificationError> {
     let sample_batches = ColumnSampleBatch::new_vec(samples);
     for queried_values in queried_values_per_column {
-        if queried_values.len() != query_domain.flatten().len() {
+        if queried_values.len() != query_positions.len() {
             return Err(VerificationError::InvalidStructure(
                 "Insufficient number of queried values".to_string(),
             ));
         }
     }
-    let mut queried_values_per_column = queried_values_per_column
-        .iter()
-        .map(|q| q.iter())
-        .collect_vec();
 
-    let mut evals = Vec::new();
-    for subdomain in query_domain.iter() {
-        let domain = subdomain.to_circle_domain(&commitment_domain);
-        let quotient_constants = quotient_constants(&sample_batches, random_coeff, domain);
-        let mut column_evals = Vec::new();
-        for queried_values in queried_values_per_column.iter_mut() {
-            let eval = CircleEvaluation::new(
-                domain,
-                queried_values.take(domain.size()).copied().collect_vec(),
-            );
-            column_evals.push(eval);
-        }
+    let quotient_constants = quotient_constants(&sample_batches, random_coeff);
+    let commitment_domain = CanonicCoset::new(log_size).circle_domain();
+    let mut row_index_iter = 0..query_positions.len();
+    let mut quotient_evals_at_queries = Vec::new();
 
-        let mut values = Vec::new();
-        for row in 0..domain.size() {
-            let domain_point = domain.at(bit_reverse_index(row, log_size));
-            let value = accumulate_row_quotients(
-                &sample_batches,
-                &column_evals.iter().collect_vec(),
-                &quotient_constants,
-                row,
-                domain_point,
-            );
-            values.push(value);
-        }
-        let eval = CircleEvaluation::new(domain, values);
-        evals.push(eval);
-    }
-
-    let res = SparseCircleEvaluation::new(evals);
-    if !queried_values_per_column.iter().all(|x| x.is_empty()) {
-        return Err(VerificationError::InvalidStructure(
-            "Too many queried values".to_string(),
+    for &query_position in query_positions {
+        let domain_point = commitment_domain.at(bit_reverse_index(query_position, log_size));
+        let row = row_index_iter.next().unwrap();
+        let queried_values_at_row = queried_values_per_column
+            .iter()
+            .map(|col| col[row])
+            .collect_vec();
+        quotient_evals_at_queries.push(accumulate_row_quotients(
+            &sample_batches,
+            &queried_values_at_row,
+            &quotient_constants,
+            domain_point,
         ));
     }
-    Ok(res)
+
+    Ok(quotient_evals_at_queries)
 }
 
 #[cfg(test)]
