@@ -250,7 +250,7 @@ where
 
     // Setup protocol.
     let channel = &mut MC::C::default();
-    let commitment_scheme = &mut CommitmentSchemeProver::new(config, &twiddles);
+    let mut commitment_scheme = CommitmentSchemeProver::new(config, &twiddles);
 
     let span = span!(Level::INFO, "Trace").entered();
 
