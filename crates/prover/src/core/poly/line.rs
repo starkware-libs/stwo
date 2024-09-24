@@ -110,9 +110,10 @@ type LineDomainIterator =
 /// A univariate polynomial defined on a [LineDomain].
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct LinePoly {
-    /// Coefficients of the polynomial in [line_ifft] algorithm's basis.
+    /// Coefficients of the polynomial in [`line_ifft`] algorithm's basis.
     ///
     /// The coefficients are stored in bit-reversed order.
+    #[allow(rustdoc::private_intra_doc_links)]
     coeffs: Vec<SecureField>,
     /// The number of coefficients stored as `log2(len(coeffs))`.
     log_size: u32,
