@@ -51,8 +51,8 @@ pub fn prove_state_machine(
     );
 
     // Setup protocol.
-    let commitment_scheme =
-        &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+    let mut commitment_scheme =
+        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
     // Preprocessed trace.
     let mut tree_builder = commitment_scheme.tree_builder();
