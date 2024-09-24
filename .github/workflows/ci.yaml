@@ -136,6 +136,32 @@ jobs:
           comment-on-alert: true
           alert-comment-cc-users: "@shaharsamocha7"
 
+  run-avx512-bench-parallel:
+    runs-on: avx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2024-01-04
+      - name: Run benchmark
+        run: ./scripts/bench.sh --features="parallel" -- --output-format bencher | tee output.txt
+      - name: Download previous benchmark data
+        uses: actions/cache@v4
+        with:
+          path: ./cache
+          key: ${{ runner.os }}-benchmark
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: "cargo"
+          output-file-path: output.txt
+          external-data-json-path: ./cache/benchmark-data.json
+          fail-on-alert: true
+          summary-always: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-on-alert: true
+          alert-comment-cc-users: "@shaharsamocha7"
+
   run-tests:
     runs-on: ubuntu-latest
     steps:
