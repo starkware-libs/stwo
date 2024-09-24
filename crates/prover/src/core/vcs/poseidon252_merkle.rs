@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn test_merkle_success() {
         let (queries, decommitment, values, verifier) = prepare_merkle::<Poseidon252MerkleHasher>();
-        verifier.verify(queries, values, decommitment).unwrap();
+        verifier.verify(&queries, values, decommitment).unwrap();
     }
 
     #[test]
@@ -105,7 +105,7 @@ mod tests {
         decommitment.hash_witness[4] = FieldElement252::default();
 
         assert_eq!(
-            verifier.verify(queries, values, decommitment).unwrap_err(),
+            verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::RootMismatch
         );
     }
@@ -117,7 +117,7 @@ mod tests {
         values[3][2] = BaseField::zero();
 
         assert_eq!(
-            verifier.verify(queries, values, decommitment).unwrap_err(),
+            verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::RootMismatch
         );
     }
@@ -129,7 +129,7 @@ mod tests {
         decommitment.hash_witness.pop();
 
         assert_eq!(
-            verifier.verify(queries, values, decommitment).unwrap_err(),
+            verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::WitnessTooShort
         );
     }
@@ -141,7 +141,7 @@ mod tests {
         decommitment.hash_witness.push(FieldElement252::default());
 
         assert_eq!(
-            verifier.verify(queries, values, decommitment).unwrap_err(),
+            verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::WitnessTooLong
         );
     }
@@ -153,7 +153,7 @@ mod tests {
         values[3].push(BaseField::zero());
 
         assert_eq!(
-            verifier.verify(queries, values, decommitment).unwrap_err(),
+            verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::ColumnValuesTooLong
         );
     }
@@ -165,7 +165,7 @@ mod tests {
         values[3].pop();
 
         assert_eq!(
-            verifier.verify(queries, values, decommitment).unwrap_err(),
+            verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::ColumnValuesTooShort
         );
     }
