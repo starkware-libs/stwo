@@ -40,12 +40,7 @@ impl QuotientOps for SimdBackend {
             // Fall back to the CPU backend for small domains.
             let columns = columns
                 .iter()
-                .map(|circle_eval| {
-                    CircleEvaluation::<CpuBackend, _, BitReversedOrder>::new(
-                        circle_eval.domain,
-                        circle_eval.values.to_cpu(),
-                    )
-                })
+                .map(|circle_eval| circle_eval.to_cpu())
                 .collect_vec();
             let eval = CpuBackend::accumulate_quotients(
                 domain,
