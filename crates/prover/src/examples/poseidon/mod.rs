@@ -5,6 +5,7 @@ use std::ops::{Add, AddAssign, Mul, Sub};
 use itertools::Itertools;
 use tracing::{span, Level};
 
+use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
@@ -59,7 +60,8 @@ impl FrameworkEval for PoseidonEval {
         self.log_n_rows + LOG_EXPAND
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let logup = LogupAtRow::new(1, self.claimed_sum, self.log_n_rows);
+        let [is_first] = eval.next_interaction_mask(2, [0]);
+        let logup = LogupAtRow::new(1, self.claimed_sum, is_first);
         eval_poseidon_constraints(&mut eval, logup, &self.lookup_elements);
         eval
     }
@@ -367,6 +369,14 @@ pub fn prove_poseidon(
     tree_builder.commit(channel);
     span.exit();
 
+    // Constant trace.
+    let span = span!(Level::INFO, "Constant").entered();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    let constant_trace = vec![gen_is_first(log_n_rows)];
+    tree_builder.extend_evals(constant_trace);
+    tree_builder.commit(channel);
+    span.exit();
+
     // Prove constraints.
     let component = PoseidonComponent::new(
         &mut TraceLocationAllocator::default(),
@@ -388,8 +398,9 @@ mod tests {
     use itertools::Itertools;
     use num_traits::One;
 
-    use crate::constraint_framework::assert_constraints;
+    use crate::constraint_framework::constant_columns::gen_is_first;
     use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
+    use crate::constraint_framework::{assert_constraints, EvalAtRow};
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
@@ -464,13 +475,14 @@ mod tests {
         let (trace1, claimed_sum) =
             gen_interaction_trace(LOG_N_ROWS, interaction_data, &lookup_elements);
 
-        let traces = TreeVec::new(vec![trace0, trace1]);
+        let traces = TreeVec::new(vec![trace0, trace1, vec![gen_is_first(LOG_N_ROWS)]]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
         assert_constraints(&trace_polys, CanonicCoset::new(LOG_N_ROWS), |mut eval| {
+            let [is_first] = eval.next_interaction_mask(2, [0]);
             eval_poseidon_constraints(
                 &mut eval,
-                LogupAtRow::new(1, claimed_sum, LOG_N_ROWS),
+                LogupAtRow::new(1, claimed_sum, is_first),
                 &lookup_elements,
             );
         });
@@ -511,6 +523,9 @@ mod tests {
         assert_eq!(lookup_elements, component.lookup_elements);
         // Interaction columns.
         commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+
+        // Constant columns.
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
 
         verify(&[&component], channel, commitment_scheme, proof).unwrap();
     }

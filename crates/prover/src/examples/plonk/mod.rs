@@ -1,7 +1,8 @@
-use itertools::{chain, Itertools};
+use itertools::Itertools;
 use num_traits::One;
 use tracing::{span, Level};
 
+use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::{
     assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
@@ -44,7 +45,8 @@ impl FrameworkEval for PlonkEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let mut logup = LogupAtRow::<_>::new(1, self.claimed_sum, self.log_n_rows);
+        let [is_first] = eval.next_interaction_mask(2, [0]);
+        let mut logup = LogupAtRow::<_>::new(1, self.claimed_sum, is_first);
 
         let [a_wire] = eval.next_interaction_mask(2, [0]);
         let [b_wire] = eval.next_interaction_mask(2, [0]);
@@ -204,14 +206,18 @@ pub fn prove_fibonacci_plonk(
     // Constant trace.
     let span = span!(Level::INFO, "Constant").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
-    let constants_trace_location = tree_builder.extend_evals(chain!([
-        circuit.a_wire,
-        circuit.b_wire,
-        circuit.c_wire,
-        circuit.op
-    ]
-    .into_iter()
-    .map(|col| CircleEvaluation::new(CanonicCoset::new(log_n_rows).circle_domain(), col))));
+    let is_first = gen_is_first(log_n_rows);
+    let mut constant_trace = [circuit.a_wire, circuit.b_wire, circuit.c_wire, circuit.op]
+        .into_iter()
+        .map(|col| {
+            CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(
+                CanonicCoset::new(log_n_rows).circle_domain(),
+                col,
+            )
+        })
+        .collect_vec();
+    constant_trace.insert(0, is_first);
+    let constants_trace_location = tree_builder.extend_evals(constant_trace);
     tree_builder.commit(channel);
     span.exit();
 
