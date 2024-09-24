@@ -4,16 +4,15 @@ use std::ops::Deref;
 use itertools::Itertools;
 
 use super::channel::Channel;
-use super::circle::Coset;
-use super::poly::circle::CircleDomain;
-use super::utils::bit_reverse_index;
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
-/// An ordered set of query indices over a bit reversed [CircleDomain].
+/// An ordered set of query positions.
 #[derive(Debug, Clone)]
 pub struct Queries {
+    /// Query positions sorted in ascending order.
     pub positions: Vec<usize>,
+    /// Size of the domain from which the queries were sampled.
     pub log_domain_size: u32,
 }
 
@@ -40,17 +39,6 @@ impl Queries {
         }
     }
 
-    // TODO docs
-    #[allow(clippy::missing_safety_doc)]
-    pub fn from_positions(positions: Vec<usize>, log_domain_size: u32) -> Self {
-        assert!(positions.is_sorted());
-        assert!(positions.iter().all(|p| *p < (1 << log_domain_size)));
-        Self {
-            positions,
-            log_domain_size,
-        }
-    }
-
     /// Calculates the matching query indices in a folded domain (i.e each domain point is doubled)
     /// given `self` (the queries of the original domain) and the number of folds between domains.
     pub fn fold(&self, n_folds: u32) -> Self {
@@ -61,18 +49,13 @@ impl Queries {
         }
     }
 
-    pub fn opening_positions(&self, fri_step_size: u32) -> SparseSubCircleDomain {
-        assert!(fri_step_size > 0);
-        SparseSubCircleDomain {
-            domains: self
-                .iter()
-                .map(|q| SubCircleDomain {
-                    coset_index: q >> fri_step_size,
-                    log_size: fri_step_size,
-                })
-                .dedup()
-                .collect(),
-            large_domain_log_size: self.log_domain_size,
+    #[cfg(test)]
+    pub fn from_positions(positions: Vec<usize>, log_domain_size: u32) -> Self {
+        assert!(positions.is_sorted());
+        assert!(positions.iter().all(|p| *p < (1 << log_domain_size)));
+        Self {
+            positions,
+            log_domain_size,
         }
     }
 }
@@ -82,51 +65,6 @@ impl Deref for Queries {
 
     fn deref(&self) -> &Self::Target {
         &self.positions
-    }
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub struct SparseSubCircleDomain {
-    pub domains: Vec<SubCircleDomain>,
-    pub large_domain_log_size: u32,
-}
-
-impl SparseSubCircleDomain {
-    pub fn flatten(&self) -> Vec<usize> {
-        self.iter()
-            .flat_map(|sub_circle_domain| sub_circle_domain.to_decommitment_positions())
-            .collect()
-    }
-}
-
-impl Deref for SparseSubCircleDomain {
-    type Target = Vec<SubCircleDomain>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.domains
-    }
-}
-
-/// Represents a circle domain relative to a larger circle domain. The `initial_index` is the bit
-/// reversed query index in the larger domain.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct SubCircleDomain {
-    pub coset_index: usize,
-    pub log_size: u32,
-}
-
-impl SubCircleDomain {
-    /// Calculates the decommitment positions needed for each query given the fri step size.
-    pub fn to_decommitment_positions(&self) -> Vec<usize> {
-        (self.coset_index << self.log_size..(self.coset_index + 1) << self.log_size).collect()
-    }
-
-    /// Returns the represented [CircleDomain].
-    pub fn to_circle_domain(&self, query_domain: &CircleDomain) -> CircleDomain {
-        let query = bit_reverse_index(self.coset_index << self.log_size, query_domain.log_size());
-        let initial_index = query_domain.index_at(query);
-        let half_coset = Coset::new(initial_index, self.log_size - 1);
-        CircleDomain::new(half_coset)
     }
 }
 
@@ -182,56 +120,5 @@ mod tests {
                 folded_values[*folded_query].x
             );
         }
-    }
-
-    #[test]
-    pub fn test_conjugate_queries() {
-        let channel = &mut Blake2sChannel::default();
-        let log_domain_size = 7;
-        let domain = CanonicCoset::new(log_domain_size).circle_domain();
-        let mut values = domain.iter().collect::<Vec<_>>();
-        bit_reverse(&mut values);
-
-        // Test random queries one by one because the conjugate queries are sorted.
-        for _ in 0..100 {
-            let query = Queries::generate(channel, log_domain_size, 1);
-            let conjugate_query = query[0] ^ 1;
-            let query_and_conjugate = query.opening_positions(1).flatten();
-            let mut expected_query_and_conjugate = vec![query[0], conjugate_query];
-            expected_query_and_conjugate.sort();
-            assert_eq!(query_and_conjugate, expected_query_and_conjugate);
-            assert_eq!(values[query[0]], values[conjugate_query].conjugate());
-        }
-    }
-
-    #[test]
-    pub fn test_decommitment_positions() {
-        let channel = &mut Blake2sChannel::default();
-        let log_domain_size = 31;
-        let n_queries = 100;
-        let fri_step_size = 3;
-
-        let queries = Queries::generate(channel, log_domain_size, n_queries);
-        let queries_with_added_positions = queries.opening_positions(fri_step_size).flatten();
-
-        assert!(queries_with_added_positions.is_sorted());
-        assert_eq!(
-            queries_with_added_positions.len(),
-            n_queries * (1 << fri_step_size)
-        );
-    }
-
-    #[test]
-    pub fn test_dedup_decommitment_positions() {
-        let log_domain_size = 7;
-
-        // Generate all possible queries.
-        let queries = Queries {
-            positions: (0..1 << log_domain_size).collect(),
-            log_domain_size,
-        };
-        let queries_with_conjugates = queries.opening_positions(log_domain_size - 2).flatten();
-
-        assert_eq!(*queries, *queries_with_conjugates);
     }
 }
