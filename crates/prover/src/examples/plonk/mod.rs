@@ -29,7 +29,7 @@ pub type PlonkComponent = FrameworkComponent<PlonkEval>;
 pub struct PlonkEval {
     pub log_n_rows: u32,
     pub lookup_elements: LookupElements<2>,
-    pub claimed_sum: SecureField,
+    pub total_sum: SecureField,
     pub base_trace_location: TreeSubspan,
     pub interaction_trace_location: TreeSubspan,
     pub constants_trace_location: TreeSubspan,
@@ -46,7 +46,7 @@ impl FrameworkEval for PlonkEval {
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let [is_first] = eval.next_interaction_mask(2, [0]);
-        let mut logup = LogupAtRow::<_>::new(1, self.claimed_sum, is_first);
+        let mut logup = LogupAtRow::<_>::new(1, self.total_sum, is_first);
 
         let [a_wire] = eval.next_interaction_mask(2, [0]);
         let [b_wire] = eval.next_interaction_mask(2, [0]);
@@ -197,7 +197,7 @@ pub fn prove_fibonacci_plonk(
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
-    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, &circuit, &lookup_elements);
+    let (trace, total_sum) = gen_interaction_trace(log_n_rows, &circuit, &lookup_elements);
     let mut tree_builder = commitment_scheme.tree_builder();
     let interaction_trace_location = tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -227,7 +227,7 @@ pub fn prove_fibonacci_plonk(
         PlonkEval {
             log_n_rows,
             lookup_elements,
-            claimed_sum,
+            total_sum,
             base_trace_location,
             interaction_trace_location,
             constants_trace_location,
