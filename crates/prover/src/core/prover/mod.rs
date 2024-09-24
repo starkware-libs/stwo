@@ -201,6 +201,7 @@ impl<H: MerkleHasher> StarkProof<H> {
         } = commitment_scheme_proof;
 
         let FriProof {
+            first_layer,
             inner_layers,
             last_layer_poly,
         } = fri_proof;
@@ -209,20 +210,24 @@ impl<H: MerkleHasher> StarkProof<H> {
         let mut inner_layers_hashes_size = 0;
 
         for FriLayerProof {
-            evals_subset,
+            fri_witness: missing_evals,
             decommitment,
             commitment,
         } in inner_layers
         {
-            inner_layers_samples_size += evals_subset.size_estimate();
+            inner_layers_samples_size += missing_evals.size_estimate();
             inner_layers_hashes_size += decommitment.size_estimate() + commitment.size_estimate();
         }
 
         StarkProofSizeBreakdown {
             oods_samples: sampled_values.size_estimate(),
             queries_values: queried_values.size_estimate(),
-            fri_samples: last_layer_poly.size_estimate() + inner_layers_samples_size,
-            fri_decommitments: inner_layers_hashes_size,
+            fri_samples: last_layer_poly.size_estimate()
+                + inner_layers_samples_size
+                + first_layer.fri_witness.size_estimate(),
+            fri_decommitments: inner_layers_hashes_size
+                + first_layer.decommitment.size_estimate()
+                + first_layer.commitment.size_estimate(),
             trace_decommitments: commitments.size_estimate() + decommitments.size_estimate(),
         }
     }
@@ -237,6 +242,7 @@ impl<H: MerkleHasher> Deref for StarkProof<H> {
 }
 
 /// Size estimate (in bytes) for different parts of the proof.
+#[derive(Debug)]
 pub struct StarkProofSizeBreakdown {
     pub oods_samples: usize,
     pub queries_values: usize,
@@ -292,21 +298,22 @@ impl<H: MerkleHasher> SizeEstimate for MerkleDecommitment<H> {
 impl<H: MerkleHasher> SizeEstimate for FriLayerProof<H> {
     fn size_estimate(&self) -> usize {
         let Self {
-            evals_subset,
+            fri_witness: missing_evals,
             decommitment,
             commitment,
         } = self;
-        evals_subset.size_estimate() + decommitment.size_estimate() + commitment.size_estimate()
+        missing_evals.size_estimate() + decommitment.size_estimate() + commitment.size_estimate()
     }
 }
 
 impl<H: MerkleHasher> SizeEstimate for FriProof<H> {
     fn size_estimate(&self) -> usize {
         let Self {
+            first_layer,
             inner_layers,
             last_layer_poly,
         } = self;
-        inner_layers.size_estimate() + last_layer_poly.size_estimate()
+        first_layer.size_estimate() + inner_layers.size_estimate() + last_layer_poly.size_estimate()
     }
 }
 
