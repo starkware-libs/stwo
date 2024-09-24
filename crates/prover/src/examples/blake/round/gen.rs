@@ -23,19 +23,19 @@ use crate::examples::blake::{to_felts, XorAccums, N_ROUND_INPUT_FELTS, STATE_SIZ
 pub struct BlakeRoundLookupData {
     /// A vector of (w, [a_col, b_col, c_col]) for each xor lookup.
     /// w is the xor width. c_col is the xor col of a_col and b_col.
-    xor_lookups: Vec<(u32, [BaseColumn; 3])>,
+    pub xor_lookups: Vec<(u32, [BaseColumn; 3])>,
     /// A column of round lookup values (v_in, v_out, m).
-    round_lookup: [BaseColumn; N_ROUND_INPUT_FELTS],
+    pub round_lookup: [BaseColumn; N_ROUND_INPUT_FELTS],
 }
 
 pub struct TraceGenerator {
-    log_size: u32,
-    trace: Vec<BaseColumn>,
-    xor_lookups: Vec<(u32, [BaseColumn; 3])>,
-    round_lookup: [BaseColumn; N_ROUND_INPUT_FELTS],
+    pub log_size: u32,
+    pub trace: Vec<BaseColumn>,
+    pub xor_lookups: Vec<(u32, [BaseColumn; 3])>,
+    pub round_lookup: [BaseColumn; N_ROUND_INPUT_FELTS],
 }
 impl TraceGenerator {
-    fn new(log_size: u32) -> Self {
+    pub fn new(log_size: u32) -> Self {
         assert!(log_size >= LOG_N_LANES);
         let trace = (0..blake_round_info().mask_offsets[0].len())
             .map(|_| unsafe { Col::<SimdBackend, BaseField>::uninitialized(1 << log_size) })
@@ -50,7 +50,7 @@ impl TraceGenerator {
         }
     }
 
-    fn gen_row(&mut self, vec_row: usize) -> TraceGeneratorRow<'_> {
+    pub fn gen_row(&mut self, vec_row: usize) -> TraceGeneratorRow<'_> {
         TraceGeneratorRow {
             gen: self,
             col_index: 0,
@@ -61,7 +61,7 @@ impl TraceGenerator {
 }
 
 /// Trace generator for the constraints defined at [`super::constraints::BlakeRoundEval`]
-struct TraceGeneratorRow<'a> {
+pub struct TraceGeneratorRow<'a> {
     gen: &'a mut TraceGenerator,
     col_index: usize,
     vec_row: usize,
@@ -79,7 +79,7 @@ impl<'a> TraceGeneratorRow<'a> {
         self.append_felt(val >> 16);
     }
 
-    fn generate(&mut self, mut v: [u32x16; 16], m: [u32x16; 16]) {
+    pub fn generate(&mut self, mut v: [u32x16; 16], m: [u32x16; 16]) {
         let input_v = v;
         v.iter().for_each(|s| {
             self.append_u32(*s);
@@ -215,7 +215,7 @@ pub fn generate_trace(
     let _span = span!(Level::INFO, "Round Generation").entered();
     let mut generator = TraceGenerator::new(log_size);
 
-    for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
+    for vec_row in 0..1 << (log_size - LOG_N_LANES) {
         let mut row_gen = generator.gen_row(vec_row);
         let BlakeRoundInput { v, m } = inputs.get(vec_row).copied().unwrap_or_default();
         row_gen.generate(v, m);

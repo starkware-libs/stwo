@@ -2,7 +2,8 @@ mod constraints;
 mod gen;
 
 use constraints::eval_blake_scheduler_constraints;
-pub use gen::{gen_interaction_trace, gen_trace, BlakeInput};
+pub use constraints::eval_next_u32;
+pub use gen::{gen_interaction_trace, gen_trace, BlakeInput, BlakeSchedulerLookupData};
 use num_traits::Zero;
 
 use super::round::RoundElements;

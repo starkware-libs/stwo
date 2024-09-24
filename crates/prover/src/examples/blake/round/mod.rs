@@ -1,7 +1,10 @@
 mod constraints;
 mod gen;
 
-pub use gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
+pub use gen::{
+    generate_interaction_trace, generate_trace, BlakeRoundInput, BlakeRoundLookupData,
+    TraceGenerator, TraceGeneratorRow,
+};
 use num_traits::Zero;
 
 use super::{BlakeXorElements, N_ROUND_INPUT_FELTS};
