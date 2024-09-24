@@ -1,6 +1,8 @@
+use itertools::Itertools;
 use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
 use crate::core::backend::Col;
 use crate::core::circle::{CirclePoint, Coset};
+use crate::core::ColumnVec;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldOps;
@@ -42,6 +44,24 @@ pub trait PolyOps: FieldOps<BaseField> + Sized {
         domain: CircleDomain,
         twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder>;
+
+    /// Evaluates all polynomials at all points in the domain.
+    /// Used by the [`CommitmentTreeProver::new()`] function.
+    fn evaluate_columns(
+        polynomials: &mut ColumnVec<CirclePoly<Self>>,
+        log_blowup_factor: u32,
+        twiddles: &TwiddleTree<Self>,
+    ) -> Vec<CircleEvaluation<Self, BaseField, BitReversedOrder>> {
+        polynomials
+            .iter()
+            .map(|poly| {
+                poly.evaluate_with_twiddles(
+                    CanonicCoset::new(poly.log_size() + log_blowup_factor).circle_domain(),
+                    twiddles,
+                )
+            })
+            .collect_vec()
+    }
 
     /// Precomputes twiddles for a given coset.
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self>;
