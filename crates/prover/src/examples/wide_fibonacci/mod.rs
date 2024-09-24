@@ -1,7 +1,7 @@
 use itertools::Itertools;
 
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::backend::simd::m31::PackedBaseField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column};
 use crate::core::fields::m31::BaseField;
@@ -47,8 +47,6 @@ pub fn generate_trace<const N: usize>(
     log_size: u32,
     inputs: &[FibInput],
 ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-    assert!(log_size >= LOG_N_LANES);
-    assert_eq!(inputs.len(), 1 << (log_size - LOG_N_LANES));
     let mut trace = (0..N)
         .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
         .collect_vec();
@@ -72,7 +70,7 @@ pub fn generate_trace<const N: usize>(
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use num_traits::One;
+    use num_traits::{One, Zero};
 
     use super::WideFibonacciEval;
     use crate::constraint_framework::{
@@ -101,6 +99,26 @@ mod tests {
     fn generate_test_trace(
         log_n_instances: u32,
     ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+        if log_n_instances < LOG_N_LANES {
+            let n_instances = 1 << log_n_instances;
+            let inputs = vec![FibInput {
+                a: PackedBaseField::from_array(std::array::from_fn(|j| {
+                    if j < n_instances {
+                        BaseField::one()
+                    } else {
+                        BaseField::zero()
+                    }
+                })),
+                b: PackedBaseField::from_array(std::array::from_fn(|j| {
+                    if j < n_instances {
+                        BaseField::from_u32_unchecked((j) as u32)
+                    } else {
+                        BaseField::zero()
+                    }
+                })),
+            }];
+            return generate_trace::<FIB_SEQUENCE_LENGTH>(log_n_instances, &inputs);
+        }
         let inputs = (0..(1 << (log_n_instances - LOG_N_LANES)))
             .map(|i| FibInput {
                 a: PackedBaseField::one(),
@@ -151,7 +169,7 @@ mod tests {
 
     #[test_log::test]
     fn test_wide_fib_prove_with_blake() {
-        for log_n_instances in 4..=6 {
+        for log_n_instances in 2..=6 {
             let config = PcsConfig::default();
             // Precompute twiddles.
             let twiddles = SimdBackend::precompute_twiddles(

@@ -12,7 +12,7 @@ use crate::core::backend::Column;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
-use crate::core::fri::{self, FriOps};
+use crate::core::fri::{self, fold_circle_into_line, FriOps};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
@@ -63,7 +63,16 @@ impl FriOps for SimdBackend {
         twiddles: &TwiddleTree<Self>,
     ) {
         let log_size = src.len().ilog2();
-        assert!(log_size > LOG_N_LANES, "Evaluation too small");
+        if log_size <= LOG_N_LANES {
+            // Fall back to CPU implementation.
+            let mut cpu_dst = dst.to_cpu();
+            fold_circle_into_line(&mut cpu_dst, &src.to_cpu(), alpha);
+            *dst = LineEvaluation::new(
+                cpu_dst.domain(),
+                SecureColumnByCoords::from_cpu(cpu_dst.values),
+            );
+            return;
+        }
 
         let domain = src.domain;
         let alpha_sq = alpha * alpha;
@@ -249,7 +258,7 @@ mod tests {
         };
         let avx_eval = SecureEvaluation::new(domain, avx_column.clone());
         let cpu_eval =
-            SecureEvaluation::<CpuBackend, BitReversedOrder>::new(domain, avx_eval.to_cpu());
+            SecureEvaluation::<CpuBackend, BitReversedOrder>::new(domain, avx_eval.values.to_cpu());
         let (cpu_g, cpu_lambda) = CpuBackend::decompose(&cpu_eval);
         let (avx_g, avx_lambda) = SimdBackend::decompose(&avx_eval);
 
