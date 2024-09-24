@@ -85,7 +85,7 @@ impl Deref for Queries {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SparseSubCircleDomain {
     pub domains: Vec<SubCircleDomain>,
     pub large_domain_log_size: u32,
@@ -109,7 +109,7 @@ impl Deref for SparseSubCircleDomain {
 
 /// Represents a circle domain relative to a larger circle domain. The `initial_index` is the bit
 /// reversed query index in the larger domain.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SubCircleDomain {
     pub coset_index: usize,
     pub log_size: u32,

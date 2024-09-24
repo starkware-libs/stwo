@@ -126,16 +126,18 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         channel.mix_u64(proof_of_work);
 
         // FRI decommitment phase.
-        let (fri_proof, fri_query_domains) = fri_prover.decommit(channel);
+        let (fri_proof, col_queries) = fri_prover.decommit(channel);
 
         // Decommit the FRI queries on the merkle trees.
-        let decommitment_results = self.trees.as_ref().map(|tree| {
-            let queries = fri_query_domains
-                .iter()
-                .map(|(&log_size, domain)| (log_size, domain.flatten()))
-                .collect();
-            tree.decommit(&queries)
-        });
+        let opening_positions = col_queries
+            .opening_positions
+            .iter()
+            .map(|(&log_size, domain)| (log_size, domain.flatten()))
+            .collect();
+        let decommitment_results = self
+            .trees
+            .as_ref()
+            .map(|tree| tree.decommit(&opening_positions));
 
         let queried_values = decommitment_results.as_ref().map(|(v, _)| v.clone());
         let decommitments = decommitment_results.map(|(_, d)| d);
