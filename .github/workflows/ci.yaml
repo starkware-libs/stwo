@@ -134,7 +134,7 @@ jobs:
           summary-always: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
-          alert-comment-cc-users: "@spapinistarkware"
+          alert-comment-cc-users: "@shaharsamocha7"
 
   run-tests:
     runs-on: ubuntu-latest
@@ -156,6 +156,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo +nightly-2024-01-04 test --release --features="slow-tests"
 
+  run-tests-parallel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2024-01-04
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo +nightly-2024-01-04 test --release --features="parallel"
+
   machete:
     runs-on: ubuntu-latest
     steps:
@@ -173,6 +183,7 @@ jobs:
       - run-neon-tests
       - run-wasm32-wasi-tests
       - run-slow-tests
+      - run-tests-parallel
       - machete
     steps:
       - name: Decide whether all the needed jobs succeeded or failed
