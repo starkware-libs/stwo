@@ -52,7 +52,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
     /// Returns `Ok(())` if the decommitment is successfully verified.
     pub fn verify(
         &self,
-        queries_per_log_size: BTreeMap<u32, Vec<usize>>,
+        queries_per_log_size: &BTreeMap<u32, Vec<usize>>,
         queried_values: ColumnVec<Vec<BaseField>>,
         decommitment: MerkleDecommitment<H>,
     ) -> Result<(), MerkleVerificationError> {
