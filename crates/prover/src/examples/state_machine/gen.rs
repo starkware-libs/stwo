@@ -11,6 +11,7 @@ use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use crate::core::ColumnVec;
 
 // Given `initial state`, generate a trace that row `i` is the initial state plus `i` in the
@@ -30,7 +31,9 @@ pub fn gen_trace(
     // Add the states in bit reversed circle domain order.
     for i in 0..1 << log_size {
         for j in 0..STATE_SIZE {
-            trace[j][i] = curr_state[j];
+            let bit_rev_index =
+                bit_reverse_index(coset_index_to_circle_domain_index(i, log_size), log_size);
+            trace[j][bit_rev_index] = curr_state[j];
         }
         // Increment the state to the next state row.
         curr_state[inc_index] += M31::one();
@@ -48,14 +51,17 @@ pub fn gen_trace(
 }
 
 pub fn gen_interaction_trace(
-    log_size: u32,
+    n_rows: usize,
     trace: &ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>,
     inc_index: usize,
     lookup_elements: &LookupElements<STATE_SIZE>,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>,
-    QM31,
+    [QM31; 2],
 ) {
+    let log_size = trace[0].domain.log_size();
+    assert!(n_rows <= 1 << log_size, "n_rows exceeds the trace size");
+
     let ones = PackedM31::broadcast(M31::one());
     let mut logup_gen = LogupTraceGenerator::new(log_size);
     let mut col_gen = logup_gen.new_col();
@@ -78,7 +84,7 @@ pub fn gen_interaction_trace(
     }
     col_gen.finalize_col();
 
-    logup_gen.finalize_last()
+    logup_gen.finalize_at([(1 << log_size) - 1, n_rows])
 }
 
 #[cfg(test)]
@@ -88,6 +94,7 @@ mod tests {
     use crate::core::fields::qm31::QM31;
     use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
     use crate::core::fields::FieldExpOps;
+    use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
     use crate::examples::state_machine::components::StateMachineElements;
     use crate::examples::state_machine::gen::{gen_interaction_trace, gen_trace};
 
@@ -97,13 +104,15 @@ mod tests {
         let initial_state = [M31::from_u32_unchecked(17), M31::from_u32_unchecked(16)];
         let inc_index = 1;
         let row = 123;
+        let bit_rev_row =
+            bit_reverse_index(coset_index_to_circle_domain_index(row, log_size), log_size);
 
         let trace = gen_trace(log_size, initial_state, inc_index);
 
         assert_eq!(trace.len(), 2);
         assert_eq!(trace[0].at(row), initial_state[0]);
         assert_eq!(
-            trace[1].at(row),
+            trace[1].at(bit_rev_row),
             initial_state[1] + M31::from_u32_unchecked(row as u32)
         );
     }
@@ -122,10 +131,11 @@ mod tests {
         let first_state_comb: QM31 = lookup_elements.combine(&first_state);
         let last_state_comb: QM31 = lookup_elements.combine(&last_state);
 
-        let (interaction_trace, total_sum) =
-            gen_interaction_trace(log_size, &trace, inc_index, &lookup_elements);
+        let (interaction_trace, [total_sum, claimed_sum]) =
+            gen_interaction_trace((1 << log_size) - 1, &trace, inc_index, &lookup_elements);
 
         assert_eq!(interaction_trace.len(), SECURE_EXTENSION_DEGREE); // One extension column.
+        assert_eq!(claimed_sum, total_sum);
         assert_eq!(
             total_sum,
             first_state_comb.inverse() - last_state_comb.inverse()
