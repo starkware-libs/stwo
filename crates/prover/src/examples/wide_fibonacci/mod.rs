@@ -183,10 +183,8 @@ mod tests {
 
             // Setup protocol.
             let prover_channel = &mut Blake2sChannel::default();
-            let commitment_scheme =
-                &mut CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(
-                    config, &twiddles,
-                );
+            let mut commitment_scheme =
+                CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(config, &twiddles);
 
             // Preprocessed trace
             let mut tree_builder = commitment_scheme.tree_builder();
@@ -242,10 +240,8 @@ mod tests {
 
         // Setup protocol.
         let prover_channel = &mut Poseidon252Channel::default();
-        let commitment_scheme =
-            &mut CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(
-                config, &twiddles,
-            );
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(config, &twiddles);
 
         // TODO(ilya): remove the following once preproccessed columns are not mandatory.
         // Preprocessed trace

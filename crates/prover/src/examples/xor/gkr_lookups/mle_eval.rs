@@ -791,8 +791,8 @@ mod tests {
                 .half_coset,
         );
         let config = PcsConfig::default();
-        let commitment_scheme =
-            &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
         let channel = &mut Blake2sChannel::default();
         // TODO(ilya): remove the following once preproccessed columns are not mandatory.
         // Preprocessed trace
@@ -866,8 +866,8 @@ mod tests {
                 .half_coset,
         );
         let config = PcsConfig::default();
-        let commitment_scheme =
-            &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
         let channel = &mut Blake2sChannel::default();
 
         // TODO(ilya): remove the following once preproccessed columns are not mandatory.
