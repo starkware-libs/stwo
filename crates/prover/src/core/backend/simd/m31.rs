@@ -31,6 +31,16 @@ pub type PackedBaseField = PackedM31;
 #[repr(transparent)]
 pub struct PackedM31(Simd<u32, N_LANES>);
 
+pub struct UnsafePackedM31Array(pub *mut [PackedM31]);
+impl UnsafePackedM31Array {
+    pub fn get(&self) -> *mut [PackedM31] {
+        self.0
+    }
+}
+
+unsafe impl Send for UnsafePackedM31Array {}
+unsafe impl Sync for UnsafePackedM31Array {}
+
 impl PackedM31 {
     /// Constructs a new instance with all vector elements set to `value`.
     pub fn broadcast(M31(value): M31) -> Self {
