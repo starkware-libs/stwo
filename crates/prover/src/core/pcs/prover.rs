@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tracing::{span, Level};
 
@@ -214,11 +216,17 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         twiddles: &TwiddleTree<B>,
     ) -> Self {
         let span = span!(Level::INFO, "Extension").entered();
-        let evaluations = polynomials
-            .iter()
-            .map(|poly| {
-                poly.evaluate_with_twiddles(
-                    CanonicCoset::new(poly.log_size() + log_blowup_factor).circle_domain(),
+
+        #[cfg(not(feature = "parallel"))]
+        let iter = 0..polynomials.len();
+        #[cfg(feature = "parallel")]
+        let iter = (0..polynomials.len()).into_par_iter();
+
+        let evaluations = iter
+            .map(|i| {
+                polynomials[i].evaluate_with_twiddles(
+                    CanonicCoset::new(polynomials[i].log_size() + log_blowup_factor)
+                        .circle_domain(),
                     twiddles,
                 )
             })
