@@ -35,9 +35,9 @@ impl SimdBackend {
         );
 
         let mut product = F::one();
-        for &num in mappings.iter() {
+        for num in mappings.iter() {
             if index & 1 == 1 {
-                product *= num;
+                product *= *num;
             }
             index >>= 1;
             if index == 0 {
@@ -108,8 +108,8 @@ impl SimdBackend {
             .iter()
             .skip(1)
             .zip(denom_inverses.iter())
-            .for_each(|(&m, &d)| {
-                steps.push(m * d);
+            .for_each(|(m, d)| {
+                steps.push(*m * *d);
             });
         steps.push(F::one());
         steps

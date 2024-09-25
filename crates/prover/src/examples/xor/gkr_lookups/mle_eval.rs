@@ -108,12 +108,12 @@ fn eval_eq_constraints<E: EvalAtRow, const N_VARIABLES: usize>(
     // Check the initial value on half_coset0 and final value on half_coset1.
     // Combining these constraints is safe because `is_first` and `is_second` are never
     // non-zero at the same time on the trace.
-    let half_coset0_initial_check = (curr - mle_eval_point.eq_0_p) * is_first;
-    let half_coset1_final_check = (curr - mle_eval_point.eq_1_p) * is_second;
+    let half_coset0_initial_check = (curr.clone() - mle_eval_point.eq_0_p) * is_first;
+    let half_coset1_final_check = (curr.clone() - mle_eval_point.eq_1_p) * is_second;
     eval.add_constraint(half_coset0_initial_check + half_coset1_final_check);
 
     // Check all the steps.
-    eval.add_constraint(curr - next_next * carry_quotients_col_eval);
+    eval.add_constraint(curr.clone() - next_next * carry_quotients_col_eval);
 
     curr
 }

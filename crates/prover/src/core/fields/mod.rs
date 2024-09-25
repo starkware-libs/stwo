@@ -16,18 +16,18 @@ pub trait FieldOps<F: Field>: ColumnOps<F> {
     fn batch_inverse(column: &Self::Column, dst: &mut Self::Column);
 }
 
-pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
+pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Clone {
     fn square(&self) -> Self {
-        (*self) * (*self)
+        self.clone() * self.clone()
     }
 
     fn pow(&self, exp: u128) -> Self {
         let mut res = Self::one();
-        let mut base = *self;
+        let mut base = self.clone();
         let mut exp = exp;
         while exp > 0 {
             if exp & 1 == 1 {
-                res *= base;
+                res *= base.clone();
             }
             base = base.square();
             exp >>= 1;
@@ -50,24 +50,24 @@ pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Copy {
 
         // First pass. Compute 'WIDTH' cumulative products in an interleaving fashion, reducing
         // instruction dependency and allowing better pipelining.
-        let mut cum_prod: [Self; WIDTH] = [Self::one(); WIDTH];
-        dst[..WIDTH].copy_from_slice(&cum_prod);
+        let mut cum_prod: [Self; WIDTH] = std::array::from_fn(|_| Self::one());
+        dst[..WIDTH].clone_from_slice(&cum_prod);
         for i in 0..n {
-            cum_prod[i % WIDTH] *= column[i];
-            dst[i] = cum_prod[i % WIDTH];
+            cum_prod[i % WIDTH] *= column[i].clone();
+            dst[i] = cum_prod[i % WIDTH].clone();
         }
 
         // Inverse cumulative products.
         // Use classic batch inversion.
-        let mut tail_inverses = [Self::one(); WIDTH];
+        let mut tail_inverses: [Self; WIDTH] = std::array::from_fn(|_| Self::one());
         batch_inverse_classic(&dst[n - WIDTH..], &mut tail_inverses);
 
         // Second pass.
         for i in (WIDTH..n).rev() {
-            dst[i] = dst[i - WIDTH] * tail_inverses[i % WIDTH];
-            tail_inverses[i % WIDTH] *= column[i];
+            dst[i] = dst[i - WIDTH].clone() * tail_inverses[i % WIDTH].clone();
+            tail_inverses[i % WIDTH] *= column[i].clone();
         }
-        dst[0..WIDTH].copy_from_slice(&tail_inverses);
+        dst[0..WIDTH].clone_from_slice(&tail_inverses);
     }
 }
 
@@ -76,10 +76,10 @@ fn batch_inverse_classic<T: FieldExpOps>(column: &[T], dst: &mut [T]) {
     let n = column.len();
     debug_assert!(dst.len() >= n);
 
-    dst[0] = column[0];
+    dst[0] = column[0].clone();
     // First pass.
     for i in 1..n {
-        dst[i] = dst[i - 1] * column[i];
+        dst[i] = dst[i - 1].clone() * column[i].clone();
     }
 
     // Inverse cumulative product.
@@ -87,8 +87,8 @@ fn batch_inverse_classic<T: FieldExpOps>(column: &[T], dst: &mut [T]) {
 
     // Second pass.
     for i in (1..n).rev() {
-        dst[i] = dst[i - 1] * curr_inverse;
-        curr_inverse *= column[i];
+        dst[i] = dst[i - 1].clone() * curr_inverse.clone();
+        curr_inverse *= column[i].clone();
     }
     dst[0] = curr_inverse;
 }
@@ -113,7 +113,7 @@ pub trait Field:
     + for<'a> Sum<&'a Self>
 {
     fn double(&self) -> Self {
-        (*self) + (*self)
+        *self + *self
     }
 }
 
