@@ -265,15 +265,19 @@ impl<B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<B, MC> {
     /// Generates a FRI proof and returns it with the opening positions for the committed columns.
     ///
     /// Returned column opening positions are mapped by their log size.
-    pub fn decommit(
-        self,
-        channel: &mut MC::C,
-    ) -> (FriProof<MC::H>, BTreeMap<u32, SparseSubCircleDomain>) {
+    pub fn decommit(self, channel: &mut MC::C) -> (FriProof<MC::H>, ColumnQueries) {
         let max_column_log_size = self.column_log_sizes[0];
         let queries = Queries::generate(channel, max_column_log_size, self.config.n_queries);
-        let positions = get_opening_positions(&queries, &self.column_log_sizes);
+        let opening_positions = get_opening_positions(&queries, &self.column_log_sizes);
+        let query_positions = get_query_positions(&queries, &self.column_log_sizes);
         let proof = self.decommit_on_queries(&queries);
-        (proof, positions)
+        (
+            proof,
+            ColumnQueries {
+                query_positions,
+                opening_positions,
+            },
+        )
     }
 
     /// # Panics
@@ -501,10 +505,7 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
     /// Samples queries and returns the opening positions for each unique column size.
     ///
     /// The order of the opening positions corresponds to the order of the column commitment.
-    pub fn column_query_positions(
-        &mut self,
-        channel: &mut MC::C,
-    ) -> BTreeMap<u32, SparseSubCircleDomain> {
+    pub fn column_queries(&mut self, channel: &mut MC::C) -> ColumnQueries {
         let column_log_sizes = self
             .column_bounds
             .iter()
@@ -512,9 +513,13 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
             .map(|b| b.log_degree_bound + self.config.log_blowup_factor)
             .collect_vec();
         let queries = Queries::generate(channel, column_log_sizes[0], self.config.n_queries);
-        let positions = get_opening_positions(&queries, &column_log_sizes);
+        let query_positions = get_query_positions(&queries, &column_log_sizes);
+        let opening_positions = get_opening_positions(&queries, &column_log_sizes);
         self.queries = Some(queries);
-        positions
+        ColumnQueries {
+            query_positions,
+            opening_positions,
+        }
     }
 }
 
@@ -536,6 +541,26 @@ fn get_opening_positions(
         let queries = prev_queries.fold(n_folds);
         positions.insert(*log_size, queries.opening_positions(FOLD_STEP));
         prev_log_size = *log_size;
+        prev_queries = queries;
+    }
+    positions
+}
+
+/// Returns the column query positions needed for verification.
+///
+/// The column log sizes must be unique and in descending order.
+/// Returned column query positions are mapped by their log size.
+fn get_query_positions(queries: &Queries, column_log_sizes: &[u32]) -> BTreeMap<u32, Vec<usize>> {
+    let mut prev_log_size = column_log_sizes[0];
+    assert!(prev_log_size == queries.log_domain_size);
+    let mut prev_queries = queries.clone();
+    let mut positions = BTreeMap::new();
+    positions.insert(prev_log_size, prev_queries.positions.clone());
+    for &log_size in column_log_sizes.iter().skip(1) {
+        let n_folds = prev_log_size - log_size;
+        let queries = prev_queries.fold(n_folds);
+        positions.insert(log_size, queries.positions.clone());
+        prev_log_size = log_size;
         prev_queries = queries;
     }
     positions
@@ -611,6 +636,15 @@ impl LinePolyDegreeBound {
 pub struct FriProof<H: MerkleHasher> {
     pub inner_layers: Vec<FriLayerProof<H>>,
     pub last_layer_poly: LinePoly,
+}
+
+/// Values of interest obtained from the execution of the FRI protocol.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ColumnQueries {
+    /// Query positions mapped by log size.
+    pub query_positions: BTreeMap<u32, Vec<usize>>,
+    /// Opening positions mapped by log size.
+    pub opening_positions: BTreeMap<u32, SparseSubCircleDomain>,
 }
 
 /// Number of folds for univariate polynomials.
@@ -1160,16 +1194,19 @@ mod tests {
             &evaluations,
             &CpuBackend::precompute_twiddles(evaluations[0].domain.half_coset),
         );
-        let (proof, prover_opening_positions) = prover.decommit(&mut test_channel());
-        let decommitment_values = zip(&evaluations, prover_opening_positions.values().rev())
-            .map(|(poly, positions)| open_polynomial(poly, positions))
-            .collect();
+        let (proof, prover_col_queries) = prover.decommit(&mut test_channel());
+        let decommitment_values = zip(
+            &evaluations,
+            prover_col_queries.opening_positions.values().rev(),
+        )
+        .map(|(poly, positions)| open_polynomial(poly, positions))
+        .collect();
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
 
         let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
-        let verifier_opening_positions = verifier.column_query_positions(&mut test_channel());
+        let verifier_col_queries = verifier.column_queries(&mut test_channel());
 
-        assert_eq!(prover_opening_positions, verifier_opening_positions);
+        assert_eq!(prover_col_queries, verifier_col_queries);
         verifier.decommit(decommitment_values)
     }
 
