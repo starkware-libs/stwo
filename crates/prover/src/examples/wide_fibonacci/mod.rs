@@ -180,10 +180,8 @@ mod tests {
 
             // Setup protocol.
             let prover_channel = &mut Blake2sChannel::default();
-            let commitment_scheme =
-                &mut CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(
-                    config, &twiddles,
-                );
+            let mut commitment_scheme =
+                CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(config, &twiddles);
 
             // Trace.
             let trace = generate_test_trace(log_n_instances);
@@ -232,10 +230,8 @@ mod tests {
 
         // Setup protocol.
         let prover_channel = &mut Poseidon252Channel::default();
-        let commitment_scheme =
-            &mut CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(
-                config, &twiddles,
-            );
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(config, &twiddles);
 
         // Trace.
         let trace = generate_test_trace(LOG_N_INSTANCES);

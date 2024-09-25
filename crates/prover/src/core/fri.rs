@@ -821,7 +821,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriLayerProver<B, H> {
         let commitment = self.merkle_tree.root();
         // TODO(andrew): Use _evals.
         let (_evals, decommitment) = self.merkle_tree.decommit(
-            [(self.evaluation.len().ilog2(), decommit_positions)]
+            &[(self.evaluation.len().ilog2(), decommit_positions)]
                 .into_iter()
                 .collect(),
             self.evaluation.values.columns.iter().collect_vec(),

@@ -82,7 +82,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     }
 
     pub fn prove_values(
-        &self,
+        self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
         channel: &mut MC::C,
     ) -> CommitmentSchemeProof<MC::H> {
@@ -134,13 +134,14 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                 .iter()
                 .map(|(&log_size, domain)| (log_size, domain.flatten()))
                 .collect();
-            tree.decommit(queries)
+            tree.decommit(&queries)
         });
 
         let queried_values = decommitment_results.as_ref().map(|(v, _)| v.clone());
         let decommitments = decommitment_results.map(|(_, d)| d);
 
         CommitmentSchemeProof {
+            commitments: self.roots(),
             sampled_values,
             decommitments,
             queried_values,
@@ -152,6 +153,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommitmentSchemeProof<H: MerkleHasher> {
+    pub commitments: TreeVec<H::Hash>,
     pub sampled_values: TreeVec<ColumnVec<Vec<SecureField>>>,
     pub decommitments: TreeVec<MerkleDecommitment<H>>,
     pub queried_values: TreeVec<ColumnVec<Vec<BaseField>>>,
@@ -243,7 +245,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
     /// positions on each column of that size.
     fn decommit(
         &self,
-        queries: BTreeMap<u32, Vec<usize>>,
+        queries: &BTreeMap<u32, Vec<usize>>,
     ) -> (ColumnVec<Vec<BaseField>>, MerkleDecommitment<MC::H>) {
         let eval_vec = self
             .evaluations
