@@ -21,7 +21,7 @@ fn bench_blake2s_merkle<B: MerkleOps<Blake2sMerkleHasher>>(c: &mut Criterion, id
     let n_elements = 1 << (LOG_N_COLS + LOG_N_ROWS);
     group.throughput(Throughput::Elements(n_elements));
     group.throughput(Throughput::Bytes(N_BYTES_FELT as u64 * n_elements));
-    group.bench_function(&format!("{id} merkle"), |b| {
+    group.bench_function(format!("{id} merkle"), |b| {
         b.iter_with_large_drop(|| B::commit_on_layer(LOG_N_ROWS, None, &col_refs))
     });
 }

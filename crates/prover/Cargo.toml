@@ -14,7 +14,6 @@ blake2.workspace = true
 blake3.workspace = true
 bytemuck = { workspace = true, features = ["derive", "extern_crate_alloc"] }
 cfg-if = "1.0.0"
-downcast-rs = "1.2"
 educe.workspace = true
 hex.workspace = true
 itertools.workspace = true
@@ -55,9 +54,6 @@ future-incompatible = "deny"
 nonstandard-style = "deny"
 rust-2018-idioms = "deny"
 unused = "deny"
-
-[package.metadata.cargo-machete]
-ignored = ["downcast-rs"]
 
 [[bench]]
 harness = false

@@ -90,11 +90,11 @@ pub fn complex_conjugate_line(
             / (point.complex_conjugate().y - point.y)
 }
 
-/// Evaluates the coefficients of a line between a point and its complex conjugate. Specifically,
-/// `a, b, and c, s.t. a*x + b -c*y = 0` for (x,y) being (sample.y, sample.value) and
-/// (conj(sample.y), conj(sample.value)).
-/// Relies on the fact that every polynomial F over the base
-/// field holds: F(p*) == F(p)* (* being the complex conjugate).
+/// Evaluates the coefficients of a line between a point and its complex conjugate.
+///
+/// Specifically, `a, b, and c, s.t. a*x + b -c*y = 0` for (x,y) being (sample.y, sample.value) and
+/// (conj(sample.y), conj(sample.value)). Relies on the fact that every polynomial F over the base
+/// field holds: `F(p*) == F(p)*` (`*` being the complex conjugate).
 pub fn complex_conjugate_line_coeffs(
     sample: &PointSample,
     alpha: SecureField,

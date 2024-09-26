@@ -1,4 +1,5 @@
 //! Accumulators for a random linear combination of circle polynomials.
+//!
 //! Given N polynomials, u_0(P), ... u_{N-1}(P), and a random alpha, the combined polynomial is
 //! defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i(P).

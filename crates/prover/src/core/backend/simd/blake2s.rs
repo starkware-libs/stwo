@@ -364,8 +364,12 @@ mod tests {
 
         let res_vectorized: [[u32; 8]; 16] = unsafe {
             transmute(untranspose_states(compress16(
-                transpose_states(transmute(states)),
-                transpose_msgs(transmute(msgs)),
+                transpose_states(transmute::<Aligned<A64, [[u32; 8]; 16]>, [u32x16; 8]>(
+                    states,
+                )),
+                transpose_msgs(transmute::<Aligned<A64, [[u32; 16]; 16]>, [u32x16; 16]>(
+                    msgs,
+                )),
                 u32x16::splat(count_low),
                 u32x16::splat(count_high),
                 u32x16::splat(lastblock),
