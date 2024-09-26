@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
-use super::components::STATE_SIZE;
+use super::components::{State, STATE_SIZE};
 use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedM31, LOG_N_LANES};
@@ -12,8 +12,6 @@ use crate::core::fields::qm31::QM31;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
-
-pub type State = [M31; STATE_SIZE];
 
 // Given `initial state`, generate a trace that row `i` is the initial state plus `i` in the
 // `inc_index` dimension.
@@ -27,8 +25,9 @@ pub fn gen_trace(
     let mut trace = (0..STATE_SIZE)
         .map(|_| vec![M31::zero(); 1 << log_size])
         .collect_vec();
-
     let mut curr_state = initial_state;
+
+    // Add the states in bit reversed circle domain order.
     for i in 0..1 << log_size {
         for j in 0..STATE_SIZE {
             trace[j][i] = curr_state[j];
