@@ -6,11 +6,11 @@ use rayon::prelude::*;
 use super::column::{BaseColumn, SecureColumn};
 use super::m31::PackedBaseField;
 use super::SimdBackend;
+use crate::core::backend::simd::utils::UnsafeMut;
 use crate::core::backend::ColumnOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::utils::{bit_reverse as cpu_bit_reverse, bit_reverse_index};
-use crate::core::UnsafeMut;
 use crate::parallel_iter;
 
 const VEC_BITS: u32 = 4;

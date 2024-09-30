@@ -4,8 +4,8 @@ use std::simd::{simd_swizzle, u32x16, u32x8};
 use rayon::prelude::*;
 
 use super::m31::PackedBaseField;
+use super::utils::UnsafeMut;
 use crate::core::fields::m31::P;
-use crate::core::UnsafeMut;
 use crate::parallel_iter;
 
 pub mod ifft;
