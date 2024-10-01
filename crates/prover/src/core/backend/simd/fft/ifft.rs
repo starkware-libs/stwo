@@ -9,8 +9,8 @@ use rayon::prelude::*;
 use super::{
     compute_first_twiddles, mul_twiddle, transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE,
 };
-use crate::core::backend::simd::fft::UnsafeMutI32;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::backend::simd::utils::UnsafeMut;
 use crate::core::circle::Coset;
 use crate::core::fields::FieldExpOps;
 use crate::core::utils::bit_reverse;
@@ -86,7 +86,7 @@ pub unsafe fn ifft_lower_with_vecwise(
 
     assert_eq!(twiddle_dbl[0].len(), 1 << (log_size - 2));
 
-    let values = UnsafeMutI32(values);
+    let values = UnsafeMut(values);
     parallel_iter!(0..1 << (log_size - fft_layers)).for_each(|index_h| {
         let values = values.get();
         ifft_vecwise_loop(values, twiddle_dbl, fft_layers - VECWISE_FFT_BITS, index_h);
@@ -138,7 +138,7 @@ pub unsafe fn ifft_lower_without_vecwise(
 ) {
     assert!(log_size >= LOG_N_LANES as usize);
 
-    let values = UnsafeMutI32(values);
+    let values = UnsafeMut(values);
     parallel_iter!(0..1 << (log_size - fft_layers - LOG_N_LANES as usize)).for_each(|index_h| {
         let values = values.get();
         for layer in (0..fft_layers).step_by(3) {

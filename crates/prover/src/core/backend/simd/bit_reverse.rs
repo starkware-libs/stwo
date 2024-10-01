@@ -1,12 +1,17 @@
 use std::array;
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 use super::column::{BaseColumn, SecureColumn};
 use super::m31::PackedBaseField;
 use super::SimdBackend;
+use crate::core::backend::simd::utils::UnsafeMut;
 use crate::core::backend::ColumnOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::utils::{bit_reverse as cpu_bit_reverse, bit_reverse_index};
+use crate::parallel_iter;
 
 const VEC_BITS: u32 = 4;
 
@@ -51,9 +56,10 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
 
     let log_size = data.len().ilog2();
     let a_bits = log_size - 2 * W_BITS - VEC_BITS;
+    let data = UnsafeMut(data);
 
-    // TODO(AlonH): when doing multithreading, do it over a.
-    for a in 0u32..1 << a_bits {
+    parallel_iter!(0u32..(1 << a_bits)).for_each(|a| {
+        let data = unsafe { data.get() };
         for w_l in 0u32..1 << W_BITS {
             let w_l_rev = w_l.reverse_bits() >> (u32::BITS - W_BITS);
             for w_h in 0..w_l_rev + 1 {
@@ -68,7 +74,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
                 // Read first chunk.
                 // TODO(andrew): Think about optimizing a_bits. What does this mean?
                 let chunk0 = array::from_fn(|i| unsafe {
-                    *data.get_unchecked(idx + (i << (2 * W_BITS + a_bits)))
+                    *data.get_unchecked_mut(idx + (i << (2 * W_BITS + a_bits)))
                 });
                 let values0 = bit_reverse16(chunk0);
 
@@ -86,7 +92,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
 
                 // Read bit reversed chunk.
                 let chunk1 = array::from_fn(|i| unsafe {
-                    *data.get_unchecked(idx_rev + (i << (2 * W_BITS + a_bits)))
+                    *data.get_unchecked_mut(idx_rev + (i << (2 * W_BITS + a_bits)))
                 });
                 let values1 = bit_reverse16(chunk1);
 
@@ -99,7 +105,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
                 }
             }
         }
-    }
+    })
 }
 
 /// Bit reverses 256 M31 values, packed in 16 words of 16 elements each.

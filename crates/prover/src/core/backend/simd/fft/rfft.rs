@@ -10,8 +10,8 @@ use rayon::prelude::*;
 use super::{
     compute_first_twiddles, mul_twiddle, transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE,
 };
-use crate::core::backend::simd::fft::{UnsafeConstI32, UnsafeMutI32};
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::backend::simd::utils::{UnsafeConst, UnsafeMut};
 use crate::core::circle::Coset;
 use crate::core::utils::bit_reverse;
 use crate::parallel_iter;
@@ -90,8 +90,8 @@ pub unsafe fn fft_lower_with_vecwise(
 
     assert_eq!(twiddle_dbl[0].len(), 1 << (log_size - 2));
 
-    let src = UnsafeConstI32(src);
-    let dst = UnsafeMutI32(dst);
+    let src = UnsafeConst(src);
+    let dst = UnsafeMut(dst);
     parallel_iter!(0..1 << (log_size - fft_layers)).for_each(|index_h| {
         let mut src = src.get();
         let dst = dst.get();
@@ -154,8 +154,8 @@ pub unsafe fn fft_lower_without_vecwise(
 ) {
     assert!(log_size >= LOG_N_LANES as usize);
 
-    let src = UnsafeConstI32(src);
-    let dst = UnsafeMutI32(dst);
+    let src = UnsafeConst(src);
+    let dst = UnsafeMut(dst);
     parallel_iter!(0..1 << (log_size - fft_layers - LOG_N_LANES as usize)).for_each(|index_h| {
         let mut src = src.get();
         let dst = dst.get();

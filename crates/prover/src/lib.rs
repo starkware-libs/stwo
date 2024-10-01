@@ -15,6 +15,7 @@
     slice_first_last_chunk,
     slice_flatten,
     slice_group_by,
+    slice_ptr_get,
     stdsimd
 )]
 pub mod constraint_framework;

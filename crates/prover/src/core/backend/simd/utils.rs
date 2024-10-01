@@ -24,6 +24,33 @@ const fn parity_interleave<const N: usize>(odd: bool) -> [usize; N] {
     res
 }
 
+// TODO(andrew): Examine usage of unsafe in SIMD FFT.
+pub struct UnsafeMut<T: ?Sized>(pub *mut T);
+impl<T: ?Sized> UnsafeMut<T> {
+    /// # Safety
+    ///
+    /// Returns a raw mutable pointer.
+    pub unsafe fn get(&self) -> *mut T {
+        self.0
+    }
+}
+
+unsafe impl<T: ?Sized> Send for UnsafeMut<T> {}
+unsafe impl<T: ?Sized> Sync for UnsafeMut<T> {}
+
+pub struct UnsafeConst<T>(pub *const T);
+impl<T> UnsafeConst<T> {
+    /// # Safety
+    ///
+    /// Returns a raw constant pointer.
+    pub unsafe fn get(&self) -> *const T {
+        self.0
+    }
+}
+
+unsafe impl<T> Send for UnsafeConst<T> {}
+unsafe impl<T> Sync for UnsafeConst<T> {}
+
 #[cfg(test)]
 mod tests {
     use std::simd::{u32x4, Swizzle};

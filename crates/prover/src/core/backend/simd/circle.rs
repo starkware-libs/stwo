@@ -229,7 +229,6 @@ impl PolyOps for SimdBackend {
         domain: CircleDomain,
         twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
-        // TODO(AlonH): Handle small cases.
         let log_size = domain.log_size();
         let fft_log_size = poly.log_size();
         assert!(
