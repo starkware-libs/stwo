@@ -37,7 +37,10 @@ pub struct TraceLocationAllocator {
 }
 
 impl TraceLocationAllocator {
-    fn next_for_structure<T>(&mut self, structure: &TreeVec<ColumnVec<T>>) -> TreeVec<TreeSubspan> {
+    pub fn next_for_structure<T>(
+        &mut self,
+        structure: &TreeVec<ColumnVec<T>>,
+    ) -> TreeVec<TreeSubspan> {
         if structure.len() > self.next_tree_offsets.len() {
             self.next_tree_offsets.resize(structure.len(), 0);
         }
@@ -78,13 +81,17 @@ pub struct FrameworkComponent<C: FrameworkEval> {
 }
 
 impl<E: FrameworkEval> FrameworkComponent<E> {
-    pub fn new(provider: &mut TraceLocationAllocator, eval: E) -> Self {
+    pub fn new(location_allocator: &mut TraceLocationAllocator, eval: E) -> Self {
         let eval_tree_structure = eval.evaluate(InfoEvaluator::default()).mask_offsets;
-        let trace_locations = provider.next_for_structure(&eval_tree_structure);
+        let trace_locations = location_allocator.next_for_structure(&eval_tree_structure);
         Self {
             eval,
             trace_locations,
         }
+    }
+
+    pub fn trace_locations(&self) -> &[TreeSubspan] {
+        &self.trace_locations
     }
 }
 
@@ -98,26 +105,20 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
     }
 
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
-        TreeVec::new(
-            self.eval
-                .evaluate(InfoEvaluator::default())
-                .mask_offsets
-                .iter()
-                .map(|tree_masks| vec![self.eval.log_size(); tree_masks.len()])
-                .collect(),
-        )
+        let InfoEvaluator { mask_offsets, .. } = self.eval.evaluate(InfoEvaluator::default());
+        mask_offsets.map(|tree_offsets| vec![self.eval.log_size(); tree_offsets.len()])
     }
 
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        let info = self.eval.evaluate(InfoEvaluator::default());
         let trace_step = CanonicCoset::new(self.eval.log_size()).step();
-        info.mask_offsets.map_cols(|col_mask| {
-            col_mask
+        let InfoEvaluator { mask_offsets, .. } = self.eval.evaluate(InfoEvaluator::default());
+        mask_offsets.map_cols(|col_offsets| {
+            col_offsets
                 .iter()
-                .map(|off| point + trace_step.mul_signed(*off).into_ef())
+                .map(|offset| point + trace_step.mul_signed(*offset).into_ef())
                 .collect()
         })
     }
@@ -142,6 +143,10 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         trace: &Trace<'_, SimdBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<SimdBackend>,
     ) {
+        if self.n_constraints() == 0 {
+            return;
+        }
+
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.eval.log_size());
 
