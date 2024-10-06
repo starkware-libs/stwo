@@ -1,6 +1,6 @@
 use num_traits::{One, Zero};
 
-use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
+use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupAtRow, LookupElements};
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::SimdBackend;
@@ -28,6 +28,7 @@ pub struct StateTransitionEval<const COORDINATE: usize> {
     pub log_n_rows: u32,
     pub lookup_elements: StateMachineElements,
     pub total_sum: QM31,
+    pub claimed_sum: ClaimedPrefixSum,
 }
 
 impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> {
@@ -39,7 +40,8 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let [is_first] = eval.next_interaction_mask(2, [0]);
-        let mut logup: LogupAtRow<E> = LogupAtRow::new(1, self.total_sum, None, is_first);
+        let mut logup: LogupAtRow<E> =
+            LogupAtRow::new(1, self.total_sum, Some(self.claimed_sum), is_first);
 
         let input_state: [_; STATE_SIZE] = std::array::from_fn(|_| eval.next_trace_mask());
         let input_denom: E::EF = self.lookup_elements.combine(&input_state);
@@ -98,6 +100,7 @@ fn state_transition_info<const INDEX: usize>() -> InfoEvaluator {
         log_n_rows: 1,
         lookup_elements: StateMachineElements::dummy(),
         total_sum: QM31::zero(),
+        claimed_sum: (QM31::zero(), 0),
     };
     component.evaluate(InfoEvaluator::default())
 }

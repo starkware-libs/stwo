@@ -31,14 +31,16 @@ pub fn prove_state_machine(
     StateMachineComponents,
     StateMachineProof<Blake2sMerkleHasher>,
 ) {
-    assert!(log_n_rows >= LOG_N_LANES);
-    let x_axis_log_rows = log_n_rows;
-    let y_axis_log_rows = log_n_rows - 1;
+    let (x_axis_log_rows, y_axis_log_rows) = (log_n_rows, log_n_rows - 1);
+    let (x_row, y_row) = (34, 56);
+    assert!(y_axis_log_rows >= LOG_N_LANES && x_axis_log_rows >= LOG_N_LANES);
+    assert!(x_row < 1 << x_axis_log_rows);
+    assert!(y_row < 1 << y_axis_log_rows);
 
     let mut intermediate_state = initial_state;
-    intermediate_state[0] += M31::from_u32_unchecked(1 << x_axis_log_rows);
+    intermediate_state[0] += M31::from_u32_unchecked(x_row);
     let mut final_state = intermediate_state;
-    final_state[1] += M31::from_u32_unchecked(1 << y_axis_log_rows);
+    final_state[1] += M31::from_u32_unchecked(y_row);
 
     // Precompute twiddles.
     let twiddles = SimdBackend::precompute_twiddles(
@@ -69,14 +71,14 @@ pub fn prove_state_machine(
     let lookup_elements = StateMachineElements::draw(channel);
 
     // Interaction trace.
-    let (interaction_trace_op0, total_sum_op0) =
-        gen_interaction_trace(x_axis_log_rows, &trace_op0, 0, &lookup_elements);
-    let (interaction_trace_op1, total_sum_op1) =
-        gen_interaction_trace(y_axis_log_rows, &trace_op1, 1, &lookup_elements);
+    let (interaction_trace_op0, [total_sum_op0, claimed_sum_op0]) =
+        gen_interaction_trace(x_row as usize - 1, &trace_op0, 0, &lookup_elements);
+    let (interaction_trace_op1, [total_sum_op1, claimed_sum_op1]) =
+        gen_interaction_trace(y_row as usize - 1, &trace_op1, 1, &lookup_elements);
 
     let stmt1 = StateMachineStatement1 {
-        x_axis_claimed_sum: total_sum_op0,
-        y_axis_claimed_sum: total_sum_op1,
+        x_axis_claimed_sum: claimed_sum_op0,
+        y_axis_claimed_sum: claimed_sum_op1,
     };
     stmt1.mix_into(channel);
 
@@ -100,6 +102,7 @@ pub fn prove_state_machine(
             log_n_rows: x_axis_log_rows,
             lookup_elements: lookup_elements.clone(),
             total_sum: total_sum_op0,
+            claimed_sum: (claimed_sum_op0, x_row as usize - 1),
         },
     );
     let component1 = StateMachineOp1Component::new(
@@ -108,6 +111,7 @@ pub fn prove_state_machine(
             log_n_rows: y_axis_log_rows,
             lookup_elements,
             total_sum: total_sum_op1,
+            claimed_sum: (claimed_sum_op1, y_row as usize - 1),
         },
     );
     let components = StateMachineComponents {
@@ -190,15 +194,17 @@ mod tests {
         let lookup_elements = StateMachineElements::draw(&mut Blake2sChannel::default());
 
         // Interaction trace.
-        let (interaction_trace, total_sum) =
-            gen_interaction_trace(log_n_rows, &trace, 0, &lookup_elements);
+        let (interaction_trace, [total_sum, claimed_sum]) =
+            gen_interaction_trace(1 << log_n_rows, &trace, 0, &lookup_elements);
 
+        assert_eq!(total_sum, claimed_sum);
         let component = StateMachineOp0Component::new(
             &mut TraceLocationAllocator::default(),
             StateTransitionEval {
                 log_n_rows,
                 lookup_elements,
                 total_sum,
+                claimed_sum: (total_sum, (1 << log_n_rows) - 1),
             },
         );
 
@@ -214,16 +220,13 @@ mod tests {
     }
 
     #[test]
-    fn test_state_machine_total_sum() {
+    fn test_state_machine_claimed_sum() {
         let log_n_rows = 8;
         let config = PcsConfig::default();
 
         // Initial and last state.
         let initial_state = [M31::zero(); STATE_SIZE];
-        let last_state = [
-            M31::from_u32_unchecked(1 << log_n_rows),
-            M31::from_u32_unchecked(1 << (log_n_rows - 1)),
-        ];
+        let last_state = [M31::from_u32_unchecked(34), M31::from_u32_unchecked(56)];
 
         // Setup protocol.
         let channel = &mut Blake2sChannel::default();
@@ -234,7 +237,7 @@ mod tests {
         let last_state_comb: QM31 = interaction_elements.combine(&last_state);
 
         assert_eq!(
-            component.component0.total_sum + component.component1.total_sum,
+            component.component0.claimed_sum.0 + component.component1.claimed_sum.0,
             initial_state_comb.inverse() - last_state_comb.inverse()
         );
     }
