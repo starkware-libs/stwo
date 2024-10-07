@@ -3,7 +3,7 @@
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
-use tracing::{span, Level};
+use tracing::{info, span, Level};
 
 use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
@@ -386,6 +386,7 @@ pub fn prove_poseidon(
             total_sum,
         },
     );
+    info!("Poseidon component info:\n{}", component);
     let proof = prove(&[&component], channel, commitment_scheme).unwrap();
 
     (component, proof)
