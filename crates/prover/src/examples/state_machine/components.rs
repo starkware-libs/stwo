@@ -1,3 +1,4 @@
+use itertools::zip_eq;
 use num_traits::{One, Zero};
 
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
@@ -42,18 +43,26 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
         let mut logup: LogupAtRow<E> = LogupAtRow::new(1, self.total_sum, None, is_first);
 
         let input_state: [_; STATE_SIZE] = std::array::from_fn(|_| eval.next_trace_mask());
+        let output_state: [_; STATE_SIZE] = std::array::from_fn(|_| eval.next_trace_mask());
+
+        // Constrain that the input state is copied to the output state except for the increment.
+        zip_eq(input_state.clone(), output_state.clone())
+            .enumerate()
+            .for_each(|(i, (input_state, output_state))| {
+                if i == COORDINATE {
+                    eval.add_constraint(output_state - input_state - E::F::one());
+                } else {
+                    eval.add_constraint(output_state - input_state);
+                }
+            });
+
+        // Use input state.
         let input_denom: E::EF = self.lookup_elements.combine(&input_state);
+        logup.write_frac(&mut eval, Fraction::new(E::EF::one(), input_denom));
 
-        let mut output_state = input_state;
-        output_state[COORDINATE] += E::F::one();
+        // Yield output state.
         let output_denom: E::EF = self.lookup_elements.combine(&output_state);
-
-        logup.write_frac(
-            &mut eval,
-            Fraction::new(E::EF::one(), input_denom)
-                + Fraction::new(-E::EF::one(), output_denom.clone()),
-        );
-
+        logup.write_frac(&mut eval, Fraction::new(-E::EF::one(), output_denom));
         logup.finalize(&mut eval);
         eval
     }

@@ -23,7 +23,7 @@ use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher}
 
 #[allow(unused)]
 pub fn prove_state_machine(
-    log_n_rows: u32,
+    max_log_rows: u32,
     initial_state: State,
     config: PcsConfig,
     channel: &mut Blake2sChannel,
@@ -31,9 +31,9 @@ pub fn prove_state_machine(
     StateMachineComponents,
     StateMachineProof<Blake2sMerkleHasher>,
 ) {
-    assert!(log_n_rows >= LOG_N_LANES);
-    let x_axis_log_rows = log_n_rows;
-    let y_axis_log_rows = log_n_rows - 1;
+    assert!(max_log_rows >= LOG_N_LANES);
+    let x_axis_log_rows = max_log_rows;
+    let y_axis_log_rows = max_log_rows - 1;
 
     let mut intermediate_state = initial_state;
     intermediate_state[0] += M31::from_u32_unchecked(1 << x_axis_log_rows);
@@ -42,7 +42,7 @@ pub fn prove_state_machine(
 
     // Precompute twiddles.
     let twiddles = SimdBackend::precompute_twiddles(
-        CanonicCoset::new(log_n_rows + config.fri_config.log_blowup_factor + 1)
+        CanonicCoset::new(max_log_rows + config.fri_config.log_blowup_factor + 1)
             .circle_domain()
             .half_coset,
     );
@@ -70,9 +70,9 @@ pub fn prove_state_machine(
 
     // Interaction trace.
     let (interaction_trace_op0, total_sum_op0) =
-        gen_interaction_trace(x_axis_log_rows, &trace_op0, 0, &lookup_elements);
+        gen_interaction_trace(x_axis_log_rows, &trace_op0, &lookup_elements);
     let (interaction_trace_op1, total_sum_op1) =
-        gen_interaction_trace(y_axis_log_rows, &trace_op1, 1, &lookup_elements);
+        gen_interaction_trace(y_axis_log_rows, &trace_op1, &lookup_elements);
 
     let stmt1 = StateMachineStatement1 {
         x_axis_claimed_sum: total_sum_op0,
@@ -189,9 +189,8 @@ mod tests {
         let trace = gen_trace(log_n_rows, initial_state, 0);
         let lookup_elements = StateMachineElements::draw(&mut Blake2sChannel::default());
 
-        // Interaction trace.
         let (interaction_trace, total_sum) =
-            gen_interaction_trace(log_n_rows, &trace, 0, &lookup_elements);
+            gen_interaction_trace(log_n_rows, &trace, &lookup_elements);
 
         let component = StateMachineOp0Component::new(
             &mut TraceLocationAllocator::default(),
@@ -205,7 +204,7 @@ mod tests {
         let trace = TreeVec::new(vec![
             trace,
             interaction_trace,
-            vec![gen_is_first(log_n_rows)],
+            vec![gen_is_first(log_n_rows)], // Constant trace.
         ]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
         assert_constraints(&trace_polys, CanonicCoset::new(log_n_rows), |eval| {
