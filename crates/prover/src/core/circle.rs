@@ -104,7 +104,7 @@ impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>
         }
     }
 
-    pub fn into_ef<EF: From<F>>(&self) -> CirclePoint<EF> {
+    pub fn into_ef<EF: From<F>>(self) -> CirclePoint<EF> {
         CirclePoint {
             x: self.x.clone().into(),
             y: self.y.clone().into(),

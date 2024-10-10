@@ -112,8 +112,7 @@ where
         + Sub<F, Output = F>
         + Mul<BaseField, Output = F>,
 {
-    #[allow(clippy::wrong_self_convention)]
-    fn to_felts(self) -> [F; 2] {
+    fn into_felts(self) -> [F; 2] {
         [self.l, self.h]
     }
 }
