@@ -8,7 +8,6 @@ use super::super::circle::CirclePoint;
 use super::super::fields::m31::BaseField;
 use super::super::fields::qm31::SecureField;
 use super::super::fri::{FriProof, FriProver};
-use super::super::poly::circle::CanonicCoset;
 use super::super::poly::BitReversedOrder;
 use super::super::ColumnVec;
 use super::quotients::{compute_fri_quotients, PointSample};
@@ -206,22 +205,13 @@ pub struct CommitmentTreeProver<B: BackendForChannel<MC>, MC: MerkleChannel> {
 
 impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
     pub fn new(
-        polynomials: ColumnVec<CirclePoly<B>>,
+        mut polynomials: ColumnVec<CirclePoly<B>>,
         log_blowup_factor: u32,
         channel: &mut MC::C,
         twiddles: &TwiddleTree<B>,
     ) -> Self {
         let span = span!(Level::INFO, "Extension").entered();
-        let evaluations = polynomials
-            .iter()
-            .map(|poly| {
-                poly.evaluate_with_twiddles(
-                    CanonicCoset::new(poly.log_size() + log_blowup_factor).circle_domain(),
-                    twiddles,
-                )
-            })
-            .collect_vec();
-
+        let evaluations = B::evaluate_polynomials(&mut polynomials, log_blowup_factor, twiddles);
         span.exit();
 
         let _span = span!(Level::INFO, "Merkle").entered();
