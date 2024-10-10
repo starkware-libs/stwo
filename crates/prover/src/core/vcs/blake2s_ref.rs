@@ -1,5 +1,4 @@
-//! An AVX512 implementation of the BLAKE2s compression function.
-//! Based on <https://github.com/oconnor663/blake2_simd/blob/master/blake2s/src/avx2.rs>.
+//! A reference implementation of the BLAKE2s compression function, in pure Rust.
 
 pub const IV: [u32; 8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
