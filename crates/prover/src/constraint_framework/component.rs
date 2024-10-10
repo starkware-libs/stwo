@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt::{self, Display, Formatter};
 use std::iter::zip;
 use std::ops::Deref;
 
@@ -262,5 +263,35 @@ impl<E: FrameworkEval> Deref for FrameworkComponent<E> {
 
     fn deref(&self) -> &E {
         &self.eval
+    }
+}
+
+impl<E: FrameworkEval> Display for FrameworkComponent<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let log_n_rows = self.log_size();
+        let mut n_cols = vec![];
+        self.trace_log_degree_bounds()
+            .0
+            .iter()
+            .for_each(|interaction| {
+                n_cols.push(interaction.len());
+            });
+        writeln!(f, "n_rows 2^{}", log_n_rows)?;
+        writeln!(f, "n_constraints {}", self.n_constraints())?;
+        writeln!(
+            f,
+            "constraint_log_degree_bound {}",
+            self.max_constraint_log_degree_bound()
+        )?;
+        writeln!(
+            f,
+            "total felts: 2^{} * {}",
+            log_n_rows,
+            n_cols.iter().sum::<usize>()
+        )?;
+        for (j, n_cols) in n_cols.into_iter().enumerate() {
+            writeln!(f, "\t Interaction {}: n_cols {}", j, n_cols)?;
+        }
+        Ok(())
     }
 }
