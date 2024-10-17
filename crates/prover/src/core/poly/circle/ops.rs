@@ -9,6 +9,8 @@ use crate::core::fields::FieldOps;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
+use crate::core::pcs::quotients::PointSample;
+use crate::core::pcs::TreeVec;
 
 /// Operations on BaseField polynomials.
 pub trait PolyOps: FieldOps<BaseField> + Sized {
@@ -43,6 +45,24 @@ pub trait PolyOps: FieldOps<BaseField> + Sized {
     /// Evaluates the polynomial at a single point.
     /// Used by the [`CirclePoly::eval_at_point()`] function.
     fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField;
+
+    fn evaluate_polynomials_out_of_domain(
+        polynomials: TreeVec<ColumnVec<&CirclePoly<Self>>>,
+        points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    ) -> TreeVec<ColumnVec<Vec<PointSample>>> {
+        polynomials
+            .zip_cols(&points)
+            .map_cols(|(poly, points)| {
+                points
+                    .iter()
+                    .map(|&point| PointSample {
+                        point,
+                        value: poly.eval_at_point(point),
+                    })
+                    .collect_vec()
+            })
+    }
+
 
     /// Extends the polynomial to a larger degree bound.
     /// Used by the [`CirclePoly::extend()`] function.
