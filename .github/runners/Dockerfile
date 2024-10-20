@@ -8,4 +8,3 @@ RUN apt update && \
     git
 
 USER runner
-CMD /bin/bash
