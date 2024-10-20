@@ -113,9 +113,9 @@ pub struct LinePoly {
     /// Coefficients of the polynomial in [line_ifft] algorithm's basis.
     ///
     /// The coefficients are stored in bit-reversed order.
-    coeffs: Vec<SecureField>,
+    pub coeffs: Vec<SecureField>,
     /// The number of coefficients stored as `log2(len(coeffs))`.
-    log_size: u32,
+    pub log_size: u32,
 }
 
 impl LinePoly {

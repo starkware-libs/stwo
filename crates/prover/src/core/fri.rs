@@ -305,7 +305,7 @@ impl<B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<B, MC> {
 pub struct FriVerifier<MC: MerkleChannel> {
     config: FriConfig,
     /// Alpha used to fold all circle polynomials to univariate polynomials.
-    circle_poly_alpha: SecureField,
+    pub circle_poly_alpha: SecureField,
     /// Domain size queries should be sampled from.
     expected_query_log_domain_size: u32,
     /// The list of degree bounds of all committed circle polynomials.
