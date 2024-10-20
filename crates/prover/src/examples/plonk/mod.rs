@@ -17,7 +17,7 @@ use crate::core::backend::Column;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::lookups::utils::Fraction;
+use crate::core::lookups::utils::{Fraction, Reciprocal};
 use crate::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeSubspan};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
@@ -73,7 +73,7 @@ impl FrameworkEval for PlonkEval {
 
         logup.write_frac(
             &mut eval,
-            Fraction::new(denom_a.clone() + denom_b.clone(), denom_a * denom_b),
+            Reciprocal::new(denom_a) + Reciprocal::new(denom_b),
         );
         logup.write_frac(
             &mut eval,
