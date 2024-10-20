@@ -3,6 +3,7 @@ mod assert;
 mod component;
 pub mod constant_columns;
 mod cpu_domain;
+pub mod expr;
 mod info;
 pub mod logup;
 mod point;
