@@ -7,7 +7,7 @@ use super::cm31::PackedCM31;
 use super::m31::{PackedM31, N_LANES};
 use super::qm31::PackedQM31;
 use crate::core::fields::cm31::CM31;
-use crate::core::fields::m31::{pow2147483645, M31};
+use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::FieldExpOps;
 
@@ -246,9 +246,8 @@ impl<A: One + Copy, const N: usize> One for Vectorized<A, N> {
 
 impl<A: FieldExpOps + Zero + Copy, const N: usize> FieldExpOps for Vectorized<A, N> {
     fn inverse(&self) -> Self {
-        Vectorized::from_fn(|i| {
-            assert!(!self.0[i].is_zero(), "0 has no inverse");
-            pow2147483645(self.0[i])
-        })
+        let mut dst = [A::zero(); N];
+        A::batch_inverse(&self.0, &mut dst);
+        dst.into()
     }
 }
