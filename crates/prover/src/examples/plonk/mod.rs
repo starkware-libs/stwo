@@ -2,10 +2,10 @@ use itertools::Itertools;
 use num_traits::One;
 use tracing::{span, Level};
 
-use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{
     ClaimedPrefixSum, LogupAtRow, LogupTraceGenerator, LookupElements,
 };
+use crate::constraint_framework::preprocessed_columns::gen_is_first;
 use crate::constraint_framework::{
     assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
 };

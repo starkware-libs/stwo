@@ -4,8 +4,8 @@ use itertools::Itertools;
 use tracing::{span, Level};
 
 use super::{column_bits, limb_bits, XorAccumulator, XorElements};
-use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
+use crate::constraint_framework::preprocessed_columns::gen_is_first;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
