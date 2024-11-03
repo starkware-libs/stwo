@@ -6,12 +6,16 @@ use num_traits::Zero;
 
 use super::{BlakeXorElements, N_ROUND_INPUT_FELTS};
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
-use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
+use crate::constraint_framework::{
+    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, PREPROCESSED_TRACE_IDX,
+};
 use crate::core::fields::qm31::SecureField;
 
 pub type BlakeRoundComponent = FrameworkComponent<BlakeRoundEval>;
 
 pub type RoundElements = LookupElements<N_ROUND_INPUT_FELTS>;
+
+use crate::constraint_framework::INTERACTION_TRACE_IDX;
 
 pub struct BlakeRoundEval {
     pub log_size: u32,
@@ -28,12 +32,12 @@ impl FrameworkEval for BlakeRoundEval {
         self.log_size + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(2, [0]);
+        let [is_first] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
         let blake_eval = constraints::BlakeRoundEval {
             eval,
             xor_lookup_elements: &self.xor_lookup_elements,
             round_lookup_elements: &self.round_lookup_elements,
-            logup: LogupAtRow::new(1, self.total_sum, None, is_first),
+            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, self.total_sum, None, is_first),
         };
         blake_eval.eval()
     }

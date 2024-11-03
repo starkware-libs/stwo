@@ -2,7 +2,7 @@ use itertools::Itertools;
 
 use super::{limb_bits, XorElements};
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
-use crate::constraint_framework::EvalAtRow;
+use crate::constraint_framework::{EvalAtRow, PREPROCESSED_TRACE_IDX};
 use crate::core::fields::m31::BaseField;
 use crate::core::lookups::utils::Fraction;
 
@@ -19,9 +19,9 @@ impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
         // al, bl are the constant columns for the inputs: All pairs of elements in [0,
         // 2^LIMB_BITS).
         // cl is the constant column for the xor: al ^ bl.
-        let [al] = self.eval.next_interaction_mask(2, [0]);
-        let [bl] = self.eval.next_interaction_mask(2, [0]);
-        let [cl] = self.eval.next_interaction_mask(2, [0]);
+        let [al] = self.eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        let [bl] = self.eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        let [cl] = self.eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
 
         let frac_chunks = (0..(1 << (2 * EXPAND_BITS)))
             .map(|i| {

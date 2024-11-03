@@ -1,7 +1,9 @@
 use num_traits::{One, Zero};
 
 use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupAtRow, LookupElements};
-use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
+use crate::constraint_framework::{
+    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, INTERACTION_TRACE_IDX,
+};
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::channel::Channel;
@@ -40,8 +42,12 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let [is_first] = eval.next_interaction_mask(2, [0]);
-        let mut logup: LogupAtRow<E> =
-            LogupAtRow::new(1, self.total_sum, Some(self.claimed_sum), is_first);
+        let mut logup: LogupAtRow<E> = LogupAtRow::new(
+            INTERACTION_TRACE_IDX,
+            self.total_sum,
+            Some(self.claimed_sum),
+            is_first,
+        );
 
         let input_state: [_; STATE_SIZE] = std::array::from_fn(|_| eval.next_trace_mask());
         let input_denom: E::EF = self.lookup_elements.combine(&input_state);
