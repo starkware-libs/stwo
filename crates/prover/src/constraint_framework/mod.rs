@@ -25,6 +25,10 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::fields::FieldExpOps;
 
+pub const ORIGIANL_TRACE_IDX: usize = 0;
+pub const INTERACTION_TRACE_IDX: usize = 1;
+pub const PREPROCESSED_TRACE_IDX: usize = 2;
+
 /// A trait for evaluating expressions at some point or row.
 pub trait EvalAtRow {
     // TODO(Ohad): Use a better trait for these, like 'Algebra' or something.
@@ -67,7 +71,7 @@ pub trait EvalAtRow {
 
     /// Returns the next mask value for the first interaction at offset 0.
     fn next_trace_mask(&mut self) -> Self::F {
-        let [mask_item] = self.next_interaction_mask(0, [0]);
+        let [mask_item] = self.next_interaction_mask(ORIGIANL_TRACE_IDX, [0]);
         mask_item
     }
 

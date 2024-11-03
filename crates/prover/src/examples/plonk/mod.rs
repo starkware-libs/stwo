@@ -8,6 +8,7 @@ use crate::constraint_framework::logup::{
 };
 use crate::constraint_framework::{
     assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
+    INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -48,15 +49,20 @@ impl FrameworkEval for PlonkEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(2, [0]);
-        let mut logup = LogupAtRow::<_>::new(1, self.total_sum, Some(self.claimed_sum), is_first);
+        let [is_first] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        let mut logup = LogupAtRow::<_>::new(
+            INTERACTION_TRACE_IDX,
+            self.total_sum,
+            Some(self.claimed_sum),
+            is_first,
+        );
 
-        let [a_wire] = eval.next_interaction_mask(2, [0]);
-        let [b_wire] = eval.next_interaction_mask(2, [0]);
+        let [a_wire] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        let [b_wire] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
         // Note: c_wire could also be implicit: (self.eval.point() - M31_CIRCLE_GEN.into_ef()).x.
         //   A constant column is easier though.
-        let [c_wire] = eval.next_interaction_mask(2, [0]);
-        let [op] = eval.next_interaction_mask(2, [0]);
+        let [c_wire] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        let [op] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
 
         let mult = eval.next_trace_mask();
         let a_val = eval.next_trace_mask();
