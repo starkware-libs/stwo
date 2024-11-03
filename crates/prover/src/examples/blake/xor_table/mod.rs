@@ -20,6 +20,7 @@ use num_traits::Zero;
 pub use r#gen::{generate_constant_trace, generate_interaction_trace, generate_trace};
 
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
+use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use crate::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, INTERACTION_TRACE_IDX,
     PREPROCESSED_TRACE_IDX,
@@ -106,7 +107,7 @@ impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> FrameworkEval
         column_bits::<ELEM_BITS, EXPAND_BITS>() + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        let is_first = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
         let xor_eval = constraints::XorTableEval::<'_, _, ELEM_BITS, EXPAND_BITS> {
             eval,
             lookup_elements: &self.lookup_elements,
