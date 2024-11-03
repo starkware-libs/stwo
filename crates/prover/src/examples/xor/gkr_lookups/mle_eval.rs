@@ -8,7 +8,7 @@ use itertools::{chain, zip_eq, Itertools};
 use num_traits::{One, Zero};
 use tracing::{span, Level};
 
-use crate::constraint_framework::constant_columns::gen_is_first;
+use crate::constraint_framework::preprocessed_columns::gen_is_first;
 use crate::constraint_framework::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, TraceLocationAllocator,
 };
@@ -725,7 +725,9 @@ mod tests {
         eval_prefix_sum_constraints, gen_carry_quotient_col, MleEvalPoint, MleEvalProverComponent,
         MleEvalVerifierComponent,
     };
-    use crate::constraint_framework::constant_columns::{gen_is_first, gen_is_step_with_offset};
+    use crate::constraint_framework::preprocessed_columns::{
+        gen_is_first, gen_is_step_with_offset,
+    };
     use crate::constraint_framework::{assert_constraints, EvalAtRow, TraceLocationAllocator};
     use crate::core::air::{Component, ComponentProver, Components};
     use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;

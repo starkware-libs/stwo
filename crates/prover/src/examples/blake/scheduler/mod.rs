@@ -56,7 +56,7 @@ mod tests {
 
     use itertools::Itertools;
 
-    use crate::constraint_framework::constant_columns::gen_is_first;
+    use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::constraint_framework::FrameworkEval;
     use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::round::RoundElements;

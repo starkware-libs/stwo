@@ -9,7 +9,7 @@ use components::{
 use gen::{gen_interaction_trace, gen_trace};
 use itertools::{chain, Itertools};
 
-use crate::constraint_framework::constant_columns::gen_is_first;
+use crate::constraint_framework::preprocessed_columns::gen_is_first;
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
@@ -176,7 +176,7 @@ mod tests {
     };
     use super::gen::{gen_interaction_trace, gen_trace};
     use super::{prove_state_machine, verify_state_machine};
-    use crate::constraint_framework::constant_columns::gen_is_first;
+    use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::constraint_framework::{assert_constraints, FrameworkEval, TraceLocationAllocator};
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::M31;
