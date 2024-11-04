@@ -5,8 +5,8 @@ use std::ops::{Add, AddAssign, Mul, Sub};
 use itertools::Itertools;
 use tracing::{info, span, Level};
 
-use crate::constraint_framework::constant_columns::gen_is_first;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
+use crate::constraint_framework::preprocessed_columns::gen_is_first;
 use crate::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
 };
@@ -399,8 +399,8 @@ mod tests {
     use itertools::Itertools;
     use num_traits::One;
 
-    use crate::constraint_framework::constant_columns::gen_is_first;
     use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
+    use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::constraint_framework::{assert_constraints, EvalAtRow};
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;

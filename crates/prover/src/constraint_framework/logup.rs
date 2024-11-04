@@ -41,7 +41,7 @@ pub struct LogupAtRow<E: EvalAtRow> {
     cur_frac: Option<Fraction<E::EF, E::EF>>,
     is_finalized: bool,
     /// The value of the `is_first` constant column at current row.
-    /// See [`super::constant_columns::gen_is_first()`].
+    /// See [`super::preprocessed_columns::gen_is_first()`].
     pub is_first: E::F,
 }
 impl<E: EvalAtRow> LogupAtRow<E> {

@@ -1,12 +1,12 @@
 /// ! This module contains helpers to express and use constraints for components.
 mod assert;
 mod component;
-pub mod constant_columns;
 mod cpu_domain;
 pub mod expr;
 mod info;
 pub mod logup;
 mod point;
+pub mod preprocessed_columns;
 mod simd_domain;
 
 use std::array;
