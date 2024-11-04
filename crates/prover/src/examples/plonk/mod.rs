@@ -198,6 +198,29 @@ pub fn prove_fibonacci_plonk(
     let commitment_scheme =
         &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
+    // Constant trace.
+    let span = span!(Level::INFO, "Constant").entered();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    let is_first = gen_is_first(log_n_rows);
+    let mut constant_trace = [
+        circuit.a_wire.clone(),
+        circuit.b_wire.clone(),
+        circuit.c_wire.clone(),
+        circuit.op.clone(),
+    ]
+    .into_iter()
+    .map(|col| {
+        CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(
+            CanonicCoset::new(log_n_rows).circle_domain(),
+            col,
+        )
+    })
+    .collect_vec();
+    constant_trace.insert(0, is_first);
+    let constants_trace_location = tree_builder.extend_evals(constant_trace);
+    tree_builder.commit(channel);
+    span.exit();
+
     // Trace.
     let span = span!(Level::INFO, "Trace").entered();
     let trace = gen_trace(log_n_rows, &circuit);
@@ -215,24 +238,6 @@ pub fn prove_fibonacci_plonk(
         gen_interaction_trace(log_n_rows, padding_offset, &circuit, &lookup_elements);
     let mut tree_builder = commitment_scheme.tree_builder();
     let interaction_trace_location = tree_builder.extend_evals(trace);
-    tree_builder.commit(channel);
-    span.exit();
-
-    // Constant trace.
-    let span = span!(Level::INFO, "Constant").entered();
-    let mut tree_builder = commitment_scheme.tree_builder();
-    let is_first = gen_is_first(log_n_rows);
-    let mut constant_trace = [circuit.a_wire, circuit.b_wire, circuit.c_wire, circuit.op]
-        .into_iter()
-        .map(|col| {
-            CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(
-                CanonicCoset::new(log_n_rows).circle_domain(),
-                col,
-            )
-        })
-        .collect_vec();
-    constant_trace.insert(0, is_first);
-    let constants_trace_location = tree_builder.extend_evals(constant_trace);
     tree_builder.commit(channel);
     span.exit();
 
@@ -300,14 +305,16 @@ mod tests {
         // Decommit.
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
-        // Trace columns.
+
+        // Constant columns.
         commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+
+        // Trace columns.
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
         // Draw lookup element.
         let lookup_elements = LookupElements::<2>::draw(channel);
         assert_eq!(lookup_elements, component.lookup_elements);
         // Interaction columns.
-        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
-        // Constant columns.
         commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
 
         verify(&[&component], channel, commitment_scheme, proof).unwrap();

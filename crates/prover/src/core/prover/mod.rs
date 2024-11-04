@@ -54,6 +54,13 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
 
     // Get mask sample points relative to oods point.
     let mut sample_points = component_provers.components().mask_points(oods_point);
+
+    // TODO:(ilya): Remove the following limitation.
+    assert!(
+        !sample_points.0[0].is_empty(),
+        "Must have at least one preprocessed mask item."
+    );
+
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
 

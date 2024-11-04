@@ -26,9 +26,9 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::fields::FieldExpOps;
 
-pub const ORIGINAL_TRACE_IDX: usize = 0;
-pub const INTERACTION_TRACE_IDX: usize = 1;
-pub const PREPROCESSED_TRACE_IDX: usize = 2;
+pub const PREPROCESSED_TRACE_IDX: usize = 0;
+pub const ORIGINAL_TRACE_IDX: usize = 1;
+pub const INTERACTION_TRACE_IDX: usize = 2;
 
 /// A trait for evaluating expressions at some point or row.
 pub trait EvalAtRow {

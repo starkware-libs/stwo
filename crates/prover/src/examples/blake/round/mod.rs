@@ -94,7 +94,7 @@ mod tests {
             &round_lookup_elements,
         );
 
-        let trace = TreeVec::new(vec![trace, interaction_trace, vec![gen_is_first(LOG_SIZE)]]);
+        let trace = TreeVec::new(vec![vec![gen_is_first(LOG_SIZE)], trace, interaction_trace]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
 
         let component = BlakeRoundEval {
