@@ -79,15 +79,17 @@ pub trait FrameworkEval {
 pub struct FrameworkComponent<C: FrameworkEval> {
     eval: C,
     trace_locations: TreeVec<TreeSubspan>,
+    info: InfoEvaluator,
 }
 
 impl<E: FrameworkEval> FrameworkComponent<E> {
     pub fn new(location_allocator: &mut TraceLocationAllocator, eval: E) -> Self {
-        let eval_tree_structure = eval.evaluate(InfoEvaluator::default()).mask_offsets;
-        let trace_locations = location_allocator.next_for_structure(&eval_tree_structure);
+        let info = eval.evaluate(InfoEvaluator::default());
+        let trace_locations = location_allocator.next_for_structure(&info.mask_offsets);
         Self {
             eval,
             trace_locations,
+            info,
         }
     }
 
@@ -98,7 +100,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
 
 impl<E: FrameworkEval> Component for FrameworkComponent<E> {
     fn n_constraints(&self) -> usize {
-        self.eval.evaluate(InfoEvaluator::default()).n_constraints
+        self.info.n_constraints
     }
 
     fn max_constraint_log_degree_bound(&self) -> u32 {
@@ -106,8 +108,10 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
     }
 
     fn trace_log_degree_bounds(&self) -> TreeVec<ColumnVec<u32>> {
-        let InfoEvaluator { mask_offsets, .. } = self.eval.evaluate(InfoEvaluator::default());
-        mask_offsets.map(|tree_offsets| vec![self.eval.log_size(); tree_offsets.len()])
+        self.info
+            .mask_offsets
+            .as_ref()
+            .map(|tree_offsets| vec![self.eval.log_size(); tree_offsets.len()])
     }
 
     fn mask_points(
@@ -115,8 +119,7 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
         let trace_step = CanonicCoset::new(self.eval.log_size()).step();
-        let InfoEvaluator { mask_offsets, .. } = self.eval.evaluate(InfoEvaluator::default());
-        mask_offsets.map_cols(|col_offsets| {
+        self.info.mask_offsets.as_ref().map_cols(|col_offsets| {
             col_offsets
                 .iter()
                 .map(|offset| point + trace_step.mul_signed(*offset).into_ef())
