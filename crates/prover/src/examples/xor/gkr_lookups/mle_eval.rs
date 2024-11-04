@@ -751,8 +751,8 @@ mod tests {
     #[test]
     fn mle_eval_prover_component() -> Result<(), VerificationError> {
         const N_VARIABLES: usize = 8;
-        const COEFFS_COL_TRACE: usize = 0;
-        const MLE_EVAL_TRACE: usize = 1;
+        const COEFFS_COL_TRACE: usize = 1;
+        const MLE_EVAL_TRACE: usize = 2;
         const LOG_EXPAND: u32 = 1;
         // Create the test MLE.
         let mut rng = SmallRng::seed_from_u64(0);
@@ -772,6 +772,11 @@ mod tests {
         let commitment_scheme =
             &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
         let channel = &mut Blake2sChannel::default();
+        // TODO(ilya): remove the following once preproccessed columns are not mandatory.
+        // Preprocessed trace
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals([]);
+        tree_builder.commit(channel);
         // Build trace.
         // 1. MLE coeffs trace.
         let mut tree_builder = commitment_scheme.tree_builder();
@@ -806,16 +811,17 @@ mod tests {
         let log_sizes = components.column_log_sizes();
         let channel = &mut Blake2sChannel::default();
         let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
-        commitment_scheme.commit(proof.commitments[0], &log_sizes[0], channel);
+        commitment_scheme.commit(proof.commitments[0], &[], channel);
         commitment_scheme.commit(proof.commitments[1], &log_sizes[1], channel);
+        commitment_scheme.commit(proof.commitments[2], &log_sizes[2], channel);
         verify(&components.0, channel, commitment_scheme, proof)
     }
 
     #[test]
     fn mle_eval_verifier_component() -> Result<(), VerificationError> {
         const N_VARIABLES: usize = 8;
-        const COEFFS_COL_TRACE: usize = 0;
-        const MLE_EVAL_TRACE: usize = 1;
+        const COEFFS_COL_TRACE: usize = 1;
+        const MLE_EVAL_TRACE: usize = 2;
         const CONST_TRACE: usize = 2;
         const LOG_EXPAND: u32 = 1;
         // Create the test MLE.
@@ -836,6 +842,13 @@ mod tests {
         let commitment_scheme =
             &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
         let channel = &mut Blake2sChannel::default();
+
+        // TODO(ilya): remove the following once preproccessed columns are not mandatory.
+        // Preprocessed trace
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals([]);
+        tree_builder.commit(channel);
+
         // Build trace.
         // 1. MLE coeffs trace.
         let mut tree_builder = commitment_scheme.tree_builder();
@@ -882,8 +895,9 @@ mod tests {
         let log_sizes = components.column_log_sizes();
         let channel = &mut Blake2sChannel::default();
         let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
-        commitment_scheme.commit(proof.commitments[0], &log_sizes[0], channel);
+        commitment_scheme.commit(proof.commitments[0], &[], channel);
         commitment_scheme.commit(proof.commitments[1], &log_sizes[1], channel);
+        commitment_scheme.commit(proof.commitments[2], &log_sizes[2], channel);
         verify(&components.0, channel, commitment_scheme, proof)
     }
 
