@@ -1,5 +1,6 @@
 use itertools::Itertools;
 
+use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use crate::core::backend::simd::m31::PackedBaseField;
 use crate::core::backend::simd::SimdBackend;
@@ -31,6 +32,8 @@ impl<const N: usize> FrameworkEval for WideFibonacciEval<N> {
         self.log_n_rows + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        // TODO(ilya): remove the following once preproccessed columns are not mandatory.
+        let _ = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
         let mut a = eval.next_trace_mask();
         let mut b = eval.next_trace_mask();
         for _ in 2..N {
@@ -73,6 +76,7 @@ mod tests {
     use num_traits::{One, Zero};
 
     use super::WideFibonacciEval;
+    use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::constraint_framework::{
         assert_constraints, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
     };
@@ -137,7 +141,10 @@ mod tests {
     #[test]
     fn test_wide_fibonacci_constraints() {
         const LOG_N_INSTANCES: u32 = 6;
-        let traces = TreeVec::new(vec![generate_test_trace(LOG_N_INSTANCES)]);
+        let traces = TreeVec::new(vec![
+            vec![gen_is_first(LOG_N_INSTANCES)],
+            generate_test_trace(LOG_N_INSTANCES),
+        ]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
 
@@ -156,7 +163,7 @@ mod tests {
         let mut trace = generate_test_trace(LOG_N_INSTANCES);
         // Modify the trace such that a constraint fail.
         trace[17].values.set(2, BaseField::one());
-        let traces = TreeVec::new(vec![trace]);
+        let traces = TreeVec::new(vec![vec![gen_is_first(LOG_N_INSTANCES)], trace]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
 
@@ -184,6 +191,11 @@ mod tests {
                 &mut CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(
                     config, &twiddles,
                 );
+
+            // Preprocessed trace
+            let mut tree_builder = commitment_scheme.tree_builder();
+            tree_builder.extend_evals([gen_is_first(log_n_instances)]);
+            tree_builder.commit(prover_channel);
 
             // Trace.
             let trace = generate_test_trace(log_n_instances);
@@ -214,6 +226,7 @@ mod tests {
             // Retrieve the expected column sizes in each commitment interaction, from the AIR.
             let sizes = component.trace_log_degree_bounds();
             commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+            commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
             verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
         }
     }
@@ -236,6 +249,12 @@ mod tests {
             &mut CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(
                 config, &twiddles,
             );
+
+        // TODO(ilya): remove the following once preproccessed columns are not mandatory.
+        // Preprocessed trace
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals([gen_is_first(LOG_N_INSTANCES)]);
+        tree_builder.commit(prover_channel);
 
         // Trace.
         let trace = generate_test_trace(LOG_N_INSTANCES);
@@ -265,6 +284,7 @@ mod tests {
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
         verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
     }
 }

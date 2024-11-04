@@ -145,7 +145,7 @@ mod tests {
             generate_interaction_trace(lookup_data, &lookup_elements);
         let constant_trace = generate_constant_trace::<ELEM_BITS, EXPAND_BITS>();
 
-        let trace = TreeVec::new(vec![trace, interaction_trace, constant_trace]);
+        let trace = TreeVec::new(vec![constant_trace, trace, interaction_trace]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
 
         let component = XorTableEval::<ELEM_BITS, EXPAND_BITS> {

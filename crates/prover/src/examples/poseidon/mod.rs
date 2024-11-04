@@ -351,6 +351,14 @@ pub fn prove_poseidon(
     let commitment_scheme =
         &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
+    // Constant trace.
+    let span = span!(Level::INFO, "Constant").entered();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    let constant_trace = vec![gen_is_first(log_n_rows)];
+    tree_builder.extend_evals(constant_trace);
+    tree_builder.commit(channel);
+    span.exit();
+
     // Trace.
     let span = span!(Level::INFO, "Trace").entered();
     let (trace, lookup_data) = gen_trace(log_n_rows);
@@ -367,14 +375,6 @@ pub fn prove_poseidon(
     let (trace, total_sum) = gen_interaction_trace(log_n_rows, lookup_data, &lookup_elements);
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(trace);
-    tree_builder.commit(channel);
-    span.exit();
-
-    // Constant trace.
-    let span = span!(Level::INFO, "Constant").entered();
-    let mut tree_builder = commitment_scheme.tree_builder();
-    let constant_trace = vec![gen_is_first(log_n_rows)];
-    tree_builder.extend_evals(constant_trace);
     tree_builder.commit(channel);
     span.exit();
 
@@ -479,7 +479,7 @@ mod tests {
         let (trace1, total_sum) =
             gen_interaction_trace(LOG_N_ROWS, interaction_data, &lookup_elements);
 
-        let traces = TreeVec::new(vec![trace0, trace1, vec![gen_is_first(LOG_N_ROWS)]]);
+        let traces = TreeVec::new(vec![vec![gen_is_first(LOG_N_ROWS)], trace0, trace1]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
         assert_constraints(&trace_polys, CanonicCoset::new(LOG_N_ROWS), |mut eval| {
@@ -520,15 +520,15 @@ mod tests {
         // Decommit.
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
-        // Trace columns.
+
+        // Constant columns.
         commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        // Trace columns.
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
         // Draw lookup element.
         let lookup_elements = PoseidonElements::draw(channel);
         assert_eq!(lookup_elements, component.lookup_elements);
         // Interaction columns.
-        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
-
-        // Constant columns.
         commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
 
         verify(&[&component], channel, commitment_scheme, proof).unwrap();

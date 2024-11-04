@@ -252,6 +252,28 @@ where
     let channel = &mut MC::C::default();
     let commitment_scheme = &mut CommitmentSchemeProver::new(config, &twiddles);
 
+    // Constant trace.
+    // TODO(ShaharS): share is_first column between components when constant columns support this.
+    let span = span!(Level::INFO, "Constant Trace").entered();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(
+        chain![
+            vec![gen_is_first(log_size)],
+            ROUND_LOG_SPLIT
+                .iter()
+                .map(|l| gen_is_first(log_size + l))
+                .collect_vec(),
+            xor_table::generate_constant_trace::<12, 4>(),
+            xor_table::generate_constant_trace::<9, 2>(),
+            xor_table::generate_constant_trace::<8, 2>(),
+            xor_table::generate_constant_trace::<7, 2>(),
+            xor_table::generate_constant_trace::<4, 0>(),
+        ]
+        .collect_vec(),
+    );
+    tree_builder.commit(channel);
+    span.exit();
+
     let span = span!(Level::INFO, "Trace").entered();
 
     // Scheduler.
@@ -362,28 +384,6 @@ where
     tree_builder.commit(channel);
     span.exit();
 
-    // Constant trace.
-    // TODO(ShaharS): share is_first column between components when constant columns support this.
-    let span = span!(Level::INFO, "Constant Trace").entered();
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(
-        chain![
-            vec![gen_is_first(log_size)],
-            ROUND_LOG_SPLIT
-                .iter()
-                .map(|l| gen_is_first(log_size + l))
-                .collect_vec(),
-            xor_table::generate_constant_trace::<12, 4>(),
-            xor_table::generate_constant_trace::<9, 2>(),
-            xor_table::generate_constant_trace::<8, 2>(),
-            xor_table::generate_constant_trace::<7, 2>(),
-            xor_table::generate_constant_trace::<4, 0>(),
-        ]
-        .collect_vec(),
-    );
-    tree_builder.commit(channel);
-    span.exit();
-
     assert_eq!(
         commitment_scheme
             .polynomials()
@@ -418,18 +418,18 @@ pub fn verify_blake<MC: MerkleChannel>(
 
     let log_sizes = stmt0.log_sizes();
 
+    // Constant trace.
+    commitment_scheme.commit(stark_proof.commitments[0], &log_sizes[0], channel);
+
     // Trace.
     stmt0.mix_into(channel);
-    commitment_scheme.commit(stark_proof.commitments[0], &log_sizes[0], channel);
+    commitment_scheme.commit(stark_proof.commitments[1], &log_sizes[1], channel);
 
     // Draw interaction elements.
     let all_elements = AllElements::draw(channel);
 
     // Interaction trace.
     stmt1.mix_into(channel);
-    commitment_scheme.commit(stark_proof.commitments[1], &log_sizes[1], channel);
-
-    // Constant trace.
     commitment_scheme.commit(stark_proof.commitments[2], &log_sizes[2], channel);
 
     let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
