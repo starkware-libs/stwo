@@ -243,7 +243,13 @@ pub fn prove_fibonacci_plonk(
 
     // Prove constraints.
     let component = PlonkComponent::new(
-        &mut TraceLocationAllocator::default(),
+        &mut TraceLocationAllocator::new_with_preproccessed_columnds(&[
+            PreprocessedColumn::IsFirst(log_n_rows),
+            PreprocessedColumn::Plonk(0),
+            PreprocessedColumn::Plonk(1),
+            PreprocessedColumn::Plonk(2),
+            PreprocessedColumn::Plonk(3),
+        ]),
         PlonkEval {
             log_n_rows,
             lookup_elements,
