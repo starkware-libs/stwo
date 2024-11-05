@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::iter::zip;
 use std::ops::Deref;
@@ -9,7 +10,10 @@ use rayon::prelude::*;
 use tracing::{span, Level};
 
 use super::cpu_domain::CpuDomainEvaluator;
-use super::{EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
+use super::preprocessed_columns::PreprocessedColumn;
+use super::{
+    EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, PREPROCESSED_TRACE_IDX,
+};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, Trace};
 use crate::core::backend::simd::column::VeryPackedSecureColumnByCoords;
@@ -35,6 +39,7 @@ const CHUNK_SIZE: usize = 1;
 pub struct TraceLocationAllocator {
     /// Mapping of tree index to next available column offset.
     next_tree_offsets: TreeVec<usize>,
+    preprocessed_columns: HashMap<PreprocessedColumn, usize>,
 }
 
 impl TraceLocationAllocator {
@@ -62,6 +67,17 @@ impl TraceLocationAllocator {
                 .collect(),
         )
     }
+
+    pub fn with_preproccessed_columnds(preprocessed_columns: &[PreprocessedColumn]) -> Self {
+        Self {
+            next_tree_offsets: Default::default(),
+            preprocessed_columns: preprocessed_columns
+                .iter()
+                .enumerate()
+                .map(|(i, &col)| (col, i))
+                .collect(),
+        }
+    }
 }
 
 /// A component defined solely in means of the constraints framework.
@@ -80,16 +96,24 @@ pub struct FrameworkComponent<C: FrameworkEval> {
     eval: C,
     trace_locations: TreeVec<TreeSubspan>,
     info: InfoEvaluator,
+    preprocessed_column_indices: Vec<usize>,
 }
 
 impl<E: FrameworkEval> FrameworkComponent<E> {
     pub fn new(location_allocator: &mut TraceLocationAllocator, eval: E) -> Self {
         let info = eval.evaluate(InfoEvaluator::default());
         let trace_locations = location_allocator.next_for_structure(&info.mask_offsets);
+
+        let preprocessed_column_indices = info
+            .preprocessed_columns
+            .iter()
+            .map(|col| location_allocator.preprocessed_columns[col])
+            .collect();
         Self {
             eval,
             trace_locations,
             info,
+            preprocessed_column_indices,
         }
     }
 
@@ -127,14 +151,27 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         })
     }
 
+    fn preproccessed_column_indices(&self) -> ColumnVec<usize> {
+        self.preprocessed_column_indices.clone()
+    }
+
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
     ) {
+        let preprocessed_mask = self
+            .preprocessed_column_indices
+            .iter()
+            .map(|idx| mask.0[PREPROCESSED_TRACE_IDX][*idx].clone())
+            .collect_vec();
+
+        let mut mask_points = mask.sub_tree(&self.trace_locations);
+        mask_points.0[PREPROCESSED_TRACE_IDX] = preprocessed_mask.iter().collect_vec();
+
         self.eval.evaluate(PointEvaluator::new(
-            mask.sub_tree(&self.trace_locations),
+            mask_points,
             evaluation_accumulator,
             coset_vanishing(CanonicCoset::new(self.eval.log_size()).coset, point).inverse(),
         ));
@@ -154,8 +191,19 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.eval.log_size());
 
-        let component_polys = trace.polys.sub_tree(&self.trace_locations);
-        let component_evals = trace.evals.sub_tree(&self.trace_locations);
+        let mut component_polys = trace.polys.sub_tree(&self.trace_locations);
+        component_polys.0[PREPROCESSED_TRACE_IDX] = self
+            .preprocessed_column_indices
+            .iter()
+            .map(|idx| &trace.polys.0[PREPROCESSED_TRACE_IDX][*idx])
+            .collect();
+
+        let mut component_evals = trace.evals.sub_tree(&self.trace_locations);
+        component_evals.0[PREPROCESSED_TRACE_IDX] = self
+            .preprocessed_column_indices
+            .iter()
+            .map(|idx| &trace.evals.0[PREPROCESSED_TRACE_IDX][*idx])
+            .collect();
 
         // Extend trace if necessary.
         // TODO: Don't extend when eval_size < committed_size. Instead, pick a good

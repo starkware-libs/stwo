@@ -8,7 +8,7 @@ use tracing::{span, Level};
 use super::round::{blake_round_info, BlakeRoundComponent, BlakeRoundEval};
 use super::scheduler::{BlakeSchedulerComponent, BlakeSchedulerEval};
 use super::xor_table::{XorTableComponent, XorTableEval};
-use crate::constraint_framework::preprocessed_columns::gen_is_first;
+use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -120,7 +120,24 @@ pub struct BlakeComponents {
 }
 impl BlakeComponents {
     fn new(stmt0: &BlakeStatement0, all_elements: &AllElements, stmt1: &BlakeStatement1) -> Self {
-        let tree_span_provider = &mut TraceLocationAllocator::default();
+        let tree_span_provider = &mut TraceLocationAllocator::with_preproccessed_columnds(&[
+            PreprocessedColumn::XorTable(12, 4, 0),
+            PreprocessedColumn::XorTable(12, 4, 1),
+            PreprocessedColumn::XorTable(12, 4, 2),
+            PreprocessedColumn::XorTable(9, 2, 0),
+            PreprocessedColumn::XorTable(9, 2, 1),
+            PreprocessedColumn::XorTable(9, 2, 2),
+            PreprocessedColumn::XorTable(8, 2, 0),
+            PreprocessedColumn::XorTable(8, 2, 1),
+            PreprocessedColumn::XorTable(8, 2, 2),
+            PreprocessedColumn::XorTable(7, 2, 0),
+            PreprocessedColumn::XorTable(7, 2, 1),
+            PreprocessedColumn::XorTable(7, 2, 2),
+            PreprocessedColumn::XorTable(4, 0, 0),
+            PreprocessedColumn::XorTable(4, 0, 1),
+            PreprocessedColumn::XorTable(4, 0, 2),
+        ]);
+
         Self {
             scheduler_component: BlakeSchedulerComponent::new(
                 tree_span_provider,

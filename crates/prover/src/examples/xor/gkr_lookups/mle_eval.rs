@@ -145,6 +145,10 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> Component
         })
     }
 
+    fn preproccessed_column_indices(&self) -> ColumnVec<usize> {
+        vec![]
+    }
+
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
@@ -344,6 +348,10 @@ impl<'oracle, O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'o
                 .map(|offset| point + trace_step.mul_signed(*offset).into_ef())
                 .collect()
         })
+    }
+
+    fn preproccessed_column_indices(&self) -> ColumnVec<usize> {
+        vec![]
     }
 
     fn evaluate_constraint_quotients_at_point(

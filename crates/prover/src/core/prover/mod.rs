@@ -11,6 +11,7 @@ use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::vcs::ops::MerkleHasher;
+use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
 use crate::core::channel::Channel;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
@@ -53,12 +54,11 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let mut sample_points = component_provers.components().mask_points(oods_point);
-
-    // TODO:(ilya): Remove the following limitation.
-    assert!(
-        !sample_points.0[0].is_empty(),
-        "Must have at least one preprocessed mask item."
+    let mut sample_points = component_provers.components().mask_points(
+        oods_point,
+        commitment_scheme.trees.0[PREPROCESSED_TRACE_IDX]
+            .polynomials
+            .len(),
     );
 
     // Add the composition polynomial mask points.
@@ -108,7 +108,13 @@ pub fn verify<MC: MerkleChannel>(
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let mut sample_points = components.mask_points(oods_point);
+    let mut sample_points = components.mask_points(
+        oods_point,
+        commitment_scheme.trees.0[PREPROCESSED_TRACE_IDX]
+            .column_log_sizes
+            .len(),
+    );
+
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
 
