@@ -7,6 +7,7 @@ use tracing::{span, Level};
 
 use super::{BlakeXorElements, RoundElements};
 use crate::constraint_framework::logup::LogupTraceGenerator;
+use crate::constraint_framework::ORIGINAL_TRACE_IDX;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -37,7 +38,7 @@ pub struct TraceGenerator {
 impl TraceGenerator {
     fn new(log_size: u32) -> Self {
         assert!(log_size >= LOG_N_LANES);
-        let trace = (0..blake_round_info().mask_offsets[0].len())
+        let trace = (0..blake_round_info().mask_offsets[ORIGINAL_TRACE_IDX].len())
             .map(|_| unsafe { Col::<SimdBackend, BaseField>::uninitialized(1 << log_size) })
             .collect_vec();
         Self {

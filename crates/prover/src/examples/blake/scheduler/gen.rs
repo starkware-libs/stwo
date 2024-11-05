@@ -6,6 +6,7 @@ use tracing::{span, Level};
 
 use super::{blake_scheduler_info, BlakeElements};
 use crate::constraint_framework::logup::LogupTraceGenerator;
+use crate::constraint_framework::ORIGINAL_TRACE_IDX;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -54,7 +55,7 @@ pub fn gen_trace(
     let mut lookup_data = BlakeSchedulerLookupData::new(log_size);
     let mut round_inputs = Vec::with_capacity(inputs.len() * N_ROUNDS);
 
-    let mut trace = (0..blake_scheduler_info().mask_offsets[0].len())
+    let mut trace = (0..blake_scheduler_info().mask_offsets[ORIGINAL_TRACE_IDX].len())
         .map(|_| unsafe { BaseColumn::uninitialized(1 << log_size) })
         .collect_vec();
 

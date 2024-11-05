@@ -20,7 +20,10 @@ use num_traits::Zero;
 pub use r#gen::{generate_constant_trace, generate_interaction_trace, generate_trace};
 
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
-use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
+use crate::constraint_framework::{
+    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, INTERACTION_TRACE_IDX,
+    PREPROCESSED_TRACE_IDX,
+};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::Column;
 use crate::core::fields::qm31::SecureField;
@@ -103,11 +106,11 @@ impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> FrameworkEval
         column_bits::<ELEM_BITS, EXPAND_BITS>() + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(2, [0]);
+        let [is_first] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
         let xor_eval = constraints::XorTableEval::<'_, _, ELEM_BITS, EXPAND_BITS> {
             eval,
             lookup_elements: &self.lookup_elements,
-            logup: LogupAtRow::new(1, self.claimed_sum, None, is_first),
+            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, self.claimed_sum, None, is_first),
         };
         xor_eval.eval()
     }

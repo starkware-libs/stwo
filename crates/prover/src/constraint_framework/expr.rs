@@ -196,7 +196,7 @@ mod tests {
     use num_traits::One;
 
     use crate::constraint_framework::expr::{ColumnExpr, Expr, ExprEvaluator};
-    use crate::constraint_framework::{EvalAtRow, FrameworkEval};
+    use crate::constraint_framework::{EvalAtRow, FrameworkEval, ORIGINAL_TRACE_IDX};
     use crate::core::fields::FieldExpOps;
     #[test]
     fn test_expr_eval() {
@@ -211,30 +211,30 @@ mod tests {
                     Box::new(Expr::Mul(
                         Box::new(Expr::Mul(
                             Box::new(Expr::Col(ColumnExpr {
-                                interaction: 0,
+                                interaction: ORIGINAL_TRACE_IDX,
                                 idx: 0,
                                 offset: 0
                             })),
                             Box::new(Expr::Col(ColumnExpr {
-                                interaction: 0,
+                                interaction: ORIGINAL_TRACE_IDX,
                                 idx: 1,
                                 offset: 0
                             }))
                         )),
                         Box::new(Expr::Col(ColumnExpr {
-                            interaction: 0,
+                            interaction: ORIGINAL_TRACE_IDX,
                             idx: 2,
                             offset: 0
                         }))
                     )),
                     Box::new(Expr::Inv(Box::new(Expr::Add(
                         Box::new(Expr::Col(ColumnExpr {
-                            interaction: 0,
+                            interaction: ORIGINAL_TRACE_IDX,
                             idx: 0,
                             offset: 0
                         })),
                         Box::new(Expr::Col(ColumnExpr {
-                            interaction: 0,
+                            interaction: ORIGINAL_TRACE_IDX,
                             idx: 1,
                             offset: 0
                         }))

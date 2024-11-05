@@ -8,7 +8,10 @@ use num_traits::Zero;
 use super::round::RoundElements;
 use super::N_ROUND_INPUT_FELTS;
 use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
-use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
+use crate::constraint_framework::{
+    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, INTERACTION_TRACE_IDX,
+    PREPROCESSED_TRACE_IDX,
+};
 use crate::core::fields::qm31::SecureField;
 
 pub type BlakeSchedulerComponent = FrameworkComponent<BlakeSchedulerEval>;
@@ -29,12 +32,12 @@ impl FrameworkEval for BlakeSchedulerEval {
         self.log_size + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(2, [0]);
+        let [is_first] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
         eval_blake_scheduler_constraints(
             &mut eval,
             &self.blake_lookup_elements,
             &self.round_lookup_elements,
-            LogupAtRow::new(1, self.total_sum, None, is_first),
+            LogupAtRow::new(INTERACTION_TRACE_IDX, self.total_sum, None, is_first),
         );
         eval
     }

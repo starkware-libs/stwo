@@ -298,7 +298,7 @@ mod tests {
     use num_traits::One;
 
     use super::{LogupAtRow, LookupElements};
-    use crate::constraint_framework::InfoEvaluator;
+    use crate::constraint_framework::{InfoEvaluator, INTERACTION_TRACE_IDX};
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -308,8 +308,12 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_logup_not_finalized_panic() {
-        let mut logup =
-            LogupAtRow::<InfoEvaluator>::new(1, SecureField::one(), None, BaseField::one());
+        let mut logup = LogupAtRow::<InfoEvaluator>::new(
+            INTERACTION_TRACE_IDX,
+            SecureField::one(),
+            None,
+            BaseField::one(),
+        );
         logup.write_frac(
             &mut InfoEvaluator::default(),
             Fraction::new(SecureField::one(), SecureField::one()),

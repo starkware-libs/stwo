@@ -8,7 +8,8 @@ use tracing::{info, span, Level};
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::preprocessed_columns::gen_is_first;
 use crate::constraint_framework::{
-    EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
+    EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator, INTERACTION_TRACE_IDX,
+    PREPROCESSED_TRACE_IDX,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -60,8 +61,8 @@ impl FrameworkEval for PoseidonEval {
         self.log_n_rows + LOG_EXPAND
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(2, [0]);
-        let logup = LogupAtRow::new(1, self.total_sum, None, is_first);
+        let [is_first] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        let logup = LogupAtRow::new(INTERACTION_TRACE_IDX, self.total_sum, None, is_first);
         eval_poseidon_constraints(&mut eval, logup, &self.lookup_elements);
         eval
     }
@@ -401,7 +402,9 @@ mod tests {
 
     use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
     use crate::constraint_framework::preprocessed_columns::gen_is_first;
-    use crate::constraint_framework::{assert_constraints, EvalAtRow};
+    use crate::constraint_framework::{
+        assert_constraints, EvalAtRow, INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
+    };
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
@@ -480,10 +483,10 @@ mod tests {
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
         assert_constraints(&trace_polys, CanonicCoset::new(LOG_N_ROWS), |mut eval| {
-            let [is_first] = eval.next_interaction_mask(2, [0]);
+            let [is_first] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
             eval_poseidon_constraints(
                 &mut eval,
-                LogupAtRow::new(1, total_sum, None, is_first),
+                LogupAtRow::new(INTERACTION_TRACE_IDX, total_sum, None, is_first),
                 &lookup_elements,
             );
         });
