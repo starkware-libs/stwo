@@ -9,7 +9,7 @@ use components::{
 use gen::{gen_interaction_trace, gen_trace};
 use itertools::{chain, Itertools};
 
-use crate::constraint_framework::preprocessed_columns::gen_is_first;
+use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
@@ -95,7 +95,10 @@ pub fn prove_state_machine(
     tree_builder.commit(channel);
 
     // Prove constraints.
-    let mut tree_span_provider = &mut TraceLocationAllocator::default();
+    let mut tree_span_provider = &mut TraceLocationAllocator::new_with_preproccessed_columnds(&[
+        PreprocessedColumn::IsFirst(x_axis_log_rows),
+        PreprocessedColumn::IsFirst(y_axis_log_rows),
+    ]);
     let component0 = StateMachineOp0Component::new(
         tree_span_provider,
         StateTransitionEval {
@@ -135,11 +138,16 @@ pub fn verify_state_machine(
     proof: StateMachineProof<Blake2sMerkleHasher>,
 ) -> Result<(), VerificationError> {
     let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+
     // Decommit.
     // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-    let sizes = proof.stmt0.log_sizes();
+    let sizes = crate::core::air::Components {
+        components: components.components(),
+        n_preprocessed_columns: 2,
+    }
+    .column_log_sizes();
 
-    // Constant columns.
+    // Preprocessed columns.
     commitment_scheme.commit(proof.stark_proof.commitments[0], &sizes[0], channel);
     // Trace columns.
     proof.stmt0.mix_into(channel);
@@ -177,7 +185,7 @@ mod tests {
     };
     use super::gen::{gen_interaction_trace, gen_trace};
     use super::{prove_state_machine, verify_state_machine};
-    use crate::constraint_framework::preprocessed_columns::gen_is_first;
+    use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
     use crate::constraint_framework::{assert_constraints, FrameworkEval, TraceLocationAllocator};
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::M31;
@@ -200,7 +208,9 @@ mod tests {
 
         assert_eq!(total_sum, claimed_sum);
         let component = StateMachineOp0Component::new(
-            &mut TraceLocationAllocator::default(),
+            &mut TraceLocationAllocator::new_with_preproccessed_columnds(&[
+                PreprocessedColumn::IsFirst(log_n_rows),
+            ]),
             StateTransitionEval {
                 log_n_rows,
                 lookup_elements,
