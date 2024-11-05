@@ -145,6 +145,10 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> Component
         })
     }
 
+    fn preproccessed_column_indices(&self) -> ColumnVec<usize> {
+        vec![]
+    }
+
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
@@ -344,6 +348,10 @@ impl<'oracle, O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'o
                 .map(|offset| point + trace_step.mul_signed(*offset).into_ef())
                 .collect()
         })
+    }
+
+    fn preproccessed_column_indices(&self) -> ColumnVec<usize> {
+        vec![]
     }
 
     fn evaluate_constraint_quotients_at_point(
@@ -726,7 +734,7 @@ mod tests {
         MleEvalVerifierComponent,
     };
     use crate::constraint_framework::preprocessed_columns::{
-        gen_is_first, gen_is_step_with_offset,
+        gen_is_first, gen_is_step_with_offset, PreprocessedColumn,
     };
     use crate::constraint_framework::{assert_constraints, EvalAtRow, TraceLocationAllocator};
     use crate::core::air::{Component, ComponentProver, Components};
@@ -787,7 +795,10 @@ mod tests {
         tree_builder.extend_evals(build_trace(&mle, &eval_point, claim));
         tree_builder.commit(channel);
         // Create components.
-        let trace_location_allocator = &mut TraceLocationAllocator::default();
+        let trace_location_allocator =
+            &mut TraceLocationAllocator::new_with_preproccessed_columnds(&[
+                PreprocessedColumn::IsFirst(log_size),
+            ]);
         let mle_coeffs_col_component = MleCoeffColumnComponent::new(
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, mle.n_variables()),
@@ -859,7 +870,10 @@ mod tests {
         tree_builder.extend_evals(build_trace(&mle, &eval_point, claim));
         tree_builder.commit(channel);
         // Create components.
-        let trace_location_allocator = &mut TraceLocationAllocator::default();
+        let trace_location_allocator =
+            &mut TraceLocationAllocator::new_with_preproccessed_columnds(&[
+                PreprocessedColumn::IsFirst(log_size),
+            ]);
         let mle_coeffs_col_component = MleCoeffColumnComponent::new(
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, mle.n_variables()),
@@ -879,7 +893,10 @@ mod tests {
         let proof = prove(components, channel, commitment_scheme).unwrap();
 
         // Verify.
-        let trace_location_allocator = &mut TraceLocationAllocator::default();
+        let trace_location_allocator =
+            &mut TraceLocationAllocator::new_with_preproccessed_columnds(&[
+                PreprocessedColumn::IsFirst(log_size),
+            ]);
         let mle_coeffs_col_component = MleCoeffColumnComponent::new(
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, N_VARIABLES),
@@ -1126,7 +1143,6 @@ mod tests {
     mod mle_coeff_column {
         use num_traits::One;
 
-        use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
         use crate::constraint_framework::{
             EvalAtRow, FrameworkComponent, FrameworkEval, PointEvaluator,
         };
@@ -1168,8 +1184,6 @@ mod tests {
             }
 
             fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-                // TODO(ilya): remove the following once preproccessed columns are not mandatory.
-                let _ = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
                 let _ = eval_mle_coeff_col(self.interaction, &mut eval);
                 eval
             }

@@ -1,9 +1,9 @@
-use num_traits::{One, Zero};
+use num_traits::One;
 
 use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupAtRow, LookupElements};
 use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use crate::constraint_framework::{
-    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, INTERACTION_TRACE_IDX,
+    EvalAtRow, FrameworkComponent, FrameworkEval, INTERACTION_TRACE_IDX,
 };
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::SimdBackend;
@@ -11,7 +11,6 @@ use crate::core::channel::Channel;
 use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::{SecureField, QM31};
 use crate::core::lookups::utils::Fraction;
-use crate::core::pcs::TreeVec;
 use crate::core::prover::StarkProof;
 use crate::core::vcs::ops::MerkleHasher;
 
@@ -73,19 +72,6 @@ pub struct StateMachineStatement0 {
     pub m: u32,
 }
 impl StateMachineStatement0 {
-    pub fn log_sizes(&self) -> TreeVec<Vec<u32>> {
-        let sizes = vec![
-            state_transition_info::<0>()
-                .mask_offsets
-                .as_cols_ref()
-                .map_cols(|_| self.n),
-            state_transition_info::<1>()
-                .mask_offsets
-                .as_cols_ref()
-                .map_cols(|_| self.m),
-        ];
-        TreeVec::concat_cols(sizes.into_iter())
-    }
     pub fn mix_into(&self, channel: &mut impl Channel) {
         channel.mix_u64(self.n as u64);
         channel.mix_u64(self.m as u64);
@@ -100,16 +86,6 @@ impl StateMachineStatement1 {
     pub fn mix_into(&self, channel: &mut impl Channel) {
         channel.mix_felts(&[self.x_axis_claimed_sum, self.y_axis_claimed_sum])
     }
-}
-
-fn state_transition_info<const INDEX: usize>() -> InfoEvaluator {
-    let component = StateTransitionEval::<INDEX> {
-        log_n_rows: 1,
-        lookup_elements: StateMachineElements::dummy(),
-        total_sum: QM31::zero(),
-        claimed_sum: (QM31::zero(), 0),
-    };
-    component.evaluate(InfoEvaluator::default())
 }
 
 pub struct StateMachineComponents {

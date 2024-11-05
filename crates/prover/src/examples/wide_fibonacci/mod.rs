@@ -1,6 +1,5 @@
 use itertools::Itertools;
 
-use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use crate::core::backend::simd::m31::PackedBaseField;
 use crate::core::backend::simd::SimdBackend;
@@ -32,8 +31,6 @@ impl<const N: usize> FrameworkEval for WideFibonacciEval<N> {
         self.log_n_rows + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        // TODO(ilya): remove the following once preproccessed columns are not mandatory.
-        let _ = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
         let mut a = eval.next_trace_mask();
         let mut b = eval.next_trace_mask();
         for _ in 2..N {
@@ -76,7 +73,7 @@ mod tests {
     use num_traits::{One, Zero};
 
     use super::WideFibonacciEval;
-    use crate::constraint_framework::preprocessed_columns::gen_is_first;
+    use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
     use crate::constraint_framework::{
         assert_constraints, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
     };
@@ -205,7 +202,9 @@ mod tests {
 
             // Prove constraints.
             let component = WideFibonacciComponent::new(
-                &mut TraceLocationAllocator::default(),
+                &mut TraceLocationAllocator::new_with_preproccessed_columnds(&[
+                    PreprocessedColumn::IsFirst(log_n_instances),
+                ]),
                 WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
                     log_n_rows: log_n_instances,
                 },
@@ -225,7 +224,7 @@ mod tests {
 
             // Retrieve the expected column sizes in each commitment interaction, from the AIR.
             let sizes = component.trace_log_degree_bounds();
-            commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+            commitment_scheme.commit(proof.commitments[0], &[log_n_instances], verifier_channel);
             commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
             verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
         }
@@ -264,7 +263,9 @@ mod tests {
 
         // Prove constraints.
         let component = WideFibonacciComponent::new(
-            &mut TraceLocationAllocator::default(),
+            &mut TraceLocationAllocator::new_with_preproccessed_columnds(&[
+                PreprocessedColumn::IsFirst(LOG_N_INSTANCES),
+            ]),
             WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
                 log_n_rows: LOG_N_INSTANCES,
             },
@@ -283,7 +284,7 @@ mod tests {
 
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
-        commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+        commitment_scheme.commit(proof.commitments[0], &[LOG_N_INSTANCES], verifier_channel);
         commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
         verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
     }

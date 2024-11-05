@@ -2,6 +2,7 @@ use itertools::Itertools;
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Component, ComponentProver, Trace};
+use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
@@ -23,8 +24,21 @@ impl<'a> Components<'a> {
     pub fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
+        n_preprocessed_columns: usize,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        TreeVec::concat_cols(self.0.iter().map(|component| component.mask_points(point)))
+        let mut mask_points =
+            TreeVec::concat_cols(self.0.iter().map(|component| component.mask_points(point)));
+
+        let preprocessed_mask_points = &mut mask_points[PREPROCESSED_TRACE_IDX];
+        *preprocessed_mask_points = vec![vec![]; n_preprocessed_columns];
+
+        for component in &self.0 {
+            for idx in component.preproccessed_column_indices() {
+                preprocessed_mask_points[idx].resize(1, point);
+            }
+        }
+
+        mask_points
     }
 
     pub fn eval_composition_polynomial_at_point(

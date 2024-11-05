@@ -163,9 +163,11 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
 
         // Check that all witnesses and values have been consumed.
         if !hash_witness.is_empty() {
+            eprintln!("hash_witness");
             return Err(MerkleVerificationError::WitnessTooLong);
         }
         if !column_witness.is_empty() {
+            eprintln!("column_witness");
             return Err(MerkleVerificationError::WitnessTooLong);
         }
 
