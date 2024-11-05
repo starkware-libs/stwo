@@ -6,10 +6,9 @@ use itertools::Itertools;
 use tracing::{info, span, Level};
 
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
-use crate::constraint_framework::preprocessed_columns::gen_is_first;
+use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
 use crate::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator, INTERACTION_TRACE_IDX,
-    PREPROCESSED_TRACE_IDX,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -61,7 +60,7 @@ impl FrameworkEval for PoseidonEval {
         self.log_n_rows + LOG_EXPAND
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        let is_first = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
         let logup = LogupAtRow::new(INTERACTION_TRACE_IDX, self.total_sum, None, is_first);
         eval_poseidon_constraints(&mut eval, logup, &self.lookup_elements);
         eval
@@ -380,7 +379,9 @@ pub fn prove_poseidon(
 
     // Prove constraints.
     let component = PoseidonComponent::new(
-        &mut TraceLocationAllocator::default(),
+        &mut TraceLocationAllocator::new_with_preproccessed_columnds(&[
+            PreprocessedColumn::IsFirst(log_n_rows),
+        ]),
         PoseidonEval {
             log_n_rows,
             lookup_elements,

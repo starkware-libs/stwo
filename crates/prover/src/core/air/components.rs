@@ -2,6 +2,7 @@ use itertools::Itertools;
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Component, ComponentProver, Trace};
+use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
@@ -27,11 +28,22 @@ impl<'a> Components<'a> {
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        TreeVec::concat_cols(
+        let mut mask_points = TreeVec::concat_cols(
             self.components
                 .iter()
                 .map(|component| component.mask_points(point)),
-        )
+        );
+
+        let preprocessed_mask_points = &mut mask_points[PREPROCESSED_TRACE_IDX];
+        *preprocessed_mask_points = vec![vec![]; self.n_preprocessed_columns];
+
+        for component in &self.components {
+            for idx in component.preproccessed_column_indices() {
+                preprocessed_mask_points[idx].resize(1, point);
+            }
+        }
+
+        mask_points
     }
 
     pub fn eval_composition_polynomial_at_point(
@@ -52,22 +64,59 @@ impl<'a> Components<'a> {
     }
 
     pub fn column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
-        TreeVec::concat_cols(
-            self.components
-                .iter()
-                .map(|component| component.trace_log_degree_bounds()),
-        )
+        let mut preprocessed_columns = vec![0; self.n_preprocessed_columns];
+        let mut updated_columns = vec![false; self.n_preprocessed_columns];
+
+        let mut column_log_sizes = TreeVec::concat_cols(self.components.iter().map(|component| {
+            let mut component_trace_log_sizes = component.trace_log_degree_bounds();
+
+            for (offset, size) in component
+                .preproccessed_column_indices()
+                .into_iter()
+                .zip(std::mem::take(&mut component_trace_log_sizes[0]))
+            {
+                let column_size = &mut preprocessed_columns[offset];
+                if updated_columns[offset] {
+                    assert!(
+                        *column_size == size,
+                        "Preprocessed column size mismatch for column {}",
+                        offset
+                    );
+                } else {
+                    *column_size = size;
+                    updated_columns[offset] = true;
+                }
+            }
+
+            component_trace_log_sizes
+        }));
+
+        assert!(
+            updated_columns.iter().all(|&updated| updated),
+            "Column size not set for all reprocessed columns"
+        );
+
+        column_log_sizes[PREPROCESSED_TRACE_IDX] = preprocessed_columns;
+
+        column_log_sizes
     }
 }
 
-pub struct ComponentProvers<'a, B: Backend>{
+pub struct ComponentProvers<'a, B: Backend> {
     pub components: Vec<&'a dyn ComponentProver<B>>,
     pub n_preprocessed_columns: usize,
 }
 
 impl<'a, B: Backend> ComponentProvers<'a, B> {
     pub fn components(&self) -> Components<'_> {
-        Components{components: self.components.iter().map(|c| *c as &dyn Component).collect_vec(), n_preprocessed_columns: self.n_preprocessed_columns}
+        Components {
+            components: self
+                .components
+                .iter()
+                .map(|c| *c as &dyn Component)
+                .collect_vec(),
+            n_preprocessed_columns: self.n_preprocessed_columns,
+        }
     }
     pub fn compute_composition_polynomial(
         &self,
