@@ -1,7 +1,10 @@
+use std::iter::zip;
+
 use itertools::Itertools;
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Component, ComponentProver, Trace};
+use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
@@ -27,11 +30,22 @@ impl<'a> Components<'a> {
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        TreeVec::concat_cols(
+        let mut mask_points = TreeVec::concat_cols(
             self.components
                 .iter()
                 .map(|component| component.mask_points(point)),
-        )
+        );
+
+        let preprocessed_mask_points = &mut mask_points[PREPROCESSED_TRACE_IDX];
+        *preprocessed_mask_points = vec![vec![]; self.n_preprocessed_columns];
+
+        for component in &self.components {
+            for idx in component.preproccessed_column_indices() {
+                preprocessed_mask_points[idx] = vec![point];
+            }
+        }
+
+        mask_points
     }
 
     pub fn eval_composition_polynomial_at_point(
@@ -52,11 +66,40 @@ impl<'a> Components<'a> {
     }
 
     pub fn column_log_sizes(&self) -> TreeVec<ColumnVec<u32>> {
-        TreeVec::concat_cols(
-            self.components
-                .iter()
-                .map(|component| component.trace_log_degree_bounds()),
-        )
+        let mut preprocessed_columns_trace_log_sizes = vec![0; self.n_preprocessed_columns];
+        let mut visited_columns = vec![false; self.n_preprocessed_columns];
+
+        let mut column_log_sizes = TreeVec::concat_cols(self.components.iter().map(|component| {
+            let component_trace_log_sizes = component.trace_log_degree_bounds();
+
+            for (column_index, &log_size) in zip(
+                component.preproccessed_column_indices().into_iter(),
+                component_trace_log_sizes[PREPROCESSED_TRACE_IDX].iter(),
+            ) {
+                let column_log_size = &mut preprocessed_columns_trace_log_sizes[column_index];
+                if visited_columns[column_index] {
+                    assert!(
+                        *column_log_size == log_size,
+                        "Preprocessed column size mismatch for column {}",
+                        column_index
+                    );
+                } else {
+                    *column_log_size = log_size;
+                    visited_columns[column_index] = true;
+                }
+            }
+
+            component_trace_log_sizes
+        }));
+
+        assert!(
+            visited_columns.iter().all(|&updated| updated),
+            "Column size not set for all reprocessed columns"
+        );
+
+        column_log_sizes[PREPROCESSED_TRACE_IDX] = preprocessed_columns_trace_log_sizes;
+
+        column_log_sizes
     }
 }
 

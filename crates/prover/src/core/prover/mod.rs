@@ -117,6 +117,7 @@ pub fn verify<MC: MerkleChannel>(
 
     // Get mask sample points relative to oods point.
     let mut sample_points = components.mask_points(oods_point);
+
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
 
