@@ -1,6 +1,7 @@
 use num_traits::{One, Zero};
 
 use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupAtRow, LookupElements};
+use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use crate::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, INTERACTION_TRACE_IDX,
 };
@@ -41,7 +42,7 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
         self.log_n_rows + LOG_CONSTRAINT_DEGREE
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(2, [0]);
+        let is_first = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
         let mut logup: LogupAtRow<E> = LogupAtRow::new(
             INTERACTION_TRACE_IDX,
             self.total_sum,

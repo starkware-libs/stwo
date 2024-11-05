@@ -5,10 +5,10 @@ use tracing::{span, Level};
 use crate::constraint_framework::logup::{
     ClaimedPrefixSum, LogupAtRow, LogupTraceGenerator, LookupElements,
 };
-use crate::constraint_framework::preprocessed_columns::gen_is_first;
+use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
 use crate::constraint_framework::{
     assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
-    INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
+    INTERACTION_TRACE_IDX,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -49,7 +49,7 @@ impl FrameworkEval for PlonkEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let [is_first] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        let is_first = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
         let mut logup = LogupAtRow::<_>::new(
             INTERACTION_TRACE_IDX,
             self.total_sum,
@@ -57,12 +57,12 @@ impl FrameworkEval for PlonkEval {
             is_first,
         );
 
-        let [a_wire] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
-        let [b_wire] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        let a_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(0));
+        let b_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(1));
         // Note: c_wire could also be implicit: (self.eval.point() - M31_CIRCLE_GEN.into_ef()).x.
         //   A constant column is easier though.
-        let [c_wire] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
-        let [op] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        let c_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(2));
+        let op = eval.get_preprocessed_column(PreprocessedColumn::Plonk(3));
 
         let mult = eval.next_trace_mask();
         let a_val = eval.next_trace_mask();

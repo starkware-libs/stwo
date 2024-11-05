@@ -6,6 +6,14 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 
+// TODO(ilya): Where should this enum be placed?
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PreprocessedColumn {
+    XorTable(u32, u32, usize),
+    IsFirst(u32),
+    Plonk(usize),
+}
+
 /// Generates a column with a single one at the first position, and zeros elsewhere.
 pub fn gen_is_first<B: Backend>(log_size: u32) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
     let mut col = Col::<B, BaseField>::zeros(1 << log_size);
