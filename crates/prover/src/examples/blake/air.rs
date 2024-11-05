@@ -7,9 +7,9 @@ use tracing::{span, Level};
 
 use super::round::{blake_round_info, BlakeRoundComponent, BlakeRoundEval};
 use super::scheduler::{BlakeSchedulerComponent, BlakeSchedulerEval};
-use super::xor_table::{XorTableComponent, XorTableEval};
-use crate::constraint_framework::preprocessed_columns::gen_is_first;
-use crate::constraint_framework::TraceLocationAllocator;
+use super::xor_table::{column_bits, XorTableComponent, XorTableEval};
+use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
+use crate::constraint_framework::{TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
@@ -25,6 +25,29 @@ use crate::examples::blake::scheduler::{self, blake_scheduler_info, BlakeElement
 use crate::examples::blake::{
     round, xor_table, BlakeXorElements, XorAccums, N_ROUNDS, ROUND_LOG_SPLIT,
 };
+
+const PREPROCESSED_XOR_COLUMNS: [PreprocessedColumn; 20] = [
+    PreprocessedColumn::IsFirst(column_bits::<12, 4>()),
+    PreprocessedColumn::XorTable(12, 4, 0),
+    PreprocessedColumn::XorTable(12, 4, 1),
+    PreprocessedColumn::XorTable(12, 4, 2),
+    PreprocessedColumn::IsFirst(column_bits::<9, 2>()),
+    PreprocessedColumn::XorTable(9, 2, 0),
+    PreprocessedColumn::XorTable(9, 2, 1),
+    PreprocessedColumn::XorTable(9, 2, 2),
+    PreprocessedColumn::IsFirst(column_bits::<8, 2>()),
+    PreprocessedColumn::XorTable(8, 2, 0),
+    PreprocessedColumn::XorTable(8, 2, 1),
+    PreprocessedColumn::XorTable(8, 2, 2),
+    PreprocessedColumn::IsFirst(column_bits::<7, 2>()),
+    PreprocessedColumn::XorTable(7, 2, 0),
+    PreprocessedColumn::XorTable(7, 2, 1),
+    PreprocessedColumn::XorTable(7, 2, 2),
+    PreprocessedColumn::IsFirst(column_bits::<4, 0>()),
+    PreprocessedColumn::XorTable(4, 0, 0),
+    PreprocessedColumn::XorTable(4, 0, 1),
+    PreprocessedColumn::XorTable(4, 0, 2),
+];
 
 #[derive(Serialize)]
 pub struct BlakeStatement0 {
@@ -53,7 +76,26 @@ impl BlakeStatement0 {
         sizes.push(xor_table::trace_sizes::<7, 2>());
         sizes.push(xor_table::trace_sizes::<4, 0>());
 
-        TreeVec::concat_cols(sizes.into_iter())
+        let mut log_sizes = TreeVec::concat_cols(sizes.into_iter());
+
+        let log_size = self.log_size;
+
+        let scheduler_is_first_column_log_size = log_size;
+        let blake_round_is_first_column_log_sizes = ROUND_LOG_SPLIT.iter().map(|l| log_size + l);
+
+        log_sizes[PREPROCESSED_TRACE_IDX] = chain!(
+            [scheduler_is_first_column_log_size],
+            blake_round_is_first_column_log_sizes,
+            PREPROCESSED_XOR_COLUMNS.map(|column| match column {
+                PreprocessedColumn::XorTable(elem_bits, expand_bits, _) =>
+                    2 * (elem_bits - expand_bits),
+                PreprocessedColumn::IsFirst(log_size) => log_size,
+                _ => panic!("Unexpected column"),
+            }),
+        )
+        .collect_vec();
+
+        log_sizes
     }
     fn mix_into(&self, channel: &mut impl Channel) {
         channel.mix_u64(self.log_size as u64);
@@ -121,6 +163,7 @@ pub struct BlakeComponents {
 impl BlakeComponents {
     fn new(stmt0: &BlakeStatement0, all_elements: &AllElements, stmt1: &BlakeStatement1) -> Self {
         let tree_span_provider = &mut TraceLocationAllocator::default();
+
         Self {
             scheduler_component: BlakeSchedulerComponent::new(
                 tree_span_provider,
@@ -259,10 +302,7 @@ where
     tree_builder.extend_evals(
         chain![
             vec![gen_is_first(log_size)],
-            ROUND_LOG_SPLIT
-                .iter()
-                .map(|l| gen_is_first(log_size + l))
-                .collect_vec(),
+            ROUND_LOG_SPLIT.iter().map(|l| gen_is_first(log_size + l)),
             xor_table::generate_constant_trace::<12, 4>(),
             xor_table::generate_constant_trace::<9, 2>(),
             xor_table::generate_constant_trace::<8, 2>(),

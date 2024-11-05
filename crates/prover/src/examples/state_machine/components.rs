@@ -4,6 +4,7 @@ use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupAtRow, LookupEle
 use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use crate::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, INTERACTION_TRACE_IDX,
+    PREPROCESSED_TRACE_IDX,
 };
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::SimdBackend;
@@ -84,7 +85,9 @@ impl StateMachineStatement0 {
                 .as_cols_ref()
                 .map_cols(|_| self.m),
         ];
-        TreeVec::concat_cols(sizes.into_iter())
+        let mut log_sizes = TreeVec::concat_cols(sizes.into_iter());
+        log_sizes[PREPROCESSED_TRACE_IDX] = vec![self.n, self.m];
+        log_sizes
     }
     pub fn mix_into(&self, channel: &mut impl Channel) {
         channel.mix_u64(self.n as u64);
