@@ -58,6 +58,8 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
     ) -> Result<(), MerkleVerificationError> {
         let max_log_size = self.column_log_sizes.iter().max().copied().unwrap_or(0);
 
+        eprintln!("self.column_log_sizes: {:?}", self.column_log_sizes);
+
         // Prepare read buffers.
         let mut queried_values_by_layer = self
             .column_log_sizes
@@ -163,9 +165,11 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
 
         // Check that all witnesses and values have been consumed.
         if !hash_witness.is_empty() {
+            eprintln!("hash_witness");
             return Err(MerkleVerificationError::WitnessTooLong);
         }
         if !column_witness.is_empty() {
+            eprintln!("column_witness");
             return Err(MerkleVerificationError::WitnessTooLong);
         }
 
