@@ -143,6 +143,17 @@ impl<T> TreeVec<ColumnVec<T>> {
     }
 }
 
+impl<T> TreeVec<&ColumnVec<T>> {
+    pub fn map_cols<U, F: FnMut(&T) -> U>(self, mut f: F) -> TreeVec<ColumnVec<U>> {
+        TreeVec(
+            self.0
+                .into_iter()
+                .map(|column| column.iter().map(&mut f).collect())
+                .collect(),
+        )
+    }
+}
+
 impl<'a, T> From<&'a TreeVec<ColumnVec<T>>> for TreeVec<ColumnVec<&'a T>> {
     fn from(val: &'a TreeVec<ColumnVec<T>>) -> Self {
         val.as_cols_ref()
