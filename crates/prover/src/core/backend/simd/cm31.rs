@@ -19,12 +19,12 @@ impl PackedCM31 {
     }
 
     /// Returns all `a` values such that each vector element is represented as `a + bi`.
-    pub fn a(&self) -> PackedM31 {
+    pub const fn a(&self) -> PackedM31 {
         self.0[0]
     }
 
     /// Returns all `b` values such that each vector element is represented as `a + bi`.
-    pub fn b(&self) -> PackedM31 {
+    pub const fn b(&self) -> PackedM31 {
         self.0[1]
     }
 

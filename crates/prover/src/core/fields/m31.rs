@@ -55,7 +55,7 @@ impl M31 {
     /// let val = (P as u64).pow(2) - 19;
     /// assert_eq!(M31::reduce(val), M31::from(P - 19));
     /// ```
-    pub fn reduce(val: u64) -> Self {
+    pub const fn reduce(val: u64) -> Self {
         Self((((((val >> MODULUS_BITS) + val + 1) >> MODULUS_BITS) + val) & (P as u64)) as u32)
     }
 
@@ -211,15 +211,15 @@ mod tests {
     use super::{M31, P};
     use crate::core::fields::IntoSlice;
 
-    fn mul_p(a: u32, b: u32) -> u32 {
+    const fn mul_p(a: u32, b: u32) -> u32 {
         ((a as u64 * b as u64) % P as u64) as u32
     }
 
-    fn add_p(a: u32, b: u32) -> u32 {
+    const fn add_p(a: u32, b: u32) -> u32 {
         (a + b) % P
     }
 
-    fn neg_p(a: u32) -> u32 {
+    const fn neg_p(a: u32) -> u32 {
         if a == 0 {
             0
         } else {

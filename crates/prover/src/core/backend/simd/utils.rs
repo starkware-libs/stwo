@@ -30,7 +30,7 @@ impl<T: ?Sized> UnsafeMut<T> {
     /// # Safety
     ///
     /// Returns a raw mutable pointer.
-    pub unsafe fn get(&self) -> *mut T {
+    pub const unsafe fn get(&self) -> *mut T {
         self.0
     }
 }
@@ -43,7 +43,7 @@ impl<T> UnsafeConst<T> {
     /// # Safety
     ///
     /// Returns a raw constant pointer.
-    pub unsafe fn get(&self) -> *const T {
+    pub const unsafe fn get(&self) -> *const T {
         self.0
     }
 }

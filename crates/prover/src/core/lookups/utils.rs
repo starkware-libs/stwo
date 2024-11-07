@@ -204,7 +204,7 @@ pub struct Fraction<N, D> {
 impl<N: Copy, D: Copy> Copy for Fraction<N, D> {}
 
 impl<N, D> Fraction<N, D> {
-    pub fn new(numerator: N, denominator: D) -> Self {
+    pub const fn new(numerator: N, denominator: D) -> Self {
         Self {
             numerator,
             denominator,
@@ -260,7 +260,7 @@ pub struct Reciprocal<T> {
 }
 
 impl<T> Reciprocal<T> {
-    pub fn new(x: T) -> Self {
+    pub const fn new(x: T) -> Self {
         Self { x }
     }
 }

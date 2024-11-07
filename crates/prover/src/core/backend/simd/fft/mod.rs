@@ -97,7 +97,7 @@ pub fn compute_first_twiddles(twiddle1_dbl: u32x8) -> (u32x16, u32x16) {
 }
 
 #[inline]
-unsafe fn load(mem_addr: *const u32) -> u32x16 {
+const unsafe fn load(mem_addr: *const u32) -> u32x16 {
     std::ptr::read(mem_addr as *const u32x16)
 }
 

@@ -24,7 +24,7 @@ impl CM31 {
         Self(M31::from_u32_unchecked(a), M31::from_u32_unchecked(b))
     }
 
-    pub fn from_m31(a: M31, b: M31) -> CM31 {
+    pub const fn from_m31(a: M31, b: M31) -> CM31 {
         Self(a, b)
     }
 }

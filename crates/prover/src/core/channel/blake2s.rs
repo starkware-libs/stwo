@@ -19,7 +19,7 @@ pub struct Blake2sChannel {
 }
 
 impl Blake2sChannel {
-    pub fn digest(&self) -> Blake2sHash {
+    pub const fn digest(&self) -> Blake2sHash {
         self.digest
     }
     pub fn update_digest(&mut self, new_digest: Blake2sHash) {

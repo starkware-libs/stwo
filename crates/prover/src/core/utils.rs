@@ -54,7 +54,7 @@ impl<'a, I: Iterator> PeekableExt<'a, I> for Peekable<I> {
 }
 
 /// Returns the bit reversed index of `i` which is represented by `log_size` bits.
-pub fn bit_reverse_index(i: usize, log_size: u32) -> usize {
+pub const fn bit_reverse_index(i: usize, log_size: u32) -> usize {
     if log_size == 0 {
         return i;
     }
@@ -64,7 +64,7 @@ pub fn bit_reverse_index(i: usize, log_size: u32) -> usize {
 /// Returns the index of the previous element in a bit reversed
 /// [super::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a smaller domain
 /// of size `domain_log_size`.
-pub fn previous_bit_reversed_circle_domain_index(
+pub const fn previous_bit_reversed_circle_domain_index(
     i: usize,
     domain_log_size: u32,
     eval_log_size: u32,
@@ -75,7 +75,7 @@ pub fn previous_bit_reversed_circle_domain_index(
 /// Returns the index of the offset element in a bit reversed
 /// [super::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a smaller domain
 /// of size `domain_log_size`.
-pub fn offset_bit_reversed_circle_domain_index(
+pub const fn offset_bit_reversed_circle_domain_index(
     i: usize,
     domain_log_size: u32,
     eval_log_size: u32,
@@ -122,7 +122,7 @@ pub(crate) fn coset_order_to_circle_domain_order<F: Field>(values: &[F]) -> Vec<
 ///
 /// [`CircleDomain`]: crate::core::poly::circle::CircleDomain
 /// [`Coset`]: crate::core::circle::Coset
-pub fn coset_index_to_circle_domain_index(coset_index: usize, log_domain_size: u32) -> usize {
+pub const fn coset_index_to_circle_domain_index(coset_index: usize, log_domain_size: u32) -> usize {
     if coset_index % 2 == 0 {
         coset_index / 2
     } else {

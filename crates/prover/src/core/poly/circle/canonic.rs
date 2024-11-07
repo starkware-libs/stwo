@@ -31,7 +31,7 @@ impl CanonicCoset {
     }
 
     /// Gets the full coset represented G_{2n} + <G_n>.
-    pub fn coset(&self) -> Coset {
+    pub const fn coset(&self) -> Coset {
         self.coset
     }
 
@@ -46,24 +46,24 @@ impl CanonicCoset {
     }
 
     /// Returns the log size of the coset.
-    pub fn log_size(&self) -> u32 {
+    pub const fn log_size(&self) -> u32 {
         self.coset.log_size
     }
 
     /// Returns the size of the coset.
-    pub fn size(&self) -> usize {
+    pub const fn size(&self) -> usize {
         self.coset.size()
     }
 
-    pub fn initial_index(&self) -> CirclePointIndex {
+    pub const fn initial_index(&self) -> CirclePointIndex {
         self.coset.initial_index
     }
 
-    pub fn step_size(&self) -> CirclePointIndex {
+    pub const fn step_size(&self) -> CirclePointIndex {
         self.coset.step_size
     }
 
-    pub fn step(&self) -> CirclePoint<BaseField> {
+    pub const fn step(&self) -> CirclePoint<BaseField> {
         self.coset.step
     }
 
