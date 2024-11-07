@@ -5,18 +5,21 @@ use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
 use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use crate::constraint_framework::EvalAtRow;
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::utils::Fraction;
 
 /// Constraints for the xor table.
 pub struct XorTableEval<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32> {
     pub eval: E,
     pub lookup_elements: &'a XorElements,
-    pub logup: LogupAtRow<E>,
+    pub claimed_sum: SecureField,
+    pub log_size: u32,
 }
 impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
     XorTableEval<'a, E, ELEM_BITS, EXPAND_BITS>
 {
     pub fn eval(mut self) -> E {
+        self.eval.init_logup(self.claimed_sum, None, self.log_size);
         // al, bl are the constant columns for the inputs: All pairs of elements in [0,
         // 2^LIMB_BITS).
         // cl is the constant column for the xor: al ^ bl.
@@ -59,9 +62,9 @@ impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
 
         for frac_chunk in frac_chunks.chunks(2) {
             let sum_frac: Fraction<E::EF, E::EF> = frac_chunk.iter().cloned().sum();
-            self.logup.write_frac(&mut self.eval, sum_frac);
+            self.eval.write_frac(sum_frac);
         }
-        self.logup.finalize(&mut self.eval);
+        self.eval.finalize_logup();
         self.eval
     }
 }

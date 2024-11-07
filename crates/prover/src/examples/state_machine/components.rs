@@ -1,10 +1,8 @@
 use num_traits::{One, Zero};
 
-use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupAtRow, LookupElements};
-use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
+use crate::constraint_framework::logup::{ClaimedPrefixSum, LookupElements};
 use crate::constraint_framework::{
-    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, INTERACTION_TRACE_IDX,
-    PREPROCESSED_TRACE_IDX,
+    EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, PREPROCESSED_TRACE_IDX,
 };
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::SimdBackend;
@@ -43,13 +41,7 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
         self.log_n_rows + LOG_CONSTRAINT_DEGREE
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let is_first = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
-        let mut logup: LogupAtRow<E> = LogupAtRow::new(
-            INTERACTION_TRACE_IDX,
-            self.total_sum,
-            Some(self.claimed_sum),
-            is_first,
-        );
+        eval.init_logup(self.total_sum, Some(self.claimed_sum), self.log_size());
 
         let input_state: [_; STATE_SIZE] = std::array::from_fn(|_| eval.next_trace_mask());
         let input_denom: E::EF = self.lookup_elements.combine(&input_state);
@@ -58,13 +50,12 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
         output_state[COORDINATE] += E::F::one();
         let output_denom: E::EF = self.lookup_elements.combine(&output_state);
 
-        logup.write_frac(
-            &mut eval,
+        eval.write_frac(
             Fraction::new(E::EF::one(), input_denom)
                 + Fraction::new(-E::EF::one(), output_denom.clone()),
         );
 
-        logup.finalize(&mut eval);
+        eval.finalize_logup();
         eval
     }
 }

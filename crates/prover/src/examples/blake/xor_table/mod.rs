@@ -107,11 +107,11 @@ impl<const ELEM_BITS: u32, const EXPAND_BITS: u32> FrameworkEval
         column_bits::<ELEM_BITS, EXPAND_BITS>() + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let is_first = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
         let xor_eval = constraints::XorTableEval::<'_, _, ELEM_BITS, EXPAND_BITS> {
             eval,
             lookup_elements: &self.lookup_elements,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, self.claimed_sum, None, is_first),
+            claimed_sum: self.claimed_sum,
+            log_size: self.log_size(),
         };
         xor_eval.eval()
     }
