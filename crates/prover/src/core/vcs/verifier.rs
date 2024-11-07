@@ -56,7 +56,9 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
         queried_values: ColumnVec<Vec<BaseField>>,
         decommitment: MerkleDecommitment<H>,
     ) -> Result<(), MerkleVerificationError> {
-        let max_log_size = self.column_log_sizes.iter().max().copied().unwrap_or(0);
+        let Some(max_log_size) = self.column_log_sizes.iter().max() else {
+            return Ok(());
+        };
 
         // Prepare read buffers.
         let mut queried_values_by_layer = self
@@ -74,7 +76,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
         let mut column_witness = decommitment.column_witness.into_iter();
 
         let mut last_layer_hashes: Option<Vec<(usize, H::Hash)>> = None;
-        for layer_log_size in (0..=max_log_size).rev() {
+        for layer_log_size in (0..=*max_log_size).rev() {
             // Prepare read buffer for queried values to the current layer.
             let mut layer_queried_values = queried_values_by_layer
                 .peek_take_while(|(log_size, _)| *log_size == layer_log_size)
