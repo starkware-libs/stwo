@@ -104,7 +104,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             })
             .0
             .into_iter()
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<(), _>>()?;
 
         // Answer FRI queries.
         let samples = sampled_points

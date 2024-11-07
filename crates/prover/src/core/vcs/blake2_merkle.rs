@@ -35,7 +35,7 @@ impl MerkleHasher for Blake2sMerkleHasher {
         for chunk in padded_values.array_chunks::<16>() {
             state = compress(state, unsafe { std::mem::transmute(chunk) }, 0, 0, 0, 0);
         }
-        state.map(|x| x.to_le_bytes()).flatten().into()
+        state.map(|x| x.to_le_bytes()).as_flattened().into()
     }
 }
 
