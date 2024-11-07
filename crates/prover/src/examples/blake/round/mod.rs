@@ -5,16 +5,13 @@ pub use gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
 use num_traits::Zero;
 
 use super::{BlakeXorElements, N_ROUND_INPUT_FELTS};
-use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
-use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
+use crate::constraint_framework::logup::LookupElements;
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
 use crate::core::fields::qm31::SecureField;
 
 pub type BlakeRoundComponent = FrameworkComponent<BlakeRoundEval>;
 
 pub type RoundElements = LookupElements<N_ROUND_INPUT_FELTS>;
-
-use crate::constraint_framework::INTERACTION_TRACE_IDX;
 
 pub struct BlakeRoundEval {
     pub log_size: u32,
@@ -30,13 +27,13 @@ impl FrameworkEval for BlakeRoundEval {
     fn max_constraint_log_degree_bound(&self) -> u32 {
         self.log_size + 1
     }
-    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let is_first = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
+    fn evaluate<E: EvalAtRow>(&self, eval: E) -> E {
         let blake_eval = constraints::BlakeRoundEval {
             eval,
             xor_lookup_elements: &self.xor_lookup_elements,
             round_lookup_elements: &self.round_lookup_elements,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, self.total_sum, None, is_first),
+            total_sum: self.total_sum,
+            log_size: self.log_size,
         };
         blake_eval.eval()
     }

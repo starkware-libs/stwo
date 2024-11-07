@@ -925,7 +925,7 @@ mod tests {
                 is_first_eval,
                 is_second_eval,
             )
-        });
+        })
     }
 
     #[test]

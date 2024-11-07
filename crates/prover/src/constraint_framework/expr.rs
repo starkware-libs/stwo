@@ -2,10 +2,12 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 
 use num_traits::{One, Zero};
 
+use super::logup::LogupAtRow;
 use super::EvalAtRow;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
+use crate::core::lookups::utils::Fraction;
 
 /// A single base field column at index `idx` of interaction `interaction`, at mask offset `offset`.
 #[derive(Clone, Debug, PartialEq)]
@@ -149,8 +151,9 @@ impl AddAssign<BaseField> for Expr {
 /// An Evaluator that saves all constraint expressions.
 #[derive(Default)]
 struct ExprEvaluator {
-    cur_var_index: usize,
-    constraints: Vec<Expr>,
+    pub cur_var_index: usize,
+    pub constraints: Vec<Expr>,
+    pub logup: LogupAtRow<Self>,
 }
 
 impl EvalAtRow for ExprEvaluator {
@@ -189,6 +192,8 @@ impl EvalAtRow for ExprEvaluator {
             Box::new(values[3].clone()),
         ])
     }
+
+    super::logup_proxy!();
 }
 
 #[cfg(test)]

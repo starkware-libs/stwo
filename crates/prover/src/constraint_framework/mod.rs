@@ -25,6 +25,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::fields::FieldExpOps;
+use crate::core::lookups::utils::Fraction;
 
 pub const ORIGINAL_TRACE_IDX: usize = 0;
 pub const INTERACTION_TRACE_IDX: usize = 1;
@@ -109,4 +110,93 @@ pub trait EvalAtRow {
 
     /// Combines 4 base field values into a single extension field value.
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF;
+
+    /// Adds `elems` to `relation` with `multiplicity`.
+    fn add_to_relation<Relation: RelationType<Self::F, Self::EF>>(
+        &mut self,
+        relation: Relation,
+        multiplicity: usize,
+        elems: &[Self::F],
+    ) {
+        let denom = relation.combine(elems);
+        self.write_frac(Fraction::new(
+            Self::EF::from(SecureField::from(multiplicity)),
+            denom,
+        ));
+    }
+
+    // TODO(alont): Remove these once LogupAtRow is no longer used.
+    fn init_logup(
+        &mut self,
+        _total_sum: SecureField,
+        _claimed_sum: Option<crate::constraint_framework::logup::ClaimedPrefixSum>,
+        _log_size: u32,
+    ) {
+        unimplemented!()
+    }
+    fn write_frac(&mut self, _fraction: Fraction<Self::EF, Self::EF>) {
+        unimplemented!()
+    }
+    fn finalize_logup(&mut self) {
+        unimplemented!()
+    }
+}
+
+/// Default implementation for evaluators that have an element called "logup" that works like a
+/// LogupAtRow, where the logup functionality can be proxied.
+/// TODO(alont): Remove once LogupAtRow is no longer used.
+macro_rules! logup_proxy {
+    () => {
+        fn init_logup(
+            &mut self,
+            total_sum: SecureField,
+            claimed_sum: Option<crate::constraint_framework::logup::ClaimedPrefixSum>,
+            log_size: u32,
+        ) {
+            let is_first = self.get_preprocessed_column(
+                crate::constraint_framework::preprocessed_columns::PreprocessedColumn::IsFirst(
+                    log_size,
+                ),
+            );
+            self.logup = crate::constraint_framework::logup::LogupAtRow::new(
+                crate::constraint_framework::INTERACTION_TRACE_IDX,
+                total_sum,
+                claimed_sum,
+                is_first,
+            );
+        }
+
+        fn write_frac(&mut self, fraction: Fraction<Self::EF, Self::EF>) {
+            let mut logup = std::mem::take(&mut self.logup);
+            logup.write_frac(self, fraction);
+            self.logup = logup;
+        }
+
+        fn finalize_logup(&mut self) {
+            let mut logup = std::mem::take(&mut self.logup);
+            logup.finalize(self);
+            self.logup = logup;
+        }
+    };
+}
+pub(crate) use logup_proxy;
+
+pub trait RelationType<F, EF>
+where
+    F: Clone,
+    EF: Clone + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
+{
+    fn combine(&self, values: &[F]) -> EF {
+        values
+            .iter()
+            .zip(self.get_alpha_powers())
+            .fold(EF::zero(), |acc, (value, power)| {
+                acc + power.clone() * value.clone()
+            })
+            - self.get_z()
+    }
+
+    fn get_z(&self) -> EF;
+    fn get_alpha_powers(&self) -> &[EF];
+    fn name(&self) -> &str;
 }
