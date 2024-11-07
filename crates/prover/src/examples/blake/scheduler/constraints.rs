@@ -2,8 +2,8 @@ use itertools::{chain, Itertools};
 use num_traits::Zero;
 
 use super::BlakeElements;
-use crate::constraint_framework::logup::LogupAtRow;
 use crate::constraint_framework::EvalAtRow;
+use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::utils::{Fraction, Reciprocal};
 use crate::core::vcs::blake2s_ref::SIGMA;
 use crate::examples::blake::round::RoundElements;
@@ -13,8 +13,10 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
     eval: &mut E,
     blake_lookup_elements: &BlakeElements,
     round_lookup_elements: &RoundElements,
-    mut logup: LogupAtRow<E>,
+    total_sum: SecureField,
+    log_size: u32,
 ) {
+    eval.init_logup(total_sum, None, log_size);
     let messages: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| eval_next_u32(eval));
     let states: [[Fu32<E::F>; STATE_SIZE]; N_ROUNDS + 1] =
         std::array::from_fn(|_| std::array::from_fn(|_| eval_next_u32(eval)));
@@ -35,29 +37,26 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
                 .collect_vec(),
             )
         });
-        logup.write_frac(eval, Reciprocal::new(denom_i) + Reciprocal::new(denom_j));
+        eval.write_frac(Reciprocal::new(denom_i) + Reciprocal::new(denom_j));
     }
 
     let input_state = &states[0];
     let output_state = &states[N_ROUNDS];
 
     // TODO(alont): Remove blake interaction.
-    logup.write_frac(
-        eval,
-        Fraction::new(
-            E::EF::zero(),
-            blake_lookup_elements.combine(
-                &chain![
-                    input_state.iter().cloned().flat_map(Fu32::to_felts),
-                    output_state.iter().cloned().flat_map(Fu32::to_felts),
-                    messages.iter().cloned().flat_map(Fu32::to_felts)
-                ]
-                .collect_vec(),
-            ),
+    eval.write_frac(Fraction::new(
+        E::EF::zero(),
+        blake_lookup_elements.combine(
+            &chain![
+                input_state.iter().cloned().flat_map(Fu32::to_felts),
+                output_state.iter().cloned().flat_map(Fu32::to_felts),
+                messages.iter().cloned().flat_map(Fu32::to_felts)
+            ]
+            .collect_vec(),
         ),
-    );
+    ));
 
-    logup.finalize(eval);
+    eval.finalize_logup();
 }
 
 fn eval_next_u32<E: EvalAtRow>(eval: &mut E) -> Fu32<E::F> {

@@ -2,9 +2,11 @@ use std::ops::Mul;
 
 use num_traits::One;
 
+use super::logup::LogupAtRow;
 use super::EvalAtRow;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 
 /// Collects information about the constraints.
@@ -13,6 +15,7 @@ use crate::core::pcs::TreeVec;
 pub struct InfoEvaluator {
     pub mask_offsets: TreeVec<Vec<Vec<isize>>>,
     pub n_constraints: usize,
+    pub logup: LogupAtRow<Self>,
 }
 impl InfoEvaluator {
     pub fn new() -> Self {
@@ -45,4 +48,6 @@ impl EvalAtRow for InfoEvaluator {
     fn combine_ef(_values: [Self::F; 4]) -> Self::EF {
         SecureField::one()
     }
+
+    super::logup_proxy!();
 }

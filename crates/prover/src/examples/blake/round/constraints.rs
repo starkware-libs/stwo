@@ -2,9 +2,9 @@ use itertools::{chain, Itertools};
 use num_traits::One;
 
 use super::{BlakeXorElements, RoundElements};
-use crate::constraint_framework::logup::LogupAtRow;
 use crate::constraint_framework::EvalAtRow;
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::utils::{Fraction, Reciprocal};
 use crate::examples::blake::{Fu32, STATE_SIZE};
 
@@ -15,10 +15,12 @@ pub struct BlakeRoundEval<'a, E: EvalAtRow> {
     pub eval: E,
     pub xor_lookup_elements: &'a BlakeXorElements,
     pub round_lookup_elements: &'a RoundElements,
-    pub logup: LogupAtRow<E>,
+    pub total_sum: SecureField,
+    pub log_size: u32,
 }
 impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     pub fn eval(mut self) -> E {
+        self.eval.init_logup(self.total_sum, None, self.log_size);
         let mut v: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
         let input_v = v.clone();
         let m: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
@@ -65,22 +67,19 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         );
 
         // Yield `Round(input_v, output_v, message)`.
-        self.logup.write_frac(
-            &mut self.eval,
-            Fraction::new(
-                -E::EF::one(),
-                self.round_lookup_elements.combine(
-                    &chain![
-                        input_v.iter().cloned().flat_map(Fu32::to_felts),
-                        v.iter().cloned().flat_map(Fu32::to_felts),
-                        m.iter().cloned().flat_map(Fu32::to_felts)
-                    ]
-                    .collect_vec(),
-                ),
+        self.eval.write_frac(Fraction::new(
+            -E::EF::one(),
+            self.round_lookup_elements.combine(
+                &chain![
+                    input_v.iter().cloned().flat_map(Fu32::to_felts),
+                    v.iter().cloned().flat_map(Fu32::to_felts),
+                    m.iter().cloned().flat_map(Fu32::to_felts)
+                ]
+                .collect_vec(),
             ),
-        );
+        ));
 
-        self.logup.finalize(&mut self.eval);
+        self.eval.finalize_logup();
         self.eval
     }
     fn next_u32(&mut self) -> Fu32<E::F> {
@@ -197,9 +196,9 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
             lookup_elements.combine::<E::F, E::EF>(&[a[0].clone(), b[0].clone(), c[0].clone()]);
         let comb1 =
             lookup_elements.combine::<E::F, E::EF>(&[a[1].clone(), b[1].clone(), c[1].clone()]);
-        let frac = Reciprocal::new(comb0) + Reciprocal::new(comb1);
 
-        self.logup.write_frac(&mut self.eval, frac);
+        self.eval
+            .write_frac(Reciprocal::new(comb0) + Reciprocal::new(comb1));
         c
     }
 }
