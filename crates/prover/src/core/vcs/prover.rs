@@ -38,7 +38,11 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     ///
     /// A new instance of `MerkleProver` with the committed layers.
     pub fn commit(columns: Vec<&Col<B, BaseField>>) -> Self {
-        assert!(!columns.is_empty());
+        if columns.is_empty() {
+            return Self {
+                layers: vec![B::commit_on_layer(0, None, &[])],
+            };
+        }
 
         let columns = &mut columns
             .into_iter()
