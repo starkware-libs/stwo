@@ -19,6 +19,7 @@ use crate::core::fri::{FriLayerProof, FriProof};
 use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
 use crate::core::vcs::hash::Hash;
 use crate::core::vcs::prover::MerkleDecommitment;
+use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
 use crate::core::vcs::verifier::MerkleVerificationError;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -33,7 +34,13 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     channel: &mut MC::C,
     commitment_scheme: &mut CommitmentSchemeProver<'_, B, MC>,
 ) -> Result<StarkProof<MC::H>, ProvingError> {
-    let component_provers = ComponentProvers(components.to_vec());
+    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
+            .polynomials
+            .len();
+    let component_provers = ComponentProvers {
+        components: components.to_vec(),
+        n_preprocessed_columns,
+    };
     let trace = commitment_scheme.trace();
 
     // Evaluate and commit on composition polynomial.
@@ -88,7 +95,11 @@ pub fn verify<MC: MerkleChannel>(
     commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
     proof: StarkProof<MC::H>,
 ) -> Result<(), VerificationError> {
-    let components = Components(components.to_vec());
+    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
+            .column_log_sizes
+            .len();
+
+    let components = Components{components: components.to_vec(), n_preprocessed_columns};
     let random_coeff = channel.draw_felt();
 
     // Read composition polynomial commitment.
