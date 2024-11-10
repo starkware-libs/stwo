@@ -48,6 +48,7 @@ impl XorAccums {
     }
 }
 
+// TODO(alont): Get these out of the struct and give them names.
 #[derive(Clone)]
 pub struct BlakeXorElements {
     xor12: XorElements,
