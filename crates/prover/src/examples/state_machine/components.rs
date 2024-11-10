@@ -1,7 +1,9 @@
 use num_traits::{One, Zero};
 
-use crate::constraint_framework::logup::{ClaimedPrefixSum, LookupElements};
-use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
+use crate::constraint_framework::logup::ClaimedPrefixSum;
+use crate::constraint_framework::{
+    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, RelationType,
+};
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::channel::Channel;
@@ -14,8 +16,9 @@ use crate::core::vcs::ops::MerkleHasher;
 
 const LOG_CONSTRAINT_DEGREE: u32 = 1;
 pub const STATE_SIZE: usize = 2;
-/// Random elements to combine the StateMachine state.
-pub type StateMachineElements = LookupElements<STATE_SIZE>;
+// Random elements to combine the StateMachine state.
+relation!(StateMachineElements, STATE_SIZE);
+
 pub type State = [M31; STATE_SIZE];
 
 pub type StateMachineOp0Component = FrameworkComponent<StateTransitionEval<0>>;

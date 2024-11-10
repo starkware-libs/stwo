@@ -5,13 +5,14 @@ pub use gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
 use num_traits::Zero;
 
 use super::{BlakeXorElements, N_ROUND_INPUT_FELTS};
-use crate::constraint_framework::logup::LookupElements;
-use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
+use crate::constraint_framework::{
+    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,
+};
 use crate::core::fields::qm31::SecureField;
 
 pub type BlakeRoundComponent = FrameworkComponent<BlakeRoundEval>;
 
-pub type RoundElements = LookupElements<N_ROUND_INPUT_FELTS>;
+relation!(RoundElements, N_ROUND_INPUT_FELTS);
 
 pub struct BlakeRoundEval {
     pub log_size: u32,
@@ -32,7 +33,7 @@ impl FrameworkEval for BlakeRoundEval {
             eval,
             xor_lookup_elements: &self.xor_lookup_elements,
             round_lookup_elements: &self.round_lookup_elements,
-            total_sum: self.total_sum.into(),
+            total_sum: self.total_sum,
             log_size: self.log_size,
         };
         blake_eval.eval()
