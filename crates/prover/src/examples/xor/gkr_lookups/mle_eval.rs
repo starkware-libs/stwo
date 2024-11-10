@@ -807,14 +807,18 @@ mod tests {
         let proof = prove(components, channel, commitment_scheme).unwrap();
 
         // Verify.
-        let components = Components(components.iter().map(|&c| c as &dyn Component).collect());
+        let components = Components {
+            components: components.iter().map(|&c| c as &dyn Component).collect(),
+            n_preprocessed_columns: 0,
+        };
+
         let log_sizes = components.column_log_sizes();
         let channel = &mut Blake2sChannel::default();
         let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
         commitment_scheme.commit(proof.commitments[0], &[], channel);
         commitment_scheme.commit(proof.commitments[1], &log_sizes[1], channel);
         commitment_scheme.commit(proof.commitments[2], &log_sizes[2], channel);
-        verify(&components.0, channel, commitment_scheme, proof)
+        verify(&components.components, channel, commitment_scheme, proof)
     }
 
     #[test]
@@ -891,14 +895,18 @@ mod tests {
             claim,
             MLE_EVAL_TRACE,
         );
-        let components = Components(vec![&mle_coeffs_col_component, &mle_eval_component]);
+        let components = Components {
+            components: vec![&mle_coeffs_col_component, &mle_eval_component],
+            n_preprocessed_columns: 0,
+        };
+
         let log_sizes = components.column_log_sizes();
         let channel = &mut Blake2sChannel::default();
         let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
         commitment_scheme.commit(proof.commitments[0], &[], channel);
         commitment_scheme.commit(proof.commitments[1], &log_sizes[1], channel);
         commitment_scheme.commit(proof.commitments[2], &log_sizes[2], channel);
-        verify(&components.0, channel, commitment_scheme, proof)
+        verify(&components.components, channel, commitment_scheme, proof)
     }
 
     #[test]
