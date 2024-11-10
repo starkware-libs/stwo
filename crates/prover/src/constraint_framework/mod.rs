@@ -111,6 +111,29 @@ pub trait EvalAtRow {
     /// Combines 4 base field values into a single extension field value.
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF;
 
+    /// Adds `entry.values` to `entry.relation` with `entry.multiplicity` for all 'entry' in
+    /// 'entries', batched together.
+    /// Constraint degree increases with number of batched constraints as the denominators are
+    /// multiplied.
+    fn add_to_relation<Relation: RelationType<Self::F, Self::EF>>(
+        &mut self,
+        entries: &[RelationEntry<'_, Self::F, Self::EF, Relation>],
+    ) {
+        let fracs: Vec<Fraction<Self::EF, Self::EF>> = entries
+            .iter()
+            .map(
+                |RelationEntry {
+                     relation,
+                     multiplicity,
+                     values,
+                 }| {
+                    Fraction::new(multiplicity.clone(), relation.combine(values))
+                },
+            )
+            .collect();
+        self.write_frac(fracs.into_iter().sum());
+    }
+
     // TODO(alont): Remove these once LogupAtRow is no longer used.
     fn init_logup(
         &mut self,
@@ -166,3 +189,82 @@ macro_rules! logup_proxy {
     };
 }
 pub(crate) use logup_proxy;
+
+pub trait RelationEFTraitBound<F: Clone>:
+    Clone + Zero + From<F> + From<SecureField> + Mul<F, Output = Self> + Sub<Self, Output = Self>
+{
+}
+
+impl<F, EF> RelationEFTraitBound<F> for EF
+where
+    F: Clone,
+    EF: Clone + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
+{
+}
+
+/// A trait for defining a logup relation type.
+pub trait RelationType<F: Clone, EF: RelationEFTraitBound<F>>: Sized {
+    fn combine(&self, values: &[F]) -> EF;
+
+    fn get_name(&self) -> &str;
+}
+
+/// A struct representing a relation entry.
+/// `relation` is the relation into which elements are entered.
+/// `multiplicity` is the multiplicity of the elements.
+///     A positive multiplicity is used to signify a "use", while a negative multiplicity
+///     signifies a "yield".
+/// `values` are elements in the base field that are entered into the relation.
+pub struct RelationEntry<'a, F: Clone, EF: RelationEFTraitBound<F>, Relation: RelationType<F, EF>> {
+    relation: &'a Relation,
+    multiplicity: EF,
+    values: &'a [F],
+}
+impl<'a, F: Clone, EF: RelationEFTraitBound<F>, Relation: RelationType<F, EF>>
+    RelationEntry<'a, F, EF, Relation>
+{
+    pub fn new(relation: &'a Relation, multiplicity: EF, values: &'a [F]) -> Self {
+        Self {
+            relation,
+            multiplicity,
+            values,
+        }
+    }
+}
+
+macro_rules! relation {
+    ($name:tt, $size:tt) => {
+        #[derive(Clone, Debug, PartialEq)]
+        pub struct $name(crate::constraint_framework::logup::LookupElements<$size>);
+
+        impl $name {
+            pub fn dummy() -> Self {
+                Self(crate::constraint_framework::logup::LookupElements::dummy())
+            }
+            pub fn draw(channel: &mut impl crate::core::channel::Channel) -> Self {
+                Self(crate::constraint_framework::logup::LookupElements::draw(
+                    channel,
+                ))
+            }
+        }
+
+        impl<F: Clone, EF: crate::constraint_framework::RelationEFTraitBound<F>>
+            crate::constraint_framework::RelationType<F, EF> for $name
+        {
+            fn combine(&self, values: &[F]) -> EF {
+                values
+                    .iter()
+                    .zip(self.0.alpha_powers)
+                    .fold(EF::zero(), |acc, (value, power)| {
+                        acc + EF::from(power) * value.clone()
+                    })
+                    - self.0.z.into()
+            }
+
+            fn get_name(&self) -> &str {
+                stringify!($name)
+            }
+        }
+    };
+}
+pub(crate) use relation;
