@@ -6,7 +6,7 @@ use tracing::{span, Level};
 
 use super::{blake_scheduler_info, BlakeElements};
 use crate::constraint_framework::logup::LogupTraceGenerator;
-use crate::constraint_framework::ORIGINAL_TRACE_IDX;
+use crate::constraint_framework::{Relation, ORIGINAL_TRACE_IDX};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;

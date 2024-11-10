@@ -1,3 +1,4 @@
+use crate::constraint_framework::Relation;
 pub mod components;
 pub mod gen;
 
@@ -178,7 +179,9 @@ mod tests {
     use super::gen::{gen_interaction_trace, gen_trace};
     use super::{prove_state_machine, verify_state_machine};
     use crate::constraint_framework::preprocessed_columns::gen_is_first;
-    use crate::constraint_framework::{assert_constraints, FrameworkEval, TraceLocationAllocator};
+    use crate::constraint_framework::{
+        assert_constraints, FrameworkEval, Relation, TraceLocationAllocator,
+    };
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::M31;
     use crate::core::fields::qm31::QM31;
