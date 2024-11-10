@@ -5,7 +5,8 @@ use tracing::{span, Level};
 use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
 use crate::constraint_framework::{
-    assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
+    assert_constraints, relation, EvalAtRow, FrameworkComponent, FrameworkEval,
+    TraceLocationAllocator,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -15,7 +16,6 @@ use crate::core::backend::Column;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeSubspan};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
@@ -25,10 +25,12 @@ use crate::core::ColumnVec;
 
 pub type PlonkComponent = FrameworkComponent<PlonkEval>;
 
+relation!(PlonkLookupElements, 2);
+
 #[derive(Clone)]
 pub struct PlonkEval {
     pub log_n_rows: u32,
-    pub lookup_elements: LookupElements<2>,
+    pub lookup_elements: PlonkLookupElements,
     pub claimed_sum: ClaimedPrefixSum,
     pub total_sum: SecureField,
     pub base_trace_location: TreeSubspan,
@@ -65,17 +67,16 @@ impl FrameworkEval for PlonkEval {
                 + (E::F::one() - op) * a_val.clone() * b_val.clone(),
         );
 
-        let denom_a: E::EF = self.lookup_elements.combine(&[a_wire, a_val]);
-        let denom_b: E::EF = self.lookup_elements.combine(&[b_wire, b_val]);
+        eval.add_to_relation_batched(
+            &self.lookup_elements,
+            E::EF::one(),
+            &[a_wire, a_val],
+            &self.lookup_elements,
+            E::EF::one(),
+            &[b_wire, b_val],
+        );
 
-        eval.write_frac(Fraction::new(
-            denom_a.clone() + denom_b.clone(),
-            denom_a * denom_b,
-        ));
-        eval.write_frac(Fraction::new(
-            (-mult).into(),
-            self.lookup_elements.combine(&[c_wire, c_val]),
-        ));
+        eval.add_to_relation(&self.lookup_elements, (-mult).into(), &[c_wire, c_val]);
 
         eval.finalize_logup();
         eval
@@ -195,12 +196,12 @@ pub fn prove_fibonacci_plonk(
     span.exit();
 
     // Draw lookup element.
-    let lookup_elements = LookupElements::draw(channel);
+    let lookup_elements = PlonkLookupElements::draw(channel);
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
     let (trace, [total_sum, claimed_sum]) =
-        gen_interaction_trace(log_n_rows, padding_offset, &circuit, &lookup_elements);
+        gen_interaction_trace(log_n_rows, padding_offset, &circuit, &lookup_elements.0);
     let mut tree_builder = commitment_scheme.tree_builder();
     let interaction_trace_location = tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -256,14 +257,13 @@ pub fn prove_fibonacci_plonk(
 mod tests {
     use std::env;
 
-    use crate::constraint_framework::logup::LookupElements;
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fri::FriConfig;
     use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
     use crate::core::prover::verify;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    use crate::examples::plonk::prove_fibonacci_plonk;
+    use crate::examples::plonk::{prove_fibonacci_plonk, PlonkLookupElements};
 
     #[test_log::test]
     fn test_simd_plonk_prove() {
@@ -291,7 +291,7 @@ mod tests {
         // Trace columns.
         commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
         // Draw lookup element.
-        let lookup_elements = LookupElements::<2>::draw(channel);
+        let lookup_elements = PlonkLookupElements::draw(channel);
         assert_eq!(lookup_elements, component.lookup_elements);
         // Interaction columns.
         commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);

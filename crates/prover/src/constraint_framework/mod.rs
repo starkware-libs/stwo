@@ -114,15 +114,30 @@ pub trait EvalAtRow {
     /// Adds `elems` to `relation` with `multiplicity`.
     fn add_to_relation<Relation: RelationType<Self::F, Self::EF>>(
         &mut self,
-        relation: Relation,
-        multiplicity: usize,
+        relation: &Relation,
+        multiplicity: Self::EF,
         elems: &[Self::F],
     ) {
         let denom = relation.combine(elems);
-        self.write_frac(Fraction::new(
-            Self::EF::from(SecureField::from(multiplicity)),
-            denom,
-        ));
+        self.write_frac(Fraction::new(multiplicity, denom));
+    }
+
+    /// Adds `elems[01]` to `relation[01]` with `multiplicity[01]`, batched.
+    /// TODO(alont): Generalize this to n elements if more than 2-batching is used.
+    fn add_to_relation_batched<Relation: RelationType<Self::F, Self::EF>>(
+        &mut self,
+        relation0: &Relation,
+        multiplicity0: Self::EF,
+        elems0: &[Self::F],
+        relation1: &Relation,
+        multiplicity1: Self::EF,
+        elems1: &[Self::F],
+    ) {
+        let denom0 = relation0.combine(elems0);
+        let denom1 = relation1.combine(elems1);
+        self.write_frac(
+            Fraction::new(multiplicity0, denom0) + Fraction::new(multiplicity1, denom1),
+        );
     }
 
     // TODO(alont): Remove these once LogupAtRow is no longer used.
@@ -181,22 +196,65 @@ macro_rules! logup_proxy {
 }
 pub(crate) use logup_proxy;
 
-pub trait RelationType<F, EF>
+pub trait RelationEFTraitBound<F: Clone>:
+    Clone + Zero + From<F> + From<SecureField> + Mul<F, Output = Self> + Sub<Self, Output = Self>
+{
+}
+
+impl<F, EF> RelationEFTraitBound<F> for EF
 where
     F: Clone,
     EF: Clone + Zero + From<F> + From<SecureField> + Mul<F, Output = EF> + Sub<EF, Output = EF>,
 {
+}
+
+pub trait RelationType<F: Clone, EF: RelationEFTraitBound<F>> {
     fn combine(&self, values: &[F]) -> EF {
         values
             .iter()
             .zip(self.get_alpha_powers())
             .fold(EF::zero(), |acc, (value, power)| {
-                acc + power.clone() * value.clone()
+                acc + EF::from(*power) * value.clone()
             })
-            - self.get_z()
+            - self.get_z().into()
     }
 
-    fn get_z(&self) -> EF;
-    fn get_alpha_powers(&self) -> &[EF];
-    fn name(&self) -> &str;
+    fn get_z(&self) -> SecureField;
+    fn get_alpha_powers(&self) -> &[SecureField];
+    fn get_name(&self) -> &str;
 }
+
+macro_rules! relation {
+    ($name:tt, $size:tt) => {
+        #[derive(Clone, Debug, PartialEq)]
+        pub struct $name(crate::constraint_framework::logup::LookupElements<$size>);
+
+        impl $name {
+            pub fn dummy() -> Self {
+                Self(crate::constraint_framework::logup::LookupElements::dummy())
+            }
+            pub fn draw(channel: &mut impl crate::core::channel::Channel) -> Self {
+                Self(crate::constraint_framework::logup::LookupElements::draw(
+                    channel,
+                ))
+            }
+        }
+
+        impl<F: Clone, EF: crate::constraint_framework::RelationEFTraitBound<F>>
+            crate::constraint_framework::RelationType<F, EF> for $name
+        {
+            fn get_z(&self) -> crate::core::fields::qm31::SecureField {
+                self.0.z
+            }
+
+            fn get_alpha_powers(&self) -> &[crate::core::fields::qm31::SecureField] {
+                &self.0.alpha_powers
+            }
+
+            fn get_name(&self) -> &str {
+                stringify!($name)
+            }
+        }
+    };
+}
+pub(crate) use relation;

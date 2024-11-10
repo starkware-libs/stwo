@@ -140,7 +140,7 @@ impl<E: EvalAtRow> Drop for LogupAtRow<E> {
 pub struct LookupElements<const N: usize> {
     pub z: SecureField,
     pub alpha: SecureField,
-    alpha_powers: [SecureField; N],
+    pub alpha_powers: [SecureField; N],
 }
 impl<const N: usize> LookupElements<N> {
     pub fn draw(channel: &mut impl Channel) -> Self {
