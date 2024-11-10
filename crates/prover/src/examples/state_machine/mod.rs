@@ -53,6 +53,14 @@ pub fn prove_state_machine(
     let commitment_scheme =
         &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
+    // Constant trace.
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(vec![
+        gen_is_first(x_axis_log_rows),
+        gen_is_first(y_axis_log_rows),
+    ]);
+    tree_builder.commit(channel);
+
     // Trace.
     let trace_op0 = gen_trace(x_axis_log_rows, initial_state, 0);
     let trace_op1 = gen_trace(y_axis_log_rows, intermediate_state, 1);
@@ -84,14 +92,6 @@ pub fn prove_state_machine(
 
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(chain![interaction_trace_op0, interaction_trace_op1].collect_vec());
-    tree_builder.commit(channel);
-
-    // Constant trace.
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(vec![
-        gen_is_first(x_axis_log_rows),
-        gen_is_first(y_axis_log_rows),
-    ]);
     tree_builder.commit(channel);
 
     // Prove constraints.
@@ -138,9 +138,12 @@ pub fn verify_state_machine(
     // Decommit.
     // Retrieve the expected column sizes in each commitment interaction, from the AIR.
     let sizes = proof.stmt0.log_sizes();
+
+    // Constant columns.
+    commitment_scheme.commit(proof.stark_proof.commitments[0], &sizes[0], channel);
     // Trace columns.
     proof.stmt0.mix_into(channel);
-    commitment_scheme.commit(proof.stark_proof.commitments[0], &sizes[0], channel);
+    commitment_scheme.commit(proof.stark_proof.commitments[1], &sizes[1], channel);
 
     // Assert state machine statement.
     let lookup_elements = StateMachineElements::draw(channel);
@@ -155,8 +158,6 @@ pub fn verify_state_machine(
 
     // Interaction columns.
     proof.stmt1.mix_into(channel);
-    commitment_scheme.commit(proof.stark_proof.commitments[1], &sizes[1], channel);
-    // Constant columns.
     commitment_scheme.commit(proof.stark_proof.commitments[2], &sizes[2], channel);
 
     verify(
@@ -209,9 +210,9 @@ mod tests {
         );
 
         let trace = TreeVec::new(vec![
+            vec![gen_is_first(log_n_rows)],
             trace,
             interaction_trace,
-            vec![gen_is_first(log_n_rows)],
         ]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
         assert_constraints(&trace_polys, CanonicCoset::new(log_n_rows), |eval| {
