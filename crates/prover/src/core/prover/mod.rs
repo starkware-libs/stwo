@@ -11,6 +11,7 @@ use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::{CommitmentSchemeProof, TreeVec};
 use super::vcs::ops::MerkleHasher;
+use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
 use crate::core::channel::Channel;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
@@ -33,7 +34,13 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     channel: &mut MC::C,
     commitment_scheme: &mut CommitmentSchemeProver<'_, B, MC>,
 ) -> Result<StarkProof<MC::H>, ProvingError> {
-    let component_provers = ComponentProvers(components.to_vec());
+    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
+        .polynomials
+        .len();
+    let component_provers = ComponentProvers {
+        components: components.to_vec(),
+        n_preprocessed_columns,
+    };
     let trace = commitment_scheme.trace();
 
     // Evaluate and commit on composition polynomial.
@@ -88,7 +95,14 @@ pub fn verify<MC: MerkleChannel>(
     commitment_scheme: &mut CommitmentSchemeVerifier<MC>,
     proof: StarkProof<MC::H>,
 ) -> Result<(), VerificationError> {
-    let components = Components(components.to_vec());
+    let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
+        .column_log_sizes
+        .len();
+
+    let components = Components {
+        components: components.to_vec(),
+        n_preprocessed_columns,
+    };
     let random_coeff = channel.draw_felt();
 
     // Read composition polynomial commitment.
