@@ -7,13 +7,14 @@ use num_traits::Zero;
 
 use super::round::RoundElements;
 use super::N_ROUND_INPUT_FELTS;
-use crate::constraint_framework::logup::LookupElements;
-use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator};
+use crate::constraint_framework::{
+    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,
+};
 use crate::core::fields::qm31::SecureField;
 
 pub type BlakeSchedulerComponent = FrameworkComponent<BlakeSchedulerEval>;
 
-pub type BlakeElements = LookupElements<N_ROUND_INPUT_FELTS>;
+relation!(BlakeElements, N_ROUND_INPUT_FELTS);
 
 pub struct BlakeSchedulerEval {
     pub log_size: u32,
