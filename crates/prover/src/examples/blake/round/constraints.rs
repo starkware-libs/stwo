@@ -2,10 +2,10 @@ use itertools::{chain, Itertools};
 use num_traits::One;
 
 use super::{BlakeXorElements, RoundElements};
-use crate::constraint_framework::EvalAtRow;
+use crate::constraint_framework::{EvalAtRow, RelationEntry};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::lookups::utils::{Fraction, Reciprocal};
+use crate::core::lookups::utils::Reciprocal;
 use crate::examples::blake::{Fu32, STATE_SIZE};
 
 const INV16: BaseField = BaseField::from_u32_unchecked(1 << 15);
@@ -67,17 +67,16 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         );
 
         // Yield `Round(input_v, output_v, message)`.
-        self.eval.write_frac(Fraction::new(
+        self.eval.add_to_relation(&[RelationEntry::new(
+            self.round_lookup_elements,
             -E::EF::one(),
-            self.round_lookup_elements.combine(
-                &chain![
-                    input_v.iter().cloned().flat_map(Fu32::to_felts),
-                    v.iter().cloned().flat_map(Fu32::to_felts),
-                    m.iter().cloned().flat_map(Fu32::to_felts)
-                ]
-                .collect_vec(),
-            ),
-        ));
+            &chain![
+                input_v.iter().cloned().flat_map(Fu32::to_felts),
+                v.iter().cloned().flat_map(Fu32::to_felts),
+                m.iter().cloned().flat_map(Fu32::to_felts)
+            ]
+            .collect_vec(),
+        )]);
 
         self.eval.finalize_logup();
         self.eval
