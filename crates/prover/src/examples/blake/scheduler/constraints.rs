@@ -3,7 +3,6 @@ use num_traits::{One, Zero};
 
 use super::BlakeElements;
 use crate::constraint_framework::{EvalAtRow, RelationEntry, RelationType};
-use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::utils::Fraction;
 use crate::core::vcs::blake2s_ref::SIGMA;
 use crate::examples::blake::round::RoundElements;
@@ -13,10 +12,7 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
     eval: &mut E,
     blake_lookup_elements: &BlakeElements,
     round_lookup_elements: &RoundElements,
-    total_sum: SecureField,
-    log_size: u32,
 ) {
-    eval.init_logup(total_sum, None, log_size);
     let messages: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| eval_next_u32(eval));
     let states: [[Fu32<E::F>; STATE_SIZE]; N_ROUNDS + 1] =
         std::array::from_fn(|_| std::array::from_fn(|_| eval_next_u32(eval)));

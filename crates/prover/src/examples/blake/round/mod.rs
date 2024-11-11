@@ -47,7 +47,7 @@ pub fn blake_round_info() -> InfoEvaluator {
         round_lookup_elements: RoundElements::dummy(),
         total_sum: SecureField::zero(),
     };
-    component.evaluate(InfoEvaluator::default())
+    component.evaluate(InfoEvaluator::empty())
 }
 
 #[cfg(test)]
@@ -107,6 +107,7 @@ mod tests {
             |eval| {
                 component.evaluate(eval);
             },
+            (total_sum, None),
         )
     }
 }

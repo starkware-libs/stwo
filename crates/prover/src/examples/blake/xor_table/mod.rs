@@ -35,7 +35,7 @@ pub fn trace_sizes<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> TreeVec<Ve
         lookup_elements: LookupElements::<3>::dummy(),
         claimed_sum: SecureField::zero(),
     };
-    let info = component.evaluate(InfoEvaluator::default());
+    let info = component.evaluate(InfoEvaluator::empty());
     info.mask_offsets
         .as_cols_ref()
         .map_cols(|_| column_bits::<ELEM_BITS, EXPAND_BITS>())
@@ -158,6 +158,7 @@ mod tests {
             |eval| {
                 component.evaluate(eval);
             },
+            (claimed_sum, None),
         )
     }
 }

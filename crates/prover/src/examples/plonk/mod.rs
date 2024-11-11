@@ -48,8 +48,6 @@ impl FrameworkEval for PlonkEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        eval.init_logup(self.total_sum, Some(self.claimed_sum), self.log_size());
-
         let a_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(0));
         let b_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(1));
         // Note: c_wire could also be implicit: (self.eval.point() - M31_CIRCLE_GEN.into_ef()).x.
@@ -220,7 +218,7 @@ pub fn prove_fibonacci_plonk(
             )
         })
         .collect_vec();
-    constant_trace.insert(0, is_first);
+    constant_trace.push(is_first);
     let constants_trace_location = tree_builder.extend_evals(constant_trace);
     tree_builder.commit(channel);
     span.exit();
@@ -237,6 +235,8 @@ pub fn prove_fibonacci_plonk(
             interaction_trace_location,
             constants_trace_location,
         },
+        total_sum,
+        Some((claimed_sum, padding_offset)),
     );
 
     // Sanity check. Remove for production.
@@ -244,9 +244,14 @@ pub fn prove_fibonacci_plonk(
         .trees
         .as_ref()
         .map(|t| t.polynomials.iter().cloned().collect_vec());
-    assert_constraints(&trace_polys, CanonicCoset::new(log_n_rows), |mut eval| {
-        component.evaluate(eval);
-    });
+    assert_constraints(
+        &trace_polys,
+        CanonicCoset::new(log_n_rows),
+        |mut eval| {
+            component.evaluate(eval);
+        },
+        (total_sum, Some((claimed_sum, padding_offset))),
+    );
 
     let proof = prove(&[&component], channel, commitment_scheme).unwrap();
 

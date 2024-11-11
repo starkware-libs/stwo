@@ -9,6 +9,7 @@ use rayon::prelude::*;
 use tracing::{span, Level};
 
 use super::cpu_domain::CpuDomainEvaluator;
+use super::logup::ClaimedPrefixSum;
 use super::{EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator};
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, Trace};
@@ -80,16 +81,28 @@ pub struct FrameworkComponent<C: FrameworkEval> {
     eval: C,
     trace_locations: TreeVec<TreeSubspan>,
     info: InfoEvaluator,
+    total_sum: SecureField,
+    claimed_sum: Option<ClaimedPrefixSum>,
 }
 
 impl<E: FrameworkEval> FrameworkComponent<E> {
-    pub fn new(location_allocator: &mut TraceLocationAllocator, eval: E) -> Self {
-        let info = eval.evaluate(InfoEvaluator::default());
+    pub fn new(
+        location_allocator: &mut TraceLocationAllocator,
+        eval: E,
+        total_sum: SecureField,
+        claimed_sum: Option<ClaimedPrefixSum>,
+    ) -> Self {
+        let info = eval.evaluate(InfoEvaluator::new(
+            eval.log_size(),
+            (total_sum, claimed_sum),
+        ));
         let trace_locations = location_allocator.next_for_structure(&info.mask_offsets);
         Self {
             eval,
             trace_locations,
             info,
+            total_sum,
+            claimed_sum,
         }
     }
 
@@ -137,6 +150,8 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
             mask.sub_tree(&self.trace_locations),
             evaluation_accumulator,
             coset_vanishing(CanonicCoset::new(self.eval.log_size()).coset, point).inverse(),
+            self.eval.log_size(),
+            (self.total_sum, self.claimed_sum),
         ));
     }
 }
@@ -154,6 +169,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.eval.log_size());
 
+        println!("n polys: {}", trace.polys[0].len());
         let component_polys = trace.polys.sub_tree(&self.trace_locations);
         let component_evals = trace.evals.sub_tree(&self.trace_locations);
 
@@ -205,6 +221,8 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                     &accum.random_coeff_powers,
                     trace_domain.log_size(),
                     eval_domain.log_size(),
+                    self.eval.log_size(),
+                    (self.total_sum, self.claimed_sum),
                 );
                 let row_res = self.eval.evaluate(eval).row_res;
 
@@ -242,6 +260,8 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                     &accum.random_coeff_powers,
                     trace_domain.log_size(),
                     eval_domain.log_size(),
+                    self.eval.log_size(),
+                    (self.total_sum, self.claimed_sum),
                 );
                 let row_res = self.eval.evaluate(eval).row_res;
 

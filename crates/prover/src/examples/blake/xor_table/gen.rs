@@ -165,6 +165,6 @@ pub fn generate_constant_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
             )
         })
         .to_vec();
-    constant_trace.insert(0, gen_is_first(column_bits::<ELEM_BITS, EXPAND_BITS>()));
+    constant_trace.push(gen_is_first(column_bits::<ELEM_BITS, EXPAND_BITS>()));
     constant_trace
 }

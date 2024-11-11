@@ -19,7 +19,6 @@ impl<'a, E: EvalAtRow, const ELEM_BITS: u32, const EXPAND_BITS: u32>
     XorTableEval<'a, E, ELEM_BITS, EXPAND_BITS>
 {
     pub fn eval(mut self) -> E {
-        self.eval.init_logup(self.claimed_sum, None, self.log_size);
         // al, bl are the constant columns for the inputs: All pairs of elements in [0,
         // 2^LIMB_BITS).
         // cl is the constant column for the xor: al ^ bl.

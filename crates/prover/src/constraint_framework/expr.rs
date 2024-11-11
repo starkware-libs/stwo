@@ -2,8 +2,8 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 
 use num_traits::{One, Zero};
 
-use super::logup::LogupAtRow;
-use super::EvalAtRow;
+use super::logup::{LogupAtRow, LogupSums};
+use super::{EvalAtRow, INTERACTION_TRACE_IDX};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
@@ -154,6 +154,16 @@ struct ExprEvaluator {
     pub cur_var_index: usize,
     pub constraints: Vec<Expr>,
     pub logup: LogupAtRow<Self>,
+}
+
+impl ExprEvaluator {
+    pub fn _new(log_size: u32, logup_sums: LogupSums) -> Self {
+        Self {
+            cur_var_index: Default::default(),
+            constraints: Default::default(),
+            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, logup_sums.0, logup_sums.1, log_size),
+        }
+    }
 }
 
 impl EvalAtRow for ExprEvaluator {
