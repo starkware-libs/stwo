@@ -43,8 +43,6 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
         self.log_n_rows + LOG_CONSTRAINT_DEGREE
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        eval.init_logup(self.total_sum, Some(self.claimed_sum), self.log_size());
-
         let input_state: [_; STATE_SIZE] = std::array::from_fn(|_| eval.next_trace_mask());
         let input_denom: E::EF = self.lookup_elements.combine(&input_state);
 
@@ -52,7 +50,7 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
         output_state[COORDINATE] += E::F::one();
         let output_denom: E::EF = self.lookup_elements.combine(&output_state);
 
-        eval.write_frac(
+        eval.write_logup_frac(
             Fraction::new(E::EF::one(), input_denom)
                 + Fraction::new(-E::EF::one(), output_denom.clone()),
         );
@@ -105,7 +103,7 @@ fn state_transition_info<const INDEX: usize>() -> InfoEvaluator {
         total_sum: QM31::zero(),
         claimed_sum: (QM31::zero(), 0),
     };
-    component.evaluate(InfoEvaluator::default())
+    component.evaluate(InfoEvaluator::empty())
 }
 
 pub struct StateMachineComponents {

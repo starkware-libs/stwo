@@ -24,6 +24,8 @@ use crate::core::ColumnVec;
 /// Represents the value of the prefix sum column at some index.
 /// Should be used to eliminate padded rows for the logup sum.
 pub type ClaimedPrefixSum = (SecureField, usize);
+// (total_sum, claimed_sum)
+pub type LogupSums = (SecureField, Option<ClaimedPrefixSum>);
 
 /// Evaluates constraints for batched logups.
 /// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = claimed_sum.
@@ -38,11 +40,12 @@ pub struct LogupAtRow<E: EvalAtRow> {
     pub claimed_sum: Option<ClaimedPrefixSum>,
     /// The evaluation of the last cumulative sum column.
     pub prev_col_cumsum: E::EF,
-    cur_frac: Option<Fraction<E::EF, E::EF>>,
-    is_finalized: bool,
+    pub cur_frac: Option<Fraction<E::EF, E::EF>>,
+    pub is_finalized: bool,
     /// The value of the `is_first` constant column at current row.
     /// See [`super::preprocessed_columns::gen_is_first()`].
     pub is_first: E::F,
+    pub log_size: u32,
 }
 
 impl<E: EvalAtRow> Default for LogupAtRow<E> {
@@ -55,7 +58,7 @@ impl<E: EvalAtRow> LogupAtRow<E> {
         interaction: usize,
         total_sum: SecureField,
         claimed_sum: Option<ClaimedPrefixSum>,
-        is_first: E::F,
+        log_size: u32,
     ) -> Self {
         Self {
             interaction,
@@ -63,8 +66,9 @@ impl<E: EvalAtRow> LogupAtRow<E> {
             claimed_sum,
             prev_col_cumsum: E::EF::zero(),
             cur_frac: None,
-            is_finalized: false,
-            is_first,
+            is_finalized: true,
+            is_first: E::F::zero(),
+            log_size,
         }
     }
 
@@ -78,52 +82,8 @@ impl<E: EvalAtRow> LogupAtRow<E> {
             cur_frac: None,
             is_finalized: true,
             is_first: E::F::zero(),
+            log_size: 10,
         }
-    }
-
-    pub fn write_frac(&mut self, eval: &mut E, fraction: Fraction<E::EF, E::EF>) {
-        // Add a constraint that num / denom = diff.
-        if let Some(cur_frac) = self.cur_frac.clone() {
-            let [cur_cumsum] = eval.next_extension_interaction_mask(self.interaction, [0]);
-            let diff = cur_cumsum.clone() - self.prev_col_cumsum.clone();
-            self.prev_col_cumsum = cur_cumsum;
-            eval.add_constraint(diff * cur_frac.denominator - cur_frac.numerator);
-        }
-        self.cur_frac = Some(fraction);
-    }
-
-    pub fn finalize(&mut self, eval: &mut E) {
-        assert!(!self.is_finalized, "LogupAtRow was already finalized");
-
-        let frac = self.cur_frac.clone().unwrap();
-
-        // TODO(ShaharS): remove `claimed_row_index` interaction value and get the shifted offset
-        // from the is_first column when constant columns are supported.
-        let (cur_cumsum, prev_row_cumsum) = match self.claimed_sum {
-            Some((claimed_sum, claimed_row_index)) => {
-                let [cur_cumsum, prev_row_cumsum, claimed_cumsum] = eval
-                    .next_extension_interaction_mask(
-                        self.interaction,
-                        [0, -1, claimed_row_index as isize],
-                    );
-
-                // Constrain that the claimed_sum in case that it is not equal to the total_sum.
-                eval.add_constraint((claimed_cumsum - claimed_sum) * self.is_first.clone());
-                (cur_cumsum, prev_row_cumsum)
-            }
-            None => {
-                let [cur_cumsum, prev_row_cumsum] =
-                    eval.next_extension_interaction_mask(self.interaction, [0, -1]);
-                (cur_cumsum, prev_row_cumsum)
-            }
-        };
-        // Fix `prev_row_cumsum` by subtracting `total_sum` if this is the first row.
-        let fixed_prev_row_cumsum = prev_row_cumsum - self.is_first.clone() * self.total_sum;
-        let diff = cur_cumsum - fixed_prev_row_cumsum - self.prev_col_cumsum.clone();
-
-        eval.add_constraint(diff * frac.denominator - frac.numerator);
-
-        self.is_finalized = true;
     }
 }
 
@@ -314,30 +274,11 @@ impl<'a> LogupColGenerator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use num_traits::One;
-
-    use super::{LogupAtRow, LookupElements};
-    use crate::constraint_framework::{InfoEvaluator, INTERACTION_TRACE_IDX};
+    use super::LookupElements;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::FieldExpOps;
-    use crate::core::lookups::utils::Fraction;
-
-    #[test]
-    #[should_panic]
-    fn test_logup_not_finalized_panic() {
-        let mut logup = LogupAtRow::<InfoEvaluator>::new(
-            INTERACTION_TRACE_IDX,
-            SecureField::one(),
-            None,
-            BaseField::one(),
-        );
-        logup.write_frac(
-            &mut InfoEvaluator::default(),
-            Fraction::new(SecureField::one(), SecureField::one()),
-        );
-    }
 
     #[test]
     fn test_lookup_elements_combine() {
