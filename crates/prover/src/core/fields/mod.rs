@@ -76,7 +76,12 @@ fn batch_inverse_classic<T: FieldExpOps>(column: &[T], dst: &mut [T]) {
     let n = column.len();
     debug_assert!(dst.len() >= n);
 
-    dst[0] = column[0].clone();
+    if let Some(first) = column.first() {
+        dst[0] = first.clone();
+    } else {
+        return;
+    }
+
     // First pass.
     for i in 1..n {
         dst[i] = dst[i - 1].clone() * column[i].clone();
