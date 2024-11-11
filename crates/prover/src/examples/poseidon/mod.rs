@@ -61,7 +61,6 @@ impl FrameworkEval for PoseidonEval {
         self.log_n_rows + LOG_EXPAND
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        eval.init_logup(self.total_sum, None, self.log_size());
         eval_poseidon_constraints(&mut eval, &self.lookup_elements);
         eval
     }
@@ -380,6 +379,7 @@ pub fn prove_poseidon(
             lookup_elements,
             total_sum,
         },
+        (total_sum, None),
     );
     info!("Poseidon component info:\n{}", component);
     let proof = prove(&[&component], channel, commitment_scheme).unwrap();
@@ -394,8 +394,8 @@ mod tests {
     use itertools::Itertools;
     use num_traits::One;
 
+    use crate::constraint_framework::assert_constraints;
     use crate::constraint_framework::preprocessed_columns::gen_is_first;
-    use crate::constraint_framework::{assert_constraints, EvalAtRow};
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
@@ -473,10 +473,14 @@ mod tests {
         let traces = TreeVec::new(vec![vec![gen_is_first(LOG_N_ROWS)], trace0, trace1]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
-        assert_constraints(&trace_polys, CanonicCoset::new(LOG_N_ROWS), |mut eval| {
-            eval.init_logup(total_sum, None, LOG_N_ROWS);
-            eval_poseidon_constraints(&mut eval, &lookup_elements);
-        });
+        assert_constraints(
+            &trace_polys,
+            CanonicCoset::new(LOG_N_ROWS),
+            |mut eval| {
+                eval_poseidon_constraints(&mut eval, &lookup_elements);
+            },
+            (total_sum, None),
+        );
     }
 
     #[test_log::test]

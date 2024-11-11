@@ -84,6 +84,7 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     use crate::core::channel::Poseidon252Channel;
     use crate::core::fields::m31::BaseField;
+    use crate::core::fields::qm31::SecureField;
     use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use crate::core::poly::BitReversedOrder;
@@ -145,6 +146,7 @@ mod tests {
             &trace_polys,
             CanonicCoset::new(LOG_N_INSTANCES),
             fibonacci_constraint_evaluator::<LOG_N_INSTANCES>,
+            (SecureField::zero(), None),
         );
     }
 
@@ -164,6 +166,7 @@ mod tests {
             &trace_polys,
             CanonicCoset::new(LOG_N_INSTANCES),
             fibonacci_constraint_evaluator::<LOG_N_INSTANCES>,
+            (SecureField::zero(), None),
         );
     }
 
@@ -202,6 +205,7 @@ mod tests {
                 WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
                     log_n_rows: log_n_instances,
                 },
+                (SecureField::zero(), None),
             );
 
             let proof = prove::<SimdBackend, Blake2sMerkleChannel>(
@@ -261,6 +265,7 @@ mod tests {
             WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
                 log_n_rows: LOG_N_INSTANCES,
             },
+            (SecureField::zero(), None),
         );
         let proof = prove::<SimdBackend, Poseidon252MerkleChannel>(
             &[&component],
