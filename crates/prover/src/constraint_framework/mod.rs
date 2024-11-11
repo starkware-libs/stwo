@@ -131,19 +131,11 @@ pub trait EvalAtRow {
                 },
             )
             .collect();
-        self.write_frac(fracs.into_iter().sum());
+        self.write_logup_frac(fracs.into_iter().sum());
     }
 
     // TODO(alont): Remove these once LogupAtRow is no longer used.
-    fn init_logup(
-        &mut self,
-        _total_sum: SecureField,
-        _claimed_sum: Option<crate::constraint_framework::logup::ClaimedPrefixSum>,
-        _log_size: u32,
-    ) {
-        unimplemented!()
-    }
-    fn write_frac(&mut self, _fraction: Fraction<Self::EF, Self::EF>) {
+    fn write_logup_frac(&mut self, _fraction: Fraction<Self::EF, Self::EF>) {
         unimplemented!()
     }
     fn finalize_logup(&mut self) {
@@ -156,35 +148,58 @@ pub trait EvalAtRow {
 /// TODO(alont): Remove once LogupAtRow is no longer used.
 macro_rules! logup_proxy {
     () => {
-        fn init_logup(
-            &mut self,
-            total_sum: SecureField,
-            claimed_sum: Option<crate::constraint_framework::logup::ClaimedPrefixSum>,
-            log_size: u32,
-        ) {
-            let is_first = self.get_preprocessed_column(
-                crate::constraint_framework::preprocessed_columns::PreprocessedColumn::IsFirst(
-                    log_size,
-                ),
-            );
-            self.logup = crate::constraint_framework::logup::LogupAtRow::new(
-                crate::constraint_framework::INTERACTION_TRACE_IDX,
-                total_sum,
-                claimed_sum,
-                is_first,
-            );
-        }
-
-        fn write_frac(&mut self, fraction: Fraction<Self::EF, Self::EF>) {
-            let mut logup = std::mem::take(&mut self.logup);
-            logup.write_frac(self, fraction);
-            self.logup = logup;
+        fn write_logup_frac(&mut self, fraction: Fraction<Self::EF, Self::EF>) {
+            // Add a constraint that num / denom = diff.
+            if let Some(cur_frac) = self.logup.cur_frac.clone() {
+                let [cur_cumsum] =
+                    self.next_extension_interaction_mask(self.logup.interaction, [0]);
+                let diff = cur_cumsum.clone() - self.logup.prev_col_cumsum.clone();
+                self.logup.prev_col_cumsum = cur_cumsum;
+                self.add_constraint(diff * cur_frac.denominator - cur_frac.numerator);
+            } else {
+                self.logup.is_first = self.get_preprocessed_column(
+                    super::preprocessed_columns::PreprocessedColumn::IsFirst(self.logup.log_size),
+                );
+                self.logup.is_finalized = false;
+            }
+            self.logup.cur_frac = Some(fraction);
         }
 
         fn finalize_logup(&mut self) {
-            let mut logup = std::mem::take(&mut self.logup);
-            logup.finalize(self);
-            self.logup = logup;
+            assert!(!self.logup.is_finalized, "LogupAtRow was already finalized");
+
+            let frac = self.logup.cur_frac.clone().unwrap();
+
+            // TODO(ShaharS): remove `claimed_row_index` interaction value and get the shifted
+            // offset from the is_first column when constant columns are supported.
+            let (cur_cumsum, prev_row_cumsum) = match self.logup.claimed_sum {
+                Some((claimed_sum, claimed_row_index)) => {
+                    let [cur_cumsum, prev_row_cumsum, claimed_cumsum] = self
+                        .next_extension_interaction_mask(
+                            self.logup.interaction,
+                            [0, -1, claimed_row_index as isize],
+                        );
+
+                    // Constrain that the claimed_sum in case that it is not equal to the total_sum.
+                    self.add_constraint(
+                        (claimed_cumsum - claimed_sum) * self.logup.is_first.clone(),
+                    );
+                    (cur_cumsum, prev_row_cumsum)
+                }
+                None => {
+                    let [cur_cumsum, prev_row_cumsum] =
+                        self.next_extension_interaction_mask(self.logup.interaction, [0, -1]);
+                    (cur_cumsum, prev_row_cumsum)
+                }
+            };
+            // Fix `prev_row_cumsum` by subtracting `total_sum` if this is the first row.
+            let fixed_prev_row_cumsum =
+                prev_row_cumsum - self.logup.is_first.clone() * self.logup.total_sum;
+            let diff = cur_cumsum - fixed_prev_row_cumsum - self.logup.prev_col_cumsum.clone();
+
+            self.add_constraint(diff * frac.denominator - frac.numerator);
+
+            self.logup.is_finalized = true;
         }
     };
 }
