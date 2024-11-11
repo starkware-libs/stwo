@@ -163,7 +163,13 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> Component
         let component_mask = mask.sub_tree(&self.trace_locations);
         let trace_coset = CanonicCoset::new(self.log_size()).coset;
         let vanish_on_trace_eval_inv = coset_vanishing(trace_coset, point).inverse();
-        let mut eval = PointEvaluator::new(component_mask, accumulator, vanish_on_trace_eval_inv);
+        let mut eval = PointEvaluator::new(
+            component_mask,
+            accumulator,
+            vanish_on_trace_eval_inv,
+            self.log_size(),
+            (SecureField::zero(), None),
+        );
 
         let carry_quotients_col_eval = eval_carry_quotient_col(&self.mle_eval_point, point);
         let is_first = eval_is_first(trace_coset, point);
@@ -243,6 +249,8 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> ComponentProver<SimdBackend>
                 &acc.random_coeff_powers,
                 trace_domain.log_size(),
                 eval_domain.log_size(),
+                self.log_size(),
+                (SecureField::zero(), None),
             );
             let [mle_coeffs_col_eval] = eval.next_extension_interaction_mask(aux_interaction, [0]);
             let [carry_quotients_col_eval] =
@@ -363,7 +371,13 @@ impl<'oracle, O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'o
         let component_mask = mask.sub_tree(&self.trace_location);
         let trace_coset = CanonicCoset::new(self.log_size()).coset;
         let vanish_on_trace_eval_inv = coset_vanishing(trace_coset, point).inverse();
-        let mut eval = PointEvaluator::new(component_mask, accumulator, vanish_on_trace_eval_inv);
+        let mut eval = PointEvaluator::new(
+            component_mask,
+            accumulator,
+            vanish_on_trace_eval_inv,
+            self.log_size(),
+            (SecureField::zero(), None),
+        );
 
         let mle_coeff_col_eval = self.mle_coeff_column_oracle.evaluate_at_point(point, mask);
         let carry_quotients_col_eval = eval_carry_quotient_col(&self.mle_eval_point, point);
@@ -384,7 +398,7 @@ impl<'oracle, O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'o
 }
 
 fn mle_eval_info(interaction: usize, n_variables: usize) -> InfoEvaluator {
-    let mut eval = InfoEvaluator::default();
+    let mut eval = InfoEvaluator::empty();
     let mle_eval_point = MleEvalPoint::new(&vec![SecureField::from(2); n_variables]);
     let mle_claim_shift = SecureField::zero();
     let mle_coeffs_col_eval = SecureField::zero();
@@ -724,7 +738,7 @@ mod tests {
 
     use itertools::{chain, Itertools};
     use mle_coeff_column::{MleCoeffColumnComponent, MleCoeffColumnEval};
-    use num_traits::One;
+    use num_traits::{One, Zero};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
@@ -799,6 +813,7 @@ mod tests {
         let mle_coeffs_col_component = MleCoeffColumnComponent::new(
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, mle.n_variables()),
+            (SecureField::zero(), None),
         );
         let mle_eval_component = MleEvalProverComponent::generate(
             trace_location_allocator,
@@ -875,6 +890,7 @@ mod tests {
         let mle_coeffs_col_component = MleCoeffColumnComponent::new(
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, mle.n_variables()),
+            (SecureField::zero(), None),
         );
         let mle_eval_component = MleEvalProverComponent::generate(
             trace_location_allocator,
@@ -895,6 +911,7 @@ mod tests {
         let mle_coeffs_col_component = MleCoeffColumnComponent::new(
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, N_VARIABLES),
+            (SecureField::zero(), None),
         );
         let mle_eval_component = MleEvalVerifierComponent::new(
             trace_location_allocator,
@@ -941,21 +958,29 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(log_size);
 
-        assert_constraints(&trace_polys, trace_domain, |mut eval| {
-            let [mle_coeff_col_eval] = eval.next_extension_interaction_mask(COEFFS_COL_TRACE, [0]);
-            let [carry_quotients_col_eval] = eval.next_extension_interaction_mask(AUX_TRACE, [0]);
-            let [is_first_eval, is_second_eval] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
-            eval_mle_eval_constraints(
-                MLE_EVAL_TRACE,
-                &mut eval,
-                mle_coeff_col_eval,
-                &mle_eval_point,
-                claim_shift,
-                carry_quotients_col_eval,
-                is_first_eval,
-                is_second_eval,
-            )
-        });
+        assert_constraints(
+            &trace_polys,
+            trace_domain,
+            |mut eval| {
+                let [mle_coeff_col_eval] =
+                    eval.next_extension_interaction_mask(COEFFS_COL_TRACE, [0]);
+                let [carry_quotients_col_eval] =
+                    eval.next_extension_interaction_mask(AUX_TRACE, [0]);
+                let [is_first_eval, is_second_eval] =
+                    eval.next_interaction_mask(AUX_TRACE, [0, -1]);
+                eval_mle_eval_constraints(
+                    MLE_EVAL_TRACE,
+                    &mut eval,
+                    mle_coeff_col_eval,
+                    &mle_eval_point,
+                    claim_shift,
+                    carry_quotients_col_eval,
+                    is_first_eval,
+                    is_second_eval,
+                )
+            },
+            (SecureField::zero(), None),
+        )
     }
 
     #[test]
@@ -975,18 +1000,24 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
 
-        assert_constraints(&trace_polys, trace_domain, |mut eval| {
-            let [carry_quotients_col_eval] = eval.next_extension_interaction_mask(AUX_TRACE, [0]);
-            let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
-            eval_eq_constraints(
-                EQ_EVAL_TRACE,
-                &mut eval,
-                &mle_eval_point,
-                carry_quotients_col_eval,
-                is_first,
-                is_second,
-            );
-        });
+        assert_constraints(
+            &trace_polys,
+            trace_domain,
+            |mut eval| {
+                let [carry_quotients_col_eval] =
+                    eval.next_extension_interaction_mask(AUX_TRACE, [0]);
+                let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
+                eval_eq_constraints(
+                    EQ_EVAL_TRACE,
+                    &mut eval,
+                    &mle_eval_point,
+                    carry_quotients_col_eval,
+                    is_first,
+                    is_second,
+                );
+            },
+            (SecureField::zero(), None),
+        );
     }
 
     #[test]
@@ -1006,18 +1037,24 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
 
-        assert_constraints(&trace_polys, trace_domain, |mut eval| {
-            let [carry_quotients_col_eval] = eval.next_extension_interaction_mask(AUX_TRACE, [0]);
-            let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
-            eval_eq_constraints(
-                EQ_EVAL_TRACE,
-                &mut eval,
-                &mle_eval_point,
-                carry_quotients_col_eval,
-                is_first,
-                is_second,
-            );
-        });
+        assert_constraints(
+            &trace_polys,
+            trace_domain,
+            |mut eval| {
+                let [carry_quotients_col_eval] =
+                    eval.next_extension_interaction_mask(AUX_TRACE, [0]);
+                let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
+                eval_eq_constraints(
+                    EQ_EVAL_TRACE,
+                    &mut eval,
+                    &mle_eval_point,
+                    carry_quotients_col_eval,
+                    is_first,
+                    is_second,
+                );
+            },
+            (SecureField::zero(), None),
+        );
     }
 
     #[test]
@@ -1037,18 +1074,24 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
 
-        assert_constraints(&trace_polys, trace_domain, |mut eval| {
-            let [carry_quotients_col_eval] = eval.next_extension_interaction_mask(AUX_TRACE, [0]);
-            let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
-            eval_eq_constraints(
-                EQ_EVAL_TRACE,
-                &mut eval,
-                &mle_eval_point,
-                carry_quotients_col_eval,
-                is_first,
-                is_second,
-            );
-        });
+        assert_constraints(
+            &trace_polys,
+            trace_domain,
+            |mut eval| {
+                let [carry_quotients_col_eval] =
+                    eval.next_extension_interaction_mask(AUX_TRACE, [0]);
+                let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
+                eval_eq_constraints(
+                    EQ_EVAL_TRACE,
+                    &mut eval,
+                    &mle_eval_point,
+                    carry_quotients_col_eval,
+                    is_first,
+                    is_second,
+                );
+            },
+            (SecureField::zero(), None),
+        );
     }
 
     #[test]
@@ -1062,10 +1105,15 @@ mod tests {
         let trace_polys = trace.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(LOG_SIZE);
 
-        assert_constraints(&trace_polys, trace_domain, |mut eval| {
-            let [row_diff] = eval.next_extension_interaction_mask(0, [0]);
-            eval_prefix_sum_constraints(0, &mut eval, row_diff, cumulative_sum_shift)
-        });
+        assert_constraints(
+            &trace_polys,
+            trace_domain,
+            |mut eval| {
+                let [row_diff] = eval.next_extension_interaction_mask(0, [0]);
+                eval_prefix_sum_constraints(0, &mut eval, row_diff, cumulative_sum_shift)
+            },
+            (SecureField::zero(), None),
+        );
     }
 
     #[test]
@@ -1140,7 +1188,7 @@ mod tests {
     }
 
     mod mle_coeff_column {
-        use num_traits::One;
+        use num_traits::{One, Zero};
 
         use crate::constraint_framework::{
             EvalAtRow, FrameworkComponent, FrameworkEval, PointEvaluator,
@@ -1200,6 +1248,8 @@ mod tests {
                     mask.sub_tree(self.trace_locations()),
                     &mut accumulator,
                     SecureField::one(),
+                    self.log_size(),
+                    (SecureField::zero(), None),
                 );
 
                 eval_mle_coeff_col(self.interaction, &mut eval)

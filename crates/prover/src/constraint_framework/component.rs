@@ -10,6 +10,7 @@ use rayon::prelude::*;
 use tracing::{span, Level};
 
 use super::cpu_domain::CpuDomainEvaluator;
+use super::logup::LogupSums;
 use super::preprocessed_columns::PreprocessedColumn;
 use super::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, PREPROCESSED_TRACE_IDX,
@@ -113,11 +114,16 @@ pub struct FrameworkComponent<C: FrameworkEval> {
     trace_locations: TreeVec<TreeSubspan>,
     info: InfoEvaluator,
     preprocessed_column_indices: Vec<usize>,
+    logup_sums: LogupSums,
 }
 
 impl<E: FrameworkEval> FrameworkComponent<E> {
-    pub fn new(location_allocator: &mut TraceLocationAllocator, eval: E) -> Self {
-        let info = eval.evaluate(InfoEvaluator::default());
+    pub fn new(
+        location_allocator: &mut TraceLocationAllocator,
+        eval: E,
+        logup_sums: LogupSums,
+    ) -> Self {
+        let info = eval.evaluate(InfoEvaluator::new(eval.log_size(), vec![], logup_sums));
         let trace_locations = location_allocator.next_for_structure(&info.mask_offsets);
 
         let preprocessed_column_indices = info
@@ -148,6 +154,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
             trace_locations,
             info,
             preprocessed_column_indices,
+            logup_sums,
         }
     }
 
@@ -217,6 +224,8 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
             mask_points,
             evaluation_accumulator,
             coset_vanishing(CanonicCoset::new(self.eval.log_size()).coset, point).inverse(),
+            self.eval.log_size(),
+            self.logup_sums,
         ));
     }
 }
@@ -296,6 +305,8 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                     &accum.random_coeff_powers,
                     trace_domain.log_size(),
                     eval_domain.log_size(),
+                    self.eval.log_size(),
+                    self.logup_sums,
                 );
                 let row_res = self.eval.evaluate(eval).row_res;
 
@@ -333,6 +344,8 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                     &accum.random_coeff_powers,
                     trace_domain.log_size(),
                     eval_domain.log_size(),
+                    self.eval.log_size(),
+                    self.logup_sums,
                 );
                 let row_res = self.eval.evaluate(eval).row_res;
 
