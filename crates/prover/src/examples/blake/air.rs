@@ -187,6 +187,7 @@ impl BlakeComponents {
                     round_lookup_elements: all_elements.round_elements.clone(),
                     total_sum: stmt1.scheduler_claimed_sum,
                 },
+                (stmt1.scheduler_claimed_sum, None),
             ),
             round_components: ROUND_LOG_SPLIT
                 .iter()
@@ -200,6 +201,7 @@ impl BlakeComponents {
                             round_lookup_elements: all_elements.round_elements.clone(),
                             total_sum: claimed_sum,
                         },
+                        (claimed_sum, None),
                     )
                 })
                 .collect(),
@@ -209,6 +211,7 @@ impl BlakeComponents {
                     lookup_elements: all_elements.xor_elements.xor12.clone(),
                     claimed_sum: stmt1.xor12_claimed_sum,
                 },
+                (stmt1.xor12_claimed_sum, None),
             ),
             xor9: XorTableComponent::new(
                 tree_span_provider,
@@ -216,6 +219,7 @@ impl BlakeComponents {
                     lookup_elements: all_elements.xor_elements.xor9.clone(),
                     claimed_sum: stmt1.xor9_claimed_sum,
                 },
+                (stmt1.xor9_claimed_sum, None),
             ),
             xor8: XorTableComponent::new(
                 tree_span_provider,
@@ -223,6 +227,7 @@ impl BlakeComponents {
                     lookup_elements: all_elements.xor_elements.xor8.clone(),
                     claimed_sum: stmt1.xor8_claimed_sum,
                 },
+                (stmt1.xor8_claimed_sum, None),
             ),
             xor7: XorTableComponent::new(
                 tree_span_provider,
@@ -230,6 +235,7 @@ impl BlakeComponents {
                     lookup_elements: all_elements.xor_elements.xor7.clone(),
                     claimed_sum: stmt1.xor7_claimed_sum,
                 },
+                (stmt1.xor7_claimed_sum, None),
             ),
             xor4: XorTableComponent::new(
                 tree_span_provider,
@@ -237,6 +243,7 @@ impl BlakeComponents {
                     lookup_elements: all_elements.xor_elements.xor4.clone(),
                     claimed_sum: stmt1.xor4_claimed_sum,
                 },
+                (stmt1.xor4_claimed_sum, None),
             ),
         }
     }

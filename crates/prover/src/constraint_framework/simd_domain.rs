@@ -2,8 +2,8 @@ use std::ops::Mul;
 
 use num_traits::Zero;
 
-use super::logup::LogupAtRow;
-use super::EvalAtRow;
+use super::logup::{LogupAtRow, LogupSums};
+use super::{EvalAtRow, INTERACTION_TRACE_IDX};
 use crate::core::backend::simd::column::VeryPackedBaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::very_packed_m31::{
@@ -41,6 +41,8 @@ impl<'a> SimdDomainEvaluator<'a> {
         random_coeff_powers: &'a [SecureField],
         domain_log_size: u32,
         eval_log_size: u32,
+        log_size: u32,
+        logup_sums: LogupSums,
     ) -> Self {
         Self {
             trace_eval,
@@ -51,7 +53,7 @@ impl<'a> SimdDomainEvaluator<'a> {
             constraint_index: 0,
             domain_log_size,
             eval_domain_log_size: eval_log_size,
-            logup: LogupAtRow::dummy(),
+            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, logup_sums.0, logup_sums.1, log_size),
         }
     }
 }

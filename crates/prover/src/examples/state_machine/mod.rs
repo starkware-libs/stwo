@@ -105,6 +105,7 @@ pub fn prove_state_machine(
             total_sum: total_sum_op0,
             claimed_sum: (claimed_sum_op0, x_row as usize - 1),
         },
+        (total_sum_op0, Some((claimed_sum_op0, x_row as usize - 1))),
     );
     let component1 = StateMachineOp1Component::new(
         tree_span_provider,
@@ -114,6 +115,7 @@ pub fn prove_state_machine(
             total_sum: total_sum_op1,
             claimed_sum: (claimed_sum_op1, y_row as usize - 1),
         },
+        (total_sum_op1, Some((claimed_sum_op1, y_row as usize - 1))),
     );
     let components = StateMachineComponents {
         component0,
@@ -210,6 +212,7 @@ mod tests {
                 total_sum,
                 claimed_sum: (total_sum, (1 << log_n_rows) - 1),
             },
+            (total_sum, Some((total_sum, (1 << log_n_rows) - 1))),
         );
 
         let trace = TreeVec::new(vec![
@@ -218,9 +221,14 @@ mod tests {
             interaction_trace,
         ]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
-        assert_constraints(&trace_polys, CanonicCoset::new(log_n_rows), |eval| {
-            component.evaluate(eval);
-        });
+        assert_constraints(
+            &trace_polys,
+            CanonicCoset::new(log_n_rows),
+            |eval| {
+                component.evaluate(eval);
+            },
+            (total_sum, Some((total_sum, (1 << log_n_rows) - 1))),
+        );
     }
 
     #[test]
