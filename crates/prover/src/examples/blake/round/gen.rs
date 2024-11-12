@@ -68,7 +68,7 @@ struct TraceGeneratorRow<'a> {
     vec_row: usize,
     xor_lookups_index: usize,
 }
-impl<'a> TraceGeneratorRow<'a> {
+impl TraceGeneratorRow<'_> {
     fn append_felt(&mut self, val: u32x16) {
         self.gen.trace[self.col_index].data[self.vec_row] =
             unsafe { PackedBaseField::from_simd_unchecked(val) };

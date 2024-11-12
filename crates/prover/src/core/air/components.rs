@@ -17,7 +17,7 @@ pub struct Components<'a> {
     pub n_preprocessed_columns: usize,
 }
 
-impl<'a> Components<'a> {
+impl Components<'_> {
     pub fn composition_log_degree_bound(&self) -> u32 {
         self.components
             .iter()
@@ -108,7 +108,7 @@ pub struct ComponentProvers<'a, B: Backend> {
     pub n_preprocessed_columns: usize,
 }
 
-impl<'a, B: Backend> ComponentProvers<'a, B> {
+impl<B: Backend> ComponentProvers<'_, B> {
     pub fn components(&self) -> Components<'_> {
         Components {
             components: self

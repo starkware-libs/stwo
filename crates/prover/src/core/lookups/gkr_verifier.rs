@@ -120,7 +120,7 @@ pub fn partially_verify_batch(
         for &instance in &sumcheck_instances {
             let n_unused = n_layers - instance_n_layers(instance);
             let mask = &layer_masks_by_instance[instance][layer - n_unused];
-            channel.mix_felts(mask.columns().flatten());
+            channel.mix_felts(mask.columns().as_flattened());
         }
 
         // Set the OOD evaluation point for layer above.

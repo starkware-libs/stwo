@@ -15,10 +15,10 @@ mod components;
 pub mod mask;
 
 /// Arithmetic Intermediate Representation (AIR).
-/// An Air instance is assumed to already contain all the information needed to
-/// evaluate the constraints.
-/// For instance, all interaction elements are assumed to be present in it.
-/// Therefore, an AIR is generated only after the initial trace commitment phase.
+///
+/// An Air instance is assumed to already contain all the information needed to evaluate the
+/// constraints. For instance, all interaction elements are assumed to be present in it. Therefore,
+/// an AIR is generated only after the initial trace commitment phase.
 pub trait Air {
     fn components(&self) -> Vec<&dyn Component>;
 }
