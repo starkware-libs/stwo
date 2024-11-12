@@ -148,6 +148,23 @@ pub fn bit_reverse<T>(v: &mut [T]) {
     }
 }
 
+/// Performs a coset-natural-order to circle-domain-bit-reversed-order permutation in-place.
+///
+/// # Panics
+///
+/// Panics if the length of the slice is not a power of two.
+pub fn bit_reverse_coset_to_circle_domain_order<T>(v: &mut [T]) {
+    let n = v.len();
+    assert!(n.is_power_of_two());
+    let log_n = n.ilog2();
+    for i in 0..n {
+        let j = bit_reverse_index(coset_index_to_circle_domain_index(i, log_n), log_n);
+        if j > i {
+            v.swap(i, j);
+        }
+    }
+}
+
 pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField> {
     (0..n_powers)
         .scan(SecureField::one(), |acc, _| {
