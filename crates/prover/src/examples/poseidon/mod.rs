@@ -350,7 +350,7 @@ pub fn prove_poseidon(
     let commitment_scheme =
         &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
-    // Constant trace.
+    // Preprocessed trace.
     let span = span!(Level::INFO, "Constant").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
     let constant_trace = vec![gen_is_first(log_n_rows)];

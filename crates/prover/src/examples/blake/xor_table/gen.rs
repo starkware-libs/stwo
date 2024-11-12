@@ -42,7 +42,7 @@ pub fn generate_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
 }
 
 /// Generates the interaction trace for the xor table.
-/// Returns the interaction trace, the constant trace, and the claimed sum.
+/// Returns the interaction trace, the Preprocessed trace, and the claimed sum.
 #[allow(clippy::type_complexity)]
 pub fn generate_interaction_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
     lookup_data: XorTableLookupData<ELEM_BITS, EXPAND_BITS>,
@@ -135,13 +135,13 @@ pub fn generate_interaction_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
     logup_gen.finalize_last()
 }
 
-/// Generates the constant trace for the xor table.
-/// Returns the constant trace, the constant trace, and the claimed sum.
+/// Generates the Preprocessed trace for the xor table.
+/// Returns the Preprocessed trace, the Preprocessed trace, and the claimed sum.
 #[allow(clippy::type_complexity)]
 pub fn generate_constant_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
 ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
     let limb_bits = limb_bits::<ELEM_BITS, EXPAND_BITS>();
-    let _span = span!(Level::INFO, "Xor constant trace").entered();
+    let _span = span!(Level::INFO, "Xor Preprocessed trace").entered();
 
     // Generate the constant columns. In reality, these should be generated before the proof
     // even began.

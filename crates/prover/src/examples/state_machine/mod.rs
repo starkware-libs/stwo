@@ -53,7 +53,7 @@ pub fn prove_state_machine(
     let commitment_scheme =
         &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
-    // Constant trace.
+    // Preprocessed trace.
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(vec![
         gen_is_first(x_axis_log_rows),
