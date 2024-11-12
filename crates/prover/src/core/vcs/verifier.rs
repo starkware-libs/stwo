@@ -77,11 +77,14 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
 
         let mut last_layer_hashes: Option<Vec<(usize, H::Hash)>> = None;
         for layer_log_size in (0..=*max_log_size).rev() {
+            eprintln!("layer_log_size: {}", layer_log_size);
             // Prepare read buffer for queried values to the current layer.
             let mut layer_queried_values = queried_values_by_layer
                 .peek_take_while(|(log_size, _)| *log_size == layer_log_size)
                 .collect_vec();
             let n_columns_in_layer = layer_queried_values.len();
+
+            eprintln!("n_columns_in_layer: {}", n_columns_in_layer);
 
             // Prepare write buffer for queries to the current layer. This will propagate to the
             // next layer.
@@ -129,12 +132,14 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
                                 .unwrap_or_else(|| {
                                     hash_witness
                                         .next()
-                                        .ok_or(MerkleVerificationError::WitnessTooShort)
+                                        .ok_or_else(|| panic!("Witness too short2"))
                                 })?;
                             Ok((left_hash, right_hash))
                         }
                     })
                     .transpose()?;
+
+                // eprintln!("layer_column_queries: {:?}", layer_column_queries);
 
                 // If the column values were queried, read them from `queried_value`.
                 let node_values = if layer_column_queries.next_if_eq(&node_index).is_some() {
@@ -143,22 +148,25 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
                         .map(|(_, ref mut column_queries)| {
                             column_queries
                                 .next()
-                                .ok_or(MerkleVerificationError::ColumnValuesTooShort)
+                                .ok_or_else(|| panic!("Witness too short2"))
                         })
                         .collect::<Result<Vec<_>, _>>()?
                 } else {
                     // Otherwise, read them from the witness.
                     (&mut column_witness).take(n_columns_in_layer).collect_vec()
                 };
+
                 if node_values.len() != n_columns_in_layer {
-                    return Err(MerkleVerificationError::WitnessTooShort);
+                    panic!("{} != {}", node_values.len(), n_columns_in_layer);
+                    // return Err(MerkleVerificationError::WitnessTooShort);
                 }
 
                 layer_total_queries.push((node_index, H::hash_node(node_hashes, &node_values)));
             }
 
             if !layer_queried_values.iter().all(|(_, c)| c.is_empty()) {
-                return Err(MerkleVerificationError::ColumnValuesTooLong);
+                eprintln!("layer_queried_values: {:?}", layer_queried_values);
+                panic!("MerkleVerificationError::ColumnValuesTooLong)");
             }
             last_layer_hashes = Some(layer_total_queries);
         }

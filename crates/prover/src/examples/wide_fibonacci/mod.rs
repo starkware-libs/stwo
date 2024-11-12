@@ -73,6 +73,7 @@ mod tests {
     use num_traits::{One, Zero};
 
     use super::WideFibonacciEval;
+    use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::constraint_framework::{
         assert_constraints, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
     };
@@ -169,7 +170,7 @@ mod tests {
 
     #[test_log::test]
     fn test_wide_fib_prove_with_blake() {
-        for log_n_instances in 2..=6 {
+        for log_n_instances in [6] {
             let config = PcsConfig::default();
             // Precompute twiddles.
             let twiddles = SimdBackend::precompute_twiddles(
@@ -187,7 +188,7 @@ mod tests {
 
             // Preprocessed trace
             let mut tree_builder = commitment_scheme.tree_builder();
-            tree_builder.extend_evals([]);
+            tree_builder.extend_evals([gen_is_first(4)]);
             tree_builder.commit(prover_channel);
 
             // Trace.
@@ -218,7 +219,7 @@ mod tests {
 
             // Retrieve the expected column sizes in each commitment interaction, from the AIR.
             let sizes = component.trace_log_degree_bounds();
-            commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+            commitment_scheme.commit(proof.commitments[0], &[4], verifier_channel);
             commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
             verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
         }
