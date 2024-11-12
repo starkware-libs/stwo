@@ -33,7 +33,7 @@ impl EvalAtRow for InfoEvaluator {
     ) -> [Self::F; N] {
         assert!(
             interaction != PREPROCESSED_TRACE_IDX,
-            "Preprocessed should be accesses with `get_preprocessed_column`",
+            "Preprocessed should be accesses with `next_preprocessed_mask`",
         );
 
         // Check if requested a mask from a new interaction
@@ -45,9 +45,13 @@ impl EvalAtRow for InfoEvaluator {
         [BaseField::one(); N]
     }
 
-    fn get_preprocessed_column(&mut self, column: PreprocessedColumn) -> Self::F {
+    fn next_preprocessed_mask<const N: usize>(
+        &mut self,
+        column: PreprocessedColumn,
+        _offsets: [isize; N],
+    ) -> [Self::F; N] {
         self.preprocessed_columns.push(column);
-        BaseField::one()
+        [BaseField::one(); N]
     }
 
     fn add_constraint<G>(&mut self, _constraint: G)

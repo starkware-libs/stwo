@@ -76,9 +76,9 @@ pub trait EvalAtRow {
         mask_item
     }
 
-    fn get_preprocessed_column(&mut self, _column: PreprocessedColumn) -> Self::F {
-        let [mask_item] = self.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
-        mask_item
+    fn get_preprocessed_column(&mut self, column: PreprocessedColumn) -> Self::F {
+        let [ret] = self.next_preprocessed_mask(column, [0]);
+        ret
     }
 
     /// Returns the mask values of the given offsets for the next column in the interaction.
@@ -87,6 +87,14 @@ pub trait EvalAtRow {
         interaction: usize,
         offsets: [isize; N],
     ) -> [Self::F; N];
+
+    fn next_preprocessed_mask<const N: usize>(
+        &mut self,
+        _column: PreprocessedColumn,
+        offsets: [isize; N],
+    ) -> [Self::F; N] {
+        self.next_interaction_mask(PREPROCESSED_TRACE_IDX, offsets)
+    }
 
     /// Returns the extension mask values of the given offsets for the next extension degree many
     /// columns in the interaction.
