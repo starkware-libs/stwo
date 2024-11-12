@@ -309,9 +309,9 @@ where
     let channel = &mut MC::C::default();
     let commitment_scheme = &mut CommitmentSchemeProver::new(config, &twiddles);
 
-    // Constant trace.
+    // Preprocessed trace.
     // TODO(ShaharS): share is_first column between components when constant columns support this.
-    let span = span!(Level::INFO, "Constant Trace").entered();
+    let span = span!(Level::INFO, "Preprocessed Trace").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(
         chain![
@@ -472,7 +472,7 @@ pub fn verify_blake<MC: MerkleChannel>(
 
     let log_sizes = stmt0.log_sizes();
 
-    // Constant trace.
+    // Preprocessed trace.
     commitment_scheme.commit(stark_proof.commitments[0], &log_sizes[0], channel);
 
     // Trace.
