@@ -11,6 +11,7 @@ pub mod blake2s;
 pub mod circle;
 pub mod cm31;
 pub mod column;
+pub mod conversion;
 pub mod domain;
 pub mod fft;
 pub mod fri;
