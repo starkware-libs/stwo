@@ -3,11 +3,10 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 use num_traits::{One, Zero};
 
 use super::logup::{LogupAtRow, LogupSums};
-use super::{EvalAtRow, INTERACTION_TRACE_IDX};
+use super::{EvalAtRow, EvalAtRowWithLogup, INTERACTION_TRACE_IDX};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::lookups::utils::Fraction;
 
 /// A single base field column at index `idx` of interaction `interaction`, at mask offset `offset`.
 #[derive(Clone, Debug, PartialEq)]
@@ -153,7 +152,7 @@ impl AddAssign<BaseField> for Expr {
 struct ExprEvaluator {
     pub cur_var_index: usize,
     pub constraints: Vec<Expr>,
-    pub logup: LogupAtRow<Self>,
+    pub logup: LogupAtRow<<Self as EvalAtRow>::F, <Self as EvalAtRow>::EF>,
 }
 
 impl ExprEvaluator {
@@ -166,7 +165,7 @@ impl ExprEvaluator {
     }
 }
 
-impl EvalAtRow for ExprEvaluator {
+impl EvalAtRowWithLogup for ExprEvaluator {
     // TODO(alont): Should there be a version of this that disallows Secure fields for F?
     type F = Expr;
     type EF = Expr;
@@ -203,7 +202,9 @@ impl EvalAtRow for ExprEvaluator {
         ])
     }
 
-    super::logup_proxy!();
+    fn get_logup(&mut self) -> &mut LogupAtRow<Self::F, Self::EF> {
+        &mut self.logup
+    }
 }
 
 #[cfg(test)]

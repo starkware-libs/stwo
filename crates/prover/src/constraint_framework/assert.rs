@@ -1,12 +1,11 @@
 use num_traits::{One, Zero};
 
 use super::logup::{LogupAtRow, LogupSums};
-use super::{EvalAtRow, INTERACTION_TRACE_IDX};
+use super::{EvalAtRow, EvalAtRowWithLogup, INTERACTION_TRACE_IDX};
 use crate::core::backend::{Backend, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
-use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CirclePoly};
 use crate::core::utils::circle_domain_order_to_coset_order;
@@ -16,7 +15,7 @@ pub struct AssertEvaluator<'a> {
     pub trace: &'a TreeVec<Vec<Vec<BaseField>>>,
     pub col_index: TreeVec<usize>,
     pub row: usize,
-    pub logup: LogupAtRow<Self>,
+    pub logup: LogupAtRow<<Self as EvalAtRow>::F, <Self as EvalAtRow>::EF>,
 }
 impl<'a> AssertEvaluator<'a> {
     pub fn new(
@@ -33,7 +32,7 @@ impl<'a> AssertEvaluator<'a> {
         }
     }
 }
-impl<'a> EvalAtRow for AssertEvaluator<'a> {
+impl<'a> EvalAtRowWithLogup for AssertEvaluator<'a> {
     type F = BaseField;
     type EF = SecureField;
 
@@ -67,7 +66,9 @@ impl<'a> EvalAtRow for AssertEvaluator<'a> {
         SecureField::from_m31_array(values)
     }
 
-    super::logup_proxy!();
+    fn get_logup(&mut self) -> &mut LogupAtRow<Self::F, Self::EF> {
+        &mut self.logup
+    }
 }
 
 pub fn assert_constraints<B: Backend>(

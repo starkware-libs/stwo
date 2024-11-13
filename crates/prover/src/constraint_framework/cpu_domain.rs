@@ -3,12 +3,11 @@ use std::ops::Mul;
 use num_traits::Zero;
 
 use super::logup::{LogupAtRow, LogupSums};
-use super::{EvalAtRow, INTERACTION_TRACE_IDX};
+use super::{EvalAtRow, EvalAtRowWithLogup, INTERACTION_TRACE_IDX};
 use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
-use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
@@ -24,7 +23,7 @@ pub struct CpuDomainEvaluator<'a> {
     pub constraint_index: usize,
     pub domain_log_size: u32,
     pub eval_domain_log_size: u32,
-    pub logup: LogupAtRow<Self>,
+    pub logup: LogupAtRow<<Self as EvalAtRow>::F, <Self as EvalAtRow>::EF>,
 }
 
 impl<'a> CpuDomainEvaluator<'a> {
@@ -52,7 +51,7 @@ impl<'a> CpuDomainEvaluator<'a> {
     }
 }
 
-impl<'a> EvalAtRow for CpuDomainEvaluator<'a> {
+impl<'a> EvalAtRowWithLogup for CpuDomainEvaluator<'a> {
     type F = BaseField;
     type EF = SecureField;
 
@@ -95,5 +94,7 @@ impl<'a> EvalAtRow for CpuDomainEvaluator<'a> {
         SecureField::from_m31_array(values)
     }
 
-    super::logup_proxy!();
+    fn get_logup(&mut self) -> &mut LogupAtRow<Self::F, Self::EF> {
+        &mut self.logup
+    }
 }

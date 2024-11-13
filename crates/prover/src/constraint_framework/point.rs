@@ -1,11 +1,10 @@
 use std::ops::Mul;
 
 use super::logup::{LogupAtRow, LogupSums};
-use super::{EvalAtRow, INTERACTION_TRACE_IDX};
+use super::{EvalAtRow, EvalAtRowWithLogup, INTERACTION_TRACE_IDX};
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
-use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 use crate::core::ColumnVec;
 
@@ -15,7 +14,7 @@ pub struct PointEvaluator<'a> {
     pub evaluation_accumulator: &'a mut PointEvaluationAccumulator,
     pub col_index: Vec<usize>,
     pub denom_inverse: SecureField,
-    pub logup: LogupAtRow<Self>,
+    pub logup: LogupAtRow<<Self as EvalAtRow>::F, <Self as EvalAtRow>::EF>,
 }
 impl<'a> PointEvaluator<'a> {
     pub fn new(
@@ -35,7 +34,7 @@ impl<'a> PointEvaluator<'a> {
         }
     }
 }
-impl<'a> EvalAtRow for PointEvaluator<'a> {
+impl<'a> EvalAtRowWithLogup for PointEvaluator<'a> {
     type F = SecureField;
     type EF = SecureField;
 
@@ -61,5 +60,7 @@ impl<'a> EvalAtRow for PointEvaluator<'a> {
         SecureField::from_partial_evals(values)
     }
 
-    super::logup_proxy!();
+    fn get_logup(&mut self) -> &mut LogupAtRow<Self::F, Self::EF> {
+        &mut self.logup
+    }
 }

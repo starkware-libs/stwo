@@ -3,7 +3,7 @@ use std::ops::Mul;
 use num_traits::Zero;
 
 use super::logup::{LogupAtRow, LogupSums};
-use super::{EvalAtRow, INTERACTION_TRACE_IDX};
+use super::{EvalAtRow, EvalAtRowWithLogup, INTERACTION_TRACE_IDX};
 use crate::core::backend::simd::column::VeryPackedBaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::very_packed_m31::{
@@ -14,7 +14,6 @@ use crate::core::backend::Column;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
-use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
@@ -32,7 +31,7 @@ pub struct SimdDomainEvaluator<'a> {
     pub constraint_index: usize,
     pub domain_log_size: u32,
     pub eval_domain_log_size: u32,
-    pub logup: LogupAtRow<Self>,
+    pub logup: LogupAtRow<<Self as EvalAtRow>::F, <Self as EvalAtRow>::EF>,
 }
 impl<'a> SimdDomainEvaluator<'a> {
     pub fn new(
@@ -57,7 +56,7 @@ impl<'a> SimdDomainEvaluator<'a> {
         }
     }
 }
-impl<'a> EvalAtRow for SimdDomainEvaluator<'a> {
+impl<'a> EvalAtRowWithLogup for SimdDomainEvaluator<'a> {
     type F = VeryPackedBaseField;
     type EF = VeryPackedSecureField;
 
@@ -110,5 +109,7 @@ impl<'a> EvalAtRow for SimdDomainEvaluator<'a> {
         VeryPackedSecureField::from_very_packed_m31s(values)
     }
 
-    super::logup_proxy!();
+    fn get_logup(&mut self) -> &mut LogupAtRow<Self::F, Self::EF> {
+        &mut self.logup
+    }
 }
