@@ -257,12 +257,10 @@ pub fn generate_interaction_trace(
 
         #[allow(clippy::needless_range_loop)]
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
-            let p0: PackedSecureField = xor_lookup_elements
-                .get(*w0)
-                .combine(&l0.each_ref().map(|l| l.data[vec_row]));
-            let p1: PackedSecureField = xor_lookup_elements
-                .get(*w1)
-                .combine(&l1.each_ref().map(|l| l.data[vec_row]));
+            let p0: PackedSecureField =
+                xor_lookup_elements.combine(*w0, &l0.each_ref().map(|l| l.data[vec_row]));
+            let p1: PackedSecureField =
+                xor_lookup_elements.combine(*w1, &l1.each_ref().map(|l| l.data[vec_row]));
             col_gen.write_frac(vec_row, p0 + p1, p0 * p1);
         }
 

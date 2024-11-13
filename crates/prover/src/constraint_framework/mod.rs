@@ -21,6 +21,7 @@ pub use point::PointEvaluator;
 use preprocessed_columns::PreprocessedColumn;
 pub use simd_domain::SimdDomainEvaluator;
 
+use self::logup::LogupAtRow;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
@@ -117,6 +118,148 @@ pub trait EvalAtRow {
     /// multiplied.
     fn add_to_relation<R: Relation<Self::F, Self::EF>>(
         &mut self,
+        _entries: &[RelationEntry<'_, Self::F, Self::EF, R>],
+    );
+
+    fn finalize(&mut self);
+}
+
+pub trait EvalAtRowWithLogup {
+    type F: FieldExpOps
+        + Clone
+        + Debug
+        + Zero
+        + Neg<Output = Self::F>
+        + AddAssign
+        + AddAssign<BaseField>
+        + Add<Self::F, Output = Self::F>
+        + Sub<Self::F, Output = Self::F>
+        + Mul<BaseField, Output = Self::F>
+        + Add<SecureField, Output = Self::EF>
+        + Mul<SecureField, Output = Self::EF>
+        + Neg<Output = Self::F>
+        + From<BaseField>;
+
+    /// A field type representing the closure of `F` with multiplying by [SecureField]. Constraints
+    /// usually get multiplied by [SecureField] values for security.
+    type EF: One
+        + Clone
+        + Debug
+        + Zero
+        + From<Self::F>
+        + Neg<Output = Self::EF>
+        + AddAssign
+        + Add<SecureField, Output = Self::EF>
+        + Sub<SecureField, Output = Self::EF>
+        + Mul<SecureField, Output = Self::EF>
+        + Add<Self::F, Output = Self::EF>
+        + Mul<Self::F, Output = Self::EF>
+        + Sub<Self::EF, Output = Self::EF>
+        + Mul<Self::EF, Output = Self::EF>
+        + From<SecureField>
+        + From<Self::F>;
+
+    /// Returns the mask values of the given offsets for the next column in the interaction.
+    fn next_interaction_mask<const N: usize>(
+        &mut self,
+        interaction: usize,
+        offsets: [isize; N],
+    ) -> [Self::F; N];
+
+    /// Returns the extension mask values of the given offsets for the next extension degree many
+    /// columns in the interaction.
+    fn next_extension_interaction_mask<const N: usize>(
+        &mut self,
+        interaction: usize,
+        offsets: [isize; N],
+    ) -> [Self::EF; N] {
+        let mut res_col_major =
+            array::from_fn(|_| self.next_interaction_mask(interaction, offsets).into_iter());
+        array::from_fn(|_| {
+            Self::combine_ef(res_col_major.each_mut().map(|iter| iter.next().unwrap()))
+        })
+    }
+
+    /// Adds a constraint to the component.
+    fn add_constraint<G>(&mut self, constraint: G)
+    where
+        Self::EF: Mul<G, Output = Self::EF>;
+
+    /// Combines 4 base field values into a single extension field value.
+    fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF;
+
+    fn get_logup(&mut self) -> &mut LogupAtRow<Self::F, Self::EF>;
+
+    fn write_logup_frac(&mut self, fraction: Fraction<Self::EF, Self::EF>) {
+        let interaction = self.get_logup().interaction;
+        let log_size = self.get_logup().log_size;
+
+        // Add a constraint that num / denom = diff.
+        if let Some(cur_frac) = self.get_logup().cur_frac.clone() {
+            let [cur_cumsum] = self.next_extension_interaction_mask(interaction, [0]);
+            let diff = cur_cumsum.clone() - self.get_logup().prev_col_cumsum.clone();
+            self.get_logup().prev_col_cumsum = cur_cumsum;
+            self.add_constraint(diff * cur_frac.denominator - cur_frac.numerator);
+        } else {
+            self.get_logup().is_first =
+                self.get_preprocessed_column(PreprocessedColumn::IsFirst(log_size));
+            self.get_logup().is_finalized = false;
+        }
+        self.get_logup().cur_frac = Some(fraction);
+    }
+
+    fn finalize_logup(&mut self) {
+        assert!(
+            !self.get_logup().is_finalized,
+            "LogupAtRow was already finalized"
+        );
+
+        let frac = self.get_logup().cur_frac.clone().unwrap();
+        let interaction = self.get_logup().interaction;
+
+        // TODO(ShaharS): remove `claimed_row_index` interaction value and get the shifted
+        // offset from the is_first column when constant columns are supported.
+        let (cur_cumsum, prev_row_cumsum) = match self.get_logup().claimed_sum {
+            Some((claimed_sum, claimed_row_index)) => {
+                let [cur_cumsum, prev_row_cumsum, claimed_cumsum] = self
+                    .next_extension_interaction_mask(
+                        interaction,
+                        [0, -1, claimed_row_index as isize],
+                    );
+
+                // Constrain that the claimed_sum in case that it is not equal to the total_sum.
+                let is_first = self.get_logup().is_first.clone();
+                self.add_constraint((claimed_cumsum - claimed_sum) * is_first);
+                (cur_cumsum, prev_row_cumsum)
+            }
+            None => {
+                let [cur_cumsum, prev_row_cumsum] =
+                    self.next_extension_interaction_mask(interaction, [0, -1]);
+                (cur_cumsum, prev_row_cumsum)
+            }
+        };
+        // Fix `prev_row_cumsum` by subtracting `total_sum` if this is the first row.
+        let fixed_prev_row_cumsum =
+            prev_row_cumsum - self.get_logup().is_first.clone() * self.get_logup().total_sum;
+        let diff = cur_cumsum - fixed_prev_row_cumsum - self.get_logup().prev_col_cumsum.clone();
+
+        self.add_constraint(diff * frac.denominator - frac.numerator);
+
+        self.get_logup().is_finalized = true;
+    }
+
+    fn get_preprocessed_column(&mut self, _column: PreprocessedColumn) -> Self::F {
+        let [mask_item] = self.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
+        mask_item
+    }
+}
+
+impl<E: ?Sized + EvalAtRowWithLogup> EvalAtRow for E {
+    type F = E::F;
+    type EF = E::EF;
+
+    fn add_to_relation<R: Relation<Self::F, Self::EF>>(
+        &mut self,
         entries: &[RelationEntry<'_, Self::F, Self::EF, R>],
     ) {
         let fracs: Vec<Fraction<Self::EF, Self::EF>> = entries
@@ -134,76 +277,33 @@ pub trait EvalAtRow {
         self.write_logup_frac(fracs.into_iter().sum());
     }
 
-    // TODO(alont): Remove these once LogupAtRow is no longer used.
-    fn write_logup_frac(&mut self, _fraction: Fraction<Self::EF, Self::EF>) {
-        unimplemented!()
+    fn finalize(&mut self) {
+        self.finalize_logup();
     }
-    fn finalize_logup(&mut self) {
-        unimplemented!()
+
+    fn next_interaction_mask<const N: usize>(
+        &mut self,
+        interaction: usize,
+        offsets: [isize; N],
+    ) -> [Self::F; N] {
+        self.next_interaction_mask(interaction, offsets)
+    }
+
+    fn add_constraint<G>(&mut self, constraint: G)
+    where
+        Self::EF: Mul<G, Output = Self::EF>,
+    {
+        self.add_constraint(constraint)
+    }
+
+    fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
+        Self::combine_ef(values)
+    }
+
+    fn get_preprocessed_column(&mut self, column: PreprocessedColumn) -> Self::F {
+        self.get_preprocessed_column(column)
     }
 }
-
-/// Default implementation for evaluators that have an element called "logup" that works like a
-/// LogupAtRow, where the logup functionality can be proxied.
-/// TODO(alont): Remove once LogupAtRow is no longer used.
-macro_rules! logup_proxy {
-    () => {
-        fn write_logup_frac(&mut self, fraction: Fraction<Self::EF, Self::EF>) {
-            // Add a constraint that num / denom = diff.
-            if let Some(cur_frac) = self.logup.cur_frac.clone() {
-                let [cur_cumsum] =
-                    self.next_extension_interaction_mask(self.logup.interaction, [0]);
-                let diff = cur_cumsum.clone() - self.logup.prev_col_cumsum.clone();
-                self.logup.prev_col_cumsum = cur_cumsum;
-                self.add_constraint(diff * cur_frac.denominator - cur_frac.numerator);
-            } else {
-                self.logup.is_first = self.get_preprocessed_column(
-                    super::preprocessed_columns::PreprocessedColumn::IsFirst(self.logup.log_size),
-                );
-                self.logup.is_finalized = false;
-            }
-            self.logup.cur_frac = Some(fraction);
-        }
-
-        fn finalize_logup(&mut self) {
-            assert!(!self.logup.is_finalized, "LogupAtRow was already finalized");
-
-            let frac = self.logup.cur_frac.clone().unwrap();
-
-            // TODO(ShaharS): remove `claimed_row_index` interaction value and get the shifted
-            // offset from the is_first column when constant columns are supported.
-            let (cur_cumsum, prev_row_cumsum) = match self.logup.claimed_sum {
-                Some((claimed_sum, claimed_row_index)) => {
-                    let [cur_cumsum, prev_row_cumsum, claimed_cumsum] = self
-                        .next_extension_interaction_mask(
-                            self.logup.interaction,
-                            [0, -1, claimed_row_index as isize],
-                        );
-
-                    // Constrain that the claimed_sum in case that it is not equal to the total_sum.
-                    self.add_constraint(
-                        (claimed_cumsum - claimed_sum) * self.logup.is_first.clone(),
-                    );
-                    (cur_cumsum, prev_row_cumsum)
-                }
-                None => {
-                    let [cur_cumsum, prev_row_cumsum] =
-                        self.next_extension_interaction_mask(self.logup.interaction, [0, -1]);
-                    (cur_cumsum, prev_row_cumsum)
-                }
-            };
-            // Fix `prev_row_cumsum` by subtracting `total_sum` if this is the first row.
-            let fixed_prev_row_cumsum =
-                prev_row_cumsum - self.logup.is_first.clone() * self.logup.total_sum;
-            let diff = cur_cumsum - fixed_prev_row_cumsum - self.logup.prev_col_cumsum.clone();
-
-            self.add_constraint(diff * frac.denominator - frac.numerator);
-
-            self.logup.is_finalized = true;
-        }
-    };
-}
-pub(crate) use logup_proxy;
 
 pub trait RelationEFTraitBound<F: Clone>:
     Clone + Zero + From<F> + From<SecureField> + Mul<F, Output = Self> + Sub<Self, Output = Self>

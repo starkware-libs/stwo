@@ -192,7 +192,7 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &P
         ])
     }
 
-    eval.finalize_logup();
+    eval.finalize();
 }
 
 pub struct LookupData {

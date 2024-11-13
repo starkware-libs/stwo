@@ -4,11 +4,10 @@ use num_traits::One;
 
 use super::logup::{LogupAtRow, LogupSums};
 use super::preprocessed_columns::PreprocessedColumn;
-use super::{EvalAtRow, INTERACTION_TRACE_IDX};
+use super::{EvalAtRow, EvalAtRowWithLogup, INTERACTION_TRACE_IDX};
 use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 
 /// Collects information about the constraints.
@@ -18,7 +17,7 @@ pub struct InfoEvaluator {
     pub mask_offsets: TreeVec<Vec<Vec<isize>>>,
     pub n_constraints: usize,
     pub preprocessed_columns: Vec<PreprocessedColumn>,
-    pub logup: LogupAtRow<Self>,
+    pub logup: LogupAtRow<<Self as EvalAtRow>::F, <Self as EvalAtRow>::EF>,
 }
 impl InfoEvaluator {
     pub fn new(
@@ -40,7 +39,7 @@ impl InfoEvaluator {
         Self::new(16, vec![], (SecureField::default(), None))
     }
 }
-impl EvalAtRow for InfoEvaluator {
+impl EvalAtRowWithLogup for InfoEvaluator {
     type F = BaseField;
     type EF = SecureField;
 
@@ -79,5 +78,7 @@ impl EvalAtRow for InfoEvaluator {
         SecureField::one()
     }
 
-    super::logup_proxy!();
+    fn get_logup(&mut self) -> &mut LogupAtRow<Self::F, Self::EF> {
+        &mut self.logup
+    }
 }

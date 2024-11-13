@@ -5,7 +5,6 @@ use super::{BlakeXorElements, RoundElements};
 use crate::constraint_framework::{EvalAtRow, RelationEntry};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::lookups::utils::Reciprocal;
 use crate::examples::blake::{Fu32, STATE_SIZE};
 
 const INV16: BaseField = BaseField::from_u32_unchecked(1 << 15);
@@ -77,7 +76,7 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
             .collect_vec(),
         )]);
 
-        self.eval.finalize_logup();
+        self.eval.finalize();
         self.eval
     }
     fn next_u32(&mut self) -> Fu32<E::F> {
@@ -189,14 +188,18 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     fn xor2(&mut self, w: u32, a: [E::F; 2], b: [E::F; 2]) -> [E::F; 2] {
         // TODO: Separate lookups by w.
         let c = [self.eval.next_trace_mask(), self.eval.next_trace_mask()];
-        let lookup_elements = self.xor_lookup_elements.get(w);
-        let comb0 =
-            lookup_elements.combine::<E::F, E::EF>(&[a[0].clone(), b[0].clone(), c[0].clone()]);
-        let comb1 =
-            lookup_elements.combine::<E::F, E::EF>(&[a[1].clone(), b[1].clone(), c[1].clone()]);
 
-        self.eval
-            .write_logup_frac(Reciprocal::new(comb0) + Reciprocal::new(comb1));
+        let xor_lookup_elements = self.xor_lookup_elements;
+
+        xor_lookup_elements.use_relation(
+            &mut self.eval,
+            w,
+            [
+                &[a[0].clone(), b[0].clone(), c[0].clone()],
+                &[a[1].clone(), b[1].clone(), c[1].clone()],
+            ],
+        );
+
         c
     }
 }
