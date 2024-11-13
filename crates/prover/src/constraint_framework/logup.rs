@@ -3,7 +3,7 @@ use std::ops::{Mul, Sub};
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
-use super::EvalAtRow;
+use super::RelationEFTraitBound;
 use crate::core::backend::simd::column::SecureColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
@@ -29,7 +29,7 @@ pub type LogupSums = (SecureField, Option<ClaimedPrefixSum>);
 
 /// Evaluates constraints for batched logups.
 /// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = claimed_sum.
-pub struct LogupAtRow<E: EvalAtRow> {
+pub struct LogupAtRow<F: Clone, EF: RelationEFTraitBound<F>> {
     /// The index of the interaction used for the cumulative sum columns.
     pub interaction: usize,
     /// The total sum of all the fractions.
@@ -39,21 +39,21 @@ pub struct LogupAtRow<E: EvalAtRow> {
     /// None if the claimed_sum is the total_sum.
     pub claimed_sum: Option<ClaimedPrefixSum>,
     /// The evaluation of the last cumulative sum column.
-    pub prev_col_cumsum: E::EF,
-    pub cur_frac: Option<Fraction<E::EF, E::EF>>,
+    pub prev_col_cumsum: EF,
+    pub cur_frac: Option<Fraction<EF, EF>>,
     pub is_finalized: bool,
     /// The value of the `is_first` constant column at current row.
     /// See [`super::preprocessed_columns::gen_is_first()`].
-    pub is_first: E::F,
+    pub is_first: F,
     pub log_size: u32,
 }
 
-impl<E: EvalAtRow> Default for LogupAtRow<E> {
+impl<F: Clone + Zero, EF: RelationEFTraitBound<F>> Default for LogupAtRow<F, EF> {
     fn default() -> Self {
         Self::dummy()
     }
 }
-impl<E: EvalAtRow> LogupAtRow<E> {
+impl<F: Clone + Zero, EF: RelationEFTraitBound<F>> LogupAtRow<F, EF> {
     pub fn new(
         interaction: usize,
         total_sum: SecureField,
@@ -64,10 +64,10 @@ impl<E: EvalAtRow> LogupAtRow<E> {
             interaction,
             total_sum,
             claimed_sum,
-            prev_col_cumsum: E::EF::zero(),
+            prev_col_cumsum: EF::zero(),
             cur_frac: None,
             is_finalized: true,
-            is_first: E::F::zero(),
+            is_first: F::zero(),
             log_size,
         }
     }
@@ -78,10 +78,10 @@ impl<E: EvalAtRow> LogupAtRow<E> {
             interaction: 100,
             total_sum: SecureField::one(),
             claimed_sum: None,
-            prev_col_cumsum: E::EF::zero(),
+            prev_col_cumsum: EF::zero(),
             cur_frac: None,
             is_finalized: true,
-            is_first: E::F::zero(),
+            is_first: F::zero(),
             log_size: 10,
         }
     }
@@ -89,7 +89,7 @@ impl<E: EvalAtRow> LogupAtRow<E> {
 
 /// Ensures that the LogupAtRow is finalized.
 /// LogupAtRow should be finalized exactly once.
-impl<E: EvalAtRow> Drop for LogupAtRow<E> {
+impl<F: Clone, EF: RelationEFTraitBound<F>> Drop for LogupAtRow<F, EF> {
     fn drop(&mut self) {
         assert!(self.is_finalized, "LogupAtRow was not finalized");
     }

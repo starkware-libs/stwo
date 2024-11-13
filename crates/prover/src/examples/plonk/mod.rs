@@ -77,7 +77,7 @@ impl FrameworkEval for PlonkEval {
             &[c_wire, c_val],
         )]);
 
-        eval.finalize_logup();
+        eval.finalize();
         eval
     }
 }
