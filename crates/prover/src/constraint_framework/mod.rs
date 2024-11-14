@@ -222,6 +222,7 @@ pub trait Relation<F: Clone, EF: RelationEFTraitBound<F>>: Sized {
     fn combine(&self, values: &[F]) -> EF;
 
     fn get_name(&self) -> &str;
+    fn get_size(&self) -> usize;
 }
 
 /// A struct representing a relation entry.
@@ -250,6 +251,7 @@ macro_rules! relation {
         #[derive(Clone, Debug, PartialEq)]
         pub struct $name(crate::constraint_framework::logup::LookupElements<$size>);
 
+        #[allow(dead_code)]
         impl $name {
             pub fn dummy() -> Self {
                 Self(crate::constraint_framework::logup::LookupElements::dummy())
@@ -276,6 +278,10 @@ macro_rules! relation {
 
             fn get_name(&self) -> &str {
                 stringify!($name)
+            }
+
+            fn get_size(&self) -> usize {
+                $size
             }
         }
     };
