@@ -22,7 +22,7 @@ use crate::core::vcs::hash::Hash;
 use crate::core::vcs::prover::MerkleDecommitment;
 use crate::core::vcs::verifier::MerkleVerificationError;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize,Clone)]
 pub struct StarkProof<H: MerkleHasher> {
     pub commitments: TreeVec<H::Hash>,
     pub commitment_scheme_proof: CommitmentSchemeProof<H>,
