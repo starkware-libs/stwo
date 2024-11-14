@@ -57,7 +57,7 @@ pub trait PolyOps: FieldOps<BaseField> + Sized {
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder>;
 
     fn evaluate_polynomials(
-        polynomials: &mut ColumnVec<CirclePoly<Self>>,
+        polynomials: &ColumnVec<CirclePoly<Self>>,
         log_blowup_factor: u32,
         twiddles: &TwiddleTree<Self>,
     ) -> Vec<CircleEvaluation<Self, BaseField, BitReversedOrder>> {
