@@ -59,7 +59,7 @@ jobs:
         with:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 doc
+      - run: cargo doc
 
   run-wasm32-wasi-tests:
     runs-on: ubuntu-latest
@@ -102,7 +102,7 @@ jobs:
         with:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test
+      - run: cargo test
         env:
           RUSTFLAGS: -C target-feature=+neon
 
@@ -117,7 +117,7 @@ jobs:
         with:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test
+      - run: cargo test
         env:
           RUSTFLAGS: -C target-cpu=native -C target-feature=+${{ matrix.target-feature }}
 
@@ -181,7 +181,7 @@ jobs:
         with:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test
+      - run: cargo test
 
   run-slow-tests:
     runs-on: ubuntu-latest
@@ -191,7 +191,7 @@ jobs:
         with:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test --release --features="slow-tests"
+      - run: cargo test --release --features="slow-tests"
 
   run-tests-parallel:
     runs-on: ubuntu-latest
@@ -201,7 +201,7 @@ jobs:
         with:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test --features="parallel"
+      - run: cargo test --features="parallel"
 
   machete:
     runs-on: ubuntu-latest
