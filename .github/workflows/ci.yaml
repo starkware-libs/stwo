@@ -39,6 +39,17 @@ jobs:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
       - run: scripts/clippy.sh
+  
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          components: clippy
+          toolchain: nightly-2024-01-04
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/audit.sh
 
   doc:
     runs-on: ubuntu-latest
