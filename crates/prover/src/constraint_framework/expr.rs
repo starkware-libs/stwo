@@ -11,14 +11,14 @@ use crate::core::lookups::utils::Fraction;
 
 /// A single base field column at index `idx` of interaction `interaction`, at mask offset `offset`.
 #[derive(Clone, Debug, PartialEq)]
-struct ColumnExpr {
+pub struct ColumnExpr {
     interaction: usize,
     idx: usize,
     offset: isize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum Expr {
+pub enum Expr {
     Col(ColumnExpr),
     /// An atomic secure column constructed from 4 expressions.
     /// Expressions on the secure column are not reduced, i.e,
@@ -198,7 +198,7 @@ fn combine_formal<R: Relation<Expr, Expr>>(relation: &R, values: &[Expr]) -> Exp
 }
 
 /// An Evaluator that saves all constraint expressions.
-struct ExprEvaluator {
+pub struct ExprEvaluator {
     pub cur_var_index: usize,
     pub constraints: Vec<Expr>,
     pub logup: LogupAtRow<Self>,
