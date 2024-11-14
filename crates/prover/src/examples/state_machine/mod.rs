@@ -180,6 +180,7 @@ mod tests {
     };
     use super::gen::{gen_interaction_trace, gen_trace};
     use super::{prove_state_machine, verify_state_machine};
+    use crate::constraint_framework::expr::ExprEvaluator;
     use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::constraint_framework::{
         assert_constraints, FrameworkEval, Relation, TraceLocationAllocator,
@@ -266,5 +267,63 @@ mod tests {
             prove_state_machine(log_n_rows, initial_state, config, prover_channel);
 
         verify_state_machine(config, verifier_channel, components, proof).unwrap();
+    }
+
+    #[test]
+    fn test_state_machine_constraint_repr() {
+        let log_n_rows = 8;
+        let initial_state = [M31::zero(); STATE_SIZE];
+
+        let trace = gen_trace(log_n_rows, initial_state, 0);
+        let lookup_elements = StateMachineElements::draw(&mut Blake2sChannel::default());
+
+        let (_, [total_sum, claimed_sum]) =
+            gen_interaction_trace(1 << log_n_rows, &trace, 0, &lookup_elements);
+
+        assert_eq!(total_sum, claimed_sum);
+        let component = StateMachineOp0Component::new(
+            &mut TraceLocationAllocator::default(),
+            StateTransitionEval {
+                log_n_rows,
+                lookup_elements,
+                total_sum,
+                claimed_sum: (total_sum, (1 << log_n_rows) - 1),
+            },
+            (total_sum, Some((total_sum, (1 << log_n_rows) - 1))),
+        );
+
+        let eval = component.evaluate(ExprEvaluator::new(
+            log_n_rows,
+            (total_sum, Some((total_sum, (1 << log_n_rows) - 1))),
+        ));
+
+        assert_eq!(eval.constraints.len(), 2);
+        let constraint0_str = "(1) \
+            * ((SecureCol(col_2_5[255], col_2_8[255], col_2_11[255], col_2_14[255]) \
+                - (SecureCol(223732908, 22408442, 1020999916, 2109866192))) \
+                * (col_0_2[0]))";
+        assert_eq!(eval.constraints[0].format_expr(), constraint0_str);
+        let constraint1_str = "(1) \
+            * ((SecureCol(col_2_3[0], col_2_6[0], col_2_9[0], col_2_12[0]) \
+                - (SecureCol(col_2_4[-1], col_2_7[-1], col_2_10[-1], col_2_13[-1]) \
+                    - ((col_0_2[0]) * (SecureCol(223732908, 22408442, 1020999916, 2109866192)))) \
+                - (0)) \
+                * ((0 \
+                    + (StateMachineElements_alpha0) * (col_1_0[0]) \
+                    + (StateMachineElements_alpha1) * (col_1_1[0]) \
+                    - (StateMachineElements_z)) \
+                    * (0 + (StateMachineElements_alpha0) * (col_1_0[0] + 1) \
+                        + (StateMachineElements_alpha1) * (col_1_1[0]) \
+                        - (StateMachineElements_z))) \
+                - ((0 \
+                    + (StateMachineElements_alpha0) * (col_1_0[0] + 1) \
+                    + (StateMachineElements_alpha1) * (col_1_1[0]) \
+                    - (StateMachineElements_z)) \
+                    * (1) \
+                    + (0 + (StateMachineElements_alpha0) * (col_1_0[0]) \
+                        + (StateMachineElements_alpha1) * (col_1_1[0]) \
+                        - (StateMachineElements_z)) \
+                        * (-(1))))";
+        assert_eq!(eval.constraints[1].format_expr(), constraint1_str);
     }
 }
