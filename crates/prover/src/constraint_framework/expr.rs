@@ -35,6 +35,35 @@ enum Expr {
     Inv(Box<Expr>),
 }
 
+impl Expr {
+    #[allow(dead_code)]
+    pub fn format_expr(&self) -> String {
+        match self {
+            Expr::Col(ColumnExpr {
+                interaction,
+                idx,
+                offset,
+            }) => {
+                format!("col_{interaction}_{idx}[{offset}]")
+            }
+            Expr::SecureCol([a, b, c, d]) => format!(
+                "SecureCol({}, {}, {}, {})",
+                a.format_expr(),
+                b.format_expr(),
+                c.format_expr(),
+                d.format_expr()
+            ),
+            Expr::Const(c) => c.0.to_string(),
+            Expr::Var(v) => v.to_string(),
+            Expr::Add(a, b) => format!("{} + {}", a.format_expr(), b.format_expr()),
+            Expr::Sub(a, b) => format!("{} - ({})", a.format_expr(), b.format_expr()),
+            Expr::Mul(a, b) => format!("({}) * ({})", a.format_expr(), b.format_expr()),
+            Expr::Neg(a) => format!("-({})", a.format_expr()),
+            Expr::Inv(a) => format!("1/({})", a.format_expr()),
+        }
+    }
+}
+
 impl From<BaseField> for Expr {
     fn from(val: BaseField) -> Self {
         Expr::Const(val)
@@ -250,6 +279,7 @@ mod tests {
     use crate::core::fields::m31::M31;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::FieldExpOps;
+
     #[test]
     fn test_expr_eval() {
         let test_struct = TestStruct {};
@@ -404,6 +434,14 @@ mod tests {
                 ))
             )
         );
+    }
+
+    #[test]
+    fn test_format_expr() {
+        let test_struct = TestStruct {};
+        let eval = test_struct.evaluate(ExprEvaluator::new(16, (SecureField::zero(), None)));
+        assert_eq!(eval.constraints[0].format_expr(), "(1) * ((((col_1_0[0]) * (col_1_1[0])) * (col_1_2[0])) * (1/(col_1_0[0] + col_1_1[0])))");
+        assert_eq!(eval.constraints[1].format_expr(), "(1) * ((SecureCol(col_2_4[0], col_2_6[0], col_2_8[0], col_2_10[0]) - (SecureCol(col_2_5[18446744073709551615], col_2_7[18446744073709551615], col_2_9[18446744073709551615], col_2_11[18446744073709551615]) - ((col_0_3[0]) * (SecureCol(0, 0, 0, 0)))) - (0)) * (0 + (TestRelation_alpha0) * (col_1_0[0]) + (TestRelation_alpha1) * (col_1_1[0]) + (TestRelation_alpha2) * (col_1_2[0]) - (TestRelation_z)) - (1))");
     }
 
     relation!(TestRelation, 3);
