@@ -2,7 +2,7 @@ use num_traits::{One, Zero};
 
 use crate::constraint_framework::logup::ClaimedPrefixSum;
 use crate::constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, RelationType,
+    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, RelationEntry,
     PREPROCESSED_TRACE_IDX,
 };
 use crate::core::air::{Component, ComponentProver};
@@ -10,7 +10,6 @@ use crate::core::backend::simd::SimdBackend;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::{SecureField, QM31};
-use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 use crate::core::prover::StarkProof;
 use crate::core::vcs::ops::MerkleHasher;
@@ -44,16 +43,14 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let input_state: [_; STATE_SIZE] = std::array::from_fn(|_| eval.next_trace_mask());
-        let input_denom: E::EF = self.lookup_elements.combine(&input_state);
 
-        let mut output_state = input_state;
+        let mut output_state = input_state.clone();
         output_state[COORDINATE] += E::F::one();
-        let output_denom: E::EF = self.lookup_elements.combine(&output_state);
 
-        eval.write_logup_frac(
-            Fraction::new(E::EF::one(), input_denom)
-                + Fraction::new(-E::EF::one(), output_denom.clone()),
-        );
+        eval.add_to_relation(&[
+            RelationEntry::new(&self.lookup_elements, E::EF::one(), &input_state),
+            RelationEntry::new(&self.lookup_elements, -E::EF::one(), &output_state),
+        ]);
 
         eval.finalize_logup();
         eval
