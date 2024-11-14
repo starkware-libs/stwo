@@ -63,15 +63,11 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
 
         let bounds = self
             .column_log_sizes()
-            .zip_cols(&sampled_points)
-            .map_cols(|(log_size, sampled_points)| {
-                vec![
-                    CirclePolyDegreeBound::new(log_size - self.config.fri_config.log_blowup_factor);
-                    sampled_points.len()
-                ]
-            })
-            .flatten_cols()
+            .flatten()
             .into_iter()
+            .map(|log_size| {
+                CirclePolyDegreeBound::new(log_size - self.config.fri_config.log_blowup_factor)
+            })
             .sorted()
             .rev()
             .dedup()
