@@ -1,4 +1,4 @@
 #!/bin/bash
 
-cargo install --locked cargo-deny
+cargo install --version 0.16.1 cargo-deny
 cargo deny check "$@"
