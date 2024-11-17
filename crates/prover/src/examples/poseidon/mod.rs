@@ -5,10 +5,10 @@ use std::ops::{Add, AddAssign, Mul, Sub};
 use itertools::Itertools;
 use tracing::{info, span, Level};
 
-use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator, LookupElements};
-use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
+use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
+use crate::constraint_framework::preprocessed_columns::gen_is_first;
 use crate::constraint_framework::{
-    EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator, INTERACTION_TRACE_IDX,
+    EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -60,9 +60,8 @@ impl FrameworkEval for PoseidonEval {
         self.log_n_rows + LOG_EXPAND
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let is_first = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
-        let logup = LogupAtRow::new(INTERACTION_TRACE_IDX, self.total_sum, None, is_first);
-        eval_poseidon_constraints(&mut eval, logup, &self.lookup_elements);
+        eval.init_logup(self.total_sum, None, self.log_size());
+        eval_poseidon_constraints(&mut eval, &self.lookup_elements);
         eval
     }
 }
@@ -140,11 +139,7 @@ fn pow5<F: FieldExpOps>(x: F) -> F {
     x4 * x.clone()
 }
 
-pub fn eval_poseidon_constraints<E: EvalAtRow>(
-    eval: &mut E,
-    mut logup: LogupAtRow<E>,
-    lookup_elements: &PoseidonElements,
-) {
+pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &PoseidonElements) {
     for _ in 0..N_INSTANCES_PER_ROW {
         let mut state: [_; N_STATE] = std::array::from_fn(|_| eval.next_trace_mask());
 
@@ -192,13 +187,10 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(
 
         // Provide state lookups.
         let final_state_denom: E::EF = lookup_elements.combine(&state);
-        logup.write_frac(
-            eval,
-            Reciprocal::new(initial_state_denom) - Reciprocal::new(final_state_denom),
-        );
+        eval.write_frac(Reciprocal::new(initial_state_denom) - Reciprocal::new(final_state_denom));
     }
 
-    logup.finalize(eval);
+    eval.finalize_logup();
 }
 
 pub struct LookupData {
@@ -399,11 +391,9 @@ mod tests {
     use itertools::Itertools;
     use num_traits::One;
 
-    use crate::constraint_framework::logup::{LogupAtRow, LookupElements};
+    use crate::constraint_framework::logup::LookupElements;
     use crate::constraint_framework::preprocessed_columns::gen_is_first;
-    use crate::constraint_framework::{
-        assert_constraints, EvalAtRow, INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
-    };
+    use crate::constraint_framework::{assert_constraints, EvalAtRow};
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
@@ -482,12 +472,8 @@ mod tests {
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
         assert_constraints(&trace_polys, CanonicCoset::new(LOG_N_ROWS), |mut eval| {
-            let [is_first] = eval.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
-            eval_poseidon_constraints(
-                &mut eval,
-                LogupAtRow::new(INTERACTION_TRACE_IDX, total_sum, None, is_first),
-                &lookup_elements,
-            );
+            eval.init_logup(total_sum, None, LOG_N_ROWS);
+            eval_poseidon_constraints(&mut eval, &lookup_elements);
         });
     }
 

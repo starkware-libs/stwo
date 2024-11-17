@@ -1,10 +1,12 @@
 use num_traits::{One, Zero};
 
+use super::logup::LogupAtRow;
 use super::EvalAtRow;
 use crate::core::backend::{Backend, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CirclePoly};
 use crate::core::utils::circle_domain_order_to_coset_order;
@@ -14,6 +16,7 @@ pub struct AssertEvaluator<'a> {
     pub trace: &'a TreeVec<Vec<Vec<BaseField>>>,
     pub col_index: TreeVec<usize>,
     pub row: usize,
+    pub logup: LogupAtRow<Self>,
 }
 impl<'a> AssertEvaluator<'a> {
     pub fn new(trace: &'a TreeVec<Vec<Vec<BaseField>>>, row: usize) -> Self {
@@ -21,6 +24,7 @@ impl<'a> AssertEvaluator<'a> {
             trace,
             col_index: TreeVec::new(vec![0; trace.len()]),
             row,
+            logup: LogupAtRow::dummy(),
         }
     }
 }
@@ -57,6 +61,8 @@ impl<'a> EvalAtRow for AssertEvaluator<'a> {
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
         SecureField::from_m31_array(values)
     }
+
+    super::logup_proxy!();
 }
 
 pub fn assert_constraints<B: Backend>(

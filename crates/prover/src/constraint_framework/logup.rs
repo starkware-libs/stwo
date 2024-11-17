@@ -44,6 +44,12 @@ pub struct LogupAtRow<E: EvalAtRow> {
     /// See [`super::preprocessed_columns::gen_is_first()`].
     pub is_first: E::F,
 }
+
+impl<E: EvalAtRow> Default for LogupAtRow<E> {
+    fn default() -> Self {
+        Self::dummy()
+    }
+}
 impl<E: EvalAtRow> LogupAtRow<E> {
     pub fn new(
         interaction: usize,
@@ -62,6 +68,19 @@ impl<E: EvalAtRow> LogupAtRow<E> {
         }
     }
 
+    // TODO(alont): Remove this once unnecessary LogupAtRows are gone.
+    pub fn dummy() -> Self {
+        Self {
+            interaction: 100,
+            total_sum: SecureField::one(),
+            claimed_sum: None,
+            prev_col_cumsum: E::EF::zero(),
+            cur_frac: None,
+            is_finalized: true,
+            is_first: E::F::zero(),
+        }
+    }
+
     pub fn write_frac(&mut self, eval: &mut E, fraction: Fraction<E::EF, E::EF>) {
         // Add a constraint that num / denom = diff.
         if let Some(cur_frac) = self.cur_frac.clone() {
@@ -73,7 +92,7 @@ impl<E: EvalAtRow> LogupAtRow<E> {
         self.cur_frac = Some(fraction);
     }
 
-    pub fn finalize(mut self, eval: &mut E) {
+    pub fn finalize(&mut self, eval: &mut E) {
         assert!(!self.is_finalized, "LogupAtRow was already finalized");
 
         let frac = self.cur_frac.clone().unwrap();

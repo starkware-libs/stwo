@@ -2,11 +2,13 @@ use std::ops::Mul;
 
 use num_traits::Zero;
 
+use super::logup::LogupAtRow;
 use super::EvalAtRow;
 use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
@@ -22,6 +24,7 @@ pub struct CpuDomainEvaluator<'a> {
     pub constraint_index: usize,
     pub domain_log_size: u32,
     pub eval_domain_log_size: u32,
+    pub logup: LogupAtRow<Self>,
 }
 
 impl<'a> CpuDomainEvaluator<'a> {
@@ -42,6 +45,7 @@ impl<'a> CpuDomainEvaluator<'a> {
             constraint_index: 0,
             domain_log_size,
             eval_domain_log_size: eval_log_size,
+            logup: LogupAtRow::dummy(),
         }
     }
 }
@@ -88,4 +92,6 @@ impl<'a> EvalAtRow for CpuDomainEvaluator<'a> {
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
         SecureField::from_m31_array(values)
     }
+
+    super::logup_proxy!();
 }

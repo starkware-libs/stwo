@@ -2,13 +2,10 @@ use itertools::Itertools;
 use num_traits::One;
 use tracing::{span, Level};
 
-use crate::constraint_framework::logup::{
-    ClaimedPrefixSum, LogupAtRow, LogupTraceGenerator, LookupElements,
-};
+use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
 use crate::constraint_framework::{
     assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
-    INTERACTION_TRACE_IDX,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -49,13 +46,7 @@ impl FrameworkEval for PlonkEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let is_first = eval.get_preprocessed_column(PreprocessedColumn::IsFirst(self.log_size()));
-        let mut logup = LogupAtRow::<_>::new(
-            INTERACTION_TRACE_IDX,
-            self.total_sum,
-            Some(self.claimed_sum),
-            is_first,
-        );
+        eval.init_logup(self.total_sum, Some(self.claimed_sum), self.log_size());
 
         let a_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(0));
         let b_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(1));
@@ -77,19 +68,16 @@ impl FrameworkEval for PlonkEval {
         let denom_a: E::EF = self.lookup_elements.combine(&[a_wire, a_val]);
         let denom_b: E::EF = self.lookup_elements.combine(&[b_wire, b_val]);
 
-        logup.write_frac(
-            &mut eval,
-            Fraction::new(denom_a.clone() + denom_b.clone(), denom_a * denom_b),
-        );
-        logup.write_frac(
-            &mut eval,
-            Fraction::new(
-                (-mult).into(),
-                self.lookup_elements.combine(&[c_wire, c_val]),
-            ),
-        );
+        eval.write_frac(Fraction::new(
+            denom_a.clone() + denom_b.clone(),
+            denom_a * denom_b,
+        ));
+        eval.write_frac(Fraction::new(
+            (-mult).into(),
+            self.lookup_elements.combine(&[c_wire, c_val]),
+        ));
 
-        logup.finalize(&mut eval);
+        eval.finalize_logup();
         eval
     }
 }
