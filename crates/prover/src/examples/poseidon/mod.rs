@@ -3,12 +3,14 @@
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
+use num_traits::One;
 use tracing::{info, span, Level};
 
-use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
+use crate::constraint_framework::logup::LogupTraceGenerator;
 use crate::constraint_framework::preprocessed_columns::gen_is_first;
 use crate::constraint_framework::{
-    EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
+    relation, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
+    TraceLocationAllocator,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -19,7 +21,6 @@ use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::lookups::utils::Reciprocal;
 use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
@@ -44,7 +45,7 @@ const INTERNAL_ROUND_CONSTS: [BaseField; N_PARTIAL_ROUNDS] =
 
 pub type PoseidonComponent = FrameworkComponent<PoseidonEval>;
 
-pub type PoseidonElements = LookupElements<N_STATE>;
+relation!(PoseidonElements, N_STATE);
 
 #[derive(Clone)]
 pub struct PoseidonEval {
@@ -144,7 +145,7 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &P
         let mut state: [_; N_STATE] = std::array::from_fn(|_| eval.next_trace_mask());
 
         // Require state lookup.
-        let initial_state_denom: E::EF = lookup_elements.combine(&state);
+        let initial_state = state.clone();
 
         // 4 full rounds.
         (0..N_HALF_FULL_ROUNDS).for_each(|round| {
@@ -186,8 +187,10 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &P
         });
 
         // Provide state lookups.
-        let final_state_denom: E::EF = lookup_elements.combine(&state);
-        eval.write_frac(Reciprocal::new(initial_state_denom) - Reciprocal::new(final_state_denom));
+        eval.add_to_relation(&[
+            RelationEntry::new(lookup_elements, E::EF::one(), &initial_state),
+            RelationEntry::new(lookup_elements, -E::EF::one(), &state),
+        ])
     }
 
     eval.finalize_logup();
@@ -391,7 +394,6 @@ mod tests {
     use itertools::Itertools;
     use num_traits::One;
 
-    use crate::constraint_framework::logup::LookupElements;
     use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::constraint_framework::{assert_constraints, EvalAtRow};
     use crate::core::air::Component;
@@ -464,7 +466,7 @@ mod tests {
 
         // Trace.
         let (trace0, interaction_data) = gen_trace(LOG_N_ROWS);
-        let lookup_elements = LookupElements::dummy();
+        let lookup_elements = PoseidonElements::dummy();
         let (trace1, total_sum) =
             gen_interaction_trace(LOG_N_ROWS, interaction_data, &lookup_elements);
 

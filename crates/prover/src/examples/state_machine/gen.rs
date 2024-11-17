@@ -1,8 +1,9 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 
-use super::components::{State, STATE_SIZE};
-use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
+use super::components::{State, StateMachineElements, STATE_SIZE};
+use crate::constraint_framework::logup::LogupTraceGenerator;
+use crate::constraint_framework::Relation;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedM31, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedQM31;
@@ -54,7 +55,7 @@ pub fn gen_interaction_trace(
     n_rows: usize,
     trace: &ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>,
     inc_index: usize,
-    lookup_elements: &LookupElements<STATE_SIZE>,
+    lookup_elements: &StateMachineElements,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>>,
     [QM31; 2],
@@ -89,6 +90,7 @@ pub fn gen_interaction_trace(
 
 #[cfg(test)]
 mod tests {
+    use crate::constraint_framework::Relation;
     use crate::core::backend::Column;
     use crate::core::fields::m31::M31;
     use crate::core::fields::qm31::QM31;
