@@ -205,13 +205,13 @@ pub struct CommitmentTreeProver<B: BackendForChannel<MC>, MC: MerkleChannel> {
 
 impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
     pub fn new(
-        mut polynomials: ColumnVec<CirclePoly<B>>,
+        polynomials: ColumnVec<CirclePoly<B>>,
         log_blowup_factor: u32,
         channel: &mut MC::C,
         twiddles: &TwiddleTree<B>,
     ) -> Self {
         let span = span!(Level::INFO, "Extension").entered();
-        let evaluations = B::evaluate_polynomials(&mut polynomials, log_blowup_factor, twiddles);
+        let evaluations = B::evaluate_polynomials(&polynomials, log_blowup_factor, twiddles);
         span.exit();
 
         let _span = span!(Level::INFO, "Merkle").entered();
