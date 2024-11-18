@@ -172,7 +172,7 @@ macro_rules! logup_proxy {
 
             // TODO(ShaharS): remove `claimed_row_index` interaction value and get the shifted
             // offset from the is_first column when constant columns are supported.
-            let (cur_cumsum, prev_row_cumsum) = match self.logup.claimed_sum {
+            let (cur_cumsum, prev_row_cumsum) = match self.logup.claimed_sum.clone() {
                 Some((claimed_sum, claimed_row_index)) => {
                     let [cur_cumsum, prev_row_cumsum, claimed_cumsum] = self
                         .next_extension_interaction_mask(
@@ -194,7 +194,7 @@ macro_rules! logup_proxy {
             };
             // Fix `prev_row_cumsum` by subtracting `total_sum` if this is the first row.
             let fixed_prev_row_cumsum =
-                prev_row_cumsum - self.logup.is_first.clone() * self.logup.total_sum;
+                prev_row_cumsum - self.logup.is_first.clone() * self.logup.total_sum.clone();
             let diff = cur_cumsum - fixed_prev_row_cumsum - self.logup.prev_col_cumsum.clone();
 
             self.add_constraint(diff * frac.denominator - frac.numerator);
