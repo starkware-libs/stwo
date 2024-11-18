@@ -92,8 +92,18 @@ impl TraceLocationAllocator {
         }
     }
 
-    pub fn n_preprocessed_columns(&self) -> usize {
-        self.preprocessed_columns.len()
+    pub fn preprocessed_columns(&self) -> &HashMap<PreprocessedColumn, usize> {
+        &self.preprocessed_columns
+    }
+
+    // validates that `self.preprocessed_columns` contains is consistent with
+    // `preprocessed_columns`.
+    pub fn validate_preprocessed_columns(&self, preprocessed_columns: &[PreprocessedColumn]) {
+        assert_eq!(preprocessed_columns.len(), self.preprocessed_columns.len());
+
+        for (column, idx) in self.preprocessed_columns.iter() {
+            assert_eq!(Some(column), preprocessed_columns.get(*idx));
+        }
     }
 }
 
