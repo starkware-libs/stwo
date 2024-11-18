@@ -8,9 +8,11 @@ use components::{
     StateTransitionEval,
 };
 use gen::{gen_interaction_trace, gen_trace};
-use itertools::{chain, Itertools};
+use itertools::{chain, equal, Itertools};
 
-use crate::constraint_framework::preprocessed_columns::gen_is_first;
+use crate::constraint_framework::preprocessed_columns::{
+    gen_preprocessed_columns, PreprocessedColumn,
+};
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
@@ -54,12 +56,14 @@ pub fn prove_state_machine(
     let commitment_scheme =
         &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
+    let preprocessed_columns = [
+        PreprocessedColumn::IsFirst(x_axis_log_rows),
+        PreprocessedColumn::IsFirst(y_axis_log_rows),
+    ];
+
     // Preprocessed trace.
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(vec![
-        gen_is_first(x_axis_log_rows),
-        gen_is_first(y_axis_log_rows),
-    ]);
+    tree_builder.extend_evals(gen_preprocessed_columns(preprocessed_columns.iter()));
     tree_builder.commit(channel);
 
     // Trace.
@@ -115,6 +119,14 @@ pub fn prove_state_machine(
             claimed_sum: (claimed_sum_op1, y_row as usize - 1),
         },
     );
+    assert!(equal(
+        preprocessed_columns.iter().enumerate(),
+        tree_span_provider
+            .preprocessed_columns()
+            .iter()
+            .map(|(column, idx)| (*idx, column))
+    ));
+
     let components = StateMachineComponents {
         component0,
         component1,
