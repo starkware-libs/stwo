@@ -20,7 +20,6 @@ pub struct BlakeRoundEval<'a, E: EvalAtRow> {
 }
 impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
     pub fn eval(mut self) -> E {
-        self.eval.init_logup(self.total_sum, None, self.log_size);
         let mut v: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
         let input_v = v.clone();
         let m: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
@@ -197,7 +196,7 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
             lookup_elements.combine::<E::F, E::EF>(&[a[1].clone(), b[1].clone(), c[1].clone()]);
 
         self.eval
-            .write_frac(Reciprocal::new(comb0) + Reciprocal::new(comb1));
+            .write_logup_frac(Reciprocal::new(comb0) + Reciprocal::new(comb1));
         c
     }
 }
