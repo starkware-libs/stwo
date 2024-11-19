@@ -5,7 +5,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use super::ops::{MerkleHasher, MerkleOps};
-use super::utils::{next_decommitment_node, option_flatten_peekable};
+use super::utils::next_decommitment_node;
 use crate::core::backend::{Col, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
@@ -107,8 +107,12 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
             // Queries to this layer come from queried node in the previous layer and queried
             // columns in this one.
             let mut prev_layer_queries = last_layer_queries.into_iter().peekable();
-            let mut layer_column_queries =
-                option_flatten_peekable(queries_per_log_size.get(&layer_log_size));
+            let mut layer_column_queries = queries_per_log_size
+                .get(&layer_log_size)
+                .into_iter()
+                .flatten()
+                .copied()
+                .peekable();
 
             // Merge previous layer queries and column queries.
             while let Some(node_index) =
