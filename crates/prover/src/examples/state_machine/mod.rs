@@ -293,13 +293,11 @@ mod tests {
         );
 
         let eval = component.evaluate(ExprEvaluator::new(log_n_rows, true));
-        let expected = "let temp_0 = 0 \
-            + (StateMachineElements_alpha0) * (col_1_0[0]) \
+        let expected = "let temp_0 = (StateMachineElements_alpha0) * (col_1_0[0]) \
             + (StateMachineElements_alpha1) * (col_1_1[0]) \
             - (StateMachineElements_z);
 \
-        let temp_1 = 0 \
-            + (StateMachineElements_alpha0) * (col_1_0[0] + 1) \
+        let temp_1 = (StateMachineElements_alpha0) * (col_1_0[0] + 1) \
             + (StateMachineElements_alpha1) * (col_1_1[0]) \
             - (StateMachineElements_z);
 
@@ -315,10 +313,10 @@ mod tests {
 \
         let constraint_1 = (SecureCol(col_2_3[0], col_2_6[0], col_2_9[0], col_2_12[0]) \
             - (SecureCol(col_2_4[-1], col_2_7[-1], col_2_10[-1], col_2_13[-1]) \
-                - ((col_0_2[0]) * (total_sum))) \
-            - (0)) \
+                - ((col_0_2[0]) * (total_sum)))\
+            ) \
             * ((temp_0) * (temp_1)) \
-            - ((temp_1) * (1) + (temp_0) * (-(1)));"
+            - (temp_1 - (temp_0));"
             .to_string();
 
         assert_eq!(eval.format_constraints(), expected);
