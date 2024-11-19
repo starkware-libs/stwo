@@ -88,7 +88,8 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         }
 
         // Get FRI query domains.
-        let column_queries = fri_verifier.column_queries(channel);
+        let query_positions_per_log_size =
+            fri_verifier.query_positions_per_column_log_size(channel);
 
         // Verify merkle decommitments.
         self.trees
@@ -96,12 +97,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             .zip_eq(proof.decommitments)
             .zip_eq(proof.queried_values.clone())
             .map(|((tree, decommitment), queried_values)| {
-                let queries = column_queries
-                    .opening_positions
-                    .iter()
-                    .map(|(&log_size, domain)| (log_size, domain.flatten()))
-                    .collect();
-                tree.verify(queries, queried_values, decommitment)
+                tree.verify(&query_positions_per_log_size, queried_values, decommitment)
             })
             .0
             .into_iter()
@@ -121,11 +117,12 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             self.column_log_sizes().flatten().into_iter().collect(),
             &samples,
             random_coeff,
-            column_queries.opening_positions,
+            &query_positions_per_log_size,
             &proof.queried_values.flatten(),
         )?;
 
         fri_verifier.decommit(fri_answers)?;
+
         Ok(())
     }
 }

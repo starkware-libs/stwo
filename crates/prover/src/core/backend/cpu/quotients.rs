@@ -1,18 +1,18 @@
-use itertools::{izip, zip_eq};
+use itertools::{izip, zip_eq, Itertools};
 use num_traits::{One, Zero};
 
 use super::CpuBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::constraints::complex_conjugate_line_coeffs;
 use crate::core::fields::cm31::CM31;
-use crate::core::fields::m31::BaseField;
+use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::{bit_reverse, bit_reverse_index};
+use crate::core::utils::bit_reverse_index;
 
 impl QuotientOps for CpuBackend {
     fn accumulate_quotients(
@@ -23,15 +23,15 @@ impl QuotientOps for CpuBackend {
         _log_blowup_factor: u32,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
         let mut values = unsafe { SecureColumnByCoords::uninitialized(domain.size()) };
-        let quotient_constants = quotient_constants(sample_batches, random_coeff, domain);
+        let quotient_constants = quotient_constants(sample_batches, random_coeff);
 
         for row in 0..domain.size() {
             let domain_point = domain.at(bit_reverse_index(row, domain.log_size()));
+            let query_values_at_row = columns.iter().map(|col| col[row]).collect_vec();
             let row_value = accumulate_row_quotients(
                 sample_batches,
-                columns,
+                &query_values_at_row,
                 &quotient_constants,
-                row,
                 domain_point,
             );
             values.set(row, row_value);
@@ -42,23 +42,22 @@ impl QuotientOps for CpuBackend {
 
 pub fn accumulate_row_quotients(
     sample_batches: &[ColumnSampleBatch],
-    columns: &[&CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>],
+    queried_values_at_row: &[BaseField],
     quotient_constants: &QuotientConstants,
-    row: usize,
     domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
+    let denominator_inverses = denominator_inverses(sample_batches, domain_point);
     let mut row_accumulator = SecureField::zero();
-    for (sample_batch, line_coeffs, batch_coeff, denominator_inverses) in izip!(
+    for (sample_batch, line_coeffs, batch_coeff, denominator_inverse) in izip!(
         sample_batches,
         &quotient_constants.line_coeffs,
         &quotient_constants.batch_random_coeffs,
-        &quotient_constants.denominator_inverses
+        denominator_inverses
     ) {
         let mut numerator = SecureField::zero();
         for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
         {
-            let column = &columns[*column_index];
-            let value = column[row] * *c;
+            let value = queried_values_at_row[*column_index] * *c;
             // The numerator is a line equation passing through
             //   (sample_point.y, sample_value), (conj(sample_point), conj(sample_value))
             // evaluated at (domain_point.y, value).
@@ -69,8 +68,7 @@ pub fn accumulate_row_quotients(
             numerator += value - linear_term;
         }
 
-        row_accumulator =
-            row_accumulator * *batch_coeff + numerator.mul_cm31(denominator_inverses[row]);
+        row_accumulator = row_accumulator * *batch_coeff + numerator.mul_cm31(denominator_inverse);
     }
     row_accumulator
 }
@@ -118,9 +116,9 @@ pub fn batch_random_coeffs(
 
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
-    domain: CircleDomain,
-) -> Vec<Vec<CM31>> {
-    let mut flat_denominators = Vec::with_capacity(sample_batches.len() * domain.size());
+    domain_point: CirclePoint<M31>,
+) -> Vec<CM31> {
+    let mut denominators = Vec::new();
     // We want a P to be on a line that passes through a point Pr + uPi in QM31^2, and its conjugate
     // Pr - uPi. Thus, Pr - P is parallel to Pi. Or, (Pr - P).x * Pi.y - (Pr - P).y * Pi.x = 0.
     for sample_batch in sample_batches {
@@ -129,36 +127,22 @@ fn denominator_inverses(
         let pry = sample_batch.point.y.0;
         let pix = sample_batch.point.x.1;
         let piy = sample_batch.point.y.1;
-        for row in 0..domain.size() {
-            let domain_point = domain.at(row);
-            flat_denominators.push((prx - domain_point.x) * piy - (pry - domain_point.y) * pix);
-        }
+        denominators.push((prx - domain_point.x) * piy - (pry - domain_point.y) * pix);
     }
 
-    let mut flat_denominator_inverses = vec![CM31::zero(); flat_denominators.len()];
-    CM31::batch_inverse(&flat_denominators, &mut flat_denominator_inverses);
+    let mut denominator_inverses = vec![CM31::zero(); denominators.len()];
+    CM31::batch_inverse(&denominators, &mut denominator_inverses);
 
-    flat_denominator_inverses
-        .chunks_mut(domain.size())
-        .map(|denominator_inverses| {
-            bit_reverse(denominator_inverses);
-            denominator_inverses.to_vec()
-        })
-        .collect()
+    denominator_inverses
 }
 
 pub fn quotient_constants(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
-    domain: CircleDomain,
 ) -> QuotientConstants {
-    let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
-    let batch_random_coeffs = batch_random_coeffs(sample_batches, random_coeff);
-    let denominator_inverses = denominator_inverses(sample_batches, domain);
     QuotientConstants {
-        line_coeffs,
-        batch_random_coeffs,
-        denominator_inverses,
+        line_coeffs: column_line_coeffs(sample_batches, random_coeff),
+        batch_random_coeffs: batch_random_coeffs(sample_batches, random_coeff),
     }
 }
 
@@ -170,8 +154,6 @@ pub struct QuotientConstants {
     /// The random coefficients used to linearly combine the batched quotients For more details see
     /// [self::batch_random_coeffs].
     pub batch_random_coeffs: Vec<SecureField>,
-    /// The inverses of the denominators of the quotients.
-    pub denominator_inverses: Vec<Vec<CM31>>,
 }
 
 #[cfg(test)]

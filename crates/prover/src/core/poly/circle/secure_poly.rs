@@ -61,6 +61,7 @@ impl<B: FieldOps<BaseField>> Deref for SecureCirclePoly<B> {
 ///
 /// The evaluation is stored as a column major array of [`SECURE_EXTENSION_DEGREE`] many base field
 /// evaluations. The evaluations are ordered according to the [CircleDomain] ordering.
+// TODO(andrew): Rename to SecureCircleEvaluation.
 #[derive(Clone)]
 pub struct SecureEvaluation<B: FieldOps<BaseField>, EvalOrder> {
     pub domain: CircleDomain,
