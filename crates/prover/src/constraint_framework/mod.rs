@@ -119,19 +119,14 @@ pub trait EvalAtRow {
         &mut self,
         entries: &[RelationEntry<'_, Self::F, Self::EF, R>],
     ) {
-        let fracs: Vec<Fraction<Self::EF, Self::EF>> = entries
-            .iter()
-            .map(
-                |RelationEntry {
-                     relation,
-                     multiplicity,
-                     values,
-                 }| {
-                    Fraction::new(multiplicity.clone(), relation.combine(values))
-                },
-            )
-            .collect();
-        self.write_logup_frac(fracs.into_iter().sum());
+        let fracs = entries.iter().map(
+            |RelationEntry {
+                 relation,
+                 multiplicity,
+                 values,
+             }| { Fraction::new(multiplicity.clone(), relation.combine(values)) },
+        );
+        self.write_logup_frac(fracs.sum());
     }
 
     // TODO(alont): Remove these once LogupAtRow is no longer used.
