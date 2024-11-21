@@ -234,7 +234,7 @@ pub struct RelationEntry<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<
     values: &'a [F],
 }
 impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntry<'a, F, EF, R> {
-    pub fn new(relation: &'a R, multiplicity: EF, values: &'a [F]) -> Self {
+    pub const fn new(relation: &'a R, multiplicity: EF, values: &'a [F]) -> Self {
         Self {
             relation,
             multiplicity,

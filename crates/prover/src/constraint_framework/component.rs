@@ -92,7 +92,7 @@ impl TraceLocationAllocator {
         }
     }
 
-    pub fn preprocessed_columns(&self) -> &HashMap<PreprocessedColumn, usize> {
+    pub const fn preprocessed_columns(&self) -> &HashMap<PreprocessedColumn, usize> {
         &self.preprocessed_columns
     }
 

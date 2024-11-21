@@ -699,9 +699,9 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
 
         let mut fri_witness = self.proof.fri_witness.iter().copied();
         let mut decommitment_positions_by_log_size = BTreeMap::new();
-        let mut all_column_decommitment_values = Vec::new();
         let mut folded_evals_by_column = Vec::new();
 
+        let mut decommitment = vec![];
         for (&column_domain, column_query_evals) in
             zip_eq(&self.column_commitment_domains, query_evals_by_column)
         {
@@ -722,15 +722,13 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
             decommitment_positions_by_log_size
                 .insert(column_domain.log_size(), column_decommitment_positions);
 
-            // Prepare values in the structure needed for merkle decommitment.
-            let column_decommitment_values: SecureColumnByCoords<CpuBackend> = sparse_evaluation
-                .subset_evals
-                .iter()
-                .flatten()
-                .copied()
-                .collect();
-
-            all_column_decommitment_values.extend(column_decommitment_values.columns);
+            decommitment.extend(
+                sparse_evaluation
+                    .subset_evals
+                    .iter()
+                    .flatten()
+                    .flat_map(|qm31| qm31.to_m31_array()),
+            );
 
             let folded_evals = sparse_evaluation.fold_circle(self.folding_alpha, column_domain);
             folded_evals_by_column.push(folded_evals);
@@ -752,7 +750,7 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
         merkle_verifier
             .verify(
                 &decommitment_positions_by_log_size,
-                all_column_decommitment_values,
+                decommitment,
                 self.proof.decommitment.clone(),
             )
             .map_err(|error| FriVerificationError::FirstLayerCommitmentInvalid { error })?;
@@ -814,12 +812,12 @@ impl<H: MerkleHasher> FriInnerLayerVerifier<H> {
             });
         }
 
-        let decommitment_values: SecureColumnByCoords<CpuBackend> = sparse_evaluation
+        let decommitment = sparse_evaluation
             .subset_evals
             .iter()
             .flatten()
-            .copied()
-            .collect();
+            .flat_map(|qm31| qm31.to_m31_array())
+            .collect_vec();
 
         let merkle_verifier = MerkleVerifier::new(
             self.proof.commitment,
@@ -829,7 +827,7 @@ impl<H: MerkleHasher> FriInnerLayerVerifier<H> {
         merkle_verifier
             .verify(
                 &BTreeMap::from_iter([(self.domain.log_size(), decommitment_positions)]),
-                decommitment_values.columns.to_vec(),
+                decommitment,
                 self.proof.decommitment.clone(),
             )
             .map_err(|e| FriVerificationError::InnerLayerCommitmentInvalid {
