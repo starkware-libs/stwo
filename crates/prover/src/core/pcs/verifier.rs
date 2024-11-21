@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::iter::zip;
 
 use itertools::Itertools;
@@ -86,6 +87,16 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         // Get FRI query positions.
         let query_positions_per_log_size = fri_verifier.sample_query_positions(channel);
 
+        let colums_per_log_size = self.column_log_sizes().map(|log_sizes| {
+            let mut columns_per_layer = BTreeMap::new();
+
+            for log_size in &log_sizes {
+                *columns_per_layer.entry(*log_size).or_default() += 1;
+            }
+
+            columns_per_layer
+        });
+
         // Verify merkle decommitments.
         self.trees
             .as_ref()
@@ -113,7 +124,8 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             &samples,
             random_coeff,
             &query_positions_per_log_size,
-            &proof.queried_values.flatten(),
+            proof.queried_values,
+            colums_per_log_size,
         )?;
 
         fri_verifier.decommit(fri_answers)?;

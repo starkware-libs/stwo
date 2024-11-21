@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::iter::zip;
 use std::ops::RangeInclusive;
 
-use itertools::{zip_eq, Itertools};
+use itertools::{izip, zip_eq, Itertools};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -738,6 +738,30 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
             return Err(FriVerificationError::FirstLayerEvaluationsInvalid);
         }
 
+        // assert_eq!(all_column_decommitment_values.len(), self.column_commitment_domains.len());
+
+        let mut column_iters = all_column_decommitment_values
+            .iter()
+            .map(|column| column.iter())
+            .collect_vec();
+
+        let mut decommit_by_log_size = vec![Vec::new(); (max_column_log_size + 1) as usize];
+        let mut done = false;
+        while !done {
+            done = true;
+            for (log_size, column_iter) in zip_eq(
+                self.column_commitment_domains
+                    .iter()
+                    .flat_map(|column_domain| [column_domain.log_size(); SECURE_EXTENSION_DEGREE]),
+                column_iters.iter_mut(),
+            ) {
+                if let Some(value) = column_iter.next() {
+                    decommit_by_log_size[log_size as usize].push(*value);
+                    done = false;
+                }
+            }
+        }
+
         let merkle_verifier = MerkleVerifier::new(
             self.proof.commitment,
             self.column_commitment_domains
@@ -749,7 +773,7 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
         merkle_verifier
             .verify(
                 &decommitment_positions_by_log_size,
-                all_column_decommitment_values,
+                decommit_by_log_size,
                 self.proof.decommitment.clone(),
             )
             .map_err(|error| FriVerificationError::FirstLayerCommitmentInvalid { error })?;
@@ -823,10 +847,24 @@ impl<H: MerkleHasher> FriInnerLayerVerifier<H> {
             vec![self.domain.log_size(); SECURE_EXTENSION_DEGREE],
         );
 
+        let mut decommit_by_log_size = vec![Vec::new(); (self.domain.log_size() + 1) as usize];
+
+        for (a, b, c, d) in izip!(
+            &decommitment_values.columns[0],
+            &decommitment_values.columns[1],
+            &decommitment_values.columns[2],
+            &decommitment_values.columns[3]
+        ) {
+            decommit_by_log_size[self.domain.log_size() as usize].push(*a);
+            decommit_by_log_size[self.domain.log_size() as usize].push(*b);
+            decommit_by_log_size[self.domain.log_size() as usize].push(*c);
+            decommit_by_log_size[self.domain.log_size() as usize].push(*d);
+        }
+
         merkle_verifier
             .verify(
                 &BTreeMap::from_iter([(self.domain.log_size(), decommitment_positions)]),
-                decommitment_values.columns.to_vec(),
+                decommit_by_log_size,
                 self.proof.decommitment.clone(),
             )
             .map_err(|e| FriVerificationError::InnerLayerCommitmentInvalid {

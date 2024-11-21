@@ -44,10 +44,13 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
             };
         }
 
+        assert!(columns.is_sorted_by_key(|c| Reverse(c.len())));
+
         let columns = &mut columns
             .into_iter()
             .sorted_by_key(|c| Reverse(c.len()))
             .peekable();
+
         let mut layers: Vec<Col<B, H::Hash>> = Vec::new();
 
         let max_log_size = columns.peek().unwrap().len().ilog2();
@@ -140,7 +143,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
                 // If the column values were queried, return them.
                 let node_values = layer_columns.iter().map(|c| c.at(node_index));
                 if layer_column_queries.next_if_eq(&node_index).is_some() {
-                    layer_queried_values.push(node_values.collect_vec());
+                    layer_queried_values.extend(node_values);
                 } else {
                     // Otherwise, add them to the witness.
                     decommitment.column_witness.extend(node_values);
@@ -154,43 +157,10 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
             // Propagate queries to the next layer.
             last_layer_queries = layer_total_queries;
         }
+
         queried_values_by_layer.reverse();
 
-        // Rearrange returned queried values according to input, and not by layer.
-        let queried_values = Self::rearrange_queried_values(queried_values_by_layer, columns);
-
-        (queried_values, decommitment)
-    }
-
-    /// Given queried values by layer, rearranges in the order of input columns.
-    fn rearrange_queried_values(
-        queried_values_by_layer: Vec<Vec<Vec<BaseField>>>,
-        columns: Vec<&Col<B, BaseField>>,
-    ) -> Vec<Vec<BaseField>> {
-        // Turn each column queried values into an iterator.
-        let mut queried_values_by_layer = queried_values_by_layer
-            .into_iter()
-            .map(|layer_results| {
-                layer_results
-                    .into_iter()
-                    .map(|x| x.into_iter())
-                    .collect_vec()
-            })
-            .collect_vec();
-
-        // For each input column, fetch the queried values from the corresponding layer.
-        let queried_values = columns
-            .iter()
-            .map(|column| {
-                queried_values_by_layer
-                    .get_mut(column.len().ilog2() as usize)
-                    .unwrap()
-                    .iter_mut()
-                    .map(|x| x.next().unwrap())
-                    .collect_vec()
-            })
-            .collect_vec();
-        queried_values
+        (queried_values_by_layer, decommitment)
     }
 
     pub fn root(&self) -> H::Hash {
