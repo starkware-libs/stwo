@@ -108,12 +108,18 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             })
             .flatten();
 
+        let n_columns_per_log_size = self
+            .trees
+            .as_ref()
+            .map(|tree| tree.n_columns_per_log_size.clone());
+
         let fri_answers = fri_answers(
             self.column_log_sizes().flatten().into_iter().collect(),
             &samples,
             random_coeff,
             &query_positions_per_log_size,
-            &proof.queried_values.flatten(),
+            proof.queried_values,
+            n_columns_per_log_size,
         )?;
 
         fri_verifier.decommit(fri_answers)?;
