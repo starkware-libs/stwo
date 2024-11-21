@@ -5,6 +5,7 @@ use std::iter::zip;
 use itertools::{izip, multiunzip, Itertools};
 use tracing::{span, Level};
 
+use super::TreeVec;
 use crate::core::backend::cpu::quotients::{accumulate_row_quotients, quotient_constants};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
@@ -104,21 +105,29 @@ pub fn fri_answers(
     samples: &[Vec<PointSample>],
     random_coeff: SecureField,
     query_positions_per_log_size: &BTreeMap<u32, Vec<usize>>,
-    queried_values_per_column: &[Vec<BaseField>],
+    mut queried_values_per_layer: TreeVec<Vec<Vec<BaseField>>>,
+    mut columns_per_log_size: TreeVec<BTreeMap<u32, usize>>,
 ) -> Result<ColumnVec<Vec<SecureField>>, VerificationError> {
-    izip!(column_log_sizes, samples, queried_values_per_column)
+    izip!(column_log_sizes, samples)
         .sorted_by_key(|(log_size, ..)| Reverse(*log_size))
         .group_by(|(log_size, ..)| *log_size)
         .into_iter()
         .map(|(log_size, tuples)| {
-            let (_, samples, queried_values_per_column): (Vec<_>, Vec<_>, Vec<_>) =
-                multiunzip(tuples);
+            let (_, samples): (Vec<_>, Vec<_>) = multiunzip(tuples);
             fri_answers_for_log_size(
                 log_size,
                 &samples,
                 random_coeff,
                 &query_positions_per_log_size[&log_size],
-                &queried_values_per_column,
+                queried_values_per_layer.as_mut().map(|queried_values| {
+                    match queried_values.get_mut(log_size as usize) {
+                        Some(queried_values) => std::mem::take(queried_values).into_iter(),
+                        None => (vec![]).into_iter(),
+                    }
+                }),
+                columns_per_log_size
+                    .as_mut()
+                    .map(|colums_log_sizes| *colums_log_sizes.get(&log_size).unwrap_or(&0)),
             )
         })
         .collect()
@@ -129,27 +138,23 @@ pub fn fri_answers_for_log_size(
     samples: &[&Vec<PointSample>],
     random_coeff: SecureField,
     query_positions: &[usize],
-    queried_values_per_column: &[&Vec<BaseField>],
+    mut queried_values_per_layer: TreeVec<std::vec::IntoIter<BaseField>>,
+    n_columns: TreeVec<usize>,
 ) -> Result<Vec<SecureField>, VerificationError> {
-    for queried_values in queried_values_per_column {
-        if queried_values.len() != query_positions.len() {
-            return Err(VerificationError::InvalidStructure(
-                "Insufficient number of queried values".to_string(),
-            ));
-        }
-    }
-
     let sample_batches = ColumnSampleBatch::new_vec(samples);
     let quotient_constants = quotient_constants(&sample_batches, random_coeff);
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
-    let mut quotient_evals_at_queries = Vec::new();
 
-    for (row, &query_position) in query_positions.iter().enumerate() {
+    let mut quotient_evals_at_queries = Vec::new();
+    for &query_position in query_positions {
         let domain_point = commitment_domain.at(bit_reverse_index(query_position, log_size));
-        let queried_values_at_row = queried_values_per_column
-            .iter()
-            .map(|col| col[row])
-            .collect_vec();
+
+        let queried_values_at_row = queried_values_per_layer
+            .as_mut()
+            .zip_eq(n_columns.as_ref())
+            .map(|(queried_values, n_columns)| queried_values.take(*n_columns).collect())
+            .flatten();
+
         quotient_evals_at_queries.push(accumulate_row_quotients(
             &sample_batches,
             &queried_values_at_row,
