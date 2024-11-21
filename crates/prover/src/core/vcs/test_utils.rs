@@ -52,9 +52,6 @@ where
 
     let (values, decommitment) = merkle.decommit(&queries, cols.iter().collect_vec());
 
-    let verifier = MerkleVerifier {
-        root: merkle.root(),
-        column_log_sizes: log_sizes,
-    };
+    let verifier = MerkleVerifier::new(merkle.root(), log_sizes);
     (queries, decommitment, values, verifier)
 }

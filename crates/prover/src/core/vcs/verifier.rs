@@ -1,4 +1,3 @@
-use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
@@ -9,17 +8,22 @@ use super::prover::MerkleDecommitment;
 use super::utils::{next_decommitment_node, option_flatten_peekable};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
-use crate::core::ColumnVec;
 
 pub struct MerkleVerifier<H: MerkleHasher> {
     pub root: H::Hash,
     pub column_log_sizes: Vec<u32>,
+    pub n_columns_per_log_size: BTreeMap<u32, usize>,
 }
 impl<H: MerkleHasher> MerkleVerifier<H> {
     pub fn new(root: H::Hash, column_log_sizes: Vec<u32>) -> Self {
+        let mut n_columns_per_log_size = BTreeMap::<u32, usize>::new();
+        for log_size in &column_log_sizes {
+            *n_columns_per_log_size.entry(*log_size).or_insert(0) += 1;
+        }
         Self {
             root,
             column_log_sizes,
+            n_columns_per_log_size,
         }
     }
     /// Verifies the decommitment of the columns.
@@ -53,35 +57,30 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
     pub fn verify(
         &self,
         queries_per_log_size: &BTreeMap<u32, Vec<usize>>,
-        queried_values: ColumnVec<Vec<BaseField>>,
+        queried_values_by_layer: Vec<Vec<BaseField>>,
         decommitment: MerkleDecommitment<H>,
     ) -> Result<(), MerkleVerificationError> {
         let Some(max_log_size) = self.column_log_sizes.iter().max() else {
             return Ok(());
         };
 
+        let mut queried_values_by_layer_iter = queried_values_by_layer.into_iter().rev();
+
         // Prepare read buffers.
-        let mut queried_values_by_layer = self
-            .column_log_sizes
-            .iter()
-            .copied()
-            .zip(
-                queried_values
-                    .into_iter()
-                    .map(|column_values| column_values.into_iter()),
-            )
-            .sorted_by_key(|(log_size, _)| Reverse(*log_size))
-            .peekable();
+
         let mut hash_witness = decommitment.hash_witness.into_iter();
         let mut column_witness = decommitment.column_witness.into_iter();
 
         let mut last_layer_hashes: Option<Vec<(usize, H::Hash)>> = None;
         for layer_log_size in (0..=*max_log_size).rev() {
             // Prepare read buffer for queried values to the current layer.
-            let mut layer_queried_values = queried_values_by_layer
-                .peek_take_while(|(log_size, _)| *log_size == layer_log_size)
-                .collect_vec();
-            let n_columns_in_layer = layer_queried_values.len();
+            let mut layer_queried_values = queried_values_by_layer_iter.next().unwrap().into_iter();
+
+            let n_columns_in_layer = self
+                .n_columns_per_log_size
+                .get(&layer_log_size)
+                .copied()
+                .unwrap_or(0);
 
             // Prepare write buffer for queries to the current layer. This will propagate to the
             // next layer.
@@ -138,18 +137,15 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
 
                 // If the column values were queried, read them from `queried_value`.
                 let node_values = if layer_column_queries.next_if_eq(&node_index).is_some() {
-                    layer_queried_values
-                        .iter_mut()
-                        .map(|(_, ref mut column_queries)| {
-                            column_queries
-                                .next()
-                                .ok_or(MerkleVerificationError::ColumnValuesTooShort)
-                        })
-                        .collect::<Result<Vec<_>, _>>()?
+                    (&mut layer_queried_values)
+                        .take(n_columns_in_layer)
+                        .collect_vec()
                 } else {
                     // Otherwise, read them from the witness.
                     (&mut column_witness).take(n_columns_in_layer).collect_vec()
                 };
+
+                assert_eq!(node_values.len(), n_columns_in_layer);
                 if node_values.len() != n_columns_in_layer {
                     return Err(MerkleVerificationError::WitnessTooShort);
                 }
@@ -157,7 +153,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
                 layer_total_queries.push((node_index, H::hash_node(node_hashes, &node_values)));
             }
 
-            if !layer_queried_values.iter().all(|(_, c)| c.is_empty()) {
+            if !layer_queried_values.is_empty() {
                 return Err(MerkleVerificationError::ColumnValuesTooLong);
             }
             last_layer_hashes = Some(layer_total_queries);
