@@ -1,4 +1,3 @@
-use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
@@ -9,27 +8,35 @@ use super::prover::MerkleDecommitment;
 use super::utils::{next_decommitment_node, option_flatten_peekable};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
-use crate::core::ColumnVec;
 
 pub struct MerkleVerifier<H: MerkleHasher> {
     pub root: H::Hash,
     pub column_log_sizes: Vec<u32>,
+    pub n_columns_per_log_size: BTreeMap<u32, usize>,
 }
 impl<H: MerkleHasher> MerkleVerifier<H> {
     pub fn new(root: H::Hash, column_log_sizes: Vec<u32>) -> Self {
+        let mut n_columns_per_log_size = BTreeMap::new();
+        for log_size in &column_log_sizes {
+            *n_columns_per_log_size.entry(*log_size).or_insert(0) += 1;
+        }
+
         Self {
             root,
             column_log_sizes,
+            n_columns_per_log_size,
         }
     }
     /// Verifies the decommitment of the columns.
+    ///
+    /// Returns `Ok(())` if the decommitment is successfully verified.
     ///
     /// # Arguments
     ///
     /// * `queries_per_log_size` - A map from log_size to a vector of queries for columns of that
     ///  log_size.
-    /// * `queried_values` - A vector of vectors of queried values. For each column, there is a
-    /// vector of queried values to that column.
+    /// * `queried_values` - A vector of queried values according to the order in
+    ///   [`MerkleProver::decommit()`].
     /// * `decommitment` - The decommitment object containing the witness and column values.
     ///
     /// # Errors
@@ -38,45 +45,35 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
     ///
     /// * The witness is too long (not fully consumed).
     /// * The witness is too short (missing values).
-    /// * The column values are too long (not fully consumed).
-    /// * The column values are too short (missing values).
+    /// * Too many queried values (not fully consumed).
+    /// * Too few queried values (missing values).
     /// * The computed root does not match the expected root.
     ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` if the decommitment is successfully verified.
+    /// [`MerkleProver::decommit()`]: crate::core::...::MerkleProver::decommit
+
     pub fn verify(
         &self,
         queries_per_log_size: &BTreeMap<u32, Vec<usize>>,
-        queried_values: ColumnVec<Vec<BaseField>>,
+        queried_values: Vec<BaseField>,
         decommitment: MerkleDecommitment<H>,
     ) -> Result<(), MerkleVerificationError> {
         let Some(max_log_size) = self.column_log_sizes.iter().max() else {
             return Ok(());
         };
 
+        let mut queried_values = queried_values.into_iter();
+
         // Prepare read buffers.
-        let mut queried_values_by_layer = self
-            .column_log_sizes
-            .iter()
-            .copied()
-            .zip(
-                queried_values
-                    .into_iter()
-                    .map(|column_values| column_values.into_iter()),
-            )
-            .sorted_by_key(|(log_size, _)| Reverse(*log_size))
-            .peekable();
+
         let mut hash_witness = decommitment.hash_witness.into_iter();
         let mut column_witness = decommitment.column_witness.into_iter();
 
         let mut last_layer_hashes: Option<Vec<(usize, H::Hash)>> = None;
         for layer_log_size in (0..=*max_log_size).rev() {
-            // Prepare read buffer for queried values to the current layer.
-            let mut layer_queried_values = queried_values_by_layer
-                .peek_take_while(|(log_size, _)| *log_size == layer_log_size)
-                .collect_vec();
-            let n_columns_in_layer = layer_queried_values.len();
+            let n_columns_in_layer = *self
+                .n_columns_per_log_size
+                .get(&layer_log_size)
+                .unwrap_or(&0);
 
             // Prepare write buffer for queries to the current layer. This will propagate to the
             // next layer.
@@ -132,35 +129,35 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
                     .transpose()?;
 
                 // If the column values were queried, read them from `queried_value`.
-                let node_values = if layer_column_queries.next_if_eq(&node_index).is_some() {
-                    layer_queried_values
-                        .iter_mut()
-                        .map(|(_, ref mut column_queries)| {
-                            column_queries
-                                .next()
-                                .ok_or(MerkleVerificationError::ColumnValuesTooShort)
-                        })
-                        .collect::<Result<Vec<_>, _>>()?
-                } else {
+                let (err, node_values_iter) = match layer_column_queries.next_if_eq(&node_index) {
+                    Some(_) => (
+                        MerkleVerificationError::TooFewQueriedValues,
+                        &mut queried_values,
+                    ),
                     // Otherwise, read them from the witness.
-                    (&mut column_witness).take(n_columns_in_layer).collect_vec()
+                    None => (
+                        MerkleVerificationError::WitnessTooShort,
+                        &mut column_witness,
+                    ),
                 };
+
+                let node_values = node_values_iter.take(n_columns_in_layer).collect_vec();
                 if node_values.len() != n_columns_in_layer {
-                    return Err(MerkleVerificationError::WitnessTooShort);
+                    return Err(err);
                 }
 
                 layer_total_queries.push((node_index, H::hash_node(node_hashes, &node_values)));
             }
 
-            if !layer_queried_values.iter().all(|(_, c)| c.is_empty()) {
-                return Err(MerkleVerificationError::ColumnValuesTooLong);
-            }
             last_layer_hashes = Some(layer_total_queries);
         }
 
         // Check that all witnesses and values have been consumed.
         if !hash_witness.is_empty() {
             return Err(MerkleVerificationError::WitnessTooLong);
+        }
+        if !queried_values.is_empty() {
+            return Err(MerkleVerificationError::TooManyQueriedValues);
         }
         if !column_witness.is_empty() {
             return Err(MerkleVerificationError::WitnessTooLong);
@@ -175,16 +172,17 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
     }
 }
 
+// TODO(ilya): Make error messages consistent.
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
 pub enum MerkleVerificationError {
-    #[error("Witness is too short.")]
+    #[error("Witness is too short")]
     WitnessTooShort,
     #[error("Witness is too long.")]
     WitnessTooLong,
-    #[error("Column values are too long.")]
-    ColumnValuesTooLong,
-    #[error("Column values are too short.")]
-    ColumnValuesTooShort,
+    #[error("too many Queried values")]
+    TooManyQueriedValues,
+    #[error("too few queried values")]
+    TooFewQueriedValues,
     #[error("Root mismatch.")]
     RootMismatch,
 }
