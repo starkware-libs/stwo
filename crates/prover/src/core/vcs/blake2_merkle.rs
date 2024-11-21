@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn test_merkle_invalid_value() {
         let (queries, decommitment, mut values, verifier) = prepare_merkle::<Blake2sMerkleHasher>();
-        values[3][2] = BaseField::zero();
+        values[6] = BaseField::zero();
 
         assert_eq!(
             verifier.verify(&queries, values, decommitment).unwrap_err(),
@@ -119,22 +119,22 @@ mod tests {
     #[test]
     fn test_merkle_column_values_too_long() {
         let (queries, decommitment, mut values, verifier) = prepare_merkle::<Blake2sMerkleHasher>();
-        values[3].push(BaseField::zero());
+        values.insert(3, BaseField::zero());
 
         assert_eq!(
             verifier.verify(&queries, values, decommitment).unwrap_err(),
-            MerkleVerificationError::ColumnValuesTooLong
+            MerkleVerificationError::TooManyQueriedValues
         );
     }
 
     #[test]
     fn test_merkle_column_values_too_short() {
         let (queries, decommitment, mut values, verifier) = prepare_merkle::<Blake2sMerkleHasher>();
-        values[3].pop();
+        values.remove(3);
 
         assert_eq!(
             verifier.verify(&queries, values, decommitment).unwrap_err(),
-            MerkleVerificationError::ColumnValuesTooShort
+            MerkleVerificationError::NotEnoughQueriedValues
         );
     }
 
