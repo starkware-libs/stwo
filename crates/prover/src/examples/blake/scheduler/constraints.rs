@@ -2,8 +2,7 @@ use itertools::{chain, Itertools};
 use num_traits::{One, Zero};
 
 use super::BlakeElements;
-use crate::constraint_framework::{EvalAtRow, Relation, RelationEntry};
-use crate::core::lookups::utils::Fraction;
+use crate::constraint_framework::{EvalAtRow, RelationEntry};
 use crate::core::vcs::blake2s_ref::SIGMA;
 use crate::examples::blake::round::RoundElements;
 use crate::examples::blake::{Fu32, N_ROUNDS, STATE_SIZE};
@@ -41,17 +40,16 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
     let output_state = &states[N_ROUNDS];
 
     // TODO(alont): Remove blake interaction.
-    eval.write_logup_frac(Fraction::new(
+    eval.add_to_relation(&[RelationEntry::new(
+        blake_lookup_elements,
         E::EF::zero(),
-        blake_lookup_elements.combine(
-            &chain![
-                input_state.iter().cloned().flat_map(Fu32::to_felts),
-                output_state.iter().cloned().flat_map(Fu32::to_felts),
-                messages.iter().cloned().flat_map(Fu32::to_felts)
-            ]
-            .collect_vec(),
-        ),
-    ));
+        &chain![
+            input_state.iter().cloned().flat_map(Fu32::to_felts),
+            output_state.iter().cloned().flat_map(Fu32::to_felts),
+            messages.iter().cloned().flat_map(Fu32::to_felts)
+        ]
+        .collect_vec(),
+    )]);
 
     eval.finalize_logup();
 }
