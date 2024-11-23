@@ -157,8 +157,13 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> Component
     ) {
         // Consistency check the MLE coeffs column polynomial and oracle.
         let mle_coeff_col_eval = self.mle_coeff_column_poly.eval_at_point(point);
+<<<<<<< Updated upstream:crates/prover/src/examples/xor/gkr_lookups/mle_eval.rs
         let oracle_mle_coeff_col_eval = self.mle_coeff_column_oracle.evaluate_at_point(point, mask);
         assert_eq!(mle_coeff_col_eval, oracle_mle_coeff_col_eval);
+=======
+        let _oracle_mle_coeff_col_eval =
+            self.mle_coeff_column_oracle.evaluate_at_point(point, mask);
+>>>>>>> Stashed changes:crates/prover/src/examples/blake_gkr/gkr_lookups/mle_eval.rs
 
         let component_mask = mask.sub_tree(&self.trace_locations);
         let trace_coset = CanonicCoset::new(self.log_size()).coset;

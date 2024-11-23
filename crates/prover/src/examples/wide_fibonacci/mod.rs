@@ -69,8 +69,12 @@ pub fn generate_trace<const N: usize>(
 
 #[cfg(test)]
 mod tests {
+    use std::fs::File;
+    use std::io::Write;
+
     use itertools::Itertools;
     use num_traits::{One, Zero};
+    use starknet_ff::FieldElement;
 
     use super::WideFibonacciEval;
     use crate::constraint_framework::{
@@ -85,17 +89,23 @@ mod tests {
     use crate::core::channel::Poseidon252Channel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
+    use crate::core::fri::{FriLayerProof, FriProof};
+    use crate::core::pcs::{
+        CommitmentSchemeProof, CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec,
+    };
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+    use crate::core::poly::line::LinePoly;
     use crate::core::poly::BitReversedOrder;
-    use crate::core::prover::{prove, verify};
+    use crate::core::prover::{prove, verify, StarkProof};
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     #[cfg(not(target_arch = "wasm32"))]
     use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+    use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher;
+    use crate::core::vcs::prover::MerkleDecommitment;
     use crate::core::ColumnVec;
     use crate::examples::wide_fibonacci::{generate_trace, FibInput, WideFibonacciComponent};
 
-    const FIB_SEQUENCE_LENGTH: usize = 100;
+    const FIB_SEQUENCE_LENGTH: usize = 64;
 
     fn generate_test_trace(
         log_n_instances: u32,
@@ -153,7 +163,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_wide_fibonacci_constraints_fails() {
-        const LOG_N_INSTANCES: u32 = 6;
+        const LOG_N_INSTANCES: u32 = 125;
 
         let mut trace = generate_test_trace(LOG_N_INSTANCES);
         // Modify the trace such that a constraint fail.
@@ -229,8 +239,15 @@ mod tests {
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
     fn test_wide_fib_prove_with_poseidon() {
-        const LOG_N_INSTANCES: u32 = 6;
-        let config = PcsConfig::default();
+        use std::time::Instant;
+
+        use crate::core::fri::FriConfig;
+
+        const LOG_N_INSTANCES: u32 = 20;
+        let config = PcsConfig {
+            pow_bits: 0,
+            fri_config: FriConfig::new(6, 1, 60),
+        };
         // Precompute twiddles.
         let twiddles = SimdBackend::precompute_twiddles(
             CanonicCoset::new(LOG_N_INSTANCES + 1 + config.fri_config.log_blowup_factor)
@@ -249,11 +266,18 @@ mod tests {
         tree_builder.extend_evals([]);
         tree_builder.commit(prover_channel);
 
+        let now = Instant::now();
         // Trace.
         let trace = generate_test_trace(LOG_N_INSTANCES);
+
+        println!("test trace took: {:?}", now.elapsed());
+
+        let now = Instant::now();
+
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
         tree_builder.commit(prover_channel);
+        println!("extend took: {:?}", now.elapsed());
 
         // Prove constraints.
         let component = WideFibonacciComponent::new(
@@ -263,12 +287,18 @@ mod tests {
             },
             (SecureField::zero(), None),
         );
+        let now = Instant::now();
         let proof = prove::<SimdBackend, Poseidon252MerkleChannel>(
             &[&component],
             prover_channel,
             commitment_scheme,
         )
         .unwrap();
+
+        println!("proving took: {:?}", now.elapsed());
+
+        // _serialize_proof_cairo1(&proof);
+        _serialize_proof_cairo1_array(&proof);
 
         // Verify.
         let verifier_channel = &mut Poseidon252Channel::default();
@@ -277,8 +307,131 @@ mod tests {
 
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
+        println!("commitments: {:?}", proof.commitments[0]);
+        println!("sizes: {:?}", &sizes[0]);
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
         commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
         verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
+    }
+
+    fn _serialize_proof_cairo1_array(proof: &StarkProof<Poseidon252MerkleHasher>) {
+        trait CairoSerialize {
+            fn serialize(&self, buffer: &mut Vec<FieldElement>);
+        }
+
+        impl CairoSerialize for BaseField {
+            fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+                buffer.push(self.0.into());
+            }
+        }
+
+        impl CairoSerialize for SecureField {
+            fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+                buffer.extend(self.to_m31_array().map(|c| FieldElement::from(c.0)));
+            }
+        }
+
+        impl CairoSerialize for MerkleDecommitment<Poseidon252MerkleHasher> {
+            fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+                let Self {
+                    hash_witness,
+                    column_witness,
+                } = self;
+                hash_witness.serialize(buffer);
+                column_witness.serialize(buffer);
+            }
+        }
+
+        impl CairoSerialize for LinePoly {
+            fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+                let Self { coeffs, log_size } = self;
+                coeffs.serialize(buffer);
+                buffer.push((*log_size).into());
+            }
+        }
+
+        impl CairoSerialize for FriLayerProof<Poseidon252MerkleHasher> {
+            fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+                let Self {
+                    fri_witness,
+                    decommitment,
+                    commitment,
+                } = self;
+                fri_witness.serialize(buffer);
+                decommitment.serialize(buffer);
+                commitment.serialize(buffer);
+            }
+        }
+
+        impl CairoSerialize for FriProof<Poseidon252MerkleHasher> {
+            fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+                let Self {
+                    first_layer,
+                    inner_layers,
+                    last_layer_poly,
+                } = self;
+                first_layer.serialize(buffer);
+                inner_layers.serialize(buffer);
+                last_layer_poly.serialize(buffer);
+            }
+        }
+
+        impl CairoSerialize for FieldElement {
+            fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+                buffer.push(*self);
+            }
+        }
+
+        impl CairoSerialize for CommitmentSchemeProof<Poseidon252MerkleHasher> {
+            fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+                let Self {
+                    commitments,
+                    sampled_values,
+                    decommitments,
+                    queried_values,
+                    proof_of_work,
+                    fri_proof,
+                } = self;
+                commitments.serialize(buffer);
+                sampled_values.serialize(buffer);
+                decommitments.serialize(buffer);
+                queried_values.serialize(buffer);
+                buffer.push((*proof_of_work).into());
+                fri_proof.serialize(buffer);
+            }
+        }
+
+        impl CairoSerialize for StarkProof<Poseidon252MerkleHasher> {
+            fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+                let Self(commitment_scheme_proof) = self;
+                commitment_scheme_proof.serialize(buffer);
+            }
+        }
+
+        impl<T: CairoSerialize> CairoSerialize for Vec<T> {
+            fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+                buffer.push(self.len().into());
+                self.iter().for_each(|v| v.serialize(buffer));
+            }
+        }
+
+        let mut values = Vec::new();
+        proof.serialize(&mut values);
+
+        println!("proof size: {} field elements", values.len());
+
+        let ser_proof = format!(
+            r#"
+            use stwo_cairo_verifier::verifier::StarkProof;
+
+            pub fn proof() -> StarkProof {{ 
+                let mut proof_data = array![{}].span();
+                Serde::deserialize(ref proof_data).unwrap()
+            }}"#,
+            values.iter().map(|v| v.to_string()).join(",")
+        );
+
+        let mut file = File::create("proof.cairo").unwrap();
+        file.write_all(ser_proof.as_bytes()).unwrap();
     }
 }
