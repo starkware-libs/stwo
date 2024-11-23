@@ -423,7 +423,7 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
 
     /// Verifies the decommitment stage of FRI.
     ///
-    /// The decommitment values need to be provided in the same order as their commitment.
+    /// The query evals need to be provided in the same order as their commitment.
     ///
     /// # Panics
     ///
@@ -550,10 +550,9 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
     }
 }
 
-/// Returns the column query positions needed for verification.
+/// Returns the column query positions mapped by sample domain log size.
 ///
-/// The column log sizes must be unique and in descending order.
-/// Returned column query positions are mapped by their log size.
+/// Query positions are in ascending order.
 fn get_query_positions_by_log_size(
     queries: &Queries,
     column_log_sizes: BTreeSet<u32>,
@@ -654,7 +653,7 @@ pub const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
 /// Proof of an individual FRI layer.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FriLayerProof<H: MerkleHasher> {
-    /// values that the verifier needs but cannot deduce from previous computations, in the
+    /// Values that the verifier needs but cannot deduce from previous computations, in the
     /// order they are needed. This complements the values that were queried. These must be
     /// supplied directly to the verifier.
     pub fri_witness: Vec<SecureField>,
@@ -688,7 +687,7 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
     fn verify_and_fold(
         &self,
         queries: &Queries,
-        evals_at_queries_by_column: ColumnVec<Vec<SecureField>>,
+        query_evals_by_column: ColumnVec<Vec<SecureField>>,
     ) -> Result<(Queries, ColumnVec<Vec<SecureField>>), FriVerificationError> {
         // Columns are provided in descending order by size.
         let max_column_log_size = self.column_commitment_domains[0].log_size();
@@ -699,18 +698,17 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
         let mut all_column_decommitment_values = Vec::new();
         let mut folded_evals_by_column = Vec::new();
 
-        for (&column_domain, column_evals_at_queries) in
-            zip_eq(&self.column_commitment_domains, evals_at_queries_by_column)
+        for (&column_domain, column_query_evals) in
+            zip_eq(&self.column_commitment_domains, query_evals_by_column)
         {
             let column_queries = queries.fold(queries.log_domain_size - column_domain.log_size());
 
             let (column_decommitment_positions, sparse_evaluation) =
                 compute_decommitment_positions_and_rebuild_evals(
-                    &column_queries.positions,
-                    &column_evals_at_queries,
+                    &column_queries,
+                    &column_query_evals,
                     &mut fri_witness,
                     CIRCLE_TO_LINE_FOLD_STEP,
-                    column_domain.log_size(),
                 )
                 .map_err(|InsufficientWitnessError| {
                     FriVerificationError::FirstLayerEvaluationsInvalid
@@ -794,11 +792,10 @@ impl<H: MerkleHasher> FriInnerLayerVerifier<H> {
 
         let (decommitment_positions, sparse_evaluation) =
             compute_decommitment_positions_and_rebuild_evals(
-                &queries.positions,
+                &queries,
                 &evals_at_queries,
                 &mut fri_witness,
                 FOLD_STEP,
-                self.domain.log_size(),
             )
             .map_err(|InsufficientWitnessError| {
                 FriVerificationError::InnerLayerEvaluationsInvalid {
@@ -1009,11 +1006,10 @@ fn compute_decommitment_positions_and_witness_evals(
 ///
 /// Panics if the number of queries doesn't match the number of query evals.
 fn compute_decommitment_positions_and_rebuild_evals(
-    queries: &[usize],
+    queries: &Queries,
     query_evals: &[QM31],
     mut witness_evals: impl Iterator<Item = QM31>,
     fold_step: u32,
-    column_log_size: u32,
 ) -> Result<(Vec<usize>, SparseEvaluation), InsufficientWitnessError> {
     let mut query_evals = query_evals.iter().copied();
 
@@ -1037,7 +1033,7 @@ fn compute_decommitment_positions_and_rebuild_evals(
             .collect::<Result<_, _>>()?;
 
         subset_evals.push(subset_eval);
-        subset_domain_index_initials.push(bit_reverse_index(subset_start, column_log_size));
+        subset_domain_index_initials.push(bit_reverse_index(subset_start, queries.log_domain_size));
     }
 
     let sparse_evaluation = SparseEvaluation::new(subset_evals, subset_domain_index_initials);

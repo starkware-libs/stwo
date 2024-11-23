@@ -131,7 +131,6 @@ pub fn fri_answers_for_log_size(
     query_positions: &[usize],
     queried_values_per_column: &[&Vec<BaseField>],
 ) -> Result<Vec<SecureField>, VerificationError> {
-    let sample_batches = ColumnSampleBatch::new_vec(samples);
     for queried_values in queried_values_per_column {
         if queried_values.len() != query_positions.len() {
             return Err(VerificationError::InvalidStructure(
@@ -140,6 +139,7 @@ pub fn fri_answers_for_log_size(
         }
     }
 
+    let sample_batches = ColumnSampleBatch::new_vec(samples);
     let quotient_constants = quotient_constants(&sample_batches, random_coeff);
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
     let mut quotient_evals_at_queries = Vec::new();

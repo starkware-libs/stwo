@@ -529,6 +529,7 @@ pub fn verify_blake<MC: MerkleChannel>(
 mod tests {
     use std::env;
 
+    use crate::core::fri::FriConfig;
     use crate::core::pcs::PcsConfig;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::blake::air::{prove_blake, verify_blake};
@@ -547,7 +548,15 @@ mod tests {
             .unwrap_or_else(|_| "6".to_string())
             .parse::<u32>()
             .unwrap();
-        let config = PcsConfig::default();
+        // let config = PcsConfig::default();
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig {
+                log_blowup_factor: 1,
+                log_last_layer_degree_bound: 6,
+                n_queries: 50,
+            },
+        };
 
         // Prove.
         let proof = prove_blake::<Blake2sMerkleChannel>(log_n_instances, config);

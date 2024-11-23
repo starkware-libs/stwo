@@ -83,7 +83,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             return Err(VerificationError::ProofOfWork);
         }
 
-        // Get FRI query domains.
+        // Get FRI query positions.
         let query_positions_per_log_size = fri_verifier.sample_query_positions(channel);
 
         // Verify merkle decommitments.
