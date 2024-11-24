@@ -314,7 +314,7 @@ where
 
     // Setup protocol.
     let channel = &mut MC::C::default();
-    let commitment_scheme = &mut CommitmentSchemeProver::new(config, &twiddles);
+    let mut commitment_scheme = CommitmentSchemeProver::new(config, &twiddles);
 
     // Preprocessed trace.
     // TODO(ShaharS): share is_first column between components when constant columns support this.

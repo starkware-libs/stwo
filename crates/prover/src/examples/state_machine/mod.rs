@@ -51,8 +51,8 @@ pub fn prove_state_machine(
     );
 
     // Setup protocol.
-    let commitment_scheme =
-        &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+    let mut commitment_scheme =
+        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
     // Preprocessed trace.
     let mut tree_builder = commitment_scheme.tree_builder();
@@ -142,7 +142,7 @@ pub fn verify_state_machine(
     // Retrieve the expected column sizes in each commitment interaction, from the AIR.
     let sizes = proof.stmt0.log_sizes();
 
-    // Constant columns.
+    // Preprocessed columns.
     commitment_scheme.commit(proof.stark_proof.commitments[0], &sizes[0], channel);
     // Trace columns.
     proof.stmt0.mix_into(channel);

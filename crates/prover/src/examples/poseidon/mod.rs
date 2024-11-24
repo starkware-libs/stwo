@@ -341,8 +341,8 @@ pub fn prove_poseidon(
 
     // Setup protocol.
     let channel = &mut Blake2sChannel::default();
-    let commitment_scheme =
-        &mut CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+    let mut commitment_scheme =
+        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
     // Preprocessed trace.
     let span = span!(Level::INFO, "Constant").entered();
@@ -512,7 +512,7 @@ mod tests {
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
 
-        // Constant columns.
+        // Preprocessed columns.
         commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
         // Trace columns.
         commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
