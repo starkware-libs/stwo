@@ -401,10 +401,10 @@ fn mle_eval_info(interaction: usize, n_variables: usize) -> InfoEvaluator {
     let mut eval = InfoEvaluator::empty();
     let mle_eval_point = MleEvalPoint::new(&vec![SecureField::from(2); n_variables]);
     let mle_claim_shift = SecureField::zero();
-    let mle_coeffs_col_eval = SecureField::zero();
-    let carry_quotients_col_eval = SecureField::zero();
-    let is_first = BaseField::zero();
-    let is_second = BaseField::zero();
+    let mle_coeffs_col_eval = SecureField::zero().into();
+    let carry_quotients_col_eval = SecureField::zero().into();
+    let is_first = BaseField::zero().into();
+    let is_second = BaseField::zero().into();
     eval_mle_eval_constraints(
         interaction,
         &mut eval,

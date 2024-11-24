@@ -8,6 +8,7 @@ use rand::distributions::{Distribution, Standard};
 
 use super::cm31::PackedCM31;
 use super::m31::{PackedM31, N_LANES};
+use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::FieldExpOps;
 
@@ -228,6 +229,24 @@ impl Mul<QM31> for PackedQM31 {
 
     fn mul(self, rhs: QM31) -> Self::Output {
         self * PackedQM31::broadcast(rhs)
+    }
+}
+
+impl Mul<M31> for PackedQM31 {
+    type Output = Self;
+
+    #[inline(always)]
+    fn mul(self, rhs: M31) -> Self::Output {
+        self * PackedM31::broadcast(rhs)
+    }
+}
+
+impl Add<M31> for PackedQM31 {
+    type Output = Self;
+
+    #[inline(always)]
+    fn add(self, rhs: M31) -> Self::Output {
+        self + PackedM31::broadcast(rhs)
     }
 }
 

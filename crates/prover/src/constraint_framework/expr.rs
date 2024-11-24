@@ -145,6 +145,13 @@ impl FieldExpOps for Expr {
     }
 }
 
+impl Add<BaseField> for Expr {
+    type Output = Self;
+    fn add(self, rhs: BaseField) -> Self {
+        self + Expr::from(rhs)
+    }
+}
+
 impl Mul<BaseField> for Expr {
     type Output = Self;
     fn mul(self, rhs: BaseField) -> Self {
