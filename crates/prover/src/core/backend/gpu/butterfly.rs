@@ -221,8 +221,8 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use super::butterfly_gpu;
-    use crate::core::fft::butterfly;
+    use super::{butterfly_gpu, ibutterfly_gpu};
+    use crate::core::fft::{butterfly, ibutterfly};
     use crate::core::fields::m31::BaseField;
 
     fn test_single_butterfly(v0: u32, v1: u32, twid: u32) -> bool {
@@ -239,6 +239,25 @@ mod tests {
         // Execute both implementations
         butterfly(&mut cpu_v0, &mut cpu_v1, cpu_twid);
         butterfly_gpu(&mut gpu_v0, &mut gpu_v1, gpu_twid);
+
+        // Compare results
+        cpu_v0.0 == gpu_v0 && cpu_v1.0 == gpu_v1
+    }
+
+    fn test_single_ibutterfly(v0: u32, v1: u32, twid: u32) -> bool {
+        // CPU implementation
+        let mut cpu_v0 = BaseField::partial_reduce(v0);
+        let mut cpu_v1 = BaseField::partial_reduce(v1);
+        let cpu_twid = BaseField::partial_reduce(twid);
+
+        // GPU implementation
+        let mut gpu_v0 = cpu_v0.0;
+        let mut gpu_v1 = cpu_v1.0;
+        let gpu_twid = cpu_twid.0;
+
+        // Execute both implementations
+        ibutterfly(&mut cpu_v0, &mut cpu_v1, cpu_twid);
+        ibutterfly_gpu(&mut gpu_v0, &mut gpu_v1, gpu_twid);
 
         // Compare results
         cpu_v0.0 == gpu_v0 && cpu_v1.0 == gpu_v1
@@ -261,12 +280,12 @@ mod tests {
             twid
         );
 
-        // assert!(
-        //     test_single_ibutterfly(v0, v1, twid),
-        //     "Random inverse butterfly test failed with v0={}, v1={}, itwid={}",
-        //     v0,
-        //     v1,
-        //     twid
-        // );
+        assert!(
+            test_single_ibutterfly(v0, v1, twid),
+            "Random inverse butterfly test failed with v0={}, v1={}, itwid={}",
+            v0,
+            v1,
+            twid
+        );
     }
 }
