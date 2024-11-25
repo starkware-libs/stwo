@@ -64,6 +64,12 @@ impl M31 {
     }
 }
 
+impl Into<u32> for M31 {
+    fn into(self) -> u32 {
+        self.0
+    }
+}
+
 impl Display for M31 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)

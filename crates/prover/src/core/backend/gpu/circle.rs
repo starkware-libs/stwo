@@ -10,6 +10,62 @@ pub struct GpuInterpolator {
     bind_group_layout: wgpu::BindGroupLayout,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct InterpolateInput {
+    values: [u32; 4],
+    initial_x: u32,
+    initial_y: u32,
+    log_size: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct InterpolateOutput {
+    results: [u32; 4],
+}
+
+pub struct InterpolateInputF<F> {
+    pub values: [F; 4],
+    pub initial_x: F,
+    pub initial_y: F,
+    pub log_size: u32,
+}
+
+pub struct InterpolateOutputF<F> {
+    pub results: [F; 4],
+}
+
+impl<F> InterpolateInputF<F>
+where
+    F: Into<u32> + Copy,
+{
+    pub fn to_gpu_input(self) -> InterpolateInput {
+        InterpolateInput {
+            values: self.values.map(|v| v.into()),
+            initial_x: self.initial_x.into(),
+            initial_y: self.initial_y.into(),
+            log_size: self.log_size,
+        }
+    }
+}
+
+impl<F> InterpolateOutputF<F>
+where
+    F: From<u32> + Copy,
+{
+    pub fn from_gpu_output(output: InterpolateOutput) -> Self {
+        Self {
+            results: [
+                F::from(output.results[0]),
+                F::from(output.results[1]),
+                F::from(output.results[2]),
+                F::from(output.results[3]),
+            ],
+        }
+    }
+}
+
 impl GpuInterpolator {
     pub async fn new() -> Self {
         let instance = wgpu::Instance::default();
@@ -89,20 +145,20 @@ impl GpuInterpolator {
         }
     }
 
-    fn execute_interpolate(&self, values: [u32; 2], initial_y: u32) -> [u32; 2] {
+    fn execute_interpolate(&self, input: InterpolateInput) -> InterpolateOutput {
         // Create input buffer
         let input_buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
-                contents: bytemuck::cast_slice(&[values[0], values[1], initial_y]),
+                contents: bytemuck::cast_slice(&[input]),
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             });
 
         // Create storage buffer for computation
         let storage_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: 8, // 2 * sizeof(u32)
+            size: std::mem::size_of::<InterpolateInput>() as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
@@ -110,7 +166,7 @@ impl GpuInterpolator {
         // Create staging buffer for reading results
         let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: 8,
+            size: std::mem::size_of::<InterpolateOutput>() as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -144,7 +200,13 @@ impl GpuInterpolator {
             compute_pass.set_bind_group(0, &bind_group, &[]);
             compute_pass.dispatch_workgroups(1, 1, 1);
         }
-        encoder.copy_buffer_to_buffer(&storage_buffer, 0, &staging_buffer, 0, 8);
+        encoder.copy_buffer_to_buffer(
+            &storage_buffer,
+            0,
+            &staging_buffer,
+            0,
+            std::mem::size_of::<InterpolateOutput>() as u64,
+        );
         self.queue.submit(Some(encoder.finish()));
 
         // Read back the results
@@ -158,7 +220,7 @@ impl GpuInterpolator {
         pollster::block_on(async {
             rx.recv_async().await.unwrap().unwrap();
             let data = slice.get_mapped_range();
-            let result: [u32; 2] = bytemuck::cast_slice(&data).try_into().unwrap();
+            let result = *bytemuck::from_bytes::<InterpolateOutput>(&data);
             drop(data);
             staging_buffer.unmap();
             result
@@ -166,7 +228,7 @@ impl GpuInterpolator {
     }
 }
 
-pub fn interpolate_gpu<F>(v0: F, v1: F, y: F) -> (F, F)
+pub fn interpolate_gpu<F>(input: InterpolateInputF<F>) -> InterpolateOutputF<F>
 where
     F: AddAssign<F>
         + Add<F, Output = F>
@@ -179,10 +241,8 @@ where
     static GPU_INTERPOLATOR: once_cell::sync::Lazy<GpuInterpolator> =
         once_cell::sync::Lazy::new(|| pollster::block_on(GpuInterpolator::new()));
 
-    let [result_v0, result_v1] =
-        GPU_INTERPOLATOR.execute_interpolate([v0.into(), v1.into()], y.into());
-
-    (F::from(result_v0), F::from(result_v1))
+    let result = GPU_INTERPOLATOR.execute_interpolate(input.to_gpu_input());
+    InterpolateOutputF::from_gpu_output(result)
 }
 
 #[cfg(test)]
@@ -193,7 +253,7 @@ mod tests {
     use crate::core::fields::FieldExpOps;
 
     #[test]
-    fn test_interpolate() {
+    fn test_interpolate2() {
         // CPU implementation for comparison
         let cpu_test = |v0: u32, v1: u32, y: u32| {
             let mut v0 = BaseField::partial_reduce(v0);
@@ -214,21 +274,95 @@ mod tests {
 
         for (v0, v1, y) in test_cases {
             let (cpu_v0, cpu_v1) = cpu_test(v0, v1, y);
-            let (gpu_v0, gpu_v1) = interpolate_gpu(
-                BaseField::partial_reduce(v0).0,
-                BaseField::partial_reduce(v1).0,
-                BaseField::partial_reduce(y).0,
-            );
+
+            let input = InterpolateInputF {
+                values: [
+                    BaseField::partial_reduce(v0),
+                    BaseField::partial_reduce(v1),
+                    BaseField::partial_reduce(0),
+                    BaseField::partial_reduce(0),
+                ],
+                initial_x: BaseField::partial_reduce(0),
+                initial_y: BaseField::partial_reduce(y),
+                log_size: 1,
+            };
+            let gpu_output = interpolate_gpu(input);
 
             assert_eq!(
-                cpu_v0.0, gpu_v0,
+                cpu_v0.0, gpu_output.results[0].0,
                 "v0 mismatch for input ({}, {}, {})",
                 v0, v1, y
             );
             assert_eq!(
-                cpu_v1.0, gpu_v1,
+                cpu_v1.0, gpu_output.results[1].0,
                 "v1 mismatch for input ({}, {}, {})",
                 v0, v1, y
+            );
+        }
+    }
+
+    #[test]
+    fn test_interpolate4() {
+        // CPU implementation for comparison
+        let cpu_test = |v0: u32, v1: u32, v2: u32, v3: u32, x: u32, y: u32| {
+            let mut v0 = BaseField::partial_reduce(v0);
+            let mut v1 = BaseField::partial_reduce(v1);
+            let mut v2 = BaseField::partial_reduce(v2);
+            let mut v3 = BaseField::partial_reduce(v3);
+            let x = BaseField::partial_reduce(x);
+            let y = BaseField::partial_reduce(y);
+
+            let n = BaseField::from(4);
+            let xyn_inv = (x * y * n).inverse();
+            let x_inv = xyn_inv * y * n;
+            let y_inv = xyn_inv * x * n;
+            let n_inv = xyn_inv * x * y;
+
+            ibutterfly(&mut v0, &mut v1, y_inv);
+            ibutterfly(&mut v2, &mut v3, -y_inv);
+            ibutterfly(&mut v0, &mut v2, x_inv);
+            ibutterfly(&mut v1, &mut v3, x_inv);
+            (v0 * n_inv, v1 * n_inv, v2 * n_inv, v3 * n_inv)
+        };
+
+        // Test cases
+        let test_cases = [(1, 2, 3, 4, 5, 6), (100, 200, 300, 400, 500, 600)];
+
+        for (v0, v1, v2, v3, x, y) in test_cases {
+            let (cpu_v0, cpu_v1, cpu_v2, cpu_v3) = cpu_test(v0, v1, v2, v3, x, y);
+
+            let input = InterpolateInputF {
+                values: [
+                    BaseField::partial_reduce(v0),
+                    BaseField::partial_reduce(v1),
+                    BaseField::partial_reduce(v2),
+                    BaseField::partial_reduce(v3),
+                ],
+                initial_x: BaseField::partial_reduce(x),
+                initial_y: BaseField::partial_reduce(y),
+                log_size: 2,
+            };
+            let gpu_output = interpolate_gpu(input);
+
+            assert_eq!(
+                cpu_v0.0, gpu_output.results[0].0,
+                "v0 mismatch for input ({}, {}, {}, {}, {}, {})",
+                v0, v1, v2, v3, x, y
+            );
+            assert_eq!(
+                cpu_v1.0, gpu_output.results[1].0,
+                "v1 mismatch for input ({}, {}, {}, {}, {}, {})",
+                v0, v1, v2, v3, x, y
+            );
+            assert_eq!(
+                cpu_v2.0, gpu_output.results[2].0,
+                "v2 mismatch for input ({}, {}, {}, {}, {}, {})",
+                v0, v1, v2, v3, x, y
+            );
+            assert_eq!(
+                cpu_v3.0, gpu_output.results[3].0,
+                "v3 mismatch for input ({}, {}, {}, {}, {}, {})",
+                v0, v1, v2, v3, x, y
             );
         }
     }
