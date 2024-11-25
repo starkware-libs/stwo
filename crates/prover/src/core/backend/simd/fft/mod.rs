@@ -9,6 +9,8 @@ use crate::core::fields::m31::P;
 use crate::parallel_iter;
 
 pub mod ifft;
+pub mod ifft1_gpu;
+pub mod ifft_gpu;
 pub mod rfft;
 
 pub const CACHED_FFT_LOG_SIZE: u32 = 16;

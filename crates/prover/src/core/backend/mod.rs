@@ -15,6 +15,7 @@ use super::proof_of_work::GrindOps;
 use super::vcs::ops::MerkleOps;
 
 pub mod cpu;
+pub mod gpu;
 pub mod simd;
 
 pub trait Backend:

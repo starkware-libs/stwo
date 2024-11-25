@@ -11,7 +11,7 @@ pub const N_ELEMENTS: usize = 1 << 16;
 pub const N_STATE_ELEMENTS: usize = 8;
 
 pub fn m31_operations_bench(c: &mut Criterion) {
-    let mut rng = SmallRng::seed_from_u64(0);
+    let mut rng: SmallRng = SmallRng::seed_from_u64(0);
     let elements: Vec<M31> = (0..N_ELEMENTS).map(|_| rng.gen()).collect();
     let mut state: [M31; N_STATE_ELEMENTS] = rng.gen();
 

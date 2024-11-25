@@ -399,6 +399,7 @@ mod tests {
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
+    // use crate::core::fields::qm31::SecureField;
     use crate::core::fri::FriConfig;
     use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
@@ -492,7 +493,7 @@ mod tests {
 
         // Get from environment variable:
         let log_n_instances = env::var("LOG_N_INSTANCES")
-            .unwrap_or_else(|_| "10".to_string())
+            .unwrap_or_else(|_| "18".to_string())
             .parse::<u32>()
             .unwrap();
         let config = PcsConfig {
