@@ -299,21 +299,22 @@ mod tests {
             (total_sum, Some((total_sum, (1 << log_n_rows) - 1))),
         );
 
-        let eval = component.evaluate(ExprEvaluator::new(
-            log_n_rows,
-            (total_sum, Some((total_sum, (1 << log_n_rows) - 1))),
-        ));
+        let eval = component.evaluate(ExprEvaluator::new(log_n_rows, true));
 
         assert_eq!(eval.constraints.len(), 2);
         let constraint0_str = "(1) \
-            * ((SecureCol(col_2_5[255], col_2_8[255], col_2_11[255], col_2_14[255]) \
-                - (SecureCol(223732908, 22408442, 1020999916, 2109866192))) \
+            * ((SecureCol(\
+                col_2_5[claimed_sum_offset], \
+                col_2_8[claimed_sum_offset], \
+                col_2_11[claimed_sum_offset], \
+                col_2_14[claimed_sum_offset]\
+            ) - (claimed_sum)) \
                 * (col_0_2[0]))";
         assert_eq!(eval.constraints[0].format_expr(), constraint0_str);
         let constraint1_str = "(1) \
             * ((SecureCol(col_2_3[0], col_2_6[0], col_2_9[0], col_2_12[0]) \
                 - (SecureCol(col_2_4[-1], col_2_7[-1], col_2_10[-1], col_2_13[-1]) \
-                    - ((col_0_2[0]) * (SecureCol(223732908, 22408442, 1020999916, 2109866192)))) \
+                    - ((col_0_2[0]) * (total_sum))) \
                 - (0)) \
                 * ((0 \
                     + (StateMachineElements_alpha0) * (col_1_0[0]) \
