@@ -400,17 +400,9 @@ impl EvalAtRow for ExprEvaluator {
 
     fn add_constraint<G>(&mut self, constraint: G)
     where
-        Self::EF: std::ops::Mul<G, Output = Self::EF>,
+        Self::EF: std::ops::Mul<G, Output = Self::EF> + From<G>,
     {
-        match Expr::one() * constraint {
-            Expr::Mul(one, constraint) => {
-                assert_eq!(*one, Expr::one());
-                self.constraints.push(*constraint);
-            }
-            _ => {
-                unreachable!();
-            }
-        }
+        self.constraints.push(constraint.into());
     }
 
     fn combine_ef(values: [Self::F; 4]) -> Self::EF {
