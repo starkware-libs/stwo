@@ -3,9 +3,9 @@ pub mod components;
 pub mod gen;
 
 use components::{
-    State, StateMachineComponents, StateMachineElements, StateMachineOp0Component,
-    StateMachineOp1Component, StateMachineProof, StateMachineStatement0, StateMachineStatement1,
-    StateTransitionEval,
+    track_state_machine_relations, State, StateMachineComponents, StateMachineElements,
+    StateMachineOp0Component, StateMachineOp1Component, StateMachineProof, StateMachineStatement0,
+    StateMachineStatement1, StateTransitionEval,
 };
 use gen::{gen_interaction_trace, gen_trace};
 use itertools::{chain, Itertools};
@@ -19,7 +19,7 @@ use crate::core::backend::simd::SimdBackend;
 use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
-use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
+use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, PolyOps};
 use crate::core::prover::{prove, verify, VerificationError};
 use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
@@ -62,13 +62,20 @@ pub fn prove_state_machine(
     ];
 
     // Preprocessed trace.
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(gen_preprocessed_columns(preprocessed_columns.iter()));
-    tree_builder.commit(channel);
+    let preprocessed_trace = gen_preprocessed_columns(preprocessed_columns.iter());
 
     // Trace.
     let trace_op0 = gen_trace(x_axis_log_rows, initial_state, 0);
     let trace_op1 = gen_trace(y_axis_log_rows, intermediate_state, 1);
+
+    let trace = chain![trace_op0.clone(), trace_op1.clone()].collect_vec();
+
+    let _ = track_state_machine_relations(&TreeVec(vec![&preprocessed_trace, &trace]), log_n_rows);
+
+    // Commitments.
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(preprocessed_trace);
+    tree_builder.commit(channel);
 
     let stmt0 = StateMachineStatement0 {
         n: x_axis_log_rows,

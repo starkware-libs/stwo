@@ -7,6 +7,7 @@ mod info;
 pub mod logup;
 mod point;
 pub mod preprocessed_columns;
+pub mod relation_tracker;
 mod simd_domain;
 
 use std::array;
