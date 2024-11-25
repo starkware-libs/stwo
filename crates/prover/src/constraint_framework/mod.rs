@@ -108,7 +108,7 @@ pub trait EvalAtRow {
     /// Adds a constraint to the component.
     fn add_constraint<G>(&mut self, constraint: G)
     where
-        Self::EF: Mul<G, Output = Self::EF>;
+        Self::EF: Mul<G, Output = Self::EF> + From<G>;
 
     /// Combines 4 base field values into a single extension field value.
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF;
