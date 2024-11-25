@@ -243,25 +243,26 @@ impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntr
     }
 }
 
+#[macro_export]
 macro_rules! relation {
     ($name:tt, $size:tt) => {
         #[derive(Clone, Debug, PartialEq)]
-        pub struct $name(crate::constraint_framework::logup::LookupElements<$size>);
+        pub struct $name($crate::constraint_framework::logup::LookupElements<$size>);
 
         #[allow(dead_code)]
         impl $name {
             pub fn dummy() -> Self {
-                Self(crate::constraint_framework::logup::LookupElements::dummy())
+                Self($crate::constraint_framework::logup::LookupElements::dummy())
             }
-            pub fn draw(channel: &mut impl crate::core::channel::Channel) -> Self {
-                Self(crate::constraint_framework::logup::LookupElements::draw(
+            pub fn draw(channel: &mut impl $crate::core::channel::Channel) -> Self {
+                Self($crate::constraint_framework::logup::LookupElements::draw(
                     channel,
                 ))
             }
         }
 
-        impl<F: Clone, EF: crate::constraint_framework::RelationEFTraitBound<F>>
-            crate::constraint_framework::Relation<F, EF> for $name
+        impl<F: Clone, EF: $crate::constraint_framework::RelationEFTraitBound<F>>
+            $crate::constraint_framework::Relation<F, EF> for $name
         {
             fn combine(&self, values: &[F]) -> EF {
                 values
