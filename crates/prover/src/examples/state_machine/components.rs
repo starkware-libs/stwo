@@ -1,16 +1,21 @@
 use num_traits::{One, Zero};
 
 use crate::constraint_framework::logup::ClaimedPrefixSum;
+use crate::constraint_framework::relation_tracker::{
+    RelationTrackerComponent, RelationTrackerEntry,
+};
 use crate::constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, RelationEntry,
-    PREPROCESSED_TRACE_IDX,
+    TraceLocationAllocator, PREPROCESSED_TRACE_IDX,
 };
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::channel::Channel;
-use crate::core::fields::m31::M31;
+use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::{SecureField, QM31};
 use crate::core::pcs::TreeVec;
+use crate::core::poly::circle::CircleEvaluation;
+use crate::core::poly::BitReversedOrder;
 use crate::core::prover::StarkProof;
 use crate::core::vcs::ops::MerkleHasher;
 
@@ -122,6 +127,45 @@ impl StateMachineComponents {
             &self.component1 as &dyn ComponentProver<SimdBackend>,
         ]
     }
+}
+
+pub fn track_state_machine_relations(
+    trace: &TreeVec<&Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
+    x_axis_log_n_rows: u32,
+    y_axis_log_n_rows: u32,
+    n_rows_x: u32,
+    n_rows_y: u32,
+) -> Vec<RelationTrackerEntry> {
+    let tree_span_provider = &mut TraceLocationAllocator::default();
+    let mut entries = vec![];
+    entries.extend(
+        RelationTrackerComponent::new(
+            tree_span_provider,
+            StateTransitionEval::<0> {
+                log_n_rows: x_axis_log_n_rows,
+                lookup_elements: StateMachineElements::dummy(),
+                total_sum: QM31::zero(),
+                claimed_sum: (QM31::zero(), 0),
+            },
+            n_rows_x as usize,
+        )
+        .entries(&trace.into()),
+    );
+    entries.extend(
+        RelationTrackerComponent::new(
+            tree_span_provider,
+            StateTransitionEval::<1> {
+                log_n_rows: y_axis_log_n_rows,
+                lookup_elements: StateMachineElements::dummy(),
+                total_sum: QM31::zero(),
+                claimed_sum: (QM31::zero(), 0),
+            },
+            n_rows_y as usize,
+        )
+        .entries(&trace.into()),
+    );
+
+    entries
 }
 
 pub struct StateMachineProof<H: MerkleHasher> {
