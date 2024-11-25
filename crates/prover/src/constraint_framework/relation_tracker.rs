@@ -75,7 +75,6 @@ impl<E: FrameworkEval> RelationTrackerComponent<E> {
 }
 
 /// Aggregates relation entries.
-// TODO(Ohad): test.
 pub struct RelationTrackerEvaluator<'a> {
     entries: Vec<RelationTrackerEntry>,
     pub trace_eval:
