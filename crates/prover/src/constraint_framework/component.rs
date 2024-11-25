@@ -80,7 +80,7 @@ impl TraceLocationAllocator {
     }
 
     /// Create a new `TraceLocationAllocator` with fixed preprocessed columns setup.
-    pub fn new_with_preproccessed_columnds(preprocessed_columns: &[PreprocessedColumn]) -> Self {
+    pub fn new_with_preproccessed_columns(preprocessed_columns: &[PreprocessedColumn]) -> Self {
         Self {
             next_tree_offsets: Default::default(),
             preprocessed_columns: preprocessed_columns
@@ -92,8 +92,19 @@ impl TraceLocationAllocator {
         }
     }
 
-    pub fn n_preprocessed_columns(&self) -> usize {
-        self.preprocessed_columns.len()
+    pub fn preprocessed_columns(&self) -> &HashMap<PreprocessedColumn, usize> {
+        &self.preprocessed_columns
+    }
+
+    // validates that `self.preprocessed_columns` is consistent with
+    // `preprocessed_columns`.
+    // I.e. preprocessed_columns[i] == self.preprocessed_columns[i].
+    pub fn validate_preprocessed_columns(&self, preprocessed_columns: &[PreprocessedColumn]) {
+        assert_eq!(preprocessed_columns.len(), self.preprocessed_columns.len());
+
+        for (column, idx) in self.preprocessed_columns.iter() {
+            assert_eq!(Some(column), preprocessed_columns.get(*idx));
+        }
     }
 }
 

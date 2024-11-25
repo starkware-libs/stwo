@@ -43,3 +43,20 @@ pub fn gen_is_step_with_offset<B: Backend>(
 
     CircleEvaluation::new(CanonicCoset::new(log_size).circle_domain(), col)
 }
+
+pub fn gen_preprocessed_column<B: Backend>(
+    preprocessed_column: &PreprocessedColumn,
+) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
+    match preprocessed_column {
+        PreprocessedColumn::IsFirst(log_size) => gen_is_first(*log_size),
+        PreprocessedColumn::Plonk(_) | PreprocessedColumn::XorTable(..) => {
+            unimplemented!("eval_preprocessed_column: Plonk and XorTable are not supported.")
+        }
+    }
+}
+
+pub fn gen_preprocessed_columns<'a, B: Backend>(
+    columns: impl Iterator<Item = &'a PreprocessedColumn>,
+) -> Vec<CircleEvaluation<B, BaseField, BitReversedOrder>> {
+    columns.map(gen_preprocessed_column).collect()
+}
