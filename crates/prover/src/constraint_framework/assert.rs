@@ -1,4 +1,4 @@
-use num_traits::{One, Zero};
+use num_traits::Zero;
 
 use super::logup::{LogupAtRow, LogupSums};
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
@@ -54,13 +54,17 @@ impl<'a> EvalAtRow for AssertEvaluator<'a> {
 
     fn add_constraint<G>(&mut self, constraint: G)
     where
-        Self::EF: std::ops::Mul<G, Output = Self::EF>,
+        Self::EF: std::ops::Mul<G, Output = Self::EF> + From<G>,
     {
         // Cast to SecureField.
-        let res = SecureField::one() * constraint;
         // The constraint should be zero at the given row, since we are evaluating on the trace
         // domain.
-        assert_eq!(res, SecureField::zero(), "row: {}", self.row);
+        assert_eq!(
+            Self::EF::from(constraint),
+            SecureField::zero(),
+            "row: {}",
+            self.row
+        );
     }
 
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
