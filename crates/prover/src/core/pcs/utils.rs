@@ -41,6 +41,13 @@ impl<'a, T> From<&'a TreeVec<T>> for TreeVec<&'a T> {
     }
 }
 
+/// Converts `&TreeVec<&Vec<T>>` to `TreeVec<Vec<&T>>`.
+impl<'a, T> From<&'a TreeVec<&'a Vec<T>>> for TreeVec<Vec<&'a T>> {
+    fn from(val: &'a TreeVec<&'a Vec<T>>) -> Self {
+        TreeVec(val.iter().map(|vec| vec.iter().collect()).collect())
+    }
+}
+
 impl<T> Deref for TreeVec<T> {
     type Target = Vec<T>;
     fn deref(&self) -> &Self::Target {
