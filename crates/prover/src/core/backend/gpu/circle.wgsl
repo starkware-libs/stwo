@@ -20,7 +20,7 @@ fn ibutterfly(v0: ptr<function, u32>, v1: ptr<function, u32>, itwid: u32) {
     *v1 = full_reduce(u64(partial_reduce(tmp + P - *v1)) * u64(itwid));
 }
 
-fn fft_layer_loop(values: ptr<function, array<u32, 4>>, i: u32, h: u32, t: u32) {
+fn fft_layer_loop(values: ptr<function, array<u32, 8>>, i: u32, h: u32, t: u32) {
     let step = 1u << i;
     
     var l = 0u;
@@ -56,28 +56,21 @@ fn calculate_modular_inverse(val: u32) -> u32 {
     return result;
 }
 
-
 struct InterpolateData {
-    values: array<u32, 4>,
+    values: array<u32, 8>,
     initial_x: u32,
     initial_y: u32,
     log_size: u32,
+    circle_twiddles: array<u32, 8>,
+    circle_twiddles_size: u32,
+    line_twiddles_flat: array<u32, 8>,
+    line_twiddles_layer_count: u32,
+    line_twiddles_sizes: array<u32, 8>,
+    line_twiddles_offsets: array<u32, 8>,
 }
 
-// struct InterpolateData {
-//     values: array<u32, 4>,
-//     initial_x: u32,
-//     initial_y: u32,
-//     log_size: u32,
-//     circle_twiddles: array<u32, 64>,
-//     circle_twiddles_size: u32,
-//     line_twiddles: array<u32, 256>,
-//     line_twiddles_sizes: array<u32, 8>,
-//     line_twiddles_layer_count: u32,
-// }
-
 struct Results {
-    values: array<u32, 4>,
+    values: array<u32, 8>,
 }
 
 @group(0) @binding(0) var<storage, read> input: InterpolateData;
@@ -102,49 +95,43 @@ fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
         for (var i = 0u; i < 4u; i = i + 1u) {
             output.values[i] = result[i];
         }
+    } else {
+        interpolate_large(size);
     }
-    // } else {
-    //     var large_values: array<u32>;
-    //     for (var i = 0u; i < size; i = i + 1u) {
-    //         large_values[i] = input.values[i];
-    //     }
-        
-    //     interpolate_large(&large_values, size);
-        
-    //     for (var i = 0u; i < size; i = i + 1u) {
-    //         output.values[i] = large_values[i];
-    //     }
-    // }
 }
 
+fn interpolate_large(size: u32) {
+    var values: array<u32, 8>;
+    for (var i = 0u; i < size; i = i + 1u) {
+        values[i] = input.values[i];
+    }
 
-// fn interpolate_large(values: ptr<function, array<u32>>, size: u32) {
-//     // Process circle twiddles
-//     for (var h = 0u; h < input.circle_twiddles_size; h = h + 1u) {
-//         let t = input.circle_twiddles[h];
-//         fft_layer_loop(values, 0u, h, t, size);
-//     }
-
-//     // Process line twiddles
-//     for (var layer = 0u; layer < input.line_twiddles_layer_count; layer = layer + 1u) {
-//         let layer_size = input.line_twiddles_sizes[layer];
-//         let layer_offset = get_layer_offset(layer);
+    // Process line_twiddles in reverse order
+    var layer = input.line_twiddles_layer_count - 1u;  // Start from the last layer
+    loop {
+        let layer_size = input.line_twiddles_sizes[layer];
+        let layer_offset = input.line_twiddles_offsets[layer];
         
-//         for (var h = 0u; h < layer_size; h = h + 1u) {
-//             let t = input.line_twiddles[layer_offset + h];
-//             fft_layer_loop(values, layer + 1u, h, t, size);
-//         }
-//     }
+        for (var h = 0u; h < layer_size; h = h + 1u) {
+            let t = input.line_twiddles_flat[layer_offset + h];
+            fft_layer_loop(&values, layer + 1u, h, t);
+        }
 
-//     // Calculate inverse of domain size (2^log_size)
-//     let domain_size = 1u << input.log_size;
-//     let domain_inv = calculate_modular_inverse(domain_size);
+        if (layer == 0u) { break; }
+        layer = layer - 1u;
+    }
 
-//     // Apply final multiplication
-//     for (var i = 0u; i < size; i = i + 1u) {
-//         (*values)[i] = full_reduce(u64((*values)[i]) * u64(domain_inv));
-//     }
-// }
+    // Process circle_twiddles
+    for (var h = 0u; h < input.circle_twiddles_size; h = h + 1u) {
+        let t = input.circle_twiddles[h];
+        fft_layer_loop(&values, 0u, h, t);
+    }
+
+    for (var i = 0u; i < size; i = i + 1u) {
+        output.values[i] = values[i];
+    }
+
+}
 
 fn interpolate_small(log_size: u32, values: array<u32, 4>, x: u32, y: u32) -> array<u32, 4> {
     var result: array<u32, 4>;

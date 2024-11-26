@@ -13,27 +13,76 @@ pub struct GpuInterpolator {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct InterpolateInput {
-    values: [u32; 4],
+    values: [u32; 8],
     initial_x: u32,
     initial_y: u32,
     log_size: u32,
+    circle_twiddles: [u32; 8],
+    circle_twiddles_size: u32,
+    line_twiddles_flat: [u32; 8],
+    line_twiddles_layer_count: u32,
+    line_twiddles_sizes: [u32; 8],
+    line_twiddles_offsets: [u32; 8],
+}
+
+impl InterpolateInput {
+    pub fn new_zero() -> Self {
+        Self {
+            values: [0u32; 8],
+            initial_x: 0,
+            initial_y: 0,
+            log_size: 0,
+            circle_twiddles: [0u32; 8],
+            circle_twiddles_size: 0,
+            line_twiddles_flat: [0u32; 8],
+            line_twiddles_layer_count: 0,
+            line_twiddles_sizes: [0; 8],
+            line_twiddles_offsets: [0; 8],
+        }
+    }
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct InterpolateOutput {
-    results: [u32; 4],
+    results: [u32; 8],
 }
 
 pub struct InterpolateInputF<F> {
-    pub values: [F; 4],
+    pub values: [F; 8],
     pub initial_x: F,
     pub initial_y: F,
     pub log_size: u32,
+    pub circle_twiddles: [F; 8],
+    pub circle_twiddles_size: u32,
+    pub line_twiddles_flat: [F; 8],
+    pub line_twiddles_layer_count: u32,
+    pub line_twiddles_sizes: [u32; 8],
+    pub line_twiddles_offsets: [u32; 8],
+}
+
+impl<F> InterpolateInputF<F>
+where
+    F: Into<u32> + Copy + From<u32>,
+{
+    pub fn new_zero() -> Self {
+        Self {
+            values: [F::from(0); 8],
+            initial_x: F::from(0),
+            initial_y: F::from(0),
+            log_size: 0,
+            circle_twiddles: [F::from(0); 8],
+            circle_twiddles_size: 0,
+            line_twiddles_flat: [F::from(0); 8],
+            line_twiddles_layer_count: 0,
+            line_twiddles_sizes: [0; 8],
+            line_twiddles_offsets: [0; 8],
+        }
+    }
 }
 
 pub struct InterpolateOutputF<F> {
-    pub results: [F; 4],
+    pub results: [F; 8],
 }
 
 impl<F> InterpolateInputF<F>
@@ -46,6 +95,12 @@ where
             initial_x: self.initial_x.into(),
             initial_y: self.initial_y.into(),
             log_size: self.log_size,
+            circle_twiddles: self.circle_twiddles.map(|v| v.into()),
+            circle_twiddles_size: self.circle_twiddles_size,
+            line_twiddles_flat: self.line_twiddles_flat.map(|v| v.into()),
+            line_twiddles_layer_count: self.line_twiddles_layer_count,
+            line_twiddles_sizes: self.line_twiddles_sizes,
+            line_twiddles_offsets: self.line_twiddles_offsets,
         }
     }
 }
@@ -61,6 +116,10 @@ where
                 F::from(output.results[1]),
                 F::from(output.results[2]),
                 F::from(output.results[3]),
+                F::from(output.results[4]),
+                F::from(output.results[5]),
+                F::from(output.results[6]),
+                F::from(output.results[7]),
             ],
         }
     }
@@ -248,9 +307,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::backend::cpu::circle::circle_twiddles_from_line_twiddles;
+    use crate::core::backend::cpu::CpuCirclePoly;
+    use crate::core::backend::{Column, CpuBackend};
     use crate::core::fft::ibutterfly;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::FieldExpOps;
+    use crate::core::poly::circle::{CanonicCoset, PolyOps};
+    use crate::core::poly::utils::domain_line_twiddles_from_tree;
 
     #[test]
     fn test_interpolate2() {
@@ -275,17 +339,11 @@ mod tests {
         for (v0, v1, y) in test_cases {
             let (cpu_v0, cpu_v1) = cpu_test(v0, v1, y);
 
-            let input = InterpolateInputF {
-                values: [
-                    BaseField::partial_reduce(v0),
-                    BaseField::partial_reduce(v1),
-                    BaseField::partial_reduce(0),
-                    BaseField::partial_reduce(0),
-                ],
-                initial_x: BaseField::partial_reduce(0),
-                initial_y: BaseField::partial_reduce(y),
-                log_size: 1,
-            };
+            let mut input = InterpolateInputF::new_zero();
+            input.values[0] = BaseField::partial_reduce(v0);
+            input.values[1] = BaseField::partial_reduce(v1);
+            input.initial_y = BaseField::partial_reduce(y);
+            input.log_size = 1;
             let gpu_output = interpolate_gpu(input);
 
             assert_eq!(
@@ -299,6 +357,65 @@ mod tests {
                 v0, v1, y
             );
         }
+    }
+
+    fn circle_poly_to_gpu_input(
+        poly: CpuCirclePoly,
+        log_size: u32,
+    ) -> InterpolateInputF<BaseField> {
+        assert!(1 << log_size <= 8);
+
+        let domain = CanonicCoset::new(log_size).circle_domain();
+        let evals = poly.clone().evaluate(domain);
+        let mut input = InterpolateInputF::new_zero();
+        input.values = evals.values.to_cpu().try_into().unwrap();
+        input.log_size = log_size;
+
+        let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
+
+        // line twiddles
+        let line_twiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles);
+        input.line_twiddles_layer_count = line_twiddles.len() as u32;
+        for (i, twiddle) in line_twiddles.iter().enumerate() {
+            input.line_twiddles_sizes[i] = twiddle.len() as u32;
+            // if i == 0, offset is 0, otherwise offset is sum of previous layer offset and layer
+            // size
+            input.line_twiddles_offsets[i] = if i == 0 {
+                0
+            } else {
+                input.line_twiddles_offsets[i - 1] + input.line_twiddles_sizes[i - 1]
+            };
+            for (j, twiddle) in twiddle.iter().enumerate() {
+                input.line_twiddles_flat[input.line_twiddles_offsets[i] as usize + j] = *twiddle;
+            }
+        }
+
+        // circle twiddles
+        let circle_twiddles: Vec<_> =
+            circle_twiddles_from_line_twiddles(line_twiddles[0]).collect();
+        input.circle_twiddles[..circle_twiddles.len()].copy_from_slice(&circle_twiddles);
+        input.circle_twiddles_size = circle_twiddles.len() as u32;
+
+        input
+    }
+
+    #[test]
+    fn test_interpolate8() {
+        let poly = CpuCirclePoly::new((1..=8).map(BaseField::from).collect());
+        let domain = CanonicCoset::new(3).circle_domain();
+        let evals = poly.clone().evaluate(domain);
+        println!("evals: {:?}", evals.values);
+
+        let interpolated_poly = evals.clone().interpolate();
+        println!("interpolated_poly: {:?}", interpolated_poly.coeffs);
+
+        assert_eq!(interpolated_poly.coeffs, poly.coeffs);
+
+        // now do the same on the GPU
+        let input = circle_poly_to_gpu_input(poly, 3);
+        let gpu_output = interpolate_gpu(input);
+        // print the results
+        println!("gpu_output: {:?}", gpu_output.results);
     }
 
     #[test]
@@ -331,17 +448,15 @@ mod tests {
         for (v0, v1, v2, v3, x, y) in test_cases {
             let (cpu_v0, cpu_v1, cpu_v2, cpu_v3) = cpu_test(v0, v1, v2, v3, x, y);
 
-            let input = InterpolateInputF {
-                values: [
-                    BaseField::partial_reduce(v0),
-                    BaseField::partial_reduce(v1),
-                    BaseField::partial_reduce(v2),
-                    BaseField::partial_reduce(v3),
-                ],
-                initial_x: BaseField::partial_reduce(x),
-                initial_y: BaseField::partial_reduce(y),
-                log_size: 2,
-            };
+            let mut input = InterpolateInputF::new_zero();
+            input.values[0] = BaseField::partial_reduce(v0);
+            input.values[1] = BaseField::partial_reduce(v1);
+            input.values[2] = BaseField::partial_reduce(v2);
+            input.values[3] = BaseField::partial_reduce(v3);
+            input.initial_x = BaseField::partial_reduce(x);
+            input.initial_y = BaseField::partial_reduce(y);
+            input.log_size = 2;
+
             let gpu_output = interpolate_gpu(input);
 
             assert_eq!(
