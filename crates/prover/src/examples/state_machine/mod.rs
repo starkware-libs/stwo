@@ -300,38 +300,34 @@ mod tests {
         );
 
         let eval = component.evaluate(ExprEvaluator::new(log_n_rows, true));
+        let expected = "let intermediate0 = 0 \
+            + (StateMachineElements_alpha0) * (col_1_0[0]) \
+            + (StateMachineElements_alpha1) * (col_1_1[0]) \
+            - (StateMachineElements_z);
+\
+        let intermediate1 = 0 \
+            + (StateMachineElements_alpha0) * (col_1_0[0] + 1) \
+            + (StateMachineElements_alpha1) * (col_1_1[0]) \
+            - (StateMachineElements_z);
 
-        assert_eq!(eval.constraints.len(), 2);
-        let constraint0_str = "(1) \
-            * ((SecureCol(\
-                col_2_5[claimed_sum_offset], \
-                col_2_8[claimed_sum_offset], \
-                col_2_11[claimed_sum_offset], \
-                col_2_14[claimed_sum_offset]\
-            ) - (claimed_sum)) \
-                * (col_0_2[0]))";
-        assert_eq!(eval.constraints[0].format_expr(), constraint0_str);
-        let constraint1_str = "(1) \
-            * ((SecureCol(col_2_3[0], col_2_6[0], col_2_9[0], col_2_12[0]) \
-                - (SecureCol(col_2_4[-1], col_2_7[-1], col_2_10[-1], col_2_13[-1]) \
-                    - ((col_0_2[0]) * (total_sum))) \
-                - (0)) \
-                * ((0 \
-                    + (StateMachineElements_alpha0) * (col_1_0[0]) \
-                    + (StateMachineElements_alpha1) * (col_1_1[0]) \
-                    - (StateMachineElements_z)) \
-                    * (0 + (StateMachineElements_alpha0) * (col_1_0[0] + 1) \
-                        + (StateMachineElements_alpha1) * (col_1_1[0]) \
-                        - (StateMachineElements_z))) \
-                - ((0 \
-                    + (StateMachineElements_alpha0) * (col_1_0[0] + 1) \
-                    + (StateMachineElements_alpha1) * (col_1_1[0]) \
-                    - (StateMachineElements_z)) \
-                    * (1) \
-                    + (0 + (StateMachineElements_alpha0) * (col_1_0[0]) \
-                        + (StateMachineElements_alpha1) * (col_1_1[0]) \
-                        - (StateMachineElements_z)) \
-                        * (-(1))))";
-        assert_eq!(eval.constraints[1].format_expr(), constraint1_str);
+\
+        let constraint_0 = (SecureCol(\
+            col_2_5[claimed_sum_offset], \
+            col_2_8[claimed_sum_offset], \
+            col_2_11[claimed_sum_offset], \
+            col_2_14[claimed_sum_offset]\
+        ) - (claimed_sum)) \
+            * (col_0_2[0]);
+
+\
+        let constraint_1 = (SecureCol(col_2_3[0], col_2_6[0], col_2_9[0], col_2_12[0]) \
+            - (SecureCol(col_2_4[-1], col_2_7[-1], col_2_10[-1], col_2_13[-1]) \
+                - ((col_0_2[0]) * (total_sum))) \
+            - (0)) \
+            * ((intermediate0) * (intermediate1)) \
+            - ((intermediate1) * (1) + (intermediate0) * (-(1)));"
+            .to_string();
+
+        assert_eq!(eval.format_constraints(), expected);
     }
 }
