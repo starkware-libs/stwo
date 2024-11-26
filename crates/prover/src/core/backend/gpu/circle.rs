@@ -48,6 +48,14 @@ pub struct InterpolateOutput {
     results: [u32; 8],
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct DebugData {
+    index: [u32; 16],
+    values: [u32; 16],
+    counter: u32,
+}
+
 pub struct InterpolateInputF<F> {
     pub values: [F; 8],
     pub initial_x: F,
@@ -177,6 +185,16 @@ impl GpuInterpolator {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -205,19 +223,29 @@ impl GpuInterpolator {
     }
 
     fn execute_interpolate(&self, input: InterpolateInput) -> InterpolateOutput {
-        // Create input buffer
+        // Create input storage buffer
         let input_buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
                 contents: bytemuck::cast_slice(&[input]),
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_DST
+                    | wgpu::BufferUsages::COPY_SRC,
             });
 
-        // Create storage buffer for computation
-        let storage_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+        // Create output storage buffer
+        let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: std::mem::size_of::<InterpolateInput>() as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        // Create debug storage buffer
+        let debug_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: std::mem::size_of::<DebugData>() as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
@@ -226,6 +254,14 @@ impl GpuInterpolator {
         let staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: std::mem::size_of::<InterpolateOutput>() as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // create storage buffer for debug data
+        let debug_staging_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: std::mem::size_of::<DebugData>() as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -241,7 +277,11 @@ impl GpuInterpolator {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: storage_buffer.as_entire_binding(),
+                    resource: output_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: debug_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -260,13 +300,38 @@ impl GpuInterpolator {
             compute_pass.dispatch_workgroups(1, 1, 1);
         }
         encoder.copy_buffer_to_buffer(
-            &storage_buffer,
+            &output_buffer,
             0,
             &staging_buffer,
             0,
             std::mem::size_of::<InterpolateOutput>() as u64,
         );
+        encoder.copy_buffer_to_buffer(
+            &debug_buffer,
+            0,
+            &debug_staging_buffer,
+            0,
+            std::mem::size_of::<DebugData>() as u64,
+        );
         self.queue.submit(Some(encoder.finish()));
+
+        // Read back the debug data
+        {
+            let slice = debug_staging_buffer.slice(..);
+            let (tx, rx) = flume::bounded(1);
+            slice.map_async(wgpu::MapMode::Read, move |result| {
+                tx.send(result).unwrap();
+            });
+            self.device.poll(wgpu::Maintain::Wait);
+            let _debug_result = pollster::block_on(async {
+                rx.recv_async().await.unwrap().unwrap();
+                let data = slice.get_mapped_range();
+                let result = *bytemuck::from_bytes::<DebugData>(&data);
+                drop(data);
+                result
+            });
+            // println!("debug_result: {:?}", _debug_result);
+        }
 
         // Read back the results
         let slice = staging_buffer.slice(..);
@@ -308,13 +373,14 @@ where
 mod tests {
     use super::*;
     use crate::core::backend::cpu::circle::circle_twiddles_from_line_twiddles;
-    use crate::core::backend::cpu::CpuCirclePoly;
+    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::backend::{Column, CpuBackend};
     use crate::core::fft::ibutterfly;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::FieldExpOps;
     use crate::core::poly::circle::{CanonicCoset, PolyOps};
     use crate::core::poly::utils::domain_line_twiddles_from_tree;
+    use crate::core::poly::BitReversedOrder;
 
     #[test]
     fn test_interpolate2() {
@@ -359,14 +425,13 @@ mod tests {
         }
     }
 
-    fn circle_poly_to_gpu_input(
-        poly: CpuCirclePoly,
+    fn circle_eval_to_gpu_input(
+        evals: CpuCircleEvaluation<BaseField, BitReversedOrder>,
         log_size: u32,
     ) -> InterpolateInputF<BaseField> {
         assert!(1 << log_size <= 8);
 
-        let domain = CanonicCoset::new(log_size).circle_domain();
-        let evals = poly.clone().evaluate(domain);
+        let domain = evals.domain;
         let mut input = InterpolateInputF::new_zero();
         input.values = evals.values.to_cpu().try_into().unwrap();
         input.log_size = log_size;
@@ -403,19 +468,26 @@ mod tests {
     fn test_interpolate8() {
         let poly = CpuCirclePoly::new((1..=8).map(BaseField::from).collect());
         let domain = CanonicCoset::new(3).circle_domain();
-        let evals = poly.clone().evaluate(domain);
-        println!("evals: {:?}", evals.values);
+        let evals = poly.evaluate(domain);
 
-        let interpolated_poly = evals.clone().interpolate();
-        println!("interpolated_poly: {:?}", interpolated_poly.coeffs);
-
-        assert_eq!(interpolated_poly.coeffs, poly.coeffs);
-
-        // now do the same on the GPU
-        let input = circle_poly_to_gpu_input(poly, 3);
+        // do interpolation on gpu
+        let input = circle_eval_to_gpu_input(evals, 3);
         let gpu_output = interpolate_gpu(input);
-        // print the results
-        println!("gpu_output: {:?}", gpu_output.results);
+
+        assert_eq!(gpu_output.results.to_vec(), poly.coeffs);
+    }
+
+    #[test]
+    fn test_interpolate_n() {
+        let max_log_size = 3;
+        for log_size in 3..=max_log_size {
+            let poly = CpuCirclePoly::new((1..=1 << log_size).map(BaseField::from).collect());
+            let domain = CanonicCoset::new(log_size).circle_domain();
+            let evals = poly.evaluate(domain);
+            let input = circle_eval_to_gpu_input(evals, log_size);
+            let gpu_output = interpolate_gpu(input);
+            assert_eq!(gpu_output.results.to_vec(), poly.coeffs);
+        }
     }
 
     #[test]

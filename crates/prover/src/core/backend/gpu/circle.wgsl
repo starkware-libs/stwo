@@ -73,8 +73,21 @@ struct Results {
     values: array<u32, 8>,
 }
 
+struct DebugData {
+    index: array<u32, 16>,
+    values: array<u32, 16>,
+    counter: atomic<u32>,
+}
+
 @group(0) @binding(0) var<storage, read> input: InterpolateData;
 @group(0) @binding(1) var<storage, read_write> output: Results;
+@group(0) @binding(2) var<storage, read_write> debug_buffer: DebugData;
+
+fn store_debug_value(index: u32, value: u32) {
+    let debug_idx = atomicAdd(&debug_buffer.counter, 1u);
+    debug_buffer.index[debug_idx] = index;
+    debug_buffer.values[debug_idx] = value;
+}
 
 @compute @workgroup_size(1)
 fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -104,21 +117,8 @@ fn interpolate_large(size: u32) {
     var values: array<u32, 8>;
     for (var i = 0u; i < size; i = i + 1u) {
         values[i] = input.values[i];
-    }
-
-    // Process line_twiddles in reverse order
-    var layer = input.line_twiddles_layer_count - 1u;  // Start from the last layer
-    loop {
-        let layer_size = input.line_twiddles_sizes[layer];
-        let layer_offset = input.line_twiddles_offsets[layer];
-        
-        for (var h = 0u; h < layer_size; h = h + 1u) {
-            let t = input.line_twiddles_flat[layer_offset + h];
-            fft_layer_loop(&values, layer + 1u, h, t);
-        }
-
-        if (layer == 0u) { break; }
-        layer = layer - 1u;
+        // store_debug_value(i, values[i]);
+        // input ok
     }
 
     // Process circle_twiddles
@@ -127,8 +127,26 @@ fn interpolate_large(size: u32) {
         fft_layer_loop(&values, 0u, h, t);
     }
 
+    // Process line_twiddles
+    var layer = 0u;
+    loop {
+        let layer_size = input.line_twiddles_sizes[layer];
+        let layer_offset = input.line_twiddles_offsets[layer];
+        
+        for (var h = 0u; h < layer_size; h = h + 1u) {
+            let t = input.line_twiddles_flat[layer_offset + h];
+            store_debug_value(layer + 1u, t);
+            fft_layer_loop(&values, layer + 1u, h, t);
+        }
+
+        layer = layer + 1u;
+        if (layer >= input.line_twiddles_layer_count) { break; }
+    }
+
+    // divide all values by 2^log_size
+    let inv = calculate_modular_inverse(1u << input.log_size);
     for (var i = 0u; i < size; i = i + 1u) {
-        output.values[i] = values[i];
+        output.values[i] = full_reduce(u64(values[i]) * u64(inv));
     }
 
 }

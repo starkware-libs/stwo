@@ -135,25 +135,16 @@ impl PolyOps for CpuBackend {
 
         let line_twiddles = domain_line_twiddles_from_tree(domain, &twiddles.twiddles);
         let circle_twiddles = circle_twiddles_from_line_twiddles(line_twiddles[0]);
-        println!(
-            "line twiddles sizes: {:?}",
-            line_twiddles
-                .iter()
-                .map(|layer| layer.len())
-                .collect::<Vec<_>>()
-        );
 
         for (layer, layer_twiddles) in line_twiddles.iter().enumerate().rev() {
             for (h, &t) in layer_twiddles.iter().enumerate() {
                 fft_layer_loop(&mut values, layer + 1, h, t, butterfly);
             }
         }
-        let mut count = 0;
+
         for (h, t) in circle_twiddles.enumerate() {
             fft_layer_loop(&mut values, 0, h, t, butterfly);
-            count += 1;
         }
-        println!("circle twiddles count: {:?}", count);
 
         CircleEvaluation::new(domain, values)
     }
