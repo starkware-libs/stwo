@@ -1,5 +1,7 @@
 const MODULUS_BITS: u32 = 31u;
 const P: u32 = 2147483647u;
+const MAX_ARRAY_LOG_SIZE: u32 = 13;
+const MAX_ARRAY_SIZE: u32 = 1u << MAX_ARRAY_LOG_SIZE;
 
 fn partial_reduce(val: u32) -> u32 {
     let reduced = val - P;
@@ -20,7 +22,7 @@ fn ibutterfly(v0: ptr<function, u32>, v1: ptr<function, u32>, itwid: u32) {
     *v1 = full_reduce(u64(partial_reduce(tmp + P - *v1)) * u64(itwid));
 }
 
-fn fft_layer_loop(values: ptr<function, array<u32, 8>>, i: u32, h: u32, t: u32) {
+fn fft_layer_loop(i: u32, h: u32, t: u32) {
     let step = 1u << i;
     
     var l = 0u;
@@ -29,13 +31,13 @@ fn fft_layer_loop(values: ptr<function, array<u32, 8>>, i: u32, h: u32, t: u32) 
         let idx0 = (h << (i + 1u)) + l;
         let idx1 = idx0 + step;
         
-        var val0 = (*values)[idx0];
-        var val1 = (*values)[idx1];
+        var val0 = output.values[idx0];
+        var val1 = output.values[idx1];
         
         ibutterfly(&val0, &val1, t);
         
-        (*values)[idx0] = val0;
-        (*values)[idx1] = val1;
+        output.values[idx0] = val0;
+        output.values[idx1] = val1;
         
         l = l + 1u;
     }
@@ -57,20 +59,20 @@ fn calculate_modular_inverse(val: u32) -> u32 {
 }
 
 struct InterpolateData {
-    values: array<u32, 8>,
+    values: array<u32, MAX_ARRAY_SIZE>,
     initial_x: u32,
     initial_y: u32,
     log_size: u32,
-    circle_twiddles: array<u32, 8>,
+    circle_twiddles: array<u32, MAX_ARRAY_SIZE>,
     circle_twiddles_size: u32,
-    line_twiddles_flat: array<u32, 8>,
+    line_twiddles_flat: array<u32, MAX_ARRAY_SIZE>,
     line_twiddles_layer_count: u32,
-    line_twiddles_sizes: array<u32, 8>,
-    line_twiddles_offsets: array<u32, 8>,
+    line_twiddles_sizes: array<u32, MAX_ARRAY_SIZE>,
+    line_twiddles_offsets: array<u32, MAX_ARRAY_SIZE>,
 }
 
 struct Results {
-    values: array<u32, 8>,
+    values: array<u32, MAX_ARRAY_SIZE>,
 }
 
 struct DebugData {
@@ -114,17 +116,14 @@ fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 
 fn interpolate_large(size: u32) {
-    var values: array<u32, 8>;
     for (var i = 0u; i < size; i = i + 1u) {
-        values[i] = input.values[i];
-        // store_debug_value(i, values[i]);
-        // input ok
+        output.values[i] = input.values[i];
     }
 
     // Process circle_twiddles
     for (var h = 0u; h < input.circle_twiddles_size; h = h + 1u) {
         let t = input.circle_twiddles[h];
-        fft_layer_loop(&values, 0u, h, t);
+        fft_layer_loop(0u, h, t);
     }
 
     // Process line_twiddles
@@ -136,7 +135,7 @@ fn interpolate_large(size: u32) {
         for (var h = 0u; h < layer_size; h = h + 1u) {
             let t = input.line_twiddles_flat[layer_offset + h];
             store_debug_value(layer + 1u, t);
-            fft_layer_loop(&values, layer + 1u, h, t);
+            fft_layer_loop(layer + 1u, h, t);
         }
 
         layer = layer + 1u;
@@ -146,7 +145,7 @@ fn interpolate_large(size: u32) {
     // divide all values by 2^log_size
     let inv = calculate_modular_inverse(1u << input.log_size);
     for (var i = 0u; i < size; i = i + 1u) {
-        output.values[i] = full_reduce(u64(values[i]) * u64(inv));
+        output.values[i] = full_reduce(u64(output.values[i]) * u64(inv));
     }
 
 }

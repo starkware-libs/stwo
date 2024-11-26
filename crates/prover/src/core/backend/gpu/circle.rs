@@ -10,46 +10,49 @@ pub struct GpuInterpolator {
     bind_group_layout: wgpu::BindGroupLayout,
 }
 
+const MAX_ARRAY_LOG_SIZE: u32 = 13;
+const MAX_ARRAY_SIZE: usize = 1 << MAX_ARRAY_LOG_SIZE;
+
 #[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug)]
 pub struct InterpolateInput {
-    values: [u32; 8],
+    values: [u32; MAX_ARRAY_SIZE],
     initial_x: u32,
     initial_y: u32,
     log_size: u32,
-    circle_twiddles: [u32; 8],
+    circle_twiddles: [u32; MAX_ARRAY_SIZE],
     circle_twiddles_size: u32,
-    line_twiddles_flat: [u32; 8],
+    line_twiddles_flat: [u32; MAX_ARRAY_SIZE],
     line_twiddles_layer_count: u32,
-    line_twiddles_sizes: [u32; 8],
-    line_twiddles_offsets: [u32; 8],
+    line_twiddles_sizes: [u32; MAX_ARRAY_SIZE],
+    line_twiddles_offsets: [u32; MAX_ARRAY_SIZE],
 }
 
 impl InterpolateInput {
     pub fn new_zero() -> Self {
         Self {
-            values: [0u32; 8],
+            values: [0u32; MAX_ARRAY_SIZE],
             initial_x: 0,
             initial_y: 0,
             log_size: 0,
-            circle_twiddles: [0u32; 8],
+            circle_twiddles: [0u32; MAX_ARRAY_SIZE],
             circle_twiddles_size: 0,
-            line_twiddles_flat: [0u32; 8],
+            line_twiddles_flat: [0u32; MAX_ARRAY_SIZE],
             line_twiddles_layer_count: 0,
-            line_twiddles_sizes: [0; 8],
-            line_twiddles_offsets: [0; 8],
+            line_twiddles_sizes: [0; MAX_ARRAY_SIZE],
+            line_twiddles_offsets: [0; MAX_ARRAY_SIZE],
         }
     }
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug)]
 pub struct InterpolateOutput {
-    results: [u32; 8],
+    results: [u32; MAX_ARRAY_SIZE],
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug)]
 pub struct DebugData {
     index: [u32; 16],
     values: [u32; 16],
@@ -57,16 +60,16 @@ pub struct DebugData {
 }
 
 pub struct InterpolateInputF<F> {
-    pub values: [F; 8],
+    pub values: [F; MAX_ARRAY_SIZE],
     pub initial_x: F,
     pub initial_y: F,
     pub log_size: u32,
-    pub circle_twiddles: [F; 8],
+    pub circle_twiddles: [F; MAX_ARRAY_SIZE],
     pub circle_twiddles_size: u32,
-    pub line_twiddles_flat: [F; 8],
+    pub line_twiddles_flat: [F; MAX_ARRAY_SIZE],
     pub line_twiddles_layer_count: u32,
-    pub line_twiddles_sizes: [u32; 8],
-    pub line_twiddles_offsets: [u32; 8],
+    pub line_twiddles_sizes: [u32; MAX_ARRAY_SIZE],
+    pub line_twiddles_offsets: [u32; MAX_ARRAY_SIZE],
 }
 
 impl<F> InterpolateInputF<F>
@@ -75,22 +78,22 @@ where
 {
     pub fn new_zero() -> Self {
         Self {
-            values: [F::from(0); 8],
+            values: [F::from(0); MAX_ARRAY_SIZE],
             initial_x: F::from(0),
             initial_y: F::from(0),
             log_size: 0,
-            circle_twiddles: [F::from(0); 8],
+            circle_twiddles: [F::from(0); MAX_ARRAY_SIZE],
             circle_twiddles_size: 0,
-            line_twiddles_flat: [F::from(0); 8],
+            line_twiddles_flat: [F::from(0); MAX_ARRAY_SIZE],
             line_twiddles_layer_count: 0,
-            line_twiddles_sizes: [0; 8],
-            line_twiddles_offsets: [0; 8],
+            line_twiddles_sizes: [0; MAX_ARRAY_SIZE],
+            line_twiddles_offsets: [0; MAX_ARRAY_SIZE],
         }
     }
 }
 
 pub struct InterpolateOutputF<F> {
-    pub results: [F; 8],
+    pub results: [F; MAX_ARRAY_SIZE],
 }
 
 impl<F> InterpolateInputF<F>
@@ -98,18 +101,29 @@ where
     F: Into<u32> + Copy,
 {
     pub fn to_gpu_input(self) -> InterpolateInput {
-        InterpolateInput {
-            values: self.values.map(|v| v.into()),
-            initial_x: self.initial_x.into(),
-            initial_y: self.initial_y.into(),
-            log_size: self.log_size,
-            circle_twiddles: self.circle_twiddles.map(|v| v.into()),
-            circle_twiddles_size: self.circle_twiddles_size,
-            line_twiddles_flat: self.line_twiddles_flat.map(|v| v.into()),
-            line_twiddles_layer_count: self.line_twiddles_layer_count,
-            line_twiddles_sizes: self.line_twiddles_sizes,
-            line_twiddles_offsets: self.line_twiddles_offsets,
+        let mut result = InterpolateInput::new_zero();
+
+        for (i, &v) in self.values.iter().enumerate() {
+            result.values[i] = v.into();
         }
+
+        for (i, &v) in self.circle_twiddles.iter().enumerate() {
+            result.circle_twiddles[i] = v.into();
+        }
+
+        for (i, &v) in self.line_twiddles_flat.iter().enumerate() {
+            result.line_twiddles_flat[i] = v.into();
+        }
+
+        result.initial_x = self.initial_x.into();
+        result.initial_y = self.initial_y.into();
+        result.log_size = self.log_size;
+        result.circle_twiddles_size = self.circle_twiddles_size;
+        result.line_twiddles_layer_count = self.line_twiddles_layer_count;
+        result.line_twiddles_sizes = self.line_twiddles_sizes;
+        result.line_twiddles_offsets = self.line_twiddles_offsets;
+
+        result
     }
 }
 
@@ -119,19 +133,30 @@ where
 {
     pub fn from_gpu_output(output: InterpolateOutput) -> Self {
         Self {
-            results: [
-                F::from(output.results[0]),
-                F::from(output.results[1]),
-                F::from(output.results[2]),
-                F::from(output.results[3]),
-                F::from(output.results[4]),
-                F::from(output.results[5]),
-                F::from(output.results[6]),
-                F::from(output.results[7]),
-            ],
+            results: output.results.map(|v| F::from(v)),
         }
     }
 }
+
+pub trait ByteSerialize: Sized {
+    fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                (self as *const Self) as *const u8,
+                std::mem::size_of::<Self>(),
+            )
+        }
+    }
+
+    fn from_bytes(bytes: &[u8]) -> &Self {
+        assert!(bytes.len() >= std::mem::size_of::<Self>());
+        unsafe { &*(bytes.as_ptr() as *const Self) }
+    }
+}
+
+impl ByteSerialize for InterpolateInput {}
+impl ByteSerialize for InterpolateOutput {}
+impl ByteSerialize for DebugData {}
 
 impl GpuInterpolator {
     pub async fn new() -> Self {
@@ -228,7 +253,7 @@ impl GpuInterpolator {
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
-                contents: bytemuck::cast_slice(&[input]),
+                contents: input.as_bytes(),
                 usage: wgpu::BufferUsages::STORAGE
                     | wgpu::BufferUsages::COPY_DST
                     | wgpu::BufferUsages::COPY_SRC,
@@ -326,7 +351,7 @@ impl GpuInterpolator {
             let _debug_result = pollster::block_on(async {
                 rx.recv_async().await.unwrap().unwrap();
                 let data = slice.get_mapped_range();
-                let result = *bytemuck::from_bytes::<DebugData>(&data);
+                let result = *DebugData::from_bytes(&data);
                 drop(data);
                 result
             });
@@ -344,7 +369,7 @@ impl GpuInterpolator {
         pollster::block_on(async {
             rx.recv_async().await.unwrap().unwrap();
             let data = slice.get_mapped_range();
-            let result = *bytemuck::from_bytes::<InterpolateOutput>(&data);
+            let result = *InterpolateOutput::from_bytes(&data);
             drop(data);
             staging_buffer.unmap();
             result
@@ -429,11 +454,10 @@ mod tests {
         evals: CpuCircleEvaluation<BaseField, BitReversedOrder>,
         log_size: u32,
     ) -> InterpolateInputF<BaseField> {
-        assert!(1 << log_size <= 8);
-
         let domain = evals.domain;
         let mut input = InterpolateInputF::new_zero();
-        input.values = evals.values.to_cpu().try_into().unwrap();
+        let eval_values = evals.values.to_cpu();
+        input.values[..eval_values.len()].copy_from_slice(&eval_values);
         input.log_size = log_size;
 
         let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
@@ -474,19 +498,26 @@ mod tests {
         let input = circle_eval_to_gpu_input(evals, 3);
         let gpu_output = interpolate_gpu(input);
 
-        assert_eq!(gpu_output.results.to_vec(), poly.coeffs);
+        assert_eq!(
+            gpu_output.results.to_vec()[..poly.coeffs.len()],
+            poly.coeffs
+        );
     }
 
     #[test]
     fn test_interpolate_n() {
-        let max_log_size = 3;
+        let max_log_size = MAX_ARRAY_LOG_SIZE;
         for log_size in 3..=max_log_size {
             let poly = CpuCirclePoly::new((1..=1 << log_size).map(BaseField::from).collect());
             let domain = CanonicCoset::new(log_size).circle_domain();
             let evals = poly.evaluate(domain);
             let input = circle_eval_to_gpu_input(evals, log_size);
             let gpu_output = interpolate_gpu(input);
-            assert_eq!(gpu_output.results.to_vec(), poly.coeffs);
+
+            assert_eq!(
+                gpu_output.results.to_vec()[..poly.coeffs.len()],
+                poly.coeffs
+            );
         }
     }
 
