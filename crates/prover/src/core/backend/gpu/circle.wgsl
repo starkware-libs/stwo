@@ -20,12 +20,61 @@ fn ibutterfly(v0: ptr<function, u32>, v1: ptr<function, u32>, itwid: u32) {
     *v1 = full_reduce(u64(partial_reduce(tmp + P - *v1)) * u64(itwid));
 }
 
+fn fft_layer_loop(values: ptr<function, array<u32, 4>>, i: u32, h: u32, t: u32) {
+    let step = 1u << i;
+    
+    var l = 0u;
+    loop {
+        if (l >= step) { break; }
+        let idx0 = (h << (i + 1u)) + l;
+        let idx1 = idx0 + step;
+        
+        var val0 = (*values)[idx0];
+        var val1 = (*values)[idx1];
+        
+        ibutterfly(&val0, &val1, t);
+        
+        (*values)[idx0] = val0;
+        (*values)[idx1] = val1;
+        
+        l = l + 1u;
+    }
+}
+
+fn calculate_modular_inverse(val: u32) -> u32 {
+    var xyn_inv = val;
+    var power = P - 2u;
+    var result = 1u;
+
+    while (power > 0u) {
+        if ((power & 1u) == 1u) {
+            result = full_reduce(u64(result) * u64(xyn_inv));
+        }
+        xyn_inv = full_reduce(u64(xyn_inv) * u64(xyn_inv));
+        power = power >> 1u;
+    }
+    return result;
+}
+
+
 struct InterpolateData {
     values: array<u32, 4>,
     initial_x: u32,
     initial_y: u32,
     log_size: u32,
 }
+
+// struct InterpolateData {
+//     values: array<u32, 4>,
+//     initial_x: u32,
+//     initial_y: u32,
+//     log_size: u32,
+//     circle_twiddles: array<u32, 64>,
+//     circle_twiddles_size: u32,
+//     line_twiddles: array<u32, 256>,
+//     line_twiddles_sizes: array<u32, 8>,
+//     line_twiddles_layer_count: u32,
+// }
 
 struct Results {
     values: array<u32, 4>,
@@ -40,84 +89,112 @@ fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
         return;
     }
 
-    if (input.log_size == 1u) {
-        // Original log_size == 1 implementation
-        var v0 = input.values[0];
-        var v1 = input.values[1];
-        let y = input.initial_y;
+    let size = 1u << input.log_size;
+
+    if (input.log_size <= 2u) {
+        var small_values: array<u32, 4>;
+        for (var i = 0u; i < 4u; i = i + 1u) {
+            small_values[i] = input.values[i];
+        }
+        
+        let result = interpolate_small(input.log_size, small_values, input.initial_x, input.initial_y);
+        
+        for (var i = 0u; i < 4u; i = i + 1u) {
+            output.values[i] = result[i];
+        }
+    }
+    // } else {
+    //     var large_values: array<u32>;
+    //     for (var i = 0u; i < size; i = i + 1u) {
+    //         large_values[i] = input.values[i];
+    //     }
+        
+    //     interpolate_large(&large_values, size);
+        
+    //     for (var i = 0u; i < size; i = i + 1u) {
+    //         output.values[i] = large_values[i];
+    //     }
+    // }
+}
+
+
+// fn interpolate_large(values: ptr<function, array<u32>>, size: u32) {
+//     // Process circle twiddles
+//     for (var h = 0u; h < input.circle_twiddles_size; h = h + 1u) {
+//         let t = input.circle_twiddles[h];
+//         fft_layer_loop(values, 0u, h, t, size);
+//     }
+
+//     // Process line twiddles
+//     for (var layer = 0u; layer < input.line_twiddles_layer_count; layer = layer + 1u) {
+//         let layer_size = input.line_twiddles_sizes[layer];
+//         let layer_offset = get_layer_offset(layer);
+        
+//         for (var h = 0u; h < layer_size; h = h + 1u) {
+//             let t = input.line_twiddles[layer_offset + h];
+//             fft_layer_loop(values, layer + 1u, h, t, size);
+//         }
+//     }
+
+//     // Calculate inverse of domain size (2^log_size)
+//     let domain_size = 1u << input.log_size;
+//     let domain_inv = calculate_modular_inverse(domain_size);
+
+//     // Apply final multiplication
+//     for (var i = 0u; i < size; i = i + 1u) {
+//         (*values)[i] = full_reduce(u64((*values)[i]) * u64(domain_inv));
+//     }
+// }
+
+fn interpolate_small(log_size: u32, values: array<u32, 4>, x: u32, y: u32) -> array<u32, 4> {
+    var result: array<u32, 4>;
+    
+    if (log_size == 1u) {
+        var v0 = values[0];
+        var v1 = values[1];
         
         let n = 2u;
         let yn = full_reduce(u64(y) * u64(n));
-        
-        // Calculate yn_inv using Fermat's little theorem
-        var yn_inv = yn;
-        var power = P - 2u;
-        var result = 1u;
-        
-        while (power > 0u) {
-            if ((power & 1u) == 1u) {
-                result = full_reduce(u64(result) * u64(yn_inv));
-            }
-            yn_inv = full_reduce(u64(yn_inv) * u64(yn_inv));
-            power = power >> 1u;
-        }
-        yn_inv = result;
+        let yn_inv = calculate_modular_inverse(yn);
         
         let y_inv = full_reduce(u64(yn_inv) * u64(n));
         let n_inv = full_reduce(u64(yn_inv) * u64(y));
         
         ibutterfly(&v0, &v1, y_inv);
         
-        output.values[0] = full_reduce(u64(v0) * u64(n_inv));
-        output.values[1] = full_reduce(u64(v1) * u64(n_inv));
-        output.values[2] = 0u;
-        output.values[3] = 0u;
-    } else if (input.log_size == 2u) {
-        var v0 = input.values[0];
-        var v1 = input.values[1];
-        var v2 = input.values[2];
-        var v3 = input.values[3];
+        result[0] = full_reduce(u64(v0) * u64(n_inv));
+        result[1] = full_reduce(u64(v1) * u64(n_inv));
+        result[2] = 0u;
+        result[3] = 0u;
+    } else if (log_size == 2u) {
+        var v0 = values[0];
+        var v1 = values[1];
+        var v2 = values[2];
+        var v3 = values[3];
         
-        let x = input.initial_x;
-        let y = input.initial_y;
         let n = 4u;
-
-        // Calculate xyn_inv using Fermat's little theorem
         let xy_mult = full_reduce(u64(x) * u64(y));
         let xyn = full_reduce(u64(xy_mult) * u64(n));
-        var xyn_inv = xyn;
-        var power = P - 2u;
-        var result = 1u;
+        let xyn_inv = calculate_modular_inverse(xyn);
         
-        while (power > 0u) {
-            if ((power & 1u) == 1u) {
-                result = full_reduce(u64(result) * u64(xyn_inv));
-            }
-            xyn_inv = full_reduce(u64(xyn_inv) * u64(xyn_inv));
-            power = power >> 1u;
-        }
-        xyn_inv = result;
-        
-        // Calculate inverse values
         let yn = full_reduce(u64(y) * u64(n));
         let xn = full_reduce(u64(x) * u64(n));
         let x_inv = full_reduce(u64(xyn_inv) * u64(yn));
         let y_inv = full_reduce(u64(xyn_inv) * u64(xn));
         let n_inv = full_reduce(u64(xyn_inv) * u64(x) * u64(y));
         
-        // Calculate -y_inv
         let neg_y_inv = P - y_inv;
         
-        // Perform ibutterfly operations in correct order
         ibutterfly(&v0, &v1, y_inv);
         ibutterfly(&v2, &v3, neg_y_inv);
         ibutterfly(&v0, &v2, x_inv);
         ibutterfly(&v1, &v3, x_inv);
         
-        // Multiply all values by n_inv
-        output.values[0] = full_reduce(u64(v0) * u64(n_inv));
-        output.values[1] = full_reduce(u64(v1) * u64(n_inv));
-        output.values[2] = full_reduce(u64(v2) * u64(n_inv));
-        output.values[3] = full_reduce(u64(v3) * u64(n_inv));
+        result[0] = full_reduce(u64(v0) * u64(n_inv));
+        result[1] = full_reduce(u64(v1) * u64(n_inv));
+        result[2] = full_reduce(u64(v2) * u64(n_inv));
+        result[3] = full_reduce(u64(v3) * u64(n_inv));
     }
+    
+    return result;
 }
