@@ -3,8 +3,9 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 use num_traits::{One, Zero};
 
 use super::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
-use crate::core::fields::m31::{self, BaseField, M31};
-use crate::core::fields::qm31::SecureField;
+use crate::core::fields::cm31::CM31;
+use crate::core::fields::m31::{self, BaseField};
+use crate::core::fields::qm31::{SecureField, QM31};
 use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 
@@ -17,121 +18,317 @@ pub struct ColumnExpr {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Expr {
+pub enum BaseExpr {
     Col(ColumnExpr),
+    Const(BaseField),
+    /// Formal parameter to the AIR, for example the interaction elements of a relation.
+    Param(String),
+    Add(Box<BaseExpr>, Box<BaseExpr>),
+    Sub(Box<BaseExpr>, Box<BaseExpr>),
+    Mul(Box<BaseExpr>, Box<BaseExpr>),
+    Neg(Box<BaseExpr>),
+    Inv(Box<BaseExpr>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExtExpr {
     /// An atomic secure column constructed from 4 expressions.
     /// Expressions on the secure column are not reduced, i.e,
     /// if `a = SecureCol(a0, a1, a2, a3)`, `b = SecureCol(b0, b1, b2, b3)` then
     /// `a + b` evaluates to `Add(a, b)` rather than
     /// `SecureCol(Add(a0, b0), Add(a1, b1), Add(a2, b2), Add(a3, b3))`
-    SecureCol([Box<Expr>; 4]),
-    Const(BaseField),
+    SecureCol([Box<BaseExpr>; 4]),
+    Const(SecureField),
     /// Formal parameter to the AIR, for example the interaction elements of a relation.
     Param(String),
-    Add(Box<Expr>, Box<Expr>),
-    Sub(Box<Expr>, Box<Expr>),
-    Mul(Box<Expr>, Box<Expr>),
-    Neg(Box<Expr>),
-    Inv(Box<Expr>),
+    Add(Box<ExtExpr>, Box<ExtExpr>),
+    Sub(Box<ExtExpr>, Box<ExtExpr>),
+    Mul(Box<ExtExpr>, Box<ExtExpr>),
+    Neg(Box<ExtExpr>),
 }
 
-impl Expr {
+macro_rules! simplify_arithmetic {
+    ($self:tt) => {
+        match $self.clone() {
+            Self::Add(a, b) => {
+                let a = a.simplify();
+                let b = b.simplify();
+                match (a.clone(), b.clone()) {
+                    (Self::Const(a), Self::Const(b)) => Self::Const(a + b),
+                    (Self::Const(a_val), _) if a_val.is_zero() => b, // 0 + b = b
+                    (_, Self::Const(b_val)) if b_val.is_zero() => a, // a + 0 = a
+                    // (-a + -b) = -(a + b)
+                    (Self::Neg(minus_a), Self::Neg(minus_b)) => -(*minus_a + *minus_b),
+                    (Self::Neg(minus_a), _) => b - *minus_a, // -a + b = b - a
+                    (_, Self::Neg(minus_b)) => a - *minus_b, // a + -b = a - b
+                    _ => a + b,
+                }
+            }
+            Self::Sub(a, b) => {
+                let a = a.simplify();
+                let b = b.simplify();
+                match (a.clone(), b.clone()) {
+                    (Self::Const(a), Self::Const(b)) => Self::Const(a - b),
+                    (Self::Const(a_val), _) if a_val.is_zero() => -b, // 0 - b = -b
+                    (_, Self::Const(b_val)) if b_val.is_zero() => a,  // a - 0 = a
+                    // (-a - -b) = b - a
+                    (Self::Neg(minus_a), Self::Neg(minus_b)) => *minus_b - *minus_a,
+                    (Self::Neg(minus_a), _) => -(*minus_a + b), // -a - b = -(a + b)
+                    (_, Self::Neg(minus_b)) => a + *minus_b,    // a + -b = a - b
+                    _ => a - b,
+                }
+            }
+            Self::Mul(a, b) => {
+                let a = a.simplify();
+                let b = b.simplify();
+                match (a.clone(), b.clone()) {
+                    (Self::Const(a), Self::Const(b)) => Self::Const(a * b),
+                    (Self::Const(a_val), _) if a_val.is_zero() => Self::zero(), // 0 * b = 0
+                    (_, Self::Const(b_val)) if b_val.is_zero() => Self::zero(), // a * 0 = 0
+                    (Self::Const(a_val), _) if a_val == One::one() => b,        // 1 * b = b
+                    (_, Self::Const(b_val)) if b_val == One::one() => a,        // a * 1 = a
+                    // (-a) * (-b) = a * b
+                    (Self::Neg(minus_a), Self::Neg(minus_b)) => *minus_a * *minus_b,
+                    (Self::Neg(minus_a), _) => -(*minus_a * b), // (-a) * b = -(a * b)
+                    (_, Self::Neg(minus_b)) => -(a * *minus_b), // a * (-b) = -(a * b)
+                    (Self::Const(a_val), _) if -a_val == One::one() => -b, // -1 * b = -b
+                    (_, Self::Const(b_val)) if -b_val == One::one() => -a, // a * -1 = -a
+                    _ => a * b,
+                }
+            }
+            Self::Neg(a) => {
+                let a = a.simplify();
+                match a {
+                    Self::Const(c) => Self::Const(-c),
+                    Self::Neg(minus_a) => *minus_a,     // -(-a) = a
+                    Self::Sub(a, b) => Self::Sub(b, a), // -(a - b) = b - a
+                    _ => -a,
+                }
+            }
+            other => other,
+        }
+    };
+}
+
+impl BaseExpr {
     pub fn format_expr(&self) -> String {
         match self {
-            Expr::Col(ColumnExpr {
+            BaseExpr::Col(ColumnExpr {
                 interaction,
                 idx,
                 offset,
             }) => {
-                let offset_str = if *offset == CLAIMED_SUM_DUMMY_OFFSET.try_into().unwrap() {
+                let offset_str = if *offset == CLAIMED_SUM_DUMMY_OFFSET as isize {
                     "claimed_sum_offset".to_string()
                 } else {
                     offset.to_string()
                 };
                 format!("col_{interaction}_{idx}[{offset_str}]")
             }
-            Expr::SecureCol([a, b, c, d]) => format!(
-                "SecureCol({}, {}, {}, {})",
-                a.format_expr(),
-                b.format_expr(),
-                c.format_expr(),
-                d.format_expr()
-            ),
-            Expr::Const(c) => c.0.to_string(),
-            Expr::Param(v) => v.to_string(),
-            Expr::Add(a, b) => format!("{} + {}", a.format_expr(), b.format_expr()),
-            Expr::Sub(a, b) => format!("{} - ({})", a.format_expr(), b.format_expr()),
-            Expr::Mul(a, b) => format!("({}) * ({})", a.format_expr(), b.format_expr()),
-            Expr::Neg(a) => format!("-({})", a.format_expr()),
-            Expr::Inv(a) => format!("1 / ({})", a.format_expr()),
+            BaseExpr::Const(c) => c.0.to_string(),
+            BaseExpr::Param(v) => v.to_string(),
+            BaseExpr::Add(a, b) => format!("{} + {}", a.format_expr(), b.format_expr()),
+            BaseExpr::Sub(a, b) => format!("{} - ({})", a.format_expr(), b.format_expr()),
+            BaseExpr::Mul(a, b) => format!("({}) * ({})", a.format_expr(), b.format_expr()),
+            BaseExpr::Neg(a) => format!("-({})", a.format_expr()),
+            BaseExpr::Inv(a) => format!("1 / ({})", a.format_expr()),
+        }
+    }
+
+    pub fn simplify(&self) -> Self {
+        let simple = simplify_arithmetic!(self);
+        match simple {
+            Self::Inv(a) => {
+                let a = a.simplify();
+                match a {
+                    Self::Inv(inv_a) => *inv_a, // 1 / (1 / a) = a
+                    Self::Const(c) => Self::Const(c.inverse()),
+                    _ => Self::Inv(Box::new(a)),
+                }
+            }
+            other => other,
         }
     }
 
     pub fn simplify_and_format(&self) -> String {
-        simplify(self.clone()).format_expr()
+        self.simplify().format_expr()
     }
 }
 
-impl From<BaseField> for Expr {
+impl ExtExpr {
+    pub fn format_expr(&self) -> String {
+        match self {
+            ExtExpr::SecureCol([a, b, c, d]) => {
+                if **b == BaseExpr::zero() && **c == BaseExpr::zero() && **d == BaseExpr::zero() {
+                    a.format_expr()
+                } else {
+                    format!(
+                        "SecureCol({}, {}, {}, {})",
+                        a.format_expr(),
+                        b.format_expr(),
+                        c.format_expr(),
+                        d.format_expr()
+                    )
+                }
+            }
+            ExtExpr::Const(c) => c.0.to_string(),
+            ExtExpr::Param(v) => v.to_string(),
+            ExtExpr::Add(a, b) => format!("{} + {}", a.format_expr(), b.format_expr()),
+            ExtExpr::Sub(a, b) => format!("{} - ({})", a.format_expr(), b.format_expr()),
+            ExtExpr::Mul(a, b) => format!("({}) * ({})", a.format_expr(), b.format_expr()),
+            ExtExpr::Neg(a) => format!("-({})", a.format_expr()),
+        }
+    }
+
+    pub fn simplify(&self) -> Self {
+        let simple = simplify_arithmetic!(self);
+        match simple {
+            Self::SecureCol([a, b, c, d]) => {
+                let a = a.simplify();
+                let b = b.simplify();
+                let c = c.simplify();
+                let d = d.simplify();
+                match (a.clone(), b.clone(), c.clone(), d.clone()) {
+                    (
+                        BaseExpr::Const(a_val),
+                        BaseExpr::Const(b_val),
+                        BaseExpr::Const(c_val),
+                        BaseExpr::Const(d_val),
+                    ) => ExtExpr::Const(SecureField::from_m31_array([a_val, b_val, c_val, d_val])),
+                    _ => Self::SecureCol([Box::new(a), Box::new(b), Box::new(c), Box::new(d)]),
+                }
+            }
+            other => other,
+        }
+    }
+
+    pub fn simplify_and_format(&self) -> String {
+        self.simplify().format_expr()
+    }
+}
+
+impl From<BaseField> for BaseExpr {
     fn from(val: BaseField) -> Self {
-        Expr::Const(val)
+        BaseExpr::Const(val)
     }
 }
 
-impl From<SecureField> for Expr {
-    fn from(val: SecureField) -> Self {
-        Expr::SecureCol([
-            Box::new(val.0 .0.into()),
-            Box::new(val.0 .1.into()),
-            Box::new(val.1 .0.into()),
-            Box::new(val.1 .1.into()),
+impl From<BaseField> for ExtExpr {
+    fn from(val: BaseField) -> Self {
+        ExtExpr::SecureCol([
+            Box::new(BaseExpr::from(val)),
+            Box::new(BaseExpr::zero()),
+            Box::new(BaseExpr::zero()),
+            Box::new(BaseExpr::zero()),
         ])
     }
 }
 
-impl Add for Expr {
+impl From<SecureField> for ExtExpr {
+    fn from(QM31(CM31(a, b), CM31(c, d)): SecureField) -> Self {
+        ExtExpr::SecureCol([
+            Box::new(BaseExpr::from(a)),
+            Box::new(BaseExpr::from(b)),
+            Box::new(BaseExpr::from(c)),
+            Box::new(BaseExpr::from(d)),
+        ])
+    }
+}
+
+impl From<BaseExpr> for ExtExpr {
+    fn from(expr: BaseExpr) -> Self {
+        ExtExpr::SecureCol([
+            Box::new(expr.clone()),
+            Box::new(BaseExpr::zero()),
+            Box::new(BaseExpr::zero()),
+            Box::new(BaseExpr::zero()),
+        ])
+    }
+}
+
+impl Add for BaseExpr {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
-        Expr::Add(Box::new(self), Box::new(rhs))
+        BaseExpr::Add(Box::new(self), Box::new(rhs))
     }
 }
 
-impl Sub for Expr {
+impl Sub for BaseExpr {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self {
-        Expr::Sub(Box::new(self), Box::new(rhs))
+        BaseExpr::Sub(Box::new(self), Box::new(rhs))
     }
 }
 
-impl Mul for Expr {
+impl Mul for BaseExpr {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self {
-        Expr::Mul(Box::new(self), Box::new(rhs))
+        BaseExpr::Mul(Box::new(self), Box::new(rhs))
     }
 }
 
-impl AddAssign for Expr {
+impl AddAssign for BaseExpr {
     fn add_assign(&mut self, rhs: Self) {
         *self = self.clone() + rhs
     }
 }
 
-impl MulAssign for Expr {
+impl MulAssign for BaseExpr {
     fn mul_assign(&mut self, rhs: Self) {
         *self = self.clone() * rhs
     }
 }
 
-impl Neg for Expr {
+impl Neg for BaseExpr {
     type Output = Self;
     fn neg(self) -> Self {
-        Expr::Neg(Box::new(self))
+        BaseExpr::Neg(Box::new(self))
     }
 }
 
-impl Zero for Expr {
+impl Add for ExtExpr {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self {
+        ExtExpr::Add(Box::new(self), Box::new(rhs))
+    }
+}
+
+impl Sub for ExtExpr {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        ExtExpr::Sub(Box::new(self), Box::new(rhs))
+    }
+}
+
+impl Mul for ExtExpr {
+    type Output = Self;
+    fn mul(self, rhs: Self) -> Self {
+        ExtExpr::Mul(Box::new(self), Box::new(rhs))
+    }
+}
+
+impl AddAssign for ExtExpr {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = self.clone() + rhs
+    }
+}
+
+impl MulAssign for ExtExpr {
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = self.clone() * rhs
+    }
+}
+
+impl Neg for ExtExpr {
+    type Output = Self;
+    fn neg(self) -> Self {
+        ExtExpr::Neg(Box::new(self))
+    }
+}
+
+impl Zero for BaseExpr {
     fn zero() -> Self {
-        Expr::Const(BaseField::zero())
+        BaseExpr::from(BaseField::zero())
     }
     fn is_zero(&self) -> bool {
         // TODO(alont): consider replacing `Zero` in the trait bound with a custom trait
@@ -140,154 +337,158 @@ impl Zero for Expr {
     }
 }
 
-impl One for Expr {
+impl One for BaseExpr {
     fn one() -> Self {
-        Expr::Const(BaseField::one())
+        BaseExpr::from(BaseField::one())
     }
 }
 
-impl FieldExpOps for Expr {
+impl Zero for ExtExpr {
+    fn zero() -> Self {
+        ExtExpr::from(BaseField::zero())
+    }
+    fn is_zero(&self) -> bool {
+        // TODO(alont): consider replacing `Zero` in the trait bound with a custom trait
+        // that only has `zero()`.
+        panic!("Can't check if an expression is zero.");
+    }
+}
+
+impl One for ExtExpr {
+    fn one() -> Self {
+        ExtExpr::from(BaseField::one())
+    }
+}
+
+impl FieldExpOps for BaseExpr {
     fn inverse(&self) -> Self {
-        Expr::Inv(Box::new(self.clone()))
+        BaseExpr::Inv(Box::new(self.clone()))
     }
 }
 
-impl Add<BaseField> for Expr {
+impl Add<BaseField> for BaseExpr {
     type Output = Self;
     fn add(self, rhs: BaseField) -> Self {
-        self + Expr::from(rhs)
+        self + BaseExpr::from(rhs)
     }
 }
 
-impl Mul<BaseField> for Expr {
+impl AddAssign<BaseField> for BaseExpr {
+    fn add_assign(&mut self, rhs: BaseField) {
+        *self = self.clone() + BaseExpr::from(rhs)
+    }
+}
+
+impl Mul<BaseField> for BaseExpr {
     type Output = Self;
     fn mul(self, rhs: BaseField) -> Self {
-        self * Expr::from(rhs)
+        self * BaseExpr::from(rhs)
     }
 }
 
-impl Mul<SecureField> for Expr {
+impl Mul<SecureField> for BaseExpr {
+    type Output = ExtExpr;
+    fn mul(self, rhs: SecureField) -> ExtExpr {
+        ExtExpr::from(self) * ExtExpr::from(rhs)
+    }
+}
+
+impl Add<SecureField> for BaseExpr {
+    type Output = ExtExpr;
+    fn add(self, rhs: SecureField) -> ExtExpr {
+        ExtExpr::from(self) + ExtExpr::from(rhs)
+    }
+}
+
+impl Sub<SecureField> for BaseExpr {
+    type Output = ExtExpr;
+    fn sub(self, rhs: SecureField) -> ExtExpr {
+        ExtExpr::from(self) - ExtExpr::from(rhs)
+    }
+}
+
+impl Add<BaseField> for ExtExpr {
+    type Output = Self;
+    fn add(self, rhs: BaseField) -> Self {
+        self + ExtExpr::from(rhs)
+    }
+}
+
+impl AddAssign<BaseField> for ExtExpr {
+    fn add_assign(&mut self, rhs: BaseField) {
+        *self = self.clone() + ExtExpr::from(rhs)
+    }
+}
+
+impl Mul<BaseField> for ExtExpr {
+    type Output = Self;
+    fn mul(self, rhs: BaseField) -> Self {
+        self * ExtExpr::from(rhs)
+    }
+}
+
+impl Mul<SecureField> for ExtExpr {
     type Output = Self;
     fn mul(self, rhs: SecureField) -> Self {
-        self * Expr::from(rhs)
+        self * ExtExpr::from(rhs)
     }
 }
 
-impl Add<SecureField> for Expr {
+impl Add<SecureField> for ExtExpr {
     type Output = Self;
     fn add(self, rhs: SecureField) -> Self {
-        self + Expr::from(rhs)
+        self + ExtExpr::from(rhs)
     }
 }
 
-impl Sub<SecureField> for Expr {
+impl Sub<SecureField> for ExtExpr {
     type Output = Self;
     fn sub(self, rhs: SecureField) -> Self {
-        self - Expr::from(rhs)
+        self - ExtExpr::from(rhs)
     }
 }
 
-impl AddAssign<BaseField> for Expr {
-    fn add_assign(&mut self, rhs: BaseField) {
-        *self = self.clone() + Expr::from(rhs)
+impl Add<BaseExpr> for ExtExpr {
+    type Output = Self;
+    fn add(self, rhs: BaseExpr) -> Self {
+        self + ExtExpr::from(rhs)
     }
 }
 
-const ZERO: M31 = M31(0);
-const ONE: M31 = M31(1);
-const MINUS_ONE: M31 = M31(m31::P - 1);
+impl Mul<BaseExpr> for ExtExpr {
+    type Output = Self;
+    fn mul(self, rhs: BaseExpr) -> Self {
+        self * ExtExpr::from(rhs)
+    }
+}
 
-// TODO(alont) Add random point assignment test.
-pub fn simplify(expr: Expr) -> Expr {
-    match expr {
-        Expr::Add(a, b) => {
-            let a = simplify(*a);
-            let b = simplify(*b);
-            match (a.clone(), b.clone()) {
-                (Expr::Const(a), Expr::Const(b)) => Expr::Const(a + b),
-                (Expr::Const(M31(0)), _) => b, // 0 + b = b
-                (_, Expr::Const(ZERO)) => a,   // a + 0 = a
-                // (-a + -b) = -(a + b)
-                (Expr::Neg(minus_a), Expr::Neg(minus_b)) => -(*minus_a + *minus_b),
-                (Expr::Neg(minus_a), _) => b - *minus_a, // -a + b = b - a
-                (_, Expr::Neg(minus_b)) => a - *minus_b, // a + -b = a - b
-                _ => a + b,
-            }
-        }
-        Expr::Sub(a, b) => {
-            let a = simplify(*a);
-            let b = simplify(*b);
-            match (a.clone(), b.clone()) {
-                (Expr::Const(a), Expr::Const(b)) => Expr::Const(a - b),
-                (Expr::Const(ZERO), _) => -b, // 0 - b = -b
-                (_, Expr::Const(ZERO)) => a,  // a - 0 = a
-                // (-a - -b) = b - a
-                (Expr::Neg(minus_a), Expr::Neg(minus_b)) => *minus_b - *minus_a,
-                (Expr::Neg(minus_a), _) => -(*minus_a + b), // -a - b = -(a + b)
-                (_, Expr::Neg(minus_b)) => a + *minus_b,    // a + -b = a - b
-                _ => a - b,
-            }
-        }
-        Expr::Mul(a, b) => {
-            let a = simplify(*a);
-            let b = simplify(*b);
-            match (a.clone(), b.clone()) {
-                (Expr::Const(a), Expr::Const(b)) => Expr::Const(a * b),
-                (Expr::Const(ZERO), _) => Expr::zero(), // 0 * b = 0
-                (_, Expr::Const(ZERO)) => Expr::zero(), // a * 0 = 0
-                (Expr::Const(ONE), _) => b,             // 1 * b = b
-                (_, Expr::Const(ONE)) => a,             // a * 1 = a
-                // (-a) * (-b) = a * b
-                (Expr::Neg(minus_a), Expr::Neg(minus_b)) => *minus_a * *minus_b,
-                (Expr::Neg(minus_a), _) => -(*minus_a * b), // (-a) * b = -(a * b)
-                (_, Expr::Neg(minus_b)) => -(a * *minus_b), // a * (-b) = -(a * b)
-                (Expr::Const(MINUS_ONE), _) => -b,          // -1 * b = -b
-                (_, Expr::Const(MINUS_ONE)) => -a,          // a * -1 = -a
-                _ => a * b,
-            }
-        }
-        Expr::Col(colexpr) => Expr::Col(colexpr),
-        Expr::SecureCol([a, b, c, d]) => Expr::SecureCol([
-            Box::new(simplify(*a)),
-            Box::new(simplify(*b)),
-            Box::new(simplify(*c)),
-            Box::new(simplify(*d)),
-        ]),
-        Expr::Const(c) => Expr::Const(c),
-        Expr::Param(x) => Expr::Param(x),
-        Expr::Neg(a) => {
-            let a = simplify(*a);
-            match a {
-                Expr::Const(c) => Expr::Const(-c),
-                Expr::Neg(minus_a) => *minus_a,     // -(-a) = a
-                Expr::Sub(a, b) => Expr::Sub(b, a), // -(a - b) = b - a
-                _ => -a,
-            }
-        }
-        Expr::Inv(a) => {
-            let a = simplify(*a);
-            match a {
-                Expr::Inv(inv_a) => *inv_a, // 1 / (1 / a) = a
-                Expr::Const(c) => Expr::Const(c.inverse()),
-                _ => Expr::Inv(Box::new(a)),
-            }
-        }
+impl Mul<ExtExpr> for BaseExpr {
+    type Output = ExtExpr;
+    fn mul(self, rhs: ExtExpr) -> ExtExpr {
+        rhs * self
+    }
+}
+
+impl Sub<BaseExpr> for ExtExpr {
+    type Output = Self;
+    fn sub(self, rhs: BaseExpr) -> Self {
+        self - ExtExpr::from(rhs)
     }
 }
 
 /// Returns the expression
 /// `value[0] * <relation>_alpha0 + value[1] * <relation>_alpha1 + ... - <relation>_z.`
-fn combine_formal<R: Relation<Expr, Expr>>(relation: &R, values: &[Expr]) -> Expr {
+fn combine_formal<R: Relation<BaseExpr, ExtExpr>>(relation: &R, values: &[BaseExpr]) -> ExtExpr {
     const Z_SUFFIX: &str = "_z";
     const ALPHA_SUFFIX: &str = "_alpha";
 
-    let z = Expr::Param(relation.get_name().to_owned() + Z_SUFFIX);
+    let z = ExtExpr::Param(relation.get_name().to_owned() + Z_SUFFIX);
     let alpha_powers = (0..relation.get_size())
-        .map(|i| Expr::Param(relation.get_name().to_owned() + ALPHA_SUFFIX + &i.to_string()));
+        .map(|i| ExtExpr::Param(relation.get_name().to_owned() + ALPHA_SUFFIX + &i.to_string()));
     values
         .iter()
         .zip(alpha_powers)
-        .fold(Expr::zero(), |acc, (value, power)| {
+        .fold(ExtExpr::zero(), |acc, (value, power)| {
             acc + power * value.clone()
         })
         - z
@@ -295,12 +496,12 @@ fn combine_formal<R: Relation<Expr, Expr>>(relation: &R, values: &[Expr]) -> Exp
 
 pub struct FormalLogupAtRow {
     pub interaction: usize,
-    pub total_sum: Expr,
-    pub claimed_sum: Option<(Expr, usize)>,
-    pub prev_col_cumsum: Expr,
-    pub cur_frac: Option<Fraction<Expr, Expr>>,
+    pub total_sum: ExtExpr,
+    pub claimed_sum: Option<(ExtExpr, usize)>,
+    pub prev_col_cumsum: ExtExpr,
+    pub cur_frac: Option<Fraction<ExtExpr, ExtExpr>>,
     pub is_finalized: bool,
-    pub is_first: Expr,
+    pub is_first: BaseExpr,
     pub log_size: u32,
 }
 
@@ -316,13 +517,13 @@ impl FormalLogupAtRow {
         Self {
             interaction,
             // TODO(alont): Should these be Expr::SecureField?
-            total_sum: Expr::Param(total_sum_name),
+            total_sum: ExtExpr::Param(total_sum_name),
             claimed_sum: has_partial_sum
-                .then_some((Expr::Param(claimed_sum_name), CLAIMED_SUM_DUMMY_OFFSET)),
-            prev_col_cumsum: Expr::zero(),
+                .then_some((ExtExpr::Param(claimed_sum_name), CLAIMED_SUM_DUMMY_OFFSET)),
+            prev_col_cumsum: ExtExpr::zero(),
             cur_frac: None,
             is_finalized: true,
-            is_first: Expr::zero(),
+            is_first: BaseExpr::zero(),
             log_size,
         }
     }
@@ -331,9 +532,9 @@ impl FormalLogupAtRow {
 /// An Evaluator that saves all constraint expressions.
 pub struct ExprEvaluator {
     pub cur_var_index: usize,
-    pub constraints: Vec<Expr>,
+    pub constraints: Vec<ExtExpr>,
     pub logup: FormalLogupAtRow,
-    pub intermediates: Vec<(String, Expr)>,
+    pub intermediates: Vec<(String, ExtExpr)>,
 }
 
 impl ExprEvaluator {
@@ -347,9 +548,9 @@ impl ExprEvaluator {
         }
     }
 
-    pub fn add_intermediate(&mut self, expr: Expr) -> Expr {
+    pub fn add_intermediate(&mut self, expr: ExtExpr) -> ExtExpr {
         let name = format!("intermediate{}", self.intermediates.len());
-        let intermediate = Expr::Param(name.clone());
+        let intermediate = ExtExpr::Param(name.clone());
         self.intermediates.push((name, expr));
         intermediate
     }
@@ -376,8 +577,8 @@ impl ExprEvaluator {
 
 impl EvalAtRow for ExprEvaluator {
     // TODO(alont): Should there be a version of this that disallows Secure fields for F?
-    type F = Expr;
-    type EF = Expr;
+    type F = BaseExpr;
+    type EF = ExtExpr;
 
     fn next_interaction_mask<const N: usize>(
         &mut self,
@@ -391,7 +592,7 @@ impl EvalAtRow for ExprEvaluator {
                 offset: offsets[i],
             };
             self.cur_var_index += 1;
-            Expr::Col(col)
+            BaseExpr::Col(col)
         })
     }
 
@@ -403,7 +604,7 @@ impl EvalAtRow for ExprEvaluator {
     }
 
     fn combine_ef(values: [Self::F; 4]) -> Self::EF {
-        Expr::SecureCol([
+        ExtExpr::SecureCol([
             Box::new(values[0].clone()),
             Box::new(values[1].clone()),
             Box::new(values[2].clone()),
@@ -458,10 +659,10 @@ mod tests {
 \
         let constraint_1 = (SecureCol(col_2_4[0], col_2_6[0], col_2_8[0], col_2_10[0]) \
             - (SecureCol(col_2_5[-1], col_2_7[-1], col_2_9[-1], col_2_11[-1]) \
-                - ((col_0_3[0]) * (total_sum)))\
+                - ((total_sum) * (col_0_3[0])))\
             ) \
             * (intermediate0) \
-            - (1);"
+            - (1 + 0i);"
             .to_string();
 
         assert_eq!(eval.format_constraints(), expected);
