@@ -91,7 +91,7 @@ fn store_debug_value(index: u32, value: u32) {
     debug_buffer.values[debug_idx] = value;
 }
 
-@compute @workgroup_size(1)
+@compute @workgroup_size(256)
 fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if (global_id.x != 0u) {
         return;

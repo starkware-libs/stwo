@@ -358,6 +358,9 @@ impl GpuInterpolator {
             ],
         });
 
+        // part 1 from here
+        let part1_start = std::time::Instant::now();
+
         // Create and submit command buffer
         let mut encoder = self
             .device
@@ -386,6 +389,12 @@ impl GpuInterpolator {
             std::mem::size_of::<DebugData>() as u64,
         );
         self.queue.submit(Some(encoder.finish()));
+        // end part 1
+        let part1_duration = part1_start.elapsed();
+        println!("copy elapsed time: {:?}", part1_duration);
+
+        // start part 2
+        let part2_start = std::time::Instant::now();
 
         // Read back the debug data
         {
@@ -413,14 +422,21 @@ impl GpuInterpolator {
         });
         self.device.poll(wgpu::Maintain::Wait);
 
-        pollster::block_on(async {
+        let result = pollster::block_on(async {
             rx.recv_async().await.unwrap().unwrap();
             let data = slice.get_mapped_range();
             let result = InterpolateOutputF::from_bytes(&data);
             drop(data);
             staging_buffer.unmap();
             result
-        })
+        });
+
+        let part2_duration = part2_start.elapsed();
+        println!("interpolate elapsed time: {:?}", part2_duration);
+
+        result
+
+        // end part 2
     }
 }
 
@@ -513,6 +529,7 @@ mod tests {
             let domain = CanonicCoset::new(log_size).circle_domain();
             let evals = poly.evaluate(domain);
             let input = circle_eval_to_gpu_input(evals, log_size);
+            println!("log size: {}", log_size);
             let gpu_output = interpolate_gpu(input);
 
             assert_eq!(
