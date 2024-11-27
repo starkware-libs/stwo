@@ -24,7 +24,7 @@ pub struct GpuInterpolator {
 unsafe impl Send for GpuInterpolator {}
 unsafe impl Sync for GpuInterpolator {}
 
-const MAX_ARRAY_LOG_SIZE: u32 = 15;
+const MAX_ARRAY_LOG_SIZE: u32 = 12;
 const MAX_ARRAY_SIZE: usize = 1 << MAX_ARRAY_LOG_SIZE;
 
 #[allow(dead_code)]
@@ -229,7 +229,7 @@ impl GpuInterpolator {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    required_features: wgpu::Features::SHADER_INT64,
+                    required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::downlevel_defaults(),
                     memory_hints: wgpu::MemoryHints::MemoryUsage,
                 },
@@ -324,6 +324,11 @@ impl GpuInterpolator {
             });
 
         // Create output storage buffer
+        #[cfg(target_family = "wasm")]
+        console_log!(
+            "create input buffer: {}",
+            std::mem::size_of::<InterpolateInput>()
+        );
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: std::mem::size_of::<InterpolateInput>() as u64,
@@ -433,6 +438,8 @@ impl GpuInterpolator {
                 drop(data);
                 result
             };
+
+            // println!("debug_result: {:?}", _debug_result.await);
 
             #[cfg(target_family = "wasm")]
             console_log!("debug_result: {:?}", _debug_result.await);
@@ -572,7 +579,7 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn test_interpolate_n_wasm() {
-        let _max_log_size = 3;
+        let _max_log_size = MAX_ARRAY_LOG_SIZE;
         // alert(&format!("max log size: {}", _max_log_size));
         console_log!("max log size: {}", _max_log_size);
 
