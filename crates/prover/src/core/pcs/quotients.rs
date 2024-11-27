@@ -77,26 +77,31 @@ pub fn compute_fri_quotients<B: QuotientOps>(
     samples: &[Vec<PointSample>],
     random_coeff: SecureField,
     log_blowup_factor: u32,
-) -> Vec<SecureEvaluation<B, BitReversedOrder>> {
+) -> BTreeMap<u32, SecureEvaluation<B, BitReversedOrder>> {
     let _span = span!(Level::INFO, "Compute FRI quotients").entered();
-    zip(columns, samples)
-        .sorted_by_key(|(c, _)| Reverse(c.domain.log_size()))
-        .group_by(|(c, _)| c.domain.log_size())
-        .into_iter()
-        .map(|(log_size, tuples)| {
-            let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
-            let domain = CanonicCoset::new(log_size).circle_domain();
-            // TODO: slice.
-            let sample_batches = ColumnSampleBatch::new_vec(&samples);
-            B::accumulate_quotients(
-                domain,
-                &columns,
-                random_coeff,
-                &sample_batches,
-                log_blowup_factor,
-            )
-        })
-        .collect()
+
+    BTreeMap::from_iter(
+        zip(columns, samples)
+            .sorted_by_key(|(c, _)| Reverse(c.domain.log_size()))
+            .group_by(|(c, _)| c.domain.log_size())
+            .into_iter()
+            .map(|(log_size, tuples)| {
+                let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
+                let domain = CanonicCoset::new(log_size).circle_domain();
+                // TODO: slice.
+                let sample_batches = ColumnSampleBatch::new_vec(&samples);
+                (
+                    log_size,
+                    B::accumulate_quotients(
+                        domain,
+                        &columns,
+                        random_coeff,
+                        &sample_batches,
+                        log_blowup_factor,
+                    ),
+                )
+            }),
+    )
 }
 
 pub fn fri_answers(
@@ -179,13 +184,14 @@ mod tests {
         let point = SECURE_FIELD_CIRCLE_GEN;
         let value = polynomial.eval_at_point(point);
         let coeff = qm31!(1, 2, 3, 4);
-        let quot_eval = compute_fri_quotients(
+        let (_, quot_eval) = compute_fri_quotients(
             &[&eval],
             &[vec![PointSample { point, value }]],
             coeff,
             LOG_BLOWUP_FACTOR,
         )
-        .pop()
+        .into_iter()
+        .next()
         .unwrap();
         let quot_poly_base_field =
             CpuCircleEvaluation::new(eval_domain, quot_eval.values.columns[0].clone())

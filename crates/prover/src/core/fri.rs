@@ -155,12 +155,20 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
     pub fn commit(
         channel: &mut MC::C,
         config: FriConfig,
-        columns: &'a [SecureEvaluation<B, BitReversedOrder>],
+        columns: &'a BTreeMap<u32, SecureEvaluation<B, BitReversedOrder>>,
         twiddles: &TwiddleTree<B>,
     ) -> Self {
         assert!(!columns.is_empty(), "no columns");
-        assert!(columns.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
-        assert!(columns.iter().all(|e| e.domain.is_canonic()), "not canonic");
+        assert!(
+            columns.values().all(|e| e.domain.is_canonic()),
+            "not canonic"
+        );
+
+
+        assert!(
+            columns.iter().all(|(log_size, e)| e.len() == 1 << (log_size + config.log_blowup_factor)),
+            "invalid log_size"
+        );
 
         let first_layer = Self::commit_first_layer(channel, columns);
         let (inner_layers, last_layer_evaluation) =
@@ -183,7 +191,7 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
     /// All `columns` must be provided in descending order by size.
     fn commit_first_layer(
         channel: &mut MC::C,
-        columns: &'a [SecureEvaluation<B, BitReversedOrder>],
+        columns: &'a BTreeMap<u32, SecureEvaluation<B, BitReversedOrder>>,
     ) -> FriFirstLayerProver<'a, B, MC::H> {
         let layer = FriFirstLayerProver::new(columns);
         MC::mix_root(channel, layer.merkle_tree.root());
@@ -198,7 +206,7 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
     fn commit_inner_layers(
         channel: &mut MC::C,
         config: FriConfig,
-        columns: &[SecureEvaluation<B, BitReversedOrder>],
+        columns: &BTreeMap<u32, SecureEvaluation<B, BitReversedOrder>>,
         twiddles: &TwiddleTree<B>,
     ) -> (Vec<FriInnerLayerProver<B, MC::H>>, LineEvaluation<B>) {
         /// Returns the size of the line evaluation a circle evaluation gets folded into.
@@ -207,12 +215,12 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
         }
 
         let circle_poly_folding_alpha = channel.draw_felt();
-        let first_inner_layer_log_size = folded_size(&columns[0]).ilog2();
+        let first_inner_layer_log_size = folded_size(columns.values().last().unwrap()).ilog2();
         let first_inner_layer_domain =
             LineDomain::new(Coset::half_odds(first_inner_layer_log_size));
 
         let mut layer_evaluation = LineEvaluation::new_zero(first_inner_layer_domain);
-        let mut columns = columns.iter().peekable();
+        let mut columns = columns.values().rev().peekable();
         let mut layers = Vec::new();
 
         while layer_evaluation.len() > config.last_layer_domain_size() {
@@ -845,12 +853,12 @@ impl<H: MerkleHasher> FriInnerLayerVerifier<H> {
 ///
 /// The first layer commits to all circle polynomials (possibly of mixed degree) involved in FRI.
 struct FriFirstLayerProver<'a, B: FriOps + MerkleOps<H>, H: MerkleHasher> {
-    columns: &'a [SecureEvaluation<B, BitReversedOrder>],
+    columns: &'a BTreeMap<u32, SecureEvaluation<B, BitReversedOrder>>,
     merkle_tree: MerkleProver<B, H>,
 }
 
 impl<'a, B: FriOps + MerkleOps<H>, H: MerkleHasher> FriFirstLayerProver<'a, B, H> {
-    fn new(columns: &'a [SecureEvaluation<B, BitReversedOrder>]) -> Self {
+    fn new(columns: &'a BTreeMap<u32, SecureEvaluation<B, BitReversedOrder>>) -> Self {
         let coordinate_columns = extract_coordinate_columns(columns);
         let merkle_tree = MerkleProver::commit(coordinate_columns);
 
@@ -862,21 +870,21 @@ impl<'a, B: FriOps + MerkleOps<H>, H: MerkleHasher> FriFirstLayerProver<'a, B, H
 
     /// Returns the sizes of all circle polynomial commitment domains.
     fn column_log_sizes(&self) -> BTreeSet<u32> {
-        self.columns.iter().map(|e| e.domain.log_size()).collect()
+        self.columns.values().map(|e| e.domain.log_size()).collect()
     }
 
     fn max_column_log_size(&self) -> u32 {
-        *self.column_log_sizes().iter().max().unwrap()
+        self.columns.values().last().unwrap().domain.log_size()
     }
 
     fn decommit(self, queries: &Queries) -> FriLayerProof<H> {
-        let max_column_log_size = *self.column_log_sizes().iter().max().unwrap();
+        let max_column_log_size = self.max_column_log_size();
         assert_eq!(queries.log_domain_size, max_column_log_size);
 
         let mut fri_witness = Vec::new();
         let mut decommitment_positions_by_log_size = BTreeMap::new();
 
-        for column in self.columns {
+        for column in self.columns.values().rev() {
             let column_log_size = column.domain.log_size();
             let column_queries = queries.fold(queries.log_domain_size - column_log_size);
 
@@ -909,11 +917,11 @@ impl<'a, B: FriOps + MerkleOps<H>, H: MerkleHasher> FriFirstLayerProver<'a, B, H
 
 /// Extracts all base field coordinate columns from each secure column.
 fn extract_coordinate_columns<B: PolyOps>(
-    columns: &[SecureEvaluation<B, BitReversedOrder>],
+    columns: &BTreeMap<u32, SecureEvaluation<B, BitReversedOrder>>,
 ) -> Vec<&Col<B, BaseField>> {
     let mut coordinate_columns = Vec::new();
 
-    for secure_column in columns {
+    for secure_column in columns.values() {
         for coordinate_column in secure_column.columns.iter() {
             coordinate_columns.push(coordinate_column);
         }
@@ -1161,9 +1169,10 @@ pub fn fold_circle_into_line(
 #[cfg(test)]
 mod tests {
     use std::assert_matches::assert_matches;
+    use std::collections::BTreeMap;
     use std::iter::zip;
 
-    use itertools::Itertools;
+    use itertools::{izip, Itertools};
     use num_traits::{One, Zero};
 
     use super::FriVerificationError;
@@ -1240,29 +1249,31 @@ mod tests {
     #[test]
     #[should_panic = "invalid degree"]
     fn committing_high_degree_polynomial_fails() {
+        const LOG_DEGREE: u32 = 6;
         const LOG_EXPECTED_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR;
-        const LOG_INVALID_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR - 1;
         let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3);
-        let column = &[polynomial_evaluation(6, LOG_INVALID_BLOWUP_FACTOR)];
-        let twiddles = CpuBackend::precompute_twiddles(column[0].domain.half_coset);
+        let column = polynomial_evaluation(LOG_DEGREE + 1, LOG_EXPECTED_BLOWUP_FACTOR - 1);
+        let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
+        let columns = BTreeMap::from_iter([(LOG_DEGREE, column)]);
 
-        FriProver::commit(&mut test_channel(), config, column, &twiddles);
+        FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
     }
 
     #[test]
     #[should_panic = "not canonic"]
     fn committing_column_from_invalid_domain_fails() {
+        const LOG_DEGREE: u32 = 4;
         let invalid_domain = CircleDomain::new(Coset::new(CirclePointIndex::generator(), 3));
         assert!(!invalid_domain.is_canonic(), "must be an invalid domain");
         let config = FriConfig::new(2, 2, 3);
         let column = SecureEvaluation::new(
             invalid_domain,
-            [SecureField::one(); 1 << 4].into_iter().collect(),
+            [SecureField::one(); 1 << LOG_DEGREE].into_iter().collect(),
         );
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
-        let columns = &[column];
+        let columns = BTreeMap::from_iter([(LOG_DEGREE, column)]);
 
-        FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
     }
 
     #[test]
@@ -1273,8 +1284,8 @@ mod tests {
         let queries = Queries::from_positions(vec![5], column.domain.log_size());
         let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len());
         let decommitment_value = query_polynomial(&column, &queries);
-        let columns = &[column];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let columns = BTreeMap::from_iter([(LOG_DEGREE, column)]);
+        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
@@ -1292,8 +1303,8 @@ mod tests {
         let queries = Queries::from_positions(vec![5], column.domain.log_size());
         let config = FriConfig::new(LAST_LAYER_LOG_BOUND, LOG_BLOWUP_FACTOR, queries.len());
         let decommitment_value = query_polynomial(&column, &queries);
-        let columns = &[column];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let columns = BTreeMap::from_iter([(LOG_DEGREE, column)]);
+        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
@@ -1304,14 +1315,18 @@ mod tests {
     #[test]
     fn valid_mixed_degree_proof_passes_verification() -> Result<(), FriVerificationError> {
         const LOG_DEGREES: [u32; 3] = [6, 5, 4];
-        let columns = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
-        let twiddles = CpuBackend::precompute_twiddles(columns[0].domain.half_coset);
-        let log_domain_size = columns[0].domain.log_size();
+        let evals = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
+        let twiddles = CpuBackend::precompute_twiddles(evals[0].domain.half_coset);
+        let log_domain_size = evals[0].domain.log_size();
         let queries = Queries::from_positions(vec![7, 70], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
+        let columns = BTreeMap::from_iter(izip!(LOG_DEGREES, evals));
         let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
         let proof = prover.decommit_on_queries(&queries);
-        let query_evals = columns.map(|p| query_polynomial(&p, &queries)).to_vec();
+        let query_evals = columns
+            .values().rev()
+            .map(|p| query_polynomial(p, &queries))
+            .collect_vec();
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
 
@@ -1322,15 +1337,19 @@ mod tests {
     fn mixed_degree_proof_with_queries_sampled_from_channel_passes_verification(
     ) -> Result<(), FriVerificationError> {
         const LOG_DEGREES: [u32; 3] = [6, 5, 4];
-        let columns = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
-        let twiddles = CpuBackend::precompute_twiddles(columns[0].domain.half_coset);
+        let evals = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
+        let twiddles = CpuBackend::precompute_twiddles(evals[0].domain.half_coset);
+        let columns = BTreeMap::from_iter(izip!(LOG_DEGREES, evals));
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
         let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
         let (proof, prover_query_positions_by_log_size) = prover.decommit(&mut test_channel());
-        let query_evals_by_column = columns.map(|eval| {
-            let query_positions = &prover_query_positions_by_log_size[&eval.domain.log_size()];
-            query_polynomial_at_positions(&eval, query_positions)
-        });
+        let query_evals_by_column = columns
+            .values().rev()
+            .map(|eval| {
+                let query_positions = &prover_query_positions_by_log_size[&eval.domain.log_size()];
+                query_polynomial_at_positions(eval, query_positions)
+            })
+            .collect_vec();
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
 
         let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
@@ -1341,7 +1360,7 @@ mod tests {
             prover_query_positions_by_log_size,
             verifier_query_positions_by_log_size
         );
-        verifier.decommit(query_evals_by_column.to_vec())
+        verifier.decommit(query_evals_by_column)
     }
 
     #[test]
@@ -1352,8 +1371,8 @@ mod tests {
         let log_domain_size = evaluation.domain.log_size();
         let queries = Queries::from_positions(vec![1], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
-        let columns = &[evaluation];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let columns = BTreeMap::from_iter([(LOG_DEGREE, evaluation)]);
+        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         // Set verifier's config to expect one extra layer than prover config.
@@ -1376,8 +1395,8 @@ mod tests {
         let log_domain_size = evaluation.domain.log_size();
         let queries = Queries::from_positions(vec![1], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
-        let columns = &[evaluation];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let columns = BTreeMap::from_iter([(log_domain_size, evaluation)]);
+        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         // Set verifier's config to expect one less layer than prover config.
@@ -1401,8 +1420,8 @@ mod tests {
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
         let decommitment_value = query_polynomial(&evaluation, &queries);
-        let columns = &[evaluation];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let columns = BTreeMap::from_iter([(log_domain_size, evaluation)]);
+        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
         // Remove an evaluation from the second layer's proof.
@@ -1426,8 +1445,8 @@ mod tests {
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
         let decommitment_value = query_polynomial(&evaluation, &queries);
-        let columns = &[evaluation];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let columns = BTreeMap::from_iter([(log_domain_size, evaluation)]);
+        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
         // Modify the committed values in the second layer.
@@ -1451,8 +1470,8 @@ mod tests {
         let log_domain_size = evaluation.domain.log_size();
         let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
         let config = FriConfig::new(LOG_MAX_LAST_LAYER_DEGREE, LOG_BLOWUP_FACTOR, queries.len());
-        let columns = &[evaluation];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let columns = BTreeMap::from_iter([(log_domain_size, evaluation)]);
+        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
         let bad_last_layer_coeffs = vec![One::one(); 1 << (LOG_MAX_LAST_LAYER_DEGREE + 1)];
@@ -1475,8 +1494,8 @@ mod tests {
         let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
         let decommitment_value = query_polynomial(&evaluation, &queries);
-        let columns = &[evaluation];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let columns = BTreeMap::from_iter([(log_domain_size, evaluation)]);
+        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
         // Compromise the last layer polynomial's first coefficient.
@@ -1501,8 +1520,8 @@ mod tests {
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len());
         let decommitment_value = query_polynomial(&evaluation, &queries);
-        let columns = &[evaluation];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let columns = BTreeMap::from_iter([(log_domain_size, evaluation)]);
+        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
