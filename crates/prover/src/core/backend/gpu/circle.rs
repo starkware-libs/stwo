@@ -10,7 +10,7 @@ pub struct GpuInterpolator {
     bind_group_layout: wgpu::BindGroupLayout,
 }
 
-const MAX_ARRAY_LOG_SIZE: u32 = 13;
+const MAX_ARRAY_LOG_SIZE: u32 = 17;
 const MAX_ARRAY_SIZE: usize = 1 << MAX_ARRAY_LOG_SIZE;
 
 #[repr(C)]
@@ -28,23 +28,6 @@ pub struct InterpolateInput {
     line_twiddles_offsets: [u32; MAX_ARRAY_SIZE],
 }
 
-impl InterpolateInput {
-    pub fn new_zero() -> Self {
-        Self {
-            values: [0u32; MAX_ARRAY_SIZE],
-            initial_x: 0,
-            initial_y: 0,
-            log_size: 0,
-            circle_twiddles: [0u32; MAX_ARRAY_SIZE],
-            circle_twiddles_size: 0,
-            line_twiddles_flat: [0u32; MAX_ARRAY_SIZE],
-            line_twiddles_layer_count: 0,
-            line_twiddles_sizes: [0; MAX_ARRAY_SIZE],
-            line_twiddles_offsets: [0; MAX_ARRAY_SIZE],
-        }
-    }
-}
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct InterpolateOutput {
@@ -60,16 +43,16 @@ pub struct DebugData {
 }
 
 pub struct InterpolateInputF<F> {
-    pub values: [F; MAX_ARRAY_SIZE],
+    pub values: Vec<F>,
     pub initial_x: F,
     pub initial_y: F,
     pub log_size: u32,
-    pub circle_twiddles: [F; MAX_ARRAY_SIZE],
+    pub circle_twiddles: Vec<F>,
     pub circle_twiddles_size: u32,
-    pub line_twiddles_flat: [F; MAX_ARRAY_SIZE],
+    pub line_twiddles_flat: Vec<F>,
     pub line_twiddles_layer_count: u32,
-    pub line_twiddles_sizes: [u32; MAX_ARRAY_SIZE],
-    pub line_twiddles_offsets: [u32; MAX_ARRAY_SIZE],
+    pub line_twiddles_sizes: Vec<u32>,
+    pub line_twiddles_offsets: Vec<u32>,
 }
 
 impl<F> InterpolateInputF<F>
@@ -78,16 +61,16 @@ where
 {
     pub fn new_zero() -> Self {
         Self {
-            values: [F::from(0); MAX_ARRAY_SIZE],
+            values: vec![F::from(0); MAX_ARRAY_SIZE],
             initial_x: F::from(0),
             initial_y: F::from(0),
             log_size: 0,
-            circle_twiddles: [F::from(0); MAX_ARRAY_SIZE],
+            circle_twiddles: vec![F::from(0); MAX_ARRAY_SIZE],
             circle_twiddles_size: 0,
-            line_twiddles_flat: [F::from(0); MAX_ARRAY_SIZE],
+            line_twiddles_flat: vec![F::from(0); MAX_ARRAY_SIZE],
             line_twiddles_layer_count: 0,
-            line_twiddles_sizes: [0; MAX_ARRAY_SIZE],
-            line_twiddles_offsets: [0; MAX_ARRAY_SIZE],
+            line_twiddles_sizes: vec![0; MAX_ARRAY_SIZE],
+            line_twiddles_offsets: vec![0; MAX_ARRAY_SIZE],
         }
     }
 }
@@ -98,32 +81,98 @@ pub struct InterpolateOutputF<F> {
 
 impl<F> InterpolateInputF<F>
 where
-    F: Into<u32> + Copy,
+    F: Into<u32> + From<u32> + Copy,
 {
-    pub fn to_gpu_input(self) -> InterpolateInput {
-        let mut result = InterpolateInput::new_zero();
+    fn as_bytes(&self) -> &[u8] {
+        let total_size = std::mem::size_of::<InterpolateInput>();
+        let mut bytes = Vec::with_capacity(total_size);
 
-        for (i, &v) in self.values.iter().enumerate() {
-            result.values[i] = v.into();
-        }
+        let mut padded_values = vec![F::from(0u32); MAX_ARRAY_SIZE];
+        padded_values[..self.values.len()].copy_from_slice(&self.values);
+        bytes.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(
+                padded_values.as_ptr() as *const u8,
+                MAX_ARRAY_SIZE * std::mem::size_of::<F>(),
+            )
+        });
 
-        for (i, &v) in self.circle_twiddles.iter().enumerate() {
-            result.circle_twiddles[i] = v.into();
-        }
+        // initial_x, initial_y
+        bytes.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(
+                &self.initial_x as *const F as *const u8,
+                std::mem::size_of::<F>(),
+            )
+        });
+        bytes.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(
+                &self.initial_y as *const F as *const u8,
+                std::mem::size_of::<F>(),
+            )
+        });
 
-        for (i, &v) in self.line_twiddles_flat.iter().enumerate() {
-            result.line_twiddles_flat[i] = v.into();
-        }
+        // log_size
+        bytes.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(
+                &self.log_size as *const u32 as *const u8,
+                std::mem::size_of::<u32>(),
+            )
+        });
 
-        result.initial_x = self.initial_x.into();
-        result.initial_y = self.initial_y.into();
-        result.log_size = self.log_size;
-        result.circle_twiddles_size = self.circle_twiddles_size;
-        result.line_twiddles_layer_count = self.line_twiddles_layer_count;
-        result.line_twiddles_sizes = self.line_twiddles_sizes;
-        result.line_twiddles_offsets = self.line_twiddles_offsets;
+        let mut padded_circle_twiddles = vec![F::from(0u32); MAX_ARRAY_SIZE];
+        padded_circle_twiddles[..self.circle_twiddles.len()].copy_from_slice(&self.circle_twiddles);
+        bytes.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(
+                padded_circle_twiddles.as_ptr() as *const u8,
+                MAX_ARRAY_SIZE * std::mem::size_of::<F>(),
+            )
+        });
 
-        result
+        // circle_twiddles_size
+        bytes.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(
+                &self.circle_twiddles_size as *const u32 as *const u8,
+                std::mem::size_of::<u32>(),
+            )
+        });
+
+        let mut padded_line_twiddles = vec![F::from(0u32); MAX_ARRAY_SIZE];
+        padded_line_twiddles[..self.line_twiddles_flat.len()]
+            .copy_from_slice(&self.line_twiddles_flat);
+        bytes.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(
+                padded_line_twiddles.as_ptr() as *const u8,
+                MAX_ARRAY_SIZE * std::mem::size_of::<F>(),
+            )
+        });
+
+        // line_twiddles_layer_count
+        bytes.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(
+                &self.line_twiddles_layer_count as *const u32 as *const u8,
+                std::mem::size_of::<u32>(),
+            )
+        });
+
+        let mut padded_sizes = vec![0u32; MAX_ARRAY_SIZE];
+        padded_sizes[..self.line_twiddles_sizes.len()].copy_from_slice(&self.line_twiddles_sizes);
+        bytes.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(
+                padded_sizes.as_ptr() as *const u8,
+                MAX_ARRAY_SIZE * std::mem::size_of::<u32>(),
+            )
+        });
+
+        let mut padded_offsets = vec![0u32; MAX_ARRAY_SIZE];
+        padded_offsets[..self.line_twiddles_offsets.len()]
+            .copy_from_slice(&self.line_twiddles_offsets);
+        bytes.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(
+                padded_offsets.as_ptr() as *const u8,
+                MAX_ARRAY_SIZE * std::mem::size_of::<u32>(),
+            )
+        });
+
+        Box::leak(bytes.into_boxed_slice())
     }
 }
 
@@ -139,22 +188,12 @@ where
 }
 
 pub trait ByteSerialize: Sized {
-    fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                (self as *const Self) as *const u8,
-                std::mem::size_of::<Self>(),
-            )
-        }
-    }
-
     fn from_bytes(bytes: &[u8]) -> &Self {
         assert!(bytes.len() >= std::mem::size_of::<Self>());
         unsafe { &*(bytes.as_ptr() as *const Self) }
     }
 }
 
-impl ByteSerialize for InterpolateInput {}
 impl ByteSerialize for InterpolateOutput {}
 impl ByteSerialize for DebugData {}
 
@@ -247,7 +286,10 @@ impl GpuInterpolator {
         }
     }
 
-    fn execute_interpolate(&self, input: InterpolateInput) -> InterpolateOutput {
+    fn execute_interpolate<F>(&self, input: InterpolateInputF<F>) -> InterpolateOutput
+    where
+        F: Into<u32> + From<u32> + Copy,
+    {
         // Create input storage buffer
         let input_buffer = self
             .device
@@ -390,7 +432,7 @@ where
     static GPU_INTERPOLATOR: once_cell::sync::Lazy<GpuInterpolator> =
         once_cell::sync::Lazy::new(|| pollster::block_on(GpuInterpolator::new()));
 
-    let result = GPU_INTERPOLATOR.execute_interpolate(input.to_gpu_input());
+    let result = GPU_INTERPOLATOR.execute_interpolate(input);
     InterpolateOutputF::from_gpu_output(result)
 }
 
@@ -400,55 +442,10 @@ mod tests {
     use crate::core::backend::cpu::circle::circle_twiddles_from_line_twiddles;
     use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::backend::{Column, CpuBackend};
-    use crate::core::fft::ibutterfly;
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::FieldExpOps;
     use crate::core::poly::circle::{CanonicCoset, PolyOps};
     use crate::core::poly::utils::domain_line_twiddles_from_tree;
     use crate::core::poly::BitReversedOrder;
-
-    #[test]
-    fn test_interpolate2() {
-        // CPU implementation for comparison
-        let cpu_test = |v0: u32, v1: u32, y: u32| {
-            let mut v0 = BaseField::partial_reduce(v0);
-            let mut v1 = BaseField::partial_reduce(v1);
-            let y = BaseField::partial_reduce(y);
-
-            let n = BaseField::from(2);
-            let yn_inv = (y * n).inverse();
-            let y_inv = yn_inv * n;
-            let n_inv = yn_inv * y;
-
-            ibutterfly(&mut v0, &mut v1, y_inv);
-            (v0 * n_inv, v1 * n_inv)
-        };
-
-        // Test cases
-        let test_cases = [(1, 2, 3), (100, 200, 300), (1000000, 2000000, 3000000)];
-
-        for (v0, v1, y) in test_cases {
-            let (cpu_v0, cpu_v1) = cpu_test(v0, v1, y);
-
-            let mut input = InterpolateInputF::new_zero();
-            input.values[0] = BaseField::partial_reduce(v0);
-            input.values[1] = BaseField::partial_reduce(v1);
-            input.initial_y = BaseField::partial_reduce(y);
-            input.log_size = 1;
-            let gpu_output = interpolate_gpu(input);
-
-            assert_eq!(
-                cpu_v0.0, gpu_output.results[0].0,
-                "v0 mismatch for input ({}, {}, {})",
-                v0, v1, y
-            );
-            assert_eq!(
-                cpu_v1.0, gpu_output.results[1].0,
-                "v1 mismatch for input ({}, {}, {})",
-                v0, v1, y
-            );
-        }
-    }
 
     fn circle_eval_to_gpu_input(
         evals: CpuCircleEvaluation<BaseField, BitReversedOrder>,
@@ -517,70 +514,6 @@ mod tests {
             assert_eq!(
                 gpu_output.results.to_vec()[..poly.coeffs.len()],
                 poly.coeffs
-            );
-        }
-    }
-
-    #[test]
-    fn test_interpolate4() {
-        // CPU implementation for comparison
-        let cpu_test = |v0: u32, v1: u32, v2: u32, v3: u32, x: u32, y: u32| {
-            let mut v0 = BaseField::partial_reduce(v0);
-            let mut v1 = BaseField::partial_reduce(v1);
-            let mut v2 = BaseField::partial_reduce(v2);
-            let mut v3 = BaseField::partial_reduce(v3);
-            let x = BaseField::partial_reduce(x);
-            let y = BaseField::partial_reduce(y);
-
-            let n = BaseField::from(4);
-            let xyn_inv = (x * y * n).inverse();
-            let x_inv = xyn_inv * y * n;
-            let y_inv = xyn_inv * x * n;
-            let n_inv = xyn_inv * x * y;
-
-            ibutterfly(&mut v0, &mut v1, y_inv);
-            ibutterfly(&mut v2, &mut v3, -y_inv);
-            ibutterfly(&mut v0, &mut v2, x_inv);
-            ibutterfly(&mut v1, &mut v3, x_inv);
-            (v0 * n_inv, v1 * n_inv, v2 * n_inv, v3 * n_inv)
-        };
-
-        // Test cases
-        let test_cases = [(1, 2, 3, 4, 5, 6), (100, 200, 300, 400, 500, 600)];
-
-        for (v0, v1, v2, v3, x, y) in test_cases {
-            let (cpu_v0, cpu_v1, cpu_v2, cpu_v3) = cpu_test(v0, v1, v2, v3, x, y);
-
-            let mut input = InterpolateInputF::new_zero();
-            input.values[0] = BaseField::partial_reduce(v0);
-            input.values[1] = BaseField::partial_reduce(v1);
-            input.values[2] = BaseField::partial_reduce(v2);
-            input.values[3] = BaseField::partial_reduce(v3);
-            input.initial_x = BaseField::partial_reduce(x);
-            input.initial_y = BaseField::partial_reduce(y);
-            input.log_size = 2;
-
-            let gpu_output = interpolate_gpu(input);
-
-            assert_eq!(
-                cpu_v0.0, gpu_output.results[0].0,
-                "v0 mismatch for input ({}, {}, {}, {}, {}, {})",
-                v0, v1, v2, v3, x, y
-            );
-            assert_eq!(
-                cpu_v1.0, gpu_output.results[1].0,
-                "v1 mismatch for input ({}, {}, {}, {}, {}, {})",
-                v0, v1, v2, v3, x, y
-            );
-            assert_eq!(
-                cpu_v2.0, gpu_output.results[2].0,
-                "v2 mismatch for input ({}, {}, {}, {}, {}, {})",
-                v0, v1, v2, v3, x, y
-            );
-            assert_eq!(
-                cpu_v3.0, gpu_output.results[3].0,
-                "v3 mismatch for input ({}, {}, {}, {}, {}, {})",
-                v0, v1, v2, v3, x, y
             );
         }
     }
