@@ -127,5 +127,5 @@ pub fn simd_rfft(c: &mut Criterion) {
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
-    targets = simd_ifft);
+    targets = simd_ifft, simd_ifft_parts);
 criterion_main!(benches);

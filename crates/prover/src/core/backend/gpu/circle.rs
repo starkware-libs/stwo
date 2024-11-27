@@ -1,7 +1,18 @@
 use std::ops::{Add, AddAssign, Mul, Sub};
 
+#[cfg(target_family = "wasm")]
+use wasm_bindgen_test::console_log;
+// use {once_cell, wgpu};
+use wgpu;
 use wgpu::util::DeviceExt;
-use {once_cell, wgpu};
+
+use crate::core::backend::cpu::circle::circle_twiddles_from_line_twiddles;
+use crate::core::backend::cpu::CpuCircleEvaluation;
+use crate::core::backend::{Column, CpuBackend};
+use crate::core::fields::m31::BaseField;
+use crate::core::poly::circle::PolyOps;
+use crate::core::poly::utils::domain_line_twiddles_from_tree;
+use crate::core::poly::BitReversedOrder;
 
 pub struct GpuInterpolator {
     device: wgpu::Device,
@@ -10,7 +21,10 @@ pub struct GpuInterpolator {
     bind_group_layout: wgpu::BindGroupLayout,
 }
 
-const MAX_ARRAY_LOG_SIZE: u32 = 22;
+unsafe impl Send for GpuInterpolator {}
+unsafe impl Sync for GpuInterpolator {}
+
+const MAX_ARRAY_LOG_SIZE: u32 = 15;
 const MAX_ARRAY_SIZE: usize = 1 << MAX_ARRAY_LOG_SIZE;
 
 #[allow(dead_code)]
@@ -35,8 +49,8 @@ pub struct InterpolateOutput {
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct DebugData {
-    index: [u32; 64],
-    values: [u32; 64],
+    index: [u32; 16],
+    values: [u32; 16],
     counter: u32,
 }
 
@@ -291,10 +305,13 @@ impl GpuInterpolator {
         }
     }
 
-    fn execute_interpolate<F>(&self, input: InterpolateInputF<F>) -> InterpolateOutputF<F>
+    async fn execute_interpolate<F>(&self, input: InterpolateInputF<F>) -> InterpolateOutputF<F>
     where
         F: Into<u32> + From<u32> + Copy,
     {
+        #[cfg(target_family = "wasm")]
+        console_log!("device: {:?}", self.device);
+
         // Create input storage buffer
         let input_buffer = self
             .device
@@ -359,7 +376,9 @@ impl GpuInterpolator {
         });
 
         // part 1 from here
-        let part1_start = std::time::Instant::now();
+        // let part1_start = std::time::Instant::now();
+        #[cfg(target_family = "wasm")]
+        console_log!("start command encoder");
 
         // Create and submit command buffer
         let mut encoder = self
@@ -372,7 +391,7 @@ impl GpuInterpolator {
             });
             compute_pass.set_pipeline(&self.interpolate_pipeline);
             compute_pass.set_bind_group(0, &bind_group, &[]);
-            let workgroup_size = 256;
+            let workgroup_size = 1;
             compute_pass.dispatch_workgroups(workgroup_size, 1, 1);
         }
         encoder.copy_buffer_to_buffer(
@@ -390,14 +409,16 @@ impl GpuInterpolator {
             std::mem::size_of::<DebugData>() as u64,
         );
         self.queue.submit(Some(encoder.finish()));
-        // end part 1
-        let part1_duration = part1_start.elapsed();
-        println!("copy elapsed time: {:?}", part1_duration);
+        // // end part 1
+        // let part1_duration = part1_start.elapsed();
+        // println!("copy elapsed time: {:?}", part1_duration);
 
-        // start part 2
-        let part2_start = std::time::Instant::now();
+        // // start part 2
+        // let part2_start = std::time::Instant::now();
+        #[cfg(target_family = "wasm")]
+        console_log!("start read back debug data");
 
-        // Read back the debug data
+        // // Read back the debug data
         {
             let slice = debug_staging_buffer.slice(..);
             let (tx, rx) = flume::bounded(1);
@@ -405,14 +426,16 @@ impl GpuInterpolator {
                 tx.send(result).unwrap();
             });
             self.device.poll(wgpu::Maintain::Wait);
-            let _debug_result = pollster::block_on(async {
+            let _debug_result = async {
                 rx.recv_async().await.unwrap().unwrap();
                 let data = slice.get_mapped_range();
                 let result = *DebugData::from_bytes(&data);
                 drop(data);
                 result
-            });
-            // println!("debug_result: {:?}", _debug_result);
+            };
+
+            #[cfg(target_family = "wasm")]
+            console_log!("debug_result: {:?}", _debug_result.await);
         }
 
         // Read back the results
@@ -423,25 +446,25 @@ impl GpuInterpolator {
         });
         self.device.poll(wgpu::Maintain::Wait);
 
-        let result = pollster::block_on(async {
+        let result = async {
             rx.recv_async().await.unwrap().unwrap();
             let data = slice.get_mapped_range();
             let result = InterpolateOutputF::from_bytes(&data);
             drop(data);
             staging_buffer.unmap();
             result
-        });
+        };
 
-        let part2_duration = part2_start.elapsed();
-        println!("interpolate elapsed time: {:?}", part2_duration);
+        // let part2_duration = part2_start.elapsed();
+        // println!("interpolate elapsed time: {:?}", part2_duration);
 
-        result
+        result.await
 
         // end part 2
     }
 }
 
-pub fn interpolate_gpu<F>(input: InterpolateInputF<F>) -> InterpolateOutputF<F>
+pub async fn interpolate_gpu<F>(input: InterpolateInputF<F>) -> InterpolateOutputF<F>
 where
     F: AddAssign<F>
         + Add<F, Output = F>
@@ -451,60 +474,67 @@ where
         + Into<u32>
         + From<u32>,
 {
-    static GPU_INTERPOLATOR: once_cell::sync::Lazy<GpuInterpolator> =
-        once_cell::sync::Lazy::new(|| pollster::block_on(GpuInterpolator::new()));
+    // static GPU_INTERPOLATOR: once_cell::sync::Lazy<GpuInterpolator> =
+    //     once_cell::sync::Lazy::new(|| pollster::block_on(GpuInterpolator::new()));
 
-    GPU_INTERPOLATOR.execute_interpolate(input)
+    // GPU_INTERPOLATOR.execute_interpolate(input)
+
+    #[cfg(target_family = "wasm")]
+    console_log!("start gpu interpolate");
+    let gpu_interpolator = GpuInterpolator::new().await;
+    #[cfg(target_family = "wasm")]
+    console_log!("get gpu interpolator");
+    gpu_interpolator.execute_interpolate(input).await
+}
+
+pub fn circle_eval_to_gpu_input(
+    evals: CpuCircleEvaluation<BaseField, BitReversedOrder>,
+    log_size: u32,
+) -> InterpolateInputF<BaseField> {
+    let domain = evals.domain;
+    let mut input = InterpolateInputF::new_zero();
+    let eval_values = evals.values.to_cpu();
+    input.values[..eval_values.len()].copy_from_slice(&eval_values);
+    input.log_size = log_size;
+
+    let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
+
+    // line twiddles
+    let line_twiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles);
+    input.line_twiddles_layer_count = line_twiddles.len() as u32;
+    for (i, twiddle) in line_twiddles.iter().enumerate() {
+        input.line_twiddles_sizes[i] = twiddle.len() as u32;
+        // if i == 0, offset is 0, otherwise offset is sum of previous layer offset and layer
+        // size
+        input.line_twiddles_offsets[i] = if i == 0 {
+            0
+        } else {
+            input.line_twiddles_offsets[i - 1] + input.line_twiddles_sizes[i - 1]
+        };
+        for (j, twiddle) in twiddle.iter().enumerate() {
+            input.line_twiddles_flat[input.line_twiddles_offsets[i] as usize + j] = *twiddle;
+        }
+    }
+
+    // circle twiddles
+    let circle_twiddles: Vec<_> = circle_twiddles_from_line_twiddles(line_twiddles[0]).collect();
+    input.circle_twiddles[..circle_twiddles.len()].copy_from_slice(&circle_twiddles);
+    input.circle_twiddles_size = circle_twiddles.len() as u32;
+
+    input
 }
 
 #[cfg(test)]
+wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+
+#[cfg(test)]
 mod tests {
+    use wasm_bindgen_test::{console_log, wasm_bindgen_test};
+
     use super::*;
-    use crate::core::backend::cpu::circle::circle_twiddles_from_line_twiddles;
-    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
-    use crate::core::backend::{Column, CpuBackend};
+    use crate::core::backend::cpu::CpuCirclePoly;
     use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::{CanonicCoset, PolyOps};
-    use crate::core::poly::utils::domain_line_twiddles_from_tree;
-    use crate::core::poly::BitReversedOrder;
-
-    fn circle_eval_to_gpu_input(
-        evals: CpuCircleEvaluation<BaseField, BitReversedOrder>,
-        log_size: u32,
-    ) -> InterpolateInputF<BaseField> {
-        let domain = evals.domain;
-        let mut input = InterpolateInputF::new_zero();
-        let eval_values = evals.values.to_cpu();
-        input.values[..eval_values.len()].copy_from_slice(&eval_values);
-        input.log_size = log_size;
-
-        let twiddles = CpuBackend::precompute_twiddles(domain.half_coset);
-
-        // line twiddles
-        let line_twiddles = domain_line_twiddles_from_tree(domain, &twiddles.itwiddles);
-        input.line_twiddles_layer_count = line_twiddles.len() as u32;
-        for (i, twiddle) in line_twiddles.iter().enumerate() {
-            input.line_twiddles_sizes[i] = twiddle.len() as u32;
-            // if i == 0, offset is 0, otherwise offset is sum of previous layer offset and layer
-            // size
-            input.line_twiddles_offsets[i] = if i == 0 {
-                0
-            } else {
-                input.line_twiddles_offsets[i - 1] + input.line_twiddles_sizes[i - 1]
-            };
-            for (j, twiddle) in twiddle.iter().enumerate() {
-                input.line_twiddles_flat[input.line_twiddles_offsets[i] as usize + j] = *twiddle;
-            }
-        }
-
-        // circle twiddles
-        let circle_twiddles: Vec<_> =
-            circle_twiddles_from_line_twiddles(line_twiddles[0]).collect();
-        input.circle_twiddles[..circle_twiddles.len()].copy_from_slice(&circle_twiddles);
-        input.circle_twiddles_size = circle_twiddles.len() as u32;
-
-        input
-    }
+    use crate::core::poly::circle::CanonicCoset;
 
     #[test]
     fn test_interpolate8() {
@@ -514,7 +544,7 @@ mod tests {
 
         // do interpolation on gpu
         let input = circle_eval_to_gpu_input(evals, 3);
-        let gpu_output = interpolate_gpu(input);
+        let gpu_output = pollster::block_on(interpolate_gpu(input));
 
         assert_eq!(
             gpu_output.results.to_vec()[..poly.coeffs.len()],
@@ -525,13 +555,36 @@ mod tests {
     #[test]
     fn test_interpolate_n() {
         let _max_log_size = MAX_ARRAY_LOG_SIZE;
-        for log_size in 5..=22 {
+        for log_size in 5..=_max_log_size {
             let poly = CpuCirclePoly::new((1..=1 << log_size).map(BaseField::from).collect());
             let domain = CanonicCoset::new(log_size).circle_domain();
             let evals = poly.evaluate(domain);
             let input = circle_eval_to_gpu_input(evals, log_size);
             println!("log size: {}", log_size);
-            let gpu_output = interpolate_gpu(input);
+            let gpu_output = pollster::block_on(interpolate_gpu(input));
+
+            assert_eq!(
+                gpu_output.results.to_vec()[..poly.coeffs.len()],
+                poly.coeffs
+            );
+        }
+    }
+
+    #[wasm_bindgen_test]
+    async fn test_interpolate_n_wasm() {
+        let _max_log_size = 3;
+        // alert(&format!("max log size: {}", _max_log_size));
+        console_log!("max log size: {}", _max_log_size);
+
+        for log_size in 3..=_max_log_size {
+            let poly = CpuCirclePoly::new((1..=1 << log_size).map(BaseField::from).collect());
+            let domain = CanonicCoset::new(log_size).circle_domain();
+            let evals = poly.evaluate(domain);
+            let input = circle_eval_to_gpu_input(evals, log_size);
+            // println!("log size: {}", log_size);
+            // alert(&format!("log size: {}", log_size));
+
+            let gpu_output = interpolate_gpu(input).await;
 
             assert_eq!(
                 gpu_output.results.to_vec()[..poly.coeffs.len()],

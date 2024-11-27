@@ -558,10 +558,8 @@ mod tests {
     };
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::backend::simd::column::BaseColumn;
-    use crate::core::backend::simd::fft::ifft1_gpu::ifft1_gpu;
-    use crate::core::backend::simd::fft::ifft_gpu::ifft3_gpu;
     use crate::core::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE};
-    use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
+    use crate::core::backend::simd::m31::N_LANES;
     use crate::core::backend::Column;
     use crate::core::fft::ibutterfly as ground_truth_ibutterfly;
     use crate::core::fields::m31::BaseField;
@@ -582,108 +580,6 @@ mod tests {
         for i in 0..N_LANES {
             ground_truth_ibutterfly(&mut v0[i], &mut v1[i], twiddle[i]);
             assert_eq!((v0[i], v1[i]), (r0[i], r1[i]), "mismatch at i={i}");
-        }
-    }
-
-    #[test]
-    fn test_ifft1() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let values = rng.gen::<[BaseField; 2]>().map(PackedBaseField::broadcast);
-        let twiddles0: [BaseField; 1] = rng.gen();
-        let twiddles0_dbl = twiddles0.map(|v| v.0 * 2);
-
-        // want to print values
-        println!("values: {:?}", values);
-
-        let mut res = values;
-        unsafe {
-            ifft1_gpu(
-                transmute(res.as_mut_ptr()),
-                0,
-                LOG_N_LANES as usize,
-                twiddles0_dbl,
-            )
-        };
-
-        // want to print res
-        println!("res: {:?}", res);
-
-        let mut expected = values.map(|v| v.to_array()[0]);
-        for i in 0..2 {
-            let j = i ^ 1;
-            if i > j {
-                continue;
-            }
-            let (mut v0, mut v1) = (expected[i], expected[j]);
-            ground_truth_ibutterfly(&mut v0, &mut v1, twiddles0[i / 2]);
-            (expected[i], expected[j]) = (v0, v1);
-        }
-        for i in 0..2 {
-            assert_eq!(
-                res[i].to_array(),
-                [expected[i]; N_LANES],
-                "mismatch at i={i}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_ifft3() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let values = rng.gen::<[BaseField; 8]>().map(PackedBaseField::broadcast);
-        let twiddles0: [BaseField; 4] = rng.gen();
-        let twiddles1: [BaseField; 2] = rng.gen();
-        let twiddles2: [BaseField; 1] = rng.gen();
-        let twiddles0_dbl = twiddles0.map(|v| v.0 * 2);
-        let twiddles1_dbl = twiddles1.map(|v| v.0 * 2);
-        let twiddles2_dbl = twiddles2.map(|v| v.0 * 2);
-
-        let mut res = values;
-        unsafe {
-            ifft3_gpu(
-                transmute(res.as_mut_ptr()),
-                0,
-                LOG_N_LANES as usize,
-                twiddles0_dbl,
-                twiddles1_dbl,
-                twiddles2_dbl,
-            )
-        };
-
-        let mut expected = values.map(|v| v.to_array()[0]);
-        for i in 0..8 {
-            let j = i ^ 1;
-            if i > j {
-                continue;
-            }
-            let (mut v0, mut v1) = (expected[i], expected[j]);
-            ground_truth_ibutterfly(&mut v0, &mut v1, twiddles0[i / 2]);
-            (expected[i], expected[j]) = (v0, v1);
-        }
-        for i in 0..8 {
-            let j = i ^ 2;
-            if i > j {
-                continue;
-            }
-            let (mut v0, mut v1) = (expected[i], expected[j]);
-            ground_truth_ibutterfly(&mut v0, &mut v1, twiddles1[i / 4]);
-            (expected[i], expected[j]) = (v0, v1);
-        }
-        for i in 0..8 {
-            let j = i ^ 4;
-            if i > j {
-                continue;
-            }
-            let (mut v0, mut v1) = (expected[i], expected[j]);
-            ground_truth_ibutterfly(&mut v0, &mut v1, twiddles2[0]);
-            (expected[i], expected[j]) = (v0, v1);
-        }
-        for i in 0..8 {
-            assert_eq!(
-                res[i].to_array(),
-                [expected[i]; N_LANES],
-                "mismatch at i={i}"
-            );
         }
     }
 

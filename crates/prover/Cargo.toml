@@ -30,6 +30,9 @@ wgpu.workspace = true
 flume.workspace = true
 pollster.workspace = true
 once_cell.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+wasm-bindgen-test = "0.3.43"
 
 [dev-dependencies]
 aligned = "0.4.2"

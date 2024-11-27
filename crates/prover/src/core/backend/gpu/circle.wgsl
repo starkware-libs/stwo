@@ -1,8 +1,8 @@
 const MODULUS_BITS: u32 = 31u;
 const P: u32 = 2147483647u;
-const MAX_ARRAY_LOG_SIZE: u32 = 22;
+const MAX_ARRAY_LOG_SIZE: u32 = 15;
 const MAX_ARRAY_SIZE: u32 = 1u << MAX_ARRAY_LOG_SIZE;
-const MAX_DEBUG_SIZE: u32 = 64;
+const MAX_DEBUG_SIZE: u32 = 16;
 
 fn partial_reduce(val: u32) -> u32 {
     let reduced = val - P;
@@ -94,9 +94,11 @@ fn store_debug_value(index: u32, value: u32) {
     debug_buffer.values[debug_idx] = value;
 }
 
-@compute @workgroup_size(256)
+@compute @workgroup_size(1)
 fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let thread_size = 256u;
+    let thread_size = 1u;
+
+    store_debug_value(777, thread_size);
     if (global_id.x >= thread_size) {
         return;
     }
@@ -105,6 +107,7 @@ fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let thread_id = global_id.x;
     for (var i = thread_id; i < size; i = i + thread_size) {
         output.values[i] = input.values[i];
+        store_debug_value(i, output.values[i]);
     }
 
     storageBarrier();
