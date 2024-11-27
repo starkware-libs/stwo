@@ -1,6 +1,6 @@
 const MODULUS_BITS: u32 = 31u;
 const P: u32 = 2147483647u;
-const MAX_ARRAY_LOG_SIZE: u32 = 17;
+const MAX_ARRAY_LOG_SIZE: u32 = 22;
 const MAX_ARRAY_SIZE: u32 = 1u << MAX_ARRAY_LOG_SIZE;
 
 fn partial_reduce(val: u32) -> u32 {

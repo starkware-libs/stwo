@@ -218,13 +218,16 @@ where
 }
 
 mod tests {
+    #[allow(unused_imports)]
     use rand::rngs::SmallRng;
+    #[allow(unused_imports)]
     use rand::{Rng, SeedableRng};
 
     use super::{butterfly_gpu, ibutterfly_gpu};
     use crate::core::fft::{butterfly, ibutterfly};
     use crate::core::fields::m31::BaseField;
 
+    #[allow(dead_code)]
     fn test_single_butterfly(v0: u32, v1: u32, twid: u32) -> bool {
         // CPU implementation
         let mut cpu_v0 = BaseField::partial_reduce(v0);
@@ -244,6 +247,7 @@ mod tests {
         cpu_v0.0 == gpu_v0 && cpu_v1.0 == gpu_v1
     }
 
+    #[allow(dead_code)]
     fn test_single_ibutterfly(v0: u32, v1: u32, twid: u32) -> bool {
         // CPU implementation
         let mut cpu_v0 = BaseField::partial_reduce(v0);

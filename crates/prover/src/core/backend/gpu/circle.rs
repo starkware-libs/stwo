@@ -10,11 +10,10 @@ pub struct GpuInterpolator {
     bind_group_layout: wgpu::BindGroupLayout,
 }
 
-const MAX_ARRAY_LOG_SIZE: u32 = 17;
+const MAX_ARRAY_LOG_SIZE: u32 = 22;
 const MAX_ARRAY_SIZE: usize = 1 << MAX_ARRAY_LOG_SIZE;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
 pub struct InterpolateInput {
     values: [u32; MAX_ARRAY_SIZE],
     initial_x: u32,
@@ -28,8 +27,7 @@ pub struct InterpolateInput {
     line_twiddles_offsets: [u32; MAX_ARRAY_SIZE],
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
 pub struct InterpolateOutput {
     results: [u32; MAX_ARRAY_SIZE],
 }
@@ -76,7 +74,7 @@ where
 }
 
 pub struct InterpolateOutputF<F> {
-    pub results: [F; MAX_ARRAY_SIZE],
+    pub results: Vec<F>,
 }
 
 impl<F> InterpolateInputF<F>
@@ -180,10 +178,18 @@ impl<F> InterpolateOutputF<F>
 where
     F: From<u32> + Copy,
 {
-    pub fn from_gpu_output(output: InterpolateOutput) -> Self {
-        Self {
-            results: output.results.map(|v| F::from(v)),
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        assert!(bytes.len() >= std::mem::size_of::<[u32; MAX_ARRAY_SIZE]>());
+
+        let results_slice =
+            unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u32, MAX_ARRAY_SIZE) };
+
+        let mut results = Vec::with_capacity(MAX_ARRAY_SIZE);
+        for &value in results_slice {
+            results.push(F::from(value));
         }
+
+        Self { results }
     }
 }
 
@@ -194,7 +200,6 @@ pub trait ByteSerialize: Sized {
     }
 }
 
-impl ByteSerialize for InterpolateOutput {}
 impl ByteSerialize for DebugData {}
 
 impl GpuInterpolator {
@@ -286,7 +291,7 @@ impl GpuInterpolator {
         }
     }
 
-    fn execute_interpolate<F>(&self, input: InterpolateInputF<F>) -> InterpolateOutput
+    fn execute_interpolate<F>(&self, input: InterpolateInputF<F>) -> InterpolateOutputF<F>
     where
         F: Into<u32> + From<u32> + Copy,
     {
@@ -411,7 +416,7 @@ impl GpuInterpolator {
         pollster::block_on(async {
             rx.recv_async().await.unwrap().unwrap();
             let data = slice.get_mapped_range();
-            let result = *InterpolateOutput::from_bytes(&data);
+            let result = InterpolateOutputF::from_bytes(&data);
             drop(data);
             staging_buffer.unmap();
             result
@@ -432,8 +437,7 @@ where
     static GPU_INTERPOLATOR: once_cell::sync::Lazy<GpuInterpolator> =
         once_cell::sync::Lazy::new(|| pollster::block_on(GpuInterpolator::new()));
 
-    let result = GPU_INTERPOLATOR.execute_interpolate(input);
-    InterpolateOutputF::from_gpu_output(result)
+    GPU_INTERPOLATOR.execute_interpolate(input)
 }
 
 #[cfg(test)]
