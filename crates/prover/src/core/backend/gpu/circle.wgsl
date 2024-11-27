@@ -1,6 +1,6 @@
 const MODULUS_BITS: u32 = 31u;
 const P: u32 = 2147483647u;
-const MAX_ARRAY_LOG_SIZE: u32 = 12;
+const MAX_ARRAY_LOG_SIZE: u32 = 22;
 const MAX_ARRAY_SIZE: u32 = 1u << MAX_ARRAY_LOG_SIZE;
 const MAX_DEBUG_SIZE: u32 = 16;
 
@@ -10,10 +10,7 @@ fn partial_reduce(val: u32) -> u32 {
 }
 
 fn ff_multiply(a: u32, b: u32) -> u32 {
-    store_debug_value(996u, a);
-    store_debug_value(995u, b);
     let ab = a * b;
-    store_debug_value(997u, ab);
     return partial_reduce(ab);
 }
 
@@ -122,24 +119,19 @@ fn store_debug_value(index: u32, value: u32) {
     debug_buffer.values[debug_idx] = value;
 }
 
-@compute @workgroup_size(1)
+@compute @workgroup_size(256)
 fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let thread_size = 1u;
-
-    store_debug_value(777u, thread_size);
-    //store_debug_value(888u, ff_multiply(10u, 10u));
-    if (global_id.x >= thread_size) {
-        return;
-    }
+    let thread_size = 256u;
 
     let size = 1u << input.log_size;
     let thread_id = global_id.x;
+    store_debug_value(thread_id, thread_id);
     for (var i = thread_id; i < size; i = i + thread_size) {
         output.values[i] = input.values[i];
        // store_debug_value(i, output.values[i]);
     }
 
-    //storageBarrier();
+    storageBarrier();
 
     // Process circle_twiddles
     for (var h = thread_id; h < input.circle_twiddles_size; h = h + thread_size) {
@@ -163,7 +155,7 @@ fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
         }
     }
 
-    //storageBarrier();
+    storageBarrier();
 
     // Process line_twiddles
     var layer = 0u;
@@ -188,23 +180,17 @@ fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 output.values[idx1] = val1;
             }
             
-            //storageBarrier();
+            storageBarrier();
         }
 
         layer = layer + 1u;
         if (layer >= input.line_twiddles_layer_count) { break; }
     }
 
-    //storageBarrier();
+    storageBarrier();
     // divide all values by 2^log_size
     let inv = calculate_modular_inverse(1u << input.log_size);
-    //store_debug_value(997u, output.values[3]);
-    //store_debug_value(998u, inv);
-    //store_debug_value(999u, full_reduce(u64(output.values[3]) * u64(inv)));
-    //store_debug_value(1000u, mod_mul(output.values[3], inv));
     for (var i = thread_id; i < size; i = i + thread_size) {
-        //output.values[i] = full_reduce(u64(output.values[i]) * u64(inv));
-        //output.values[i] = full_reduce32(multiply32(output.values[i], inv));
         output.values[i] = mod_mul(output.values[i], inv);
     }
 }

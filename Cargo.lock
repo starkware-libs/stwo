@@ -1522,6 +1522,7 @@ dependencies = [
  "flume",
  "hex",
  "itertools 0.12.1",
+ "js-sys",
  "num-traits",
  "once_cell",
  "pollster",

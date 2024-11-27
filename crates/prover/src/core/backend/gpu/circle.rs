@@ -1,7 +1,7 @@
 use std::ops::{Add, AddAssign, Mul, Sub};
 
-#[cfg(target_family = "wasm")]
-use wasm_bindgen_test::console_log;
+//#[cfg(target_family = "wasm")]
+// use wasm_bindgen_test::console_log;
 // use {once_cell, wgpu};
 use wgpu;
 use wgpu::util::DeviceExt;
@@ -24,7 +24,7 @@ pub struct GpuInterpolator {
 unsafe impl Send for GpuInterpolator {}
 unsafe impl Sync for GpuInterpolator {}
 
-const MAX_ARRAY_LOG_SIZE: u32 = 12;
+const MAX_ARRAY_LOG_SIZE: u32 = 22;
 const MAX_ARRAY_SIZE: usize = 1 << MAX_ARRAY_LOG_SIZE;
 
 #[allow(dead_code)]
@@ -309,9 +309,6 @@ impl GpuInterpolator {
     where
         F: Into<u32> + From<u32> + Copy,
     {
-        #[cfg(target_family = "wasm")]
-        console_log!("device: {:?}", self.device);
-
         // Create input storage buffer
         let input_buffer = self
             .device
@@ -324,11 +321,6 @@ impl GpuInterpolator {
             });
 
         // Create output storage buffer
-        #[cfg(target_family = "wasm")]
-        console_log!(
-            "create input buffer: {}",
-            std::mem::size_of::<InterpolateInput>()
-        );
         let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: std::mem::size_of::<InterpolateInput>() as u64,
@@ -382,9 +374,6 @@ impl GpuInterpolator {
 
         // part 1 from here
         // let part1_start = std::time::Instant::now();
-        #[cfg(target_family = "wasm")]
-        console_log!("start command encoder");
-
         // Create and submit command buffer
         let mut encoder = self
             .device
@@ -420,9 +409,6 @@ impl GpuInterpolator {
 
         // // start part 2
         // let part2_start = std::time::Instant::now();
-        #[cfg(target_family = "wasm")]
-        console_log!("start read back debug data");
-
         // // Read back the debug data
         {
             let slice = debug_staging_buffer.slice(..);
@@ -441,8 +427,8 @@ impl GpuInterpolator {
 
             // println!("debug_result: {:?}", _debug_result.await);
 
-            #[cfg(target_family = "wasm")]
-            console_log!("debug_result: {:?}", _debug_result.await);
+            // #[cfg(target_family = "wasm")]
+            // console_log!("debug_result: {:?}", _debug_result.await);
         }
 
         // Read back the results
@@ -486,12 +472,9 @@ where
 
     // GPU_INTERPOLATOR.execute_interpolate(input)
 
-    #[cfg(target_family = "wasm")]
-    console_log!("start gpu interpolate");
     let gpu_interpolator = GpuInterpolator::new().await;
-    #[cfg(target_family = "wasm")]
-    console_log!("get gpu interpolator");
-    gpu_interpolator.execute_interpolate(input).await
+    let result = gpu_interpolator.execute_interpolate(input).await;
+    result
 }
 
 pub fn circle_eval_to_gpu_input(
@@ -579,7 +562,7 @@ mod tests {
 
     #[wasm_bindgen_test]
     async fn test_interpolate_n_wasm() {
-        let _max_log_size = MAX_ARRAY_LOG_SIZE;
+        let _max_log_size = 12;
         // alert(&format!("max log size: {}", _max_log_size));
         console_log!("max log size: {}", _max_log_size);
 
