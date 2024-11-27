@@ -525,7 +525,7 @@ mod tests {
     #[test]
     fn test_interpolate_n() {
         let _max_log_size = MAX_ARRAY_LOG_SIZE;
-        for log_size in 12..=12 {
+        for log_size in 5..=12 {
             let poly = CpuCirclePoly::new((1..=1 << log_size).map(BaseField::from).collect());
             let domain = CanonicCoset::new(log_size).circle_domain();
             let evals = poly.evaluate(domain);

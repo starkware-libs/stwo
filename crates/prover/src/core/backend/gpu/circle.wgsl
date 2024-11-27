@@ -94,47 +94,49 @@ fn store_debug_value(index: u32, value: u32) {
 
 @compute @workgroup_size(256)
 fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let size = 1u << input.log_size;
-    
-    let thread_id = global_id.x;
+    let thread_size = 256u;
+    if (global_id.x >= thread_size) {
+        return;
+    }
 
-    for (var i = thread_id; i < size; i = i + 256u) {
+    let size = 1u << input.log_size;
+    let thread_id = global_id.x;
+    for (var i = thread_id; i < size; i = i + thread_size) {
         output.values[i] = input.values[i];
     }
 
     storageBarrier();
 
     // Process circle_twiddles
-    for (var h = thread_id; h < input.circle_twiddles_size; h = h + 256u) {
+    for (var h = thread_id; h < input.circle_twiddles_size; h = h + thread_size) {
         let t = input.circle_twiddles[h];
         fft_layer_loop(0u, h, t);
     }
 
     storageBarrier();
 
-    if (global_id.x != 0u) {
-        return;
-    }
+    if (global_id.x == 0u) {
+        // Process line_twiddles
+        var layer = 0u;
+        loop {
+            let layer_size = input.line_twiddles_sizes[layer];
+            let layer_offset = input.line_twiddles_offsets[layer];
+            
+            for (var h = 0u; h < layer_size; h = h + 1u) {
+                let t = input.line_twiddles_flat[layer_offset + h];
+                //store_debug_value(layer + 1u, t);
+                fft_layer_loop(layer + 1u, h, t);
+            }
 
-    // Process line_twiddles
-    var layer = 0u;
-    loop {
-        let layer_size = input.line_twiddles_sizes[layer];
-        let layer_offset = input.line_twiddles_offsets[layer];
-        
-        for (var h = 0u; h < layer_size; h = h + 1u) {
-            let t = input.line_twiddles_flat[layer_offset + h];
-            //store_debug_value(layer + 1u, t);
-            fft_layer_loop(layer + 1u, h, t);
+            layer = layer + 1u;
+            if (layer >= input.line_twiddles_layer_count) { break; }
         }
-
-        layer = layer + 1u;
-        if (layer >= input.line_twiddles_layer_count) { break; }
     }
 
+    storageBarrier();
     // divide all values by 2^log_size
     let inv = calculate_modular_inverse(1u << input.log_size);
-    for (var i = 0u; i < size; i = i + 1u) {
+    for (var i = thread_id; i < size; i = i + thread_size) {
         output.values[i] = full_reduce(u64(output.values[i]) * u64(inv));
     }
 }
