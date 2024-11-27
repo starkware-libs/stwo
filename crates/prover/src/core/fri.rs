@@ -136,7 +136,7 @@ pub struct FriProver<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> {
 impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
     /// Commits to multiple circle polynomials.
     ///
-    /// `columns` must be provided in descending order by size.
+    /// `columns` must be provided in descending order by size and at most one polynomial per size.
     ///
     /// This is a batched commitment that handles multiple mixed-degree polynomials, each
     /// evaluated over domains of varying sizes. Instead of combining these evaluations into
@@ -148,6 +148,7 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
     ///
     /// Panics if:
     /// * `columns` is empty or not sorted in ascending order by domain size.
+    /// * More then one column for a given domain size is provided.
     /// * An evaluation is not from a sufficiently low degree circle polynomial.
     /// * An evaluation's domain is smaller than the last layer.
     /// * An evaluation's domain is not a canonic circle domain.
@@ -160,6 +161,7 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
     ) -> Self {
         assert!(!columns.is_empty(), "no columns");
         assert!(columns.is_sorted_by_key(|e| Reverse(e.len())), "not sorted");
+        assert!(columns.iter().map(|e| e.len()).dedup_with_count().all(|(count, _)| count == 1), "duplicate sizes");
         assert!(columns.iter().all(|e| e.domain.is_canonic()), "not canonic");
 
         let first_layer = Self::commit_first_layer(channel, columns);
