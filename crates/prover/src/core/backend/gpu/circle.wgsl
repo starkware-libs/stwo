@@ -1,4 +1,6 @@
 const MODULUS_BITS: u32 = 31u;
+const HALF_BITS: u32 = 16u;
+// Mersenne prime P = 2^31 - 1
 const P: u32 = 2147483647u;
 const MAX_ARRAY_LOG_SIZE: u32 = 22;
 const MAX_ARRAY_SIZE: u32 = 1u << MAX_ARRAY_LOG_SIZE;
@@ -9,27 +11,38 @@ fn partial_reduce(val: u32) -> u32 {
     return select(val, reduced, reduced < val);
 }
 
-fn ff_multiply(a: u32, b: u32) -> u32 {
-    let ab = a * b;
-    return partial_reduce(ab);
-}
-
 fn mod_mul(a: u32, b: u32) -> u32 {
-    var result: u32 = 0u;
-    var current_a: u32 = a % P;
-    var current_b: u32 = b;
+    // Reduce inputs first
+    let a_reduced = partial_reduce(a);
+    let b_reduced = partial_reduce(b);
     
-    while (current_b > 0u) {
-        if ((current_b & 1u) == 1u) {
-            // Add current_a to result, but handle potential overflow
-            let temp = result + current_a;
-            result = select(temp, temp - P, temp >= P);
-        }
-        
-        // Double current_a for next bit, but handle potential overflow
-        current_a = select(current_a * 2u, (current_a * 2u) - P, current_a >= P/2u);
-        current_b = current_b >> 1u;
-    }
+    // Split into 16-bit parts
+    let a1 = a_reduced >> HALF_BITS;
+    let a0 = a_reduced & 0xFFFFu;
+    let b1 = b_reduced >> HALF_BITS;
+    let b0 = b_reduced & 0xFFFFu;
+    
+    // Compute partial products
+    let m0 = partial_reduce(a0 * b0);
+    let m1 = partial_reduce(a0 * b1);
+    let m2 = partial_reduce(a1 * b0);
+    let m3 = partial_reduce(a1 * b1);
+    
+    // Combine middle terms with reduction
+    let mid = partial_reduce(m1 + m2);
+    
+    // Combine parts with partial reduction
+    let shifted_mid = partial_reduce(mid << HALF_BITS);
+    let low = partial_reduce(m0 + shifted_mid);
+    
+    let high_part = partial_reduce(m3 + (mid >> HALF_BITS));
+    
+    // Final combination using Mersenne prime property
+    let result = partial_reduce(
+        partial_reduce((high_part << 1u)) + 
+        partial_reduce((low >> MODULUS_BITS)) + 
+        partial_reduce(low & P)
+    );
     
     return result;
 }
@@ -46,27 +59,6 @@ fn ibutterfly(v0: ptr<function, u32>, v1: ptr<function, u32>, itwid: u32) {
     let tmp = *v0;
     *v0 = partial_reduce(tmp + *v1);
     *v1 = mod_mul(partial_reduce(tmp + P - *v1), itwid);
-}
-
-fn fft_layer_loop(i: u32, h: u32, t: u32) {
-    let step = 1u << i;
-    
-    var l = 0u;
-    loop {
-        if (l >= step) { break; }
-        let idx0 = (h << (i + 1u)) + l;
-        let idx1 = idx0 + step;
-        
-        var val0 = output.values[idx0];
-        var val1 = output.values[idx1];
-        
-        ibutterfly(&val0, &val1, t);
-        
-        output.values[idx0] = val0;
-        output.values[idx1] = val1;
-        
-        l = l + 1u;
-    }
 }
 
 fn calculate_modular_inverse(val: u32) -> u32 {
