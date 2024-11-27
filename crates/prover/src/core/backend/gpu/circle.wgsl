@@ -86,6 +86,8 @@ struct DebugData {
 @group(0) @binding(1) var<storage, read_write> output: Results;
 @group(0) @binding(2) var<storage, read_write> debug_buffer: DebugData;
 
+var<workgroup> shared_values: array<u32, MAX_DEBUG_SIZE>;
+
 fn store_debug_value(index: u32, value: u32) {
     let debug_idx = atomicAdd(&debug_buffer.counter, 1u);
     debug_buffer.index[debug_idx] = index;
@@ -110,27 +112,55 @@ fn interpolate_compute(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // Process circle_twiddles
     for (var h = thread_id; h < input.circle_twiddles_size; h = h + thread_size) {
         let t = input.circle_twiddles[h];
-        fft_layer_loop(0u, h, t);
+        let step = 1u << 0;
+        var l = 0u;
+        loop {
+            if (l >= step) { break; }
+            let idx0 = (h << 1u) + l;
+            let idx1 = idx0 + step;
+            
+            var val0 = output.values[idx0];
+            var val1 = output.values[idx1];
+            
+            ibutterfly(&val0, &val1, t);
+            
+            output.values[idx0] = val0;
+            output.values[idx1] = val1;
+            
+            l = l + 1u;
+        }
     }
 
     storageBarrier();
 
-    if (global_id.x == 0u) {
-        // Process line_twiddles
-        var layer = 0u;
-        loop {
-            let layer_size = input.line_twiddles_sizes[layer];
-            let layer_offset = input.line_twiddles_offsets[layer];
+    // Process line_twiddles
+    var layer = 0u;
+    loop {
+        let layer_size = input.line_twiddles_sizes[layer];
+        let layer_offset = input.line_twiddles_offsets[layer];
+        
+        for (var h = 0u; h < layer_size; h = h + 1u) {
+            let t = input.line_twiddles_flat[layer_offset + h];
+            let step = 1u << (layer + 1u);
             
-            for (var h = 0u; h < layer_size; h = h + 1u) {
-                let t = input.line_twiddles_flat[layer_offset + h];
-                //store_debug_value(layer + 1u, t);
-                fft_layer_loop(layer + 1u, h, t);
+            for (var l = thread_id; l < step; l = l + thread_size) {
+                let idx0 = (h << (layer + 2u)) + l;
+                let idx1 = idx0 + step;
+                
+                var val0 = output.values[idx0];
+                var val1 = output.values[idx1];
+                
+                ibutterfly(&val0, &val1, t);
+                
+                output.values[idx0] = val0;
+                output.values[idx1] = val1;
             }
-
-            layer = layer + 1u;
-            if (layer >= input.line_twiddles_layer_count) { break; }
+            
+            storageBarrier();
         }
+
+        layer = layer + 1u;
+        if (layer >= input.line_twiddles_layer_count) { break; }
     }
 
     storageBarrier();
