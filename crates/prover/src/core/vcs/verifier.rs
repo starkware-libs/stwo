@@ -42,11 +42,6 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
     /// * The column values are too short (missing values).
     /// * The computed root does not match the expected root.
     ///
-    /// # Panics
-    ///
-    /// This function will panic if the `values` vector is not sorted in descending order based on
-    /// the `log_size` of the columns.
-    ///
     /// # Returns
     ///
     /// Returns `Ok(())` if the decommitment is successfully verified.
