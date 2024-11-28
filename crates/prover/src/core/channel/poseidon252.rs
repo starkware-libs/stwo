@@ -19,7 +19,7 @@ pub struct Poseidon252Channel {
 }
 
 impl Poseidon252Channel {
-    pub fn digest(&self) -> FieldElement252 {
+    pub const fn digest(&self) -> FieldElement252 {
         self.digest
     }
     pub fn update_digest(&mut self, new_digest: FieldElement252) {

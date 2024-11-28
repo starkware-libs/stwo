@@ -70,7 +70,7 @@ impl FriConfig {
         }
     }
 
-    fn last_layer_domain_size(&self) -> usize {
+    const fn last_layer_domain_size(&self) -> usize {
         1 << (self.log_last_layer_degree_bound + self.log_blowup_factor)
     }
 }
@@ -597,13 +597,13 @@ pub struct CirclePolyDegreeBound {
 }
 
 impl CirclePolyDegreeBound {
-    pub fn new(log_degree_bound: u32) -> Self {
+    pub const fn new(log_degree_bound: u32) -> Self {
         Self { log_degree_bound }
     }
 
     /// Maps a circle polynomial's degree bound to the degree bound of the univariate (line)
     /// polynomial it gets folded into.
-    fn fold_to_line(&self) -> LinePolyDegreeBound {
+    const fn fold_to_line(&self) -> LinePolyDegreeBound {
         LinePolyDegreeBound {
             log_degree_bound: self.log_degree_bound - CIRCLE_TO_LINE_FOLD_STEP,
         }
@@ -629,7 +629,7 @@ struct LinePolyDegreeBound {
 
 impl LinePolyDegreeBound {
     /// Returns [None] if the unfolded degree bound is smaller than the folding factor.
-    fn fold(self, n_folds: u32) -> Option<Self> {
+    const fn fold(self, n_folds: u32) -> Option<Self> {
         if self.log_degree_bound < n_folds {
             return None;
         }

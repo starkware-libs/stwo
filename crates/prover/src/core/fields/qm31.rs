@@ -32,15 +32,15 @@ impl QM31 {
         )
     }
 
-    pub fn from_m31(a: M31, b: M31, c: M31, d: M31) -> Self {
+    pub const fn from_m31(a: M31, b: M31, c: M31, d: M31) -> Self {
         Self(CM31::from_m31(a, b), CM31::from_m31(c, d))
     }
 
-    pub fn from_m31_array(array: [M31; SECURE_EXTENSION_DEGREE]) -> Self {
+    pub const fn from_m31_array(array: [M31; SECURE_EXTENSION_DEGREE]) -> Self {
         Self::from_m31(array[0], array[1], array[2], array[3])
     }
 
-    pub fn to_m31_array(self) -> [M31; SECURE_EXTENSION_DEGREE] {
+    pub const fn to_m31_array(self) -> [M31; SECURE_EXTENSION_DEGREE] {
         [self.0 .0, self.0 .1, self.1 .0, self.1 .1]
     }
 
