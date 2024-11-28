@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 use itertools::Itertools;
@@ -74,7 +75,7 @@ impl<E: FrameworkEval> RelationTrackerComponent<E> {
 }
 
 /// Aggregates relation entries.
-// TODO(Ohad): write a summarize function, test.
+// TODO(Ohad): test.
 pub struct RelationTrackerEvaluator<'a> {
     entries: Vec<RelationTrackerEntry>,
     pub trace_eval:
@@ -185,5 +186,47 @@ impl<'a> EvalAtRow for RelationTrackerEvaluator<'a> {
                 });
             }
         }
+    }
+}
+
+type RelationInfo = (String, Vec<(Vec<M31>, M31)>);
+pub struct RelationSummary(Vec<RelationInfo>);
+impl RelationSummary {
+    /// Returns the sum of every entry's yields and uses.
+    /// The result is a map from relation name to a list of values(M31 vectors) and their sum.
+    pub fn summarize_relations(entries: &[RelationTrackerEntry]) -> Self {
+        let mut summary = vec![];
+        let relations = entries.iter().group_by(|entry| entry.relation.clone());
+        for (relation, entries) in &relations {
+            let mut relation_sums: HashMap<Vec<_>, M31> = HashMap::new();
+            for entry in entries {
+                let mult = relation_sums
+                    .entry(entry.values.clone())
+                    .or_insert(M31::zero());
+                *mult += entry.mult;
+            }
+            let relation_sums = relation_sums.into_iter().collect_vec();
+            summary.push((relation.clone(), relation_sums));
+        }
+        Self(summary)
+    }
+
+    pub fn get_relation_info(&self, relation: &str) -> Option<&[(Vec<M31>, M31)]> {
+        self.0
+            .iter()
+            .find(|(name, _)| name == relation)
+            .map(|(_, entries)| entries.as_slice())
+    }
+}
+impl Debug for RelationSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (relation, entries) in &self.0 {
+            writeln!(f, "{}:", relation)?;
+            for (vector, sum) in entries {
+                let vector = vector.iter().map(|v| v.0).collect_vec();
+                writeln!(f, "  {:?} -> {}", vector, sum)?;
+            }
+        }
+        Ok(())
     }
 }
