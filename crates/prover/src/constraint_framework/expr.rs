@@ -3,7 +3,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 use num_traits::{One, Zero};
 
 use super::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
-use crate::core::fields::m31::{self, BaseField};
+use crate::core::fields::m31::{self, BaseField, M31};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
@@ -36,7 +36,6 @@ pub enum Expr {
 }
 
 impl Expr {
-    #[allow(dead_code)]
     pub fn format_expr(&self) -> String {
         match self {
             Expr::Col(ColumnExpr {
@@ -66,6 +65,10 @@ impl Expr {
             Expr::Neg(a) => format!("-({})", a.format_expr()),
             Expr::Inv(a) => format!("1 / ({})", a.format_expr()),
         }
+    }
+
+    pub fn simplify_and_format(&self) -> String {
+        simplify(self.clone()).format_expr()
     }
 }
 
@@ -190,6 +193,88 @@ impl AddAssign<BaseField> for Expr {
     }
 }
 
+const ZERO: M31 = M31(0);
+const ONE: M31 = M31(1);
+const MINUS_ONE: M31 = M31(m31::P - 1);
+
+// TODO(alont) Add random point assignment test.
+pub fn simplify(expr: Expr) -> Expr {
+    match expr {
+        Expr::Add(a, b) => {
+            let a = simplify(*a);
+            let b = simplify(*b);
+            match (a.clone(), b.clone()) {
+                (Expr::Const(a), Expr::Const(b)) => Expr::Const(a + b),
+                (Expr::Const(ZERO), _) => b, // 0 + b = b
+                (_, Expr::Const(ZERO)) => a, // a + 0 = a
+                // (-a + -b) = -(a + b)
+                (Expr::Neg(minus_a), Expr::Neg(minus_b)) => -(*minus_a + *minus_b),
+                (Expr::Neg(minus_a), _) => b - *minus_a, // -a + b = b - a
+                (_, Expr::Neg(minus_b)) => a - *minus_b, // a + -b = a - b
+                _ => Expr::Add(Box::new(a), Box::new(b)),
+            }
+        }
+        Expr::Sub(a, b) => {
+            let a = simplify(*a);
+            let b = simplify(*b);
+            match (a.clone(), b.clone()) {
+                (Expr::Const(a), Expr::Const(b)) => Expr::Const(a - b),
+                (Expr::Const(ZERO), _) => -b, // 0 - b = -b
+                (_, Expr::Const(ZERO)) => a,  // a - 0 = a
+                // (-a - -b) = b - a
+                (Expr::Neg(minus_a), Expr::Neg(minus_b)) => *minus_b - *minus_a,
+                (Expr::Neg(minus_a), _) => -(*minus_a + b), // -a - b = -(a + b)
+                (_, Expr::Neg(minus_b)) => a + *minus_b,    // a + -b = a - b
+                _ => Expr::Sub(Box::new(a), Box::new(b)),
+            }
+        }
+        Expr::Mul(a, b) => {
+            let a = simplify(*a);
+            let b = simplify(*b);
+            match (a.clone(), b.clone()) {
+                (Expr::Const(a), Expr::Const(b)) => Expr::Const(a * b),
+                (Expr::Const(ZERO), _) => Expr::zero(), // 0 * b = 0
+                (_, Expr::Const(ZERO)) => Expr::zero(), // a * 0 = 0
+                (Expr::Const(ONE), _) => b,             // 1 * b = b
+                (_, Expr::Const(ONE)) => a,             // a * 1 = a
+                // (-a) * (-b) = a * b
+                (Expr::Neg(minus_a), Expr::Neg(minus_b)) => *minus_a * *minus_b,
+                (Expr::Neg(minus_a), _) => -(*minus_a * b), // (-a) * b = -(a * b)
+                (_, Expr::Neg(minus_b)) => -(a * *minus_b), // a * (-b) = -(a * b)
+                (Expr::Const(MINUS_ONE), _) => -b,          // -1 * b = -b
+                (_, Expr::Const(MINUS_ONE)) => -a,          // a * -1 = -a
+                _ => Expr::Mul(Box::new(a), Box::new(b)),
+            }
+        }
+        Expr::Col(colexpr) => Expr::Col(colexpr),
+        Expr::SecureCol([a, b, c, d]) => Expr::SecureCol([
+            Box::new(simplify(*a)),
+            Box::new(simplify(*b)),
+            Box::new(simplify(*c)),
+            Box::new(simplify(*d)),
+        ]),
+        Expr::Const(c) => Expr::Const(c),
+        Expr::Param(x) => Expr::Param(x),
+        Expr::Neg(a) => {
+            let a = simplify(*a);
+            match a {
+                Expr::Const(c) => Expr::Const(-c),
+                Expr::Neg(minus_a) => *minus_a,     // -(-a) = a
+                Expr::Sub(a, b) => Expr::Sub(b, a), // -(a - b) = b - a
+                _ => Expr::Neg(Box::new(a)),
+            }
+        }
+        Expr::Inv(a) => {
+            let a = simplify(*a);
+            match a {
+                Expr::Inv(inv_a) => *inv_a, // 1 / (1 / a) = a
+                Expr::Const(c) => Expr::Const(c.inverse()),
+                _ => Expr::Inv(Box::new(a)),
+            }
+        }
+    }
+}
+
 /// Returns the expression
 /// `value[0] * <relation>_alpha0 + value[1] * <relation>_alpha1 + ... - <relation>_z.`
 fn combine_formal<R: Relation<Expr, Expr>>(relation: &R, values: &[Expr]) -> Expr {
@@ -273,7 +358,7 @@ impl ExprEvaluator {
         let lets_string = self
             .intermediates
             .iter()
-            .map(|(name, expr)| format!("let {} = {};", name, expr.format_expr()))
+            .map(|(name, expr)| format!("let {} = {};", name, expr.simplify_and_format()))
             .collect::<Vec<String>>()
             .join("\n");
 
@@ -281,7 +366,7 @@ impl ExprEvaluator {
             .constraints
             .iter()
             .enumerate()
-            .map(|(i, c)| format!("let constraint_{i} = ") + &c.format_expr() + ";")
+            .map(|(i, c)| format!("let constraint_{i} = ") + &c.simplify_and_format() + ";")
             .collect::<Vec<String>>()
             .join("\n\n");
 
@@ -369,8 +454,7 @@ mod tests {
     fn test_format_expr() {
         let test_struct = TestStruct {};
         let eval = test_struct.evaluate(ExprEvaluator::new(16, false));
-        let expected = "let intermediate0 = 0 \
-            + (TestRelation_alpha0) * (col_1_0[0]) \
+        let expected = "let intermediate0 = (TestRelation_alpha0) * (col_1_0[0]) \
             + (TestRelation_alpha1) * (col_1_1[0]) \
             + (TestRelation_alpha2) * (col_1_2[0]) \
             - (TestRelation_z);
@@ -382,8 +466,8 @@ mod tests {
 \
         let constraint_1 = (SecureCol(col_2_4[0], col_2_6[0], col_2_8[0], col_2_10[0]) \
             - (SecureCol(col_2_5[-1], col_2_7[-1], col_2_9[-1], col_2_11[-1]) \
-                - ((col_0_3[0]) * (total_sum))) \
-            - (0)) \
+                - ((col_0_3[0]) * (total_sum)))\
+            ) \
             * (intermediate0) \
             - (1);"
             .to_string();
