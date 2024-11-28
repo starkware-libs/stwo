@@ -60,6 +60,7 @@ unused = "deny"
 missing_const_for_fn = "warn"
 
 [package.metadata.cargo-machete]
+version = "0.6.1"
 ignored = ["downcast-rs"]
 
 [[bench]]
