@@ -215,6 +215,7 @@ jobs:
     needs:
       - clippy
       - format
+      - audit
       - run-tests
       - run-avx-tests
       - run-neon-tests
