@@ -526,6 +526,7 @@ mod tests {
     use crate::core::test_utils::test_channel;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn gen_eq_evals_matches_cpu() {
         let two = BaseField::from(2).into();
         let y = [7, 3, 5, 6, 1, 1, 9].map(|v| BaseField::from(v).into());
@@ -548,6 +549,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn grand_product_works() -> Result<(), GkrError> {
         const N: usize = 1 << 8;
         let values = test_channel().draw_felts(N);
@@ -571,6 +573,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn logup_with_generic_trace_works() -> Result<(), GkrError> {
         const N: usize = 1 << 8;
         let mut rng = SmallRng::seed_from_u64(0);
@@ -610,6 +613,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn logup_with_multiplicities_trace_works() -> Result<(), GkrError> {
         const N: usize = 1 << 8;
         let mut rng = SmallRng::seed_from_u64(0);
@@ -649,6 +653,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn logup_with_singles_trace_works() -> Result<(), GkrError> {
         const N: usize = 1 << 8;
         let mut rng = SmallRng::seed_from_u64(0);

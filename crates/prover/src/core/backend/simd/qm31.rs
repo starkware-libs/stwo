@@ -4,6 +4,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
+#[cfg(test)]
 use rand::distributions::{Distribution, Standard};
 
 use super::cm31::PackedCM31;
@@ -292,6 +293,7 @@ impl Neg for PackedQM31 {
     }
 }
 
+#[cfg(test)]
 impl Distribution<PackedQM31> for Standard {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> PackedQM31 {
         PackedQM31::from_array(rng.gen())
@@ -351,6 +353,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn multiplication_works() {
         let mut rng = SmallRng::seed_from_u64(0);
         let lhs = rng.gen();

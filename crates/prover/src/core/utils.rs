@@ -97,7 +97,7 @@ pub fn offset_bit_reversed_circle_domain_index(
 // the indices instead.
 pub(crate) fn circle_domain_order_to_coset_order(values: &[BaseField]) -> Vec<BaseField> {
     let n = values.len();
-    let mut coset_order = vec![];
+    let mut coset_order = Vec::with_capacity(n);
     for i in 0..(n / 2) {
         coset_order.push(values[i]);
         coset_order.push(values[n - 1 - i]);
@@ -106,8 +106,8 @@ pub(crate) fn circle_domain_order_to_coset_order(values: &[BaseField]) -> Vec<Ba
 }
 
 pub(crate) fn coset_order_to_circle_domain_order<F: Field>(values: &[F]) -> Vec<F> {
-    let mut circle_domain_order = Vec::with_capacity(values.len());
     let n = values.len();
+    let mut circle_domain_order = Vec::with_capacity(n);
     let half_len = n / 2;
     for i in 0..half_len {
         circle_domain_order.push(values[i << 1]);

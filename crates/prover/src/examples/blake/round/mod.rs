@@ -66,6 +66,7 @@ mod tests {
     use crate::examples::blake::{BlakeXorElements, XorAccums};
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_blake_round() {
         use crate::core::pcs::TreeVec;
 

@@ -200,6 +200,7 @@ mod tests {
     use crate::core::poly::circle::CanonicCoset;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_state_machine_constraints() {
         let log_n_rows = 8;
         let initial_state = [M31::zero(); STATE_SIZE];
@@ -240,6 +241,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_state_machine_claimed_sum() {
         let log_n_rows = 8;
         let config = PcsConfig::default();
@@ -263,6 +265,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_state_machine_prove() {
         let log_n_rows = 8;
         let config = PcsConfig::default();
@@ -277,6 +280,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_state_machine_constraint_repr() {
         let log_n_rows = 8;
         let initial_state = [M31::zero(); STATE_SIZE];

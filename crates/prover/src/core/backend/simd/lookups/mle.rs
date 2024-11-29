@@ -103,6 +103,7 @@ mod tests {
     use crate::core::test_utils::test_channel;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn fix_first_variable_with_secure_field_mle_matches_cpu() {
         const N_VARIABLES: u32 = 8;
         let values = test_channel().draw_felts(1 << N_VARIABLES);
@@ -117,6 +118,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn fix_first_variable_with_base_field_mle_matches_cpu() {
         const N_VARIABLES: u32 = 8;
         let values = (0..1 << N_VARIABLES).map(BaseField::from).collect_vec();

@@ -147,6 +147,7 @@ mod tests {
     use crate::examples::xor::gkr_lookups::accumulation::MleCollection;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn random_linear_combine_by_n_variables() {
         const SMALL_N_VARS: usize = 4;
         const LARGE_N_VARS: usize = 6;

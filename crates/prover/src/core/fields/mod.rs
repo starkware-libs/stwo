@@ -280,6 +280,7 @@ macro_rules! impl_field {
 #[macro_export]
 macro_rules! impl_extension_field {
     ($field_name: ident, $extended_field_name: ty) => {
+        #[cfg(test)]
         use rand::distributions::{Distribution, Standard};
         use $crate::core::fields::ExtensionOf;
 
@@ -452,6 +453,7 @@ macro_rules! impl_extension_field {
             }
         }
 
+        #[cfg(test)]
         impl Distribution<$field_name> for Standard {
             // Not intended for cryptographic use. Should only be used in tests and benchmarks.
             fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> $field_name {

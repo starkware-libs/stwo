@@ -277,6 +277,7 @@ mod tests {
     use crate::qm31;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_accumulate_quotients() {
         const LOG_SIZE: u32 = 8;
         const LOG_BLOWUP_FACTOR: u32 = 1;

@@ -136,7 +136,7 @@ impl PolyOps for SimdBackend {
         values: Col<Self, BaseField>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
         // TODO(Ohad): Optimize.
-        let eval = CpuBackend::new_canonical_ordered(coset, values.into_cpu_vec());
+        let eval = CpuBackend::new_canonical_ordered(coset, values.as_slice().to_vec());
         CircleEvaluation::new(
             eval.domain,
             Col::<SimdBackend, BaseField>::from_iter(eval.values),
@@ -421,6 +421,7 @@ mod tests {
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_interpolate_and_eval() {
         for log_size in MIN_FFT_LOG_SIZE..CACHED_FFT_LOG_SIZE + 4 {
             let domain = CanonicCoset::new(log_size).circle_domain();
@@ -437,6 +438,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_eval_extension() {
         for log_size in MIN_FFT_LOG_SIZE..CACHED_FFT_LOG_SIZE + 2 {
             let domain = CanonicCoset::new(log_size).circle_domain();
@@ -457,6 +459,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_eval_at_point() {
         for log_size in MIN_FFT_LOG_SIZE + 1..CACHED_FFT_LOG_SIZE + 4 {
             let domain = CanonicCoset::new(log_size).circle_domain();
@@ -480,6 +483,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_circle_poly_extend() {
         for log_size in MIN_FFT_LOG_SIZE..CACHED_FFT_LOG_SIZE + 2 {
             let poly =
@@ -495,6 +499,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_eval_securefield() {
         let mut rng = SmallRng::seed_from_u64(0);
         for log_size in MIN_FFT_LOG_SIZE..CACHED_FFT_LOG_SIZE + 2 {
@@ -515,6 +520,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_optimized_precompute_twiddles() {
         let coset = CanonicCoset::new(10).half_coset();
         let twiddles = SimdBackend::precompute_twiddles(coset);

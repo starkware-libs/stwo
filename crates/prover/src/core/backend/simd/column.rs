@@ -1,5 +1,5 @@
+use std::array;
 use std::iter::zip;
-use std::{array, mem};
 
 use bytemuck::allocation::cast_vec;
 use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
@@ -49,15 +49,6 @@ impl BaseColumn {
     /// Extracts a mutable slice containing the entire vector of [`BaseField`]s.
     pub fn as_mut_slice(&mut self) -> &mut [BaseField] {
         &mut cast_slice_mut(&mut self.data)[..self.length]
-    }
-
-    pub fn into_cpu_vec(mut self) -> Vec<BaseField> {
-        let capacity = self.data.capacity() * N_LANES;
-        let length = self.length;
-        let ptr = self.data.as_mut_ptr() as *mut BaseField;
-        let res = unsafe { Vec::from_raw_parts(ptr, length, capacity) };
-        mem::forget(self);
-        res
     }
 
     pub fn from_cpu(values: Vec<BaseField>) -> Self {

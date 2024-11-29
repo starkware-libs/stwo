@@ -120,6 +120,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_gen_interaction_trace() {
         let log_size = 8;
         let inc_index = 1;

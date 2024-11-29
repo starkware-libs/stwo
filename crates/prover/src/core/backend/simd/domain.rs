@@ -67,6 +67,7 @@ impl Iterator for CircleDomainBitRevIterator {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)]
 fn test_circle_domain_bit_rev_iterator() {
     let domain = CircleDomain::new(crate::core::circle::Coset::new(
         crate::core::circle::CirclePointIndex::generator(),
