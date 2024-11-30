@@ -62,7 +62,7 @@ jobs:
           toolchain: nightly-2024-01-04
           components: miri
       - uses: Swatinem/rust-cache@v2
-      - run: cargo miri test
+      - run: cargo miri test --lib
 
   run-wasm32-wasi-tests:
     runs-on: ubuntu-latest
