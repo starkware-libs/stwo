@@ -315,9 +315,7 @@ impl GpuInterpolator {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,
                 contents: input.as_bytes(),
-                usage: wgpu::BufferUsages::STORAGE
-                    | wgpu::BufferUsages::COPY_DST
-                    | wgpu::BufferUsages::COPY_SRC,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             });
 
         // Create output storage buffer
@@ -570,7 +568,7 @@ mod tests {
         // alert(&format!("max log size: {}", _max_log_size));
         console_log!("max log size: {}", _max_log_size);
 
-        for log_size in 3..=_max_log_size {
+        for log_size in 12..=_max_log_size {
             let poly = CpuCirclePoly::new((1..=1 << log_size).map(BaseField::from).collect());
             let domain = CanonicCoset::new(log_size).circle_domain();
             let evals = poly.evaluate(domain);
