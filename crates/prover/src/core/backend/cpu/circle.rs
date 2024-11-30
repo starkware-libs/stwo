@@ -141,7 +141,6 @@ impl PolyOps for CpuBackend {
                 fft_layer_loop(&mut values, layer + 1, h, t, butterfly);
             }
         }
-
         for (h, t) in circle_twiddles.enumerate() {
             fft_layer_loop(&mut values, 0, h, t, butterfly);
         }
@@ -375,10 +374,6 @@ mod tests {
         let poly = CpuCirclePoly::new((1..=8).map(BaseField::from).collect());
         let domain = CanonicCoset::new(3).circle_domain();
         let evals = poly.clone().evaluate(domain);
-
-        println!("evals: {:?}", evals);
-        println!("domain: {:?}", domain);
-        println!("values: {:?}", evals.values);
 
         let interpolated_poly = evals.interpolate();
 
