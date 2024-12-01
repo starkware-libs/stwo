@@ -27,6 +27,16 @@ pub type ClaimedPrefixSum = (SecureField, usize);
 // (total_sum, claimed_sum)
 pub type LogupSums = (SecureField, Option<ClaimedPrefixSum>);
 
+pub trait LogupSumsExt {
+    fn value(&self) -> SecureField;
+}
+
+impl LogupSumsExt for LogupSums {
+    fn value(&self) -> SecureField {
+        self.1.map(|(claimed_sum, _)| claimed_sum).unwrap_or(self.0)
+    }
+}
+
 /// Evaluates constraints for batched logups.
 /// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = claimed_sum.
 pub struct LogupAtRow<E: EvalAtRow> {
