@@ -320,7 +320,7 @@ mod tests {
 \
         let constraint_1 = (SecureCol(col_2_3[0], col_2_6[0], col_2_9[0], col_2_12[0]) \
             - (SecureCol(col_2_4[-1], col_2_7[-1], col_2_10[-1], col_2_13[-1]) \
-                - ((col_0_2[0]) * (total_sum)))\
+                - ((total_sum) * (col_0_2[0])))\
             ) \
             * ((intermediate0) * (intermediate1)) \
             - (intermediate1 - (intermediate0));"
