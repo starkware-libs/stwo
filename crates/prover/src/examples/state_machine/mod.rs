@@ -357,6 +357,7 @@ mod tests {
         let expected = "let intermediate0 = (StateMachineElements_alpha0) * (col_1_0[0]) \
             + (StateMachineElements_alpha1) * (col_1_1[0]) \
             - (StateMachineElements_z);
+
 \
         let intermediate1 = (StateMachineElements_alpha0) * (col_1_0[0] + 1) \
             + (StateMachineElements_alpha1) * (col_1_1[0]) \
