@@ -111,6 +111,18 @@ pub trait EvalAtRow {
     where
         Self::EF: Mul<G, Output = Self::EF> + From<G>;
 
+    /// Adds an intermediate value to the component and returns its value.
+    /// Does nothing by default.
+    fn add_intermediate(&mut self, val: Self::F) -> Self::F {
+        val
+    }
+
+    /// Adds a secure intermediate value to the component and returns its value.
+    /// Does nothing by default.
+    fn add_extension_intermediate(&mut self, val: Self::EF) -> Self::EF {
+        val
+    }
+
     /// Combines 4 base field values into a single extension field value.
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF;
 
