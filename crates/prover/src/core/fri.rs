@@ -979,7 +979,7 @@ fn compute_decommitment_positions_and_witness_evals(
     let mut witness_evals = Vec::new();
 
     // Group queries by the folding coset they reside in.
-    for subset_queries in query_positions.group_by(|a, b| a >> fold_step == b >> fold_step) {
+    for subset_queries in query_positions.chunk_by(|a, b| a >> fold_step == b >> fold_step) {
         let subset_start = (subset_queries[0] >> fold_step) << fold_step;
         let subset_decommitment_positions = subset_start..subset_start + (1 << fold_step);
         let mut subset_queries_iter = subset_queries.iter().peekable();
@@ -1020,7 +1020,7 @@ fn compute_decommitment_positions_and_rebuild_evals(
     let mut subset_domain_index_initials = Vec::new();
 
     // Group queries by the subset they reside in.
-    for subset_queries in queries.group_by(|a, b| a >> fold_step == b >> fold_step) {
+    for subset_queries in queries.chunk_by(|a, b| a >> fold_step == b >> fold_step) {
         let subset_start = (subset_queries[0] >> fold_step) << fold_step;
         let subset_decommitment_positions = subset_start..subset_start + (1 << fold_step);
         decommitment_positions.extend(subset_decommitment_positions.clone());

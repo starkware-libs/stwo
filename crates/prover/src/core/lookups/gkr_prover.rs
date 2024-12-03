@@ -470,7 +470,7 @@ pub fn prove_batch<B: GkrOps>(
 
         // Seed the channel with the layer masks.
         for (&instance, mask) in zip(&sumcheck_instances, &masks) {
-            channel.mix_felts(mask.columns().flatten());
+            channel.mix_felts(mask.columns().as_flattened());
             layer_masks_by_instance[instance].push(mask.clone());
         }
 

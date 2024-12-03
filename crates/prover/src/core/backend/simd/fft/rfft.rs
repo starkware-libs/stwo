@@ -695,7 +695,7 @@ mod tests {
             [val0.to_array(), val1.to_array()].concat()
         };
 
-        assert_eq!(res, ground_truth_fft(domain, values.flatten()));
+        assert_eq!(res, ground_truth_fft(domain, values.as_flattened()));
     }
 
     #[test]

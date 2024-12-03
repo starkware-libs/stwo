@@ -10,6 +10,9 @@ use crate::examples::blake::{Fu32, STATE_SIZE};
 const INV16: BaseField = BaseField::from_u32_unchecked(1 << 15);
 const TWO: BaseField = BaseField::from_u32_unchecked(2);
 
+
+// TODO(ilya): test `total_sum` and remove `#[allow(dead_code)]`.
+#[allow(dead_code)]
 pub struct BlakeRoundEval<'a, E: EvalAtRow> {
     pub eval: E,
     pub xor_lookup_elements: &'a BlakeXorElements,

@@ -16,6 +16,9 @@ pub type BlakeSchedulerComponent = FrameworkComponent<BlakeSchedulerEval>;
 
 relation!(BlakeElements, N_ROUND_INPUT_FELTS);
 
+
+// TODO(ilya): test `total_sum` and remove `#[allow(dead_code)]`.
+#[allow(dead_code)]
 pub struct BlakeSchedulerEval {
     pub log_size: u32,
     pub blake_lookup_elements: BlakeElements,
