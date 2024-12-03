@@ -194,14 +194,24 @@ impl RelationSummary {
     /// Returns the sum of every entry's yields and uses.
     /// The result is a map from relation name to a list of values(M31 vectors) and their sum.
     pub fn summarize_relations(entries: &[RelationTrackerEntry]) -> Self {
+        let mut entry_by_relation = HashMap::new();
+        for entry in entries {
+            entry_by_relation
+                .entry(entry.relation.clone())
+                .or_insert_with(Vec::new)
+                .push(entry);
+        }
         let mut summary = vec![];
-        let relations = entries.iter().group_by(|entry| entry.relation.clone());
-        for (relation, entries) in &relations {
+        for (relation, entries) in entry_by_relation {
             let mut relation_sums: HashMap<Vec<_>, M31> = HashMap::new();
             for entry in entries {
-                let mult = relation_sums
-                    .entry(entry.values.clone())
-                    .or_insert(M31::zero());
+                let mut values = entry.values.clone();
+
+                // Trailing zeroes do not affect the sum, remove for correct aggregation.
+                while values.last().is_some_and(|v| v.is_zero()) {
+                    values.pop();
+                }
+                let mult = relation_sums.entry(values).or_insert(M31::zero());
                 *mult += entry.mult;
             }
             let relation_sums = relation_sums.into_iter().collect_vec();
@@ -215,6 +225,24 @@ impl RelationSummary {
             .iter()
             .find(|(name, _)| name == relation)
             .map(|(_, entries)| entries.as_slice())
+    }
+
+    /// Cleans up the summary by removing zero-sum entries, only keeping the non-zero ones.
+    /// Used for debugging.
+    pub fn cleaned(self) -> Self {
+        let mut cleaned = vec![];
+        for (relation, entries) in self.0 {
+            let mut cleaned_entries = vec![];
+            for (vector, sum) in entries {
+                if !sum.is_zero() {
+                    cleaned_entries.push((vector, sum));
+                }
+            }
+            if !cleaned_entries.is_empty() {
+                cleaned.push((relation, cleaned_entries));
+            }
+        }
+        Self(cleaned)
     }
 }
 impl Debug for RelationSummary {

@@ -305,8 +305,12 @@ mod tests {
         // Check the final state inferred from the summary.
         let mut curr_state = initial_state;
         for entry in relation_info {
-            let x_step = entry.0[0];
-            let y_step = entry.0[1];
+            let (x_step, y_step) = match entry.0.len() {
+                2 => (entry.0[0], entry.0[1]),
+                1 => (entry.0[0], M31::zero()),
+                0 => (M31::zero(), M31::zero()),
+                _ => unreachable!(),
+            };
             let mult = entry.1;
             let next_state = [curr_state[0] - x_step * mult, curr_state[1] - y_step * mult];
 
