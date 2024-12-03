@@ -79,14 +79,14 @@ impl PackedM31 {
         self + self
     }
 
-    pub fn into_simd(self) -> Simd<u32, N_LANES> {
+    pub const fn into_simd(self) -> Simd<u32, N_LANES> {
         self.0
     }
 
     /// # Safety
     ///
     /// Vector elements must be in the range `[0, P]`.
-    pub unsafe fn from_simd_unchecked(v: Simd<u32, N_LANES>) -> Self {
+    pub const unsafe fn from_simd_unchecked(v: Simd<u32, N_LANES>) -> Self {
         Self(v)
     }
 
@@ -94,7 +94,7 @@ impl PackedM31 {
     ///
     /// Behavior is undefined if the pointer does not have the same alignment as
     /// [`PackedM31`]. The loaded `u32` values must be in the range `[0, P]`.
-    pub unsafe fn load(mem_addr: *const u32) -> Self {
+    pub const unsafe fn load(mem_addr: *const u32) -> Self {
         Self(ptr::read(mem_addr as *const u32x16))
     }
 

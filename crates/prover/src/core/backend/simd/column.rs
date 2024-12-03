@@ -454,7 +454,7 @@ impl VeryPackedBaseColumn {
     /// # Safety
     ///
     /// The resulting pointer does not update the underlying `data`'s length.
-    pub unsafe fn transform_under_ref(value: &BaseColumn) -> &Self {
+    pub const unsafe fn transform_under_ref(value: &BaseColumn) -> &Self {
         &*(std::ptr::addr_of!(*value) as *const VeryPackedBaseColumn)
     }
 

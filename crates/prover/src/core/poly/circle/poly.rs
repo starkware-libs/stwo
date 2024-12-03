@@ -34,7 +34,7 @@ impl<B: PolyOps> CirclePoly<B> {
         Self { log_size, coeffs }
     }
 
-    pub fn log_size(&self) -> u32 {
+    pub const fn log_size(&self) -> u32 {
         self.log_size
     }
 

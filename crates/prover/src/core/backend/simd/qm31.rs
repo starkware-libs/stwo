@@ -29,12 +29,12 @@ impl PackedQM31 {
     }
 
     /// Returns all `a` values such that each vector element is represented as `a + bu`.
-    pub fn a(&self) -> PackedCM31 {
+    pub const fn a(&self) -> PackedCM31 {
         self.0[0]
     }
 
     /// Returns all `b` values such that each vector element is represented as `a + bu`.
-    pub fn b(&self) -> PackedCM31 {
+    pub const fn b(&self) -> PackedCM31 {
         self.0[1]
     }
 
@@ -81,14 +81,14 @@ impl PackedQM31 {
 
     /// Returns vectors `a, b, c, d` such that element `i` is represented as
     /// `QM31(a_i, b_i, c_i, d_i)`.
-    pub fn into_packed_m31s(self) -> [PackedM31; 4] {
+    pub const fn into_packed_m31s(self) -> [PackedM31; 4] {
         let Self([PackedCM31([a, b]), PackedCM31([c, d])]) = self;
         [a, b, c, d]
     }
 
     /// Creates an instance from vectors `a, b, c, d` such that element `i`
     /// is represented as `QM31(a_i, b_i, c_i, d_i)`.
-    pub fn from_packed_m31s([a, b, c, d]: [PackedM31; 4]) -> Self {
+    pub const fn from_packed_m31s([a, b, c, d]: [PackedM31; 4]) -> Self {
         Self([PackedCM31([a, b]), PackedCM31([c, d])])
     }
 }

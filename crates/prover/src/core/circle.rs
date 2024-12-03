@@ -223,15 +223,15 @@ pub const SECURE_FIELD_CIRCLE_ORDER: u128 = P4 - 1;
 pub struct CirclePointIndex(pub usize);
 
 impl CirclePointIndex {
-    pub fn zero() -> Self {
+    pub const fn zero() -> Self {
         Self(0)
     }
 
-    pub fn generator() -> Self {
+    pub const fn generator() -> Self {
         Self(1)
     }
 
-    pub fn reduce(self) -> Self {
+    pub const fn reduce(self) -> Self {
         Self(self.0 & ((1 << M31_CIRCLE_LOG_ORDER) - 1))
     }
 
@@ -343,16 +343,16 @@ impl Coset {
     }
 
     /// Returns the size of the coset.
-    pub fn size(&self) -> usize {
+    pub const fn size(&self) -> usize {
         1 << self.log_size()
     }
 
     /// Returns the log size of the coset.
-    pub fn log_size(&self) -> u32 {
+    pub const fn log_size(&self) -> u32 {
         self.log_size
     }
 
-    pub fn iter(&self) -> CosetIterator<CirclePoint<M31>> {
+    pub const fn iter(&self) -> CosetIterator<CirclePoint<M31>> {
         CosetIterator {
             cur: self.initial,
             step: self.step,
@@ -360,7 +360,7 @@ impl Coset {
         }
     }
 
-    pub fn iter_indices(&self) -> CosetIterator<CirclePointIndex> {
+    pub const fn iter_indices(&self) -> CosetIterator<CirclePointIndex> {
         CosetIterator {
             cur: self.initial_index,
             step: self.step_size,
@@ -389,7 +389,7 @@ impl Coset {
             && *self == other.repeated_double(other.log_size - self.log_size)
     }
 
-    pub fn initial(&self) -> CirclePoint<M31> {
+    pub const fn initial(&self) -> CirclePoint<M31> {
         self.initial
     }
 

@@ -7,6 +7,7 @@ mod info;
 pub mod logup;
 mod point;
 pub mod preprocessed_columns;
+pub mod relation_tracker;
 mod simd_domain;
 
 use std::array;
@@ -108,7 +109,19 @@ pub trait EvalAtRow {
     /// Adds a constraint to the component.
     fn add_constraint<G>(&mut self, constraint: G)
     where
-        Self::EF: Mul<G, Output = Self::EF>;
+        Self::EF: Mul<G, Output = Self::EF> + From<G>;
+
+    /// Adds an intermediate value in the base field to the component and returns its value.
+    /// Does nothing by default.
+    fn add_intermediate(&mut self, val: Self::F) -> Self::F {
+        val
+    }
+
+    /// Adds an intermediate value in the extension field to the component and returns its value.
+    /// Does nothing by default.
+    fn add_extension_intermediate(&mut self, val: Self::EF) -> Self::EF {
+        val
+    }
 
     /// Combines 4 base field values into a single extension field value.
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF;
@@ -234,7 +247,7 @@ pub struct RelationEntry<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<
     values: &'a [F],
 }
 impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntry<'a, F, EF, R> {
-    pub fn new(relation: &'a R, multiplicity: EF, values: &'a [F]) -> Self {
+    pub const fn new(relation: &'a R, multiplicity: EF, values: &'a [F]) -> Self {
         Self {
             relation,
             multiplicity,

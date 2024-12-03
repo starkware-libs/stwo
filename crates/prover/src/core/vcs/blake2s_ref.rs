@@ -19,32 +19,32 @@ pub const SIGMA: [[u8; 16]; 10] = [
 ];
 
 #[inline(always)]
-fn add(a: u32, b: u32) -> u32 {
+const fn add(a: u32, b: u32) -> u32 {
     a.wrapping_add(b)
 }
 
 #[inline(always)]
-fn xor(a: u32, b: u32) -> u32 {
+const fn xor(a: u32, b: u32) -> u32 {
     a ^ b
 }
 
 #[inline(always)]
-fn rot16(x: u32) -> u32 {
+const fn rot16(x: u32) -> u32 {
     (x >> 16) | (x << (32 - 16))
 }
 
 #[inline(always)]
-fn rot12(x: u32) -> u32 {
+const fn rot12(x: u32) -> u32 {
     (x >> 12) | (x << (32 - 12))
 }
 
 #[inline(always)]
-fn rot8(x: u32) -> u32 {
+const fn rot8(x: u32) -> u32 {
     (x >> 8) | (x << (32 - 8))
 }
 
 #[inline(always)]
-fn rot7(x: u32) -> u32 {
+const fn rot7(x: u32) -> u32 {
     (x >> 7) | (x << (32 - 7))
 }
 

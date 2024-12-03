@@ -1161,7 +1161,7 @@ mod tests {
         }
 
         impl MleCoeffColumnEval {
-            pub fn new(interaction: usize, n_variables: usize) -> Self {
+            pub const fn new(interaction: usize, n_variables: usize) -> Self {
                 Self {
                     interaction,
                     n_variables,

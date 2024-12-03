@@ -39,7 +39,7 @@ impl PointEvaluationAccumulator {
         self.accumulation = self.accumulation * self.random_coeff + evaluation;
     }
 
-    pub fn finalize(self) -> SecureField {
+    pub const fn finalize(self) -> SecureField {
         self.accumulation
     }
 }

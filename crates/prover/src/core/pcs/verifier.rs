@@ -99,21 +99,23 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             .collect::<Result<_, _>>()?;
 
         // Answer FRI queries.
-        let samples = sampled_points
-            .zip_cols(proof.sampled_values)
-            .map_cols(|(sampled_points, sampled_values)| {
+        let samples = sampled_points.zip_cols(proof.sampled_values).map_cols(
+            |(sampled_points, sampled_values)| {
                 zip(sampled_points, sampled_values)
                     .map(|(point, value)| PointSample { point, value })
                     .collect_vec()
-            })
-            .flatten();
+            },
+        );
+
+        let n_columns_per_log_size = self.trees.as_ref().map(|tree| &tree.n_columns_per_log_size);
 
         let fri_answers = fri_answers(
-            self.column_log_sizes().flatten().into_iter().collect(),
-            &samples,
+            self.column_log_sizes(),
+            samples,
             random_coeff,
             &query_positions_per_log_size,
-            &proof.queried_values.flatten(),
+            proof.queried_values,
+            n_columns_per_log_size,
         )?;
 
         fri_verifier.decommit(fri_answers)?;
