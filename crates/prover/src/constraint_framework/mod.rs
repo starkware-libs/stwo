@@ -132,23 +132,20 @@ pub trait EvalAtRow {
     /// multiplied.
     fn add_to_relation<R: Relation<Self::F, Self::EF>>(
         &mut self,
-        entries: &[RelationEntry<'_, Self::F, Self::EF, R>],
+        entry: RelationEntry<'_, Self::F, Self::EF, R>,
     ) {
-        let fracs = entries.iter().map(
-            |RelationEntry {
-                 relation,
-                 multiplicity,
-                 values,
-             }| { Fraction::new(multiplicity.clone(), relation.combine(values)) },
+        let frac = Fraction::new(
+            entry.multiplicity.clone(),
+            entry.relation.combine(entry.values),
         );
-        self.write_logup_frac(fracs.sum());
+        self.write_logup_frac(frac);
     }
 
     // TODO(alont): Remove these once LogupAtRow is no longer used.
     fn write_logup_frac(&mut self, _fraction: Fraction<Self::EF, Self::EF>) {
         unimplemented!()
     }
-    fn finalize_logup(&mut self) {
+    fn finalize_logup(&mut self, _batching: &[usize]) {
         unimplemented!()
     }
 }
@@ -159,26 +156,43 @@ pub trait EvalAtRow {
 macro_rules! logup_proxy {
     () => {
         fn write_logup_frac(&mut self, fraction: Fraction<Self::EF, Self::EF>) {
-            // Add a constraint that num / denom = diff.
-            if let Some(cur_frac) = self.logup.cur_frac.clone() {
-                let [cur_cumsum] =
-                    self.next_extension_interaction_mask(self.logup.interaction, [0]);
-                let diff = cur_cumsum.clone() - self.logup.prev_col_cumsum.clone();
-                self.logup.prev_col_cumsum = cur_cumsum;
-                self.add_constraint(diff * cur_frac.denominator - cur_frac.numerator);
-            } else {
+            if self.logup.fracs.is_empty() {
                 self.logup.is_first = self.get_preprocessed_column(
                     super::preprocessed_columns::PreprocessedColumn::IsFirst(self.logup.log_size),
                 );
                 self.logup.is_finalized = false;
             }
-            self.logup.cur_frac = Some(fraction);
+            self.logup.fracs.push(fraction.clone());
         }
 
-        fn finalize_logup(&mut self) {
+        /// Finalize the logup by adding the constraints for the fractions, batched by
+        /// the given `batching`.
+        fn finalize_logup(&mut self, batching: &[usize]) {
             assert!(!self.logup.is_finalized, "LogupAtRow was already finalized");
+            assert_eq!(
+                batching.into_iter().sum::<usize>(),
+                self.logup.fracs.len(),
+                "Batching must sum to the number of entries"
+            );
 
-            let frac = self.logup.cur_frac.clone().unwrap();
+            let logup_fracs = self.logup.fracs.clone();
+            let mut fracs_iter = logup_fracs.into_iter();
+            let [first_batches @ .., last_batch] = &batching[..] else {
+                        panic!("Batching must be nonempty")
+                    };
+            let mut prev_col_cumsum = <Self::EF as num_traits::Zero>::zero();
+
+            for batch_size in first_batches {
+                let cur_frac: Fraction<Self::EF, Self::EF> =
+                    fracs_iter.by_ref().take(*batch_size).sum();
+                let [cur_cumsum] =
+                    self.next_extension_interaction_mask(self.logup.interaction, [0]);
+                let diff = cur_cumsum.clone() - prev_col_cumsum.clone();
+                prev_col_cumsum = cur_cumsum;
+                self.add_constraint(diff * cur_frac.denominator - cur_frac.numerator);
+            }
+
+            let frac: Fraction<Self::EF, Self::EF> = fracs_iter.take(*last_batch).sum();
 
             // TODO(ShaharS): remove `claimed_row_index` interaction value and get the shifted
             // offset from the is_first column when constant columns are supported.
@@ -205,7 +219,7 @@ macro_rules! logup_proxy {
             // Fix `prev_row_cumsum` by subtracting `total_sum` if this is the first row.
             let fixed_prev_row_cumsum =
                 prev_row_cumsum - self.logup.is_first.clone() * self.logup.total_sum.clone();
-            let diff = cur_cumsum - fixed_prev_row_cumsum - self.logup.prev_col_cumsum.clone();
+            let diff = cur_cumsum - fixed_prev_row_cumsum - prev_col_cumsum.clone();
 
             self.add_constraint(diff * frac.denominator - frac.numerator);
 
