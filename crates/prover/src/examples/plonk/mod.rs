@@ -66,18 +66,24 @@ impl FrameworkEval for PlonkEval {
                 + (E::F::one() - op) * a_val.clone() * b_val.clone(),
         );
 
-        eval.add_to_relation(&[
-            RelationEntry::new(&self.lookup_elements, E::EF::one(), &[a_wire, a_val]),
-            RelationEntry::new(&self.lookup_elements, E::EF::one(), &[b_wire, b_val]),
-        ]);
+        eval.add_to_relation(RelationEntry::new(
+            &self.lookup_elements,
+            E::EF::one(),
+            &[a_wire, a_val],
+        ));
+        eval.add_to_relation(RelationEntry::new(
+            &self.lookup_elements,
+            E::EF::one(),
+            &[b_wire, b_val],
+        ));
 
-        eval.add_to_relation(&[RelationEntry::new(
+        eval.add_to_relation(RelationEntry::new(
             &self.lookup_elements,
             (-mult).into(),
             &[c_wire, c_val],
-        )]);
+        ));
 
-        eval.finalize_logup();
+        eval.finalize_logup(&[2, 1]);
         eval
     }
 }

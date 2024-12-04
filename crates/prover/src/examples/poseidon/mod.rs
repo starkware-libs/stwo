@@ -186,13 +186,15 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &P
         });
 
         // Provide state lookups.
-        eval.add_to_relation(&[
-            RelationEntry::new(lookup_elements, E::EF::one(), &initial_state),
-            RelationEntry::new(lookup_elements, -E::EF::one(), &state),
-        ])
+        eval.add_to_relation(RelationEntry::new(
+            lookup_elements,
+            E::EF::one(),
+            &initial_state,
+        ));
+        eval.add_to_relation(RelationEntry::new(lookup_elements, -E::EF::one(), &state));
     }
 
-    eval.finalize_logup();
+    eval.finalize_logup(&[2; N_INSTANCES_PER_ROW]);
 }
 
 pub struct LookupData {
