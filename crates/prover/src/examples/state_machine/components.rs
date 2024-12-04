@@ -52,12 +52,18 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
         let mut output_state = input_state.clone();
         output_state[COORDINATE] += E::F::one();
 
-        eval.add_to_relation(&[
-            RelationEntry::new(&self.lookup_elements, E::EF::one(), &input_state),
-            RelationEntry::new(&self.lookup_elements, -E::EF::one(), &output_state),
-        ]);
+        eval.add_to_relation(RelationEntry::new(
+            &self.lookup_elements,
+            E::EF::one(),
+            &input_state,
+        ));
+        eval.add_to_relation(RelationEntry::new(
+            &self.lookup_elements,
+            -E::EF::one(),
+            &output_state,
+        ));
 
-        eval.finalize_logup();
+        eval.finalize_logup_batched(&[2]);
         eval
     }
 }

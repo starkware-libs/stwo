@@ -65,7 +65,7 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
         );
 
         // Yield `Round(input_v, output_v, message)`.
-        self.eval.add_to_relation(&[RelationEntry::new(
+        self.eval.add_to_relation(RelationEntry::new(
             self.round_lookup_elements,
             -E::EF::one(),
             &chain![
@@ -74,9 +74,12 @@ impl<'a, E: EvalAtRow> BlakeRoundEval<'a, E> {
                 m.iter().cloned().flat_map(Fu32::into_felts)
             ]
             .collect_vec(),
-        )]);
+        ));
 
-        self.eval.finalize_logup();
+        // TODO(alont) see if there's a better way to represent the batching here.
+        let mut batching = [2; 65];
+        batching[64] = 1;
+        self.eval.finalize_logup_batched(&batching);
         self.eval
     }
     fn next_u32(&mut self) -> Fu32<E::F> {

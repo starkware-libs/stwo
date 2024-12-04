@@ -40,43 +40,36 @@ macro_rules! xor_table_eval {
                         2,
                     ));
 
-                let entry_chunks = (0..(1 << (2 * EXPAND_BITS)))
-                    .map(|i| {
-                        let (i, j) = ((i >> EXPAND_BITS) as u32, (i % (1 << EXPAND_BITS)) as u32);
-                        let multiplicity = self.eval.next_trace_mask();
+                for i in (0..(1 << (2 * EXPAND_BITS))) {
+                    let (i, j) = ((i >> EXPAND_BITS) as u32, (i % (1 << EXPAND_BITS)) as u32);
+                    let multiplicity = self.eval.next_trace_mask();
 
-                        let a = al.clone()
-                            + E::F::from(BaseField::from_u32_unchecked(
-                                i << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
-                            ));
-                        let b = bl.clone()
-                            + E::F::from(BaseField::from_u32_unchecked(
-                                j << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
-                            ));
-                        let c = cl.clone()
-                            + E::F::from(BaseField::from_u32_unchecked(
-                                (i ^ j) << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
-                            ));
+                    let a = al.clone()
+                        + E::F::from(BaseField::from_u32_unchecked(
+                            i << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
+                        ));
+                    let b = bl.clone()
+                        + E::F::from(BaseField::from_u32_unchecked(
+                            j << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
+                        ));
+                    let c = cl.clone()
+                        + E::F::from(BaseField::from_u32_unchecked(
+                            (i ^ j) << limb_bits::<ELEM_BITS, EXPAND_BITS>(),
+                        ));
 
-                        (self.lookup_elements, -multiplicity, [a, b, c])
-                    })
-                    .collect_vec();
-
-                for entry_chunk in entry_chunks.chunks(2) {
-                    self.eval.add_to_relation(
-                        &entry_chunk
-                            .iter()
-                            .map(|(lookup, multiplicity, values)| {
-                                RelationEntry::new(
-                                    *lookup,
-                                    E::EF::from(multiplicity.clone()),
-                                    values,
-                                )
-                            })
-                            .collect_vec(),
-                    );
+                    self.eval.add_to_relation(RelationEntry::new(
+                        self.lookup_elements,
+                        -E::EF::from(multiplicity),
+                        &[a, b, c],
+                    ));
                 }
-                self.eval.finalize_logup();
+
+                let batching = if EXPAND_BITS > 0 {
+                    vec![2; (1 << (2 * EXPAND_BITS - 1))]
+                } else {
+                    vec![1]
+                };
+                self.eval.finalize_logup_batched(&batching);
                 self.eval
             }
         }

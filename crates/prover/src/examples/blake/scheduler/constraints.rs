@@ -30,17 +30,23 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
             ]
             .collect_vec()
         });
-        eval.add_to_relation(&[
-            RelationEntry::new(round_lookup_elements, E::EF::one(), &elems_i),
-            RelationEntry::new(round_lookup_elements, E::EF::one(), &elems_j),
-        ]);
+        eval.add_to_relation(RelationEntry::new(
+            round_lookup_elements,
+            E::EF::one(),
+            &elems_i,
+        ));
+        eval.add_to_relation(RelationEntry::new(
+            round_lookup_elements,
+            E::EF::one(),
+            &elems_j,
+        ));
     }
 
     let input_state = &states[0];
     let output_state = &states[N_ROUNDS];
 
     // TODO(alont): Remove blake interaction.
-    eval.add_to_relation(&[RelationEntry::new(
+    eval.add_to_relation(RelationEntry::new(
         blake_lookup_elements,
         E::EF::zero(),
         &chain![
@@ -49,9 +55,11 @@ pub fn eval_blake_scheduler_constraints<E: EvalAtRow>(
             messages.iter().cloned().flat_map(Fu32::into_felts)
         ]
         .collect_vec(),
-    )]);
+    ));
 
-    eval.finalize_logup();
+    let mut batching = [2; N_ROUNDS / 2 + 1];
+    batching[batching.len() - 1] = 1;
+    eval.finalize_logup_batched(&batching);
 }
 
 fn eval_next_u32<E: EvalAtRow>(eval: &mut E) -> Fu32<E::F> {
