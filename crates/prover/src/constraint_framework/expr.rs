@@ -755,8 +755,7 @@ pub struct FormalLogupAtRow {
     pub interaction: usize,
     pub total_sum: ExtExpr,
     pub claimed_sum: Option<(ExtExpr, usize)>,
-    pub prev_col_cumsum: ExtExpr,
-    pub cur_frac: Option<Fraction<ExtExpr, ExtExpr>>,
+    pub fracs: Vec<Fraction<ExtExpr, ExtExpr>>,
     pub is_finalized: bool,
     pub is_first: BaseExpr,
     pub log_size: u32,
@@ -777,8 +776,7 @@ impl FormalLogupAtRow {
             total_sum: ExtExpr::Param(total_sum_name),
             claimed_sum: has_partial_sum
                 .then_some((ExtExpr::Param(claimed_sum_name), CLAIMED_SUM_DUMMY_OFFSET)),
-            prev_col_cumsum: ExtExpr::zero(),
-            cur_frac: None,
+            fracs: vec![],
             is_finalized: true,
             is_first: BaseExpr::zero(),
             log_size,
@@ -873,23 +871,12 @@ impl EvalAtRow for ExprEvaluator {
 
     fn add_to_relation<R: Relation<Self::F, Self::EF>>(
         &mut self,
-        entries: &[RelationEntry<'_, Self::F, Self::EF, R>],
+        entry: RelationEntry<'_, Self::F, Self::EF, R>,
     ) {
-        let fracs: Vec<Fraction<Self::EF, Self::EF>> = entries
-            .iter()
-            .map(
-                |RelationEntry {
-                     relation,
-                     multiplicity,
-                     values,
-                 }| {
-                    let intermediate =
-                        self.add_extension_intermediate(combine_formal(*relation, values));
-                    Fraction::new(multiplicity.clone(), intermediate)
-                },
-            )
-            .collect();
-        self.write_logup_frac(fracs.into_iter().sum());
+        let intermediate =
+            self.add_extension_intermediate(combine_formal(entry.relation, entry.values));
+        let frac = Fraction::new(entry.multiplicity.clone(), intermediate);
+        self.write_logup_frac(frac);
     }
 
     fn add_intermediate(&mut self, expr: Self::F) -> Self::F {
@@ -1115,12 +1102,12 @@ mod tests {
             let x2 = eval.next_trace_mask();
             let intermediate = eval.add_intermediate(x1.clone() * x2.clone());
             eval.add_constraint(x0.clone() * intermediate * (x0.clone() + x1.clone()).inverse());
-            eval.add_to_relation(&[RelationEntry::new(
+            eval.add_to_relation(RelationEntry::new(
                 &TestRelation::dummy(),
                 E::EF::one(),
                 &[x0, x1, x2],
-            )]);
-            eval.finalize_logup();
+            ));
+            eval.finalize_logup(&[1]);
             eval
         }
     }
