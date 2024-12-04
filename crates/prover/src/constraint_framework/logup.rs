@@ -49,8 +49,7 @@ pub struct LogupAtRow<E: EvalAtRow> {
     /// None if the claimed_sum is the total_sum.
     pub claimed_sum: Option<ClaimedPrefixSum>,
     /// The evaluation of the last cumulative sum column.
-    pub prev_col_cumsum: E::EF,
-    pub cur_frac: Option<Fraction<E::EF, E::EF>>,
+    pub fracs: Vec<Fraction<E::EF, E::EF>>,
     pub is_finalized: bool,
     /// The value of the `is_first` constant column at current row.
     /// See [`super::preprocessed_columns::gen_is_first()`].
@@ -74,8 +73,7 @@ impl<E: EvalAtRow> LogupAtRow<E> {
             interaction,
             total_sum,
             claimed_sum,
-            prev_col_cumsum: E::EF::zero(),
-            cur_frac: None,
+            fracs: vec![],
             is_finalized: true,
             is_first: E::F::zero(),
             log_size,
@@ -88,8 +86,7 @@ impl<E: EvalAtRow> LogupAtRow<E> {
             interaction: 100,
             total_sum: SecureField::one(),
             claimed_sum: None,
-            prev_col_cumsum: E::EF::zero(),
-            cur_frac: None,
+            fracs: vec![],
             is_finalized: true,
             is_first: E::F::zero(),
             log_size: 10,
