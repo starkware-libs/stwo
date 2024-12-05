@@ -6,6 +6,7 @@ use num_traits::{One, Zero};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
+use super::preprocessed_columns::PreprocessedColumn;
 use super::{AssertEvaluator, EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::{self, BaseField};
@@ -912,6 +913,10 @@ impl EvalAtRow for ExprEvaluator {
         intermediate
     }
 
+    fn get_preprocessed_column(&mut self, column: PreprocessedColumn) -> Self::F {
+        BaseExpr::Param(column.name().to_string())
+    }
+
     super::logup_proxy!();
 }
 
@@ -1089,9 +1094,9 @@ mod tests {
         let constraint_0 = ((col_1_0[0]) * (intermediate0)) * (1 / (col_1_0[0] + col_1_1[0]));
 
 \
-        let constraint_1 = (SecureCol(col_2_4[0], col_2_6[0], col_2_8[0], col_2_10[0]) \
-            - (SecureCol(col_2_5[-1], col_2_7[-1], col_2_9[-1], col_2_11[-1]) \
-                - ((total_sum) * (col_0_3[0])))) \
+        let constraint_1 = (SecureCol(col_2_3[0], col_2_5[0], col_2_7[0], col_2_9[0]) \
+            - (SecureCol(col_2_4[-1], col_2_6[-1], col_2_8[-1], col_2_10[-1]) \
+                - ((total_sum) * (preprocessed.is_first)))) \
             * (intermediate1) \
             - (1);"
             .to_string();

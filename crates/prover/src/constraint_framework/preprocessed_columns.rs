@@ -14,6 +14,16 @@ pub enum PreprocessedColumn {
     Plonk(usize),
 }
 
+impl PreprocessedColumn {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            PreprocessedColumn::XorTable(..) => "preprocessed.xor_table",
+            PreprocessedColumn::IsFirst(_) => "preprocessed.is_first",
+            PreprocessedColumn::Plonk(_) => "preprocessed.plonk",
+        }
+    }
+}
+
 /// Generates a column with a single one at the first position, and zeros elsewhere.
 pub fn gen_is_first<B: Backend>(log_size: u32) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
     let mut col = Col::<B, BaseField>::zeros(1 << log_size);

@@ -369,17 +369,17 @@ mod tests {
 
 \
         let constraint_0 = (SecureCol(\
-            col_2_5[claimed_sum_offset], \
-            col_2_8[claimed_sum_offset], \
-            col_2_11[claimed_sum_offset], \
-            col_2_14[claimed_sum_offset]\
+            col_2_4[claimed_sum_offset], \
+            col_2_7[claimed_sum_offset], \
+            col_2_10[claimed_sum_offset], \
+            col_2_13[claimed_sum_offset]\
         ) - (claimed_sum)) \
-            * (col_0_2[0]);
+            * (preprocessed.is_first);
 
 \
-        let constraint_1 = (SecureCol(col_2_3[0], col_2_6[0], col_2_9[0], col_2_12[0]) \
-            - (SecureCol(col_2_4[-1], col_2_7[-1], col_2_10[-1], col_2_13[-1]) \
-                - ((total_sum) * (col_0_2[0])))\
+        let constraint_1 = (SecureCol(col_2_2[0], col_2_5[0], col_2_8[0], col_2_11[0]) \
+            - (SecureCol(col_2_3[-1], col_2_6[-1], col_2_9[-1], col_2_12[-1]) \
+                - ((total_sum) * (preprocessed.is_first)))\
             ) \
             * ((intermediate0) * (intermediate1)) \
             - (intermediate1 - (intermediate0));"
