@@ -196,8 +196,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2024-01-04
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Machete
+        run: cargo +nightly-2024-01-04 install --locked cargo-machete
       - name: Run Machete (detect unused dependencies)
-        uses: bnjbvr/cargo-machete@main
+        run: cargo +nightly-2024-01-04 machete
 
   all-tests:
     runs-on: ubuntu-latest
