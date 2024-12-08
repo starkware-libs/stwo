@@ -40,6 +40,9 @@ pub struct BaseColumn {
     pub length: usize,
 }
 
+unsafe impl Sync for BaseColumn {}
+unsafe impl Send for BaseColumn {}
+
 impl BaseColumn {
     /// Extracts a slice containing the entire vector of [`BaseField`]s.
     pub fn as_slice(&self) -> &[BaseField] {
