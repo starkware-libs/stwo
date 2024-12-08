@@ -1,10 +1,9 @@
 use std::collections::{HashMap, HashSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::{Add, AddAssign, Index, Mul, MulAssign, Neg, Sub};
 
 use itertools::sorted;
 use num_traits::{One, Zero};
-use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
 
 use super::preprocessed_columns::PreprocessedColumn;
 use super::{AssertEvaluator, EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
@@ -251,7 +250,7 @@ impl BaseExpr {
     }
 
     pub fn random_eval(&self) -> BaseField {
-        let assignment = self.collect_variables().random_assignment();
+        let assignment = self.collect_variables().random_assignment(0);
         assert!(assignment.2.is_empty());
         self.eval_expr::<AssertEvaluator<'_>, _, _>(&assignment.0, &assignment.1)
     }
@@ -384,7 +383,7 @@ impl ExtExpr {
     }
 
     pub fn random_eval(&self) -> SecureField {
-        let assignment = self.collect_variables().random_assignment();
+        let assignment = self.collect_variables().random_assignment(0);
         self.eval_expr::<AssertEvaluator<'_>, _, _, _>(&assignment.0, &assignment.1, &assignment.2)
     }
 }
@@ -433,21 +432,37 @@ impl ExprVariables {
     }
 
     /// Generates a random assignment to the variables.
-    /// Note that the assignment is deterministic in the sets of variables (disregarding their
-    /// order), and this is required.
-    pub fn random_assignment(&self) -> ExprVarAssignment {
-        let mut rng = SmallRng::seed_from_u64(0);
-
+    /// Note that the assignment is deterministically dependent on every variable and that this is
+    /// required.
+    pub fn random_assignment(&self, salt: usize) -> ExprVarAssignment {
         let cols = sorted(self.cols.iter())
-            .map(|col| ((col.interaction, col.idx, col.offset), rng.gen()))
+            .map(|col| {
+                ((col.interaction, col.idx, col.offset), {
+                    let mut hasher = DefaultHasher::new();
+                    (salt, col).hash(&mut hasher);
+                    (hasher.finish() as u32).into()
+                })
+            })
             .collect();
 
         let params = sorted(self.params.iter())
-            .map(|param| (param.clone(), rng.gen()))
+            .map(|param| {
+                (param.clone(), {
+                    let mut hasher = DefaultHasher::new();
+                    (salt, param).hash(&mut hasher);
+                    (hasher.finish() as u32).into()
+                })
+            })
             .collect();
 
         let ext_params = sorted(self.ext_params.iter())
-            .map(|param| (param.clone(), rng.gen()))
+            .map(|param| {
+                (param.clone(), {
+                    let mut hasher = DefaultHasher::new();
+                    (salt, param).hash(&mut hasher);
+                    (hasher.finish() as u32).into()
+                })
+            })
             .collect();
 
         (cols, params, ext_params)
@@ -849,11 +864,12 @@ impl EvalAtRow for ExprEvaluator {
         interaction: usize,
         offsets: [isize; N],
     ) -> [Self::F; N] {
-        std::array::from_fn(|i| {
+        let res = std::array::from_fn(|i| {
             let col = ColumnExpr::from((interaction, self.cur_var_index, offsets[i]));
-            self.cur_var_index += 1;
             BaseExpr::Col(col)
-        })
+        });
+        self.cur_var_index += 1;
+        res
     }
 
     fn add_constraint<G>(&mut self, constraint: G)
@@ -1094,8 +1110,8 @@ mod tests {
         let constraint_0 = ((col_1_0[0]) * (intermediate0)) * (1 / (col_1_0[0] + col_1_1[0]));
 
 \
-        let constraint_1 = (SecureCol(col_2_3[0], col_2_5[0], col_2_7[0], col_2_9[0]) \
-            - (SecureCol(col_2_4[-1], col_2_6[-1], col_2_8[-1], col_2_10[-1]) \
+        let constraint_1 = (SecureCol(col_2_3[0], col_2_4[0], col_2_5[0], col_2_6[0]) \
+            - (SecureCol(col_2_3[-1], col_2_4[-1], col_2_5[-1], col_2_6[-1]) \
                 - ((total_sum) * (preprocessed.is_first)))) \
             * (intermediate1) \
             - (1);"
