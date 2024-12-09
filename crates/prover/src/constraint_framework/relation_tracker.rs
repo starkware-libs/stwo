@@ -6,8 +6,8 @@ use num_traits::Zero;
 
 use super::logup::LogupSums;
 use super::{
-    EvalAtRow, FrameworkEval, InfoEvaluator, Relation, RelationEntry, TraceLocationAllocator,
-    INTERACTION_TRACE_IDX,
+    Batching, EvalAtRow, FrameworkEval, InfoEvaluator, Relation, RelationEntry,
+    TraceLocationAllocator, INTERACTION_TRACE_IDX,
 };
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -152,38 +152,38 @@ impl<'a> EvalAtRow for RelationTrackerEvaluator<'a> {
 
     fn write_logup_frac(&mut self, _fraction: Fraction<Self::EF, Self::EF>) {}
 
+    fn finalize_logup_batched(&mut self, _batching: &Batching) {}
     fn finalize_logup(&mut self) {}
+    fn finalize_logup_in_pairs(&mut self) {}
 
     fn add_to_relation<R: Relation<Self::F, Self::EF>>(
         &mut self,
-        entries: &[RelationEntry<'_, Self::F, Self::EF, R>],
+        entry: RelationEntry<'_, Self::F, Self::EF, R>,
     ) {
-        for entry in entries {
-            let relation = entry.relation.get_name().to_owned();
-            let values = entry.values.iter().map(|v| v.to_array()).collect_vec();
-            let mult = entry.multiplicity.to_array();
+        let relation = entry.relation.get_name().to_owned();
+        let values = entry.values.iter().map(|v| v.to_array()).collect_vec();
+        let mult = entry.multiplicity.to_array();
 
-            // Unpack SIMD.
-            for j in 0..N_LANES {
-                // Skip padded values.
-                let cannonical_index = bit_reverse_index(
-                    coset_index_to_circle_domain_index(
-                        (self.vec_row << LOG_N_LANES) + j,
-                        self.domain_log_size,
-                    ),
+        // Unpack SIMD.
+        for j in 0..N_LANES {
+            // Skip padded values.
+            let cannonical_index = bit_reverse_index(
+                coset_index_to_circle_domain_index(
+                    (self.vec_row << LOG_N_LANES) + j,
                     self.domain_log_size,
-                );
-                if cannonical_index >= self.n_rows {
-                    continue;
-                }
-                let values = values.iter().map(|v| v[j]).collect_vec();
-                let mult = mult[j].to_m31_array()[0];
-                self.entries.push(RelationTrackerEntry {
-                    relation: relation.clone(),
-                    mult,
-                    values,
-                });
+                ),
+                self.domain_log_size,
+            );
+            if cannonical_index >= self.n_rows {
+                continue;
             }
+            let values = values.iter().map(|v| v[j]).collect_vec();
+            let mult = mult[j].to_m31_array()[0];
+            self.entries.push(RelationTrackerEntry {
+                relation: relation.clone(),
+                mult,
+                values,
+            });
         }
     }
 }
