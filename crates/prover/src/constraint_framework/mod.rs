@@ -173,7 +173,9 @@ macro_rules! logup_proxy {
         fn write_logup_frac(&mut self, fraction: Fraction<Self::EF, Self::EF>) {
             if self.logup.fracs.is_empty() {
                 self.logup.is_first = self.get_preprocessed_column(
-                    super::preprocessed_columns::PreprocessedColumn::IsFirst(self.logup.log_size),
+                    crate::constraint_framework::preprocessed_columns::PreprocessedColumn::IsFirst(
+                        self.logup.log_size,
+                    ),
                 );
                 self.logup.is_finalized = false;
             }
@@ -183,7 +185,7 @@ macro_rules! logup_proxy {
         /// Finalize the logup by adding the constraints for the fractions, batched by
         /// the given `batching`.
         /// `batching` should contain the batch into which every logup entry should be inserted.
-        fn finalize_logup_batched(&mut self, batching: &super::Batching) {
+        fn finalize_logup_batched(&mut self, batching: &crate::constraint_framework::Batching) {
             assert!(!self.logup.is_finalized, "LogupAtRow was already finalized");
             assert_eq!(
                 batching.len(),
