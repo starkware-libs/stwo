@@ -1,7 +1,6 @@
 use std::iter::Peekable;
-use std::ops::{Add, Mul, Sub};
 
-use num_traits::{One, Zero};
+use num_traits::One;
 
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
@@ -173,18 +172,6 @@ pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureF
             Some(res)
         })
         .collect()
-}
-
-/// Securely combines the given values using the given random alpha and z.
-/// Alpha and z should be secure field elements for soundness.
-pub fn shifted_secure_combination<F: Copy, EF>(values: &[F], alpha: EF, z: EF) -> EF
-where
-    EF: Copy + Zero + Mul<EF, Output = EF> + Add<F, Output = EF> + Sub<EF, Output = EF>,
-{
-    let res = values
-        .iter()
-        .fold(EF::zero(), |acc, &value| acc * alpha + value);
-    res - z
 }
 
 #[cfg(test)]
