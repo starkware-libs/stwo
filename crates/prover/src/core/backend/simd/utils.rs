@@ -82,6 +82,7 @@ mod tests {
     use std::simd::{u32x4, Swizzle};
 
     use super::{generate_secure_powers_simd, InterleaveEvens, InterleaveOdds};
+    use crate::core::fields::qm31::SecureField;
     use crate::core::utils::generate_secure_powers;
     use crate::qm31;
 
@@ -108,11 +109,20 @@ mod tests {
     #[test]
     fn test_generate_secure_powers_simd() {
         let felt = qm31!(1, 2, 3, 4);
-        let n_powers = 100;
+        let n_powers_vec = [0, 16, 100];
 
-        let cpu_powers = generate_secure_powers(felt, n_powers);
-        let simd_powers = generate_secure_powers_simd(felt, n_powers);
+        let cpu_powers_vec: Vec<Vec<SecureField>> = n_powers_vec
+            .iter()
+            .map(|i| generate_secure_powers(felt, *i))
+            .collect();
 
-        assert_eq!(simd_powers, cpu_powers);
+        let simd_powers_vec: Vec<Vec<SecureField>> = n_powers_vec
+            .iter()
+            .map(|i| generate_secure_powers_simd(felt, *i))
+            .collect();
+
+        assert_eq!(simd_powers_vec[0], cpu_powers_vec[0]);
+        assert_eq!(simd_powers_vec[1], cpu_powers_vec[1]);
+        assert_eq!(simd_powers_vec[2], cpu_powers_vec[2]);
     }
 }
