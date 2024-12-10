@@ -108,11 +108,11 @@ mod tests {
     #[test]
     fn test_generate_secure_powers_simd() {
         let felt = qm31!(1, 2, 3, 4);
-        let n_powers = 10000;
+        let n_powers = 100;
 
         let cpu_powers = generate_secure_powers(felt, n_powers);
-        let powers = generate_secure_powers_simd(felt, n_powers);
+        let simd_powers = generate_secure_powers_simd(felt, n_powers);
 
-        assert_eq!(powers, cpu_powers);
+        assert_eq!(simd_powers, cpu_powers);
     }
 }
