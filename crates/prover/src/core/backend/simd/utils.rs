@@ -1,5 +1,10 @@
 use std::simd::Swizzle;
 
+use num_traits::One;
+
+use crate::core::backend::simd::m31::{PackedM31, N_LANES};
+use crate::core::fields::m31::M31;
+
 /// Used with [`Swizzle::concat_swizzle`] to interleave the even values of two vectors.
 pub struct InterleaveEvens;
 
@@ -51,11 +56,31 @@ impl<T> UnsafeConst<T> {
 unsafe impl<T> Send for UnsafeConst<T> {}
 unsafe impl<T> Sync for UnsafeConst<T> {}
 
+// TODO(Gali): Remove #[allow(dead_code)].
+#[allow(dead_code)]
+pub fn generate_secure_powers(felt: M31) -> PackedM31 {
+    let arr: [M31; N_LANES] = (0..N_LANES)
+        .scan(M31::one(), |acc, _| {
+            let res = *acc;
+            *acc *= felt;
+            Some(res)
+        })
+        .collect::<Vec<M31>>()
+        .try_into()
+        .expect("Failed generating secure powers.");
+
+    PackedM31::from_array(arr)
+}
+
 #[cfg(test)]
 mod tests {
     use std::simd::{u32x4, Swizzle};
 
+    use num_traits::One;
+
     use super::{InterleaveEvens, InterleaveOdds};
+    use crate::core::fields::m31::M31;
+    use crate::core::fields::FieldExpOps;
 
     #[test]
     fn interleave_evens() {
@@ -75,5 +100,17 @@ mod tests {
         let res = InterleaveOdds::concat_swizzle(lo, hi);
 
         assert_eq!(res, u32x4::from_array([1, 5, 3, 7]));
+    }
+
+    #[test]
+    fn generate_secure_powers_works() {
+        let felt = M31(2);
+
+        let powers = super::generate_secure_powers(felt);
+        let powers = powers.to_array();
+
+        assert_eq!(powers[0], M31::one());
+        assert_eq!(powers[1], felt);
+        assert_eq!(powers[7], felt.pow(7));
     }
 }
