@@ -146,6 +146,7 @@ pub fn bit_reverse_coset_to_circle_domain_order<T>(v: &mut [T]) {
     }
 }
 
+/// Generates the first `n_powers` powers of `felt`.
 pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField> {
     (0..n_powers)
         .scan(SecureField::one(), |acc, _| {
