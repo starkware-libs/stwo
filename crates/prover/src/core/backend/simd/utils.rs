@@ -1,5 +1,12 @@
 use std::simd::Swizzle;
 
+use itertools::Itertools;
+
+use crate::core::backend::simd::m31::N_LANES;
+use crate::core::backend::simd::qm31::PackedSecureField;
+use crate::core::fields::qm31::SecureField;
+use crate::core::utils::generate_secure_powers;
+
 /// Used with [`Swizzle::concat_swizzle`] to interleave the even values of two vectors.
 pub struct InterleaveEvens;
 
@@ -51,11 +58,35 @@ impl<T> UnsafeConst<T> {
 unsafe impl<T> Send for UnsafeConst<T> {}
 unsafe impl<T> Sync for UnsafeConst<T> {}
 
+// TODO(Gali): Remove #[allow(dead_code)].
+#[allow(dead_code)]
+/// Generates the first `n_powers` powers of `felt` using SIMD.
+/// Refer to [`generate_secure_powers`] for the scalar implementation.
+pub fn generate_secure_powers_simd(felt: SecureField, n_powers: usize) -> Vec<SecureField> {
+    let base_arr = generate_secure_powers(felt, N_LANES).try_into().unwrap();
+    let base = PackedSecureField::from_array(base_arr);
+    let step = PackedSecureField::broadcast(base_arr[N_LANES - 1] * felt);
+    let size = n_powers.div_ceil(N_LANES);
+
+    // Collects the next N_LANES powers of `felt` in each iteration.
+    (0..size)
+        .scan(base, |acc, _| {
+            let res = *acc;
+            *acc *= step;
+            Some(res)
+        })
+        .flat_map(|x| x.to_array())
+        .take(n_powers)
+        .collect_vec()
+}
+
 #[cfg(test)]
 mod tests {
     use std::simd::{u32x4, Swizzle};
 
-    use super::{InterleaveEvens, InterleaveOdds};
+    use super::{generate_secure_powers_simd, InterleaveEvens, InterleaveOdds};
+    use crate::core::utils::generate_secure_powers;
+    use crate::qm31;
 
     #[test]
     fn interleave_evens() {
@@ -75,5 +106,21 @@ mod tests {
         let res = InterleaveOdds::concat_swizzle(lo, hi);
 
         assert_eq!(res, u32x4::from_array([1, 5, 3, 7]));
+    }
+
+    #[test]
+    fn test_generate_secure_powers_simd() {
+        let felt = qm31!(1, 2, 3, 4);
+        let n_powers_vec = [0, 16, 100];
+
+        n_powers_vec.iter().for_each(|&n_powers| {
+            let expected = generate_secure_powers(felt, n_powers);
+            let actual = generate_secure_powers_simd(felt, n_powers);
+            assert_eq!(
+                expected, actual,
+                "Error generating secure powers in n_powers = {}.",
+                n_powers
+            );
+        });
     }
 }
