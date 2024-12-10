@@ -4,13 +4,12 @@ use std::ops::{AddAssign, Sub};
 use itertools::{izip, Itertools};
 use num_traits::Zero;
 
+use crate::core::backend::cpu::bit_reverse;
 use crate::core::backend::simd::m31::{PackedBaseField, N_LANES};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column};
 use crate::core::fields::m31::BaseField;
-use crate::core::utils::{
-    bit_reverse, circle_domain_order_to_coset_order, coset_order_to_circle_domain_order,
-};
+use crate::core::utils::{circle_domain_order_to_coset_order, coset_order_to_circle_domain_order};
 
 /// Performs a inclusive prefix sum on values in `Coset` order when provided
 /// with evaluations in bit-reversed `CircleDomain` order.

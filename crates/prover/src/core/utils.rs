@@ -129,24 +129,6 @@ pub const fn coset_index_to_circle_domain_index(coset_index: usize, log_domain_s
     }
 }
 
-/// Performs a naive bit-reversal permutation inplace.
-///
-/// # Panics
-///
-/// Panics if the length of the slice is not a power of two.
-// TODO(alont): Move this to the cpu backend.
-pub fn bit_reverse<T>(v: &mut [T]) {
-    let n = v.len();
-    assert!(n.is_power_of_two());
-    let log_n = n.ilog2();
-    for i in 0..n {
-        let j = bit_reverse_index(i, log_n);
-        if j > i {
-            v.swap(i, j);
-        }
-    }
-}
-
 /// Performs a coset-natural-order to circle-domain-bit-reversed-order permutation in-place.
 ///
 /// # Panics
@@ -187,22 +169,7 @@ mod tests {
     use crate::core::fields::FieldExpOps;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
-    use crate::core::utils::bit_reverse;
     use crate::{m31, qm31};
-
-    #[test]
-    fn bit_reverse_works() {
-        let mut data = [0, 1, 2, 3, 4, 5, 6, 7];
-        bit_reverse(&mut data);
-        assert_eq!(data, [0, 4, 2, 6, 1, 5, 3, 7]);
-    }
-
-    #[test]
-    #[should_panic]
-    fn bit_reverse_non_power_of_two_size_fails() {
-        let mut data = [0, 1, 2, 3, 4, 5];
-        bit_reverse(&mut data);
-    }
 
     #[test]
     fn generate_secure_powers_works() {

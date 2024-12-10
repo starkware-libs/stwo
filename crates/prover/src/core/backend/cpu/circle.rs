@@ -1,6 +1,7 @@
 use num_traits::Zero;
 
 use super::CpuBackend;
+use crate::core::backend::cpu::bit_reverse;
 use crate::core::backend::{Col, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
@@ -13,7 +14,7 @@ use crate::core::poly::circle::{
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::{bit_reverse, coset_order_to_circle_domain_order};
+use crate::core::utils::coset_order_to_circle_domain_order;
 
 impl PolyOps for CpuBackend {
     type Twiddles = Vec<BaseField>;

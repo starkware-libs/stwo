@@ -8,6 +8,7 @@ use super::domain::CircleDomainBitRevIterator;
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
+use crate::core::backend::cpu::bit_reverse;
 use crate::core::backend::cpu::quotients::{batch_random_coeffs, column_line_coeffs};
 use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
@@ -17,7 +18,6 @@ use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::bit_reverse;
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,

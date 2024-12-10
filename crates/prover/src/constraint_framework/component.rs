@@ -17,6 +17,7 @@ use super::{
 };
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, Trace};
+use crate::core::backend::cpu::bit_reverse;
 use crate::core::backend::simd::column::VeryPackedSecureColumnByCoords;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
@@ -30,7 +31,7 @@ use crate::core::fields::FieldExpOps;
 use crate::core::pcs::{TreeSubspan, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
-use crate::core::{utils, ColumnVec};
+use crate::core::ColumnVec;
 
 const CHUNK_SIZE: usize = 1;
 
@@ -292,7 +293,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         let mut denom_inv = (0..1 << log_expand)
             .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
             .collect_vec();
-        utils::bit_reverse(&mut denom_inv);
+        bit_reverse(&mut denom_inv);
 
         // Accumulator.
         let [mut accum] =

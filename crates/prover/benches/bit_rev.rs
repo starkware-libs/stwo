@@ -5,7 +5,7 @@ use itertools::Itertools;
 use stwo_prover::core::fields::m31::BaseField;
 
 pub fn cpu_bit_rev(c: &mut Criterion) {
-    use stwo_prover::core::utils::bit_reverse;
+    use stwo_prover::core::backend::cpu::bit_reverse;
     // TODO(andrew): Consider using same size for all.
     const SIZE: usize = 1 << 24;
     let data = (0..SIZE).map(BaseField::from).collect_vec();

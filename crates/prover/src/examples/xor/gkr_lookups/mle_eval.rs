@@ -14,6 +14,7 @@ use crate::constraint_framework::{
 };
 use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use crate::core::air::{Component, ComponentProver, Trace};
+use crate::core::backend::cpu::bit_reverse;
 use crate::core::backend::simd::column::{SecureColumn, VeryPackedSecureColumnByCoords};
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
@@ -36,7 +37,7 @@ use crate::core::poly::circle::{
 };
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::{self, bit_reverse_index, coset_index_to_circle_domain_index};
+use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use crate::core::ColumnVec;
 
 /// Prover component that carries out a univariate IOP for multilinear eval at point.
@@ -231,7 +232,7 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> ComponentProver<SimdBackend>
         let mut denom_inv = (0..1 << log_expand)
             .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
             .collect_vec();
-        utils::bit_reverse(&mut denom_inv);
+        bit_reverse(&mut denom_inv);
 
         // Accumulator.
         let [mut acc] = accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
@@ -752,6 +753,7 @@ mod tests {
     };
     use crate::constraint_framework::{assert_constraints, EvalAtRow, TraceLocationAllocator};
     use crate::core::air::{Component, ComponentProver, Components};
+    use crate::core::backend::cpu::bit_reverse;
     use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
     use crate::core::backend::simd::qm31::PackedSecureField;
     use crate::core::backend::simd::SimdBackend;
@@ -765,7 +767,7 @@ mod tests {
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{prove, verify, VerificationError};
-    use crate::core::utils::{bit_reverse, coset_order_to_circle_domain_order};
+    use crate::core::utils::coset_order_to_circle_domain_order;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::xor::gkr_lookups::accumulation::MIN_LOG_BLOWUP_FACTOR;
     use crate::examples::xor::gkr_lookups::mle_eval::eval_step_selector_with_offset;
