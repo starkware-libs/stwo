@@ -5,6 +5,8 @@ use itertools::Itertools;
 use crate::core::backend::cpu::generate_secure_powers;
 use crate::core::backend::simd::m31::N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
+use crate::core::backend::simd::SimdBackend;
+use crate::core::backend::PowersGeneration;
 use crate::core::fields::qm31::SecureField;
 
 /// Used with [`Swizzle::concat_swizzle`] to interleave the even values of two vectors.
@@ -58,8 +60,12 @@ impl<T> UnsafeConst<T> {
 unsafe impl<T> Send for UnsafeConst<T> {}
 unsafe impl<T> Sync for UnsafeConst<T> {}
 
-// TODO(Gali): Remove #[allow(dead_code)].
-#[allow(dead_code)]
+impl PowersGeneration for SimdBackend {
+    fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField> {
+        generate_secure_powers_simd(felt, n_powers)
+    }
+}
+
 /// Generates the first `n_powers` powers of `felt` using SIMD.
 /// Refer to [`generate_secure_powers`] for the scalar implementation.
 pub fn generate_secure_powers_simd(felt: SecureField, n_powers: usize) -> Vec<SecureField> {

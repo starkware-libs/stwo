@@ -28,6 +28,7 @@ pub trait Backend:
     + FriOps
     + AccumulationOps
     + GkrOps
+    + PowersGeneration
 {
 }
 
@@ -39,6 +40,10 @@ pub trait BackendForChannel<MC: MerkleChannel>:
 pub trait ColumnOps<T> {
     type Column: Column<T>;
     fn bit_reverse_column(column: &mut Self::Column);
+}
+
+pub trait PowersGeneration {
+    fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField>;
 }
 
 pub type Col<B, T> = <B as ColumnOps<T>>::Column;

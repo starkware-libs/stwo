@@ -6,7 +6,6 @@
 use itertools::Itertools;
 use tracing::{span, Level};
 
-use crate::core::backend::cpu::generate_secure_powers;
 use crate::core::backend::{Backend, Col, Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -63,7 +62,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     pub fn new(random_coeff: SecureField, max_log_size: u32, total_columns: usize) -> Self {
         let max_log_size = max_log_size as usize;
         Self {
-            random_coeff_powers: generate_secure_powers(random_coeff, total_columns),
+            random_coeff_powers: B::generate_secure_powers(random_coeff, total_columns),
             sub_accumulations: (0..(max_log_size + 1)).map(|_| None).collect(),
         }
     }

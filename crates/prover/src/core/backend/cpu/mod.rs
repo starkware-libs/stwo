@@ -14,6 +14,7 @@ use num_traits::One;
 use serde::{Deserialize, Serialize};
 
 use super::{Backend, BackendForChannel, Column, ColumnOps, FieldOps};
+use crate::core::backend::PowersGeneration;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;
 use crate::core::lookups::mle::Mle;
@@ -45,6 +46,12 @@ pub fn bit_reverse<T>(v: &mut [T]) {
         if j > i {
             v.swap(i, j);
         }
+    }
+}
+
+impl PowersGeneration for CpuBackend {
+    fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField> {
+        generate_secure_powers(felt, n_powers)
     }
 }
 
