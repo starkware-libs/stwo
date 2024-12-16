@@ -1,4 +1,4 @@
-mod accumulation;
+pub mod accumulation;
 mod blake2s;
 pub mod circle;
 mod fri;
@@ -10,11 +10,9 @@ pub mod quotients;
 
 use std::fmt::Debug;
 
-use num_traits::One;
 use serde::{Deserialize, Serialize};
 
 use super::{Backend, BackendForChannel, Column, ColumnOps, FieldOps};
-use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;
 use crate::core::lookups::mle::Mle;
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
@@ -46,17 +44,6 @@ pub fn bit_reverse<T>(v: &mut [T]) {
             v.swap(i, j);
         }
     }
-}
-
-/// Generates the first `n_powers` powers of `felt`.
-pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField> {
-    (0..n_powers)
-        .scan(SecureField::one(), |acc, _| {
-            let res = *acc;
-            *acc *= felt;
-            Some(res)
-        })
-        .collect()
 }
 
 impl<T: Debug + Clone + Default> ColumnOps<T> for CpuBackend {
@@ -106,15 +93,13 @@ pub type CpuMle<F> = Mle<CpuBackend, F>;
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use num_traits::One;
     use rand::prelude::*;
     use rand::rngs::SmallRng;
 
     use crate::core::backend::cpu::bit_reverse;
     use crate::core::backend::{Column, CpuBackend, FieldOps};
-    use crate::core::fields::qm31::{SecureField, QM31};
+    use crate::core::fields::qm31::QM31;
     use crate::core::fields::FieldExpOps;
-    use crate::qm31;
 
     #[test]
     fn bit_reverse_works() {
@@ -128,29 +113,6 @@ mod tests {
     fn bit_reverse_non_power_of_two_size_fails() {
         let mut data = [0, 1, 2, 3, 4, 5];
         bit_reverse(&mut data);
-    }
-
-    #[test]
-    fn generate_secure_powers_works() {
-        let felt = qm31!(1, 2, 3, 4);
-        let n_powers = 10;
-
-        let powers = super::generate_secure_powers(felt, n_powers);
-
-        assert_eq!(powers.len(), n_powers);
-        assert_eq!(powers[0], SecureField::one());
-        assert_eq!(powers[1], felt);
-        assert_eq!(powers[7], felt.pow(7));
-    }
-
-    #[test]
-    fn generate_empty_secure_powers_works() {
-        let felt = qm31!(1, 2, 3, 4);
-        let max_log_size = 0;
-
-        let powers = super::generate_secure_powers(felt, max_log_size);
-
-        assert_eq!(powers, vec![]);
     }
 
     #[test]
