@@ -4,7 +4,7 @@ use std::ops::{AddAssign, Mul};
 use educe::Educe;
 use num_traits::One;
 
-use crate::core::backend::cpu::generate_secure_powers;
+use crate::core::air::accumulation::AccumulationOps;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Backend;
 use crate::core::circle::M31_CIRCLE_LOG_ORDER;
@@ -59,7 +59,8 @@ fn mle_random_linear_combination(
     assert!(!mles.is_empty());
     let n_variables = mles[0].n_variables();
     assert!(mles.iter().all(|mle| mle.n_variables() == n_variables));
-    let coeff_powers = generate_secure_powers(random_coeff, mles.len());
+    let coeff_powers =
+        <SimdBackend as AccumulationOps>::generate_secure_powers(random_coeff, mles.len());
     let mut mle_and_coeff = zip(mles, coeff_powers.into_iter().rev());
 
     // The last value can initialize the accumulator.
