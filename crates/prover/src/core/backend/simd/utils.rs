@@ -2,10 +2,10 @@ use std::simd::Swizzle;
 
 use itertools::Itertools;
 
+use crate::core::backend::cpu::generate_secure_powers;
 use crate::core::backend::simd::m31::N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::utils::generate_secure_powers;
 
 /// Used with [`Swizzle::concat_swizzle`] to interleave the even values of two vectors.
 pub struct InterleaveEvens;
@@ -85,7 +85,7 @@ mod tests {
     use std::simd::{u32x4, Swizzle};
 
     use super::{generate_secure_powers_simd, InterleaveEvens, InterleaveOdds};
-    use crate::core::utils::generate_secure_powers;
+    use crate::core::backend::cpu::generate_secure_powers;
     use crate::qm31;
 
     #[test]

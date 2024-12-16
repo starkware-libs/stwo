@@ -6,6 +6,7 @@
 use itertools::Itertools;
 use tracing::{span, Level};
 
+use crate::core::backend::cpu::generate_secure_powers;
 use crate::core::backend::{Backend, Col, Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -13,7 +14,6 @@ use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::FieldOps;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::generate_secure_powers;
 
 /// Accumulates N evaluations of u_i(P0) at a single point.
 /// Computes f(P0), the combined polynomial at that point.

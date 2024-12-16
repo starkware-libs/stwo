@@ -4,13 +4,13 @@ use std::ops::{AddAssign, Mul};
 use educe::Educe;
 use num_traits::One;
 
+use crate::core::backend::cpu::generate_secure_powers;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Backend;
 use crate::core::circle::M31_CIRCLE_LOG_ORDER;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::mle::Mle;
-use crate::core::utils::generate_secure_powers;
 
 pub const MIN_LOG_BLOWUP_FACTOR: u32 = 1;
 

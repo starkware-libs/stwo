@@ -1,9 +1,6 @@
 use std::iter::Peekable;
 
-use num_traits::One;
-
 use super::fields::m31::BaseField;
-use super::fields::qm31::SecureField;
 use super::fields::Field;
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
@@ -146,54 +143,17 @@ pub fn bit_reverse_coset_to_circle_domain_order<T>(v: &mut [T]) {
     }
 }
 
-/// Generates the first `n_powers` powers of `felt`.
-pub fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField> {
-    (0..n_powers)
-        .scan(SecureField::one(), |acc, _| {
-            let res = *acc;
-            *acc *= felt;
-            Some(res)
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use num_traits::One;
 
     use super::{
         offset_bit_reversed_circle_domain_index, previous_bit_reversed_circle_domain_index,
     };
     use crate::core::backend::cpu::CpuCircleEvaluation;
-    use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::FieldExpOps;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
-    use crate::{m31, qm31};
-
-    #[test]
-    fn generate_secure_powers_works() {
-        let felt = qm31!(1, 2, 3, 4);
-        let n_powers = 10;
-
-        let powers = super::generate_secure_powers(felt, n_powers);
-
-        assert_eq!(powers.len(), n_powers);
-        assert_eq!(powers[0], SecureField::one());
-        assert_eq!(powers[1], felt);
-        assert_eq!(powers[7], felt.pow(7));
-    }
-
-    #[test]
-    fn generate_empty_secure_powers_works() {
-        let felt = qm31!(1, 2, 3, 4);
-        let max_log_size = 0;
-
-        let powers = super::generate_secure_powers(felt, max_log_size);
-
-        assert_eq!(powers, vec![]);
-    }
+    use crate::m31;
 
     #[test]
     fn test_offset_bit_reversed_circle_domain_index() {
