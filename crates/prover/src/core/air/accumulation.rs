@@ -13,7 +13,6 @@ use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::FieldOps;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::generate_secure_powers;
 
 /// Accumulates N evaluations of u_i(P0) at a single point.
 /// Computes f(P0), the combined polynomial at that point.
@@ -63,7 +62,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     pub fn new(random_coeff: SecureField, max_log_size: u32, total_columns: usize) -> Self {
         let max_log_size = max_log_size as usize;
         Self {
-            random_coeff_powers: generate_secure_powers(random_coeff, total_columns),
+            random_coeff_powers: B::generate_secure_powers(random_coeff, total_columns),
             sub_accumulations: (0..(max_log_size + 1)).map(|_| None).collect(),
         }
     }
@@ -106,6 +105,9 @@ pub trait AccumulationOps: FieldOps<BaseField> + Sized {
     /// Accumulates other into column:
     ///   column = column + other.
     fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>);
+
+    /// Generates the first `n_powers` powers of `felt`.
+    fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField>;
 }
 
 impl<B: Backend> DomainEvaluationAccumulator<B> {

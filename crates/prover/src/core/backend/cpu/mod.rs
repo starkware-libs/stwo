@@ -1,4 +1,4 @@
-mod accumulation;
+pub mod accumulation;
 mod blake2s;
 pub mod circle;
 mod fri;
