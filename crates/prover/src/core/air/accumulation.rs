@@ -99,18 +99,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     pub fn log_size(&self) -> u32 {
         (self.sub_accumulations.len() - 1) as u32
     }
-}
 
-pub trait AccumulationOps: FieldOps<BaseField> + Sized {
-    /// Accumulates other into column:
-    ///   column = column + other.
-    fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>);
-
-    /// Generates the first `n_powers` powers of `felt`.
-    fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField>;
-}
-
-impl<B: Backend> DomainEvaluationAccumulator<B> {
     /// Computes f(P) as coefficients.
     pub fn finalize(self) -> SecureCirclePoly<B> {
         assert_eq!(
@@ -157,6 +146,15 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             }))
         })
     }
+}
+
+pub trait AccumulationOps: FieldOps<BaseField> + Sized {
+    /// Accumulates other into column:
+    ///   column = column + other.
+    fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>);
+
+    /// Generates the first `n_powers` powers of `felt`.
+    fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField>;
 }
 
 /// A domain accumulator for polynomials of a single size.
