@@ -50,6 +50,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo +nightly-2024-11-06 doc
 
+  ub-detection:
+    if: github.event.pull_request.draft == false
+    name: Check for undefined behaviour (UB)
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2024-01-04
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+      - run: MIRIFLAGS="-Zmiri-strict-provenance" cargo miri test --lib
+
   run-wasm32-wasi-tests:
     runs-on: ubuntu-latest
     steps:

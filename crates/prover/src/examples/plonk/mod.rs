@@ -281,6 +281,7 @@ mod tests {
     use crate::examples::plonk::{prove_fibonacci_plonk, PlonkLookupElements};
 
     #[test_log::test]
+    #[cfg_attr(miri, ignore)]
     fn test_simd_plonk_prove() {
         // Get from environment variable:
         let log_n_instances = env::var("LOG_N_INSTANCES")

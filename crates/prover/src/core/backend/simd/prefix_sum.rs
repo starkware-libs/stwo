@@ -120,12 +120,12 @@ fn down_sweep_val<F: Sub<Output = F> + Copy>(lo: &mut F, hi: &mut F) {
 }
 
 fn inclusive_prefix_sum_slow(
-    bit_rev_circle_domain_evals: Col<SimdBackend, BaseField>,
+    mut bit_rev_circle_domain_evals: Col<SimdBackend, BaseField>,
 ) -> Col<SimdBackend, BaseField> {
     // Obtain values in coset order.
-    let mut coset_order_eval = bit_rev_circle_domain_evals.into_cpu_vec();
-    bit_reverse(&mut coset_order_eval);
-    coset_order_eval = circle_domain_order_to_coset_order(&coset_order_eval);
+    let coset_order_eval = bit_rev_circle_domain_evals.as_mut_slice();
+    bit_reverse(coset_order_eval);
+    let coset_order_eval = circle_domain_order_to_coset_order(coset_order_eval);
     let coset_order_prefix_sum = coset_order_eval
         .into_iter()
         .scan(BaseField::zero(), |acc, v| {
@@ -149,9 +149,7 @@ mod tests {
     use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum_slow;
     use crate::core::backend::Column;
 
-    #[test]
-    fn exclusive_prefix_sum_simd_with_log_size_3_works() {
-        const LOG_N: u32 = 3;
+    fn exclusive_prefix_sum_simd_with_log_size_n_works<const LOG_N: u32>() {
         let mut rng = SmallRng::seed_from_u64(0);
         let evals: BaseColumn = (0..1 << LOG_N).map(|_| rng.gen()).collect();
         let expected = inclusive_prefix_sum_slow(evals.clone());
@@ -159,29 +157,20 @@ mod tests {
         let res = inclusive_prefix_sum(evals);
 
         assert_eq!(res.to_cpu(), expected.to_cpu());
+    }
+
+    #[test]
+    fn exclusive_prefix_sum_simd_with_log_size_3_works() {
+        exclusive_prefix_sum_simd_with_log_size_n_works::<3>();
     }
 
     #[test]
     fn exclusive_prefix_sum_simd_with_log_size_6_works() {
-        const LOG_N: u32 = 6;
-        let mut rng = SmallRng::seed_from_u64(0);
-        let evals: BaseColumn = (0..1 << LOG_N).map(|_| rng.gen()).collect();
-        let expected = inclusive_prefix_sum_slow(evals.clone());
-
-        let res = inclusive_prefix_sum(evals);
-
-        assert_eq!(res.to_cpu(), expected.to_cpu());
+        exclusive_prefix_sum_simd_with_log_size_n_works::<6>();
     }
 
     #[test]
     fn exclusive_prefix_sum_simd_with_log_size_8_works() {
-        const LOG_N: u32 = 8;
-        let mut rng = SmallRng::seed_from_u64(0);
-        let evals: BaseColumn = (0..1 << LOG_N).map(|_| rng.gen()).collect();
-        let expected = inclusive_prefix_sum_slow(evals.clone());
-
-        let res = inclusive_prefix_sum(evals);
-
-        assert_eq!(res.to_cpu(), expected.to_cpu());
+        exclusive_prefix_sum_simd_with_log_size_n_works::<8>();
     }
 }

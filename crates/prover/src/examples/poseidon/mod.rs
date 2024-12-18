@@ -443,6 +443,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_apply_internal() {
         let mut state: [BaseField; 16] = (0..16)
             .map(|i| BaseField::from_u32_unchecked(i * 3 + 187))
@@ -463,6 +464,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_poseidon_constraints() {
         const LOG_N_ROWS: u32 = 8;
 
@@ -486,6 +488,7 @@ mod tests {
     }
 
     #[test_log::test]
+    #[cfg_attr(miri, ignore)]
     fn test_simd_poseidon_prove() {
         // Note: To see time measurement, run test with
         //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="

@@ -769,6 +769,7 @@ mod tests {
     use crate::examples::xor::gkr_lookups::mle_eval::eval_step_selector_with_offset;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn mle_eval_prover_component() -> Result<(), VerificationError> {
         const N_VARIABLES: usize = 8;
         const COEFFS_COL_TRACE: usize = 1;
@@ -843,6 +844,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn mle_eval_verifier_component() -> Result<(), VerificationError> {
         const N_VARIABLES: usize = 8;
         const COEFFS_COL_TRACE: usize = 1;
@@ -933,6 +935,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_mle_eval_constraints_with_log_size_5() {
         const N_VARIABLES: usize = 5;
         const COEFFS_COL_TRACE: usize = 0;
@@ -981,118 +984,61 @@ mod tests {
         )
     }
 
+    fn eq_constraints_with_n_variables<const N_VARIABLES: usize>() {
+        const EQ_EVAL_TRACE: usize = 0;
+        const AUX_TRACE: usize = 1;
+        let mut rng = SmallRng::seed_from_u64(0);
+        let mle = Mle::new(repeat(SecureField::one()).take(1 << N_VARIABLES).collect());
+        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
+        let mle_eval_point = MleEvalPoint::new(&eval_point);
+        let trace = build_trace(&mle, &eval_point, mle.eval_at_point(&eval_point));
+        let carry_quotients_col = gen_carry_quotient_col(&eval_point).into_coordinate_evals();
+        let is_first_col = [gen_is_first(N_VARIABLES as u32)];
+        let aux_trace = chain![carry_quotients_col, is_first_col].collect();
+        let traces = TreeVec::new(vec![trace, aux_trace]);
+        let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
+        let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
+
+        assert_constraints(
+            &trace_polys,
+            trace_domain,
+            |mut eval| {
+                let [carry_quotients_col_eval] =
+                    eval.next_extension_interaction_mask(AUX_TRACE, [0]);
+                let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
+                eval_eq_constraints(
+                    EQ_EVAL_TRACE,
+                    &mut eval,
+                    &mle_eval_point,
+                    carry_quotients_col_eval,
+                    is_first,
+                    is_second,
+                );
+            },
+            (SecureField::zero(), None),
+        );
+    }
+
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn eq_constraints_with_4_variables() {
-        const N_VARIABLES: usize = 4;
-        const EQ_EVAL_TRACE: usize = 0;
-        const AUX_TRACE: usize = 1;
-        let mut rng = SmallRng::seed_from_u64(0);
-        let mle = Mle::new(repeat(SecureField::one()).take(1 << N_VARIABLES).collect());
-        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
-        let mle_eval_point = MleEvalPoint::new(&eval_point);
-        let trace = build_trace(&mle, &eval_point, mle.eval_at_point(&eval_point));
-        let carry_quotients_col = gen_carry_quotient_col(&eval_point).into_coordinate_evals();
-        let is_first_col = [gen_is_first(N_VARIABLES as u32)];
-        let aux_trace = chain![carry_quotients_col, is_first_col].collect();
-        let traces = TreeVec::new(vec![trace, aux_trace]);
-        let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
-        let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
-
-        assert_constraints(
-            &trace_polys,
-            trace_domain,
-            |mut eval| {
-                let [carry_quotients_col_eval] =
-                    eval.next_extension_interaction_mask(AUX_TRACE, [0]);
-                let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
-                eval_eq_constraints(
-                    EQ_EVAL_TRACE,
-                    &mut eval,
-                    &mle_eval_point,
-                    carry_quotients_col_eval,
-                    is_first,
-                    is_second,
-                );
-            },
-            (SecureField::zero(), None),
-        );
+        eq_constraints_with_n_variables::<4>();
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn eq_constraints_with_5_variables() {
-        const N_VARIABLES: usize = 5;
-        const EQ_EVAL_TRACE: usize = 0;
-        const AUX_TRACE: usize = 1;
-        let mut rng = SmallRng::seed_from_u64(0);
-        let mle = Mle::new(repeat(SecureField::one()).take(1 << N_VARIABLES).collect());
-        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
-        let mle_eval_point = MleEvalPoint::new(&eval_point);
-        let trace = build_trace(&mle, &eval_point, mle.eval_at_point(&eval_point));
-        let carry_quotients_col = gen_carry_quotient_col(&eval_point).into_coordinate_evals();
-        let is_first_col = [gen_is_first(N_VARIABLES as u32)];
-        let aux_trace = chain![carry_quotients_col, is_first_col].collect();
-        let traces = TreeVec::new(vec![trace, aux_trace]);
-        let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
-        let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
-
-        assert_constraints(
-            &trace_polys,
-            trace_domain,
-            |mut eval| {
-                let [carry_quotients_col_eval] =
-                    eval.next_extension_interaction_mask(AUX_TRACE, [0]);
-                let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
-                eval_eq_constraints(
-                    EQ_EVAL_TRACE,
-                    &mut eval,
-                    &mle_eval_point,
-                    carry_quotients_col_eval,
-                    is_first,
-                    is_second,
-                );
-            },
-            (SecureField::zero(), None),
-        );
+        eq_constraints_with_n_variables::<5>();
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn eq_constraints_with_8_variables() {
-        const N_VARIABLES: usize = 8;
-        const EQ_EVAL_TRACE: usize = 0;
-        const AUX_TRACE: usize = 1;
-        let mut rng = SmallRng::seed_from_u64(0);
-        let mle = Mle::new(repeat(SecureField::one()).take(1 << N_VARIABLES).collect());
-        let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
-        let mle_eval_point = MleEvalPoint::new(&eval_point);
-        let trace = build_trace(&mle, &eval_point, mle.eval_at_point(&eval_point));
-        let carry_quotients_col = gen_carry_quotient_col(&eval_point).into_coordinate_evals();
-        let is_first_col = [gen_is_first(N_VARIABLES as u32)];
-        let aux_trace = chain![carry_quotients_col, is_first_col].collect();
-        let traces = TreeVec::new(vec![trace, aux_trace]);
-        let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
-        let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
-
-        assert_constraints(
-            &trace_polys,
-            trace_domain,
-            |mut eval| {
-                let [carry_quotients_col_eval] =
-                    eval.next_extension_interaction_mask(AUX_TRACE, [0]);
-                let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
-                eval_eq_constraints(
-                    EQ_EVAL_TRACE,
-                    &mut eval,
-                    &mle_eval_point,
-                    carry_quotients_col_eval,
-                    is_first,
-                    is_second,
-                );
-            },
-            (SecureField::zero(), None),
-        );
+        eq_constraints_with_n_variables::<8>();
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn inclusive_prefix_sum_constraints_with_log_size_5() {
         const LOG_SIZE: u32 = 5;
         let mut rng = SmallRng::seed_from_u64(0);
@@ -1115,6 +1061,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn eval_step_selector_with_offset_works() {
         const LOG_SIZE: u32 = 5;
         const OFFSET: usize = 1;
@@ -1130,6 +1077,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn eval_carry_quotient_col_works() {
         const N_VARIABLES: usize = 5;
         let mut rng = SmallRng::seed_from_u64(0);

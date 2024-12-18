@@ -205,6 +205,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn multiplication_works() {
         let mut rng = SmallRng::seed_from_u64(0);
         let lhs = rng.gen();

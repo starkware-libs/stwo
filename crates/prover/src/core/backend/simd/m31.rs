@@ -7,6 +7,7 @@ use std::simd::{u32x16, Simd};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
+#[cfg(test)]
 use rand::distributions::{Distribution, Standard};
 
 use super::qm31::PackedQM31;
@@ -273,6 +274,7 @@ impl From<BaseField> for PackedM31 {
     }
 }
 
+#[cfg(test)]
 impl Distribution<PackedM31> for Standard {
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> PackedM31 {
         PackedM31::from_array(rng.gen())
@@ -619,6 +621,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn multiplication_works() {
         let mut rng = SmallRng::seed_from_u64(0);
         let lhs = rng.gen();
@@ -662,6 +665,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn inverse_works() {
         let mut rng = SmallRng::seed_from_u64(0);
         let values = rng.gen();

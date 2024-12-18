@@ -65,6 +65,7 @@ mod tests {
     use crate::examples::blake::scheduler::{BlakeElements, BlakeSchedulerEval};
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_blake_scheduler() {
         use crate::core::pcs::TreeVec;
 

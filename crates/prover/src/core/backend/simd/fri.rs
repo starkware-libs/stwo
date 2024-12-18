@@ -184,6 +184,7 @@ mod tests {
     use crate::qm31;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_fold_line() {
         const LOG_SIZE: u32 = 7;
         let mut rng = SmallRng::seed_from_u64(0);
@@ -206,6 +207,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_fold_circle_into_line() {
         const LOG_SIZE: u32 = 7;
         let values: Vec<SecureField> = (0..(1 << LOG_SIZE))
@@ -240,6 +242,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn decomposition_test() {
         const DOMAIN_LOG_SIZE: u32 = 5;
         const DOMAIN_LOG_HALF_SIZE: u32 = DOMAIN_LOG_SIZE - 1;

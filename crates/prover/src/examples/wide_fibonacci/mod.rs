@@ -136,6 +136,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_wide_fibonacci_constraints() {
         const LOG_N_INSTANCES: u32 = 6;
         let traces = TreeVec::new(vec![vec![], generate_test_trace(LOG_N_INSTANCES)]);
@@ -152,6 +153,7 @@ mod tests {
 
     #[test]
     #[should_panic]
+    #[cfg_attr(miri, ignore)]
     fn test_wide_fibonacci_constraints_fails() {
         const LOG_N_INSTANCES: u32 = 6;
 
@@ -171,6 +173,7 @@ mod tests {
     }
 
     #[test_log::test]
+    #[cfg_attr(miri, ignore)]
     fn test_wide_fib_prove_with_blake() {
         for log_n_instances in 2..=6 {
             let config = PcsConfig::default();
@@ -228,6 +231,7 @@ mod tests {
 
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg_attr(miri, ignore)]
     fn test_wide_fib_prove_with_poseidon() {
         const LOG_N_INSTANCES: u32 = 6;
         let config = PcsConfig::default();

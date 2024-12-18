@@ -4,6 +4,7 @@ use std::ops::{
 };
 
 use bytemuck::{Pod, Zeroable};
+#[cfg(test)]
 use rand::distributions::{Distribution, Standard};
 use serde::{Deserialize, Serialize};
 
@@ -157,6 +158,7 @@ impl From<i32> for M31 {
     }
 }
 
+#[cfg(test)]
 impl Distribution<M31> for Standard {
     // Not intended for cryptographic use. Should only be used in tests and benchmarks.
     fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> M31 {

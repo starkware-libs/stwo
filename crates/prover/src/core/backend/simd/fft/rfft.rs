@@ -593,6 +593,7 @@ mod tests {
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_butterfly() {
         let mut rng = SmallRng::seed_from_u64(0);
         let mut v0: [BaseField; N_LANES] = rng.gen();
@@ -611,6 +612,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_fft3() {
         let mut rng = SmallRng::seed_from_u64(0);
         let values = rng.gen::<[BaseField; 8]>().map(PackedBaseField::broadcast);
@@ -672,6 +674,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_vecwise_butterflies() {
         let domain = CanonicCoset::new(5).circle_domain();
         let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
@@ -699,6 +702,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_fft_lower() {
         for log_size in 5..12 {
             let domain = CanonicCoset::new(log_size).circle_domain();
@@ -722,6 +726,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_fft_full() {
         for log_size in CACHED_FFT_LOG_SIZE + 1..CACHED_FFT_LOG_SIZE + 3 {
             let domain = CanonicCoset::new(log_size).circle_domain();

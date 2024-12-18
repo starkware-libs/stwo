@@ -162,6 +162,7 @@ mod tests {
     };
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_xor_table() {
         use crate::core::pcs::TreeVec;
 
