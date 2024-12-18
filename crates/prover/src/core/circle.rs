@@ -126,7 +126,8 @@ impl<F: Zero + Add<Output = F> + FieldExpOps + Sub<Output = F> + Neg<Output = F>
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let x = self.x.clone() * rhs.x.clone() - self.y.clone() * rhs.y.clone();
+        // NOTE: https://github.com/rust-lang/rust/issues/134457.
+        let x = self.x.clone() * rhs.x.clone() + (-self.y.clone() * rhs.y.clone());
         let y = self.x * rhs.y + self.y * rhs.x;
         Self { x, y }
     }
