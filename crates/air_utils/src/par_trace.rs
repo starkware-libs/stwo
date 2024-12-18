@@ -1,4 +1,7 @@
+use std::marker::PhantomData;
+
 use bytemuck::Zeroable;
+use itertools::Itertools;
 use stwo_prover::core::backend::simd::column::BaseColumn;
 use stwo_prover::core::backend::simd::m31::PackedM31;
 use stwo_prover::core::backend::simd::SimdBackend;
@@ -25,6 +28,7 @@ impl<const N: usize> ParallelTrace<N> {
 
     /// # Safety
     /// The caller must ensure that the column is populated before being used.
+    #[allow(clippy::uninit_vec)]
     pub unsafe fn uninitialized(log_size: u32) -> Self {
         let length = 1 << log_size;
         let data = [(); N].map(|_| {
@@ -40,16 +44,25 @@ impl<const N: usize> ParallelTrace<N> {
         self.length
     }
 
-    // pub fn mut_row_iter(&mut self) -> RowViewIterator<N> {
-    //     let data: [_; N] = self
-    //         .data
-    //         .iter_mut()
-    //         .map(|v| v.iter_mut())
-    //         .collect_vec()
-    //         .try_into()
-    //         .unwrap();
-    //     RowViewIterator { data }
-    // }
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
+    }
+
+
+    pub fn row_chunks_mut(&mut self, chunk_size: usize) -> RowChunksMut<N> {
+        let v: [_; N] = self
+            .data
+            .iter_mut()
+            .map(|v| v.as_mut_slice() as *mut [PackedM31])
+            .collect_vec()
+            .try_into()
+            .unwrap();
+        RowChunksMut {
+            v,
+            chunk_size,
+            _marker: PhantomData,
+        }
+    }
 
     // pub fn mut_row_par_iter(&mut self) -> ParRowViewIterator<N> {
     //     let data: [_; N] = self
@@ -70,31 +83,84 @@ impl<const N: usize> ParallelTrace<N> {
     }
 }
 
-/// Iterator over chunks of rows of a [`ParallelTrace`].
-pub struct RowChunksMut<'trace, const N: usize, const C: usize> {
-    data: [&'trace mut [PackedM31; C]; N],
+pub type RowMut<'trace, const N: usize> = [&'trace mut PackedM31; N];
+pub struct RowIterMut<'trace, const N: usize> {
+    v: [*mut [PackedM31]; N],
+    phantom: PhantomData<&'trace mut PackedM31>,
 }
-// pub struct ParRowChunksMut<'trace, const N: usize, const C: usize> {
-//     data: RowChunksMut<'trace, N, C>,
-// }
-
-impl<'trace, const N: usize> Iterator for RowChunksMut<'trace, N> {
-    type Item = RowChunk<'trace, N>;
+impl<'trace, const N: usize> Iterator for RowIterMut<'trace, N> {
+    type Item = RowMut<'trace, N>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.data[0].is_empty() {
+        if self.v.is_empty() {
             return None;
         }
-        Some(std::array::from_fn(|i| (self.data[i].next().unwrap())))
+        let item = std::array::from_fn(|i| unsafe {
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
+            let (head, tail) = self.v[i].split_at_mut(0);
+            self.v[i] = tail;
+            &mut (*head)[0]
+        });
+        Some(item)
     }
 }
-impl<'trace, const N: usize> ExactSizeIterator for RowViewIterator<'trace, N> {}
-impl<'trace, const N: usize> DoubleEndedIterator for RowViewIterator<'trace, N> {
+impl<const N: usize> ExactSizeIterator for RowIterMut<'_, N> {}
+impl<const N: usize> DoubleEndedIterator for RowIterMut<'_, N> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        if self.data[0].is_empty() {
-            return None;
+        let item = std::array::from_fn(|i| unsafe {
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
+            let (head, tail) = self.v[i].split_at_mut(0);
+            self.v[i] = tail;
+            &mut (*head)[0]
+        });
+        Some(item)
+    }
+}
+
+/// Iterator over chunks of rows of a [`ParallelTrace`].
+pub struct RowChunksMut<'trace, const N: usize> {
+    /// # Safety
+    /// This slice pointer must point at a valid region of `T` with at least length `v.len()`.
+    /// Normally, those requirements would mean that we could instead use a `&mut [T]` here,
+    /// but we cannot because `__iterator_get_unchecked` needs to return `&mut [T]`, which
+    /// guarantees certain aliasing properties that we cannot uphold if we hold on to the full
+    /// original `&mut [T]`. Wrapping a raw slice instead lets us hand out non-overlapping
+    /// `&mut [T]` subslices of the slice we wrap.
+    v: [*mut [PackedM31]; N],
+    chunk_size: usize,
+    _marker: PhantomData<&'trace mut PackedM31>,
+}
+impl<'a, const N: usize> RowChunksMut<'a, N> {
+    #[allow(dead_code)]
+    pub(super) fn new(slice: [&'a mut [PackedM31]; N], size: usize) -> Self {
+        Self {
+            v: slice.map(|s| s as *mut [PackedM31]),
+            chunk_size: size,
+            _marker: PhantomData,
         }
-        Some(std::array::from_fn(|i| (self.data[i].next_back().unwrap())))
+    }
+}
+
+impl<'trace, const N: usize> Iterator for RowChunksMut<'trace, N> {
+    type Item = [&'trace mut [PackedM31]; N];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.v.is_empty() {
+            None
+        } else {
+            let index = std::cmp::min(self.v[0].len(), self.chunk_size);
+            let mut tail: [_; N] = unsafe { std::mem::zeroed() };
+            let mut head: [_; N] = unsafe { std::mem::zeroed() };
+            for (i, ptr) in self.v.into_iter().enumerate() {
+                // SAFETY: The self.v contract ensures that any split_at_mut is valid.
+                let (lhs, rhs) = unsafe { ptr.split_at_mut(index) };
+                tail[i] = lhs;
+                head[i] = unsafe { &mut *rhs };
+            }
+            self.v = tail;
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
+            Some(head)
+        }
     }
 }
 
@@ -160,5 +226,14 @@ impl<'trace, const N: usize> DoubleEndedIterator for RowViewIterator<'trace, N> 
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test_row_iter() {}
+    fn test_row_iter() {
+        let mut trace = super::ParallelTrace::<3>::zeroed(5);
+        println!("{:?}", trace.len());
+        let row_iter = trace.row_chunks_mut(2);
+        row_iter.for_each(|row_chunk| {
+            println!("{:?}", row_chunk);
+            println!("{:?}", row_chunk);
+            println!("{:?}", row_chunk);
+        });
+    }
 }
