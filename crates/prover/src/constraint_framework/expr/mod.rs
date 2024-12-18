@@ -1,4 +1,5 @@
 pub mod assignment;
+pub mod degree;
 pub mod evaluator;
 pub mod format;
 pub mod simplify;
