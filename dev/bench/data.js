@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1734517104937,
+  "lastUpdate": 1734520756182,
   "repoUrl": "https://github.com/starkware-libs/stwo",
   "entries": {
     "Benchmark": [
@@ -94553,6 +94553,336 @@ window.BENCHMARK_DATA = {
             "name": "cpu quotients 2^8 x 2^16",
             "value": 134705665,
             "range": "± 4066678",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "gali@starkware.co",
+            "name": "Gali Michlevich",
+            "username": "Gali-StarkWare"
+          },
+          "committer": {
+            "email": "gali@starkware.co",
+            "name": "Gali-StarkWare",
+            "username": "Gali-StarkWare"
+          },
+          "distinct": true,
+          "id": "f0f28c5d275d465963f93a137ab000c106a89941",
+          "message": "Add secure powers generation for simd",
+          "timestamp": "2024-12-18T12:59:05+02:00",
+          "tree_id": "6834fdf03dc5ff8eb351355e4b896d3e456dc79b",
+          "url": "https://github.com/starkware-libs/stwo/commit/f0f28c5d275d465963f93a137ab000c106a89941"
+        },
+        "date": 1734520753614,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "simd bit_rev 26bit",
+            "value": 78714933,
+            "range": "± 2064071",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu bit_rev 24bit",
+            "value": 236809680,
+            "range": "± 2783509",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd eval_at_secure_field_point 2^20",
+            "value": 876708,
+            "range": "± 3874",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu eval_at_secure_field_point 2^20",
+            "value": 24300970,
+            "range": "± 176639",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/16",
+            "value": 111389,
+            "range": "± 646",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/17",
+            "value": 265168,
+            "range": "± 2071",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/18",
+            "value": 551382,
+            "range": "± 2704",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/19",
+            "value": 1167803,
+            "range": "± 9413",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/20",
+            "value": 2462627,
+            "range": "± 56551",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/21",
+            "value": 6450003,
+            "range": "± 250563",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/22",
+            "value": 13509197,
+            "range": "± 364723",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/23",
+            "value": 29511638,
+            "range": "± 996422",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/24",
+            "value": 62403511,
+            "range": "± 1316818",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/25",
+            "value": 130847993,
+            "range": "± 3475834",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/26",
+            "value": 260719864,
+            "range": "± 14483395",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/27",
+            "value": 550563234,
+            "range": "± 57696923",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "iffts/simd ifft/28",
+            "value": 1135295192,
+            "range": "± 41876991",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/simd ifft_vecwise_loop 2^14",
+            "value": 12452,
+            "range": "± 331",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/simd ifft3_loop 2^14",
+            "value": 4442,
+            "range": "± 76",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "ifft parts/simd transpose_vecs 2^20",
+            "value": 306127,
+            "range": "± 31712",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd rfft 20bit",
+            "value": 3027372,
+            "range": "± 25953",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 mul",
+            "value": 46320026,
+            "range": "± 59367",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "M31 add",
+            "value": 12493129,
+            "range": "± 35192",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 mul",
+            "value": 240851411,
+            "range": "± 2133491",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "CM31 add",
+            "value": 22817226,
+            "range": "± 1688433",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField mul",
+            "value": 1009653007,
+            "range": "± 20354812",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "SecureField add",
+            "value": 22957272,
+            "range": "± 615014",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "mul_simd",
+            "value": 7821081,
+            "range": "± 137225",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "add_simd",
+            "value": 4741245,
+            "range": "± 11507",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sub_simd",
+            "value": 4739718,
+            "range": "± 36053",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "fold_line",
+            "value": 575328,
+            "range": "± 19766",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd grand product lookup 2^16",
+            "value": 1820312,
+            "range": "± 209074",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd grand product lookup batch 4x 2^16",
+            "value": 7284584,
+            "range": "± 408280",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd generic logup lookup 2^16",
+            "value": 3460411,
+            "range": "± 168911",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd multiplicities logup lookup 2^16",
+            "value": 3130538,
+            "range": "± 162338",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd singles logup lookup 2^16",
+            "value": 2792031,
+            "range": "± 133952",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu grand product lookup 2^16",
+            "value": 8411480,
+            "range": "± 230367",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu grand product lookup batch 4x 2^16",
+            "value": 33992838,
+            "range": "± 1791194",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu generic logup lookup 2^16",
+            "value": 19648815,
+            "range": "± 1165724",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu multiplicities logup lookup 2^16",
+            "value": 16991977,
+            "range": "± 543082",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu singles logup lookup 2^16",
+            "value": 14978835,
+            "range": "± 512333",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "RowMajorMatrix M31 24x24 mul",
+            "value": 620,
+            "range": "± 49",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "QM31 RowMajorMatrix 6x6 mul",
+            "value": 621,
+            "range": "± 47",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "merkle throughput/simd merkle",
+            "value": 30525256,
+            "range": "± 1203276",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "merkle throughput/cpu merkle",
+            "value": 183977859,
+            "range": "± 1686383",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd polynomial commitment 2^20",
+            "value": 291764244,
+            "range": "± 2687576",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu polynomial commitment 2^20",
+            "value": 1236654924,
+            "range": "± 26042665",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "poseidon2/poseidon2 2^18 instances",
+            "value": 2148626891,
+            "range": "± 27452262",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd prefix_sum 2^24",
+            "value": 24967448,
+            "range": "± 971178",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "simd quotients 2^8 x 2^20",
+            "value": 558841717,
+            "range": "± 20032834",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "cpu quotients 2^8 x 2^16",
+            "value": 141670316,
+            "range": "± 6042077",
             "unit": "ns/iter"
           }
         ]
