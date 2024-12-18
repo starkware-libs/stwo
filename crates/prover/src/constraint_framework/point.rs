@@ -1,4 +1,5 @@
 use std::ops::Mul;
+use std::sync::Arc;
 
 use super::logup::{LogupAtRow, LogupSums};
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};

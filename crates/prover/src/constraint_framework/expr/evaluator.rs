@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use num_traits::Zero;
 
 use super::{BaseExpr, ExtExpr};
 use crate::constraint_framework::expr::ColumnExpr;
-use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
+use crate::constraint_framework::preprocessed_columns::PreprocessedColumnOps;
 use crate::constraint_framework::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
 use crate::core::fields::m31;
 use crate::core::lookups::utils::Fraction;
@@ -174,7 +176,7 @@ impl EvalAtRow for ExprEvaluator {
         intermediate
     }
 
-    fn get_preprocessed_column(&mut self, column: PreprocessedColumn) -> Self::F {
+    fn get_preprocessed_column(&mut self, column: Arc<dyn PreprocessedColumnOps>) -> Self::F {
         BaseExpr::Param(column.name().to_string())
     }
 

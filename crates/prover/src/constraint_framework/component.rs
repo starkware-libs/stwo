@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::iter::zip;
 use std::ops::Deref;
+use std::sync::Arc;
 
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
@@ -11,7 +12,7 @@ use tracing::{span, Level};
 
 use super::cpu_domain::CpuDomainEvaluator;
 use super::logup::LogupSums;
-use super::preprocessed_columns::PreprocessedColumn;
+use super::preprocessed_columns::PreprocessedColumnOps;
 use super::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, PREPROCESSED_TRACE_IDX,
 };
@@ -49,7 +50,8 @@ pub struct TraceLocationAllocator {
     /// Mapping of tree index to next available column offset.
     next_tree_offsets: TreeVec<usize>,
     /// Mapping of preprocessed columns to their index.
-    preprocessed_columns: HashMap<PreprocessedColumn, usize>,
+    /// A preprocessed column implementation is indicated by its TypeId
+    preprocessed_columns: HashMap<Arc<dyn PreprocessedColumnOps>, usize>,
     /// Controls whether the preprocessed columns are dynamic or static (default=Dynamic).
     preprocessed_columns_allocation_mode: PreprocessedColumnsAllocationMode,
 }
@@ -81,30 +83,39 @@ impl TraceLocationAllocator {
     }
 
     /// Create a new `TraceLocationAllocator` with fixed preprocessed columns setup.
-    pub fn new_with_preproccessed_columns(preprocessed_columns: &[PreprocessedColumn]) -> Self {
+    pub fn new_with_preproccessed_columns(
+        preprocessed_columns: &[Arc<dyn PreprocessedColumnOps>],
+    ) -> Self {
         Self {
             next_tree_offsets: Default::default(),
             preprocessed_columns: preprocessed_columns
                 .iter()
                 .enumerate()
-                .map(|(i, &col)| (col, i))
+                .map(|(i, col)| (col.clone(), i))
                 .collect(),
             preprocessed_columns_allocation_mode: PreprocessedColumnsAllocationMode::Static,
         }
     }
 
-    pub const fn preprocessed_columns(&self) -> &HashMap<PreprocessedColumn, usize> {
+    pub const fn preprocessed_columns(&self) -> &HashMap<Arc<dyn PreprocessedColumnOps>, usize> {
         &self.preprocessed_columns
     }
 
     // validates that `self.preprocessed_columns` is consistent with
     // `preprocessed_columns`.
     // I.e. preprocessed_columns[i] == self.preprocessed_columns[i].
-    pub fn validate_preprocessed_columns(&self, preprocessed_columns: &[PreprocessedColumn]) {
+    // The equality comparison uses the pointer comparison of the boxes.
+    pub fn validate_preprocessed_columns(
+        &self,
+        preprocessed_columns: &[Arc<dyn PreprocessedColumnOps>],
+    ) {
         assert_eq!(preprocessed_columns.len(), self.preprocessed_columns.len());
 
         for (column, idx) in self.preprocessed_columns.iter() {
-            assert_eq!(Some(column), preprocessed_columns.get(*idx));
+            assert!(match preprocessed_columns.get(*idx) {
+                Some(preprocessed_column) => preprocessed_column == column,
+                None => false,
+            },)
         }
     }
 }
@@ -146,7 +157,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
                 let next_column = location_allocator.preprocessed_columns.len();
                 *location_allocator
                     .preprocessed_columns
-                    .entry(*col)
+                    .entry(col.clone())
                     .or_insert_with(|| {
                         if matches!(
                             location_allocator.preprocessed_columns_allocation_mode,

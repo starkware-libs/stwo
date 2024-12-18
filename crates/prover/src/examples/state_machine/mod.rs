@@ -1,5 +1,10 @@
+use std::sync::Arc;
+
+use crate::constraint_framework::preprocessed_columns::{
+    gen_preprocessed_columns_simd, PreprocessedColumnOps,
+};
 use crate::constraint_framework::relation_tracker::RelationSummary;
-use crate::constraint_framework::Relation;
+use crate::constraint_framework::{preprocessed_columns, Relation};
 pub mod components;
 pub mod gen;
 
@@ -11,9 +16,6 @@ use components::{
 use gen::{gen_interaction_trace, gen_trace};
 use itertools::{chain, Itertools};
 
-use crate::constraint_framework::preprocessed_columns::{
-    gen_preprocessed_columns, PreprocessedColumn,
-};
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
@@ -59,13 +61,17 @@ pub fn prove_state_machine(
     let mut commitment_scheme =
         CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
-    let preprocessed_columns = [
-        PreprocessedColumn::IsFirst(x_axis_log_rows),
-        PreprocessedColumn::IsFirst(y_axis_log_rows),
+    let preprocessed_columns: [Arc<dyn PreprocessedColumnOps>; 2] = [
+        Arc::new(preprocessed_columns::IsFirst {
+            log_size: x_axis_log_rows,
+        }),
+        Arc::new(preprocessed_columns::IsFirst {
+            log_size: y_axis_log_rows,
+        }),
     ];
 
     // Preprocessed trace.
-    let preprocessed_trace = gen_preprocessed_columns(preprocessed_columns.iter());
+    let preprocessed_trace = gen_preprocessed_columns_simd(preprocessed_columns.iter().cloned());
 
     // Trace.
     let trace_op0 = gen_trace(x_axis_log_rows, initial_state, 0);

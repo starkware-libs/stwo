@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use num_traits::Zero;
 
 use super::logup::{LogupAtRow, LogupSums};

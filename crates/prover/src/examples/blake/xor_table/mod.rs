@@ -14,16 +14,17 @@ mod constraints;
 mod gen;
 
 use std::simd::u32x16;
+use std::sync::Arc;
 
 use itertools::Itertools;
 use num_traits::Zero;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator};
-use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
+use crate::constraint_framework::preprocessed_columns::gen_is_first;
 use crate::constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, Relation, RelationEntry,
-    INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
+    preprocessed_columns, relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,
+    Relation, RelationEntry, INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};

@@ -1,4 +1,5 @@
 use std::ops::Mul;
+use std::sync::Arc;
 
 use num_traits::Zero;
 

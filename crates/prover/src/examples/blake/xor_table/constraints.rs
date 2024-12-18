@@ -16,29 +16,29 @@ macro_rules! xor_table_eval {
                 // al, bl are the constant columns for the inputs: All pairs of elements in [0,
                 // 2^LIMB_BITS).
                 // cl is the constant column for the xor: al ^ bl.
-                let al = self
-                    .eval
-                    .get_preprocessed_column(PreprocessedColumn::XorTable(
-                        ELEM_BITS,
-                        EXPAND_BITS,
-                        0,
-                    ));
+                let al =
+                    self.eval
+                        .get_preprocessed_column(Arc::new(preprocessed_columns::XorTable {
+                            elem_bits: ELEM_BITS,
+                            expand_bits: EXPAND_BITS,
+                            kind: 0,
+                        }));
 
-                let bl = self
-                    .eval
-                    .get_preprocessed_column(PreprocessedColumn::XorTable(
-                        ELEM_BITS,
-                        EXPAND_BITS,
-                        1,
-                    ));
+                let bl =
+                    self.eval
+                        .get_preprocessed_column(Arc::new(preprocessed_columns::XorTable {
+                            elem_bits: ELEM_BITS,
+                            expand_bits: EXPAND_BITS,
+                            kind: 1,
+                        }));
 
-                let cl = self
-                    .eval
-                    .get_preprocessed_column(PreprocessedColumn::XorTable(
-                        ELEM_BITS,
-                        EXPAND_BITS,
-                        2,
-                    ));
+                let cl =
+                    self.eval
+                        .get_preprocessed_column(Arc::new(preprocessed_columns::XorTable {
+                            elem_bits: ELEM_BITS,
+                            expand_bits: EXPAND_BITS,
+                            kind: 2,
+                        }));
 
                 for i in (0..(1 << (2 * EXPAND_BITS))) {
                     let (i, j) = ((i >> EXPAND_BITS) as u32, (i % (1 << EXPAND_BITS)) as u32);

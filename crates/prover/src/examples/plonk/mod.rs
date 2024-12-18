@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use itertools::Itertools;
 use num_traits::One;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupTraceGenerator, LookupElements};
-use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
+use crate::constraint_framework::preprocessed_columns::{self, gen_is_first};
 use crate::constraint_framework::{
     assert_constraints, relation, EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry,
     TraceLocationAllocator,
@@ -49,12 +51,15 @@ impl FrameworkEval for PlonkEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let a_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(0));
-        let b_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(1));
+        let a_wire =
+            eval.get_preprocessed_column(Arc::new(preprocessed_columns::Plonk { kind: 0 }));
+        let b_wire =
+            eval.get_preprocessed_column(Arc::new(preprocessed_columns::Plonk { kind: 1 }));
         // Note: c_wire could also be implicit: (self.eval.point() - M31_CIRCLE_GEN.into_ef()).x.
         //   A constant column is easier though.
-        let c_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(2));
-        let op = eval.get_preprocessed_column(PreprocessedColumn::Plonk(3));
+        let c_wire =
+            eval.get_preprocessed_column(Arc::new(preprocessed_columns::Plonk { kind: 2 }));
+        let op = eval.get_preprocessed_column(Arc::new(preprocessed_columns::Plonk { kind: 3 }));
 
         let mult = eval.next_trace_mask();
         let a_val = eval.next_trace_mask();
