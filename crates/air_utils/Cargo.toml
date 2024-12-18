@@ -1,0 +1,15 @@
+[package]
+name = "air_utils"
+version.workspace = true
+edition.workspace = true
+
+[features]
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rayon = { version = "1.10.0", optional = false }
+bytemuck.workspace = true
+itertools.workspace = true
+stwo-prover = { path = "../prover" }

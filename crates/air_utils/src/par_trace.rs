@@ -1,8 +1,10 @@
-use super::column::BaseColumn;
-use super::m31::PackedM31;
-use super::SimdBackend;
-use crate::core::poly::circle::CircleEvaluation;
-use crate::core::poly::BitReversedOrder;
+use bytemuck::Zeroable;
+use stwo_prover::core::backend::simd::column::BaseColumn;
+use stwo_prover::core::backend::simd::m31::PackedM31;
+use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::fields::m31::M31;
+use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use stwo_prover::core::poly::BitReversedOrder;
 
 /// ```
 /// // 2D Matrix of packed [`M31`] values.
@@ -14,7 +16,7 @@ pub struct ParallelTrace<const N: usize> {
     length: usize,
 }
 
-impl<const N: usize> Trace<N> {
+impl<const N: usize> ParallelTrace<N> {
     pub fn zeroed(log_size: u32) -> Self {
         let length = 1 << log_size;
         let data = [(); N].map(|_| vec![PackedM31::zeroed(); length]);
@@ -26,7 +28,7 @@ impl<const N: usize> Trace<N> {
     pub unsafe fn uninitialized(log_size: u32) -> Self {
         let length = 1 << log_size;
         let data = [(); N].map(|_| {
-            let v = Vec::with_capacity(length);
+            let mut v = Vec::with_capacity(length);
             v.set_len(length);
             v
         });
@@ -38,50 +40,45 @@ impl<const N: usize> Trace<N> {
         self.length
     }
 
-    pub fn mut_row_iter(&mut self) -> RowViewIterator<N> {
-        let data: [_; N] = self
-            .data
-            .iter_mut()
-            .map(|v| v.iter_mut())
-            .collect_vec()
-            .try_into()
-            .unwrap();
-        RowViewIterator { data }
-    }
+    // pub fn mut_row_iter(&mut self) -> RowViewIterator<N> {
+    //     let data: [_; N] = self
+    //         .data
+    //         .iter_mut()
+    //         .map(|v| v.iter_mut())
+    //         .collect_vec()
+    //         .try_into()
+    //         .unwrap();
+    //     RowViewIterator { data }
+    // }
 
-    pub fn mut_row_par_iter(&mut self) -> ParRowViewIterator<N> {
-        let data: [_; N] = self
-            .data
-            .iter_mut()
-            .map(|c| c.as_mut_slice())
-            .collect_vec()
-            .try_into()
-            .unwrap();
-        ParRowViewIterator { data }
-    }
+    // pub fn mut_row_par_iter(&mut self) -> ParRowViewIterator<N> {
+    //     let data: [_; N] = self
+    //         .data
+    //         .iter_mut()
+    //         .map(|c| c.as_mut_slice())
+    //         .collect_vec()
+    //         .try_into()
+    //         .unwrap();
+    //     ParRowViewIterator { data }
+    // }
 
     pub fn to_evals(self) -> [CircleEvaluation<SimdBackend, M31, BitReversedOrder>; N] {
-        let domain = CanonicCoset::new(self.len().checked_ilog2().unwrap()).circle_domain();
-        self.data.map(|col| {
-            let column = BaseColumn {
-                data: col,
-                length: self.len(),
-            };
-            CircleEvaluation::new(domain, column)
-        })
+        let length = self.len();
+        let domain = CanonicCoset::new(length.ilog2()).circle_domain();
+        self.data
+            .map(|data| CircleEvaluation::new(domain, BaseColumn { data, length }))
     }
 }
 
-struct RowChunk<'trace, const N: usize> {
-    data: [&'trace mut PackedM31; N],
-    chunk_size 
+/// Iterator over chunks of rows of a [`ParallelTrace`].
+pub struct RowChunksMut<'trace, const N: usize, const C: usize> {
+    data: [&'trace mut [PackedM31; C]; N],
 }
+// pub struct ParRowChunksMut<'trace, const N: usize, const C: usize> {
+//     data: RowChunksMut<'trace, N, C>,
+// }
 
-/// Iterator over the rows of a [`ParallelTrace`].
-pub struct RowViewIterator<'trace, const N: usize> {
-    data: [core::slice::IterMut<'trace, PackedM31>; N],
-}
-impl<'trace, const N: usize> Iterator for RowViewIterator<'trace, N> {
+impl<'trace, const N: usize> Iterator for RowChunksMut<'trace, N> {
     type Item = RowChunk<'trace, N>;
 
     fn next(&mut self) -> Option<Self::Item> {

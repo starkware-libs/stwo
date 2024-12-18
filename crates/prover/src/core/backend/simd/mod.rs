@@ -18,7 +18,7 @@ pub mod fri;
 mod grind;
 pub mod lookups;
 pub mod m31;
-pub mod par_trace;
+
 #[cfg(not(target_arch = "wasm32"))]
 pub mod poseidon252;
 pub mod prefix_sum;
