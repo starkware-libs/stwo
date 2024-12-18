@@ -12,14 +12,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           components: rustfmt
-          toolchain: nightly-2024-11-06
+          toolchain: nightly-2024-12-17
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
         # TODO: Merge coverage reports for tests on different architectures.
         # <https://github.com/taiki-e/cargo-llvm-cov?tab=readme-ov-file#merge-coverages-generated-under-different-test-conditions>
       - name: Generate code coverage
-        run: cargo +nightly-2024-11-06 llvm-cov --codecov --output-path codecov.json
+        run: cargo +nightly-2024-12-17 llvm-cov --codecov --output-path codecov.json
         env:
           RUSTFLAGS: "-C target-feature=+avx512f"
       - name: Upload coverage to Codecov
