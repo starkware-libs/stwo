@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
-use bytemuck::Zeroable;
+use bytemuck::{cast_slice, Zeroable};
 use itertools::Itertools;
 use stwo_prover::core::backend::simd::column::BaseColumn;
-use stwo_prover::core::backend::simd::m31::PackedM31;
+use stwo_prover::core::backend::simd::m31::{PackedM31, N_LANES};
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
@@ -14,15 +14,18 @@ use stwo_prover::core::poly::BitReversedOrder;
 /// // Used as the witness for STWO proofs.
 /// // Stored in column-major order, and exposes a row-major view and a parallel iterator it.
 /// ```
+#[derive(Debug)]
 pub struct ParallelTrace<const N: usize> {
     data: [Vec<PackedM31>; N],
+
+    /// Number of M31 rows in each column.
     length: usize,
 }
 
 impl<const N: usize> ParallelTrace<N> {
     pub fn zeroed(log_size: u32) -> Self {
         let length = 1 << log_size;
-        let data = [(); N].map(|_| vec![PackedM31::zeroed(); length]);
+        let data = [(); N].map(|_| vec![PackedM31::zeroed(); length / N_LANES]);
         Self { data, length }
     }
 
@@ -32,14 +35,13 @@ impl<const N: usize> ParallelTrace<N> {
     pub unsafe fn uninitialized(log_size: u32) -> Self {
         let length = 1 << log_size;
         let data = [(); N].map(|_| {
-            let mut v = Vec::with_capacity(length);
-            v.set_len(length);
+            let mut v = Vec::with_capacity(length / N_LANES);
+            v.set_len(length / N_LANES);
             v
         });
         Self { data, length }
     }
 
-    /// Length over Axis0.
     pub fn len(&self) -> usize {
         self.length
     }
@@ -48,20 +50,15 @@ impl<const N: usize> ParallelTrace<N> {
         self.length == 0
     }
 
-
-    pub fn row_chunks_mut(&mut self, chunk_size: usize) -> RowChunksMut<N> {
+    pub fn simd_row_chunks_mut(&mut self, chunk_size: usize) -> RowChunksMut<N> {
         let v: [_; N] = self
             .data
             .iter_mut()
-            .map(|v| v.as_mut_slice() as *mut [PackedM31])
+            .map(|v| v.as_mut_slice())
             .collect_vec()
             .try_into()
             .unwrap();
-        RowChunksMut {
-            v,
-            chunk_size,
-            _marker: PhantomData,
-        }
+        RowChunksMut::new(v, chunk_size)
     }
 
     // pub fn mut_row_par_iter(&mut self) -> ParRowViewIterator<N> {
@@ -81,18 +78,37 @@ impl<const N: usize> ParallelTrace<N> {
         self.data
             .map(|data| CircleEvaluation::new(domain, BaseColumn { data, length }))
     }
+
+    pub fn pretty_print(&self, row_limit: usize) -> String {
+        assert!(row_limit <= self.len());
+        let cpu_trace: Vec<&[u32]> = self
+            .data
+            .iter()
+            .map(|column| cast_slice(&column))
+            .collect_vec();
+        let mut output = String::new();
+        for row in 0..row_limit {
+            output.push_str("|");
+            for col in 0..N {
+                output.push_str(&format!("{:?}", cpu_trace[col][row]));
+                output.push_str("|");
+            }
+            output.push_str("\n");
+        }
+        output
+    }
 }
 
-pub type RowMut<'trace, const N: usize> = [&'trace mut PackedM31; N];
+pub type MutRow<'trace, const N: usize> = [&'trace mut PackedM31; N];
 pub struct RowIterMut<'trace, const N: usize> {
     v: [*mut [PackedM31]; N],
     phantom: PhantomData<&'trace mut PackedM31>,
 }
 impl<'trace, const N: usize> Iterator for RowIterMut<'trace, N> {
-    type Item = RowMut<'trace, N>;
+    type Item = MutRow<'trace, N>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.v.is_empty() {
+        if self.v[0].is_empty() {
             return None;
         }
         let item = std::array::from_fn(|i| unsafe {
@@ -107,6 +123,9 @@ impl<'trace, const N: usize> Iterator for RowIterMut<'trace, N> {
 impl<const N: usize> ExactSizeIterator for RowIterMut<'_, N> {}
 impl<const N: usize> DoubleEndedIterator for RowIterMut<'_, N> {
     fn next_back(&mut self) -> Option<Self::Item> {
+        if self.v[0].is_empty() {
+            return None;
+        }
         let item = std::array::from_fn(|i| unsafe {
             // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (head, tail) = self.v[i].split_at_mut(0);
@@ -145,17 +164,17 @@ impl<'trace, const N: usize> Iterator for RowChunksMut<'trace, N> {
     type Item = [&'trace mut [PackedM31]; N];
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.v.is_empty() {
+        if self.v[0].is_empty() {
             None
         } else {
             let index = std::cmp::min(self.v[0].len(), self.chunk_size);
-            let mut tail: [_; N] = unsafe { std::mem::zeroed() };
             let mut head: [_; N] = unsafe { std::mem::zeroed() };
+            let mut tail: [_; N] = unsafe { std::mem::zeroed() };
             for (i, ptr) in self.v.into_iter().enumerate() {
                 // SAFETY: The self.v contract ensures that any split_at_mut is valid.
                 let (lhs, rhs) = unsafe { ptr.split_at_mut(index) };
-                tail[i] = lhs;
-                head[i] = unsafe { &mut *rhs };
+                head[i] = unsafe { &mut *lhs };
+                tail[i] = rhs;
             }
             self.v = tail;
             // SAFETY: Nothing else points to or will point to the contents of this slice.
@@ -225,15 +244,26 @@ impl<'trace, const N: usize> Iterator for RowChunksMut<'trace, N> {
 
 #[cfg(test)]
 mod tests {
+    use stwo_prover::core::backend::simd::m31::PackedM31;
+    use stwo_prover::core::fields::m31::M31;
+    use stwo_prover::core::fields::FieldExpOps;
+
     #[test]
     fn test_row_iter() {
         let mut trace = super::ParallelTrace::<3>::zeroed(5);
-        println!("{:?}", trace.len());
-        let row_iter = trace.row_chunks_mut(2);
-        row_iter.for_each(|row_chunk| {
-            println!("{:?}", row_chunk);
-            println!("{:?}", row_chunk);
-            println!("{:?}", row_chunk);
+        let row_iter = trace.simd_row_chunks_mut(3);
+        row_iter.enumerate().for_each(|(row_chunk_idx, row_chunk)| {
+            let chunk_size = row_chunk[0].len();
+            for row_in_chunk in 0..chunk_size {
+                row_chunk[0][row_in_chunk] =
+                    PackedM31::broadcast(M31::from(row_chunk_idx + row_in_chunk));
+                row_chunk[1][row_in_chunk] =
+                    PackedM31::broadcast(M31::from(row_chunk_idx + row_in_chunk + 1));
+                row_chunk[2][row_in_chunk] =
+                    row_chunk[0][row_in_chunk].square() + row_chunk[1][row_in_chunk].square();
+            }
         });
+
+        println!("{}", trace.pretty_print(32));
     }
 }
