@@ -530,7 +530,7 @@ impl Column<BaseField> for VeryPackedBaseColumn {
         let chunk_size = N_LANES * N_VERY_PACKED_ELEMS;
         let mut packed = self.data[index / chunk_size].to_array();
         packed[index % chunk_size] = value;
-        self.data[index / chunk_size] = VeryPackedBaseField::from_array(packed)
+        self.data[index / chunk_size] = VeryPackedBaseField::very_packed_from_array(packed)
     }
 }
 

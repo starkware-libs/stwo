@@ -41,18 +41,29 @@ unsafe impl<A: Copy, const N: usize> Zeroable for Vectorized<A, N> {
 
 unsafe impl<A: Pod, const N: usize> Pod for Vectorized<A, N> {}
 
+pub type VectorizedPackedM31<const N: usize> = Vectorized<PackedM31, N>;
 pub type VeryPackedM31 = Vectorized<PackedM31, N_VERY_PACKED_ELEMS>;
 pub type VeryPackedCM31 = Vectorized<PackedCM31, N_VERY_PACKED_ELEMS>;
 pub type VeryPackedQM31 = Vectorized<PackedQM31, N_VERY_PACKED_ELEMS>;
 pub type VeryPackedBaseField = VeryPackedM31;
 pub type VeryPackedSecureField = VeryPackedQM31;
 
-impl VeryPackedM31 {
+impl<const C: usize> VectorizedPackedM31<C> {
     pub fn broadcast(value: M31) -> Self {
         Self::from_fn(|_| PackedM31::broadcast(value))
     }
 
-    pub fn from_array(values: [M31; N_LANES * N_VERY_PACKED_ELEMS]) -> VeryPackedM31 {
+    pub fn very_packed_from_array(
+        values: [M31; N_LANES * N_VERY_PACKED_ELEMS],
+    ) -> VectorizedPackedM31<2> {
+        VectorizedPackedM31::<2>::from_fn(|i| {
+            let start = i * N_LANES;
+            let end = start + N_LANES;
+            PackedM31::from_array(values[start..end].try_into().unwrap())
+        })
+    }
+
+    pub fn from_ref(values: &[M31]) -> Self {
         Self::from_fn(|i| {
             let start = i * N_LANES;
             let end = start + N_LANES;

@@ -85,7 +85,7 @@ impl EvalAtRow for SimdDomainEvaluator<'_> {
             // Otherwise, we need to look up the value at the offset.
             // Since the domain is bit-reversed circle domain ordered, we need to look up the value
             // at the bit-reversed natural order index at an offset.
-            VeryPackedBaseField::from_array(std::array::from_fn(|i| {
+            VeryPackedBaseField::very_packed_from_array(std::array::from_fn(|i| {
                 let row_index = offset_bit_reversed_circle_domain_index(
                     (self.vec_row << (LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS)) + i,
                     self.domain_log_size,

@@ -14,7 +14,8 @@
     iter_array_chunks,
     portable_simd,
     slice_ptr_get,
-    trait_upcasting
+    trait_upcasting,
+    generic_const_exprs,
 )]
 pub mod constraint_framework;
 pub mod core;
