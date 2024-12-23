@@ -2,6 +2,8 @@ use std::marker::PhantomData;
 
 use bytemuck::Zeroable;
 use itertools::Itertools;
+use rayon::iter::plumbing::{bridge, Consumer, Producer, ProducerCallback, UnindexedConsumer};
+use rayon::prelude::*;
 use stwo_prover::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::fields::m31::M31;
@@ -82,6 +84,17 @@ impl<const N: usize> ComponentTrace<N> {
         RowIterMut::new(v)
     }
 
+    pub fn par_iter_mut(&mut self) -> ParRowIterMut<'_, N> {
+        let v = self
+            .data
+            .iter_mut()
+            .map(|column| column.as_mut_slice())
+            .collect_vec()
+            .try_into()
+            .unwrap();
+        ParRowIterMut::new(v)
+    }
+
     pub fn to_evals(self) -> [CircleEvaluation<SimdBackend, M31, BitReversedOrder>; N] {
         todo!()
     }
@@ -136,3 +149,131 @@ impl<'trace, const N: usize> Iterator for RowIterMut<'trace, N> {
     }
 }
 impl<const N: usize> ExactSizeIterator for RowIterMut<'_, N> {}
+impl<const N: usize> DoubleEndedIterator for RowIterMut<'_, N> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.v[0].is_empty() {
+            return None;
+        }
+        let item = std::array::from_fn(|i| unsafe {
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
+            let (head, tail) = self.v[i].split_at_mut(self.v[i].len() - 1);
+            self.v[i] = head;
+            &mut (*tail)[0]
+        });
+        Some(item)
+    }
+}
+
+struct RowProducer<'trace, const N: usize> {
+    data: [&'trace mut [PackedM31]; N],
+}
+impl<'trace, const N: usize> Producer for RowProducer<'trace, N> {
+    type Item = MutRow<'trace, N>;
+
+    fn split_at(self, index: usize) -> (Self, Self) {
+        let mut left: [_; N] = unsafe { std::mem::zeroed() };
+        let mut right: [_; N] = unsafe { std::mem::zeroed() };
+        for (i, slice) in self.data.into_iter().enumerate() {
+            let (lhs, rhs) = slice.split_at_mut(index);
+            left[i] = lhs;
+            right[i] = rhs;
+        }
+        (RowProducer { data: left }, RowProducer { data: right })
+    }
+
+    type IntoIter = RowIterMut<'trace, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        RowIterMut {
+            v: self.data.map(|s| s as *mut _),
+            phantom: PhantomData,
+        }
+    }
+}
+
+pub struct ParRowIterMut<'trace, const N: usize> {
+    data: [&'trace mut [PackedM31]; N],
+}
+impl<'trace, const N: usize> ParRowIterMut<'trace, N> {
+    pub(super) fn new(data: [&'trace mut [PackedM31]; N]) -> Self {
+        Self { data }
+    }
+}
+impl<'trace, const N: usize> ParallelIterator for ParRowIterMut<'trace, N> {
+    type Item = MutRow<'trace, N>;
+
+    fn drive_unindexed<D>(self, consumer: D) -> D::Result
+    where
+        D: UnindexedConsumer<Self::Item>,
+    {
+        bridge(self, consumer)
+    }
+
+    fn opt_len(&self) -> Option<usize> {
+        Some(self.len())
+    }
+}
+impl<const N: usize> IndexedParallelIterator for ParRowIterMut<'_, N> {
+    fn len(&self) -> usize {
+        self.data[0].len()
+    }
+
+    fn drive<D: Consumer<Self::Item>>(self, consumer: D) -> D::Result {
+        bridge(self, consumer)
+    }
+
+    fn with_producer<CB: ProducerCallback<Self::Item>>(self, callback: CB) -> CB::Output {
+        callback.callback(RowProducer { data: self.data })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use itertools::Itertools;
+    use stwo_prover::core::backend::simd::m31::{PackedM31, N_LANES};
+    use stwo_prover::core::fields::m31::M31;
+    use stwo_prover::core::fields::FieldExpOps;
+
+    #[test]
+    fn test_parallel_trace() {
+        use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+        use rayon::slice::ParallelSlice;
+
+        const N_COLUMNS: usize = 3;
+        const LOG_SIZE: u32 = 8;
+        let mut trace = super::ComponentTrace::<N_COLUMNS>::zeroed(LOG_SIZE);
+        let arr = (0..1 << LOG_SIZE).map(M31::from).collect_vec();
+        let expected = arr
+            .iter()
+            .map(|&a| {
+                let b = a + M31::from(1);
+                let c = a.square() + b.square();
+                (a, b, c)
+            })
+            .multiunzip();
+
+        trace
+            .par_iter_mut()
+            .zip(arr.par_chunks(N_LANES))
+            .chunks(4)
+            .for_each(|chunk| {
+                chunk.into_iter().for_each(|(row, input)| {
+                    *row[0] = PackedM31::from_array(input.try_into().unwrap());
+                    *row[1] = *row[0] + PackedM31::broadcast(M31(1));
+                    *row[2] = row[0].square() + row[1].square();
+                })
+            });
+        let actual = trace
+            .data
+            .map(|c| {
+                c.into_iter()
+                    .flat_map(|packed| packed.to_array())
+                    .collect_vec()
+            })
+            .into_iter()
+            .next_tuple()
+            .unwrap();
+
+        assert_eq!(expected, actual);
+    }
+}
