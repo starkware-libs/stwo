@@ -6,6 +6,7 @@ pub struct LookupData {
     lu0: Vec<[PackedM31; 2]>,
     lu1: Vec<[PackedM31; 4]>,
     lu2: Vec<[PackedM31; 8]>,
+    lu3: [Vec<[PackedM31; 16]>; 4],
 }
 
 #[cfg(test)]

@@ -375,4 +375,47 @@ mod tests {
 
         assert_eq!(expected, actual);
     }
+
+    #[test]
+    fn test_parallel_trace() {
+        use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+        use rayon::slice::ParallelSlice;
+
+        const N_COLUMNS: usize = 3;
+        const LOG_SIZE: u32 = 8;
+        let mut trace = unsafe { super::IterableTrace::<N_COLUMNS>::uninitialized(LOG_SIZE) };
+        let arr = (0..1 << LOG_SIZE).map(M31::from).collect_vec();
+        let expected = arr
+            .iter()
+            .map(|&a| {
+                let b = a + M31::from(1);
+                let c = a.square() + b.square();
+                (a, b, c)
+            })
+            .multiunzip();
+
+        trace
+            .par_iter_mut()
+            .zip(arr.par_chunks(N_LANES))
+            .chunks(4)
+            .for_each(|chunk| {
+                chunk.into_iter().for_each(|(row, input)| {
+                    *row[0] = PackedM31::from_array(input.try_into().unwrap());
+                    *row[1] = *row[0] + PackedM31::broadcast(M31(1));
+                    *row[2] = row[0].square() + row[1].square();
+                })
+            });
+        let actual = trace
+            .data
+            .map(|c| {
+                c.into_iter()
+                    .flat_map(|packed| packed.to_array())
+                    .collect_vec()
+            })
+            .into_iter()
+            .next_tuple()
+            .unwrap();
+
+        assert_eq!(expected, actual);
+    }
 }
