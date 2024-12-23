@@ -1,8 +1,9 @@
 use bytemuck::Zeroable;
+use stwo_prover::core::backend::simd::column::BaseColumn;
 use stwo_prover::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::fields::m31::M31;
-use stwo_prover::core::poly::circle::CircleEvaluation;
+use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 
 use super::row_iterator::{ParRowIterMut, RowIterMut};
@@ -10,6 +11,7 @@ use super::row_iterator::{ParRowIterMut, RowIterMut};
 /// A 2D Matrix of [`PackedM31`] values.
 /// Used for generating the witness of 'Stwo' proofs.
 /// Stored as an array of `N` columns, each column is a vector of [`PackedM31`] values.
+/// All columns are of the same length.
 /// Exposes an iterator over mutable references to the rows of the matrix.
 ///
 /// # Example:
@@ -46,6 +48,7 @@ use super::row_iterator::{ParRowIterMut, RowIterMut};
 /// ```
 #[derive(Debug)]
 pub struct ComponentTrace<const N: usize> {
+    /// Columns are assumed to be of the same length.
     data: [Vec<PackedM31>; N],
 
     /// Log number of non-packed rows in each column.
@@ -79,7 +82,13 @@ impl<const N: usize> ComponentTrace<N> {
     }
 
     pub fn to_evals(self) -> [CircleEvaluation<SimdBackend, M31, BitReversedOrder>; N] {
-        todo!()
+        let domain = CanonicCoset::new(self.log_size).circle_domain();
+        self.data.map(|column| {
+            CircleEvaluation::<SimdBackend, M31, BitReversedOrder>::new(
+                domain,
+                BaseColumn::from_simd(column),
+            )
+        })
     }
 
     pub fn row_at(&self, row: usize) -> [M31; N] {
