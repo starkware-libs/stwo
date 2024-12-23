@@ -55,6 +55,7 @@ pub struct ComponentTrace<const N: usize> {
 
 impl<const N: usize> ComponentTrace<N> {
     pub fn zeroed(log_size: u32) -> Self {
+        let log_size = std::cmp::max(log_size, LOG_N_LANES);
         let n_simd_elems = 1 << (log_size - LOG_N_LANES);
         let data = [(); N].map(|_| vec![PackedM31::zeroed(); n_simd_elems]);
         Self { data, log_size }
@@ -64,8 +65,9 @@ impl<const N: usize> ComponentTrace<N> {
     /// The caller must ensure that the column is populated before being used.
     #[allow(clippy::uninit_vec)]
     pub unsafe fn uninitialized(log_size: u32) -> Self {
+        let log_size = std::cmp::max(log_size, LOG_N_LANES);
         let data = [(); N].map(|_| {
-            let n_simd_elems = (1 << log_size) / N_LANES;
+            let n_simd_elems = 1 << (log_size - LOG_N_LANES);
             let mut vec = Vec::with_capacity(n_simd_elems);
             vec.set_len(n_simd_elems);
             vec
