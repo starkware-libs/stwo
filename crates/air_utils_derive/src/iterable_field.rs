@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
-use quote::quote;
-use syn::{Data, DeriveInput, Expr, Field, Fields, Ident, Type};
+use quote::{format_ident, quote};
+use syn::{Data, DeriveInput, Expr, Field, Fields, Ident, Lifetime, Type};
 
 /// Each variant represents a field that can be iterated over.
 /// Used to derive implementations of `Uninitialized`, `MutIter`, and `ParMutIter`.
@@ -14,11 +14,11 @@ pub(super) enum IterableField {
 
 pub(super) struct PlainVec {
     name: Ident,
-    _ty: Type,
+    ty: Type,
 }
 pub(super) struct ArrayOfVecs {
     name: Ident,
-    _inner_type: Type,
+    inner_type: Type,
     outer_array_size: Expr,
 }
 
@@ -38,15 +38,15 @@ impl IterableField {
                 Ok(Self::ArrayOfVecs(ArrayOfVecs {
                     name: field.ident.clone().unwrap(),
                     outer_array_size: outer_array.len.clone(),
-                    _inner_type: inner_type.clone(),
+                    inner_type: inner_type.clone(),
                 }))
             }
             // Case that type is Vec<T>.
             Type::Path(ref type_path) => {
-                let _ty = parse_inner_type(type_path)?;
+                let ty = parse_inner_type(type_path)?;
                 Ok(Self::PlainVec(PlainVec {
                     name: field.ident.clone().unwrap(),
-                    _ty,
+                    ty,
                 }))
             }
             _ => Err(syn::Error::new_spanned(
@@ -60,6 +60,69 @@ impl IterableField {
         match self {
             IterableField::PlainVec(plain_vec) => &plain_vec.name,
             IterableField::ArrayOfVecs(array_of_vecs) => &array_of_vecs.name,
+        }
+    }
+
+    /// Generate the type of a mutable slice of the field.
+    /// E.g. `&'a mut [u32]` for a `Vec<u32>` field.
+    /// E.g. [`&'a mut u32; N]` for a `[Vec<u32>; N]` field.
+    pub fn mut_slice_type(&self, lifetime: &Lifetime) -> TokenStream {
+        match self {
+            IterableField::PlainVec(plain_vec) => {
+                let ty = &plain_vec.ty;
+                quote! {
+                    &#lifetime mut [#ty]
+                }
+            }
+            IterableField::ArrayOfVecs(array_of_vecs) => {
+                let inner_type = &array_of_vecs.inner_type;
+                let outer_array_size = &array_of_vecs.outer_array_size;
+                quote! {
+                    [&#lifetime mut [#inner_type]; #outer_array_size]
+                }
+            }
+        }
+    }
+
+    /// Generate the type of a mutable chunk of the field.
+    /// E.g. `&'a mut u32` for a `Vec<u32>` field.
+    /// E.g. [`&'a mut u32; N]` for a `[Vec<u32>; N]` field.
+    pub fn mut_chunk_type(&self, lifetime: &Lifetime) -> TokenStream {
+        match self {
+            IterableField::PlainVec(plain_vec) => {
+                let ty = &plain_vec.ty;
+                quote! {
+                    &#lifetime mut #ty
+                }
+            }
+            IterableField::ArrayOfVecs(array_of_vecs) => {
+                let inner_type = &array_of_vecs.inner_type;
+                let array_size = &array_of_vecs.outer_array_size;
+                quote! {
+                    [&#lifetime mut #inner_type; #array_size]
+                }
+            }
+        }
+    }
+
+    /// Generate the type of a mutable slice pointer to the field.
+    /// E.g. `*mut [u32]` for a `Vec<u32>` field.
+    /// E.g. [`*mut u32; N]` for a `[Vec<u32>; N]` field.
+    pub fn mut_slice_ptr_type(&self) -> TokenStream {
+        match self {
+            IterableField::PlainVec(plain_vec) => {
+                let ty = &plain_vec.ty;
+                quote! {
+                    *mut [#ty]
+                }
+            }
+            IterableField::ArrayOfVecs(array_of_vecs) => {
+                let inner_type = &array_of_vecs.inner_type;
+                let outer_array_size = &array_of_vecs.outer_array_size;
+                quote! {
+                    [*mut [#inner_type]; #outer_array_size]
+                }
+            }
         }
     }
 
@@ -84,6 +147,124 @@ impl IterableField {
                         vec.set_len(len);
                         vec
                     });
+                }
+            }
+        }
+    }
+
+    /// Generate the code to split the first element from the field.
+    /// E.g. `let (head, tail) = self.field.split_at_mut(1);
+    /// self.field = tail; let field = &mut (*head)[0];`
+    pub fn split_first(&self) -> TokenStream {
+        match self {
+            IterableField::PlainVec(plain_vec) => {
+                let name = &plain_vec.name;
+                let head = format_ident!("{}_head", name);
+                let tail = format_ident!("{}_tail", name);
+                quote! {
+                    let (#head, #tail) = self.#name.split_at_mut(1);
+                    self.#name = #tail;
+                    let #name = &mut (*(#head))[0];
+                }
+            }
+            IterableField::ArrayOfVecs(array_of_vecs) => {
+                let name = &array_of_vecs.name;
+                quote! {
+                    let #name = self.#name.each_mut().map(|v| {
+                        let (head, tail) = v.split_at_mut(1);
+                        *v = tail;
+                        &mut (*head)[0]
+                    });
+                }
+            }
+        }
+    }
+
+    /// Generate the code to split the last element from the field.
+    /// E.g. `let (head, tail) = self.field.split_at_mut(len - 1);
+    pub fn split_last(&self, length: &Ident) -> TokenStream {
+        match self {
+            IterableField::PlainVec(plain_vec) => {
+                let name = &plain_vec.name;
+                let head = format_ident!("{}_head", name);
+                let tail = format_ident!("{}_tail", name);
+                quote! {
+                    let (
+                        #head,
+                        #tail,
+                    ) = self.#name.split_at_mut(#length - 1);
+                    self.#name = #head;
+                    let #name = &mut (*#tail)[0];
+                }
+            }
+            IterableField::ArrayOfVecs(array_of_vecs) => {
+                let name = &array_of_vecs.name;
+                quote! {
+                    let #name = self.#name.each_mut().map(|v| {
+                        let (head, tail) = v.split_at_mut(#length - 1);
+                        *v = head;
+                        &mut (*tail)[0]
+                    });
+                }
+            }
+        }
+    }
+
+    /// Generate the code to get a mutable slice of the field.
+    /// E.g. `self.field.as_mut_slice()`
+    /// E.g. `self.field.each_mut().map(|v| v.as_mut_slice())`
+    pub fn as_mut_slice(&self) -> TokenStream {
+        match self {
+            IterableField::PlainVec(plain_vec) => {
+                let name = &plain_vec.name;
+                quote! {
+                    #name.as_mut_slice()
+                }
+            }
+            IterableField::ArrayOfVecs(array_of_vecs) => {
+                let name = &array_of_vecs.name;
+                quote! {
+                    #name.each_mut().map(|v| v.as_mut_slice())
+                }
+            }
+        }
+    }
+
+    /// Generate the code to get a mutable pointer a mutable slice of the field.
+    /// E.g. `'a mut [u32]` -> `*mut [u32]`. Achieved by casting: `as *mut _`.
+    pub fn as_mut_ptr(&self) -> TokenStream {
+        match self {
+            IterableField::PlainVec(plain_vec) => {
+                let name = &plain_vec.name;
+                quote! {
+                    #name as *mut _
+                }
+            }
+            IterableField::ArrayOfVecs(array_of_vecs) => {
+                let name = &array_of_vecs.name;
+                quote! {
+                    #name.map(|v| v as *mut _)
+                }
+            }
+        }
+    }
+
+    /// Generate the code to get the length of the field.
+    /// Length is assumed to be the same for all fields on every coordinate.
+    /// E.g. `self.field.len()`
+    /// E.g. `self.field[0].len()`
+    pub fn get_len(&self) -> TokenStream {
+        match self {
+            IterableField::PlainVec(plain_vec) => {
+                let name = &plain_vec.name;
+                quote! {
+                    #name.len()
+                }
+            }
+            IterableField::ArrayOfVecs(array_of_vecs) => {
+                let name = &array_of_vecs.name;
+                quote! {
+                    #name[0].len()
                 }
             }
         }
