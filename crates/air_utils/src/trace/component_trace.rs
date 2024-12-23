@@ -4,10 +4,11 @@ use bytemuck::Zeroable;
 use itertools::Itertools;
 use rayon::iter::plumbing::{bridge, Consumer, Producer, ProducerCallback, UnindexedConsumer};
 use rayon::prelude::*;
+use stwo_prover::core::backend::simd::column::BaseColumn;
 use stwo_prover::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::fields::m31::M31;
-use stwo_prover::core::poly::circle::CircleEvaluation;
+use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 
 /// A 2D Matrix of [`PackedM31`] values.
@@ -96,7 +97,14 @@ impl<const N: usize> ComponentTrace<N> {
     }
 
     pub fn to_evals(self) -> [CircleEvaluation<SimdBackend, M31, BitReversedOrder>; N] {
-        todo!()
+        let domain = CanonicCoset::new(self.log_size).circle_domain();
+        self.data.map(|column| {
+            let eval = BaseColumn {
+                data: column,
+                length: 1 << self.log_size,
+            };
+            CircleEvaluation::<SimdBackend, M31, BitReversedOrder>::new(domain, eval)
+        })
     }
 
     pub fn row_at(&self, row: usize) -> [M31; N] {
