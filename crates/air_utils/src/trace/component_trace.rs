@@ -1,4 +1,7 @@
 use bytemuck::Zeroable;
+use itertools::Itertools;
+use rayon::iter::plumbing::{bridge, Consumer, Producer, ProducerCallback, UnindexedConsumer};
+use rayon::prelude::*;
 use stwo_prover::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::fields::m31::M31;
