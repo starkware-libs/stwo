@@ -56,17 +56,29 @@ pub struct ComponentTrace<const N: usize> {
 }
 
 impl<const N: usize> ComponentTrace<N> {
+    /// Creates a new `ComponentTrace` with all values initialized to zero.
+    /// The number of rows in each column is `2^log_size`, padded to a multiple of [`N_LANES`].
     pub fn zeroed(log_size: u32) -> Self {
+        let log_size = std::cmp::max(log_size, LOG_N_LANES);
         let n_simd_elems = 1 << (log_size - LOG_N_LANES);
         let data = [(); N].map(|_| vec![PackedM31::zeroed(); n_simd_elems]);
         Self { data, log_size }
     }
 
+    /// Creates a new `ComponentTrace` with all values uninitialized.
     /// # Safety
     /// The caller must ensure that the column is populated before being used.
+    /// The number of rows in each column is `2^log_size`, padded to a multiple of [`N_LANES`].
     #[allow(clippy::uninit_vec)]
-    pub unsafe fn uninitialized(_log_size: u32) -> Self {
-        todo!()
+    pub unsafe fn uninitialized(log_size: u32) -> Self {
+        let log_size = std::cmp::max(log_size, LOG_N_LANES);
+        let n_simd_elems = 1 << (log_size - LOG_N_LANES);
+        let data = [(); N].map(|_| {
+            let mut vec = Vec::with_capacity(n_simd_elems);
+            vec.set_len(n_simd_elems);
+            vec
+        });
+        Self { data, log_size }
     }
 
     pub fn log_size(&self) -> u32 {
@@ -104,7 +116,7 @@ impl<const N: usize> ComponentTrace<N> {
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use stwo_prover::core::backend::simd::m31::{PackedM31, N_LANES};
+    use stwo_prover::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
     use stwo_prover::core::fields::m31::M31;
     use stwo_prover::core::fields::FieldExpOps;
 
@@ -150,5 +162,13 @@ mod tests {
             .unwrap();
 
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_trace_padding() {
+        const N_COLUMNS: usize = 3;
+        const LOG_SIZE: u32 = 1;
+        let trace = unsafe { super::ComponentTrace::<N_COLUMNS>::uninitialized(LOG_SIZE) };
+        assert_eq!(trace.log_size, LOG_N_LANES)
     }
 }
