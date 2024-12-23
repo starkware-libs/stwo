@@ -1036,6 +1036,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "stwo-air-utils"
+version = "0.1.1"
+dependencies = [
+ "bytemuck",
+ "itertools 0.12.1",
+ "stwo-prover",
+]
+
+[[package]]
 name = "stwo-prover"
 version = "0.1.1"
 dependencies = [
