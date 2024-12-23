@@ -56,17 +56,39 @@ pub struct ComponentTrace<const N: usize> {
 }
 
 impl<const N: usize> ComponentTrace<N> {
+    /// Creates a new `ComponentTrace` with all values initialized to zero.
+    /// The number of rows in each column is `2^log_size`.
+    /// # Panics:
+    /// if log_size < 4.
     pub fn zeroed(log_size: u32) -> Self {
+        assert!(
+            log_size >= LOG_N_LANES,
+            "log_size < LOG_N_LANES not supported!"
+        );
         let n_simd_elems = 1 << (log_size - LOG_N_LANES);
         let data = [(); N].map(|_| vec![PackedM31::zeroed(); n_simd_elems]);
         Self { data, log_size }
     }
 
+    /// Creates a new `ComponentTrace` with all values uninitialized.
     /// # Safety
     /// The caller must ensure that the column is populated before being used.
+    /// The number of rows in each column is `2^log_size`.
+    /// # Panics:
+    /// if `log_size` < 4.
     #[allow(clippy::uninit_vec)]
-    pub unsafe fn uninitialized(_log_size: u32) -> Self {
-        todo!()
+    pub unsafe fn uninitialized(log_size: u32) -> Self {
+        assert!(
+            log_size >= LOG_N_LANES,
+            "log_size < LOG_N_LANES not supported!"
+        );
+        let n_simd_elems = 1 << (log_size - LOG_N_LANES);
+        let data = [(); N].map(|_| {
+            let mut vec = Vec::with_capacity(n_simd_elems);
+            vec.set_len(n_simd_elems);
+            vec
+        });
+        Self { data, log_size }
     }
 
     pub fn log_size(&self) -> u32 {
@@ -150,5 +172,20 @@ mod tests {
             .unwrap();
 
         assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_component_trace_uninitialized_success() {
+        const N_COLUMNS: usize = 3;
+        const LOG_SIZE: u32 = 4;
+        unsafe { super::ComponentTrace::<N_COLUMNS>::uninitialized(LOG_SIZE) };
+    }
+
+    #[should_panic = "log_size < LOG_N_LANES not supported!"]
+    #[test]
+    fn test_component_trace_uninitialized_fails() {
+        const N_COLUMNS: usize = 3;
+        const LOG_SIZE: u32 = 3;
+        unsafe { super::ComponentTrace::<N_COLUMNS>::uninitialized(LOG_SIZE) };
     }
 }
