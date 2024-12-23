@@ -1,0 +1,12 @@
+[package]
+name = "stwo-air-utils"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bytemuck.workspace = true
+itertools.workspace = true
+stwo-prover = { path = "../prover" }
+
+[lib]
+bench = false
