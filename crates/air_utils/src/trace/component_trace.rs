@@ -66,8 +66,14 @@ impl<const N: usize> ComponentTrace<N> {
     /// # Safety
     /// The caller must ensure that the column is populated before being used.
     #[allow(clippy::uninit_vec)]
-    pub unsafe fn uninitialized(_log_size: u32) -> Self {
-        todo!()
+    pub unsafe fn uninitialized(log_size: u32) -> Self {
+        let data = [(); N].map(|_| {
+            let n_simd_elems = (1 << log_size) / N_LANES;
+            let mut vec = Vec::with_capacity(n_simd_elems);
+            vec.set_len(n_simd_elems);
+            vec
+        });
+        Self { data, log_size }
     }
 
     pub fn log_size(&self) -> u32 {
