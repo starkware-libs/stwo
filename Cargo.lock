@@ -1060,6 +1060,7 @@ name = "stwo-air-utils-derive"
 version = "0.1.0"
 dependencies = [
  "itertools 0.13.0",
+ "proc-macro2",
  "quote",
  "syn 2.0.90",
 ]

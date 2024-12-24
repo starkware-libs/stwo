@@ -1,5 +1,5 @@
 // TODO(Ohad): write a derive macro for this.
-use stwo_air_utils_derive::StwoIterable;
+// use stwo_air_utils_derive::StwoIterable;
 
 // #[derive(StwoIterable)]
 pub struct LookupData {
@@ -16,6 +16,7 @@ use stwo_prover::core::backend::simd::m31::{PackedM31, N_LANES};
 impl LookupData {
     /// # Safety
     /// The caller must ensure that the trace is populated before being used.
+    #[allow(clippy::uninit_vec)]
     pub unsafe fn uninitialized(log_size: u32) -> Self {
         let length = 1 << log_size;
         let n_simd_elems = length / N_LANES;
@@ -48,8 +49,8 @@ impl LookupData {
             &mut self.lu0,
             &mut self.lu1,
             &mut self.lu2,
-            &mut self.lu3,
-            &mut self.lu4,
+            self.lu3.each_mut().map(|v| v.as_mut_slice()),
+            self.lu4.each_mut().map(|v| v.as_mut_slice()),
         )
     }
     pub fn par_iter_mut(&mut self) -> ParLookupDataIterMut<'_> {
@@ -57,17 +58,17 @@ impl LookupData {
             &mut self.lu0,
             &mut self.lu1,
             &mut self.lu2,
-            &mut self.lu3,
-            &mut self.lu4,
+            self.lu3.each_mut().map(|v| v.as_mut_slice()),
+            self.lu4.each_mut().map(|v| v.as_mut_slice()),
         )
     }
 }
 pub struct LookupDataMutChunk<'trace> {
-    lu0: &'trace mut [PackedM31; 2],
-    lu1: &'trace mut [PackedM31; 4],
-    lu2: &'trace mut [PackedM31; 8],
-    lu3: [&'trace mut [[PackedM31; 16]]; 4],
-    lu4: [&'trace mut [[PackedM31; 32]]; 4],
+    pub lu0: &'trace mut [PackedM31; 2],
+    pub lu1: &'trace mut [PackedM31; 4],
+    pub lu2: &'trace mut [PackedM31; 8],
+    pub lu3: [&'trace mut [PackedM31; 16]; 4],
+    pub lu4: [&'trace mut [PackedM31; 32]; 4],
 }
 pub struct LookupDataIterMut<'trace> {
     lu0: *mut [[PackedM31; 2]],
@@ -86,11 +87,11 @@ impl<'trace> LookupDataIterMut<'trace> {
         lu4: [&'trace mut [[PackedM31; 32]]; 4],
     ) -> Self {
         Self {
-            lu0: lu0.as_mut_ptr(),
-            lu1: lu1.as_mut_ptr(),
-            lu2: lu2.as_mut_ptr(),
-            lu3: lu3.map(|v| v.as_mut_ptr()),
-            lu4: lu4.map(|v| v.as_mut_ptr()),
+            lu0: lu0 as *mut _,
+            lu1: lu1 as *mut _,
+            lu2: lu2 as *mut _,
+            lu3: lu3.map(|v| v as *mut _),
+            lu4: lu4.map(|v| v as *mut _),
             phantom: std::marker::PhantomData,
         }
     }
@@ -108,20 +109,20 @@ impl<'trace> Iterator for LookupDataIterMut<'trace> {
             self.lu1 = lu1_tail;
             let (lu2_head, lu2_tail) = self.lu2.split_at_mut(1);
             self.lu2 = lu2_tail;
-            let lu3_head = self.lu3.iter_mut().map(|ptr| {
+            let lu3_head = self.lu3.each_mut().map(|ptr| {
                 let (head, tail) = ptr.split_at_mut(1);
                 *ptr = tail;
-                &mut head[0]
+                &mut (*head)[0]
             });
-            let lu4_head = self.lu4.iter_mut().map(|ptr| {
+            let lu4_head = self.lu4.each_mut().map(|ptr| {
                 let (head, tail) = ptr.split_at_mut(1);
                 *ptr = tail;
-                &mut head[0]
+                &mut (*head)[0]
             });
             let item = LookupDataMutChunk {
-                lu0: lu0_head,
-                lu1: lu1_head,
-                lu2: lu2_head,
+                lu0: &mut (*lu0_head)[0],
+                lu1: &mut (*lu1_head)[0],
+                lu2: &mut (*lu2_head)[0],
                 lu3: lu3_head,
                 lu4: lu4_head,
             };
@@ -134,51 +135,43 @@ impl<'trace> Iterator for LookupDataIterMut<'trace> {
     }
 }
 impl ExactSizeIterator for LookupDataIterMut<'_> {}
-impl<'trace> DoubleEndedIterator for LookupDataIterMut<'trace> {
+impl DoubleEndedIterator for LookupDataIterMut<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.lu3[0].is_empty() {
             return None;
         }
-        let (lu0_head, lu0_tail) = self.lu0.split_at_mut(non_array_field_names.len() - 1);
-        self.lu0 = lu0_head;
-        let (lu1_head, lu1_tail) = self.lu1.split_at_mut(non_array_field_names.len() - 1);
-        self.lu1 = lu1_head;
-        let (lu2_head, lu2_tail) = self.lu2.split_at_mut(non_array_field_names.len() - 1);
-        self.lu2 = lu2_head;
-        let lu3_tail = self.lu3.iter_mut().map(|ptr| {
-            let (head, tail) = ptr.split_at_mut(ptr.len() - 1);
-            *ptr = head;
-            &mut tail[0]
-        });
-        let lu4_tail = self.lu4.iter_mut().map(|ptr| {
-            let (head, tail) = ptr.split_at_mut(ptr.len() - 1);
-            *ptr = head;
-            &mut tail[0]
-        });
-        let item = LookupDataMutChunk {
-            lu0: lu0_tail,
-            lu1: lu1_tail,
-            lu2: lu2_tail,
-            lu3: lu3_tail,
-            lu4: lu4_tail,
-        };
-        Some(item)
+        todo!()
     }
 }
 pub struct LookupDataRowProducer<'trace> {
     lu0: &'trace mut [[PackedM31; 2]],
     lu1: &'trace mut [[PackedM31; 4]],
     lu2: &'trace mut [[PackedM31; 8]],
+    lu3: [&'trace mut [[PackedM31; 16]]; 4],
+    lu4: [&'trace mut [[PackedM31; 32]]; 4],
 }
 impl<'trace> Producer for LookupDataRowProducer<'trace> {
     type Item = LookupDataMutChunk<'trace>;
     type IntoIter = LookupDataIterMut<'trace>;
+    #[allow(invalid_value)]
     fn split_at(self, index: usize) -> (Self, Self) {
         let (lu0, lu0_tail) = self.lu0.split_at_mut(index);
         let (lu1, lu1_tail) = self.lu1.split_at_mut(index);
         let (lu2, lu2_tail) = self.lu2.split_at_mut(index);
-        let (lu3, lu3_tail) = self.lu3.map(|v| v.as_mut_slice()).split_at_mut(index);
-        let (lu4, lu4_tail) = self.lu4.map(|v| v.as_mut_slice()).split_at_mut(index);
+        let (mut lu3, mut lu3_tail): ([_; 4], [_; 4]) =
+            unsafe { (std::mem::zeroed(), std::mem::zeroed()) };
+        self.lu3.into_iter().enumerate().for_each(|(i, v)| {
+            let (head, tail) = v.split_at_mut(index);
+            lu3[i] = head;
+            lu3_tail[i] = tail;
+        });
+        let (mut lu4, mut lu4_tail): ([_; 4], [_; 4]) =
+            unsafe { (std::mem::zeroed(), std::mem::zeroed()) };
+        self.lu4.into_iter().enumerate().for_each(|(i, v)| {
+            let (head, tail) = v.split_at_mut(index);
+            lu4[i] = head;
+            lu4_tail[i] = tail;
+        });
         (
             LookupDataRowProducer {
                 lu0,
@@ -188,11 +181,11 @@ impl<'trace> Producer for LookupDataRowProducer<'trace> {
                 lu4,
             },
             LookupDataRowProducer {
-                lu0_tail,
-                lu1_tail,
-                lu2_tail,
-                lu3_tail,
-                lu4_tail,
+                lu0: lu0_tail,
+                lu1: lu1_tail,
+                lu2: lu2_tail,
+                lu3: lu3_tail,
+                lu4: lu4_tail,
             },
         )
     }
@@ -321,6 +314,25 @@ mod tests {
                         *row[1],
                         row[1].double(),
                     ];
+                    *lookup_data.lu3[0] = [
+                        *row[3],
+                        row[3].double(),
+                        *row[4],
+                        row[4].double(),
+                        *row[0],
+                        row[0].double(),
+                        *row[1],
+                        row[1].double(),
+                        *row[3],
+                        row[3].double(),
+                        *row[4],
+                        row[4].double(),
+                        *row[0],
+                        row[0].double(),
+                        *row[1],
+                        row[1].double(),
+                    ]
+                    
                 })
             });
 
