@@ -463,16 +463,20 @@ impl<T: Add<Output = T> + Copy> Iterator for CosetIterator<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::array;
     use std::collections::BTreeSet;
 
-    use num_traits::{One, Pow};
+    use num_traits::{One, Pow, Zero};
 
     use super::{CirclePointIndex, Coset};
+    use crate::core::backend::CpuBackend;
     use crate::core::channel::Blake2sChannel;
     use crate::core::circle::{CirclePoint, SECURE_FIELD_CIRCLE_GEN};
+    use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::qm31::{SecureField, P4};
     use crate::core::fields::FieldExpOps;
-    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
+    use crate::core::poly::BitReversedOrder;
 
     #[test]
     fn test_iterator() {

@@ -101,6 +101,8 @@ impl BaseExpr {
     /// equivalent to the original expression by assigning random values.
     pub fn simplify(&self) -> Self {
         let simplified = self.unchecked_simplify();
+        // TODO(andrew): Not sure if the pruning error has been fixed.
+        // If not the assert needs to be commented out.
         assert_eq!(self.random_eval(), simplified.random_eval());
         simplified
     }
@@ -140,6 +142,8 @@ impl ExtExpr {
     /// equivalent to the original expression by assigning random values.
     pub fn simplify(&self) -> Self {
         let simplified = self.unchecked_simplify();
+        // TODO(andrew): Not sure if the pruning error has been fixed.
+        // If not the assert needs to be commented out.
         assert_eq!(self.random_eval(), simplified.random_eval());
         simplified
     }

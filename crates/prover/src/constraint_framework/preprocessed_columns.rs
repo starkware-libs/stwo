@@ -17,9 +17,9 @@ pub enum PreprocessedColumn {
 impl PreprocessedColumn {
     pub const fn name(&self) -> &'static str {
         match self {
-            PreprocessedColumn::XorTable(..) => "preprocessed.xor_table",
-            PreprocessedColumn::IsFirst(_) => "preprocessed.is_first",
-            PreprocessedColumn::Plonk(_) => "preprocessed.plonk",
+            PreprocessedColumn::XorTable(..) => "preprocessed_xor_table",
+            PreprocessedColumn::IsFirst(_) => "preprocessed_is_first",
+            PreprocessedColumn::Plonk(_) => "preprocessed_plonk",
         }
     }
 }
