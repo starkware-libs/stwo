@@ -28,7 +28,8 @@ pub fn derive_stwo_iterable(input: proc_macro::TokenStream) -> proc_macro::Token
         match field.ty {
             Type::Array(outer_array) => {
                 if first_field_vector.is_none() {
-                    first_field_vector = Some(format_ident!("{}[0]", field.ident.unwrap()));
+                    let ident = field.ident.clone().unwrap();
+                    first_field_vector = Some(quote! { #ident[0] });
                 }
                 array_field_names.push(field.ident.unwrap());
                 outer_array_sizes.push(outer_array.len.clone());
@@ -50,7 +51,8 @@ pub fn derive_stwo_iterable(input: proc_macro::TokenStream) -> proc_macro::Token
             }
             Type::Path(type_path) => {
                 if first_field_vector.is_none() {
-                    first_field_vector = Some(field.ident.unwrap());
+                    let ident = field.ident.clone().unwrap();
+                    first_field_vector = Some(quote! { #ident });
                 }
                 non_array_field_names.push(field.ident.unwrap());
                 if let Some(last_segment) = type_path.path.segments.last() {
@@ -70,6 +72,27 @@ pub fn derive_stwo_iterable(input: proc_macro::TokenStream) -> proc_macro::Token
         }
     }
 
+    let (non_array_field_names_head_prefix, non_array_field_names_tail_prefix): (Vec<_>, Vec<_>) =
+        non_array_field_names
+            .iter()
+            .map(|field_name| {
+                (
+                    format_ident!("{}_head", field_name),
+                    format_ident!("{}_tail", field_name),
+                )
+            })
+            .unzip();
+    let (array_field_names_head_prefix, array_field_names_tail_prefix): (Vec<_>, Vec<_>) =
+        array_field_names
+            .iter()
+            .map(|field_name| {
+                (
+                    format_ident!("{}_head", field_name),
+                    format_ident!("{}_tail", field_name),
+                )
+            })
+            .unzip();
+
     let mut_chunk_name = format_ident!("{}MutChunk", struct_name);
     let iter_mut_name = format_ident!("{}IterMut", struct_name);
     let row_producer_name = format_ident!("{}RowProducer", struct_name);
@@ -88,27 +111,37 @@ pub fn derive_stwo_iterable(input: proc_macro::TokenStream) -> proc_macro::Token
                 let length = 1 << log_size;
                 let n_simd_elems = length / N_LANES;
                 #(
-                    let mut #non_array_field_names = [(); #outer_array_sizes].map(|_| {
+                    let mut #non_array_field_names = Vec::with_capacity(n_simd_elems);
+                    #non_array_field_names.set_len(n_simd_elems);
+                )*
+                #(
+                    let #array_field_names = [(); #outer_array_sizes].map(|_| {
                         let mut vec = Vec::with_capacity(n_simd_elems);
                         vec.set_len(n_simd_elems);
                         vec
                     });
                 )*
-                Self { #(#non_array_field_names),* }
+                Self { #(#array_field_names),*,#(#non_array_field_names),* }
             }
 
             pub fn iter_mut(&mut self) -> #iter_mut_name<'_> {
-                #iter_mut_name::new(#(&mut self.#non_array_field_names),*
-                                            ,#(&mut self.#array_field_names),*)
+                #iter_mut_name::new(
+                    #(&mut self.#non_array_field_names),*,
+                    #(&mut self.#array_field_names),*
+                )
             }
 
             pub fn par_iter_mut(&mut self) -> #par_iter_mut_name<'_> {
-                #par_iter_mut_name { #(#non_array_field_names: &mut self.#non_array_field_names),*, #(#array_field_names: &mut self.#array_field_names),* }
+                #par_iter_mut_name::new(
+                    #(&mut self.#non_array_field_names),*,
+                    #(&mut self.#array_field_names),*
+                )
             }
         }
 
         pub struct #mut_chunk_name<'trace> {
-            #(pub #non_array_field_names: &'trace mut [PackedM31; #non_array_inner_array_sizes],)*,#(pub #array_field_names: [&'trace mut [PackedM31; #inner_array_sizes]; #outer_array_sizes],)*
+            #(#non_array_field_names: &'trace mut [PackedM31; #non_array_inner_array_sizes],)*,
+            #(#array_field_names: [&'trace mut [[PackedM31; #inner_array_sizes]]; #outer_array_sizes],)*
         }
 
         pub struct #iter_mut_name<'trace> {
@@ -118,10 +151,13 @@ pub fn derive_stwo_iterable(input: proc_macro::TokenStream) -> proc_macro::Token
         }
 
         impl<'trace> #iter_mut_name<'trace> {
-            pub fn new(#(#non_array_field_names: &'trace mut [[PackedM31; #non_array_inner_array_sizes]],)*,#(#array_field_names: [&'trace mut [[PackedM31; #inner_array_sizes]]; #outer_array_sizes],)*) -> Self {
+            pub fn new(
+                #(#non_array_field_names: &'trace mut [[PackedM31; #non_array_inner_array_sizes]],)*
+                #(#array_field_names: [&'trace mut [[PackedM31; #inner_array_sizes]]; #outer_array_sizes],)*
+            ) -> Self {
                 Self {
-                    #(#non_array_field_names: #non_array_field_names.map(),)*
-                    #(#array_field_names: #array_field_names.map(|v| v.as_mut_slice().as_mut_ptr()),)*
+                    #(#non_array_field_names: #non_array_field_names.as_mut_ptr(),)*
+                    #(#array_field_names: #array_field_names.map(|v| v.as_mut_ptr()),)*
                     phantom: std::marker::PhantomData,
                 }
             }
@@ -131,50 +167,56 @@ pub fn derive_stwo_iterable(input: proc_macro::TokenStream) -> proc_macro::Token
             type Item = #mut_chunk_name<'trace>;
             fn next(&mut self) -> Option<Self::Item> {
                 unsafe {
-                    if (*self.#first_field_vector).is_empty() {
+                    if self.#first_field_vector.is_empty() {
                         return None;
                     }
+                    #(
+                        let (#non_array_field_names_head_prefix, #non_array_field_names_tail_prefix) = self.#non_array_field_names.split_at_mut(1);
+                        self.#non_array_field_names = #non_array_field_names_tail_prefix;
+                    )*
+                    #(
+                        let #array_field_names_head_prefix = self.#array_field_names.iter_mut().map(|ptr| {
+                            let (head, tail) = ptr.split_at_mut(1);
+                            *ptr = tail;
+                            &mut head[0]
+                        });
+                    )*
                     let item = #mut_chunk_name {
-                        #(#array_field_names: self.#array_field_names.map(|ptr| {
-                            let (head, tail) = (*ptr).split_at_mut(1);
-                            *ptr = tail;
-                            &mut head[0]
-                        }),)*,
-                        #(#non_array_field_names: self.#non_array_field_names.map(|ptr| {
-                            let (head, tail) = (*ptr).split_at_mut(1);
-                            *ptr = tail;
-                            &mut head[0]
-                        }),)*
+                        #(#non_array_field_names: #non_array_field_names_head_prefix,)*,
+                        #(#array_field_names: #array_field_names_head_prefix,)*
                     };
                     Some(item)
                 }
             }
 
             fn size_hint(&self) -> (usize, Option<usize>) {
-                unsafe {
-                    let len = (*self.#first_field_vector).len();
-                    (len, Some(len))
-                }
+                let len = self.#first_field_vector.len();
+                (len, Some(len))
             }
         }
 
         impl ExactSizeIterator for #iter_mut_name<'_> {}
-
 
         impl<'trace> DoubleEndedIterator for #iter_mut_name<'trace> {
             fn next_back(&mut self) -> Option<Self::Item> {
                 if self.#first_field_vector.is_empty() {
                     return None;
                 }
-                let item = unsafe {
-                    #(
-                        let (#field_names_head, #field_names_tail) = (*self.#non_array_field_names)
-                            .split_at_mut(self.#field_names.len() - 1);
-                        self.#field_names = #field_names_head;
-                    )*
-                    #mut_chunk_name {
-                        #(#non_array_field_names: &mut (*#field_names_tail)[0],)*
-                    }
+                #(
+                    let (#non_array_field_names_head_prefix, #non_array_field_names_tail_prefix)
+                    = self.#non_array_field_names.split_at_mut(non_array_field_names.len() - 1);
+                    self.#non_array_field_names = #non_array_field_names_head_prefix;
+                )*
+                #(
+                    let #array_field_names_tail_prefix = self.#array_field_names.iter_mut().map(|ptr| {
+                        let (head, tail) = ptr.split_at_mut(ptr.len() - 1);
+                        *ptr = head;
+                        &mut tail[0]
+                    });
+                )*
+                let item = #mut_chunk_name {
+                    #(#non_array_field_names: #non_array_field_names_tail_prefix,)*,
+                    #(#array_field_names: #array_field_names_tail_prefix,)*
                 };
                 Some(item)
             }
@@ -190,26 +232,38 @@ pub fn derive_stwo_iterable(input: proc_macro::TokenStream) -> proc_macro::Token
 
             fn split_at(self, index: usize) -> (Self, Self) {
                 #(
-                    let (#non_array_field_names, #field_names_tail) = self.#field_names.split_at_mut(index);
+                    let (#non_array_field_names, #non_array_field_names_tail_prefix) = self.#non_array_field_names.split_at_mut(index);
+                )*
+                #(
+                    let (#array_field_names, #array_field_names_tail_prefix) = self.#array_field_names.map(|v| v.as_mut_slice()).split_at_mut(index);
                 )*
                 (
-                    Self { #(#non_array_field_names,)* },
-                    Self { #(#non_array_field_names: #field_names_tail,)* }
+                    #row_producer_name { #(#non_array_field_names),* ,#(#array_field_names),* },
+                    #row_producer_name { #(#non_array_field_names_tail_prefix),* ,#(#array_field_names_tail_prefix),* },
                 )
+
             }
 
             fn into_iter(self) -> Self::IntoIter {
-                #iter_mut_name::new(#(self.#non_array_field_names),*)
+                #iter_mut_name::new(#(self.#non_array_field_names),*,#(self.#array_field_names),*)
             }
         }
 
         pub struct #par_iter_mut_name<'trace> {
-            #(#non_array_field_names: &'trace mut [[PackedM31; #non_array_inner_array_sizes]],)*
+            #(
+                #non_array_field_names: &'trace mut [[PackedM31; #non_array_inner_array_sizes]],
+            )*,
+            #(
+                #array_field_names: [&'trace mut [[PackedM31; #inner_array_sizes]]; #outer_array_sizes],
+            )*
         }
 
         impl<'trace> #par_iter_mut_name<'trace> {
-            pub fn new(#(#non_array_field_names: &'trace mut [[PackedM31; #non_array_inner_array_sizes]],)*) -> Self {
-                Self { #(#non_array_field_names,)* }
+            pub fn new(
+                #(#non_array_field_names: &'trace mut [[PackedM31; #non_array_inner_array_sizes]],)*
+                #(#array_field_names: [&'trace mut [[PackedM31; #inner_array_sizes]]; #outer_array_sizes],)*
+            ) -> Self {
+                Self { #(#non_array_field_names,)*, #(#array_field_names,)* }
             }
         }
 
@@ -238,7 +292,12 @@ pub fn derive_stwo_iterable(input: proc_macro::TokenStream) -> proc_macro::Token
             }
 
             fn with_producer<CB: ProducerCallback<Self::Item>>(self, callback: CB) -> CB::Output {
-                callback.callback(#row_producer_name { #(#non_array_field_names: self.#field_names),* })
+                callback.callback(
+                    #row_producer_name { 
+                        #(#non_array_field_names: self.#non_array_field_names,)* 
+                        #(#array_field_names: self.#array_field_names,)* 
+                    }
+                )
             }
         }
     };
