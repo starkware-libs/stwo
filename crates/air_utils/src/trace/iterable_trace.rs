@@ -67,8 +67,14 @@ impl<const N: usize> IterableTrace<N> {
     /// # Safety
     /// The caller must ensure that the column is populated before being used.
     #[allow(clippy::uninit_vec)]
-    pub unsafe fn uninitialized(_log_size: u32) -> Self {
-        todo!()
+    pub unsafe fn uninitialized(log_size: u32) -> Self {
+        let data = [(); N].map(|_| {
+            let n_simd_elems = (1 << log_size) / N_LANES;
+            let mut vec = Vec::with_capacity(n_simd_elems);
+            vec.set_len(n_simd_elems);
+            vec
+        });
+        Self { data, log_size }
     }
 
     pub fn log_size(&self) -> u32 {
@@ -298,7 +304,7 @@ mod tests {
 
         const N_COLUMNS: usize = 3;
         const LOG_SIZE: u32 = 8;
-        let mut trace = super::IterableTrace::<N_COLUMNS>::zeroed(LOG_SIZE);
+        let mut trace = unsafe { super::IterableTrace::<N_COLUMNS>::uninitialized(LOG_SIZE) };
         let arr = (0..1 << LOG_SIZE).map(M31::from).collect_vec();
         let expected = arr
             .iter()
