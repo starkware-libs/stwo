@@ -64,6 +64,13 @@ impl BaseColumn {
         values.into_iter().collect()
     }
 
+    pub fn from_simd(values: Vec<PackedBaseField>) -> Self {
+        Self {
+            length: values.len() * N_LANES,
+            data: values,
+        }
+    }
+
     /// Returns a vector of `BaseColumnMutSlice`s, each mutably owning
     /// `chunk_size` `PackedBaseField`s (i.e, `chuck_size` * `N_LANES` elements).
     pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<BaseColumnMutSlice<'_>> {
