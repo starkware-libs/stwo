@@ -20,6 +20,12 @@ pub const N_LANES: usize = 1 << LOG_N_LANES;
 
 pub const MODULUS: Simd<u32, N_LANES> = Simd::from_array([P; N_LANES]);
 
+pub const INC: PackedM31 = unsafe {
+    PackedM31::from_simd_unchecked(Simd::from_array([
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    ]))
+};
+
 pub type PackedBaseField = PackedM31;
 
 /// Holds a vector of unreduced [`M31`] elements in the range `[0, P]`.
