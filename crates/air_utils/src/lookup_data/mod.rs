@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod tests {
     use itertools::{all, Itertools};
-    use stwo_air_utils_derive::{MutIter, Uninitialized};
+    use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
+    use rayon::prelude::ParallelSlice;
+    use stwo_air_utils_derive::{MutIter, ParMutIter, Uninitialized};
     use stwo_prover::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
     use stwo_prover::core::fields::m31::M31;
 
@@ -9,7 +11,7 @@ mod tests {
 
     /// Lookup data for the example ComponentTrace.
     /// Vectors are assumed to be of the same length.
-    #[derive(Uninitialized, MutIter)]
+    #[derive(Uninitialized, MutIter, ParMutIter)]
     struct LookupData {
         field0: Vec<PackedM31>,
         field1: Vec<[PackedM31; 2]>,
@@ -35,7 +37,7 @@ mod tests {
     }
 
     #[test]
-    fn test_derived_lookup_data_iter_mut() {
+    fn test_derived_lookup_data_par_iter() {
         const N_COLUMNS: usize = 5;
         const LOG_N_ROWS: u32 = 8;
         let mut trace = ComponentTrace::<N_COLUMNS>::zeroed(LOG_N_ROWS);
@@ -60,9 +62,9 @@ mod tests {
         let expected2 = (expected_field2_0, expected_field2_1);
 
         trace
-            .iter_mut()
-            .zip(arr.chunks(N_LANES))
-            .zip(lookup_data.iter_mut())
+            .par_iter_mut()
+            .zip(arr.par_chunks(N_LANES).into_par_iter())
+            .zip(lookup_data.par_iter_mut())
             .for_each(|((row, input), lookup_data)| {
                 *row[0] = PackedM31::from_array(input.try_into().unwrap());
                 *row[1] = *row[0] + PackedM31::broadcast(M31(1));
