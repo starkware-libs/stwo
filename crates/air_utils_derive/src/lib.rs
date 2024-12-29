@@ -1,0 +1,17 @@
+mod allocation;
+mod iterable_field;
+use iterable_field::to_iterable_fields;
+use syn::{parse_macro_input, DeriveInput};
+
+#[proc_macro_derive(Uninitialized)]
+pub fn derive_uninitialized(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let struct_name = input.ident.clone();
+
+    let iterable_fields = match to_iterable_fields(input) {
+        Ok(iterable_fields) => iterable_fields,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    allocation::expand_uninitialized_impl(&struct_name, &iterable_fields).into()
+}
