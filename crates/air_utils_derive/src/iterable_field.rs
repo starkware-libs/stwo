@@ -216,6 +216,41 @@ impl IterableField {
         }
     }
 
+    /// Generate the code to split the field at a given index.
+    /// E.g. `let (head, tail) = self.field.split_at_mut(index);`
+    /// E.g. `let (head, tail) = self.field.each_mut().map(|v| v.split_at_mut(index));`
+    /// Used for the `split_at` function in the Producer impl.
+    pub fn split_at(&self, index: &Ident) -> TokenStream {
+        match self {
+            IterableField::PlainVec(plain_vec) => {
+                let name = &plain_vec.name;
+                let tail = format_ident!("{}_tail", name);
+                quote! {
+                    let (
+                        #name,
+                        #tail
+                    ) = self.#name.split_at_mut(#index);
+                }
+            }
+            IterableField::ArrayOfVecs(array_of_vecs) => {
+                let name = &array_of_vecs.name;
+                let tail = format_ident!("{}_tail", name);
+                let array_size = &array_of_vecs.outer_array_size;
+                quote! {
+                    let (
+                        mut #name,
+                        mut #tail
+                    ):([_; #array_size],[_; #array_size])  = unsafe { (std::mem::zeroed(), std::mem::zeroed()) };
+                    self.#name.into_iter().enumerate().for_each(|(i, v)| {
+                        let (head, tail) = v.split_at_mut(#index);
+                        #name[i] = head;
+                        #tail[i] = tail;
+                    });
+                }
+            }
+        }
+    }
+
     /// Generate the code to get a mutable slice of the field.
     /// E.g. `self.field.as_mut_slice()`
     /// E.g. `self.field.each_mut().map(|v| v.as_mut_slice())`
