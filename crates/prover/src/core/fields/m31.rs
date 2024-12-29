@@ -62,6 +62,11 @@ impl M31 {
     pub const fn from_u32_unchecked(arg: u32) -> Self {
         Self(arg)
     }
+
+    pub fn inverse(&self) -> Self {
+        assert!(!self.is_zero(), "0 has no inverse");
+        pow2147483645(*self)
+    }
 }
 
 impl Display for M31 {
@@ -112,8 +117,7 @@ impl FieldExpOps for M31 {
     /// assert_eq!(v.inverse() * v, BaseField::one());
     /// ```
     fn inverse(&self) -> Self {
-        assert!(!self.is_zero(), "0 has no inverse");
-        pow2147483645(*self)
+        self.inverse()
     }
 }
 

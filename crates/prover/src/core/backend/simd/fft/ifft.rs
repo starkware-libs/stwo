@@ -13,7 +13,6 @@ use crate::core::backend::cpu::bit_reverse;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::utils::UnsafeMut;
 use crate::core::circle::Coset;
-use crate::core::fields::FieldExpOps;
 use crate::parallel_iter;
 
 /// Performs an Inverse Circle Fast Fourier Transform (ICFFT) on the given values.
