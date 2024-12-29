@@ -2,7 +2,6 @@ use num_traits::{One, Zero};
 
 use super::{BaseExpr, ExtExpr};
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
 
 /// Applies simplifications to arithmetic expressions that can be used both for `BaseExpr` and for
 /// `ExtExpr`.
