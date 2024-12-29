@@ -1,6 +1,7 @@
 mod allocation;
 mod iter_mut;
 mod iterable_field;
+mod par_iter;
 use iterable_field::IterableField;
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
@@ -28,6 +29,19 @@ pub fn derive_mut_iter(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
     };
 
     iter_mut::expand_iter_mut_structs(&struct_name, &iterable_fields).into()
+}
+
+#[proc_macro_derive(ParMutIter)]
+pub fn derive_par_mut_iter(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let struct_name = input.ident.clone();
+
+    let iterable_fields = match parse_derive_input_to_iterable_fields(input) {
+        Ok(iterable_fields) => iterable_fields,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    par_iter::expand_par_iter_mut_structs(&struct_name, &iterable_fields).into()
 }
 
 fn parse_derive_input_to_iterable_fields(
