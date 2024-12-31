@@ -3,7 +3,7 @@ use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Expr, Field, Fields, Ident, Lifetime, Type};
 
 /// Each variant represents a field that can be iterated over.
-/// Used to derive implementations of `Uninitialized`, `MutIter`, and `ParMutIter`.
+/// Used to derive implementations of `Uninitialized`, `MutIter`, and `ParIterMut`.
 /// Currently supports `Vec<T>` and `[Vec<T>; N]` fields only.
 pub(super) enum IterableField {
     /// A single Vec<T> field, e.g. `Vec<u32>`, `Vec<[u32; K]>`.

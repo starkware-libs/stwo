@@ -31,7 +31,7 @@ pub fn derive_mut_iter(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
     iter_mut::expand_iter_mut_structs(&struct_name, &iterable_fields).into()
 }
 
-#[proc_macro_derive(ParMutIter)]
+#[proc_macro_derive(ParIterMut)]
 pub fn derive_par_mut_iter(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let struct_name = input.ident.clone();
