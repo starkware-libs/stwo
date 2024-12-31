@@ -1050,9 +1050,12 @@ version = "0.1.1"
 dependencies = [
  "bytemuck",
  "itertools 0.12.1",
+ "num-traits",
  "rayon",
  "stwo-air-utils-derive",
  "stwo-prover",
+ "test-log",
+ "tracing",
 ]
 
 [[package]]

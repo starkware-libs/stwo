@@ -1,32 +1,32 @@
 //! AIR for Poseidon2 hash function from <https://eprint.iacr.org/2023/323.pdf>.
-
+#![allow(unused)]
 use std::ops::{Add, AddAssign, Mul, Sub};
 
-use itertools::Itertools;
 use num_traits::One;
+use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use stwo_air_utils_derive::{IterMut, ParIterMut, Uninitialized};
+use stwo_prover::constraint_framework::logup::LogupTraceGenerator;
+use stwo_prover::constraint_framework::preprocessed_columns::gen_is_first;
+use stwo_prover::constraint_framework::{
+    EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry, TraceLocationAllocator,
+};
+use stwo_prover::core::backend::simd::m31::{PackedBaseField, PackedM31, LOG_N_LANES};
+use stwo_prover::core::backend::simd::qm31::PackedSecureField;
+use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::channel::Blake2sChannel;
+use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::qm31::SecureField;
+use stwo_prover::core::fields::FieldExpOps;
+use stwo_prover::core::pcs::{CommitmentSchemeProver, PcsConfig};
+use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::prover::{prove, StarkProof};
+use stwo_prover::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+use stwo_prover::core::ColumnVec;
+use stwo_prover::relation;
 use tracing::{info, span, Level};
 
-use crate::constraint_framework::logup::LogupTraceGenerator;
-use crate::constraint_framework::preprocessed_columns::gen_is_first;
-use crate::constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
-    TraceLocationAllocator,
-};
-use crate::core::backend::simd::column::BaseColumn;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Col, Column};
-use crate::core::channel::Blake2sChannel;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
-use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
-use crate::core::poly::BitReversedOrder;
-use crate::core::prover::{prove, StarkProof};
-use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-use crate::core::ColumnVec;
+use crate::trace::component_trace::ComponentTrace;
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
@@ -197,10 +197,12 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &P
     eval.finalize_logup_in_pairs();
 }
 
+#[derive(Uninitialized, IterMut, ParIterMut)]
 pub struct LookupData {
-    initial_state: [[BaseColumn; N_STATE]; N_INSTANCES_PER_ROW],
-    final_state: [[BaseColumn; N_STATE]; N_INSTANCES_PER_ROW],
+    initial_state: [Vec<[PackedM31; N_STATE]>; N_INSTANCES_PER_ROW],
+    final_state: [Vec<[PackedM31; N_STATE]>; N_INSTANCES_PER_ROW],
 }
+
 pub fn gen_trace(
     log_size: u32,
 ) -> (
@@ -209,91 +211,75 @@ pub fn gen_trace(
 ) {
     let _span = span!(Level::INFO, "Generation").entered();
     assert!(log_size >= LOG_N_LANES);
-    let mut trace = (0..N_COLUMNS)
-        .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
-        .collect_vec();
-    let mut lookup_data = LookupData {
-        initial_state: std::array::from_fn(|_| {
-            std::array::from_fn(|_| BaseColumn::zeros(1 << log_size))
-        }),
-        final_state: std::array::from_fn(|_| {
-            std::array::from_fn(|_| BaseColumn::zeros(1 << log_size))
-        }),
-    };
+    let mut trace = unsafe { ComponentTrace::<N_COLUMNS>::uninitialized(log_size) };
+    let mut lookup_data = unsafe { LookupData::uninitialized(log_size - LOG_N_LANES) };
 
-    for vec_index in 0..(1 << (log_size - LOG_N_LANES)) {
-        // Initial state.
-        let mut col_index = 0;
-        for rep_i in 0..N_INSTANCES_PER_ROW {
-            let mut state: [_; N_STATE] = std::array::from_fn(|state_i| {
-                PackedBaseField::from_array(std::array::from_fn(|i| {
-                    BaseField::from_u32_unchecked((vec_index * 16 + i + state_i + rep_i) as u32)
-                }))
-            });
-            state.iter().copied().for_each(|s| {
-                trace[col_index].data[vec_index] = s;
-                col_index += 1;
-            });
-            lookup_data.initial_state[rep_i]
-                .iter_mut()
-                .zip(state)
-                .for_each(|(res, state_i)| res.data[vec_index] = state_i);
-
-            // 4 full rounds.
-            (0..N_HALF_FULL_ROUNDS).for_each(|round| {
-                (0..N_STATE).for_each(|i| {
-                    state[i] += PackedBaseField::broadcast(EXTERNAL_ROUND_CONSTS[round][i]);
+    trace
+        .par_iter_mut()
+        .zip(lookup_data.par_iter_mut())
+        .enumerate()
+        .for_each(|(vec_index, (mut row, lookup_data))| {
+            // Initial state.
+            let mut col_index = 0;
+            for rep_i in 0..N_INSTANCES_PER_ROW {
+                let mut state: [_; N_STATE] = std::array::from_fn(|state_i| {
+                    PackedBaseField::from_array(std::array::from_fn(|i| {
+                        BaseField::from_u32_unchecked((vec_index * 16 + i + state_i + rep_i) as u32)
+                    }))
                 });
-                apply_external_round_matrix(&mut state);
-                state = std::array::from_fn(|i| pow5(state[i]));
                 state.iter().copied().for_each(|s| {
-                    trace[col_index].data[vec_index] = s;
+                    *row[col_index] = s;
                     col_index += 1;
                 });
-            });
+                *lookup_data.initial_state[rep_i] = state;
 
-            // Partial rounds.
-            (0..N_PARTIAL_ROUNDS).for_each(|round| {
-                state[0] += PackedBaseField::broadcast(INTERNAL_ROUND_CONSTS[round]);
-                apply_internal_round_matrix(&mut state);
-                state[0] = pow5(state[0]);
-                trace[col_index].data[vec_index] = state[0];
-                col_index += 1;
-            });
-
-            // 4 full rounds.
-            (0..N_HALF_FULL_ROUNDS).for_each(|round| {
-                (0..N_STATE).for_each(|i| {
-                    state[i] += PackedBaseField::broadcast(
-                        EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i],
-                    );
+                // 4 full rounds.
+                (0..N_HALF_FULL_ROUNDS).for_each(|round| {
+                    (0..N_STATE).for_each(|i| {
+                        state[i] += PackedBaseField::broadcast(EXTERNAL_ROUND_CONSTS[round][i]);
+                    });
+                    apply_external_round_matrix(&mut state);
+                    state = std::array::from_fn(|i| pow5(state[i]));
+                    state.iter().copied().for_each(|s| {
+                        *row[col_index] = s;
+                        col_index += 1;
+                    });
                 });
-                apply_external_round_matrix(&mut state);
-                state = std::array::from_fn(|i| pow5(state[i]));
-                state.iter().copied().for_each(|s| {
-                    trace[col_index].data[vec_index] = s;
+
+                // Partial rounds.
+                (0..N_PARTIAL_ROUNDS).for_each(|round| {
+                    state[0] += PackedBaseField::broadcast(INTERNAL_ROUND_CONSTS[round]);
+                    apply_internal_round_matrix(&mut state);
+                    state[0] = pow5(state[0]);
+                    *row[col_index] = state[0];
                     col_index += 1;
                 });
-            });
 
-            lookup_data.final_state[rep_i]
-                .iter_mut()
-                .zip(state)
-                .for_each(|(res, state_i)| res.data[vec_index] = state_i);
-        }
-    }
+                // 4 full rounds.
+                (0..N_HALF_FULL_ROUNDS).for_each(|round| {
+                    (0..N_STATE).for_each(|i| {
+                        state[i] += PackedBaseField::broadcast(
+                            EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i],
+                        );
+                    });
+                    apply_external_round_matrix(&mut state);
+                    state = std::array::from_fn(|i| pow5(state[i]));
+                    state.iter().copied().for_each(|s| {
+                        *row[col_index] = s;
+                        col_index += 1;
+                    });
+                });
+
+                *lookup_data.final_state[rep_i] = state;
+            }
+        });
     _span.exit();
-    let domain = CanonicCoset::new(log_size).circle_domain();
-    let trace = trace
-        .into_iter()
-        .map(|eval| CircleEvaluation::new(domain, eval))
-        .collect();
-    (trace, lookup_data)
+    (trace.to_evals().to_vec(), lookup_data)
 }
 
 pub fn gen_interaction_trace(
     log_size: u32,
-    lookup_data: LookupData,
+    mut lookup_data: LookupData,
     lookup_elements: &PoseidonElements,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -305,18 +291,11 @@ pub fn gen_interaction_trace(
     #[allow(clippy::needless_range_loop)]
     for rep_i in 0..N_INSTANCES_PER_ROW {
         let mut col_gen = logup_gen.new_col();
-        for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
+        for (vec_row, lookup_data) in lookup_data.iter_mut().enumerate() {
             // Batch the 2 lookups together.
-            let denom0: PackedSecureField = lookup_elements.combine(
-                &lookup_data.initial_state[rep_i]
-                    .each_ref()
-                    .map(|s| s.data[vec_row]),
-            );
-            let denom1: PackedSecureField = lookup_elements.combine(
-                &lookup_data.final_state[rep_i]
-                    .each_ref()
-                    .map(|s| s.data[vec_row]),
-            );
+            let denom0: PackedSecureField =
+                lookup_elements.combine(lookup_data.initial_state[rep_i]);
+            let denom1: PackedSecureField = lookup_elements.combine(lookup_data.final_state[rep_i]);
             // (1 / denom1) - (1 / denom1) = (denom1 - denom0) / (denom0 * denom1).
             col_gen.write_frac(vec_row, denom1 - denom0, denom0 * denom1);
         }
@@ -330,6 +309,10 @@ pub fn prove_poseidon(
     log_n_instances: u32,
     config: PcsConfig,
 ) -> (PoseidonComponent, StarkProof<Blake2sMerkleHasher>) {
+    rayon::ThreadPoolBuilder::new()
+        .stack_size(8388608)
+        .build_global()
+        .unwrap();
     assert!(log_n_instances >= N_LOG_INSTANCES_PER_ROW as u32);
     let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
 
@@ -396,22 +379,22 @@ mod tests {
 
     use itertools::Itertools;
     use num_traits::One;
+    use stwo_prover::constraint_framework::assert_constraints;
+    use stwo_prover::constraint_framework::preprocessed_columns::gen_is_first;
+    use stwo_prover::core::air::Component;
+    use stwo_prover::core::channel::Blake2sChannel;
+    use stwo_prover::core::fields::m31::BaseField;
+    use stwo_prover::core::fri::FriConfig;
+    use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
+    use stwo_prover::core::poly::circle::CanonicCoset;
+    use stwo_prover::core::prover::verify;
+    use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo_prover::math::matrix::{RowMajorMatrix, SquareMatrix};
 
-    use crate::constraint_framework::assert_constraints;
-    use crate::constraint_framework::preprocessed_columns::gen_is_first;
-    use crate::core::air::Component;
-    use crate::core::channel::Blake2sChannel;
-    use crate::core::fields::m31::BaseField;
-    use crate::core::fri::FriConfig;
-    use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
-    use crate::core::poly::circle::CanonicCoset;
-    use crate::core::prover::verify;
-    use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::poseidon::{
         apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,
         gen_trace, prove_poseidon, PoseidonElements,
     };
-    use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
 
     #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
     #[wasm_bindgen_test::wasm_bindgen_test]
@@ -487,7 +470,7 @@ mod tests {
     }
 
     #[test_log::test]
-    fn test_simd_poseidon_prove() {
+    fn test_simd_poseidon_par_prove() {
         // Note: To see time measurement, run test with
         //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="
         //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=3" cargo test
