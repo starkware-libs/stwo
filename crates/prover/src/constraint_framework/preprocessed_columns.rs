@@ -37,6 +37,15 @@ impl PreprocessedColumn {
         }
     }
 
+    pub fn log_size(&self) -> u32 {
+        match self {
+            PreprocessedColumn::IsFirst(log_size) => *log_size,
+            PreprocessedColumn::Seq(log_size) => *log_size,
+            PreprocessedColumn::XorTable(log_size, ..) => *log_size,
+            PreprocessedColumn::Plonk(_) => unimplemented!(),
+        }
+    }
+
     /// Returns the values of the column at the given row.
     pub fn packed_at(&self, vec_row: usize) -> PackedM31 {
         match self {
