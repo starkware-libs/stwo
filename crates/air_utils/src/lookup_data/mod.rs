@@ -3,7 +3,7 @@ mod tests {
     use itertools::{all, Itertools};
     use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
     use rayon::slice::ParallelSlice;
-    use stwo_air_utils_derive::{IterMut, ParMutIter, Uninitialized};
+    use stwo_air_utils_derive::{IterMut, ParIterMut, Uninitialized};
     use stwo_prover::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
     use stwo_prover::core::fields::m31::M31;
 
@@ -11,7 +11,7 @@ mod tests {
 
     /// Lookup data for the example ComponentTrace.
     /// Vectors are assumed to be of the same length.
-    #[derive(Uninitialized, IterMut, ParMutIter)]
+    #[derive(Uninitialized, IterMut, ParIterMut)]
     struct LookupData {
         field0: Vec<PackedM31>,
         field1: Vec<[PackedM31; 2]>,
