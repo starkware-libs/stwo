@@ -1,4 +1,5 @@
 //! Accumulators for a random linear combination of circle polynomials.
+//!
 //! Given N polynomials, u_0(P), ... u_{N-1}(P), and a random alpha, the combined polynomial is
 //! defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i(P).
@@ -13,7 +14,6 @@ use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::FieldOps;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::generate_secure_powers;
 
 /// Accumulates N evaluations of u_i(P0) at a single point.
 /// Computes f(P0), the combined polynomial at that point.
@@ -63,7 +63,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     pub fn new(random_coeff: SecureField, max_log_size: u32, total_columns: usize) -> Self {
         let max_log_size = max_log_size as usize;
         Self {
-            random_coeff_powers: generate_secure_powers(random_coeff, total_columns),
+            random_coeff_powers: B::generate_secure_powers(random_coeff, total_columns),
             sub_accumulations: (0..(max_log_size + 1)).map(|_| None).collect(),
         }
     }
@@ -100,15 +100,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     pub fn log_size(&self) -> u32 {
         (self.sub_accumulations.len() - 1) as u32
     }
-}
 
-pub trait AccumulationOps: FieldOps<BaseField> + Sized {
-    /// Accumulates other into column:
-    ///   column = column + other.
-    fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>);
-}
-
-impl<B: Backend> DomainEvaluationAccumulator<B> {
     /// Computes f(P) as coefficients.
     pub fn finalize(self) -> SecureCirclePoly<B> {
         assert_eq!(
@@ -157,12 +149,21 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     }
 }
 
+pub trait AccumulationOps: FieldOps<BaseField> + Sized {
+    /// Accumulates other into column:
+    ///   column = column + other.
+    fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>);
+
+    /// Generates the first `n_powers` powers of `felt`.
+    fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField>;
+}
+
 /// A domain accumulator for polynomials of a single size.
 pub struct ColumnAccumulator<'a, B: Backend> {
     pub random_coeff_powers: Vec<SecureField>,
     pub col: &'a mut SecureColumnByCoords<B>,
 }
-impl<'a> ColumnAccumulator<'a, CpuBackend> {
+impl ColumnAccumulator<'_, CpuBackend> {
     pub fn accumulate(&mut self, index: usize, evaluation: SecureField) {
         let val = self.col.at(index) + evaluation;
         self.col.set(index, val);

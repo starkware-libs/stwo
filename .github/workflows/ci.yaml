@@ -25,7 +25,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           components: rustfmt
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-12-17
       - uses: Swatinem/rust-cache@v2
       - run: scripts/rust_fmt.sh --check
 
@@ -36,7 +36,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           components: clippy
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-12-17
       - uses: Swatinem/rust-cache@v2
       - run: scripts/clippy.sh
 
@@ -46,25 +46,25 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-12-17
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 doc
+      - run: cargo +nightly-2024-12-17 doc
 
-  run-wasm32-wasi-tests:
+  run-wasm32-wasip1-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
-          targets: wasm32-wasi
+          toolchain: nightly-2024-12-17
+          targets: wasm32-wasip1
       - uses: taiki-e/install-action@v2
         with:
           tool: wasmtime
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --target wasm32-wasi
+      - run: cargo test --target wasm32-wasip1
         env:
-          CARGO_TARGET_WASM32_WASI_RUNNER: "wasmtime run --"
+          CARGO_TARGET_WASM32_WASIP1_RUNNER: "wasmtime run --"
           RUSTFLAGS: -C target-feature=+simd128
 
   run-wasm32-unknown-tests:
@@ -73,7 +73,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-12-17
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - uses: jetli/wasm-pack-action@v0.4.0
@@ -89,9 +89,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-12-17
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test
+      - run: cargo +nightly-2024-12-17 test
         env:
           RUSTFLAGS: -C target-feature=+neon
 
@@ -104,9 +104,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-12-17
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test
+      - run: cargo +nightly-2024-12-17 test
         env:
           RUSTFLAGS: -C target-cpu=native -C target-feature=+${{ matrix.target-feature }}
 
@@ -116,14 +116,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-12-17
       - name: Run benchmark
         run: ./scripts/bench.sh -- --output-format bencher | tee output.txt
       - name: Download previous benchmark data
         uses: actions/cache@v4
         with:
           path: ./cache
-          key: ${{ runner.os }}-benchmark
+          key: ${{ runner.os }}-${{github.event.pull_request.base.ref}}-benchmark
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
@@ -142,14 +142,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-12-17
       - name: Run benchmark
         run: ./scripts/bench.sh --features="parallel" -- --output-format bencher | tee output.txt
       - name: Download previous benchmark data
         uses: actions/cache@v4
         with:
           path: ./cache
-          key: ${{ runner.os }}-benchmark
+          key: ${{ runner.os }}-${{github.event.pull_request.base.ref}}-benchmark
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
@@ -168,9 +168,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-12-17
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test
+      - run: cargo +nightly-2024-12-17 test
 
   run-slow-tests:
     runs-on: ubuntu-latest
@@ -178,9 +178,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-12-17
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test --release --features="slow-tests"
+      - run: cargo +nightly-2024-12-17 test --release --features="slow-tests"
 
   run-tests-parallel:
     runs-on: ubuntu-latest
@@ -188,9 +188,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2024-01-04
+          toolchain: nightly-2024-12-17
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2024-01-04 test --features="parallel"
+      - run: cargo +nightly-2024-12-17 test --features="parallel"
 
   machete:
     runs-on: ubuntu-latest
@@ -201,9 +201,9 @@ jobs:
           toolchain: nightly-2024-01-04
       - uses: Swatinem/rust-cache@v2
       - name: Install Machete
-        run: cargo +nightly-2024-01-04 install --locked cargo-machete
+        run: cargo +nightly-2024-12-17 install --locked cargo-machete
       - name: Run Machete (detect unused dependencies)
-        run: cargo +nightly-2024-01-04 machete
+        run: cargo +nightly-2024-12-17 machete
 
   all-tests:
     runs-on: ubuntu-latest
@@ -213,7 +213,7 @@ jobs:
       - run-tests
       - run-avx-tests
       - run-neon-tests
-      - run-wasm32-wasi-tests
+      - run-wasm32-wasip1-tests
       - run-slow-tests
       - run-tests-parallel
       - machete

@@ -1,0 +1,14 @@
+[package]
+name = "stwo-air-utils"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bytemuck.workspace = true
+itertools.workspace = true
+rayon = { version = "1.10.0", optional = false }
+stwo-prover = { path = "../prover" }
+stwo-air-utils-derive = { path = "../air_utils_derive" }
+
+[lib]
+bench = false

@@ -64,6 +64,13 @@ impl BaseColumn {
         values.into_iter().collect()
     }
 
+    pub fn from_simd(values: Vec<PackedBaseField>) -> Self {
+        Self {
+            length: values.len() * N_LANES,
+            data: values,
+        }
+    }
+
     /// Returns a vector of `BaseColumnMutSlice`s, each mutably owning
     /// `chunk_size` `PackedBaseField`s (i.e, `chuck_size` * `N_LANES` elements).
     pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<BaseColumnMutSlice<'_>> {
@@ -207,7 +214,7 @@ impl FromIterator<PackedCM31> for CM31Column {
 /// A mutable slice of a BaseColumn.
 pub struct BaseColumnMutSlice<'a>(pub &'a mut [PackedBaseField]);
 
-impl<'a> BaseColumnMutSlice<'a> {
+impl BaseColumnMutSlice<'_> {
     pub fn at(&self, index: usize) -> BaseField {
         self.0[index / N_LANES].to_array()[index % N_LANES]
     }
@@ -323,7 +330,7 @@ impl FromIterator<PackedSecureField> for SecureColumn {
 /// A mutable slice of a SecureColumnByCoords.
 pub struct SecureColumnByCoordsMutSlice<'a>(pub [BaseColumnMutSlice<'a>; SECURE_EXTENSION_DEGREE]);
 
-impl<'a> SecureColumnByCoordsMutSlice<'a> {
+impl SecureColumnByCoordsMutSlice<'_> {
     /// # Safety
     ///
     /// `vec_index` must be a valid index.
@@ -357,7 +364,7 @@ pub struct VeryPackedSecureColumnByCoordsMutSlice<'a>(
     pub [VeryPackedBaseColumnMutSlice<'a>; SECURE_EXTENSION_DEGREE],
 );
 
-impl<'a> VeryPackedSecureColumnByCoordsMutSlice<'a> {
+impl VeryPackedSecureColumnByCoordsMutSlice<'_> {
     /// # Safety
     ///
     /// `vec_index` must be a valid index.

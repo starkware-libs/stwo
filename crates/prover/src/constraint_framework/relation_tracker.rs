@@ -5,6 +5,7 @@ use itertools::Itertools;
 use num_traits::Zero;
 
 use super::logup::LogupSums;
+use super::preprocessed_columns::PreprocessedColumn;
 use super::{
     Batching, EvalAtRow, FrameworkEval, InfoEvaluator, Relation, RelationEntry,
     TraceLocationAllocator, INTERACTION_TRACE_IDX,
@@ -105,7 +106,7 @@ impl<'a> RelationTrackerEvaluator<'a> {
         self.entries
     }
 }
-impl<'a> EvalAtRow for RelationTrackerEvaluator<'a> {
+impl EvalAtRow for RelationTrackerEvaluator<'_> {
     type F = PackedBaseField;
     type EF = PackedSecureField;
 
@@ -144,6 +145,11 @@ impl<'a> EvalAtRow for RelationTrackerEvaluator<'a> {
             }))
         })
     }
+
+    fn get_preprocessed_column(&mut self, column: PreprocessedColumn) -> Self::F {
+        column.packed_at(self.vec_row)
+    }
+
     fn add_constraint<G>(&mut self, _constraint: G) {}
 
     fn combine_ef(_values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
