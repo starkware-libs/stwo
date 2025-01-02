@@ -57,7 +57,9 @@ pub fn accumulate_row_quotients(
         let mut numerator = SecureField::zero();
         for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
         {
+            println!("query_eval_at_column: {}", queried_values_at_row[*column_index]);
             let value = queried_values_at_row[*column_index] * *c;
+          
             // The numerator is a line equation passing through
             //   (sample_point.y, sample_value), (conj(sample_point), conj(sample_value))
             // evaluated at (domain_point.y, value).

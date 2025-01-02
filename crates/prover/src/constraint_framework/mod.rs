@@ -116,6 +116,7 @@ pub trait EvalAtRow {
     /// Adds a constraint to the component.
     fn add_constraint<G>(&mut self, constraint: G)
     where
+        G: Clone,
         Self::EF: Mul<G, Output = Self::EF> + From<G>;
 
     /// Adds an intermediate value in the base field to the component and returns its value.
@@ -231,10 +232,10 @@ macro_rules! logup_proxy {
             // offset from the is_first column when constant columns are supported.
             let (cur_cumsum, prev_row_cumsum) = match self.logup.claimed_sum.clone() {
                 Some((claimed_sum, claimed_row_index)) => {
-                    let [cur_cumsum, prev_row_cumsum, claimed_cumsum] = self
+                    let [prev_row_cumsum, cur_cumsum, claimed_cumsum] = self
                         .next_extension_interaction_mask(
                             self.logup.interaction,
-                            [0, -1, claimed_row_index as isize],
+                            [-1, 0, claimed_row_index as isize],
                         );
 
                     // Constrain that the claimed_sum in case that it is not equal to the total_sum.
@@ -244,8 +245,8 @@ macro_rules! logup_proxy {
                     (cur_cumsum, prev_row_cumsum)
                 }
                 None => {
-                    let [cur_cumsum, prev_row_cumsum] =
-                        self.next_extension_interaction_mask(self.logup.interaction, [0, -1]);
+                    let [prev_row_cumsum, cur_cumsum] =
+                        self.next_extension_interaction_mask(self.logup.interaction, [-1, 0]);
                     (cur_cumsum, prev_row_cumsum)
                 }
             };

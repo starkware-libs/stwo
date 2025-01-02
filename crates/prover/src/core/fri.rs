@@ -721,22 +721,42 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
             decommitment_positions_by_log_size
                 .insert(column_domain.log_size(), column_decommitment_positions);
 
+
+            println!("column_domain_log_size: {}", column_domain.log_size());
+
+
+    
             decommitmented_values.extend(
                 sparse_evaluation
                     .subset_evals
                     .iter()
                     .flatten()
-                    .flat_map(|qm31| qm31.to_m31_array()),
+                    .flat_map(|qm31|
+                        
+                        
+                        { 
+                            
+                            println!("{}", qm31);
+                            qm31.to_m31_array()
+        }),
             );
 
             let folded_evals = sparse_evaluation.fold_circle(self.folding_alpha, column_domain);
+
+            // println!("{:?}", column_domain);
+
+            // for eval in folded_evals.iter() {
+            //     println!("{}", eval);
+            // };
             folded_evals_by_column.push(folded_evals);
         }
+        
 
         // Check all proof evals have been consumed.
         if !fri_witness.is_empty() {
             return Err(FriVerificationError::FirstLayerEvaluationsInvalid);
         }
+
 
         let merkle_verifier = MerkleVerifier::new(
             self.proof.commitment,
@@ -1028,21 +1048,32 @@ fn compute_decommitment_positions_and_rebuild_evals(
 
         let subset_eval = subset_decommitment_positions
             .map(|position| match subset_queries_iter.next_if_eq(&position) {
-                Some(_) => Ok(query_evals.next().unwrap()),
-                None => witness_evals.next().ok_or(InsufficientWitnessError),
+                Some(_) => 
+                {
+                    println!("decommitment_position: {}", position);
+                    let res = query_evals.next().unwrap();
+                    println!("query_evals: {}", res);
+                    Ok(res)},
+                None => {
+                    let res = witness_evals.next().ok_or(InsufficientWitnessError);
+                    println!("decommitment_position: {}", position);
+                    println!("witness_eval: {}", res.clone().unwrap());
+                    res
+                },
             })
             .collect::<Result<_, _>>()?;
 
         subset_evals.push(subset_eval);
         subset_domain_index_initials.push(bit_reverse_index(subset_start, queries.log_domain_size));
     }
+    println!("subset_domain_index_initials: {:?}", &subset_domain_index_initials);
 
     let sparse_evaluation = SparseEvaluation::new(subset_evals, subset_domain_index_initials);
 
     Ok((decommitment_positions, sparse_evaluation))
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct InsufficientWitnessError;
 
 /// Foldable subsets of evaluations on a [`CirclePoly`] or [`LinePoly`].
@@ -1151,7 +1182,11 @@ pub fn fold_circle_into_line(
 
             // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
             let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
+
+            println!("f_at_p: {}", f0_px);
+            println!("f_at_neg_p: {}", f1_px);
             ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
+            // println!("y_inv: {}", p.y.inverse());
             let f_prime = alpha * f1_px + f0_px;
 
             dst.values.set(i, dst.values.at(i) * alpha_sq + f_prime);

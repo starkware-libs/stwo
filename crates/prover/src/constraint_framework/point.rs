@@ -44,16 +44,21 @@ impl EvalAtRow for PointEvaluator<'_> {
         interaction: usize,
         _offsets: [isize; N],
     ) -> [Self::F; N] {
+
         let col_index = self.col_index[interaction];
         self.col_index[interaction] += 1;
         let mask = self.mask[interaction][col_index].clone();
+
         assert_eq!(mask.len(), N);
         mask.try_into().unwrap()
     }
     fn add_constraint<G>(&mut self, constraint: G)
     where
+        G: Clone,
         Self::EF: Mul<G, Output = Self::EF>,
     {
+        // println!("constraint: {}", (Self::EF::from(1) * constraint.clone()));
+        // println!("denom_inverse: {}", self.denom_inverse);
         self.evaluation_accumulator
             .accumulate(self.denom_inverse * constraint);
     }

@@ -28,6 +28,7 @@ impl Poseidon252Channel {
     }
     fn draw_felt252(&mut self) -> FieldElement252 {
         let res = poseidon_hash(self.digest, self.channel_time.n_sent.into());
+        eprintln!("draw_felt252: res = {}", res);
         self.channel_time.inc_sent();
         res
     }

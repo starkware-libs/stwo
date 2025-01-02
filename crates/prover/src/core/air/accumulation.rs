@@ -21,7 +21,7 @@ use crate::core::poly::BitReversedOrder;
 #[derive(Debug, Clone)]
 pub struct PointEvaluationAccumulator {
     random_coeff: SecureField,
-    accumulation: SecureField,
+    pub accumulation: SecureField,
 }
 
 impl PointEvaluationAccumulator {

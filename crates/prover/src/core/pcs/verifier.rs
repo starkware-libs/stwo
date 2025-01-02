@@ -73,6 +73,12 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             })
             .collect_vec();
 
+
+        for log_sizes in self.column_log_sizes().0 {
+            println!("log_sizes: {:?}", log_sizes);
+        }
+   
+        
         // FRI commitment phase on OODS quotients.
         let mut fri_verifier =
             FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bounds)?;
@@ -86,12 +92,18 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         // Get FRI query positions.
         let query_positions_per_log_size = fri_verifier.sample_query_positions(channel);
 
+        
+
         // Verify merkle decommitments.
         self.trees
             .as_ref()
             .zip_eq(proof.decommitments)
             .zip_eq(proof.queried_values.clone())
             .map(|((tree, decommitment), queried_values)| {
+                // if queried_values.len() == 1236 {
+                //     eprintln!("queried_values: {:?}", queried_values.len());
+                //     eprintln!("queried_values: {:?}", queried_values);
+                // }
                 tree.verify(&query_positions_per_log_size, queried_values, decommitment)
             })
             .0

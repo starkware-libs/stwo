@@ -40,6 +40,10 @@ impl Components<'_> {
         *preprocessed_mask_points = vec![vec![]; self.n_preprocessed_columns];
 
         for component in &self.components {
+            //let points = component.mask_points(point);
+               
+            // println!("mask_sizes:\n {:?}", component.mask_points(point).map_cols(|x| x.len()));
+
             for idx in component.preproccessed_column_indices() {
                 preprocessed_mask_points[idx] = vec![point];
             }
@@ -56,6 +60,7 @@ impl Components<'_> {
     ) -> SecureField {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         for component in &self.components {
+            println!("eval: {}", evaluation_accumulator.accumulation);
             component.evaluate_constraint_quotients_at_point(
                 point,
                 mask_values,

@@ -94,6 +94,8 @@ pub fn verify<MC: MerkleChannel>(
     };
     let random_coeff = channel.draw_felt();
 
+    println!("random_coeff: {}", random_coeff);
+
     // Read composition polynomial commitment.
     commitment_scheme.commit(
         *proof.commitments.last().unwrap(),
@@ -106,6 +108,9 @@ pub fn verify<MC: MerkleChannel>(
 
     // Get mask sample points relative to oods point.
     let mut sample_points = components.mask_points(oods_point);
+
+    println!("sample_points: {:?}", sample_points[0].iter().map(|v| v.len()).collect::<Vec<_>>());
+
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
 
