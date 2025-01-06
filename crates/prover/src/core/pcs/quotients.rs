@@ -139,6 +139,7 @@ pub fn fri_answers_for_log_size(
     n_columns: TreeVec<usize>,
 ) -> Result<Vec<SecureField>, VerificationError> {
     let sample_batches = ColumnSampleBatch::new_vec(samples);
+    // TODO(ilya): Is it ok to use the same `random_coeff` for all log sizes.
     let quotient_constants = quotient_constants(&sample_batches, random_coeff);
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
 
