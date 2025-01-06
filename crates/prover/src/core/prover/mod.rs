@@ -155,7 +155,7 @@ pub enum VerificationError {
     ProofOfWork,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StarkProof<H: MerkleHasher>(pub CommitmentSchemeProof<H>);
 
 impl<H: MerkleHasher> StarkProof<H> {
