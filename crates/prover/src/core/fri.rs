@@ -639,7 +639,7 @@ impl LinePolyDegreeBound {
 }
 
 /// A FRI proof.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FriProof<H: MerkleHasher> {
     pub first_layer: FriLayerProof<H>,
     pub inner_layers: Vec<FriLayerProof<H>>,
@@ -654,7 +654,7 @@ pub const FOLD_STEP: u32 = 1;
 pub const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
 
 /// Proof of an individual FRI layer.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FriLayerProof<H: MerkleHasher> {
     /// Values that the verifier needs but cannot deduce from previous computations, in the
     /// order they are needed. This complements the values that were queried. These must be
