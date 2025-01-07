@@ -13,6 +13,7 @@ mod simd_domain;
 use std::array;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
+use std::rc::Rc;
 
 pub use assert::{assert_constraints, AssertEvaluator};
 pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
@@ -87,7 +88,7 @@ pub trait EvalAtRow {
         mask_item
     }
 
-    fn get_preprocessed_column(&mut self, _column: PreprocessedColumn) -> Self::F {
+    fn get_preprocessed_column(&mut self, _column: Rc<dyn PreprocessedColumn>) -> Self::F {
         let [mask_item] = self.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
         mask_item
     }
@@ -172,11 +173,11 @@ macro_rules! logup_proxy {
     () => {
         fn write_logup_frac(&mut self, fraction: Fraction<Self::EF, Self::EF>) {
             if self.logup.fracs.is_empty() {
-                self.logup.is_first = self.get_preprocessed_column(
-                    crate::constraint_framework::preprocessed_columns::PreprocessedColumn::IsFirst(
+                self.logup.is_first = self.get_preprocessed_column(std::rc::Rc::new(
+                    crate::constraint_framework::preprocessed_columns::IsFirst::new(
                         self.logup.log_size,
                     ),
-                );
+                ));
                 self.logup.is_finalized = false;
             }
             self.logup.fracs.push(fraction.clone());

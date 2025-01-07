@@ -162,7 +162,10 @@ macro_rules! xor_table_gen {
                     )
                 })
                 .to_vec();
-            constant_trace.push(gen_is_first(column_bits::<ELEM_BITS, EXPAND_BITS>()));
+            constant_trace.push(
+                IsFirst::new(column_bits::<ELEM_BITS, EXPAND_BITS>())
+                    .gen_preprocessed_column_simd(),
+            );
             constant_trace
         }
     };

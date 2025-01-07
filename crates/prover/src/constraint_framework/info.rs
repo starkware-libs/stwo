@@ -22,14 +22,14 @@ use crate::core::pcs::TreeVec;
 pub struct InfoEvaluator {
     pub mask_offsets: TreeVec<Vec<Vec<isize>>>,
     pub n_constraints: usize,
-    pub preprocessed_columns: Vec<PreprocessedColumn>,
+    pub preprocessed_columns: Vec<Rc<dyn PreprocessedColumn>>,
     pub logup: LogupAtRow<Self>,
     pub arithmetic_counts: ArithmeticCounts,
 }
 impl InfoEvaluator {
     pub fn new(
         log_size: u32,
-        preprocessed_columns: Vec<PreprocessedColumn>,
+        preprocessed_columns: Vec<Rc<dyn PreprocessedColumn>>,
         logup_sums: LogupSums,
     ) -> Self {
         Self {
@@ -70,7 +70,7 @@ impl EvalAtRow for InfoEvaluator {
         array::from_fn(|_| FieldCounter::one())
     }
 
-    fn get_preprocessed_column(&mut self, column: PreprocessedColumn) -> Self::F {
+    fn get_preprocessed_column(&mut self, column: Rc<dyn PreprocessedColumn>) -> Self::F {
         self.preprocessed_columns.push(column);
         FieldCounter::one()
     }
