@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::rc::Rc;
 
 use itertools::Itertools;
 use num_traits::Zero;
@@ -146,7 +147,7 @@ impl EvalAtRow for RelationTrackerEvaluator<'_> {
         })
     }
 
-    fn get_preprocessed_column(&mut self, column: PreprocessedColumn) -> Self::F {
+    fn get_preprocessed_column(&mut self, column: Rc<dyn PreprocessedColumn>) -> Self::F {
         column.packed_at(self.vec_row)
     }
 

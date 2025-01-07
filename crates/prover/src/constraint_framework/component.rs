@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::iter::zip;
 use std::ops::Deref;
+use std::rc::Rc;
 
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
@@ -49,7 +50,7 @@ pub struct TraceLocationAllocator {
     /// Mapping of tree index to next available column offset.
     next_tree_offsets: TreeVec<usize>,
     /// Mapping of preprocessed columns to their index.
-    preprocessed_columns: HashMap<PreprocessedColumn, usize>,
+    preprocessed_columns: HashMap<Rc<dyn PreprocessedColumn>, usize>,
     /// Controls whether the preprocessed columns are dynamic or static (default=Dynamic).
     preprocessed_columns_allocation_mode: PreprocessedColumnsAllocationMode,
 }
@@ -81,30 +82,37 @@ impl TraceLocationAllocator {
     }
 
     /// Create a new `TraceLocationAllocator` with fixed preprocessed columns setup.
-    pub fn new_with_preproccessed_columns(preprocessed_columns: &[PreprocessedColumn]) -> Self {
+    pub fn new_with_preproccessed_columns(
+        preprocessed_columns: &[Rc<dyn PreprocessedColumn>],
+    ) -> Self {
         Self {
             next_tree_offsets: Default::default(),
             preprocessed_columns: preprocessed_columns
                 .iter()
                 .enumerate()
-                .map(|(i, &col)| (col, i))
+                .map(|(i, col)| (col.clone(), i))
                 .collect(),
             preprocessed_columns_allocation_mode: PreprocessedColumnsAllocationMode::Static,
         }
     }
 
-    pub const fn preprocessed_columns(&self) -> &HashMap<PreprocessedColumn, usize> {
+    pub const fn preprocessed_columns(&self) -> &HashMap<Rc<dyn PreprocessedColumn>, usize> {
         &self.preprocessed_columns
     }
 
     // validates that `self.preprocessed_columns` is consistent with
     // `preprocessed_columns`.
     // I.e. preprocessed_columns[i] == self.preprocessed_columns[i].
-    pub fn validate_preprocessed_columns(&self, preprocessed_columns: &[PreprocessedColumn]) {
+    pub fn validate_preprocessed_columns(
+        &self,
+        preprocessed_columns: &[Rc<dyn PreprocessedColumn>],
+    ) {
         assert_eq!(preprocessed_columns.len(), self.preprocessed_columns.len());
-
         for (column, idx) in self.preprocessed_columns.iter() {
-            assert_eq!(Some(column), preprocessed_columns.get(*idx));
+            let preprocessed_column = preprocessed_columns
+                .get(*idx)
+                .expect("Preprocessed column is missing from preprocessed_columns");
+            assert_eq!(column.id(), preprocessed_column.id());
         }
     }
 }
@@ -146,7 +154,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
                 let next_column = location_allocator.preprocessed_columns.len();
                 *location_allocator
                     .preprocessed_columns
-                    .entry(*col)
+                    .entry(col.clone())
                     .or_insert_with(|| {
                         if matches!(
                             location_allocator.preprocessed_columns_allocation_mode,

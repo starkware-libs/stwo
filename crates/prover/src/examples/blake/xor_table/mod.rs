@@ -20,7 +20,7 @@ use num_traits::Zero;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator};
-use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
+use crate::constraint_framework::preprocessed_columns::{IsFirst, PreprocessedColumn, XorTable};
 use crate::constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, Relation, RelationEntry,
     INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,

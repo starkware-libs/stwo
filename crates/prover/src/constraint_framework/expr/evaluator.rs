@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use num_traits::Zero;
 
 use super::{BaseExpr, ExtExpr};
@@ -174,7 +176,7 @@ impl EvalAtRow for ExprEvaluator {
         intermediate
     }
 
-    fn get_preprocessed_column(&mut self, column: PreprocessedColumn) -> Self::F {
+    fn get_preprocessed_column(&mut self, column: Rc<dyn PreprocessedColumn>) -> Self::F {
         BaseExpr::Param(column.name().to_string())
     }
 
