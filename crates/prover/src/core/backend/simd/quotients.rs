@@ -1,5 +1,7 @@
 use itertools::{izip, zip_eq, Itertools};
 use num_traits::Zero;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use tracing::{span, Level};
 
 use super::cm31::PackedCM31;
@@ -114,10 +116,17 @@ fn accumulate_quotients_on_subdomain(
     let quotient_constants = quotient_constants(sample_batches, random_coeff, subdomain);
 
     let span = span!(Level::INFO, "Quotient accumulation").entered();
-    for (quad_row, points) in CircleDomainBitRevIterator::new(subdomain)
+    let quad_rows = CircleDomainBitRevIterator::new(subdomain)
         .array_chunks::<4>()
-        .enumerate()
-    {
+        .collect_vec();
+
+    #[cfg(not(feature = "parallel"))]
+    let iter = quad_rows.iter().zip(values.chunks_mut(4)).enumerate();
+
+    #[cfg(feature = "parallel")]
+    let iter = quad_rows.par_iter().zip(values.chunks_mut(4)).enumerate();
+
+    iter.for_each(|(quad_row, (points, mut values_dst))| {
         // TODO(andrew): Spapini said: Use optimized domain iteration. Is there a better way to do
         // this?
         let (y01, _) = points[0].y.deinterleave(points[1].y);
@@ -130,11 +139,13 @@ fn accumulate_quotients_on_subdomain(
             quad_row,
             spaced_ys,
         );
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..4 {
-            unsafe { values.set_packed((quad_row << 2) + i, row_accumulator[i]) };
+        unsafe {
+            values_dst.set_packed(0, row_accumulator[0]);
+            values_dst.set_packed(1, row_accumulator[1]);
+            values_dst.set_packed(2, row_accumulator[2]);
+            values_dst.set_packed(3, row_accumulator[3]);
         }
-    }
+    });
     span.exit();
     let span = span!(Level::INFO, "Quotient extension").entered();
 
