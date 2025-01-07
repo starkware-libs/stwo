@@ -194,23 +194,23 @@ mod tests {
     fn test_expr_evaluator() {
         let test_struct = TestStruct {};
         let eval = test_struct.evaluate(ExprEvaluator::new(16, false));
-        let expected = "let intermediate0 = (col_1_1[0]) * (col_1_2[0]);
+        let expected = "let intermediate0 = (trace_1_column_1_offset_0) * (trace_1_column_2_offset_0);
 
 \
-        let intermediate1 = (TestRelation_alpha0) * (col_1_0[0]) \
-            + (TestRelation_alpha1) * (col_1_1[0]) \
-            + (TestRelation_alpha2) * (col_1_2[0]) \
+        let intermediate1 = (TestRelation_alpha0) * (trace_1_column_0_offset_0) \
+            + (TestRelation_alpha1) * (trace_1_column_1_offset_0) \
+            + (TestRelation_alpha2) * (trace_1_column_2_offset_0) \
             - (TestRelation_z);
 
 \
-        let constraint_0 = ((col_1_0[0]) * (intermediate0)) * (1 / (col_1_0[0] + col_1_1[0]));
+        let constraint_0 = ((trace_1_column_0_offset_0) * (intermediate0)) * (1 / (trace_1_column_0_offset_0 + trace_1_column_1_offset_0));
 
 \
-        let constraint_1 = (SecureCol(col_2_3[0], col_2_4[0], col_2_5[0], col_2_6[0]) \
-            - (SecureCol(col_2_3[-1], col_2_4[-1], col_2_5[-1], col_2_6[-1]) \
-                - ((total_sum) * (preprocessed.is_first)))) \
+        let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0, trace_2_column_6_offset_0]) \
+            - (QM31Impl::from_partial_evals([trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1, trace_2_column_6_offset_neg_1]) \
+                - ((total_sum) * (preprocessed_is_first)))) \
             * (intermediate1) \
-            - (1);"
+            - (qm31(1, 0, 0, 0));"
             .to_string();
 
         assert_eq!(eval.format_constraints(), expected);

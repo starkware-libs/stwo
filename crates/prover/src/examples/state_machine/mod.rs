@@ -358,28 +358,28 @@ mod tests {
         );
 
         let eval = component.evaluate(ExprEvaluator::new(log_n_rows, true));
-        let expected = "let intermediate0 = (StateMachineElements_alpha0) * (col_1_0[0]) \
-            + (StateMachineElements_alpha1) * (col_1_1[0]) \
+        let expected = "let intermediate0 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0) \
+            + (StateMachineElements_alpha1) * (trace_1_column_1_offset_0) \
             - (StateMachineElements_z);
 
 \
-        let intermediate1 = (StateMachineElements_alpha0) * (col_1_0[0] + 1) \
-            + (StateMachineElements_alpha1) * (col_1_1[0]) \
+        let intermediate1 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0 + m31(1).into()) \
+            + (StateMachineElements_alpha1) * (trace_1_column_1_offset_0) \
             - (StateMachineElements_z);
 
 \
-        let constraint_0 = (SecureCol(\
-            col_2_2[claimed_sum_offset], \
-            col_2_3[claimed_sum_offset], \
-            col_2_4[claimed_sum_offset], \
-            col_2_5[claimed_sum_offset]\
-        ) - (claimed_sum)) \
-            * (preprocessed.is_first);
+        let constraint_0 = (QM31Impl::from_partial_evals([\
+            trace_2_column_2_offset_claimed_sum, \
+            trace_2_column_3_offset_claimed_sum, \
+            trace_2_column_4_offset_claimed_sum, \
+            trace_2_column_5_offset_claimed_sum\
+        ]) - (claimed_sum)) \
+            * (preprocessed_is_first);
 
 \
-        let constraint_1 = (SecureCol(col_2_2[0], col_2_3[0], col_2_4[0], col_2_5[0]) \
-            - (SecureCol(col_2_2[-1], col_2_3[-1], col_2_4[-1], col_2_5[-1]) \
-                - ((total_sum) * (preprocessed.is_first)))\
+        let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_2_offset_0, trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0]) \
+            - (QM31Impl::from_partial_evals([trace_2_column_2_offset_neg_1, trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1]) \
+                - ((total_sum) * (preprocessed_is_first)))\
             ) \
             * ((intermediate0) * (intermediate1)) \
             - (intermediate1 - (intermediate0));"

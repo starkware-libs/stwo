@@ -11,13 +11,18 @@ impl BaseExpr {
                 offset,
             }) => {
                 let offset_str = if *offset == CLAIMED_SUM_DUMMY_OFFSET as isize {
-                    "claimed_sum_offset".to_string()
+                    "claimed_sum".to_string()
                 } else {
-                    offset.to_string()
+                    let offset_abs = offset.abs();
+                    if *offset >= 0 {
+                        offset.to_string()
+                    } else {
+                        format!("neg_{offset_abs}")
+                    }
                 };
-                format!("col_{interaction}_{idx}[{offset_str}]")
+                format!("trace_{interaction}_column_{idx}_offset_{offset_str}")
             }
-            BaseExpr::Const(c) => c.to_string(),
+            BaseExpr::Const(c) => format!("m31({c}).into()"),
             BaseExpr::Param(v) => v.to_string(),
             BaseExpr::Add(a, b) => format!("{} + {}", a.format_expr(), b.format_expr()),
             BaseExpr::Sub(a, b) => format!("{} - ({})", a.format_expr(), b.format_expr()),
@@ -38,7 +43,7 @@ impl ExtExpr {
                     a.format_expr()
                 } else {
                     format!(
-                        "SecureCol({}, {}, {}, {})",
+                        "QM31Impl::from_partial_evals([{}, {}, {}, {}])",
                         a.format_expr(),
                         b.format_expr(),
                         c.format_expr(),
@@ -47,12 +52,8 @@ impl ExtExpr {
                 }
             }
             ExtExpr::Const(c) => {
-                if c.0 .1.is_zero() && c.1 .0.is_zero() && c.1 .1.is_zero() {
-                    // If the constant is in the base field, display it as such.
-                    c.0 .0.to_string()
-                } else {
-                    c.to_string()
-                }
+                let [v0, v1, v2, v3] = c.to_m31_array();
+                format!("qm31({v0}, {v1}, {v2}, {v3})")
             }
             ExtExpr::Param(v) => v.to_string(),
             ExtExpr::Add(a, b) => format!("{} + {}", a.format_expr(), b.format_expr()),
