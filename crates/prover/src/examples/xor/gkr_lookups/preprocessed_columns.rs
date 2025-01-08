@@ -25,8 +25,6 @@ impl IsStepWithOffset {
 
     // TODO(andrew): Consider optimizing. Is a quotients of two coset_vanishing (use succinct rep
     // for verifier).
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     pub fn gen_column_simd(&self) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
         let mut col = Col::<SimdBackend, BaseField>::zeros(1 << self.log_size);
         let size = 1 << self.log_size;

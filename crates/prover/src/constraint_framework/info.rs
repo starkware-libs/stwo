@@ -6,7 +6,6 @@ use std::rc::Rc;
 use num_traits::{One, Zero};
 
 use super::logup::{LogupAtRow, LogupSums};
-use super::preprocessed_columns::PreprocessedColumn;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
 use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
 use crate::core::fields::m31::BaseField;
@@ -22,16 +21,12 @@ use crate::core::pcs::TreeVec;
 pub struct InfoEvaluator {
     pub mask_offsets: TreeVec<Vec<Vec<isize>>>,
     pub n_constraints: usize,
-    pub preprocessed_columns: Vec<PreprocessedColumn>,
+    pub preprocessed_columns: Vec<String>,
     pub logup: LogupAtRow<Self>,
     pub arithmetic_counts: ArithmeticCounts,
 }
 impl InfoEvaluator {
-    pub fn new(
-        log_size: u32,
-        preprocessed_columns: Vec<PreprocessedColumn>,
-        logup_sums: LogupSums,
-    ) -> Self {
+    pub fn new(log_size: u32, preprocessed_columns: Vec<String>, logup_sums: LogupSums) -> Self {
         Self {
             mask_offsets: Default::default(),
             n_constraints: Default::default(),
@@ -70,7 +65,7 @@ impl EvalAtRow for InfoEvaluator {
         array::from_fn(|_| FieldCounter::one())
     }
 
-    fn get_preprocessed_column(&mut self, column: PreprocessedColumn) -> Self::F {
+    fn get_preprocessed_column(&mut self, column: String) -> Self::F {
         self.preprocessed_columns.push(column);
         FieldCounter::one()
     }

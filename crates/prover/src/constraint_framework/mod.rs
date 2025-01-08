@@ -19,7 +19,6 @@ pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
-use preprocessed_columns::PreprocessedColumn;
 pub use simd_domain::SimdDomainEvaluator;
 
 use crate::core::fields::m31::BaseField;
@@ -87,7 +86,7 @@ pub trait EvalAtRow {
         mask_item
     }
 
-    fn get_preprocessed_column(&mut self, _column: PreprocessedColumn) -> Self::F {
+    fn get_preprocessed_column(&mut self, _column: String) -> Self::F {
         let [mask_item] = self.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
         mask_item
     }
@@ -173,9 +172,10 @@ macro_rules! logup_proxy {
         fn write_logup_frac(&mut self, fraction: Fraction<Self::EF, Self::EF>) {
             if self.logup.fracs.is_empty() {
                 self.logup.is_first = self.get_preprocessed_column(
-                    crate::constraint_framework::preprocessed_columns::PreprocessedColumn::IsFirst(
+                    crate::constraint_framework::preprocessed_columns::IsFirst::new(
                         self.logup.log_size,
-                    ),
+                    )
+                    .id(),
                 );
                 self.logup.is_finalized = false;
             }

@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::iter::zip;
 use std::ops::Deref;
@@ -11,7 +10,6 @@ use tracing::{span, Level};
 
 use super::cpu_domain::CpuDomainEvaluator;
 use super::logup::LogupSums;
-use super::preprocessed_columns::PreprocessedColumn;
 use super::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, PREPROCESSED_TRACE_IDX,
 };
@@ -49,7 +47,7 @@ pub struct TraceLocationAllocator {
     /// Mapping of tree index to next available column offset.
     next_tree_offsets: TreeVec<usize>,
     /// Mapping of preprocessed columns to their index.
-    preprocessed_columns: HashMap<PreprocessedColumn, usize>,
+    preprocessed_columns: Vec<String>,
     /// Controls whether the preprocessed columns are dynamic or static (default=Dynamic).
     preprocessed_columns_allocation_mode: PreprocessedColumnsAllocationMode,
 }
@@ -81,31 +79,23 @@ impl TraceLocationAllocator {
     }
 
     /// Create a new `TraceLocationAllocator` with fixed preprocessed columns setup.
-    pub fn new_with_preproccessed_columns(preprocessed_columns: &[PreprocessedColumn]) -> Self {
+    pub fn new_with_preproccessed_columns(preprocessed_columns: &[String]) -> Self {
         Self {
             next_tree_offsets: Default::default(),
-            preprocessed_columns: preprocessed_columns
-                .iter()
-                .enumerate()
-                .map(|(i, &col)| (col, i))
-                .collect(),
+            preprocessed_columns: preprocessed_columns.to_vec(),
             preprocessed_columns_allocation_mode: PreprocessedColumnsAllocationMode::Static,
         }
     }
 
-    pub const fn preprocessed_columns(&self) -> &HashMap<PreprocessedColumn, usize> {
+    pub const fn preprocessed_columns(&self) -> &Vec<String> {
         &self.preprocessed_columns
     }
 
     // validates that `self.preprocessed_columns` is consistent with
     // `preprocessed_columns`.
     // I.e. preprocessed_columns[i] == self.preprocessed_columns[i].
-    pub fn validate_preprocessed_columns(&self, preprocessed_columns: &[PreprocessedColumn]) {
-        assert_eq!(preprocessed_columns.len(), self.preprocessed_columns.len());
-
-        for (column, idx) in self.preprocessed_columns.iter() {
-            assert_eq!(Some(column), preprocessed_columns.get(*idx));
-        }
+    pub fn validate_preprocessed_columns(&self, preprocessed_columns: &[String]) {
+        assert_eq!(self.preprocessed_columns, preprocessed_columns);
     }
 }
 
@@ -144,22 +134,25 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
             .iter()
             .map(|col| {
                 let next_column = location_allocator.preprocessed_columns.len();
-                *location_allocator
+                if let Some(pos) = location_allocator
                     .preprocessed_columns
-                    .entry(*col)
-                    .or_insert_with(|| {
-                        if matches!(
-                            location_allocator.preprocessed_columns_allocation_mode,
-                            PreprocessedColumnsAllocationMode::Static
-                        ) {
-                            panic!(
-                                "Preprocessed column {:?} is missing from static alloction",
-                                col
-                            );
-                        }
-
-                        next_column
-                    })
+                    .iter()
+                    .position(|x| x == col)
+                {
+                    pos
+                } else {
+                    if matches!(
+                        location_allocator.preprocessed_columns_allocation_mode,
+                        PreprocessedColumnsAllocationMode::Static
+                    ) {
+                        panic!(
+                            "Preprocessed column {:?} is missing from static allocation",
+                            col
+                        );
+                    }
+                    location_allocator.preprocessed_columns.push(col.clone());
+                    next_column
+                }
             })
             .collect();
         Self {
