@@ -18,19 +18,6 @@ use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
-use crate::core::fields::{FieldExpOps, FieldOps};
-
-impl FieldOps<BaseField> for SimdBackend {
-    fn batch_inverse(column: &BaseColumn, dst: &mut BaseColumn) {
-        PackedBaseField::batch_inverse(&column.data, &mut dst.data);
-    }
-}
-
-impl FieldOps<SecureField> for SimdBackend {
-    fn batch_inverse(column: &SecureColumn, dst: &mut SecureColumn) {
-        PackedSecureField::batch_inverse(&column.data, &mut dst.data);
-    }
-}
 
 /// An efficient structure for storing and operating on a arbitrary number of [`BaseField`] values.
 #[derive(Clone, Debug)]

@@ -3,8 +3,8 @@ use std::iter::zip;
 
 use super::m31::BaseField;
 use super::qm31::SecureField;
-use super::{ExtensionOf, FieldOps};
-use crate::core::backend::{Col, Column, CpuBackend};
+use super::ExtensionOf;
+use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
 
 pub const SECURE_EXTENSION_DEGREE: usize =
     <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE;
@@ -12,7 +12,7 @@ pub const SECURE_EXTENSION_DEGREE: usize =
 /// A column major array of `SECURE_EXTENSION_DEGREE` base field columns, that represents a column
 /// of secure field element coordinates.
 #[derive(Clone, Debug)]
-pub struct SecureColumnByCoords<B: FieldOps<BaseField>> {
+pub struct SecureColumnByCoords<B: ColumnOps<BaseField>> {
     pub columns: [Col<B, BaseField>; SECURE_EXTENSION_DEGREE],
 }
 impl SecureColumnByCoords<CpuBackend> {
@@ -21,7 +21,7 @@ impl SecureColumnByCoords<CpuBackend> {
         (0..self.len()).map(|i| self.at(i)).collect()
     }
 }
-impl<B: FieldOps<BaseField>> SecureColumnByCoords<B> {
+impl<B: ColumnOps<BaseField>> SecureColumnByCoords<B> {
     pub fn at(&self, index: usize) -> SecureField {
         SecureField::from_m31_array(std::array::from_fn(|i| self.columns[i].at(index)))
     }

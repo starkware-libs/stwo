@@ -7,11 +7,10 @@
 use itertools::Itertools;
 use tracing::{span, Level};
 
-use crate::core::backend::{Backend, Col, Column, CpuBackend};
+use crate::core::backend::{Backend, Col, Column, ColumnOps, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
-use crate::core::fields::FieldOps;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 
@@ -149,7 +148,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     }
 }
 
-pub trait AccumulationOps: FieldOps<BaseField> + Sized {
+pub trait AccumulationOps: ColumnOps<BaseField> + Sized {
     /// Accumulates other into column:
     ///   column = column + other.
     fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>);

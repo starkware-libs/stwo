@@ -16,7 +16,7 @@ use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
-use crate::core::fields::{ExtensionOf, FieldOps};
+use crate::core::fields::ExtensionOf;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///
@@ -186,13 +186,13 @@ impl DerefMut for LinePoly {
 // only used by FRI where evaluations are in bit-reversed order.
 // TODO(andrew): Remove pub.
 #[derive(Clone, Debug)]
-pub struct LineEvaluation<B: FieldOps<BaseField>> {
+pub struct LineEvaluation<B: ColumnOps<BaseField>> {
     /// Evaluations of a univariate polynomial on `domain`.
     pub values: SecureColumnByCoords<B>,
     domain: LineDomain,
 }
 
-impl<B: FieldOps<BaseField>> LineEvaluation<B> {
+impl<B: ColumnOps<BaseField>> LineEvaluation<B> {
     /// Creates new [LineEvaluation] from a set of polynomial evaluations over a [LineDomain].
     ///
     /// # Panics

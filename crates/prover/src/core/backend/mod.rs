@@ -6,7 +6,6 @@ use super::air::accumulation::AccumulationOps;
 use super::channel::MerkleChannel;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
-use super::fields::FieldOps;
 use super::fri::FriOps;
 use super::lookups::gkr_prover::GkrOps;
 use super::pcs::quotients::QuotientOps;
@@ -21,8 +20,8 @@ pub trait Backend:
     Copy
     + Clone
     + Debug
-    + FieldOps<BaseField>
-    + FieldOps<SecureField>
+    + ColumnOps<BaseField>
+    + ColumnOps<SecureField>
     + PolyOps
     + QuotientOps
     + FriOps
