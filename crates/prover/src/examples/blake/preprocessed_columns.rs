@@ -1,6 +1,6 @@
 use tracing::{span, Level};
 
-use crate::constraint_framework::preprocessed_columns::gen_is_first;
+use crate::constraint_framework::preprocessed_columns::IsFirst;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::fields::m31::BaseField;
@@ -8,8 +8,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 
-// TODO(Gali): Add documentation and remove allow dead code.
-#[allow(dead_code)]
+// TODO(Gali): Add documentation.
 #[derive(Debug)]
 pub struct XorTable {
     pub n_bits: u32,
@@ -17,8 +16,6 @@ pub struct XorTable {
     pub index_in_table: usize,
 }
 impl XorTable {
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     pub const fn new(n_bits: u32, n_expand_bits: u32, index_in_table: usize) -> Self {
         Self {
             n_bits,
@@ -27,8 +24,6 @@ impl XorTable {
         }
     }
 
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     pub fn id(&self) -> String {
         format!(
             "preprocessed_xor_table_{}_{}_{}",
@@ -36,22 +31,16 @@ impl XorTable {
         )
     }
 
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     pub const fn limb_bits(&self) -> u32 {
         self.n_bits - self.n_expand_bits
     }
 
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     pub const fn column_bits(&self) -> u32 {
         2 * self.limb_bits()
     }
 
     /// Generates the Preprocessed trace for the xor table.
     /// Returns the Preprocessed trace, the Preprocessed trace, and the claimed sum.
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     #[allow(clippy::type_complexity)]
     pub fn generate_constant_trace(
         &self,
@@ -81,7 +70,7 @@ impl XorTable {
             })
             .to_vec();
         // TODO!(ShaharS): Remove this line.
-        constant_trace.push(gen_is_first(self.column_bits()));
+        constant_trace.push(IsFirst::new(self.column_bits()).gen_column_simd());
         constant_trace
     }
 }
