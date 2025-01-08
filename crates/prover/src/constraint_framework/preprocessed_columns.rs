@@ -41,6 +41,216 @@ impl Hash for dyn PreprocessedColumnTrait {
     }
 }
 
+/// A column with `1` at the first position, and `0` elsewhere.
+#[derive(Debug)]
+pub struct IsFirst {
+    pub log_size: u32,
+}
+impl IsFirst {
+    pub const fn new(log_size: u32) -> Self {
+        Self { log_size }
+    }
+}
+impl PreprocessedColumnTrait for IsFirst {
+    fn name(&self) -> &'static str {
+        "preprocessed_is_first"
+    }
+
+    fn id(&self) -> String {
+        format!("IsFirst(log_size: {})", self.log_size)
+    }
+
+    fn log_size(&self) -> u32 {
+        self.log_size
+    }
+    fn packed_at(&self, vec_row: usize) -> PackedM31 {
+        assert!(vec_row < (1 << self.log_size) / N_LANES);
+        if vec_row == 0 {
+            unsafe {
+                PackedM31::from_simd_unchecked(Simd::from_array(std::array::from_fn(|i| {
+                    if i == 0 {
+                        1
+                    } else {
+                        0
+                    }
+                })))
+            }
+        } else {
+            PackedM31::zero()
+        }
+    }
+
+    fn gen_column_simd(&self) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
+        let mut col = Col::<SimdBackend, BaseField>::zeros(1 << self.log_size);
+        col.set(0, BaseField::one());
+        CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
+    }
+}
+
+/// A column with the numbers [0..2^log_size-1].
+#[derive(Debug)]
+pub struct Seq {
+    pub log_size: u32,
+}
+impl Seq {
+    pub const fn new(log_size: u32) -> Self {
+        Self { log_size }
+    }
+}
+impl PreprocessedColumnTrait for Seq {
+    fn name(&self) -> &'static str {
+        "preprocessed_seq"
+    }
+
+    fn id(&self) -> String {
+        format!("Seq(log_size: {})", self.log_size)
+    }
+
+    fn log_size(&self) -> u32 {
+        self.log_size
+    }
+
+    fn packed_at(&self, vec_row: usize) -> PackedM31 {
+        assert!(vec_row < (1 << self.log_size) / N_LANES);
+        PackedM31::broadcast(M31::from(vec_row * N_LANES)) + SIMD_ENUMERATION_0
+    }
+
+    fn gen_column_simd(&self) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
+        let col = Col::<SimdBackend, BaseField>::from_iter(
+            (0..(1 << self.log_size)).map(BaseField::from),
+        );
+        CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
+    }
+}
+
+// TODO(Gali): Add documentation.
+#[derive(Debug)]
+pub struct XorTable {
+    pub n_bits: u32,
+    pub n_expand_bits: u32,
+    pub index_in_table: usize,
+}
+impl XorTable {
+    pub const fn new(n_bits: u32, n_expand_bits: u32, index_in_table: usize) -> Self {
+        Self {
+            n_bits,
+            n_expand_bits,
+            index_in_table,
+        }
+    }
+}
+impl PreprocessedColumnTrait for XorTable {
+    fn name(&self) -> &'static str {
+        "preprocessed_xor_table"
+    }
+
+    fn id(&self) -> String {
+        format!(
+            "XorTable(n_bits: {}, n_expand_bits: {}, index_in_table: {})",
+            self.n_bits, self.n_expand_bits, self.index_in_table
+        )
+    }
+
+    fn log_size(&self) -> u32 {
+        2 * (self.n_bits - self.n_expand_bits)
+    }
+
+    fn packed_at(&self, _vec_row: usize) -> PackedM31 {
+        todo!("XorTable::packed_at")
+    }
+
+    fn gen_column_simd(&self) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
+        todo!("XorTable::gen_preprocessed_column")
+    }
+}
+
+// TODO(Gali): Add documentation.
+#[derive(Debug)]
+pub struct Plonk {
+    pub wire: usize,
+}
+impl Plonk {
+    pub const fn new(wire: usize) -> Self {
+        Self { wire }
+    }
+}
+impl PreprocessedColumnTrait for Plonk {
+    fn name(&self) -> &'static str {
+        "preprocessed_plonk"
+    }
+
+    fn id(&self) -> String {
+        format!("Plonk(wire: {})", self.wire)
+    }
+
+    fn log_size(&self) -> u32 {
+        todo!("Plonk::log_size")
+    }
+
+    fn packed_at(&self, _vec_row: usize) -> PackedM31 {
+        todo!("Plonk::packed_at")
+    }
+
+    fn gen_column_simd(&self) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
+        todo!("Plonk::gen_preprocessed_column")
+    }
+}
+
+/// A column with `1` at every `2^log_step` positions, `0` elsewhere, shifted by offset.
+#[derive(Debug)]
+pub struct IsStepWithOffset {
+    log_size: u32,
+    log_step: u32,
+    offset: usize,
+}
+impl IsStepWithOffset {
+    pub const fn new(log_size: u32, log_step: u32, offset: usize) -> Self {
+        Self {
+            log_size,
+            log_step,
+            offset,
+        }
+    }
+}
+impl PreprocessedColumnTrait for IsStepWithOffset {
+    fn name(&self) -> &'static str {
+        "preprocessed_is_step_with_offset"
+    }
+
+    fn id(&self) -> String {
+        format!(
+            "IsStepWithOffset(log_size: {}, log_step: {}, offset: {})",
+            self.log_size, self.log_step, self.offset
+        )
+    }
+
+    fn log_size(&self) -> u32 {
+        self.log_size
+    }
+
+    fn packed_at(&self, _vec_row: usize) -> PackedM31 {
+        todo!("IsStepWithOffset::packed_at")
+    }
+
+    // TODO(andrew): Consider optimizing. Is a quotients of two coset_vanishing (use succinct rep
+    // for verifier).
+    fn gen_column_simd(&self) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
+        let mut col = Col::<SimdBackend, BaseField>::zeros(1 << self.log_size);
+
+        let size = 1 << self.log_size;
+        let step = 1 << self.log_step;
+        let step_offset = self.offset % step;
+
+        for i in (step_offset..size).step_by(step) {
+            let circle_domain_index = coset_index_to_circle_domain_index(i, self.log_size);
+            let circle_domain_index_bit_rev = bit_reverse_index(circle_domain_index, self.log_size);
+            col.set(circle_domain_index_bit_rev, BaseField::one());
+        }
+
+        CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
+    }
+}
+
 // TODO(ilya): Where should this enum be placed?
 // TODO(Gali): Add documentation for the rest of the variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
