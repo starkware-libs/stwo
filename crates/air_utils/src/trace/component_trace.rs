@@ -9,12 +9,13 @@ use stwo_prover::core::poly::BitReversedOrder;
 use super::row_iterator::{ParRowIterMut, RowIterMut};
 
 /// A 2D Matrix of [`PackedM31`] values.
-/// Used for generating the witness of 'Stwo' proofs.
+///
+/// Used for generating the witness of 'Stwo' proofs.\
 /// Stored as an array of `N` columns, each column is a vector of [`PackedM31`] values.
-/// All columns are of the same length.
+/// All columns are of the same length.\
 /// Exposes an iterator over mutable references to the rows of the matrix.
 ///
-/// # Example:
+/// # Example
 ///
 ///  ```text
 /// Computation trace of a^2 + (a + 1)^2 for a in 0..256
@@ -58,7 +59,9 @@ pub struct ComponentTrace<const N: usize> {
 impl<const N: usize> ComponentTrace<N> {
     /// Creates a new `ComponentTrace` with all values initialized to zero.
     /// The number of rows in each column is `2^log_size`.
-    /// # Panics:
+    ///
+    /// # Panics
+    ///
     /// if log_size < 4.
     pub fn zeroed(log_size: u32) -> Self {
         assert!(
@@ -71,10 +74,14 @@ impl<const N: usize> ComponentTrace<N> {
     }
 
     /// Creates a new `ComponentTrace` with all values uninitialized.
+    ///
     /// # Safety
+    ///
     /// The caller must ensure that the column is populated before being used.
     /// The number of rows in each column is `2^log_size`.
-    /// # Panics:
+    ///
+    /// # Panics
+    ///
     /// if `log_size` < 4.
     #[allow(clippy::uninit_vec)]
     pub unsafe fn uninitialized(log_size: u32) -> Self {
