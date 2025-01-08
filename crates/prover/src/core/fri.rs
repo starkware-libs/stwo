@@ -10,12 +10,11 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::instrument;
 
-use super::backend::{Col, CpuBackend};
+use super::backend::{Col, ColumnOps, CpuBackend};
 use super::channel::{Channel, MerkleChannel};
 use super::fields::m31::BaseField;
 use super::fields::qm31::{SecureField, QM31};
 use super::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
-use super::fields::FieldOps;
 use super::poly::circle::{CircleDomain, PolyOps, SecureEvaluation};
 use super::poly::line::{LineEvaluation, LinePoly};
 use super::poly::twiddles::TwiddleTree;
@@ -75,7 +74,7 @@ impl FriConfig {
     }
 }
 
-pub trait FriOps: FieldOps<BaseField> + PolyOps + Sized + FieldOps<SecureField> {
+pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField> {
     /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
     ///
     /// Let `eval` be a polynomial evaluated on a [LineDomain] `E`, `alpha` be a random field
