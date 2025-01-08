@@ -18,27 +18,15 @@ macro_rules! xor_table_eval {
                 // cl is the constant column for the xor: al ^ bl.
                 let al = self
                     .eval
-                    .get_preprocessed_column(PreprocessedColumn::XorTable(
-                        ELEM_BITS,
-                        EXPAND_BITS,
-                        0,
-                    ));
+                    .get_preprocessed_column(XorTable::new(ELEM_BITS, EXPAND_BITS, 0).id());
 
                 let bl = self
                     .eval
-                    .get_preprocessed_column(PreprocessedColumn::XorTable(
-                        ELEM_BITS,
-                        EXPAND_BITS,
-                        1,
-                    ));
+                    .get_preprocessed_column(XorTable::new(ELEM_BITS, EXPAND_BITS, 1).id());
 
                 let cl = self
                     .eval
-                    .get_preprocessed_column(PreprocessedColumn::XorTable(
-                        ELEM_BITS,
-                        EXPAND_BITS,
-                        2,
-                    ));
+                    .get_preprocessed_column(XorTable::new(ELEM_BITS, EXPAND_BITS, 2).id());
 
                 for i in (0..(1 << (2 * EXPAND_BITS))) {
                     let (i, j) = ((i >> EXPAND_BITS) as u32, (i % (1 << EXPAND_BITS)) as u32);

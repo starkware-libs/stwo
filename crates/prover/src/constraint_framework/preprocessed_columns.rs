@@ -54,8 +54,7 @@ impl IsFirst {
     }
 }
 
-// TODO(ilya): Where should this enum be placed?
-// TODO(Gali): Consider making it a trait, add documentation for the rest of the variants.
+// TODO(Gali): Remove Enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PreprocessedColumn {
     /// A column with `1` at the first position, and `0` elsewhere.
@@ -173,26 +172,15 @@ pub fn gen_preprocessed_columns<'a, B: Backend>(
 
 #[cfg(test)]
 mod tests {
+    use super::IsFirst;
     use crate::core::backend::simd::m31::N_LANES;
-    use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::Column;
-    use crate::core::fields::m31::{BaseField, M31};
     const LOG_SIZE: u32 = 8;
-
-    #[test]
-    fn test_gen_seq() {
-        let seq = super::gen_seq::<SimdBackend>(LOG_SIZE);
-
-        for i in 0..(1 << LOG_SIZE) {
-            assert_eq!(seq.at(i), BaseField::from_u32_unchecked(i as u32));
-        }
-    }
 
     // TODO(Gali): Add packed_at tests for xor_table and plonk.
     #[test]
     fn test_packed_at_is_first() {
-        let is_first = super::PreprocessedColumn::IsFirst(LOG_SIZE);
-        let expected_is_first = super::gen_is_first::<SimdBackend>(LOG_SIZE).to_cpu();
+        let is_first = IsFirst::new(LOG_SIZE);
+        let expected_is_first = is_first.gen_column_simd().to_cpu();
 
         for i in 0..(1 << LOG_SIZE) / N_LANES {
             assert_eq!(
@@ -200,18 +188,5 @@ mod tests {
                 expected_is_first[i * N_LANES..(i + 1) * N_LANES]
             );
         }
-    }
-
-    #[test]
-    fn test_packed_at_seq() {
-        let seq = super::PreprocessedColumn::Seq(LOG_SIZE);
-        let expected_seq: [_; 1 << LOG_SIZE] = std::array::from_fn(|i| M31::from(i as u32));
-
-        let packed_seq = std::array::from_fn::<_, { (1 << LOG_SIZE) / N_LANES }, _>(|i| {
-            seq.packed_at(i).to_array()
-        })
-        .concat();
-
-        assert_eq!(packed_seq, expected_seq);
     }
 }

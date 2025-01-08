@@ -1,5 +1,4 @@
-// TODO(Gali): Add documentation and remove allow dead code.
-#[allow(dead_code)]
+// TODO(Gali): Add documentation.
 #[derive(Debug)]
 pub struct XorTable {
     pub n_bits: u32,
@@ -7,8 +6,6 @@ pub struct XorTable {
     pub index_in_table: usize,
 }
 impl XorTable {
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     pub const fn new(n_bits: u32, n_expand_bits: u32, index_in_table: usize) -> Self {
         Self {
             n_bits,
@@ -17,8 +14,6 @@ impl XorTable {
         }
     }
 
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     pub fn id(&self) -> String {
         format!(
             "preprocessed_xor_table_{}_{}_{}",

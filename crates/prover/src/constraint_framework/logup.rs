@@ -52,7 +52,7 @@ pub struct LogupAtRow<E: EvalAtRow> {
     pub fracs: Vec<Fraction<E::EF, E::EF>>,
     pub is_finalized: bool,
     /// The value of the `is_first` constant column at current row.
-    /// See [`super::preprocessed_columns::gen_is_first()`].
+    /// See [`super::preprocessed_columns::IsFirst`].
     pub is_first: E::F,
     pub log_size: u32,
 }
