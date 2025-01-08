@@ -17,8 +17,10 @@ macro_rules! xor_table_gen {
                     .iter()
                     .map(|mult| {
                         CircleEvaluation::new(
-                            CanonicCoset::new(column_bits::<ELEM_BITS, EXPAND_BITS>())
-                                .circle_domain(),
+                            CanonicCoset::new(
+                                XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits(),
+                            )
+                            .circle_domain(),
                             mult.clone(),
                         )
                     })
@@ -41,10 +43,11 @@ macro_rules! xor_table_gen {
             ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
             SecureField,
         ) {
-            let limb_bits = limb_bits::<ELEM_BITS, EXPAND_BITS>();
+            let limb_bits = XorTable::new(ELEM_BITS, EXPAND_BITS, 0).limb_bits();
             let _span = span!(Level::INFO, "Xor interaction trace").entered();
             let offsets_vec = u32x16::from_array(std::array::from_fn(|i| i as u32));
-            let mut logup_gen = LogupTraceGenerator::new(column_bits::<ELEM_BITS, EXPAND_BITS>());
+            let mut logup_gen =
+                LogupTraceGenerator::new(XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits());
 
             // Iterate each pair of columns, to batch their lookup together.
             // There are 2^(2*EXPAND_BITS) column, for each combination of ah, bh.
@@ -65,7 +68,9 @@ macro_rules! xor_table_gen {
 
                 // Each column has 2^(2*LIMB_BITS) rows, packed in N_LANES.
                 #[allow(clippy::needless_range_loop)]
-                for vec_row in 0..(1 << (column_bits::<ELEM_BITS, EXPAND_BITS>() - LOG_N_LANES)) {
+                for vec_row in
+                    0..(1 << (XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits() - LOG_N_LANES))
+                {
                     // vec_row is LIMB_BITS of al and LIMB_BITS - LOG_N_LANES of bl.
                     // Extract al, blh from vec_row.
                     let al = vec_row >> (limb_bits - LOG_N_LANES);
@@ -104,7 +109,8 @@ macro_rules! xor_table_gen {
                     let bh = i as u32 & ((1 << EXPAND_BITS) - 1);
 
                     #[allow(clippy::needless_range_loop)]
-                    for vec_row in 0..(1 << (column_bits::<ELEM_BITS, EXPAND_BITS>() - LOG_N_LANES))
+                    for vec_row in 0..(1
+                        << (XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits() - LOG_N_LANES))
                     {
                         // vec_row is LIMB_BITS of a, and LIMB_BITS - LOG_N_LANES of b.
                         let al = vec_row >> (limb_bits - LOG_N_LANES);
@@ -135,18 +141,21 @@ macro_rules! xor_table_gen {
         #[allow(clippy::type_complexity)]
         pub fn generate_constant_trace<const ELEM_BITS: u32, const EXPAND_BITS: u32>(
         ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-            let limb_bits = limb_bits::<ELEM_BITS, EXPAND_BITS>();
+            let limb_bits = XorTable::new(ELEM_BITS, EXPAND_BITS, 0).limb_bits();
             let _span = span!(Level::INFO, "Xor Preprocessed trace").entered();
 
             // Generate the constant columns. In reality, these should be generated before the
             // proof even began.
-            let a_col: BaseColumn = (0..(1 << (column_bits::<ELEM_BITS, EXPAND_BITS>())))
+            let a_col: BaseColumn = (0..(1
+                << (XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits())))
                 .map(|i| BaseField::from_u32_unchecked((i >> limb_bits) as u32))
                 .collect();
-            let b_col: BaseColumn = (0..(1 << (column_bits::<ELEM_BITS, EXPAND_BITS>())))
+            let b_col: BaseColumn = (0..(1
+                << (XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits())))
                 .map(|i| BaseField::from_u32_unchecked((i & ((1 << limb_bits) - 1)) as u32))
                 .collect();
-            let c_col: BaseColumn = (0..(1 << (column_bits::<ELEM_BITS, EXPAND_BITS>())))
+            let c_col: BaseColumn = (0..(1
+                << (XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits())))
                 .map(|i| {
                     BaseField::from_u32_unchecked(
                         ((i >> limb_bits) ^ (i & ((1 << limb_bits) - 1))) as u32,
@@ -157,12 +166,16 @@ macro_rules! xor_table_gen {
             let mut constant_trace = [a_col, b_col, c_col]
                 .map(|x| {
                     CircleEvaluation::new(
-                        CanonicCoset::new(column_bits::<ELEM_BITS, EXPAND_BITS>()).circle_domain(),
+                        CanonicCoset::new(XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits())
+                            .circle_domain(),
                         x,
                     )
                 })
                 .to_vec();
-            constant_trace.push(gen_is_first(column_bits::<ELEM_BITS, EXPAND_BITS>()));
+            constant_trace.push(
+                IsFirst::new(XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits())
+                    .gen_column_simd(),
+            );
             constant_trace
         }
     };
