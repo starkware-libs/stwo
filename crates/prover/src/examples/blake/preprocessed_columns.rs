@@ -17,8 +17,6 @@ pub struct XorTable {
     pub index_in_table: usize,
 }
 impl XorTable {
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     pub const fn new(n_bits: u32, n_expand_bits: u32, index_in_table: usize) -> Self {
         Self {
             n_bits,
@@ -27,8 +25,6 @@ impl XorTable {
         }
     }
 
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     pub fn id(&self) -> String {
         format!(
             "preprocessed_xor_table_{}_{}_{}",
@@ -36,22 +32,16 @@ impl XorTable {
         )
     }
 
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     pub const fn limb_bits(&self) -> u32 {
         self.n_bits - self.n_expand_bits
     }
 
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     pub const fn column_bits(&self) -> u32 {
         2 * self.limb_bits()
     }
 
     /// Generates the Preprocessed trace for the xor table.
     /// Returns the Preprocessed trace, the Preprocessed trace, and the claimed sum.
-    // TODO(Gali): Remove allow dead code.
-    #[allow(dead_code)]
     #[allow(clippy::type_complexity)]
     pub fn generate_constant_trace(
         &self,
