@@ -1,8 +1,11 @@
+use std::fmt::Debug;
+use std::hash::Hash;
 use std::simd::Simd;
 
 use num_traits::{One, Zero};
 
 use crate::core::backend::simd::m31::{PackedM31, N_LANES};
+use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Backend, Col, Column};
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
@@ -15,8 +18,31 @@ const SIMD_ENUMERATION_0: PackedM31 = unsafe {
     ]))
 };
 
+// TODO(Gali): Rename to PrerocessedColumn.
+pub trait PreprocessedColumnTrait: Debug {
+    fn name(&self) -> &'static str;
+    fn id(&self) -> String;
+    fn log_size(&self) -> u32;
+    /// Returns the values of the column at the given row.
+    fn packed_at(&self, vec_row: usize) -> PackedM31;
+    // TODO: CPU logic.
+    /// Generates a column according to the preprocessed column chosen.
+    fn gen_column_simd(&self) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>;
+}
+impl PartialEq for dyn PreprocessedColumnTrait {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+    }
+}
+impl Eq for dyn PreprocessedColumnTrait {}
+impl Hash for dyn PreprocessedColumnTrait {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id().hash(state);
+    }
+}
+
 // TODO(ilya): Where should this enum be placed?
-// TODO(Gali): Consider making it a trait, add documentation for the rest of the variants.
+// TODO(Gali): Add documentation for the rest of the variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PreprocessedColumn {
     /// A column with `1` at the first position, and `0` elsewhere.
