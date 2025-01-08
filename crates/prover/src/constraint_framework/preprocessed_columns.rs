@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+use std::hash::Hash;
 use std::simd::Simd;
 
 use num_traits::{One, Zero};
@@ -15,8 +17,28 @@ const SIMD_ENUMERATION_0: PackedM31 = unsafe {
     ]))
 };
 
+// TODO(Gali): Rename to PrerocessedColumn.
+pub trait PreprocessedColumnTrait: Debug {
+    fn name(&self) -> &'static str;
+    /// Used for comparing preprocessed columns.
+    /// Column IDs must be unique in a given context.
+    fn id(&self) -> String;
+    fn log_size(&self) -> u32;
+}
+impl PartialEq for dyn PreprocessedColumnTrait {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+    }
+}
+impl Eq for dyn PreprocessedColumnTrait {}
+impl Hash for dyn PreprocessedColumnTrait {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id().hash(state);
+    }
+}
+
 // TODO(ilya): Where should this enum be placed?
-// TODO(Gali): Consider making it a trait, add documentation for the rest of the variants.
+// TODO(Gali): Add documentation for the rest of the variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PreprocessedColumn {
     /// A column with `1` at the first position, and `0` elsewhere.
