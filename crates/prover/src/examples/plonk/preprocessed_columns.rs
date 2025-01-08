@@ -1,4 +1,4 @@
-use crate::constraint_framework::preprocessed_columns::PreprocessedColumnTrait;
+use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
 
 // TODO(Gali): Add documentation.
 #[derive(Debug)]
@@ -10,7 +10,7 @@ impl Plonk {
         Self { wire }
     }
 }
-impl PreprocessedColumnTrait for Plonk {
+impl PreprocessedColumn for Plonk {
     fn name(&self) -> &'static str {
         "preprocessed_plonk"
     }

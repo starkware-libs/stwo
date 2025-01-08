@@ -1,4 +1,4 @@
-use crate::constraint_framework::preprocessed_columns::PreprocessedColumnTrait;
+use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
 
 // TODO(Gali): Add documentation.
 #[derive(Debug)]
@@ -18,7 +18,7 @@ impl XorTable {
         }
     }
 }
-impl PreprocessedColumnTrait for XorTable {
+impl PreprocessedColumn for XorTable {
     fn name(&self) -> &'static str {
         "preprocessed_xor_table"
     }

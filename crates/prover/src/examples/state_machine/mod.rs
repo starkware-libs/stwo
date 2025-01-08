@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::constraint_framework::relation_tracker::RelationSummary;
 use crate::constraint_framework::Relation;
 pub mod components;
@@ -11,9 +13,7 @@ use components::{
 use gen::{gen_interaction_trace, gen_trace};
 use itertools::{chain, Itertools};
 
-use crate::constraint_framework::preprocessed_columns::{
-    gen_preprocessed_columns, PreprocessedColumn,
-};
+use crate::constraint_framework::preprocessed_columns::{IsFirst, PreprocessedColumn};
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
@@ -59,13 +59,17 @@ pub fn prove_state_machine(
     let mut commitment_scheme =
         CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
-    let preprocessed_columns = [
-        PreprocessedColumn::IsFirst(x_axis_log_rows),
-        PreprocessedColumn::IsFirst(y_axis_log_rows),
-    ];
+    let preprocessed_columns = [IsFirst::new(x_axis_log_rows), IsFirst::new(y_axis_log_rows)];
 
     // Preprocessed trace.
-    let preprocessed_trace = gen_preprocessed_columns(preprocessed_columns.iter());
+    let preprocessed_trace = preprocessed_columns
+        .into_iter()
+        .map(|col| col.gen_column_simd())
+        .collect();
+    let preprocessed_columns: [Rc<dyn PreprocessedColumn>; 2] = [
+        Rc::new(IsFirst::new(x_axis_log_rows)),
+        Rc::new(IsFirst::new(y_axis_log_rows)),
+    ];
 
     // Trace.
     let trace_op0 = gen_trace(x_axis_log_rows, initial_state, 0);
@@ -209,7 +213,7 @@ mod tests {
     use super::gen::{gen_interaction_trace, gen_trace};
     use super::{prove_state_machine, verify_state_machine};
     use crate::constraint_framework::expr::ExprEvaluator;
-    use crate::constraint_framework::preprocessed_columns::gen_is_first;
+    use crate::constraint_framework::preprocessed_columns::IsFirst;
     use crate::constraint_framework::{
         assert_constraints, FrameworkEval, Relation, TraceLocationAllocator,
     };
@@ -245,7 +249,7 @@ mod tests {
         );
 
         let trace = TreeVec::new(vec![
-            vec![gen_is_first(log_n_rows)],
+            vec![IsFirst::new(log_n_rows).gen_column_simd()],
             trace,
             interaction_trace,
         ]);

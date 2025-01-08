@@ -1,11 +1,14 @@
 pub mod preprocessed_columns;
 
+use std::rc::Rc;
+
 use itertools::Itertools;
 use num_traits::One;
+use preprocessed_columns::Plonk;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupTraceGenerator, LookupElements};
-use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
+use crate::constraint_framework::preprocessed_columns::IsFirst;
 use crate::constraint_framework::{
     assert_constraints, relation, EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry,
     TraceLocationAllocator,
@@ -51,12 +54,12 @@ impl FrameworkEval for PlonkEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let a_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(0));
-        let b_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(1));
+        let a_wire = eval.get_preprocessed_column(Rc::new(Plonk::new(0)));
+        let b_wire = eval.get_preprocessed_column(Rc::new(Plonk::new(1)));
         // Note: c_wire could also be implicit: (self.eval.point() - M31_CIRCLE_GEN.into_ef()).x.
         //   A constant column is easier though.
-        let c_wire = eval.get_preprocessed_column(PreprocessedColumn::Plonk(2));
-        let op = eval.get_preprocessed_column(PreprocessedColumn::Plonk(3));
+        let c_wire = eval.get_preprocessed_column(Rc::new(Plonk::new(2)));
+        let op = eval.get_preprocessed_column(Rc::new(Plonk::new(3)));
 
         let mult = eval.next_trace_mask();
         let a_val = eval.next_trace_mask();
@@ -197,7 +200,7 @@ pub fn prove_fibonacci_plonk(
     // Preprocessed trace.
     let span = span!(Level::INFO, "Constant").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
-    let is_first = gen_is_first(log_n_rows);
+    let is_first = IsFirst::new(log_n_rows).gen_column_simd();
     let mut constant_trace = [
         circuit.a_wire.clone(),
         circuit.b_wire.clone(),

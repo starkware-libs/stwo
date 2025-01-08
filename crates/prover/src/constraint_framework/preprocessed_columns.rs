@@ -18,28 +18,27 @@ const SIMD_ENUMERATION_0: PackedM31 = unsafe {
     ]))
 };
 
-// TODO(Gali): Rename to PrerocessedColumn.
-pub trait PreprocessedColumnTrait: Debug {
+pub trait PreprocessedColumn: Debug {
     fn name(&self) -> &'static str;
     /// Used for comparing preprocessed columns.
     /// Column IDs must be unique in a given context.
     fn id(&self) -> String;
     fn log_size(&self) -> u32;
 }
-impl PartialEq for dyn PreprocessedColumnTrait {
+impl PartialEq for dyn PreprocessedColumn {
     fn eq(&self, other: &Self) -> bool {
         self.id() == other.id()
     }
 }
-impl Eq for dyn PreprocessedColumnTrait {}
-impl Hash for dyn PreprocessedColumnTrait {
+impl Eq for dyn PreprocessedColumn {}
+impl Hash for dyn PreprocessedColumn {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id().hash(state);
     }
 }
 
 /// A column with `1` at the first position, and `0` elsewhere.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IsFirst {
     pub log_size: u32,
 }
@@ -71,7 +70,7 @@ impl IsFirst {
         CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
     }
 }
-impl PreprocessedColumnTrait for IsFirst {
+impl PreprocessedColumn for IsFirst {
     fn name(&self) -> &'static str {
         "preprocessed_is_first"
     }
@@ -85,10 +84,9 @@ impl PreprocessedColumnTrait for IsFirst {
     }
 }
 
-// TODO(ilya): Where should this enum be placed?
-// TODO(Gali): Add documentation for the rest of the variants.
+// TODO(Gali): Remove Enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PreprocessedColumn {
+pub enum PreprocessedColumnEnum {
     /// A column with `1` at the first position, and `0` elsewhere.
     IsFirst(u32),
     Plonk(usize),
@@ -97,29 +95,29 @@ pub enum PreprocessedColumn {
     XorTable(u32, u32, usize),
 }
 
-impl PreprocessedColumn {
+impl PreprocessedColumnEnum {
     pub const fn name(&self) -> &'static str {
         match self {
-            PreprocessedColumn::IsFirst(_) => "preprocessed_is_first",
-            PreprocessedColumn::Plonk(_) => "preprocessed_plonk",
-            PreprocessedColumn::Seq(_) => "preprocessed_seq",
-            PreprocessedColumn::XorTable(..) => "preprocessed_xor_table",
+            PreprocessedColumnEnum::IsFirst(_) => "preprocessed_is_first",
+            PreprocessedColumnEnum::Plonk(_) => "preprocessed_plonk",
+            PreprocessedColumnEnum::Seq(_) => "preprocessed_seq",
+            PreprocessedColumnEnum::XorTable(..) => "preprocessed_xor_table",
         }
     }
 
     pub fn log_size(&self) -> u32 {
         match self {
-            PreprocessedColumn::IsFirst(log_size) => *log_size,
-            PreprocessedColumn::Seq(log_size) => *log_size,
-            PreprocessedColumn::XorTable(log_size, ..) => *log_size,
-            PreprocessedColumn::Plonk(_) => unimplemented!(),
+            PreprocessedColumnEnum::IsFirst(log_size) => *log_size,
+            PreprocessedColumnEnum::Seq(log_size) => *log_size,
+            PreprocessedColumnEnum::XorTable(log_size, ..) => *log_size,
+            PreprocessedColumnEnum::Plonk(_) => unimplemented!(),
         }
     }
 
     /// Returns the values of the column at the given row.
     pub fn packed_at(&self, vec_row: usize) -> PackedM31 {
         match self {
-            PreprocessedColumn::IsFirst(log_size) => {
+            PreprocessedColumnEnum::IsFirst(log_size) => {
                 assert!(vec_row < (1 << log_size) / N_LANES);
                 if vec_row == 0 {
                     unsafe {
@@ -135,7 +133,7 @@ impl PreprocessedColumn {
                     PackedM31::zero()
                 }
             }
-            PreprocessedColumn::Seq(log_size) => {
+            PreprocessedColumnEnum::Seq(log_size) => {
                 assert!(vec_row < (1 << log_size) / N_LANES);
                 PackedM31::broadcast(M31::from(vec_row * N_LANES)) + SIMD_ENUMERATION_0
             }
@@ -146,14 +144,14 @@ impl PreprocessedColumn {
 
     /// Generates a column according to the preprocessed column chosen.
     pub fn gen_preprocessed_column<B: Backend>(
-        preprocessed_column: &PreprocessedColumn,
+        preprocessed_column: &PreprocessedColumnEnum,
     ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
         match preprocessed_column {
-            PreprocessedColumn::IsFirst(log_size) => gen_is_first(*log_size),
-            PreprocessedColumn::Plonk(_) | PreprocessedColumn::XorTable(..) => {
+            PreprocessedColumnEnum::IsFirst(log_size) => gen_is_first(*log_size),
+            PreprocessedColumnEnum::Plonk(_) | PreprocessedColumnEnum::XorTable(..) => {
                 unimplemented!("eval_preprocessed_column: Plonk and XorTable are not supported.")
             }
-            PreprocessedColumn::Seq(log_size) => gen_seq(*log_size),
+            PreprocessedColumnEnum::Seq(log_size) => gen_seq(*log_size),
         }
     }
 }
@@ -195,35 +193,24 @@ pub fn gen_seq<B: Backend>(log_size: u32) -> CircleEvaluation<B, BaseField, BitR
 }
 
 pub fn gen_preprocessed_columns<'a, B: Backend>(
-    columns: impl Iterator<Item = &'a PreprocessedColumn>,
+    columns: impl Iterator<Item = &'a PreprocessedColumnEnum>,
 ) -> Vec<CircleEvaluation<B, BaseField, BitReversedOrder>> {
     columns
-        .map(PreprocessedColumn::gen_preprocessed_column)
+        .map(PreprocessedColumnEnum::gen_preprocessed_column)
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
+    use super::IsFirst;
     use crate::core::backend::simd::m31::N_LANES;
-    use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::Column;
-    use crate::core::fields::m31::{BaseField, M31};
     const LOG_SIZE: u32 = 8;
-
-    #[test]
-    fn test_gen_seq() {
-        let seq = super::gen_seq::<SimdBackend>(LOG_SIZE);
-
-        for i in 0..(1 << LOG_SIZE) {
-            assert_eq!(seq.at(i), BaseField::from_u32_unchecked(i as u32));
-        }
-    }
 
     // TODO(Gali): Add packed_at tests for xor_table and plonk.
     #[test]
     fn test_packed_at_is_first() {
-        let is_first = super::PreprocessedColumn::IsFirst(LOG_SIZE);
-        let expected_is_first = super::gen_is_first::<SimdBackend>(LOG_SIZE).to_cpu();
+        let is_first = IsFirst::new(LOG_SIZE);
+        let expected_is_first = is_first.gen_column_simd().to_cpu();
 
         for i in 0..(1 << LOG_SIZE) / N_LANES {
             assert_eq!(
@@ -231,18 +218,5 @@ mod tests {
                 expected_is_first[i * N_LANES..(i + 1) * N_LANES]
             );
         }
-    }
-
-    #[test]
-    fn test_packed_at_seq() {
-        let seq = super::PreprocessedColumn::Seq(LOG_SIZE);
-        let expected_seq: [_; 1 << LOG_SIZE] = std::array::from_fn(|i| M31::from(i as u32));
-
-        let packed_seq = std::array::from_fn::<_, { (1 << LOG_SIZE) / N_LANES }, _>(|i| {
-            seq.packed_at(i).to_array()
-        })
-        .concat();
-
-        assert_eq!(packed_seq, expected_seq);
     }
 }

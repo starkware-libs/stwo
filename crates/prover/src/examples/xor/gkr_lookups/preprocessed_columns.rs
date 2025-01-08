@@ -1,6 +1,6 @@
 use num_traits::One;
 
-use crate::constraint_framework::preprocessed_columns::PreprocessedColumnTrait;
+use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column};
 use crate::core::fields::m31::BaseField;
@@ -28,7 +28,7 @@ impl IsStepWithOffset {
     // for verifier).
     // TODO(Gali): Remove allow dead code.
     #[allow(dead_code)]
-    fn gen_column_simd(&self) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
+    pub fn gen_column_simd(&self) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
         let mut col = Col::<SimdBackend, BaseField>::zeros(1 << self.log_size);
         let size = 1 << self.log_size;
         let step = 1 << self.log_step;
@@ -41,7 +41,7 @@ impl IsStepWithOffset {
         CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
     }
 }
-impl PreprocessedColumnTrait for IsStepWithOffset {
+impl PreprocessedColumn for IsStepWithOffset {
     fn name(&self) -> &'static str {
         "preprocessed_is_step_with_offset"
     }
