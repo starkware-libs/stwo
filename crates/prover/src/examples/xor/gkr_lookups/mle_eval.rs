@@ -8,7 +8,7 @@ use itertools::{chain, zip_eq, Itertools};
 use num_traits::{One, Zero};
 use tracing::{span, Level};
 
-use crate::constraint_framework::preprocessed_columns::gen_is_first;
+use crate::constraint_framework::preprocessed_columns::IsFirst;
 use crate::constraint_framework::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, TraceLocationAllocator,
 };
@@ -210,7 +210,8 @@ impl<O: MleCoeffColumnOracle> ComponentProver<SimdBackend> for MleEvalProverComp
             .interpolate_with_twiddles(self.twiddles)
             .evaluate_with_twiddles(eval_domain, self.twiddles)
             .into_coordinate_evals();
-        let is_first_lde = gen_is_first::<SimdBackend>(self.log_size())
+        let is_first_lde = IsFirst::new(self.log_size())
+            .gen_column_simd()
             .interpolate_with_twiddles(self.twiddles)
             .evaluate_with_twiddles(eval_domain, self.twiddles);
         let aux_interaction = component_trace.len();
@@ -744,9 +745,7 @@ mod tests {
         eval_prefix_sum_constraints, gen_carry_quotient_col, MleEvalPoint, MleEvalProverComponent,
         MleEvalVerifierComponent,
     };
-    use crate::constraint_framework::preprocessed_columns::{
-        gen_is_first, gen_is_step_with_offset,
-    };
+    use crate::constraint_framework::preprocessed_columns::IsFirst;
     use crate::constraint_framework::{assert_constraints, EvalAtRow, TraceLocationAllocator};
     use crate::core::air::{Component, ComponentProver, Components};
     use crate::core::backend::cpu::bit_reverse;
@@ -767,6 +766,7 @@ mod tests {
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::xor::gkr_lookups::accumulation::MIN_LOG_BLOWUP_FACTOR;
     use crate::examples::xor::gkr_lookups::mle_eval::eval_step_selector_with_offset;
+    use crate::examples::xor::gkr_lookups::preprocessed_columns::IsStepWithOffset;
 
     #[test]
     fn mle_eval_prover_component() -> Result<(), VerificationError> {
@@ -950,7 +950,7 @@ mod tests {
         let mle_coeffs_col_trace = mle_coeff_column::build_trace(&mle);
         let claim_shift = claim / BaseField::from(size);
         let carry_quotients_col = gen_carry_quotient_col(&eval_point).into_coordinate_evals();
-        let is_first_col = [gen_is_first(log_size)];
+        let is_first_col = [IsFirst::new(log_size).gen_column_simd()];
         let aux_trace = chain![carry_quotients_col, is_first_col].collect();
         let traces = TreeVec::new(vec![mle_coeffs_col_trace, mle_eval_trace, aux_trace]);
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
@@ -992,7 +992,7 @@ mod tests {
         let mle_eval_point = MleEvalPoint::new(&eval_point);
         let trace = build_trace(&mle, &eval_point, mle.eval_at_point(&eval_point));
         let carry_quotients_col = gen_carry_quotient_col(&eval_point).into_coordinate_evals();
-        let is_first_col = [gen_is_first(N_VARIABLES as u32)];
+        let is_first_col = [IsFirst::new(N_VARIABLES as u32).gen_column_simd()];
         let aux_trace = chain![carry_quotients_col, is_first_col].collect();
         let traces = TreeVec::new(vec![trace, aux_trace]);
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
@@ -1029,7 +1029,7 @@ mod tests {
         let mle_eval_point = MleEvalPoint::new(&eval_point);
         let trace = build_trace(&mle, &eval_point, mle.eval_at_point(&eval_point));
         let carry_quotients_col = gen_carry_quotient_col(&eval_point).into_coordinate_evals();
-        let is_first_col = [gen_is_first(N_VARIABLES as u32)];
+        let is_first_col = [IsFirst::new(N_VARIABLES as u32).gen_column_simd()];
         let aux_trace = chain![carry_quotients_col, is_first_col].collect();
         let traces = TreeVec::new(vec![trace, aux_trace]);
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
@@ -1066,7 +1066,7 @@ mod tests {
         let mle_eval_point = MleEvalPoint::new(&eval_point);
         let trace = build_trace(&mle, &eval_point, mle.eval_at_point(&eval_point));
         let carry_quotients_col = gen_carry_quotient_col(&eval_point).into_coordinate_evals();
-        let is_first_col = [gen_is_first(N_VARIABLES as u32)];
+        let is_first_col = [IsFirst::new(N_VARIABLES as u32).gen_column_simd()];
         let aux_trace = chain![carry_quotients_col, is_first_col].collect();
         let traces = TreeVec::new(vec![trace, aux_trace]);
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
@@ -1120,7 +1120,7 @@ mod tests {
         const OFFSET: usize = 1;
         const LOG_STEP: u32 = 2;
         let coset = CanonicCoset::new(LOG_SIZE).coset();
-        let col_eval = gen_is_step_with_offset::<SimdBackend>(LOG_SIZE, LOG_STEP, OFFSET);
+        let col_eval = IsStepWithOffset::new(LOG_SIZE, LOG_STEP, OFFSET).gen_column_simd();
         let col_poly = col_eval.interpolate();
         let p = SECURE_FIELD_CIRCLE_GEN;
 

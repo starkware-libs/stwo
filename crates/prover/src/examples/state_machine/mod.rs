@@ -11,9 +11,7 @@ use components::{
 use gen::{gen_interaction_trace, gen_trace};
 use itertools::{chain, Itertools};
 
-use crate::constraint_framework::preprocessed_columns::{
-    gen_preprocessed_columns, PreprocessedColumn,
-};
+use crate::constraint_framework::preprocessed_columns::IsFirst;
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
@@ -59,13 +57,17 @@ pub fn prove_state_machine(
     let mut commitment_scheme =
         CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
-    let preprocessed_columns = [
-        PreprocessedColumn::IsFirst(x_axis_log_rows),
-        PreprocessedColumn::IsFirst(y_axis_log_rows),
-    ];
+    let preprocessed_columns = [IsFirst::new(x_axis_log_rows), IsFirst::new(y_axis_log_rows)];
 
     // Preprocessed trace.
-    let preprocessed_trace = gen_preprocessed_columns(preprocessed_columns.iter());
+    let preprocessed_trace = preprocessed_columns
+        .into_iter()
+        .map(|col| col.gen_column_simd())
+        .collect();
+    let preprocessed_columns = [
+        IsFirst::new(x_axis_log_rows).id(),
+        IsFirst::new(y_axis_log_rows).id(),
+    ];
 
     // Trace.
     let trace_op0 = gen_trace(x_axis_log_rows, initial_state, 0);
@@ -209,7 +211,7 @@ mod tests {
     use super::gen::{gen_interaction_trace, gen_trace};
     use super::{prove_state_machine, verify_state_machine};
     use crate::constraint_framework::expr::ExprEvaluator;
-    use crate::constraint_framework::preprocessed_columns::gen_is_first;
+    use crate::constraint_framework::preprocessed_columns::IsFirst;
     use crate::constraint_framework::{
         assert_constraints, FrameworkEval, Relation, TraceLocationAllocator,
     };
@@ -245,7 +247,7 @@ mod tests {
         );
 
         let trace = TreeVec::new(vec![
-            vec![gen_is_first(log_n_rows)],
+            vec![IsFirst::new(log_n_rows).gen_column_simd()],
             trace,
             interaction_trace,
         ]);
@@ -374,12 +376,12 @@ mod tests {
             trace_2_column_4_offset_claimed_sum, \
             trace_2_column_5_offset_claimed_sum\
         ]) - (claimed_sum)) \
-            * (preprocessed_is_first);
+            * (preprocessed_is_first_8);
 
 \
         let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_2_offset_0, trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0]) \
             - (QM31Impl::from_partial_evals([trace_2_column_2_offset_neg_1, trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1]) \
-                - ((total_sum) * (preprocessed_is_first)))\
+                - ((total_sum) * (preprocessed_is_first_8)))\
             ) \
             * ((intermediate0) * (intermediate1)) \
             - (intermediate1 - (intermediate0));"
