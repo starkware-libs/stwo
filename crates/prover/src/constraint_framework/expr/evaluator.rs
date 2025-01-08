@@ -2,7 +2,6 @@ use num_traits::Zero;
 
 use super::{BaseExpr, ExtExpr};
 use crate::constraint_framework::expr::ColumnExpr;
-use crate::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use crate::constraint_framework::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
 use crate::core::fields::m31;
 use crate::core::lookups::utils::Fraction;
@@ -174,8 +173,8 @@ impl EvalAtRow for ExprEvaluator {
         intermediate
     }
 
-    fn get_preprocessed_column(&mut self, column: PreprocessedColumn) -> Self::F {
-        BaseExpr::Param(column.name().to_string())
+    fn get_preprocessed_column(&mut self, column: String) -> Self::F {
+        BaseExpr::Param(column)
     }
 
     crate::constraint_framework::logup_proxy!();
@@ -208,7 +207,7 @@ mod tests {
 \
         let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0, trace_2_column_6_offset_0]) \
             - (QM31Impl::from_partial_evals([trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1, trace_2_column_6_offset_neg_1]) \
-                - ((total_sum) * (preprocessed_is_first)))) \
+                - ((total_sum) * (preprocessed_is_first_16)))) \
             * (intermediate1) \
             - (qm31(1, 0, 0, 0));"
             .to_string();

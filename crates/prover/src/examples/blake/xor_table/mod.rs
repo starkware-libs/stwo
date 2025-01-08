@@ -19,8 +19,9 @@ use itertools::Itertools;
 use num_traits::Zero;
 use tracing::{span, Level};
 
+use super::preprocessed_columns::XorTable;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator};
-use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
+use crate::constraint_framework::preprocessed_columns::IsFirst;
 use crate::constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, Relation, RelationEntry,
     INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
@@ -52,14 +53,7 @@ macro_rules! xor_table_component {
             let info = component.evaluate(InfoEvaluator::empty());
             info.mask_offsets
                 .as_cols_ref()
-                .map_cols(|_| column_bits::<ELEM_BITS, EXPAND_BITS>())
-        }
-
-        pub const fn limb_bits<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> u32 {
-            ELEM_BITS - EXPAND_BITS
-        }
-        pub const fn column_bits<const ELEM_BITS: u32, const EXPAND_BITS: u32>() -> u32 {
-            2 * limb_bits::<ELEM_BITS, EXPAND_BITS>()
+                .map_cols(|_| XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits())
         }
 
         /// Accumulator that keeps track of the number of times each input has been used.
@@ -74,7 +68,11 @@ macro_rules! xor_table_component {
             fn default() -> Self {
                 Self {
                     mults: (0..(1 << (2 * EXPAND_BITS)))
-                        .map(|_| BaseColumn::zeros(1 << column_bits::<ELEM_BITS, EXPAND_BITS>()))
+                        .map(|_| {
+                            BaseColumn::zeros(
+                                1 << XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits(),
+                            )
+                        })
                         .collect_vec(),
                 }
             }
@@ -84,12 +82,16 @@ macro_rules! xor_table_component {
                 // Split a and b into high and low parts, according to ELEMENT_BITS and EXPAND_BITS.
                 // The high part is the index of the multiplicity column.
                 // The low part is the index of the element in that column.
-                let al = a & u32x16::splat((1 << limb_bits::<ELEM_BITS, EXPAND_BITS>()) - 1);
-                let ah = a >> limb_bits::<ELEM_BITS, EXPAND_BITS>();
-                let bl = b & u32x16::splat((1 << limb_bits::<ELEM_BITS, EXPAND_BITS>()) - 1);
-                let bh = b >> limb_bits::<ELEM_BITS, EXPAND_BITS>();
+                let al = a & u32x16::splat(
+                    (1 << XorTable::new(ELEM_BITS, EXPAND_BITS, 0).limb_bits()) - 1,
+                );
+                let ah = a >> XorTable::new(ELEM_BITS, EXPAND_BITS, 0).limb_bits();
+                let bl = b & u32x16::splat(
+                    (1 << XorTable::new(ELEM_BITS, EXPAND_BITS, 0).limb_bits()) - 1,
+                );
+                let bh = b >> XorTable::new(ELEM_BITS, EXPAND_BITS, 0).limb_bits();
                 let column_idx = (ah << EXPAND_BITS) + bh;
-                let offset = (al << limb_bits::<ELEM_BITS, EXPAND_BITS>()) + bl;
+                let offset = (al << XorTable::new(ELEM_BITS, EXPAND_BITS, 0).limb_bits()) + bl;
 
                 // Since the indices may collide, we cannot use scatter simd operations here.
                 // Instead, loop over packed values.
@@ -114,10 +116,10 @@ macro_rules! xor_table_component {
             for XorTableEval<ELEM_BITS, EXPAND_BITS>
         {
             fn log_size(&self) -> u32 {
-                column_bits::<$elem_bits, $expand_bits>()
+                XorTable::new($elem_bits, $expand_bits, 0).column_bits()
             }
             fn max_constraint_log_degree_bound(&self) -> u32 {
-                column_bits::<$elem_bits, $expand_bits>() + 1
+                XorTable::new($elem_bits, $expand_bits, 0).column_bits() + 1
             }
             fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
                 let xor_eval = $modname::XorTableEvalAtRow::<'_, _, ELEM_BITS, EXPAND_BITS> {
@@ -156,9 +158,9 @@ mod tests {
     use crate::constraint_framework::logup::LookupElements;
     use crate::constraint_framework::{assert_constraints, FrameworkEval};
     use crate::core::poly::circle::CanonicCoset;
+    use crate::examples::blake::preprocessed_columns::XorTable;
     use crate::examples::blake::xor_table::xor12::{
-        column_bits, generate_constant_trace, generate_interaction_trace, generate_trace,
-        XorAccumulator, XorTableEval,
+        generate_interaction_trace, generate_trace, XorAccumulator, XorTableEval,
     };
 
     #[test]
@@ -175,7 +177,7 @@ mod tests {
         let lookup_elements = crate::examples::blake::XorElements12::dummy();
         let (interaction_trace, claimed_sum) =
             generate_interaction_trace(lookup_data, &lookup_elements);
-        let constant_trace = generate_constant_trace::<ELEM_BITS, EXPAND_BITS>();
+        let constant_trace = XorTable::new(ELEM_BITS, EXPAND_BITS, 0).generate_constant_trace();
 
         let trace = TreeVec::new(vec![constant_trace, trace, interaction_trace]);
         let trace_polys = TreeVec::<Vec<_>>::map_cols(trace, |c| c.interpolate());
@@ -186,7 +188,7 @@ mod tests {
         };
         assert_constraints(
             &trace_polys,
-            CanonicCoset::new(column_bits::<ELEM_BITS, EXPAND_BITS>()),
+            CanonicCoset::new(XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits()),
             |eval| {
                 component.evaluate(eval);
             },
