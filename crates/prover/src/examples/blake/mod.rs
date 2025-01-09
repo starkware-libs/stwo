@@ -16,6 +16,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::FieldExpOps;
 
 mod air;
+mod preprocessed_columns;
 mod round;
 mod scheduler;
 mod xor_table;

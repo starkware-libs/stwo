@@ -1,3 +1,5 @@
+pub mod preprocessed_columns;
+
 use itertools::Itertools;
 use num_traits::One;
 use tracing::{span, Level};

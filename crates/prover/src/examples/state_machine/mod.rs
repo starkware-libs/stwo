@@ -1,5 +1,6 @@
 use crate::constraint_framework::relation_tracker::RelationSummary;
 use crate::constraint_framework::Relation;
+use crate::core::poly::BitReversedOrder;
 pub mod components;
 pub mod gen;
 
@@ -12,18 +13,24 @@ use gen::{gen_interaction_trace, gen_trace};
 use itertools::{chain, Itertools};
 
 use crate::constraint_framework::preprocessed_columns::{
-    gen_preprocessed_columns, PreprocessedColumn,
+    gen_preprocessed_columns, IsFirst, PreprocessedColumn,
 };
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::channel::Blake2sChannel;
-use crate::core::fields::m31::M31;
+use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::QM31;
 use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
-use crate::core::poly::circle::{CanonicCoset, PolyOps};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::prover::{prove, verify, VerificationError};
 use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+
+pub fn gen_is_first_columns(
+    columns: impl Iterator<Item = IsFirst>,
+) -> Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+    columns.map(|col| col.gen_column_simd()).collect()
+}
 
 #[allow(unused)]
 pub fn prove_state_machine(
