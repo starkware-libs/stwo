@@ -268,6 +268,23 @@ pub fn prove_fibonacci_plonk(
     (component, proof)
 }
 
+/// Preprocessed columns for describing a plonk circuit.
+/// Each plonk gate is described by input wires `a_wire`, `b_wire`, output wire `c_wire`, and
+/// operation `op`.  
+#[derive(Debug)]
+pub struct Plonk {
+    pub name: String,
+}
+impl Plonk {
+    pub const fn new(name: String) -> Self {
+        Self { name }
+    }
+
+    pub fn id(&self) -> String {
+        format!("preprocessed_plonk_{}", self.name)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::env;
