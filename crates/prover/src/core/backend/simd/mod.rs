@@ -4,6 +4,7 @@ use super::{Backend, BackendForChannel};
 use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+use crate::core::vcs::poseidon31_merkle::Poseidon31MerkleChannel;
 
 pub mod accumulation;
 pub mod bit_reverse;
@@ -20,6 +21,7 @@ pub mod lookups;
 pub mod m31;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod poseidon252;
+pub mod poseidon31;
 pub mod prefix_sum;
 pub mod qm31;
 pub mod quotients;
@@ -33,3 +35,4 @@ impl Backend for SimdBackend {}
 impl BackendForChannel<Blake2sMerkleChannel> for SimdBackend {}
 #[cfg(not(target_arch = "wasm32"))]
 impl BackendForChannel<Poseidon252MerkleChannel> for SimdBackend {}
+impl BackendForChannel<Poseidon31MerkleChannel> for SimdBackend {}

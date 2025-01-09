@@ -16,8 +16,8 @@ use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Col, Column};
-use crate::core::channel::Blake2sChannel;
+use crate::core::backend::{BackendForChannel, Col, Column};
+use crate::core::channel::MerkleChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
@@ -25,7 +25,6 @@ use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof};
-use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use crate::core::ColumnVec;
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
@@ -325,10 +324,13 @@ pub fn gen_interaction_trace(
     logup_gen.finalize_last()
 }
 
-pub fn prove_poseidon(
+pub fn prove_poseidon<MC: MerkleChannel>(
     log_n_instances: u32,
     config: PcsConfig,
-) -> (PoseidonComponent, StarkProof<Blake2sMerkleHasher>) {
+) -> (PoseidonComponent, StarkProof<MC::H>)
+where
+    SimdBackend: BackendForChannel<MC>,
+{
     assert!(log_n_instances >= N_LOG_INSTANCES_PER_ROW as u32);
     let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
 
@@ -342,9 +344,8 @@ pub fn prove_poseidon(
     span.exit();
 
     // Setup protocol.
-    let channel = &mut Blake2sChannel::default();
-    let mut commitment_scheme =
-        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+    let channel = &mut MC::C::default();
+    let mut commitment_scheme = CommitmentSchemeProver::<_, MC>::new(config, &twiddles);
 
     // Preprocessed trace.
     let span = span!(Level::INFO, "Constant").entered();
@@ -399,13 +400,16 @@ mod tests {
     use crate::constraint_framework::assert_constraints;
     use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::core::air::Component;
-    use crate::core::channel::Blake2sChannel;
+    use crate::core::backend::simd::SimdBackend;
+    use crate::core::backend::BackendForChannel;
+    use crate::core::channel::MerkleChannel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fri::FriConfig;
     use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::prover::verify;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use crate::core::vcs::poseidon31_merkle::Poseidon31MerkleChannel;
     use crate::examples::poseidon::{
         apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,
         gen_trace, prove_poseidon, PoseidonElements,
@@ -485,8 +489,10 @@ mod tests {
         );
     }
 
-    #[test_log::test]
-    fn test_simd_poseidon_prove() {
+    fn test_simd_poseidon_prove<MC: MerkleChannel>()
+    where
+        SimdBackend: BackendForChannel<MC>,
+    {
         // Note: To see time measurement, run test with
         //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="
         //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=3" cargo test
@@ -503,12 +509,12 @@ mod tests {
         };
 
         // Prove.
-        let (component, proof) = prove_poseidon(log_n_instances, config);
+        let (component, proof) = prove_poseidon::<MC>(log_n_instances, config);
 
         // Verify.
         // TODO: Create Air instance independently.
-        let channel = &mut Blake2sChannel::default();
-        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        let channel = &mut MC::C::default();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(config);
 
         // Decommit.
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
@@ -525,5 +531,15 @@ mod tests {
         commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
 
         verify(&[&component], channel, commitment_scheme, proof).unwrap();
+    }
+
+    #[test_log::test]
+    fn test_simd_poseidon_prove_blake2s() {
+        test_simd_poseidon_prove::<Blake2sMerkleChannel>();
+    }
+
+    #[test_log::test]
+    fn test_simd_poseidon_prove_poseidon31() {
+        test_simd_poseidon_prove::<Poseidon31MerkleChannel>();
     }
 }
