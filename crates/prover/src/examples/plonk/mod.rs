@@ -2,7 +2,7 @@ use itertools::Itertools;
 use num_traits::One;
 use tracing::{span, Level};
 
-use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupTraceGenerator, LookupElements};
+use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
 use crate::constraint_framework::{
     assert_constraints, relation, EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry,
@@ -32,7 +32,6 @@ relation!(PlonkLookupElements, 2);
 pub struct PlonkEval {
     pub log_n_rows: u32,
     pub lookup_elements: PlonkLookupElements,
-    pub claimed_sum: ClaimedPrefixSum,
     pub total_sum: SecureField,
     pub base_trace_location: TreeSubspan,
     pub interaction_trace_location: TreeSubspan,
@@ -119,12 +118,11 @@ pub fn gen_trace(
 
 pub fn gen_interaction_trace(
     log_size: u32,
-    padding_offset: usize,
     circuit: &PlonkCircuitTrace,
     lookup_elements: &LookupElements<2>,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-    [SecureField; 2],
+    SecureField,
 ) {
     let _span = span!(Level::INFO, "Generate interaction trace").entered();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
@@ -148,7 +146,7 @@ pub fn gen_interaction_trace(
     }
     col_gen.finalize_col();
 
-    logup_gen.finalize_at([(1 << log_size) - 1, padding_offset])
+    logup_gen.finalize_last()
 }
 
 #[allow(unused)]
@@ -163,7 +161,6 @@ pub fn prove_fibonacci_plonk(
     for _ in 0..(1 << log_n_rows) {
         fib_values.push(fib_values[fib_values.len() - 1] + fib_values[fib_values.len() - 2]);
     }
-    let padding_offset = 17;
     let range = 0..(1 << log_n_rows);
     let mut circuit = PlonkCircuitTrace {
         mult: range.clone().map(|_| 2.into()).collect(),
@@ -228,8 +225,7 @@ pub fn prove_fibonacci_plonk(
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
-    let (trace, [total_sum, claimed_sum]) =
-        gen_interaction_trace(log_n_rows, padding_offset, &circuit, &lookup_elements.0);
+    let (trace, total_sum) = gen_interaction_trace(log_n_rows, &circuit, &lookup_elements.0);
     let mut tree_builder = commitment_scheme.tree_builder();
     let interaction_trace_location = tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -240,13 +236,12 @@ pub fn prove_fibonacci_plonk(
         PlonkEval {
             log_n_rows,
             lookup_elements,
-            claimed_sum: (claimed_sum, padding_offset),
             total_sum,
             base_trace_location,
             interaction_trace_location,
             constants_trace_location,
         },
-        (total_sum, Some((claimed_sum, padding_offset))),
+        (total_sum, None),
     );
 
     // Sanity check. Remove for production.
@@ -260,7 +255,7 @@ pub fn prove_fibonacci_plonk(
         |mut eval| {
             component.evaluate(eval);
         },
-        (total_sum, Some((claimed_sum, padding_offset))),
+        (total_sum, None),
     );
 
     let proof = prove(&[&component], channel, commitment_scheme).unwrap();
