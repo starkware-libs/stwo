@@ -8,22 +8,22 @@ use crate::core::fields::Field;
 /// with p = 2^31 - 1 and t = 16
 
 pub static MAT_DIAG16_M_1: [M31; 16] = [
-    M31::from_u32_unchecked(0x07b80ac4),
-    M31::from_u32_unchecked(0x6bd9cb33),
-    M31::from_u32_unchecked(0x48ee3f9f),
-    M31::from_u32_unchecked(0x4f63dd19),
-    M31::from_u32_unchecked(0x18c546b3),
-    M31::from_u32_unchecked(0x5af89e8b),
-    M31::from_u32_unchecked(0x4ff23de8),
-    M31::from_u32_unchecked(0x4f78aaf6),
-    M31::from_u32_unchecked(0x53bdc6d4),
-    M31::from_u32_unchecked(0x5c59823e),
-    M31::from_u32_unchecked(0x2a471c72),
-    M31::from_u32_unchecked(0x4c975e79),
-    M31::from_u32_unchecked(0x58dc64d4),
-    M31::from_u32_unchecked(0x06e9315d),
-    M31::from_u32_unchecked(0x2cf32286),
-    M31::from_u32_unchecked(0x2fb6755d),
+    M31::from_u32_unchecked(3),
+    M31::from_u32_unchecked(4),
+    M31::from_u32_unchecked(8),
+    M31::from_u32_unchecked(16),
+    M31::from_u32_unchecked(32),
+    M31::from_u32_unchecked(64),
+    M31::from_u32_unchecked(128),
+    M31::from_u32_unchecked(256),
+    M31::from_u32_unchecked(512),
+    M31::from_u32_unchecked(1024),
+    M31::from_u32_unchecked(2048),
+    M31::from_u32_unchecked(4096),
+    M31::from_u32_unchecked(8192),
+    M31::from_u32_unchecked(16384),
+    M31::from_u32_unchecked(32768),
+    M31::from_u32_unchecked(65536),
 ];
 
 pub static FIRST_FOUR_ROUND_RC: [[M31; 16]; 4] = [
@@ -420,9 +420,9 @@ mod tests {
         assert_eq!(
             to_u32_array(state),
             [
-                1348310665, 996460804, 2044919169, 1269301599, 615961333, 595876573, 1377780500,
-                1776267289, 715842585, 1823756332, 1870636634, 1979645732, 311256455, 1364752356,
-                58674647, 323699327,
+                260776483, 1182896747, 1656699352, 746018898, 102875940, 1812541025, 515874083,
+                755063943, 1682438524, 1265420601, 238640995, 200799880, 1659717477, 2080202267,
+                1269806256, 1287849264
             ]
         );
     }

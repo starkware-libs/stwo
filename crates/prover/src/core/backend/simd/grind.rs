@@ -126,11 +126,11 @@ fn grind_poseidon31(digest: &[M31; 8], hi: u64, pow_bits: u32) -> Option<u64> {
             M31::from_u32_unchecked((((start + i as u64) >> 43) & ((1 << 21) - 1)) as u32)
         }));
 
-        let res = permute(attempt)[0];
+        let res = permute(attempt)[8];
         let success_mask = res.into_simd().trailing_zeros().simd_ge(pow_bits);
         if success_mask.any() {
             let i = success_mask.to_array().iter().position(|&x| x).unwrap();
-            return Some((hi << GRIND_LOW_BITS) + low + i as u64);
+            return Some(start + i as u64);
         }
     }
     None
