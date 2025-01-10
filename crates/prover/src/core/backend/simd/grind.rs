@@ -9,7 +9,7 @@ use rayon::prelude::*;
 
 use super::blake2s::compress16;
 use super::SimdBackend;
-use crate::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
+use crate::core::backend::simd::m31::{PackedM31, N_LANES};
 use crate::core::backend::simd::poseidon31::permute;
 use crate::core::channel::{Blake2sChannel, Poseidon31Channel};
 #[cfg(not(target_arch = "wasm32"))]
@@ -114,7 +114,7 @@ fn grind_poseidon31(digest: &[M31; 8], hi: u64, pow_bits: u32) -> Option<u64> {
     let high_start = hi << GRIND_LOW_BITS;
 
     for low in (0..(1 << GRIND_LOW_BITS)).step_by(N_LANES) {
-        let start = high_start + (low << LOG_N_LANES);
+        let start = high_start + low;
 
         attempt[0] = PackedM31::from_array(std::array::from_fn(|i| {
             M31::from_u32_unchecked(((start + i as u64) % ((1 << 22) - 1)) as u32)
