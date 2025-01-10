@@ -30,8 +30,9 @@ impl Poseidon31Channel {
     fn draw_base_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
         assert!((self.channel_time.n_sent as u64) < (P as u64));
         let zero = M31::zero();
+        let n_sent = M31::from(self.channel_time.n_sent);
         let mut state = [
-            M31::from(self.channel_time.n_sent),
+            n_sent,
             zero,
             zero,
             zero,
@@ -50,6 +51,8 @@ impl Poseidon31Channel {
         ];
 
         poseidon2_permute(&mut state);
+
+        state[0] += n_sent;
 
         self.channel_time.inc_sent();
 
