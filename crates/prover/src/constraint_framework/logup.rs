@@ -5,7 +5,7 @@ use num_traits::{One, Zero};
 
 use super::EvalAtRow;
 use crate::core::backend::simd::column::SecureColumn;
-use crate::core::backend::simd::m31::LOG_N_LANES;
+use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
@@ -13,7 +13,7 @@ use crate::core::backend::Column;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumnByCoords;
+use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
@@ -42,8 +42,8 @@ impl LogupSumsExt for LogupSums {
 pub struct LogupAtRow<E: EvalAtRow> {
     /// The index of the interaction used for the cumulative sum columns.
     pub interaction: usize,
-    /// The total sum of all the fractions.
-    pub total_sum: SecureField,
+    /// The total sum of all the fractions divided by n_rows.
+    pub cumsum_shift: SecureField,
     /// The claimed sum of the relevant fractions.
     /// This is used for padding the component with default rows. Padding should be in bit-reverse.
     /// None if the claimed_sum is the total_sum.
@@ -51,9 +51,6 @@ pub struct LogupAtRow<E: EvalAtRow> {
     /// The evaluation of the last cumulative sum column.
     pub fracs: Vec<Fraction<E::EF, E::EF>>,
     pub is_finalized: bool,
-    /// The value of the `is_first` constant column at current row.
-    /// See [`super::preprocessed_columns::gen_is_first()`].
-    pub is_first: E::F,
     pub log_size: u32,
 }
 
@@ -69,13 +66,17 @@ impl<E: EvalAtRow> LogupAtRow<E> {
         claimed_sum: Option<ClaimedPrefixSum>,
         log_size: u32,
     ) -> Self {
+        // TODO(ShaharS): remove once claimed sum at internal index is supported.
+        assert!(
+            claimed_sum.is_none(),
+            "Claimed sum at internal index is not supported"
+        );
         Self {
             interaction,
-            total_sum,
+            cumsum_shift: total_sum / BaseField::from_u32_unchecked(1 << log_size),
             claimed_sum,
             fracs: vec![],
             is_finalized: true,
-            is_first: E::F::zero(),
             log_size,
         }
     }
@@ -84,11 +85,10 @@ impl<E: EvalAtRow> LogupAtRow<E> {
     pub fn dummy() -> Self {
         Self {
             interaction: 100,
-            total_sum: SecureField::one(),
+            cumsum_shift: SecureField::one(),
             claimed_sum: None,
             fracs: vec![],
             is_finalized: true,
-            is_first: E::F::zero(),
             log_size: 10,
         }
     }
@@ -183,14 +183,42 @@ impl LogupTraceGenerator {
     }
 
     /// Finalize the trace. Returns the trace and the total sum of the last column.
+    /// The last column is shifted by the cumsum_shift.
     pub fn finalize_last(
-        self,
+        mut self,
     ) -> (
         ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
         SecureField,
     ) {
-        let log_size = self.log_size;
-        let (trace, [total_sum]) = self.finalize_at([(1 << log_size) - 1]);
+        let mut last_col_coords = self.trace.pop().unwrap().columns;
+
+        // compute cumsum_shift.
+        let packed_sums: [PackedBaseField; SECURE_EXTENSION_DEGREE] = last_col_coords
+            .each_ref()
+            .map(|c| c.data.iter().copied().sum());
+        let base_sums = packed_sums.map(|s| s.pointwise_sum());
+        let total_sum = SecureField::from_m31_array(base_sums);
+        let cumsum_shift = total_sum / BaseField::from_u32_unchecked(1 << self.log_size);
+
+        last_col_coords.iter_mut().enumerate().for_each(|(i, c)| {
+            c.data
+                .iter_mut()
+                .for_each(|x| *x -= PackedBaseField::broadcast(cumsum_shift.to_m31_array()[i]))
+        });
+        let coord_prefix_sum = last_col_coords.map(inclusive_prefix_sum);
+        let secure_prefix_sum = SecureColumnByCoords {
+            columns: coord_prefix_sum,
+        };
+        self.trace.push(secure_prefix_sum);
+        let trace = self
+            .trace
+            .into_iter()
+            .flat_map(|eval| {
+                eval.columns.map(|col| {
+                    CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
+                })
+            })
+            .collect_vec();
         (trace, total_sum)
     }
 
