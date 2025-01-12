@@ -3,7 +3,7 @@ name:
 on:
   push:
     branches:
-      - dev
+      - main
 
 permissions:
   # deployments permission to deploy GitHub pages website
