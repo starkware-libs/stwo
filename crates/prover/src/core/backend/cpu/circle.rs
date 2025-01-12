@@ -7,7 +7,7 @@ use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{ExtensionOf, FieldExpOps};
+use crate::core::fields::{batch_inverse_in_place, ExtensionOf};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
@@ -172,7 +172,7 @@ impl PolyOps for CpuBackend {
             .array_chunks::<CHUNK_SIZE>()
             .zip(itwiddles.array_chunks_mut::<CHUNK_SIZE>())
             .for_each(|(src, dst)| {
-                BaseField::batch_inverse(src, dst);
+                batch_inverse_in_place(src, dst);
             });
 
         TwiddleTree {
