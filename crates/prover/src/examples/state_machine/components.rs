@@ -83,7 +83,7 @@ impl StateMachineStatement0 {
                 .map_cols(|_| self.m),
         ];
         let mut log_sizes = TreeVec::concat_cols(sizes.into_iter());
-        log_sizes[PREPROCESSED_TRACE_IDX] = vec![self.n, self.m];
+        log_sizes[PREPROCESSED_TRACE_IDX] = vec![];
         log_sizes
     }
     pub fn mix_into(&self, channel: &mut impl Channel) {

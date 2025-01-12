@@ -3,7 +3,6 @@ use num_traits::One;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
-use crate::constraint_framework::preprocessed_columns::IsFirst;
 use crate::constraint_framework::{
     assert_constraints, relation, EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry,
     TraceLocationAllocator,
@@ -192,7 +191,6 @@ pub fn prove_fibonacci_plonk(
     // Preprocessed trace.
     let span = span!(Level::INFO, "Constant").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
-    let is_first = IsFirst::new(log_n_rows).gen_column_simd();
     let mut constant_trace = [
         circuit.a_wire.clone(),
         circuit.b_wire.clone(),
@@ -207,7 +205,6 @@ pub fn prove_fibonacci_plonk(
         )
     })
     .collect_vec();
-    constant_trace.push(is_first);
     let constants_trace_location = tree_builder.extend_evals(constant_trace);
     tree_builder.commit(channel);
     span.exit();
