@@ -11,9 +11,6 @@ use components::{
 use gen::{gen_interaction_trace, gen_trace};
 use itertools::{chain, Itertools};
 
-use crate::constraint_framework::preprocessed_columns::{
-    gen_preprocessed_columns, PreprocessedColumn,
-};
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::backend::simd::m31::LOG_N_LANES;
 use crate::core::backend::simd::SimdBackend;
@@ -56,14 +53,6 @@ pub fn prove_state_machine(
     let mut commitment_scheme =
         CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
 
-    let preprocessed_columns = [
-        PreprocessedColumn::IsFirst(x_axis_log_rows),
-        PreprocessedColumn::IsFirst(y_axis_log_rows),
-    ];
-
-    // Preprocessed trace.
-    let preprocessed_trace = gen_preprocessed_columns(preprocessed_columns.iter());
-
     // Trace.
     let trace_op0 = gen_trace(x_axis_log_rows, initial_state, 0);
     let trace_op1 = gen_trace(y_axis_log_rows, intermediate_state, 1);
@@ -74,7 +63,7 @@ pub fn prove_state_machine(
         false => None,
         true => Some(RelationSummary::summarize_relations(
             &track_state_machine_relations(
-                &TreeVec(vec![&preprocessed_trace, &trace]),
+                &TreeVec(vec![&vec![], &trace]),
                 x_axis_log_rows,
                 y_axis_log_rows,
             ),
@@ -83,7 +72,6 @@ pub fn prove_state_machine(
 
     // Commitments.
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(preprocessed_trace);
     tree_builder.commit(channel);
 
     let stmt0 = StateMachineStatement0 {
@@ -135,8 +123,6 @@ pub fn prove_state_machine(
         },
         (total_sum_op1, None),
     );
-
-    tree_span_provider.validate_preprocessed_columns(&preprocessed_columns);
 
     let components = StateMachineComponents {
         component0,
@@ -202,7 +188,6 @@ mod tests {
     use super::gen::{gen_interaction_trace, gen_trace};
     use super::{prove_state_machine, verify_state_machine};
     use crate::constraint_framework::expr::ExprEvaluator;
-    use crate::constraint_framework::preprocessed_columns::gen_is_first;
     use crate::constraint_framework::{
         assert_constraints, FrameworkEval, Relation, TraceLocationAllocator,
     };
@@ -234,11 +219,7 @@ mod tests {
             (total_sum, None),
         );
 
-        let trace = TreeVec::new(vec![
-            vec![gen_is_first(log_n_rows)],
-            trace,
-            interaction_trace,
-        ]);
+        let trace = TreeVec::new(vec![vec![], trace, interaction_trace]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
         assert_constraints(
             &trace_polys,
@@ -350,7 +331,7 @@ mod tests {
             (total_sum, None),
         );
 
-        let eval = component.evaluate(ExprEvaluator::new(log_n_rows, true));
+        let eval = component.evaluate(ExprEvaluator::new(log_n_rows, false));
         let expected = "let intermediate0 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0) \
             + (StateMachineElements_alpha1) * (trace_1_column_1_offset_0) \
             - (StateMachineElements_z);
@@ -361,18 +342,9 @@ mod tests {
             - (StateMachineElements_z);
 
 \
-        let constraint_0 = (QM31Impl::from_partial_evals([\
-            trace_2_column_2_offset_claimed_sum, \
-            trace_2_column_3_offset_claimed_sum, \
-            trace_2_column_4_offset_claimed_sum, \
-            trace_2_column_5_offset_claimed_sum\
-        ]) - (claimed_sum)) \
-            * (preprocessed_is_first);
-
-\
-        let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_2_offset_0, trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0]) \
-            - (QM31Impl::from_partial_evals([trace_2_column_2_offset_neg_1, trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1]) \
-                - ((total_sum) * (preprocessed_is_first)))\
+        let constraint_0 = (QM31Impl::from_partial_evals([trace_2_column_2_offset_0, trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0]) \
+            - (QM31Impl::from_partial_evals([trace_2_column_2_offset_neg_1, trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1])) \
+                + (total_sum) * (qm31(8388608, 0, 0, 0))\
             ) \
             * ((intermediate0) * (intermediate1)) \
             - (intermediate1 - (intermediate0));"
