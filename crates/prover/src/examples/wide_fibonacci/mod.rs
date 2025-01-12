@@ -146,7 +146,7 @@ mod tests {
             &trace_polys,
             CanonicCoset::new(LOG_N_INSTANCES),
             fibonacci_constraint_evaluator::<LOG_N_INSTANCES>,
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
     }
 
@@ -166,7 +166,7 @@ mod tests {
             &trace_polys,
             CanonicCoset::new(LOG_N_INSTANCES),
             fibonacci_constraint_evaluator::<LOG_N_INSTANCES>,
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
     }
 
@@ -203,7 +203,7 @@ mod tests {
                 WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
                     log_n_rows: log_n_instances,
                 },
-                (SecureField::zero(), None),
+                SecureField::zero(),
             );
 
             let proof = prove::<SimdBackend, Blake2sMerkleChannel>(
@@ -261,7 +261,7 @@ mod tests {
             WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
                 log_n_rows: LOG_N_INSTANCES,
             },
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
         let proof = prove::<SimdBackend, Poseidon252MerkleChannel>(
             &[&component],

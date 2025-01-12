@@ -2,7 +2,7 @@ use std::ops::Mul;
 
 use num_traits::Zero;
 
-use super::logup::{LogupAtRow, LogupSums};
+use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
 use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
@@ -36,7 +36,7 @@ impl<'a> CpuDomainEvaluator<'a> {
         domain_log_size: u32,
         eval_log_size: u32,
         log_size: u32,
-        logup_sums: LogupSums,
+        total_sum: SecureField,
     ) -> Self {
         Self {
             trace_eval,
@@ -47,7 +47,7 @@ impl<'a> CpuDomainEvaluator<'a> {
             constraint_index: 0,
             domain_log_size,
             eval_domain_log_size: eval_log_size,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, logup_sums.0, logup_sums.1, log_size),
+            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, total_sum, log_size),
         }
     }
 }
