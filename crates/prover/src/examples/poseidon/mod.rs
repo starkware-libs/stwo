@@ -7,7 +7,6 @@ use num_traits::One;
 use tracing::{info, span, Level};
 
 use crate::constraint_framework::logup::LogupTraceGenerator;
-use crate::constraint_framework::preprocessed_columns::IsFirst;
 use crate::constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
     TraceLocationAllocator,
@@ -349,7 +348,7 @@ pub fn prove_poseidon(
     // Preprocessed trace.
     let span = span!(Level::INFO, "Constant").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
-    let constant_trace = vec![IsFirst::new(log_n_rows).gen_column_simd()];
+    let constant_trace = vec![];
     tree_builder.extend_evals(constant_trace);
     tree_builder.commit(channel);
     span.exit();
@@ -397,7 +396,6 @@ mod tests {
     use num_traits::One;
 
     use crate::constraint_framework::assert_constraints;
-    use crate::constraint_framework::preprocessed_columns::IsFirst;
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
@@ -472,11 +470,7 @@ mod tests {
         let (trace1, total_sum) =
             gen_interaction_trace(LOG_N_ROWS, interaction_data, &lookup_elements);
 
-        let traces = TreeVec::new(vec![
-            vec![IsFirst::new(LOG_N_ROWS).gen_column_simd()],
-            trace0,
-            trace1,
-        ]);
+        let traces = TreeVec::new(vec![vec![], trace0, trace1]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
         assert_constraints(

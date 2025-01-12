@@ -4,7 +4,8 @@ use super::{BaseExpr, ExtExpr};
 use crate::constraint_framework::expr::ColumnExpr;
 use crate::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use crate::constraint_framework::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
-use crate::core::fields::m31;
+use crate::core::fields::m31::{self, M31};
+use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 
 pub struct FormalLogupAtRow {
@@ -14,6 +15,7 @@ pub struct FormalLogupAtRow {
     pub fracs: Vec<Fraction<ExtExpr, ExtExpr>>,
     pub is_finalized: bool,
     pub is_first: BaseExpr,
+    pub cumsum_shift: ExtExpr,
     pub log_size: u32,
 }
 
@@ -29,12 +31,17 @@ impl FormalLogupAtRow {
         Self {
             interaction,
             // TODO(alont): Should these be Expr::SecureField?
-            total_sum: ExtExpr::Param(total_sum_name),
+            total_sum: ExtExpr::Param(total_sum_name.clone()),
             claimed_sum: has_partial_sum
                 .then_some((ExtExpr::Param(claimed_sum_name), CLAIMED_SUM_DUMMY_OFFSET)),
             fracs: vec![],
             is_finalized: true,
             is_first: BaseExpr::zero(),
+            cumsum_shift: ExtExpr::Param(total_sum_name)
+                * BaseExpr::Inv(Box::new(BaseExpr::pow(
+                    &BaseExpr::Const(M31(2)),
+                    log_size as u128,
+                ))),
             log_size,
         }
     }
@@ -207,8 +214,8 @@ mod tests {
 
 \
         let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0, trace_2_column_6_offset_0]) \
-            - (QM31Impl::from_partial_evals([trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1, trace_2_column_6_offset_neg_1]) \
-                - ((total_sum) * (preprocessed_is_first_16)))) \
+            - (QM31Impl::from_partial_evals([trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1, trace_2_column_6_offset_neg_1])) \
+                + (total_sum) * (qm31(32768, 0, 0, 0))) \
             * (intermediate1) \
             - (qm31(1, 0, 0, 0));"
             .to_string();
