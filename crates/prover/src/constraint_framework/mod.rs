@@ -182,11 +182,6 @@ macro_rules! logup_proxy {
         /// `batching` should contain the batch into which every logup entry should be inserted.
         fn finalize_logup_batched(&mut self, batching: &crate::constraint_framework::Batching) {
             assert!(!self.logup.is_finalized, "LogupAtRow was already finalized");
-
-            assert!(
-                self.logup.claimed_sum.is_none(),
-                "Claimed sum at internal index is not supported"
-            );
             assert_eq!(
                 batching.len(),
                 self.logup.fracs.len(),

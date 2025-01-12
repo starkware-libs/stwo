@@ -380,7 +380,7 @@ pub fn prove_poseidon(
             lookup_elements,
             total_sum,
         },
-        (total_sum, None),
+        total_sum,
     );
     info!("Poseidon component info:\n{}", component);
     let proof = prove(&[&component], channel, commitment_scheme).unwrap();
@@ -479,7 +479,7 @@ mod tests {
             |mut eval| {
                 eval_poseidon_constraints(&mut eval, &lookup_elements);
             },
-            (total_sum, None),
+            total_sum,
         );
     }
 

@@ -107,7 +107,7 @@ mod tests {
             |eval| {
                 component.evaluate(eval);
             },
-            (total_sum, None),
+            total_sum,
         )
     }
 }
