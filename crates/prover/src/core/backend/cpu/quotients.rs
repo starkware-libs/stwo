@@ -132,10 +132,7 @@ fn denominator_inverses(
         denominators.push((prx - domain_point.x) * piy - (pry - domain_point.y) * pix);
     }
 
-    let mut denominator_inverses = vec![CM31::zero(); denominators.len()];
-    CM31::batch_inverse(&denominators, &mut denominator_inverses);
-
-    denominator_inverses
+    CM31::invert_many(&denominators)
 }
 
 pub fn quotient_constants(

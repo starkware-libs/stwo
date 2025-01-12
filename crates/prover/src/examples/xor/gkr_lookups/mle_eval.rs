@@ -687,8 +687,7 @@ fn eval_step_selector(coset: Coset, log_step: u32, p: CirclePoint<SecureField>) 
     vanish_at_log_step.reverse();
     // We only need the first `log_step` many values.
     vanish_at_log_step.truncate(log_step as usize);
-    let mut vanish_at_log_step_inv = vec![SecureField::zero(); vanish_at_log_step.len()];
-    SecureField::batch_inverse(&vanish_at_log_step, &mut vanish_at_log_step_inv);
+    let vanish_at_log_step_inv = SecureField::invert_many(&vanish_at_log_step);
 
     let half_coset_selector_dbl = (vanish_at_log_step[0] * vanish_at_log_step_inv[1]).square();
     let vanish_substep_inv_sum = vanish_at_log_step_inv[1..].iter().sum::<SecureField>();

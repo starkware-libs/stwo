@@ -30,37 +30,8 @@ pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Clone {
 
     fn inverse(&self) -> Self;
 
-    /// Inverts a batch of elements using Montgomery's trick.
-    fn batch_inverse(column: &[Self], dst: &mut [Self]) {
-        const WIDTH: usize = 4;
-        let n = column.len();
-        debug_assert!(dst.len() >= n);
-
-        if n <= WIDTH || n % WIDTH != 0 {
-            batch_inverse_classic(column, dst);
-            return;
-        }
-
-        // First pass. Compute 'WIDTH' cumulative products in an interleaving fashion, reducing
-        // instruction dependency and allowing better pipelining.
-        let mut cum_prod: [Self; WIDTH] = std::array::from_fn(|_| Self::one());
-        dst[..WIDTH].clone_from_slice(&cum_prod);
-        for i in 0..n {
-            cum_prod[i % WIDTH] *= column[i].clone();
-            dst[i] = cum_prod[i % WIDTH].clone();
-        }
-
-        // Inverse cumulative products.
-        // Use classic batch inversion.
-        let mut tail_inverses: [Self; WIDTH] = std::array::from_fn(|_| Self::one());
-        batch_inverse_classic(&dst[n - WIDTH..], &mut tail_inverses);
-
-        // Second pass.
-        for i in (WIDTH..n).rev() {
-            dst[i] = dst[i - WIDTH].clone() * tail_inverses[i % WIDTH].clone();
-            tail_inverses[i % WIDTH] *= column[i].clone();
-        }
-        dst[0..WIDTH].clone_from_slice(&tail_inverses);
+    fn invert_many(column: &[Self]) -> Vec<Self> {
+        batch_inverse(column)
     }
 }
 
@@ -89,6 +60,46 @@ fn batch_inverse_classic<T: FieldExpOps>(column: &[T], dst: &mut [T]) {
         curr_inverse *= column[i].clone();
     }
     dst[0] = curr_inverse;
+}
+
+/// Inverts a batch of elements using Montgomery's trick.
+pub fn batch_inverse_in_place<F: FieldExpOps>(column: &[F], dst: &mut [F]) {
+    const WIDTH: usize = 4;
+    let n = column.len();
+    debug_assert!(dst.len() >= n);
+
+    if n <= WIDTH || n % WIDTH != 0 {
+        batch_inverse_classic(column, dst);
+        return;
+    }
+
+    // First pass. Compute 'WIDTH' cumulative products in an interleaving fashion, reducing
+    // instruction dependency and allowing better pipelining.
+    let mut cum_prod: [F; WIDTH] = std::array::from_fn(|_| F::one());
+    dst[..WIDTH].clone_from_slice(&cum_prod);
+    for i in 0..n {
+        cum_prod[i % WIDTH] *= column[i].clone();
+        dst[i] = cum_prod[i % WIDTH].clone();
+    }
+
+    // Inverse cumulative products.
+    // Use classic batch inversion.
+    let mut tail_inverses: [F; WIDTH] = std::array::from_fn(|_| F::one());
+    batch_inverse_classic(&dst[n - WIDTH..], &mut tail_inverses);
+
+    // Second pass.
+    for i in (WIDTH..n).rev() {
+        dst[i] = dst[i - WIDTH].clone() * tail_inverses[i % WIDTH].clone();
+        tail_inverses[i % WIDTH] *= column[i].clone();
+    }
+    dst[0..WIDTH].clone_from_slice(&tail_inverses);
+}
+
+// TODO(Ohad): chunks, parallelize.
+pub fn batch_inverse<F: FieldExpOps>(column: &[F]) -> Vec<F> {
+    let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
+    batch_inverse_in_place(column, &mut dst);
+    dst
 }
 
 pub trait Field:
@@ -460,17 +471,17 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
+    use super::batch_inverse_in_place;
     use crate::core::fields::m31::M31;
-    use crate::core::fields::FieldExpOps;
 
     #[test]
-    fn test_slice_batch_inverse() {
+    fn test_slice_batch_inverse_in_place() {
         let mut rng = SmallRng::seed_from_u64(0);
         let elements: [M31; 16] = rng.gen();
         let expected = elements.iter().map(|e| e.inverse()).collect::<Vec<_>>();
         let mut dst = [M31::zero(); 16];
 
-        M31::batch_inverse(&elements, &mut dst);
+        batch_inverse_in_place(&elements, &mut dst);
 
         assert_eq!(expected, dst);
     }
@@ -482,6 +493,6 @@ mod tests {
         let elements: [M31; 16] = rng.gen();
         let mut dst = [M31::zero(); 15];
 
-        M31::batch_inverse(&elements, &mut dst);
+        batch_inverse_in_place(&elements, &mut dst);
     }
 }

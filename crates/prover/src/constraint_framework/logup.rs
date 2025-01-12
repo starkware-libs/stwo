@@ -11,10 +11,10 @@ use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Column;
 use crate::core::channel::Channel;
+use crate::core::fields::batch_inverse_in_place;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
-use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -259,7 +259,7 @@ impl LogupColGenerator<'_> {
 
     /// Finalizes generating the column.
     pub fn finalize_col(mut self) {
-        FieldExpOps::batch_inverse(&self.gen.denom.data, &mut self.gen.denom_inv.data);
+        batch_inverse_in_place(&self.gen.denom.data, &mut self.gen.denom_inv.data);
 
         for vec_row in 0..(1 << (self.gen.log_size - LOG_N_LANES)) {
             unsafe {

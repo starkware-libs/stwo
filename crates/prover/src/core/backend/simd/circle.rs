@@ -96,8 +96,7 @@ impl SimdBackend {
             denominators.push(denominators[i - 1] * mappings[i]);
         }
 
-        let mut denom_inverses = vec![F::zero(); denominators.len()];
-        F::batch_inverse(&denominators, &mut denom_inverses);
+        let denom_inverses = F::invert_many(&denominators);
 
         let mut steps = vec![mappings[0]];
 
@@ -311,8 +310,7 @@ impl PolyOps for SimdBackend {
             remaining_twiddles.try_into().unwrap(),
         ));
 
-        let mut itwiddles = unsafe { BaseColumn::uninitialized(root_coset.size()) }.data;
-        PackedBaseField::batch_inverse(&twiddles, &mut itwiddles);
+        let itwiddles = PackedBaseField::invert_many(&twiddles);
 
         let dbl_twiddles = twiddles
             .into_iter()
