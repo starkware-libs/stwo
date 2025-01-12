@@ -10,7 +10,6 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 pub use evaluator::ExprEvaluator;
 use num_traits::{One, Zero};
 
-use crate::constraint_framework::expr::evaluator::CLAIMED_SUM_DUMMY_OFFSET;
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, QM31};

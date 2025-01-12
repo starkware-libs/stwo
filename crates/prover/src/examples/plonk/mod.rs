@@ -238,7 +238,7 @@ pub fn prove_fibonacci_plonk(
             interaction_trace_location,
             constants_trace_location,
         },
-        (total_sum, None),
+        total_sum,
     );
 
     // Sanity check. Remove for production.
@@ -252,7 +252,7 @@ pub fn prove_fibonacci_plonk(
         |mut eval| {
             component.evaluate(eval);
         },
-        (total_sum, None),
+        total_sum,
     );
 
     let proof = prove(&[&component], channel, commitment_scheme).unwrap();

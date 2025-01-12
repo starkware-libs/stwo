@@ -1,6 +1,6 @@
 use num_traits::Zero;
 
-use super::logup::{LogupAtRow, LogupSums};
+use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
 use crate::core::backend::{Backend, Column};
 use crate::core::fields::m31::BaseField;
@@ -23,13 +23,13 @@ impl<'a> AssertEvaluator<'a> {
         trace: &'a TreeVec<Vec<Vec<BaseField>>>,
         row: usize,
         log_size: u32,
-        logup_sums: LogupSums,
+        total_sum: SecureField,
     ) -> Self {
         Self {
             trace,
             col_index: TreeVec::new(vec![0; trace.len()]),
             row,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, logup_sums.0, logup_sums.1, log_size),
+            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, total_sum, log_size),
         }
     }
 }
@@ -78,7 +78,7 @@ pub fn assert_constraints<B: Backend>(
     trace_polys: &TreeVec<Vec<CirclePoly<B>>>,
     trace_domain: CanonicCoset,
     assert_func: impl Fn(AssertEvaluator<'_>),
-    logup_sums: LogupSums,
+    total_sum: SecureField,
 ) {
     let traces = trace_polys.as_ref().map(|tree| {
         tree.iter()
@@ -94,7 +94,7 @@ pub fn assert_constraints<B: Backend>(
             .collect()
     });
     for row in 0..trace_domain.size() {
-        let eval = AssertEvaluator::new(&traces, row, trace_domain.log_size(), logup_sums);
+        let eval = AssertEvaluator::new(&traces, row, trace_domain.log_size(), total_sum);
 
         assert_func(eval);
     }

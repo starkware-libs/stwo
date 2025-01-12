@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use num_traits::{One, Zero};
 
-use super::logup::{LogupAtRow, LogupSums};
+use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
 use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
 use crate::core::fields::m31::BaseField;
@@ -27,12 +27,12 @@ pub struct InfoEvaluator {
     pub arithmetic_counts: ArithmeticCounts,
 }
 impl InfoEvaluator {
-    pub fn new(log_size: u32, preprocessed_columns: Vec<String>, logup_sums: LogupSums) -> Self {
+    pub fn new(log_size: u32, preprocessed_columns: Vec<String>, total_sum: SecureField) -> Self {
         Self {
             mask_offsets: Default::default(),
             n_constraints: Default::default(),
             preprocessed_columns,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, logup_sums.0, logup_sums.1, log_size),
+            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, total_sum, log_size),
             arithmetic_counts: Default::default(),
         }
     }
@@ -40,7 +40,7 @@ impl InfoEvaluator {
     /// Create an empty `InfoEvaluator`, to measure components before their size and logup sums are
     /// available.
     pub fn empty() -> Self {
-        Self::new(16, vec![], (SecureField::default(), None))
+        Self::new(16, vec![], SecureField::default())
     }
 }
 impl EvalAtRow for InfoEvaluator {
