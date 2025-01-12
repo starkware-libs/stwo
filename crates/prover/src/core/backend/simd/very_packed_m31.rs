@@ -9,7 +9,7 @@ use super::qm31::PackedQM31;
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
-use crate::core::fields::FieldExpOps;
+use crate::core::fields::{batch_inverse_in_place, FieldExpOps};
 
 pub const LOG_N_VERY_PACKED_ELEMS: u32 = 1;
 pub const N_VERY_PACKED_ELEMS: usize = 1 << LOG_N_VERY_PACKED_ELEMS;
@@ -247,7 +247,7 @@ impl<A: One + Copy, const N: usize> One for Vectorized<A, N> {
 impl<A: FieldExpOps + Zero + Copy, const N: usize> FieldExpOps for Vectorized<A, N> {
     fn inverse(&self) -> Self {
         let mut dst = [A::zero(); N];
-        A::batch_inverse(&self.0, &mut dst);
+        batch_inverse_in_place(&self.0, &mut dst);
         dst.into()
     }
 }
