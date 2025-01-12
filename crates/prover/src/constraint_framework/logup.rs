@@ -18,36 +18,15 @@ use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use crate::core::ColumnVec;
 
-/// Represents the value of the prefix sum column at some index.
-/// Should be used to eliminate padded rows for the logup sum.
-pub type ClaimedPrefixSum = (SecureField, usize);
-// (total_sum, claimed_sum)
-pub type LogupSums = (SecureField, Option<ClaimedPrefixSum>);
-
-pub trait LogupSumsExt {
-    fn value(&self) -> SecureField;
-}
-
-impl LogupSumsExt for LogupSums {
-    fn value(&self) -> SecureField {
-        self.1.map(|(claimed_sum, _)| claimed_sum).unwrap_or(self.0)
-    }
-}
-
 /// Evaluates constraints for batched logups.
-/// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = claimed_sum.
+/// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = total_sum.
 pub struct LogupAtRow<E: EvalAtRow> {
     /// The index of the interaction used for the cumulative sum columns.
     pub interaction: usize,
     /// The total sum of all the fractions divided by n_rows.
     pub cumsum_shift: SecureField,
-    /// The claimed sum of the relevant fractions.
-    /// This is used for padding the component with default rows. Padding should be in bit-reverse.
-    /// None if the claimed_sum is the total_sum.
-    pub claimed_sum: Option<ClaimedPrefixSum>,
     /// The evaluation of the last cumulative sum column.
     pub fracs: Vec<Fraction<E::EF, E::EF>>,
     pub is_finalized: bool,
@@ -60,18 +39,10 @@ impl<E: EvalAtRow> Default for LogupAtRow<E> {
     }
 }
 impl<E: EvalAtRow> LogupAtRow<E> {
-    pub fn new(
-        interaction: usize,
-        total_sum: SecureField,
-        claimed_sum: Option<ClaimedPrefixSum>,
-        log_size: u32,
-    ) -> Self {
-        // TODO(ShaharS): remove once claimed sum at internal index is supported.
-        assert!(claimed_sum.is_none(), "Partial prefix-sum is not supported");
+    pub fn new(interaction: usize, total_sum: SecureField, log_size: u32) -> Self {
         Self {
             interaction,
             cumsum_shift: total_sum / BaseField::from_u32_unchecked(1 << log_size),
-            claimed_sum,
             fracs: vec![],
             is_finalized: true,
             log_size,
@@ -83,7 +54,6 @@ impl<E: EvalAtRow> LogupAtRow<E> {
         Self {
             interaction: 100,
             cumsum_shift: SecureField::one(),
-            claimed_sum: None,
             fracs: vec![],
             is_finalized: true,
             log_size: 10,
@@ -221,43 +191,6 @@ impl LogupTraceGenerator {
             })
             .collect_vec();
         (trace, total_sum)
-    }
-
-    /// Finalize the trace. Returns the trace and the prefix sum of the last column at
-    /// the corresponding `indices`.
-    pub fn finalize_at<const N: usize>(
-        mut self,
-        indices: [usize; N],
-    ) -> (
-        ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
-        [SecureField; N],
-    ) {
-        // Prefix sum the last column.
-        let last_col_coords = self.trace.pop().unwrap().columns;
-        let coord_prefix_sum = last_col_coords.map(inclusive_prefix_sum);
-        let secure_prefix_sum = SecureColumnByCoords {
-            columns: coord_prefix_sum,
-        };
-        let returned_prefix_sums = indices.map(|idx| {
-            // Prefix sum column is in bit-reversed circle domain order.
-            let fixed_index = bit_reverse_index(
-                coset_index_to_circle_domain_index(idx, self.log_size),
-                self.log_size,
-            );
-            secure_prefix_sum.at(fixed_index)
-        });
-        self.trace.push(secure_prefix_sum);
-
-        let trace = self
-            .trace
-            .into_iter()
-            .flat_map(|eval| {
-                eval.columns.map(|col| {
-                    CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
-                })
-            })
-            .collect_vec();
-        (trace, returned_prefix_sums)
     }
 }
 
