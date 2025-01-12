@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use rayon::iter::plumbing::{bridge, Consumer, Producer, ProducerCallback, UnindexedConsumer};
 use rayon::prelude::*;
+use stwo_prover::core::backend::simd::conversion::Pack;
 use stwo_prover::core::backend::simd::m31::PackedM31;
 
 pub type MutRow<'trace, const N: usize> = [&'trace mut PackedM31; N];
@@ -15,8 +16,9 @@ pub struct RowIterMut<'trace, const N: usize> {
 }
 impl<'trace, const N: usize> RowIterMut<'trace, N> {
     pub fn new(slice: [&'trace mut [PackedM31]; N]) -> Self {
+        let x: PackedM31 = Pack::from(0);
         Self {
-            v: slice.map(|s| s as *mut _),
+            v: slice.map(|s| x * s as *mut _),
             phantom: PhantomData,
         }
     }
