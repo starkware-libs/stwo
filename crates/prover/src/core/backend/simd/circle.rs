@@ -16,7 +16,7 @@ use crate::core::backend::{Col, Column, CpuBackend};
 use crate::core::circle::{CirclePoint, Coset, M31_CIRCLE_LOG_ORDER};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{Field, FieldExpOps};
+use crate::core::fields::{batch_inverse, Field, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
@@ -96,8 +96,7 @@ impl SimdBackend {
             denominators.push(denominators[i - 1] * mappings[i]);
         }
 
-        let mut denom_inverses = vec![F::zero(); denominators.len()];
-        F::batch_inverse(&denominators, &mut denom_inverses);
+        let denom_inverses = batch_inverse(&denominators);
 
         let mut steps = vec![mappings[0]];
 
@@ -311,8 +310,7 @@ impl PolyOps for SimdBackend {
             remaining_twiddles.try_into().unwrap(),
         ));
 
-        let mut itwiddles = unsafe { BaseColumn::uninitialized(root_coset.size()) }.data;
-        PackedBaseField::batch_inverse(&twiddles, &mut itwiddles);
+        let itwiddles = batch_inverse(&twiddles);
 
         let dbl_twiddles = twiddles
             .into_iter()

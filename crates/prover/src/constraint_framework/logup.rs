@@ -259,7 +259,7 @@ impl LogupColGenerator<'_> {
 
     /// Finalizes generating the column.
     pub fn finalize_col(mut self) {
-        FieldExpOps::batch_inverse(&self.gen.denom.data, &mut self.gen.denom_inv.data);
+        FieldExpOps::batch_inverse_in_place(&self.gen.denom.data, &mut self.gen.denom_inv.data);
 
         for vec_row in 0..(1 << (self.gen.log_size - LOG_N_LANES)) {
             unsafe {

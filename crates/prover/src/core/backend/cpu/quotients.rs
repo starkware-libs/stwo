@@ -8,7 +8,7 @@ use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
-use crate::core::fields::FieldExpOps;
+use crate::core::fields::{batch_inverse, FieldExpOps};
 use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -132,10 +132,7 @@ fn denominator_inverses(
         denominators.push((prx - domain_point.x) * piy - (pry - domain_point.y) * pix);
     }
 
-    let mut denominator_inverses = vec![CM31::zero(); denominators.len()];
-    CM31::batch_inverse(&denominators, &mut denominator_inverses);
-
-    denominator_inverses
+    batch_inverse(&denominators)
 }
 
 pub fn quotient_constants(

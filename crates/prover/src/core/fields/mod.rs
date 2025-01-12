@@ -31,7 +31,7 @@ pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Clone {
     fn inverse(&self) -> Self;
 
     /// Inverts a batch of elements using Montgomery's trick.
-    fn batch_inverse(column: &[Self], dst: &mut [Self]) {
+    fn batch_inverse_in_place(column: &[Self], dst: &mut [Self]) {
         const WIDTH: usize = 4;
         let n = column.len();
         debug_assert!(dst.len() >= n);
@@ -89,6 +89,13 @@ fn batch_inverse_classic<T: FieldExpOps>(column: &[T], dst: &mut [T]) {
         curr_inverse *= column[i].clone();
     }
     dst[0] = curr_inverse;
+}
+
+// TODO(Ohad): chunks, parallelize.
+pub fn batch_inverse<T: FieldExpOps>(column: &[T]) -> Vec<T> {
+    let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
+    T::batch_inverse_in_place(column, &mut dst);
+    dst
 }
 
 pub trait Field:
@@ -470,7 +477,7 @@ mod tests {
         let expected = elements.iter().map(|e| e.inverse()).collect::<Vec<_>>();
         let mut dst = [M31::zero(); 16];
 
-        M31::batch_inverse(&elements, &mut dst);
+        M31::batch_inverse_in_place(&elements, &mut dst);
 
         assert_eq!(expected, dst);
     }
@@ -482,6 +489,6 @@ mod tests {
         let elements: [M31; 16] = rng.gen();
         let mut dst = [M31::zero(); 15];
 
-        M31::batch_inverse(&elements, &mut dst);
+        M31::batch_inverse_in_place(&elements, &mut dst);
     }
 }

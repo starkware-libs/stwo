@@ -247,7 +247,7 @@ impl<A: One + Copy, const N: usize> One for Vectorized<A, N> {
 impl<A: FieldExpOps + Zero + Copy, const N: usize> FieldExpOps for Vectorized<A, N> {
     fn inverse(&self) -> Self {
         let mut dst = [A::zero(); N];
-        A::batch_inverse(&self.0, &mut dst);
+        A::batch_inverse_in_place(&self.0, &mut dst);
         dst.into()
     }
 }

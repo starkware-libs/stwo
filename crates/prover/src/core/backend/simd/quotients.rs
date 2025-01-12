@@ -12,11 +12,11 @@ use super::qm31::PackedSecureField;
 use super::SimdBackend;
 use crate::core::backend::cpu::bit_reverse;
 use crate::core::backend::cpu::quotients::{batch_random_coeffs, column_line_coeffs};
-use crate::core::backend::{Column, CpuBackend};
+use crate::core::backend::CpuBackend;
+use crate::core::fields::batch_inverse;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
-use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -243,15 +243,9 @@ fn denominator_inverses(
         })
         .collect();
 
-    let mut flat_denominator_inverses =
-        unsafe { CM31Column::uninitialized(flat_denominators.len()) };
-    FieldExpOps::batch_inverse(
-        &flat_denominators.data,
-        &mut flat_denominator_inverses.data[..],
-    );
+    let flat_denominator_inverses = batch_inverse(&flat_denominators.data);
 
     flat_denominator_inverses
-        .data
         .chunks(domain.size() / N_LANES)
         .map(|denominator_inverses| denominator_inverses.iter().copied().collect())
         .collect()

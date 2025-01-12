@@ -172,7 +172,7 @@ impl PolyOps for CpuBackend {
             .array_chunks::<CHUNK_SIZE>()
             .zip(itwiddles.array_chunks_mut::<CHUNK_SIZE>())
             .for_each(|(src, dst)| {
-                BaseField::batch_inverse(src, dst);
+                BaseField::batch_inverse_in_place(src, dst);
             });
 
         TwiddleTree {
