@@ -4,7 +4,6 @@ use std::fmt::Debug;
 use itertools::Itertools;
 use num_traits::Zero;
 
-use super::logup::LogupSums;
 use super::{
     Batching, EvalAtRow, FrameworkEval, InfoEvaluator, Relation, RelationEntry,
     TraceLocationAllocator, INTERACTION_TRACE_IDX,
@@ -15,6 +14,7 @@ use crate::core::backend::simd::very_packed_m31::LOG_N_VERY_PACKED_ELEMS;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Column;
 use crate::core::fields::m31::{BaseField, M31};
+use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::{TreeSubspan, TreeVec};
@@ -41,7 +41,7 @@ impl<E: FrameworkEval> RelationTrackerComponent<E> {
         let info = eval.evaluate(InfoEvaluator::new(
             eval.log_size(),
             vec![],
-            LogupSums::default(),
+            SecureField::default(),
         ));
         let mut mask_offsets = info.mask_offsets;
         mask_offsets.drain(INTERACTION_TRACE_IDX..);

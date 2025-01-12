@@ -112,7 +112,7 @@ pub fn prove_state_machine(
             lookup_elements: lookup_elements.clone(),
             total_sum: total_sum_op0,
         },
-        (total_sum_op0, None),
+        total_sum_op0,
     );
     let component1 = StateMachineOp1Component::new(
         tree_span_provider,
@@ -121,7 +121,7 @@ pub fn prove_state_machine(
             lookup_elements,
             total_sum: total_sum_op1,
         },
-        (total_sum_op1, None),
+        total_sum_op1,
     );
 
     let components = StateMachineComponents {
@@ -216,7 +216,7 @@ mod tests {
                 lookup_elements,
                 total_sum,
             },
-            (total_sum, None),
+            total_sum,
         );
 
         let trace = TreeVec::new(vec![vec![], trace, interaction_trace]);
@@ -227,7 +227,7 @@ mod tests {
             |eval| {
                 component.evaluate(eval);
             },
-            (total_sum, None),
+            total_sum,
         );
     }
 
@@ -328,10 +328,10 @@ mod tests {
                 lookup_elements,
                 total_sum,
             },
-            (total_sum, None),
+            total_sum,
         );
 
-        let eval = component.evaluate(ExprEvaluator::new(log_n_rows, false));
+        let eval = component.evaluate(ExprEvaluator::new(log_n_rows));
         let expected = "let intermediate0 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0) \
             + (StateMachineElements_alpha1) * (trace_1_column_1_offset_0) \
             - (StateMachineElements_z);
