@@ -8,9 +8,10 @@ use rand::distributions::{Distribution, Standard};
 
 use super::cm31::PackedCM31;
 use super::m31::{PackedM31, N_LANES};
+use super::PACKED_QM31_BATCH_INVERSE_CHUNK_SIZE;
 use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
-use crate::core::fields::FieldExpOps;
+use crate::core::fields::{batch_inverse_chunked, FieldExpOps};
 
 pub type PackedSecureField = PackedQM31;
 
@@ -170,6 +171,10 @@ impl FieldExpOps for PackedQM31 {
         let denom = self.a().square() - (b2 + b2 + ib2);
         let denom_inverse = denom.inverse();
         Self([self.a() * denom_inverse, -self.b() * denom_inverse])
+    }
+
+    fn batch_inverse(column: &[Self]) -> Vec<Self> {
+        batch_inverse_chunked(column, PACKED_QM31_BATCH_INVERSE_CHUNK_SIZE)
     }
 }
 

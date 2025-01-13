@@ -10,9 +10,10 @@ use num_traits::{One, Zero};
 use rand::distributions::{Distribution, Standard};
 
 use super::qm31::PackedQM31;
+use super::PACKED_M31_BATCH_INVERSE_CHUNK_SIZE;
 use crate::core::fields::m31::{pow2147483645, BaseField, M31, P};
 use crate::core::fields::qm31::QM31;
-use crate::core::fields::FieldExpOps;
+use crate::core::fields::{batch_inverse_chunked, FieldExpOps};
 
 pub const LOG_N_LANES: u32 = 4;
 
@@ -250,6 +251,10 @@ impl FieldExpOps for PackedM31 {
     fn inverse(&self) -> Self {
         assert!(!self.is_zero(), "0 has no inverse");
         pow2147483645(*self)
+    }
+
+    fn batch_inverse(column: &[Self]) -> Vec<Self> {
+        batch_inverse_chunked(column, PACKED_M31_BATCH_INVERSE_CHUNK_SIZE)
     }
 }
 
