@@ -91,10 +91,21 @@ fn batch_inverse_classic<T: FieldExpOps>(column: &[T], dst: &mut [T]) {
     dst[0] = curr_inverse;
 }
 
-// TODO(Ohad): chunks, parallelize.
 pub fn batch_inverse<T: FieldExpOps>(column: &[T]) -> Vec<T> {
     let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
     T::batch_inverse_in_place(column, &mut dst);
+    dst
+}
+
+// TODO(Ohad): parallelize.
+pub fn batch_inverse_chunked<T: FieldExpOps, const CHUNK_SIZE: usize>(column: &[T]) -> Vec<T> {
+    let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
+    let iter = dst
+        .array_chunks_mut::<CHUNK_SIZE>()
+        .zip(column.array_chunks::<CHUNK_SIZE>());
+    iter.for_each(|(dst, column)| {
+        T::batch_inverse_in_place(column, dst);
+    });
     dst
 }
 
@@ -468,7 +479,7 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use crate::core::fields::m31::M31;
-    use crate::core::fields::FieldExpOps;
+    use crate::core::fields::{batch_inverse, batch_inverse_chunked, FieldExpOps};
 
     #[test]
     fn test_slice_batch_inverse() {
@@ -490,5 +501,16 @@ mod tests {
         let mut dst = [M31::zero(); 15];
 
         M31::batch_inverse_in_place(&elements, &mut dst);
+    }
+
+    #[test]
+    fn test_batch_inverse_chunked() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        let elements: [M31; 16] = rng.gen();
+        let expected = batch_inverse(&elements);
+
+        let result = batch_inverse_chunked::<_, 4>(&elements);
+
+        assert_eq!(expected, result);
     }
 }
