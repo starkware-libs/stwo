@@ -467,10 +467,10 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
     /// Returns the queries and query evaluations needed for verifying the last FRI layer.
     fn decommit_inner_layers(
         &self,
-        inner_layer_queries: &Queries,
+        queries: &Queries,
         first_layer_sparse_evals: ColumnVec<SparseEvaluation>,
     ) -> Result<(Queries, Vec<SecureField>), FriVerificationError> {
-        let mut layer_queries = inner_layer_queries.clone();
+        let mut layer_queries = queries.clone();
         let mut layer_query_evals = vec![SecureField::zero(); layer_queries.len()];
         let mut first_layer_sparse_evals = first_layer_sparse_evals.into_iter();
         let first_layer_column_bounds = self.first_layer.column_bounds.iter();
@@ -485,14 +485,13 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
             while let Some((_, column_domain)) =
                 first_layer_columns.next_if(|(b, _)| b.fold_to_line() == layer.degree_bound)
             {
-                // Use the previous layer's folding alpha to fold the column's circle into the
-                // current layer.
+                // Use the previous layer's folding alpha to fold the circle's sparse evals into
+                // the current layer.
                 let folded_column_evals = first_layer_sparse_evals
                     .next()
                     .unwrap()
                     .fold_circle(previous_folding_alpha, *column_domain);
 
-                // Mix the folded column evaluations into the current layer's evaluations.
                 accumulate_line(
                     &mut layer_query_evals,
                     &folded_column_evals,
