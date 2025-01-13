@@ -27,12 +27,12 @@ pub struct InfoEvaluator {
     pub arithmetic_counts: ArithmeticCounts,
 }
 impl InfoEvaluator {
-    pub fn new(log_size: u32, preprocessed_columns: Vec<String>, total_sum: SecureField) -> Self {
+    pub fn new(log_size: u32, preprocessed_columns: Vec<String>, claimed_sum: SecureField) -> Self {
         Self {
             mask_offsets: Default::default(),
             n_constraints: Default::default(),
             preprocessed_columns,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, total_sum, log_size),
+            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, claimed_sum, log_size),
             arithmetic_counts: Default::default(),
         }
     }

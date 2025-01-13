@@ -209,7 +209,7 @@ impl BlakeComponents {
                     log_size: stmt0.log_size,
                     blake_lookup_elements: all_elements.blake_elements.clone(),
                     round_lookup_elements: all_elements.round_elements.clone(),
-                    total_sum: stmt1.scheduler_claimed_sum,
+                    claimed_sum: stmt1.scheduler_claimed_sum,
                 },
                 stmt1.scheduler_claimed_sum,
             ),
@@ -223,7 +223,7 @@ impl BlakeComponents {
                             log_size: stmt0.log_size + l,
                             xor_lookup_elements: all_elements.xor_elements.clone(),
                             round_lookup_elements: all_elements.round_elements.clone(),
-                            total_sum: claimed_sum,
+                            claimed_sum,
                         },
                         claimed_sum,
                     )
@@ -532,7 +532,7 @@ pub fn verify_blake<MC: MerkleChannel>(
     let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
 
     // Check that all sums are correct.
-    let total_sum = stmt1.scheduler_claimed_sum
+    let claimed_sum = stmt1.scheduler_claimed_sum
         + stmt1.round_claimed_sums.iter().sum::<SecureField>()
         + stmt1.xor12_claimed_sum
         + stmt1.xor9_claimed_sum
@@ -541,7 +541,7 @@ pub fn verify_blake<MC: MerkleChannel>(
         + stmt1.xor4_claimed_sum;
 
     // TODO(shahars): Add inputs to sum, and constraint them.
-    assert_eq!(total_sum, SecureField::zero());
+    assert_eq!(claimed_sum, SecureField::zero());
 
     verify(
         &components.components(),

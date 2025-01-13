@@ -21,7 +21,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 
 /// Evaluates constraints for batched logups.
-/// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = total_sum.
+/// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = claimed_sum.
 pub struct LogupAtRow<E: EvalAtRow> {
     /// The index of the interaction used for the cumulative sum columns.
     pub interaction: usize,
@@ -39,10 +39,10 @@ impl<E: EvalAtRow> Default for LogupAtRow<E> {
     }
 }
 impl<E: EvalAtRow> LogupAtRow<E> {
-    pub fn new(interaction: usize, total_sum: SecureField, log_size: u32) -> Self {
+    pub fn new(interaction: usize, claimed_sum: SecureField, log_size: u32) -> Self {
         Self {
             interaction,
-            cumsum_shift: total_sum / BaseField::from_u32_unchecked(1 << log_size),
+            cumsum_shift: claimed_sum / BaseField::from_u32_unchecked(1 << log_size),
             fracs: vec![],
             is_finalized: true,
             log_size,
@@ -167,8 +167,8 @@ impl LogupTraceGenerator {
                 .sum::<PackedBaseField>()
                 .pointwise_sum()
         });
-        let total_sum = SecureField::from_m31_array(coordinate_sums);
-        let cumsum_shift = total_sum / BaseField::from_u32_unchecked(1 << self.log_size);
+        let claimed_sum = SecureField::from_m31_array(coordinate_sums);
+        let cumsum_shift = claimed_sum / BaseField::from_u32_unchecked(1 << self.log_size);
         let packed_cumsum_shift = PackedSecureField::broadcast(cumsum_shift);
 
         last_col_coords.iter_mut().enumerate().for_each(|(i, c)| {
@@ -190,7 +190,7 @@ impl LogupTraceGenerator {
                 })
             })
             .collect_vec();
-        (trace, total_sum)
+        (trace, claimed_sum)
     }
 }
 

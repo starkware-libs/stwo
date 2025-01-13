@@ -36,7 +36,7 @@ impl<'a> CpuDomainEvaluator<'a> {
         domain_log_size: u32,
         eval_log_size: u32,
         log_size: u32,
-        total_sum: SecureField,
+        claimed_sum: SecureField,
     ) -> Self {
         Self {
             trace_eval,
@@ -47,7 +47,7 @@ impl<'a> CpuDomainEvaluator<'a> {
             constraint_index: 0,
             domain_log_size,
             eval_domain_log_size: eval_log_size,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, total_sum, log_size),
+            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, claimed_sum, log_size),
         }
     }
 }

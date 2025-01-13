@@ -88,14 +88,14 @@ pub fn prove_state_machine(
     let lookup_elements = StateMachineElements::draw(channel);
 
     // Interaction trace.
-    let (interaction_trace_op0, total_sum_op0) =
+    let (interaction_trace_op0, claimed_sum_op0) =
         gen_interaction_trace(&trace_op0, 0, &lookup_elements);
-    let (interaction_trace_op1, total_sum_op1) =
+    let (interaction_trace_op1, claimed_sum_op1) =
         gen_interaction_trace(&trace_op1, 1, &lookup_elements);
 
     let stmt1 = StateMachineStatement1 {
-        x_axis_claimed_sum: total_sum_op0,
-        y_axis_claimed_sum: total_sum_op1,
+        x_axis_claimed_sum: claimed_sum_op0,
+        y_axis_claimed_sum: claimed_sum_op1,
     };
     stmt1.mix_into(channel);
 
@@ -110,18 +110,18 @@ pub fn prove_state_machine(
         StateTransitionEval {
             log_n_rows: x_axis_log_rows,
             lookup_elements: lookup_elements.clone(),
-            total_sum: total_sum_op0,
+            claimed_sum: claimed_sum_op0,
         },
-        total_sum_op0,
+        claimed_sum_op0,
     );
     let component1 = StateMachineOp1Component::new(
         tree_span_provider,
         StateTransitionEval {
             log_n_rows: y_axis_log_rows,
             lookup_elements,
-            total_sum: total_sum_op1,
+            claimed_sum: claimed_sum_op1,
         },
-        total_sum_op1,
+        claimed_sum_op1,
     );
 
     let components = StateMachineComponents {
@@ -207,16 +207,16 @@ mod tests {
         let lookup_elements = StateMachineElements::draw(&mut Blake2sChannel::default());
 
         // Interaction trace.
-        let (interaction_trace, total_sum) = gen_interaction_trace(&trace, 0, &lookup_elements);
+        let (interaction_trace, claimed_sum) = gen_interaction_trace(&trace, 0, &lookup_elements);
 
         let component = StateMachineOp0Component::new(
             &mut TraceLocationAllocator::default(),
             StateTransitionEval {
                 log_n_rows,
                 lookup_elements,
-                total_sum,
+                claimed_sum,
             },
-            total_sum,
+            claimed_sum,
         );
 
         let trace = TreeVec::new(vec![vec![], trace, interaction_trace]);
@@ -227,7 +227,7 @@ mod tests {
             |eval| {
                 component.evaluate(eval);
             },
-            total_sum,
+            claimed_sum,
         );
     }
 
@@ -253,7 +253,7 @@ mod tests {
         let last_state_comb: QM31 = interaction_elements.combine(&last_state);
 
         assert_eq!(
-            component.component0.total_sum + component.component1.total_sum,
+            component.component0.claimed_sum + component.component1.claimed_sum,
             initial_state_comb.inverse() - last_state_comb.inverse()
         );
     }
@@ -319,16 +319,16 @@ mod tests {
         let trace = gen_trace(log_n_rows, initial_state, 0);
         let lookup_elements = StateMachineElements::draw(&mut Blake2sChannel::default());
 
-        let (_, total_sum) = gen_interaction_trace(&trace, 0, &lookup_elements);
+        let (_, claimed_sum) = gen_interaction_trace(&trace, 0, &lookup_elements);
 
         let component = StateMachineOp0Component::new(
             &mut TraceLocationAllocator::default(),
             StateTransitionEval {
                 log_n_rows,
                 lookup_elements,
-                total_sum,
+                claimed_sum,
             },
-            total_sum,
+            claimed_sum,
         );
 
         let eval = component.evaluate(ExprEvaluator::new(log_n_rows));
@@ -344,7 +344,7 @@ mod tests {
 \
         let constraint_0 = (QM31Impl::from_partial_evals([trace_2_column_2_offset_0, trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0]) \
             - (QM31Impl::from_partial_evals([trace_2_column_2_offset_neg_1, trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1])) \
-                + (total_sum) * (qm31(8388608, 0, 0, 0))\
+                + (claimed_sum) * (qm31(8388608, 0, 0, 0))\
             ) \
             * ((intermediate0) * (intermediate1)) \
             - (intermediate1 - (intermediate0));"

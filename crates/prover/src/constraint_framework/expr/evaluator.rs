@@ -9,7 +9,7 @@ use crate::core::lookups::utils::Fraction;
 
 pub struct FormalLogupAtRow {
     pub interaction: usize,
-    pub total_sum: ExtExpr,
+    pub claimed_sum: ExtExpr,
     pub fracs: Vec<Fraction<ExtExpr, ExtExpr>>,
     pub is_finalized: bool,
     pub is_first: BaseExpr,
@@ -19,16 +19,16 @@ pub struct FormalLogupAtRow {
 
 impl FormalLogupAtRow {
     pub fn new(interaction: usize, log_size: u32) -> Self {
-        let total_sum_name = "total_sum".to_string();
+        let claimed_sum_name = "claimed_sum".to_string();
 
         Self {
             interaction,
             // TODO(alont): Should these be Expr::SecureField?
-            total_sum: ExtExpr::Param(total_sum_name.clone()),
+            claimed_sum: ExtExpr::Param(claimed_sum_name.clone()),
             fracs: vec![],
             is_finalized: true,
             is_first: BaseExpr::zero(),
-            cumsum_shift: ExtExpr::Param(total_sum_name)
+            cumsum_shift: ExtExpr::Param(claimed_sum_name)
                 * BaseExpr::Inv(Box::new(BaseExpr::pow(
                     &BaseExpr::Const(M31(2)),
                     log_size as u128,
@@ -206,7 +206,7 @@ mod tests {
 \
         let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0, trace_2_column_6_offset_0]) \
             - (QM31Impl::from_partial_evals([trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1, trace_2_column_6_offset_neg_1])) \
-                + (total_sum) * (qm31(32768, 0, 0, 0))) \
+                + (claimed_sum) * (qm31(32768, 0, 0, 0))) \
             * (intermediate1) \
             - (qm31(1, 0, 0, 0));"
             .to_string();
