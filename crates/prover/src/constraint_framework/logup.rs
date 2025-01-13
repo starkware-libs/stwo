@@ -11,10 +11,10 @@ use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Column;
 use crate::core::channel::Channel;
-use crate::core::fields::batch_inverse_in_place;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
+use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
@@ -124,19 +124,15 @@ pub struct LogupTraceGenerator {
     trace: Vec<SecureColumnByCoords<SimdBackend>>,
     /// Denominator expressions (z + sum_i alpha^i * x_i) being generated for the current lookup.
     denom: SecureColumn,
-    /// Preallocated buffer for the Inverses of the denominators.
-    denom_inv: SecureColumn,
 }
 impl LogupTraceGenerator {
     pub fn new(log_size: u32) -> Self {
         let trace = vec![];
         let denom = SecureColumn::zeros(1 << log_size);
-        let denom_inv = SecureColumn::zeros(1 << log_size);
         Self {
             log_size,
             trace,
             denom,
-            denom_inv,
         }
     }
 
@@ -221,12 +217,12 @@ impl LogupColGenerator<'_> {
 
     /// Finalizes generating the column.
     pub fn finalize_col(mut self) {
-        batch_inverse_in_place(&self.gen.denom.data, &mut self.gen.denom_inv.data);
+        let denom_inv = PackedSecureField::batch_inverse(&self.gen.denom.data);
 
+        #[allow(clippy::needless_range_loop)]
         for vec_row in 0..(1 << (self.gen.log_size - LOG_N_LANES)) {
             unsafe {
-                let value = self.numerator.packed_at(vec_row)
-                    * *self.gen.denom_inv.data.get_unchecked(vec_row);
+                let value = self.numerator.packed_at(vec_row) * denom_inv[vec_row];
                 let prev_value = self
                     .gen
                     .trace
