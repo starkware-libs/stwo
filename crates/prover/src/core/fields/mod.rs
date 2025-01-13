@@ -99,10 +99,7 @@ pub fn batch_inverse<T: FieldExpOps>(column: &[T]) -> Vec<T> {
     dst
 }
 
-// TODO(Ohad): parallelize.
-pub fn batch_inverse_chunked<T: FieldExpOps + Sync + Send, const CHUNK_SIZE: usize>(
-    column: &[T],
-) -> Vec<T> {
+pub fn batch_inverse_chunked<T: FieldExpOps + Send + Sync, const CHUNK_SIZE: usize>(column: &[T]) -> Vec<T> {
     let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
 
     #[cfg(not(feature = "parallel"))]
@@ -114,6 +111,26 @@ pub fn batch_inverse_chunked<T: FieldExpOps + Sync + Send, const CHUNK_SIZE: usi
     let iter = dst
         .par_chunks_mut(CHUNK_SIZE)
         .zip(column.par_chunks(CHUNK_SIZE));
+
+    iter.for_each(|(dst, column)| {
+        T::batch_inverse_in_place(column, dst);
+    });
+    dst
+}
+
+pub fn batch_inverse_chunked2<T: FieldExpOps + Send + Sync>(
+    column: &[T],
+    chunk_size: usize,
+) -> Vec<T> {
+    let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
+
+    #[cfg(not(feature = "parallel"))]
+    let iter = dst.chunks_mut(chunk_size).zip(column.chunks(chunk_size));
+
+    #[cfg(feature = "parallel")]
+    let iter = dst
+        .par_chunks_mut(chunk_size)
+        .zip(column.par_chunks(chunk_size));
 
     iter.for_each(|(dst, column)| {
         T::batch_inverse_in_place(column, dst);
