@@ -15,7 +15,7 @@ pub struct BlakeRoundEval<'a, E: EvalAtRow> {
     pub xor_lookup_elements: &'a BlakeXorElements,
     pub round_lookup_elements: &'a RoundElements,
     // TODO(first): validate logup.
-    pub _total_sum: SecureField,
+    pub _claimed_sum: SecureField,
     pub _log_size: u32,
 }
 impl<E: EvalAtRow> BlakeRoundEval<'_, E> {

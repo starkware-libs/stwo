@@ -131,12 +131,12 @@ mod tests {
         let first_state_comb: QM31 = lookup_elements.combine(&first_state);
         let last_state_comb: QM31 = lookup_elements.combine(&last_state);
 
-        let (interaction_trace, total_sum) =
+        let (interaction_trace, claimed_sum) =
             gen_interaction_trace(&trace, inc_index, &lookup_elements);
 
         assert_eq!(interaction_trace.len(), SECURE_EXTENSION_DEGREE); // One extension column.
         assert_eq!(
-            total_sum,
+            claimed_sum,
             first_state_comb.inverse() - last_state_comb.inverse()
         );
     }
