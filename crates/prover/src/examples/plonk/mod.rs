@@ -32,7 +32,7 @@ relation!(PlonkLookupElements, 2);
 pub struct PlonkEval {
     pub log_n_rows: u32,
     pub lookup_elements: PlonkLookupElements,
-    pub total_sum: SecureField,
+    pub claimed_sum: SecureField,
     pub base_trace_location: TreeSubspan,
     pub interaction_trace_location: TreeSubspan,
     pub constants_trace_location: TreeSubspan,
@@ -223,7 +223,7 @@ pub fn prove_fibonacci_plonk(
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
-    let (trace, total_sum) = gen_interaction_trace(log_n_rows, &circuit, &lookup_elements.0);
+    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, &circuit, &lookup_elements.0);
     let mut tree_builder = commitment_scheme.tree_builder();
     let interaction_trace_location = tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -234,12 +234,12 @@ pub fn prove_fibonacci_plonk(
         PlonkEval {
             log_n_rows,
             lookup_elements,
-            total_sum,
+            claimed_sum,
             base_trace_location,
             interaction_trace_location,
             constants_trace_location,
         },
-        total_sum,
+        claimed_sum,
     );
 
     // Sanity check. Remove for production.
@@ -253,7 +253,7 @@ pub fn prove_fibonacci_plonk(
         |mut eval| {
             component.evaluate(eval);
         },
-        total_sum,
+        claimed_sum,
     );
 
     let proof = prove(&[&component], channel, commitment_scheme).unwrap();
