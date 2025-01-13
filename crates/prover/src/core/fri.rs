@@ -194,7 +194,8 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
 
     /// Builds and commits to the inner FRI layers (all layers except the first and last).
     ///
-    /// All `columns` must be provided in descending order by size.
+    /// All `columns` must be provided in descending order by size. Note there is at most one column
+    /// of each size.
     ///
     /// Returns all inner layers and the evaluation of the last layer.
     fn commit_inner_layers(
@@ -217,9 +218,22 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
         let mut columns = columns.iter().peekable();
         let mut layers = Vec::new();
 
+        // Folding the max size column.
+        B::fold_circle_into_line(
+            &mut layer_evaluation,
+            columns.next().unwrap(),
+            circle_poly_folding_alpha,
+            twiddles,
+        );
+
         while layer_evaluation.len() > config.last_layer_domain_size() {
+            let layer = FriInnerLayerProver::new(layer_evaluation);
+            MC::mix_root(channel, layer.merkle_tree.root());
+            let folding_alpha = channel.draw_felt();
+            layer_evaluation = B::fold_line(&layer.evaluation, folding_alpha, twiddles);
+
             // Check for circle polys in the first layer that should be combined in this layer.
-            while let Some(column) = columns.next_if(|c| folded_size(c) == layer_evaluation.len()) {
+            if let Some(column) = columns.next_if(|c| folded_size(c) == layer_evaluation.len()) {
                 B::fold_circle_into_line(
                     &mut layer_evaluation,
                     column,
@@ -227,13 +241,6 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
                     twiddles,
                 );
             }
-
-            let layer = FriInnerLayerProver::new(layer_evaluation);
-            MC::mix_root(channel, layer.merkle_tree.root());
-            let folding_alpha = channel.draw_felt();
-            let folded_layer_evaluation = B::fold_line(&layer.evaluation, folding_alpha, twiddles);
-
-            layer_evaluation = folded_layer_evaluation;
             layers.push(layer);
         }
 
