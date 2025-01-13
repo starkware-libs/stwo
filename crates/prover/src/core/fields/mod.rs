@@ -3,6 +3,8 @@ use std::iter::{Product, Sum};
 use std::ops::{Mul, MulAssign, Neg};
 
 use num_traits::{NumAssign, NumAssignOps, NumOps, One};
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 pub mod cm31;
 pub mod m31;
@@ -101,10 +103,20 @@ pub fn batch_inverse<F: FieldExpOps>(column: &[F]) -> Vec<F> {
     dst
 }
 
-// TODO(Ohad): parallelize.
-pub fn batch_inverse_chunked<T: FieldExpOps>(column: &[T], chunk_size: usize) -> Vec<T> {
+pub fn batch_inverse_chunked<T: FieldExpOps + Send + Sync>(
+    column: &[T],
+    chunk_size: usize,
+) -> Vec<T> {
     let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
+
+    #[cfg(not(feature = "parallel"))]
     let iter = dst.chunks_mut(chunk_size).zip(column.chunks(chunk_size));
+
+    #[cfg(feature = "parallel")]
+    let iter = dst
+        .par_chunks_mut(chunk_size)
+        .zip(column.par_chunks(chunk_size));
+
     iter.for_each(|(dst, column)| {
         batch_inverse_in_place(column, dst);
     });
