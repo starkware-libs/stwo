@@ -6,7 +6,7 @@ use num_traits::{One, Zero};
 
 use super::m31::{PackedM31, N_LANES};
 use crate::core::fields::cm31::CM31;
-use crate::core::fields::FieldExpOps;
+use crate::core::fields::{batch_inverse_chunked, FieldExpOps};
 
 /// SIMD implementation of [`CM31`].
 #[derive(Copy, Clone, Debug)]
@@ -131,6 +131,12 @@ impl FieldExpOps for PackedCM31 {
         assert!(!self.is_zero(), "0 has no inverse");
         // 1 / (a + bi) = (a - bi) / (a^2 + b^2).
         Self([self.a(), -self.b()]) * (self.a().square() + self.b().square()).inverse()
+    }
+
+    fn batch_inverse(column: &[Self]) -> Vec<Self> {
+        // Optimal chunk size was determined empirically on an intel 155u machine.
+        const OPTIMAL_PACKED_CM31_BATCH_INVERSE_CHUNK_SIZE: usize = 1 << 10;
+        batch_inverse_chunked(column, OPTIMAL_PACKED_CM31_BATCH_INVERSE_CHUNK_SIZE)
     }
 }
 
