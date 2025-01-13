@@ -34,7 +34,7 @@ pub type StateMachineOp1Component = FrameworkComponent<StateTransitionEval<1>>;
 pub struct StateTransitionEval<const COORDINATE: usize> {
     pub log_n_rows: u32,
     pub lookup_elements: StateMachineElements,
-    pub total_sum: QM31,
+    pub claimed_sum: QM31,
 }
 
 impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> {
@@ -106,7 +106,7 @@ fn state_transition_info<const INDEX: usize>() -> InfoEvaluator {
     let component = StateTransitionEval::<INDEX> {
         log_n_rows: 1,
         lookup_elements: StateMachineElements::dummy(),
-        total_sum: QM31::zero(),
+        claimed_sum: QM31::zero(),
     };
     component.evaluate(InfoEvaluator::empty())
 }
@@ -145,7 +145,7 @@ pub fn track_state_machine_relations(
             StateTransitionEval::<0> {
                 log_n_rows: x_axis_log_n_rows,
                 lookup_elements: StateMachineElements::dummy(),
-                total_sum: QM31::zero(),
+                claimed_sum: QM31::zero(),
             },
             1 << x_axis_log_n_rows,
         )
@@ -157,7 +157,7 @@ pub fn track_state_machine_relations(
             StateTransitionEval::<1> {
                 log_n_rows: y_axis_log_n_rows,
                 lookup_elements: StateMachineElements::dummy(),
-                total_sum: QM31::zero(),
+                claimed_sum: QM31::zero(),
             },
             1 << y_axis_log_n_rows,
         )

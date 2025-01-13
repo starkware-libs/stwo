@@ -123,16 +123,16 @@ pub struct FrameworkComponent<C: FrameworkEval> {
     trace_locations: TreeVec<TreeSubspan>,
     info: InfoEvaluator,
     preprocessed_column_indices: Vec<usize>,
-    total_sum: SecureField,
+    claimed_sum: SecureField,
 }
 
 impl<E: FrameworkEval> FrameworkComponent<E> {
     pub fn new(
         location_allocator: &mut TraceLocationAllocator,
         eval: E,
-        total_sum: SecureField,
+        claimed_sum: SecureField,
     ) -> Self {
-        let info = eval.evaluate(InfoEvaluator::new(eval.log_size(), vec![], total_sum));
+        let info = eval.evaluate(InfoEvaluator::new(eval.log_size(), vec![], claimed_sum));
         let trace_locations = location_allocator.next_for_structure(&info.mask_offsets);
 
         let preprocessed_column_indices = info
@@ -166,7 +166,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
             trace_locations,
             info,
             preprocessed_column_indices,
-            total_sum,
+            claimed_sum,
         }
     }
 
@@ -237,7 +237,7 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
             evaluation_accumulator,
             coset_vanishing(CanonicCoset::new(self.eval.log_size()).coset, point).inverse(),
             self.eval.log_size(),
-            self.total_sum,
+            self.claimed_sum,
         ));
     }
 }
@@ -318,7 +318,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                     trace_domain.log_size(),
                     eval_domain.log_size(),
                     self.eval.log_size(),
-                    self.total_sum,
+                    self.claimed_sum,
                 );
                 let row_res = self.eval.evaluate(eval).row_res;
 
@@ -347,7 +347,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         // Define any `self` values outside the loop to prevent the compiler thinking there is a
         // `Sync` requirement on `Self`.
         let self_eval = &self.eval;
-        let self_total_sum = self.total_sum;
+        let self_claimed_sum = self.claimed_sum;
 
         iter.for_each(|(chunk_idx, mut chunk)| {
             let trace_cols = trace.as_cols_ref().map_cols(|c| c.as_ref());
@@ -362,7 +362,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                     trace_domain.log_size(),
                     eval_domain.log_size(),
                     self_eval.log_size(),
-                    self_total_sum,
+                    self_claimed_sum,
                 );
                 let row_res = self_eval.evaluate(eval).row_res;
 
