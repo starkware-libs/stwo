@@ -3,7 +3,7 @@ use num_traits::One;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{ClaimedPrefixSum, LogupTraceGenerator, LookupElements};
-use crate::constraint_framework::preprocessed_columns::IsFirst;
+use crate::constraint_framework::preprocessed_columns::{IsFirst, PreProcessedColumnId};
 use crate::constraint_framework::{
     assert_constraints, relation, EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry,
     TraceLocationAllocator,
@@ -280,8 +280,10 @@ impl Plonk {
         Self { name }
     }
 
-    pub fn id(&self) -> String {
-        format!("preprocessed_plonk_{}", self.name)
+    pub fn id(&self) -> PreProcessedColumnId {
+        PreProcessedColumnId {
+            id: format!("preprocessed_plonk_{}", self.name),
+        }
     }
 }
 

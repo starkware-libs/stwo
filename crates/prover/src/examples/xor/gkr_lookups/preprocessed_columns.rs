@@ -1,5 +1,6 @@
 use num_traits::One;
 
+use crate::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column};
 use crate::core::fields::m31::BaseField;
@@ -38,10 +39,12 @@ impl IsStepWithOffset {
         CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
     }
 
-    pub fn id(&self) -> String {
-        format!(
-            "preprocessed_is_step_with_offset_{}_{}_{}",
-            self.log_size, self.log_step, self.offset
-        )
+    pub fn id(&self) -> PreProcessedColumnId {
+        PreProcessedColumnId {
+            id: format!(
+                "preprocessed_is_step_with_offset_{}_{}_{}",
+                self.log_size, self.log_step, self.offset
+            ),
+        }
     }
 }
