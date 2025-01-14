@@ -10,6 +10,7 @@ use tracing::{span, Level};
 
 use super::cpu_domain::CpuDomainEvaluator;
 use super::logup::LogupSums;
+use super::preprocessed_columns::PreProcessedColumnId;
 use super::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, PREPROCESSED_TRACE_IDX,
 };
@@ -47,8 +48,7 @@ pub struct TraceLocationAllocator {
     /// Mapping of tree index to next available column offset.
     next_tree_offsets: TreeVec<usize>,
     /// Mapping of preprocessed columns to their index.
-    // TODO(Gali): Change Vec type to struct PreProcessedColumnId {pub id: String}.
-    preprocessed_columns: Vec<String>,
+    preprocessed_columns: Vec<PreProcessedColumnId>,
     /// Controls whether the preprocessed columns are dynamic or static (default=Dynamic).
     preprocessed_columns_allocation_mode: PreprocessedColumnsAllocationMode,
 }
@@ -80,7 +80,7 @@ impl TraceLocationAllocator {
     }
 
     /// Create a new `TraceLocationAllocator` with fixed preprocessed columns setup.
-    pub fn new_with_preproccessed_columns(preprocessed_columns: &[String]) -> Self {
+    pub fn new_with_preproccessed_columns(preprocessed_columns: &[PreProcessedColumnId]) -> Self {
         assert!(
             preprocessed_columns.iter().all_unique(),
             "Duplicate preprocessed columns are not allowed!"
@@ -92,14 +92,14 @@ impl TraceLocationAllocator {
         }
     }
 
-    pub const fn preprocessed_columns(&self) -> &Vec<String> {
+    pub const fn preprocessed_columns(&self) -> &Vec<PreProcessedColumnId> {
         &self.preprocessed_columns
     }
 
     // validates that `self.preprocessed_columns` is consistent with
     // `preprocessed_columns`.
     // I.e. preprocessed_columns[i] == self.preprocessed_columns[i].
-    pub fn validate_preprocessed_columns(&self, preprocessed_columns: &[String]) {
+    pub fn validate_preprocessed_columns(&self, preprocessed_columns: &[PreProcessedColumnId]) {
         assert_eq!(self.preprocessed_columns, preprocessed_columns);
     }
 }
@@ -142,7 +142,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
                 if let Some(pos) = location_allocator
                     .preprocessed_columns
                     .iter()
-                    .position(|x| x == col)
+                    .position(|x| x.id == col.id)
                 {
                     pos
                 } else {

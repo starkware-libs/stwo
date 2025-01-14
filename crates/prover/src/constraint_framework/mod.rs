@@ -19,6 +19,7 @@ pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
+use preprocessed_columns::PreProcessedColumnId;
 pub use simd_domain::SimdDomainEvaluator;
 
 use crate::core::fields::m31::BaseField;
@@ -86,7 +87,7 @@ pub trait EvalAtRow {
         mask_item
     }
 
-    fn get_preprocessed_column(&mut self, _column: String) -> Self::F {
+    fn get_preprocessed_column(&mut self, _column: PreProcessedColumnId) -> Self::F {
         let [mask_item] = self.next_interaction_mask(PREPROCESSED_TRACE_IDX, [0]);
         mask_item
     }

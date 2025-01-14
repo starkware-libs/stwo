@@ -1,6 +1,6 @@
 use tracing::{span, Level};
 
-use crate::constraint_framework::preprocessed_columns::IsFirst;
+use crate::constraint_framework::preprocessed_columns::{IsFirst, PreProcessedColumnId};
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::fields::m31::BaseField;
@@ -24,11 +24,13 @@ impl XorTable {
         }
     }
 
-    pub fn id(&self) -> String {
-        format!(
-            "preprocessed_xor_table_{}_{}_{}",
-            self.n_bits, self.n_expand_bits, self.index_in_table
-        )
+    pub fn id(&self) -> PreProcessedColumnId {
+        PreProcessedColumnId {
+            id: format!(
+                "preprocessed_xor_table_{}_{}_{}",
+                self.n_bits, self.n_expand_bits, self.index_in_table
+            ),
+        }
     }
 
     pub const fn limb_bits(&self) -> u32 {

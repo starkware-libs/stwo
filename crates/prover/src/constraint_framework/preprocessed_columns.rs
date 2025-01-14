@@ -9,6 +9,13 @@ use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 
+/// Used for comparing preprocessed columns.
+/// Column IDs must be unique in a given context.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PreProcessedColumnId {
+    pub id: String,
+}
+
 /// A column with `1` at the first position, and `0` elsewhere.
 #[derive(Debug, Clone)]
 pub struct IsFirst {
@@ -42,8 +49,10 @@ impl IsFirst {
         CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
     }
 
-    pub fn id(&self) -> String {
-        format!("preprocessed_is_first_{}", self.log_size).to_string()
+    pub fn id(&self) -> PreProcessedColumnId {
+        PreProcessedColumnId {
+            id: format!("preprocessed_is_first_{}", self.log_size).to_string(),
+        }
     }
 }
 
