@@ -226,6 +226,14 @@ fn denominator_inverses(
 ) -> Vec<CM31Column> {
     // We want a P to be on a line that passes through a point Pr + uPi in QM31^2, and its conjugate
     // Pr - uPi. Thus, Pr - P is parallel to Pi. Or, (Pr - P).x * Pi.y - (Pr - P).y * Pi.x = 0.
+    let domain_points = CircleDomainBitRevIterator::new(domain).collect_vec();
+
+    #[cfg(not(feature = "parallel"))]
+    let iter = domain_points.into_iter();
+
+    #[cfg(feature = "parallel")]
+    let iter = domain_points.par_iter();
+
     let flat_denominators: CM31Column = sample_batches
         .iter()
         .flat_map(|sample_batch| {
@@ -237,9 +245,9 @@ fn denominator_inverses(
 
             // Line equation through pr +-u pi.
             // (p-pr)*
-            CircleDomainBitRevIterator::new(domain)
+            iter.clone()
                 .map(|points| (prx - points.x) * piy - (pry - points.y) * pix)
-                .collect_vec()
+                .collect::<Vec<_>>()
         })
         .collect();
 
