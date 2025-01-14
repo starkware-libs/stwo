@@ -2,6 +2,7 @@ use num_traits::Zero;
 
 use super::{BaseExpr, ExtExpr};
 use crate::constraint_framework::expr::ColumnExpr;
+use crate::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use crate::constraint_framework::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
 use crate::core::fields::m31;
 use crate::core::lookups::utils::Fraction;
@@ -173,8 +174,8 @@ impl EvalAtRow for ExprEvaluator {
         intermediate
     }
 
-    fn get_preprocessed_column(&mut self, column: String) -> Self::F {
-        BaseExpr::Param(column)
+    fn get_preprocessed_column(&mut self, column: PreProcessedColumnId) -> Self::F {
+        BaseExpr::Param(column.id)
     }
 
     crate::constraint_framework::logup_proxy!();

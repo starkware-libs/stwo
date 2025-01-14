@@ -9,7 +9,7 @@ use super::preprocessed_columns::XorTable;
 use super::round::{blake_round_info, BlakeRoundComponent, BlakeRoundEval};
 use super::scheduler::{BlakeSchedulerComponent, BlakeSchedulerEval};
 use super::xor_table::{xor12, xor4, xor7, xor8, xor9};
-use crate::constraint_framework::preprocessed_columns::IsFirst;
+use crate::constraint_framework::preprocessed_columns::{IsFirst, PreProcessedColumnId};
 use crate::constraint_framework::{TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -27,7 +27,7 @@ use crate::examples::blake::{
     round, xor_table, BlakeXorElements, XorAccums, N_ROUNDS, ROUND_LOG_SPLIT,
 };
 
-fn preprocessed_xor_columns() -> [String; 20] {
+fn preprocessed_xor_columns() -> [PreProcessedColumnId; 20] {
     [
         XorTable::new(12, 4, 0).id(),
         XorTable::new(12, 4, 1).id(),
@@ -188,7 +188,7 @@ impl BlakeComponents {
         let log_size = stmt0.log_size;
 
         let scheduler_is_first_column = IsFirst::new(log_size).id();
-        let blake_round_is_first_columns_iter: Vec<String> = ROUND_LOG_SPLIT
+        let blake_round_is_first_columns_iter: Vec<PreProcessedColumnId> = ROUND_LOG_SPLIT
             .iter()
             .map(|l| IsFirst::new(log_size + l).id())
             .collect_vec();
