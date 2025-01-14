@@ -118,7 +118,7 @@ jobs:
         with:
           toolchain: nightly-2025-01-02
       - name: Run benchmark
-        run: ./scripts/bench.sh -- --output-format bencher | tee output.txt
+        run: ./scripts/bench.sh > bencher | tee output.txt
       - name: Download previous benchmark data
         uses: actions/cache@v4
         with:
@@ -144,7 +144,7 @@ jobs:
         with:
           toolchain: nightly-2025-01-02
       - name: Run benchmark
-        run: ./scripts/bench.sh --features="parallel" -- --output-format bencher | tee output.txt
+        run: ./scripts/bench.sh --features="parallel" > bencher | tee output.txt
       - name: Download previous benchmark data
         uses: actions/cache@v4
         with:
