@@ -153,7 +153,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
                             PreprocessedColumnsAllocationMode::Static
                         ) {
                             panic!(
-                                "Preprocessed column {:?} is missing from static alloction",
+                                "Preprocessed column {:?} is missing from static allocation",
                                 col
                             );
                         }

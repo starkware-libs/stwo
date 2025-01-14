@@ -18,7 +18,7 @@ pub struct FibInput {
 }
 
 /// A component that enforces the Fibonacci sequence.
-/// Each row contains a seperate Fibonacci sequence of length `N`.
+/// Each row contains a separate Fibonacci sequence of length `N`.
 #[derive(Clone)]
 pub struct WideFibonacciEval<const N: usize> {
     pub log_n_rows: u32,
