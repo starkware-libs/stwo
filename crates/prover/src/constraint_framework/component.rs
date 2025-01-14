@@ -81,7 +81,7 @@ impl TraceLocationAllocator {
     }
 
     /// Create a new `TraceLocationAllocator` with fixed preprocessed columns setup.
-    pub fn new_with_preproccessed_columns(preprocessed_columns: &[PreprocessedColumn]) -> Self {
+    pub fn new_with_preprocessed_columns(preprocessed_columns: &[PreprocessedColumn]) -> Self {
         Self {
             next_tree_offsets: Default::default(),
             preprocessed_columns: preprocessed_columns
@@ -214,7 +214,7 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         })
     }
 
-    fn preproccessed_column_indices(&self) -> ColumnVec<usize> {
+    fn preprocessed_column_indices(&self) -> ColumnVec<usize> {
         self.preprocessed_column_indices.clone()
     }
 
