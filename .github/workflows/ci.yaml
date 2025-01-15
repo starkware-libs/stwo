@@ -128,7 +128,7 @@ jobs:
         uses: benchmark-action/github-action-benchmark@v1
         with:
           tool: "cargo"
-          output-file-path: output.txt
+          output-file-path: bencher
           external-data-json-path: ./cache/benchmark-data.json
           fail-on-alert: true
           summary-always: true
@@ -154,7 +154,7 @@ jobs:
         uses: benchmark-action/github-action-benchmark@v1
         with:
           tool: "cargo"
-          output-file-path: output.txt
+          output-file-path: bencher
           external-data-json-path: ./cache/benchmark-data.json
           fail-on-alert: true
           summary-always: true
