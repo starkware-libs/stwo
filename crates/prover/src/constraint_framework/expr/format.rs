@@ -1,6 +1,6 @@
 use num_traits::Zero;
 
-use super::{BaseExpr, ColumnExpr, ExtExpr, CLAIMED_SUM_DUMMY_OFFSET};
+use super::{BaseExpr, ColumnExpr, ExtExpr};
 
 impl BaseExpr {
     pub fn format_expr(&self) -> String {
@@ -10,9 +10,7 @@ impl BaseExpr {
                 idx,
                 offset,
             }) => {
-                let offset_str = if *offset == CLAIMED_SUM_DUMMY_OFFSET as isize {
-                    "claimed_sum".to_string()
-                } else {
+                let offset_str = {
                     let offset_abs = offset.abs();
                     if *offset >= 0 {
                         offset.to_string()

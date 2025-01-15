@@ -1,6 +1,6 @@
 use std::ops::Mul;
 
-use super::logup::{LogupAtRow, LogupSums};
+use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
 use crate::core::air::accumulation::PointEvaluationAccumulator;
 use crate::core::fields::qm31::SecureField;
@@ -23,7 +23,7 @@ impl<'a> PointEvaluator<'a> {
         evaluation_accumulator: &'a mut PointEvaluationAccumulator,
         denom_inverse: SecureField,
         log_size: u32,
-        logup_sums: LogupSums,
+        total_sum: SecureField,
     ) -> Self {
         let col_index = vec![0; mask.len()];
         Self {
@@ -31,7 +31,7 @@ impl<'a> PointEvaluator<'a> {
             evaluation_accumulator,
             col_index,
             denom_inverse,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, logup_sums.0, logup_sums.1, log_size),
+            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, total_sum, log_size),
         }
     }
 }

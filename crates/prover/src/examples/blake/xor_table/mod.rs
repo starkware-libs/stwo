@@ -192,7 +192,7 @@ mod tests {
             |eval| {
                 component.evaluate(eval);
             },
-            (claimed_sum, None),
+            claimed_sum,
         )
     }
 }

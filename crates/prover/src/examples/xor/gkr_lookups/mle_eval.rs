@@ -167,7 +167,7 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalProverComponent<'_, '_, O> {
             accumulator,
             vanish_on_trace_eval_inv,
             self.log_size(),
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
 
         let carry_quotients_col_eval = eval_carry_quotient_col(&self.mle_eval_point, point);
@@ -248,7 +248,7 @@ impl<O: MleCoeffColumnOracle> ComponentProver<SimdBackend> for MleEvalProverComp
                 trace_domain.log_size(),
                 eval_domain.log_size(),
                 self.log_size(),
-                (SecureField::zero(), None),
+                SecureField::zero(),
             );
             let [mle_coeffs_col_eval] = eval.next_extension_interaction_mask(aux_interaction, [0]);
             let [carry_quotients_col_eval] =
@@ -374,7 +374,7 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'_, O> {
             accumulator,
             vanish_on_trace_eval_inv,
             self.log_size(),
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
 
         let mle_coeff_col_eval = self.mle_coeff_column_oracle.evaluate_at_point(point, mask);
@@ -810,7 +810,7 @@ mod tests {
         let mle_coeffs_col_component = MleCoeffColumnComponent::new(
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, mle.n_variables()),
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
         let mle_eval_component = MleEvalProverComponent::generate(
             trace_location_allocator,
@@ -887,7 +887,7 @@ mod tests {
         let mle_coeffs_col_component = MleCoeffColumnComponent::new(
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, mle.n_variables()),
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
         let mle_eval_component = MleEvalProverComponent::generate(
             trace_location_allocator,
@@ -908,7 +908,7 @@ mod tests {
         let mle_coeffs_col_component = MleCoeffColumnComponent::new(
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, N_VARIABLES),
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
         let mle_eval_component = MleEvalVerifierComponent::new(
             trace_location_allocator,
@@ -976,7 +976,7 @@ mod tests {
                     is_second_eval,
                 )
             },
-            (SecureField::zero(), None),
+            SecureField::zero(),
         )
     }
 
@@ -1013,7 +1013,7 @@ mod tests {
                     is_second,
                 );
             },
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
     }
 
@@ -1050,7 +1050,7 @@ mod tests {
                     is_second,
                 );
             },
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
     }
 
@@ -1087,7 +1087,7 @@ mod tests {
                     is_second,
                 );
             },
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
     }
 
@@ -1109,7 +1109,7 @@ mod tests {
                 let [row_diff] = eval.next_extension_interaction_mask(0, [0]);
                 eval_prefix_sum_constraints(0, &mut eval, row_diff, cumulative_sum_shift)
             },
-            (SecureField::zero(), None),
+            SecureField::zero(),
         );
     }
 
@@ -1246,7 +1246,7 @@ mod tests {
                     &mut accumulator,
                     SecureField::one(),
                     self.log_size(),
-                    (SecureField::zero(), None),
+                    SecureField::zero(),
                 );
 
                 eval_mle_coeff_col(self.interaction, &mut eval)
