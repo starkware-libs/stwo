@@ -66,42 +66,42 @@ name = "bit_rev"
 harness = false
 name = "eval_at_point"
 
-[[bench]]
-harness = false
-name = "fft"
+# [[bench]]
+# harness = false
+# name = "fft"
 
-[[bench]]
-harness = false
-name = "field"
+# [[bench]]
+# harness = false
+# name = "field"
 
-[[bench]]
-harness = false
-name = "fri"
+# [[bench]]
+# harness = false
+# name = "fri"
 
-[[bench]]
-harness = false
-name = "lookups"
+# [[bench]]
+# harness = false
+# name = "lookups"
 
-[[bench]]
-harness = false
-name = "matrix"
+# [[bench]]
+# harness = false
+# name = "matrix"
 
-[[bench]]
-harness = false
-name = "merkle"
+# [[bench]]
+# harness = false
+# name = "merkle"
 
-[[bench]]
-harness = false
-name = "poseidon"
+# [[bench]]
+# harness = false
+# name = "poseidon"
 
-[[bench]]
-harness = false
-name = "prefix_sum"
+# [[bench]]
+# harness = false
+# name = "prefix_sum"
 
-[[bench]]
-harness = false
-name = "quotients"
+# [[bench]]
+# harness = false
+# name = "quotients"
 
-[[bench]]
-harness = false
-name = "pcs"
+# [[bench]]
+# harness = false
+# name = "pcs"

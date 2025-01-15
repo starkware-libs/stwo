@@ -118,12 +118,14 @@ jobs:
         with:
           toolchain: nightly-2025-01-02
       - name: Run benchmark
-        run: ./scripts/bench.sh > bencher | tee output.txt
+        run: |
+            cargo install cargo-criterion
+            ./scripts/bench.sh |& tee output.txt
       - name: Download previous benchmark data
         uses: actions/cache@v4
         with:
           path: ./cache
-          key: ${{ runner.os }}-${{github.event.pull_request.base.ref}}-benchmark
+          key: ${{ runner.os }}-benchmark
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
@@ -144,12 +146,14 @@ jobs:
         with:
           toolchain: nightly-2025-01-02
       - name: Run benchmark
-        run: ./scripts/bench.sh --features="parallel" > bencher | tee output.txt
+        run: |
+            cargo install cargo-criterion
+            ./scripts/bench.sh --features="parallel" |& tee output.txt
       - name: Download previous benchmark data
         uses: actions/cache@v4
         with:
           path: ./cache
-          key: ${{ runner.os }}-${{github.event.pull_request.base.ref}}-benchmark
+          key: ${{ runner.os }}-benchmark
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
