@@ -23,13 +23,13 @@ impl<'a> AssertEvaluator<'a> {
         trace: &'a TreeVec<Vec<Vec<BaseField>>>,
         row: usize,
         log_size: u32,
-        total_sum: SecureField,
+        claimed_sum: SecureField,
     ) -> Self {
         Self {
             trace,
             col_index: TreeVec::new(vec![0; trace.len()]),
             row,
-            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, total_sum, log_size),
+            logup: LogupAtRow::new(INTERACTION_TRACE_IDX, claimed_sum, log_size),
         }
     }
 }
@@ -78,7 +78,7 @@ pub fn assert_constraints<B: Backend>(
     trace_polys: &TreeVec<Vec<CirclePoly<B>>>,
     trace_domain: CanonicCoset,
     assert_func: impl Fn(AssertEvaluator<'_>),
-    total_sum: SecureField,
+    claimed_sum: SecureField,
 ) {
     let traces = trace_polys.as_ref().map(|tree| {
         tree.iter()
@@ -94,7 +94,7 @@ pub fn assert_constraints<B: Backend>(
             .collect()
     });
     for row in 0..trace_domain.size() {
-        let eval = AssertEvaluator::new(&traces, row, trace_domain.log_size(), total_sum);
+        let eval = AssertEvaluator::new(&traces, row, trace_domain.log_size(), claimed_sum);
 
         assert_func(eval);
     }

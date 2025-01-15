@@ -50,7 +50,7 @@ relation!(PoseidonElements, N_STATE);
 pub struct PoseidonEval {
     pub log_n_rows: u32,
     pub lookup_elements: PoseidonElements,
-    pub total_sum: SecureField,
+    pub claimed_sum: SecureField,
 }
 impl FrameworkEval for PoseidonEval {
     fn log_size(&self) -> u32 {
@@ -366,7 +366,7 @@ pub fn prove_poseidon(
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
-    let (trace, total_sum) = gen_interaction_trace(log_n_rows, lookup_data, &lookup_elements);
+    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, lookup_data, &lookup_elements);
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -378,9 +378,9 @@ pub fn prove_poseidon(
         PoseidonEval {
             log_n_rows,
             lookup_elements,
-            total_sum,
+            claimed_sum,
         },
-        total_sum,
+        claimed_sum,
     );
     info!("Poseidon component info:\n{}", component);
     let proof = prove(&[&component], channel, commitment_scheme).unwrap();
@@ -467,7 +467,7 @@ mod tests {
         // Trace.
         let (trace0, interaction_data) = gen_trace(LOG_N_ROWS);
         let lookup_elements = PoseidonElements::dummy();
-        let (trace1, total_sum) =
+        let (trace1, claimed_sum) =
             gen_interaction_trace(LOG_N_ROWS, interaction_data, &lookup_elements);
 
         let traces = TreeVec::new(vec![vec![], trace0, trace1]);
@@ -479,7 +479,7 @@ mod tests {
             |mut eval| {
                 eval_poseidon_constraints(&mut eval, &lookup_elements);
             },
-            total_sum,
+            claimed_sum,
         );
     }
 
