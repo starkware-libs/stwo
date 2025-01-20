@@ -508,10 +508,9 @@ pub fn verify_blake<MC: MerkleChannel>(
         stmt1,
         stark_proof,
     }: BlakeProof<MC::H>,
-    config: PcsConfig,
 ) -> Result<(), VerificationError> {
     let channel = &mut MC::C::default();
-    let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(config);
+    let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(stark_proof.config);
 
     let log_sizes = stmt0.log_sizes();
 
@@ -579,6 +578,6 @@ mod tests {
         let proof = prove_blake::<Blake2sMerkleChannel>(log_n_instances, config);
 
         // Verify.
-        verify_blake::<Blake2sMerkleChannel>(proof, config).unwrap();
+        verify_blake::<Blake2sMerkleChannel>(proof).unwrap();
     }
 }

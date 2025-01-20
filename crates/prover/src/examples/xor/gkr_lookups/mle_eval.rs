@@ -834,7 +834,8 @@ mod tests {
 
         let log_sizes = components.column_log_sizes();
         let channel = &mut Blake2sChannel::default();
-        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
         commitment_scheme.commit(proof.commitments[0], &[], channel);
         commitment_scheme.commit(proof.commitments[1], &log_sizes[1], channel);
         commitment_scheme.commit(proof.commitments[2], &log_sizes[2], channel);
@@ -924,7 +925,8 @@ mod tests {
 
         let log_sizes = components.column_log_sizes();
         let channel = &mut Blake2sChannel::default();
-        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
         commitment_scheme.commit(proof.commitments[0], &[], channel);
         commitment_scheme.commit(proof.commitments[1], &log_sizes[1], channel);
         commitment_scheme.commit(proof.commitments[2], &log_sizes[2], channel);

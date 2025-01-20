@@ -12,13 +12,14 @@ pub mod quotients;
 mod utils;
 mod verifier;
 
+use serde::{Deserialize, Serialize};
+
 pub use self::prover::{
     CommitmentSchemeProof, CommitmentSchemeProver, CommitmentTreeProver, TreeBuilder,
 };
 pub use self::utils::TreeVec;
 pub use self::verifier::CommitmentSchemeVerifier;
 use super::fri::FriConfig;
-
 #[derive(Copy, Debug, Clone, PartialEq, Eq)]
 pub struct TreeSubspan {
     pub tree_index: usize,
@@ -26,7 +27,7 @@ pub struct TreeSubspan {
     pub col_end: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PcsConfig {
     pub pow_bits: u32,
     pub fri_config: FriConfig,

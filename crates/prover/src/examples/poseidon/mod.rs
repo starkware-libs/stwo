@@ -506,7 +506,8 @@ mod tests {
         // Verify.
         // TODO: Create Air instance independently.
         let channel = &mut Blake2sChannel::default();
-        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
 
         // Decommit.
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
