@@ -198,6 +198,7 @@ impl<H: MerkleHasher> StarkProof<H> {
             queried_values,
             proof_of_work: _,
             fri_proof,
+            config: _,
         } = commitment_scheme_proof;
 
         let FriProof {
@@ -326,6 +327,7 @@ impl<H: MerkleHasher> SizeEstimate for CommitmentSchemeProof<H> {
             queried_values,
             proof_of_work,
             fri_proof,
+            config,
         } = self;
         commitments.size_estimate()
             + sampled_values.size_estimate()
@@ -333,6 +335,7 @@ impl<H: MerkleHasher> SizeEstimate for CommitmentSchemeProof<H> {
             + queried_values.size_estimate()
             + mem::size_of_val(proof_of_work)
             + fri_proof.size_estimate()
+            + mem::size_of_val(config)
     }
 }
 

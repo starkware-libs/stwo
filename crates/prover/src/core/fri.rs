@@ -33,7 +33,7 @@ use crate::core::vcs::verifier::{MerkleVerificationError, MerkleVerifier};
 
 /// FRI proof config
 // TODO(andrew): Support different step sizes.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct FriConfig {
     pub log_blowup_factor: u32,
     pub log_last_layer_degree_bound: u32,
