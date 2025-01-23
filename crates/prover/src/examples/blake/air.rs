@@ -510,6 +510,8 @@ pub fn verify_blake<MC: MerkleChannel>(
     }: BlakeProof<MC::H>,
 ) -> Result<(), VerificationError> {
     let channel = &mut MC::C::default();
+    const REQUIRED_SECURITY_BITS: u32 = 5;
+    assert!(stark_proof.config.security_bits() >= REQUIRED_SECURITY_BITS);
     let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(stark_proof.config);
 
     let log_sizes = stmt0.log_sizes();

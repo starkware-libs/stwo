@@ -72,6 +72,10 @@ impl FriConfig {
     const fn last_layer_domain_size(&self) -> usize {
         1 << (self.log_last_layer_degree_bound + self.log_blowup_factor)
     }
+
+    pub const fn security_bits(&self) -> u32 {
+        self.log_blowup_factor * self.n_queries as u32
+    }
 }
 
 pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField> {
