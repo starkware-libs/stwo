@@ -1082,6 +1082,7 @@ dependencies = [
  "rand",
  "rayon",
  "serde",
+ "sha2",
  "starknet-crypto",
  "starknet-ff",
  "test-log",

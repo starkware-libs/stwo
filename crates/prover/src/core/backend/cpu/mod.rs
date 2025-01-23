@@ -6,6 +6,9 @@ mod grind;
 pub mod lookups;
 #[cfg(not(target_arch = "wasm32"))]
 mod poseidon252;
+
+mod poseidon31;
+
 pub mod quotients;
 
 use std::fmt::Debug;
@@ -19,6 +22,7 @@ use crate::core::utils::bit_reverse_index;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+use crate::core::vcs::poseidon31_merkle::Poseidon31MerkleChannel;
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct CpuBackend;
@@ -27,6 +31,7 @@ impl Backend for CpuBackend {}
 impl BackendForChannel<Blake2sMerkleChannel> for CpuBackend {}
 #[cfg(not(target_arch = "wasm32"))]
 impl BackendForChannel<Poseidon252MerkleChannel> for CpuBackend {}
+impl BackendForChannel<Poseidon31MerkleChannel> for CpuBackend {}
 
 /// Performs a naive bit-reversal permutation inplace.
 ///
