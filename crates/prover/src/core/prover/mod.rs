@@ -140,8 +140,6 @@ pub enum ProvingError {
 pub enum VerificationError {
     #[error("Proof has invalid structure: {0}.")]
     InvalidStructure(String),
-    #[error("{0} lookup values do not match.")]
-    InvalidLookup(String),
     #[error(transparent)]
     Merkle(#[from] MerkleVerificationError),
     #[error(
