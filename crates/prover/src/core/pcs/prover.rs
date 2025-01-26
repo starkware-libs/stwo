@@ -143,6 +143,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             queried_values,
             proof_of_work,
             fri_proof,
+            config: self.config,
         }
     }
 }
@@ -155,6 +156,7 @@ pub struct CommitmentSchemeProof<H: MerkleHasher> {
     pub queried_values: TreeVec<Vec<BaseField>>,
     pub proof_of_work: u64,
     pub fri_proof: FriProof<H>,
+    pub config: PcsConfig,
 }
 
 pub struct TreeBuilder<'a, 'b, B: BackendForChannel<MC>, MC: MerkleChannel> {

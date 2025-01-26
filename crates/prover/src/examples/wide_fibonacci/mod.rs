@@ -273,7 +273,7 @@ mod tests {
         // Verify.
         let verifier_channel = &mut Poseidon252Channel::default();
         let commitment_scheme =
-            &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
+            &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(proof.config);
 
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();

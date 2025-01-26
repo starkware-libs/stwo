@@ -139,12 +139,12 @@ pub fn prove_state_machine(
 }
 
 pub fn verify_state_machine(
-    config: PcsConfig,
     channel: &mut Blake2sChannel,
     components: StateMachineComponents,
     proof: StateMachineProof<Blake2sMerkleHasher>,
 ) -> Result<(), VerificationError> {
-    let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+    let commitment_scheme =
+        &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.stark_proof.config);
     // Decommit.
     // Retrieve the expected column sizes in each commitment interaction, from the AIR.
     let sizes = proof.stmt0.log_sizes();
@@ -308,7 +308,7 @@ mod tests {
         let (components, proof, _) =
             prove_state_machine(log_n_rows, initial_state, config, prover_channel, false);
 
-        verify_state_machine(config, verifier_channel, components, proof).unwrap();
+        verify_state_machine(verifier_channel, components, proof).unwrap();
     }
 
     #[test]
