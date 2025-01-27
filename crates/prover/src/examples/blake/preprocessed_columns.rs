@@ -8,7 +8,11 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 
-// TODO(Gali): Add documentation.
+/// A preprocessed table for the xor operation of 2 n_bits numbers.
+/// n_expand_bits is an optimization parameter reducing the table's cloumns' length to 2^(n_bits -
+/// n_expand_bits), while storing another table for the n_expand_bits xor operation.
+/// The index_in_table is the column index in the preprocessed table (0 for the first number, 1 for
+/// the second number and 2 for the xor operation result).
 #[derive(Debug)]
 pub struct XorTable {
     pub n_bits: u32,
