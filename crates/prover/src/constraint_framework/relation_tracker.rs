@@ -7,7 +7,7 @@ use num_traits::Zero;
 use super::logup::LogupSums;
 use super::{
     Batching, EvalAtRow, FrameworkEval, InfoEvaluator, Relation, RelationEntry,
-    TraceLocationAllocator, INTERACTION_TRACE_IDX,
+    TraceLocationAllocator, INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -34,6 +34,7 @@ pub struct RelationTrackerEntry {
 pub struct RelationTrackerComponent<E: FrameworkEval> {
     eval: E,
     trace_locations: TreeVec<TreeSubspan>,
+    preprocessed_column_indices: Vec<usize>,
     n_rows: usize,
 }
 impl<E: FrameworkEval> RelationTrackerComponent<E> {
@@ -44,11 +45,27 @@ impl<E: FrameworkEval> RelationTrackerComponent<E> {
             LogupSums::default(),
         ));
         let mut mask_offsets = info.mask_offsets;
+        let preprocessed_column_indices = info
+            .preprocessed_columns
+            .iter()
+            .map(|col| {
+                if let Some(pos) = location_allocator
+                    .preprocessed_columns
+                    .iter()
+                    .position(|x| x.id == col.id)
+                {
+                    pos
+                } else {
+                    panic!()
+                }
+            })
+            .collect();
         mask_offsets.drain(INTERACTION_TRACE_IDX..);
         let trace_locations = location_allocator.next_for_structure(&mask_offsets);
         Self {
             eval,
             trace_locations,
+            preprocessed_column_indices,
             n_rows,
         }
     }
@@ -60,9 +77,14 @@ impl<E: FrameworkEval> RelationTrackerComponent<E> {
         let log_size = self.eval.log_size();
 
         // Deref the sub-tree. Only copies the references.
-        let sub_tree = trace
+        let mut sub_tree = trace
             .sub_tree(&self.trace_locations)
             .map(|vec| vec.into_iter().copied().collect_vec());
+        sub_tree[PREPROCESSED_TRACE_IDX] = self
+            .preprocessed_column_indices
+            .iter()
+            .map(|idx| trace[PREPROCESSED_TRACE_IDX][*idx])
+            .collect();
         let mut entries = vec![];
 
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {

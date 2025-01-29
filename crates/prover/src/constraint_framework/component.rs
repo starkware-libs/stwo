@@ -48,7 +48,7 @@ pub struct TraceLocationAllocator {
     /// Mapping of tree index to next available column offset.
     next_tree_offsets: TreeVec<usize>,
     /// Mapping of preprocessed columns to their index.
-    preprocessed_columns: Vec<PreProcessedColumnId>,
+    pub(super) preprocessed_columns: Vec<PreProcessedColumnId>,
     /// Controls whether the preprocessed columns are dynamic or static (default=Dynamic).
     preprocessed_columns_allocation_mode: PreprocessedColumnsAllocationMode,
 }
