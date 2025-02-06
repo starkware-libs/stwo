@@ -76,7 +76,7 @@ impl SimdBackend {
             mappings.reverse();
             let n = mappings.len();
             let n0 = (n - LOG_N_LANES as usize) / 2;
-            let n1 = (n - LOG_N_LANES as usize + 1) / 2;
+            let n1 = (n - LOG_N_LANES as usize).div_ceil(2);
             let (ab, c) = mappings.split_at_mut(n1);
             let (a, _b) = ab.split_at_mut(n0);
             // Swap content of a,c.
@@ -391,7 +391,7 @@ fn slow_eval_at_point(
     if poly.log_size() > CACHED_FFT_LOG_SIZE {
         let n = mappings.len();
         let n0 = (n - LOG_N_LANES as usize) / 2;
-        let n1 = (n - LOG_N_LANES as usize + 1) / 2;
+        let n1 = (n - LOG_N_LANES as usize).div_ceil(2);
         let (ab, c) = mappings.split_at_mut(n1);
         let (a, _b) = ab.split_at_mut(n0);
         // Swap content of a,c.

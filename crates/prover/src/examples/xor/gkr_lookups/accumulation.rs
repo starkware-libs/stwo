@@ -136,7 +136,7 @@ impl DynMle<SimdBackend> {
 
 #[cfg(test)]
 mod tests {
-    use std::iter::repeat;
+    use std::iter::repeat_n;
 
     use num_traits::Zero;
 
@@ -183,6 +183,6 @@ mod tests {
         B: MleOps<F>,
         F: Field,
     {
-        Mle::new(repeat(v).take(1 << n_variables).collect())
+        Mle::new(repeat_n(v, 1 << n_variables).collect())
     }
 }

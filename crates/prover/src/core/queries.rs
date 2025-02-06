@@ -112,7 +112,7 @@ mod tests {
         let folded_queries = queries.fold(n_folds);
         let repeated_folded_queries = folded_queries
             .iter()
-            .flat_map(|q| std::iter::repeat(q).take(ratio));
+            .flat_map(|q| std::iter::repeat_n(q, ratio));
         for (query, folded_query) in queries.iter().zip(repeated_folded_queries) {
             // Check only the x coordinate since folding might give you the conjugate point.
             assert_eq!(

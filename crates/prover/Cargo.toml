@@ -55,9 +55,6 @@ nonstandard-style = "deny"
 rust-2018-idioms = "deny"
 unused = "deny"
 
-[lints.clippy]
-missing_const_for_fn = "warn"
-
 [[bench]]
 harness = false
 name = "bit_rev"
