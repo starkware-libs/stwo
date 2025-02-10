@@ -11,3 +11,9 @@ syn = "2.0.90"
 quote = "1.0.37"
 itertools = "0.13.0"
 proc-macro2 = "1.0.92"
+
+# Define Nightly features in order to allow selective tests
+# Use the following #[cfg(feature = "nightly")]
+# to enable nightly features on specific tests.
+[features]
+nightly = []

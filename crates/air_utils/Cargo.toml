@@ -12,3 +12,9 @@ stwo-air-utils-derive = { path = "../air_utils_derive" }
 
 [lib]
 bench = false
+
+# Define Nightly features in order to allow selective tests
+# Use the following #[cfg(feature = "nightly")]
+# to enable nightly features on specific tests.
+[features]
+nightly = []

@@ -6,6 +6,11 @@ edition.workspace = true
 [features]
 parallel = ["rayon"]
 slow-tests = []
+# Define Nightly features in order to allow selective tests
+# Use the following #[cfg(feature = "nightly")]
+# to enable nightly features on specific tests.
+nightly = []
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
