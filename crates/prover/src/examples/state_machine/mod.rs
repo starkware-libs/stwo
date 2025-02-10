@@ -331,7 +331,7 @@ mod tests {
             claimed_sum,
         );
 
-        let eval = component.evaluate(ExprEvaluator::new(log_n_rows));
+        let eval = component.evaluate(ExprEvaluator::new());
         let expected = "let intermediate0 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0) \
             + (StateMachineElements_alpha1) * (trace_1_column_1_offset_0) \
             - (StateMachineElements_z);
