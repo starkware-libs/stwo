@@ -4,8 +4,6 @@ use super::{BaseExpr, ExtExpr};
 use crate::constraint_framework::expr::ColumnExpr;
 use crate::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use crate::constraint_framework::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
-use crate::core::fields::m31::M31;
-use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 
 pub struct FormalLogupAtRow {
@@ -21,6 +19,7 @@ pub struct FormalLogupAtRow {
 impl FormalLogupAtRow {
     pub fn new(interaction: usize, log_size: u32) -> Self {
         let claimed_sum_name = "claimed_sum".to_string();
+        let column_size_name = "column_size".to_string();
 
         Self {
             interaction,
@@ -30,10 +29,7 @@ impl FormalLogupAtRow {
             is_finalized: true,
             is_first: BaseExpr::zero(),
             cumsum_shift: ExtExpr::Param(claimed_sum_name)
-                * BaseExpr::Inv(Box::new(BaseExpr::pow(
-                    &BaseExpr::Const(M31(2)),
-                    log_size as u128,
-                ))),
+                * BaseExpr::Inv(Box::new(BaseExpr::Param(column_size_name))),
             log_size,
         }
     }
@@ -207,7 +203,7 @@ mod tests {
 \
         let constraint_1 = (QM31Impl::from_partial_evals([trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0, trace_2_column_6_offset_0]) \
             - (QM31Impl::from_partial_evals([trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1, trace_2_column_6_offset_neg_1])) \
-                + (claimed_sum) * (qm31(32768, 0, 0, 0))) \
+                + (claimed_sum) * (1 / (column_size))) \
             * (intermediate1) \
             - (qm31(1, 0, 0, 0));"
             .to_string();

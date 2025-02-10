@@ -344,7 +344,7 @@ mod tests {
 \
         let constraint_0 = (QM31Impl::from_partial_evals([trace_2_column_2_offset_0, trace_2_column_3_offset_0, trace_2_column_4_offset_0, trace_2_column_5_offset_0]) \
             - (QM31Impl::from_partial_evals([trace_2_column_2_offset_neg_1, trace_2_column_3_offset_neg_1, trace_2_column_4_offset_neg_1, trace_2_column_5_offset_neg_1])) \
-                + (claimed_sum) * (qm31(8388608, 0, 0, 0))\
+                + (claimed_sum) * (1 / (column_size))\
             ) \
             * ((intermediate0) * (intermediate1)) \
             - (intermediate1 - (intermediate0));"
