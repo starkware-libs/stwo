@@ -13,11 +13,10 @@ pub struct FormalLogupAtRow {
     pub is_finalized: bool,
     pub is_first: BaseExpr,
     pub cumsum_shift: ExtExpr,
-    pub log_size: u32,
 }
 
 impl FormalLogupAtRow {
-    pub fn new(interaction: usize, log_size: u32) -> Self {
+    pub fn new(interaction: usize) -> Self {
         let claimed_sum_name = "claimed_sum".to_string();
         let column_size_name = "column_size".to_string();
 
@@ -30,7 +29,6 @@ impl FormalLogupAtRow {
             is_first: BaseExpr::zero(),
             cumsum_shift: ExtExpr::Param(claimed_sum_name)
                 * BaseExpr::Inv(Box::new(BaseExpr::Param(column_size_name))),
-            log_size,
         }
     }
 }
@@ -62,12 +60,18 @@ pub struct ExprEvaluator {
     pub ext_intermediates: Vec<(String, ExtExpr)>,
 }
 
+impl Default for ExprEvaluator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExprEvaluator {
-    pub fn new(log_size: u32) -> Self {
+    pub fn new() -> Self {
         Self {
             cur_var_index: Default::default(),
             constraints: Default::default(),
-            logup: FormalLogupAtRow::new(INTERACTION_TRACE_IDX, log_size),
+            logup: FormalLogupAtRow::new(INTERACTION_TRACE_IDX),
             intermediates: vec![],
             ext_intermediates: vec![],
         }
@@ -188,7 +192,7 @@ mod tests {
     #[test]
     fn test_expr_evaluator() {
         let test_struct = TestStruct {};
-        let eval = test_struct.evaluate(ExprEvaluator::new(16));
+        let eval = test_struct.evaluate(ExprEvaluator::new());
         let expected = "let intermediate0 = (trace_1_column_1_offset_0) * (trace_1_column_2_offset_0);
 
 \
