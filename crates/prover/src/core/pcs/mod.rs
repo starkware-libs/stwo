@@ -56,7 +56,6 @@ mod tests {
             pow_bits: 42,
             fri_config: super::FriConfig::new(10, 10, 70),
         };
-        // 10 * 70 + 42 = 742
-        assert!(config.security_bits() == 742);
+        assert!(config.security_bits() == 10 * 70 + 42);
     }
 }
