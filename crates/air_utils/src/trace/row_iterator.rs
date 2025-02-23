@@ -4,19 +4,19 @@ use rayon::iter::plumbing::{bridge, Consumer, Producer, ProducerCallback, Uninde
 use rayon::prelude::*;
 use stwo_prover::core::backend::simd::m31::PackedM31;
 
-pub type MutRow<'trace, const N: usize> = [&'trace mut PackedM31; N];
+pub type MutRow<'trace, const N: usize> = Box<[&'trace mut PackedM31; N]>;
 
 /// An iterator over mutable references to the rows of a [`super::component_trace::ComponentTrace`].
 // TODO(Ohad): Iterating over single rows is not optimal, figure out optimal chunk size when using
 // this iterator.
 pub struct RowIterMut<'trace, const N: usize> {
-    v: [*mut [PackedM31]; N],
+    v: Box<[*mut [PackedM31]; N]>,
     phantom: PhantomData<&'trace ()>,
 }
 impl<'trace, const N: usize> RowIterMut<'trace, N> {
     pub fn new(slice: [&'trace mut [PackedM31]; N]) -> Self {
         Self {
-            v: slice.map(|s| s as *mut _),
+            v: Box::new(slice.map(|s| s as *mut _)),
             phantom: PhantomData,
         }
     }
@@ -34,7 +34,7 @@ impl<'trace, const N: usize> Iterator for RowIterMut<'trace, N> {
             self.v[i] = tail;
             &mut (*head)[0]
         });
-        Some(item)
+        Some(Box::new(item))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -54,12 +54,12 @@ impl<const N: usize> DoubleEndedIterator for RowIterMut<'_, N> {
             self.v[i] = head;
             &mut (*tail)[0]
         });
-        Some(item)
+        Some(Box::new(item))
     }
 }
 
 struct RowProducer<'trace, const N: usize> {
-    data: [&'trace mut [PackedM31]; N],
+    data: Box<[&'trace mut [PackedM31]; N]>,
 }
 impl<'trace, const N: usize> Producer for RowProducer<'trace, N> {
     type Item = MutRow<'trace, N>;
@@ -72,14 +72,21 @@ impl<'trace, const N: usize> Producer for RowProducer<'trace, N> {
             left[i] = lhs;
             right[i] = rhs;
         }
-        (RowProducer { data: left }, RowProducer { data: right })
+        (
+            RowProducer {
+                data: Box::new(left),
+            },
+            RowProducer {
+                data: Box::new(right),
+            },
+        )
     }
 
     type IntoIter = RowIterMut<'trace, N>;
 
     fn into_iter(self) -> Self::IntoIter {
         RowIterMut {
-            v: self.data.map(|s| s as *mut _),
+            v: Box::new(self.data.map(|s| s as *mut _)),
             phantom: PhantomData,
         }
     }
@@ -90,11 +97,13 @@ impl<'trace, const N: usize> Producer for RowProducer<'trace, N> {
 /// array of columns, hence iterating over rows is not trivial. Iteration is done by iterating over
 /// `N` columns in parallel.
 pub struct ParRowIterMut<'trace, const N: usize> {
-    data: [&'trace mut [PackedM31]; N],
+    data: Box<[&'trace mut [PackedM31]; N]>,
 }
 impl<'trace, const N: usize> ParRowIterMut<'trace, N> {
     pub(super) fn new(data: [&'trace mut [PackedM31]; N]) -> Self {
-        Self { data }
+        Self {
+            data: Box::new(data),
+        }
     }
 }
 impl<'trace, const N: usize> ParallelIterator for ParRowIterMut<'trace, N> {
