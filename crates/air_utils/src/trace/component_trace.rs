@@ -1,4 +1,5 @@
 use bytemuck::Zeroable;
+use itertools::Itertools;
 use stwo_prover::core::backend::simd::column::BaseColumn;
 use stwo_prover::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
 use stwo_prover::core::backend::simd::SimdBackend;
@@ -37,7 +38,7 @@ use super::row_iterator::{ParRowIterMut, RowIterMut};
 ///     .chunks(4)
 ///     .into_iter()
 ///     .for_each(|chunk| {
-///         chunk.into_iter().for_each(|(row, input)| {
+///         chunk.into_iter().for_each(|(mut row, input)| {
 ///             *row[0] = PackedM31::from_array(input.try_into().unwrap());
 ///             *row[1] = *row[0] + PackedM31::broadcast(M31(1));
 ///             *row[2] = row[0].square() + row[1].square();
@@ -102,12 +103,22 @@ impl<const N: usize> ComponentTrace<N> {
         self.log_size
     }
 
-    pub fn iter_mut(&mut self) -> RowIterMut<'_, N> {
-        RowIterMut::new(self.data.each_mut().map(|column| column.as_mut_slice()))
+    pub fn iter_mut(&mut self) -> RowIterMut<'_> {
+        RowIterMut::new(
+            self.data
+                .iter_mut()
+                .map(|col| col.as_mut_slice())
+                .collect_vec(),
+        )
     }
 
-    pub fn par_iter_mut(&mut self) -> ParRowIterMut<'_, N> {
-        ParRowIterMut::new(self.data.each_mut().map(|column| column.as_mut_slice()))
+    pub fn par_iter_mut(&mut self) -> ParRowIterMut<'_> {
+        ParRowIterMut::new(
+            self.data
+                .iter_mut()
+                .map(|col| col.as_mut_slice())
+                .collect_vec(),
+        )
     }
 
     pub fn to_evals(self) -> [CircleEvaluation<SimdBackend, M31, BitReversedOrder>; N] {
@@ -161,7 +172,7 @@ mod tests {
             .zip(arr.par_chunks(N_LANES))
             .chunks(CHUNK_SIZE)
             .for_each(|chunk| {
-                chunk.into_iter().for_each(|(row, input)| {
+                chunk.into_iter().for_each(|(mut row, input)| {
                     *row[0] = PackedM31::from_array(input.try_into().unwrap());
                     *row[1] = *row[0] + PackedM31::broadcast(M31(1));
                     *row[2] = row[0].square() + row[1].square();
