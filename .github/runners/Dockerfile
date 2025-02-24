@@ -1,11 +1,7 @@
 FROM ghcr.io/actions/actions-runner:latest
-USER root
-
-RUN apt update && \
-    apt install -y \
-    build-essential \
-    curl \
-    git
 
 USER runner
+COPY runners_dependencies.sh .
+RUN ./runners_dependencies.sh
+
 CMD /bin/bash

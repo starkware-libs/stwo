@@ -99,9 +99,10 @@ jobs:
     strategy:
       matrix:
         target-feature: [avx512f, avx2]
-    runs-on: avx
+    runs-on: stwo-avx
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/bootstrap_runners
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-01-02
@@ -111,9 +112,10 @@ jobs:
           RUSTFLAGS: -C target-cpu=native -C target-feature=+${{ matrix.target-feature }}
 
   run-avx512-bench:
-    runs-on: avx
+    runs-on: stwo-avx
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/bootstrap_runners
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-01-02
@@ -139,9 +141,10 @@ jobs:
           alert-comment-cc-users: "@shaharsamocha7"
 
   run-avx512-bench-parallel:
-    runs-on: avx
+    runs-on: stwo-avx
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/bootstrap_runners
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-01-02
