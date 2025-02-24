@@ -4,11 +4,12 @@ on: [pull_request, push]
 
 jobs:
   coverage:
-    runs-on: avx
+    runs-on: stwo-avx
     env:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/bootstrap_runners
       - uses: dtolnay/rust-toolchain@master
         with:
           components: rustfmt
