@@ -13,9 +13,10 @@ permissions:
 
 jobs:
   run-avx-bench:
-    runs-on: avx
+    runs-on: stwo-avx
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/bootstrap_runners
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2025-01-02
