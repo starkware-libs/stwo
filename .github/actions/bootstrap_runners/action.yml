@@ -1,0 +1,10 @@
+name: Bootstrap runners
+description: Install linux self hosted runners dependencies.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install linux self hosted runners dependencies.
+      id: install-runner-dependencies
+      shell: bash
+      run: ./.github/runners/runners_dependencies.sh
