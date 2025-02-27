@@ -1184,6 +1184,7 @@ mod tests {
 
     use itertools::Itertools;
     use num_traits::{One, Zero};
+    use starknet_ff::FieldElement;
 
     use super::FriVerificationError;
     use crate::core::backend::cpu::CpuCirclePoly;
@@ -1193,21 +1194,24 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::Field;
     use crate::core::fri::{
-        fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig,
-        CIRCLE_TO_LINE_FOLD_STEP,
+        fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig, FriLayerProof,
+        FriProof, CIRCLE_TO_LINE_FOLD_STEP,
     };
+    use crate::core::pcs::CommitmentSchemeProof;
     use crate::core::poly::circle::{CircleDomain, PolyOps, SecureEvaluation};
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
     use crate::core::poly::BitReversedOrder;
+    use crate::core::prover::StarkProof;
     use crate::core::queries::Queries;
-    use crate::core::test_utils::test_channel;
-    use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use crate::core::test_utils::test_poseidon_channel as test_channel;
+    use crate::core::vcs::poseidon252_merkle::{Poseidon252MerkleChannel, Poseidon252MerkleHasher};
+    use crate::core::vcs::prover::MerkleDecommitment;
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
 
-    type FriProver<'a> = super::FriProver<'a, CpuBackend, Blake2sMerkleChannel>;
-    type FriVerifier = super::FriVerifier<Blake2sMerkleChannel>;
+    type FriProver<'a> = super::FriProver<'a, CpuBackend, Poseidon252MerkleChannel>;
+    type FriVerifier = super::FriVerifier<Poseidon252MerkleChannel>;
 
     #[test]
     fn fold_line_works() {
@@ -1291,14 +1295,14 @@ mod tests {
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
         let queries = Queries::from_positions(vec![5], column.domain.log_size());
         let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len());
-        let decommitment_value = query_polynomial(&column, &queries);
+        let query_evals = query_polynomial(&column, &queries);
         let columns = &[column];
         let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        verifier.decommit_on_queries(&queries, vec![decommitment_value])
+        verifier.decommit_on_queries(&queries, vec![query_evals])
     }
 
     #[test]
@@ -1310,14 +1314,14 @@ mod tests {
         let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
         let queries = Queries::from_positions(vec![5], column.domain.log_size());
         let config = FriConfig::new(LAST_LAYER_LOG_BOUND, LOG_BLOWUP_FACTOR, queries.len());
-        let decommitment_value = query_polynomial(&column, &queries);
+        let query_evals = query_polynomial(&column, &queries);
         let columns = &[column];
         let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        verifier.decommit_on_queries(&queries, vec![decommitment_value])
+        verifier.decommit_on_queries(&queries, vec![query_evals])
     }
 
     #[test]
@@ -1344,17 +1348,19 @@ mod tests {
         let columns = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
         let twiddles = CpuBackend::precompute_twiddles(columns[0].domain.half_coset);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
-        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
-        let (proof, prover_query_positions_by_log_size) = prover.decommit(&mut test_channel());
+        let prover_channel = &mut test_channel();
+        let prover = FriProver::commit(prover_channel, config, &columns, &twiddles);
+        let (proof, prover_query_positions_by_log_size) = prover.decommit(prover_channel);
         let query_evals_by_column = columns.map(|eval| {
             let query_positions = &prover_query_positions_by_log_size[&eval.domain.log_size()];
             query_polynomial_at_positions(&eval, query_positions)
         });
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
 
-        let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
+        let verifier_channel = &mut test_channel();
+        let mut verifier = FriVerifier::commit(verifier_channel, config, proof, bounds).unwrap();
         let verifier_query_positions_by_log_size =
-            verifier.sample_query_positions(&mut test_channel());
+            verifier.sample_query_positions(verifier_channel);
 
         assert_eq!(
             prover_query_positions_by_log_size,
@@ -1366,7 +1372,7 @@ mod tests {
     #[test]
     fn proof_with_removed_layer_fails_verification() {
         const LOG_DEGREE: u32 = 6;
-        let evaluation = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
+        let evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(evaluation.domain.half_coset);
         let log_domain_size = evaluation.domain.log_size();
         let queries = Queries::from_positions(vec![1], log_domain_size);
@@ -1379,6 +1385,8 @@ mod tests {
         let mut invalid_config = config;
         invalid_config.log_last_layer_degree_bound -= 1;
 
+        // println!("query evals: {:?}", query_evals_by_column);
+        _serialize_proof_cairo1_array(&proof);
         let verifier = FriVerifier::commit(&mut test_channel(), invalid_config, proof, bound);
 
         assert!(matches!(
@@ -1403,6 +1411,7 @@ mod tests {
         let mut invalid_config = config;
         invalid_config.log_last_layer_degree_bound += 1;
 
+        // println!("query evals: {:?}", query_evals);
         let verifier = FriVerifier::commit(&mut test_channel(), invalid_config, proof, bound);
 
         assert!(matches!(
@@ -1419,16 +1428,18 @@ mod tests {
         let log_domain_size = evaluation.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
-        let decommitment_value = query_polynomial(&evaluation, &queries);
+        let query_evals = query_polynomial(&evaluation, &queries);
         let columns = &[evaluation];
         let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
         // Remove an evaluation from the second layer's proof.
         proof.inner_layers[1].fri_witness.pop();
+        println!("query evals: {:?}", query_evals);
+        _serialize_proof_cairo1_array(&proof);
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit_on_queries(&queries, vec![query_evals]);
 
         assert_matches!(
             verification_result,
@@ -1444,7 +1455,7 @@ mod tests {
         let log_domain_size = evaluation.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
-        let decommitment_value = query_polynomial(&evaluation, &queries);
+        let query_evals = query_polynomial(&evaluation, &queries);
         let columns = &[evaluation];
         let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
@@ -1453,7 +1464,7 @@ mod tests {
         proof.inner_layers[1].fri_witness[0] += BaseField::one();
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit_on_queries(&queries, vec![query_evals]);
 
         assert_matches!(
             verification_result,
@@ -1463,7 +1474,7 @@ mod tests {
 
     #[test]
     fn proof_with_invalid_last_layer_degree_fails_verification() {
-        const LOG_DEGREE: u32 = 6;
+        const LOG_DEGREE: u32 = 4;
         const LOG_MAX_LAST_LAYER_DEGREE: u32 = 2;
         let evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(evaluation.domain.half_coset);
@@ -1477,6 +1488,8 @@ mod tests {
         let bad_last_layer_coeffs = vec![One::one(); 1 << (LOG_MAX_LAST_LAYER_DEGREE + 1)];
         proof.last_layer_poly = LinePoly::new(bad_last_layer_coeffs);
 
+        // println!("query evals: {:?}", query_evals_by_column);
+        _serialize_proof_cairo1_array(&proof);
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound);
 
         assert!(matches!(
@@ -1487,22 +1500,24 @@ mod tests {
 
     #[test]
     fn proof_with_invalid_last_layer_fails_verification() {
-        const LOG_DEGREE: u32 = 6;
+        const LOG_DEGREE: u32 = 4;
         let evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
         let twiddles = CpuBackend::precompute_twiddles(evaluation.domain.half_coset);
         let log_domain_size = evaluation.domain.log_size();
         let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
-        let decommitment_value = query_polynomial(&evaluation, &queries);
+        let query_evals = query_polynomial(&evaluation, &queries);
         let columns = &[evaluation];
         let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
         let mut proof = prover.decommit_on_queries(&queries);
         // Compromise the last layer polynomial's first coefficient.
         proof.last_layer_poly[0] += BaseField::one();
+        println!("query evals: {:?}", query_evals);
+        _serialize_proof_cairo1_array(&proof);
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit_on_queries(&queries, vec![query_evals]);
 
         assert_matches!(
             verification_result,
@@ -1519,17 +1534,19 @@ mod tests {
         let log_domain_size = evaluation.domain.log_size();
         let queries = Queries::from_positions(vec![5], log_domain_size);
         let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len());
-        let decommitment_value = query_polynomial(&evaluation, &queries);
+        let query_evals = query_polynomial(&evaluation, &queries);
         let columns = &[evaluation];
         let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
         let proof = prover.decommit_on_queries(&queries);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
+        println!("query evals: {:?}", query_evals);
+        _serialize_proof_cairo1_array(&proof);
         let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
         // Simulate the verifier sampling queries on a smaller domain.
         let mut invalid_queries = queries.clone();
         invalid_queries.log_domain_size -= 1;
 
-        let _ = verifier.decommit_on_queries(&invalid_queries, vec![decommitment_value]);
+        let _ = verifier.decommit_on_queries(&invalid_queries, vec![query_evals]);
     }
 
     /// Returns an evaluation of a random polynomial with degree `2^log_degree`.
@@ -1566,5 +1583,119 @@ mod tests {
         query_positions: &[usize],
     ) -> Vec<SecureField> {
         query_positions.iter().map(|p| polynomial.at(*p)).collect()
+    }
+
+    trait CairoSerialize {
+        fn serialize(&self, buffer: &mut Vec<FieldElement>);
+    }
+
+    impl CairoSerialize for BaseField {
+        fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+            buffer.push(self.0.into());
+        }
+    }
+
+    impl CairoSerialize for SecureField {
+        fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+            buffer.extend(self.to_m31_array().map(|c| FieldElement::from(c.0)));
+        }
+    }
+
+    impl CairoSerialize for MerkleDecommitment<Poseidon252MerkleHasher> {
+        fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+            let Self {
+                hash_witness,
+                column_witness,
+            } = self;
+            hash_witness.serialize(buffer);
+            column_witness.serialize(buffer);
+        }
+    }
+
+    impl CairoSerialize for LinePoly {
+        fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+            let Self { coeffs, log_size } = self;
+            coeffs.serialize(buffer);
+            buffer.push((*log_size).into());
+        }
+    }
+
+    impl CairoSerialize for FriLayerProof<Poseidon252MerkleHasher> {
+        fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+            let Self {
+                fri_witness,
+                decommitment,
+                commitment,
+            } = self;
+            fri_witness.serialize(buffer);
+            decommitment.serialize(buffer);
+            commitment.serialize(buffer);
+        }
+    }
+
+    impl CairoSerialize for FriProof<Poseidon252MerkleHasher> {
+        fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+            let Self {
+                first_layer,
+                inner_layers,
+                last_layer_poly,
+            } = self;
+            first_layer.serialize(buffer);
+            inner_layers.serialize(buffer);
+            last_layer_poly.serialize(buffer);
+        }
+    }
+
+    impl CairoSerialize for FieldElement {
+        fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+            buffer.push(*self);
+        }
+    }
+
+    impl CairoSerialize for CommitmentSchemeProof<Poseidon252MerkleHasher> {
+        fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+            let Self {
+                commitments,
+                sampled_values,
+                decommitments,
+                queried_values,
+                proof_of_work,
+                fri_proof,
+            } = self;
+            commitments.serialize(buffer);
+            sampled_values.serialize(buffer);
+            decommitments.serialize(buffer);
+            queried_values.serialize(buffer);
+            buffer.push((*proof_of_work).into());
+            fri_proof.serialize(buffer);
+        }
+    }
+
+    impl CairoSerialize for StarkProof<Poseidon252MerkleHasher> {
+        fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+            let Self(commitment_scheme_proof) = self;
+            commitment_scheme_proof.serialize(buffer);
+        }
+    }
+
+    impl<T: CairoSerialize> CairoSerialize for Vec<T> {
+        fn serialize(&self, buffer: &mut Vec<FieldElement>) {
+            buffer.push(self.len().into());
+            self.iter().for_each(|v| v.serialize(buffer));
+        }
+    }
+
+    pub fn _serialize_proof_cairo1_array(proof: &FriProof<Poseidon252MerkleHasher>) {
+        let mut values = Vec::new();
+        proof.serialize(&mut values);
+
+        println!("proof size: {} field elements", values.len());
+
+        let ser_proof = format!(
+            r#"array![{}].span()"#,
+            values.iter().map(|v| v.to_string()).join(",")
+        );
+
+        println!("Ser proof: {ser_proof}");
     }
 }
