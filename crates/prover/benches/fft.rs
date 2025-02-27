@@ -14,10 +14,18 @@ use stwo_prover::core::backend::simd::fft::transpose_vecs;
 use stwo_prover::core::backend::simd::m31::PackedBaseField;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::poly::circle::CanonicCoset;
+use sysinfo::System;
 
 pub fn simd_ifft(c: &mut Criterion) {
     let mut group = c.benchmark_group("iffts");
+    println!("Running ifft benches!!");
+    let mut sys = System::new_all();
+    sys.refresh_all();
 
+    let cpus = sys.cpus();
+    for (i, cpu) in cpus.iter().enumerate() {
+        println!("CPU {}: {}", i, cpu.brand());
+    }
     for log_size in 16..=28 {
         let domain = CanonicCoset::new(log_size).circle_domain();
         let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
@@ -102,7 +110,14 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
 
 pub fn simd_rfft(c: &mut Criterion) {
     const LOG_SIZE: u32 = 20;
+    println!("Running rfft benches!!");
+    let mut sys = System::new_all();
+    sys.refresh_all();
 
+    let cpus = sys.cpus();
+    for (i, cpu) in cpus.iter().enumerate() {
+        println!("CPU {}: {}", i, cpu.brand());
+    }
     let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
     let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
     let twiddle_dbls_refs = twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec();

@@ -23,6 +23,7 @@ starknet-crypto = "0.6.2"
 starknet-ff = "0.3.7"
 thiserror.workspace = true
 tracing.workspace = true
+sysinfo = "0.32.0"
 rayon = { version = "1.10.0", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 
