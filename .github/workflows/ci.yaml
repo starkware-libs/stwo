@@ -107,6 +107,10 @@ jobs:
         with:
           toolchain: nightly-2025-01-02
       - uses: Swatinem/rust-cache@v2
+      - name: Install build-essential
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential
       - run: cargo +nightly-2025-01-02 test
         env:
           RUSTFLAGS: -C target-cpu=native -C target-feature=+${{ matrix.target-feature }}
