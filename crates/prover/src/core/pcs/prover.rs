@@ -10,7 +10,7 @@ use super::super::fields::qm31::SecureField;
 use super::super::fri::{FriProof, FriProver};
 use super::super::poly::BitReversedOrder;
 use super::super::ColumnVec;
-use super::quotients::{compute_fri_quotients, PointSample};
+use super::quotients::compute_fri_quotients;
 use super::utils::TreeVec;
 use super::{PcsConfig, TreeSubspan};
 use crate::core::air::Trace;
@@ -87,18 +87,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     ) -> CommitmentSchemeProof<MC::H> {
         // Evaluate polynomials on open points.
         let span = span!(Level::INFO, "Evaluate columns out of domain").entered();
-        let samples = self
-            .polynomials()
-            .zip_cols(&sampled_points)
-            .map_cols(|(poly, points)| {
-                points
-                    .iter()
-                    .map(|&point| PointSample {
-                        point,
-                        value: poly.eval_at_point(point),
-                    })
-                    .collect_vec()
-            });
+        let samples = B::evaluate_polynomials_out_of_domain(self.polynomials(), sampled_points);
         span.exit();
         let sampled_values = samples
             .as_cols_ref()
