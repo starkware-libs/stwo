@@ -79,7 +79,7 @@ impl TraceLocationAllocator {
     }
 
     /// Create a new `TraceLocationAllocator` with fixed preprocessed columns setup.
-    pub fn new_with_preproccessed_columns(preprocessed_columns: &[PreProcessedColumnId]) -> Self {
+    pub fn new_with_preprocessed_columns(preprocessed_columns: &[PreProcessedColumnId]) -> Self {
         assert!(
             preprocessed_columns.iter().all_unique(),
             "Duplicate preprocessed columns are not allowed!"
@@ -213,7 +213,7 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         })
     }
 
-    fn preproccessed_column_indices(&self) -> ColumnVec<usize> {
+    fn preprocessed_column_indices(&self) -> ColumnVec<usize> {
         self.preprocessed_column_indices.clone()
     }
 
