@@ -94,7 +94,7 @@ pub fn partially_verify_batch(
             let mask = &layer_masks_by_instance[instance][layer - n_unused];
             let gate = &gate_by_instance[instance];
             let gate_output = gate.eval(mask).map_err(|InvalidNumMaskColumnsError| {
-                let instance_layer = instance_n_layers(layer) - n_remaining_layers;
+                let instance_layer = instance_n_layers(instance) - n_remaining_layers;
                 GkrError::InvalidMask {
                     instance,
                     instance_layer,
