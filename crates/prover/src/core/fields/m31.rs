@@ -157,7 +157,12 @@ impl From<u32> for M31 {
 
 impl From<i32> for M31 {
     fn from(value: i32) -> Self {
-        M31::reduce(value.try_into().unwrap())
+        if value < 0 {
+            const P2: u64 = 2 * P as u64;
+            return M31::reduce(P2 - value.unsigned_abs() as u64);
+        }
+
+        M31::reduce(value.unsigned_abs() as u64)
     }
 }
 
@@ -258,5 +263,13 @@ mod tests {
                 ))
             );
         }
+    }
+
+    #[test]
+    fn test_m31_from_i32() {
+        assert_eq!(M31::from(-1_i32), M31::from(P - 1));
+        assert_eq!(M31::from(-10_i32), M31::from(P - 10));
+        assert_eq!(M31::from(1_i32), M31::from(1));
+        assert_eq!(M31::from(10_i32), M31::from(10));
     }
 }
