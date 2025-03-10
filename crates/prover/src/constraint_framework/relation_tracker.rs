@@ -20,9 +20,7 @@ use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::{TreeSubspan, TreeVec};
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::{
-    bit_reverse_index, coset_index_to_circle_domain_index, offset_bit_reversed_circle_domain_index,
-};
+use crate::core::utils::offset_bit_reversed_circle_domain_index;
 
 #[derive(Debug)]
 pub struct RelationTrackerEntry {
@@ -35,10 +33,9 @@ pub struct RelationTrackerComponent<E: FrameworkEval> {
     eval: E,
     trace_locations: TreeVec<TreeSubspan>,
     preprocessed_column_indices: Vec<usize>,
-    n_rows: usize,
 }
 impl<E: FrameworkEval> RelationTrackerComponent<E> {
-    pub fn new(location_allocator: &mut TraceLocationAllocator, eval: E, n_rows: usize) -> Self {
+    pub fn new(location_allocator: &mut TraceLocationAllocator, eval: E) -> Self {
         let component = FrameworkComponent::<E>::new(location_allocator, eval, QM31::default());
 
         // Interaction trace is no needed for relation tracker.
@@ -49,7 +46,6 @@ impl<E: FrameworkEval> RelationTrackerComponent<E> {
             eval: component.eval,
             trace_locations,
             preprocessed_column_indices: component.preprocessed_column_indices,
-            n_rows,
         }
     }
 
@@ -71,8 +67,7 @@ impl<E: FrameworkEval> RelationTrackerComponent<E> {
         let mut entries = vec![];
 
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
-            let evaluator =
-                RelationTrackerEvaluator::new(&sub_tree, vec_row, log_size, self.n_rows);
+            let evaluator = RelationTrackerEvaluator::new(&sub_tree, vec_row, log_size);
             entries.extend(self.eval.evaluate(evaluator).entries());
         }
         entries
@@ -87,14 +82,12 @@ pub struct RelationTrackerEvaluator<'a> {
     pub column_index_per_interaction: Vec<usize>,
     pub vec_row: usize,
     pub domain_log_size: u32,
-    pub n_rows: usize,
 }
 impl<'a> RelationTrackerEvaluator<'a> {
     pub fn new(
         trace_eval: &'a TreeVec<Vec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
         vec_row: usize,
         domain_log_size: u32,
-        n_rows: usize,
     ) -> Self {
         Self {
             entries: vec![],
@@ -102,7 +95,6 @@ impl<'a> RelationTrackerEvaluator<'a> {
             column_index_per_interaction: vec![0; trace_eval.len()],
             vec_row,
             domain_log_size,
-            n_rows,
         }
     }
 
@@ -172,17 +164,6 @@ impl EvalAtRow for RelationTrackerEvaluator<'_> {
 
         // Unpack SIMD.
         for j in 0..N_LANES {
-            // Skip padded values.
-            let cannonical_index = bit_reverse_index(
-                coset_index_to_circle_domain_index(
-                    (self.vec_row << LOG_N_LANES) + j,
-                    self.domain_log_size,
-                ),
-                self.domain_log_size,
-            );
-            if cannonical_index >= self.n_rows {
-                continue;
-            }
             let values = values.iter().map(|v| v[j]).collect_vec();
             let mult = mult[j].to_m31_array()[0];
             self.entries.push(RelationTrackerEntry {

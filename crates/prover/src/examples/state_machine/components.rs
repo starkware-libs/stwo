@@ -147,7 +147,6 @@ pub fn track_state_machine_relations(
                 lookup_elements: StateMachineElements::dummy(),
                 claimed_sum: QM31::zero(),
             },
-            1 << x_axis_log_n_rows,
         )
         .entries(&trace.into()),
     );
@@ -159,7 +158,6 @@ pub fn track_state_machine_relations(
                 lookup_elements: StateMachineElements::dummy(),
                 claimed_sum: QM31::zero(),
             },
-            1 << y_axis_log_n_rows,
         )
         .entries(&trace.into()),
     );
