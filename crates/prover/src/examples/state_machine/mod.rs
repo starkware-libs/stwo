@@ -221,11 +221,12 @@ mod tests {
 
         let trace = TreeVec::new(vec![vec![], trace, interaction_trace]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
+        let component_eval = component.clone();
         assert_constraints_on_polys(
             &trace_polys,
             CanonicCoset::new(log_n_rows),
-            |eval| {
-                component.evaluate(eval);
+            |assert_eval| {
+                component_eval.evaluate(assert_eval);
             },
             claimed_sum,
         );

@@ -247,11 +247,12 @@ pub fn prove_fibonacci_plonk(
         .trees
         .as_ref()
         .map(|t| t.polynomials.iter().cloned().collect_vec());
+    let component_eval = component.clone();
     assert_constraints_on_polys(
         &trace_polys,
         CanonicCoset::new(log_n_rows),
-        |mut eval| {
-            component.evaluate(eval);
+        |assert_eval| {
+            component_eval.evaluate(assert_eval);
         },
         claimed_sum,
     );
