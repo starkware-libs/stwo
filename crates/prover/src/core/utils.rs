@@ -114,6 +114,22 @@ pub(crate) fn coset_order_to_circle_domain_order<F: Field>(values: &[F]) -> Vec<
     circle_domain_order
 }
 
+/// Converts an index within a [`CircleDomain`] to the corresponding index in a [`Coset`].
+///
+/// [`CircleDomain`]: crate::core::poly::circle::CircleDomain
+/// [`Coset`]: crate::core::circle::Coset
+pub(crate) const fn circle_domain_index_to_coset_index(
+    circle_index: usize,
+    log_domain_size: u32,
+) -> usize {
+    let n = 1 << log_domain_size;
+    if circle_index < n / 2 {
+        circle_index * 2
+    } else {
+        (n - 1 - circle_index) * 2 + 1
+    }
+}
+
 /// Converts an index within a [`Coset`] to the corresponding index in a [`CircleDomain`].
 ///
 /// [`CircleDomain`]: crate::core::poly::circle::CircleDomain
@@ -153,6 +169,9 @@ mod tests {
     use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
+    use crate::core::utils::{
+        circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
+    };
     use crate::m31;
 
     #[test]
@@ -236,5 +255,22 @@ mod tests {
         expected_neighbor_pairs.sort();
 
         assert_eq!(neighbor_pairs, expected_neighbor_pairs);
+    }
+
+    #[test]
+    fn test_circle_domain_and_coset_index_conversion() {
+        let log_size = 3;
+        let n = 1 << log_size;
+
+        // Test that both functions are inverses of each other
+        for i in 0..n {
+            let coset_idx = circle_domain_index_to_coset_index(i, log_size);
+            let circle_idx = coset_index_to_circle_domain_index(coset_idx, log_size);
+            assert_eq!(i, circle_idx);
+
+            let circle_idx = coset_index_to_circle_domain_index(i, log_size);
+            let coset_idx = circle_domain_index_to_coset_index(circle_idx, log_size);
+            assert_eq!(i, coset_idx);
+        }
     }
 }

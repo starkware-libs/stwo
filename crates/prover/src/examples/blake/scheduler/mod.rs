@@ -59,7 +59,7 @@ mod tests {
 
     use crate::constraint_framework::preprocessed_columns::IsFirst;
     use crate::constraint_framework::FrameworkEval;
-    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::backend::Column;
     use crate::examples::blake::round::RoundElements;
     use crate::examples::blake::scheduler::r#gen::{gen_interaction_trace, gen_trace, BlakeInput};
     use crate::examples::blake::scheduler::{BlakeElements, BlakeSchedulerEval};
@@ -90,11 +90,15 @@ mod tests {
         );
 
         let trace = TreeVec::new(vec![
-            vec![IsFirst::new(LOG_SIZE).gen_column_simd()],
-            trace,
-            interaction_trace,
+            vec![IsFirst::new(LOG_SIZE).gen_column_simd().values.to_cpu()],
+            trace.into_iter().map(|x| x.values.to_cpu()).collect(),
+            interaction_trace
+                .into_iter()
+                .map(|x| x.values.to_cpu())
+                .collect(),
         ]);
-        let trace_polys = trace.map_cols(|c| c.interpolate());
+        let trace = &trace.as_ref();
+        let trace = trace.into();
 
         let component = BlakeSchedulerEval {
             log_size: LOG_SIZE,
@@ -102,9 +106,9 @@ mod tests {
             round_lookup_elements,
             claimed_sum,
         };
-        crate::constraint_framework::assert_constraints(
-            &trace_polys,
-            CanonicCoset::new(LOG_SIZE),
+        crate::constraint_framework::assert_constraints_on_trace(
+            &trace,
+            LOG_SIZE,
             |eval| {
                 component.evaluate(eval);
             },
