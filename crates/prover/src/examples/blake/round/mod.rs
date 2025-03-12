@@ -105,7 +105,7 @@ mod tests {
             round_lookup_elements,
             claimed_sum,
         };
-        crate::constraint_framework::assert_constraints(
+        crate::constraint_framework::assert_constraints_on_polys(
             &trace_polys,
             CanonicCoset::new(LOG_SIZE),
             |eval| {

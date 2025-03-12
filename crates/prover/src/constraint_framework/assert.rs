@@ -1,19 +1,22 @@
+use itertools::Itertools;
 use num_traits::Zero;
 
 use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
 use crate::core::backend::{Backend, Column};
-use crate::core::fields::m31::BaseField;
+use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::{CanonicCoset, CirclePoly};
-use crate::core::utils::circle_domain_order_to_coset_order;
+use crate::core::utils::{
+    bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
+};
 
 /// Evaluates expressions at a trace domain row, and asserts constraints. Mainly used for testing.
 pub struct AssertEvaluator<'a> {
-    pub trace: &'a TreeVec<Vec<Vec<BaseField>>>,
+    pub trace: &'a TreeVec<Vec<&'a Vec<BaseField>>>,
     pub col_index: TreeVec<usize>,
     pub row: usize,
     pub constraint_counter: usize,
@@ -21,7 +24,7 @@ pub struct AssertEvaluator<'a> {
 }
 impl<'a> AssertEvaluator<'a> {
     pub fn new(
-        trace: &'a TreeVec<Vec<Vec<BaseField>>>,
+        trace: &'a TreeVec<Vec<&Vec<BaseField>>>,
         row: usize,
         log_size: u32,
         claimed_sum: SecureField,
@@ -47,10 +50,25 @@ impl EvalAtRow for AssertEvaluator<'_> {
         let col_index = self.col_index[interaction];
         self.col_index[interaction] += 1;
         offsets.map(|off| {
-            // The mask row might wrap around the column size.
-            let col_size = self.trace[interaction][col_index].len() as isize;
-            self.trace[interaction][col_index]
-                [(self.row as isize + off).rem_euclid(col_size) as usize]
+            // If the offset is 0, we can just return the value directly from this row.
+            if off == 0 {
+                let col = &self.trace[interaction][col_index];
+                return col[self.row];
+            }
+            // Otherwise, we need to look up the value at the offset.
+            // Since the domain is bit-reversed circle domain ordered, we need to look up the value
+            // at the bit-reversed natural order index at an offset.
+            let log_size = self.logup.log_size;
+            let domain_size = 1 << log_size;
+
+            let coset_index =
+                circle_domain_index_to_coset_index(bit_reverse_index(self.row, log_size), log_size);
+            let next_coset_index = (coset_index as isize + off).rem_euclid(domain_size);
+            let next_index = bit_reverse_index(
+                coset_index_to_circle_domain_index(next_coset_index as usize, log_size),
+                log_size,
+            );
+            self.trace[interaction][col_index].at(next_index)
         })
     }
 
@@ -78,7 +96,7 @@ impl EvalAtRow for AssertEvaluator<'_> {
     super::logup_proxy!();
 }
 
-pub fn assert_constraints<B: Backend>(
+pub fn assert_constraints_on_polys<B: Backend>(
     trace_polys: &TreeVec<Vec<CirclePoly<B>>>,
     trace_domain: CanonicCoset,
     assert_func: impl Fn(AssertEvaluator<'_>),
@@ -86,20 +104,23 @@ pub fn assert_constraints<B: Backend>(
 ) {
     let traces = trace_polys.as_ref().map(|tree| {
         tree.iter()
-            .map(|poly| {
-                circle_domain_order_to_coset_order(
-                    &poly
-                        .evaluate(trace_domain.circle_domain())
-                        .bit_reverse()
-                        .values
-                        .to_cpu(),
-                )
-            })
-            .collect()
+            .map(|poly| poly.evaluate(trace_domain.circle_domain()).values.to_cpu())
+            .collect_vec()
     });
-    for row in 0..trace_domain.size() {
-        let eval = AssertEvaluator::new(&traces, row, trace_domain.log_size(), claimed_sum);
+    let traces = &traces.as_ref();
+    let traces = traces.into();
+    assert_constraints_on_trace(&traces, trace_domain.log_size(), assert_func, claimed_sum);
+}
 
+pub fn assert_constraints_on_trace(
+    evals: &TreeVec<Vec<&Vec<M31>>>,
+    log_size: u32,
+    assert_func: impl Fn(AssertEvaluator<'_>),
+    claimed_sum: SecureField,
+) {
+    let n_rows = 1 << log_size;
+    for row in 0..n_rows {
+        let eval = AssertEvaluator::new(evals, row, log_size, claimed_sum);
         assert_func(eval);
     }
 }

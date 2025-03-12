@@ -189,7 +189,7 @@ mod tests {
     use super::{prove_state_machine, verify_state_machine};
     use crate::constraint_framework::expr::ExprEvaluator;
     use crate::constraint_framework::{
-        assert_constraints, FrameworkEval, Relation, TraceLocationAllocator,
+        assert_constraints_on_polys, FrameworkEval, Relation, TraceLocationAllocator,
     };
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::M31;
@@ -221,7 +221,7 @@ mod tests {
 
         let trace = TreeVec::new(vec![vec![], trace, interaction_trace]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
-        assert_constraints(
+        assert_constraints_on_polys(
             &trace_polys,
             CanonicCoset::new(log_n_rows),
             |eval| {

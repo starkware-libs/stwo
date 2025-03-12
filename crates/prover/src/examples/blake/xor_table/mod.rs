@@ -156,7 +156,7 @@ mod tests {
     use std::simd::u32x16;
 
     use crate::constraint_framework::logup::LookupElements;
-    use crate::constraint_framework::{assert_constraints, FrameworkEval};
+    use crate::constraint_framework::{assert_constraints_on_polys, FrameworkEval};
     use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::preprocessed_columns::XorTable;
     use crate::examples::blake::xor_table::xor12::{
@@ -186,7 +186,7 @@ mod tests {
             lookup_elements,
             claimed_sum,
         };
-        assert_constraints(
+        assert_constraints_on_polys(
             &trace_polys,
             CanonicCoset::new(XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits()),
             |eval| {
