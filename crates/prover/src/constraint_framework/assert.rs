@@ -1,5 +1,7 @@
 use itertools::Itertools;
 use num_traits::Zero;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
@@ -13,6 +15,7 @@ use crate::core::poly::circle::{CanonicCoset, CirclePoly};
 use crate::core::utils::{
     bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
 };
+use crate::parallel_iter;
 
 /// Evaluates expressions at a trace domain row, and asserts constraints. Mainly used for testing.
 pub struct AssertEvaluator<'a> {
@@ -95,7 +98,7 @@ impl EvalAtRow for AssertEvaluator<'_> {
 pub fn assert_constraints_on_polys<B: Backend>(
     trace_polys: &TreeVec<Vec<CirclePoly<B>>>,
     trace_domain: CanonicCoset,
-    assert_func: impl Fn(AssertEvaluator<'_>),
+    assert_func: impl Fn(AssertEvaluator<'_>) + Sync,
     claimed_sum: SecureField,
 ) {
     let traces = trace_polys.as_ref().map(|tree| {
@@ -116,12 +119,14 @@ pub fn assert_constraints_on_polys<B: Backend>(
 pub fn assert_constraints_on_trace_domain_evals(
     trace_evals: &TreeVec<Vec<&Vec<M31>>>,
     log_size: u32,
-    assert_func: impl Fn(AssertEvaluator<'_>),
+    assert_func: impl Fn(AssertEvaluator<'_>) + Sync,
     claimed_sum: SecureField,
 ) {
     let n_rows = 1 << log_size;
-    for row in 0..n_rows {
+
+    let iter = parallel_iter!(0..n_rows);
+    iter.for_each(|row| {
         let eval = AssertEvaluator::new(trace_evals, row, log_size, claimed_sum);
         assert_func(eval);
-    }
+    });
 }
