@@ -114,6 +114,22 @@ pub(crate) fn coset_order_to_circle_domain_order<F: Field>(values: &[F]) -> Vec<
     circle_domain_order
 }
 
+/// Converts an index within a [`CircleDomain`] to the corresponding index in a [`Coset`].
+///
+/// [`CircleDomain`]: crate::core::poly::circle::CircleDomain
+/// [`Coset`]: crate::core::circle::Coset
+pub const fn circle_domain_index_to_coset_index(
+    circle_index: usize,
+    log_domain_size: u32,
+) -> usize {
+    let n = 1 << log_domain_size;
+    if circle_index < n / 2 {
+        circle_index * 2
+    } else {
+        (n - 1 - circle_index) * 2 + 1
+    }
+}
+
 /// Converts an index within a [`Coset`] to the corresponding index in a [`CircleDomain`].
 ///
 /// [`CircleDomain`]: crate::core::poly::circle::CircleDomain

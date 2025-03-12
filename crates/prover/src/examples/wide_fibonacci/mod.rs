@@ -74,7 +74,7 @@ mod tests {
 
     use super::WideFibonacciEval;
     use crate::constraint_framework::{
-        assert_constraints, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
+        assert_constraints_on_polys, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
     };
     use crate::core::air::Component;
     use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -142,7 +142,7 @@ mod tests {
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
 
-        assert_constraints(
+        assert_constraints_on_polys(
             &trace_polys,
             CanonicCoset::new(LOG_N_INSTANCES),
             fibonacci_constraint_evaluator::<LOG_N_INSTANCES>,
@@ -162,7 +162,7 @@ mod tests {
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
 
-        assert_constraints(
+        assert_constraints_on_polys(
             &trace_polys,
             CanonicCoset::new(LOG_N_INSTANCES),
             fibonacci_constraint_evaluator::<LOG_N_INSTANCES>,

@@ -745,7 +745,9 @@ mod tests {
         MleEvalVerifierComponent,
     };
     use crate::constraint_framework::preprocessed_columns::IsFirst;
-    use crate::constraint_framework::{assert_constraints, EvalAtRow, TraceLocationAllocator};
+    use crate::constraint_framework::{
+        assert_constraints_on_polys, EvalAtRow, TraceLocationAllocator,
+    };
     use crate::core::air::{Component, ComponentProver, Components};
     use crate::core::backend::cpu::bit_reverse;
     use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
@@ -957,7 +959,7 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(log_size);
 
-        assert_constraints(
+        assert_constraints_on_polys(
             &trace_polys,
             trace_domain,
             |mut eval| {
@@ -999,7 +1001,7 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
 
-        assert_constraints(
+        assert_constraints_on_polys(
             &trace_polys,
             trace_domain,
             |mut eval| {
@@ -1036,7 +1038,7 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
 
-        assert_constraints(
+        assert_constraints_on_polys(
             &trace_polys,
             trace_domain,
             |mut eval| {
@@ -1073,7 +1075,7 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
 
-        assert_constraints(
+        assert_constraints_on_polys(
             &trace_polys,
             trace_domain,
             |mut eval| {
@@ -1104,7 +1106,7 @@ mod tests {
         let trace_polys = trace.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(LOG_SIZE);
 
-        assert_constraints(
+        assert_constraints_on_polys(
             &trace_polys,
             trace_domain,
             |mut eval| {
