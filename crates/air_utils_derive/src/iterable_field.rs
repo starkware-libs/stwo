@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Data, DeriveInput, Expr, Field, Fields, Ident, Lifetime, Type};
+use syn::{Data, DeriveInput, Expr, Field, Fields, Ident, Lifetime, Type, Visibility};
 
 /// Each variant represents a field that can be iterated over.
 /// Used to derive implementations of `Uninitialized`, `MutIter`, and `ParIterMut`.
@@ -13,10 +13,12 @@ pub(super) enum IterableField {
 }
 
 pub(super) struct PlainVec {
+    vis: Visibility,
     name: Ident,
     ty: Type,
 }
 pub(super) struct ArrayOfVecs {
+    vis: Visibility,
     name: Ident,
     inner_type: Type,
     outer_array_size: Expr,
@@ -36,6 +38,7 @@ impl IterableField {
                     ))?,
                 };
                 Ok(Self::ArrayOfVecs(ArrayOfVecs {
+                    vis: field.vis.clone(),
                     name: field.ident.clone().unwrap(),
                     outer_array_size: outer_array.len.clone(),
                     inner_type: inner_type.clone(),
@@ -45,6 +48,7 @@ impl IterableField {
             Type::Path(ref type_path) => {
                 let ty = parse_inner_type(type_path)?;
                 Ok(Self::PlainVec(PlainVec {
+                    vis: field.vis.clone(),
                     name: field.ident.clone().unwrap(),
                     ty,
                 }))
@@ -53,6 +57,23 @@ impl IterableField {
                 field,
                 "Expected vector or array of vectors",
             )),
+        }
+    }
+
+    pub fn visibility(&self) -> TokenStream {
+        match self {
+            IterableField::PlainVec(plain_vec) => {
+                let vis = &plain_vec.vis;
+                quote! {
+                    #vis
+                }
+            }
+            IterableField::ArrayOfVecs(array_of_vecs) => {
+                let vis = &array_of_vecs.vis;
+                quote! {
+                    #vis
+                }
+            }
         }
     }
 

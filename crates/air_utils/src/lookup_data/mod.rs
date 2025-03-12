@@ -13,7 +13,7 @@ mod tests {
     /// Vectors are assumed to be of the same length.
     #[derive(Uninitialized, IterMut, ParIterMut)]
     struct LookupData {
-        field0: Vec<PackedM31>,
+        pub field0: Vec<PackedM31>,
         field1: Vec<[PackedM31; 2]>,
         field2: [Vec<[PackedM31; 2]>; 2],
     }

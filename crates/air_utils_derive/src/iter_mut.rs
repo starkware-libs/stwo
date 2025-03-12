@@ -46,14 +46,14 @@ fn expand_impl_struct_name(struct_name: &Ident, iterable_fields: &[IterableField
 fn expand_mut_chunk_struct(struct_name: &Ident, iterable_fields: &[IterableField]) -> TokenStream {
     let lifetime = Lifetime::new("'a", Span::call_site());
     let mut_chunk_name = format_ident!("{}MutChunk", struct_name);
-    let (field_names, mut_chunk_types): (Vec<_>, Vec<_>) = iterable_fields
+    let (visibility, field_names, mut_chunk_types): (Vec<_>, Vec<_>, Vec<_>) = iterable_fields
         .iter()
-        .map(|f| (f.name(), f.mut_chunk_type(&lifetime)))
-        .unzip();
+        .map(|f| (f.visibility(), f.name(), f.mut_chunk_type(&lifetime)))
+        .multiunzip();
 
     quote! {
         pub struct #mut_chunk_name<#lifetime> {
-            #(#field_names: #mut_chunk_types,)*
+            #(#visibility #field_names: #mut_chunk_types,)*
         }
     }
 }
