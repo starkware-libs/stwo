@@ -1,8 +1,9 @@
-use std::fmt;
+use core::fmt;
 
 use serde::{Deserialize, Serialize};
 
 use crate::core::vcs::hash::Hash;
+use crate::prelude::*;
 
 // Wrapper for the blake3 hash type.
 #[derive(Clone, Copy, PartialEq, Default, Eq, Serialize, Deserialize)]

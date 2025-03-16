@@ -1,14 +1,15 @@
-use std::cmp::Reverse;
-use std::collections::BTreeMap;
+use core::cmp::Reverse;
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use super::ops::{MerkleHasher, MerkleOps};
 use super::utils::{next_decommitment_node, option_flatten_peekable};
+use crate::collections::BTreeMap;
 use crate::core::backend::{Col, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
+use crate::prelude::*;
 
 pub struct MerkleProver<B: MerkleOps<H>, H: MerkleHasher> {
     /// Layers of the Merkle tree.
@@ -55,7 +56,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
             // Take columns of the current log_size.
             let layer_columns = columns
                 .peek_take_while(|column| column.len().ilog2() == log_size)
-                .collect_vec();
+                .collect::<Vec<_>>();
 
             layers.push(B::commit_on_layer(log_size, layers.last(), &layer_columns));
         }
@@ -102,7 +103,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
             // Prepare the relevant columns and previous layer hashes to read from.
             let layer_columns = columns_by_layer
                 .peek_take_while(|column| column.len().ilog2() == layer_log_size)
-                .collect_vec();
+                .collect::<Vec<_>>();
             let previous_layer_hashes = self.layers.get(layer_log_size as usize + 1);
 
             // Queries to this layer come from queried node in the previous layer and queried

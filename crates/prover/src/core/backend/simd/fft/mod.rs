@@ -1,4 +1,4 @@
-use std::simd::{simd_swizzle, u32x16, u32x8};
+use core::simd::{simd_swizzle, u32x16, u32x8};
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -98,12 +98,12 @@ pub fn compute_first_twiddles(twiddle1_dbl: u32x8) -> (u32x16, u32x16) {
 
 #[inline]
 const unsafe fn load(mem_addr: *const u32) -> u32x16 {
-    std::ptr::read(mem_addr as *const u32x16)
+    core::ptr::read(mem_addr as *const u32x16)
 }
 
 #[inline]
 const unsafe fn store(mem_addr: *mut u32, a: u32x16) {
-    std::ptr::write(mem_addr as *mut u32x16, a);
+    core::ptr::write(mem_addr as *mut u32x16, a);
 }
 
 /// Computes `v * twiddle`

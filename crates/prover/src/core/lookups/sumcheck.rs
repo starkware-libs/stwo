@@ -4,9 +4,8 @@
 //! `g` in the context of the protocol. It is intended to be used in conjunction with
 //! [`prove_batch()`] to generate proofs.
 
-use std::iter::zip;
+use core::iter::zip;
 
-use itertools::Itertools;
 use num_traits::{One, Zero};
 use thiserror::Error;
 
@@ -14,6 +13,7 @@ use super::utils::UnivariatePoly;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::prelude::*;
 
 /// Something that can be seen as a multivariate polynomial `g(x_0, ..., x_{n-1})`.
 pub trait MultivariatePolyOracle: Sized {
@@ -97,7 +97,7 @@ pub fn prove_batch<O: MultivariatePolyOracle>(
 
                 round_poly
             })
-            .collect_vec();
+            .collect::<Vec<_>>();
 
         let round_poly = random_linear_combination(&this_round_polys, lambda);
 

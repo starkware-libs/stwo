@@ -1,11 +1,11 @@
-use std::cmp::Reverse;
-use std::collections::BTreeMap;
-use std::iter::zip;
+use core::cmp::Reverse;
+use core::iter::zip;
 
 use itertools::{izip, multiunzip, Itertools};
 use tracing::{span, Level};
 
 use super::TreeVec;
+use crate::collections::BTreeMap;
 use crate::core::backend::cpu::quotients::{accumulate_row_quotients, quotient_constants};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
@@ -17,6 +17,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::prover::VerificationError;
 use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 pub trait QuotientOps: PolyOps {
     /// Accumulates the quotients of the columns at the given domain.
@@ -82,7 +83,7 @@ pub fn compute_fri_quotients<B: QuotientOps>(
     let _span = span!(Level::INFO, "Compute FRI quotients").entered();
     zip(columns, samples)
         .sorted_by_key(|(c, _)| Reverse(c.domain.log_size()))
-        .group_by(|(c, _)| c.domain.log_size())
+        .chunk_by(|(c, _)| c.domain.log_size())
         .into_iter()
         .map(|(log_size, tuples)| {
             let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
@@ -112,7 +113,7 @@ pub fn fri_answers(
 
     izip!(column_log_sizes.flatten(), samples.flatten().iter())
         .sorted_by_key(|(log_size, ..)| Reverse(*log_size))
-        .group_by(|(log_size, ..)| *log_size)
+        .chunk_by(|(log_size, ..)| *log_size)
         .into_iter()
         .map(|(log_size, tuples)| {
             let (_, samples): (Vec<_>, Vec<_>) = multiunzip(tuples);

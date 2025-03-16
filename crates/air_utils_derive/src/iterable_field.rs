@@ -2,6 +2,8 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Expr, Field, Fields, Ident, Lifetime, Type};
 
+use crate::prelude::*;
+
 /// Each variant represents a field that can be iterated over.
 /// Used to derive implementations of `Uninitialized`, `MutIter`, and `ParIterMut`.
 /// Currently supports `Vec<T>` and `[Vec<T>; N]` fields only.
@@ -242,7 +244,7 @@ impl IterableField {
                     let (
                         mut #head,
                         mut #tail
-                    ):([_; #array_size],[_; #array_size])  = unsafe { (std::mem::zeroed(), std::mem::zeroed()) };
+                    ):([_; #array_size],[_; #array_size])  = unsafe { (core::mem::zeroed(), core::mem::zeroed()) };
                     self.#name.into_iter().enumerate().for_each(|(i, v)| {
                         let (head, tail) = v.split_at_mut(#index);
                         #head[i] = head;

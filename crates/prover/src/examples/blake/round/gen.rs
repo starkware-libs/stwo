@@ -1,7 +1,6 @@
-use std::simd::u32x16;
-use std::vec;
+use core::simd::u32x16;
 
-use itertools::{chain, Itertools};
+use itertools::chain;
 use num_traits::One;
 use tracing::{span, Level};
 
@@ -20,6 +19,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 use crate::examples::blake::round::blake_round_info;
 use crate::examples::blake::{to_felts, XorAccums, N_ROUND_INPUT_FELTS, STATE_SIZE};
+use crate::prelude::*;
 
 pub struct BlakeRoundLookupData {
     /// A vector of (w, [a_col, b_col, c_col]) for each xor lookup.
@@ -40,12 +40,12 @@ impl TraceGenerator {
         assert!(log_size >= LOG_N_LANES);
         let trace = (0..blake_round_info().mask_offsets[ORIGINAL_TRACE_IDX].len())
             .map(|_| unsafe { Col::<SimdBackend, BaseField>::uninitialized(1 << log_size) })
-            .collect_vec();
+            .collect::<Vec<_>>();
         Self {
             log_size,
             trace,
             xor_lookups: vec![],
-            round_lookup: std::array::from_fn(|_| unsafe {
+            round_lookup: core::array::from_fn(|_| unsafe {
                 BaseColumn::uninitialized(1 << log_size)
             }),
         }
@@ -183,7 +183,7 @@ impl TraceGeneratorRow<'_> {
         if self.gen.xor_lookups.len() <= self.xor_lookups_index {
             self.gen.xor_lookups.push((
                 w,
-                std::array::from_fn(|_| unsafe {
+                core::array::from_fn(|_| unsafe {
                     BaseColumn::uninitialized(1 << self.gen.log_size)
                 }),
             ));

@@ -4,6 +4,7 @@ use crate::core::air::accumulation::AccumulationOps;
 use crate::core::backend::cpu::CpuBackend;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
+use crate::prelude::*;
 
 impl AccumulationOps for CpuBackend {
     fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>) {

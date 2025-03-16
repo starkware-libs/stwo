@@ -1,9 +1,9 @@
-use std::iter::zip;
-use std::{array, mem};
+use core::iter::zip;
+use core::{array, mem};
 
 use bytemuck::allocation::cast_vec;
 use bytemuck::{cast_slice, cast_slice_mut, Zeroable};
-use itertools::{izip, Itertools};
+use itertools::izip;
 use num_traits::Zero;
 
 use super::cm31::PackedCM31;
@@ -18,6 +18,7 @@ use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
+use crate::prelude::*;
 
 /// An efficient structure for storing and operating on a arbitrary number of [`BaseField`] values.
 #[derive(Clone, Debug)]
@@ -64,7 +65,7 @@ impl BaseColumn {
         self.data
             .chunks_mut(chunk_size)
             .map(BaseColumnMutSlice)
-            .collect_vec()
+            .collect::<Vec<_>>()
     }
 
     pub fn into_secure_column(self) -> SecureColumn {
@@ -109,7 +110,9 @@ impl Column<BaseField> for BaseColumn {
 impl FromIterator<BaseField> for BaseColumn {
     fn from_iter<I: IntoIterator<Item = BaseField>>(iter: I) -> Self {
         let mut chunks = iter.into_iter().array_chunks();
-        let mut data = (&mut chunks).map(PackedBaseField::from_array).collect_vec();
+        let mut data = (&mut chunks)
+            .map(PackedBaseField::from_array)
+            .collect::<Vec<_>>();
         let mut length = data.len() * N_LANES;
 
         if let Some(remainder) = chunks.into_remainder() {
@@ -173,7 +176,9 @@ impl Column<CM31> for CM31Column {
 impl FromIterator<CM31> for CM31Column {
     fn from_iter<I: IntoIterator<Item = CM31>>(iter: I) -> Self {
         let mut chunks = iter.into_iter().array_chunks();
-        let mut data = (&mut chunks).map(PackedCM31::from_array).collect_vec();
+        let mut data = (&mut chunks)
+            .map(PackedCM31::from_array)
+            .collect::<Vec<_>>();
         let mut length = data.len() * N_LANES;
 
         if let Some(remainder) = chunks.into_remainder() {
@@ -191,7 +196,7 @@ impl FromIterator<CM31> for CM31Column {
 
 impl FromIterator<PackedCM31> for CM31Column {
     fn from_iter<I: IntoIterator<Item = PackedCM31>>(iter: I) -> Self {
-        let data = (&mut iter.into_iter()).collect_vec();
+        let data = (&mut iter.into_iter()).collect::<Vec<_>>();
         let length = data.len() * N_LANES;
 
         Self { data, length }
@@ -290,7 +295,7 @@ impl FromIterator<SecureField> for SecureColumn {
         let mut chunks = iter.into_iter().array_chunks();
         let mut data = (&mut chunks)
             .map(PackedSecureField::from_array)
-            .collect_vec();
+            .collect::<Vec<_>>();
         let mut length = data.len() * N_LANES;
 
         if let Some(remainder) = chunks.into_remainder() {
@@ -308,7 +313,7 @@ impl FromIterator<SecureField> for SecureColumn {
 
 impl FromIterator<PackedSecureField> for SecureColumn {
     fn from_iter<I: IntoIterator<Item = PackedSecureField>>(iter: I) -> Self {
-        let data = iter.into_iter().collect_vec();
+        let data = iter.into_iter().collect::<Vec<_>>();
         let length = data.len() * N_LANES;
         Self { data, length }
     }
@@ -356,7 +361,7 @@ impl VeryPackedSecureColumnByCoordsMutSlice<'_> {
     ///
     /// `vec_index` must be a valid index.
     pub unsafe fn packed_at(&self, vec_index: usize) -> VeryPackedSecureField {
-        VeryPackedQM31::from_very_packed_m31s(std::array::from_fn(|i| {
+        VeryPackedQM31::from_very_packed_m31s(core::array::from_fn(|i| {
             *self.0[i].0.get_unchecked(vec_index)
         }))
     }
@@ -427,7 +432,7 @@ impl SecureColumnByCoords<SimdBackend> {
             .map(|x| x.chunks_mut(chunk_size));
         izip!(a, b, c, d)
             .map(|(a, b, c, d)| SecureColumnByCoordsMutSlice([a, b, c, d]))
-            .collect_vec()
+            .collect::<Vec<_>>()
     }
 
     pub fn from_cpu(cpu: SecureColumnByCoords<CpuBackend>) -> Self {
@@ -458,14 +463,14 @@ impl VeryPackedBaseColumn {
     ///
     /// The resulting pointer does not update the underlying `data`'s length.
     pub const unsafe fn transform_under_ref(value: &BaseColumn) -> &Self {
-        &*(std::ptr::addr_of!(*value) as *const VeryPackedBaseColumn)
+        &*(core::ptr::addr_of!(*value) as *const VeryPackedBaseColumn)
     }
 
     pub fn chunks_mut(&mut self, chunk_size: usize) -> Vec<VeryPackedBaseColumnMutSlice<'_>> {
         self.data
             .chunks_mut(chunk_size)
             .map(VeryPackedBaseColumnMutSlice)
-            .collect_vec()
+            .collect::<Vec<_>>()
     }
 }
 
@@ -540,7 +545,7 @@ impl From<SecureColumnByCoords<SimdBackend>> for VeryPackedSecureColumnByCoords 
                 .columns
                 .into_iter()
                 .map(VeryPackedBaseColumn::from)
-                .collect_vec()
+                .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
         }
@@ -554,7 +559,7 @@ impl From<VeryPackedSecureColumnByCoords> for SecureColumnByCoords<SimdBackend> 
                 .columns
                 .into_iter()
                 .map(BaseColumn::from)
-                .collect_vec()
+                .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
         }
@@ -615,7 +620,7 @@ impl VeryPackedSecureColumnByCoords {
     ///
     /// The resulting pointer does not update the underlying columns' `data`'s lengths.
     pub unsafe fn transform_under_mut(value: &mut SecureColumnByCoords<SimdBackend>) -> &mut Self {
-        &mut *(std::ptr::addr_of!(*value) as *mut VeryPackedSecureColumnByCoords)
+        &mut *(core::ptr::addr_of!(*value) as *mut VeryPackedSecureColumnByCoords)
     }
 
     pub fn chunks_mut(
@@ -629,13 +634,13 @@ impl VeryPackedSecureColumnByCoords {
             .map(|x| x.chunks_mut(chunk_size));
         izip!(a, b, c, d)
             .map(|(a, b, c, d)| VeryPackedSecureColumnByCoordsMutSlice([a, b, c, d]))
-            .collect_vec()
+            .collect::<Vec<_>>()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::array;
+    use core::array;
 
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};

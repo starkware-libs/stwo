@@ -1,5 +1,5 @@
-use std::ops::Deref;
-use std::{array, mem};
+use core::ops::Deref;
+use core::{array, mem};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -22,6 +22,7 @@ use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
 use crate::core::vcs::hash::Hash;
 use crate::core::vcs::prover::MerkleDecommitment;
 use crate::core::vcs::verifier::MerkleVerificationError;
+use crate::prelude::*;
 
 #[instrument(skip_all)]
 pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(

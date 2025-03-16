@@ -1,9 +1,7 @@
 //! Regular (forward) fft.
+use core::array;
+use core::simd::{simd_swizzle, u32x16, u32x2, u32x4, u32x8};
 
-use std::array;
-use std::simd::{simd_swizzle, u32x16, u32x2, u32x4, u32x8};
-
-use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -15,6 +13,7 @@ use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::utils::{UnsafeConst, UnsafeMut};
 use crate::core::circle::Coset;
 use crate::parallel_iter;
+use crate::prelude::*;
 
 /// Performs a Circle Fast Fourier Transform (CFFT) on the given values.
 ///
@@ -411,7 +410,7 @@ pub fn get_twiddle_dbls(mut coset: Coset) -> Vec<Vec<u32>> {
                 .iter()
                 .take(coset.size() / 2)
                 .map(|p| p.x.0 * 2)
-                .collect_vec(),
+                .collect::<Vec<_>>(),
         );
         bit_reverse(res.last_mut().unwrap());
         coset = coset.double();
@@ -573,10 +572,9 @@ pub unsafe fn fft1(
 
 #[cfg(test)]
 mod tests {
-    use std::mem::transmute;
-    use std::simd::u32x16;
+    use core::mem::transmute;
+    use core::simd::u32x16;
 
-    use itertools::Itertools;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
@@ -703,7 +701,7 @@ mod tests {
         for log_size in 5..12 {
             let domain = CanonicCoset::new(log_size).circle_domain();
             let mut rng = SmallRng::seed_from_u64(0);
-            let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
+            let values = (0..domain.size()).map(|_| rng.gen()).collect::<Vec<_>>();
             let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
 
             let mut res = values.iter().copied().collect::<BaseColumn>();
@@ -711,7 +709,10 @@ mod tests {
                 fft_lower_with_vecwise(
                     transmute::<*const PackedBaseField, *const u32>(res.data.as_ptr()),
                     transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
-                    &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
+                    &twiddle_dbls
+                        .iter()
+                        .map(|x| x.as_slice())
+                        .collect::<Vec<_>>(),
                     log_size as usize,
                     log_size as usize,
                 )
@@ -726,7 +727,7 @@ mod tests {
         for log_size in CACHED_FFT_LOG_SIZE + 1..CACHED_FFT_LOG_SIZE + 3 {
             let domain = CanonicCoset::new(log_size).circle_domain();
             let mut rng = SmallRng::seed_from_u64(0);
-            let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
+            let values = (0..domain.size()).map(|_| rng.gen()).collect::<Vec<_>>();
             let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
 
             let mut res = values.iter().copied().collect::<BaseColumn>();
@@ -738,7 +739,10 @@ mod tests {
                 fft(
                     transmute::<*const PackedBaseField, *const u32>(res.data.as_ptr()),
                     transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
-                    &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
+                    &twiddle_dbls
+                        .iter()
+                        .map(|x| x.as_slice())
+                        .collect::<Vec<_>>(),
                     log_size as usize,
                 );
             }

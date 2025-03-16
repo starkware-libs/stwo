@@ -1,6 +1,6 @@
-use std::simd::u32x16;
+use core::simd::u32x16;
 
-use itertools::{chain, Itertools};
+use itertools::chain;
 use num_traits::Zero;
 use tracing::{span, Level};
 
@@ -19,6 +19,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 use crate::examples::blake::round::{BlakeRoundInput, RoundElements};
 use crate::examples::blake::{to_felts, N_ROUNDS, N_ROUND_INPUT_FELTS, STATE_SIZE};
+use crate::prelude::*;
 
 #[derive(Copy, Clone, Default)]
 pub struct BlakeInput {
@@ -33,10 +34,10 @@ pub struct BlakeSchedulerLookupData {
 impl BlakeSchedulerLookupData {
     fn new(log_size: u32) -> Self {
         Self {
-            round_lookups: std::array::from_fn(|_| {
-                std::array::from_fn(|_| unsafe { BaseColumn::uninitialized(1 << log_size) })
+            round_lookups: core::array::from_fn(|_| {
+                core::array::from_fn(|_| unsafe { BaseColumn::uninitialized(1 << log_size) })
             }),
-            blake_lookups: std::array::from_fn(|_| unsafe {
+            blake_lookups: core::array::from_fn(|_| unsafe {
                 BaseColumn::uninitialized(1 << log_size)
             }),
         }
@@ -57,7 +58,7 @@ pub fn gen_trace(
 
     let mut trace = (0..blake_scheduler_info().mask_offsets[ORIGINAL_TRACE_IDX].len())
         .map(|_| unsafe { BaseColumn::uninitialized(1 << log_size) })
-        .collect_vec();
+        .collect::<Vec<_>>();
 
     for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
         let mut col_index = 0;

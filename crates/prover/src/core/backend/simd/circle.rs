@@ -1,6 +1,6 @@
-use std::iter::zip;
-use std::mem::transmute;
-use std::simd::Simd;
+use core::iter::zip;
+use core::mem::transmute;
+use core::simd::Simd;
 
 use bytemuck::Zeroable;
 use num_traits::One;
@@ -24,6 +24,7 @@ use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
+use crate::prelude::*;
 
 impl SimdBackend {
     // TODO(Ohad): optimize.
@@ -180,10 +181,10 @@ impl PolyOps for SimdBackend {
         // 8 lowest mappings produce the first 2^8 twiddles. Separate to optimize each calculation.
         let (map_low, map_high) = mappings.split_at(4);
         let twiddle_lows =
-            PackedSecureField::from_array(std::array::from_fn(|i| Self::twiddle_at(map_low, i)));
+            PackedSecureField::from_array(core::array::from_fn(|i| Self::twiddle_at(map_low, i)));
         let (map_mid, map_high) = map_high.split_at(4);
         let twiddle_mids =
-            PackedSecureField::from_array(std::array::from_fn(|i| Self::twiddle_at(map_mid, i)));
+            PackedSecureField::from_array(core::array::from_fn(|i| Self::twiddle_at(map_mid, i)));
 
         // Compute the high twiddle steps.
         let twiddle_steps = Self::twiddle_steps(map_high);
@@ -347,7 +348,7 @@ fn compute_coset_twiddles(coset: Coset, twiddles: &mut Vec<PackedM31>) {
     assert!(log_size >= LOG_N_LANES);
 
     // Compute the first `N_LANES` circle points.
-    let initial_points = std::array::from_fn(|i| coset.at(bit_reverse_index(i, log_size)));
+    let initial_points = core::array::from_fn(|i| coset.at(bit_reverse_index(i, log_size)));
     let mut current = CirclePoint {
         x: PackedM31::from_array(initial_points.each_ref().map(|p| p.x)),
         y: PackedM31::from_array(initial_points.each_ref().map(|p| p.y)),
@@ -402,7 +403,6 @@ fn slow_eval_at_point(
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
@@ -521,7 +521,7 @@ mod tests {
                 .twiddles
                 .iter()
                 .map(|x| x.0 * 2)
-                .collect_vec()
+                .collect::<Vec<_>>()
         );
     }
 }

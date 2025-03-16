@@ -10,10 +10,12 @@
 //! xors: (a_l, b_l, a_l^b_l).
 //! The rest of the lookups are computed based on these constant columns.
 
+use crate::prelude::*;
+
 mod constraints;
 mod gen;
 
-use std::simd::u32x16;
+use core::simd::u32x16;
 
 use itertools::Itertools;
 use num_traits::Zero;
@@ -73,7 +75,7 @@ macro_rules! xor_table_component {
                                 1 << XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits(),
                             )
                         })
-                        .collect_vec(),
+                        .collect::<Vec<_>>(),
                 }
             }
         }
@@ -153,10 +155,10 @@ define_xor_table!(xor4, XorElements4, 4, 0);
 
 #[cfg(test)]
 mod tests {
-    use std::simd::u32x16;
+    use core::simd::u32x16;
 
     use crate::constraint_framework::logup::LookupElements;
-    use crate::constraint_framework::{assert_constraints_on_polys, FrameworkEval};
+    use crate::constraint_framework::{assert_constraints, FrameworkEval};
     use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::preprocessed_columns::XorTable;
     use crate::examples::blake::xor_table::xor12::{
@@ -186,7 +188,7 @@ mod tests {
             lookup_elements,
             claimed_sum,
         };
-        assert_constraints_on_polys(
+        assert_constraints(
             &trace_polys,
             CanonicCoset::new(XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits()),
             |eval| {

@@ -1,10 +1,11 @@
-use std::array;
-use std::iter::zip;
+use core::array;
+use core::iter::zip;
 
 use super::m31::BaseField;
 use super::qm31::SecureField;
 use super::ExtensionOf;
 use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
+use crate::prelude::*;
 
 pub const SECURE_EXTENSION_DEGREE: usize =
     <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE;
@@ -23,19 +24,19 @@ impl SecureColumnByCoords<CpuBackend> {
 }
 impl<B: ColumnOps<BaseField>> SecureColumnByCoords<B> {
     pub fn at(&self, index: usize) -> SecureField {
-        SecureField::from_m31_array(std::array::from_fn(|i| self.columns[i].at(index)))
+        SecureField::from_m31_array(core::array::from_fn(|i| self.columns[i].at(index)))
     }
 
     pub fn zeros(len: usize) -> Self {
         Self {
-            columns: std::array::from_fn(|_| Col::<B, BaseField>::zeros(len)),
+            columns: core::array::from_fn(|_| Col::<B, BaseField>::zeros(len)),
         }
     }
 
     /// # Safety
     pub unsafe fn uninitialized(len: usize) -> Self {
         Self {
-            columns: std::array::from_fn(|_| Col::<B, BaseField>::uninitialized(len)),
+            columns: core::array::from_fn(|_| Col::<B, BaseField>::uninitialized(len)),
         }
     }
 

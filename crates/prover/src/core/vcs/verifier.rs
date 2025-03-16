@@ -1,13 +1,12 @@
-use std::collections::BTreeMap;
-
-use itertools::Itertools;
 use thiserror::Error;
 
 use super::ops::MerkleHasher;
 use super::prover::MerkleDecommitment;
 use super::utils::{next_decommitment_node, option_flatten_peekable};
+use crate::collections::BTreeMap;
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
+use crate::prelude::*;
 
 pub struct MerkleVerifier<H: MerkleHasher> {
     pub root: H::Hash,
@@ -84,7 +83,7 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
                 .iter()
                 .flatten()
                 .map(|(q, _)| *q)
-                .collect_vec()
+                .collect::<Vec<_>>()
                 .into_iter()
                 .peekable();
             let mut prev_layer_hashes = last_layer_hashes.as_ref().map(|x| x.iter().peekable());
@@ -140,7 +139,9 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
                     ),
                 };
 
-                let node_values = node_values_iter.take(n_columns_in_layer).collect_vec();
+                let node_values = node_values_iter
+                    .take(n_columns_in_layer)
+                    .collect::<Vec<_>>();
                 if node_values.len() != n_columns_in_layer {
                     return Err(err);
                 }

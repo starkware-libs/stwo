@@ -4,6 +4,7 @@ use quote::{format_ident, quote};
 use syn::{Ident, Lifetime};
 
 use crate::iterable_field::IterableField;
+use crate::prelude::*;
 
 pub fn expand_par_iter_mut_structs(
     struct_name: &Ident,

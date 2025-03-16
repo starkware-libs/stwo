@@ -1,4 +1,4 @@
-use itertools::{chain, Itertools};
+use itertools::chain;
 use num_traits::One;
 
 use super::{BlakeXorElements, RoundElements};
@@ -6,6 +6,7 @@ use crate::constraint_framework::{EvalAtRow, RelationEntry};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::examples::blake::{Fu32, STATE_SIZE};
+use crate::prelude::*;
 
 const INV16: BaseField = BaseField::from_u32_unchecked(1 << 15);
 const TWO: BaseField = BaseField::from_u32_unchecked(2);
@@ -20,9 +21,9 @@ pub struct BlakeRoundEval<'a, E: EvalAtRow> {
 }
 impl<E: EvalAtRow> BlakeRoundEval<'_, E> {
     pub fn eval(mut self) -> E {
-        let mut v: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
+        let mut v: [Fu32<E::F>; STATE_SIZE] = core::array::from_fn(|_| self.next_u32());
         let input_v = v.clone();
-        let m: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
+        let m: [Fu32<E::F>; STATE_SIZE] = core::array::from_fn(|_| self.next_u32());
 
         self.g(
             v.get_many_mut([0, 4, 8, 12]).unwrap(),
@@ -74,7 +75,7 @@ impl<E: EvalAtRow> BlakeRoundEval<'_, E> {
                 v.iter().cloned().flat_map(Fu32::into_felts),
                 m.iter().cloned().flat_map(Fu32::into_felts)
             ]
-            .collect_vec(),
+            .collect::<Vec<_>>(),
         ));
 
         self.eval.finalize_logup_in_pairs();

@@ -7,6 +7,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 /// A preprocessed table for the xor operation of 2 n_bits numbers.
 /// n_expand_bits is an optimization parameter reducing the table's cloumns' length to

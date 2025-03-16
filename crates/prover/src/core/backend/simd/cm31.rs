@@ -1,5 +1,5 @@
-use std::array;
-use std::ops::{Add, Mul, MulAssign, Neg, Sub};
+use core::array;
+use core::ops::{Add, Mul, MulAssign, Neg, Sub};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
@@ -8,6 +8,7 @@ use super::m31::{PackedM31, N_LANES};
 use super::PACKED_CM31_BATCH_INVERSE_CHUNK_SIZE;
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::{batch_inverse_chunked, FieldExpOps};
+use crate::prelude::*;
 
 /// SIMD implementation of [`CM31`].
 #[derive(Copy, Clone, Debug)]
@@ -176,7 +177,7 @@ impl Neg for PackedCM31 {
 
 #[cfg(test)]
 mod tests {
-    use std::array;
+    use core::array;
 
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};

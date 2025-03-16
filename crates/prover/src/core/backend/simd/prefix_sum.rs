@@ -1,7 +1,7 @@
-use std::iter::zip;
-use std::ops::{AddAssign, Sub};
+use core::iter::zip;
+use core::ops::{AddAssign, Sub};
 
-use itertools::{izip, Itertools};
+use itertools::izip;
 use num_traits::Zero;
 
 use crate::core::backend::cpu::bit_reverse;
@@ -10,6 +10,7 @@ use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::{circle_domain_order_to_coset_order, coset_order_to_circle_domain_order};
+use crate::prelude::*;
 
 /// Performs a inclusive prefix sum on values in `Coset` order when provided
 /// with evaluations in bit-reversed `CircleDomain` order.
@@ -132,7 +133,7 @@ fn inclusive_prefix_sum_slow(
             *acc += v;
             Some(*acc)
         })
-        .collect_vec();
+        .collect::<Vec<_>>();
     let mut circle_domain_order_eval = coset_order_to_circle_domain_order(&coset_order_prefix_sum);
     bit_reverse(&mut circle_domain_order_eval);
     circle_domain_order_eval.into_iter().collect()

@@ -1,5 +1,5 @@
-use std::marker::PhantomData;
-use std::ops::{Deref, Index};
+use core::marker::PhantomData;
+use core::ops::{Deref, Index};
 
 use educe::Educe;
 

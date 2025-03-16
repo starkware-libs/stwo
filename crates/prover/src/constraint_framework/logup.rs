@@ -1,6 +1,5 @@
-use std::ops::{Mul, Sub};
+use core::ops::{Mul, Sub};
 
-use itertools::Itertools;
 use num_traits::{One, Zero};
 
 use super::EvalAtRow;
@@ -19,6 +18,7 @@ use crate::core::lookups::utils::Fraction;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 /// Evaluates constraints for batched logups.
 /// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = claimed_sum.
@@ -80,7 +80,7 @@ impl<const N: usize> LookupElements<N> {
     pub fn draw(channel: &mut impl Channel) -> Self {
         let [z, alpha] = channel.draw_felts(2).try_into().unwrap();
         let mut cur = SecureField::one();
-        let alpha_powers = std::array::from_fn(|_| {
+        let alpha_powers = core::array::from_fn(|_| {
             let res = cur;
             cur *= alpha;
             res
@@ -185,7 +185,7 @@ impl LogupTraceGenerator {
                     CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
                 })
             })
-            .collect_vec();
+            .collect::<Vec<_>>();
         (trace, claimed_sum)
     }
 }

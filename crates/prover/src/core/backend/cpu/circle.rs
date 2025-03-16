@@ -15,6 +15,7 @@ use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::coset_order_to_circle_domain_order;
+use crate::prelude::*;
 
 impl PolyOps for CpuBackend {
     type Twiddles = Vec<BaseField>;
@@ -247,7 +248,7 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> IntoIterator
     for CircleEvaluation<CpuBackend, F, EvalOrder>
 {
     type Item = F;
-    type IntoIter = std::vec::IntoIter<F>;
+    type IntoIter = vec::IntoIter<F>;
 
     /// Creates a consuming iterator over the evaluations.
     ///
@@ -259,7 +260,7 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> IntoIterator
 
 #[cfg(test)]
 mod tests {
-    use std::iter::zip;
+    use core::iter::zip;
 
     use num_traits::One;
 

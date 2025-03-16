@@ -1,9 +1,11 @@
+#[cfg(not(feature = "std"))]
+use alloc::borrow::Cow;
+use core::fmt::{self, Display, Formatter};
+use core::iter::zip;
+use core::ops::Deref;
+#[cfg(feature = "std")]
 use std::borrow::Cow;
-use std::fmt::{self, Display, Formatter};
-use std::iter::zip;
-use std::ops::Deref;
 
-use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use tracing::{span, Level};
@@ -30,6 +32,7 @@ use crate::core::pcs::{TreeSubspan, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 const CHUNK_SIZE: usize = 1;
 
@@ -80,10 +83,14 @@ impl TraceLocationAllocator {
 
     /// Create a new `TraceLocationAllocator` with fixed preprocessed columns setup.
     pub fn new_with_preproccessed_columns(preprocessed_columns: &[PreProcessedColumnId]) -> Self {
-        assert!(
-            preprocessed_columns.iter().all_unique(),
-            "Duplicate preprocessed columns are not allowed!"
-        );
+        {
+            let mut used = crate::collections::HashSet::new();
+            assert!(
+                preprocessed_columns.iter().all(move |elt| used.insert(elt)),
+                "Duplicate preprocessed columns are not allowed!"
+            );
+        }
+
         Self {
             next_tree_offsets: Default::default(),
             preprocessed_columns: preprocessed_columns.to_vec(),
@@ -235,7 +242,7 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
             .preprocessed_column_indices
             .iter()
             .map(|idx| &mask[PREPROCESSED_TRACE_IDX][*idx])
-            .collect_vec();
+            .collect::<Vec<_>>();
 
         let mut mask_points = mask.sub_tree(&self.trace_locations);
         mask_points[PREPROCESSED_TRACE_IDX] = preprocessed_mask;
@@ -300,7 +307,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         let log_expand = eval_domain.log_size() - trace_domain.log_size();
         let mut denom_inv = (0..1 << log_expand)
             .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
-            .collect_vec();
+            .collect::<Vec<_>>();
         bit_reverse(&mut denom_inv);
 
         // Accumulator.

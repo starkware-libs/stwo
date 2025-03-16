@@ -1,8 +1,7 @@
-use std::cmp::Reverse;
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Debug;
-use std::iter::zip;
-use std::ops::RangeInclusive;
+use core::cmp::Reverse;
+use core::fmt::Debug;
+use core::iter::zip;
+use core::ops::RangeInclusive;
 
 use itertools::{zip_eq, Itertools};
 use num_traits::Zero;
@@ -21,6 +20,7 @@ use super::poly::twiddles::TwiddleTree;
 use super::poly::BitReversedOrder;
 use super::queries::Queries;
 use super::ColumnVec;
+use crate::collections::{BTreeMap, BTreeSet};
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
 use crate::core::fields::FieldExpOps;
@@ -30,6 +30,7 @@ use crate::core::utils::bit_reverse_index;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
 use crate::core::vcs::verifier::{MerkleVerificationError, MerkleVerifier};
+use crate::prelude::*;
 
 /// FRI proof config
 // TODO(andrew): Support different step sizes.
@@ -632,7 +633,7 @@ impl CirclePolyDegreeBound {
 }
 
 impl PartialOrd<LinePolyDegreeBound> for CirclePolyDegreeBound {
-    fn partial_cmp(&self, other: &LinePolyDegreeBound) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &LinePolyDegreeBound) -> Option<core::cmp::Ordering> {
         Some(self.log_degree_bound.cmp(&other.log_degree_bound))
     }
 }
@@ -835,7 +836,7 @@ impl<H: MerkleHasher> FriInnerLayerVerifier<H> {
             .iter()
             .flatten()
             .flat_map(|qm31| qm31.to_m31_array())
-            .collect_vec();
+            .collect::<Vec<_>>();
 
         let merkle_verifier = MerkleVerifier::new(
             self.proof.commitment,
@@ -955,7 +956,8 @@ struct FriInnerLayerProver<B: FriOps + MerkleOps<H>, H: MerkleHasher> {
 
 impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriInnerLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>) -> Self {
-        let merkle_tree = MerkleProver::commit(evaluation.values.columns.iter().collect_vec());
+        let merkle_tree =
+            MerkleProver::commit(evaluation.values.columns.iter().collect::<Vec<_>>());
         FriInnerLayerProver {
             evaluation,
             merkle_tree,
@@ -973,7 +975,7 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriInnerLayerProver<B, H> {
         let layer_log_size = self.evaluation.domain().log_size();
         let (_evals, decommitment) = self.merkle_tree.decommit(
             &BTreeMap::from_iter([(layer_log_size, decommitment_positions)]),
-            self.evaluation.values.columns.iter().collect_vec(),
+            self.evaluation.values.columns.iter().collect::<Vec<_>>(),
         );
 
         let commitment = self.merkle_tree.root();
@@ -1182,7 +1184,6 @@ mod tests {
     use std::assert_matches::assert_matches;
     use std::iter::zip;
 
-    use itertools::Itertools;
     use num_traits::{One, Zero};
 
     use super::FriVerificationError;
@@ -1229,7 +1230,7 @@ mod tests {
         let evals = LineEvaluation::new(domain, values.into_iter().collect());
 
         let drp_evals = fold_line(&evals, alpha);
-        let mut drp_evals = drp_evals.values.into_iter().collect_vec();
+        let mut drp_evals = drp_evals.values.into_iter().collect::<Vec<_>>();
         CpuBackend::bit_reverse_column(&mut drp_evals);
 
         assert_eq!(drp_evals.len(), DEGREE / 2);

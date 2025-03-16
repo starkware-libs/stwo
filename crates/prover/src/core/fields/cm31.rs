@@ -1,5 +1,5 @@
-use std::fmt::{Debug, Display};
-use std::ops::{
+use core::fmt::{Debug, Display};
+use core::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ComplexConjugate, FieldExpOps};
 use crate::core::fields::m31::M31;
+use crate::prelude::*;
 use crate::{impl_extension_field, impl_field};
 pub const P2: u64 = 4611686014132420609; // (2 ** 31 - 1) ** 2
 
@@ -30,13 +31,13 @@ impl CM31 {
 }
 
 impl Display for CM31 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{} + {}i", self.0, self.1)
     }
 }
 
 impl Debug for CM31 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{} + {}i", self.0, self.1)
     }
 }

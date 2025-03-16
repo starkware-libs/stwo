@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
+use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
@@ -23,7 +23,7 @@ impl<A: Copy, const N: usize> Vectorized<A, N> {
     where
         F: FnMut(usize) -> A,
     {
-        Vectorized(std::array::from_fn(cb))
+        Vectorized(core::array::from_fn(cb))
     }
 }
 
@@ -65,9 +65,12 @@ impl VeryPackedM31 {
         // N_VERY_PACKED_ELEMS] because we know that A contains [i32; N_LANES] and the
         // memory layout is contiguous.
         unsafe {
-            std::slice::from_raw_parts(self.0.as_ptr() as *const M31, N_LANES * N_VERY_PACKED_ELEMS)
-                .try_into()
-                .unwrap()
+            core::slice::from_raw_parts(
+                self.0.as_ptr() as *const M31,
+                N_LANES * N_VERY_PACKED_ELEMS,
+            )
+            .try_into()
+            .unwrap()
         }
     }
 }
@@ -88,7 +91,7 @@ impl VeryPackedQM31 {
     }
 
     pub fn into_very_packed_m31s(self) -> [VeryPackedM31; 4] {
-        std::array::from_fn(|i| VeryPackedM31::from(self.0.map(|v| v.into_packed_m31s()[i])))
+        core::array::from_fn(|i| VeryPackedM31::from(self.0.map(|v| v.into_packed_m31s()[i])))
     }
 }
 impl From<M31> for VeryPackedM31 {

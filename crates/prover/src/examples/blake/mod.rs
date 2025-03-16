@@ -1,9 +1,9 @@
 //! AIR for blake2s and blake3.
 //! See <https://en.wikipedia.org/wiki/BLAKE_(hash_function)>
 
-use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Mul, Sub};
-use std::simd::u32x16;
+use core::fmt::Debug;
+use core::ops::{Add, AddAssign, Mul, Sub};
+use core::simd::u32x16;
 
 use num_traits::One;
 use xor_table::{xor12, xor4, xor7, xor8, xor9};

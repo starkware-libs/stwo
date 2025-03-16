@@ -1,3 +1,5 @@
+use super::{BaseExpr, ExtExpr};
+use crate::collections::hash_map::HashMap;
 /// Finds a degree bound for an expressions. The degree is given with respect to columns as
 /// variables.
 /// Computes the actual degree with the following caveats:
@@ -7,9 +9,7 @@
 ///        simplification.
 ///     2. If expressions p and q cancel out under some operation, this will not be accounted
 ///        for, so that (x^2 + 1) - (x^2 + x) will return degree 2.
-use std::collections::HashMap;
-
-use super::{BaseExpr, ExtExpr};
+use crate::prelude::*;
 
 type Degree = usize;
 

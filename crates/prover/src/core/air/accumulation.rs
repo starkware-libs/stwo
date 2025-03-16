@@ -4,7 +4,6 @@
 //! defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i(P).
 
-use itertools::Itertools;
 use tracing::{span, Level};
 
 use crate::core::backend::{Backend, Col, Column, ColumnOps, CpuBackend};
@@ -13,6 +12,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
+use crate::prelude::*;
 
 /// Accumulates N evaluations of u_i(P0) at a single point.
 /// Computes f(P0), the combined polynomial at that point.
@@ -90,7 +90,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
                     col: col.get_or_insert_with(|| SecureColumnByCoords::zeros(1 << log_size)),
                 }
             })
-            .collect_vec()
+            .collect::<Vec<_>>()
             .try_into()
             .unwrap_or_else(|_| unreachable!())
     }
@@ -141,7 +141,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             })));
         }
         cur_poly.unwrap_or_else(|| {
-            SecureCirclePoly(std::array::from_fn(|_| {
+            SecureCirclePoly(core::array::from_fn(|_| {
                 CirclePoly::new(Col::<B, BaseField>::zeros(1 << log_size))
             }))
         })
@@ -171,7 +171,7 @@ impl ColumnAccumulator<'_, CpuBackend> {
 
 #[cfg(test)]
 mod tests {
-    use std::array;
+    use core::array;
 
     use num_traits::Zero;
     use rand::rngs::SmallRng;

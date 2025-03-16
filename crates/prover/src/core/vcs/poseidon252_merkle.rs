@@ -7,6 +7,7 @@ use super::ops::MerkleHasher;
 use crate::core::channel::{MerkleChannel, Poseidon252Channel};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::hash::Hash;
+use crate::prelude::*;
 
 const ELEMENTS_IN_BLOCK: usize = 8;
 
@@ -32,7 +33,7 @@ impl MerkleHasher for Poseidon252MerkleHasher {
         let padded_values = column_values
             .iter()
             .copied()
-            .chain(std::iter::repeat(BaseField::zero()).take(padding_length));
+            .chain(core::iter::repeat(BaseField::zero()).take(padding_length));
         for chunk in padded_values.array_chunks::<ELEMENTS_IN_BLOCK>() {
             let mut word = FieldElement252::default();
             for x in chunk {

@@ -1,5 +1,3 @@
-use itertools::Itertools;
-
 use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
 use crate::core::backend::{Col, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
@@ -8,6 +6,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 /// Operations on BaseField polynomials.
 pub trait PolyOps: ColumnOps<BaseField> + Sized {
@@ -68,7 +67,7 @@ pub trait PolyOps: ColumnOps<BaseField> + Sized {
                     twiddles,
                 )
             })
-            .collect_vec()
+            .collect::<Vec<_>>()
     }
 
     /// Precomputes twiddles for a given coset.

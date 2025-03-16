@@ -1,6 +1,6 @@
-use std::simd::cmp::SimdPartialOrd;
-use std::simd::num::SimdUint;
-use std::simd::u32x16;
+use core::simd::cmp::SimdPartialOrd;
+use core::simd::num::SimdUint;
+use core::simd::u32x16;
 
 use bytemuck::cast_slice;
 #[cfg(feature = "parallel")]
@@ -44,11 +44,11 @@ fn grind_blake(digest: &[u32], hi: u64, pow_bits: u32) -> Option<u64> {
     let zero: u32x16 = u32x16::default();
     let pow_bits = u32x16::splat(pow_bits);
 
-    let state: [u32x16; 8] = std::array::from_fn(|i| u32x16::splat(digest[i]));
+    let state: [u32x16; 8] = core::array::from_fn(|i| u32x16::splat(digest[i]));
 
     let mut attempt = [zero; 16];
     attempt[0] = u32x16::splat((hi << GRIND_LOW_BITS) as u32);
-    attempt[0] += u32x16::from(std::array::from_fn(|i| i as u32));
+    attempt[0] += u32x16::from(core::array::from_fn(|i| i as u32));
     attempt[1] = u32x16::splat((hi >> (32 - GRIND_LOW_BITS)) as u32);
     for low in (0..(1 << GRIND_LOW_BITS)).step_by(N_LANES) {
         let res = compress16(state, attempt, zero, zero, zero, zero);

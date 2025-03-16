@@ -1,4 +1,6 @@
 /// ! This module contains helpers to express and use constraints for components.
+use crate::prelude::*;
+
 mod assert;
 mod component;
 mod cpu_domain;
@@ -10,11 +12,11 @@ pub mod preprocessed_columns;
 pub mod relation_tracker;
 mod simd_domain;
 
-use std::array;
-use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Mul, Neg, Sub};
+use core::array;
+use core::fmt::Debug;
+use core::ops::{Add, AddAssign, Mul, Neg, Sub};
 
-pub use assert::{assert_constraints_on_polys, assert_constraints_on_trace, AssertEvaluator};
+pub use assert::{assert_constraints, AssertEvaluator};
 pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
@@ -191,7 +193,7 @@ macro_rules! logup_proxy {
             let last_batch = *batching.iter().max().unwrap();
 
             let mut fracs_by_batch =
-                std::collections::HashMap::<usize, Vec<Fraction<Self::EF, Self::EF>>>::new();
+                crate::collections::HashMap::<usize, Vec<Fraction<Self::EF, Self::EF>>>::new();
 
             for (batch, frac) in batching.iter().zip(self.logup.fracs.iter()) {
                 fracs_by_batch
@@ -200,8 +202,8 @@ macro_rules! logup_proxy {
                     .push(frac.clone());
             }
 
-            let keys_set: std::collections::HashSet<_> = fracs_by_batch.keys().cloned().collect();
-            let all_batches_set: std::collections::HashSet<_> = (0..last_batch + 1).collect();
+            let keys_set: crate::collections::HashSet<_> = fracs_by_batch.keys().cloned().collect();
+            let all_batches_set: crate::collections::HashSet<_> = (0..last_batch + 1).collect();
 
             assert_eq!(
                 keys_set, all_batches_set,

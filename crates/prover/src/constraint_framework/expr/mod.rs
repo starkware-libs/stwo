@@ -1,3 +1,5 @@
+use crate::prelude::*;
+
 pub mod assignment;
 pub mod degree;
 pub mod evaluator;
@@ -5,7 +7,7 @@ pub mod format;
 pub mod simplify;
 pub mod utils;
 
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
+use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 
 pub use evaluator::ExprEvaluator;
 use num_traits::{One, Zero};

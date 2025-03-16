@@ -1,9 +1,9 @@
-use std::iter::Sum;
-use std::mem::transmute;
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
-use std::ptr;
-use std::simd::cmp::SimdOrd;
-use std::simd::{u32x16, Simd};
+use core::iter::Sum;
+use core::mem::transmute;
+use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use core::ptr;
+use core::simd::cmp::SimdOrd;
+use core::simd::{u32x16, Simd};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
@@ -14,6 +14,7 @@ use super::PACKED_M31_BATCH_INVERSE_CHUNK_SIZE;
 use crate::core::fields::m31::{pow2147483645, BaseField, M31, P};
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{batch_inverse_chunked, FieldExpOps};
+use crate::prelude::*;
 
 pub const LOG_N_LANES: u32 = 4;
 
@@ -25,7 +26,7 @@ pub type PackedBaseField = PackedM31;
 
 /// Holds a vector of unreduced [`M31`] elements in the range `[0, P]`.
 ///
-/// Implemented with [`std::simd`] to support multiple targets (avx512, neon, wasm etc.).
+/// Implemented with [`core::simd`] to support multiple targets (avx512, neon, wasm etc.).
 // TODO: Remove `pub` visibility
 #[derive(Copy, Clone, Debug)]
 #[repr(transparent)]
@@ -293,7 +294,7 @@ impl Sum for PackedM31 {
 cfg_if::cfg_if! {
     if #[cfg(all(target_arch = "aarch64", target_feature = "neon"))] {
         use core::arch::aarch64::{uint32x2_t, vmull_u32, int32x2_t, vqdmull_s32};
-        use std::simd::u32x4;
+        use core::simd::u32x4;
 
         /// Returns `a * b`.
         pub(crate) fn mul_neon(a: PackedM31, b: PackedM31) -> PackedM31 {
@@ -366,7 +367,7 @@ cfg_if::cfg_if! {
         }
     } else if #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))] {
         use core::arch::wasm32::{i64x2_extmul_high_u32x4, i64x2_extmul_low_u32x4, v128};
-        use std::simd::u32x4;
+        use core::simd::u32x4;
 
         /// Returns `a * b`.
         pub(crate) fn mul_wasm(a: PackedM31, b: PackedM31) -> PackedM31 {
@@ -405,7 +406,7 @@ cfg_if::cfg_if! {
         }
     } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))] {
         use std::arch::x86_64::{__m512i, _mm512_mul_epu32, _mm512_srli_epi64};
-        use std::simd::Swizzle;
+        use core::simd::Swizzle;
 
         use crate::core::backend::simd::utils::swizzle::{InterleaveEvens, InterleaveOdds};
 
@@ -456,7 +457,7 @@ cfg_if::cfg_if! {
         }
     } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
         use std::arch::x86_64::{__m256i, _mm256_mul_epu32, _mm256_srli_epi64};
-        use std::simd::Swizzle;
+        use core::simd::Swizzle;
 
         use crate::core::backend::simd::utils::swizzle::{InterleaveEvens, InterleaveOdds};
 
@@ -517,7 +518,7 @@ cfg_if::cfg_if! {
             PackedM31(prod_lo) + PackedM31(prod_hi)
         }
     } else {
-        use std::simd::Swizzle;
+        use core::simd::Swizzle;
 
         use crate::core::backend::simd::utils::swizzle::{InterleaveEvens, InterleaveOdds};
 
@@ -587,7 +588,7 @@ cfg_if::cfg_if! {
 
 #[cfg(test)]
 mod tests {
-    use std::array;
+    use core::array;
 
     use aligned::{Aligned, A64};
     use rand::rngs::SmallRng;

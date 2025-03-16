@@ -1,6 +1,3 @@
-use std::collections::BTreeMap;
-
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tracing::{span, Level};
 
@@ -13,6 +10,7 @@ use super::super::ColumnVec;
 use super::quotients::{compute_fri_quotients, PointSample};
 use super::utils::TreeVec;
 use super::{PcsConfig, TreeSubspan};
+use crate::collections::BTreeMap;
 use crate::core::air::Trace;
 use crate::core::backend::BackendForChannel;
 use crate::core::channel::{Channel, MerkleChannel};
@@ -20,6 +18,7 @@ use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
+use crate::prelude::*;
 
 /// The prover side of a FRI polynomial commitment scheme. See [super].
 pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
@@ -97,7 +96,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                         point,
                         value: poly.eval_at_point(point),
                     })
-                    .collect_vec()
+                    .collect::<Vec<_>>()
             });
         span.exit();
         let sampled_values = samples
@@ -238,7 +237,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
             .evaluations
             .iter()
             .map(|eval| &eval.values)
-            .collect_vec();
+            .collect::<Vec<_>>();
         self.commitment.decommit(queries, eval_vec)
     }
 }

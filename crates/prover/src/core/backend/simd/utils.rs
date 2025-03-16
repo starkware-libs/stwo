@@ -30,7 +30,7 @@ unsafe impl<T> Sync for UnsafeConst<T> {}
     all(target_arch = "wasm32", target_feature = "simd128")
 )))]
 pub mod swizzle {
-    use std::simd::Swizzle;
+    use core::simd::Swizzle;
 
     /// Used with [`Swizzle::concat_swizzle`] to interleave the even values of two vectors.
     pub struct InterleaveEvens;

@@ -4,6 +4,7 @@ use quote::{format_ident, quote};
 use syn::{Ident, Lifetime};
 
 use crate::iterable_field::IterableField;
+use crate::prelude::*;
 
 pub fn expand_iter_mut_structs(
     struct_name: &Ident,
@@ -31,7 +32,7 @@ fn expand_impl_struct_name(struct_name: &Ident, iterable_fields: &[IterableField
     let as_mut_slice = iterable_fields
         .iter()
         .map(|f| f.as_mut_slice())
-        .collect_vec();
+        .collect::<Vec<_>>();
     quote! {
         impl #struct_name {
             pub fn iter_mut(&mut self) -> #iter_mut_name<'_> {
@@ -81,7 +82,7 @@ fn expand_iter_mut_struct(struct_name: &Ident, iterable_fields: &[IterableField]
     quote! {
         pub struct #iter_mut_name<#lifetime> {
             #(#field_names: #mut_ptr_types,)*
-            phantom: std::marker::PhantomData<&#lifetime ()>,
+            phantom: core::marker::PhantomData<&#lifetime ()>,
         }
         impl<#lifetime> #iter_mut_name<#lifetime> {
             pub fn new(
@@ -89,7 +90,7 @@ fn expand_iter_mut_struct(struct_name: &Ident, iterable_fields: &[IterableField]
             ) -> Self {
                 Self {
                     #(#field_names: #as_mut_ptr,)*
-                    phantom: std::marker::PhantomData,
+                    phantom: core::marker::PhantomData,
                 }
             }
         }

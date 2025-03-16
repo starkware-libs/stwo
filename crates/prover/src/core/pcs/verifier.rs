@@ -1,4 +1,4 @@
-use std::iter::zip;
+use core::iter::zip;
 
 use itertools::Itertools;
 
@@ -13,6 +13,7 @@ use crate::core::prover::VerificationError;
 use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::verifier::MerkleVerifier;
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
 #[derive(Default)]
@@ -71,7 +72,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             .map(|log_size| {
                 CirclePolyDegreeBound::new(log_size - self.config.fri_config.log_blowup_factor)
             })
-            .collect_vec();
+            .collect::<Vec<_>>();
 
         // FRI commitment phase on OODS quotients.
         let mut fri_verifier =
@@ -103,7 +104,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             |(sampled_points, sampled_values)| {
                 zip(sampled_points, sampled_values)
                     .map(|(point, value)| PointSample { point, value })
-                    .collect_vec()
+                    .collect()
             },
         );
 

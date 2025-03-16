@@ -1,4 +1,4 @@
-use std::array;
+use core::array;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -148,8 +148,6 @@ fn bit_reverse16(mut data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
-
     use super::{bit_reverse16, bit_reverse_m31, MIN_LOG_SIZE};
     use crate::core::backend::cpu::bit_reverse as cpu_bit_reverse;
     use crate::core::backend::simd::column::BaseColumn;
@@ -185,7 +183,7 @@ mod tests {
     #[test]
     fn bit_reverse_small_column_works() {
         const LOG_SIZE: u32 = MIN_LOG_SIZE - 1;
-        let column = (0..1 << LOG_SIZE).map(BaseField::from).collect_vec();
+        let column = (0..1 << LOG_SIZE).map(BaseField::from).collect::<Vec<_>>();
         let mut expected = column.clone();
         cpu_bit_reverse(&mut expected);
 
@@ -198,7 +196,7 @@ mod tests {
     #[test]
     fn bit_reverse_large_column_works() {
         const LOG_SIZE: u32 = MIN_LOG_SIZE;
-        let column = (0..1 << LOG_SIZE).map(BaseField::from).collect_vec();
+        let column = (0..1 << LOG_SIZE).map(BaseField::from).collect::<Vec<_>>();
         let mut expected = column.clone();
         cpu_bit_reverse(&mut expected);
 

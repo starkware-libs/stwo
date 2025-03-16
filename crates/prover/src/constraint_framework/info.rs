@@ -1,6 +1,9 @@
-use std::array;
-use std::cell::{RefCell, RefMut};
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
+#[cfg(not(feature = "std"))]
+use alloc::rc::Rc;
+use core::array;
+use core::cell::{RefCell, RefMut};
+use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
+#[cfg(feature = "std")]
 use std::rc::Rc;
 
 use num_traits::{One, Zero};
@@ -14,6 +17,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
+use crate::prelude::*;
 
 /// Collects information about the constraints.
 /// This includes mask offsets and columns at each interaction, the number of constraints and number

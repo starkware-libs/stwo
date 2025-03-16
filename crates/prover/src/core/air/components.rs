@@ -1,6 +1,4 @@
-use std::iter::zip;
-
-use itertools::Itertools;
+use core::iter::zip;
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Component, ComponentProver, Trace};
@@ -11,6 +9,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::SecureCirclePoly;
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 pub struct Components<'a> {
     pub components: Vec<&'a dyn Component>,
@@ -115,7 +114,7 @@ impl<B: Backend> ComponentProvers<'_, B> {
                 .components
                 .iter()
                 .map(|c| *c as &dyn Component)
-                .collect_vec(),
+                .collect::<Vec<_>>(),
             n_preprocessed_columns: self.n_preprocessed_columns,
         }
     }

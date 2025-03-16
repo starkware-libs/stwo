@@ -1,8 +1,6 @@
 //! Inverse fft.
+use core::simd::{simd_swizzle, u32x16, u32x2, u32x4};
 
-use std::simd::{simd_swizzle, u32x16, u32x2, u32x4};
-
-use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -14,6 +12,7 @@ use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::utils::UnsafeMut;
 use crate::core::circle::Coset;
 use crate::parallel_iter;
+use crate::prelude::*;
 
 /// Performs an Inverse Circle Fast Fourier Transform (ICFFT) on the given values.
 ///
@@ -188,9 +187,9 @@ pub unsafe fn ifft_vecwise_loop(
         (val0, val1) = vecwise_ibutterflies(
             val0,
             val1,
-            std::array::from_fn(|i| *twiddle_dbl[0].get_unchecked(index * 8 + i)),
-            std::array::from_fn(|i| *twiddle_dbl[1].get_unchecked(index * 4 + i)),
-            std::array::from_fn(|i| *twiddle_dbl[2].get_unchecked(index * 2 + i)),
+            core::array::from_fn(|i| *twiddle_dbl[0].get_unchecked(index * 8 + i)),
+            core::array::from_fn(|i| *twiddle_dbl[1].get_unchecked(index * 4 + i)),
+            core::array::from_fn(|i| *twiddle_dbl[2].get_unchecked(index * 2 + i)),
         );
         (val0, val1) = simd_ibutterfly(
             val0,
@@ -231,13 +230,13 @@ pub unsafe fn ifft3_loop(
                 values,
                 offset + l,
                 layer,
-                std::array::from_fn(|i| {
+                core::array::from_fn(|i| {
                     *twiddle_dbl[0].get_unchecked((index * 4 + i) & (twiddle_dbl[0].len() - 1))
                 }),
-                std::array::from_fn(|i| {
+                core::array::from_fn(|i| {
                     *twiddle_dbl[1].get_unchecked((index * 2 + i) & (twiddle_dbl[1].len() - 1))
                 }),
-                std::array::from_fn(|i| {
+                core::array::from_fn(|i| {
                     *twiddle_dbl[2].get_unchecked((index + i) & (twiddle_dbl[2].len() - 1))
                 }),
             );
@@ -266,10 +265,10 @@ unsafe fn ifft2_loop(values: *mut u32, twiddle_dbl: &[&[u32]], layer: usize, ind
             values,
             offset + l,
             layer,
-            std::array::from_fn(|i| {
+            core::array::from_fn(|i| {
                 *twiddle_dbl[0].get_unchecked((index * 2 + i) & (twiddle_dbl[0].len() - 1))
             }),
-            std::array::from_fn(|i| {
+            core::array::from_fn(|i| {
                 *twiddle_dbl[1].get_unchecked((index + i) & (twiddle_dbl[1].len() - 1))
             }),
         );
@@ -295,7 +294,7 @@ unsafe fn ifft1_loop(values: *mut u32, twiddle_dbl: &[&[u32]], layer: usize, ind
             values,
             offset + l,
             layer,
-            std::array::from_fn(|i| {
+            core::array::from_fn(|i| {
                 *twiddle_dbl[0].get_unchecked((index + i) & (twiddle_dbl[0].len() - 1))
             }),
         );
@@ -394,7 +393,7 @@ pub fn get_itwiddle_dbls(mut coset: Coset) -> Vec<Vec<u32>> {
                 .iter()
                 .take(coset.size() / 2)
                 .map(|p| p.x.inverse().0 * 2)
-                .collect_vec(),
+                .collect::<Vec<_>>(),
         );
         bit_reverse(res.last_mut().unwrap());
         coset = coset.double();
@@ -545,10 +544,9 @@ pub unsafe fn ifft1(values: *mut u32, offset: usize, log_step: usize, twiddles_d
 
 #[cfg(test)]
 mod tests {
-    use std::mem::transmute;
-    use std::simd::u32x16;
+    use core::mem::transmute;
+    use core::simd::u32x16;
 
-    use itertools::Itertools;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
@@ -671,14 +669,17 @@ mod tests {
         for log_size in 5..12 {
             let domain = CanonicCoset::new(log_size).circle_domain();
             let mut rng = SmallRng::seed_from_u64(0);
-            let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
+            let values = (0..domain.size()).map(|_| rng.gen()).collect::<Vec<_>>();
             let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
 
             let mut res = values.iter().copied().collect::<BaseColumn>();
             unsafe {
                 ifft_lower_with_vecwise(
                     transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
-                    &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
+                    &twiddle_dbls
+                        .iter()
+                        .map(|x| x.as_slice())
+                        .collect::<Vec<_>>(),
                     log_size as usize,
                     log_size as usize,
                 );
@@ -693,14 +694,17 @@ mod tests {
         for log_size in CACHED_FFT_LOG_SIZE + 1..CACHED_FFT_LOG_SIZE + 3 {
             let domain = CanonicCoset::new(log_size).circle_domain();
             let mut rng = SmallRng::seed_from_u64(0);
-            let values = (0..domain.size()).map(|_| rng.gen()).collect_vec();
+            let values = (0..domain.size()).map(|_| rng.gen()).collect::<Vec<_>>();
             let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
 
             let mut res = values.iter().copied().collect::<BaseColumn>();
             unsafe {
                 ifft(
                     transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
-                    &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
+                    &twiddle_dbls
+                        .iter()
+                        .map(|x| x.as_slice())
+                        .collect::<Vec<_>>(),
                     log_size as usize,
                 );
                 transpose_vecs(

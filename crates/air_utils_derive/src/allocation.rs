@@ -3,6 +3,7 @@ use quote::quote;
 use syn::Ident;
 
 use crate::iterable_field::IterableField;
+use crate::prelude::*;
 
 /// Implements an "Uninitialized" function for the struct.
 /// Allocates 2^`log_size` slots for every Vector.

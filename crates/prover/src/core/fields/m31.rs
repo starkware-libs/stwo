@@ -1,5 +1,5 @@
-use std::fmt::Display;
-use std::ops::{
+use core::fmt::Display;
+use core::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ComplexConjugate, FieldExpOps};
 use crate::impl_field;
+use crate::prelude::*;
 pub const MODULUS_BITS: u32 = 31;
 pub const N_BYTES_FELT: usize = 4;
 pub const P: u32 = 2147483647; // 2 ** 31 - 1
@@ -70,7 +71,7 @@ impl M31 {
 }
 
 impl Display for M31 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.0)
     }
 }

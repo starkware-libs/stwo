@@ -1,5 +1,5 @@
-use std::fmt::{Debug, Display};
-use std::ops::{
+use core::fmt::{Debug, Display};
+use core::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
@@ -9,6 +9,7 @@ use super::secure_column::SECURE_EXTENSION_DEGREE;
 use super::{ComplexConjugate, FieldExpOps};
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
+use crate::prelude::*;
 use crate::{impl_extension_field, impl_field};
 
 pub const P4: u128 = 21267647892944572736998860269687930881; // (2 ** 31 - 1) ** 4
@@ -62,13 +63,13 @@ impl QM31 {
 }
 
 impl Display for QM31 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "({}) + ({})u", self.0, self.1)
     }
 }
 
 impl Debug for QM31 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "({}) + ({})u", self.0, self.1)
     }
 }

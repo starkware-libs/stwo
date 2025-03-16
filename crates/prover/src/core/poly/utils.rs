@@ -1,5 +1,6 @@
 use super::line::LineDomain;
 use crate::core::fields::{ExtensionOf, Field};
+use crate::prelude::*;
 
 /// Folds values recursively in `O(n)` by a hierarchical application of folding factors.
 ///

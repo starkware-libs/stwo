@@ -1,4 +1,4 @@
-use std::ops::Index;
+use core::ops::Index;
 
 use num_traits::{One, Zero};
 
@@ -12,6 +12,7 @@ use crate::core::lookups::gkr_prover::{
 use crate::core::lookups::mle::{Mle, MleOps};
 use crate::core::lookups::sumcheck::MultivariatePolyOracle;
 use crate::core::lookups::utils::{Fraction, Reciprocal, UnivariatePoly};
+use crate::prelude::*;
 
 impl GkrOps for CpuBackend {
     fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Mle<Self, SecureField> {
@@ -278,7 +279,7 @@ impl<F: Field> Index<usize> for MleExpr<'_, F> {
 
 #[cfg(test)]
 mod tests {
-    use std::iter::zip;
+    use core::iter::zip;
 
     use num_traits::{One, Zero};
     use rand::rngs::SmallRng;

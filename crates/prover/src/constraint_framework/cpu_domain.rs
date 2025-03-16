@@ -1,4 +1,4 @@
-use std::ops::Mul;
+use core::ops::Mul;
 
 use num_traits::Zero;
 
@@ -13,6 +13,7 @@ use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::offset_bit_reversed_circle_domain_index;
+use crate::prelude::*;
 
 /// Evaluates constraints at an evaluation domain points.
 pub struct CpuDomainEvaluator<'a> {

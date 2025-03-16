@@ -1,10 +1,12 @@
-use std::fmt::{Debug, Display};
-use std::iter::{Product, Sum};
-use std::ops::{Mul, MulAssign, Neg};
+use core::fmt::{Debug, Display};
+use core::iter::{Product, Sum};
+use core::ops::{Mul, MulAssign, Neg};
 
 use num_traits::{NumAssign, NumAssignOps, NumOps, One};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+
+use crate::prelude::*;
 
 pub mod cm31;
 pub mod m31;
@@ -77,7 +79,7 @@ pub fn batch_inverse_in_place<F: FieldExpOps>(column: &[F], dst: &mut [F]) {
 
     // First pass. Compute 'WIDTH' cumulative products in an interleaving fashion, reducing
     // instruction dependency and allowing better pipelining.
-    let mut cum_prod: [F; WIDTH] = std::array::from_fn(|_| F::one());
+    let mut cum_prod: [F; WIDTH] = core::array::from_fn(|_| F::one());
     dst[..WIDTH].clone_from_slice(&cum_prod);
     for i in 0..n {
         cum_prod[i % WIDTH] *= column[i].clone();
@@ -86,7 +88,7 @@ pub fn batch_inverse_in_place<F: FieldExpOps>(column: &[F], dst: &mut [F]) {
 
     // Inverse cumulative products.
     // Use classic batch inversion.
-    let mut tail_inverses: [F; WIDTH] = std::array::from_fn(|_| F::one());
+    let mut tail_inverses: [F; WIDTH] = core::array::from_fn(|_| F::one());
     batch_inverse_classic(&dst[n - WIDTH..], &mut tail_inverses);
 
     // Second pass.
@@ -98,7 +100,7 @@ pub fn batch_inverse_in_place<F: FieldExpOps>(column: &[F], dst: &mut [F]) {
 }
 
 pub fn batch_inverse<F: FieldExpOps>(column: &[F]) -> Vec<F> {
-    let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
+    let mut dst = vec![unsafe { core::mem::zeroed() }; column.len()];
     batch_inverse_in_place(column, &mut dst);
     dst
 }
@@ -107,7 +109,7 @@ pub fn batch_inverse_chunked<T: FieldExpOps + Send + Sync>(
     column: &[T],
     chunk_size: usize,
 ) -> Vec<T> {
-    let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
+    let mut dst = vec![unsafe { core::mem::zeroed() }; column.len()];
 
     #[cfg(not(feature = "parallel"))]
     let iter = dst.chunks_mut(chunk_size).zip(column.chunks(chunk_size));
@@ -155,9 +157,9 @@ pub trait Field:
 pub unsafe trait IntoSlice<T: Sized>: Sized {
     fn into_slice(sl: &[Self]) -> &[T] {
         unsafe {
-            std::slice::from_raw_parts(
+            core::slice::from_raw_parts(
                 sl.as_ptr() as *const T,
-                std::mem::size_of_val(sl) / std::mem::size_of::<T>(),
+                core::mem::size_of_val(sl) / core::mem::size_of::<T>(),
             )
         }
     }
@@ -193,13 +195,13 @@ impl<F: Field> ExtensionOf<F> for F {
 #[macro_export]
 macro_rules! impl_field {
     ($field_name: ty, $field_size: ident) => {
-        use std::iter::{Product, Sum};
+        use core::iter::{Product, Sum};
 
         use num_traits::{Num, One, Zero};
         use $crate::core::fields::Field;
 
         impl Num for $field_name {
-            type FromStrRadixErr = Box<dyn std::error::Error>;
+            type FromStrRadixErr = Box<dyn core::error::Error>;
 
             fn from_str_radix(_str: &str, _radix: u32) -> Result<Self, Self::FromStrRadixErr> {
                 unimplemented!(

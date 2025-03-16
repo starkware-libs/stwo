@@ -34,14 +34,14 @@ impl<T: Pack, const N: usize> Pack for [T; N] {
     type SimdType = [T::SimdType; N];
 
     fn pack(inputs: [[T; N]; N_LANES]) -> Self::SimdType {
-        std::array::from_fn(|i| T::pack(std::array::from_fn(|j| inputs[j][i])))
+        core::array::from_fn(|i| T::pack(core::array::from_fn(|j| inputs[j][i])))
     }
 }
 
 impl<T: Unpack, const N: usize> Unpack for [T; N] {
     type CpuType = [T::CpuType; N];
     fn unpack(self) -> [Self::CpuType; N_LANES] {
-        std::array::from_fn(|i| std::array::from_fn(|j| T::unpack(self[j])[i]))
+        core::array::from_fn(|i| core::array::from_fn(|j| T::unpack(self[j])[i]))
     }
 }
 
@@ -53,7 +53,7 @@ macro_rules! impl_tuple_conversion {
                 fn pack(inputs: [($($type,)+); N_LANES]) -> Self::SimdType {
                     (
                         $(
-                            $type::pack(std::array::from_fn(|i|
+                            $type::pack(core::array::from_fn(|i|
                                 inputs[i].$idx
                             )),
                         )+
@@ -70,7 +70,7 @@ macro_rules! impl_tuple_conversion {
                             $type::unpack(self.$idx),
                         )+
                     );
-                    std::array::from_fn(|i| ($(arrays.$idx[i],)+))
+                    core::array::from_fn(|i| ($(arrays.$idx[i],)+))
                 }
             }
         };
@@ -104,10 +104,10 @@ mod tests {
                     M31::from(rng.gen::<u32>()),
                     M31::from(rng.gen::<u32>()),
                 ],
-                std::array::from_fn(|_| M31::from(rng.gen::<u32>())),
+                core::array::from_fn(|_| M31::from(rng.gen::<u32>())),
             )
         };
-        let inputs: [_; N_LANES] = std::array::from_fn(|_| rand_input());
+        let inputs: [_; N_LANES] = core::array::from_fn(|_| rand_input());
 
         let simd_vals = <_ as Pack>::pack(inputs);
         let outputs = simd_vals.unpack();

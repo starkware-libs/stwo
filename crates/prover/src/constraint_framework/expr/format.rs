@@ -1,6 +1,7 @@
 use num_traits::Zero;
 
 use super::{BaseExpr, ColumnExpr, ExtExpr};
+use crate::prelude::*;
 
 impl BaseExpr {
     pub fn format_expr(&self) -> String {

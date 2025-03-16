@@ -2,6 +2,7 @@ use num_traits::{One, Zero};
 
 use super::{BaseExpr, ExtExpr};
 use crate::core::fields::qm31::SecureField;
+use crate::prelude::*;
 
 /// Applies simplifications to arithmetic expressions that can be used both for `BaseExpr` and for
 /// `ExtExpr`.
@@ -150,11 +151,10 @@ impl ExtExpr {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
+    use crate::collections::HashMap;
     use crate::constraint_framework::expr::utils::*;
     use crate::constraint_framework::AssertEvaluator;
     use crate::core::fields::m31::BaseField;

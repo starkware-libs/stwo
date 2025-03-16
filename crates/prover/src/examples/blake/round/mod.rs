@@ -52,9 +52,7 @@ pub fn blake_round_info() -> InfoEvaluator {
 
 #[cfg(test)]
 mod tests {
-    use std::simd::Simd;
-
-    use itertools::Itertools;
+    use core::simd::Simd;
 
     use crate::constraint_framework::preprocessed_columns::IsFirst;
     use crate::constraint_framework::FrameworkEval;
@@ -76,10 +74,10 @@ mod tests {
             LOG_SIZE,
             &(0..(1 << LOG_SIZE))
                 .map(|_| BlakeRoundInput {
-                    v: std::array::from_fn(|i| Simd::splat(i as u32)),
-                    m: std::array::from_fn(|i| Simd::splat((i + 1) as u32)),
+                    v: core::array::from_fn(|i| Simd::splat(i as u32)),
+                    m: core::array::from_fn(|i| Simd::splat((i + 1) as u32)),
                 })
-                .collect_vec(),
+                .collect::<Vec<_>>(),
             &mut xor_accum,
         );
 
@@ -105,7 +103,7 @@ mod tests {
             round_lookup_elements,
             claimed_sum,
         };
-        crate::constraint_framework::assert_constraints_on_polys(
+        crate::constraint_framework::assert_constraints(
             &trace_polys,
             CanonicCoset::new(LOG_SIZE),
             |eval| {

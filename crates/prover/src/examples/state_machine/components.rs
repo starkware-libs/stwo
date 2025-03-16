@@ -17,6 +17,7 @@ use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::StarkProof;
 use crate::core::vcs::ops::MerkleHasher;
+use crate::prelude::*;
 
 const LOG_CONSTRAINT_DEGREE: u32 = 1;
 pub const STATE_SIZE: usize = 2;
@@ -45,7 +46,7 @@ impl<const COORDINATE: usize> FrameworkEval for StateTransitionEval<COORDINATE> 
         self.log_n_rows + LOG_CONSTRAINT_DEGREE
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let input_state: [_; STATE_SIZE] = std::array::from_fn(|_| eval.next_trace_mask());
+        let input_state: [_; STATE_SIZE] = core::array::from_fn(|_| eval.next_trace_mask());
 
         let mut output_state = input_state.clone();
         output_state[COORDINATE] += E::F::one();

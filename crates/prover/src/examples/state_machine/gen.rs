@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use num_traits::{One, Zero};
 
 use super::components::{State, StateMachineElements, STATE_SIZE};
@@ -14,6 +13,7 @@ use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 // Given `initial state`, generate a trace that row `i` is the initial state plus `i` in the
 // `inc_index` dimension.
@@ -26,7 +26,7 @@ pub fn gen_trace(
     let domain = CanonicCoset::new(log_size).circle_domain();
     let mut trace = (0..STATE_SIZE)
         .map(|_| vec![M31::zero(); 1 << log_size])
-        .collect_vec();
+        .collect::<Vec<_>>();
     let mut curr_state = initial_state;
 
     // Add the states in bit reversed circle domain order.
@@ -48,7 +48,7 @@ pub fn gen_trace(
                 BaseColumn::from_iter(col),
             )
         })
-        .collect_vec()
+        .collect::<Vec<_>>()
 }
 
 pub fn gen_interaction_trace(
@@ -69,7 +69,7 @@ pub fn gen_interaction_trace(
         let mut packed_state: [PackedM31; STATE_SIZE] = trace
             .iter()
             .map(|col| col.data[vec_row])
-            .collect_vec()
+            .collect::<Vec<_>>()
             .try_into()
             .unwrap();
         let input_denom: PackedQM31 = lookup_elements.combine(&packed_state);

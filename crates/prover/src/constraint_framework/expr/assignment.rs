@@ -1,14 +1,19 @@
-use std::collections::{HashMap, HashSet};
-use std::hash::{DefaultHasher, Hash, Hasher};
-use std::ops::{Add, Index};
+#[cfg(not(feature = "std"))]
+use core::hash::{BuildHasher, Hash, Hasher};
+use core::ops::{Add, Index};
+#[cfg(feature = "std")]
+use std::hash::{Hash, Hasher};
 
 use itertools::sorted;
 
 use super::{BaseExpr, ColumnExpr, ExtExpr};
+use crate::collections::hash_map::HashMap;
+use crate::collections::hash_set::HashSet;
 use crate::constraint_framework::{AssertEvaluator, EvalAtRow};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
+use crate::prelude::*;
 
 /// An assignment to the variables that may appear in an expression.
 pub type ExprVarAssignment = (
@@ -26,6 +31,20 @@ pub struct ExprVariables {
     pub cols: HashSet<ColumnExpr>,
     pub params: HashSet<String>,
     pub ext_params: HashSet<String>,
+}
+
+#[cfg(feature = "std")]
+fn native_hash<T: Hash>(value: T) -> u32 {
+    let mut hasher = std::hash::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish() as u32
+}
+
+#[cfg(not(feature = "std"))]
+fn native_hash<T: Hash>(value: T) -> u32 {
+    let mut state = hashbrown::DefaultHashBuilder::default().build_hasher();
+    value.hash(&mut state);
+    state.finish() as u32
 }
 
 impl ExprVariables {
@@ -60,31 +79,17 @@ impl ExprVariables {
         let cols = sorted(self.cols.iter())
             .map(|col| {
                 ((col.interaction, col.idx, col.offset), {
-                    let mut hasher = DefaultHasher::new();
-                    (salt, col).hash(&mut hasher);
-                    (hasher.finish() as u32).into()
+                    native_hash((salt, col)).into()
                 })
             })
             .collect();
 
         let params = sorted(self.params.iter())
-            .map(|param| {
-                (param.clone(), {
-                    let mut hasher = DefaultHasher::new();
-                    (salt, param).hash(&mut hasher);
-                    (hasher.finish() as u32).into()
-                })
-            })
+            .map(|param| (param.clone(), { native_hash((salt, param)).into() }))
             .collect();
 
         let ext_params = sorted(self.ext_params.iter())
-            .map(|param| {
-                (param.clone(), {
-                    let mut hasher = DefaultHasher::new();
-                    (salt, param).hash(&mut hasher);
-                    (hasher.finish() as u32).into()
-                })
-            })
+            .map(|param| (param.clone(), { native_hash((salt, param)).into() }))
             .collect();
 
         (cols, params, ext_params)
@@ -215,10 +220,9 @@ impl ExtExpr {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use num_traits::One;
 
+    use crate::collections::HashMap;
     use crate::constraint_framework::expr::utils::*;
     use crate::constraint_framework::AssertEvaluator;
     use crate::core::fields::m31::BaseField;

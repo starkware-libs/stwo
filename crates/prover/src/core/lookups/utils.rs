@@ -1,10 +1,11 @@
-use std::iter::{zip, Sum};
-use std::ops::{Add, Deref, Mul, Neg, Sub};
+use core::iter::{zip, Sum};
+use core::ops::{Add, Deref, Mul, Neg, Sub};
 
 use num_traits::{One, Zero};
 
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
+use crate::prelude::*;
 
 /// Univariate polynomial stored as coefficients in the monomial basis.
 #[derive(Debug, Clone)]
@@ -287,7 +288,7 @@ impl<T: Sub<Output = T> + Mul<Output = T> + Clone> Sub for Reciprocal<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::iter::zip;
+    use core::iter::zip;
 
     use num_traits::{One, Zero};
 

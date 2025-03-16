@@ -53,13 +53,11 @@ pub fn blake_scheduler_info() -> InfoEvaluator {
 
 #[cfg(test)]
 mod tests {
-    use std::simd::Simd;
-
-    use itertools::Itertools;
+    use core::simd::Simd;
 
     use crate::constraint_framework::preprocessed_columns::IsFirst;
     use crate::constraint_framework::FrameworkEval;
-    use crate::core::backend::Column;
+    use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::round::RoundElements;
     use crate::examples::blake::scheduler::r#gen::{gen_interaction_trace, gen_trace, BlakeInput};
     use crate::examples::blake::scheduler::{BlakeElements, BlakeSchedulerEval};
@@ -74,10 +72,10 @@ mod tests {
             LOG_SIZE,
             &(0..(1 << LOG_SIZE))
                 .map(|_| BlakeInput {
-                    v: std::array::from_fn(|i| Simd::splat(i as u32)),
-                    m: std::array::from_fn(|i| Simd::splat((i + 1) as u32)),
+                    v: core::array::from_fn(|i| Simd::splat(i as u32)),
+                    m: core::array::from_fn(|i| Simd::splat((i + 1) as u32)),
                 })
-                .collect_vec(),
+                .collect::<Vec<_>>(),
         );
 
         let round_lookup_elements = RoundElements::dummy();
@@ -90,15 +88,11 @@ mod tests {
         );
 
         let trace = TreeVec::new(vec![
-            vec![IsFirst::new(LOG_SIZE).gen_column_simd().values.to_cpu()],
-            trace.into_iter().map(|x| x.values.to_cpu()).collect(),
-            interaction_trace
-                .into_iter()
-                .map(|x| x.values.to_cpu())
-                .collect(),
+            vec![IsFirst::new(LOG_SIZE).gen_column_simd()],
+            trace,
+            interaction_trace,
         ]);
-        let trace = &trace.as_ref();
-        let trace = trace.into();
+        let trace_polys = trace.map_cols(|c| c.interpolate());
 
         let component = BlakeSchedulerEval {
             log_size: LOG_SIZE,
@@ -106,9 +100,9 @@ mod tests {
             round_lookup_elements,
             claimed_sum,
         };
-        crate::constraint_framework::assert_constraints_on_trace(
-            &trace,
-            LOG_SIZE,
+        crate::constraint_framework::assert_constraints(
+            &trace_polys,
+            CanonicCoset::new(LOG_SIZE),
             |eval| {
                 component.evaluate(eval);
             },

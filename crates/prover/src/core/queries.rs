@@ -1,9 +1,10 @@
-use std::collections::BTreeSet;
-use std::ops::Deref;
+use core::ops::Deref;
 
 use itertools::Itertools;
 
 use super::channel::Channel;
+use crate::collections::BTreeSet;
+use crate::prelude::*;
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
@@ -112,7 +113,7 @@ mod tests {
         let folded_queries = queries.fold(n_folds);
         let repeated_folded_queries = folded_queries
             .iter()
-            .flat_map(|q| std::iter::repeat(q).take(ratio));
+            .flat_map(|q| core::iter::repeat(q).take(ratio));
         for (query, folded_query) in queries.iter().zip(repeated_folded_queries) {
             // Check only the x coordinate since folding might give you the conjugate point.
             assert_eq!(

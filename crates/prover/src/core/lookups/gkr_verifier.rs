@@ -8,6 +8,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::sumcheck;
 use crate::core::lookups::utils::Fraction;
+use crate::prelude::*;
 
 /// Partially verifies a batch GKR proof.
 ///

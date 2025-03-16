@@ -1,13 +1,12 @@
-use std::collections::HashMap;
-use std::fmt::Debug;
+use core::fmt::Debug;
 
-use itertools::Itertools;
 use num_traits::Zero;
 
 use super::{
     Batching, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
     TraceLocationAllocator, INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };
+use crate::collections::hash_map::HashMap;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::very_packed_m31::LOG_N_VERY_PACKED_ELEMS;
@@ -21,6 +20,7 @@ use crate::core::pcs::{TreeSubspan, TreeVec};
 use crate::core::poly::circle::CircleEvaluation;
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::offset_bit_reversed_circle_domain_index;
+use crate::prelude::*;
 
 #[derive(Debug)]
 pub struct RelationTrackerEntry {
@@ -58,7 +58,7 @@ impl<E: FrameworkEval> RelationTrackerComponent<E> {
         // Deref the sub-tree. Only copies the references.
         let mut sub_tree = trace
             .sub_tree(&self.trace_locations)
-            .map(|vec| vec.into_iter().copied().collect_vec());
+            .map(|vec| vec.into_iter().copied().collect::<Vec<_>>());
         sub_tree[PREPROCESSED_TRACE_IDX] = self
             .preprocessed_column_indices
             .iter()
@@ -130,7 +130,7 @@ impl EvalAtRow for RelationTrackerEvaluator<'_> {
             // Otherwise, we need to look up the value at the offset.
             // Since the domain is bit-reversed circle domain ordered, we need to look up the value
             // at the bit-reversed natural order index at an offset.
-            PackedBaseField::from_array(std::array::from_fn(|i| {
+            PackedBaseField::from_array(core::array::from_fn(|i| {
                 let row_index = offset_bit_reversed_circle_domain_index(
                     (self.vec_row << (LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS)) + i,
                     self.domain_log_size,
@@ -159,12 +159,16 @@ impl EvalAtRow for RelationTrackerEvaluator<'_> {
         entry: RelationEntry<'_, Self::F, Self::EF, R>,
     ) {
         let relation = entry.relation.get_name().to_owned();
-        let values = entry.values.iter().map(|v| v.to_array()).collect_vec();
+        let values = entry
+            .values
+            .iter()
+            .map(|v| v.to_array())
+            .collect::<Vec<_>>();
         let mult = entry.multiplicity.to_array();
 
         // Unpack SIMD.
         for j in 0..N_LANES {
-            let values = values.iter().map(|v| v[j]).collect_vec();
+            let values = values.iter().map(|v| v[j]).collect::<Vec<_>>();
             let mult = mult[j].to_m31_array()[0];
             self.entries.push(RelationTrackerEntry {
                 relation: relation.clone(),
@@ -201,7 +205,7 @@ impl RelationSummary {
                 let mult = relation_sums.entry(values).or_insert(M31::zero());
                 *mult += entry.mult;
             }
-            let relation_sums = relation_sums.into_iter().collect_vec();
+            let relation_sums = relation_sums.into_iter().collect::<Vec<_>>();
             summary.push((relation.clone(), relation_sums));
         }
         Self(summary)
@@ -233,11 +237,11 @@ impl RelationSummary {
     }
 }
 impl Debug for RelationSummary {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         for (relation, entries) in &self.0 {
             writeln!(f, "{}:", relation)?;
             for (vector, sum) in entries {
-                let vector = vector.iter().map(|v| v.0).collect_vec();
+                let vector = vector.iter().map(|v| v.0).collect::<Vec<_>>();
                 writeln!(f, "  {:?} -> {}", vector, sum)?;
             }
         }

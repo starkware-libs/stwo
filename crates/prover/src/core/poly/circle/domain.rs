@@ -1,11 +1,10 @@
-use std::iter::Chain;
-
-use itertools::Itertools;
+use core::iter::Chain;
 
 use crate::core::circle::{
     CirclePoint, CirclePointIndex, Coset, CosetIterator, M31_CIRCLE_LOG_ORDER,
 };
 use crate::core::fields::m31::BaseField;
+use crate::prelude::*;
 
 pub const MAX_CIRCLE_DOMAIN_LOG_SIZE: u32 = M31_CIRCLE_LOG_ORDER - 1;
 
@@ -90,7 +89,7 @@ impl CircleDomain {
         ));
         let shifts = (0..1 << log_parts)
             .map(|i| self.half_coset.step_size * i)
-            .collect_vec();
+            .collect::<Vec<_>>();
         (subdomain, shifts)
     }
 
@@ -121,8 +120,6 @@ type CircleDomainIndexIterator =
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
-
     use super::CircleDomain;
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::poly::circle::CanonicCoset;
@@ -174,16 +171,16 @@ mod tests {
         let domain_points = domain.iter().collect::<Vec<_>>();
         let points_for_each_domain = shifts
             .iter()
-            .map(|&shift| (subdomain.shift(shift)).iter().collect_vec())
+            .map(|&shift| (subdomain.shift(shift)).iter().collect::<Vec<_>>())
             .collect::<Vec<_>>();
         // Interleave the points from each subdomain.
         let extended_points = (0..(1 << 3))
             .flat_map(|point_ind| {
                 (0..(1 << 2))
                     .map(|shift_ind| points_for_each_domain[shift_ind][point_ind])
-                    .collect_vec()
+                    .collect::<Vec<_>>()
             })
-            .collect_vec();
+            .collect::<Vec<_>>();
         assert_eq!(domain_points, extended_points);
     }
 }

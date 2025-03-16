@@ -7,6 +7,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
+use crate::prelude::*;
 
 /// A column with `1` at every `2^log_step` positions, `0` elsewhere, shifted by offset.
 #[derive(Debug)]

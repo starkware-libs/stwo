@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+use core::iter;
+#[cfg(feature = "std")]
 use std::iter;
 
 use starknet_crypto::{poseidon_hash, poseidon_hash_many};
@@ -7,6 +10,7 @@ use super::{Channel, ChannelTime};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use crate::prelude::*;
 
 pub const BYTES_PER_FELT252: usize = 31;
 pub const FELTS_PER_HASH: usize = 8;
@@ -38,7 +42,7 @@ impl Poseidon252Channel {
         let shift = (1u64 << 31).into();
 
         let mut cur = self.draw_felt252();
-        let u32s: [u32; 8] = std::array::from_fn(|_| {
+        let u32s: [u32; 8] = core::array::from_fn(|_| {
             let next = cur.floor_div(shift);
             let res = cur - next * shift;
             cur = next;
@@ -58,7 +62,7 @@ impl Channel for Poseidon252Channel {
 
     fn trailing_zeros(&self) -> u32 {
         let bytes = self.digest.to_bytes_be();
-        u128::from_le_bytes(std::array::from_fn(|i| bytes[i])).trailing_zeros()
+        u128::from_le_bytes(core::array::from_fn(|i| bytes[i])).trailing_zeros()
     }
 
     fn mix_felts(&mut self, felts: &[SecureField]) {
@@ -105,7 +109,7 @@ impl Channel for Poseidon252Channel {
     fn draw_random_bytes(&mut self) -> Vec<u8> {
         let shift = (1u64 << 8).into();
         let mut cur = self.draw_felt252();
-        let bytes: [u8; 31] = std::array::from_fn(|_| {
+        let bytes: [u8; 31] = core::array::from_fn(|_| {
             let next = cur.floor_div(shift);
             let res = cur - next * shift;
             cur = next;
@@ -117,8 +121,7 @@ impl Channel for Poseidon252Channel {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
+    use crate::collections::BTreeSet;
     use crate::core::channel::poseidon252::Poseidon252Channel;
     use crate::core::channel::Channel;
     use crate::core::fields::qm31::SecureField;

@@ -1,4 +1,4 @@
-use itertools::{izip, zip_eq, Itertools};
+use itertools::{izip, zip_eq};
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -20,6 +20,7 @@ use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::prelude::*;
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
@@ -43,10 +44,10 @@ impl QuotientOps for SimdBackend {
             let columns = columns
                 .iter()
                 .map(|circle_eval| circle_eval.to_cpu())
-                .collect_vec();
+                .collect::<Vec<_>>();
             let eval = CpuBackend::accumulate_quotients(
                 domain,
-                &columns.iter().collect_vec(),
+                &columns.iter().collect::<Vec<_>>(),
                 random_coeff,
                 sample_batches,
                 log_blowup_factor,
@@ -118,7 +119,7 @@ fn accumulate_quotients_on_subdomain(
     let span = span!(Level::INFO, "Quotient accumulation").entered();
     let quad_rows = CircleDomainBitRevIterator::new(subdomain)
         .array_chunks::<4>()
-        .collect_vec();
+        .collect::<Vec<_>>();
 
     #[cfg(not(feature = "parallel"))]
     let iter = quad_rows.iter().zip(values.chunks_mut(4)).enumerate();
@@ -184,7 +185,7 @@ pub fn accumulate_row_quotients(
         for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
         {
             let column = &columns[*column_index];
-            let cvalues: [_; 4] = std::array::from_fn(|i| {
+            let cvalues: [_; 4] = core::array::from_fn(|i| {
                 PackedSecureField::broadcast(*c) * column.data[(quad_row << 2) + i]
             });
 
@@ -226,7 +227,7 @@ fn denominator_inverses(
 ) -> Vec<CM31Column> {
     // We want a P to be on a line that passes through a point Pr + uPi in QM31^2, and its conjugate
     // Pr - uPi. Thus, Pr - P is parallel to Pi. Or, (Pr - P).x * Pi.y - (Pr - P).y * Pi.x = 0.
-    let domain_points = CircleDomainBitRevIterator::new(domain).collect_vec();
+    let domain_points = CircleDomainBitRevIterator::new(domain).collect::<Vec<_>>();
 
     #[cfg(not(feature = "parallel"))]
     let iter = domain_points.into_iter();
@@ -277,8 +278,6 @@ fn quotient_constants(
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
-
     use crate::core::backend::simd::column::BaseColumn;
     use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::{Column, CpuBackend};
@@ -316,10 +315,10 @@ mod tests {
         let cpu_columns = columns
             .iter()
             .map(|c| CircleEvaluation::new(c.domain, c.values.to_cpu()))
-            .collect_vec();
+            .collect::<Vec<_>>();
         let cpu_result = CpuBackend::accumulate_quotients(
             domain,
-            &cpu_columns.iter().collect_vec(),
+            &cpu_columns.iter().collect::<Vec<_>>(),
             random_coeff,
             &samples,
             LOG_BLOWUP_FACTOR,
@@ -329,7 +328,7 @@ mod tests {
 
         let res = SimdBackend::accumulate_quotients(
             domain,
-            &columns.iter().collect_vec(),
+            &columns.iter().collect::<Vec<_>>(),
             random_coeff,
             &samples,
             LOG_BLOWUP_FACTOR,

@@ -1,5 +1,5 @@
-use std::iter::zip;
-use std::ops::{AddAssign, Mul};
+use core::iter::zip;
+use core::ops::{AddAssign, Mul};
 
 use educe::Educe;
 use num_traits::One;
@@ -11,6 +11,7 @@ use crate::core::circle::M31_CIRCLE_LOG_ORDER;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::mle::Mle;
+use crate::prelude::*;
 
 pub const MIN_LOG_BLOWUP_FACTOR: u32 = 1;
 
@@ -136,7 +137,7 @@ impl DynMle<SimdBackend> {
 
 #[cfg(test)]
 mod tests {
-    use std::iter::repeat;
+    use core::iter::repeat;
 
     use num_traits::Zero;
 

@@ -1,4 +1,4 @@
-use itertools::{izip, zip_eq, Itertools};
+use itertools::{izip, zip_eq};
 use num_traits::{One, Zero};
 
 use super::CpuBackend;
@@ -13,6 +13,7 @@ use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
+use crate::prelude::*;
 
 impl QuotientOps for CpuBackend {
     fn accumulate_quotients(
@@ -27,7 +28,7 @@ impl QuotientOps for CpuBackend {
 
         for row in 0..domain.size() {
             let domain_point = domain.at(bit_reverse_index(row, domain.log_size()));
-            let query_values_at_row = columns.iter().map(|col| col[row]).collect_vec();
+            let query_values_at_row = columns.iter().map(|col| col[row]).collect::<Vec<_>>();
             let row_value = accumulate_row_quotients(
                 sample_batches,
                 &query_values_at_row,

@@ -1,6 +1,6 @@
-use std::simd::u32x16;
+use core::simd::u32x16;
 
-use itertools::{chain, multiunzip, Itertools};
+use itertools::{chain, multiunzip};
 use num_traits::Zero;
 use serde::Serialize;
 use tracing::{span, Level};
@@ -26,6 +26,7 @@ use crate::examples::blake::scheduler::{self, blake_scheduler_info, BlakeElement
 use crate::examples::blake::{
     round, xor_table, BlakeXorElements, XorAccums, N_ROUNDS, ROUND_LOG_SPLIT,
 };
+use crate::prelude::*;
 
 fn preprocessed_xor_columns() -> [PreProcessedColumnId; 20] {
     [
@@ -116,7 +117,7 @@ impl BlakeStatement0 {
             blake_round_is_first_column_log_sizes,
             preprocessed_xor_columns_log_sizes(),
         )
-        .collect_vec();
+        .collect::<Vec<_>>();
 
         log_sizes
     }
@@ -163,7 +164,7 @@ impl BlakeStatement1 {
                 ],
                 self.round_claimed_sums.clone()
             ]
-            .collect_vec(),
+            .collect::<Vec<_>>(),
         )
     }
 }
@@ -191,7 +192,7 @@ impl BlakeComponents {
         let blake_round_is_first_columns_iter: Vec<PreProcessedColumnId> = ROUND_LOG_SPLIT
             .iter()
             .map(|l| IsFirst::new(log_size + l).id())
-            .collect_vec();
+            .collect::<Vec<_>>();
 
         let tree_span_provider = &mut TraceLocationAllocator::new_with_preproccessed_columns(
             &chain!(
@@ -199,7 +200,7 @@ impl BlakeComponents {
                 blake_round_is_first_columns_iter,
                 preprocessed_xor_columns(),
             )
-            .collect_vec()[..],
+            .collect::<Vec<_>>()[..],
         );
 
         Self {
@@ -330,11 +331,11 @@ where
     // Prepare inputs.
     let blake_inputs = (0..(1 << (log_size - LOG_N_LANES)))
         .map(|i| {
-            let v = [u32x16::from_array(std::array::from_fn(|j| (i + 2 * j) as u32)); 16];
-            let m = [u32x16::from_array(std::array::from_fn(|j| (i + 2 * j + 1) as u32)); 16];
+            let v = [u32x16::from_array(core::array::from_fn(|j| (i + 2 * j) as u32)); 16];
+            let m = [u32x16::from_array(core::array::from_fn(|j| (i + 2 * j + 1) as u32)); 16];
             BlakeInput { v, m }
         })
-        .collect_vec();
+        .collect::<Vec<_>>();
 
     // Setup protocol.
     let channel = &mut MC::C::default();
@@ -356,7 +357,7 @@ where
             XorTable::new(7, 2, 0).generate_constant_trace(),
             XorTable::new(4, 0, 0).generate_constant_trace(),
         ]
-        .collect_vec(),
+        .collect::<Vec<_>>(),
     );
     tree_builder.commit(channel);
     span.exit();
@@ -401,7 +402,7 @@ where
             xor_trace7,
             xor_trace4,
         ]
-        .collect_vec(),
+        .collect::<Vec<_>>(),
     );
     tree_builder.commit(channel);
     span.exit();
@@ -464,7 +465,7 @@ where
             xor_trace7,
             xor_trace4,
         ]
-        .collect_vec(),
+        .collect::<Vec<_>>(),
     );
 
     // Statement1.

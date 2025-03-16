@@ -1,13 +1,12 @@
 //! A SIMD implementation of the BLAKE2s compression function.
 //! Based on <https://github.com/oconnor663/blake2_simd/blob/master/blake2s/src/avx2.rs>.
 
-use std::array;
-use std::iter::repeat;
-use std::mem::transmute;
-use std::simd::u32x16;
+use core::array;
+use core::iter::repeat;
+use core::mem::transmute;
+use core::simd::u32x16;
 
 use bytemuck::cast_slice;
-use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -19,6 +18,7 @@ use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 use crate::parallel_iter;
+use crate::prelude::*;
 
 const IV: [u32; 8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
@@ -56,7 +56,10 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
                 .map(|i| {
                     Blake2sMerkleHasher::hash_node(
                         prev_layer.map(|prev_layer| (prev_layer[2 * i], prev_layer[2 * i + 1])),
-                        &columns.iter().map(|column| column.at(i)).collect_vec(),
+                        &columns
+                            .iter()
+                            .map(|column| column.at(i))
+                            .collect::<Vec<_>>(),
                     )
                 })
                 .collect();
@@ -77,13 +80,13 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         let iter = res.par_chunks_mut(1 << LOG_N_LANES);
 
         iter.enumerate().for_each(|(i, chunk)| {
-            let mut state: [u32x16; 8] = unsafe { std::mem::zeroed() };
+            let mut state: [u32x16; 8] = unsafe { core::mem::zeroed() };
             // Hash prev_layer, if exists.
             if let Some(prev_layer) = prev_layer {
                 let prev_chunk_u32s = cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]);
                 // Note: prev_layer might be unaligned.
                 let msgs: [u32x16; 16] = array::from_fn(|j| {
-                    u32x16::from_array(std::array::from_fn(|k| prev_chunk_u32s[16 * j + k]))
+                    u32x16::from_array(core::array::from_fn(|k| prev_chunk_u32s[16 * j + k]))
                 });
                 state = compress16(state, transpose_msgs(msgs), zeros, zeros, zeros, zeros);
             }
@@ -103,7 +106,7 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
                     .map(|column| column.data[i].into_simd())
                     .chain(repeat(zeros))
                     .take(N_LANES)
-                    .collect_vec()
+                    .collect::<Vec<_>>()
                     .try_into()
                     .unwrap();
                 state = compress16(state, msgs, zeros, zeros, zeros, zeros);
@@ -337,9 +340,9 @@ pub fn compress16(
 
 #[cfg(test)]
 mod tests {
-    use std::array;
-    use std::mem::transmute;
-    use std::simd::u32x16;
+    use core::array;
+    use core::mem::transmute;
+    use core::simd::u32x16;
 
     use aligned::{Aligned, A64};
 

@@ -1,4 +1,4 @@
-use std::ops::Mul;
+use core::ops::Mul;
 
 use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
@@ -8,6 +8,7 @@ use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 /// Evaluates expressions at a point out of domain.
 pub struct PointEvaluator<'a> {

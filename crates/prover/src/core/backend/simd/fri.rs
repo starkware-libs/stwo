@@ -1,5 +1,5 @@
-use std::array;
-use std::simd::{u32x16, u32x8};
+use core::array;
+use core::simd::{u32x16, u32x8};
 
 use num_traits::Zero;
 
@@ -166,7 +166,6 @@ fn decomposition_coefficient(
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
     use num_traits::One;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
@@ -187,7 +186,7 @@ mod tests {
     fn test_fold_line() {
         const LOG_SIZE: u32 = 7;
         let mut rng = SmallRng::seed_from_u64(0);
-        let values = (0..1 << LOG_SIZE).map(|_| rng.gen()).collect_vec();
+        let values = (0..1 << LOG_SIZE).map(|_| rng.gen()).collect::<Vec<_>>();
         let alpha = qm31!(1, 3, 5, 7);
         let domain = LineDomain::new(CanonicCoset::new(LOG_SIZE + 1).half_coset());
         let cpu_fold = CpuBackend::fold_line(

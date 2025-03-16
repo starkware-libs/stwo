@@ -1,3 +1,5 @@
+use crate::prelude::*;
+
 pub mod accumulation;
 mod blake2s;
 pub mod circle;
@@ -8,7 +10,7 @@ pub mod lookups;
 mod poseidon252;
 pub mod quotients;
 
-use std::fmt::Debug;
+use core::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
@@ -83,7 +85,6 @@ pub type CpuMle<F> = Mle<CpuBackend, F>;
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
     use rand::prelude::*;
     use rand::rngs::SmallRng;
 
@@ -111,7 +112,7 @@ mod tests {
     fn batch_inverse_in_place_test() {
         let mut rng = SmallRng::seed_from_u64(0);
         let column = rng.gen::<[QM31; 16]>().to_vec();
-        let expected = column.iter().map(|e| e.inverse()).collect_vec();
+        let expected = column.iter().map(|e| e.inverse()).collect::<Vec<_>>();
         let mut dst = Vec::zeros(column.len());
 
         batch_inverse_in_place(&column, &mut dst);

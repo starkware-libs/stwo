@@ -4,7 +4,20 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-parallel = ["rayon"]
+default = ["std"]
+std = [
+    "blake2/std",
+    "blake3/std",
+    "hex/std",
+    "itertools/use_std",
+    "num-traits/std",
+    "rand/std",
+    "serde/std",
+    "tracing/std",
+    "starknet-crypto/std",
+    "starknet-ff/std"
+]
+parallel = ["rayon", "std"]
 slow-tests = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -19,12 +32,13 @@ hex.workspace = true
 itertools.workspace = true
 num-traits.workspace = true
 rand = { version = "0.8.5", default-features = false, features = ["small_rng"] }
-starknet-crypto = "0.6.2"
-starknet-ff = "0.3.7"
+starknet-crypto.workspace = true
+starknet-ff.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 rayon = { version = "1.10.0", optional = true }
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+hashbrown = { version = "0.15.2", default-features = false, features = ["default-hasher"] }
 
 [dev-dependencies]
 aligned = "0.4.2"
@@ -46,7 +60,7 @@ version = "0.5.1"
 
 [lib]
 bench = false
-crate-type = ["cdylib", "lib"]
+crate-type = ["lib"]
 
 [lints.rust]
 warnings = "deny"

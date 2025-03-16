@@ -9,6 +9,7 @@ use super::pcs::TreeVec;
 use super::poly::circle::{CircleEvaluation, CirclePoly};
 use super::poly::BitReversedOrder;
 use super::ColumnVec;
+use crate::prelude::*;
 
 pub mod accumulation;
 mod components;

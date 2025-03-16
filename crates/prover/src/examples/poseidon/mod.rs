@@ -1,8 +1,6 @@
 //! AIR for Poseidon2 hash function from <https://eprint.iacr.org/2023/323.pdf>.
+use core::ops::{Add, AddAssign, Mul, Sub};
 
-use std::ops::{Add, AddAssign, Mul, Sub};
-
-use itertools::Itertools;
 use num_traits::One;
 use tracing::{info, span, Level};
 
@@ -26,6 +24,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof};
 use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
@@ -140,7 +139,7 @@ fn pow5<F: FieldExpOps>(x: F) -> F {
 
 pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &PoseidonElements) {
     for _ in 0..N_INSTANCES_PER_ROW {
-        let mut state: [_; N_STATE] = std::array::from_fn(|_| eval.next_trace_mask());
+        let mut state: [_; N_STATE] = core::array::from_fn(|_| eval.next_trace_mask());
 
         // Require state lookup.
         let initial_state = state.clone();
@@ -152,7 +151,7 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &P
             });
             apply_external_round_matrix(&mut state);
             // TODO(andrew) Apply round matrix after the pow5, as is the order in the paper.
-            state = std::array::from_fn(|i| pow5(state[i].clone()));
+            state = core::array::from_fn(|i| pow5(state[i].clone()));
             state.iter_mut().for_each(|s| {
                 let m = eval.next_trace_mask();
                 eval.add_constraint(s.clone() - m.clone());
@@ -176,7 +175,7 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &P
                 state[i] += EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i];
             });
             apply_external_round_matrix(&mut state);
-            state = std::array::from_fn(|i| pow5(state[i].clone()));
+            state = core::array::from_fn(|i| pow5(state[i].clone()));
             state.iter_mut().for_each(|s| {
                 let m = eval.next_trace_mask();
                 eval.add_constraint(s.clone() - m.clone());
@@ -210,13 +209,13 @@ pub fn gen_trace(
     assert!(log_size >= LOG_N_LANES);
     let mut trace = (0..N_COLUMNS)
         .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
-        .collect_vec();
+        .collect::<Vec<_>>();
     let mut lookup_data = LookupData {
-        initial_state: std::array::from_fn(|_| {
-            std::array::from_fn(|_| BaseColumn::zeros(1 << log_size))
+        initial_state: core::array::from_fn(|_| {
+            core::array::from_fn(|_| BaseColumn::zeros(1 << log_size))
         }),
-        final_state: std::array::from_fn(|_| {
-            std::array::from_fn(|_| BaseColumn::zeros(1 << log_size))
+        final_state: core::array::from_fn(|_| {
+            core::array::from_fn(|_| BaseColumn::zeros(1 << log_size))
         }),
     };
 
@@ -224,8 +223,8 @@ pub fn gen_trace(
         // Initial state.
         let mut col_index = 0;
         for rep_i in 0..N_INSTANCES_PER_ROW {
-            let mut state: [_; N_STATE] = std::array::from_fn(|state_i| {
-                PackedBaseField::from_array(std::array::from_fn(|i| {
+            let mut state: [_; N_STATE] = core::array::from_fn(|state_i| {
+                PackedBaseField::from_array(core::array::from_fn(|i| {
                     BaseField::from_u32_unchecked((vec_index * 16 + i + state_i + rep_i) as u32)
                 }))
             });
@@ -244,7 +243,7 @@ pub fn gen_trace(
                     state[i] += PackedBaseField::broadcast(EXTERNAL_ROUND_CONSTS[round][i]);
                 });
                 apply_external_round_matrix(&mut state);
-                state = std::array::from_fn(|i| pow5(state[i]));
+                state = core::array::from_fn(|i| pow5(state[i]));
                 state.iter().copied().for_each(|s| {
                     trace[col_index].data[vec_index] = s;
                     col_index += 1;
@@ -268,7 +267,7 @@ pub fn gen_trace(
                     );
                 });
                 apply_external_round_matrix(&mut state);
-                state = std::array::from_fn(|i| pow5(state[i]));
+                state = core::array::from_fn(|i| pow5(state[i]));
                 state.iter().copied().for_each(|s| {
                     trace[col_index].data[vec_index] = s;
                     col_index += 1;
@@ -392,10 +391,9 @@ pub fn prove_poseidon(
 mod tests {
     use std::env;
 
-    use itertools::Itertools;
     use num_traits::One;
 
-    use crate::constraint_framework::assert_constraints_on_polys;
+    use crate::constraint_framework::assert_constraints;
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
@@ -429,11 +427,11 @@ mod tests {
             [5, 7, 1, 3, 4, 6, 1, 1, 1, 3, 5, 7, 1, 1, 4, 6]
                 .map(BaseField::from_u32_unchecked)
                 .into_iter()
-                .collect_vec(),
+                .collect::<Vec<_>>(),
         );
         let state = (0..4)
             .map(BaseField::from_u32_unchecked)
-            .collect_vec()
+            .collect::<Vec<_>>()
             .try_into()
             .unwrap();
 
@@ -444,7 +442,7 @@ mod tests {
     fn test_apply_internal() {
         let mut state: [BaseField; 16] = (0..16)
             .map(|i| BaseField::from_u32_unchecked(i * 3 + 187))
-            .collect_vec()
+            .collect::<Vec<_>>()
             .try_into()
             .unwrap();
         let mut internal_matrix = [[BaseField::one(); 16]; 16];
@@ -471,9 +469,13 @@ mod tests {
             gen_interaction_trace(LOG_N_ROWS, interaction_data, &lookup_elements);
 
         let traces = TreeVec::new(vec![vec![], trace0, trace1]);
-        let trace_polys =
-            traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
-        assert_constraints_on_polys(
+        let trace_polys = traces.map(|trace| {
+            trace
+                .into_iter()
+                .map(|c| c.interpolate())
+                .collect::<Vec<_>>()
+        });
+        assert_constraints(
             &trace_polys,
             CanonicCoset::new(LOG_N_ROWS),
             |mut eval| {

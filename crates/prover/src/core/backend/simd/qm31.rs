@@ -1,6 +1,6 @@
-use std::array;
-use std::iter::Sum;
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use core::array;
+use core::iter::Sum;
+use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use bytemuck::{Pod, Zeroable};
 use num_traits::{One, Zero};
@@ -12,6 +12,7 @@ use super::PACKED_QM31_BATCH_INVERSE_CHUNK_SIZE;
 use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{batch_inverse_chunked, FieldExpOps};
+use crate::prelude::*;
 
 pub type PackedSecureField = PackedQM31;
 
@@ -322,7 +323,7 @@ impl From<QM31> for PackedQM31 {
 
 #[cfg(test)]
 mod tests {
-    use std::array;
+    use core::array;
 
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};

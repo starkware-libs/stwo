@@ -1,5 +1,3 @@
-use itertools::Itertools;
-
 use crate::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use crate::core::backend::simd::m31::PackedBaseField;
 use crate::core::backend::simd::SimdBackend;
@@ -9,6 +7,7 @@ use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 pub type WideFibonacciComponent<const N: usize> = FrameworkComponent<WideFibonacciEval<N>>;
 
@@ -49,7 +48,7 @@ pub fn generate_trace<const N: usize>(
 ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
     let mut trace = (0..N)
         .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_size))
-        .collect_vec();
+        .collect::<Vec<_>>();
     for (vec_index, input) in inputs.iter().enumerate() {
         let mut a = input.a;
         let mut b = input.b;
@@ -64,17 +63,16 @@ pub fn generate_trace<const N: usize>(
     trace
         .into_iter()
         .map(|eval| CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(domain, eval))
-        .collect_vec()
+        .collect::<Vec<_>>()
 }
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
     use num_traits::{One, Zero};
 
     use super::WideFibonacciEval;
     use crate::constraint_framework::{
-        assert_constraints_on_polys, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
+        assert_constraints, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
     };
     use crate::core::air::Component;
     use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -103,14 +101,14 @@ mod tests {
         if log_n_instances < LOG_N_LANES {
             let n_instances = 1 << log_n_instances;
             let inputs = vec![FibInput {
-                a: PackedBaseField::from_array(std::array::from_fn(|j| {
+                a: PackedBaseField::from_array(core::array::from_fn(|j| {
                     if j < n_instances {
                         BaseField::one()
                     } else {
                         BaseField::zero()
                     }
                 })),
-                b: PackedBaseField::from_array(std::array::from_fn(|j| {
+                b: PackedBaseField::from_array(core::array::from_fn(|j| {
                     if j < n_instances {
                         BaseField::from_u32_unchecked((j) as u32)
                     } else {
@@ -123,11 +121,11 @@ mod tests {
         let inputs = (0..(1 << (log_n_instances - LOG_N_LANES)))
             .map(|i| FibInput {
                 a: PackedBaseField::one(),
-                b: PackedBaseField::from_array(std::array::from_fn(|j| {
+                b: PackedBaseField::from_array(core::array::from_fn(|j| {
                     BaseField::from_u32_unchecked((i * 16 + j) as u32)
                 })),
             })
-            .collect_vec();
+            .collect::<Vec<_>>();
         generate_trace::<FIB_SEQUENCE_LENGTH>(log_n_instances, &inputs)
     }
 
@@ -139,10 +137,14 @@ mod tests {
     fn test_wide_fibonacci_constraints() {
         const LOG_N_INSTANCES: u32 = 6;
         let traces = TreeVec::new(vec![vec![], generate_test_trace(LOG_N_INSTANCES)]);
-        let trace_polys =
-            traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
+        let trace_polys = traces.map(|trace| {
+            trace
+                .into_iter()
+                .map(|c| c.interpolate())
+                .collect::<Vec<_>>()
+        });
 
-        assert_constraints_on_polys(
+        assert_constraints(
             &trace_polys,
             CanonicCoset::new(LOG_N_INSTANCES),
             fibonacci_constraint_evaluator::<LOG_N_INSTANCES>,
@@ -159,10 +161,14 @@ mod tests {
         // Modify the trace such that a constraint fail.
         trace[17].values.set(2, BaseField::one());
         let traces = TreeVec::new(vec![vec![], trace]);
-        let trace_polys =
-            traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
+        let trace_polys = traces.map(|trace| {
+            trace
+                .into_iter()
+                .map(|c| c.interpolate())
+                .collect::<Vec<_>>()
+        });
 
-        assert_constraints_on_polys(
+        assert_constraints(
             &trace_polys,
             CanonicCoset::new(LOG_N_INSTANCES),
             fibonacci_constraint_evaluator::<LOG_N_INSTANCES>,

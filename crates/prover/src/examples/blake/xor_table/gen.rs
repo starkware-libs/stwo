@@ -1,3 +1,5 @@
+use crate::prelude::*;
+
 #[macro_export]
 macro_rules! xor_table_gen {
     ($modname:tt, $elements:tt, $elem_bits:literal, $expand_bits:literal) => {
@@ -24,7 +26,7 @@ macro_rules! xor_table_gen {
                             mult.clone(),
                         )
                     })
-                    .collect_vec(),
+                    .collect::<Vec<_>>(),
                 XorTableLookupData { xor_accum },
             )
         }
@@ -45,7 +47,7 @@ macro_rules! xor_table_gen {
         ) {
             let limb_bits = XorTable::new(ELEM_BITS, EXPAND_BITS, 0).limb_bits();
             let _span = span!(Level::INFO, "Xor interaction trace").entered();
-            let offsets_vec = u32x16::from_array(std::array::from_fn(|i| i as u32));
+            let offsets_vec = u32x16::from_array(core::array::from_fn(|i| i as u32));
             let mut logup_gen =
                 LogupTraceGenerator::new(XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits());
 
@@ -103,7 +105,7 @@ macro_rules! xor_table_gen {
 
             // If there is an odd number of lookup expressions, handle the last one.
             if let Some(rem) = iter.into_remainder() {
-                if let Some((i, mults)) = rem.collect_vec().pop() {
+                if let Some((i, mults)) = rem.collect::<Vec<_>>().pop() {
                     let mut col_gen = logup_gen.new_col();
                     let ah = i as u32 >> EXPAND_BITS;
                     let bh = i as u32 & ((1 << EXPAND_BITS) - 1);

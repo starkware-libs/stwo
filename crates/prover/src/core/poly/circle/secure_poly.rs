@@ -1,5 +1,5 @@
-use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
+use core::marker::PhantomData;
+use core::ops::{Deref, DerefMut};
 
 use super::{CircleDomain, CircleEvaluation, CirclePoly, PolyOps};
 use crate::core::backend::{ColumnOps, CpuBackend};

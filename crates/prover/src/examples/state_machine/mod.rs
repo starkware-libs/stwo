@@ -1,5 +1,6 @@
 use crate::constraint_framework::relation_tracker::RelationSummary;
 use crate::constraint_framework::Relation;
+use crate::prelude::*;
 pub mod components;
 pub mod gen;
 
@@ -9,7 +10,7 @@ use components::{
     StateMachineStatement1, StateTransitionEval,
 };
 use gen::{gen_interaction_trace, gen_trace};
-use itertools::{chain, Itertools};
+use itertools::chain;
 
 use crate::constraint_framework::TraceLocationAllocator;
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -57,7 +58,7 @@ pub fn prove_state_machine(
     let trace_op0 = gen_trace(x_axis_log_rows, initial_state, 0);
     let trace_op1 = gen_trace(y_axis_log_rows, intermediate_state, 1);
 
-    let trace = chain![trace_op0.clone(), trace_op1.clone()].collect_vec();
+    let trace = chain![trace_op0.clone(), trace_op1.clone()].collect::<Vec<_>>();
 
     let relation_summary = match track_relations {
         false => None,
@@ -100,7 +101,8 @@ pub fn prove_state_machine(
     stmt1.mix_into(channel);
 
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(chain![interaction_trace_op0, interaction_trace_op1].collect_vec());
+    tree_builder
+        .extend_evals(chain![interaction_trace_op0, interaction_trace_op1].collect::<Vec<_>>());
     tree_builder.commit(channel);
 
     // Prove constraints.
@@ -189,7 +191,7 @@ mod tests {
     use super::{prove_state_machine, verify_state_machine};
     use crate::constraint_framework::expr::ExprEvaluator;
     use crate::constraint_framework::{
-        assert_constraints_on_polys, FrameworkEval, Relation, TraceLocationAllocator,
+        assert_constraints, FrameworkEval, Relation, TraceLocationAllocator,
     };
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::M31;
@@ -221,12 +223,11 @@ mod tests {
 
         let trace = TreeVec::new(vec![vec![], trace, interaction_trace]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
-        let component_eval = component.clone();
-        assert_constraints_on_polys(
+        assert_constraints(
             &trace_polys,
             CanonicCoset::new(log_n_rows),
-            |assert_eval| {
-                component_eval.evaluate(assert_eval);
+            |eval| {
+                component.evaluate(eval);
             },
             claimed_sum,
         );

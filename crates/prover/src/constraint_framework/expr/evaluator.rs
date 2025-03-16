@@ -5,6 +5,7 @@ use crate::constraint_framework::expr::ColumnExpr;
 use crate::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use crate::constraint_framework::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
 use crate::core::lookups::utils::Fraction;
+use crate::prelude::*;
 
 pub struct FormalLogupAtRow {
     pub interaction: usize,
@@ -119,7 +120,7 @@ impl EvalAtRow for ExprEvaluator {
         interaction: usize,
         offsets: [isize; N],
     ) -> [Self::F; N] {
-        let res = std::array::from_fn(|i| {
+        let res = core::array::from_fn(|i| {
             let col = ColumnExpr::from((interaction, self.cur_var_index, offsets[i]));
             BaseExpr::Col(col)
         });

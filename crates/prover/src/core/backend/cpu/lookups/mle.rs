@@ -1,4 +1,4 @@
-use std::iter::zip;
+use core::iter::zip;
 
 use num_traits::{One, Zero};
 

@@ -1,9 +1,8 @@
-use std::cmp::Ordering;
-use std::fmt::Debug;
-use std::iter::Map;
-use std::ops::{Deref, DerefMut};
+use core::cmp::Ordering;
+use core::fmt::Debug;
+use core::iter::Map;
+use core::ops::{Deref, DerefMut};
 
-use itertools::Itertools;
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +16,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::ExtensionOf;
+use crate::prelude::*;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///
@@ -226,7 +226,7 @@ impl<B: ColumnOps<BaseField>> LineEvaluation<B> {
 impl LineEvaluation<CpuBackend> {
     /// Interpolates the polynomial as evaluations on `domain`.
     pub fn interpolate(self) -> LinePoly {
-        let mut values = self.values.into_iter().collect_vec();
+        let mut values = self.values.into_iter().collect::<Vec<_>>();
         CpuBackend::bit_reverse_column(&mut values);
         line_ifft(&mut values, self.domain);
         // Normalize the coefficients.
@@ -275,8 +275,6 @@ fn line_ifft<F: ExtensionOf<BaseField> + Copy>(values: &mut [F], mut domain: Lin
 #[cfg(test)]
 mod tests {
     type B = CpuBackend;
-
-    use itertools::Itertools;
 
     use super::LineDomain;
     use crate::core::backend::{ColumnOps, CpuBackend};
@@ -375,7 +373,7 @@ mod tests {
                     + poly.coeffs[2] * x
                     + poly.coeffs[3] * pi_x * x
             })
-            .collect_vec();
+            .collect::<Vec<_>>();
         CpuBackend::bit_reverse_column(&mut values);
         let evals = LineEvaluation::<B>::new(domain, values.into_iter().collect());
 

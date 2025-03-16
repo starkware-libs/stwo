@@ -1,5 +1,6 @@
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::ExtensionOf;
+use crate::prelude::*;
 
 pub trait SquareMatrix<F: ExtensionOf<BaseField> + Copy, const N: usize> {
     fn get_at(&self, i: usize, j: usize) -> F;

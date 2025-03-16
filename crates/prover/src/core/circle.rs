@@ -1,4 +1,4 @@
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use core::ops::{Add, Div, Mul, Neg, Sub};
 
 use num_traits::{One, Zero};
 
@@ -463,11 +463,10 @@ impl<T: Add<Output = T> + Copy> Iterator for CosetIterator<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use num_traits::{One, Pow};
 
     use super::{CirclePointIndex, Coset};
+    use crate::collections::BTreeSet;
     use crate::core::channel::Blake2sChannel;
     use crate::core::circle::{CirclePoint, SECURE_FIELD_CIRCLE_GEN};
     use crate::core::fields::qm31::{SecureField, P4};

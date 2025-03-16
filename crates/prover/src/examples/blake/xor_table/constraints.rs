@@ -1,3 +1,5 @@
+use crate::prelude::*;
+
 #[macro_export]
 macro_rules! xor_table_eval {
     ($modname:tt, $elements:tt, $elem_bits:literal, $expand_bits:literal) => {

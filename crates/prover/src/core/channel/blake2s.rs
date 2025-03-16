@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+use core::iter;
+#[cfg(feature = "std")]
 use std::iter;
 
 use super::{Channel, ChannelTime};
@@ -7,6 +10,7 @@ use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::fields::IntoSlice;
 use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
 use crate::core::vcs::blake2s_ref::compress;
+use crate::prelude::*;
 
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
@@ -56,7 +60,7 @@ impl Channel for Blake2sChannel {
     const BYTES_PER_HASH: usize = BLAKE_BYTES_PER_HASH;
 
     fn trailing_zeros(&self) -> u32 {
-        u128::from_le_bytes(std::array::from_fn(|i| self.digest.0[i])).trailing_zeros()
+        u128::from_le_bytes(core::array::from_fn(|i| self.digest.0[i])).trailing_zeros()
     }
 
     fn mix_felts(&mut self, felts: &[SecureField]) {
@@ -68,14 +72,14 @@ impl Channel for Blake2sChannel {
     }
 
     fn mix_u64(&mut self, nonce: u64) {
-        let digest: [u32; 8] = unsafe { std::mem::transmute(self.digest) };
+        let digest: [u32; 8] = unsafe { core::mem::transmute(self.digest) };
         let mut msg = [0; 16];
         msg[0] = nonce as u32;
         msg[1] = (nonce >> 32) as u32;
-        let res = compress(std::array::from_fn(|i| digest[i]), msg, 0, 0, 0, 0);
+        let res = compress(core::array::from_fn(|i| digest[i]), msg, 0, 0, 0, 0);
 
         // TODO(shahars) Channel should always finalize hash.
-        self.update_digest(unsafe { std::mem::transmute::<[u32; 8], Blake2sHash>(res) });
+        self.update_digest(unsafe { core::mem::transmute::<[u32; 8], Blake2sHash>(res) });
     }
 
     fn draw_felt(&mut self) -> SecureField {
@@ -113,8 +117,7 @@ impl Channel for Blake2sChannel {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
+    use crate::collections::BTreeSet;
     use crate::core::channel::blake2s::Blake2sChannel;
     use crate::core::channel::Channel;
     use crate::core::fields::qm31::SecureField;

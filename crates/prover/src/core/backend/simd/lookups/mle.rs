@@ -1,6 +1,5 @@
-use core::ops::Sub;
-use std::iter::zip;
-use std::ops::{Add, Mul};
+use core::iter::zip;
+use core::ops::{Add, Mul, Sub};
 
 use crate::core::backend::simd::column::SecureColumn;
 use crate::core::backend::simd::m31::N_LANES;
@@ -91,8 +90,6 @@ fn fold_packed_mle_evals<
 
 #[cfg(test)]
 mod tests {
-    use itertools::Itertools;
-
     use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::{Column, CpuBackend};
     use crate::core::channel::Channel;
@@ -118,7 +115,9 @@ mod tests {
     #[test]
     fn fix_first_variable_with_base_field_mle_matches_cpu() {
         const N_VARIABLES: u32 = 8;
-        let values = (0..1 << N_VARIABLES).map(BaseField::from).collect_vec();
+        let values = (0..1 << N_VARIABLES)
+            .map(BaseField::from)
+            .collect::<Vec<_>>();
         let mle_simd = Mle::<SimdBackend, BaseField>::new(values.iter().copied().collect());
         let mle_cpu = Mle::<CpuBackend, BaseField>::new(values);
         let random_assignment = SecureField::from_u32_unchecked(7, 12, 3, 2);

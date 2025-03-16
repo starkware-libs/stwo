@@ -1,4 +1,4 @@
-use std::iter::zip;
+use core::iter::zip;
 
 use num_traits::Zero;
 
@@ -16,6 +16,7 @@ use crate::core::lookups::gkr_prover::{
 use crate::core::lookups::mle::Mle;
 use crate::core::lookups::sumcheck::MultivariatePolyOracle;
 use crate::core::lookups::utils::{Fraction, Reciprocal, UnivariatePoly};
+use crate::prelude::*;
 
 impl GkrOps for SimdBackend {
     #[allow(clippy::uninit_vec)]
@@ -508,7 +509,7 @@ fn into_simd_layer(cpu_layer: Layer<CpuBackend>) -> Layer<SimdBackend> {
 
 #[cfg(test)]
 mod tests {
-    use std::iter::zip;
+    use core::iter::zip;
 
     use num_traits::One;
     use rand::rngs::SmallRng;

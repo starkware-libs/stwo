@@ -2,9 +2,9 @@
 // TODO(andrew): Remove in downstream PR.
 #![allow(dead_code)]
 
-use std::iter::zip;
+use core::iter::zip;
 
-use itertools::{chain, zip_eq, Itertools};
+use itertools::{chain, zip_eq};
 use num_traits::{One, Zero};
 use tracing::{span, Level};
 
@@ -39,6 +39,7 @@ use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 /// Prover component that carries out a univariate IOP for multilinear eval at point.
 ///
@@ -228,7 +229,7 @@ impl<O: MleCoeffColumnOracle> ComponentProver<SimdBackend> for MleEvalProverComp
         let log_expand = eval_domain.log_size() - trace_domain.log_size();
         let mut denom_inv = (0..1 << log_expand)
             .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
-            .collect_vec();
+            .collect::<Vec<_>>();
         bit_reverse(&mut denom_inv);
 
         // Accumulator.
@@ -684,7 +685,7 @@ fn eval_step_selector(coset: Coset, log_step: u32, p: CirclePoint<SecureField>) 
             *p = p.double();
             Some(res.y)
         })
-        .collect_vec();
+        .collect::<Vec<_>>();
     vanish_at_log_step.reverse();
     // We only need the first `log_step` many values.
     vanish_at_log_step.truncate(log_step as usize);
@@ -730,10 +731,10 @@ fn hadamard_product(
 
 #[cfg(test)]
 mod tests {
-    use std::array;
-    use std::iter::{repeat, zip};
+    use core::array;
+    use core::iter::{repeat, zip};
 
-    use itertools::{chain, Itertools};
+    use itertools::chain;
     use mle_coeff_column::{MleCoeffColumnComponent, MleCoeffColumnEval};
     use num_traits::{One, Zero};
     use rand::rngs::SmallRng;
@@ -745,9 +746,7 @@ mod tests {
         MleEvalVerifierComponent,
     };
     use crate::constraint_framework::preprocessed_columns::IsFirst;
-    use crate::constraint_framework::{
-        assert_constraints_on_polys, EvalAtRow, TraceLocationAllocator,
-    };
+    use crate::constraint_framework::{assert_constraints, EvalAtRow, TraceLocationAllocator};
     use crate::core::air::{Component, ComponentProver, Components};
     use crate::core::backend::cpu::bit_reverse;
     use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
@@ -959,7 +958,7 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(log_size);
 
-        assert_constraints_on_polys(
+        assert_constraints(
             &trace_polys,
             trace_domain,
             |mut eval| {
@@ -1001,7 +1000,7 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
 
-        assert_constraints_on_polys(
+        assert_constraints(
             &trace_polys,
             trace_domain,
             |mut eval| {
@@ -1038,7 +1037,7 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
 
-        assert_constraints_on_polys(
+        assert_constraints(
             &trace_polys,
             trace_domain,
             |mut eval| {
@@ -1075,7 +1074,7 @@ mod tests {
         let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(N_VARIABLES as u32);
 
-        assert_constraints_on_polys(
+        assert_constraints(
             &trace_polys,
             trace_domain,
             |mut eval| {
@@ -1099,14 +1098,14 @@ mod tests {
     fn inclusive_prefix_sum_constraints_with_log_size_5() {
         const LOG_SIZE: u32 = 5;
         let mut rng = SmallRng::seed_from_u64(0);
-        let vals = (0..1 << LOG_SIZE).map(|_| rng.gen()).collect_vec();
+        let vals = (0..1 << LOG_SIZE).map(|_| rng.gen()).collect::<Vec<_>>();
         let cumulative_sum = vals.iter().sum::<SecureField>();
         let cumulative_sum_shift = cumulative_sum / BaseField::from(vals.len());
         let trace = TreeVec::new(vec![gen_prefix_sum_trace(vals)]);
         let trace_polys = trace.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
         let trace_domain = CanonicCoset::new(LOG_SIZE);
 
-        assert_constraints_on_polys(
+        assert_constraints(
             &trace_polys,
             trace_domain,
             |mut eval| {

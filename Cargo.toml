@@ -7,15 +7,17 @@ version = "0.1.1"
 edition = "2021"
 
 [workspace.dependencies]
-blake2 = "0.10.6"
-blake3 = "1.5.0"
+blake2 = { version = "0.10.6", default-features = false }
+blake3 = { version = "1.5.0", default-features = false }
 educe = "0.5.0"
-hex = "0.4.3"
-itertools = "0.12.0"
-num-traits = "0.2.17"
-thiserror = "1.0.56"
-bytemuck = "1.14.3"
-tracing = "0.1.40"
+hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
+itertools = { version = "0.14.0", default-features = false, features = ["use_alloc"] }
+num-traits = { version = "0.2.17", default-features = false }
+thiserror = { version = "2.0.12", default-features = false }
+bytemuck = { version = "1.14.3", default-features = false }
+tracing = { version = "0.1.40", default-features = false, features = ["attributes"] }
+starknet-ff = { version = "0.3.7", default-features = false, features=["alloc", "serde"] }
+starknet-crypto = { version = "0.6.2", default-features = false }
 
 [profile.bench]
 codegen-units = 1

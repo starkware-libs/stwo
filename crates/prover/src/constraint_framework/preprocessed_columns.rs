@@ -1,4 +1,4 @@
-use std::simd::Simd;
+use core::simd::Simd;
 
 use num_traits::{One, Zero};
 
@@ -8,6 +8,7 @@ use crate::core::backend::{Col, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::prelude::*;
 
 /// Used for comparing preprocessed columns.
 /// Column IDs must be unique in a given context.
@@ -30,7 +31,7 @@ impl IsFirst {
         assert!(vec_row < (1 << self.log_size) / N_LANES);
         if vec_row == 0 {
             unsafe {
-                PackedM31::from_simd_unchecked(Simd::from_array(std::array::from_fn(|i| {
+                PackedM31::from_simd_unchecked(Simd::from_array(core::array::from_fn(|i| {
                     if i == 0 {
                         1
                     } else {

@@ -1,10 +1,12 @@
 //! GKR batch prover for Grand Product and LogUp lookup arguments.
+#[cfg(not(feature = "std"))]
+use alloc::borrow::Cow;
+use core::iter::{successors, zip};
+use core::ops::Deref;
+#[cfg(feature = "std")]
 use std::borrow::Cow;
-use std::iter::{successors, zip};
-use std::ops::Deref;
 
 use educe::Educe;
-use itertools::Itertools;
 use num_traits::{One, Zero};
 use thiserror::Error;
 
@@ -18,6 +20,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, FieldExpOps};
 use crate::core::lookups::sumcheck;
+use crate::prelude::*;
 
 pub trait GkrOps: MleOps<BaseField> + MleOps<SecureField> {
     /// Returns evaluations `eq(x, y) * v` for all `x` in `{0, 1}^n`.
@@ -406,17 +409,17 @@ pub fn prove_batch<B: GkrOps>(
     let n_layers_by_instance = input_layer_by_instance
         .iter()
         .map(|l| l.n_variables())
-        .collect_vec();
+        .collect::<Vec<_>>();
     let n_layers = *n_layers_by_instance.iter().max().unwrap();
 
     // Evaluate all instance circuits and collect the layer values.
     let mut layers_by_instance = input_layer_by_instance
         .into_iter()
         .map(|input_layer| gen_layers(input_layer).into_iter().rev())
-        .collect_vec();
+        .collect::<Vec<_>>();
 
     let mut output_claims_by_instance = vec![None; n_instances];
-    let mut layer_masks_by_instance = (0..n_instances).map(|_| Vec::new()).collect_vec();
+    let mut layer_masks_by_instance = (0..n_instances).map(|_| Vec::new()).collect::<Vec<_>>();
     let mut sumcheck_proofs = Vec::new();
 
     let mut ood_point = Vec::new();
@@ -466,7 +469,7 @@ pub fn prove_batch<B: GkrOps>(
         let masks = constant_poly_oracles
             .into_iter()
             .map(|oracle| oracle.try_into_mask().unwrap())
-            .collect_vec();
+            .collect::<Vec<_>>();
 
         // Seed the channel with the layer masks.
         for (&instance, mask) in zip(&sumcheck_instances, &masks) {
@@ -512,7 +515,7 @@ pub fn prove_batch<B: GkrOps>(
 /// Executes the GKR circuit on the input layer and returns all the circuit's layers.
 fn gen_layers<B: GkrOps>(input_layer: Layer<B>) -> Vec<Layer<B>> {
     let n_variables = input_layer.n_variables();
-    let layers = successors(Some(input_layer), |layer| layer.next_layer()).collect_vec();
+    let layers = successors(Some(input_layer), |layer| layer.next_layer()).collect::<Vec<_>>();
     assert_eq!(layers.len(), n_variables + 1);
     layers
 }

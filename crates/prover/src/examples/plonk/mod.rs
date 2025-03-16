@@ -1,12 +1,11 @@
-use itertools::Itertools;
 use num_traits::One;
 use tracing::{span, Level};
 
 use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use crate::constraint_framework::{
-    assert_constraints_on_polys, relation, EvalAtRow, FrameworkComponent, FrameworkEval,
-    RelationEntry, TraceLocationAllocator,
+    assert_constraints, relation, EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry,
+    TraceLocationAllocator,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -22,6 +21,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof};
 use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 pub type PlonkComponent = FrameworkComponent<PlonkEval>;
 
@@ -205,7 +205,7 @@ pub fn prove_fibonacci_plonk(
             col,
         )
     })
-    .collect_vec();
+    .collect::<Vec<_>>();
     let constants_trace_location = tree_builder.extend_evals(constant_trace);
     tree_builder.commit(channel);
     span.exit();
@@ -246,13 +246,12 @@ pub fn prove_fibonacci_plonk(
     let trace_polys = commitment_scheme
         .trees
         .as_ref()
-        .map(|t| t.polynomials.iter().cloned().collect_vec());
-    let component_eval = component.clone();
-    assert_constraints_on_polys(
+        .map(|t| t.polynomials.iter().cloned().collect::<Vec<_>>());
+    assert_constraints(
         &trace_polys,
         CanonicCoset::new(log_n_rows),
-        |assert_eval| {
-            component_eval.evaluate(assert_eval);
+        |mut eval| {
+            component.evaluate(eval);
         },
         claimed_sum,
     );

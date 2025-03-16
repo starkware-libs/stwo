@@ -1,12 +1,9 @@
-use std::collections::HashSet;
-use std::vec;
-
-use itertools::Itertools;
-
+use crate::collections::hash_set::HashSet;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::ColumnVec;
+use crate::prelude::*;
 
 /// Mask holds a vector with an entry for each column.
 /// Each entry holds a list of mask items, which are the offsets of the mask at that column.
@@ -23,7 +20,7 @@ pub fn fixed_mask_points(
             .flat_map(|mask_entry| mask_entry.iter().collect::<HashSet<_>>())
             .collect::<HashSet<&usize>>()
             .into_iter()
-            .collect_vec(),
+            .collect::<Vec<_>>(),
         vec![&0]
     );
     mask.iter()

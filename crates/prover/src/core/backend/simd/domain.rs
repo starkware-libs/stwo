@@ -1,4 +1,4 @@
-use std::simd::{simd_swizzle, u32x2, Simd};
+use core::simd::{simd_swizzle, u32x2, Simd};
 
 use super::m31::{PackedM31, LOG_N_LANES};
 use crate::core::circle::{CirclePoint, M31_CIRCLE_LOG_ORDER};
@@ -17,7 +17,7 @@ impl CircleDomainBitRevIterator {
         let log_size = domain.log_size();
         assert!(log_size >= LOG_N_LANES);
 
-        let initial_points = std::array::from_fn(|i| domain.at(bit_reverse_index(i, log_size)));
+        let initial_points = core::array::from_fn(|i| domain.at(bit_reverse_index(i, log_size)));
         let current = CirclePoint {
             x: PackedM31::from_array(initial_points.each_ref().map(|p| p.x)),
             y: PackedM31::from_array(initial_points.each_ref().map(|p| p.y)),
@@ -76,7 +76,7 @@ fn test_circle_domain_bit_rev_iterator() {
     crate::core::backend::cpu::bit_reverse(&mut expected);
     let actual = CircleDomainBitRevIterator::new(domain)
         .flat_map(|c| -> [_; 16] {
-            std::array::from_fn(|i| CirclePoint {
+            core::array::from_fn(|i| CirclePoint {
                 x: c.x.to_array()[i],
                 y: c.y.to_array()[i],
             })
