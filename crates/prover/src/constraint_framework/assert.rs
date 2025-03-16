@@ -16,6 +16,7 @@ pub struct AssertEvaluator<'a> {
     pub trace: &'a TreeVec<Vec<Vec<BaseField>>>,
     pub col_index: TreeVec<usize>,
     pub row: usize,
+    pub constraint_counter: usize,
     pub logup: LogupAtRow<Self>,
 }
 impl<'a> AssertEvaluator<'a> {
@@ -29,6 +30,7 @@ impl<'a> AssertEvaluator<'a> {
             trace,
             col_index: TreeVec::new(vec![0; trace.len()]),
             row,
+            constraint_counter: 0,
             logup: LogupAtRow::new(INTERACTION_TRACE_IDX, claimed_sum, log_size),
         }
     }
@@ -62,9 +64,11 @@ impl EvalAtRow for AssertEvaluator<'_> {
         assert_eq!(
             Self::EF::from(constraint),
             SecureField::zero(),
-            "row: {}",
-            self.row
+            "row: #{}, constraint #{}",
+            self.row,
+            self.constraint_counter
         );
+        self.constraint_counter += 1;
     }
 
     fn combine_ef(values: [Self::F; SECURE_EXTENSION_DEGREE]) -> Self::EF {
