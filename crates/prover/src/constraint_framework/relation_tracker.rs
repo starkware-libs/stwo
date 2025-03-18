@@ -6,14 +6,14 @@ use num_traits::Zero;
 
 use super::{
     Batching, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
-    TraceLocationAllocator, INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
+    INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };
 use crate::core::backend::Column;
 use crate::core::fields::m31::{BaseField, M31};
-use crate::core::fields::qm31::{SecureField, QM31};
+use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::lookups::utils::Fraction;
-use crate::core::pcs::{TreeSubspan, TreeVec};
+use crate::core::pcs::TreeVec;
 use crate::core::utils::{
     bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
 };
@@ -25,44 +25,32 @@ pub struct RelationTrackerEntry {
     pub values: Vec<M31>,
 }
 
-pub struct RelationTrackerComponent<E: FrameworkEval> {
-    eval: E,
-    trace_locations: TreeVec<TreeSubspan>,
-    preprocessed_column_indices: Vec<usize>,
-}
-impl<E: FrameworkEval> RelationTrackerComponent<E> {
-    pub fn new(location_allocator: &mut TraceLocationAllocator, eval: E) -> Self {
-        let component = FrameworkComponent::<E>::new(location_allocator, eval, QM31::default());
+pub fn add_to_relation_entries<E: FrameworkEval>(
+    component: &FrameworkComponent<E>,
+    trace: &TreeVec<Vec<&Vec<BaseField>>>,
+) -> Vec<RelationTrackerEntry> {
+    let log_size = component.eval.log_size();
 
-        // Interaction trace is no needed for relation tracker.
-        let mut trace_locations = component.trace_locations;
-        trace_locations.truncate(INTERACTION_TRACE_IDX);
+    // Deref the sub-tree. Only copies the references.
+    // Interaction trace is no needed for relation tracker.
+    let mut sub_tree = trace
+        .sub_tree(&component.trace_locations[..INTERACTION_TRACE_IDX])
+        .map_cols(|col| *col);
 
-        Self {
-            eval: component.eval,
-            trace_locations,
-            preprocessed_column_indices: component.preprocessed_column_indices,
-        }
-    }
+    // Aggregating the preprocessed columns. This information does not propagate from
+    // "next_interaction_mask", hence requires special treatment.
+    sub_tree[PREPROCESSED_TRACE_IDX] = component
+        .preprocessed_column_indices
+        .iter()
+        .map(|idx| trace[PREPROCESSED_TRACE_IDX][*idx])
+        .collect();
 
-    pub fn entries(self, trace: &TreeVec<Vec<&Vec<BaseField>>>) -> Vec<RelationTrackerEntry> {
-        let log_size = self.eval.log_size();
-
-        // Deref the sub-tree. Only copies the references.
-        let mut sub_tree = trace.sub_tree(&self.trace_locations).map_cols(|col| *col);
-        sub_tree[PREPROCESSED_TRACE_IDX] = self
-            .preprocessed_column_indices
-            .iter()
-            .map(|idx| trace[PREPROCESSED_TRACE_IDX][*idx])
-            .collect();
-        let mut entries = vec![];
-
-        for row in 0..(1 << log_size) {
+    (0..1 << log_size)
+        .flat_map(|row| {
             let evaluator = RelationTrackerEvaluator::new(&sub_tree, row, log_size);
-            entries.extend(self.eval.evaluate(evaluator).entries());
-        }
-        entries
-    }
+            component.eval.evaluate(evaluator).entries()
+        })
+        .collect()
 }
 
 /// Aggregates relation entries.
