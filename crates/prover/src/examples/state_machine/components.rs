@@ -133,10 +133,13 @@ impl StateMachineComponents {
 }
 
 pub fn track_state_machine_relations(
-    trace: &TreeVec<&Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
+    trace: &TreeVec<Vec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
     x_axis_log_n_rows: u32,
     y_axis_log_n_rows: u32,
 ) -> Vec<RelationTrackerEntry> {
+    let trace = trace.as_ref().map_cols(|col| col.to_cpu().values);
+    let trace = &trace.as_cols_ref();
+
     let tree_span_provider = &mut TraceLocationAllocator::default();
     let mut entries = vec![];
     entries.extend(
@@ -148,7 +151,7 @@ pub fn track_state_machine_relations(
                 claimed_sum: QM31::zero(),
             },
         )
-        .entries(&trace.into()),
+        .entries(trace),
     );
     entries.extend(
         RelationTrackerComponent::new(
@@ -159,7 +162,7 @@ pub fn track_state_machine_relations(
                 claimed_sum: QM31::zero(),
             },
         )
-        .entries(&trace.into()),
+        .entries(trace),
     );
 
     entries

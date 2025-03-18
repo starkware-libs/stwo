@@ -57,13 +57,13 @@ pub fn prove_state_machine(
     let trace_op0 = gen_trace(x_axis_log_rows, initial_state, 0);
     let trace_op1 = gen_trace(y_axis_log_rows, intermediate_state, 1);
 
-    let trace = chain![trace_op0.clone(), trace_op1.clone()].collect_vec();
+    let trace = chain![&trace_op0, &trace_op1].collect_vec();
 
     let relation_summary = match track_relations {
         false => None,
         true => Some(RelationSummary::summarize_relations(
             &track_state_machine_relations(
-                &TreeVec(vec![&vec![], &trace]),
+                &TreeVec(vec![vec![], trace]),
                 x_axis_log_rows,
                 y_axis_log_rows,
             ),
