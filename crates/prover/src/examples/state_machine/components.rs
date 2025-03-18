@@ -1,11 +1,12 @@
+use itertools::chain;
 use num_traits::{One, Zero};
 
 use crate::constraint_framework::relation_tracker::{
-    RelationTrackerComponent, RelationTrackerEntry,
+    add_to_relation_entries, RelationTrackerEntry,
 };
 use crate::constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, RelationEntry,
-    TraceLocationAllocator, PREPROCESSED_TRACE_IDX,
+    PREPROCESSED_TRACE_IDX,
 };
 use crate::core::air::{Component, ComponentProver};
 use crate::core::backend::simd::SimdBackend;
@@ -134,38 +135,19 @@ impl StateMachineComponents {
 
 pub fn track_state_machine_relations(
     trace: &TreeVec<Vec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
-    x_axis_log_n_rows: u32,
-    y_axis_log_n_rows: u32,
+    StateMachineComponents {
+        component0,
+        component1,
+    }: &StateMachineComponents,
 ) -> Vec<RelationTrackerEntry> {
     let trace = trace.as_ref().map_cols(|col| col.to_cpu().values);
     let trace = &trace.as_cols_ref();
 
-    let tree_span_provider = &mut TraceLocationAllocator::default();
-    let mut entries = vec![];
-    entries.extend(
-        RelationTrackerComponent::new(
-            tree_span_provider,
-            StateTransitionEval::<0> {
-                log_n_rows: x_axis_log_n_rows,
-                lookup_elements: StateMachineElements::dummy(),
-                claimed_sum: QM31::zero(),
-            },
-        )
-        .entries(trace),
-    );
-    entries.extend(
-        RelationTrackerComponent::new(
-            tree_span_provider,
-            StateTransitionEval::<1> {
-                log_n_rows: y_axis_log_n_rows,
-                lookup_elements: StateMachineElements::dummy(),
-                claimed_sum: QM31::zero(),
-            },
-        )
-        .entries(trace),
-    );
-
-    entries
+    chain!(
+        add_to_relation_entries(component0, trace),
+        add_to_relation_entries(component1, trace)
+    )
+    .collect()
 }
 
 pub struct StateMachineProof<H: MerkleHasher> {

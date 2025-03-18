@@ -57,19 +57,6 @@ pub fn prove_state_machine(
     let trace_op0 = gen_trace(x_axis_log_rows, initial_state, 0);
     let trace_op1 = gen_trace(y_axis_log_rows, intermediate_state, 1);
 
-    let trace = chain![&trace_op0, &trace_op1].collect_vec();
-
-    let relation_summary = match track_relations {
-        false => None,
-        true => Some(RelationSummary::summarize_relations(
-            &track_state_machine_relations(
-                &TreeVec(vec![vec![], trace]),
-                x_axis_log_rows,
-                y_axis_log_rows,
-            ),
-        )),
-    };
-
     // Commitments.
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.commit(channel);
@@ -128,6 +115,16 @@ pub fn prove_state_machine(
         component0,
         component1,
     };
+
+    let trace = chain![&trace_op0, &trace_op1].collect_vec();
+
+    let relation_summary = match track_relations {
+        false => None,
+        true => Some(RelationSummary::summarize_relations(
+            &track_state_machine_relations(&TreeVec(vec![vec![], trace]), &components),
+        )),
+    };
+
     let stark_proof = prove(&components.component_provers(), channel, commitment_scheme).unwrap();
     let proof = StateMachineProof {
         public_input: [initial_state, final_state],
