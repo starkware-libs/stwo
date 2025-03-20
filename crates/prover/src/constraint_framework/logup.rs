@@ -270,6 +270,18 @@ impl LogupColGenerator<'_> {
             }
         })
     }
+
+    #[cfg(feature = "parallel")]
+    pub fn par_iter_mut(&mut self) -> impl IndexedParallelIterator<Item = FractionWriter<'_>> {
+        let [coord0, coord1, coord2, coord3] =
+            self.numerator.columns.each_mut().map(|s| &mut s.data);
+        (coord0, coord1, coord2, coord3, &mut self.gen.denom.data)
+            .into_par_iter()
+            .map(|(n0, n1, n2, n3, d)| FractionWriter {
+                numerator: [n0, n1, n2, n3],
+                denom: d,
+            })
+    }
 }
 
 /// Exposes a writer for writing a fraction to a single index in a column.
@@ -339,5 +351,41 @@ mod tests {
         col_gen.finalize_col();
         let (_, sum) = log_gen.finalize_last();
         assert_eq!(sum, expected_sum);
+    }
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_parallel_frac_writer() {
+        use std::array;
+
+        use rayon::prelude::*;
+        // Sequential version.
+        let mut log_gen_seq = LogupTraceGenerator::new(6);
+        let mut col_gen_seq = log_gen_seq.new_col();
+        col_gen_seq.iter_mut().enumerate().for_each(|(i, writer)| {
+            let num = array::from_fn(|j| qm31!(i as u32, j as u32, 0, 1));
+            let den = array::from_fn(|j| qm31!(i as u32, j as u32, 2, 3));
+            let [num, den] = [num, den].map(PackedSecureField::from_array);
+            writer.write_frac(num, den);
+        });
+        col_gen_seq.finalize_col();
+        let (_, sum_seq) = log_gen_seq.finalize_last();
+
+        // Parallel version.
+        let mut log_gen_par = LogupTraceGenerator::new(6);
+        let mut col_gen_par = log_gen_par.new_col();
+        col_gen_par
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(i, writer)| {
+                let num = array::from_fn(|j| qm31!(i as u32, j as u32, 0, 1));
+                let den = array::from_fn(|j| qm31!(i as u32, j as u32, 2, 3));
+                let [num, den] = [num, den].map(PackedSecureField::from_array);
+                writer.write_frac(num, den);
+            });
+        col_gen_par.finalize_col();
+        let (_, sum_par) = log_gen_par.finalize_last();
+
+        assert_eq!(sum_seq, sum_par);
     }
 }
