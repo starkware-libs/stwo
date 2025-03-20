@@ -1,6 +1,6 @@
 use std::ops::{Mul, Sub};
 
-use itertools::Itertools;
+use itertools::{multizip, Itertools};
 use num_traits::{One, Zero};
 
 use super::EvalAtRow;
@@ -13,7 +13,7 @@ use crate::core::backend::Column;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumnByCoords;
+use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
@@ -235,15 +235,48 @@ impl LogupColGenerator<'_> {
 
         self.gen.trace.push(self.numerator)
     }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = FracWriter<'_>> {
+        let denom = self.gen.denom.data.iter_mut();
+        let [coord0, coord1, coord2, coord3] =
+            self.numerator.columns.each_mut().map(|s| s.data.iter_mut());
+        multizip((coord0, coord1, coord2, coord3, denom)).map(|(n0, n1, n2, n3, d)| FracWriter {
+            numerator: [n0, n1, n2, n3],
+            denom: d,
+        })
+    }
+}
+
+pub struct FracWriter<'a> {
+    numerator: [&'a mut PackedBaseField; SECURE_EXTENSION_DEGREE],
+    denom: &'a mut PackedSecureField,
+}
+impl FracWriter<'_> {
+    pub fn write_frac(self, numerator: PackedSecureField, denom: PackedSecureField) {
+        debug_assert!(
+            denom.to_array().iter().all(|x| *x != SecureField::zero()),
+            "{:?}",
+            ("denom is zero {}", denom)
+        );
+        let [c0, c1, c2, c3] = numerator.into_packed_m31s();
+        *self.numerator[0] = c0;
+        *self.numerator[1] = c1;
+        *self.numerator[2] = c2;
+        *self.numerator[3] = c3;
+        *self.denom = denom;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::LookupElements;
+    use crate::constraint_framework::logup::LogupTraceGenerator;
+    use crate::core::backend::simd::qm31::PackedSecureField;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::FieldExpOps;
+    use crate::{m31, qm31};
 
     #[test]
     fn test_lookup_elements_combine() {
@@ -262,5 +295,22 @@ mod tests {
                 + BaseField::from_u32_unchecked(789) * lookup_elements.alpha.pow(2)
                 - lookup_elements.z
         );
+    }
+
+    #[test]
+    fn test_frac_writer() {
+        let expected_sum = (qm31!(1, 2, 3, 4) * qm31!(5, 6, 7, 8).inverse()) * m31!(1 << 6);
+
+        let mut log_gen = LogupTraceGenerator::new(6);
+        let mut col_gen = log_gen.new_col();
+        for writer in col_gen.iter_mut() {
+            let num = PackedSecureField::broadcast(qm31!(1, 2, 3, 4));
+            let den = PackedSecureField::broadcast(qm31!(5, 6, 7, 8));
+            writer.write_frac(num, den);
+        }
+
+        col_gen.finalize_col();
+        let (_, sum) = log_gen.finalize_last();
+        assert_eq!(sum, expected_sum);
     }
 }
