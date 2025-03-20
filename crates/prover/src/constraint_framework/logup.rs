@@ -2,6 +2,8 @@ use std::ops::{Mul, Sub};
 
 use itertools::{multizip, Itertools};
 use num_traits::{One, Zero};
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::EvalAtRow;
 use crate::core::backend::simd::column::SecureColumn;
@@ -245,6 +247,19 @@ impl LogupColGenerator<'_> {
             denom: d,
         })
     }
+
+    #[cfg(feature = "parallel")]
+    pub fn par_iter_mut(&mut self) -> impl ParallelIterator<Item = FracWriter<'_>> {
+        let denom = self.gen.denom.data.iter_mut();
+        let [coord0, coord1, coord2, coord3] =
+            self.numerator.columns.each_mut().map(|s| s.data.iter_mut());
+        multizip((coord0, coord1, coord2, coord3, denom))
+            .par_bridge()
+            .map(|(n0, n1, n2, n3, d)| FracWriter {
+                numerator: [n0, n1, n2, n3],
+                denom: d,
+            })
+    }
 }
 
 pub struct FracWriter<'a> {
@@ -312,5 +327,34 @@ mod tests {
         col_gen.finalize_col();
         let (_, sum) = log_gen.finalize_last();
         assert_eq!(sum, expected_sum);
+    }
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_parallel_frac_writer() {
+        use rayon::iter::ParallelIterator;
+        // Sequential version.
+        let mut log_gen_seq = LogupTraceGenerator::new(6);
+        let mut col_gen_seq = log_gen_seq.new_col();
+        col_gen_seq.iter_mut().for_each(|writer| {
+            let num = PackedSecureField::broadcast(qm31!(1, 2, 3, 4));
+            let den = PackedSecureField::broadcast(qm31!(5, 6, 7, 8));
+            writer.write_frac(num, den);
+        });
+        col_gen_seq.finalize_col();
+        let (_, sum_seq) = log_gen_seq.finalize_last();
+
+        // Parallel version.
+        let mut log_gen_par = LogupTraceGenerator::new(6);
+        let mut col_gen_par = log_gen_par.new_col();
+        col_gen_par.par_iter_mut().for_each(|writer| {
+            let num = PackedSecureField::broadcast(qm31!(1, 2, 3, 4));
+            let den = PackedSecureField::broadcast(qm31!(5, 6, 7, 8));
+            writer.write_frac(num, den);
+        });
+        col_gen_par.finalize_col();
+        let (_, sum_par) = log_gen_par.finalize_last();
+
+        assert_eq!(sum_seq, sum_par);
     }
 }
