@@ -124,7 +124,10 @@ fn accumulate_quotients_on_subdomain(
     let iter = quad_rows.iter().zip(values.chunks_mut(4)).enumerate();
 
     #[cfg(feature = "parallel")]
-    let iter = quad_rows.par_iter().zip(values.chunks_mut(4)).enumerate();
+    let iter = quad_rows
+        .par_iter()
+        .zip(values.par_chunks_mut(4))
+        .enumerate();
 
     iter.for_each(|(quad_row, (points, mut values_dst))| {
         // TODO(andrew): Spapini said: Use optimized domain iteration. Is there a better way to do
