@@ -11,7 +11,7 @@ use crate::core::poly::BitReversedOrder;
 
 /// Used for comparing preprocessed columns.
 /// Column IDs must be unique in a given context.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PreProcessedColumnId {
     pub id: String,
 }
