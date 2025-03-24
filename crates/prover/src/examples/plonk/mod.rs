@@ -170,7 +170,7 @@ pub fn prove_fibonacci_plonk(
         op: range.clone().map(|_| 1.into()).collect(),
         a_val: range.clone().map(|i| fib_values[i]).collect(),
         b_val: range.clone().map(|i| fib_values[i + 1]).collect(),
-        c_val: range.clone().map(|i| fib_values[i + 2]).collect(),
+        c_val: range.map(|i| fib_values[i + 2]).collect(),
     };
     circuit.mult.set((1 << log_n_rows) - 1, 0.into());
     circuit.mult.set((1 << log_n_rows) - 2, 1.into());

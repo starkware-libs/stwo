@@ -75,12 +75,12 @@ where
     let t02 = t0.clone() + t0.clone();
     let t1 = x[2].clone() + x[3].clone();
     let t12 = t1.clone() + t1.clone();
-    let t2 = x[1].clone() + x[1].clone() + t1.clone();
-    let t3 = x[3].clone() + x[3].clone() + t0.clone();
-    let t4 = t12.clone() + t12.clone() + t3.clone();
-    let t5 = t02.clone() + t02.clone() + t2.clone();
-    let t6 = t3.clone() + t5.clone();
-    let t7 = t2.clone() + t4.clone();
+    let t2 = x[1].clone() + x[1].clone() + t1;
+    let t3 = x[3].clone() + x[3].clone() + t0;
+    let t4 = t12.clone() + t12 + t3.clone();
+    let t5 = t02.clone() + t02 + t2.clone();
+    let t6 = t3 + t5.clone();
+    let t7 = t2 + t4.clone();
     [t6, t5, t7, t4]
 }
 
@@ -134,8 +134,8 @@ where
 
 fn pow5<F: FieldExpOps>(x: F) -> F {
     let x2 = x.clone() * x.clone();
-    let x4 = x2.clone() * x2.clone();
-    x4 * x.clone()
+    let x4 = x2.clone() * x2;
+    x4 * x
 }
 
 pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &PoseidonElements) {

@@ -112,7 +112,7 @@ impl<E: EvalAtRow> BlakeRoundEval<'_, E> {
 
         let carry_h = (a.h + b.h + carry_l - sh.clone()) * E::F::from(INV16);
         self.eval
-            .add_constraint(carry_h.clone() * carry_h.clone() - carry_h.clone());
+            .add_constraint(carry_h.clone() * carry_h.clone() - carry_h);
 
         Fu32 { l: sl, h: sh }
     }
@@ -132,13 +132,10 @@ impl<E: EvalAtRow> BlakeRoundEval<'_, E> {
 
         let carry_h = (a.h + b.h + c.h + carry_l - sh.clone()) * E::F::from(INV16);
         self.eval.add_constraint(
-            carry_h.clone() * (carry_h.clone() - E::F::one()) * (carry_h.clone() - E::F::from(TWO)),
+            carry_h.clone() * (carry_h.clone() - E::F::one()) * (carry_h - E::F::from(TWO)),
         );
 
-        Fu32 {
-            l: sl,
-            h: sh.clone(),
-        }
+        Fu32 { l: sl, h: sh }
     }
 
     /// Splits a felt at r.
