@@ -219,7 +219,7 @@ impl LogupColGenerator<'_> {
 
     /// Finalizes generating the column.
     pub fn finalize_col(mut self) {
-        let chunk_size = 4;
+        let chunk_size = std::cmp::min(4, self.gen.denom.data.len());
         let denom_inv = PackedSecureField::batch_inverse(&self.gen.denom.data);
 
         #[cfg(feature = "parallel")]
