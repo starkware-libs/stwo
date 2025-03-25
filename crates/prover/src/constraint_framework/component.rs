@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 use std::iter::zip;
 use std::ops::Deref;
@@ -180,6 +181,26 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
 
     pub const fn claimed_sum(&self) -> SecureField {
         self.claimed_sum
+    }
+
+    pub fn logup_counts(&self) -> RelationCounts {
+        let size = 1 << self.eval.log_size();
+        RelationCounts(
+            self.info
+                .logup_counts
+                .iter()
+                .map(|(k, v)| (k.clone(), v * size))
+                .collect(),
+        )
+    }
+}
+
+pub struct RelationCounts(HashMap<String, usize>);
+impl Deref for RelationCounts {
+    type Target = HashMap<String, usize>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
