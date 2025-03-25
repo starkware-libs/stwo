@@ -9,6 +9,8 @@
 ///        for, so that (x^2 + 1) - (x^2 + x) will return degree 2.
 use std::collections::HashMap;
 
+use num_traits::Zero;
+
 use super::{BaseExpr, ExtExpr};
 
 type Degree = usize;
@@ -49,6 +51,15 @@ impl BaseExpr {
             BaseExpr::Mul(a, b) => a.degree_bound(named_exprs) + b.degree_bound(named_exprs),
             BaseExpr::Neg(a) => a.degree_bound(named_exprs),
             // TODO(alont): Consider handling this in the type system.
+            BaseExpr::Inv(expr)
+                if matches!(
+                    *expr.clone(),
+                    BaseExpr::Param(name) if named_exprs.degree_bound(name.clone()).is_zero()
+                ) =>
+            {
+                0
+            }
+            BaseExpr::Inv(expr) if matches!(*expr.clone(), BaseExpr::Const(_)) => 0,
             BaseExpr::Inv(_) => panic!("Cannot compute the degree of an inverse."),
         }
     }
@@ -77,14 +88,24 @@ impl ExtExpr {
 mod tests {
     use crate::constraint_framework::expr::degree::NamedExprs;
     use crate::constraint_framework::expr::utils::*;
+    use crate::core::fields::FieldExpOps;
 
     #[test]
     fn test_degree_bound() {
         let intermediate = (felt!(12) + col!(1, 1, 0)) * var!("a") * col!(1, 0, 0);
         let qintermediate = secure_col!(intermediate.clone(), felt!(12), var!("b"), felt!(0));
 
+        let low_degree_intermediate = felt!(12345);
+
         let named_exprs = NamedExprs {
-            exprs: [("intermediate".to_string(), intermediate.clone())].into(),
+            exprs: [
+                ("intermediate".to_string(), intermediate.clone()),
+                (
+                    "low_degree_intermediate".to_string(),
+                    low_degree_intermediate.clone(),
+                ),
+            ]
+            .into(),
             ext_exprs: [("qintermediate".to_string(), qintermediate.clone())].into(),
         };
 
@@ -96,5 +117,12 @@ mod tests {
         assert_eq!(qintermediate.degree_bound(&named_exprs), 2);
         assert_eq!(expr.degree_bound(&named_exprs), 3);
         assert_eq!(qexpr.degree_bound(&named_exprs), 5);
+
+        // Multiplty by the inverse of a constant and a constant intermediate.
+        assert_eq!(
+            (expr * felt!(3141).inverse() * var!("low_degree_intermediate").inverse())
+                .degree_bound(&named_exprs),
+            3
+        );
     }
 }
