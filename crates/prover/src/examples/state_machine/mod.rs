@@ -350,4 +350,23 @@ mod tests {
 
         assert_eq!(eval.format_constraints(), expected);
     }
+
+    #[test]
+    fn test_logup_counts() {
+        let log_n_rows = 8;
+        let initial_state = [M31::zero(); STATE_SIZE];
+        let (components, ..) = prove_state_machine(
+            log_n_rows,
+            initial_state,
+            PcsConfig::default(),
+            &mut Blake2sChannel::default(),
+            false,
+        );
+
+        let counts0 = components.component0.logup_counts();
+        let counts1 = components.component1.logup_counts();
+
+        assert_eq!(counts0["StateMachineElements"], (1 << log_n_rows) * 2);
+        assert_eq!(counts1["StateMachineElements"], (1 << (log_n_rows - 1)) * 2);
+    }
 }

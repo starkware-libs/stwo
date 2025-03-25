@@ -411,6 +411,10 @@ impl LogupCountPerRow {
     pub fn inc(&mut self, relation: &str) {
         *self.data.entry(relation.to_string()).or_insert(0) += 1;
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &usize)> {
+        self.data.iter()
+    }
 }
 
 #[cfg(test)]
