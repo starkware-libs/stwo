@@ -1,5 +1,6 @@
 use num_traits::Zero;
 
+use super::degree::NamedExprs;
 use super::{BaseExpr, ExtExpr};
 use crate::constraint_framework::expr::ColumnExpr;
 use crate::constraint_framework::preprocessed_columns::PreProcessedColumnId;
@@ -107,6 +108,23 @@ impl ExprEvaluator {
             .collect::<Vec<_>>()
             .join("\n\n")
     }
+
+    pub fn constraint_degree_bounds(&self) -> Vec<usize> {
+        let named_exprs = NamedExprs::new(
+            self.intermediates
+                .iter()
+                .map(|(name, expr)| (name.clone(), expr.clone()))
+                .collect(),
+            self.ext_intermediates
+                .iter()
+                .map(|(name, expr)| (name.clone(), expr.clone()))
+                .collect(),
+        );
+        self.constraints
+            .iter()
+            .map(|c| c.degree_bound(&named_exprs))
+            .collect()
+    }
 }
 
 impl EvalAtRow for ExprEvaluator {
@@ -184,7 +202,7 @@ impl EvalAtRow for ExprEvaluator {
 mod tests {
     use num_traits::One;
 
-    use crate::constraint_framework::expr::ExprEvaluator;
+    use crate::constraint_framework::expr::{ExprEvaluator, ExtExpr};
     use crate::constraint_framework::{EvalAtRow, FrameworkEval, RelationEntry};
     use crate::core::fields::FieldExpOps;
     use crate::relation;
@@ -239,5 +257,35 @@ mod tests {
             eval.finalize_logup();
             eval
         }
+    }
+
+    #[test]
+    fn test_constraint_degree_bounds() {
+        let mut eval = ExprEvaluator::new();
+        let x0 = eval.next_trace_mask();
+        let x1 = eval.next_trace_mask();
+        let x2 = eval.next_trace_mask();
+        eval.add_to_relation(RelationEntry::new(
+            &TestRelation::dummy(),
+            ExtExpr::one(),
+            &[x0.clone()],
+        ));
+        eval.add_to_relation(RelationEntry::new(
+            &TestRelation::dummy(),
+            ExtExpr::one(),
+            &[x0.clone() * x1.clone()],
+        ));
+        eval.add_to_relation(RelationEntry::new(
+            &TestRelation::dummy(),
+            ExtExpr::one(),
+            &[x1.clone() * x2.clone()],
+        ));
+        eval.finalize_logup_in_pairs();
+
+        // 1st and 2nd entries are batched together to produce a denominator of degree 3, hence
+        // prefix sum constraint is of degree 4. 3rd entry is of degree 3 and is not batched.
+        let expected = vec![4, 3];
+
+        assert_eq!(eval.constraint_degree_bounds(), expected);
     }
 }

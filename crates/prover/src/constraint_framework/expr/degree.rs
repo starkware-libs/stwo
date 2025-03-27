@@ -23,8 +23,14 @@ pub struct NamedExprs {
     exprs: HashMap<String, BaseExpr>,
     ext_exprs: HashMap<String, ExtExpr>,
 }
-
 impl NamedExprs {
+    pub const fn new(
+        exprs: HashMap<String, BaseExpr>,
+        ext_exprs: HashMap<String, ExtExpr>,
+    ) -> Self {
+        Self { exprs, ext_exprs }
+    }
+
     pub fn degree_bound(&self, name: String) -> Degree {
         if let Some(expr) = self.exprs.get(&name) {
             expr.degree_bound(self)
