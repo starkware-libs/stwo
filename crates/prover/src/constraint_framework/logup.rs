@@ -73,12 +73,12 @@ impl<E: EvalAtRow> Drop for LogupAtRow<E> {
 
 /// Interaction elements for the logup protocol.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LookupElements<const N: usize> {
+pub struct Relation<const N: usize> {
     pub z: SecureField,
     pub alpha: SecureField,
     pub alpha_powers: [SecureField; N],
 }
-impl<const N: usize> LookupElements<N> {
+impl<const N: usize> Relation<N> {
     pub fn draw(channel: &mut impl Channel) -> Self {
         let [z, alpha] = channel.draw_felts(2).try_into().unwrap();
         let mut cur = SecureField::one();
@@ -309,7 +309,7 @@ impl FractionWriter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::LookupElements;
+    use super::Relation;
     use crate::constraint_framework::logup::LogupTraceGenerator;
     use crate::core::backend::simd::qm31::PackedSecureField;
     use crate::core::channel::Blake2sChannel;
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn test_lookup_elements_combine() {
         let mut channel = Blake2sChannel::default();
-        let lookup_elements = LookupElements::<3>::draw(&mut channel);
+        let lookup_elements = Relation::<3>::draw(&mut channel);
         let values = [
             BaseField::from_u32_unchecked(123),
             BaseField::from_u32_unchecked(456),

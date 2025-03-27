@@ -296,17 +296,15 @@ impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntr
 macro_rules! relation {
     ($name:tt, $size:tt) => {
         #[derive(Clone, Debug, PartialEq)]
-        pub struct $name($crate::constraint_framework::logup::LookupElements<$size>);
+        pub struct $name($crate::constraint_framework::logup::Relation<$size>);
 
         #[allow(dead_code)]
         impl $name {
             pub fn dummy() -> Self {
-                Self($crate::constraint_framework::logup::LookupElements::dummy())
+                Self($crate::constraint_framework::logup::Relation::dummy())
             }
             pub fn draw(channel: &mut impl $crate::core::channel::Channel) -> Self {
-                Self($crate::constraint_framework::logup::LookupElements::draw(
-                    channel,
-                ))
+                Self($crate::constraint_framework::logup::Relation::draw(channel))
             }
         }
 

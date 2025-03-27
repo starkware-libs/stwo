@@ -2,7 +2,7 @@ use itertools::Itertools;
 use num_traits::One;
 use tracing::{span, Level};
 
-use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
+use crate::constraint_framework::logup::{LogupTraceGenerator, Relation};
 use crate::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use crate::constraint_framework::{
     assert_constraints_on_polys, relation, EvalAtRow, FrameworkComponent, FrameworkEval,
@@ -25,13 +25,12 @@ use crate::core::ColumnVec;
 
 pub type PlonkComponent = FrameworkComponent<PlonkEval>;
 
-// TODO(alont): Rename this and all other `LookupElements` types to `Relation`.
-relation!(PlonkLookupElements, 2);
+relation!(PlonkRelation, 2);
 
 #[derive(Clone)]
 pub struct PlonkEval {
     pub log_n_rows: u32,
-    pub lookup_elements: PlonkLookupElements,
+    pub lookup_elements: PlonkRelation,
     pub claimed_sum: SecureField,
     pub base_trace_location: TreeSubspan,
     pub interaction_trace_location: TreeSubspan,
@@ -119,7 +118,7 @@ pub fn gen_trace(
 pub fn gen_interaction_trace(
     log_size: u32,
     circuit: &PlonkCircuitTrace,
-    lookup_elements: &LookupElements<2>,
+    lookup_elements: &Relation<2>,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     SecureField,
@@ -219,7 +218,7 @@ pub fn prove_fibonacci_plonk(
     span.exit();
 
     // Draw lookup element.
-    let lookup_elements = PlonkLookupElements::draw(channel);
+    let lookup_elements = PlonkRelation::draw(channel);
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
@@ -291,7 +290,7 @@ mod tests {
     use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
     use crate::core::prover::verify;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    use crate::examples::plonk::{prove_fibonacci_plonk, PlonkLookupElements};
+    use crate::examples::plonk::{prove_fibonacci_plonk, PlonkRelation};
 
     #[test_log::test]
     fn test_simd_plonk_prove() {
@@ -323,7 +322,7 @@ mod tests {
         // Trace columns.
         commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
         // Draw lookup element.
-        let lookup_elements = PlonkLookupElements::draw(channel);
+        let lookup_elements = PlonkRelation::draw(channel);
         assert_eq!(lookup_elements, component.lookup_elements);
         // Interaction columns.
         commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);

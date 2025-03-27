@@ -155,7 +155,7 @@ define_xor_table!(xor4, XorElements4, 4, 0);
 mod tests {
     use std::simd::u32x16;
 
-    use crate::constraint_framework::logup::LookupElements;
+    use crate::constraint_framework::logup::Relation;
     use crate::constraint_framework::{assert_constraints_on_polys, FrameworkEval};
     use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::preprocessed_columns::XorTable;
