@@ -193,7 +193,7 @@ impl BlakeComponents {
             .map(|l| IsFirst::new(log_size + l).id())
             .collect_vec();
 
-        let tree_span_provider = &mut TraceLocationAllocator::new_with_preproccessed_columns(
+        let tree_span_provider = &mut TraceLocationAllocator::new_with_preprocessed_columns(
             &chain!(
                 [scheduler_is_first_column],
                 blake_round_is_first_columns_iter,
