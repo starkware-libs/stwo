@@ -64,7 +64,10 @@ pub fn domain_line_twiddles_from_tree<T>(
     twiddle_buffer: &[T],
 ) -> Vec<&[T]> {
     let domain = domain.into();
-    debug_assert!(domain.coset().size() <= twiddle_buffer.len());
+    assert!(
+        domain.coset().size() <= twiddle_buffer.len(),
+        "Not enough twiddles!"
+    );
     (0..domain.coset().log_size())
         .map(|i| {
             let len = 1 << i;
