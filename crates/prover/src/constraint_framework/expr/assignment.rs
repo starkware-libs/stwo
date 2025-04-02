@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::ops::{Add, Index};
+use std::iter::Sum;
+use std::ops::{Add, AddAssign, Index, Sub};
 
 use itertools::sorted;
 
@@ -11,6 +12,10 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 
 /// An assignment to the variables that may appear in an expression.
+/// Maps are:
+///     columns: (interaction, index, offset) -> value
+///     base field expressions: name -> value
+///     extension field expressions: name -> extension field value
 pub type ExprVarAssignment = (
     HashMap<(usize, usize, isize), BaseField>,
     HashMap<String, BaseField>,
@@ -102,6 +107,31 @@ impl Add for ExprVariables {
     }
 }
 
+impl AddAssign for ExprVariables {
+    fn add_assign(&mut self, rhs: Self) {
+        self.cols = self.cols.union(&rhs.cols).cloned().collect();
+        self.params = self.params.union(&rhs.params).cloned().collect();
+        self.cols = self.cols.union(&rhs.cols).cloned().collect();
+    }
+}
+
+impl Sum for ExprVariables {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::default(), |acc, x| acc + x)
+    }
+}
+
+impl Sub for ExprVariables {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        Self {
+            cols: &self.cols - &rhs.cols,
+            params: &self.params - &rhs.params,
+            ext_params: &self.ext_params - &rhs.ext_params,
+        }
+    }
+}
+
 impl BaseExpr {
     /// Evaluates a base field expression.
     /// Takes:
@@ -144,10 +174,14 @@ impl BaseExpr {
         }
     }
 
+    pub fn assign(&self, assignment: &ExprVarAssignment) -> BaseField {
+        self.eval_expr::<AssertEvaluator<'_>, _, _>(&assignment.0, &assignment.1)
+    }
+
     pub fn random_eval(&self) -> BaseField {
         let assignment = self.collect_variables().random_assignment(0);
         assert!(assignment.2.is_empty());
-        self.eval_expr::<AssertEvaluator<'_>, _, _>(&assignment.0, &assignment.1)
+        self.assign(&assignment)
     }
 }
 
@@ -207,9 +241,12 @@ impl ExtExpr {
         }
     }
 
-    pub fn random_eval(&self) -> SecureField {
-        let assignment = self.collect_variables().random_assignment(0);
+    pub fn assign(&self, assignment: &ExprVarAssignment) -> SecureField {
         self.eval_expr::<AssertEvaluator<'_>, _, _, _>(&assignment.0, &assignment.1, &assignment.2)
+    }
+
+    pub fn random_eval(&self) -> SecureField {
+        self.assign(&self.collect_variables().random_assignment(0))
     }
 }
 
