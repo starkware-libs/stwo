@@ -112,7 +112,7 @@ impl<const N: usize> LookupElements<N> {
 
     pub fn dummy() -> Self {
         Self {
-            z: SecureField::one(),
+            z: SecureField::from_u32_unchecked(1, 2, 3, 4),
             alpha: SecureField::one(),
             alpha_powers: [SecureField::one(); N],
         }
