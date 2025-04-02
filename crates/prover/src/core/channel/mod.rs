@@ -11,6 +11,8 @@ pub use poseidon252::Poseidon252Channel;
 mod blake2s;
 pub use blake2s::Blake2sChannel;
 
+pub mod logging_channel;
+
 pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 
 #[derive(Clone, Default, Debug)]
