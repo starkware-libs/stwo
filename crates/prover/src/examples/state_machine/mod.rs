@@ -330,12 +330,12 @@ mod tests {
         );
 
         let eval = component.evaluate(ExprEvaluator::new());
-        let expected = "let intermediate0 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0) \
+        let expected = "let intermediate1 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0 + m31(1).into()) \
             + (StateMachineElements_alpha1) * (trace_1_column_1_offset_0) \
             - (StateMachineElements_z);
 
 \
-        let intermediate1 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0 + m31(1).into()) \
+        let intermediate0 = (StateMachineElements_alpha0) * (trace_1_column_0_offset_0) \
             + (StateMachineElements_alpha1) * (trace_1_column_1_offset_0) \
             - (StateMachineElements_z);
 
