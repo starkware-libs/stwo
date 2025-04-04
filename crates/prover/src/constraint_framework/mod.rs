@@ -296,7 +296,7 @@ impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntr
 macro_rules! relation {
     ($name:tt, $size:tt) => {
         #[derive(Clone, Debug, PartialEq)]
-        pub struct $name($crate::constraint_framework::logup::LookupElements<$size>);
+        pub struct $name(pub $crate::constraint_framework::logup::LookupElements<$size>);
 
         #[allow(dead_code)]
         impl $name {
