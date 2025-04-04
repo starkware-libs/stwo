@@ -4,7 +4,6 @@ use super::WgpuBackend;
 use crate::core::air::accumulation::AccumulationOps;
 use crate::core::backend::simd::m31::N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::CpuBackend;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;

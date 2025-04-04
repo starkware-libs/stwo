@@ -658,6 +658,7 @@ mod tests {
     use crate::core::backend::simd::column::SecureColumn;
     use crate::core::backend::simd::m31::N_LANES;
     use crate::core::backend::simd::qm31::PackedQM31;
+    use crate::core::backend::simd::SimdBackend;
     use crate::core::backend::Column;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -703,7 +704,7 @@ mod tests {
         let b: [BaseField; N_LANES * COL_PACKED_SIZE] = array::from_fn(BaseField::from);
         let c: [BaseField; N_LANES * COL_PACKED_SIZE] = array::from_fn(BaseField::from);
         let d: [BaseField; N_LANES * COL_PACKED_SIZE] = array::from_fn(BaseField::from);
-        let mut col = SecureColumnByCoords {
+        let mut col: SecureColumnByCoords<SimdBackend> = SecureColumnByCoords {
             columns: [a, b, c, d].map(|values| values.into_iter().collect::<BaseColumn>()),
         };
 

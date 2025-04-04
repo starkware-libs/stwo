@@ -359,7 +359,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                 let denom_inv = denom_inv[row >> trace_domain.log_size()];
                 col.set(row, col.at(row) + row_res * denom_inv)
             }
-            let col = SecureColumnByCoords::from_cpu(col);
+            let col = SecureColumnByCoords::<SimdBackend>::from_cpu(col);
             *accum.col = col;
             return;
         }

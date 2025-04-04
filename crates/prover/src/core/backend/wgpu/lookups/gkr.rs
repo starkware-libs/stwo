@@ -1,14 +1,11 @@
-use std::iter::zip;
-
 use num_traits::Zero;
 
-use crate::core::backend::cpu::lookups::gkr::gen_eq_evals as cpu_gen_eq_evals;
 use crate::core::backend::simd::column::SecureColumn;
-use crate::core::backend::simd::m31::{LOG_N_LANES, N_LANES};
+use crate::core::backend::simd::m31::N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::wgpu::WgpuBackend;
-use crate::core::backend::{Column, CpuBackend};
+use crate::core::backend::Column;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::gkr_prover::{
@@ -44,7 +41,50 @@ impl GkrOps for WgpuBackend {
         h: &GkrMultivariatePolyOracle<'_, Self>,
         claim: SecureField,
     ) -> UnivariatePoly<SecureField> {
-        todo!()
+        let n_variables = h.n_variables();
+        let n_terms = 1 << n_variables.saturating_sub(1);
+        let eq_evals = h.eq_evals.as_ref();
+        // Vector used to generate evaluations of `eq(x, y)` for `x` in the boolean hypercube.
+        let y = eq_evals.y();
+
+        // Offload to CPU backend to avoid dealing with instances smaller than a SIMD vector.
+        if n_terms < N_LANES {
+            return h.to_cpu().sum_as_poly_in_first_variable(claim);
+        }
+
+        let n_packed_terms = n_terms / N_LANES;
+        let packed_lambda = PackedSecureField::broadcast(h.lambda);
+
+        let (mut eval_at_0, mut eval_at_2) = match &h.input_layer {
+            Layer::GrandProduct(col) => eval_grand_product_sum(eq_evals, col, n_packed_terms),
+            Layer::LogUpGeneric {
+                numerators,
+                denominators,
+            } => eval_logup_generic_sum(
+                eq_evals,
+                numerators,
+                denominators,
+                n_packed_terms,
+                packed_lambda,
+            ),
+            Layer::LogUpMultiplicities {
+                numerators,
+                denominators,
+            } => eval_logup_multiplicities_sum(
+                eq_evals,
+                numerators,
+                denominators,
+                n_packed_terms,
+                packed_lambda,
+            ),
+            Layer::LogUpSingles { denominators } => {
+                eval_logup_singles_sum(eq_evals, denominators, n_packed_terms, packed_lambda)
+            }
+        };
+
+        eval_at_0 *= h.eq_fixed_var_correction;
+        eval_at_2 *= h.eq_fixed_var_correction;
+        correct_sum_as_poly_in_first_variable(eval_at_0, eval_at_2, claim, y, n_variables)
     }
 }
 
