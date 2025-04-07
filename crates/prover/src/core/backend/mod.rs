@@ -15,7 +15,7 @@ use super::vcs::ops::MerkleOps;
 
 pub mod cpu;
 pub mod simd;
-pub mod wgpu;
+pub mod web;
 
 pub trait Backend:
     Copy

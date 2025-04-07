@@ -1,7 +1,7 @@
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use super::WgpuBackend;
+use super::WebBackend;
 use crate::core::backend::cpu::bit_reverse as cpu_bit_reverse;
 use crate::core::backend::simd::bit_reverse::bit_reverse_m31;
 use crate::core::backend::simd::column::{BaseColumn, SecureColumn};
@@ -15,7 +15,7 @@ const W_BITS: u32 = 3;
 
 pub const MIN_LOG_SIZE: u32 = 2 * W_BITS + VEC_BITS;
 
-impl ColumnOps<BaseField> for WgpuBackend {
+impl ColumnOps<BaseField> for WebBackend {
     type Column = BaseColumn;
 
     fn bit_reverse_column(column: &mut Self::Column) {
@@ -29,7 +29,7 @@ impl ColumnOps<BaseField> for WgpuBackend {
     }
 }
 
-impl ColumnOps<SecureField> for WgpuBackend {
+impl ColumnOps<SecureField> for WebBackend {
     type Column = SecureColumn;
 
     fn bit_reverse_column(_column: &mut SecureColumn) {
@@ -46,7 +46,7 @@ mod tests {
     use crate::core::backend::simd::bit_reverse::{bit_reverse16, bit_reverse_m31};
     use crate::core::backend::simd::column::BaseColumn;
     use crate::core::backend::simd::m31::{PackedM31, N_LANES};
-    use crate::core::backend::wgpu::WgpuBackend;
+    use crate::core::backend::web::WebBackend;
     use crate::core::backend::{Column, ColumnOps};
     use crate::core::fields::m31::BaseField;
 
@@ -82,7 +82,7 @@ mod tests {
         cpu_bit_reverse(&mut expected);
 
         let mut res = column.iter().copied().collect::<BaseColumn>();
-        <WgpuBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut res);
+        <WebBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut res);
 
         assert_eq!(res.to_cpu(), expected);
     }
@@ -95,7 +95,7 @@ mod tests {
         cpu_bit_reverse(&mut expected);
 
         let mut res = column.iter().copied().collect::<BaseColumn>();
-        <WgpuBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut res);
+        <WebBackend as ColumnOps<BaseField>>::bit_reverse_column(&mut res);
 
         assert_eq!(res.to_cpu(), expected);
     }

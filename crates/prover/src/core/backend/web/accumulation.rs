@@ -1,6 +1,6 @@
 use itertools::Itertools;
 
-use super::WgpuBackend;
+use super::WebBackend;
 use crate::core::air::accumulation::AccumulationOps;
 use crate::core::backend::simd::m31::N_LANES;
 use crate::core::backend::simd::qm31::PackedSecureField;
@@ -8,7 +8,7 @@ use crate::core::backend::CpuBackend;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
 
-impl AccumulationOps for WgpuBackend {
+impl AccumulationOps for WebBackend {
     fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>) {
         for i in 0..column.packed_len() {
             let res_coeff = unsafe { column.packed_at(i) + other.packed_at(i) };

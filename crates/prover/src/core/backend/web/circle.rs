@@ -5,13 +5,12 @@ use std::simd::Simd;
 use bytemuck::Zeroable;
 use num_traits::One;
 
-use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
-use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
-use super::qm31::PackedSecureField;
-use super::SimdBackend;
+use super::WgpuBackend;
 use crate::core::backend::cpu::circle::slow_precompute_twiddles;
 use crate::core::backend::simd::column::BaseColumn;
-use crate::core::backend::simd::m31::PackedM31;
+use crate::core::backend::simd::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
+use crate::core::backend::simd::m31::{PackedBaseField, PackedM31, LOG_N_LANES, N_LANES};
+use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::{Col, Column, CpuBackend};
 use crate::core::circle::{CirclePoint, Coset, M31_CIRCLE_LOG_ORDER};
 use crate::core::fields::m31::BaseField;
@@ -25,7 +24,7 @@ use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
 
-impl SimdBackend {
+impl WgpuBackend {
     // TODO(Ohad): optimize.
     fn twiddle_at<F: Field>(mappings: &[F], mut index: usize) -> F {
         debug_assert!(
@@ -121,7 +120,7 @@ impl SimdBackend {
 
 // TODO(shahars): Everything is returned in redundant representation, where values can also be P.
 // Decide if and when it's ok and what to do if it's not.
-impl PolyOps for SimdBackend {
+impl PolyOps for WgpuBackend {
     // The twiddles type is i32, and not BaseField. This is because the fast AVX mul implementation
     //  requires one of the numbers to be shifted left by 1 bit. This is not a reduced
     //  representation of the field.
@@ -135,7 +134,7 @@ impl PolyOps for SimdBackend {
         let eval = CpuBackend::new_canonical_ordered(coset, values.into_cpu_vec());
         CircleEvaluation::new(
             eval.domain,
-            Col::<SimdBackend, BaseField>::from_iter(eval.values),
+            Col::<WgpuBackend, BaseField>::from_iter(eval.values),
         )
     }
 
@@ -143,27 +142,7 @@ impl PolyOps for SimdBackend {
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
         twiddles: &TwiddleTree<Self>,
     ) -> CirclePoly<Self> {
-        let log_size = eval.values.length.ilog2();
-        if log_size < MIN_FFT_LOG_SIZE {
-            let cpu_poly = eval.to_cpu().interpolate();
-            return CirclePoly::new(cpu_poly.coeffs.into_iter().collect());
-        }
-
-        let mut values = eval.values;
-        let twiddles = domain_line_twiddles_from_tree(eval.domain, &twiddles.itwiddles);
-
-        // Safe because [PackedBaseField] is aligned on 64 bytes.
-        unsafe {
-            ifft::ifft(
-                transmute::<*mut PackedBaseField, *mut u32>(values.data.as_mut_ptr()),
-                &twiddles,
-                log_size as usize,
-            );
-        }
-
-        // TODO(alont): Cache this inversion.
-        let inv = PackedBaseField::broadcast(BaseField::from(eval.domain.size()).inverse());
-        values.data.iter_mut().for_each(|x| *x *= inv);
+        // 
 
         CirclePoly::new(values)
     }
