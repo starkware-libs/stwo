@@ -1,19 +1,19 @@
 use serde::{Deserialize, Serialize};
 
-// use super::Backend;
+use super::Backend;
 // use crate::core::backend::simd::SimdBackend;
 // use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
 // pub mod accumulation;
 pub mod bit_reverse;
 // pub mod blake2s;
-// pub mod circle;
+pub mod circle;
 // pub mod cm31;
 // pub mod column;
 // pub mod conversion;
 // pub mod domain;
 // pub mod fft;
-// pub mod fri;
+pub mod fri;
 // mod grind;
 pub mod lookups;
 // pub mod m31;
@@ -28,5 +28,5 @@ pub mod lookups;
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct WebBackend;
 
-// impl Backend for WebBackend {}
+impl Backend for WebBackend {}
 // impl BackendForChannel<Blake2sMerkleChannel> for WgpuBackend {}
