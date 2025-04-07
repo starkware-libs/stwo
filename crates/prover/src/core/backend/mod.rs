@@ -36,7 +36,7 @@ pub trait BackendForChannel<MC: MerkleChannel>:
 }
 
 pub trait ColumnOps<T> {
-    type Column: Column<T> + Sync;
+    type Column: Column<T>;
     fn bit_reverse_column(column: &mut Self::Column);
 }
 

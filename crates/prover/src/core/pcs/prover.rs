@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
-#[cfg(feature = "parallel")]
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tracing::{span, Level};
 
@@ -22,7 +20,6 @@ use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
-use crate::parallel_iter;
 
 /// The prover side of a FRI polynomial commitment scheme. See [super].
 pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
@@ -94,12 +91,13 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .polynomials()
             .zip_cols(&sampled_points)
             .map_cols(|(poly, points)| {
-                let iter = parallel_iter!(points);
-                iter.map(|&point| PointSample {
-                    point,
-                    value: poly.eval_at_point(point),
-                })
-                .collect::<Vec<_>>()
+                points
+                    .iter()
+                    .map(|&point| PointSample {
+                        point,
+                        value: poly.eval_at_point(point),
+                    })
+                    .collect_vec()
             });
         span.exit();
         let sampled_values = samples
