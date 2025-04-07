@@ -22,7 +22,7 @@ impl Blake2sChannel {
     pub const fn digest(&self) -> Blake2sHash {
         self.digest
     }
-    pub fn update_digest(&mut self, new_digest: Blake2sHash) {
+    pub const fn update_digest(&mut self, new_digest: Blake2sHash) {
         self.digest = new_digest;
         self.channel_time.inc_challenges();
     }

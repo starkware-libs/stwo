@@ -19,7 +19,7 @@ jobs:
       - uses: ./.github/actions/bootstrap_runners
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: nightly-2025-01-02
+          toolchain: nightly-2025-04-06
       - name: Run benchmark
         run: |
             cargo install cargo-criterion

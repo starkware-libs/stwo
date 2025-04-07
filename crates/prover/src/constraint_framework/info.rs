@@ -135,7 +135,7 @@ pub struct ArithmeticCounts {
 }
 
 impl ArithmeticCounts {
-    fn merge(&mut self, other: ArithmeticCounts) {
+    const fn merge(&mut self, other: ArithmeticCounts) {
         let Self {
             n_ef_mul_ef,
             n_ef_mul_f,

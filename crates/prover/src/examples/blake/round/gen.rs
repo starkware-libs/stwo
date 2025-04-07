@@ -51,7 +51,7 @@ impl TraceGenerator {
         }
     }
 
-    fn gen_row(&mut self, vec_row: usize) -> TraceGeneratorRow<'_> {
+    const fn gen_row(&mut self, vec_row: usize) -> TraceGeneratorRow<'_> {
         TraceGeneratorRow {
             gen: self,
             col_index: 0,
@@ -89,14 +89,14 @@ impl TraceGeneratorRow<'_> {
             self.append_u32(*s);
         });
 
-        self.g(v.get_many_mut([0, 4, 8, 12]).unwrap(), m[0], m[1]);
-        self.g(v.get_many_mut([1, 5, 9, 13]).unwrap(), m[2], m[3]);
-        self.g(v.get_many_mut([2, 6, 10, 14]).unwrap(), m[4], m[5]);
-        self.g(v.get_many_mut([3, 7, 11, 15]).unwrap(), m[6], m[7]);
-        self.g(v.get_many_mut([0, 5, 10, 15]).unwrap(), m[8], m[9]);
-        self.g(v.get_many_mut([1, 6, 11, 12]).unwrap(), m[10], m[11]);
-        self.g(v.get_many_mut([2, 7, 8, 13]).unwrap(), m[12], m[13]);
-        self.g(v.get_many_mut([3, 4, 9, 14]).unwrap(), m[14], m[15]);
+        self.g(v.get_disjoint_mut([0, 4, 8, 12]).unwrap(), m[0], m[1]);
+        self.g(v.get_disjoint_mut([1, 5, 9, 13]).unwrap(), m[2], m[3]);
+        self.g(v.get_disjoint_mut([2, 6, 10, 14]).unwrap(), m[4], m[5]);
+        self.g(v.get_disjoint_mut([3, 7, 11, 15]).unwrap(), m[6], m[7]);
+        self.g(v.get_disjoint_mut([0, 5, 10, 15]).unwrap(), m[8], m[9]);
+        self.g(v.get_disjoint_mut([1, 6, 11, 12]).unwrap(), m[10], m[11]);
+        self.g(v.get_disjoint_mut([2, 7, 8, 13]).unwrap(), m[12], m[13]);
+        self.g(v.get_disjoint_mut([3, 4, 9, 14]).unwrap(), m[14], m[15]);
 
         chain![input_v.iter(), v.iter(), m.iter()]
             .flat_map(to_felts)
