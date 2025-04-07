@@ -177,6 +177,7 @@ impl ExprEvaluator {
     pub fn random_assignment(&self) -> ExprVarAssignment {
         let mut assignment = self.collect_variables().random_assignment(0);
         for intermediate in self.ordered_intermediates.clone() {
+            #[allow(clippy::map_entry)]
             if self.intermediates.contains_key(&intermediate) {
                 assignment.1.insert(
                     intermediate.clone(),

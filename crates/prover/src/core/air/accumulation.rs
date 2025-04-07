@@ -77,7 +77,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         n_cols_per_size: [(u32, usize); N],
     ) -> [ColumnAccumulator<'_, B>; N] {
         self.sub_accumulations
-            .get_many_mut(n_cols_per_size.map(|(log_size, _)| log_size as usize))
+            .get_disjoint_mut(n_cols_per_size.map(|(log_size, _)| log_size as usize))
             .unwrap_or_else(|e| panic!("invalid log_sizes: {}", e))
             .into_iter()
             .zip(n_cols_per_size)
@@ -96,7 +96,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
     }
 
     /// Returns the log size of the resulting polynomial.
-    pub fn log_size(&self) -> u32 {
+    pub const fn log_size(&self) -> u32 {
         (self.sub_accumulations.len() - 1) as u32
     }
 

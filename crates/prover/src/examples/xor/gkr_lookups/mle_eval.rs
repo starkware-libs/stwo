@@ -105,7 +105,7 @@ impl<'twiddles, 'oracle, O: MleCoeffColumnOracle> MleEvalProverComponent<'twiddl
     }
 
     /// Size of this component's trace columns.
-    pub fn log_size(&self) -> u32 {
+    pub const fn log_size(&self) -> u32 {
         self.mle_eval_point.n_variables() as u32
     }
 
@@ -317,7 +317,7 @@ impl<'oracle, O: MleCoeffColumnOracle> MleEvalVerifierComponent<'oracle, O> {
     }
 
     /// Size of this component's trace columns.
-    pub fn log_size(&self) -> u32 {
+    pub const fn log_size(&self) -> u32 {
         self.mle_eval_point.n_variables() as u32
     }
 
@@ -494,7 +494,7 @@ impl MleEvalPoint {
         }
     }
 
-    pub fn n_variables(&self) -> usize {
+    pub const fn n_variables(&self) -> usize {
         self.p.len()
     }
 }
@@ -731,7 +731,7 @@ fn hadamard_product(
 #[cfg(test)]
 mod tests {
     use std::array;
-    use std::iter::{repeat, zip};
+    use std::iter::{repeat_n, zip};
 
     use itertools::{chain, Itertools};
     use mle_coeff_column::{MleCoeffColumnComponent, MleCoeffColumnEval};
@@ -990,7 +990,7 @@ mod tests {
         const EQ_EVAL_TRACE: usize = 0;
         const AUX_TRACE: usize = 1;
         let mut rng = SmallRng::seed_from_u64(0);
-        let mle = Mle::new(repeat(SecureField::one()).take(1 << N_VARIABLES).collect());
+        let mle = Mle::new(repeat_n(SecureField::one(), 1 << N_VARIABLES).collect());
         let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
         let mle_eval_point = MleEvalPoint::new(&eval_point);
         let trace = build_trace(&mle, &eval_point, mle.eval_at_point(&eval_point));
@@ -1027,7 +1027,7 @@ mod tests {
         const EQ_EVAL_TRACE: usize = 0;
         const AUX_TRACE: usize = 1;
         let mut rng = SmallRng::seed_from_u64(0);
-        let mle = Mle::new(repeat(SecureField::one()).take(1 << N_VARIABLES).collect());
+        let mle = Mle::new(repeat_n(SecureField::one(), 1 << N_VARIABLES).collect());
         let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
         let mle_eval_point = MleEvalPoint::new(&eval_point);
         let trace = build_trace(&mle, &eval_point, mle.eval_at_point(&eval_point));
@@ -1064,7 +1064,7 @@ mod tests {
         const EQ_EVAL_TRACE: usize = 0;
         const AUX_TRACE: usize = 1;
         let mut rng = SmallRng::seed_from_u64(0);
-        let mle = Mle::new(repeat(SecureField::one()).take(1 << N_VARIABLES).collect());
+        let mle = Mle::new(repeat_n(SecureField::one(), 1 << N_VARIABLES).collect());
         let eval_point: [SecureField; N_VARIABLES] = array::from_fn(|_| rng.gen());
         let mle_eval_point = MleEvalPoint::new(&eval_point);
         let trace = build_trace(&mle, &eval_point, mle.eval_at_point(&eval_point));
