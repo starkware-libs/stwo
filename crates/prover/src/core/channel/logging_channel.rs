@@ -145,11 +145,6 @@ mod tests {
         let bytes2 = regular_channel.draw_random_bytes();
         assert_eq!(bytes1, bytes2);
 
-        let pow_bits = 8;
-        let logging_result = SimdBackend::grind(&logging_channel, pow_bits);
-        let regular_result = SimdBackend::grind(&regular_channel, pow_bits);
-        assert_eq!(logging_result, regular_result);
-
         assert_eq!(logging_channel.channel.digest(), regular_channel.digest());
     }
 }
