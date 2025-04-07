@@ -53,7 +53,7 @@ impl BaseColumn {
         values.into_iter().collect()
     }
 
-    pub fn from_simd(values: Vec<PackedBaseField>) -> Self {
+    pub const fn from_simd(values: Vec<PackedBaseField>) -> Self {
         Self {
             length: values.len() * N_LANES,
             data: values,
@@ -376,7 +376,7 @@ impl VeryPackedSecureColumnByCoordsMutSlice<'_> {
 }
 
 impl SecureColumnByCoords<SimdBackend> {
-    pub fn packed_len(&self) -> usize {
+    pub const fn packed_len(&self) -> usize {
         self.columns[0].data.len()
     }
 
@@ -427,7 +427,7 @@ impl SecureColumnByCoords<SimdBackend> {
     ) -> impl ExactSizeIterator<Item = SecureColumnByCoordsMutSlice<'_>> {
         let [a, b, c, d] = self
             .columns
-            .get_many_mut([0, 1, 2, 3])
+            .get_disjoint_mut([0, 1, 2, 3])
             .unwrap()
             .map(|x| x.chunks_mut(chunk_size));
         izip!(a, b, c, d).map(|(a, b, c, d)| SecureColumnByCoordsMutSlice([a, b, c, d]))
@@ -576,7 +576,7 @@ impl From<VeryPackedSecureColumnByCoords> for SecureColumnByCoords<SimdBackend> 
 }
 
 impl VeryPackedSecureColumnByCoords {
-    pub fn packed_len(&self) -> usize {
+    pub const fn packed_len(&self) -> usize {
         self.columns[0].data.len()
     }
 
@@ -638,7 +638,7 @@ impl VeryPackedSecureColumnByCoords {
     ) -> Vec<VeryPackedSecureColumnByCoordsMutSlice<'_>> {
         let [a, b, c, d] = self
             .columns
-            .get_many_mut([0, 1, 2, 3])
+            .get_disjoint_mut([0, 1, 2, 3])
             .unwrap()
             .map(|x| x.chunks_mut(chunk_size));
         izip!(a, b, c, d)

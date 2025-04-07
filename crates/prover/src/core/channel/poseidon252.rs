@@ -22,7 +22,7 @@ impl Poseidon252Channel {
     pub const fn digest(&self) -> FieldElement252 {
         self.digest
     }
-    pub fn update_digest(&mut self, new_digest: FieldElement252) {
+    pub const fn update_digest(&mut self, new_digest: FieldElement252) {
         self.digest = new_digest;
         self.channel_time.inc_challenges();
     }

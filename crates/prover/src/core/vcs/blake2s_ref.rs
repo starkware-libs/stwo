@@ -49,7 +49,7 @@ const fn rot7(x: u32) -> u32 {
 }
 
 #[inline(always)]
-fn round(v: &mut [u32; 16], m: [u32; 16], r: usize) {
+const fn round(v: &mut [u32; 16], m: [u32; 16], r: usize) {
     v[0] = add(v[0], m[SIGMA[r][0] as usize]);
     v[1] = add(v[1], m[SIGMA[r][2] as usize]);
     v[2] = add(v[2], m[SIGMA[r][4] as usize]);
@@ -166,7 +166,7 @@ fn round(v: &mut [u32; 16], m: [u32; 16], r: usize) {
 }
 
 /// Performs a Blake2s compression.
-pub fn compress(
+pub const fn compress(
     h_vecs: [u32; 8],
     msg_vecs: [u32; 16],
     count_low: u32,

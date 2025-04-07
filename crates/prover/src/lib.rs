@@ -9,12 +9,10 @@
     array_windows,
     assert_matches,
     exact_size_is_empty,
-    get_many_mut,
     int_roundings,
     iter_array_chunks,
     portable_simd,
-    slice_ptr_get,
-    trait_upcasting
+    slice_ptr_get
 )]
 pub mod constraint_framework;
 pub mod core;

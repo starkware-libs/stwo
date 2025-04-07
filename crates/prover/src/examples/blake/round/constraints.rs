@@ -25,42 +25,42 @@ impl<E: EvalAtRow> BlakeRoundEval<'_, E> {
         let m: [Fu32<E::F>; STATE_SIZE] = std::array::from_fn(|_| self.next_u32());
 
         self.g(
-            v.get_many_mut([0, 4, 8, 12]).unwrap(),
+            v.get_disjoint_mut([0, 4, 8, 12]).unwrap(),
             m[0].clone(),
             m[1].clone(),
         );
         self.g(
-            v.get_many_mut([1, 5, 9, 13]).unwrap(),
+            v.get_disjoint_mut([1, 5, 9, 13]).unwrap(),
             m[2].clone(),
             m[3].clone(),
         );
         self.g(
-            v.get_many_mut([2, 6, 10, 14]).unwrap(),
+            v.get_disjoint_mut([2, 6, 10, 14]).unwrap(),
             m[4].clone(),
             m[5].clone(),
         );
         self.g(
-            v.get_many_mut([3, 7, 11, 15]).unwrap(),
+            v.get_disjoint_mut([3, 7, 11, 15]).unwrap(),
             m[6].clone(),
             m[7].clone(),
         );
         self.g(
-            v.get_many_mut([0, 5, 10, 15]).unwrap(),
+            v.get_disjoint_mut([0, 5, 10, 15]).unwrap(),
             m[8].clone(),
             m[9].clone(),
         );
         self.g(
-            v.get_many_mut([1, 6, 11, 12]).unwrap(),
+            v.get_disjoint_mut([1, 6, 11, 12]).unwrap(),
             m[10].clone(),
             m[11].clone(),
         );
         self.g(
-            v.get_many_mut([2, 7, 8, 13]).unwrap(),
+            v.get_disjoint_mut([2, 7, 8, 13]).unwrap(),
             m[12].clone(),
             m[13].clone(),
         );
         self.g(
-            v.get_many_mut([3, 4, 9, 14]).unwrap(),
+            v.get_disjoint_mut([3, 4, 9, 14]).unwrap(),
             m[14].clone(),
             m[15].clone(),
         );
