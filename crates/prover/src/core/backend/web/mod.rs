@@ -4,7 +4,7 @@ use super::Backend;
 // use crate::core::backend::simd::SimdBackend;
 // use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
-// pub mod accumulation;
+pub mod accumulation;
 pub mod bit_reverse;
 // pub mod blake2s;
 pub mod circle;
@@ -21,7 +21,7 @@ pub mod lookups;
 // pub mod poseidon252;
 // pub mod prefix_sum;
 // pub mod qm31;
-// pub mod quotients;
+pub mod quotients;
 // mod utils;
 // pub mod very_packed_m31;
 
