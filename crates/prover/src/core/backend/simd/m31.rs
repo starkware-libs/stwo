@@ -33,7 +33,7 @@ pub struct PackedM31(Simd<u32, N_LANES>);
 
 impl PackedM31 {
     /// Constructs a new instance with all vector elements set to `value`.
-    pub fn broadcast(M31(value): M31) -> Self {
+    pub const fn broadcast(M31(value): M31) -> Self {
         Self(Simd::splat(value))
     }
 

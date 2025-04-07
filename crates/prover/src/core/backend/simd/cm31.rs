@@ -15,7 +15,7 @@ pub struct PackedCM31(pub [PackedM31; 2]);
 
 impl PackedCM31 {
     /// Constructs a new instance with all vector elements set to `value`.
-    pub fn broadcast(value: CM31) -> Self {
+    pub const fn broadcast(value: CM31) -> Self {
         Self([PackedM31::broadcast(value.0), PackedM31::broadcast(value.1)])
     }
 

@@ -177,16 +177,14 @@ impl ExprEvaluator {
     pub fn random_assignment(&self) -> ExprVarAssignment {
         let mut assignment = self.collect_variables().random_assignment(0);
         for intermediate in self.ordered_intermediates.clone() {
-            if self.intermediates.contains_key(&intermediate) {
-                assignment.1.insert(
-                    intermediate.clone(),
-                    self.intermediates[&intermediate].assign(&assignment),
-                );
-            } else if self.ext_intermediates.contains_key(&intermediate) {
-                assignment.2.insert(
-                    intermediate.clone(),
-                    self.ext_intermediates[&intermediate].assign(&assignment),
-                );
+            if let Some(expr) = self.intermediates.get(&intermediate) {
+                assignment
+                    .1
+                    .insert(intermediate.clone(), expr.assign(&assignment));
+            } else if let Some(expr) = self.ext_intermediates.get(&intermediate) {
+                assignment
+                    .2
+                    .insert(intermediate.clone(), expr.assign(&assignment));
             } else {
                 panic!(
                     "Intermediate {} not found in intermediates or ext_intermediates",
