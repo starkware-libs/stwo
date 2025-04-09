@@ -2,7 +2,6 @@
 //! Based on <https://github.com/oconnor663/blake2_simd/blob/master/blake2s/src/avx2.rs>.
 
 use std::array;
-use std::iter::repeat;
 use std::mem::transmute;
 use std::simd::u32x16;
 
@@ -11,7 +10,7 @@ use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use super::m31::{LOG_N_LANES, N_LANES};
+use super::m31::LOG_N_LANES;
 use super::SimdBackend;
 use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::fields::m31::BaseField;
@@ -66,8 +65,6 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
             assert_eq!(prev_layer.len(), 1 << (log_size + 1));
         }
 
-        let zeros = u32x16::splat(0);
-
         // Commit to columns.
         let mut res = vec![Blake2sHash::default(); 1 << log_size];
         #[cfg(not(feature = "parallel"))]
@@ -76,43 +73,81 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         #[cfg(feature = "parallel")]
         let iter = res.par_chunks_mut(1 << LOG_N_LANES);
 
+        let packed_iv = IV.map(u32x16::splat);
         iter.enumerate().for_each(|(i, chunk)| {
-            let mut state: [u32x16; 8] = unsafe { std::mem::zeroed() };
+            let mut state = packed_iv;
+            // No columns in the layer.
+            if columns.is_empty() {
+                let prev_chunk_u32s = match prev_layer {
+                    Some(prev_layer) => cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]),
+                    None => &[0; 32],
+                };
+                let msgs: [u32x16; 16] = array::from_fn(|j| {
+                    u32x16::from_array(std::array::from_fn(|k| prev_chunk_u32s[16 * j + k]))
+                });
+                let state = compress_finalize(state, transpose_msgs(msgs), 64);
+                let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
+                chunk.copy_from_slice(&state);
+                return;
+            }
+
+            let mut t: u64 = 0;
             // Hash prev_layer, if exists.
             if let Some(prev_layer) = prev_layer {
                 let prev_chunk_u32s = cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]);
+                t += 64;
                 // Note: prev_layer might be unaligned.
                 let msgs: [u32x16; 16] = array::from_fn(|j| {
                     u32x16::from_array(std::array::from_fn(|k| prev_chunk_u32s[16 * j + k]))
                 });
-                state = compress16(state, transpose_msgs(msgs), zeros, zeros, zeros, zeros);
+                state = compress_unfinalized(state, transpose_msgs(msgs), t);
             }
 
             // Hash columns in chunks of 16.
+            let last_block_offset = (columns.len() / 16) * 16;
+            let (columns, rem) = columns.split_at(last_block_offset);
             let mut col_chunk_iter = columns.array_chunks();
             for col_chunk in &mut col_chunk_iter {
+                t += 64;
                 let msgs = col_chunk.map(|column| column.data[i].into_simd());
-                state = compress16(state, msgs, zeros, zeros, zeros, zeros);
+                state = compress_unfinalized(state, msgs, t);
             }
 
-            // Hash remaining columns.
-            let remainder = col_chunk_iter.remainder();
-            if !remainder.is_empty() {
-                let msgs = remainder
-                    .iter()
-                    .map(|column| column.data[i].into_simd())
-                    .chain(repeat(zeros))
-                    .take(N_LANES)
-                    .collect_vec()
-                    .try_into()
-                    .unwrap();
-                state = compress16(state, msgs, zeros, zeros, zeros, zeros);
+            t += rem.len() as u64;
+            let mut last_block: [u32x16; 16] = unsafe { std::mem::zeroed() };
+            for (j, column) in rem.iter().enumerate() {
+                last_block[j] = column.data[i].into_simd();
             }
+            let state = compress_finalize(state, last_block, t);
             let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
             chunk.copy_from_slice(&state);
         });
         res
     }
+}
+
+const ZEROS: u32x16 = u32x16::splat(0);
+
+fn compress_unfinalized(state: [u32x16; 8], chunk: [u32x16; 16], t: u64) -> [u32x16; 8] {
+    compress16(
+        state,
+        chunk,
+        u32x16::splat(t as u32),
+        u32x16::splat((t >> 32) as u32),
+        ZEROS,
+        ZEROS,
+    )
+}
+
+fn compress_finalize(state: [u32x16; 8], last_block: [u32x16; 16], t: u64) -> [u32x16; 8] {
+    compress16(
+        state,
+        last_block,
+        u32x16::splat(t as u32),
+        u32x16::splat((t >> 32) as u32),
+        u32x16::splat(0xFFFFFFFF),
+        ZEROS,
+    )
 }
 
 /// Applies [`u32::rotate_right(N)`] to each element of the vector
