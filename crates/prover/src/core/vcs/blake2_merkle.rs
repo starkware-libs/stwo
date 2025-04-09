@@ -1,11 +1,16 @@
-use num_traits::Zero;
+use std::mem::transmute;
+
 use serde::{Deserialize, Serialize};
 
 use super::blake2_hash::Blake2sHash;
-use super::blake2s_ref::compress;
+use super::blake2s_ref::{compress, IV};
 use super::ops::MerkleHasher;
 use crate::core::channel::{Blake2sChannel, MerkleChannel};
 use crate::core::fields::m31::BaseField;
+
+const BLOCK_BYTES: u64 = 64;
+const BYTES_PER_FELT: u64 = 4;
+const FELTS_PER_HASH: usize = 16;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct Blake2sMerkleHasher;
@@ -16,34 +21,57 @@ impl MerkleHasher for Blake2sMerkleHasher {
         children_hashes: Option<(Self::Hash, Self::Hash)>,
         column_values: &[BaseField],
     ) -> Self::Hash {
-        let mut state = [0; 8];
-        if let Some((left, right)) = children_hashes {
-            state = compress(
-                state,
-                unsafe { std::mem::transmute::<[Blake2sHash; 2], [u32; 16]>([left, right]) },
-                0,
-                0,
-                0,
-                0,
-            );
-        }
-        let rem = 15 - ((column_values.len() + 15) % 16);
-        let padded_values = column_values
-            .iter()
-            .copied()
-            .chain(std::iter::repeat_n(BaseField::zero(), rem));
-        for chunk in padded_values.array_chunks::<16>() {
-            state = compress(
-                state,
-                unsafe { std::mem::transmute::<[BaseField; 16], [u32; 16]>(chunk) },
-                0,
-                0,
-                0,
-                0,
-            );
-        }
-        state.map(|x| x.to_le_bytes()).as_flattened().into()
+        hash_node(children_hashes, column_values)
     }
+}
+
+fn hash_node(
+    children_hashes: Option<(Blake2sHash, Blake2sHash)>,
+    column_values: &[BaseField],
+) -> Blake2sHash {
+    let children_hashes: Option<[u32; 16]> = children_hashes
+        .map(|(left, right)| unsafe { transmute::<[Blake2sHash; 2], [u32; 16]>([left, right]) });
+    let column_values: &[u32] = unsafe { transmute(column_values) };
+
+    let state = hash_node_native_types(children_hashes, column_values);
+
+    Blake2sHash(unsafe { transmute::<[u32; 8], [u8; 32]>(state) })
+}
+
+fn hash_node_native_types(children_hashes: Option<[u32; 16]>, column_values: &[u32]) -> [u32; 8] {
+    let mut state = IV;
+    // No columns in the layer.
+    if column_values.is_empty() {
+        let node = children_hashes.unwrap_or_default();
+        return compress_finalize(state, node, BLOCK_BYTES);
+    }
+
+    // Columns in the layer.
+    let mut t: u64 = 0;
+    if let Some(node) = children_hashes {
+        t += BLOCK_BYTES;
+        state = compress_unfinalized(state, node, t);
+    }
+
+    let last_block_offset = (column_values.len() / FELTS_PER_HASH) * FELTS_PER_HASH;
+    let (column_values, rem) = column_values.split_at(last_block_offset);
+    for &chunk in column_values.array_chunks::<FELTS_PER_HASH>() {
+        t += BLOCK_BYTES;
+        state = compress_unfinalized(state, chunk, t);
+    }
+
+    t += rem.len() as u64 * BYTES_PER_FELT;
+    let mut last_block = [0; FELTS_PER_HASH];
+    last_block[..rem.len()].copy_from_slice(rem);
+    compress_finalize(state, last_block, t)
+}
+
+const fn compress_unfinalized(state: [u32; 8], chunk: [u32; 16], t: u64) -> [u32; 8] {
+    compress(state, chunk, t as u32, (t >> 32) as u32, 0, 0)
+}
+
+const fn compress_finalize(state: [u32; 8], last_block: [u32; 16], t: u64) -> [u32; 8] {
+    compress(state, last_block, t as u32, (t >> 32) as u32, 0xFFFFFFFF, 0)
 }
 
 #[derive(Default)]
