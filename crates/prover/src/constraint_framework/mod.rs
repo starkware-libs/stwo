@@ -66,7 +66,6 @@ pub trait EvalAtRow {
         + Clone
         + Debug
         + Zero
-        + From<Self::F>
         + Neg<Output = Self::EF>
         + AddAssign
         + Add<BaseField, Output = Self::EF>
