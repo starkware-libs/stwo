@@ -4,27 +4,6 @@ use crate::core::backend::simd::SimdBackend;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SecureColumnByCoords;
 
-// WARNING: This works because they are literally the same object layout.
-//
-// The only difference is the backend methods.
-// When we implement all methods for WebGPU,
-// we will no longer need this to convert back/forth.
-impl AsMut<SecureColumnByCoords<SimdBackend>> for SecureColumnByCoords<WebBackend> {
-    fn as_mut(&mut self) -> &mut SecureColumnByCoords<SimdBackend> {
-        assert_eq!(std::mem::size_of::<SimdBackend>(), 0);
-        assert_eq!(std::mem::size_of::<WebBackend>(), 0);
-        unsafe { std::mem::transmute(self) }
-    }
-}
-
-impl AsRef<SecureColumnByCoords<SimdBackend>> for SecureColumnByCoords<WebBackend> {
-    fn as_ref(&self) -> &SecureColumnByCoords<SimdBackend> {
-        assert_eq!(std::mem::size_of::<SimdBackend>(), 0);
-        assert_eq!(std::mem::size_of::<WebBackend>(), 0);
-        unsafe { std::mem::transmute(self) }
-    }
-}
-
 impl AccumulationOps for WebBackend {
     fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>) {
         SimdBackend::accumulate(column.as_mut(), other.as_ref());

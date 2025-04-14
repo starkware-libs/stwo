@@ -6,31 +6,6 @@ use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
 
-// WARNING: This works because they are literally the same object layout.
-//
-// The only difference is the backend methods.
-// When we implement all methods for WebGPU,
-// we will no longer need this to convert back/forth.
-impl Into<SecureEvaluation<WebBackend, BitReversedOrder>>
-    for SecureEvaluation<SimdBackend, BitReversedOrder>
-{
-    fn into(self) -> SecureEvaluation<WebBackend, BitReversedOrder> {
-        assert_eq!(std::mem::size_of::<SimdBackend>(), 0);
-        assert_eq!(std::mem::size_of::<WebBackend>(), 0);
-        unsafe { std::mem::transmute(self) }
-    }
-}
-
-impl AsRef<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>
-    for CircleEvaluation<WebBackend, BaseField, BitReversedOrder>
-{
-    fn as_ref(&self) -> &CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
-        assert_eq!(std::mem::size_of::<SimdBackend>(), 0);
-        assert_eq!(std::mem::size_of::<WebBackend>(), 0);
-        unsafe { std::mem::transmute(self) }
-    }
-}
-
 impl QuotientOps for WebBackend {
     fn accumulate_quotients(
         domain: CircleDomain,

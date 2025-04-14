@@ -476,6 +476,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<WebBackend> for FrameworkComponent
 
         let _span = span!(Level::INFO, "Constraint point-wise eval").entered();
 
+        println!("trace_domain.log_size() = {}", trace_domain.log_size());
         if trace_domain.log_size() < LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS {
             // Fall back to CPU if the trace is too small.
             let mut col = accum.col.to_cpu();

@@ -5,37 +5,6 @@ use crate::core::lookups::gkr_prover::{GkrMultivariatePolyOracle, GkrOps, Layer}
 use crate::core::lookups::mle::Mle;
 use crate::core::lookups::utils::UnivariatePoly;
 
-// WARNING: This works because they are literally the same object layout.
-//
-// The only difference is the backend methods.
-// When we implement all methods for WebGPU,
-// we will no longer need this to convert back/forth.
-impl AsRef<Layer<SimdBackend>> for Layer<WebBackend> {
-    fn as_ref(&self) -> &Layer<SimdBackend> {
-        assert_eq!(std::mem::size_of::<SimdBackend>(), 0);
-        assert_eq!(std::mem::size_of::<WebBackend>(), 0);
-        unsafe { std::mem::transmute(self) }
-    }
-}
-
-impl<'a> AsRef<GkrMultivariatePolyOracle<'a, SimdBackend>>
-    for GkrMultivariatePolyOracle<'a, WebBackend>
-{
-    fn as_ref(&self) -> &GkrMultivariatePolyOracle<'a, SimdBackend> {
-        assert_eq!(std::mem::size_of::<SimdBackend>(), 0);
-        assert_eq!(std::mem::size_of::<WebBackend>(), 0);
-        unsafe { std::mem::transmute(self) }
-    }
-}
-
-impl Into<Layer<WebBackend>> for Layer<SimdBackend> {
-    fn into(self) -> Layer<WebBackend> {
-        assert_eq!(std::mem::size_of::<SimdBackend>(), 0);
-        assert_eq!(std::mem::size_of::<WebBackend>(), 0);
-        unsafe { std::mem::transmute(self) }
-    }
-}
-
 impl GkrOps for WebBackend {
     #[allow(clippy::uninit_vec)]
     fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Mle<Self, SecureField> {
