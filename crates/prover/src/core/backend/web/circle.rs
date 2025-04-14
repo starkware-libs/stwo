@@ -72,7 +72,6 @@ impl Into<TwiddleTree<WebBackend>> for TwiddleTree<SimdBackend> {
         unsafe { std::mem::transmute(self) }
     }
 }
-//
 
 impl PolyOps for WebBackend {
     // The twiddles type is i32, and not BaseField. This is because the fast AVX mul implementation
