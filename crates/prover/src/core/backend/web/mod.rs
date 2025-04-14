@@ -18,13 +18,15 @@ pub mod fri;
 pub mod grind;
 pub mod lookups;
 // pub mod m31;
-// #[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_arch = "wasm32"))]
 pub mod poseidon252;
 // pub mod prefix_sum;
 // pub mod qm31;
 pub mod quotients;
 pub mod utils;
 // pub mod very_packed_m31;
+pub mod prove_poseidon;
+pub mod webgpu;
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct WebBackend;

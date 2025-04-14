@@ -198,6 +198,10 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
                 .collect(),
         )
     }
+
+    pub fn eval(&self) -> &E {
+        &self.eval
+    }
 }
 
 pub struct RelationCounts(HashMap<String, usize>);
@@ -476,8 +480,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<WebBackend> for FrameworkComponent
 
         let _span = span!(Level::INFO, "Constraint point-wise eval").entered();
 
-        println!("trace_domain.log_size() = {}", trace_domain.log_size());
-        if trace_domain.log_size() < LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS {
+        if trace_domain.log_size() < LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS + 10 {
             // Fall back to CPU if the trace is too small.
             let mut col = accum.col.to_cpu();
 
