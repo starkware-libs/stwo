@@ -1,5 +1,6 @@
 //! AIR for Poseidon2 hash function from <https://eprint.iacr.org/2023/323.pdf>.
 
+use std::borrow::Cow;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
@@ -7,9 +8,10 @@ use num_traits::One;
 use tracing::{info, span, Level};
 
 use crate::constraint_framework::logup::LogupTraceGenerator;
+use crate::constraint_framework::web_domain::WebDomainEvaluator;
 use crate::constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
-    TraceLocationAllocator,
+    relation, EvalAtRow, FrameworkComponent, FrameworkEval, FrameworkEvalWeb, Relation,
+    RelationEntry, TraceLocationAllocator,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -22,7 +24,7 @@ use crate::core::channel::Blake2sChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::pcs::{CommitmentSchemeProver, PcsConfig};
+use crate::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeVec};
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use crate::core::poly::BitReversedOrder;
 use crate::core::prover::{prove, StarkProof};
@@ -64,6 +66,17 @@ impl FrameworkEval for PoseidonEval {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         eval_poseidon_constraints(&mut eval, &self.lookup_elements);
         eval
+    }
+}
+
+impl FrameworkEvalWeb for PoseidonEval {
+    fn evaluate_web(
+        &self,
+        eval: WebDomainEvaluator,
+        trace: &TreeVec<Vec<Cow<'_, CircleEvaluation<WebBackend, BaseField, BitReversedOrder>>>>,
+    ) {
+        println!("evaluate_web");
+        eval_poseidon_constraints_web(eval, &self.lookup_elements, trace);
     }
 }
 
@@ -196,6 +209,16 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &P
     }
 
     eval.finalize_logup_in_pairs();
+}
+
+#[allow(unused_variables)]
+pub fn eval_poseidon_constraints_web(
+    eval: WebDomainEvaluator,
+    lookup_elements: &PoseidonElements,
+    trace: &TreeVec<Vec<Cow<'_, CircleEvaluation<WebBackend, BaseField, BitReversedOrder>>>>,
+) {
+    println!("eval_poseidon_constraints_web");
+    // TODO: call WebGPU code here.
 }
 
 pub struct LookupData {

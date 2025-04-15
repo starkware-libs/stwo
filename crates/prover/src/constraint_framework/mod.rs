@@ -1,7 +1,7 @@
 /// ! This module contains helpers to express and use constraints for components.
 mod assert;
 mod component;
-mod cpu_domain;
+pub mod cpu_domain;
 pub mod expr;
 mod info;
 pub mod logup;
@@ -9,13 +9,13 @@ mod point;
 pub mod preprocessed_columns;
 pub mod relation_tracker;
 mod simd_domain;
-
+pub mod web_domain;
 use std::array;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 pub use assert::{assert_constraints_on_polys, assert_constraints_on_trace, AssertEvaluator};
-pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
+pub use component::{FrameworkComponent, FrameworkEval, FrameworkEvalWeb, TraceLocationAllocator};
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;

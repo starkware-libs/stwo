@@ -11,6 +11,7 @@ use tracing::{span, Level};
 
 use super::cpu_domain::CpuDomainEvaluator;
 use super::preprocessed_columns::PreProcessedColumnId;
+use super::web_domain::WebDomainEvaluator;
 use super::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, PREPROCESSED_TRACE_IDX,
 };
@@ -420,7 +421,18 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
     }
 }
 
-impl<E: FrameworkEval + Sync> ComponentProver<WebBackend> for FrameworkComponent<E> {
+pub trait FrameworkEvalWeb {
+    // TODO: add more parameters if needed.
+    fn evaluate_web(
+        &self,
+        eval: WebDomainEvaluator,
+        trace: &TreeVec<Vec<Cow<'_, CircleEvaluation<WebBackend, BaseField, BitReversedOrder>>>>,
+    );
+}
+
+impl<E: FrameworkEval + Sync + FrameworkEvalWeb> ComponentProver<WebBackend>
+    for FrameworkComponent<E>
+{
     fn evaluate_constraint_quotients_on_domain(
         &self,
         trace: &Trace<'_, WebBackend>,
@@ -508,6 +520,10 @@ impl<E: FrameworkEval + Sync> ComponentProver<WebBackend> for FrameworkComponent
             *accum.col = col;
             return;
         }
+
+        // Use WebGPU for heavy computations
+        let eval = WebDomainEvaluator::new(self.eval.log_size(), self.claimed_sum);
+        self.eval.evaluate_web(eval, &trace);
     }
 }
 
