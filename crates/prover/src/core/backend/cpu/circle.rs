@@ -2,33 +2,18 @@ use num_traits::Zero;
 
 use super::CpuBackend;
 use crate::core::backend::cpu::bit_reverse;
-use crate::core::backend::{Col, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{batch_inverse_in_place, ExtensionOf};
-use crate::core::poly::circle::{
-    CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
-};
+use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly, PolyOps};
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
-use crate::core::utils::coset_order_to_circle_domain_order;
 
 impl PolyOps for CpuBackend {
     type Twiddles = Vec<BaseField>;
-
-    fn new_canonical_ordered(
-        coset: CanonicCoset,
-        values: Col<Self, BaseField>,
-    ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
-        let domain = coset.circle_domain();
-        assert_eq!(values.len(), domain.size());
-        let mut new_values = coset_order_to_circle_domain_order(&values);
-        CpuBackend::bit_reverse_column(&mut new_values);
-        CircleEvaluation::new(domain, new_values)
-    }
 
     fn interpolate(
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,

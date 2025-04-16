@@ -1,7 +1,7 @@
 use itertools::Itertools;
 
 use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
-use crate::core::backend::{Col, ColumnOps};
+use crate::core::backend::ColumnOps;
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -14,13 +14,6 @@ pub trait PolyOps: ColumnOps<BaseField> + Sized {
     // TODO(alont): Use a column instead of this type.
     /// The type for precomputed twiddles.
     type Twiddles;
-
-    /// Creates a [CircleEvaluation] from values ordered according to [CanonicCoset].
-    /// Used by the [`CircleEvaluation::new_canonical_ordered()`] function.
-    fn new_canonical_ordered(
-        coset: CanonicCoset,
-        values: Col<Self, BaseField>,
-    ) -> CircleEvaluation<Self, BaseField, BitReversedOrder>;
 
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
     /// Used by the [`CircleEvaluation::interpolate()`] function.

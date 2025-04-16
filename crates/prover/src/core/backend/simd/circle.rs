@@ -128,18 +128,6 @@ impl PolyOps for SimdBackend {
     //  representation of the field.
     type Twiddles = Vec<u32>;
 
-    fn new_canonical_ordered(
-        coset: CanonicCoset,
-        values: Col<Self, BaseField>,
-    ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
-        // TODO(Ohad): Optimize.
-        let eval = CpuBackend::new_canonical_ordered(coset, values.into_cpu_vec());
-        CircleEvaluation::new(
-            eval.domain,
-            Col::<SimdBackend, BaseField>::from_iter(eval.values),
-        )
-    }
-
     fn interpolate(
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
         twiddles: &TwiddleTree<Self>,
