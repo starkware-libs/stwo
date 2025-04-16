@@ -3,7 +3,7 @@ use std::ops::{Deref, Index};
 
 use educe::Educe;
 
-use super::{CanonicCoset, CircleDomain, CirclePoly, PolyOps};
+use super::{CircleDomain, CirclePoly, PolyOps};
 use crate::core::backend::cpu::CpuCircleEvaluation;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
@@ -73,15 +73,6 @@ impl<F: ExtensionOf<BaseField>> CpuCircleEvaluation<F, NaturalOrder> {
 }
 
 impl<B: PolyOps> CircleEvaluation<B, BaseField, BitReversedOrder> {
-    /// Creates a [CircleEvaluation] from values ordered according to
-    /// [CanonicCoset]. For example, the canonic coset might look like this:
-    ///   G_8, G_8 + G_4, G_8 + 2G_4, G_8 + 3G_4.
-    /// The circle domain will be ordered like this:
-    ///   G_8, G_8 + 2G_4, -G_8, -G_8 - 2G_4.
-    pub fn new_canonical_ordered(coset: CanonicCoset, values: Col<B, BaseField>) -> Self {
-        B::new_canonical_ordered(coset, values)
-    }
-
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
     pub fn interpolate(self) -> CirclePoly<B> {
         let coset = self.domain.half_coset;
@@ -184,19 +175,6 @@ mod tests {
         .bit_reverse();
         let poly = evaluation.interpolate();
         for (i, point) in domain.iter().enumerate() {
-            assert_eq!(poly.eval_at_point(point.into_ef()), m31!(i as u32).into());
-        }
-    }
-
-    #[test]
-    fn test_interpolate_canonic() {
-        let coset = CanonicCoset::new(3);
-        let evaluation = CpuCircleEvaluation::new_canonical_ordered(
-            coset,
-            (0..8).map(BaseField::from_u32_unchecked).collect(),
-        );
-        let poly = evaluation.interpolate();
-        for (i, point) in Coset::odds(3).iter().enumerate() {
             assert_eq!(poly.eval_at_point(point.into_ef()), m31!(i as u32).into());
         }
     }
