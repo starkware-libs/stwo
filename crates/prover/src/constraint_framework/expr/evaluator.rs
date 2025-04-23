@@ -46,6 +46,7 @@ fn combine_formal<R: Relation<BaseExpr, ExtExpr>>(relation: &R, values: &[BaseEx
     let z = ExtExpr::Param(relation.get_name().to_owned() + Z_SUFFIX);
     let alpha_powers = (0..relation.get_size())
         .map(|i| ExtExpr::Param(relation.get_name().to_owned() + ALPHA_SUFFIX + &i.to_string()));
+    assert!(values.len() <= relation.get_size());
     values
         .iter()
         .zip(alpha_powers)
