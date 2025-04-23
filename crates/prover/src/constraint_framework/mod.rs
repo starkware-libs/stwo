@@ -265,7 +265,6 @@ where
 /// A trait for defining a logup relation type.
 pub trait Relation<F: Clone, EF: RelationEFTraitBound<F>>: Sized {
     fn combine(&self, values: &[F]) -> EF;
-
     fn get_name(&self) -> &str;
     fn get_size(&self) -> usize;
 }
@@ -313,6 +312,7 @@ macro_rules! relation {
             $crate::constraint_framework::Relation<F, EF> for $name
         {
             fn combine(&self, values: &[F]) -> EF {
+                assert!(values.len() <= $size);
                 values
                     .iter()
                     .zip(self.0.alpha_powers)
