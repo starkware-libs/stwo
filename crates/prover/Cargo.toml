@@ -68,6 +68,10 @@ name = "eval_at_point"
 
 [[bench]]
 harness = false
+name = "barycentric_eval_at_point"
+
+[[bench]]
+harness = false
 name = "fft"
 
 [[bench]]
