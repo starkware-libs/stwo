@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use super::quotients::{compute_fri_quotients, PointSample};
 use super::utils::TreeVec;
 use super::{PcsConfig, TreeSubspan};
 use crate::core::air::Trace;
-use crate::core::backend::BackendForChannel;
+use crate::core::backend::{BackendForChannel, Col};
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::poly::twiddles::TwiddleTree;
@@ -80,6 +80,29 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         Trace { polys, evals }
     }
 
+    pub fn build_weights_hash_map(
+        &self,
+        sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    ) -> HashMap<(u32, CirclePoint<SecureField>), Col<B, SecureField>> {
+        let mut weights_hash_map = HashMap::new();
+        self.evaluations()
+            .zip_cols(sampled_points)
+            .map_cols(|(eval, points)| {
+                points.iter().for_each(|&point| {
+                    let log_size = eval.domain.log_size();
+                    weights_hash_map
+                        .entry((log_size, point))
+                        .or_insert_with(|| {
+                            CircleEvaluation::<B, BaseField, BitReversedOrder>::weights(
+                                log_size, point,
+                            )
+                        });
+                })
+            });
+
+        weights_hash_map
+    }
+
     pub fn prove_values(
         self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
@@ -87,15 +110,19 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     ) -> CommitmentSchemeProof<MC::H> {
         // Evaluate polynomials on open points.
         let span = span!(Level::INFO, "Evaluate columns out of domain").entered();
+        let weights_hash_map = self.build_weights_hash_map(&sampled_points);
         let samples = self
-            .polynomials()
+            .evaluations()
             .zip_cols(&sampled_points)
-            .map_cols(|(poly, points)| {
+            .map_cols(|(eval, points)| {
                 points
                     .iter()
                     .map(|&point| PointSample {
                         point,
-                        value: poly.eval_at_point(point),
+                        value: eval.barycentric_eval_at_point(
+                            point,
+                            &weights_hash_map[&(eval.domain.log_size(), point)],
+                        ),
                     })
                     .collect_vec()
             });
