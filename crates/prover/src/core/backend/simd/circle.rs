@@ -229,6 +229,7 @@ impl PolyOps for SimdBackend {
         p: CirclePoint<SecureField>,
     ) -> Col<SimdBackend, SecureField> {
         let domain = coset.circle_domain();
+        let log_size = domain.log_size();
         let weights_vec_len = domain.size().div_ceil(N_LANES);
         if weights_vec_len == 1 {
             return Col::<SimdBackend, SecureField>::from_iter(CircleEvaluation::<
@@ -240,11 +241,12 @@ impl PolyOps for SimdBackend {
             ));
         }
 
+        let p = p.into_ef::<SecureField>();
         let p_0 = domain.at(0).into_ef::<SecureField>();
         let si_0 = SecureField::one()
             / ((p_0.y * SecureField::from(-2))
                 * coset_vanishing_derivative(
-                    Coset::new(CirclePointIndex::generator(), domain.log_size()),
+                    Coset::new(CirclePointIndex::generator(), log_size),
                     p_0,
                 ));
 
@@ -253,8 +255,10 @@ impl PolyOps for SimdBackend {
             .map(|i| {
                 PackedSecureField::from_array(std::array::from_fn(|j| {
                     point_vanishing(
-                        domain.at(i * N_LANES + j).into_ef::<SecureField>(),
-                        p.into_ef::<SecureField>(),
+                        domain
+                            .at(bit_reverse_index(i * N_LANES + j, log_size))
+                            .into_ef::<SecureField>(),
+                        p,
                     )
                 }))
             })
@@ -266,25 +270,21 @@ impl PolyOps for SimdBackend {
         };
         batch_inverse_in_place(&vi_p, &mut vi_p_inverse);
 
-        let vn_p: SecureField = coset_vanishing(
-            CanonicCoset::new(domain.log_size()).coset,
-            p.into_ef::<SecureField>(),
-        );
+        let vn_p: SecureField = coset_vanishing(CanonicCoset::new(log_size).coset, p);
 
-        let si_0_vn_p = PackedSecureField::broadcast(si_0 * vn_p);
-
-        // TODO(Gali): Change weights order to bit-reverse order.
         // S_i(i) is invariant under G_(n−1) and alternate under J, meaning the S_i(i) values are
         // the same for each half coset, and the second half coset values are the conjugate
         // of the first half coset values.
+        let si_i_vn_p = PackedSecureField::from_array(std::array::from_fn(|i| {
+            if i % 2 == 0 {
+                si_0 * vn_p
+            } else {
+                -si_0 * vn_p
+            }
+        }));
+
         let weights: Col<SimdBackend, SecureField> = (0..weights_vec_len)
-            .map(|i| {
-                if i < weights_vec_len / 2 {
-                    vi_p_inverse[i] * si_0_vn_p
-                } else {
-                    vi_p_inverse[i] * -si_0_vn_p
-                }
-            })
+            .map(|i| vi_p_inverse[i] * si_i_vn_p)
             .collect();
 
         weights
@@ -294,7 +294,6 @@ impl PolyOps for SimdBackend {
         evals: &CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
         weights: &Col<SimdBackend, SecureField>,
     ) -> SecureField {
-        let evals = evals.clone().bit_reverse();
         (0..evals.domain.size().div_ceil(N_LANES))
             .fold(PackedSecureField::zero(), |acc, i| {
                 acc + (weights.data[i] * evals.values.data[i])
