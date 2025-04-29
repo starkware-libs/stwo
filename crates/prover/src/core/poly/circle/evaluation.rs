@@ -2,21 +2,15 @@ use std::marker::PhantomData;
 use std::ops::{Deref, Index};
 
 use educe::Educe;
-use itertools::Itertools;
-use num_traits::{One, Zero};
 
 use super::{CircleDomain, CirclePoly, PolyOps};
 use crate::core::backend::cpu::CpuCircleEvaluation;
-use crate::core::backend::simd::m31::N_LANES;
-use crate::core::backend::simd::qm31::PackedSecureField;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
-use crate::core::constraints::{coset_vanishing, coset_vanishing_derivative, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{batch_inverse_in_place, ExtensionOf};
-use crate::core::poly::circle::CanonicCoset;
+use crate::core::fields::ExtensionOf;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::{BitReversedOrder, NaturalOrder};
 use crate::core::utils::bit_reverse_index;
@@ -79,7 +73,7 @@ impl<F: ExtensionOf<BaseField>> CpuCircleEvaluation<F, NaturalOrder> {
     }
 }
 
-impl<B: PolyOps> CircleEvaluation<B, BaseField, BitReversedOrder> {
+impl<B: PolyOps + ColumnOps<SecureField>> CircleEvaluation<B, BaseField, BitReversedOrder> {
     /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
     pub fn interpolate(self) -> CirclePoly<B> {
         let coset = self.domain.half_coset;
@@ -90,6 +84,45 @@ impl<B: PolyOps> CircleEvaluation<B, BaseField, BitReversedOrder> {
     /// precomputed twiddles.
     pub fn interpolate_with_twiddles(self, twiddles: &TwiddleTree<B>) -> CirclePoly<B> {
         B::interpolate(self, twiddles)
+    }
+
+    /// Computes the weights for Barycentric Lagrange interpolation on a circle domain, given a
+    /// sample point p and domain size. The domain is the circle domain corresponding to the
+    /// canonic coset of the size provided.
+    pub fn weights(log_size: u32, sample_point: CirclePoint<SecureField>) -> Col<B, SecureField> {
+        // For a point p not in the domain, the weight at domain point i is computed as:
+        // ```text
+        // w_i = S_i(p) / S_i(i) = V(p) / (-2 * V'_n(i_x) * i_y * V_i(p))
+        // ```
+        // using the following identities from the circle stark article:
+        // ```text
+        // S_i(p) = V(p) / V_i(p)
+        // S_i(i) = -2 * V'(i_x) * i_y
+        // ```
+        // where:
+        // - S_i(point) is the vanishing polynomial on the domain except i, evaluated at a point.
+        // - V(p) is the vanishing polynomial on the domain, evaluated at p.
+        // - V_i(p) is the vanishing polynomial on point i, evaluated at p.
+        // - V'(i_x) is the derivative of V(i) (evaluated at that point), see
+        //   [`coset_vanishing_derivative`].
+
+        B::weights(log_size, sample_point)
+    }
+
+    /// Evaluates a polynomial at a point using the barycentric interpolation formula,
+    /// given its evaluations on a domain and precomputed barycentric weights for
+    /// the domain.
+    pub fn barycentric_eval_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        weights: &Col<B, SecureField>,
+    ) -> SecureField {
+        // ```text
+        // Evaluation = Σ W_i * Poly(i) for all i in the evaluation domain.
+        // ```
+        // For more information on barycentric weights calculation see [`weights`]
+
+        B::barycentric_eval_at_point(self, point, weights)
     }
 }
 
@@ -160,247 +193,6 @@ impl<F: ExtensionOf<BaseField>> Index<usize> for CosetSubEvaluation<'_, F> {
     fn index(&self, index: usize) -> &Self::Output {
         &self[index as isize]
     }
-}
-
-// TODO(Gali): Remove.
-#[allow(dead_code)]
-/// Computes the weights for Barycentric Lagrange interpolation on a circle domain, given a sample
-/// point p and domain size. The domain is the circle domain corresponding to the canonic coset of
-/// the size provided.
-fn weights(log_size: u32, sample_point: CirclePoint<SecureField>) -> Col<CpuBackend, SecureField> {
-    // For a point p not in the domain, the weight at domain point i is computed as:
-    // ```text
-    // w_i = S_i(p) / S_i(i) = V(p) / (-2 * V'_n(i_x) * i_y * V_i(p))
-    // ```
-    // using the following identities from the circle stark article:
-    // ```text
-    // S_i(p) = V(p) / V_i(p)
-    // S_i(i) = -2 * V'(i_x) * i_y
-    // ```
-    // where:
-    // - S_i(point) is the vanishing polynomial on the domain except i, evaluated at a point.
-    // - V(p) is the vanishing polynomial on the domain, evaluated at p.
-    // - V_i(p) is the vanishing polynomial on point i, evaluated at p.
-    // - V'(i_x) is the derivative of V(i) (evaluated at that point), see
-    //   [`coset_vanishing_derivative`].
-
-    // TODO(Gali): Change weights order to bit-reverse order.
-
-    let domain = CanonicCoset::new(log_size).circle_domain();
-
-    // If p is in the domain at position i, then w_j = δ_ij
-    for i in 0..domain.size() {
-        if domain.at(i).into_ef() == sample_point {
-            let mut weights = vec![SecureField::zero(); domain.size()];
-            weights[i] = SecureField::one();
-            return weights;
-        }
-    }
-
-    // S_i(i) is invariant under G_(n−1) and alternate under J, so we can calculate only 2 values
-    let p_0 = domain.at(0).into_ef::<SecureField>();
-    let weights_first_half = SecureField::one()
-        / (-(p_0.y + p_0.y)
-            * coset_vanishing_derivative(
-                Coset::new(CirclePointIndex::generator(), domain.log_size()),
-                p_0,
-            ));
-    let p_0_inverse = domain.at(domain.half_coset.size()).into_ef::<SecureField>();
-    let weights_second_half = SecureField::one()
-        / (-(p_0_inverse.y + p_0_inverse.y)
-            * coset_vanishing_derivative(
-                Coset::new(CirclePointIndex::generator(), domain.log_size()),
-                p_0_inverse,
-            ));
-
-    // TODO(Gali): Optimize to a batched point_vanishing()
-    let domain_points_vanishing_evaluated_at_point = (0..domain.size())
-        .map(|i| {
-            point_vanishing(
-                domain.at(i).into_ef::<SecureField>(),
-                sample_point.into_ef::<SecureField>(),
-            )
-        })
-        .collect_vec();
-    let mut inversed_domain_points_vanishing_evaluated_at_point =
-        vec![unsafe { std::mem::zeroed() }; domain.size()];
-
-    batch_inverse_in_place(
-        &domain_points_vanishing_evaluated_at_point,
-        &mut inversed_domain_points_vanishing_evaluated_at_point,
-    );
-
-    let coset_vanishing_evaluated_at_point: SecureField = coset_vanishing(
-        CanonicCoset::new(domain.log_size()).coset,
-        sample_point.into_ef::<SecureField>(),
-    );
-
-    (0..domain.size())
-        .map(|i| {
-            if i < domain.half_coset.size() {
-                weights_first_half
-                    * inversed_domain_points_vanishing_evaluated_at_point[i]
-                    * coset_vanishing_evaluated_at_point
-            } else {
-                weights_second_half
-                    * inversed_domain_points_vanishing_evaluated_at_point[i]
-                    * coset_vanishing_evaluated_at_point
-            }
-        })
-        .collect_vec()
-}
-
-// TODO(Gali): Remove.
-#[allow(dead_code)]
-/// Evaluates a polynomial at a point using the barycentric interpolation formula,
-/// given its evaluations on a domain and precomputed barycentric weights for
-/// the domain.
-fn barycentric_eval_at_point(
-    evals: &CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>,
-    point: CirclePoint<SecureField>,
-    weights: &Col<CpuBackend, SecureField>,
-) -> SecureField {
-    // ```text
-    // Evaluation = Σ W_i * Poly(i) for all i in the evaluation domain.
-    // ```
-    // For more information on barycentric weights calculation see [`weights`]
-    for i in 0..evals.domain.size() {
-        if point == evals.domain.at(i).into_ef() {
-            return evals.values[bit_reverse_index(i, evals.domain.log_size())].into();
-        }
-    }
-
-    (0..evals.domain.size()).fold(SecureField::zero(), |acc, i| {
-        acc + (evals.values[bit_reverse_index(i, evals.domain.log_size())] * weights[i])
-    })
-}
-
-// TODO(Gali): Remove.
-#[allow(dead_code)]
-/// Computes the weights for Barycentric Lagrange interpolation on a circle domain, given a sample
-/// point p and domain size. The domain is the circle domain corresponding to the canonic coset of
-/// the size provided. For more information, see [`weights`].
-fn simd_weights(
-    log_size: u32,
-    sample_point: CirclePoint<SecureField>,
-) -> Col<SimdBackend, SecureField> {
-    // TODO(Gali): Change weights order to bit-reverse order.
-    let domain = CanonicCoset::new(log_size).circle_domain();
-    let weights_vec_len = domain.size().div_ceil(N_LANES);
-
-    // If p is in the domain at position i, then w_j = δ_ij
-    for i in 0..domain.size() {
-        if domain.at(i).into_ef() == sample_point {
-            let mut weights = Col::<SimdBackend, SecureField>::zeros(domain.size());
-            weights.set(i, SecureField::one());
-            return weights;
-        }
-    }
-
-    // S_i(i) is invariant under G_(n−1) and alternate under J, so we can calculate only 2 values
-    let p_0 = domain.at(0).into_ef::<SecureField>();
-    let weights_first_half = SecureField::one()
-        / (-(p_0.y + p_0.y)
-            * coset_vanishing_derivative(
-                Coset::new(CirclePointIndex::generator(), domain.log_size()),
-                p_0,
-            ));
-    let p_0_inverse = domain.at(domain.half_coset.size()).into_ef::<SecureField>();
-    let weights_second_half = SecureField::one()
-        / (-(p_0_inverse.y + p_0_inverse.y)
-            * coset_vanishing_derivative(
-                Coset::new(CirclePointIndex::generator(), domain.log_size()),
-                p_0_inverse,
-            ));
-
-    // TODO(Gali): Optimize to a batched point_vanishing()
-    let domain_points_vanishing_evaluated_at_point = (0..weights_vec_len)
-        .map(|i| {
-            PackedSecureField::from_array(std::array::from_fn(|j| {
-                if domain.size() <= i * N_LANES + j {
-                    SecureField::one()
-                } else {
-                    point_vanishing(
-                        domain.at(i * N_LANES + j).into_ef::<SecureField>(),
-                        sample_point.into_ef::<SecureField>(),
-                    )
-                }
-            }))
-        })
-        .collect_vec();
-    let mut inversed_domain_points_vanishing_evaluated_at_point =
-        vec![unsafe { std::mem::zeroed() }; weights_vec_len];
-
-    batch_inverse_in_place(
-        &domain_points_vanishing_evaluated_at_point,
-        &mut inversed_domain_points_vanishing_evaluated_at_point,
-    );
-
-    let coset_vanishing_evaluated_at_point: SecureField = coset_vanishing(
-        CanonicCoset::new(domain.log_size()).coset,
-        sample_point.into_ef::<SecureField>(),
-    );
-
-    if weights_vec_len == 1 {
-        return (0..N_LANES)
-            .map(|i| {
-                let inversed_domain_points_vanishing_evaluated_at_point =
-                    inversed_domain_points_vanishing_evaluated_at_point[0].to_array();
-                if i < domain.size() / 2 {
-                    inversed_domain_points_vanishing_evaluated_at_point[i]
-                        * (weights_first_half * coset_vanishing_evaluated_at_point)
-                } else {
-                    inversed_domain_points_vanishing_evaluated_at_point[i]
-                        * (weights_second_half * coset_vanishing_evaluated_at_point)
-                }
-            })
-            .collect();
-    }
-
-    let weights: Col<SimdBackend, SecureField> = (0..weights_vec_len)
-        .map(|i| {
-            if i < weights_vec_len / 2 {
-                inversed_domain_points_vanishing_evaluated_at_point[i]
-                    * (weights_first_half * coset_vanishing_evaluated_at_point)
-            } else {
-                inversed_domain_points_vanishing_evaluated_at_point[i]
-                    * (weights_second_half * coset_vanishing_evaluated_at_point)
-            }
-        })
-        .collect();
-
-    weights
-}
-
-// TODO(Gali): Remove.
-#[allow(dead_code)]
-/// Evaluates a polynomial at a point using the barycentric interpolation formula,
-/// given its evaluations on a domain and precomputed barycentric weights for
-/// the domain. For more information, see [`barycentric_eval_at_point`]
-fn simd_barycentric_eval_at_point(
-    evals: &CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
-    point: CirclePoint<SecureField>,
-    weights: &Col<SimdBackend, SecureField>,
-) -> SecureField {
-    for i in 0..evals.domain.size() {
-        if point == evals.domain.at(i).into_ef() {
-            return evals
-                .values
-                .at(bit_reverse_index(i, evals.domain.log_size()))
-                .into();
-        }
-    }
-    let evals = evals.clone().bit_reverse();
-    if evals.domain.size() < N_LANES {
-        return (0..evals.domain.size()).fold(SecureField::zero(), |acc, i| {
-            acc + (weights.at(i) * evals.values.at(i))
-        });
-    }
-    (0..evals.domain.size().div_ceil(N_LANES))
-        .fold(PackedSecureField::zero(), |acc, i| {
-            acc + (weights.data[i] * evals.values.data[i])
-        })
-        .pointwise_sum()
 }
 
 #[cfg(test)]
@@ -482,7 +274,13 @@ mod tests {
         let sampled_barycentric_values = sampled_points
             .iter()
             .map(|point| {
-                barycentric_eval_at_point(&eval, *point, &weights(eval.domain.log_size(), *point))
+                eval.barycentric_eval_at_point(
+                    *point,
+                    &super::CircleEvaluation::<CpuBackend, BaseField, BitReversedOrder>::weights(
+                        eval.domain.log_size(),
+                        *point,
+                    ),
+                )
             })
             .collect::<Vec<_>>();
 
@@ -518,10 +316,12 @@ mod tests {
         let sampled_barycentric_values = sampled_points
             .iter()
             .map(|point| {
-                simd_barycentric_eval_at_point(
-                    &eval,
+                eval.barycentric_eval_at_point(
                     *point,
-                    &simd_weights(eval.domain.log_size(), *point),
+                    &super::CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::weights(
+                        eval.domain.log_size(),
+                        *point,
+                    ),
                 )
             })
             .collect::<Vec<_>>();

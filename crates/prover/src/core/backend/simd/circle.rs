@@ -3,6 +3,8 @@ use std::mem::transmute;
 use std::simd::Simd;
 
 use bytemuck::Zeroable;
+use itertools::Itertools;
+use num_traits::{One, Zero};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -14,10 +16,11 @@ use crate::core::backend::cpu::circle::slow_precompute_twiddles;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::PackedM31;
 use crate::core::backend::{Col, Column, CpuBackend};
-use crate::core::circle::{CirclePoint, Coset, M31_CIRCLE_LOG_ORDER};
+use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, M31_CIRCLE_LOG_ORDER};
+use crate::core::constraints::{coset_vanishing, coset_vanishing_derivative, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{Field, FieldExpOps};
+use crate::core::fields::{batch_inverse_in_place, Field, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
@@ -219,6 +222,123 @@ impl PolyOps for SimdBackend {
         };
 
         (sum * twiddle_lows).pointwise_sum()
+    }
+
+    fn weights(log_size: u32, sample_point: CirclePoint<SecureField>) -> Col<Self, SecureField> {
+        // TODO(Gali): Change weights order to bit-reverse order.
+
+        let domain = CanonicCoset::new(log_size).circle_domain();
+        let weights_vec_len = domain.size().div_ceil(N_LANES);
+
+        // If p is in the domain at position i, then w_j = δ_ij
+        for i in 0..domain.size() {
+            if domain.at(i).into_ef() == sample_point {
+                let mut weights = Col::<Self, SecureField>::zeros(domain.size());
+                weights.set(i, SecureField::one());
+                return weights;
+            }
+        }
+
+        // S_i(i) is invariant under G_(n−1) and alternate under J, so we can calculate only 2
+        // values
+        let p_0 = domain.at(0).into_ef::<SecureField>();
+        let weights_first_half = SecureField::one()
+            / (-(p_0.y + p_0.y)
+                * coset_vanishing_derivative(
+                    Coset::new(CirclePointIndex::generator(), domain.log_size()),
+                    p_0,
+                ));
+        let p_0_inverse = domain.at(domain.half_coset.size()).into_ef::<SecureField>();
+        let weights_second_half = SecureField::one()
+            / (-(p_0_inverse.y + p_0_inverse.y)
+                * coset_vanishing_derivative(
+                    Coset::new(CirclePointIndex::generator(), domain.log_size()),
+                    p_0_inverse,
+                ));
+
+        // TODO(Gali): Optimize to a batched point_vanishing()
+        let domain_points_vanishing_evaluated_at_point = (0..weights_vec_len)
+            .map(|i| {
+                PackedSecureField::from_array(std::array::from_fn(|j| {
+                    if domain.size() <= i * N_LANES + j {
+                        SecureField::one()
+                    } else {
+                        point_vanishing(
+                            domain.at(i * N_LANES + j).into_ef::<SecureField>(),
+                            sample_point.into_ef::<SecureField>(),
+                        )
+                    }
+                }))
+            })
+            .collect_vec();
+        let mut inversed_domain_points_vanishing_evaluated_at_point =
+            vec![unsafe { std::mem::zeroed() }; weights_vec_len];
+
+        batch_inverse_in_place(
+            &domain_points_vanishing_evaluated_at_point,
+            &mut inversed_domain_points_vanishing_evaluated_at_point,
+        );
+
+        let coset_vanishing_evaluated_at_point: SecureField = coset_vanishing(
+            CanonicCoset::new(domain.log_size()).coset,
+            sample_point.into_ef::<SecureField>(),
+        );
+
+        if weights_vec_len == 1 {
+            return (0..N_LANES)
+                .map(|i| {
+                    let inversed_domain_points_vanishing_evaluated_at_point =
+                        inversed_domain_points_vanishing_evaluated_at_point[0].to_array();
+                    if i < domain.size() / 2 {
+                        inversed_domain_points_vanishing_evaluated_at_point[i]
+                            * (weights_first_half * coset_vanishing_evaluated_at_point)
+                    } else {
+                        inversed_domain_points_vanishing_evaluated_at_point[i]
+                            * (weights_second_half * coset_vanishing_evaluated_at_point)
+                    }
+                })
+                .collect();
+        }
+
+        let weights: Col<Self, SecureField> = (0..weights_vec_len)
+            .map(|i| {
+                if i < weights_vec_len / 2 {
+                    inversed_domain_points_vanishing_evaluated_at_point[i]
+                        * (weights_first_half * coset_vanishing_evaluated_at_point)
+                } else {
+                    inversed_domain_points_vanishing_evaluated_at_point[i]
+                        * (weights_second_half * coset_vanishing_evaluated_at_point)
+                }
+            })
+            .collect();
+
+        weights
+    }
+
+    fn barycentric_eval_at_point(
+        evals: &CircleEvaluation<Self, BaseField, BitReversedOrder>,
+        point: CirclePoint<SecureField>,
+        weights: &Col<Self, SecureField>,
+    ) -> SecureField {
+        for i in 0..evals.domain.size() {
+            if point == evals.domain.at(i).into_ef() {
+                return evals
+                    .values
+                    .at(bit_reverse_index(i, evals.domain.log_size()))
+                    .into();
+            }
+        }
+        let evals = evals.clone().bit_reverse();
+        if evals.domain.size() < N_LANES {
+            return (0..evals.domain.size()).fold(SecureField::zero(), |acc, i| {
+                acc + (weights.at(i) * evals.values.at(i))
+            });
+        }
+        (0..evals.domain.size().div_ceil(N_LANES))
+            .fold(PackedSecureField::zero(), |acc, i| {
+                acc + (weights.data[i] * evals.values.data[i])
+            })
+            .pointwise_sum()
     }
 
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
