@@ -100,7 +100,9 @@ impl PolyOps for CpuBackend {
 
         let (si_i, vi_p): (Vec<_>, Vec<_>) = (0..domain.size())
             .map(|i| {
-                let coset_point = domain.at(i).into_ef::<SecureField>();
+                let coset_point = domain
+                    .at(bit_reverse_index(i, domain.log_size()))
+                    .into_ef::<SecureField>();
                 let minus_two_coset_point_y = coset_point.y * SecureField::from(-2);
                 (
                     minus_two_coset_point_y
@@ -118,7 +120,6 @@ impl PolyOps for CpuBackend {
             p.into_ef::<SecureField>(),
         );
 
-        // TODO(Gali): Change weights order to bit-reverse order.
         (0..domain.size())
             .map(|i| vn_p / (si_i[i] * vi_p[i]))
             .collect_vec()
@@ -129,7 +130,7 @@ impl PolyOps for CpuBackend {
         weights: &Col<CpuBackend, SecureField>,
     ) -> SecureField {
         (0..evals.domain.size()).fold(SecureField::zero(), |acc, i| {
-            acc + (evals.values[bit_reverse_index(i, evals.domain.log_size())] * weights[i])
+            acc + (evals.values[i] * weights[i])
         })
     }
 
