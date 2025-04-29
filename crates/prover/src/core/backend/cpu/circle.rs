@@ -93,15 +93,13 @@ impl PolyOps for CpuBackend {
     }
 
     fn weights(log_size: u32, sample_point: CirclePoint<SecureField>) -> Col<Self, SecureField> {
-        // TODO(Gali): Change weights order to bit-reverse order.
-
         let domain = CanonicCoset::new(log_size).circle_domain();
 
         // If p is in the domain at position i, then w_j = δ_ij
         for i in 0..domain.size() {
             if domain.at(i).into_ef() == sample_point {
                 let mut weights = vec![SecureField::zero(); domain.size()];
-                weights[i] = SecureField::one();
+                weights[bit_reverse_index(i, log_size)] = SecureField::one();
                 return weights;
             }
         }
@@ -127,7 +125,9 @@ impl PolyOps for CpuBackend {
         let domain_points_vanishing_evaluated_at_point = (0..domain.size())
             .map(|i| {
                 point_vanishing(
-                    domain.at(i).into_ef::<SecureField>(),
+                    domain
+                        .at(bit_reverse_index(i, log_size))
+                        .into_ef::<SecureField>(),
                     sample_point.into_ef::<SecureField>(),
                 )
             })
@@ -147,7 +147,7 @@ impl PolyOps for CpuBackend {
 
         (0..domain.size())
             .map(|i| {
-                if i < domain.half_coset.size() {
+                if i % 2 == 0 {
                     weights_first_half
                         * inversed_domain_points_vanishing_evaluated_at_point[i]
                         * coset_vanishing_evaluated_at_point
@@ -172,7 +172,7 @@ impl PolyOps for CpuBackend {
         }
 
         (0..evals.domain.size()).fold(SecureField::zero(), |acc, i| {
-            acc + (evals.values[bit_reverse_index(i, evals.domain.log_size())] * weights[i])
+            acc + (evals.values[i] * weights[i])
         })
     }
 

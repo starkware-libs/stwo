@@ -225,8 +225,6 @@ impl PolyOps for SimdBackend {
     }
 
     fn weights(log_size: u32, sample_point: CirclePoint<SecureField>) -> Col<Self, SecureField> {
-        // TODO(Gali): Change weights order to bit-reverse order.
-
         let domain = CanonicCoset::new(log_size).circle_domain();
         let weights_vec_len = domain.size().div_ceil(N_LANES);
 
@@ -234,7 +232,7 @@ impl PolyOps for SimdBackend {
         for i in 0..domain.size() {
             if domain.at(i).into_ef() == sample_point {
                 let mut weights = Col::<Self, SecureField>::zeros(domain.size());
-                weights.set(i, SecureField::one());
+                weights.set(bit_reverse_index(i, log_size), SecureField::one());
                 return weights;
             }
         }
@@ -260,11 +258,13 @@ impl PolyOps for SimdBackend {
         let domain_points_vanishing_evaluated_at_point = (0..weights_vec_len)
             .map(|i| {
                 PackedSecureField::from_array(std::array::from_fn(|j| {
-                    if domain.size() <= i * N_LANES + j {
+                    if domain.size() <= bit_reverse_index(i * N_LANES + j, log_size) {
                         SecureField::one()
                     } else {
                         point_vanishing(
-                            domain.at(i * N_LANES + j).into_ef::<SecureField>(),
+                            domain
+                                .at(bit_reverse_index(i * N_LANES + j, log_size))
+                                .into_ef::<SecureField>(),
                             sample_point.into_ef::<SecureField>(),
                         )
                     }
@@ -289,7 +289,7 @@ impl PolyOps for SimdBackend {
                 .map(|i| {
                     let inversed_domain_points_vanishing_evaluated_at_point =
                         inversed_domain_points_vanishing_evaluated_at_point[0].to_array();
-                    if i < domain.size() / 2 {
+                    if i % 2 == 0 {
                         inversed_domain_points_vanishing_evaluated_at_point[i]
                             * (weights_first_half * coset_vanishing_evaluated_at_point)
                     } else {
@@ -300,15 +300,19 @@ impl PolyOps for SimdBackend {
                 .collect();
         }
 
+        let weights_half_and_half: PackedSecureField =
+            PackedSecureField::from_array(std::array::from_fn(|i| {
+                if i % 2 == 0 {
+                    weights_first_half
+                } else {
+                    weights_second_half
+                }
+            }));
         let weights: Col<Self, SecureField> = (0..weights_vec_len)
             .map(|i| {
-                if i < weights_vec_len / 2 {
-                    inversed_domain_points_vanishing_evaluated_at_point[i]
-                        * (weights_first_half * coset_vanishing_evaluated_at_point)
-                } else {
-                    inversed_domain_points_vanishing_evaluated_at_point[i]
-                        * (weights_second_half * coset_vanishing_evaluated_at_point)
-                }
+                inversed_domain_points_vanishing_evaluated_at_point[i]
+                    * weights_half_and_half
+                    * coset_vanishing_evaluated_at_point
             })
             .collect();
 
@@ -328,7 +332,7 @@ impl PolyOps for SimdBackend {
                     .into();
             }
         }
-        let evals = evals.clone().bit_reverse();
+
         if evals.domain.size() < N_LANES {
             return (0..evals.domain.size()).fold(SecureField::zero(), |acc, i| {
                 acc + (weights.at(i) * evals.values.at(i))
