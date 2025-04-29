@@ -1,5 +1,8 @@
+#[cfg(not(feature = "parallel"))]
 use itertools::Itertools;
 use num_traits::{One, Zero};
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use super::CpuBackend;
 use crate::core::backend::cpu::bit_reverse;
@@ -122,6 +125,7 @@ impl PolyOps for CpuBackend {
                 ));
 
         // TODO(Gali): Optimize to a batched point_vanishing()
+        #[cfg(not(feature = "parallel"))]
         let domain_points_vanishing_evaluated_at_point = (0..domain.size())
             .map(|i| {
                 point_vanishing(
@@ -132,6 +136,20 @@ impl PolyOps for CpuBackend {
                 )
             })
             .collect_vec();
+
+        #[cfg(feature = "parallel")]
+        let domain_points_vanishing_evaluated_at_point: Vec<_> = (0..domain.size())
+            .into_par_iter()
+            .map(|i| {
+                point_vanishing(
+                    domain
+                        .at(bit_reverse_index(i, log_size))
+                        .into_ef::<SecureField>(),
+                    sample_point.into_ef::<SecureField>(),
+                )
+            })
+            .collect();
+
         let mut inversed_domain_points_vanishing_evaluated_at_point =
             vec![unsafe { std::mem::zeroed() }; domain.size()];
 
@@ -145,7 +163,8 @@ impl PolyOps for CpuBackend {
             sample_point.into_ef::<SecureField>(),
         );
 
-        (0..domain.size())
+        #[cfg(not(feature = "parallel"))]
+        let weights = (0..domain.size())
             .map(|i| {
                 if i % 2 == 0 {
                     weights_first_half
@@ -157,7 +176,25 @@ impl PolyOps for CpuBackend {
                         * coset_vanishing_evaluated_at_point
                 }
             })
-            .collect_vec()
+            .collect_vec();
+
+        #[cfg(feature = "parallel")]
+        let weights = (0..domain.size())
+            .into_par_iter()
+            .map(|i| {
+                if i % 2 == 0 {
+                    weights_first_half
+                        * inversed_domain_points_vanishing_evaluated_at_point[i]
+                        * coset_vanishing_evaluated_at_point
+                } else {
+                    weights_second_half
+                        * inversed_domain_points_vanishing_evaluated_at_point[i]
+                        * coset_vanishing_evaluated_at_point
+                }
+            })
+            .collect();
+
+        weights
     }
 
     fn barycentric_eval_at_point(
@@ -171,9 +208,18 @@ impl PolyOps for CpuBackend {
             }
         }
 
-        (0..evals.domain.size()).fold(SecureField::zero(), |acc, i| {
+        #[cfg(not(feature = "parallel"))]
+        return (0..evals.domain.size()).fold(SecureField::zero(), |acc, i| {
             acc + (evals.values[i] * weights[i])
-        })
+        });
+
+        #[cfg(feature = "parallel")]
+        return (0..evals.domain.size())
+            .into_par_iter()
+            .fold(SecureField::zero, |acc: SecureField, i: usize| {
+                acc + (evals.values[i] * weights[i])
+            })
+            .sum::<SecureField>();
     }
 
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
