@@ -1,16 +1,22 @@
-use num_traits::Zero;
+use itertools::Itertools;
+use num_traits::{One, Zero};
 
 use super::CpuBackend;
 use crate::core::backend::cpu::bit_reverse;
-use crate::core::circle::{CirclePoint, Coset};
+use crate::core::backend::Col;
+use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
+use crate::core::constraints::{coset_vanishing, coset_vanishing_derivative, point_vanishing};
 use crate::core::fft::{butterfly, ibutterfly};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{batch_inverse_in_place, ExtensionOf};
-use crate::core::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly, PolyOps};
+use crate::core::poly::circle::{
+    CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
+};
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
+use crate::core::utils::bit_reverse_index;
 
 impl PolyOps for CpuBackend {
     type Twiddles = Vec<BaseField>;
@@ -84,6 +90,76 @@ impl PolyOps for CpuBackend {
         mappings.reverse();
 
         fold(&poly.coeffs, &mappings)
+    }
+
+    fn barycentric_weights(
+        log_size: u32,
+        sample_point: CirclePoint<SecureField>,
+    ) -> Col<Self, SecureField> {
+        // TODO(Gali): Change weights order to bit-reverse order.
+
+        let domain = CanonicCoset::new(log_size).circle_domain();
+
+        // If p is in the domain at position i, then w_j = δ_ij
+        for i in 0..domain.size() {
+            if domain.at(i).into_ef() == sample_point {
+                let mut weights = vec![SecureField::zero(); domain.size()];
+                weights[i] = SecureField::one();
+                return weights;
+            }
+        }
+
+        // Calculate S_i(i) for all points in the domain.
+        let inversed_domain_exept_point_i_vanishing_evaluated_at_point_i = (0..domain.size())
+            .map(|i| {
+                let point_i = domain.at(i).into_ef::<SecureField>();
+                SecureField::one()
+                    / (-(point_i.y + point_i.y)
+                        * coset_vanishing_derivative(
+                            Coset::new(CirclePointIndex::generator(), domain.log_size()),
+                            point_i,
+                        ))
+            })
+            .collect_vec();
+
+        let inversed_domain_points_vanishing_evaluated_at_point = (0..domain.size())
+            .map(|i| {
+                SecureField::one()
+                    / point_vanishing(
+                        domain.at(i).into_ef::<SecureField>(),
+                        sample_point.into_ef::<SecureField>(),
+                    )
+            })
+            .collect_vec();
+
+        let coset_vanishing_evaluated_at_point: SecureField = coset_vanishing(
+            CanonicCoset::new(domain.log_size()).coset,
+            sample_point.into_ef::<SecureField>(),
+        );
+
+        (0..domain.size())
+            .map(|i| {
+                inversed_domain_exept_point_i_vanishing_evaluated_at_point_i[i]
+                    * inversed_domain_points_vanishing_evaluated_at_point[i]
+                    * coset_vanishing_evaluated_at_point
+            })
+            .collect_vec()
+    }
+
+    fn barycentric_eval_at_point(
+        evals: &CircleEvaluation<Self, BaseField, BitReversedOrder>,
+        point: CirclePoint<SecureField>,
+        weights: &Col<Self, SecureField>,
+    ) -> SecureField {
+        for i in 0..evals.domain.size() {
+            if point == evals.domain.at(i).into_ef() {
+                return evals.values[bit_reverse_index(i, evals.domain.log_size())].into();
+            }
+        }
+
+        (0..evals.domain.size()).fold(SecureField::zero(), |acc, i| {
+            acc + (evals.values[bit_reverse_index(i, evals.domain.log_size())] * weights[i])
+        })
     }
 
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
