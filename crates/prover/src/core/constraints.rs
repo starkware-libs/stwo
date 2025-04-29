@@ -5,6 +5,7 @@ use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fields::ExtensionOf;
 use super::pcs::quotients::PointSample;
+use super::poly::circle::CanonicCoset;
 use crate::core::fields::ComplexConjugate;
 
 /// Evaluates a vanishing polynomial of the coset at a point.
@@ -31,6 +32,21 @@ pub fn coset_vanishing<F: ExtensionOf<BaseField>>(coset: Coset, mut p: CirclePoi
         x = CirclePoint::double_x(x);
     }
     x
+}
+
+pub fn coset_vanishing_derivative<F: ExtensionOf<BaseField>>(coset: Coset, p: CirclePoint<F>) -> F {
+    let field_four = F::one() + F::one() + F::one() + F::one();
+    let mut exp = F::one();
+    for _ in 1..coset.log_size {
+        exp *= field_four;
+    }
+
+    let mut vanishing = F::one();
+    for i in 1..coset.log_size {
+        vanishing *= coset_vanishing(CanonicCoset::new(i).coset, p)
+    }
+
+    exp * vanishing
 }
 
 /// Evaluates the polynomial that is used to exclude the excluded point at point
