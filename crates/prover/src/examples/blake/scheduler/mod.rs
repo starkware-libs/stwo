@@ -57,7 +57,6 @@ mod tests {
 
     use itertools::Itertools;
 
-    use crate::constraint_framework::preprocessed_columns::IsFirst;
     use crate::constraint_framework::FrameworkEval;
     use crate::core::backend::Column;
     use crate::examples::blake::round::RoundElements;
@@ -90,7 +89,7 @@ mod tests {
         );
 
         let trace = TreeVec::new(vec![
-            vec![IsFirst::new(LOG_SIZE).gen_column_simd().values.to_cpu()],
+            vec![],
             trace.into_iter().map(|x| x.values.to_cpu()).collect(),
             interaction_trace
                 .into_iter()

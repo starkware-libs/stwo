@@ -1,6 +1,6 @@
 use tracing::{span, Level};
 
-use crate::constraint_framework::preprocessed_columns::{IsFirst, PreProcessedColumnId};
+use crate::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::fields::m31::BaseField;
@@ -70,13 +70,11 @@ impl XorTable {
             })
             .collect();
 
-        let mut constant_trace = [a_col, b_col, c_col]
+        let constant_trace = [a_col, b_col, c_col]
             .map(|x| {
                 CircleEvaluation::new(CanonicCoset::new(self.column_bits()).circle_domain(), x)
             })
             .to_vec();
-        // TODO!(ShaharS): Remove this line.
-        constant_trace.push(IsFirst::new(self.column_bits()).gen_column_simd());
         constant_trace
     }
 }
