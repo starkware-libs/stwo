@@ -3,6 +3,7 @@ use std::mem::transmute;
 use std::simd::Simd;
 
 use bytemuck::Zeroable;
+#[cfg(not(feature = "parallel"))]
 use itertools::Itertools;
 use num_traits::{One, Zero};
 #[cfg(feature = "parallel")]
@@ -251,6 +252,7 @@ impl PolyOps for SimdBackend {
                 ));
 
         // TODO(Gali): Optimize to a batched point_vanishing()
+        #[cfg(not(feature = "parallel"))]
         let vi_p = (0..weights_vec_len)
             .map(|i| {
                 PackedSecureField::from_array(std::array::from_fn(|j| {
@@ -263,6 +265,22 @@ impl PolyOps for SimdBackend {
                 }))
             })
             .collect_vec();
+
+        #[cfg(feature = "parallel")]
+        let vi_p: Vec<PackedSecureField> = (0..weights_vec_len)
+            .into_par_iter()
+            .map(|i| {
+                PackedSecureField::from_array(std::array::from_fn(|j| {
+                    point_vanishing(
+                        domain
+                            .at(bit_reverse_index(i * N_LANES + j, log_size))
+                            .into_ef::<SecureField>(),
+                        p,
+                    )
+                }))
+            })
+            .collect();
+
         let vi_p_inverse = batch_inverse(&vi_p);
 
         let vn_p: SecureField = coset_vanishing(CanonicCoset::new(log_size).coset, p);
@@ -280,22 +298,45 @@ impl PolyOps for SimdBackend {
             }
         }));
 
-        let weights: Col<SimdBackend, SecureField> = (0..weights_vec_len)
+        #[cfg(not(feature = "parallel"))]
+        let weights = (0..weights_vec_len)
+            .map(|i| vi_p_inverse[i] * si_i_vn_p)
+            .collect_vec();
+
+        #[cfg(feature = "parallel")]
+        let weights: Vec<PackedSecureField> = (0..weights_vec_len)
+            .into_par_iter()
             .map(|i| vi_p_inverse[i] * si_i_vn_p)
             .collect();
 
-        weights
+        Col::<Self, SecureField> {
+            data: weights,
+            length: domain.size(),
+        }
     }
 
     fn barycentric_eval_at_point(
         evals: &CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
         weights: &Col<SimdBackend, SecureField>,
     ) -> SecureField {
-        (0..evals.domain.size().div_ceil(N_LANES))
+        #[cfg(not(feature = "parallel"))]
+        return (0..evals.domain.size().div_ceil(N_LANES))
             .fold(PackedSecureField::zero(), |acc, i| {
                 acc + (weights.data[i] * evals.values.data[i])
             })
-            .pointwise_sum()
+            .pointwise_sum();
+
+        #[cfg(feature = "parallel")]
+        return (0..evals.domain.size().div_ceil(N_LANES))
+            .into_par_iter()
+            .fold(
+                PackedSecureField::zero,
+                |acc: PackedSecureField, i: usize| acc + (weights.data[i] * evals.values.data[i]),
+            )
+            .sum::<PackedSecureField>()
+            .to_array()
+            .into_par_iter()
+            .sum::<SecureField>();
     }
 
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
