@@ -44,6 +44,10 @@ fn combine_formal<R: Relation<BaseExpr, ExtExpr>>(relation: &R, values: &[BaseEx
     const ALPHA_SUFFIX: &str = "_alpha";
 
     let z = ExtExpr::Param(relation.get_name().to_owned() + Z_SUFFIX);
+    assert!(
+        relation.get_size() >= values.len(),
+        "Not enough alpha powers to combine values"
+    );
     let alpha_powers = (0..relation.get_size())
         .map(|i| ExtExpr::Param(relation.get_name().to_owned() + ALPHA_SUFFIX + &i.to_string()));
     values
