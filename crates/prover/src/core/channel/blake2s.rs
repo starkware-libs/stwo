@@ -72,7 +72,7 @@ impl Channel for Blake2sChannel {
         let mut msg = [0; 16];
         msg[0] = nonce as u32;
         msg[1] = (nonce >> 32) as u32;
-        let res = compress(std::array::from_fn(|i| digest[i]), msg, 0, 0, 0, 0);
+        let res = compress(std::array::from_fn(|i| digest[i]), msg, 8, 0, 0xFFFFFFFF, 0);
 
         // TODO(shahars) Channel should always finalize hash.
         self.update_digest(unsafe { std::mem::transmute::<[u32; 8], Blake2sHash>(res) });

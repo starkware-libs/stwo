@@ -42,6 +42,8 @@ impl GrindOps<Blake2sChannel> for SimdBackend {
 
 fn grind_blake(digest: &[u32], hi: u64, pow_bits: u32) -> Option<u64> {
     let zero: u32x16 = u32x16::default();
+    let eight: u32x16 = u32x16::splat(8);
+    let last_block: u32x16 = u32x16::splat(0xFFFFFFFF);
     let pow_bits = u32x16::splat(pow_bits);
 
     let state: [u32x16; 8] = std::array::from_fn(|i| u32x16::splat(digest[i]));
@@ -51,7 +53,7 @@ fn grind_blake(digest: &[u32], hi: u64, pow_bits: u32) -> Option<u64> {
     attempt[0] += u32x16::from(std::array::from_fn(|i| i as u32));
     attempt[1] = u32x16::splat((hi >> (32 - GRIND_LOW_BITS)) as u32);
     for low in (0..(1 << GRIND_LOW_BITS)).step_by(N_LANES) {
-        let res = compress16(state, attempt, zero, zero, zero, zero);
+        let res = compress16(state, attempt, eight, zero, last_block, zero);
         let success_mask = res[0].trailing_zeros().simd_ge(pow_bits);
         if success_mask.any() {
             let i = success_mask.to_array().iter().position(|&x| x).unwrap();
