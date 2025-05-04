@@ -6,7 +6,7 @@ use bytemuck::cast_slice;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use super::blake2s::compress16;
+use super::blake2s::hash_nonce_16;
 use super::SimdBackend;
 use crate::core::backend::simd::m31::N_LANES;
 use crate::core::channel::Blake2sChannel;
@@ -41,23 +41,21 @@ impl GrindOps<Blake2sChannel> for SimdBackend {
 }
 
 fn grind_blake(digest: &[u32], hi: u64, pow_bits: u32) -> Option<u64> {
-    let zero: u32x16 = u32x16::default();
+    let zero_to_fifteen = u32x16::from(std::array::from_fn(|i| i as u32));
     let pow_bits = u32x16::splat(pow_bits);
 
-    let state: [u32x16; 8] = std::array::from_fn(|i| u32x16::splat(digest[i]));
+    let state = std::array::from_fn(|i| u32x16::splat(digest[i]));
 
-    let mut attempt = [zero; 16];
-    attempt[0] = u32x16::splat((hi << GRIND_LOW_BITS) as u32);
-    attempt[0] += u32x16::from(std::array::from_fn(|i| i as u32));
-    attempt[1] = u32x16::splat((hi >> (32 - GRIND_LOW_BITS)) as u32);
+    let mut attempt_low = u32x16::splat((hi << GRIND_LOW_BITS) as u32) + zero_to_fifteen;
+    let attempt_high = u32x16::splat((hi >> (32 - GRIND_LOW_BITS)) as u32);
     for low in (0..(1 << GRIND_LOW_BITS)).step_by(N_LANES) {
-        let res = compress16(state, attempt, zero, zero, zero, zero);
+        let res = hash_nonce_16(state, attempt_low, attempt_high);
         let success_mask = res[0].trailing_zeros().simd_ge(pow_bits);
         if success_mask.any() {
             let i = success_mask.to_array().iter().position(|&x| x).unwrap();
             return Some((hi << GRIND_LOW_BITS) + low as u64 + i as u64);
         }
-        attempt[0] += u32x16::splat(N_LANES as u32);
+        attempt_low += u32x16::splat(N_LANES as u32);
     }
     None
 }
