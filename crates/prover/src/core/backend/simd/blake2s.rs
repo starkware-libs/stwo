@@ -144,6 +144,7 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
 
 const ZEROS: u32x16 = u32x16::splat(0);
 
+// `t` is the number of compressed bytes including the current block.
 fn compress_unfinalized(state: [u32x16; 8], chunk: [u32x16; 16], t: u64) -> [u32x16; 8] {
     compress16(
         state,
@@ -387,6 +388,29 @@ pub fn compress16(
     ]
 }
 
+/// Simd version of hashing a blake2s digest with a 64bit nonce.
+/// Used for POW grinding.
+///
+/// # Arguments
+///
+/// * `state`: a sequence of 32 bytes, usually a blake2s digest. NOTE: different states are
+///   supported, but will usually be used with a single "broadcasted" digest.
+/// * `nonce_low`: The low 32 bits of the nonce.
+/// * `nonce_high`: The high 32 bits of the nonce.
+pub fn hash_nonce_16(state: [u32x16; 8], nonce_low: u32x16, nonce_high: u32x16) -> [u32x16; 8] {
+    let zero: u32x16 = u32x16::splat(0);
+    let msg_vecs = array::from_fn(|i| match i {
+        0..=7 => state[i],
+        8 => nonce_low,
+        9 => nonce_high,
+        _ => zero,
+    });
+
+    const DIGEST_SIZE: usize = std::mem::size_of::<Blake2sHash>();
+    const NONCE_SIZE: usize = std::mem::size_of::<u64>();
+    compress_finalize(INITIAL_STATE, msg_vecs, (DIGEST_SIZE + NONCE_SIZE) as u64)
+}
+
 #[cfg(test)]
 mod tests {
     use std::array;
@@ -394,8 +418,12 @@ mod tests {
     use std::simd::u32x16;
 
     use aligned::{Aligned, A64};
+    use bytemuck::cast_slice;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
 
-    use super::{compress16, transpose_msgs, untranspose_states};
+    use super::{compress16, hash_nonce_16, transpose_msgs, untranspose_states};
+    use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::blake2s_ref::compress;
 
     #[test]
@@ -440,6 +468,33 @@ mod tests {
         let untrasponsed_transposed_states = untranspose_states(transposed_states);
 
         assert_eq!(untrasponsed_transposed_states, states)
+    }
+
+    #[test]
+    fn hash_nonce_16_works() {
+        let mut rng = SmallRng::seed_from_u64(1055);
+        let states: [[u32; 8]; 16] = array::from_fn(|_| rng.gen::<[u32; 8]>());
+        let nonces: [u64; 16] = array::from_fn(|_| rng.gen::<u64>());
+        let expected: [[u8; 32]; 16] = array::from_fn(|i| {
+            let state = states[i];
+            let nonce = nonces[i];
+            let nonce_low = nonce as u32;
+            let nonce_high = (nonce >> 32) as u32;
+            let mut hasher = Blake2sHasher::new();
+            hasher.update(cast_slice(&state));
+            hasher.update(&nonce_low.to_le_bytes());
+            hasher.update(&nonce_high.to_le_bytes());
+            hasher.finalize().0
+        });
+        let transposed_states =
+            array::from_fn(|i| u32x16::from_array(array::from_fn(|j| states[j][i])));
+        let nonce_lows = u32x16::from_array(nonces.map(|n| n as u32));
+        let nonce_highs = u32x16::from_array(nonces.map(|n| (n >> 32) as u32));
+
+        let res = hash_nonce_16(transposed_states, nonce_lows, nonce_highs);
+
+        let res: [[u8; 32]; 16] = unsafe { transmute(untranspose_states(res)) };
+        assert_eq!(res, expected);
     }
 
     /// Transposes states, from 8 packed words, to get 16 results, each of size 32B.
