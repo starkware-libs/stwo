@@ -144,6 +144,7 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
 
 const ZEROS: u32x16 = u32x16::splat(0);
 
+// `t` is the number of compressed bytes including the current block.
 fn compress_unfinalized(state: [u32x16; 8], chunk: [u32x16; 16], t: u64) -> [u32x16; 8] {
     compress16(
         state,
@@ -165,6 +166,17 @@ fn compress_finalize(state: [u32x16; 8], last_block: [u32x16; 16], t: u64) -> [u
         u32x16::splat(0xFFFFFFFF),
         ZEROS,
     )
+}
+
+/// Compresses and finalizes 16 instances of BLAKE2s.
+///
+/// # Arguments
+///
+/// * `msg_vecs` - 16 instances of BLAKE2s message (512 bits each).
+/// * `bytes_in_msg` - Number of bytes in the message. NOTE: number of bytes above 64 is most likely
+///   incorrect.
+pub fn hash_16(msg_vecs: [u32x16; 16], bytes_in_msg: u64) -> [u32x16; 8] {
+    compress_finalize(INITIAL_STATE, msg_vecs, bytes_in_msg)
 }
 
 /// Applies [`u32::rotate_right(N)`] to each element of the vector
@@ -394,8 +406,12 @@ mod tests {
     use std::simd::u32x16;
 
     use aligned::{Aligned, A64};
+    use bytemuck::cast_slice;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
 
-    use super::{compress16, transpose_msgs, untranspose_states};
+    use super::{compress16, hash_16, transpose_msgs, untranspose_states};
+    use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::blake2s_ref::compress;
 
     #[test]
@@ -440,6 +456,25 @@ mod tests {
         let untrasponsed_transposed_states = untranspose_states(transposed_states);
 
         assert_eq!(untrasponsed_transposed_states, states)
+    }
+
+    #[test]
+    fn hash_16_works() {
+        let mut rng = SmallRng::seed_from_u64(1055);
+        let msgs: [[u32; 16]; 16] = array::from_fn(|_| rng.gen::<[u32; 16]>());
+        let expected: [[u8; 32]; 16] = array::from_fn(|i| {
+            let state = msgs[i];
+            let mut hasher = Blake2sHasher::new();
+            hasher.update(cast_slice(&state));
+            hasher.finalize().0
+        });
+        let transposed_msgs: [u32x16; 16] =
+            array::from_fn(|i| u32x16::from_array(array::from_fn(|j| msgs[j][i])));
+
+        let res = hash_16(transposed_msgs, 64);
+
+        let res: [[u8; 32]; 16] = unsafe { transmute(untranspose_states(res)) };
+        assert_eq!(res, expected);
     }
 
     /// Transposes states, from 8 packed words, to get 16 results, each of size 32B.

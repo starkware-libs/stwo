@@ -6,7 +6,6 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 use crate::core::fields::IntoSlice;
 use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
-use crate::core::vcs::blake2s_ref::compress;
 
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
@@ -68,14 +67,11 @@ impl Channel for Blake2sChannel {
     }
 
     fn mix_u64(&mut self, nonce: u64) {
-        let digest: [u32; 8] = unsafe { std::mem::transmute(self.digest) };
-        let mut msg = [0; 16];
-        msg[0] = nonce as u32;
-        msg[1] = (nonce >> 32) as u32;
-        let res = compress(std::array::from_fn(|i| digest[i]), msg, 0, 0, 0, 0);
+        let mut hasher = Blake2sHasher::new();
+        hasher.update(self.digest.as_ref());
+        hasher.update(&nonce.to_le_bytes());
 
-        // TODO(shahars) Channel should always finalize hash.
-        self.update_digest(unsafe { std::mem::transmute::<[u32; 8], Blake2sHash>(res) });
+        self.update_digest(hasher.finalize());
     }
 
     fn draw_felt(&mut self) -> SecureField {
