@@ -138,12 +138,36 @@ impl LogupTraceGenerator {
         }
     }
 
+    /// # Safety
+    ///
+    /// Calling `finalize_last` on uninitialized LogupTraceGenerator leads to undefined behavior.
+    pub unsafe fn uninitialized(log_size: u32) -> Self {
+        let trace = vec![];
+        let denom = SecureColumn::uninitialized(1 << log_size);
+        Self {
+            log_size,
+            trace,
+            denom,
+        }
+    }
+
     /// Allocate a new lookup column.
     pub fn new_col(&mut self) -> LogupColGenerator<'_> {
         let log_size = self.log_size;
         LogupColGenerator {
             gen: self,
             numerator: SecureColumnByCoords::<SimdBackend>::zeros(1 << log_size),
+        }
+    }
+
+    /// # Safety
+    ///
+    /// Calling `new_col` on uninitialized LogupTraceGenerator leads to undefined behavior.
+    pub unsafe fn uninitialized_new_col(&mut self) -> LogupColGenerator<'_> {
+        let log_size = self.log_size;
+        LogupColGenerator {
+            gen: self,
+            numerator: SecureColumnByCoords::uninitialized(1 << log_size),
         }
     }
 
