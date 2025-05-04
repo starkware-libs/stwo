@@ -33,7 +33,7 @@ impl GrindOps<Blake2sChannel> for SimdBackend {
         #[cfg(feature = "parallel")]
         let res = (0..=(1 << GRIND_HI_BITS))
             .into_par_iter()
-            .find_map_any(|hi| grind_blake(digest, hi, pow_bits))
+            .find_map_first(|hi| grind_blake(digest, hi, pow_bits))
             .expect("Grind failed to find a solution.");
 
         res
@@ -75,5 +75,28 @@ impl GrindOps<Poseidon252Channel> for SimdBackend {
             }
             nonce += 1;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_grind_blake_is_determinstic() {
+        use itertools::Itertools;
+
+        use super::*;
+
+        let pow_bits = 2;
+        let n_attempts = 1000;
+        let mut channel = Blake2sChannel::default();
+        channel.mix_u64(0);
+
+        let results = (0..n_attempts)
+            .map(|_| SimdBackend::grind(&channel, pow_bits))
+            .collect_vec();
+
+        assert!(results.iter().all(|r| r == &results[0]));
     }
 }
