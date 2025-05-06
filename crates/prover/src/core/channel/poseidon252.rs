@@ -1,5 +1,6 @@
 use std::iter;
 
+use itertools::Itertools;
 use starknet_crypto::{poseidon_hash, poseidon_hash_many};
 use starknet_ff::FieldElement as FieldElement252;
 
@@ -8,7 +9,8 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 
-pub const BYTES_PER_FELT252: usize = 31;
+// Number of bytes that fit into a felt252.
+pub const BYTES_PER_FELT252: usize = 252 / 8;
 pub const FELTS_PER_HASH: usize = 8;
 
 /// A channel that can be used to draw random elements from a Poseidon252 hash.
@@ -80,8 +82,27 @@ impl Channel for Poseidon252Channel {
         self.update_digest(poseidon_hash_many(&res));
     }
 
-    fn mix_u64(&mut self, nonce: u64) {
-        self.update_digest(poseidon_hash(self.digest, nonce.into()));
+    fn mix_u32s(&mut self, data: &[u32]) {
+        let felts = data
+            .chunks(7)
+            .map(|chunk| {
+                FieldElement252::from_byte_slice_be(
+                    &chunk
+                        .iter()
+                        .flat_map(|word| word.to_be_bytes())
+                        .collect_vec(),
+                )
+                .unwrap()
+            })
+            .collect_vec();
+
+        // TODO(shahars): do we need length padding?
+        self.update_digest(poseidon_hash_many(&felts));
+    }
+
+    fn mix_u64(&mut self, value: u64) {
+        // Split value to 32-bit limbs representing a big endian felt252.
+        self.mix_u32s(&[0, 0, 0, 0, 0, ((value >> 32) as u32), (value as u32)])
     }
 
     fn draw_felt(&mut self) -> SecureField {
@@ -185,5 +206,17 @@ mod tests {
         channel.mix_felts(felts.as_slice());
 
         assert_ne!(initial_digest, channel.digest);
+    }
+
+    #[test]
+    pub fn test_mix_u64() {
+        let mut channel = Poseidon252Channel::default();
+        channel.mix_u64(0x1111222233334444);
+        let digest_64 = channel.digest;
+
+        let mut channel = Poseidon252Channel::default();
+        channel.mix_u32s(&[0, 0, 0, 0, 0, 0x11112222, 0x33334444]);
+
+        assert_eq!(digest_64, channel.digest);
     }
 }
