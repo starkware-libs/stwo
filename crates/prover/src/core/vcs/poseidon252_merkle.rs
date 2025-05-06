@@ -34,14 +34,80 @@ impl MerkleHasher for Poseidon252MerkleHasher {
             .copied()
             .chain(std::iter::repeat_n(BaseField::zero(), padding_length));
         for chunk in padded_values.array_chunks::<ELEMENTS_IN_BLOCK>() {
-            let mut word = FieldElement252::default();
-            for x in chunk {
-                word = word * FieldElement252::from(2u64.pow(31)) + FieldElement252::from(x.0);
-            }
-            values.push(word);
+            let word = chunk.map(|x| x.0);
+            values.push(construct_felt_252(&word));
         }
         poseidon_hash_many(&values)
     }
+}
+
+fn construct_felt_252(word: &[u32; 8]) -> FieldElement252 {
+    let mut felt = [0; 32];
+    let bytes = word.map(|x| x.to_be_bytes());
+
+    // First limb.
+    let num = bytes[0];
+    felt[1] |= num[0] << 1 | num[1] >> 7;
+    felt[2] |= num[1] << 1 | num[2] >> 7;
+    felt[3] |= num[2] << 1 | num[3] >> 7;
+    felt[4] |= num[3] << 1;
+
+    // Second limb.
+    let num = bytes[1];
+    felt[4] |= num[0] >> 6;
+    felt[5] |= num[0] << 2 | num[1] >> 6;
+    felt[6] |= num[1] << 2 | num[2] >> 6;
+    felt[7] |= num[2] << 2 | num[3] >> 6;
+    felt[8] |= num[3] << 2;
+
+    // Third limb.
+    let num = bytes[2];
+    felt[8] |= num[0] >> 5;
+    felt[9] |= num[0] << 3 | num[1] >> 5;
+    felt[10] |= num[1] << 3 | num[2] >> 5;
+    felt[11] |= num[2] << 3 | num[3] >> 5;
+    felt[12] |= num[3] << 3;
+
+    // Fourth limb.
+    let num = bytes[3];
+    felt[12] |= num[0] >> 4;
+    felt[13] |= num[0] << 4 | num[1] >> 4;
+    felt[14] |= num[1] << 4 | num[2] >> 4;
+    felt[15] |= num[2] << 4 | num[3] >> 4;
+    felt[16] |= num[3] << 4;
+
+    // Fifth limb.
+    let num = bytes[4];
+    felt[16] |= num[0] >> 3;
+    felt[17] |= num[0] << 5 | num[1] >> 3;
+    felt[18] |= num[1] << 5 | num[2] >> 3;
+    felt[19] |= num[2] << 5 | num[3] >> 3;
+    felt[20] |= num[3] << 5;
+
+    // Sixth limb.
+    let num = bytes[5];
+    felt[20] |= num[0] >> 2;
+    felt[21] |= num[0] << 6 | num[1] >> 2;
+    felt[22] |= num[1] << 6 | num[2] >> 2;
+    felt[23] |= num[2] << 6 | num[3] >> 2;
+    felt[24] |= num[3] << 6;
+
+    // Seventh limb.
+    let num = bytes[6];
+    felt[24] |= num[0] >> 1;
+    felt[25] |= num[0] << 7 | num[1] >> 1;
+    felt[26] |= num[1] << 7 | num[2] >> 1;
+    felt[27] |= num[2] << 7 | num[3] >> 1;
+    felt[28] |= num[3] << 7;
+
+    // Eighth limb.
+    let num = bytes[7];
+    felt[28] |= num[0];
+    felt[29] |= num[1];
+    felt[30] |= num[2];
+    felt[31] |= num[3];
+
+    FieldElement252::from_bytes_be(&felt).unwrap()
 }
 
 impl Hash for FieldElement252 {}
@@ -60,12 +126,15 @@ impl MerkleChannel for Poseidon252MerkleChannel {
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
     use num_traits::Zero;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
     use starknet_ff::FieldElement as FieldElement252;
 
-    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::m31::{BaseField, M31};
     use crate::core::vcs::ops::MerkleHasher;
-    use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher;
+    use crate::core::vcs::poseidon252_merkle::{construct_felt_252, Poseidon252MerkleHasher};
     use crate::core::vcs::test_utils::prepare_merkle;
     use crate::core::vcs::verifier::MerkleVerificationError;
     use crate::m31;
@@ -168,5 +237,28 @@ mod tests {
             verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::TooFewQueriedValues
         );
+    }
+
+    #[test]
+    fn test_construct_word() {
+        let mut rng = SmallRng::seed_from_u64(1638);
+        let random_values = (0..8 * 1000)
+            .map(|_| rng.gen::<M31>().0)
+            .array_chunks::<8>()
+            .collect_vec();
+        let expected = random_values
+            .iter()
+            .map(|&word| {
+                let mut felt = FieldElement252::default();
+                for x in word {
+                    felt = felt * FieldElement252::from(2u64.pow(31)) + FieldElement252::from(x);
+                }
+                felt
+            })
+            .collect_vec();
+
+        let result = random_values.iter().map(construct_felt_252).collect_vec();
+
+        assert_eq!(expected, result);
     }
 }
