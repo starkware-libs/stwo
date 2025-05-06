@@ -59,17 +59,13 @@ impl Channel for Blake2sChannel {
     }
 
     fn mix_felts(&mut self, felts: &[SecureField]) {
-        let mut hasher = Blake2sHasher::new();
-        hasher.update(self.digest.as_ref());
-        hasher.update(IntoSlice::<u8>::into_slice(felts));
-
-        self.update_digest(hasher.finalize());
+        self.mix_bytes(IntoSlice::<u8>::into_slice(felts))
     }
 
-    fn mix_u64(&mut self, nonce: u64) {
+    fn mix_bytes(&mut self, bytes: &[u8]) {
         let mut hasher = Blake2sHasher::new();
         hasher.update(self.digest.as_ref());
-        hasher.update(&nonce.to_le_bytes());
+        hasher.update(bytes);
 
         self.update_digest(hasher.finalize());
     }
