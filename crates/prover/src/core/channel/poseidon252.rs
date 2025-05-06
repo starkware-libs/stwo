@@ -1,5 +1,6 @@
 use std::iter;
 
+use itertools::Itertools;
 use starknet_crypto::{poseidon_hash, poseidon_hash_many};
 use starknet_ff::FieldElement as FieldElement252;
 
@@ -8,7 +9,8 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
 
-pub const BYTES_PER_FELT252: usize = 31;
+// Number of bytes that fit into a felt252.
+pub const BYTES_PER_FELT252: usize = 252 / 8;
 pub const FELTS_PER_HASH: usize = 8;
 
 /// A channel that can be used to draw random elements from a Poseidon252 hash.
@@ -80,8 +82,29 @@ impl Channel for Poseidon252Channel {
         self.update_digest(poseidon_hash_many(&res));
     }
 
-    fn mix_u64(&mut self, nonce: u64) {
-        self.update_digest(poseidon_hash(self.digest, nonce.into()));
+    /// Mix a slice of u32s in chunks of 7 representing big endian felt252s.
+    fn mix_u32s(&mut self, data: &[u32]) {
+        let shift = (1u64 << 32).into();
+        let padding_len = 6 - ((data.len() + 6) % 7);
+        let felts = data
+            .iter()
+            .chain(iter::repeat_n(&0, padding_len))
+            .chunks(7)
+            .into_iter()
+            .map(|chunk| {
+                chunk.fold(FieldElement252::default(), |cur, y| {
+                    cur * shift + (*y).into()
+                })
+            })
+            .collect_vec();
+
+        // TODO(shahars): do we need length padding?
+        self.update_digest(poseidon_hash_many(&[vec![self.digest], felts].concat()));
+    }
+
+    fn mix_u64(&mut self, value: u64) {
+        // Split value to 32-bit limbs representing a big endian felt252.
+        self.mix_u32s(&[0, 0, 0, 0, 0, ((value >> 32) as u32), (value as u32)])
     }
 
     fn draw_felt(&mut self) -> SecureField {
@@ -118,6 +141,8 @@ impl Channel for Poseidon252Channel {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+
+    use starknet_ff::FieldElement as FieldElement252;
 
     use crate::core::channel::poseidon252::Poseidon252Channel;
     use crate::core::channel::Channel;
@@ -185,5 +210,30 @@ mod tests {
         channel.mix_felts(felts.as_slice());
 
         assert_ne!(initial_digest, channel.digest);
+    }
+
+    #[test]
+    pub fn test_mix_u64() {
+        let mut channel = Poseidon252Channel::default();
+        channel.mix_u64(0x1111222233334444);
+        let digest_64 = channel.digest;
+
+        let mut channel = Poseidon252Channel::default();
+        channel.mix_u32s(&[0, 0, 0, 0, 0, 0x11112222, 0x33334444]);
+
+        assert_eq!(digest_64, channel.digest);
+    }
+
+    #[test]
+    pub fn test_mix_u32s() {
+        let mut channel = Poseidon252Channel::default();
+        channel.mix_u32s(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(
+            channel.digest,
+            FieldElement252::from_hex_be(
+                "0x078f5cf6a2e7362b75fc1f94daeae7ebddd64e6b2db771717519af7193dfa80b"
+            )
+            .unwrap()
+        );
     }
 }
