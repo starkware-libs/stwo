@@ -66,12 +66,18 @@ impl Channel for Blake2sChannel {
         self.update_digest(hasher.finalize());
     }
 
-    fn mix_u64(&mut self, nonce: u64) {
+    fn mix_u32s(&mut self, data: &[u32]) {
         let mut hasher = Blake2sHasher::new();
         hasher.update(self.digest.as_ref());
-        hasher.update(&nonce.to_le_bytes());
+        for word in data {
+            hasher.update(&word.to_le_bytes());
+        }
 
         self.update_digest(hasher.finalize());
+    }
+
+    fn mix_u64(&mut self, value: u64) {
+        self.mix_u32s(&[value as u32, (value >> 32) as u32])
     }
 
     fn draw_felt(&mut self) -> SecureField {
@@ -177,5 +183,17 @@ mod tests {
         channel.mix_felts(felts.as_slice());
 
         assert_ne!(initial_digest, channel.digest);
+    }
+
+    #[test]
+    pub fn test_mix_u64() {
+        let mut channel = Blake2sChannel::default();
+        channel.mix_u64(0x1111222233334444);
+        let digest_64 = channel.digest;
+
+        let mut channel = Blake2sChannel::default();
+        channel.mix_u32s(&[0x33334444, 0x11112222]);
+
+        assert_eq!(digest_64, channel.digest);
     }
 }

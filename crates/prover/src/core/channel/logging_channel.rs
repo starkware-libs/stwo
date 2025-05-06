@@ -26,8 +26,13 @@ impl<C: Channel> Channel for LoggingChannel<C> {
         log_mix(C::mix_felts, &mut self.channel, felts)
     }
 
+    fn mix_u32s(&mut self, data: &[u32]) {
+        let _ = debug_span!("Channel mix_32s");
+        log_mix(C::mix_u32s, &mut self.channel, data)
+    }
+
     fn mix_u64(&mut self, value: u64) {
-        let _ = debug_span!("Channel mix_u64");
+        let _ = debug_span!("Channel mix_64");
         log_mix(C::mix_u64, &mut self.channel, value)
     }
 
