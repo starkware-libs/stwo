@@ -1,5 +1,6 @@
 use std::iter;
 
+use itertools::Itertools;
 use starknet_crypto::{poseidon_hash, poseidon_hash_many};
 use starknet_ff::FieldElement as FieldElement252;
 
@@ -80,8 +81,17 @@ impl Channel for Poseidon252Channel {
         self.update_digest(poseidon_hash_many(&res));
     }
 
-    fn mix_u64(&mut self, nonce: u64) {
-        self.update_digest(poseidon_hash(self.digest, nonce.into()));
+    fn mix_u32s(&mut self, data: &[u32]) {
+        let bytes =
+            unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len() * 4) };
+
+        let felts = bytes
+            .chunks(7)
+            .map(|chunk| FieldElement252::from_byte_slice_be(chunk).unwrap())
+            .collect_vec();
+
+        // TODO(shahars): do we need length padding?
+        self.update_digest(poseidon_hash_many(&felts));
     }
 
     fn draw_felt(&mut self) -> SecureField {

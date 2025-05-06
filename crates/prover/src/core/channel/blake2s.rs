@@ -66,12 +66,23 @@ impl Channel for Blake2sChannel {
         self.update_digest(hasher.finalize());
     }
 
-    fn mix_u64(&mut self, nonce: u64) {
-        let mut hasher = Blake2sHasher::new();
-        hasher.update(self.digest.as_ref());
-        hasher.update(&nonce.to_le_bytes());
+    fn mix_u32s(&mut self, data: &[u32]) {
+        let mut state: [u32; 8] = unsafe { std::mem::transmute(self.digest) };
 
-        self.update_digest(hasher.finalize());
+        let data_chunks = data.array_chunks::<16>();
+        let rem = data_chunks.remainder();
+        for chunk in data_chunks {
+            state = compress(state, *chunk, 0, 0, 0, 0);
+        }
+
+        if !rem.is_empty() {
+            let mut padded_rem = [0; 16];
+            padded_rem[..rem.len()].copy_from_slice(rem);
+            state = compress(state, padded_rem, 0, 0, 0, 0);
+        }
+
+        // TODO(shahars) Channel should always finalize hash.
+        self.update_digest(unsafe { std::mem::transmute::<[u32; 8], Blake2sHash>(state) });
     }
 
     fn draw_felt(&mut self) -> SecureField {
