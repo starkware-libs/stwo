@@ -1,3 +1,4 @@
+#![allow(unused)]
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use starknet_crypto::{poseidon_hash, poseidon_hash_many};
@@ -5,7 +6,7 @@ use starknet_ff::FieldElement as FieldElement252;
 
 use super::ops::MerkleHasher;
 use crate::core::channel::{MerkleChannel, Poseidon252Channel};
-use crate::core::fields::m31::BaseField;
+use crate::core::fields::m31::{BaseField, M31};
 use crate::core::vcs::hash::Hash;
 
 const ELEMENTS_IN_BLOCK: usize = 8;
@@ -34,14 +35,29 @@ impl MerkleHasher for Poseidon252MerkleHasher {
             .copied()
             .chain(std::iter::repeat_n(BaseField::zero(), padding_length));
         for chunk in padded_values.array_chunks::<ELEMENTS_IN_BLOCK>() {
-            let mut word = FieldElement252::default();
-            for x in chunk {
-                word = word * FieldElement252::from(2u64.pow(31)) + FieldElement252::from(x.0);
-            }
-            values.push(word);
+            values.push(construct_felt252_from_m31s(&chunk));
         }
         poseidon_hash_many(&values)
     }
+}
+
+fn construct_felt252_from_m31s(word: &[M31; 8]) -> FieldElement252 {
+    // Felt = Felt << 31 + limb.
+    let append_m31 = |felt: &mut [u128; 2], limb: M31| {
+        *felt = [
+            felt[0] << 31 | limb.0 as u128,
+            felt[0] >> (128 - 31) | felt[1] << 31,
+        ];
+    };
+
+    let mut felt_as_u256 = [0u128; 2];
+    for limb in word {
+        append_m31(&mut felt_as_u256, *limb);
+    }
+
+    let felt_bytes = [felt_as_u256[1].to_be_bytes(), felt_as_u256[0].to_be_bytes()];
+    let felt_bytes = unsafe { std::mem::transmute::<[[u8; 16]; 2], [u8; 32]>(felt_bytes) };
+    FieldElement252::from_bytes_be(&felt_bytes).unwrap()
 }
 
 impl Hash for FieldElement252 {}
@@ -60,12 +76,19 @@ impl MerkleChannel for Poseidon252MerkleChannel {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
+    use itertools::Itertools;
     use num_traits::Zero;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
     use starknet_ff::FieldElement as FieldElement252;
 
-    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::m31::{BaseField, M31};
     use crate::core::vcs::ops::MerkleHasher;
-    use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher;
+    use crate::core::vcs::poseidon252_merkle::{
+        construct_felt252_from_m31s, Poseidon252MerkleHasher,
+    };
     use crate::core::vcs::test_utils::prepare_merkle;
     use crate::core::vcs::verifier::MerkleVerificationError;
     use crate::m31;
@@ -168,5 +191,31 @@ mod tests {
             verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::TooFewQueriedValues
         );
+    }
+
+    #[test]
+    fn test_construct_word() {
+        let mut rng = SmallRng::seed_from_u64(1638);
+        let random_values = (0..8 * 1000)
+            .map(|_| rng.gen::<M31>())
+            .array_chunks::<8>()
+            .collect_vec();
+        let expected = random_values
+            .iter()
+            .map(|&word| {
+                let mut felt = FieldElement252::default();
+                for x in word {
+                    felt = felt * FieldElement252::from(2u64.pow(31)) + FieldElement252::from(x.0);
+                }
+                felt
+            })
+            .collect_vec();
+
+        let result = random_values
+            .iter()
+            .map(construct_felt252_from_m31s)
+            .collect_vec();
+
+        assert_eq!(expected, result);
     }
 }
