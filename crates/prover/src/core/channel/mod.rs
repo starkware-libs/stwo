@@ -38,8 +38,11 @@ pub trait Channel: Default + Clone + Debug {
     fn trailing_zeros(&self) -> u32;
 
     // Mix functions.
+    fn mix_u32s(&mut self, data: &[u32]);
     fn mix_felts(&mut self, felts: &[SecureField]);
-    fn mix_u64(&mut self, value: u64);
+    fn mix_u64(&mut self, value: u64) {
+        self.mix_u32s(&[value as u32, (value >> 32) as u32])
+    }
 
     // Draw functions.
     fn draw_felt(&mut self) -> SecureField;
