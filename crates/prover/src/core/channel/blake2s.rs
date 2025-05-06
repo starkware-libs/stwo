@@ -1,5 +1,7 @@
 use std::iter;
 
+use itertools::Itertools;
+
 use super::{Channel, ChannelTime};
 use crate::core::fields::m31::{BaseField, N_BYTES_FELT, P};
 use crate::core::fields::qm31::SecureField;
@@ -66,10 +68,14 @@ impl Channel for Blake2sChannel {
         self.update_digest(hasher.finalize());
     }
 
-    fn mix_u64(&mut self, nonce: u64) {
+    fn mix_u32s(&mut self, data: &[u32]) {
+        let bytes = data
+            .iter()
+            .flat_map(|word| word.to_le_bytes())
+            .collect_vec();
         let mut hasher = Blake2sHasher::new();
         hasher.update(self.digest.as_ref());
-        hasher.update(&nonce.to_le_bytes());
+        hasher.update(&bytes);
 
         self.update_digest(hasher.finalize());
     }
@@ -177,5 +183,17 @@ mod tests {
         channel.mix_felts(felts.as_slice());
 
         assert_ne!(initial_digest, channel.digest);
+    }
+
+    #[test]
+    pub fn test_mix_u64() {
+        let mut channel = Blake2sChannel::default();
+        channel.mix_u64(0x1111222233334444);
+        let digest_64 = channel.digest;
+
+        let mut channel = Blake2sChannel::default();
+        channel.mix_u32s(&[0x33334444, 0x11112222]);
+
+        assert_eq!(digest_64, channel.digest);
     }
 }
