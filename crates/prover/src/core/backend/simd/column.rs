@@ -78,8 +78,10 @@ impl BaseColumn {
 
 impl Column<BaseField> for BaseColumn {
     fn zeros(length: usize) -> Self {
-        let data = vec![PackedBaseField::zeroed(); length.div_ceil(N_LANES)];
-        Self { data, length }
+        Self {
+            data: vec![PackedBaseField::zeroed(); length.div_ceil(N_LANES)],
+            length,
+        }
     }
 
     #[allow(clippy::uninit_vec)]
