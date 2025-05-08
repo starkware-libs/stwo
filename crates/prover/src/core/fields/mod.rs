@@ -6,6 +6,8 @@ use num_traits::{NumAssign, NumAssignOps, NumOps, One};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+use super::utils;
+
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
@@ -98,7 +100,7 @@ pub fn batch_inverse_in_place<F: FieldExpOps>(column: &[F], dst: &mut [F]) {
 }
 
 pub fn batch_inverse<F: FieldExpOps>(column: &[F]) -> Vec<F> {
-    let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
+    let mut dst = unsafe { utils::uninit_vec(column.len()) };
     batch_inverse_in_place(column, &mut dst);
     dst
 }
@@ -107,7 +109,7 @@ pub fn batch_inverse_chunked<T: FieldExpOps + Send + Sync>(
     column: &[T],
     chunk_size: usize,
 ) -> Vec<T> {
-    let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
+    let mut dst = unsafe { utils::uninit_vec(column.len()) };
 
     #[cfg(not(feature = "parallel"))]
     let iter = dst.chunks_mut(chunk_size).zip(column.chunks(chunk_size));
