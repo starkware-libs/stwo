@@ -7,19 +7,19 @@ use rayon::prelude::*;
 
 use super::EvalAtRow;
 use crate::core::backend::simd::column::SecureColumn;
-use crate::core::backend::simd::m31::PackedBaseField;
+use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
-use crate::core::backend::simd::qm31::PackedSecureField;
+use crate::core::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Column;
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
-use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use crate::core::poly::BitReversedOrder;
+use crate::core::utils::uninit_vec;
 use crate::core::ColumnVec;
 
 /// Evaluates constraints for batched logups.
@@ -126,15 +126,18 @@ pub struct LogupTraceGenerator {
     trace: Vec<SecureColumnByCoords<SimdBackend>>,
     /// Denominator expressions (z + sum_i alpha^i * x_i) being generated for the current lookup.
     denom: SecureColumn,
+    batch_inverse_buffer: Vec<PackedSecureField>,
 }
 impl LogupTraceGenerator {
     pub fn new(log_size: u32) -> Self {
         let trace = vec![];
         let denom = SecureColumn::zeros(1 << log_size);
+        let batch_inverse_buffer = unsafe { uninit_vec(1 << (log_size - LOG_N_LANES)) };
         Self {
             log_size,
             trace,
             denom,
+            batch_inverse_buffer,
         }
     }
 
@@ -144,10 +147,12 @@ impl LogupTraceGenerator {
     pub unsafe fn uninitialized(log_size: u32) -> Self {
         let trace = vec![];
         let denom = SecureColumn::uninitialized(1 << log_size);
+        let batch_inverse_buffer = unsafe { uninit_vec(1 << (log_size - LOG_N_LANES)) };
         Self {
             log_size,
             trace,
             denom,
+            batch_inverse_buffer,
         }
     }
 
@@ -245,18 +250,18 @@ impl LogupColGenerator<'_> {
     pub fn finalize_col(mut self) {
         // Column size is a power of 2.
         let chunk_size = std::cmp::min(4, self.gen.denom.data.len());
-        let denom_inv = PackedSecureField::batch_inverse(&self.gen.denom.data);
+        batch_inverse_packed_qm31(&self.gen.denom.data, &mut self.gen.batch_inverse_buffer);
 
         #[cfg(feature = "parallel")]
         let chunks_iter = {
-            let denom_inv_chunks = denom_inv.par_chunks(chunk_size);
+            let denom_inv_chunks = self.gen.batch_inverse_buffer.par_chunks(chunk_size);
             let numerator_chunks = self.numerator.par_chunks_mut(chunk_size);
             (numerator_chunks, denom_inv_chunks).into_par_iter()
         };
 
         #[cfg(not(feature = "parallel"))]
         let chunks_iter = {
-            let denom_inv_chunks = denom_inv.chunks(chunk_size);
+            let denom_inv_chunks = self.gen.batch_inverse_buffer.chunks(chunk_size);
             let numerator_chunks = self.numerator.chunks_mut(chunk_size);
             numerator_chunks.zip(denom_inv_chunks)
         };

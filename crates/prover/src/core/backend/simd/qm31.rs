@@ -12,6 +12,7 @@ use super::PACKED_QM31_BATCH_INVERSE_CHUNK_SIZE;
 use crate::core::fields::m31::M31;
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{batch_inverse_chunked, FieldExpOps};
+use crate::core::utils;
 
 pub type PackedSecureField = PackedQM31;
 
@@ -174,8 +175,15 @@ impl FieldExpOps for PackedQM31 {
     }
 
     fn batch_inverse(column: &[Self]) -> Vec<Self> {
-        batch_inverse_chunked(column, PACKED_QM31_BATCH_INVERSE_CHUNK_SIZE)
+        let mut result = unsafe { utils::uninit_vec(column.len()) };
+        batch_inverse_chunked(column, &mut result, PACKED_QM31_BATCH_INVERSE_CHUNK_SIZE);
+        result
     }
+}
+
+pub fn batch_inverse_packed_qm31(column: &[PackedQM31], dst: &mut [PackedQM31]) {
+    assert!(column.len() <= dst.len());
+    batch_inverse_chunked(column, dst, PACKED_QM31_BATCH_INVERSE_CHUNK_SIZE);
 }
 
 impl Add<PackedM31> for PackedQM31 {

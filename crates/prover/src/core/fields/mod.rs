@@ -6,6 +6,8 @@ use num_traits::{NumAssign, NumAssignOps, NumOps, One};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
+use super::utils;
+
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
@@ -98,16 +100,17 @@ pub fn batch_inverse_in_place<F: FieldExpOps>(column: &[F], dst: &mut [F]) {
 }
 
 pub fn batch_inverse<F: FieldExpOps>(column: &[F]) -> Vec<F> {
-    let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
+    let mut dst = unsafe { utils::uninit_vec(column.len()) };
     batch_inverse_in_place(column, &mut dst);
     dst
 }
 
 pub fn batch_inverse_chunked<T: FieldExpOps + Send + Sync>(
     column: &[T],
+    dst: &mut [T],
     chunk_size: usize,
-) -> Vec<T> {
-    let mut dst = vec![unsafe { std::mem::zeroed() }; column.len()];
+) {
+    assert!(column.len() <= dst.len());
 
     #[cfg(not(feature = "parallel"))]
     let iter = dst.chunks_mut(chunk_size).zip(column.chunks(chunk_size));
@@ -120,7 +123,6 @@ pub fn batch_inverse_chunked<T: FieldExpOps + Send + Sync>(
     iter.for_each(|(dst, column)| {
         batch_inverse_in_place(column, dst);
     });
-    dst
 }
 
 pub trait Field:
@@ -495,6 +497,7 @@ mod tests {
     use super::batch_inverse_in_place;
     use crate::core::fields::m31::M31;
     use crate::core::fields::{batch_inverse, batch_inverse_chunked};
+    use crate::core::utils;
 
     #[test]
     fn test_batch_inverse() {
@@ -524,7 +527,8 @@ mod tests {
         let chunk_size = 4;
         let expected = batch_inverse(&elements);
 
-        let result = batch_inverse_chunked(&elements, chunk_size);
+        let mut result = unsafe { utils::uninit_vec(elements.len()) };
+        batch_inverse_chunked(&elements, &mut result, chunk_size);
 
         assert_eq!(expected, result);
     }
