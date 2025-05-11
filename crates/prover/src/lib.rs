@@ -20,3 +20,6 @@ pub mod examples;
 
 // TODO(Ohad): find a better way to test poseidon and depracate `math.rs`.
 pub mod math;
+
+#[cfg(feature = "tracing")]
+pub mod tracing;
