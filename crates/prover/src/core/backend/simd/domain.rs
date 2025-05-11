@@ -26,8 +26,8 @@ impl CircleDomainBitRevIterator {
         let mut flips = [CirclePoint::zero(); (M31_CIRCLE_LOG_ORDER - LOG_N_LANES) as usize];
         for i in 0..(log_size - LOG_N_LANES) {
             //  L   i
-            // 000111000000 ->
-            // 000000100000
+            // 0000111000000 ->
+            // 0000000100000
             let prev_mul = bit_reverse_index((1 << i) - 1, log_size - LOG_N_LANES);
             let new_mul = bit_reverse_index(1 << i, log_size - LOG_N_LANES);
             let flip = domain.half_coset.step.mul(new_mul as u128)
@@ -39,6 +39,24 @@ impl CircleDomainBitRevIterator {
             i: 0,
             current,
             flips,
+        }
+    }
+
+    pub fn start_at(&self, i: usize) -> Self {
+        let current = std::array::from_fn(|j| {
+            self.domain.at(bit_reverse_index(
+                (i << LOG_N_LANES) + j,
+                self.domain.log_size(),
+            ))
+        });
+        let current = CirclePoint {
+            x: PackedM31::from_array(current.each_ref().map(|p| p.x)),
+            y: PackedM31::from_array(current.each_ref().map(|p| p.y)),
+        };
+        Self {
+            i,
+            current,
+            ..*self
         }
     }
 }
@@ -66,21 +84,51 @@ impl Iterator for CircleDomainBitRevIterator {
     }
 }
 
-#[test]
-fn test_circle_domain_bit_rev_iterator() {
-    let domain = CircleDomain::new(crate::core::circle::Coset::new(
-        crate::core::circle::CirclePointIndex::generator(),
-        5,
-    ));
-    let mut expected = domain.iter().collect::<Vec<_>>();
-    crate::core::backend::cpu::bit_reverse(&mut expected);
-    let actual = CircleDomainBitRevIterator::new(domain)
-        .flat_map(|c| -> [_; 16] {
-            std::array::from_fn(|i| CirclePoint {
-                x: c.x.to_array()[i],
-                y: c.y.to_array()[i],
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_circle_domain_bit_rev_iterator() {
+        let domain = CircleDomain::new(crate::core::circle::Coset::new(
+            crate::core::circle::CirclePointIndex::generator(),
+            5,
+        ));
+        let mut expected = domain.iter().collect::<Vec<_>>();
+        crate::core::backend::cpu::bit_reverse(&mut expected);
+        let actual = CircleDomainBitRevIterator::new(domain)
+            .flat_map(|c| -> [_; 16] {
+                std::array::from_fn(|i| CirclePoint {
+                    x: c.x.to_array()[i],
+                    y: c.y.to_array()[i],
+                })
             })
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(actual, expected);
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_start_at() {
+        let domain = CircleDomain::new(crate::core::circle::Coset::new(
+            crate::core::circle::CirclePointIndex::generator(),
+            5,
+        ));
+        let expected = {
+            let mut iter = CircleDomainBitRevIterator::new(domain);
+            iter.next();
+            iter.next();
+            iter.next().unwrap()
+        };
+        let mut iter = CircleDomainBitRevIterator::new(domain).start_at(2);
+
+        let actual = iter.next().unwrap();
+
+        let [actual, expected] = [actual, expected].map(|p| {
+            std::array::from_fn::<_, 16, _>(|i| CirclePoint {
+                x: p.x.to_array()[i],
+                y: p.y.to_array()[i],
+            })
+        });
+        assert_eq!(actual, expected);
+    }
 }

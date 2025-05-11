@@ -319,7 +319,7 @@ impl FromIterator<PackedSecureField> for SecureColumn {
 /// A mutable slice of a SecureColumnByCoords.
 pub struct SecureColumnByCoordsMutSlice<'a>(pub [BaseColumnMutSlice<'a>; SECURE_EXTENSION_DEGREE]);
 
-impl SecureColumnByCoordsMutSlice<'_> {
+impl<'a> SecureColumnByCoordsMutSlice<'a> {
     /// # Safety
     ///
     /// `vec_index` must be a valid index.
@@ -345,6 +345,15 @@ impl SecureColumnByCoordsMutSlice<'_> {
         *self.0[1].0.get_unchecked_mut(vec_index) = b;
         *self.0[2].0.get_unchecked_mut(vec_index) = c;
         *self.0[3].0.get_unchecked_mut(vec_index) = d;
+    }
+
+    /// # Safety
+    ///
+    /// all coordinate in `coords` must be have the same length.
+    pub unsafe fn from_coordinates_unchecked<'b: 'a>(
+        coords: [&'b mut [PackedBaseField]; SECURE_EXTENSION_DEGREE],
+    ) -> Self {
+        Self(coords.map(BaseColumnMutSlice))
     }
 }
 
