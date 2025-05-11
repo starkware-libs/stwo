@@ -254,11 +254,14 @@ fn denominator_inverses(
         })
         .collect();
 
-    let flat_denominator_inverses = PackedCM31::batch_inverse(&flat_denominators.data);
-
-    flat_denominator_inverses
+    flat_denominators
+        .data
         .chunks(domain.size() / N_LANES)
-        .map(|denominator_inverses| denominator_inverses.iter().copied().collect())
+        .map(PackedCM31::batch_inverse)
+        .map(|data| CM31Column {
+            data,
+            length: domain.size(),
+        })
         .collect()
 }
 
