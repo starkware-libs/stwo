@@ -177,7 +177,7 @@ jobs:
         with:
           toolchain: nightly-2025-04-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2025-04-06 test
+      - run: cargo +nightly-2025-04-06 test --features="tracing"
 
   run-slow-tests:
     runs-on: ubuntu-latest

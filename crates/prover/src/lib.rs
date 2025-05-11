@@ -18,3 +18,6 @@ pub mod constraint_framework;
 pub mod core;
 pub mod examples;
 pub mod math;
+
+#[cfg(feature = "tracing")]
+pub mod tracing;
