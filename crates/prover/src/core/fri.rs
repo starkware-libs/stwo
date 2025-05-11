@@ -8,7 +8,7 @@ use itertools::{zip_eq, Itertools};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::instrument;
+use tracing::{instrument, span, Level};
 
 use super::backend::{Col, ColumnOps, CpuBackend};
 use super::channel::{Channel, MerkleChannel};
@@ -178,10 +178,18 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
             "column sizes not decreasing"
         );
 
+        let span = span!(Level::INFO, "commit first layer").entered();
         let first_layer = Self::commit_first_layer(channel, columns);
+        drop(span);
+
+        let span = span!(Level::INFO, "commit inner layers").entered();
         let (inner_layers, last_layer_evaluation) =
             Self::commit_inner_layers(channel, config, columns, twiddles);
+        drop(span);
+
+        let span = span!(Level::INFO, "commit last layer").entered();
         let last_layer_poly = Self::commit_last_layer(channel, config, last_layer_evaluation);
+        drop(span);
 
         Self {
             config,
@@ -201,7 +209,9 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
         channel: &mut MC::C,
         columns: &'a [SecureEvaluation<B, BitReversedOrder>],
     ) -> FriFirstLayerProver<'a, B, MC::H> {
+        let span = span!(Level::INFO, "new first layer prover").entered();
         let layer = FriFirstLayerProver::new(columns);
+        drop(span);
         MC::mix_root(channel, layer.merkle_tree.root());
         layer
     }

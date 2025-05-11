@@ -69,7 +69,9 @@ impl QuotientOps for SimdBackend {
         // b2 b3 b4 b5 is indeed a circle domain, with a bigger jump.
         // Traversing the domain in bit-reversed order, after we finish with b5, b4, b3, b2,
         // we need to change b1 and then b0. This is the bit reverse of the shift b0 b1.
+        let span = span!(Level::INFO, "bit reverse shifts").entered();
         bit_reverse(&mut subdomain_shifts);
+        span.exit();
 
         let (span, mut extended_eval, subeval_polys) = accumulate_quotients_on_subdomain(
             subdomain,
@@ -81,6 +83,7 @@ impl QuotientOps for SimdBackend {
 
         // Extend the evaluation to the full domain.
         // TODO(Ohad): Try to optimize out all these copies.
+        let _span = span!(Level::INFO, "extend evaluation").entered();
         for (ci, &c) in subdomain_shifts.iter().enumerate() {
             let subdomain = subdomain.shift(c);
 
@@ -93,6 +96,7 @@ impl QuotientOps for SimdBackend {
                     .copy_from_slice(&eval.data);
             }
         }
+        drop(_span);
         span.exit();
 
         SecureEvaluation::new(domain, extended_eval)
@@ -110,16 +114,18 @@ fn accumulate_quotients_on_subdomain(
     SecureColumnByCoords<SimdBackend>,
     [crate::core::poly::circle::CirclePoly<SimdBackend>; 4],
 ) {
+    let _span = span!(Level::INFO, "accumulate_quotients_on_subdomain").entered();
     assert!(subdomain.log_size() >= LOG_N_LANES + 2);
     let mut values =
         unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(subdomain.size()) };
     let quotient_constants = quotient_constants(sample_batches, random_coeff, subdomain);
 
     let span = span!(Level::INFO, "Quotient accumulation").entered();
+    let _span2 = span!(Level::INFO, "Quotient accumulation_1").entered();
     let quad_rows = CircleDomainBitRevIterator::new(subdomain)
         .array_chunks::<4>()
         .collect_vec();
-
+    _span2.exit();
     #[cfg(not(feature = "parallel"))]
     let iter = quad_rows.iter().zip(values.chunks_mut(4)).enumerate();
 
@@ -128,7 +134,7 @@ fn accumulate_quotients_on_subdomain(
         .par_iter()
         .zip(values.par_chunks_mut(4))
         .enumerate();
-
+    let _span3 = span!(Level::INFO, "Quotient accumulation_2").entered();
     iter.for_each(|(quad_row, (points, mut values_dst))| {
         // TODO(andrew): Spapini said: Use optimized domain iteration. Is there a better way to do
         // this?
@@ -149,6 +155,7 @@ fn accumulate_quotients_on_subdomain(
             values_dst.set_packed(3, row_accumulator[3]);
         }
     });
+    _span3.exit();
     span.exit();
     let span = span!(Level::INFO, "Quotient extension").entered();
 
@@ -156,11 +163,9 @@ fn accumulate_quotients_on_subdomain(
     let extended_eval =
         unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(domain.size()) };
 
-    let mut i = 0;
     let values = values.columns;
     let twiddles = SimdBackend::precompute_twiddles(subdomain.half_coset);
     let subeval_polys = values.map(|c| {
-        i += 1;
         CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(subdomain, c)
             .interpolate_with_twiddles(&twiddles)
     });
@@ -229,14 +234,16 @@ fn denominator_inverses(
 ) -> Vec<CM31Column> {
     // We want a P to be on a line that passes through a point Pr + uPi in QM31^2, and its conjugate
     // Pr - uPi. Thus, Pr - P is parallel to Pi. Or, (Pr - P).x * Pi.y - (Pr - P).y * Pi.x = 0.
+    let _span = span!(Level::INFO, "denominator_inverses_allocate").entered();
     let domain_points = CircleDomainBitRevIterator::new(domain).collect_vec();
-
+    _span.exit();
     #[cfg(not(feature = "parallel"))]
     let iter = domain_points.into_iter();
 
     #[cfg(feature = "parallel")]
     let iter = domain_points.par_iter();
 
+    let _span2 = span!(Level::INFO, "denominator_inverses_compute").entered();
     let flat_denominators: CM31Column = sample_batches
         .iter()
         .flat_map(|sample_batch| {
@@ -253,9 +260,12 @@ fn denominator_inverses(
                 .collect::<Vec<_>>()
         })
         .collect();
-
+    _span2.exit();
+    let _span3 = span!(Level::INFO, "denominator_inverses_inverse").entered();
     let flat_denominator_inverses = PackedCM31::batch_inverse(&flat_denominators.data);
+    _span3.exit();
 
+    let _span4 = span!(Level::INFO, "denominator_inverses_collect").entered();
     flat_denominator_inverses
         .chunks(domain.size() / N_LANES)
         .map(|denominator_inverses| denominator_inverses.iter().copied().collect())
@@ -270,7 +280,9 @@ fn quotient_constants(
     let _span = span!(Level::INFO, "Quotient constants").entered();
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
     let batch_random_coeffs = batch_random_coeffs(sample_batches, random_coeff);
+    let _span2 = span!(Level::INFO, "denominator_inverses").entered();
     let denominator_inverses = denominator_inverses(sample_batches, domain);
+    _span2.exit();
     QuotientConstants {
         line_coeffs,
         batch_random_coeffs,
