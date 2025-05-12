@@ -1,11 +1,15 @@
 use std::simd::{simd_swizzle, u32x2, Simd};
 
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
+
 use super::m31::{PackedM31, LOG_N_LANES};
 use crate::core::circle::{CirclePoint, M31_CIRCLE_LOG_ORDER};
 use crate::core::fields::m31::M31;
 use crate::core::poly::circle::CircleDomain;
 use crate::core::utils::bit_reverse_index;
 
+#[derive(Clone)]
 pub struct CircleDomainBitRevIterator {
     domain: CircleDomain,
     i: usize,
@@ -58,6 +62,19 @@ impl CircleDomainBitRevIterator {
             current,
             ..*self
         }
+    }
+
+    #[cfg(feature = "parallel")]
+    pub fn par_iter(
+        &self,
+    ) -> impl ParallelIterator<Item = CirclePoint<PackedM31>> + use<'_> + Clone {
+        use crate::core::backend::simd::m31::N_LANES;
+
+        const STRIDE: usize = 1 << 12;
+        (0..self.domain.size() / N_LANES)
+            .into_par_iter()
+            .step_by(STRIDE)
+            .flat_map_iter(|i| self.start_at(i).take(STRIDE))
     }
 }
 impl Iterator for CircleDomainBitRevIterator {
