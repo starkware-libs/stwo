@@ -7,7 +7,6 @@ use super::fields::qm31::SecureField;
 use super::fields::{ComplexConjugate, Field, FieldExpOps};
 use crate::core::channel::Channel;
 use crate::core::fields::qm31::P4;
-use crate::math::utils::egcd;
 
 /// A point on the complex circle. Treated as an additive group.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -248,16 +247,6 @@ impl CirclePointIndex {
         assert!(self.0 & 1 == 0);
         Self(self.0 >> 1)
     }
-
-    pub fn try_div(&self, rhs: CirclePointIndex) -> Option<isize> {
-        // Find x s.t. x * rhs.0 = self.0 (mod CIRCLE_ORDER).
-        let (s, _t, g) = egcd(rhs.0 as isize, 1 << M31_CIRCLE_LOG_ORDER);
-        if self.0 as isize % g != 0 {
-            return None;
-        }
-        let res = s * self.0 as isize / g;
-        Some(res)
-    }
 }
 
 impl Add for CirclePointIndex {
@@ -413,11 +402,6 @@ impl Coset {
             step: step_size.to_point(),
             log_size: self.log_size,
         }
-    }
-
-    pub fn find(&self, i: CirclePointIndex) -> Option<usize> {
-        let res = (i - self.initial_index).try_div(self.step_size)?;
-        Some(res.rem_euclid(self.size() as isize) as usize)
     }
 }
 

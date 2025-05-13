@@ -62,16 +62,6 @@ impl CircleDomain {
         }
     }
 
-    pub fn find(&self, i: CirclePointIndex) -> Option<usize> {
-        if let Some(d) = self.half_coset.find(i) {
-            return Some(d);
-        }
-        if let Some(d) = self.half_coset.conjugate().find(i) {
-            return Some(self.half_coset.size() + d);
-        }
-        None
-    }
-
     /// Returns true if the domain is canonic.
     ///
     /// Canonic domains are domains with elements that are the entire set of points defined by

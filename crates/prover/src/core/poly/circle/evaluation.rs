@@ -6,12 +6,10 @@ use educe::Educe;
 use super::{CircleDomain, CirclePoly, PolyOps};
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
-use crate::core::circle::CirclePointIndex;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::ExtensionOf;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::{BitReversedOrder, NaturalOrder};
-use crate::core::utils::bit_reverse_index;
 
 /// An evaluation defined on a [CircleDomain].
 /// The values are ordered according to the [CircleDomain] ordering.
@@ -38,12 +36,6 @@ impl<B: ColumnOps<F>, F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<B, 
 // For example, the CPU backend implementation is in `src/core/backend/cpu/poly.rs`.
 // TODO(first) Remove NaturalOrder.
 impl<F: ExtensionOf<BaseField>, B: ColumnOps<F>> CircleEvaluation<B, F, NaturalOrder> {
-    // TODO(alont): Remove. Is this even used.
-    pub fn get_at(&self, point_index: CirclePointIndex) -> F {
-        self.values
-            .at(self.domain.find(point_index).expect("Not in domain"))
-    }
-
     pub fn bit_reverse(mut self) -> CircleEvaluation<B, F, BitReversedOrder> {
         B::bit_reverse_column(&mut self.values);
         CircleEvaluation::new(self.domain, self.values)
@@ -68,13 +60,6 @@ impl<B: ColumnOps<F>, F: ExtensionOf<BaseField>> CircleEvaluation<B, F, BitRever
     pub fn bit_reverse(mut self) -> CircleEvaluation<B, F, NaturalOrder> {
         B::bit_reverse_column(&mut self.values);
         CircleEvaluation::new(self.domain, self.values)
-    }
-
-    pub fn get_at(&self, point_index: CirclePointIndex) -> F {
-        self.values.at(bit_reverse_index(
-            self.domain.find(point_index).expect("Not in domain"),
-            self.domain.log_size(),
-        ))
     }
 }
 
@@ -142,20 +127,6 @@ mod tests {
         let poly = evaluation.interpolate();
         for (i, point) in domain.iter().enumerate() {
             assert_eq!(poly.eval_at_point(point.into_ef()), m31!(i as u32).into());
-        }
-    }
-
-    #[test]
-    pub fn test_get_at_circle_evaluation() {
-        let domain = CanonicCoset::new(7).circle_domain();
-        let values = (0..domain.size()).map(|i| m31!(i as u32)).collect();
-        let circle_evaluation = CpuCircleEvaluation::<_, NaturalOrder>::new(domain, values);
-        let bit_reversed_circle_evaluation = circle_evaluation.clone().bit_reverse();
-        for index in domain.iter_indices() {
-            assert_eq!(
-                circle_evaluation.get_at(index),
-                bit_reversed_circle_evaluation.get_at(index)
-            );
         }
     }
 }
