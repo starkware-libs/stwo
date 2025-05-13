@@ -57,7 +57,11 @@ where
     fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, _ctx: Context<'_, S>) {
         let mut visitor = ClassFieldVisitor::default();
         attrs.record(&mut visitor);
-        let class = visitor.class_value.unwrap_or_default();
+        let class = if let Some(class) = visitor.class_value {
+            class
+        } else {
+            return;
+        };
 
         let span_data = SpanData {
             class,

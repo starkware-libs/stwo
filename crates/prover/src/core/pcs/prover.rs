@@ -86,7 +86,12 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         channel: &mut MC::C,
     ) -> CommitmentSchemeProof<MC::H> {
         // Evaluate polynomials on open points.
-        let span = span!(Level::INFO, "Evaluate columns out of domain").entered();
+        let span = span!(
+            Level::INFO,
+            "Evaluate columns out of domain",
+            class = "EvaluateOutOfDomain"
+        )
+        .entered();
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
@@ -119,7 +124,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             FriProver::<B, MC>::commit(channel, self.config.fri_config, &quotients, self.twiddles);
 
         // Proof of work.
-        let span1 = span!(Level::INFO, "Grind").entered();
+        let span1 = span!(Level::INFO, "Grind", class = "Grind").entered();
         let proof_of_work = B::grind(channel, self.config.pow_bits);
         span1.exit();
         channel.mix_u64(proof_of_work);
@@ -169,7 +174,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
         &mut self,
         columns: impl IntoIterator<Item = CircleEvaluation<B, BaseField, BitReversedOrder>>,
     ) -> TreeSubspan {
-        let span = span!(Level::INFO, "Interpolation for commitment").entered();
+        let span = span!(Level::INFO, "Interpolation for commitment", class = "iFFT").entered();
         let polys = B::interpolate_columns(columns, self.commitment_scheme.twiddles);
         span.exit();
 
@@ -211,11 +216,11 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         channel: &mut MC::C,
         twiddles: &TwiddleTree<B>,
     ) -> Self {
-        let span = span!(Level::INFO, "Extension").entered();
+        let span = span!(Level::INFO, "Extension", class = "rFFT").entered();
         let evaluations = B::evaluate_polynomials(&polynomials, log_blowup_factor, twiddles);
         span.exit();
 
-        let _span = span!(Level::INFO, "Merkle").entered();
+        let _span = span!(Level::INFO, "Merkle", class = "Merkle").entered();
         let tree = MerkleProver::commit(evaluations.iter().map(|eval| &eval.values).collect());
         MC::mix_root(channel, tree.root());
 
