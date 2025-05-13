@@ -1,4 +1,4 @@
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use std::ops::{Add, Mul, Neg, Sub};
 
 use num_traits::{One, Zero};
 
@@ -281,14 +281,6 @@ impl Mul<usize> for CirclePointIndex {
 
     fn mul(self, rhs: usize) -> Self::Output {
         Self(self.0.wrapping_mul(rhs)).reduce()
-    }
-}
-
-impl Div for CirclePointIndex {
-    type Output = isize;
-
-    fn div(self, rhs: Self) -> Self::Output {
-        self.try_div(rhs).unwrap()
     }
 }
 

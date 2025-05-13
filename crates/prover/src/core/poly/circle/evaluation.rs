@@ -4,10 +4,9 @@ use std::ops::{Deref, Index};
 use educe::Educe;
 
 use super::{CircleDomain, CirclePoly, PolyOps};
-use crate::core::backend::cpu::CpuCircleEvaluation;
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
-use crate::core::circle::{CirclePointIndex, Coset};
+use crate::core::circle::CirclePointIndex;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::ExtensionOf;
 use crate::core::poly::twiddles::TwiddleTree;
@@ -48,27 +47,6 @@ impl<F: ExtensionOf<BaseField>, B: ColumnOps<F>> CircleEvaluation<B, F, NaturalO
     pub fn bit_reverse(mut self) -> CircleEvaluation<B, F, BitReversedOrder> {
         B::bit_reverse_column(&mut self.values);
         CircleEvaluation::new(self.domain, self.values)
-    }
-}
-
-impl<F: ExtensionOf<BaseField>> CpuCircleEvaluation<F, NaturalOrder> {
-    pub fn fetch_eval_on_coset(&self, coset: Coset) -> CosetSubEvaluation<'_, F> {
-        assert!(coset.log_size() <= self.domain.half_coset.log_size());
-        if let Some(offset) = self.domain.half_coset.find(coset.initial_index) {
-            return CosetSubEvaluation::new(
-                &self.values[..self.domain.half_coset.size()],
-                offset,
-                coset.step_size / self.domain.half_coset.step_size,
-            );
-        }
-        if let Some(offset) = self.domain.half_coset.conjugate().find(coset.initial_index) {
-            return CosetSubEvaluation::new(
-                &self.values[self.domain.half_coset.size()..],
-                offset,
-                (-coset.step_size) / self.domain.half_coset.step_size,
-            );
-        }
-        panic!("Coset not found in domain");
     }
 }
 
@@ -126,17 +104,6 @@ pub struct CosetSubEvaluation<'a, F: ExtensionOf<BaseField>> {
     step: isize,
 }
 
-impl<'a, F: ExtensionOf<BaseField>> CosetSubEvaluation<'a, F> {
-    fn new(evaluation: &'a [F], offset: usize, step: isize) -> Self {
-        assert!(evaluation.len().is_power_of_two());
-        Self {
-            evaluation,
-            offset,
-            step,
-        }
-    }
-}
-
 impl<F: ExtensionOf<BaseField>> Index<isize> for CosetSubEvaluation<'_, F> {
     type Output = F;
 
@@ -158,7 +125,6 @@ impl<F: ExtensionOf<BaseField>> Index<usize> for CosetSubEvaluation<'_, F> {
 #[cfg(test)]
 mod tests {
     use crate::core::backend::cpu::CpuCircleEvaluation;
-    use crate::core::circle::Coset;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
@@ -190,18 +156,6 @@ mod tests {
                 circle_evaluation.get_at(index),
                 bit_reversed_circle_evaluation.get_at(index)
             );
-        }
-    }
-
-    #[test]
-    fn test_sub_evaluation() {
-        let domain = CanonicCoset::new(7).circle_domain();
-        let values = (0..domain.size()).map(|i| m31!(i as u32)).collect();
-        let circle_evaluation = CpuCircleEvaluation::new(domain, values);
-        let coset = Coset::new(domain.index_at(17), 3);
-        let sub_eval = circle_evaluation.fetch_eval_on_coset(coset);
-        for i in 0..coset.size() {
-            assert_eq!(sub_eval[i], circle_evaluation.get_at(coset.index_at(i)));
         }
     }
 }
