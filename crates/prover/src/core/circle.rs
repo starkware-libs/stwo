@@ -9,7 +9,7 @@ use crate::core::channel::Channel;
 use crate::core::fields::qm31::P4;
 
 /// A point on the complex circle. Treated as an additive group.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct CirclePoint<F> {
     pub x: F,
     pub y: F,
@@ -438,8 +438,7 @@ impl<T: Add<Output = T> + Copy> Iterator for CosetIterator<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
+    use indexmap::IndexSet;
     use num_traits::{One, Pow};
 
     use super::{CirclePointIndex, Coset};
@@ -473,11 +472,11 @@ mod tests {
     #[test]
     fn test_coset_is_half_coset_with_conjugate() {
         let canonic_coset = CanonicCoset::new(8);
-        let coset_points = BTreeSet::from_iter(canonic_coset.coset().iter());
+        let coset_points: IndexSet<_> = canonic_coset.coset().iter().collect();
 
-        let half_coset_points = BTreeSet::from_iter(canonic_coset.half_coset().iter());
-        let half_coset_conjugate_points =
-            BTreeSet::from_iter(canonic_coset.half_coset().conjugate().iter());
+        let half_coset_points: IndexSet<_> = canonic_coset.half_coset().iter().collect();
+        let half_coset_conjugate_points: IndexSet<_> =
+            canonic_coset.half_coset().conjugate().iter().collect();
 
         assert!((&half_coset_points & &half_coset_conjugate_points).is_empty());
         assert_eq!(

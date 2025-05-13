@@ -2,6 +2,7 @@ use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::iter::zip;
 
+use indexmap::IndexMap;
 use itertools::{izip, multiunzip, Itertools};
 use tracing::{span, Level};
 
@@ -49,7 +50,7 @@ impl ColumnSampleBatch {
     pub fn new_vec(samples: &[&Vec<PointSample>]) -> Vec<Self> {
         // Group samples by point, and create a ColumnSampleBatch for each point.
         // This should keep a stable ordering.
-        let mut grouped_samples = BTreeMap::new();
+        let mut grouped_samples = IndexMap::new();
         for (column_index, samples) in samples.iter().enumerate() {
             for sample in samples.iter() {
                 grouped_samples
