@@ -15,7 +15,7 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 
 pub struct SpanData {
-    label: String,
+    class: String,
     start: Instant,
 }
 
@@ -54,12 +54,13 @@ where
     S: Subscriber,
     S: for<'span> LookupSpan<'span>,
 {
-    fn on_new_span(&self, _attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
-        let meta = ctx.metadata(id).unwrap();
-        let label = meta.name().to_string();
+    fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, _ctx: Context<'_, S>) {
+        let mut visitor = ClassFieldVisitor::default();
+        attrs.record(&mut visitor);
+        let class = visitor.class_value.unwrap_or_default();
 
         let span_data = SpanData {
-            label,
+            class,
             // Start timing the span.
             start: Instant::now(),
         };
@@ -73,11 +74,28 @@ where
         let mut spans = self.spans.lock().unwrap();
         if let Some(span) = spans.remove(&id) {
             let mut results = self.results.lock().unwrap();
-            let key = span.label;
+            let key = span.class;
             let entry = results.entry(key).or_insert(Duration::ZERO);
 
             *entry += span.start.elapsed();
         }
+    }
+}
+
+#[derive(Default)]
+struct ClassFieldVisitor {
+    class_value: Option<String>,
+}
+
+impl tracing::field::Visit for ClassFieldVisitor {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        if field.name() == "class" {
+            self.class_value = Some(value.to_string());
+        }
+    }
+
+    fn record_debug(&mut self, _field: &tracing::field::Field, _value: &dyn std::fmt::Debug) {
+        // Do nothing.
     }
 }
 
@@ -95,8 +113,8 @@ mod tests {
         let subscriber = Registry::default().with(layer);
         let _guard = tracing::subscriber::set_default(subscriber);
 
-        let span1 = tracing::span!(tracing::Level::INFO, "span1").entered();
-        let span2 = tracing::span!(tracing::Level::INFO, "span2").entered();
+        let span1 = tracing::span!(tracing::Level::INFO, "", class = "span1").entered();
+        let span2 = tracing::span!(tracing::Level::INFO, "", class = "span2").entered();
         drop(span2);
         drop(span1);
 
