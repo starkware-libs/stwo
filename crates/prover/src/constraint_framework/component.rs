@@ -312,7 +312,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         let trace: TreeVec<
             Vec<Cow<'_, CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
         > = if need_to_extend {
-            let _span = span!(Level::INFO, "Extension").entered();
+            let _span = span!(Level::INFO, "Constraint Extension").entered();
             let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
             component_polys
                 .as_cols_ref()
@@ -333,7 +333,12 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
         accum.random_coeff_powers.reverse();
 
-        let _span = span!(Level::INFO, "Constraint point-wise eval").entered();
+        let _span = span!(
+            Level::INFO,
+            "Constraint point-wise eval",
+            class = "ConstraintEval"
+        )
+        .entered();
 
         if trace_domain.log_size() < LOG_N_LANES + LOG_N_VERY_PACKED_ELEMS {
             // Fall back to CPU if the trace is too small.

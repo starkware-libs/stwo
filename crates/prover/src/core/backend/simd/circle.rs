@@ -5,6 +5,7 @@ use std::simd::Simd;
 use bytemuck::Zeroable;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use tracing::{span, Level};
 
 use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
@@ -132,6 +133,7 @@ impl PolyOps for SimdBackend {
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
         twiddles: &TwiddleTree<Self>,
     ) -> CirclePoly<Self> {
+        let _span = span!(Level::TRACE, "", class = "iFFT").entered();
         let log_size = eval.values.length.ilog2();
         if log_size < MIN_FFT_LOG_SIZE {
             let cpu_poly = eval.to_cpu().interpolate();
@@ -232,6 +234,7 @@ impl PolyOps for SimdBackend {
         domain: CircleDomain,
         twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
+        let _span = span!(Level::TRACE, "", class = "rFFT").entered();
         let log_size = domain.log_size();
         let fft_log_size = poly.log_size();
         assert!(
@@ -298,6 +301,7 @@ impl PolyOps for SimdBackend {
     /// Note: the coset point are symmetrical over the x-axis so only the first half of the coset is
     /// needed.
     fn precompute_twiddles(mut coset: Coset) -> TwiddleTree<Self> {
+        let _span = span!(Level::TRACE, "", class = "PrecomputeTwiddles").entered();
         let root_coset = coset;
 
         if root_coset.size() < N_LANES {

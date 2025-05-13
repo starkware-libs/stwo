@@ -525,4 +525,34 @@ mod tests {
 
         verify(&[&component], channel, commitment_scheme, proof).unwrap();
     }
+
+    #[cfg(feature = "tracing")]
+    #[test]
+    fn trace_simd_poseidon_prove() {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::Registry;
+
+        use crate::tracing::SpanAccumulator;
+
+        let collector = SpanAccumulator::default();
+        let layer = collector.clone();
+        let subscriber = Registry::default().with(layer);
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let log_n_instances = env::var("LOG_N_INSTANCES")
+            .unwrap_or_else(|_| "10".to_string())
+            .parse::<u32>()
+            .unwrap();
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 1, 64),
+        };
+
+        // Prove.
+        let _ = prove_poseidon(log_n_instances, config);
+
+        let csv = collector.export_csv();
+
+        println!("{}", csv);
+    }
 }
