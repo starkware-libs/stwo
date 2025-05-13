@@ -55,7 +55,12 @@ where
     S: for<'span> LookupSpan<'span>,
 {
     fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, _ctx: Context<'_, S>) {
-        let class = extract_class(attrs).unwrap_or_default();
+        let class = if let Some(class) = extract_class(attrs) {
+            class
+        } else {
+            return;
+        };
+
         let span_data = SpanData {
             class,
             // Start timing the span.

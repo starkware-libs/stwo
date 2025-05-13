@@ -108,7 +108,12 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             "not all random coefficients were used"
         );
         let log_size = self.log_size();
-        let _span = span!(Level::INFO, "Constraints interpolation").entered();
+        let _span = span!(
+            Level::INFO,
+            "Constraints interpolation",
+            class = "ConstraintInterpolation"
+        )
+        .entered();
         let mut cur_poly: Option<SecureCirclePoly<B>> = None;
         let twiddles = B::precompute_twiddles(
             CanonicCoset::new(self.log_size())

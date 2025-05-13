@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use tracing::{span, Level};
 
 use super::ops::{MerkleHasher, MerkleOps};
 use super::utils::{next_decommitment_node, option_flatten_peekable};
@@ -37,6 +38,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     ///
     /// A new instance of `MerkleProver` with the committed layers.
     pub fn commit(columns: Vec<&Col<B, BaseField>>) -> Self {
+        let _span = span!(Level::TRACE, "Merkle", class = "MerkleCommitment").entered();
         if columns.is_empty() {
             return Self {
                 layers: vec![B::commit_on_layer(0, None, &[])],

@@ -86,7 +86,12 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         channel: &mut MC::C,
     ) -> CommitmentSchemeProof<MC::H> {
         // Evaluate polynomials on open points.
-        let span = span!(Level::INFO, "Evaluate columns out of domain").entered();
+        let span = span!(
+            Level::INFO,
+            "Evaluate columns out of domain",
+            class = "EvaluateOutOfDomain"
+        )
+        .entered();
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
@@ -119,7 +124,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             FriProver::<B, MC>::commit(channel, self.config.fri_config, &quotients, self.twiddles);
 
         // Proof of work.
-        let span1 = span!(Level::INFO, "Grind").entered();
+        let span1 = span!(Level::INFO, "Grind", class = "Queries POW").entered();
         let proof_of_work = B::grind(channel, self.config.pow_bits);
         span1.exit();
         channel.mix_u64(proof_of_work);

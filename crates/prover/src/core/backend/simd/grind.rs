@@ -5,6 +5,7 @@ use std::simd::u32x16;
 use bytemuck::cast_slice;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use tracing::{span, Level};
 
 use super::SimdBackend;
 use crate::core::backend::simd::blake2s::hash_16;
@@ -20,6 +21,8 @@ const GRIND_HI_BITS: u32 = 64 - GRIND_LOW_BITS;
 
 impl GrindOps<Blake2sChannel> for SimdBackend {
     fn grind(channel: &Blake2sChannel, pow_bits: u32) -> u64 {
+        let _span = span!(Level::TRACE, "Simd Blake2s Grind", class = "Blake2s Grind");
+
         // TODO(first): support more than 32 bits.
         assert!(pow_bits <= 32, "pow_bits > 32 is not supported");
         let digest = channel.digest();
