@@ -15,7 +15,7 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 
 pub struct SpanData {
-    label: String,
+    class: String,
     start: Instant,
 }
 
@@ -54,12 +54,10 @@ where
     S: Subscriber,
     S: for<'span> LookupSpan<'span>,
 {
-    fn on_new_span(&self, _attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
-        let meta = ctx.metadata(id).unwrap();
-        let label = meta.name().to_string();
-
+    fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, _ctx: Context<'_, S>) {
+        let class = extract_class(attrs).unwrap_or_default();
         let span_data = SpanData {
-            label,
+            class,
             // Start timing the span.
             start: Instant::now(),
         };
@@ -73,11 +71,34 @@ where
         let mut spans = self.spans.lock().unwrap();
         if let Some(span) = spans.remove(&id) {
             let mut results = self.results.lock().unwrap();
-            let key = span.label;
+            let key = span.class;
             let entry = results.entry(key).or_insert(Duration::ZERO);
 
             *entry += span.start.elapsed();
         }
+    }
+}
+
+fn extract_class(attrs: &Attributes<'_>) -> Option<String> {
+    let mut visitor = ClassFieldVisitor::default();
+    attrs.record(&mut visitor);
+    visitor.class_value
+}
+
+#[derive(Default)]
+struct ClassFieldVisitor {
+    class_value: Option<String>,
+}
+
+impl tracing::field::Visit for ClassFieldVisitor {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        if field.name() == "class" {
+            self.class_value = Some(value.to_string());
+        }
+    }
+
+    fn record_debug(&mut self, _field: &tracing::field::Field, _value: &dyn std::fmt::Debug) {
+        // Do nothing.
     }
 }
 
@@ -95,14 +116,16 @@ mod tests {
         let subscriber = Registry::default().with(layer);
         let _guard = tracing::subscriber::set_default(subscriber);
 
-        let span1 = tracing::span!(tracing::Level::INFO, "span1").entered();
-        let span2 = tracing::span!(tracing::Level::INFO, "span2").entered();
-        drop(span2);
+        let span1 = tracing::span!(tracing::Level::INFO, "span1", class = "class1").entered();
+        let span2 = tracing::span!(tracing::Level::INFO, "span2", class = "class2").entered();
+        let span3 = tracing::span!(tracing::Level::INFO, "span3", class = "class1").entered();
         drop(span1);
+        drop(span2);
+        drop(span3);
 
         let results = collector.results.lock().unwrap();
         assert_eq!(results.len(), 2);
-        assert!(results.contains_key("span1"));
-        assert!(results.contains_key("span2"));
+        assert!(results.contains_key("class1"));
+        assert!(results.contains_key("class2"));
     }
 }
