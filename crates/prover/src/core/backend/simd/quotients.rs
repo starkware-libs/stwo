@@ -117,7 +117,12 @@ fn accumulate_quotients_on_subdomain(
         unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(subdomain.size()) };
     let quotient_constants = quotient_constants(sample_batches, random_coeff, subdomain);
 
-    let span = span!(Level::INFO, "Quotient accumulation").entered();
+    let span = span!(
+        Level::INFO,
+        "Quotient accumulation",
+        class = "FRIQuotientAccumulation"
+    )
+    .entered();
     let quad_rows = CircleDomainBitRevIterator::new(subdomain);
 
     let accumulate = |(quad_row, (points, mut values_dst)): (
@@ -181,7 +186,12 @@ fn accumulate_quotients_on_subdomain(
     iter.for_each(accumulate);
 
     span.exit();
-    let span = span!(Level::INFO, "Quotient extension").entered();
+    let span = span!(
+        Level::INFO,
+        "Quotient extension",
+        class = "FRIQuotientExtension"
+    )
+    .entered();
 
     // Extend the evaluation to the full domain.
     let extended_eval =
@@ -298,7 +308,12 @@ fn quotient_constants(
     random_coeff: SecureField,
     domain: CircleDomain,
 ) -> QuotientConstants {
-    let _span = span!(Level::INFO, "Quotient constants").entered();
+    let _span = span!(
+        Level::INFO,
+        "Quotient constants",
+        class = "FRIQuotientConstants"
+    )
+    .entered();
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
     let batch_random_coeffs = batch_random_coeffs(sample_batches, random_coeff);
     let denominator_inverses = denominator_inverses(sample_batches, domain);

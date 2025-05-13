@@ -41,8 +41,13 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     // Evaluate and commit on composition polynomial.
     let random_coeff = channel.draw_felt();
 
-    let span = span!(Level::INFO, "Composition").entered();
-    let span1 = span!(Level::INFO, "Generation").entered();
+    let span = span!(Level::INFO, "Composition", class = "Composition").entered();
+    let span1 = span!(
+        Level::INFO,
+        "Generation",
+        class = "CompositionPolynomialGeneration"
+    )
+    .entered();
     let composition_poly = component_provers.compute_composition_polynomial(random_coeff, &trace);
     span1.exit();
 

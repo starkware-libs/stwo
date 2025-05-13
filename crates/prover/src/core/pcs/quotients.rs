@@ -80,7 +80,7 @@ pub fn compute_fri_quotients<B: QuotientOps>(
     random_coeff: SecureField,
     log_blowup_factor: u32,
 ) -> Vec<SecureEvaluation<B, BitReversedOrder>> {
-    let _span = span!(Level::INFO, "Compute FRI quotients").entered();
+    let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
     zip(columns, samples)
         .sorted_by_key(|(c, _)| Reverse(c.domain.log_size()))
         .group_by(|(c, _)| c.domain.log_size())
