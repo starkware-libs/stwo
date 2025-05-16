@@ -75,13 +75,31 @@ jobs:
         with:
           toolchain: nightly-2025-04-06
           targets: wasm32-unknown-unknown
+          components: rust-src
       - uses: Swatinem/rust-cache@v2
       - uses: jetli/wasm-pack-action@v0.4.0
         with:
           version: "latest"
-      - run: cd crates/prover && wasm-pack test --node
+      - run: cd crates/prover && wasm-pack test --chrome --headless --release -- -Z build-std=std,panic_abort
         env:
-          RUSTFLAGS: -C target-feature=+simd128
+          RUSTFLAGS: "-C target-feature=+simd128,+atomics,+bulk-memory"
+
+  run-wasm32-unknown-tests-parallel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-04-06
+          targets: wasm32-unknown-unknown
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: "latest"
+      - run: cd crates/prover && wasm-pack test --chrome --headless --release -- -Z build-std=std,panic_abort --features parallel
+        env:
+          RUSTFLAGS: "-C target-feature=+simd128,+atomics,+bulk-memory"
 
   run-neon-tests:
     runs-on: macos-latest-xlarge

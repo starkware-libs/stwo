@@ -91,6 +91,7 @@ impl GrindOps<Poseidon252Channel> for SimdBackend {
 #[cfg(test)]
 mod tests {
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[cfg(feature = "parallel")]
     #[test]
     fn test_grind_blake_is_determinstic() {

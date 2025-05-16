@@ -409,18 +409,36 @@ mod tests {
         gen_trace, prove_poseidon, PoseidonElements,
     };
     use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    use crate::wasm_multithread::{init_wasm_mt, wasm_timer_now};
+
+    // Ideally tests would run in worker mode, but we use the main thread
+    // to access web_sys features.
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
     #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
     #[wasm_bindgen_test::wasm_bindgen_test]
-    fn test_poseidon_prove_wasm() {
-        const LOG_N_INSTANCES: u32 = 10;
-        let config = PcsConfig {
-            pow_bits: 10,
-            fri_config: FriConfig::new(5, 1, 64),
-        };
+    async fn test_poseidon_prove_wasm() {
+        const NUM_THREADS: usize = 8;
+        init_wasm_mt(NUM_THREADS).await;
 
-        // Prove.
-        prove_poseidon(LOG_N_INSTANCES, config);
+        let start = wasm_timer_now();
+        {
+            const LOG_N_INSTANCES: u32 = 17;
+            let config = PcsConfig {
+                pow_bits: 10,
+                fri_config: FriConfig::new(5, 1, 64),
+            };
+
+            // Prove.
+            prove_poseidon(LOG_N_INSTANCES, config);
+        }
+        let end = wasm_timer_now();
+        web_sys::console::log_1(&format!("Execution time: {} ms", end - start).into());
+
+        // Use this to redirect console output to stdout when running in headless mode
+        // panic!("this is panic");
     }
 
     #[test]

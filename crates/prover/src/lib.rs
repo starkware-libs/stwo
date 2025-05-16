@@ -23,3 +23,6 @@ pub mod math;
 
 #[cfg(feature = "tracing")]
 pub mod tracing;
+
+#[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+pub mod wasm_multithread;
