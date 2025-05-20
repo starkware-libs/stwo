@@ -7,7 +7,7 @@ use rayon::prelude::*;
 
 use super::EvalAtRow;
 use crate::core::backend::simd::column::SecureColumn;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
 use crate::core::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
 use crate::core::backend::simd::SimdBackend;
@@ -165,15 +165,45 @@ impl LogupTraceGenerator {
         }
     }
 
-    /// # Safety
-    ///
-    /// Calling `new_col` on uninitialized LogupTraceGenerator leads to undefined behavior.
-    pub unsafe fn uninitialized_new_col(&mut self) -> LogupColGenerator<'_> {
-        let log_size = self.log_size;
+    pub fn col_from_iter(
+        &mut self,
+        iter: impl ExactSizeIterator<Item = (PackedSecureField, PackedSecureField)>,
+    ) {
+        let length = 1 << self.log_size;
+        assert_eq!(iter.len() * N_LANES, length);
+        let mut col_gen = self.new_col();
+        for (vec_row, (numerator, denom)) in iter.enumerate() {
+            col_gen.write_frac(vec_row, numerator, denom);
+        }
+        col_gen.finalize_col();
+    }
+
+    #[cfg(feature = "parallel")]
+    pub fn col_from_par_iter(
+        &mut self,
+        iter: impl IndexedParallelIterator<Item = (PackedSecureField, PackedSecureField)>,
+    ) {
+        use crate::core::backend::simd::column::BaseColumn;
+
+        let length = 1 << self.log_size;
+        assert_eq!(iter.len() * N_LANES, length);
+
+        let (((c0, c1), c2), c3) = (self.denom.data.par_iter_mut())
+            .zip(iter)
+            .map(|(dst_denom, (numerator, denom))| {
+                *dst_denom = denom;
+                let [c0, c1, c2, c3] = numerator.into_packed_m31s();
+                (((c0, c1), c2), c3)
+            })
+            .unzip();
+        let columns = [c0, c1, c2, c3].map(BaseColumn::from_simd);
+        let numerator = SecureColumnByCoords::<SimdBackend> { columns };
+
         LogupColGenerator {
             gen: self,
-            numerator: SecureColumnByCoords::uninitialized(1 << log_size),
+            numerator,
         }
+        .finalize_col();
     }
 
     /// Finalize the trace. Returns the trace and the total sum of the last column.
@@ -289,6 +319,7 @@ impl LogupColGenerator<'_> {
         self.gen.trace.push(self.numerator)
     }
 
+    // TODO(Ohad): remove.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = FractionWriter<'_>> {
         let denom = self.gen.denom.data.iter_mut();
         let [coord0, coord1, coord2, coord3] =
@@ -301,6 +332,7 @@ impl LogupColGenerator<'_> {
         })
     }
 
+    // TODO(Ohad): remove.
     #[cfg(feature = "parallel")]
     pub fn par_iter_mut(&mut self) -> impl IndexedParallelIterator<Item = FractionWriter<'_>> {
         let [coord0, coord1, coord2, coord3] =
@@ -340,6 +372,7 @@ impl FractionWriter<'_> {
 mod tests {
     use super::LookupElements;
     use crate::constraint_framework::logup::LogupTraceGenerator;
+    use crate::core::backend::simd::m31::LOG_N_LANES;
     use crate::core::backend::simd::qm31::PackedSecureField;
     use crate::core::channel::Blake2sChannel;
     use crate::core::fields::m31::BaseField;
@@ -379,6 +412,43 @@ mod tests {
         }
 
         col_gen.finalize_col();
+        let (_, sum) = log_gen.finalize_last();
+        assert_eq!(sum, expected_sum);
+    }
+
+    #[test]
+    fn test_col_from_iter() {
+        let log_size = 8;
+        let expected_sum = (qm31!(1, 2, 3, 4) * qm31!(5, 6, 7, 8).inverse()) * m31!(1 << log_size);
+
+        let mut log_gen = LogupTraceGenerator::new(log_size);
+        let col_iter = (0..1 << (log_size - LOG_N_LANES)).map(|_| {
+            let num = PackedSecureField::broadcast(qm31!(1, 2, 3, 4));
+            let den = PackedSecureField::broadcast(qm31!(5, 6, 7, 8));
+            (num, den)
+        });
+        log_gen.col_from_iter(col_iter);
+
+        let (_, sum) = log_gen.finalize_last();
+        assert_eq!(sum, expected_sum);
+    }
+
+    #[cfg(feature = "parallel")]
+    #[test]
+    fn test_col_from_par_iter() {
+        use rayon::iter::{IntoParallelIterator, ParallelIterator};
+
+        let log_size = 8;
+        let expected_sum = (qm31!(1, 2, 3, 4) * qm31!(5, 6, 7, 8).inverse()) * m31!(1 << log_size);
+
+        let mut log_gen = LogupTraceGenerator::new(log_size);
+        let col_iter = (0..1 << (log_size - LOG_N_LANES)).into_par_iter().map(|_| {
+            let num = PackedSecureField::broadcast(qm31!(1, 2, 3, 4));
+            let den = PackedSecureField::broadcast(qm31!(5, 6, 7, 8));
+            (num, den)
+        });
+        log_gen.col_from_par_iter(col_iter);
+
         let (_, sum) = log_gen.finalize_last();
         assert_eq!(sum, expected_sum);
     }

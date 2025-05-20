@@ -4,6 +4,8 @@ use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
 use num_traits::One;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use tracing::{info, span, Level};
 
 use crate::constraint_framework::logup::LogupTraceGenerator;
@@ -298,13 +300,11 @@ pub fn gen_interaction_trace(
     SecureField,
 ) {
     let _span = span!(Level::INFO, "Generate interaction trace").entered();
-    let mut logup_gen = LogupTraceGenerator::new(log_size);
+    let mut logup_gen = unsafe { LogupTraceGenerator::uninitialized(log_size) };
 
     #[allow(clippy::needless_range_loop)]
     for rep_i in 0..N_INSTANCES_PER_ROW {
-        let mut col_gen = logup_gen.new_col();
-        for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
-            // Batch the 2 lookups together.
+        let frac_at_row = |vec_row: usize| {
             let denom0: PackedSecureField = lookup_elements.combine(
                 &lookup_data.initial_state[rep_i]
                     .each_ref()
@@ -315,10 +315,15 @@ pub fn gen_interaction_trace(
                     .each_ref()
                     .map(|s| s.data[vec_row]),
             );
-            // (1 / denom1) - (1 / denom1) = (denom1 - denom0) / (denom0 * denom1).
-            col_gen.write_frac(vec_row, denom1 - denom0, denom0 * denom1);
-        }
-        col_gen.finalize_col();
+            (denom1 - denom0, denom0 * denom1)
+        };
+        let range = 0..1 << (log_size - LOG_N_LANES);
+
+        #[cfg(not(feature = "parallel"))]
+        logup_gen.col_from_iter(range.map(frac_at_row));
+
+        #[cfg(feature = "parallel")]
+        logup_gen.col_from_par_iter(range.into_par_iter().map(frac_at_row));
     }
 
     logup_gen.finalize_last()
