@@ -60,6 +60,7 @@ impl Channel for Poseidon252Channel {
 
     fn trailing_zeros(&self) -> u32 {
         let bytes = self.digest.to_bytes_be();
+        // Returns maximum of 128.
         u128::from_be_bytes(bytes[16..].try_into().unwrap()).trailing_zeros()
     }
 
