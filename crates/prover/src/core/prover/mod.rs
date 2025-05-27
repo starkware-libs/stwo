@@ -46,9 +46,9 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let composition_poly = component_provers.compute_composition_polynomial(random_coeff, &trace);
     span1.exit();
 
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_polys(composition_poly.into_coordinate_polys());
-    tree_builder.commit(channel);
+    let tree_builder = commitment_scheme.tree_builder();
+    tree_builder
+        .commit_on_composition_poly(channel, composition_poly.into_coordinate_polys().to_vec());
     span.exit();
 
     // Draw OODS point.

@@ -37,9 +37,28 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         }
     }
 
-    fn commit(&mut self, polynomials: ColumnVec<CirclePoly<B>>, channel: &mut MC::C) {
+    fn commit(
+        &mut self,
+        evals: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        channel: &mut MC::C,
+    ) {
         let _span = span!(Level::INFO, "Commitment").entered();
         let tree = CommitmentTreeProver::new(
+            evals,
+            self.config.fri_config.log_blowup_factor,
+            channel,
+            self.twiddles,
+        );
+        self.trees.push(tree);
+    }
+
+    fn commit_on_composition_poly(
+        &mut self,
+        polynomials: ColumnVec<CirclePoly<B>>,
+        channel: &mut MC::C,
+    ) {
+        let _span = span!(Level::INFO, "Commitment").entered();
+        let tree = CommitmentTreeProver::new_from_composition_poly(
             polynomials,
             self.config.fri_config.log_blowup_factor,
             channel,
@@ -52,7 +71,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         TreeBuilder {
             tree_index: self.trees.len(),
             commitment_scheme: self,
-            polys: Vec::default(),
+            evals: Vec::default(),
         }
     }
 
@@ -189,27 +208,16 @@ pub struct CommitmentSchemeProof<H: MerkleHasher> {
 pub struct TreeBuilder<'a, 'b, B: BackendForChannel<MC>, MC: MerkleChannel> {
     tree_index: usize,
     commitment_scheme: &'a mut CommitmentSchemeProver<'b, B, MC>,
-    polys: ColumnVec<CirclePoly<B>>,
+    evals: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
 }
 impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
     pub fn extend_evals(
         &mut self,
         columns: impl IntoIterator<Item = CircleEvaluation<B, BaseField, BitReversedOrder>>,
     ) -> TreeSubspan {
-        let span = span!(Level::INFO, "Interpolation for commitment").entered();
-        let polys = B::interpolate_columns(columns, self.commitment_scheme.twiddles);
-        span.exit();
-
-        self.extend_polys(polys)
-    }
-
-    pub fn extend_polys(
-        &mut self,
-        columns: impl IntoIterator<Item = CirclePoly<B>>,
-    ) -> TreeSubspan {
-        let col_start = self.polys.len();
-        self.polys.extend(columns);
-        let col_end = self.polys.len();
+        let col_start = self.evals.len();
+        self.evals.extend(columns);
+        let col_end = self.evals.len();
         TreeSubspan {
             tree_index: self.tree_index,
             col_start,
@@ -219,7 +227,17 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
 
     pub fn commit(self, channel: &mut MC::C) {
         let _span = span!(Level::INFO, "Commitment").entered();
-        self.commitment_scheme.commit(self.polys, channel);
+        self.commitment_scheme.commit(self.evals, channel);
+    }
+
+    pub fn commit_on_composition_poly(
+        self,
+        channel: &mut MC::C,
+        composition_poly: Vec<CirclePoly<B>>,
+    ) {
+        let _span = span!(Level::INFO, "Commitment").entered();
+        self.commitment_scheme
+            .commit_on_composition_poly(composition_poly, channel);
     }
 }
 
@@ -233,6 +251,31 @@ pub struct CommitmentTreeProver<B: BackendForChannel<MC>, MC: MerkleChannel> {
 
 impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
     pub fn new(
+        evals: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        log_blowup_factor: u32,
+        channel: &mut MC::C,
+        twiddles: &TwiddleTree<B>,
+    ) -> Self {
+        let span = span!(Level::INFO, "Interpolation").entered();
+        let polynomials = B::interpolate_columns(evals, twiddles);
+        span.exit();
+
+        let span = span!(Level::INFO, "Extension").entered();
+        let evaluations = B::evaluate_polynomials(&polynomials, log_blowup_factor, twiddles);
+        span.exit();
+
+        let _span = span!(Level::INFO, "Merkle").entered();
+        let tree = MerkleProver::commit(evaluations.iter().map(|eval| &eval.values).collect());
+        MC::mix_root(channel, tree.root());
+
+        CommitmentTreeProver {
+            polynomials,
+            evaluations,
+            commitment: tree,
+        }
+    }
+
+    pub fn new_from_composition_poly(
         polynomials: ColumnVec<CirclePoly<B>>,
         log_blowup_factor: u32,
         channel: &mut MC::C,
