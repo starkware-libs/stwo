@@ -483,9 +483,9 @@ where
 
     assert_eq!(
         commitment_scheme
-            .polynomials()
+            .evaluations()
             .as_cols_ref()
-            .map_cols(|c| c.log_size())
+            .map_cols(|c| { (*c).clone().interpolate().log_size() })
             .0,
         stmt0.log_sizes().0
     );

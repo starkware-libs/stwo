@@ -30,7 +30,7 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     mut commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
 ) -> Result<StarkProof<MC::H>, ProvingError> {
     let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
-        .polynomials
+        .evaluations
         .len();
     let component_provers = ComponentProvers {
         components: components.to_vec(),

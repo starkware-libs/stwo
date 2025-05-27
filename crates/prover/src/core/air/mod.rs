@@ -6,7 +6,7 @@ use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
-use super::poly::circle::{CircleEvaluation, CirclePoly};
+use super::poly::circle::CircleEvaluation;
 use super::poly::BitReversedOrder;
 use super::ColumnVec;
 
@@ -68,10 +68,8 @@ pub trait ComponentProver<B: Backend>: Component {
 
 /// The set of polynomials that make up the trace.
 ///
-/// Each polynomial is stored both in a coefficients, and evaluations form (for efficiency)
+/// Each polynomial is stored only in evaluations form (for efficiency)
 pub struct Trace<'a, B: Backend> {
-    /// Polynomials for each column.
-    pub polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
     /// Evaluations for each column (evaluated on their commitment domains).
     pub evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
 }

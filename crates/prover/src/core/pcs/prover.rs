@@ -79,12 +79,6 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         self.trees.as_ref().map(|tree| tree.commitment.root())
     }
 
-    pub fn polynomials(&self) -> TreeVec<ColumnVec<&CirclePoly<B>>> {
-        self.trees
-            .as_ref()
-            .map(|tree| tree.polynomials.iter().collect())
-    }
-
     pub fn evaluations(
         &self,
     ) -> TreeVec<ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>> {
@@ -94,9 +88,8 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     }
 
     pub fn trace(&self) -> Trace<'_, B> {
-        let polys = self.polynomials();
         let evals = self.evaluations();
-        Trace { polys, evals }
+        Trace { evals }
     }
 
     pub fn build_weights_hash_map(
@@ -244,7 +237,6 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
 /// Prover data for a single commitment tree in a commitment scheme. The commitment scheme allows to
 /// commit on a set of polynomials at a time. This corresponds to such a set.
 pub struct CommitmentTreeProver<B: BackendForChannel<MC>, MC: MerkleChannel> {
-    pub polynomials: ColumnVec<CirclePoly<B>>,
     pub evaluations: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
     pub commitment: MerkleProver<B, MC::H>,
 }
@@ -269,7 +261,6 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         MC::mix_root(channel, tree.root());
 
         CommitmentTreeProver {
-            polynomials,
             evaluations,
             commitment: tree,
         }
@@ -290,7 +281,6 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         MC::mix_root(channel, tree.root());
 
         CommitmentTreeProver {
-            polynomials,
             evaluations,
             commitment: tree,
         }

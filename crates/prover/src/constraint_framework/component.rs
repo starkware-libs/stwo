@@ -288,13 +288,6 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.eval.log_size());
 
-        let mut component_polys = trace.polys.sub_tree(&self.trace_locations);
-        component_polys[PREPROCESSED_TRACE_IDX] = self
-            .preprocessed_column_indices
-            .iter()
-            .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
-            .collect();
-
         let mut component_evals = trace.evals.sub_tree(&self.trace_locations);
         component_evals[PREPROCESSED_TRACE_IDX] = self
             .preprocessed_column_indices
@@ -314,9 +307,15 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
         > = if need_to_extend {
             let _span = span!(Level::INFO, "Extension").entered();
             let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
-            component_polys
-                .as_cols_ref()
-                .map_cols(|col| Cow::Owned(col.evaluate_with_twiddles(eval_domain, &twiddles)))
+            component_evals.as_cols_ref().map_cols(|col| {
+                Cow::Owned(
+                    (**col)
+                        .clone()
+                        .interpolate()
+                        .reduce_poly()
+                        .evaluate_with_twiddles(eval_domain, &twiddles),
+                )
+            })
         } else {
             component_evals.clone().map_cols(|c| Cow::Borrowed(*c))
         };

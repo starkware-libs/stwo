@@ -1,3 +1,5 @@
+use num_traits::Zero;
+
 use super::{CircleDomain, CircleEvaluation, PolyOps};
 use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::circle::CirclePoint;
@@ -62,6 +64,27 @@ impl<B: PolyOps> CirclePoly<B> {
         twiddles: &TwiddleTree<B>,
     ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
         B::evaluate(self, domain, twiddles)
+    }
+
+    /// Reduces the polynomial to a minimal degree polynomial that evaluates to the same values.
+    pub fn reduce_poly(self) -> Self {
+        let coeffs = self.coeffs.clone();
+        let mut new_log_size = coeffs.len().ilog2();
+        while coeffs.at(1 << new_log_size - 1) == BaseField::zero() {
+            if new_log_size == 1
+                || (((1 << (new_log_size - 1))..(1 << new_log_size))
+                    .any(|i| coeffs.at(i) != BaseField::zero()))
+            {
+                break;
+            }
+            new_log_size -= 1;
+        }
+        Self {
+            log_size: new_log_size,
+            coeffs: Col::<B, BaseField>::from_iter(
+                coeffs.to_cpu()[..1 << new_log_size].iter().copied(),
+            ),
+        }
     }
 }
 
