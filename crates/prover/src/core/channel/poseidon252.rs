@@ -104,8 +104,7 @@ impl Channel for Poseidon252Channel {
     }
 
     fn mix_u64(&mut self, value: u64) {
-        // Split value to 32-bit limbs representing a big endian felt252.
-        self.mix_u32s(&[0, 0, 0, 0, 0, ((value >> 32) as u32), (value as u32)])
+        self.mix_u32s(&[value as u32, (value >> 32) as u32, 0, 0, 0, 0, 0])
     }
 
     fn draw_felt(&mut self) -> SecureField {
