@@ -77,22 +77,35 @@ fn grind_blake(digest: &[u32], hi: u64, pow_bits: u32) -> Option<u64> {
 #[cfg(not(target_arch = "wasm32"))]
 impl GrindOps<Poseidon252Channel> for SimdBackend {
     fn grind(channel: &Poseidon252Channel, pow_bits: u32) -> u64 {
-        grind_poseidon(channel.digest(), pow_bits)
+        let digest = channel.digest();
+
+        #[cfg(not(feature = "parallel"))]
+        let res = (0..=(1 << GRIND_HI_BITS))
+            .find_map(|hi| grind_poseidon(digest, hi, pow_bits))
+            .expect("Grind failed to find a solution.");
+
+        #[cfg(feature = "parallel")]
+        let res = (0..=(1 << GRIND_HI_BITS))
+            .into_par_iter()
+            .find_map_first(|hi| grind_poseidon(digest, hi, pow_bits))
+            .expect("Grind failed to find a solution.");
+
+        res
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn grind_poseidon(digest: FieldElement252, pow_bits: u32) -> u64 {
-    let mut nonce = 0;
-    loop {
+fn grind_poseidon(digest: FieldElement252, hi: u64, pow_bits: u32) -> Option<u64> {
+    for low in 0..(1 << GRIND_LOW_BITS) {
+        let nonce = low | (hi << GRIND_LOW_BITS);
         let hash = starknet_crypto::poseidon_hash_many(&[digest, felt252_from_u64_msbs(nonce)]);
         let trailing_zeros =
             u128::from_be_bytes(hash.to_bytes_be()[16..].try_into().unwrap()).trailing_zeros();
         if trailing_zeros >= pow_bits {
-            return nonce;
+            return Some(nonce);
         }
-        nonce += 1;
     }
+    None
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -125,11 +138,13 @@ mod tests {
         assert!(channel.trailing_zeros() >= pow_bits);
     }
 
-    #[test]
-    fn test_grind_blake_is_determinstic() {
+    fn test_grind_is_determinstic<C: Channel>()
+    where
+        SimdBackend: GrindOps<C>,
+    {
         let pow_bits = 2;
         let n_attempts = 1000;
-        let mut channel = Blake2sChannel::default();
+        let mut channel = C::default();
         channel.mix_u64(0);
 
         let results = (0..n_attempts)
@@ -137,5 +152,16 @@ mod tests {
             .collect_vec();
 
         assert!(results.iter().all(|r| r == &results[0]));
+    }
+
+    #[test]
+    fn test_grind_blake_is_determinstic() {
+        test_grind_is_determinstic::<Blake2sChannel>();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn test_grind_poseidon_is_determinstic() {
+        test_grind_is_determinstic::<Poseidon252Channel>();
     }
 }
