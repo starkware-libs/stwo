@@ -5,6 +5,8 @@ use std::simd::u32x16;
 use bytemuck::cast_slice;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use starknet_crypto::poseidon_hash_many;
+use starknet_ff::FieldElement as FieldElement252;
 use tracing::{span, Level};
 
 use super::SimdBackend;
@@ -12,7 +14,7 @@ use crate::core::backend::simd::blake2s::hash_16;
 use crate::core::backend::simd::m31::N_LANES;
 use crate::core::channel::Blake2sChannel;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::core::channel::{Channel, Poseidon252Channel};
+use crate::core::channel::Poseidon252Channel;
 use crate::core::proof_of_work::GrindOps;
 
 // Note: GRIND_LOW_BITS is a cap on how much extra time we need to wait for all threads to finish.
@@ -72,24 +74,52 @@ fn grind_blake(digest: &[u32], hi: u64, pow_bits: u32) -> Option<u64> {
     None
 }
 
-// TODO(shahars): This is a naive implementation. Optimize it.
 #[cfg(not(target_arch = "wasm32"))]
 impl GrindOps<Poseidon252Channel> for SimdBackend {
     fn grind(channel: &Poseidon252Channel, pow_bits: u32) -> u64 {
-        let mut nonce = 0;
-        loop {
-            let mut channel = channel.clone();
-            channel.mix_u64(nonce);
-            if channel.trailing_zeros() >= pow_bits {
-                return nonce;
-            }
-            nonce += 1;
-        }
+        grind_poseidon(channel.digest(), pow_bits)
     }
+}
+
+fn grind_poseidon(digest: FieldElement252, pow_bits: u32) -> u64 {
+    let mut nonce = 0;
+    loop {
+        let hash = poseidon_hash_many(&[digest, felt252_from_u64_msbs(nonce)]);
+        let trailing_zeros =
+            u128::from_be_bytes(hash.to_bytes_be()[16..].try_into().unwrap()).trailing_zeros();
+        if trailing_zeros >= pow_bits {
+            return nonce;
+        }
+        nonce += 1;
+    }
+}
+
+fn felt252_from_u64_msbs(nonce: u64) -> FieldElement252 {
+    let felt_msbs = (nonce as u128) << (192 - 128);
+    let mut bytes = [0u8; 32];
+    bytes[..16].copy_from_slice(&felt_msbs.to_be_bytes());
+
+    FieldElement252::from_bytes_be(&bytes).unwrap()
 }
 
 #[cfg(test)]
 mod tests {
+
+    use super::*;
+    use crate::core::channel::Channel;
+
+    #[test]
+    fn test_grind_poseidon() {
+        let pow_bits = 10;
+        let mut channel = Poseidon252Channel::default();
+        channel.mix_u64(0x1111222233334344);
+        let digest = channel.digest();
+
+        let nonce = grind_poseidon(digest, pow_bits);
+        channel.mix_u64(nonce);
+
+        assert!(channel.trailing_zeros() >= pow_bits);
+    }
 
     #[cfg(feature = "parallel")]
     #[test]
