@@ -219,7 +219,7 @@ mod tests {
         let digest_64 = channel.digest;
 
         let mut channel = Poseidon252Channel::default();
-        channel.mix_u32s(&[0, 0, 0, 0, 0, 0x11112222, 0x33334444]);
+        channel.mix_u32s(&[0x33334444, 0x11112222, 0, 0, 0, 0, 0]);
 
         assert_eq!(digest_64, channel.digest);
     }
