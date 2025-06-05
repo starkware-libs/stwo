@@ -5,16 +5,12 @@ use std::simd::u32x16;
 use bytemuck::cast_slice;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-#[cfg(not(target_arch = "wasm32"))]
-use starknet_ff::FieldElement as FieldElement252;
 use tracing::{span, Level};
 
 use super::SimdBackend;
 use crate::core::backend::simd::blake2s::hash_16;
 use crate::core::backend::simd::m31::N_LANES;
 use crate::core::channel::Blake2sChannel;
-#[cfg(not(target_arch = "wasm32"))]
-use crate::core::channel::Poseidon252Channel;
 use crate::core::proof_of_work::GrindOps;
 
 // Note: GRIND_LOW_BITS is a cap on how much extra time we need to wait for all threads to finish.
@@ -75,47 +71,46 @@ fn grind_blake(digest: &[u32], hi: u64, pow_bits: u32) -> Option<u64> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl GrindOps<Poseidon252Channel> for SimdBackend {
-    fn grind(channel: &Poseidon252Channel, pow_bits: u32) -> u64 {
-        let digest = channel.digest();
+pub mod poseidon252 {
+    use starknet_ff::FieldElement as FieldElement252;
 
-        #[cfg(not(feature = "parallel"))]
-        let res = (0..=(1 << GRIND_HI_BITS))
-            .find_map(|hi| grind_poseidon(digest, hi, pow_bits))
-            .expect("Grind failed to find a solution.");
+    use super::*;
+    use crate::core::channel::Poseidon252Channel;
 
-        #[cfg(feature = "parallel")]
-        let res = (0..=(1 << GRIND_HI_BITS))
-            .into_par_iter()
-            .find_map_first(|hi| grind_poseidon(digest, hi, pow_bits))
-            .expect("Grind failed to find a solution.");
+    const GRIND_LOW_BITS: u32 = 12;
+    const GRIND_HI_BITS: u32 = 64 - GRIND_LOW_BITS;
 
-        res
-    }
-}
+    impl GrindOps<Poseidon252Channel> for SimdBackend {
+        fn grind(channel: &Poseidon252Channel, pow_bits: u32) -> u64 {
+            let digest = channel.digest();
 
-#[cfg(not(target_arch = "wasm32"))]
-fn grind_poseidon(digest: FieldElement252, hi: u64, pow_bits: u32) -> Option<u64> {
-    for low in 0..(1 << GRIND_LOW_BITS) {
-        let nonce = low | (hi << GRIND_LOW_BITS);
-        let hash = starknet_crypto::poseidon_hash_many(&[digest, felt252_from_u64_msbs(nonce)]);
-        let trailing_zeros =
-            u128::from_be_bytes(hash.to_bytes_be()[16..].try_into().unwrap()).trailing_zeros();
-        if trailing_zeros >= pow_bits {
-            return Some(nonce);
+            #[cfg(not(feature = "parallel"))]
+            let res = (0..=(1 << GRIND_HI_BITS))
+                .find_map(|hi| grind_poseidon(digest, hi, pow_bits))
+                .expect("Grind failed to find a solution.");
+
+            #[cfg(feature = "parallel")]
+            let res = (0..=(1 << GRIND_HI_BITS))
+                .into_par_iter()
+                .find_map_first(|hi| grind_poseidon(digest, hi, pow_bits))
+                .expect("Grind failed to find a solution.");
+
+            res
         }
     }
-    None
-}
 
-#[cfg(not(target_arch = "wasm32"))]
-fn felt252_from_u64_msbs(nonce: u64) -> FieldElement252 {
-    let felt_msbs = nonce.to_be_bytes();
-    let mut bytes = [0u8; 32];
-    bytes[4..8].copy_from_slice(&felt_msbs[4..]);
-    bytes[8..12].copy_from_slice(&felt_msbs[..4]);
-
-    FieldElement252::from_bytes_be(&bytes).unwrap()
+    fn grind_poseidon(digest: FieldElement252, hi: u64, pow_bits: u32) -> Option<u64> {
+        for low in 0..(1 << GRIND_LOW_BITS) {
+            let nonce = low | (hi << GRIND_LOW_BITS);
+            let hash = starknet_crypto::poseidon_hash(digest, nonce.into());
+            let trailing_zeros =
+                u128::from_be_bytes(hash.to_bytes_be()[16..].try_into().unwrap()).trailing_zeros();
+            if trailing_zeros >= pow_bits {
+                return Some(nonce);
+            }
+        }
+        None
+    }
 }
 
 #[cfg(test)]
@@ -129,7 +124,7 @@ mod tests {
     #[test]
     fn test_grind_poseidon() {
         let pow_bits = 10;
-        let mut channel = Poseidon252Channel::default();
+        let mut channel = crate::core::channel::Poseidon252Channel::default();
         channel.mix_u64(0x1111222233334344);
 
         let nonce = SimdBackend::grind(&channel, pow_bits);
@@ -162,6 +157,6 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn test_grind_poseidon_is_determinstic() {
-        test_grind_is_determinstic::<Poseidon252Channel>();
+        test_grind_is_determinstic::<crate::core::channel::Poseidon252Channel>();
     }
 }

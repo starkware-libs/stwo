@@ -104,7 +104,7 @@ impl Channel for Poseidon252Channel {
     }
 
     fn mix_u64(&mut self, value: u64) {
-        self.mix_u32s(&[value as u32, (value >> 32) as u32, 0, 0, 0, 0, 0])
+        self.update_digest(poseidon_hash(self.digest, value.into()));
     }
 
     fn draw_felt(&mut self) -> SecureField {
@@ -216,12 +216,14 @@ mod tests {
     pub fn test_mix_u64() {
         let mut channel = Poseidon252Channel::default();
         channel.mix_u64(0x1111222233334444);
-        let digest_64 = channel.digest;
 
-        let mut channel = Poseidon252Channel::default();
-        channel.mix_u32s(&[0x33334444, 0x11112222, 0, 0, 0, 0, 0]);
-
-        assert_eq!(digest_64, channel.digest);
+        assert_eq!(
+            channel.digest(),
+            FieldElement252::from_hex_be(
+                "0x07cecc0ee3d858c843fe63165f038353f9f80f52dd8d32eead9f635e2f7d8b8e"
+            )
+            .unwrap()
+        );
     }
 
     #[test]
