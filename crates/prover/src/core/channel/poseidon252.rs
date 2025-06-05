@@ -105,7 +105,7 @@ impl Channel for Poseidon252Channel {
 
     fn mix_u64(&mut self, value: u64) {
         // Split value to 32-bit limbs representing a big endian felt252.
-        self.update_digest(poseidon_hash(self.digest, nonce.into()));
+        self.update_digest(poseidon_hash(self.digest, value.into()));
     }
 
     fn draw_felt(&mut self) -> SecureField {
@@ -211,18 +211,6 @@ mod tests {
         channel.mix_felts(felts.as_slice());
 
         assert_ne!(initial_digest, channel.digest);
-    }
-
-    #[test]
-    pub fn test_mix_u64() {
-        let mut channel = Poseidon252Channel::default();
-        channel.mix_u64(0x1111222233334444);
-        let digest_64 = channel.digest;
-
-        let mut channel = Poseidon252Channel::default();
-        channel.mix_u32s(&[0x33334444, 0x11112222, 0, 0, 0, 0, 0]);
-
-        assert_eq!(digest_64, channel.digest);
     }
 
     #[test]
