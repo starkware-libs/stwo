@@ -218,7 +218,6 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::{M31, P};
-    use crate::core::fields::IntoSlice;
 
     const fn mul_p(a: u32, b: u32) -> u32 {
         ((a as u64 * b as u64) % P as u64) as u32
@@ -245,23 +244,6 @@ mod tests {
             assert_eq!(m31!(add_p(x, y)), m31!(x) + m31!(y));
             assert_eq!(m31!(mul_p(x, y)), m31!(x) * m31!(y));
             assert_eq!(m31!(neg_p(x)), -m31!(x));
-        }
-    }
-
-    #[test]
-    fn test_into_slice() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let x = (0..100).map(|_| rng.gen()).collect::<Vec<M31>>();
-
-        let slice = M31::into_slice(&x);
-
-        for i in 0..100 {
-            assert_eq!(
-                x[i],
-                m31!(u32::from_le_bytes(
-                    slice[i * 4..(i + 1) * 4].try_into().unwrap()
-                ))
-            );
         }
     }
 

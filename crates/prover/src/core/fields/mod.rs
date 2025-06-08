@@ -148,24 +148,6 @@ pub trait Field:
     }
 }
 
-/// # Safety
-///
-/// Do not use unless you are aware of the endianess in the platform you are compiling for, and the
-/// Field element's representation in memory.
-// TODO(Ohad): Do not compile on non-le targets.
-pub unsafe trait IntoSlice<T: Sized>: Sized {
-    fn into_slice(sl: &[Self]) -> &[T] {
-        unsafe {
-            std::slice::from_raw_parts(
-                sl.as_ptr() as *const T,
-                std::mem::size_of_val(sl) / std::mem::size_of::<T>(),
-            )
-        }
-    }
-}
-
-unsafe impl<F: Field> IntoSlice<u8> for F {}
-
 pub trait ComplexConjugate {
     /// # Example
     ///

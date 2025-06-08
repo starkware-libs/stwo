@@ -1,9 +1,10 @@
 use std::iter;
 
+use itertools::Itertools;
+
 use super::{Channel, ChannelTime};
 use crate::core::fields::m31::{BaseField, N_BYTES_FELT, P};
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use crate::core::fields::IntoSlice;
 use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
 
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
@@ -58,9 +59,14 @@ impl Channel for Blake2sChannel {
     }
 
     fn mix_felts(&mut self, felts: &[SecureField]) {
+        let felts_bytes = felts
+            .iter()
+            .flat_map(|qm31| qm31.to_m31_array())
+            .flat_map(|m31| m31.0.to_le_bytes())
+            .collect_vec();
         let mut hasher = Blake2sHasher::new();
         hasher.update(self.digest.as_ref());
-        hasher.update(IntoSlice::<u8>::into_slice(felts));
+        hasher.update(&felts_bytes);
 
         self.update_digest(hasher.finalize());
     }

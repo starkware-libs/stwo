@@ -140,12 +140,10 @@ macro_rules! qm31 {
 #[cfg(test)]
 mod tests {
     use num_traits::One;
-    use rand::rngs::SmallRng;
-    use rand::{Rng, SeedableRng};
 
     use super::QM31;
     use crate::core::fields::m31::P;
-    use crate::core::fields::{FieldExpOps, IntoSlice};
+    use crate::core::fields::FieldExpOps;
     use crate::m31;
 
     #[test]
@@ -172,26 +170,5 @@ mod tests {
         assert_eq!(qm1 - m, qm1 - qm);
         assert_eq!(qm0_x_qm1 / qm1, qm31!(1, 2, 3, 4));
         assert_eq!(qm1 / m, qm1 / qm);
-    }
-
-    #[test]
-    fn test_into_slice() {
-        let mut rng = SmallRng::seed_from_u64(0);
-        let x = (0..100).map(|_| rng.gen()).collect::<Vec<QM31>>();
-
-        let slice = QM31::into_slice(&x);
-
-        for i in 0..100 {
-            let corresponding_sub_slice = &slice[i * 16..(i + 1) * 16];
-            assert_eq!(
-                x[i],
-                qm31!(
-                    u32::from_le_bytes(corresponding_sub_slice[..4].try_into().unwrap()),
-                    u32::from_le_bytes(corresponding_sub_slice[4..8].try_into().unwrap()),
-                    u32::from_le_bytes(corresponding_sub_slice[8..12].try_into().unwrap()),
-                    u32::from_le_bytes(corresponding_sub_slice[12..16].try_into().unwrap())
-                )
-            )
-        }
     }
 }
