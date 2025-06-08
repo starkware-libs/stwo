@@ -15,8 +15,8 @@ use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::ExtensionOf;
+use crate::core::secure_column::SecureColumnByCoords;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///

@@ -5,7 +5,6 @@ use std::ops::{
 
 use serde::{Deserialize, Serialize};
 
-use super::secure_column::SECURE_EXTENSION_DEGREE;
 use super::{ComplexConjugate, FieldExpOps};
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::M31;
@@ -20,6 +19,9 @@ pub const R: CM31 = CM31::from_u32_unchecked(2, 1);
 #[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub struct QM31(pub CM31, pub CM31);
 pub type SecureField = QM31;
+
+pub const SECURE_EXTENSION_DEGREE: usize =
+    <SecureField as ExtensionOf<super::m31::BaseField>>::EXTENSION_DEGREE;
 
 impl_field!(QM31, P4);
 impl_extension_field!(QM31, CM31);

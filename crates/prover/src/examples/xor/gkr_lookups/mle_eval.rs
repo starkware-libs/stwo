@@ -26,7 +26,6 @@ use crate::core::circle::{CirclePoint, Coset};
 use crate::core::constraints::{coset_vanishing, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fields::{Field, FieldExpOps};
 use crate::core::lookups::gkr_prover::GkrOps;
 use crate::core::lookups::mle::Mle;
@@ -37,6 +36,7 @@ use crate::core::poly::circle::{
 };
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
+use crate::core::secure_column::SecureColumnByCoords;
 use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use crate::core::ColumnVec;
 
@@ -757,12 +757,12 @@ mod tests {
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::secure_column::SecureColumnByCoords;
     use crate::core::lookups::mle::Mle;
     use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use crate::core::poly::BitReversedOrder;
     use crate::core::prover::{prove, verify, VerificationError};
+    use crate::core::secure_column::SecureColumnByCoords;
     use crate::core::utils::coset_order_to_circle_domain_order;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::examples::xor::gkr_lookups::accumulation::MIN_LOG_BLOWUP_FACTOR;

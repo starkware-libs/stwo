@@ -11,7 +11,6 @@ use super::utils;
 pub mod cm31;
 pub mod m31;
 pub mod qm31;
-pub mod secure_column;
 
 pub trait FieldExpOps: Mul<Output = Self> + MulAssign + Sized + One + Clone {
     fn square(&self) -> Self {

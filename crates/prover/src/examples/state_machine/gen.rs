@@ -91,8 +91,7 @@ mod tests {
     use crate::constraint_framework::Relation;
     use crate::core::backend::Column;
     use crate::core::fields::m31::M31;
-    use crate::core::fields::qm31::QM31;
-    use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+    use crate::core::fields::qm31::{QM31, SECURE_EXTENSION_DEGREE};
     use crate::core::fields::FieldExpOps;
     use crate::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
     use crate::examples::state_machine::components::StateMachineElements;

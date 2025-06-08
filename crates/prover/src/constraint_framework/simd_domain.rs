@@ -12,8 +12,7 @@ use crate::core::backend::simd::very_packed_m31::{
 use crate::core::backend::simd::SimdBackend;
 use crate::core::backend::Column;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::CircleEvaluation;

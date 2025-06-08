@@ -23,8 +23,7 @@ use preprocessed_columns::PreProcessedColumnId;
 pub use simd_domain::SimdDomainEvaluator;
 
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::lookups::utils::Fraction;
 

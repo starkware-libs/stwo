@@ -1,12 +1,12 @@
 use super::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SecureColumnByCoords;
 use crate::core::fri::{fold_circle_into_line, fold_line, FriOps};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
+use crate::core::secure_column::SecureColumnByCoords;
 
 impl FriOps for CpuBackend {
     fn fold_line(
@@ -93,10 +93,10 @@ mod tests {
     use crate::core::backend::CpuBackend;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::secure_column::SecureColumnByCoords;
     use crate::core::fri::FriOps;
     use crate::core::poly::circle::{CanonicCoset, SecureEvaluation};
     use crate::core::poly::BitReversedOrder;
+    use crate::core::secure_column::SecureColumnByCoords;
     use crate::m31;
 
     #[test]

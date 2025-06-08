@@ -10,8 +10,7 @@ use super::{
 };
 use crate::core::backend::Column;
 use crate::core::fields::m31::{BaseField, M31};
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::lookups::utils::Fraction;
 use crate::core::pcs::TreeVec;
 use crate::core::utils::{

@@ -1,13 +1,9 @@
 use std::array;
 use std::iter::zip;
 
-use super::m31::BaseField;
-use super::qm31::SecureField;
-use super::ExtensionOf;
+use super::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
-
-pub const SECURE_EXTENSION_DEGREE: usize =
-    <SecureField as ExtensionOf<BaseField>>::EXTENSION_DEGREE;
+use crate::core::fields::m31::BaseField;
 
 /// A column major array of `SECURE_EXTENSION_DEGREE` base field columns, that represents a column
 /// of secure field element coordinates.

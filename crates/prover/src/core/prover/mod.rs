@@ -8,7 +8,7 @@ use tracing::{info, instrument, span, Level};
 use super::air::{Component, ComponentProver, ComponentProvers, Components};
 use super::backend::BackendForChannel;
 use super::channel::MerkleChannel;
-use super::fields::secure_column::SECURE_EXTENSION_DEGREE;
+use super::fields::qm31::SECURE_EXTENSION_DEGREE;
 use super::fri::FriVerificationError;
 use super::pcs::CommitmentSchemeProof;
 use super::vcs::ops::MerkleHasher;
@@ -354,8 +354,7 @@ mod tests {
     use num_traits::One;
 
     use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::secure_column::SECURE_EXTENSION_DEGREE;
+    use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
     use crate::core::prover::SizeEstimate;
 
     #[test]

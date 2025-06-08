@@ -18,8 +18,8 @@ use super::SimdBackend;
 use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::secure_column::{SecureColumnByCoords, SECURE_EXTENSION_DEGREE};
+use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::core::secure_column::SecureColumnByCoords;
 
 /// An efficient structure for storing and operating on a arbitrary number of [`BaseField`] values.
 #[derive(Clone, Debug)]
@@ -670,7 +670,7 @@ mod tests {
     use crate::core::backend::Column;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::secure_column::SecureColumnByCoords;
+    use crate::core::secure_column::SecureColumnByCoords;
 
     #[test]
     fn base_field_vec_from_iter_works() {
