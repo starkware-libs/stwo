@@ -56,7 +56,6 @@ mod tests {
 
     use itertools::Itertools;
 
-    use crate::constraint_framework::preprocessed_columns::IsFirst;
     use crate::constraint_framework::FrameworkEval;
     use crate::core::poly::circle::CanonicCoset;
     use crate::examples::blake::round::r#gen::{
@@ -92,11 +91,7 @@ mod tests {
             &round_lookup_elements,
         );
 
-        let trace = TreeVec::new(vec![
-            vec![IsFirst::new(LOG_SIZE).gen_column_simd()],
-            trace,
-            interaction_trace,
-        ]);
+        let trace = TreeVec::new(vec![vec![], trace, interaction_trace]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
 
         let component = BlakeRoundEval {

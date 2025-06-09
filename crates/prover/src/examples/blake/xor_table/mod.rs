@@ -21,7 +21,6 @@ use tracing::{span, Level};
 
 use super::preprocessed_columns::XorTable;
 use crate::constraint_framework::logup::{LogupAtRow, LogupTraceGenerator};
-use crate::constraint_framework::preprocessed_columns::IsFirst;
 use crate::constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, Relation, RelationEntry,
     INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
