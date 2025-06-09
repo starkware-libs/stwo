@@ -4,12 +4,12 @@ use itertools::Itertools;
 
 use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
 use super::{Component, ComponentProver, Trace};
-use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
 use crate::core::backend::Backend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::SecureCirclePoly;
+use crate::core::prover::PREPROCESSED_TRACE_IDX;
 use crate::core::ColumnVec;
 
 pub struct Components<'a> {

@@ -3,18 +3,18 @@ use std::fmt::Debug;
 
 use itertools::Itertools;
 use num_traits::Zero;
+use stwo_prover::core::backend::Column;
+use stwo_prover::core::fields::m31::{BaseField, M31};
+use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo_prover::core::lookups::utils::Fraction;
+use stwo_prover::core::pcs::TreeVec;
+use stwo_prover::core::utils::{
+    bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
+};
 
 use super::{
     Batching, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
     INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
-};
-use crate::core::backend::Column;
-use crate::core::fields::m31::{BaseField, M31};
-use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use crate::core::lookups::utils::Fraction;
-use crate::core::pcs::TreeVec;
-use crate::core::utils::{
-    bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
 };
 
 #[derive(Debug)]

@@ -1,17 +1,17 @@
 use std::ops::Mul;
 
 use num_traits::Zero;
+use stwo_prover::core::backend::CpuBackend;
+use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo_prover::core::lookups::utils::Fraction;
+use stwo_prover::core::pcs::TreeVec;
+use stwo_prover::core::poly::circle::CircleEvaluation;
+use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::utils::offset_bit_reversed_circle_domain_index;
 
 use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
-use crate::core::backend::CpuBackend;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use crate::core::lookups::utils::Fraction;
-use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::CircleEvaluation;
-use crate::core::poly::BitReversedOrder;
-use crate::core::utils::offset_bit_reversed_circle_domain_index;
 
 /// Evaluates constraints at an evaluation domain points.
 pub struct CpuDomainEvaluator<'a> {

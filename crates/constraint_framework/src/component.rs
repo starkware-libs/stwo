@@ -7,6 +7,27 @@ use std::ops::Deref;
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use stwo_prover::core::air::accumulation::{
+    DomainEvaluationAccumulator, PointEvaluationAccumulator,
+};
+use stwo_prover::core::air::{Component, ComponentProver, Trace};
+use stwo_prover::core::backend::cpu::bit_reverse;
+use stwo_prover::core::backend::simd::column::VeryPackedSecureColumnByCoords;
+use stwo_prover::core::backend::simd::m31::LOG_N_LANES;
+use stwo_prover::core::backend::simd::very_packed_m31::{
+    VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS,
+};
+use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::circle::CirclePoint;
+use stwo_prover::core::constraints::coset_vanishing;
+use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::qm31::SecureField;
+use stwo_prover::core::fields::FieldExpOps;
+use stwo_prover::core::pcs::{TreeSubspan, TreeVec};
+use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::secure_column::SecureColumnByCoords;
+use stwo_prover::core::ColumnVec;
 use tracing::{span, Level};
 
 use super::cpu_domain::CpuDomainEvaluator;
@@ -14,23 +35,6 @@ use super::preprocessed_columns::PreProcessedColumnId;
 use super::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, PREPROCESSED_TRACE_IDX,
 };
-use crate::core::air::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use crate::core::air::{Component, ComponentProver, Trace};
-use crate::core::backend::cpu::bit_reverse;
-use crate::core::backend::simd::column::VeryPackedSecureColumnByCoords;
-use crate::core::backend::simd::m31::LOG_N_LANES;
-use crate::core::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
-use crate::core::backend::simd::SimdBackend;
-use crate::core::circle::CirclePoint;
-use crate::core::constraints::coset_vanishing;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
-use crate::core::pcs::{TreeSubspan, TreeVec};
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
-use crate::core::poly::BitReversedOrder;
-use crate::core::secure_column::SecureColumnByCoords;
-use crate::core::ColumnVec;
 
 const CHUNK_SIZE: usize = 1;
 

@@ -1,12 +1,13 @@
 use std::ops::Mul;
 
+use stwo_prover::core::air::accumulation::PointEvaluationAccumulator;
+use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo_prover::core::lookups::utils::Fraction;
+use stwo_prover::core::pcs::TreeVec;
+use stwo_prover::core::ColumnVec;
+
 use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
-use crate::core::air::accumulation::PointEvaluationAccumulator;
-use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use crate::core::lookups::utils::Fraction;
-use crate::core::pcs::TreeVec;
-use crate::core::ColumnVec;
 
 /// Evaluates expressions at a point out of domain.
 pub struct PointEvaluator<'a> {
