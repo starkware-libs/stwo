@@ -11,10 +11,6 @@ use super::fft::{ifft, rfft, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
-use crate::core::backend::cpu::circle::slow_precompute_twiddles;
-use crate::core::backend::simd::column::BaseColumn;
-use crate::core::backend::simd::m31::PackedM31;
-use crate::core::backend::{Col, Column, CpuBackend};
 use crate::core::circle::{CirclePoint, Coset, M31_CIRCLE_LOG_ORDER};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -26,6 +22,10 @@ use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
+use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
+use crate::prover::backend::simd::column::BaseColumn;
+use crate::prover::backend::simd::m31::PackedM31;
+use crate::prover::backend::{Col, Column, CpuBackend};
 
 impl SimdBackend {
     // TODO(Ohad): optimize.
@@ -417,14 +417,14 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::backend::simd::circle::slow_eval_at_point;
-    use crate::core::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
-    use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::{Column, CpuBackend};
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PolyOps};
     use crate::core::poly::{BitReversedOrder, NaturalOrder};
+    use crate::prover::backend::simd::circle::slow_eval_at_point;
+    use crate::prover::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
+    use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::{Column, CpuBackend};
 
     #[test]
     fn test_interpolate_and_eval() {

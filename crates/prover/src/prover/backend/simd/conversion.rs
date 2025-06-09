@@ -88,9 +88,9 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::backend::simd::conversion::{Pack, Unpack};
-    use crate::core::backend::simd::m31::N_LANES;
     use crate::core::fields::m31::M31;
+    use crate::prover::backend::simd::conversion::{Pack, Unpack};
+    use crate::prover::backend::simd::m31::N_LANES;
 
     #[test]
     fn test_type_conversion() {

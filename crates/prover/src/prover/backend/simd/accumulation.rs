@@ -1,11 +1,11 @@
 use itertools::Itertools;
 
-use crate::core::backend::simd::m31::N_LANES;
-use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::CpuBackend;
 use crate::core::fields::qm31::SecureField;
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::prover::backend::simd::m31::N_LANES;
+use crate::prover::backend::simd::qm31::PackedSecureField;
+use crate::prover::backend::simd::SimdBackend;
+use crate::prover::backend::CpuBackend;
 use crate::prover::AccumulationOps;
 
 impl AccumulationOps for SimdBackend {
@@ -41,8 +41,8 @@ impl AccumulationOps for SimdBackend {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::cpu::CpuBackend;
-    use crate::core::backend::simd::SimdBackend;
+    use crate::prover::backend::cpu::CpuBackend;
+    use crate::prover::backend::simd::SimdBackend;
     use crate::prover::AccumulationOps;
     use crate::qm31;
 

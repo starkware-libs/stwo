@@ -1,11 +1,11 @@
 use thiserror::Error;
 use tracing::{info, instrument, span, Level};
 
-use crate::core::backend::BackendForChannel;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::proof::StarkProof;
+use crate::prover::backend::BackendForChannel;
 
 mod air;
 pub use air::component_prover::{ComponentProver, ComponentProvers, Trace};
@@ -13,6 +13,7 @@ pub use air::{AccumulationOps, DomainEvaluationAccumulator};
 mod quotients;
 pub use quotients::quotient_ops::QuotientOps;
 pub use quotients::{CommitmentSchemeProver, CommitmentTreeProver};
+pub mod backend;
 
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 

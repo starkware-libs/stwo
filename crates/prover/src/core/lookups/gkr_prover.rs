@@ -12,12 +12,12 @@ use super::gkr_verifier::{GkrArtifact, GkrBatchProof, GkrMask};
 use super::mle::{Mle, MleOps};
 use super::sumcheck::MultivariatePolyOracle;
 use super::utils::{eq, random_linear_combination, UnivariatePoly};
-use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, FieldExpOps};
 use crate::core::lookups::sumcheck;
+use crate::prover::backend::{Col, Column, ColumnOps, CpuBackend};
 
 pub trait GkrOps: MleOps<BaseField> + MleOps<SecureField> {
     /// Returns evaluations `eq(x, y) * v` for all `x` in `{0, 1}^n`.

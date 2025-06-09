@@ -2,10 +2,10 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use num_traits::One;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use stwo_prover::core::backend::simd::m31::{PackedBaseField, N_LANES};
 use stwo_prover::core::fields::cm31::CM31;
 use stwo_prover::core::fields::m31::{BaseField, M31};
 use stwo_prover::core::fields::qm31::SecureField;
+use stwo_prover::prover::backend::simd::m31::{PackedBaseField, N_LANES};
 
 pub const N_ELEMENTS: usize = 1 << 16;
 pub const N_STATE_ELEMENTS: usize = 8;

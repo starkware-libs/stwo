@@ -206,12 +206,12 @@ mod tests {
 
     use num_traits::One;
 
-    use crate::core::backend::CpuBackend;
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::Field;
     use crate::core::lookups::mle::Mle;
     use crate::core::lookups::sumcheck::{partially_verify, prove_batch};
+    use crate::prover::backend::CpuBackend;
 
     #[test]
     fn sumcheck_works() {

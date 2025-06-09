@@ -3,11 +3,11 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use itertools::Itertools;
 use num_traits::Zero;
-use stwo_prover::core::backend::simd::SimdBackend;
-use stwo_prover::core::backend::{Col, CpuBackend};
 use stwo_prover::core::fields::m31::{BaseField, N_BYTES_FELT};
 use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use stwo_prover::core::vcs::ops::MerkleOps;
+use stwo_prover::prover::backend::simd::SimdBackend;
+use stwo_prover::prover::backend::{Col, CpuBackend};
 
 const LOG_N_ROWS: u32 = 16;
 

@@ -2,12 +2,6 @@ use std::iter::zip;
 
 use num_traits::Zero;
 
-use crate::core::backend::cpu::lookups::gkr::gen_eq_evals as cpu_gen_eq_evals;
-use crate::core::backend::simd::column::SecureColumn;
-use crate::core::backend::simd::m31::{LOG_N_LANES, N_LANES};
-use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::gkr_prover::{
@@ -16,6 +10,12 @@ use crate::core::lookups::gkr_prover::{
 use crate::core::lookups::mle::Mle;
 use crate::core::lookups::sumcheck::MultivariatePolyOracle;
 use crate::core::lookups::utils::{Fraction, Reciprocal, UnivariatePoly};
+use crate::prover::backend::cpu::lookups::gkr::gen_eq_evals as cpu_gen_eq_evals;
+use crate::prover::backend::simd::column::SecureColumn;
+use crate::prover::backend::simd::m31::{LOG_N_LANES, N_LANES};
+use crate::prover::backend::simd::qm31::PackedSecureField;
+use crate::prover::backend::simd::SimdBackend;
+use crate::prover::backend::{Column, CpuBackend};
 
 impl GkrOps for SimdBackend {
     #[allow(clippy::uninit_vec)]
@@ -514,8 +514,6 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::{Column, CpuBackend};
     use crate::core::channel::Channel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -524,6 +522,8 @@ mod tests {
     use crate::core::lookups::mle::Mle;
     use crate::core::lookups::utils::Fraction;
     use crate::core::test_utils::test_channel;
+    use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::{Column, CpuBackend};
 
     #[test]
     fn gen_eq_evals_matches_cpu() {

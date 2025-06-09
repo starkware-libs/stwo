@@ -4,12 +4,12 @@ use std::ops::{AddAssign, Sub};
 use itertools::{izip, Itertools};
 use num_traits::Zero;
 
-use crate::core::backend::cpu::bit_reverse;
-use crate::core::backend::simd::m31::{PackedBaseField, N_LANES};
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Col, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::{circle_domain_order_to_coset_order, coset_order_to_circle_domain_order};
+use crate::prover::backend::cpu::bit_reverse;
+use crate::prover::backend::simd::m31::{PackedBaseField, N_LANES};
+use crate::prover::backend::simd::SimdBackend;
+use crate::prover::backend::{Col, Column};
 
 /// Performs a inclusive prefix sum on values in `Coset` order when provided
 /// with evaluations in bit-reversed `CircleDomain` order.
@@ -145,9 +145,9 @@ mod tests {
     use test_log::test;
 
     use super::inclusive_prefix_sum;
-    use crate::core::backend::simd::column::BaseColumn;
-    use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum_slow;
-    use crate::core::backend::Column;
+    use crate::prover::backend::simd::column::BaseColumn;
+    use crate::prover::backend::simd::prefix_sum::inclusive_prefix_sum_slow;
+    use crate::prover::backend::Column;
 
     #[test]
     fn exclusive_prefix_sum_simd_with_log_size_3_works() {

@@ -1,7 +1,6 @@
 use itertools::Itertools;
 
 use crate::core::air::{Component, Components};
-use crate::core::backend::Backend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
@@ -9,6 +8,7 @@ use crate::core::poly::circle::{CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 use crate::prover::air::accumulation::DomainEvaluationAccumulator;
+use crate::prover::backend::Backend;
 
 pub trait ComponentProver<B: Backend>: Component {
     /// Evaluates the constraint quotients of the component on the evaluation domain.

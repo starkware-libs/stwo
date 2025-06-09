@@ -1,13 +1,13 @@
 use itertools::Itertools;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
-use stwo_prover::core::backend::simd::m31::PackedBaseField;
-use stwo_prover::core::backend::simd::SimdBackend;
-use stwo_prover::core::backend::{Col, Column};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::FieldExpOps;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
+use stwo_prover::prover::backend::simd::m31::PackedBaseField;
+use stwo_prover::prover::backend::simd::SimdBackend;
+use stwo_prover::prover::backend::{Col, Column};
 
 pub type WideFibonacciComponent<const N: usize> = FrameworkComponent<WideFibonacciEval<N>>;
 
@@ -74,9 +74,6 @@ mod tests {
         assert_constraints_on_polys, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
     };
     use stwo_prover::core::air::Component;
-    use stwo_prover::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-    use stwo_prover::core::backend::simd::SimdBackend;
-    use stwo_prover::core::backend::Column;
     use stwo_prover::core::channel::Blake2sChannel;
     #[cfg(not(target_arch = "wasm32"))]
     use stwo_prover::core::channel::Poseidon252Channel;
@@ -90,6 +87,9 @@ mod tests {
     use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
     use stwo_prover::core::verifier::verify;
     use stwo_prover::core::ColumnVec;
+    use stwo_prover::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+    use stwo_prover::prover::backend::simd::SimdBackend;
+    use stwo_prover::prover::backend::Column;
     use stwo_prover::prover::{prove, CommitmentSchemeProver};
 
     use super::WideFibonacciEval;

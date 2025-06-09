@@ -2,9 +2,9 @@ use std::ops::{Deref, DerefMut};
 
 use educe::Educe;
 
-use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::Field;
+use crate::prover::backend::{Col, Column, ColumnOps};
 
 pub trait MleOps<F: Field>: ColumnOps<F> + Sized {
     /// Returns a transformed [`Mle`] where the first variable is fixed to `assignment`.
@@ -67,9 +67,9 @@ impl<B: ColumnOps<F>, F: Field> DerefMut for Mle<B, F> {
 #[cfg(test)]
 mod test {
     use super::{Mle, MleOps};
-    use crate::core::backend::Column;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::{ExtensionOf, Field};
+    use crate::prover::backend::Column;
 
     impl<B, F> Mle<B, F>
     where

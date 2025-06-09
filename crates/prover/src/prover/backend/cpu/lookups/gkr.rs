@@ -2,7 +2,6 @@ use std::ops::Index;
 
 use num_traits::{One, Zero};
 
-use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
@@ -12,6 +11,7 @@ use crate::core::lookups::gkr_prover::{
 use crate::core::lookups::mle::{Mle, MleOps};
 use crate::core::lookups::sumcheck::MultivariatePolyOracle;
 use crate::core::lookups::utils::{Fraction, Reciprocal, UnivariatePoly};
+use crate::prover::backend::CpuBackend;
 
 impl GkrOps for CpuBackend {
     fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Mle<Self, SecureField> {
@@ -284,7 +284,6 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::backend::CpuBackend;
     use crate::core::channel::Channel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -293,6 +292,7 @@ mod tests {
     use crate::core::lookups::mle::Mle;
     use crate::core::lookups::utils::{eq, Fraction};
     use crate::core::test_utils::test_channel;
+    use crate::prover::backend::CpuBackend;
 
     #[test]
     fn gen_eq_evals() {

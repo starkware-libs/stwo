@@ -9,13 +9,6 @@ use itertools::Itertools;
 use rayon::prelude::*;
 use stwo_prover::core::air::accumulation::PointEvaluationAccumulator;
 use stwo_prover::core::air::Component;
-use stwo_prover::core::backend::cpu::bit_reverse;
-use stwo_prover::core::backend::simd::column::VeryPackedSecureColumnByCoords;
-use stwo_prover::core::backend::simd::m31::LOG_N_LANES;
-use stwo_prover::core::backend::simd::very_packed_m31::{
-    VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS,
-};
-use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::circle::CirclePoint;
 use stwo_prover::core::constraints::coset_vanishing;
 use stwo_prover::core::fields::m31::BaseField;
@@ -26,6 +19,13 @@ use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::secure_column::SecureColumnByCoords;
 use stwo_prover::core::ColumnVec;
+use stwo_prover::prover::backend::cpu::bit_reverse;
+use stwo_prover::prover::backend::simd::column::VeryPackedSecureColumnByCoords;
+use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
+use stwo_prover::prover::backend::simd::very_packed_m31::{
+    VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS,
+};
+use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
 use tracing::{span, Level};
 

@@ -176,13 +176,13 @@ mod tests {
     use super::{
         offset_bit_reversed_circle_domain_index, previous_bit_reversed_circle_domain_index,
     };
-    use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
     use crate::core::utils::{
         circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
     };
     use crate::m31;
+    use crate::prover::backend::cpu::CpuCircleEvaluation;
 
     #[test]
     fn test_offset_bit_reversed_circle_domain_index() {

@@ -10,11 +10,11 @@ use rayon::prelude::*;
 use super::{
     compute_first_twiddles, mul_twiddle, transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE,
 };
-use crate::core::backend::cpu::bit_reverse;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use crate::core::backend::simd::utils::{UnsafeConst, UnsafeMut};
 use crate::core::circle::Coset;
 use crate::parallel_iter;
+use crate::prover::backend::cpu::bit_reverse;
+use crate::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use crate::prover::backend::simd::utils::{UnsafeConst, UnsafeMut};
 
 /// Performs a Circle Fast Fourier Transform (CFFT) on the given values.
 ///
@@ -583,14 +583,14 @@ mod tests {
     use super::{
         fft, fft3, fft_lower_with_vecwise, get_twiddle_dbls, simd_butterfly, vecwise_butterflies,
     };
-    use crate::core::backend::cpu::CpuCirclePoly;
-    use crate::core::backend::simd::column::BaseColumn;
-    use crate::core::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE};
-    use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
-    use crate::core::backend::Column;
     use crate::core::fft::butterfly as ground_truth_butterfly;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+    use crate::prover::backend::cpu::CpuCirclePoly;
+    use crate::prover::backend::simd::column::BaseColumn;
+    use crate::prover::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE};
+    use crate::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
+    use crate::prover::backend::Column;
 
     #[test]
     fn test_butterfly() {

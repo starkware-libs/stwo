@@ -10,9 +10,6 @@ use super::domain::CircleDomainBitRevIterator;
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
-use crate::core::backend::cpu::bit_reverse;
-use crate::core::backend::simd::column::SecureColumnByCoordsMutSlice;
-use crate::core::backend::CpuBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
@@ -21,6 +18,9 @@ use crate::core::pcs::quotients::{batch_random_coeffs, column_line_coeffs, Colum
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::prover::backend::cpu::bit_reverse;
+use crate::prover::backend::simd::column::SecureColumnByCoordsMutSlice;
+use crate::prover::backend::CpuBackend;
 use crate::prover::QuotientOps;
 
 pub struct QuotientConstants {
@@ -331,14 +331,14 @@ fn quotient_constants(
 mod tests {
     use itertools::Itertools;
 
-    use crate::core::backend::simd::column::BaseColumn;
-    use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::{Column, CpuBackend};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
     use crate::core::pcs::quotients::ColumnSampleBatch;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
     use crate::core::poly::BitReversedOrder;
+    use crate::prover::backend::simd::column::BaseColumn;
+    use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::QuotientOps;
     use crate::qm31;
 
