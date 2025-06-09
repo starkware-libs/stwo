@@ -335,7 +335,7 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::backend::simd::qm31::PackedQM31;
+    use crate::prover::backend::simd::qm31::PackedQM31;
 
     #[test]
     fn addition_works() {

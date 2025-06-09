@@ -7,9 +7,9 @@ use rand::{Rng, SeedableRng};
 use super::ops::{MerkleHasher, MerkleOps};
 use super::prover::MerkleDecommitment;
 use super::verifier::MerkleVerifier;
-use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::prover::MerkleProver;
+use crate::prover::backend::CpuBackend;
 
 pub type TestData<H> = (
     BTreeMap<u32, Vec<usize>>,

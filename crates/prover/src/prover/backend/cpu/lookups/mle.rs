@@ -2,12 +2,12 @@ use std::iter::zip;
 
 use num_traits::{One, Zero};
 
-use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::mle::{Mle, MleOps};
 use crate::core::lookups::sumcheck::MultivariatePolyOracle;
 use crate::core::lookups::utils::{fold_mle_evals, UnivariatePoly};
+use crate::prover::backend::CpuBackend;
 
 impl MleOps<BaseField> for CpuBackend {
     fn fix_first_variable(

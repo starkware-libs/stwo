@@ -9,14 +9,14 @@ use serde::{Deserialize, Serialize};
 
 use super::circle::CircleDomain;
 use super::utils::fold;
-use crate::core::backend::cpu::bit_reverse;
-use crate::core::backend::{ColumnOps, CpuBackend};
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::ExtensionOf;
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::prover::backend::cpu::bit_reverse;
+use crate::prover::backend::{ColumnOps, CpuBackend};
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///
@@ -279,11 +279,11 @@ mod tests {
     use itertools::Itertools;
 
     use super::LineDomain;
-    use crate::core::backend::{ColumnOps, CpuBackend};
     use crate::core::circle::{CirclePoint, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::line::{LineEvaluation, LinePoly};
     use crate::core::utils::bit_reverse_index;
+    use crate::prover::backend::{ColumnOps, CpuBackend};
 
     #[test]
     #[should_panic]

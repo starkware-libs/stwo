@@ -117,7 +117,6 @@ mod tests {
     use num_traits::Zero;
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
-    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
     use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
     use crate::core::fields::m31::{BaseField, M31};
@@ -127,6 +126,7 @@ mod tests {
     use crate::core::poly::NaturalOrder;
     use crate::core::test_utils::secure_eval_to_base_eval;
     use crate::m31;
+    use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
 
     #[test]
     fn test_coset_vanishing() {

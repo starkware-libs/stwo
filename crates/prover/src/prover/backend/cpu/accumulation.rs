@@ -1,8 +1,8 @@
 use num_traits::One;
 
-use crate::core::backend::cpu::CpuBackend;
 use crate::core::fields::qm31::SecureField;
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::prover::backend::cpu::CpuBackend;
 use crate::prover::AccumulationOps;
 
 impl AccumulationOps for CpuBackend {
@@ -28,9 +28,9 @@ impl AccumulationOps for CpuBackend {
 mod tests {
     use num_traits::One;
 
-    use crate::core::backend::CpuBackend;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::FieldExpOps;
+    use crate::prover::backend::CpuBackend;
     use crate::prover::AccumulationOps;
     use crate::qm31;
     #[test]

@@ -68,7 +68,7 @@ impl CircleDomainBitRevIterator {
     pub fn par_iter(
         &self,
     ) -> impl ParallelIterator<Item = CirclePoint<PackedM31>> + use<'_> + Clone {
-        use crate::core::backend::simd::m31::N_LANES;
+        use crate::prover::backend::simd::m31::N_LANES;
 
         const STRIDE: usize = 1 << 12;
         (0..self.domain.size() / N_LANES)
@@ -112,7 +112,7 @@ mod tests {
             5,
         ));
         let mut expected = domain.iter().collect::<Vec<_>>();
-        crate::core::backend::cpu::bit_reverse(&mut expected);
+        crate::prover::backend::cpu::bit_reverse(&mut expected);
         let actual = CircleDomainBitRevIterator::new(domain)
             .flat_map(|c| -> [_; 16] {
                 std::array::from_fn(|i| CirclePoint {

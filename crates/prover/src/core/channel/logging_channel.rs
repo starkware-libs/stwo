@@ -2,12 +2,12 @@ use std::fmt::Debug;
 
 use tracing::{debug, debug_span};
 
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::BackendForChannel;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::fields::qm31::SecureField;
 use crate::core::proof_of_work::GrindOps;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
+use crate::prover::backend::simd::SimdBackend;
+use crate::prover::backend::BackendForChannel;
 
 #[derive(Debug, Clone, Default)]
 pub struct LoggingChannel<C: Channel> {

@@ -4,8 +4,8 @@ mod tests {
     use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
     use rayon::slice::ParallelSlice;
     use stwo_air_utils_derive::{IterMut, ParIterMut, Uninitialized};
-    use stwo_prover::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
     use stwo_prover::core::fields::m31::M31;
+    use stwo_prover::prover::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
 
     use crate::trace::component_trace::ComponentTrace;
 

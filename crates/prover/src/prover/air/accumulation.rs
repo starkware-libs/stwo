@@ -7,12 +7,12 @@
 use itertools::Itertools;
 use tracing::{span, Level};
 
-use crate::core::backend::{Backend, Col, Column, ColumnOps, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::core::poly::BitReversedOrder;
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::prover::backend::{Backend, Col, Column, ColumnOps, CpuBackend};
 
 // TODO(ShaharS), rename terminology to constraints instead of columns.
 /// Accumulates evaluations of u_i(P), each at an evaluation domain of the size of that polynomial.
@@ -154,9 +154,9 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::*;
-    use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::{M31, P};
+    use crate::prover::backend::cpu::CpuCircleEvaluation;
     use crate::qm31;
 
     #[test]

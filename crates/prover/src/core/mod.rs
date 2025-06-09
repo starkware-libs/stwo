@@ -1,7 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
 pub mod air;
-pub mod backend;
 pub mod channel;
 pub mod circle;
 pub mod constraints;

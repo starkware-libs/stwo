@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::instrument;
 
-use super::backend::{Col, ColumnOps, CpuBackend};
 use super::channel::{Channel, MerkleChannel};
 use super::fields::m31::BaseField;
 use super::fields::qm31::{SecureField, QM31, SECURE_EXTENSION_DEGREE};
@@ -30,6 +29,7 @@ use crate::core::utils::bit_reverse_index;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
 use crate::core::vcs::verifier::{MerkleVerificationError, MerkleVerifier};
+use crate::prover::backend::{Col, ColumnOps, CpuBackend};
 
 /// FRI proof config
 // TODO(andrew): Support different step sizes.
@@ -1197,8 +1197,6 @@ mod tests {
     use num_traits::{One, Zero};
 
     use super::FriVerificationError;
-    use crate::core::backend::cpu::CpuCirclePoly;
-    use crate::core::backend::{ColumnOps, CpuBackend};
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
@@ -1213,6 +1211,8 @@ mod tests {
     use crate::core::queries::Queries;
     use crate::core::test_utils::test_channel;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use crate::prover::backend::cpu::CpuCirclePoly;
+    use crate::prover::backend::{ColumnOps, CpuBackend};
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;

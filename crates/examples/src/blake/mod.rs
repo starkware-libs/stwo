@@ -7,11 +7,11 @@ use std::simd::u32x16;
 
 use num_traits::One;
 use stwo_constraint_framework::{relation, EvalAtRow, Relation, RelationEntry};
-use stwo_prover::core::backend::simd::m31::PackedBaseField;
-use stwo_prover::core::backend::simd::qm31::PackedSecureField;
 use stwo_prover::core::channel::Channel;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::FieldExpOps;
+use stwo_prover::prover::backend::simd::m31::PackedBaseField;
+use stwo_prover::prover::backend::simd::qm31::PackedSecureField;
 use xor_table::{xor12, xor4, xor7, xor8, xor9};
 
 mod air;

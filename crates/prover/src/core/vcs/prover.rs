@@ -7,9 +7,9 @@ use tracing::{span, Level};
 
 use super::ops::{MerkleHasher, MerkleOps};
 use super::utils::{next_decommitment_node, option_flatten_peekable};
-use crate::core::backend::{Col, Column};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
+use crate::prover::backend::{Col, Column};
 
 pub struct MerkleProver<B: MerkleOps<H>, H: MerkleHasher> {
     /// Layers of the Merkle tree.

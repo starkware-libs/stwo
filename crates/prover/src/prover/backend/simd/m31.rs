@@ -410,7 +410,7 @@ cfg_if::cfg_if! {
         use std::arch::x86_64::{__m512i, _mm512_mul_epu32, _mm512_srli_epi64};
         use std::simd::Swizzle;
 
-        use crate::core::backend::simd::utils::swizzle::{InterleaveEvens, InterleaveOdds};
+        use crate::prover::backend::simd::utils::swizzle::{InterleaveEvens, InterleaveOdds};
 
         /// Returns `a * b`.
         pub(crate) fn mul_avx512(a: PackedM31, b: PackedM31) -> PackedM31 {
@@ -461,7 +461,7 @@ cfg_if::cfg_if! {
         use std::arch::x86_64::{__m256i, _mm256_mul_epu32, _mm256_srli_epi64};
         use std::simd::Swizzle;
 
-        use crate::core::backend::simd::utils::swizzle::{InterleaveEvens, InterleaveOdds};
+        use crate::prover::backend::simd::utils::swizzle::{InterleaveEvens, InterleaveOdds};
 
         /// Returns `a * b`.
         pub(crate) fn mul_avx2(a: PackedM31, b: PackedM31) -> PackedM31 {
@@ -522,7 +522,7 @@ cfg_if::cfg_if! {
     } else {
         use std::simd::Swizzle;
 
-        use crate::core::backend::simd::utils::swizzle::{InterleaveEvens, InterleaveOdds};
+        use crate::prover::backend::simd::utils::swizzle::{InterleaveEvens, InterleaveOdds};
 
         /// Returns `a * b`.
         ///

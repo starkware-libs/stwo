@@ -15,11 +15,11 @@ use super::very_packed_m31::{
     VeryPackedBaseField, VeryPackedQM31, VeryPackedSecureField, N_VERY_PACKED_ELEMS,
 };
 use super::SimdBackend;
-use crate::core::backend::{Column, CpuBackend};
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::prover::backend::{Column, CpuBackend};
 
 /// An efficient structure for storing and operating on a arbitrary number of [`BaseField`] values.
 #[derive(Clone, Debug)]
@@ -664,13 +664,13 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::BaseColumn;
-    use crate::core::backend::simd::column::SecureColumn;
-    use crate::core::backend::simd::m31::N_LANES;
-    use crate::core::backend::simd::qm31::PackedQM31;
-    use crate::core::backend::Column;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::secure_column::SecureColumnByCoords;
+    use crate::prover::backend::simd::column::SecureColumn;
+    use crate::prover::backend::simd::m31::N_LANES;
+    use crate::prover::backend::simd::qm31::PackedQM31;
+    use crate::prover::backend::Column;
 
     #[test]
     fn base_field_vec_from_iter_works() {

@@ -15,9 +15,9 @@ pub use secure_poly::{SecureCirclePoly, SecureEvaluation};
 #[cfg(test)]
 mod tests {
     use super::CanonicCoset;
-    use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::fields::m31::BaseField;
     use crate::core::utils::bit_reverse_index;
+    use crate::prover::backend::cpu::CpuCircleEvaluation;
 
     #[test]
     fn test_interpolate_and_eval() {

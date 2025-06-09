@@ -5,10 +5,6 @@ use num_traits::Zero;
 
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::SimdBackend;
-use crate::core::backend::simd::fft::compute_first_twiddles;
-use crate::core::backend::simd::fft::ifft::simd_ibutterfly;
-use crate::core::backend::simd::qm31::PackedSecureField;
-use crate::core::backend::Column;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fri::{self, fold_circle_into_line, FriOps};
@@ -18,6 +14,10 @@ use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::domain_line_twiddles_from_tree;
 use crate::core::poly::BitReversedOrder;
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::prover::backend::simd::fft::compute_first_twiddles;
+use crate::prover::backend::simd::fft::ifft::simd_ibutterfly;
+use crate::prover::backend::simd::qm31::PackedSecureField;
+use crate::prover::backend::Column;
 
 // TODO(andrew) Is this optimized?
 impl FriOps for SimdBackend {
@@ -133,7 +133,7 @@ impl FriOps for SimdBackend {
 
 /// See [`decomposition_coefficient`].
 ///
-/// [`decomposition_coefficient`]: crate::core::backend::cpu::CpuBackend::decomposition_coefficient
+/// [`decomposition_coefficient`]: crate::prover::backend::cpu::CpuBackend::decomposition_coefficient
 fn decomposition_coefficient(
     eval: &SecureEvaluation<SimdBackend, BitReversedOrder>,
 ) -> SecureField {
@@ -171,9 +171,6 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
-    use crate::core::backend::simd::column::BaseColumn;
-    use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::{Column, CpuBackend};
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fri::FriOps;
@@ -181,6 +178,9 @@ mod tests {
     use crate::core::poly::line::{LineDomain, LineEvaluation};
     use crate::core::poly::BitReversedOrder;
     use crate::core::secure_column::SecureColumnByCoords;
+    use crate::prover::backend::simd::column::BaseColumn;
+    use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::{Column, CpuBackend};
     use crate::qm31;
 
     #[test]

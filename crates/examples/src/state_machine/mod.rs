@@ -11,8 +11,6 @@ use components::{
 use gen::{gen_interaction_trace, gen_trace};
 use itertools::{chain, Itertools};
 use stwo_constraint_framework::TraceLocationAllocator;
-use stwo_prover::core::backend::simd::m31::LOG_N_LANES;
-use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::channel::Blake2sChannel;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::qm31::QM31;
@@ -20,6 +18,8 @@ use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use stwo_prover::core::poly::circle::{CanonicCoset, PolyOps};
 use stwo_prover::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo_prover::core::verifier::{verify, VerificationError};
+use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
+use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::{prove, CommitmentSchemeProver};
 
 #[allow(unused)]
