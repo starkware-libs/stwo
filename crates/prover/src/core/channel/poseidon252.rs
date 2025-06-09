@@ -72,9 +72,7 @@ impl Channel for Poseidon252Channel {
                 chunk
                     .iter()
                     .flat_map(|x| x.to_m31_array())
-                    .fold(FieldElement252::default(), |cur, y| {
-                        cur * shift + y.0.into()
-                    }),
+                    .fold(FieldElement252::ONE, |cur, y| cur * shift + y.0.into()),
             );
         }
 
