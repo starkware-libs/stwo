@@ -5,7 +5,7 @@ use num_traits::Zero;
 use serde::Serialize;
 use stwo_constraint_framework::preprocessed_columns::{IsFirst, PreProcessedColumnId};
 use stwo_constraint_framework::{TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
-use stwo_prover::core::air::{Component, ComponentProver};
+use stwo_prover::core::air::Component;
 use stwo_prover::core::backend::simd::m31::LOG_N_LANES;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::backend::BackendForChannel;
@@ -16,7 +16,7 @@ use stwo_prover::core::poly::circle::{CanonicCoset, PolyOps};
 use stwo_prover::core::proof::StarkProof;
 use stwo_prover::core::vcs::ops::MerkleHasher;
 use stwo_prover::core::verifier::{verify, VerificationError};
-use stwo_prover::prover::{prove, CommitmentSchemeProver};
+use stwo_prover::prover::{prove, CommitmentSchemeProver, ComponentProver};
 use tracing::{span, Level};
 
 use super::preprocessed_columns::XorTable;

@@ -1,13 +1,15 @@
 use thiserror::Error;
 use tracing::{info, instrument, span, Level};
 
-use crate::core::air::{ComponentProver, ComponentProvers};
 use crate::core::backend::BackendForChannel;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::proof::StarkProof;
 
+mod air;
+pub use air::component_prover::{ComponentProver, ComponentProvers, Trace};
+pub use air::{AccumulationOps, DomainEvaluationAccumulator};
 mod quotients;
 pub use quotients::quotient_ops::QuotientOps;
 pub use quotients::{CommitmentSchemeProver, CommitmentTreeProver};

@@ -1,14 +1,10 @@
 use std::iter::zip;
 
-use itertools::Itertools;
-
-use super::accumulation::{DomainEvaluationAccumulator, PointEvaluationAccumulator};
-use super::{Component, ComponentProver, Trace};
-use crate::core::backend::Backend;
+use super::accumulation::PointEvaluationAccumulator;
+use super::Component;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::SecureCirclePoly;
 use crate::core::ColumnVec;
 use crate::prover::PREPROCESSED_TRACE_IDX;
 
@@ -100,39 +96,5 @@ impl Components<'_> {
         column_log_sizes[PREPROCESSED_TRACE_IDX] = preprocessed_columns_trace_log_sizes;
 
         column_log_sizes
-    }
-}
-
-pub struct ComponentProvers<'a, B: Backend> {
-    pub components: Vec<&'a dyn ComponentProver<B>>,
-    pub n_preprocessed_columns: usize,
-}
-
-impl<B: Backend> ComponentProvers<'_, B> {
-    pub fn components(&self) -> Components<'_> {
-        Components {
-            components: self
-                .components
-                .iter()
-                .map(|c| *c as &dyn Component)
-                .collect_vec(),
-            n_preprocessed_columns: self.n_preprocessed_columns,
-        }
-    }
-    pub fn compute_composition_polynomial(
-        &self,
-        random_coeff: SecureField,
-        trace: &Trace<'_, B>,
-    ) -> SecureCirclePoly<B> {
-        let total_constraints: usize = self.components.iter().map(|c| c.n_constraints()).sum();
-        let mut accumulator = DomainEvaluationAccumulator::new(
-            random_coeff,
-            self.components().composition_log_degree_bound(),
-            total_constraints,
-        );
-        for component in &self.components {
-            component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
-        }
-        accumulator.finalize()
     }
 }

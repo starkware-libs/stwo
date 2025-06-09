@@ -10,10 +10,8 @@ use stwo_constraint_framework::preprocessed_columns::IsFirst;
 use stwo_constraint_framework::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, TraceLocationAllocator,
 };
-use stwo_prover::core::air::accumulation::{
-    DomainEvaluationAccumulator, PointEvaluationAccumulator,
-};
-use stwo_prover::core::air::{Component, ComponentProver, Trace};
+use stwo_prover::core::air::accumulation::PointEvaluationAccumulator;
+use stwo_prover::core::air::Component;
 use stwo_prover::core::backend::cpu::bit_reverse;
 use stwo_prover::core::backend::simd::column::{SecureColumn, VeryPackedSecureColumnByCoords};
 use stwo_prover::core::backend::simd::m31::LOG_N_LANES;
@@ -41,6 +39,7 @@ use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::secure_column::SecureColumnByCoords;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use stwo_prover::core::ColumnVec;
+use stwo_prover::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
 use tracing::{span, Level};
 
 #[cfg(test)]
@@ -748,7 +747,7 @@ mod tests {
     use stwo_constraint_framework::{
         assert_constraints_on_polys, EvalAtRow, TraceLocationAllocator,
     };
-    use stwo_prover::core::air::{Component, ComponentProver, Components};
+    use stwo_prover::core::air::{Component, Components};
     use stwo_prover::core::backend::cpu::bit_reverse;
     use stwo_prover::core::backend::simd::prefix_sum::inclusive_prefix_sum;
     use stwo_prover::core::backend::simd::qm31::PackedSecureField;
@@ -765,7 +764,7 @@ mod tests {
     use stwo_prover::core::utils::coset_order_to_circle_domain_order;
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use stwo_prover::core::verifier::{verify, VerificationError};
-    use stwo_prover::prover::{prove, CommitmentSchemeProver};
+    use stwo_prover::prover::{prove, CommitmentSchemeProver, ComponentProver};
 
     use super::{
         build_trace, eval_carry_quotient_col, eval_eq_constraints, eval_mle_eval_constraints,

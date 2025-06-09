@@ -2,7 +2,6 @@ use std::fmt::Debug;
 
 pub use cpu::CpuBackend;
 
-use super::air::accumulation::AccumulationOps;
 use super::channel::MerkleChannel;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
@@ -11,7 +10,7 @@ use super::lookups::gkr_prover::GkrOps;
 use super::poly::circle::PolyOps;
 use super::proof_of_work::GrindOps;
 use super::vcs::ops::MerkleOps;
-use crate::prover::QuotientOps;
+use crate::prover::{AccumulationOps, QuotientOps};
 
 pub mod cpu;
 pub mod simd;

@@ -3,13 +3,13 @@ use std::ops::{AddAssign, Mul};
 
 use educe::Educe;
 use num_traits::One;
-use stwo_prover::core::air::accumulation::AccumulationOps;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::backend::Backend;
 use stwo_prover::core::circle::M31_CIRCLE_LOG_ORDER;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::lookups::mle::Mle;
+use stwo_prover::prover::AccumulationOps;
 
 pub const MIN_LOG_BLOWUP_FACTOR: u32 = 1;
 

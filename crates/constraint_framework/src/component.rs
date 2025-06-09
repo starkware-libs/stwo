@@ -7,10 +7,8 @@ use std::ops::Deref;
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use stwo_prover::core::air::accumulation::{
-    DomainEvaluationAccumulator, PointEvaluationAccumulator,
-};
-use stwo_prover::core::air::{Component, ComponentProver, Trace};
+use stwo_prover::core::air::accumulation::PointEvaluationAccumulator;
+use stwo_prover::core::air::Component;
 use stwo_prover::core::backend::cpu::bit_reverse;
 use stwo_prover::core::backend::simd::column::VeryPackedSecureColumnByCoords;
 use stwo_prover::core::backend::simd::m31::LOG_N_LANES;
@@ -28,6 +26,7 @@ use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::secure_column::SecureColumnByCoords;
 use stwo_prover::core::ColumnVec;
+use stwo_prover::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
 use tracing::{span, Level};
 
 use super::cpu_domain::CpuDomainEvaluator;

@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use itertools::Itertools;
 use tracing::{span, Level};
 
-use crate::core::air::Trace;
 use crate::core::backend::BackendForChannel;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
@@ -18,6 +17,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
 use crate::core::ColumnVec;
+use crate::prover::air::component_prover::Trace;
 use crate::prover::quotients::quotient_ops::compute_fri_quotients;
 
 pub mod quotient_ops;
