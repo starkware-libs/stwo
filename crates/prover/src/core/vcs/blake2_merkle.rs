@@ -2,9 +2,9 @@ use blake2::{Blake2s256, Digest};
 use serde::{Deserialize, Serialize};
 
 use super::blake2_hash::Blake2sHash;
-use super::ops::MerkleHasher;
 use crate::core::channel::{Blake2sChannel, MerkleChannel};
 use crate::core::fields::m31::BaseField;
+use crate::core::vcs::MerkleHasher;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct Blake2sMerkleHasher;

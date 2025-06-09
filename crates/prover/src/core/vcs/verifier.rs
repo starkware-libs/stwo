@@ -1,13 +1,33 @@
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::ops::MerkleHasher;
-use super::prover::MerkleDecommitment;
 use super::utils::{next_decommitment_node, option_flatten_peekable};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
+use crate::core::vcs::MerkleHasher;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
+pub struct MerkleDecommitment<H: MerkleHasher> {
+    /// Hash values that the verifier needs but cannot deduce from previous computations, in the
+    /// order they are needed.
+    pub hash_witness: Vec<H::Hash>,
+    /// Column values that the verifier needs but cannot deduce from previous computations, in the
+    /// order they are needed.
+    /// This complements the column values that were queried. These must be supplied directly to
+    /// the verifier.
+    pub column_witness: Vec<BaseField>,
+}
+impl<H: MerkleHasher> MerkleDecommitment<H> {
+    pub const fn empty() -> Self {
+        Self {
+            hash_witness: Vec::new(),
+            column_witness: Vec::new(),
+        }
+    }
+}
 
 pub struct MerkleVerifier<H: MerkleHasher> {
     pub root: H::Hash,

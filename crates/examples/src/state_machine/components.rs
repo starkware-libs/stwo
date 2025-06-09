@@ -13,7 +13,7 @@ use stwo_prover::core::pcs::TreeVec;
 use stwo_prover::core::poly::circle::CircleEvaluation;
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::proof::StarkProof;
-use stwo_prover::core::vcs::ops::MerkleHasher;
+use stwo_prover::core::vcs::MerkleHasher;
 use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::ComponentProver;
 

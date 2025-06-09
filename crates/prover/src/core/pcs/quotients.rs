@@ -17,8 +17,8 @@ use crate::core::fri::FriProof;
 use crate::core::pcs::PcsConfig;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse_index;
-use crate::core::vcs::ops::MerkleHasher;
-use crate::core::vcs::prover::MerkleDecommitment;
+use crate::core::vcs::verifier::MerkleDecommitment;
+use crate::core::vcs::MerkleHasher;
 use crate::core::verifier::VerificationError;
 use crate::core::ColumnVec;
 

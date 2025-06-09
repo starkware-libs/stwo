@@ -4,12 +4,12 @@ use itertools::Itertools;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
-use super::ops::{MerkleHasher, MerkleOps};
-use super::prover::MerkleDecommitment;
-use super::verifier::MerkleVerifier;
 use crate::core::fields::m31::BaseField;
-use crate::core::vcs::prover::MerkleProver;
+use crate::core::vcs::verifier::{MerkleDecommitment, MerkleVerifier};
+use crate::core::vcs::MerkleHasher;
 use crate::prover::backend::CpuBackend;
+use crate::prover::vcs::ops::MerkleOps;
+use crate::prover::vcs::prover::MerkleProver;
 
 pub type TestData<H> = (
     BTreeMap<u32, Vec<usize>>,

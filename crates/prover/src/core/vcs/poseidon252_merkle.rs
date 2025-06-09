@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use starknet_crypto::{poseidon_hash, poseidon_hash_many};
 use starknet_ff::FieldElement as FieldElement252;
 
-use super::ops::MerkleHasher;
 use crate::core::channel::{MerkleChannel, Poseidon252Channel};
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::vcs::hash::Hash;
+use crate::core::vcs::MerkleHasher;
 
 const ELEMENTS_IN_BLOCK: usize = 8;
 
@@ -85,12 +85,12 @@ mod tests {
     use starknet_ff::FieldElement as FieldElement252;
 
     use crate::core::fields::m31::{BaseField, M31};
-    use crate::core::vcs::ops::MerkleHasher;
     use crate::core::vcs::poseidon252_merkle::{
         construct_felt252_from_m31s, Poseidon252MerkleHasher,
     };
     use crate::core::vcs::test_utils::prepare_merkle;
     use crate::core::vcs::verifier::MerkleVerificationError;
+    use crate::core::vcs::MerkleHasher;
     use crate::m31;
 
     #[test]

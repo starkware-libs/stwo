@@ -26,10 +26,11 @@ use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::poly::line::LineDomain;
 use crate::core::utils::bit_reverse_index;
-use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
-use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
-use crate::core::vcs::verifier::{MerkleVerificationError, MerkleVerifier};
+use crate::core::vcs::verifier::{MerkleDecommitment, MerkleVerificationError, MerkleVerifier};
+use crate::core::vcs::MerkleHasher;
 use crate::prover::backend::{Col, ColumnOps, CpuBackend};
+use crate::prover::vcs::ops::MerkleOps;
+use crate::prover::vcs::prover::MerkleProver;
 
 /// FRI proof config
 // TODO(andrew): Support different step sizes.

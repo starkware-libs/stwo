@@ -3,8 +3,9 @@ use starknet_ff::FieldElement as FieldElement252;
 
 use super::CpuBackend;
 use crate::core::fields::m31::BaseField;
-use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
 use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher;
+use crate::core::vcs::MerkleHasher;
+use crate::prover::vcs::ops::MerkleOps;
 
 impl MerkleOps<Poseidon252MerkleHasher> for CpuBackend {
     fn commit_on_layer(

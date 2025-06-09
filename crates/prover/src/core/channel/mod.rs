@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use super::fields::qm31::SecureField;
-use super::vcs::ops::MerkleHasher;
+use super::vcs::MerkleHasher;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod poseidon252;

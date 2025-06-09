@@ -10,8 +10,8 @@ use super::utils::TreeVec;
 use super::PcsConfig;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::pcs::quotients::CommitmentSchemeProof;
-use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::verifier::MerkleVerifier;
+use crate::core::vcs::MerkleHasher;
 use crate::core::verifier::VerificationError;
 use crate::core::ColumnVec;
 

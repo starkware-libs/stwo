@@ -2,13 +2,14 @@ use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use tracing::{span, Level};
 
-use super::ops::{MerkleHasher, MerkleOps};
-use super::utils::{next_decommitment_node, option_flatten_peekable};
+use super::ops::MerkleOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
+use crate::core::vcs::utils::{next_decommitment_node, option_flatten_peekable};
+use crate::core::vcs::verifier::MerkleDecommitment;
+use crate::core::vcs::MerkleHasher;
 use crate::prover::backend::{Col, Column};
 
 pub struct MerkleProver<B: MerkleOps<H>, H: MerkleHasher> {
@@ -157,25 +158,5 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
 
     pub fn root(&self) -> H::Hash {
         self.layers.first().unwrap().at(0)
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
-pub struct MerkleDecommitment<H: MerkleHasher> {
-    /// Hash values that the verifier needs but cannot deduce from previous computations, in the
-    /// order they are needed.
-    pub hash_witness: Vec<H::Hash>,
-    /// Column values that the verifier needs but cannot deduce from previous computations, in the
-    /// order they are needed.
-    /// This complements the column values that were queried. These must be supplied directly to
-    /// the verifier.
-    pub column_witness: Vec<BaseField>,
-}
-impl<H: MerkleHasher> MerkleDecommitment<H> {
-    const fn empty() -> Self {
-        Self {
-            hash_witness: Vec::new(),
-            column_witness: Vec::new(),
-        }
     }
 }
