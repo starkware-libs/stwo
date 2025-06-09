@@ -21,7 +21,8 @@ use stwo_prover::core::pcs::{
 };
 use stwo_prover::core::poly::circle::{CanonicCoset, PolyOps};
 use stwo_prover::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-use stwo_prover::prover::{prove, verify, VerificationError};
+use stwo_prover::core::verifier::{verify, VerificationError};
+use stwo_prover::prover::prove;
 
 #[allow(unused)]
 pub fn prove_state_machine(

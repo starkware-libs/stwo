@@ -18,6 +18,7 @@ pub mod secure_column;
 pub mod test_utils;
 pub mod utils;
 pub mod vcs;
+pub mod verifier;
 
 /// A vector in which each element relates (by index) to a column in the trace.
 pub type ColumnVec<T> = Vec<T>;

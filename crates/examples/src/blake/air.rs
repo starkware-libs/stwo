@@ -16,7 +16,8 @@ use stwo_prover::core::pcs::{
 };
 use stwo_prover::core::poly::circle::{CanonicCoset, PolyOps};
 use stwo_prover::core::vcs::ops::MerkleHasher;
-use stwo_prover::prover::{prove, verify, StarkProof, VerificationError};
+use stwo_prover::core::verifier::{verify, VerificationError};
+use stwo_prover::prover::{prove, StarkProof};
 use tracing::{span, Level};
 
 use super::preprocessed_columns::XorTable;
