@@ -6,8 +6,9 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::FriVerificationError;
 use crate::core::pcs::CommitmentSchemeVerifier;
+use crate::core::proof::StarkProof;
 use crate::core::vcs::verifier::MerkleVerificationError;
-use crate::prover::{StarkProof, PREPROCESSED_TRACE_IDX};
+use crate::prover::PREPROCESSED_TRACE_IDX;
 
 pub fn verify<MC: MerkleChannel>(
     components: &[&dyn Component],

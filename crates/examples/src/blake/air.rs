@@ -15,9 +15,10 @@ use stwo_prover::core::pcs::{
     CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec,
 };
 use stwo_prover::core::poly::circle::{CanonicCoset, PolyOps};
+use stwo_prover::core::proof::StarkProof;
 use stwo_prover::core::vcs::ops::MerkleHasher;
 use stwo_prover::core::verifier::{verify, VerificationError};
-use stwo_prover::prover::{prove, StarkProof};
+use stwo_prover::prover::prove;
 use tracing::{span, Level};
 
 use super::preprocessed_columns::XorTable;
