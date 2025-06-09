@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fri::{FriLayerProof, FriProof};
-use crate::core::pcs::CommitmentSchemeProof;
+use crate::core::pcs::quotients::CommitmentSchemeProof;
 use crate::core::vcs::hash::Hash;
 use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::prover::MerkleDecommitment;

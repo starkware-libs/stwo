@@ -18,10 +18,11 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
-use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
+use crate::core::pcs::quotients::ColumnSampleBatch;
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::prover::QuotientOps;
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
@@ -336,9 +337,10 @@ mod tests {
     use crate::core::backend::{Column, CpuBackend};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
-    use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
+    use crate::core::pcs::quotients::ColumnSampleBatch;
     use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
     use crate::core::poly::BitReversedOrder;
+    use crate::prover::QuotientOps;
     use crate::qm31;
 
     #[test]

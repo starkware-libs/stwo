@@ -7,16 +7,12 @@
 //! the existence of such polynomials, and are ok with having a small decoding list.
 //! Note: Opened points cannot come from the commitment domain.
 
-mod prover;
 pub mod quotients;
 mod utils;
 mod verifier;
 
 use serde::{Deserialize, Serialize};
 
-pub use self::prover::{
-    CommitmentSchemeProof, CommitmentSchemeProver, CommitmentTreeProver, TreeBuilder,
-};
 pub use self::utils::TreeVec;
 pub use self::verifier::CommitmentSchemeVerifier;
 use super::channel::Channel;

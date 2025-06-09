@@ -7,9 +7,10 @@ use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::circle::SECURE_FIELD_CIRCLE_GEN;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
+use stwo_prover::core::pcs::quotients::ColumnSampleBatch;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::prover::QuotientOps;
 
 // TODO(andrew): Check if deinterleave affects performance. Use optimized domain iteration if so.
 fn bench_quotients<B: QuotientOps, const LOG_N_ROWS: u32, const LOG_N_COLS: u32>(

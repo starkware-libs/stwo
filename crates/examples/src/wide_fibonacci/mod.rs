@@ -82,9 +82,7 @@ mod tests {
     use stwo_prover::core::channel::Poseidon252Channel;
     use stwo_prover::core::fields::m31::BaseField;
     use stwo_prover::core::fields::qm31::SecureField;
-    use stwo_prover::core::pcs::{
-        CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec,
-    };
+    use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use stwo_prover::core::poly::BitReversedOrder;
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
@@ -92,7 +90,7 @@ mod tests {
     use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
     use stwo_prover::core::verifier::verify;
     use stwo_prover::core::ColumnVec;
-    use stwo_prover::prover::prove;
+    use stwo_prover::prover::{prove, CommitmentSchemeProver};
 
     use super::WideFibonacciEval;
     use crate::wide_fibonacci::{generate_trace, FibInput, WideFibonacciComponent};

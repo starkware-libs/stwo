@@ -11,14 +11,12 @@ use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::backend::BackendForChannel;
 use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::pcs::{
-    CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec,
-};
+use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use stwo_prover::core::poly::circle::{CanonicCoset, PolyOps};
 use stwo_prover::core::proof::StarkProof;
 use stwo_prover::core::vcs::ops::MerkleHasher;
 use stwo_prover::core::verifier::{verify, VerificationError};
-use stwo_prover::prover::prove;
+use stwo_prover::prover::{prove, CommitmentSchemeProver};
 use tracing::{span, Level};
 
 use super::preprocessed_columns::XorTable;
