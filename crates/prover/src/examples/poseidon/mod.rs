@@ -395,15 +395,14 @@ pub fn prove_poseidon(
 
 #[cfg(test)]
 mod tests {
-    use std::env;
+    use std::{array, env};
 
     use itertools::Itertools;
-    use num_traits::One;
 
     use crate::constraint_framework::assert_constraints_on_polys;
     use crate::core::air::Component;
     use crate::core::channel::Blake2sChannel;
-    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::m31::M31;
     use crate::core::fri::FriConfig;
     use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
@@ -413,7 +412,7 @@ mod tests {
         apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,
         gen_trace, prove_poseidon, PoseidonElements,
     };
-    use crate::math::matrix::{RowMajorMatrix, SquareMatrix};
+    use crate::m31;
 
     #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
     #[wasm_bindgen_test::wasm_bindgen_test]
@@ -430,36 +429,36 @@ mod tests {
 
     #[test]
     fn test_apply_m4() {
-        let m4 = RowMajorMatrix::<BaseField, 4>::new(
-            [5, 7, 1, 3, 4, 6, 1, 1, 1, 3, 5, 7, 1, 1, 4, 6]
-                .map(BaseField::from_u32_unchecked)
-                .into_iter()
-                .collect_vec(),
-        );
-        let state = (0..4)
-            .map(BaseField::from_u32_unchecked)
-            .collect_vec()
-            .try_into()
-            .unwrap();
+        let m4 = ndarray::arr2(&[
+            [5, 7, 1, 3].map(M31),
+            [4, 6, 1, 1].map(M31),
+            [1, 3, 5, 7].map(M31),
+            [1, 1, 4, 6].map(M31),
+        ]);
+        let state = [0, 1, 2, 3].map(M31);
+        let expected_dot = m4.dot(&ndarray::arr2(&[state]).t());
+        let expected_dot: [_; 4] = expected_dot.into_raw_vec_and_offset().0.try_into().unwrap();
 
-        assert_eq!(apply_m4(state), m4.mul(state));
+        let actual_dot = apply_m4(state);
+
+        assert_eq!(expected_dot, actual_dot);
     }
 
     #[test]
     fn test_apply_internal() {
-        let mut state: [BaseField; 16] = (0..16)
-            .map(|i| BaseField::from_u32_unchecked(i * 3 + 187))
-            .collect_vec()
+        const W: usize = 16;
+        let mut state = array::from_fn(|i| m31!((i * 3 + 187) as u32));
+        let mut internal_matrix = ndarray::arr2(&[[m31!(1); W]; W]);
+        for (i, elem) in internal_matrix.diag_mut().iter_mut().enumerate() {
+            *elem += m31!((1 << (i + 1)) as u32);
+        }
+        let expected_state = internal_matrix.dot(&ndarray::arr2(&[state]).t());
+        let expected_state: [_; W] = expected_state
+            .into_raw_vec_and_offset()
+            .0
             .try_into()
             .unwrap();
-        let mut internal_matrix = [[BaseField::one(); 16]; 16];
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..16 {
-            internal_matrix[i][i] += BaseField::from_u32_unchecked(1 << (i + 1));
-        }
-        let matrix = RowMajorMatrix::<BaseField, 16>::new(internal_matrix.as_flattened().to_vec());
 
-        let expected_state = matrix.mul(state);
         apply_internal_round_matrix(&mut state);
 
         assert_eq!(state, expected_state);
