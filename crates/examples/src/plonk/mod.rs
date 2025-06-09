@@ -289,7 +289,7 @@ mod tests {
     use stwo_prover::core::fri::FriConfig;
     use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    use stwo_prover::prover::verify;
+    use stwo_prover::core::verifier::verify;
 
     use crate::plonk::{prove_fibonacci_plonk, PlonkLookupElements};
 

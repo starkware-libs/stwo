@@ -766,7 +766,8 @@ mod tests {
     use stwo_prover::core::secure_column::SecureColumnByCoords;
     use stwo_prover::core::utils::coset_order_to_circle_domain_order;
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    use stwo_prover::prover::{prove, verify, VerificationError};
+    use stwo_prover::core::verifier::{verify, VerificationError};
+    use stwo_prover::prover::prove;
 
     use super::{
         build_trace, eval_carry_quotient_col, eval_eq_constraints, eval_mle_eval_constraints,

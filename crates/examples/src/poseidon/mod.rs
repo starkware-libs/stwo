@@ -405,7 +405,7 @@ mod tests {
     use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo_prover::core::poly::circle::CanonicCoset;
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    use stwo_prover::prover::verify;
+    use stwo_prover::core::verifier::verify;
 
     use crate::poseidon::{
         apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,
