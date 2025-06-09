@@ -14,7 +14,6 @@
     portable_simd,
     slice_ptr_get
 )]
-pub mod constraint_framework;
 pub mod core;
 
 #[cfg(feature = "tracing")]
