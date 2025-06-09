@@ -2,14 +2,14 @@ use std::fmt::Debug;
 
 pub use cpu::CpuBackend;
 
-use super::channel::MerkleChannel;
-use super::fields::m31::BaseField;
-use super::fields::qm31::SecureField;
-use super::fri::FriOps;
-use super::lookups::gkr_prover::GkrOps;
-use super::poly::circle::PolyOps;
-use super::proof_of_work::GrindOps;
-use super::vcs::ops::MerkleOps;
+use crate::core::channel::MerkleChannel;
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
+use crate::core::fri::FriOps;
+use crate::core::lookups::gkr_prover::GkrOps;
+use crate::core::poly::circle::PolyOps;
+use crate::core::proof_of_work::GrindOps;
+use crate::core::vcs::ops::MerkleOps;
 use crate::prover::{AccumulationOps, QuotientOps};
 
 pub mod cpu;

@@ -2,9 +2,9 @@ use std::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 
-use crate::core::backend::{Col, ColumnOps};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::hash::Hash;
+use crate::prover::backend::{Col, ColumnOps};
 
 /// A Merkle node hash is a hash of: `[left_child_hash, right_child_hash], column0_value,
 /// column1_value, ...` where `[]` denotes optional values.

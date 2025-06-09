@@ -3,12 +3,12 @@ use std::ops::{AddAssign, Mul};
 
 use educe::Educe;
 use num_traits::One;
-use stwo_prover::core::backend::simd::SimdBackend;
-use stwo_prover::core::backend::Backend;
 use stwo_prover::core::circle::M31_CIRCLE_LOG_ORDER;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::lookups::mle::Mle;
+use stwo_prover::prover::backend::simd::SimdBackend;
+use stwo_prover::prover::backend::Backend;
 use stwo_prover::prover::AccumulationOps;
 
 pub const MIN_LOG_BLOWUP_FACTOR: u32 = 1;
@@ -138,11 +138,11 @@ mod tests {
     use std::iter::repeat_n;
 
     use num_traits::Zero;
-    use stwo_prover::core::backend::simd::SimdBackend;
     use stwo_prover::core::fields::m31::BaseField;
     use stwo_prover::core::fields::qm31::SecureField;
     use stwo_prover::core::fields::Field;
     use stwo_prover::core::lookups::mle::{Mle, MleOps};
+    use stwo_prover::prover::backend::simd::SimdBackend;
 
     use crate::xor::gkr_lookups::accumulation::MleCollection;
     use crate::xor::gkr_lookups::test::mle_eval_at_point;

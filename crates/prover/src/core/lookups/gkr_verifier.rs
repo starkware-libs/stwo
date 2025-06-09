@@ -282,12 +282,12 @@ pub type LayerIndex = usize;
 #[cfg(test)]
 mod tests {
     use super::{partially_verify_batch, Gate, GkrArtifact, GkrError};
-    use crate::core::backend::CpuBackend;
     use crate::core::channel::Channel;
     use crate::core::fields::qm31::SecureField;
     use crate::core::lookups::gkr_prover::{prove_batch, Layer};
     use crate::core::lookups::mle::Mle;
     use crate::core::test_utils::test_channel;
+    use crate::prover::backend::CpuBackend;
 
     #[test]
     fn prove_batch_works() -> Result<(), GkrError> {

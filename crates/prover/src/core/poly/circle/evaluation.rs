@@ -4,12 +4,12 @@ use std::ops::{Deref, Index};
 use educe::Educe;
 
 use super::{CircleDomain, CirclePoly, PolyOps};
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::{Col, Column, ColumnOps, CpuBackend};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::ExtensionOf;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::{BitReversedOrder, NaturalOrder};
+use crate::prover::backend::simd::SimdBackend;
+use crate::prover::backend::{Col, Column, ColumnOps, CpuBackend};
 
 /// An evaluation defined on a [CircleDomain].
 /// The values are ordered according to the [CircleDomain] ordering.
@@ -109,11 +109,11 @@ impl<F: ExtensionOf<BaseField>> Index<usize> for CosetSubEvaluation<'_, F> {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::cpu::CpuCircleEvaluation;
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::NaturalOrder;
     use crate::m31;
+    use crate::prover::backend::cpu::CpuCircleEvaluation;
 
     #[test]
     fn test_interpolate_non_canonic() {

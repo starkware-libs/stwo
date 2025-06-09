@@ -1,10 +1,10 @@
 use super::{CircleDomain, CircleEvaluation, PolyOps};
-use crate::core::backend::{Col, Column, ColumnOps};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
+use crate::prover::backend::{Col, Column, ColumnOps};
 
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
@@ -66,7 +66,7 @@ impl<B: PolyOps> CirclePoly<B> {
 }
 
 #[cfg(test)]
-impl crate::core::backend::cpu::CpuCirclePoly {
+impl crate::prover::backend::cpu::CpuCirclePoly {
     pub fn is_in_fft_space(&self, log_fft_size: u32) -> bool {
         use num_traits::Zero;
 
@@ -99,9 +99,9 @@ impl crate::core::backend::cpu::CpuCirclePoly {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::cpu::CpuCirclePoly;
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
+    use crate::prover::backend::cpu::CpuCirclePoly;
 
     #[test]
     fn test_circle_poly_extend() {

@@ -2,7 +2,6 @@ use itertools::Itertools;
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use stwo_prover::core::backend::{Backend, Column};
 use stwo_prover::core::fields::m31::{BaseField, M31};
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo_prover::core::lookups::utils::Fraction;
@@ -12,6 +11,7 @@ use stwo_prover::core::utils::{
     bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
 };
 use stwo_prover::parallel_iter;
+use stwo_prover::prover::backend::{Backend, Column};
 
 use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};

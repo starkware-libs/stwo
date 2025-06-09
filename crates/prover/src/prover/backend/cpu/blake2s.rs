@@ -1,10 +1,10 @@
 use itertools::Itertools;
 
-use crate::core::backend::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use crate::core::vcs::ops::{MerkleHasher, MerkleOps};
+use crate::prover::backend::CpuBackend;
 
 impl MerkleOps<Blake2sMerkleHasher> for CpuBackend {
     fn commit_on_layer(

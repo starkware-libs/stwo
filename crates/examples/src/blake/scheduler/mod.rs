@@ -58,7 +58,7 @@ mod tests {
     use itertools::Itertools;
     use stwo_constraint_framework::preprocessed_columns::IsFirst;
     use stwo_constraint_framework::FrameworkEval;
-    use stwo_prover::core::backend::Column;
+    use stwo_prover::prover::backend::Column;
 
     use crate::blake::round::RoundElements;
     use crate::blake::scheduler::r#gen::{gen_interaction_trace, gen_trace, BlakeInput};

@@ -89,8 +89,6 @@ impl CpuBackend {
 mod tests {
     use num_traits::Zero;
 
-    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
-    use crate::core::backend::CpuBackend;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fri::FriOps;
@@ -98,6 +96,8 @@ mod tests {
     use crate::core::poly::BitReversedOrder;
     use crate::core::secure_column::SecureColumnByCoords;
     use crate::m31;
+    use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
+    use crate::prover::backend::CpuBackend;
 
     #[test]
     fn decompose_coeff_out_fft_space_test() {

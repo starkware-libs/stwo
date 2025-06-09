@@ -8,10 +8,10 @@ use rayon::prelude::*;
 use tracing::{span, Level};
 
 use super::SimdBackend;
-use crate::core::backend::simd::blake2s::hash_16;
-use crate::core::backend::simd::m31::N_LANES;
 use crate::core::channel::Blake2sChannel;
 use crate::core::proof_of_work::GrindOps;
+use crate::prover::backend::simd::blake2s::hash_16;
+use crate::prover::backend::simd::m31::N_LANES;
 
 // Note: GRIND_LOW_BITS is a cap on how much extra time we need to wait for all threads to finish.
 const GRIND_LOW_BITS: u32 = 20;

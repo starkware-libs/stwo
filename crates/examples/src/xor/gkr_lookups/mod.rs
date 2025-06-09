@@ -4,10 +4,10 @@ pub mod preprocessed_columns;
 
 #[cfg(test)]
 mod test {
-    use stwo_prover::core::backend::Column;
     use stwo_prover::core::fields::qm31::SecureField;
     use stwo_prover::core::fields::{ExtensionOf, Field};
     use stwo_prover::core::lookups::mle::{Mle, MleOps};
+    use stwo_prover::prover::backend::Column;
 
     /// Evaluates the multilinear polynomial at `point`.
     pub(crate) fn mle_eval_at_point<B, F>(

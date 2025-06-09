@@ -1,7 +1,6 @@
 use std::ops::Mul;
 
 use num_traits::Zero;
-use stwo_prover::core::backend::CpuBackend;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo_prover::core::lookups::utils::Fraction;
@@ -9,6 +8,7 @@ use stwo_prover::core::pcs::TreeVec;
 use stwo_prover::core::poly::circle::CircleEvaluation;
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::offset_bit_reversed_circle_domain_index;
+use stwo_prover::prover::backend::CpuBackend;
 
 use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};

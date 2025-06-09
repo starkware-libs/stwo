@@ -6,13 +6,13 @@ use rayon::prelude::*;
 use super::column::{BaseColumn, SecureColumn};
 use super::m31::PackedBaseField;
 use super::SimdBackend;
-use crate::core::backend::cpu::bit_reverse as cpu_bit_reverse;
-use crate::core::backend::simd::utils::UnsafeMut;
-use crate::core::backend::ColumnOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::utils::bit_reverse_index;
 use crate::parallel_iter;
+use crate::prover::backend::cpu::bit_reverse as cpu_bit_reverse;
+use crate::prover::backend::simd::utils::UnsafeMut;
+use crate::prover::backend::ColumnOps;
 
 const VEC_BITS: u32 = 4;
 
@@ -151,12 +151,12 @@ mod tests {
     use itertools::Itertools;
 
     use super::{bit_reverse16, bit_reverse_m31, MIN_LOG_SIZE};
-    use crate::core::backend::cpu::bit_reverse as cpu_bit_reverse;
-    use crate::core::backend::simd::column::BaseColumn;
-    use crate::core::backend::simd::m31::{PackedM31, N_LANES};
-    use crate::core::backend::simd::SimdBackend;
-    use crate::core::backend::{Column, ColumnOps};
     use crate::core::fields::m31::BaseField;
+    use crate::prover::backend::cpu::bit_reverse as cpu_bit_reverse;
+    use crate::prover::backend::simd::column::BaseColumn;
+    use crate::prover::backend::simd::m31::{PackedM31, N_LANES};
+    use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::{Column, ColumnOps};
 
     #[test]
     fn test_bit_reverse16() {

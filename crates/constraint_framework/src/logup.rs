@@ -4,12 +4,6 @@ use itertools::{multizip, Itertools};
 use num_traits::{One, Zero};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use stwo_prover::core::backend::simd::column::SecureColumn;
-use stwo_prover::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
-use stwo_prover::core::backend::simd::prefix_sum::inclusive_prefix_sum;
-use stwo_prover::core::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
-use stwo_prover::core::backend::simd::SimdBackend;
-use stwo_prover::core::backend::Column;
 use stwo_prover::core::channel::Channel;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
@@ -19,6 +13,12 @@ use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::secure_column::SecureColumnByCoords;
 use stwo_prover::core::utils::uninit_vec;
 use stwo_prover::core::ColumnVec;
+use stwo_prover::prover::backend::simd::column::SecureColumn;
+use stwo_prover::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
+use stwo_prover::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
+use stwo_prover::prover::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
+use stwo_prover::prover::backend::simd::SimdBackend;
+use stwo_prover::prover::backend::Column;
 
 use super::EvalAtRow;
 
@@ -183,7 +183,7 @@ impl LogupTraceGenerator {
         &mut self,
         iter: impl IndexedParallelIterator<Item = (PackedSecureField, PackedSecureField)>,
     ) {
-        use stwo_prover::core::backend::simd::column::BaseColumn;
+        use stwo_prover::prover::backend::simd::column::BaseColumn;
 
         let length = 1 << self.log_size;
         assert_eq!(iter.len() * N_LANES, length);
@@ -370,12 +370,12 @@ impl FractionWriter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use stwo_prover::core::backend::simd::m31::LOG_N_LANES;
-    use stwo_prover::core::backend::simd::qm31::PackedSecureField;
     use stwo_prover::core::channel::Blake2sChannel;
     use stwo_prover::core::fields::m31::BaseField;
     use stwo_prover::core::fields::qm31::SecureField;
     use stwo_prover::core::fields::FieldExpOps;
+    use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
+    use stwo_prover::prover::backend::simd::qm31::PackedSecureField;
 
     use super::LookupElements;
     use crate::logup::LogupTraceGenerator;

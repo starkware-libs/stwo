@@ -40,11 +40,11 @@ impl QuotientOps for CpuBackend {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
-    use crate::core::backend::CpuBackend;
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::pcs::quotients::ColumnSampleBatch;
     use crate::core::poly::circle::CanonicCoset;
+    use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
+    use crate::prover::backend::CpuBackend;
     use crate::prover::QuotientOps;
     use crate::{m31, qm31};
 

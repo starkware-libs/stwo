@@ -1,11 +1,11 @@
 use bytemuck::Zeroable;
 use itertools::Itertools;
-use stwo_prover::core::backend::simd::column::BaseColumn;
-use stwo_prover::core::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
-use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::prover::backend::simd::column::BaseColumn;
+use stwo_prover::prover::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
+use stwo_prover::prover::backend::simd::SimdBackend;
 
 use super::row_iterator::{ParRowIterMut, RowIterMut};
 
@@ -24,7 +24,7 @@ use super::row_iterator::{ParRowIterMut, RowIterMut};
 /// ```
 /// use stwo_air_utils::trace::component_trace::ComponentTrace;
 /// use itertools::Itertools;
-/// use stwo_prover::core::backend::simd::m31::{PackedM31, N_LANES};
+/// use stwo_prover::prover::backend::simd::m31::{PackedM31, N_LANES};
 /// use stwo_prover::core::fields::m31::M31;
 /// use stwo_prover::core::fields::FieldExpOps;
 ///
@@ -144,9 +144,9 @@ impl<const N: usize> ComponentTrace<N> {
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use stwo_prover::core::backend::simd::m31::{PackedM31, N_LANES};
     use stwo_prover::core::fields::m31::M31;
     use stwo_prover::core::fields::FieldExpOps;
+    use stwo_prover::prover::backend::simd::m31::{PackedM31, N_LANES};
 
     #[test]
     fn test_parallel_trace() {

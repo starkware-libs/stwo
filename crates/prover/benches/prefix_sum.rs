@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use stwo_prover::core::backend::simd::column::BaseColumn;
-use stwo_prover::core::backend::simd::prefix_sum::inclusive_prefix_sum;
 use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::prover::backend::simd::column::BaseColumn;
+use stwo_prover::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
 
 pub fn simd_prefix_sum_bench(c: &mut Criterion) {
     const LOG_SIZE: u32 = 24;

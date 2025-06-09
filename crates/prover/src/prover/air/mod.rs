@@ -1,5 +1,5 @@
 // use crate::core::air::Air;
-// use crate::core::backend::Backend;
+// use crate::prover::backend::Backend;
 // use crate::prover::air::component_prover::ComponentProver;
 
 mod accumulation;

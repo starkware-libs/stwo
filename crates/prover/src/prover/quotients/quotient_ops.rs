@@ -57,10 +57,10 @@ pub fn compute_fri_quotients<B: QuotientOps>(
 
 #[cfg(test)]
 mod tests {
-    use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::pcs::quotients::PointSample;
     use crate::core::poly::circle::CanonicCoset;
+    use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::quotients::quotient_ops::compute_fri_quotients;
     use crate::{m31, qm31};
 

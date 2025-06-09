@@ -115,15 +115,15 @@ fn mul_twiddle(v: PackedBaseField, twiddle_dbl: u32x16) -> PackedBaseField {
             // TODO: For architectures that when multiplying require doubling then the twiddles
             // should be precomputed as double. For other architectures, the twiddle should be
             // precomputed without doubling.
-            crate::core::backend::simd::m31::mul_doubled_neon(v, twiddle_dbl)
+            crate::prover::backend::simd::m31::mul_doubled_neon(v, twiddle_dbl)
         } else if #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))] {
-            crate::core::backend::simd::m31::mul_doubled_wasm(v, twiddle_dbl)
+            crate::prover::backend::simd::m31::mul_doubled_wasm(v, twiddle_dbl)
         } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))] {
-            crate::core::backend::simd::m31::mul_doubled_avx512(v, twiddle_dbl)
+            crate::prover::backend::simd::m31::mul_doubled_avx512(v, twiddle_dbl)
         } else if #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))] {
-            crate::core::backend::simd::m31::mul_doubled_avx2(v, twiddle_dbl)
+            crate::prover::backend::simd::m31::mul_doubled_avx2(v, twiddle_dbl)
         } else {
-            crate::core::backend::simd::m31::mul_doubled_simd(v, twiddle_dbl)
+            crate::prover::backend::simd::m31::mul_doubled_simd(v, twiddle_dbl)
         }
     }
 }
