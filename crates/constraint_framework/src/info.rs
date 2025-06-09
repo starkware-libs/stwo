@@ -5,16 +5,16 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 use std::rc::Rc;
 
 use num_traits::{One, Zero};
+use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::qm31::SecureField;
+use stwo_prover::core::fields::FieldExpOps;
+use stwo_prover::core::lookups::utils::Fraction;
+use stwo_prover::core::pcs::TreeVec;
 
 use super::logup::LogupAtRow;
 use super::preprocessed_columns::PreProcessedColumnId;
 use super::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
-use crate::constraint_framework::PREPROCESSED_TRACE_IDX;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
-use crate::core::lookups::utils::Fraction;
-use crate::core::pcs::TreeVec;
+use crate::PREPROCESSED_TRACE_IDX;
 
 /// Collects information about the constraints.
 /// This includes mask offsets and columns at each interaction, the number of constraints and number
@@ -420,13 +420,12 @@ impl LogupCountPerRow {
 #[cfg(test)]
 mod tests {
     use num_traits::{One, Zero};
+    use stwo_prover::core::fields::m31::BaseField;
+    use stwo_prover::core::fields::qm31::SecureField;
 
     use super::{ExtensionFieldCounter, InfoEvaluator};
-    use crate::constraint_framework::info::{ArithmeticCounts, FieldCounter};
-    use crate::constraint_framework::{EvalAtRow, FrameworkEval, RelationEntry};
-    use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::SecureField;
-    use crate::relation;
+    use crate::info::{ArithmeticCounts, FieldCounter};
+    use crate::{relation, EvalAtRow, FrameworkEval, RelationEntry};
 
     #[test]
     fn test_arithmetic_counter() {

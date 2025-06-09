@@ -1144,6 +1144,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "stwo-constraint-framework"
+version = "0.1.1"
+dependencies = [
+ "itertools 0.12.1",
+ "num-traits",
+ "rand",
+ "rayon",
+ "stwo-prover",
+ "tracing",
+]
+
+[[package]]
+name = "stwo-examples"
+version = "0.1.1"
+dependencies = [
+ "criterion",
+ "educe",
+ "itertools 0.12.1",
+ "ndarray",
+ "num-traits",
+ "rand",
+ "rayon",
+ "serde",
+ "stwo-constraint-framework",
+ "stwo-prover",
+ "test-log",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "stwo-prover"
 version = "0.1.1"
 dependencies = [
@@ -1157,7 +1188,6 @@ dependencies = [
  "hex",
  "indexmap",
  "itertools 0.12.1",
- "ndarray",
  "num-traits",
  "rand",
  "rayon",

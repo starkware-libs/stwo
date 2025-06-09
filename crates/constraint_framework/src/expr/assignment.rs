@@ -4,12 +4,12 @@ use std::iter::Sum;
 use std::ops::{Add, AddAssign, Index, Sub};
 
 use itertools::sorted;
+use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::qm31::SecureField;
+use stwo_prover::core::fields::FieldExpOps;
 
 use super::{BaseExpr, ColumnExpr, ExtExpr};
-use crate::constraint_framework::{AssertEvaluator, EvalAtRow};
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
+use crate::{AssertEvaluator, EvalAtRow};
 
 /// An assignment to the variables that may appear in an expression.
 /// Maps are:
@@ -255,12 +255,12 @@ mod tests {
     use std::collections::HashMap;
 
     use num_traits::One;
+    use stwo_prover::core::fields::m31::BaseField;
+    use stwo_prover::core::fields::qm31::SecureField;
+    use stwo_prover::core::fields::FieldExpOps;
 
-    use crate::constraint_framework::expr::utils::*;
-    use crate::constraint_framework::AssertEvaluator;
-    use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::FieldExpOps;
+    use crate::expr::utils::*;
+    use crate::AssertEvaluator;
 
     #[test]
     fn test_eval_expr() {

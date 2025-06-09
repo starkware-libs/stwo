@@ -1,23 +1,23 @@
 use std::ops::Mul;
 
 use num_traits::Zero;
+use stwo_prover::core::backend::simd::column::VeryPackedBaseColumn;
+use stwo_prover::core::backend::simd::m31::LOG_N_LANES;
+use stwo_prover::core::backend::simd::very_packed_m31::{
+    VeryPackedBaseField, VeryPackedSecureField, LOG_N_VERY_PACKED_ELEMS,
+};
+use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::backend::Column;
+use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo_prover::core::lookups::utils::Fraction;
+use stwo_prover::core::pcs::TreeVec;
+use stwo_prover::core::poly::circle::CircleEvaluation;
+use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::utils::offset_bit_reversed_circle_domain_index;
 
 use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};
-use crate::core::backend::simd::column::VeryPackedBaseColumn;
-use crate::core::backend::simd::m31::LOG_N_LANES;
-use crate::core::backend::simd::very_packed_m31::{
-    VeryPackedBaseField, VeryPackedSecureField, LOG_N_VERY_PACKED_ELEMS,
-};
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::Column;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use crate::core::lookups::utils::Fraction;
-use crate::core::pcs::TreeVec;
-use crate::core::poly::circle::CircleEvaluation;
-use crate::core::poly::BitReversedOrder;
-use crate::core::utils::offset_bit_reversed_circle_domain_index;
 
 /// Evaluates constraints at an evaluation domain points.
 pub struct SimdDomainEvaluator<'a> {

@@ -87,9 +87,10 @@ impl ExtExpr {
 
 #[cfg(test)]
 mod tests {
-    use crate::constraint_framework::expr::degree::NamedExprs;
-    use crate::constraint_framework::expr::utils::*;
-    use crate::core::fields::FieldExpOps;
+    use stwo_prover::core::fields::FieldExpOps;
+
+    use crate::expr::degree::NamedExprs;
+    use crate::expr::utils::*;
 
     #[test]
     fn test_degree_bound() {
