@@ -4,23 +4,23 @@ use itertools::{multizip, Itertools};
 use num_traits::{One, Zero};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use stwo_prover::core::backend::simd::column::SecureColumn;
+use stwo_prover::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
+use stwo_prover::core::backend::simd::prefix_sum::inclusive_prefix_sum;
+use stwo_prover::core::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
+use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::backend::Column;
+use stwo_prover::core::channel::Channel;
+use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo_prover::core::lookups::utils::Fraction;
+use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::secure_column::SecureColumnByCoords;
+use stwo_prover::core::utils::uninit_vec;
+use stwo_prover::core::ColumnVec;
 
 use super::EvalAtRow;
-use crate::core::backend::simd::column::SecureColumn;
-use crate::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
-use crate::core::backend::simd::prefix_sum::inclusive_prefix_sum;
-use crate::core::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
-use crate::core::backend::simd::SimdBackend;
-use crate::core::backend::Column;
-use crate::core::channel::Channel;
-use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use crate::core::lookups::utils::Fraction;
-use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use crate::core::poly::BitReversedOrder;
-use crate::core::secure_column::SecureColumnByCoords;
-use crate::core::utils::uninit_vec;
-use crate::core::ColumnVec;
 
 /// Evaluates constraints for batched logups.
 /// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = claimed_sum.
@@ -183,7 +183,7 @@ impl LogupTraceGenerator {
         &mut self,
         iter: impl IndexedParallelIterator<Item = (PackedSecureField, PackedSecureField)>,
     ) {
-        use crate::core::backend::simd::column::BaseColumn;
+        use stwo_prover::core::backend::simd::column::BaseColumn;
 
         let length = 1 << self.log_size;
         assert_eq!(iter.len() * N_LANES, length);
@@ -370,14 +370,15 @@ impl FractionWriter<'_> {
 
 #[cfg(test)]
 mod tests {
+    use stwo_prover::core::backend::simd::m31::LOG_N_LANES;
+    use stwo_prover::core::backend::simd::qm31::PackedSecureField;
+    use stwo_prover::core::channel::Blake2sChannel;
+    use stwo_prover::core::fields::m31::BaseField;
+    use stwo_prover::core::fields::qm31::SecureField;
+    use stwo_prover::core::fields::FieldExpOps;
+
     use super::LookupElements;
-    use crate::constraint_framework::logup::LogupTraceGenerator;
-    use crate::core::backend::simd::m31::LOG_N_LANES;
-    use crate::core::backend::simd::qm31::PackedSecureField;
-    use crate::core::channel::Blake2sChannel;
-    use crate::core::fields::m31::BaseField;
-    use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::FieldExpOps;
+    use crate::logup::LogupTraceGenerator;
     use crate::{m31, qm31};
 
     #[test]

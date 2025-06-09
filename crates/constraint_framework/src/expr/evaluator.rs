@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
 use num_traits::Zero;
+use stwo_prover::core::lookups::utils::Fraction;
 
 use super::assignment::{ExprVarAssignment, ExprVariables};
 use super::degree::NamedExprs;
 use super::{BaseExpr, ExtExpr};
-use crate::constraint_framework::expr::ColumnExpr;
-use crate::constraint_framework::preprocessed_columns::PreProcessedColumnId;
-use crate::constraint_framework::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
-use crate::core::lookups::utils::Fraction;
+use crate::expr::ColumnExpr;
+use crate::preprocessed_columns::PreProcessedColumnId;
+use crate::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
 
 pub struct FormalLogupAtRow {
     pub interaction: usize,
@@ -270,17 +270,33 @@ impl EvalAtRow for ExprEvaluator {
         BaseExpr::Param(column.id)
     }
 
-    crate::constraint_framework::logup_proxy!();
+    crate::logup_proxy!();
+
+    fn next_trace_mask(&mut self) -> Self::F {
+        let [mask_item] = self.next_interaction_mask(crate::ORIGINAL_TRACE_IDX, [0]);
+        mask_item
+    }
+
+    fn next_extension_interaction_mask<const N: usize>(
+        &mut self,
+        interaction: usize,
+        offsets: [isize; N],
+    ) -> [Self::EF; N] {
+        let mut res_col_major =
+            std::array::from_fn(|_| self.next_interaction_mask(interaction, offsets).into_iter());
+        std::array::from_fn(|_| {
+            Self::combine_ef(res_col_major.each_mut().map(|iter| iter.next().unwrap()))
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use num_traits::One;
+    use stwo_prover::core::fields::FieldExpOps;
 
-    use crate::constraint_framework::expr::{ExprEvaluator, ExtExpr};
-    use crate::constraint_framework::{EvalAtRow, FrameworkEval, RelationEntry};
-    use crate::core::fields::FieldExpOps;
-    use crate::relation;
+    use crate::expr::{ExprEvaluator, ExtExpr};
+    use crate::{relation, EvalAtRow, FrameworkEval, RelationEntry};
 
     #[test]
     fn test_expr_evaluator() {

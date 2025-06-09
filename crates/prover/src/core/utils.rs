@@ -101,7 +101,7 @@ pub(crate) fn circle_domain_order_to_coset_order(values: &[BaseField]) -> Vec<Ba
     coset_order
 }
 
-pub(crate) fn coset_order_to_circle_domain_order<F: Field>(values: &[F]) -> Vec<F> {
+pub fn coset_order_to_circle_domain_order<F: Field>(values: &[F]) -> Vec<F> {
     let mut circle_domain_order = Vec::with_capacity(values.len());
     let n = values.len();
     let half_len = n / 2;
@@ -118,7 +118,7 @@ pub(crate) fn coset_order_to_circle_domain_order<F: Field>(values: &[F]) -> Vec<
 ///
 /// [`CircleDomain`]: crate::core::poly::circle::CircleDomain
 /// [`Coset`]: crate::core::circle::Coset
-pub(crate) const fn circle_domain_index_to_coset_index(
+pub const fn circle_domain_index_to_coset_index(
     circle_index: usize,
     log_domain_size: u32,
 ) -> usize {
