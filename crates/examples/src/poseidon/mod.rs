@@ -20,13 +20,13 @@ use stwo_prover::core::channel::Blake2sChannel;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::fields::FieldExpOps;
-use stwo_prover::core::pcs::{CommitmentSchemeProver, PcsConfig};
+use stwo_prover::core::pcs::PcsConfig;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::proof::StarkProof;
 use stwo_prover::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo_prover::core::ColumnVec;
-use stwo_prover::prover::prove;
+use stwo_prover::prover::{prove, CommitmentSchemeProver};
 use tracing::{info, span, Level};
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;

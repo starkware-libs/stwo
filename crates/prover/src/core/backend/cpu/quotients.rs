@@ -8,11 +8,12 @@ use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample, QuotientOps};
+use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample};
 use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
 use crate::core::poly::BitReversedOrder;
 use crate::core::secure_column::SecureColumnByCoords;
 use crate::core::utils::bit_reverse_index;
+use crate::prover::QuotientOps;
 
 impl QuotientOps for CpuBackend {
     fn accumulate_quotients(
@@ -160,8 +161,9 @@ mod tests {
     use crate::core::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::core::backend::CpuBackend;
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
-    use crate::core::pcs::quotients::{ColumnSampleBatch, QuotientOps};
+    use crate::core::pcs::quotients::ColumnSampleBatch;
     use crate::core::poly::circle::CanonicCoset;
+    use crate::prover::QuotientOps;
     use crate::{m31, qm31};
 
     #[test]

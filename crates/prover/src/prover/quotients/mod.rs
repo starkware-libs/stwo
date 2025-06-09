@@ -1,25 +1,26 @@
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use tracing::{span, Level};
 
-use super::super::circle::CirclePoint;
-use super::super::fields::m31::BaseField;
-use super::super::fields::qm31::SecureField;
-use super::super::fri::{FriProof, FriProver};
-use super::super::poly::BitReversedOrder;
-use super::super::ColumnVec;
-use super::quotients::{compute_fri_quotients, PointSample};
-use super::utils::TreeVec;
-use super::{PcsConfig, TreeSubspan};
 use crate::core::air::Trace;
 use crate::core::backend::BackendForChannel;
 use crate::core::channel::{Channel, MerkleChannel};
+use crate::core::circle::CirclePoint;
+use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
+use crate::core::fri::FriProver;
+use crate::core::pcs::quotients::{CommitmentSchemeProof, PointSample};
+use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
 use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::core::poly::twiddles::TwiddleTree;
+use crate::core::poly::BitReversedOrder;
 use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
+use crate::core::ColumnVec;
+use crate::prover::quotients::quotient_ops::compute_fri_quotients;
+
+pub mod quotient_ops;
 
 /// The prover side of a FRI polynomial commitment scheme. See [super].
 pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
@@ -151,17 +152,6 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             config: self.config,
         }
     }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CommitmentSchemeProof<H: MerkleHasher> {
-    pub config: PcsConfig,
-    pub commitments: TreeVec<H::Hash>,
-    pub sampled_values: TreeVec<ColumnVec<Vec<SecureField>>>,
-    pub decommitments: TreeVec<MerkleDecommitment<H>>,
-    pub queried_values: TreeVec<Vec<BaseField>>,
-    pub proof_of_work: u64,
-    pub fri_proof: FriProof<H>,
 }
 
 pub struct TreeBuilder<'a, 'b, B: BackendForChannel<MC>, MC: MerkleChannel> {

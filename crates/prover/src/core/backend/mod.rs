@@ -8,10 +8,10 @@ use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::fri::FriOps;
 use super::lookups::gkr_prover::GkrOps;
-use super::pcs::quotients::QuotientOps;
 use super::poly::circle::PolyOps;
 use super::proof_of_work::GrindOps;
 use super::vcs::ops::MerkleOps;
+use crate::prover::QuotientOps;
 
 pub mod cpu;
 pub mod simd;

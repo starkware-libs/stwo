@@ -6,8 +6,11 @@ use crate::core::backend::BackendForChannel;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use crate::core::pcs::CommitmentSchemeProver;
 use crate::core::proof::StarkProof;
+
+mod quotients;
+pub use quotients::quotient_ops::QuotientOps;
+pub use quotients::{CommitmentSchemeProver, CommitmentTreeProver};
 
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
