@@ -9,7 +9,7 @@ use crate::core::fri::FriOps;
 use crate::core::lookups::gkr_prover::GkrOps;
 use crate::core::poly::circle::PolyOps;
 use crate::core::proof_of_work::GrindOps;
-use crate::core::vcs::ops::MerkleOps;
+use crate::prover::vcs::ops::MerkleOps;
 use crate::prover::{AccumulationOps, QuotientOps};
 
 pub mod cpu;
