@@ -412,7 +412,7 @@ mod tests {
 
     use super::{compress16, hash_16, transpose_msgs, untranspose_states};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
-    use crate::core::vcs::blake2s_ref::compress;
+    use crate::prover::backend::simd::blake2s_ref::compress;
 
     #[test]
     fn compress16_works() {

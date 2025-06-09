@@ -1,7 +1,7 @@
 use itertools::{chain, Itertools};
 use num_traits::{One, Zero};
 use stwo_constraint_framework::{EvalAtRow, RelationEntry};
-use stwo_prover::core::vcs::blake2s_ref::SIGMA;
+use stwo_prover::prover::backend::simd::blake2s::SIGMA;
 
 use super::BlakeElements;
 use crate::blake::round::RoundElements;
