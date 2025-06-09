@@ -1,7 +1,7 @@
 use itertools::Itertools;
 
 use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
-use crate::core::backend::ColumnOps;
+use crate::core::backend::{Col, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -10,7 +10,7 @@ use crate::core::poly::BitReversedOrder;
 use crate::core::ColumnVec;
 
 /// Operations on BaseField polynomials.
-pub trait PolyOps: ColumnOps<BaseField> + Sized {
+pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
     // TODO(alont): Use a column instead of this type.
     /// The type for precomputed twiddles.
     type Twiddles;
@@ -35,6 +35,21 @@ pub trait PolyOps: ColumnOps<BaseField> + Sized {
     /// Evaluates the polynomial at a single point.
     /// Used by the [`CirclePoly::eval_at_point()`] function.
     fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField;
+
+    /// Computes the weights for Barycentric Lagrange interpolation for point `p` on `coset`.
+    /// `p` must not be in the domain.
+    /// Used by the [`CircleEvaluation::barycentric_weights()`] function.
+    fn barycentric_weights(
+        coset: CanonicCoset,
+        p: CirclePoint<SecureField>,
+    ) -> Col<Self, SecureField>;
+
+    /// Evaluates a polynomial at a point using the barycentric interpolation formula.
+    /// Used by the [`CircleEvaluation::barycentric_eval_at_point()`] function.
+    fn barycentric_eval_at_point(
+        evals: &CircleEvaluation<Self, BaseField, BitReversedOrder>,
+        weights: &Col<Self, SecureField>,
+    ) -> SecureField;
 
     /// Extends the polynomial to a larger degree bound.
     /// Used by the [`CirclePoly::extend()`] function.

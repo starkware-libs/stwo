@@ -3,6 +3,8 @@ use std::mem::transmute;
 use std::simd::Simd;
 
 use bytemuck::Zeroable;
+use itertools::Itertools;
+use num_traits::{One, Zero};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
@@ -14,10 +16,11 @@ use crate::core::backend::cpu::circle::slow_precompute_twiddles;
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::PackedM31;
 use crate::core::backend::{Col, Column, CpuBackend};
-use crate::core::circle::{CirclePoint, Coset, M31_CIRCLE_LOG_ORDER};
+use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, M31_CIRCLE_LOG_ORDER};
+use crate::core::constraints::{coset_vanishing, coset_vanishing_derivative, point_vanishing};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::{Field, FieldExpOps};
+use crate::core::fields::{batch_inverse_in_place, Field, FieldExpOps};
 use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
 };
@@ -219,6 +222,84 @@ impl PolyOps for SimdBackend {
         };
 
         (sum * twiddle_lows).pointwise_sum()
+    }
+
+    fn barycentric_weights(
+        coset: CanonicCoset,
+        p: CirclePoint<SecureField>,
+    ) -> Col<SimdBackend, SecureField> {
+        let domain = coset.circle_domain();
+        let weights_vec_len = domain.size().div_ceil(N_LANES);
+        if weights_vec_len == 1 {
+            return Col::<SimdBackend, SecureField>::from_iter(CircleEvaluation::<
+                CpuBackend,
+                BaseField,
+                BitReversedOrder,
+            >::barycentric_weights(
+                coset, p
+            ));
+        }
+
+        let p_0 = domain.at(0).into_ef::<SecureField>();
+        let si_0 = SecureField::one()
+            / ((p_0.y * SecureField::from(-2))
+                * coset_vanishing_derivative(
+                    Coset::new(CirclePointIndex::generator(), domain.log_size()),
+                    p_0,
+                ));
+
+        // TODO(Gali): Optimize to a batched point_vanishing()
+        let vi_p = (0..weights_vec_len)
+            .map(|i| {
+                PackedSecureField::from_array(std::array::from_fn(|j| {
+                    point_vanishing(
+                        domain.at(i * N_LANES + j).into_ef::<SecureField>(),
+                        p.into_ef::<SecureField>(),
+                    )
+                }))
+            })
+            .collect_vec();
+        let mut vi_p_inverse = Vec::with_capacity(weights_vec_len);
+        #[allow(clippy::uninit_vec)]
+        unsafe {
+            vi_p_inverse.set_len(weights_vec_len)
+        };
+        batch_inverse_in_place(&vi_p, &mut vi_p_inverse);
+
+        let vn_p: SecureField = coset_vanishing(
+            CanonicCoset::new(domain.log_size()).coset,
+            p.into_ef::<SecureField>(),
+        );
+
+        let si_0_vn_p = PackedSecureField::broadcast(si_0 * vn_p);
+
+        // TODO(Gali): Change weights order to bit-reverse order.
+        // S_i(i) is invariant under G_(n−1) and alternate under J, meaning the S_i(i) values are
+        // the same for each half coset, and the second half coset values are the conjugate
+        // of the first half coset values.
+        let weights: Col<SimdBackend, SecureField> = (0..weights_vec_len)
+            .map(|i| {
+                if i < weights_vec_len / 2 {
+                    vi_p_inverse[i] * si_0_vn_p
+                } else {
+                    vi_p_inverse[i] * -si_0_vn_p
+                }
+            })
+            .collect();
+
+        weights
+    }
+
+    fn barycentric_eval_at_point(
+        evals: &CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
+        weights: &Col<SimdBackend, SecureField>,
+    ) -> SecureField {
+        let evals = evals.clone().bit_reverse();
+        (0..evals.domain.size().div_ceil(N_LANES))
+            .fold(PackedSecureField::zero(), |acc, i| {
+                acc + (weights.data[i] * evals.values.data[i])
+            })
+            .pointwise_sum()
     }
 
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
