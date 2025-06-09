@@ -1,12 +1,15 @@
+use itertools::Itertools;
+
 use super::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fri::{fold_circle_into_line, fold_line, FriOps};
+use crate::core::fri::{fold_circle_into_line, fold_line};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::prover::fri::FriOps;
 
 impl FriOps for CpuBackend {
     fn fold_line(
@@ -14,7 +17,8 @@ impl FriOps for CpuBackend {
         alpha: SecureField,
         _twiddles: &TwiddleTree<Self>,
     ) -> LineEvaluation<Self> {
-        fold_line(eval, alpha)
+        let (domain, values) = fold_line(eval.values.into_iter(), eval.domain(), alpha);
+        LineEvaluation::new(domain, values.collect())
     }
 
     fn fold_circle_into_line(
@@ -23,7 +27,14 @@ impl FriOps for CpuBackend {
         alpha: SecureField,
         _twiddles: &TwiddleTree<Self>,
     ) {
-        fold_circle_into_line(dst, src, alpha)
+        let mut dst_values = dst.values.into_iter().collect_vec();
+        fold_circle_into_line(
+            &mut dst_values,
+            &src.values.into_iter().collect_vec(),
+            src.domain,
+            alpha,
+        );
+        *dst = LineEvaluation::new(dst.domain(), dst_values.into_iter().collect());
     }
 
     fn decompose(
@@ -91,13 +102,13 @@ mod tests {
 
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fri::FriOps;
     use crate::core::poly::circle::{CanonicCoset, SecureEvaluation};
     use crate::core::poly::BitReversedOrder;
     use crate::core::secure_column::SecureColumnByCoords;
     use crate::m31;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::CpuBackend;
+    use crate::prover::fri::FriOps;
 
     #[test]
     fn decompose_coeff_out_fft_space_test() {
