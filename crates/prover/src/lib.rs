@@ -16,7 +16,6 @@
 )]
 pub mod constraint_framework;
 pub mod core;
-pub mod examples;
 
 #[cfg(feature = "tracing")]
 pub mod tracing;
