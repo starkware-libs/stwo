@@ -28,7 +28,7 @@ use stwo_prover::core::fields::FieldExpOps;
 use stwo_prover::core::lookups::utils::Fraction;
 
 #[rustfmt::skip]
-pub use stwo_prover::core::prover::PREPROCESSED_TRACE_IDX;
+pub use stwo_prover::prover::PREPROCESSED_TRACE_IDX;
 pub const ORIGINAL_TRACE_IDX: usize = 1;
 pub const INTERACTION_TRACE_IDX: usize = 2;
 

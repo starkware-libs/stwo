@@ -5,20 +5,16 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{info, instrument, span, Level};
 
-use super::air::{Component, ComponentProver, ComponentProvers, Components};
-use super::backend::BackendForChannel;
-use super::channel::MerkleChannel;
-use super::fields::qm31::SECURE_EXTENSION_DEGREE;
-use super::fri::FriVerificationError;
-use super::pcs::CommitmentSchemeProof;
-use super::vcs::ops::MerkleHasher;
-use crate::core::channel::Channel;
+use crate::core::air::{Component, ComponentProver, ComponentProvers, Components};
+use crate::core::backend::BackendForChannel;
+use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
-use crate::core::fri::{FriLayerProof, FriProof};
-use crate::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier};
+use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::core::fri::{FriLayerProof, FriProof, FriVerificationError};
+use crate::core::pcs::{CommitmentSchemeProof, CommitmentSchemeProver, CommitmentSchemeVerifier};
 use crate::core::vcs::hash::Hash;
+use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::prover::MerkleDecommitment;
 use crate::core::vcs::verifier::MerkleVerificationError;
 
@@ -356,7 +352,7 @@ mod tests {
 
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-    use crate::core::prover::SizeEstimate;
+    use crate::prover::SizeEstimate;
 
     #[test]
     fn test_base_field_size_estimate() {

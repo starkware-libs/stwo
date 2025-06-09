@@ -15,9 +15,9 @@ use crate::core::poly::circle::{
     CanonicCoset, CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation,
 };
 use crate::core::poly::BitReversedOrder;
-use crate::core::prover::VerificationError;
 use crate::core::utils::bit_reverse_index;
 use crate::core::ColumnVec;
+use crate::prover::VerificationError;
 
 pub trait QuotientOps: PolyOps {
     /// Accumulates the quotients of the columns at the given domain.

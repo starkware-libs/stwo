@@ -17,9 +17,9 @@ use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeSubspan};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use stwo_prover::core::poly::BitReversedOrder;
-use stwo_prover::core::prover::{prove, StarkProof};
 use stwo_prover::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo_prover::core::ColumnVec;
+use stwo_prover::prover::{prove, StarkProof};
 use tracing::{span, Level};
 
 pub type PlonkComponent = FrameworkComponent<PlonkEval>;
@@ -288,8 +288,8 @@ mod tests {
     use stwo_prover::core::channel::Blake2sChannel;
     use stwo_prover::core::fri::FriConfig;
     use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
-    use stwo_prover::core::prover::verify;
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo_prover::prover::verify;
 
     use crate::plonk::{prove_fibonacci_plonk, PlonkLookupElements};
 

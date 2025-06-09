@@ -87,11 +87,11 @@ mod tests {
     };
     use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
     use stwo_prover::core::poly::BitReversedOrder;
-    use stwo_prover::core::prover::{prove, verify};
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     #[cfg(not(target_arch = "wasm32"))]
     use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
     use stwo_prover::core::ColumnVec;
+    use stwo_prover::prover::{prove, verify};
 
     use super::WideFibonacciEval;
     use crate::wide_fibonacci::{generate_trace, FibInput, WideFibonacciComponent};

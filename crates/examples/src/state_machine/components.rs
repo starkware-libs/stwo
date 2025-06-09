@@ -13,8 +13,8 @@ use stwo_prover::core::fields::qm31::{SecureField, QM31};
 use stwo_prover::core::pcs::TreeVec;
 use stwo_prover::core::poly::circle::CircleEvaluation;
 use stwo_prover::core::poly::BitReversedOrder;
-use stwo_prover::core::prover::StarkProof;
 use stwo_prover::core::vcs::ops::MerkleHasher;
+use stwo_prover::prover::StarkProof;
 
 const LOG_CONSTRAINT_DEGREE: u32 = 1;
 pub const STATE_SIZE: usize = 2;

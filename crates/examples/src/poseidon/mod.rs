@@ -23,9 +23,9 @@ use stwo_prover::core::fields::FieldExpOps;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, PcsConfig};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use stwo_prover::core::poly::BitReversedOrder;
-use stwo_prover::core::prover::{prove, StarkProof};
 use stwo_prover::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo_prover::core::ColumnVec;
+use stwo_prover::prover::{prove, StarkProof};
 use tracing::{info, span, Level};
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
@@ -404,8 +404,8 @@ mod tests {
     use stwo_prover::core::fri::FriConfig;
     use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo_prover::core::poly::circle::CanonicCoset;
-    use stwo_prover::core::prover::verify;
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo_prover::prover::verify;
 
     use crate::poseidon::{
         apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,

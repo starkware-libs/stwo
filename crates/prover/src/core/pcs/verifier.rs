@@ -9,10 +9,10 @@ use super::quotients::{fri_answers, PointSample};
 use super::utils::TreeVec;
 use super::{CommitmentSchemeProof, PcsConfig};
 use crate::core::channel::{Channel, MerkleChannel};
-use crate::core::prover::VerificationError;
 use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::verifier::MerkleVerifier;
 use crate::core::ColumnVec;
+use crate::prover::VerificationError;
 
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
 #[derive(Default)]
