@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use starknet_crypto::{poseidon_hash, poseidon_hash_many};
 use starknet_ff::FieldElement as FieldElement252;
 
-use super::ops::MerkleHasher;
 use crate::core::channel::{MerkleChannel, Poseidon252Channel};
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::vcs::hash::Hash;
+use crate::core::vcs::ops::MerkleHasher;
 
 const ELEMENTS_IN_BLOCK: usize = 8;
 

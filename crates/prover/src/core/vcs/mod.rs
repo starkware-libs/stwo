@@ -7,9 +7,7 @@ pub mod hash;
 pub mod ops;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod poseidon252_merkle;
-pub mod prover;
-mod utils;
-pub mod verifier;
-
 #[cfg(test)]
-mod test_utils;
+pub mod test_utils;
+pub mod utils;
+pub mod verifier;

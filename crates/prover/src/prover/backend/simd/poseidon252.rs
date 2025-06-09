@@ -7,10 +7,10 @@ use super::SimdBackend;
 use crate::core::fields::m31::BaseField;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::core::vcs::ops::MerkleHasher;
-use crate::core::vcs::ops::MerkleOps;
 use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleHasher;
 use crate::parallel_iter;
 use crate::prover::backend::{Col, Column, ColumnOps};
+use crate::prover::vcs::ops::MerkleOps;
 
 impl ColumnOps<FieldElement252> for SimdBackend {
     type Column = Vec<FieldElement252>;
