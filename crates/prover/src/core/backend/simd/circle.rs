@@ -18,7 +18,7 @@ use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::PackedM31;
 use crate::core::backend::{Col, Column, CpuBackend};
 use crate::core::circle::{CirclePoint, CirclePointIndex, Coset, M31_CIRCLE_LOG_ORDER};
-use crate::core::constraints::{coset_vanishing, coset_vanishing_derivative, point_vanishing};
+use crate::core::constraints::{coset_vanishing, coset_vanishing_derivative};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{batch_inverse_in_place, Field, FieldExpOps};
@@ -251,42 +251,10 @@ impl PolyOps for SimdBackend {
                     p_0,
                 ));
 
-        // TODO(Gali): Optimize to a batched point_vanishing()
-        #[cfg(not(feature = "parallel"))]
-        let vi_p = (0..weights_vec_len)
-            .map(|i| {
-                PackedSecureField::from_array(std::array::from_fn(|j| {
-                    point_vanishing(
-                        domain
-                            .at(bit_reverse_index(i * N_LANES + j, log_size))
-                            .into_ef::<SecureField>(),
-                        p,
-                    )
-                }))
-            })
-            .collect_vec();
-
-        #[cfg(feature = "parallel")]
-        let vi_p: Vec<PackedSecureField> = (0..weights_vec_len)
-            .into_par_iter()
-            .map(|i| {
-                PackedSecureField::from_array(std::array::from_fn(|j| {
-                    point_vanishing(
-                        domain
-                            .at(bit_reverse_index(i * N_LANES + j, log_size))
-                            .into_ef::<SecureField>(),
-                        p,
-                    )
-                }))
-            })
-            .collect();
-
-        let mut vi_p_inverse = Vec::with_capacity(weights_vec_len);
-        #[allow(clippy::uninit_vec)]
-        unsafe {
-            vi_p_inverse.set_len(weights_vec_len)
+        let vi_p_inverse = {
+            let (numerator, denominator) = calculate_vi_p(&domain, p);
+            calculate_vi_p_inverse(&domain, &numerator, &denominator)
         };
-        batch_inverse_in_place(&vi_p, &mut vi_p_inverse);
 
         let vn_p: SecureField = coset_vanishing(CanonicCoset::new(log_size).coset, p);
 
@@ -526,6 +494,167 @@ fn slow_eval_at_point(
         a.swap_with_slice(&mut c[0..n0]);
     }
     fold(poly.coeffs.as_slice(), &mappings)
+}
+
+fn calculate_vi_p_per_domain_point(
+    domain: &CircleDomain,
+    sample_point: CirclePoint<SecureField>,
+    i: usize,
+) -> (PackedSecureField, PackedSecureField) {
+    let points = [
+        domain.at(i).into_ef::<SecureField>(),
+        domain.at(i + domain.size() / 2).into_ef::<SecureField>(),
+        domain.at(i + 1).into_ef::<SecureField>(),
+        domain
+            .at(i + 1 + domain.size() / 2)
+            .into_ef::<SecureField>(),
+    ];
+
+    let mut numerator = [SecureField::zero(); N_LANES];
+    let mut denominator = [SecureField::zero(); N_LANES];
+
+    points.iter().enumerate().for_each(|(j, p)| {
+        let qx_px = sample_point.x * p.x;
+        let qx_py = sample_point.x * p.y;
+        let qy_px = sample_point.y * p.x;
+        let qy_py = sample_point.y * p.y;
+
+        if j % 2 != 0 {
+            // (Px,Py)
+            numerator[4 * j] = qy_px - qx_py;
+            denominator[4 * j] = qx_px + qy_py + SecureField::one();
+
+            // (-Py,Px)
+            numerator[4 * j + 1] = -qy_py - qx_px;
+            denominator[4 * j + 1] = -qx_py + qy_px + SecureField::one();
+
+            // (-Px,-Py)
+            numerator[4 * j + 2] = -qy_px + qx_py;
+            denominator[4 * j + 2] = -qx_px - qy_py + SecureField::one();
+
+            // (Py,-Px)
+            numerator[4 * j + 3] = qy_py + qx_px;
+            denominator[4 * j + 3] = qx_py - qy_px + SecureField::one();
+        } else {
+            // (Px,Py)
+            numerator[4 * j] = qy_px - qx_py;
+            denominator[4 * j] = qx_px + qy_py + SecureField::one();
+
+            // (Py,-Px)
+            numerator[4 * j + 1] = qy_py + qx_px;
+            denominator[4 * j + 1] = qx_py - qy_px + SecureField::one();
+
+            // (-Px,-Py)
+            numerator[4 * j + 2] = -qy_px + qx_py;
+            denominator[4 * j + 2] = -qx_px - qy_py + SecureField::one();
+
+            // (-Py,Px)
+            numerator[4 * j + 3] = -qy_py - qx_px;
+            denominator[4 * j + 3] = -qx_py + qy_px + SecureField::one();
+        }
+    });
+
+    let numerator = PackedSecureField::from_array(numerator);
+    let denominator = PackedSecureField::from_array(denominator);
+
+    (numerator, denominator)
+}
+
+fn calculate_vi_p(
+    domain: &CircleDomain,
+    sample_point: CirclePoint<SecureField>,
+) -> (Vec<PackedSecureField>, Vec<PackedSecureField>) {
+    #[cfg(not(feature = "parallel"))]
+    let vi_p = (0..domain.size() / N_LANES)
+        .into_iter()
+        .map(|i| calculate_vi_p_per_domain_point(domain, sample_point, 2 * i))
+        .unzip();
+
+    #[cfg(feature = "parallel")]
+    let vi_p: (Vec<_>, Vec<_>) = (0..domain.size() / N_LANES)
+        .into_par_iter()
+        .map(|i| calculate_vi_p_per_domain_point(domain, sample_point, 2 * i))
+        .unzip();
+
+    vi_p
+}
+
+fn calculate_vi_p_inverse(
+    domain: &CircleDomain,
+    numerator: &[PackedSecureField],
+    denominator: &[PackedSecureField],
+) -> Vec<PackedSecureField> {
+    let mut inversed_numerator = vec![PackedSecureField::zero(); domain.size() / N_LANES];
+
+    batch_inverse_in_place(numerator, &mut inversed_numerator);
+
+    let half_size = domain.size() / 2;
+    let half_size_div_4 = half_size / 4;
+
+    #[cfg(not(feature = "parallel"))]
+    let result = (0..domain.size() / N_LANES)
+        .map(|i| {
+            PackedSecureField::from_array(std::array::from_fn(|j| {
+                let idx = bit_reverse_index(i * N_LANES + j, domain.log_size());
+                let idx_series_no = idx % half_size_div_4;
+                if idx < half_size {
+                    if idx_series_no % 2 == 0 {
+                        inversed_numerator[idx_series_no / 2].to_array()[idx / half_size_div_4]
+                            * denominator[idx_series_no / 2].to_array()[idx / half_size_div_4]
+                    } else {
+                        inversed_numerator[idx_series_no / 2].to_array()
+                            [8 + (idx / half_size_div_4)]
+                            * denominator[idx_series_no / 2].to_array()[8 + (idx / half_size_div_4)]
+                    }
+                } else {
+                    if idx_series_no % 2 == 0 {
+                        inversed_numerator[idx_series_no / 2].to_array()
+                            [4 + ((idx - half_size) / half_size_div_4)]
+                            * denominator[idx_series_no / 2].to_array()
+                                [4 + ((idx - half_size) / half_size_div_4)]
+                    } else {
+                        inversed_numerator[idx_series_no / 2].to_array()
+                            [12 + ((idx - half_size) / half_size_div_4)]
+                            * denominator[idx_series_no / 2].to_array()
+                                [12 + ((idx - half_size) / half_size_div_4)]
+                    }
+                }
+            }))
+        })
+        .collect_vec();
+
+    #[cfg(feature = "parallel")]
+    let result: Vec<_> = (0..domain.size() / N_LANES)
+        .into_par_iter()
+        .map(|i| {
+            PackedSecureField::from_array(std::array::from_fn(|j| {
+                let idx = bit_reverse_index(i * N_LANES + j, domain.log_size());
+                let idx_series_no = idx % half_size_div_4;
+                if idx < half_size {
+                    if idx_series_no % 2 == 0 {
+                        inversed_numerator[idx_series_no / 2].to_array()[idx / half_size_div_4]
+                            * denominator[idx_series_no / 2].to_array()[idx / half_size_div_4]
+                    } else {
+                        inversed_numerator[idx_series_no / 2].to_array()
+                            [8 + (idx / half_size_div_4)]
+                            * denominator[idx_series_no / 2].to_array()[8 + (idx / half_size_div_4)]
+                    }
+                } else if idx_series_no % 2 == 0 {
+                    inversed_numerator[idx_series_no / 2].to_array()
+                        [4 + ((idx - half_size) / half_size_div_4)]
+                        * denominator[idx_series_no / 2].to_array()
+                            [4 + ((idx - half_size) / half_size_div_4)]
+                } else {
+                    inversed_numerator[idx_series_no / 2].to_array()
+                        [12 + ((idx - half_size) / half_size_div_4)]
+                        * denominator[idx_series_no / 2].to_array()
+                            [12 + ((idx - half_size) / half_size_div_4)]
+                }
+            }))
+        })
+        .collect();
+
+    result
 }
 
 #[cfg(test)]
