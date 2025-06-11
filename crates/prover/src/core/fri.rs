@@ -1204,7 +1204,7 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::Field;
     use crate::core::fri::{
-        fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig,
+        fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig, FriProof,
         CIRCLE_TO_LINE_FOLD_STEP,
     };
     use crate::core::poly::circle::{CircleDomain, PolyOps, SecureEvaluation};
@@ -1212,10 +1212,11 @@ mod tests {
     use crate::core::poly::BitReversedOrder;
     use crate::core::queries::Queries;
     use crate::core::test_utils::test_channel;
-    use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
+    const ONE_QUERY: usize = 1;
 
     type FriProver<'a> = super::FriProver<'a, CpuBackend, Blake2sMerkleChannel>;
     type FriVerifier = super::FriVerifier<Blake2sMerkleChannel>;
@@ -1299,17 +1300,13 @@ mod tests {
     fn valid_proof_passes_verification() -> Result<(), FriVerificationError> {
         const LOG_DEGREE: u32 = 4;
         let column = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
-        let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
-        let queries = Queries::from_positions(vec![5], column.domain.log_size());
-        let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, queries.len());
-        let decommitment_value = query_polynomial(&column, &queries);
-        let columns = &[column];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
-        let proof = prover.decommit_on_queries(&queries);
+        let config = FriConfig::new(1, LOG_BLOWUP_FACTOR, ONE_QUERY);
+        let (proof, decommitment_values) = test_proof(&[column], config);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
-        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+        let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+        let _ = verifier.sample_query_positions(&mut test_channel());
 
-        verifier.decommit_on_queries(&queries, vec![decommitment_value])
+        verifier.decommit(decommitment_values)
     }
 
     #[test]
@@ -1318,34 +1315,26 @@ mod tests {
         const LOG_DEGREE: u32 = 3;
         const LAST_LAYER_LOG_BOUND: u32 = 0;
         let column = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
-        let twiddles = CpuBackend::precompute_twiddles(column.domain.half_coset);
-        let queries = Queries::from_positions(vec![5], column.domain.log_size());
-        let config = FriConfig::new(LAST_LAYER_LOG_BOUND, LOG_BLOWUP_FACTOR, queries.len());
-        let decommitment_value = query_polynomial(&column, &queries);
-        let columns = &[column];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
-        let proof = prover.decommit_on_queries(&queries);
+        let config = FriConfig::new(LAST_LAYER_LOG_BOUND, LOG_BLOWUP_FACTOR, ONE_QUERY);
+        let (proof, decommitment_values) = test_proof(&[column], config);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
-        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+        let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+        let _ = verifier.sample_query_positions(&mut test_channel());
 
-        verifier.decommit_on_queries(&queries, vec![decommitment_value])
+        verifier.decommit(decommitment_values)
     }
 
     #[test]
     fn valid_mixed_degree_proof_passes_verification() -> Result<(), FriVerificationError> {
         const LOG_DEGREES: [u32; 3] = [6, 5, 4];
         let columns = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
-        let twiddles = CpuBackend::precompute_twiddles(columns[0].domain.half_coset);
-        let log_domain_size = columns[0].domain.log_size();
-        let queries = Queries::from_positions(vec![7, 70], log_domain_size);
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
-        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
-        let proof = prover.decommit_on_queries(&queries);
-        let query_evals = columns.map(|p| query_polynomial(&p, &queries)).to_vec();
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 2);
+        let (proof, decommitment_values) = test_proof(&columns, config);
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
-        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
+        let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
+        let _ = verifier.sample_query_positions(&mut test_channel());
 
-        verifier.decommit_on_queries(&queries, query_evals)
+        verifier.decommit(decommitment_values)
     }
 
     #[test]
@@ -1353,25 +1342,29 @@ mod tests {
     ) -> Result<(), FriVerificationError> {
         const LOG_DEGREES: [u32; 3] = [6, 5, 4];
         let columns = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
-        let twiddles = CpuBackend::precompute_twiddles(columns[0].domain.half_coset);
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
-        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
-        let (proof, prover_query_positions_by_log_size) = prover.decommit(&mut test_channel());
-        let query_evals_by_column = columns.map(|eval| {
-            let query_positions = &prover_query_positions_by_log_size[&eval.domain.log_size()];
-            query_polynomial_at_positions(&eval, query_positions)
-        });
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 2);
+        let (proof, decommitment_values) = test_proof(&columns, config);
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
 
         let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
-        let verifier_query_positions_by_log_size =
-            verifier.sample_query_positions(&mut test_channel());
+        let _ = verifier.sample_query_positions(&mut test_channel());
 
-        assert_eq!(
-            prover_query_positions_by_log_size,
-            verifier_query_positions_by_log_size
-        );
-        verifier.decommit(query_evals_by_column.to_vec())
+        verifier.decommit(decommitment_values)
+    }
+
+    #[test]
+    fn mixed_degree_queries_congruent_to_prover_queries() {
+        const LOG_DEGREES: [u32; 3] = [6, 5, 4];
+        let columns = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
+        let twiddles = CpuBackend::precompute_twiddles(columns[0].domain.half_coset);
+        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
+        let (proof, prover_queried_positions) = prover.decommit(&mut test_channel());
+        let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
+        let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
+        let verifier_positions_by_log_size = verifier.sample_query_positions(&mut test_channel());
+
+        assert_eq!(prover_queried_positions, verifier_positions_by_log_size);
     }
 
     #[test]
@@ -1426,20 +1419,14 @@ mod tests {
     fn proof_with_invalid_inner_layer_evaluation_fails_verification() {
         const LOG_DEGREE: u32 = 6;
         let evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
-        let twiddles = CpuBackend::precompute_twiddles(evaluation.domain.half_coset);
-        let log_domain_size = evaluation.domain.log_size();
-        let queries = Queries::from_positions(vec![5], log_domain_size);
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
-        let decommitment_value = query_polynomial(&evaluation, &queries);
-        let columns = &[evaluation];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, ONE_QUERY);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
-        let mut proof = prover.decommit_on_queries(&queries);
-        // Remove an evaluation from the second layer's proof.
+        let (mut proof, decommitment_values) = test_proof(&[evaluation], config);
         proof.inner_layers[1].fri_witness.pop();
-        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+        let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+        let _ = verifier.sample_query_positions(&mut test_channel());
 
-        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit(decommitment_values);
 
         assert_matches!(
             verification_result,
@@ -1451,20 +1438,15 @@ mod tests {
     fn proof_with_invalid_inner_layer_decommitment_fails_verification() {
         const LOG_DEGREE: u32 = 6;
         let evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
-        let twiddles = CpuBackend::precompute_twiddles(evaluation.domain.half_coset);
-        let log_domain_size = evaluation.domain.log_size();
-        let queries = Queries::from_positions(vec![5], log_domain_size);
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
-        let decommitment_value = query_polynomial(&evaluation, &queries);
-        let columns = &[evaluation];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, ONE_QUERY);
+        let (mut proof, decommitment_values) = test_proof(&[evaluation], config);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
-        let mut proof = prover.decommit_on_queries(&queries);
         // Modify the committed values in the second layer.
         proof.inner_layers[1].fri_witness[0] += BaseField::one();
-        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+        let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+        let _ = verifier.sample_query_positions(&mut test_channel());
 
-        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit(decommitment_values);
 
         assert_matches!(
             verification_result,
@@ -1500,20 +1482,15 @@ mod tests {
     fn proof_with_invalid_last_layer_fails_verification() {
         const LOG_DEGREE: u32 = 6;
         let evaluation = polynomial_evaluation(LOG_DEGREE, LOG_BLOWUP_FACTOR);
-        let twiddles = CpuBackend::precompute_twiddles(evaluation.domain.half_coset);
-        let log_domain_size = evaluation.domain.log_size();
-        let queries = Queries::from_positions(vec![1, 7, 8], log_domain_size);
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
-        let decommitment_value = query_polynomial(&evaluation, &queries);
-        let columns = &[evaluation];
-        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, ONE_QUERY);
+        let (mut proof, decommitment_values) = test_proof(&[evaluation], config);
         let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
-        let mut proof = prover.decommit_on_queries(&queries);
         // Compromise the last layer polynomial's first coefficient.
         proof.last_layer_poly[0] += BaseField::one();
-        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+        let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+        let _ = verifier.sample_query_positions(&mut test_channel());
 
-        let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
+        let verification_result = verifier.decommit(decommitment_values);
 
         assert_matches!(
             verification_result,
@@ -1533,14 +1510,13 @@ mod tests {
         let decommitment_value = query_polynomial(&evaluation, &queries);
         let columns = &[evaluation];
         let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
-        let proof = prover.decommit_on_queries(&queries);
-        let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
-        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
-        // Simulate the verifier sampling queries on a smaller domain.
         let mut invalid_queries = queries.clone();
-        invalid_queries.log_domain_size -= 1;
+        invalid_queries.log_domain_size += 1;
+        let proof = prover.decommit_on_queries(&invalid_queries);
+        let bound = vec![CirclePolyDegreeBound::new(LOG_DEGREE)];
 
-        let _ = verifier.decommit_on_queries(&invalid_queries, vec![decommitment_value]);
+        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
+        let _ = verifier.decommit(vec![decommitment_value]);
     }
 
     /// Returns an evaluation of a random polynomial with degree `2^log_degree`.
@@ -1577,5 +1553,30 @@ mod tests {
         query_positions: &[usize],
     ) -> Vec<SecureField> {
         query_positions.iter().map(|p| polynomial.at(*p)).collect()
+    }
+
+    fn test_proof(
+        columns: &[SecureEvaluation<CpuBackend, BitReversedOrder>],
+        config: FriConfig,
+    ) -> (FriProof<Blake2sMerkleHasher>, Vec<Vec<SecureField>>) {
+        const MAX_TEST_LOG_SIZE: u32 = 6;
+        let twiddles = CpuBackend::precompute_twiddles(Coset::half_odds(MAX_TEST_LOG_SIZE));
+        let prover = FriProver::commit(&mut test_channel(), config, columns, &twiddles);
+        let (proof, positions_by_log_size) = prover.decommit(&mut test_channel());
+        let decommitment_values = columns
+            .iter()
+            .map(|column| {
+                positions_by_log_size
+                    .get(&column.domain.log_size())
+                    .map(|positions| {
+                        query_polynomial(
+                            column,
+                            &Queries::from_positions(positions.clone(), column.domain.log_size()),
+                        )
+                    })
+                    .unwrap_or_default()
+            })
+            .collect();
+        (proof, decommitment_values)
     }
 }
