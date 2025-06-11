@@ -1,13 +1,30 @@
-mod canonic;
-mod domain;
+mod evaluation;
+mod ops;
+mod poly;
+mod secure_poly;
 
-pub use canonic::CanonicCoset;
-pub use domain::{CircleDomain, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+pub use evaluation::{CircleEvaluation, CosetSubEvaluation};
+pub use ops::PolyOps;
+pub use poly::CirclePoly;
+pub use secure_poly::{SecureCirclePoly, SecureEvaluation};
 
 #[cfg(test)]
 mod tests {
-    use super::CanonicCoset;
+    use crate::core::fields::m31::BaseField;
+    use crate::core::poly::circle::CanonicCoset;
     use crate::core::utils::bit_reverse_index;
+    use crate::prover::backend::cpu::CpuCircleEvaluation;
+
+    #[test]
+    fn test_interpolate_and_eval() {
+        let domain = CanonicCoset::new(3).circle_domain();
+        assert_eq!(domain.log_size(), 3);
+        let evaluation =
+            CpuCircleEvaluation::new(domain, (0..8).map(BaseField::from_u32_unchecked).collect());
+        let poly = evaluation.clone().interpolate();
+        let evaluation2 = poly.evaluate(domain);
+        assert_eq!(evaluation.values, evaluation2.values);
+    }
 
     #[test]
     fn is_canonic_valid_domain() {

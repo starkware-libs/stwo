@@ -6,10 +6,11 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{
     accumulate_row_quotients, quotient_constants, ColumnSampleBatch,
 };
-use crate::core::poly::circle::{CircleDomain, CircleEvaluation, SecureEvaluation};
-use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::CircleDomain;
 use crate::core::secure_column::SecureColumnByCoords;
 use crate::core::utils::bit_reverse_index;
+use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::QuotientOps;
 
 impl QuotientOps for CpuBackend {

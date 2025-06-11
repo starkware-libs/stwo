@@ -6,9 +6,9 @@ use crate::core::channel::MerkleChannel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::lookups::gkr_prover::GkrOps;
-use crate::core::poly::circle::PolyOps;
 use crate::core::proof_of_work::GrindOps;
 use crate::prover::fri::FriOps;
+use crate::prover::poly::circle::PolyOps;
 use crate::prover::vcs::ops::MerkleOps;
 use crate::prover::{AccumulationOps, QuotientOps};
 

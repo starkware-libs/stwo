@@ -8,8 +8,7 @@ use stwo_prover::core::channel::Channel;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo_prover::core::lookups::utils::Fraction;
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::secure_column::SecureColumnByCoords;
 use stwo_prover::core::utils::uninit_vec;
 use stwo_prover::core::ColumnVec;
@@ -19,6 +18,8 @@ use stwo_prover::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
 use stwo_prover::prover::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
 use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::backend::Column;
+use stwo_prover::prover::poly::circle::CircleEvaluation;
+use stwo_prover::prover::poly::BitReversedOrder;
 
 use super::EvalAtRow;
 

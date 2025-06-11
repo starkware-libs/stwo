@@ -15,12 +15,13 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{batch_random_coeffs, column_line_coeffs, ColumnSampleBatch};
-use crate::core::poly::circle::{CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation};
-use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::CircleDomain;
 use crate::core::secure_column::SecureColumnByCoords;
 use crate::prover::backend::cpu::bit_reverse;
 use crate::prover::backend::simd::column::SecureColumnByCoordsMutSlice;
 use crate::prover::backend::CpuBackend;
+use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::QuotientOps;
 
 pub struct QuotientConstants {
@@ -110,7 +111,7 @@ fn accumulate_quotients_on_subdomain(
 ) -> (
     span::EnteredSpan,
     SecureColumnByCoords<SimdBackend>,
-    [crate::core::poly::circle::CirclePoly<SimdBackend>; 4],
+    [crate::prover::poly::circle::CirclePoly<SimdBackend>; 4],
 ) {
     assert!(subdomain.log_size() >= LOG_N_LANES + 2);
     let mut values =
@@ -334,11 +335,12 @@ mod tests {
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
     use crate::core::pcs::quotients::ColumnSampleBatch;
-    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation};
-    use crate::core::poly::BitReversedOrder;
+    use crate::core::poly::circle::CanonicCoset;
     use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::{Column, CpuBackend};
+    use crate::prover::poly::circle::CircleEvaluation;
+    use crate::prover::poly::BitReversedOrder;
     use crate::prover::QuotientOps;
     use crate::qm31;
 

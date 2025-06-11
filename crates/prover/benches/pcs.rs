@@ -5,12 +5,13 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use stwo_prover::core::channel::Blake2sChannel;
 use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use stwo_prover::core::poly::twiddles::TwiddleTree;
-use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::backend::{BackendForChannel, CpuBackend};
+use stwo_prover::prover::poly::circle::CircleEvaluation;
+use stwo_prover::prover::poly::twiddles::TwiddleTree;
+use stwo_prover::prover::poly::BitReversedOrder;
 use stwo_prover::prover::CommitmentTreeProver;
 
 const LOG_COSET_SIZE: u32 = 20;
