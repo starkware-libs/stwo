@@ -5,6 +5,7 @@ use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::proof::StarkProof;
+use crate::core::verifier::PREPROCESSED_TRACE_IDX;
 use crate::prover::backend::BackendForChannel;
 
 mod air;
@@ -20,8 +21,6 @@ pub mod line;
 pub mod poly;
 pub mod secure_column;
 pub mod vcs;
-
-pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
 #[instrument(skip_all)]
 pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
