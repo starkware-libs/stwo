@@ -9,7 +9,6 @@ use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo_prover::core::lookups::utils::Fraction;
 use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::secure_column::SecureColumnByCoords;
 use stwo_prover::core::utils::uninit_vec;
 use stwo_prover::core::ColumnVec;
 use stwo_prover::prover::backend::simd::column::SecureColumn;
@@ -20,6 +19,7 @@ use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::backend::Column;
 use stwo_prover::prover::poly::circle::CircleEvaluation;
 use stwo_prover::prover::poly::BitReversedOrder;
+use stwo_prover::prover::secure_column::SecureColumnByCoords;
 
 use super::EvalAtRow;
 

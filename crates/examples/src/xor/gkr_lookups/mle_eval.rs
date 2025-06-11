@@ -22,7 +22,6 @@ use stwo_prover::core::lookups::mle::Mle;
 use stwo_prover::core::lookups::utils::eq;
 use stwo_prover::core::pcs::{TreeSubspan, TreeVec};
 use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::secure_column::SecureColumnByCoords;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use stwo_prover::core::ColumnVec;
 use stwo_prover::prover::backend::cpu::bit_reverse;
@@ -38,6 +37,7 @@ use stwo_prover::prover::backend::{Col, Column};
 use stwo_prover::prover::poly::circle::{CircleEvaluation, SecureCirclePoly, SecureEvaluation};
 use stwo_prover::prover::poly::twiddles::TwiddleTree;
 use stwo_prover::prover::poly::BitReversedOrder;
+use stwo_prover::prover::secure_column::SecureColumnByCoords;
 use stwo_prover::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
 use tracing::{span, Level};
 
@@ -754,7 +754,6 @@ mod tests {
     use stwo_prover::core::lookups::mle::Mle;
     use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo_prover::core::poly::circle::CanonicCoset;
-    use stwo_prover::core::secure_column::SecureColumnByCoords;
     use stwo_prover::core::utils::coset_order_to_circle_domain_order;
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use stwo_prover::core::verifier::{verify, VerificationError};
@@ -764,6 +763,7 @@ mod tests {
     use stwo_prover::prover::backend::simd::SimdBackend;
     use stwo_prover::prover::poly::circle::{CircleEvaluation, PolyOps};
     use stwo_prover::prover::poly::BitReversedOrder;
+    use stwo_prover::prover::secure_column::SecureColumnByCoords;
     use stwo_prover::prover::{prove, CommitmentSchemeProver, ComponentProver};
 
     use super::{

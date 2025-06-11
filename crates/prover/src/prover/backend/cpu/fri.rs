@@ -4,12 +4,12 @@ use super::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fri::{fold_circle_into_line, fold_line};
-use crate::core::secure_column::SecureColumnByCoords;
 use crate::prover::fri::FriOps;
 use crate::prover::line::LineEvaluation;
 use crate::prover::poly::circle::SecureEvaluation;
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
+use crate::prover::secure_column::SecureColumnByCoords;
 
 impl FriOps for CpuBackend {
     fn fold_line(
@@ -103,13 +103,13 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::secure_column::SecureColumnByCoords;
     use crate::m31;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::CpuBackend;
     use crate::prover::fri::FriOps;
     use crate::prover::poly::circle::SecureEvaluation;
     use crate::prover::poly::BitReversedOrder;
+    use crate::prover::secure_column::SecureColumnByCoords;
 
     #[test]
     fn decompose_coeff_out_fft_space_test() {
