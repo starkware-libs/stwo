@@ -1,11 +1,12 @@
 use bytemuck::Zeroable;
 use itertools::Itertools;
 use stwo_prover::core::fields::m31::M31;
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::prover::backend::simd::column::BaseColumn;
 use stwo_prover::prover::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
 use stwo_prover::prover::backend::simd::SimdBackend;
+use stwo_prover::prover::poly::circle::CircleEvaluation;
+use stwo_prover::prover::poly::BitReversedOrder;
 
 use super::row_iterator::{ParRowIterMut, RowIterMut};
 

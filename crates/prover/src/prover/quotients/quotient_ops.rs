@@ -7,10 +7,9 @@ use tracing::{span, Level};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample};
-use crate::core::poly::circle::{
-    CanonicCoset, CircleDomain, CircleEvaluation, PolyOps, SecureEvaluation,
-};
-use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
+use crate::prover::poly::BitReversedOrder;
 
 pub trait QuotientOps: PolyOps {
     /// Accumulates the quotients of the columns at the given domain.

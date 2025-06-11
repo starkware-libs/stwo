@@ -15,17 +15,16 @@ use crate::core::circle::{CirclePoint, Coset, M31_CIRCLE_LOG_ORDER};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, FieldExpOps};
-use crate::core::poly::circle::{
-    CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly, PolyOps,
-};
-use crate::core::poly::twiddles::TwiddleTree;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
-use crate::core::poly::BitReversedOrder;
 use crate::core::utils::bit_reverse_index;
 use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
 use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::m31::PackedM31;
 use crate::prover::backend::{Col, Column, CpuBackend};
+use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
+use crate::prover::poly::twiddles::TwiddleTree;
+use crate::prover::poly::BitReversedOrder;
 
 impl SimdBackend {
     // TODO(Ohad): optimize.
@@ -419,12 +418,13 @@ mod tests {
 
     use crate::core::circle::CirclePoint;
     use crate::core::fields::m31::BaseField;
-    use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly, PolyOps};
-    use crate::core::poly::{BitReversedOrder, NaturalOrder};
+    use crate::core::poly::circle::CanonicCoset;
     use crate::prover::backend::simd::circle::slow_eval_at_point;
     use crate::prover::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::{Column, CpuBackend};
+    use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
+    use crate::prover::poly::{BitReversedOrder, NaturalOrder};
 
     #[test]
     fn test_interpolate_and_eval() {
