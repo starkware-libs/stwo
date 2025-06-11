@@ -1,13 +1,14 @@
 use itertools::Itertools;
 
-use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
+use super::{CircleEvaluation, CirclePoly};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::poly::twiddles::TwiddleTree;
-use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::ColumnVec;
 use crate::prover::backend::ColumnOps;
+use crate::prover::poly::twiddles::TwiddleTree;
+use crate::prover::poly::BitReversedOrder;
 
 /// Operations on BaseField polynomials.
 pub trait PolyOps: ColumnOps<BaseField> + Sized {

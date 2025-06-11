@@ -3,9 +3,9 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use stwo_prover::core::circle::CirclePoint;
 use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::poly::circle::{CirclePoly, PolyOps};
 use stwo_prover::prover::backend::cpu::CpuBackend;
 use stwo_prover::prover::backend::simd::SimdBackend;
+use stwo_prover::prover::poly::circle::{CirclePoly, PolyOps};
 
 const LOG_SIZE: u32 = 20;
 

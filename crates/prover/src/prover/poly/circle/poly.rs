@@ -1,10 +1,11 @@
-use super::{CircleDomain, CircleEvaluation, PolyOps};
+use super::{CircleEvaluation, PolyOps};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::poly::twiddles::TwiddleTree;
-use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::CircleDomain;
 use crate::prover::backend::{Col, Column, ColumnOps};
+use crate::prover::poly::twiddles::TwiddleTree;
+use crate::prover::poly::BitReversedOrder;
 
 /// A polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]

@@ -6,14 +6,15 @@ use stwo_constraint_framework::logup::LogupTraceGenerator;
 use stwo_constraint_framework::{Relation, ORIGINAL_TRACE_IDX};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::ColumnVec;
 use stwo_prover::prover::backend::simd::column::BaseColumn;
 use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
 use stwo_prover::prover::backend::simd::qm31::PackedSecureField;
 use stwo_prover::prover::backend::simd::{blake2s, SimdBackend};
 use stwo_prover::prover::backend::Column;
+use stwo_prover::prover::poly::circle::CircleEvaluation;
+use stwo_prover::prover::poly::BitReversedOrder;
 use tracing::{span, Level};
 
 use super::{blake_scheduler_info, BlakeElements};

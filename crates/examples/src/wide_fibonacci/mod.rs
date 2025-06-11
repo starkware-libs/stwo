@@ -2,12 +2,13 @@ use itertools::Itertools;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::FieldExpOps;
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::ColumnVec;
 use stwo_prover::prover::backend::simd::m31::PackedBaseField;
 use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::backend::{Col, Column};
+use stwo_prover::prover::poly::circle::CircleEvaluation;
+use stwo_prover::prover::poly::BitReversedOrder;
 
 pub type WideFibonacciComponent<const N: usize> = FrameworkComponent<WideFibonacciEval<N>>;
 
@@ -80,8 +81,7 @@ mod tests {
     use stwo_prover::core::fields::m31::BaseField;
     use stwo_prover::core::fields::qm31::SecureField;
     use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
-    use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
-    use stwo_prover::core::poly::BitReversedOrder;
+    use stwo_prover::core::poly::circle::CanonicCoset;
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     #[cfg(not(target_arch = "wasm32"))]
     use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
@@ -90,6 +90,8 @@ mod tests {
     use stwo_prover::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
     use stwo_prover::prover::backend::simd::SimdBackend;
     use stwo_prover::prover::backend::Column;
+    use stwo_prover::prover::poly::circle::{CircleEvaluation, PolyOps};
+    use stwo_prover::prover::poly::BitReversedOrder;
     use stwo_prover::prover::{prove, CommitmentSchemeProver};
 
     use super::WideFibonacciEval;

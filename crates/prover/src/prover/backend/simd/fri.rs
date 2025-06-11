@@ -9,17 +9,17 @@ use super::SimdBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fri::{self, fold_circle_into_line};
-use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
-use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::domain_line_twiddles_from_tree;
-use crate::core::poly::BitReversedOrder;
 use crate::core::secure_column::SecureColumnByCoords;
 use crate::prover::backend::simd::fft::compute_first_twiddles;
 use crate::prover::backend::simd::fft::ifft::simd_ibutterfly;
 use crate::prover::backend::simd::qm31::PackedSecureField;
 use crate::prover::backend::Column;
 use crate::prover::fri::FriOps;
+use crate::prover::poly::circle::SecureEvaluation;
+use crate::prover::poly::twiddles::TwiddleTree;
+use crate::prover::poly::BitReversedOrder;
 
 // TODO(andrew) Is this optimized?
 impl FriOps for SimdBackend {
@@ -178,14 +178,15 @@ mod tests {
 
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::poly::circle::{CanonicCoset, CirclePoly, PolyOps, SecureEvaluation};
+    use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::line::{LineDomain, LineEvaluation};
-    use crate::core::poly::BitReversedOrder;
     use crate::core::secure_column::SecureColumnByCoords;
     use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::fri::FriOps;
+    use crate::prover::poly::circle::{CirclePoly, PolyOps, SecureEvaluation};
+    use crate::prover::poly::BitReversedOrder;
     use crate::qm31;
 
     #[test]

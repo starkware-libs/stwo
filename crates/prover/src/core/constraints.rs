@@ -123,10 +123,10 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::{ComplexConjugate, FieldExpOps};
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::poly::NaturalOrder;
     use crate::core::test_utils::secure_eval_to_base_eval;
     use crate::m31;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
+    use crate::prover::poly::NaturalOrder;
 
     #[test]
     fn test_coset_vanishing() {

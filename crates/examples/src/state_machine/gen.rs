@@ -4,14 +4,15 @@ use stwo_constraint_framework::logup::LogupTraceGenerator;
 use stwo_constraint_framework::Relation;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::qm31::QM31;
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use stwo_prover::core::ColumnVec;
 use stwo_prover::prover::backend::simd::column::BaseColumn;
 use stwo_prover::prover::backend::simd::m31::{PackedM31, LOG_N_LANES};
 use stwo_prover::prover::backend::simd::qm31::PackedQM31;
 use stwo_prover::prover::backend::simd::SimdBackend;
+use stwo_prover::prover::poly::circle::CircleEvaluation;
+use stwo_prover::prover::poly::BitReversedOrder;
 
 use super::components::{State, StateMachineElements, STATE_SIZE};
 
