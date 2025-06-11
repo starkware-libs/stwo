@@ -1,14 +1,15 @@
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
-use super::{CircleDomain, CircleEvaluation, CirclePoly, PolyOps};
+use super::{CircleEvaluation, CirclePoly, PolyOps};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use crate::core::poly::twiddles::TwiddleTree;
-use crate::core::poly::BitReversedOrder;
+use crate::core::poly::circle::CircleDomain;
 use crate::core::secure_column::SecureColumnByCoords;
 use crate::prover::backend::{ColumnOps, CpuBackend};
+use crate::prover::poly::twiddles::TwiddleTree;
+use crate::prover::poly::BitReversedOrder;
 
 pub struct SecureCirclePoly<B: ColumnOps<BaseField>>(pub [CirclePoly<B>; SECURE_EXTENSION_DEGREE]);
 

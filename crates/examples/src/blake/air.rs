@@ -9,13 +9,14 @@ use stwo_prover::core::air::Component;
 use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
-use stwo_prover::core::poly::circle::{CanonicCoset, PolyOps};
+use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::proof::StarkProof;
 use stwo_prover::core::vcs::MerkleHasher;
 use stwo_prover::core::verifier::{verify, VerificationError};
 use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
 use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::backend::BackendForChannel;
+use stwo_prover::prover::poly::circle::PolyOps;
 use stwo_prover::prover::{prove, CommitmentSchemeProver, ComponentProver};
 use tracing::{span, Level};
 

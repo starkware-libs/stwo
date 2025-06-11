@@ -1,10 +1,11 @@
 use stwo_constraint_framework::preprocessed_columns::{IsFirst, PreProcessedColumnId};
 use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::ColumnVec;
 use stwo_prover::prover::backend::simd::column::BaseColumn;
 use stwo_prover::prover::backend::simd::SimdBackend;
+use stwo_prover::prover::poly::circle::CircleEvaluation;
+use stwo_prover::prover::poly::BitReversedOrder;
 use tracing::{span, Level};
 
 /// A preprocessed table for the xor operation of 2 n_bits numbers.

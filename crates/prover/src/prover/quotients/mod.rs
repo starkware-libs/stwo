@@ -9,15 +9,15 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{CommitmentSchemeProof, PointSample};
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
-use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
-use crate::core::poly::twiddles::TwiddleTree;
-use crate::core::poly::BitReversedOrder;
 use crate::core::vcs::verifier::MerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::Trace;
 use crate::prover::backend::BackendForChannel;
 use crate::prover::fri::FriProver;
+use crate::prover::poly::circle::{CircleEvaluation, CirclePoly};
+use crate::prover::poly::twiddles::TwiddleTree;
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::quotients::quotient_ops::compute_fri_quotients;
 use crate::prover::vcs::prover::MerkleProver;
 
