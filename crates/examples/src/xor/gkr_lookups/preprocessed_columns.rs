@@ -1,11 +1,12 @@
 use num_traits::One;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::backend::{Col, Column};
+use stwo_prover::prover::poly::circle::CircleEvaluation;
+use stwo_prover::prover::poly::BitReversedOrder;
 
 /// A column with `1` at every `2^log_step` positions, `0` elsewhere, shifted by offset.
 #[derive(Debug)]

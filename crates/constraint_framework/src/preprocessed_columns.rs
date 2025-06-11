@@ -2,11 +2,12 @@ use std::simd::Simd;
 
 use num_traits::{One, Zero};
 use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
-use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::prover::backend::simd::m31::{PackedM31, N_LANES};
 use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::backend::{Col, Column};
+use stwo_prover::prover::poly::circle::CircleEvaluation;
+use stwo_prover::prover::poly::BitReversedOrder;
 
 /// Used for comparing preprocessed columns.
 /// Column IDs must be unique in a given context.

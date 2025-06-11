@@ -790,14 +790,15 @@ mod tests {
         fold_circle_into_line, fold_line, CirclePolyDegreeBound, FriConfig,
         CIRCLE_TO_LINE_FOLD_STEP,
     };
-    use crate::core::poly::circle::{CircleDomain, PolyOps, SecureEvaluation};
+    use crate::core::poly::circle::CircleDomain;
     use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
-    use crate::core::poly::BitReversedOrder;
     use crate::core::queries::Queries;
     use crate::core::test_utils::test_channel;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::prover::backend::cpu::CpuCirclePoly;
     use crate::prover::backend::{ColumnOps, CpuBackend};
+    use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
+    use crate::prover::poly::BitReversedOrder;
 
     /// Default blowup factor used for tests.
     const LOG_BLOWUP_FACTOR: u32 = 2;
