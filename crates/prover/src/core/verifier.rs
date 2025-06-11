@@ -8,7 +8,8 @@ use crate::core::fri::FriVerificationError;
 use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
 use crate::core::vcs::verifier::MerkleVerificationError;
-use crate::prover::PREPROCESSED_TRACE_IDX;
+
+pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
 pub fn verify<MC: MerkleChannel>(
     components: &[&dyn Component],
