@@ -791,12 +791,13 @@ mod tests {
         CIRCLE_TO_LINE_FOLD_STEP,
     };
     use crate::core::poly::circle::CircleDomain;
-    use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
+    use crate::core::poly::line::{LineDomain, LinePoly};
     use crate::core::queries::Queries;
     use crate::core::test_utils::test_channel;
     use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use crate::prover::backend::cpu::CpuCirclePoly;
     use crate::prover::backend::{ColumnOps, CpuBackend};
+    use crate::prover::line::LineEvaluation;
     use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
     use crate::prover::poly::BitReversedOrder;
 
