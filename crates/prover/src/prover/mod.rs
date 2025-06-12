@@ -18,6 +18,7 @@ pub mod backend;
 pub mod channel;
 pub mod fri;
 pub mod line;
+pub mod lookups;
 pub mod poly;
 pub mod secure_column;
 pub mod vcs;

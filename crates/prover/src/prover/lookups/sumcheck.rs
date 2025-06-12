@@ -209,9 +209,9 @@ mod tests {
     use crate::core::channel::{Blake2sChannel, Channel};
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::Field;
-    use crate::core::lookups::mle::Mle;
-    use crate::core::lookups::sumcheck::{partially_verify, prove_batch};
     use crate::prover::backend::CpuBackend;
+    use crate::prover::lookups::mle::Mle;
+    use crate::prover::lookups::sumcheck::{partially_verify, prove_batch};
 
     #[test]
     fn sumcheck_works() {

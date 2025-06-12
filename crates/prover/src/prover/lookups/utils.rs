@@ -295,7 +295,7 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::FieldExpOps;
-    use crate::core::lookups::utils::{eq, Fraction};
+    use crate::prover::lookups::utils::{eq, Fraction};
 
     #[test]
     fn lagrange_interpolation_works() {

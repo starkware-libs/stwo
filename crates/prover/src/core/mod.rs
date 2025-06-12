@@ -7,7 +7,6 @@ pub mod constraints;
 pub mod fft;
 pub mod fields;
 pub mod fri;
-pub mod lookups;
 pub mod pcs;
 pub mod poly;
 pub mod proof;

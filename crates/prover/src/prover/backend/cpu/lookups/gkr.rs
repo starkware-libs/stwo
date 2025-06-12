@@ -5,13 +5,13 @@ use num_traits::{One, Zero};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
-use crate::core::lookups::gkr_prover::{
+use crate::prover::backend::CpuBackend;
+use crate::prover::lookups::gkr_prover::{
     correct_sum_as_poly_in_first_variable, EqEvals, GkrMultivariatePolyOracle, GkrOps, Layer,
 };
-use crate::core::lookups::mle::{Mle, MleOps};
-use crate::core::lookups::sumcheck::MultivariatePolyOracle;
-use crate::core::lookups::utils::{Fraction, Reciprocal, UnivariatePoly};
-use crate::prover::backend::CpuBackend;
+use crate::prover::lookups::mle::{Mle, MleOps};
+use crate::prover::lookups::sumcheck::MultivariatePolyOracle;
+use crate::prover::lookups::utils::{Fraction, Reciprocal, UnivariatePoly};
 
 impl GkrOps for CpuBackend {
     fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Mle<Self, SecureField> {
@@ -287,12 +287,14 @@ mod tests {
     use crate::core::channel::Channel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::lookups::gkr_prover::{prove_batch, GkrOps, Layer};
-    use crate::core::lookups::gkr_verifier::{partially_verify_batch, Gate, GkrArtifact, GkrError};
-    use crate::core::lookups::mle::Mle;
-    use crate::core::lookups::utils::{eq, Fraction};
     use crate::core::test_utils::test_channel;
     use crate::prover::backend::CpuBackend;
+    use crate::prover::lookups::gkr_prover::{prove_batch, GkrOps, Layer};
+    use crate::prover::lookups::gkr_verifier::{
+        partially_verify_batch, Gate, GkrArtifact, GkrError,
+    };
+    use crate::prover::lookups::mle::Mle;
+    use crate::prover::lookups::utils::{eq, Fraction};
 
     #[test]
     fn gen_eq_evals() {

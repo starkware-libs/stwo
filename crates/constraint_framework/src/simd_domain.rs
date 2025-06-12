@@ -3,7 +3,6 @@ use std::ops::Mul;
 use num_traits::Zero;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use stwo_prover::core::lookups::utils::Fraction;
 use stwo_prover::core::pcs::TreeVec;
 use stwo_prover::core::utils::offset_bit_reversed_circle_domain_index;
 use stwo_prover::prover::backend::simd::column::VeryPackedBaseColumn;
@@ -13,6 +12,7 @@ use stwo_prover::prover::backend::simd::very_packed_m31::{
 };
 use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::backend::Column;
+use stwo_prover::prover::lookups::utils::Fraction;
 use stwo_prover::prover::poly::circle::CircleEvaluation;
 use stwo_prover::prover::poly::BitReversedOrder;
 

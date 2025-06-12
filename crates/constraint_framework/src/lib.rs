@@ -25,7 +25,7 @@ pub use simd_domain::SimdDomainEvaluator;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo_prover::core::fields::FieldExpOps;
-use stwo_prover::core::lookups::utils::Fraction;
+use stwo_prover::prover::lookups::utils::Fraction;
 
 #[rustfmt::skip]
 pub use stwo_prover::core::verifier::PREPROCESSED_TRACE_IDX;

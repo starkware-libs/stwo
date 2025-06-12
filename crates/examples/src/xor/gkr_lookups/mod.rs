@@ -6,8 +6,8 @@ pub mod preprocessed_columns;
 mod test {
     use stwo_prover::core::fields::qm31::SecureField;
     use stwo_prover::core::fields::{ExtensionOf, Field};
-    use stwo_prover::core::lookups::mle::{Mle, MleOps};
     use stwo_prover::prover::backend::Column;
+    use stwo_prover::prover::lookups::mle::{Mle, MleOps};
 
     /// Evaluates the multilinear polynomial at `point`.
     pub(crate) fn mle_eval_at_point<B, F>(
