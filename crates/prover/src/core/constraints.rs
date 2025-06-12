@@ -117,16 +117,10 @@ mod tests {
     use num_traits::Zero;
 
     use super::{coset_vanishing, point_excluder, point_vanishing};
-    use crate::core::circle::{CirclePoint, CirclePointIndex, Coset};
-    use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
+    use crate::core::circle::{CirclePointIndex, Coset};
+    use crate::core::constraints::pair_vanishing;
     use crate::core::fields::m31::{BaseField, M31};
-    use crate::core::fields::qm31::SecureField;
-    use crate::core::fields::{ComplexConjugate, FieldExpOps};
-    use crate::core::poly::circle::CanonicCoset;
-    use crate::core::test_utils::secure_eval_to_base_eval;
-    use crate::m31;
-    use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
-    use crate::prover::poly::NaturalOrder;
+    use crate::core::fields::FieldExpOps;
 
     #[test]
     fn test_coset_vanishing() {
@@ -194,6 +188,19 @@ mod tests {
         let point = coset.at(4);
         point_vanishing(point, point.antipode());
     }
+}
+
+#[cfg(all(test, feature = "prover"))]
+mod tests_using_prover {
+    use crate::core::circle::CirclePoint;
+    use crate::core::constraints::{complex_conjugate_line, pair_vanishing};
+    use crate::core::fields::qm31::SecureField;
+    use crate::core::fields::ComplexConjugate;
+    use crate::core::poly::circle::CanonicCoset;
+    use crate::core::test_utils::secure_eval_to_base_eval;
+    use crate::m31;
+    use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
+    use crate::prover::poly::NaturalOrder;
 
     #[test]
     fn test_complex_conjugate_symmetry() {

@@ -12,7 +12,7 @@ pub mod poly;
 pub mod proof;
 pub mod proof_of_work;
 pub mod queries;
-#[cfg(test)]
+#[cfg(all(test, feature = "prover"))]
 pub mod test_utils;
 pub mod utils;
 pub mod vcs;
