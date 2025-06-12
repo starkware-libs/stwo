@@ -6,8 +6,8 @@ use super::utils::{eq, fold_mle_evals, random_linear_combination};
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::lookups::sumcheck;
-use crate::core::lookups::utils::Fraction;
+use crate::prover::lookups::sumcheck;
+use crate::prover::lookups::utils::Fraction;
 
 /// Partially verifies a batch GKR proof.
 ///
@@ -284,10 +284,10 @@ mod tests {
     use super::{partially_verify_batch, Gate, GkrArtifact, GkrError};
     use crate::core::channel::Channel;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::lookups::gkr_prover::{prove_batch, Layer};
-    use crate::core::lookups::mle::Mle;
     use crate::core::test_utils::test_channel;
     use crate::prover::backend::CpuBackend;
+    use crate::prover::lookups::gkr_prover::{prove_batch, Layer};
+    use crate::prover::lookups::mle::Mle;
 
     #[test]
     fn prove_batch_works() -> Result<(), GkrError> {

@@ -2,9 +2,9 @@ use std::ops::Mul;
 
 use stwo_prover::core::air::accumulation::PointEvaluationAccumulator;
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use stwo_prover::core::lookups::utils::Fraction;
 use stwo_prover::core::pcs::TreeVec;
 use stwo_prover::core::ColumnVec;
+use stwo_prover::prover::lookups::utils::Fraction;
 
 use super::logup::LogupAtRow;
 use super::{EvalAtRow, INTERACTION_TRACE_IDX};

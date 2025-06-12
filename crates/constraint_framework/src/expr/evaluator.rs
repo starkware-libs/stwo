@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use num_traits::Zero;
-use stwo_prover::core::lookups::utils::Fraction;
+use stwo_prover::prover::lookups::utils::Fraction;
 
 use super::assignment::{ExprVarAssignment, ExprVariables};
 use super::degree::NamedExprs;

@@ -16,15 +16,15 @@ use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, FieldExpOps};
-use crate::core::lookups::sumcheck;
 use crate::prover::backend::{Col, Column, ColumnOps, CpuBackend};
+use crate::prover::lookups::sumcheck;
 
 pub trait GkrOps: MleOps<BaseField> + MleOps<SecureField> {
     /// Returns evaluations `eq(x, y) * v` for all `x` in `{0, 1}^n`.
     ///
     /// Note [`Mle`] stores values in bit-reversed order.
     ///
-    /// [`eq(x, y)`]: crate::core::lookups::utils::eq
+    /// [`eq(x, y)`]: crate::prover::lookups::utils::eq
     fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Mle<Self, SecureField>;
 
     /// Generates the next GKR layer from the current one.
@@ -47,7 +47,7 @@ pub trait GkrOps: MleOps<BaseField> + MleOps<SecureField> {
 /// Evaluations are stored in bit-reversed order i.e. `evals[0] = eq((0, ..., 0, 0), y)`,
 /// `evals[1] = eq((0, ..., 0, 1), y)`, etc.
 ///
-/// [`eq(x, y)`]: crate::core::lookups::utils::eq
+/// [`eq(x, y)`]: crate::prover::lookups::utils::eq
 #[derive(Educe)]
 #[educe(Debug, Clone)]
 pub struct EqEvals<B: ColumnOps<SecureField>> {
@@ -224,7 +224,7 @@ impl<B: GkrOps> Layer<B> {
     /// implementation because the prover only has to generate `eq_evals` once for an entire batch
     /// of multiple GKR layer instances.
     ///
-    /// [`eq(x, y)`]: crate::core::lookups::utils::eq
+    /// [`eq(x, y)`]: crate::prover::lookups::utils::eq
     /// [^note]: By "representing" we mean `g_i` agrees with the next layer's `c_i` on the boolean
     /// hypercube that interpolates `c_i`.
     fn into_multivariate_poly(
