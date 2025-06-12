@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-parallel = ["dep:rayon"]
+parallel = ["dep:rayon", "stwo-prover/parallel"]
 
 [dependencies]
 rayon = { workspace = true, optional = true }
