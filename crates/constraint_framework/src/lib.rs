@@ -9,6 +9,7 @@ mod info;
 pub mod logup;
 mod point;
 pub mod preprocessed_columns;
+mod prover;
 pub mod relation_tracker;
 mod simd_domain;
 
