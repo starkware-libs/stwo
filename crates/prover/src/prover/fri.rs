@@ -12,11 +12,12 @@ use crate::core::fri::{
     get_query_positions_by_log_size, FriConfig, FriLayerProof, FriProof, CIRCLE_TO_LINE_FOLD_STEP,
     FOLD_STEP,
 };
-use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
+use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::core::queries::Queries;
 use crate::core::secure_column::SecureColumnByCoords;
 use crate::core::vcs::ops::MerkleHasher;
 use crate::prover::backend::{Col, ColumnOps};
+use crate::prover::line::LineEvaluation;
 use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
@@ -444,12 +445,13 @@ mod tests {
         FriVerificationError, CIRCLE_TO_LINE_FOLD_STEP,
     };
     use crate::core::poly::circle::CircleDomain;
-    use crate::core::poly::line::{LineDomain, LineEvaluation, LinePoly};
+    use crate::core::poly::line::{LineDomain, LinePoly};
     use crate::core::queries::Queries;
     use crate::core::test_utils::test_channel;
     use crate::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
     use crate::prover::backend::cpu::CpuCirclePoly;
     use crate::prover::backend::{ColumnOps, CpuBackend};
+    use crate::prover::line::LineEvaluation;
     use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
     use crate::prover::poly::BitReversedOrder;
 
