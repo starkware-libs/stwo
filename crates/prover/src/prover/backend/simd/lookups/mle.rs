@@ -4,12 +4,12 @@ use std::ops::{Add, Mul};
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::lookups::mle::{Mle, MleOps};
 use crate::prover::backend::simd::column::SecureColumn;
 use crate::prover::backend::simd::m31::N_LANES;
 use crate::prover::backend::simd::qm31::PackedSecureField;
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::{Column, CpuBackend};
+use crate::prover::lookups::mle::{Mle, MleOps};
 
 impl MleOps<BaseField> for SimdBackend {
     fn fix_first_variable(
@@ -96,10 +96,10 @@ mod tests {
     use crate::core::channel::Channel;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::lookups::mle::Mle;
     use crate::core::test_utils::test_channel;
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::{Column, CpuBackend};
+    use crate::prover::lookups::mle::Mle;
 
     #[test]
     fn fix_first_variable_with_secure_field_mle_matches_cpu() {

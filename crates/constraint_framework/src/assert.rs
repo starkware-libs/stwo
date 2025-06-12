@@ -4,7 +4,6 @@ use num_traits::Zero;
 use rayon::prelude::*;
 use stwo_prover::core::fields::m31::{BaseField, M31};
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use stwo_prover::core::lookups::utils::Fraction;
 use stwo_prover::core::pcs::TreeVec;
 use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::utils::{
@@ -12,6 +11,7 @@ use stwo_prover::core::utils::{
 };
 use stwo_prover::parallel_iter;
 use stwo_prover::prover::backend::{Backend, Column};
+use stwo_prover::prover::lookups::utils::Fraction;
 use stwo_prover::prover::poly::circle::CirclePoly;
 
 use super::logup::LogupAtRow;

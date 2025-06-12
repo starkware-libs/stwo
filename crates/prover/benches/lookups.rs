@@ -4,10 +4,10 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use stwo_prover::core::channel::Blake2sChannel;
 use stwo_prover::core::fields::Field;
-use stwo_prover::core::lookups::gkr_prover::{prove_batch, GkrOps, Layer};
-use stwo_prover::core::lookups::mle::{Mle, MleOps};
 use stwo_prover::prover::backend::simd::SimdBackend;
 use stwo_prover::prover::backend::CpuBackend;
+use stwo_prover::prover::lookups::gkr_prover::{prove_batch, GkrOps, Layer};
+use stwo_prover::prover::lookups::mle::{Mle, MleOps};
 
 const LOG_N_ROWS: u32 = 16;
 

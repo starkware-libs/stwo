@@ -4,10 +4,10 @@ use num_traits::{One, Zero};
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::lookups::mle::{Mle, MleOps};
-use crate::core::lookups::sumcheck::MultivariatePolyOracle;
-use crate::core::lookups::utils::{fold_mle_evals, UnivariatePoly};
 use crate::prover::backend::CpuBackend;
+use crate::prover::lookups::mle::{Mle, MleOps};
+use crate::prover::lookups::sumcheck::MultivariatePolyOracle;
+use crate::prover::lookups::utils::{fold_mle_evals, UnivariatePoly};
 
 impl MleOps<BaseField> for CpuBackend {
     fn fix_first_variable(
