@@ -6,7 +6,6 @@ use std::iter::zip;
 
 use itertools::{chain, zip_eq, Itertools};
 use num_traits::{One, Zero};
-use stwo_constraint_framework::preprocessed_columns::IsFirst;
 use stwo_constraint_framework::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, TraceLocationAllocator,
 };
@@ -44,6 +43,7 @@ use tracing::{span, Level};
 
 #[cfg(test)]
 use crate::xor::gkr_lookups::test::mle_eval_at_point;
+use crate::xor::gkr_lookups::IsFirst;
 
 /// Prover component that carries out a univariate IOP for multilinear eval at point.
 ///
@@ -743,7 +743,6 @@ mod tests {
     use num_traits::{One, Zero};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
-    use stwo_constraint_framework::preprocessed_columns::IsFirst;
     use stwo_constraint_framework::{
         assert_constraints_on_polys, EvalAtRow, TraceLocationAllocator,
     };
@@ -775,6 +774,7 @@ mod tests {
     use crate::xor::gkr_lookups::mle_eval::eval_step_selector_with_offset;
     use crate::xor::gkr_lookups::preprocessed_columns::IsStepWithOffset;
     use crate::xor::gkr_lookups::test::mle_eval_at_point;
+    use crate::xor::gkr_lookups::IsFirst;
 
     #[test]
     fn mle_eval_prover_component() -> Result<(), VerificationError> {
