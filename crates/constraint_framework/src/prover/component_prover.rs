@@ -21,9 +21,9 @@ use stwo_prover::prover::secure_column::SecureColumnByCoords;
 use stwo_prover::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
 use tracing::{span, Level};
 
-use super::cpu_domain::CpuDomainEvaluator;
-use super::{SimdDomainEvaluator, PREPROCESSED_TRACE_IDX};
-use crate::{FrameworkComponent, FrameworkEval};
+use crate::cpu_domain::CpuDomainEvaluator;
+use crate::simd_domain::SimdDomainEvaluator;
+use crate::{FrameworkComponent, FrameworkEval, PREPROCESSED_TRACE_IDX};
 
 const CHUNK_SIZE: usize = 1;
 

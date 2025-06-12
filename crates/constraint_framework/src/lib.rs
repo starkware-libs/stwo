@@ -2,7 +2,6 @@
 /// ! This module contains helpers to express and use constraints for components.
 mod assert;
 mod component;
-mod component_prover;
 mod cpu_domain;
 pub mod expr;
 mod info;
