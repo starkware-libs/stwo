@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [features]
+prover = []
 parallel = ["rayon"]
 slow-tests = []
 tracing = []
@@ -67,35 +68,44 @@ name = "bit_rev"
 [[bench]]
 harness = false
 name = "eval_at_point"
+required-features = ["prover"]
 
 [[bench]]
 harness = false
 name = "fft"
+required-features = ["prover"]
 
 [[bench]]
 harness = false
 name = "field"
+required-features = ["prover"]
 
 [[bench]]
 harness = false
 name = "fri"
+required-features = ["prover"]
 
 [[bench]]
 harness = false
 name = "lookups"
+required-features = ["prover"]
 
 [[bench]]
 harness = false
 name = "merkle"
+required-features = ["prover"]
 
 [[bench]]
 harness = false
 name = "prefix_sum"
+required-features = ["prover"]
 
 [[bench]]
 harness = false
 name = "quotients"
+required-features = ["prover"]
 
 [[bench]]
 harness = false
 name = "pcs"
+required-features = ["prover"]

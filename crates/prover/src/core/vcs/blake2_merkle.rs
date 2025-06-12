@@ -45,7 +45,7 @@ impl MerkleChannel for Blake2sMerkleChannel {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "prover"))]
 mod tests {
     use num_traits::Zero;
 
