@@ -14,11 +14,11 @@ pub use fri::{fold_circle_into_line_cpu, fold_line_cpu};
 use serde::{Deserialize, Serialize};
 
 use super::{Backend, BackendForChannel, Column, ColumnOps};
-use crate::core::lookups::mle::Mle;
 use crate::core::utils::bit_reverse;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+use crate::prover::lookups::mle::Mle;
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly};
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]

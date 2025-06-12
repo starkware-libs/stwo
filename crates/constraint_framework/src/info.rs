@@ -8,8 +8,8 @@ use num_traits::{One, Zero};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::fields::FieldExpOps;
-use stwo_prover::core::lookups::utils::Fraction;
 use stwo_prover::core::pcs::TreeVec;
+use stwo_prover::prover::lookups::utils::Fraction;
 
 use super::logup::LogupAtRow;
 use super::preprocessed_columns::PreProcessedColumnId;
