@@ -73,7 +73,7 @@ mod tests {
     use crate::core::channel::Blake2sChannel;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::queries::Queries;
-    use crate::prover::backend::cpu::bit_reverse;
+    use crate::core::utils::bit_reverse;
 
     #[test]
     fn test_generate_queries() {

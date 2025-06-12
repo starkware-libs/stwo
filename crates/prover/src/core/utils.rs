@@ -57,6 +57,23 @@ pub const fn bit_reverse_index(i: usize, log_size: u32) -> usize {
     i.reverse_bits() >> (usize::BITS - log_size)
 }
 
+/// Performs a naive bit-reversal permutation inplace.
+///
+/// # Panics
+///
+/// Panics if the length of the slice is not a power of two.
+pub fn bit_reverse<T>(v: &mut [T]) {
+    let n = v.len();
+    assert!(n.is_power_of_two());
+    let log_n = n.ilog2();
+    for i in 0..n {
+        let j = bit_reverse_index(i, log_n);
+        if j > i {
+            v.swap(i, j);
+        }
+    }
+}
+
 /// Returns the index of the previous element in a bit reversed
 /// [super::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a smaller domain
 /// of size `domain_log_size`.

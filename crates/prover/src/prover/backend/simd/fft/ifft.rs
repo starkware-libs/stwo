@@ -10,8 +10,8 @@ use super::{
     compute_first_twiddles, mul_twiddle, transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE,
 };
 use crate::core::circle::Coset;
+use crate::core::utils::bit_reverse;
 use crate::parallel_iter;
-use crate::prover::backend::cpu::bit_reverse;
 use crate::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use crate::prover::backend::simd::utils::UnsafeMut;
 

@@ -5,8 +5,9 @@ use itertools::{izip, Itertools};
 use num_traits::Zero;
 
 use crate::core::fields::m31::BaseField;
-use crate::core::utils::{circle_domain_order_to_coset_order, coset_order_to_circle_domain_order};
-use crate::prover::backend::cpu::bit_reverse;
+use crate::core::utils::{
+    bit_reverse, circle_domain_order_to_coset_order, coset_order_to_circle_domain_order,
+};
 use crate::prover::backend::simd::m31::{PackedBaseField, N_LANES};
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::{Col, Column};
