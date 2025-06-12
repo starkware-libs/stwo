@@ -112,7 +112,7 @@ mod tests {
             5,
         ));
         let mut expected = domain.iter().collect::<Vec<_>>();
-        crate::prover::backend::cpu::bit_reverse(&mut expected);
+        crate::core::utils::bit_reverse(&mut expected);
         let actual = CircleDomainBitRevIterator::new(domain)
             .flat_map(|c| -> [_; 16] {
                 std::array::from_fn(|i| CirclePoint {

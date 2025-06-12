@@ -11,7 +11,7 @@ use crate::core::circle::{CirclePoint, Coset, CosetIterator};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::utils::fold;
-use crate::prover::backend::cpu::bit_reverse;
+use crate::core::utils::bit_reverse;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///
