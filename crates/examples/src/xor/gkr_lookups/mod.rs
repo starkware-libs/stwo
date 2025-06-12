@@ -1,6 +1,38 @@
+use num_traits::One;
+use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
+use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::poly::circle::CanonicCoset;
+use stwo_prover::prover::backend::simd::SimdBackend;
+use stwo_prover::prover::backend::{Col, Column};
+use stwo_prover::prover::poly::circle::CircleEvaluation;
+use stwo_prover::prover::poly::BitReversedOrder;
+
 pub mod accumulation;
 pub mod mle_eval;
 pub mod preprocessed_columns;
+
+/// A column with `1` at the first position, and `0` elsewhere.
+#[derive(Debug, Clone)]
+pub struct IsFirst {
+    pub log_size: u32,
+}
+impl IsFirst {
+    pub const fn new(log_size: u32) -> Self {
+        Self { log_size }
+    }
+
+    pub fn gen_column_simd(&self) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
+        let mut col = Col::<SimdBackend, BaseField>::zeros(1 << self.log_size);
+        col.set(0, BaseField::one());
+        CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
+    }
+
+    pub fn id(&self) -> PreProcessedColumnId {
+        PreProcessedColumnId {
+            id: format!("preprocessed_is_first_{}", self.log_size).to_string(),
+        }
+    }
+}
 
 #[cfg(test)]
 mod test {
