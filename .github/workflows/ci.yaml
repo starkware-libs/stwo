@@ -91,7 +91,7 @@ jobs:
         with:
           toolchain: nightly-2025-04-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2025-04-06 test
+      - run: cargo +nightly-2025-04-06 test --features="prover"
         env:
           RUSTFLAGS: -C target-feature=+neon
 
@@ -107,7 +107,7 @@ jobs:
         with:
           toolchain: nightly-2025-04-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2025-04-06 test
+      - run: cargo +nightly-2025-04-06 test --features="prover"
         env:
           RUSTFLAGS: -C target-cpu=native -C target-feature=+${{ matrix.target-feature }}
 
@@ -169,6 +169,16 @@ jobs:
           comment-on-alert: true
           alert-comment-cc-users: "@shaharsamocha7"
 
+  run-tests-no-prover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-04-06
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo +nightly-2025-04-06 test
+
   run-tests:
     runs-on: ubuntu-latest
     steps:
@@ -177,7 +187,7 @@ jobs:
         with:
           toolchain: nightly-2025-04-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2025-04-06 test --features="tracing"
+      - run: cargo +nightly-2025-04-06 test --features="tracing, prover"
 
   run-slow-tests:
     runs-on: ubuntu-latest
@@ -187,7 +197,7 @@ jobs:
         with:
           toolchain: nightly-2025-04-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2025-04-06 test --release --features="slow-tests"
+      - run: cargo +nightly-2025-04-06 test --release --features="slow-tests, prover"
 
   run-tests-parallel:
     runs-on: ubuntu-latest
@@ -197,7 +207,7 @@ jobs:
         with:
           toolchain: nightly-2025-04-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2025-04-06 test --features="parallel"
+      - run: cargo +nightly-2025-04-06 test --features="parallel, prover"
 
   machete:
     runs-on: ubuntu-latest

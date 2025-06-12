@@ -74,7 +74,7 @@ impl MerkleChannel for Poseidon252MerkleChannel {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "prover"))]
 mod tests {
     use std::time::Instant;
 

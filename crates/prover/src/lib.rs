@@ -16,6 +16,7 @@
 )]
 pub mod core;
 
+#[cfg(feature = "prover")]
 pub mod prover;
 #[cfg(feature = "tracing")]
 pub mod tracing;
