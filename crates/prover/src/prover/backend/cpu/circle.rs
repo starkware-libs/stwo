@@ -8,7 +8,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{batch_inverse_in_place, ExtensionOf};
 use crate::core::poly::circle::CircleDomain;
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
-use crate::prover::backend::cpu::bit_reverse;
+use crate::core::utils::bit_reverse;
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
