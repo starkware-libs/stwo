@@ -3,7 +3,7 @@ use std::simd::u32x16;
 use itertools::{chain, multiunzip, Itertools};
 use num_traits::Zero;
 use serde::Serialize;
-use stwo_constraint_framework::preprocessed_columns::{IsFirst, PreProcessedColumnId};
+use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_constraint_framework::{TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
 use stwo_prover::core::air::Component;
 use stwo_prover::core::channel::{Channel, MerkleChannel};
@@ -28,53 +28,43 @@ use crate::blake::round::RoundElements;
 use crate::blake::scheduler::{self, blake_scheduler_info, BlakeElements, BlakeInput};
 use crate::blake::{round, xor_table, BlakeXorElements, XorAccums, N_ROUNDS, ROUND_LOG_SPLIT};
 
-fn preprocessed_xor_columns() -> [PreProcessedColumnId; 20] {
+fn preprocessed_xor_columns() -> [PreProcessedColumnId; 15] {
     [
         XorTable::new(12, 4, 0).id(),
         XorTable::new(12, 4, 1).id(),
         XorTable::new(12, 4, 2).id(),
-        IsFirst::new(XorTable::new(12, 4, 0).column_bits()).id(),
         XorTable::new(9, 2, 0).id(),
         XorTable::new(9, 2, 1).id(),
         XorTable::new(9, 2, 2).id(),
-        IsFirst::new(XorTable::new(9, 2, 0).column_bits()).id(),
         XorTable::new(8, 2, 0).id(),
         XorTable::new(8, 2, 1).id(),
         XorTable::new(8, 2, 2).id(),
-        IsFirst::new(XorTable::new(8, 2, 0).column_bits()).id(),
         XorTable::new(7, 2, 0).id(),
         XorTable::new(7, 2, 1).id(),
         XorTable::new(7, 2, 2).id(),
-        IsFirst::new(XorTable::new(7, 2, 0).column_bits()).id(),
         XorTable::new(4, 0, 0).id(),
         XorTable::new(4, 0, 1).id(),
         XorTable::new(4, 0, 2).id(),
-        IsFirst::new(XorTable::new(4, 0, 0).column_bits()).id(),
     ]
 }
 
-const fn preprocessed_xor_columns_log_sizes() -> [u32; 20] {
+const fn preprocessed_xor_columns_log_sizes() -> [u32; 15] {
     [
         XorTable::new(12, 4, 0).column_bits(),
         XorTable::new(12, 4, 1).column_bits(),
         XorTable::new(12, 4, 2).column_bits(),
-        XorTable::new(12, 4, 0).column_bits(),
         XorTable::new(9, 2, 0).column_bits(),
         XorTable::new(9, 2, 1).column_bits(),
         XorTable::new(9, 2, 2).column_bits(),
-        XorTable::new(9, 2, 0).column_bits(),
         XorTable::new(8, 2, 0).column_bits(),
         XorTable::new(8, 2, 1).column_bits(),
         XorTable::new(8, 2, 2).column_bits(),
-        XorTable::new(8, 2, 0).column_bits(),
         XorTable::new(7, 2, 0).column_bits(),
         XorTable::new(7, 2, 1).column_bits(),
         XorTable::new(7, 2, 2).column_bits(),
-        XorTable::new(7, 2, 0).column_bits(),
         XorTable::new(4, 0, 0).column_bits(),
         XorTable::new(4, 0, 1).column_bits(),
         XorTable::new(4, 0, 2).column_bits(),
-        XorTable::new(4, 0, 0).column_bits(),
     ]
 }
 
@@ -107,17 +97,7 @@ impl BlakeStatement0 {
 
         let mut log_sizes = TreeVec::concat_cols(sizes.into_iter());
 
-        let log_size = self.log_size;
-
-        let scheduler_is_first_column_log_size = log_size;
-        let blake_round_is_first_column_log_sizes = ROUND_LOG_SPLIT.iter().map(|l| log_size + l);
-
-        log_sizes[PREPROCESSED_TRACE_IDX] = chain!(
-            [scheduler_is_first_column_log_size],
-            blake_round_is_first_column_log_sizes,
-            preprocessed_xor_columns_log_sizes(),
-        )
-        .collect_vec();
+        log_sizes[PREPROCESSED_TRACE_IDX] = preprocessed_xor_columns_log_sizes().into();
 
         log_sizes
     }
@@ -186,21 +166,8 @@ pub struct BlakeComponents {
 }
 impl BlakeComponents {
     fn new(stmt0: &BlakeStatement0, all_elements: &AllElements, stmt1: &BlakeStatement1) -> Self {
-        let log_size = stmt0.log_size;
-
-        let scheduler_is_first_column = IsFirst::new(log_size).id();
-        let blake_round_is_first_columns_iter: Vec<PreProcessedColumnId> = ROUND_LOG_SPLIT
-            .iter()
-            .map(|l| IsFirst::new(log_size + l).id())
-            .collect_vec();
-
         let tree_span_provider = &mut TraceLocationAllocator::new_with_preproccessed_columns(
-            &chain!(
-                [scheduler_is_first_column],
-                blake_round_is_first_columns_iter,
-                preprocessed_xor_columns(),
-            )
-            .collect_vec()[..],
+            &preprocessed_xor_columns(),
         );
 
         Self {
@@ -347,10 +314,6 @@ where
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(
         chain![
-            vec![IsFirst::new(log_size).gen_column_simd()],
-            ROUND_LOG_SPLIT
-                .iter()
-                .map(|l| IsFirst::new(log_size + l).gen_column_simd()),
             XorTable::new(12, 4, 0).generate_constant_trace(),
             XorTable::new(9, 2, 0).generate_constant_trace(),
             XorTable::new(8, 2, 0).generate_constant_trace(),

@@ -17,7 +17,6 @@ use std::simd::u32x16;
 
 use itertools::Itertools;
 use num_traits::Zero;
-use stwo_constraint_framework::preprocessed_columns::IsFirst;
 use stwo_constraint_framework::prover::logup::LogupTraceGenerator;
 use stwo_constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, Relation, RelationEntry,

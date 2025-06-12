@@ -55,7 +55,6 @@ mod tests {
     use std::simd::Simd;
 
     use itertools::Itertools;
-    use stwo_constraint_framework::preprocessed_columns::IsFirst;
     use stwo_constraint_framework::FrameworkEval;
     use stwo_prover::core::poly::circle::CanonicCoset;
 
@@ -90,11 +89,7 @@ mod tests {
             &round_lookup_elements,
         );
 
-        let trace = TreeVec::new(vec![
-            vec![IsFirst::new(LOG_SIZE).gen_column_simd()],
-            trace,
-            interaction_trace,
-        ]);
+        let trace = TreeVec::new(vec![vec![], trace, interaction_trace]);
         let trace_polys = trace.map_cols(|c| c.interpolate());
 
         let component = BlakeRoundEval {

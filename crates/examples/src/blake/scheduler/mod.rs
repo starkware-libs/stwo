@@ -56,7 +56,6 @@ mod tests {
     use std::simd::Simd;
 
     use itertools::Itertools;
-    use stwo_constraint_framework::preprocessed_columns::IsFirst;
     use stwo_constraint_framework::FrameworkEval;
     use stwo_prover::prover::backend::Column;
 
@@ -90,7 +89,7 @@ mod tests {
         );
 
         let trace = TreeVec::new(vec![
-            vec![IsFirst::new(LOG_SIZE).gen_column_simd().values.to_cpu()],
+            vec![],
             trace.into_iter().map(|x| x.values.to_cpu()).collect(),
             interaction_trace
                 .into_iter()
