@@ -1,10 +1,11 @@
-use std::iter::{zip, Sum};
+use std::iter::zip;
 use std::ops::{Add, Deref, Mul, Neg, Sub};
 
-use num_traits::{One, Zero};
+use num_traits::Zero;
 
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
+use crate::core::utils::Fraction;
 
 /// Univariate polynomial stored as coefficients in the monomial basis.
 #[derive(Debug, Clone)]
@@ -194,62 +195,6 @@ where
     assignment * (eval1 - eval0) + eval0
 }
 
-/// Projective fraction.
-#[derive(Debug, Clone, Copy)]
-pub struct Fraction<N, D> {
-    pub numerator: N,
-    pub denominator: D,
-}
-
-impl<N, D> Fraction<N, D> {
-    pub const fn new(numerator: N, denominator: D) -> Self {
-        Self {
-            numerator,
-            denominator,
-        }
-    }
-}
-
-impl<N, D: Add<Output = D> + Add<N, Output = D> + Mul<N, Output = D> + Mul<Output = D> + Clone> Add
-    for Fraction<N, D>
-{
-    type Output = Fraction<D, D>;
-
-    fn add(self, rhs: Self) -> Fraction<D, D> {
-        Fraction {
-            numerator: rhs.denominator.clone() * self.numerator
-                + self.denominator.clone() * rhs.numerator,
-            denominator: self.denominator * rhs.denominator,
-        }
-    }
-}
-
-impl<N: Zero, D: One + Zero> Zero for Fraction<N, D>
-where
-    Self: Add<Output = Self>,
-{
-    fn zero() -> Self {
-        Self {
-            numerator: N::zero(),
-            denominator: D::one(),
-        }
-    }
-
-    fn is_zero(&self) -> bool {
-        self.numerator.is_zero() && !self.denominator.is_zero()
-    }
-}
-
-impl<N, D> Sum for Fraction<N, D>
-where
-    Self: Zero,
-{
-    fn sum<I: Iterator<Item = Self>>(mut iter: I) -> Self {
-        let first = iter.next().unwrap_or_else(Self::zero);
-        iter.fold(first, |a, b| a + b)
-    }
-}
-
 /// Represents the fraction `1 / x`
 pub struct Reciprocal<T> {
     x: T,
@@ -295,7 +240,8 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::FieldExpOps;
-    use crate::prover::lookups::utils::{eq, Fraction};
+    use crate::core::utils::Fraction;
+    use crate::prover::lookups::utils::eq;
 
     #[test]
     fn lagrange_interpolation_works() {
