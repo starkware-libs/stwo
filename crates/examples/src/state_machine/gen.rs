@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use stwo_constraint_framework::logup::LogupTraceGenerator;
+use stwo_constraint_framework::prover::logup::LogupTraceGenerator;
 use stwo_constraint_framework::Relation;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::qm31::QM31;

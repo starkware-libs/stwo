@@ -6,7 +6,7 @@ use itertools::Itertools;
 use num_traits::One;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use stwo_constraint_framework::logup::LogupTraceGenerator;
+use stwo_constraint_framework::prover::logup::LogupTraceGenerator;
 use stwo_constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
     TraceLocationAllocator,
