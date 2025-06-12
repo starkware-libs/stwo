@@ -22,9 +22,10 @@ use stwo_prover::core::lookups::mle::Mle;
 use stwo_prover::core::lookups::utils::eq;
 use stwo_prover::core::pcs::{TreeSubspan, TreeVec};
 use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
+use stwo_prover::core::utils::{
+    bit_reverse, bit_reverse_index, coset_index_to_circle_domain_index,
+};
 use stwo_prover::core::ColumnVec;
-use stwo_prover::prover::backend::cpu::bit_reverse;
 use stwo_prover::prover::backend::simd::column::{SecureColumn, VeryPackedSecureColumnByCoords};
 use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
 use stwo_prover::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
@@ -754,10 +755,9 @@ mod tests {
     use stwo_prover::core::lookups::mle::Mle;
     use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo_prover::core::poly::circle::CanonicCoset;
-    use stwo_prover::core::utils::coset_order_to_circle_domain_order;
+    use stwo_prover::core::utils::{bit_reverse, coset_order_to_circle_domain_order};
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use stwo_prover::core::verifier::{verify, VerificationError};
-    use stwo_prover::prover::backend::cpu::bit_reverse;
     use stwo_prover::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
     use stwo_prover::prover::backend::simd::qm31::PackedSecureField;
     use stwo_prover::prover::backend::simd::SimdBackend;

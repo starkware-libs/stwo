@@ -16,8 +16,8 @@ use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::fields::FieldExpOps;
 use stwo_prover::core::pcs::{TreeSubspan, TreeVec};
 use stwo_prover::core::poly::circle::CanonicCoset;
+use stwo_prover::core::utils::bit_reverse;
 use stwo_prover::core::ColumnVec;
-use stwo_prover::prover::backend::cpu::bit_reverse;
 use stwo_prover::prover::backend::simd::column::VeryPackedSecureColumnByCoords;
 use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
 use stwo_prover::prover::backend::simd::very_packed_m31::{

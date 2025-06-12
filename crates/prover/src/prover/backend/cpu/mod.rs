@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{Backend, BackendForChannel, Column, ColumnOps};
 use crate::core::lookups::mle::Mle;
-use crate::core::utils::bit_reverse_index;
+use crate::core::utils::bit_reverse;
 use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
@@ -28,23 +28,6 @@ impl Backend for CpuBackend {}
 impl BackendForChannel<Blake2sMerkleChannel> for CpuBackend {}
 #[cfg(not(target_arch = "wasm32"))]
 impl BackendForChannel<Poseidon252MerkleChannel> for CpuBackend {}
-
-/// Performs a naive bit-reversal permutation inplace.
-///
-/// # Panics
-///
-/// Panics if the length of the slice is not a power of two.
-pub fn bit_reverse<T>(v: &mut [T]) {
-    let n = v.len();
-    assert!(n.is_power_of_two());
-    let log_n = n.ilog2();
-    for i in 0..n {
-        let j = bit_reverse_index(i, log_n);
-        if j > i {
-            v.swap(i, j);
-        }
-    }
-}
 
 impl<T: Debug + Clone + Default> ColumnOps<T> for CpuBackend {
     type Column = Vec<T>;
