@@ -2,10 +2,9 @@ use itertools::Itertools;
 use num_traits::One;
 use stwo_constraint_framework::logup::LookupElements;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
-use stwo_constraint_framework::prover::logup::LogupTraceGenerator;
 use stwo_constraint_framework::{
     assert_constraints_on_polys, relation, EvalAtRow, FrameworkComponent, FrameworkEval,
-    RelationEntry, TraceLocationAllocator,
+    LogupTraceGenerator, RelationEntry, TraceLocationAllocator,
 };
 use stwo_prover::core::channel::Blake2sChannel;
 use stwo_prover::core::fields::m31::BaseField;
