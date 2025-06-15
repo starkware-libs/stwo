@@ -6,10 +6,9 @@ use itertools::Itertools;
 use num_traits::One;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use stwo_constraint_framework::prover::logup::LogupTraceGenerator;
 use stwo_constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
-    TraceLocationAllocator,
+    relation, EvalAtRow, FrameworkComponent, FrameworkEval, LogupTraceGenerator, Relation,
+    RelationEntry, TraceLocationAllocator,
 };
 use stwo_prover::core::channel::Blake2sChannel;
 use stwo_prover::core::fields::m31::BaseField;

@@ -2,8 +2,7 @@ use std::simd::u32x16;
 
 use itertools::{chain, Itertools};
 use num_traits::Zero;
-use stwo_constraint_framework::prover::logup::LogupTraceGenerator;
-use stwo_constraint_framework::{Relation, ORIGINAL_TRACE_IDX};
+use stwo_constraint_framework::{LogupTraceGenerator, Relation, ORIGINAL_TRACE_IDX};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::poly::circle::CanonicCoset;
