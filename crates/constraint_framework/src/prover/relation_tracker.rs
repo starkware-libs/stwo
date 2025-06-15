@@ -12,7 +12,7 @@ use stwo_prover::core::utils::{
 };
 use stwo_prover::prover::backend::Column;
 
-use super::{
+use crate::{
     Batching, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
     INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };

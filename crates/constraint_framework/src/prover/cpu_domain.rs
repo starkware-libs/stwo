@@ -9,8 +9,8 @@ use stwo_prover::prover::backend::CpuBackend;
 use stwo_prover::prover::poly::circle::CircleEvaluation;
 use stwo_prover::prover::poly::BitReversedOrder;
 
-use super::logup::LogupAtRow;
-use super::{EvalAtRow, INTERACTION_TRACE_IDX};
+use crate::logup::LogupAtRow;
+use crate::{EvalAtRow, INTERACTION_TRACE_IDX};
 
 /// Evaluates constraints at an evaluation domain points.
 pub struct CpuDomainEvaluator<'a> {
@@ -93,5 +93,5 @@ impl EvalAtRow for CpuDomainEvaluator<'_> {
         SecureField::from_m31_array(values)
     }
 
-    super::logup_proxy!();
+    crate::logup_proxy!();
 }

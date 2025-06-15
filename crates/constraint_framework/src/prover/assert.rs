@@ -14,8 +14,8 @@ use stwo_prover::parallel_iter;
 use stwo_prover::prover::backend::{Backend, Column};
 use stwo_prover::prover::poly::circle::CirclePoly;
 
-use super::logup::LogupAtRow;
-use super::{EvalAtRow, INTERACTION_TRACE_IDX};
+use crate::logup::LogupAtRow;
+use crate::{EvalAtRow, INTERACTION_TRACE_IDX};
 
 /// Evaluates expressions at a trace domain row, and asserts constraints. Mainly used for testing.
 pub struct AssertEvaluator<'a> {
@@ -96,7 +96,7 @@ impl EvalAtRow for AssertEvaluator<'_> {
         SecureField::from_m31_array(values)
     }
 
-    super::logup_proxy!();
+    crate::logup_proxy!();
 }
 
 pub fn assert_constraints_on_polys<B: Backend>(

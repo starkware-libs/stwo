@@ -1,28 +1,27 @@
 #![feature(portable_simd)]
 /// ! This module contains helpers to express and use constraints for components.
-mod assert;
 mod component;
-mod cpu_domain;
 pub mod expr;
 mod info;
 pub mod logup;
 mod point;
 pub mod preprocessed_columns;
-pub mod prover;
-pub mod relation_tracker;
-mod simd_domain;
+mod prover;
 
 use std::array;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
-pub use assert::{assert_constraints_on_polys, assert_constraints_on_trace, AssertEvaluator};
 pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
 use preprocessed_columns::PreProcessedColumnId;
-pub use simd_domain::SimdDomainEvaluator;
+pub use prover::{
+    assert_constraints_on_polys, assert_constraints_on_trace, relation_tracker, AssertEvaluator,
+    CpuDomainEvaluator, FractionWriter, LogupColGenerator, LogupTraceGenerator,
+    SimdDomainEvaluator,
+};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo_prover::core::fields::FieldExpOps;
