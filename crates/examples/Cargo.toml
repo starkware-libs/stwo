@@ -19,7 +19,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 serde.workspace = true
 stwo-prover = { path = "../prover", features = ["prover"] }
-stwo-constraint-framework = { path = "../constraint_framework" }
+stwo-constraint-framework = { path = "../constraint_framework", features = ["prover"] }
 rand.workspace = true
 educe.workspace = true
 
