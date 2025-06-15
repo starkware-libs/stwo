@@ -17,10 +17,9 @@ use std::simd::u32x16;
 
 use itertools::Itertools;
 use num_traits::Zero;
-use stwo_constraint_framework::prover::logup::LogupTraceGenerator;
 use stwo_constraint_framework::{
-    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, Relation, RelationEntry,
-    INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
+    relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, LogupTraceGenerator,
+    Relation, RelationEntry, INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
