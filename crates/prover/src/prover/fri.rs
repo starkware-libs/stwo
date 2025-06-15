@@ -14,13 +14,13 @@ use crate::core::fri::{
 };
 use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::core::queries::Queries;
-use crate::core::secure_column::SecureColumnByCoords;
 use crate::core::vcs::MerkleHasher;
 use crate::prover::backend::{Col, ColumnOps};
 use crate::prover::line::LineEvaluation;
 use crate::prover::poly::circle::{PolyOps, SecureEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
+use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::vcs::ops::MerkleOps;
 use crate::prover::vcs::prover::MerkleProver;
 

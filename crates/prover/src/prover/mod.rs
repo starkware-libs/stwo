@@ -18,6 +18,7 @@ pub mod channel;
 pub mod fri;
 pub mod line;
 pub mod poly;
+pub mod secure_column;
 pub mod vcs;
 
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
