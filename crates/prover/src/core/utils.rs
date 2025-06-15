@@ -133,8 +133,8 @@ pub fn bit_reverse<T>(v: &mut [T]) {
 }
 
 /// Returns the index of the previous element in a bit reversed
-/// [super::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a smaller domain
-/// of size `domain_log_size`.
+/// [crate::prover::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a
+/// smaller domain of size `domain_log_size`.
 pub const fn previous_bit_reversed_circle_domain_index(
     i: usize,
     domain_log_size: u32,
@@ -144,8 +144,8 @@ pub const fn previous_bit_reversed_circle_domain_index(
 }
 
 /// Returns the index of the offset element in a bit reversed
-/// [super::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a smaller domain
-/// of size `domain_log_size`.
+/// [crate::prover::poly::circle::CircleEvaluation] of log size `eval_log_size` relative to a
+/// smaller domain of size `domain_log_size`.
 pub const fn offset_bit_reversed_circle_domain_index(
     i: usize,
     domain_log_size: u32,

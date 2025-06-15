@@ -98,6 +98,8 @@ impl TraceLocationAllocator {
 /// Implementing this trait introduces implementations for [`Component`] and [`ComponentProver`] for
 /// the SIMD backend. Note that the constraint framework only supports components with columns of
 /// the same size.
+///
+/// [`ComponentProver`]: stwo_prover::prover::ComponentProver
 pub trait FrameworkEval {
     fn log_size(&self) -> u32;
 
