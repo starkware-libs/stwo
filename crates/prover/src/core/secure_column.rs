@@ -105,3 +105,8 @@ impl From<SecureColumnByCoords<CpuBackend>> for Vec<SecureField> {
         column.into_iter().collect()
     }
 }
+impl<'a> ExactSizeIterator for SecureColumnByCoordsIter<'a> {
+    fn len(&self) -> usize {
+        self.column.len()
+    }
+}
