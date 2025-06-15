@@ -10,7 +10,7 @@ use crate::prover::backend::BackendForChannel;
 
 mod air;
 pub use air::component_prover::{ComponentProver, ComponentProvers, Trace};
-pub use air::{AccumulationOps, DomainEvaluationAccumulator};
+pub use air::{AccumulationOps, ColumnAccumulator, DomainEvaluationAccumulator};
 mod quotients;
 pub use quotients::quotient_ops::QuotientOps;
 pub use quotients::{CommitmentSchemeProver, CommitmentTreeProver};

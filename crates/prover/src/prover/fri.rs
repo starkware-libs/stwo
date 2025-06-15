@@ -53,7 +53,7 @@ pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField
     ///
     /// Panics if `src` is not double the length of `dst`.
     ///
-    /// [`CircleDomain`]: super::poly::circle::CircleDomain
+    /// [`CircleDomain`]: crate::core::poly::circle::CircleDomain
     // TODO(andrew): Make folding factor generic.
     // TODO(andrew): Fold directly into FRI layer to prevent allocation.
     fn fold_circle_into_line(

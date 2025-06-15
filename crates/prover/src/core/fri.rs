@@ -715,7 +715,7 @@ impl SparseEvaluation {
 }
 
 /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
-/// See [`FriOps::fold_line`].
+/// See [`crate::prover::fri::FriOps::fold_line`].
 pub fn fold_line(
     eval: &[SecureField],
     domain: LineDomain,
@@ -743,7 +743,7 @@ pub fn fold_line(
 
 /// Folds and accumulates a degree `d` circle polynomial into a degree `d/2` univariate
 /// polynomial.
-/// See [`FriOps::fold_circle_into_line`].
+/// See [`crate::prover::fri::FriOps::fold_circle_into_line`].
 pub fn fold_circle_into_line(
     dst: &mut [SecureField],
     src: &[SecureField],
