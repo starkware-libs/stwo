@@ -1,11 +1,13 @@
 #![feature(portable_simd)]
 /// ! This module contains helpers to express and use constraints for components.
 mod component;
+#[cfg(feature = "prover")]
 pub mod expr;
 mod info;
 pub mod logup;
 mod point;
 pub mod preprocessed_columns;
+#[cfg(feature = "prover")]
 mod prover;
 
 use std::array;
@@ -17,6 +19,7 @@ pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
 use preprocessed_columns::PreProcessedColumnId;
+#[cfg(feature = "prover")]
 pub use prover::{
     assert_constraints_on_polys, assert_constraints_on_trace, relation_tracker, AssertEvaluator,
     CpuDomainEvaluator, FractionWriter, LogupColGenerator, LogupTraceGenerator,
