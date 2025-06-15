@@ -1,12 +1,15 @@
 use super::CpuBackend;
+use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fri::{fold_circle_into_line, fold_line, FriOps};
+use crate::core::fri::{fold_line, CIRCLE_TO_LINE_FOLD_STEP};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::core::utils::bit_reverse_index;
+use crate::prover::fri::FriOps;
 
 impl FriOps for CpuBackend {
     fn fold_line(
@@ -14,16 +17,38 @@ impl FriOps for CpuBackend {
         alpha: SecureField,
         _twiddles: &TwiddleTree<Self>,
     ) -> LineEvaluation<Self> {
-        fold_line(eval, alpha)
+        let (domain, values) = fold_line(eval.values.into_iter(), eval.domain(), alpha);
+        LineEvaluation::new(domain, values.collect())
     }
 
+    /// See [`crate::core::fri::fold_circle_into_line`].
     fn fold_circle_into_line(
         dst: &mut LineEvaluation<Self>,
         src: &SecureEvaluation<Self, BitReversedOrder>,
         alpha: SecureField,
         _twiddles: &TwiddleTree<Self>,
     ) {
-        fold_circle_into_line(dst, src, alpha)
+        assert_eq!(src.len() >> CIRCLE_TO_LINE_FOLD_STEP, dst.len());
+
+        let alpha_sq = alpha * alpha;
+
+        src.into_iter()
+            .array_chunks()
+            .enumerate()
+            .for_each(|(i, [f_p, f_neg_p])| {
+                // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
+                let p = src.domain.at(bit_reverse_index(
+                    i << CIRCLE_TO_LINE_FOLD_STEP,
+                    src.domain.log_size(),
+                ));
+
+                // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
+                let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
+                ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
+                let f_prime = alpha * f1_px + f0_px;
+
+                dst.values.set(i, dst.values.at(i) * alpha_sq + f_prime);
+            });
     }
 
     fn decompose(
@@ -91,13 +116,13 @@ mod tests {
 
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::fri::FriOps;
     use crate::core::poly::circle::{CanonicCoset, SecureEvaluation};
     use crate::core::poly::BitReversedOrder;
     use crate::core::secure_column::SecureColumnByCoords;
     use crate::m31;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::CpuBackend;
+    use crate::prover::fri::FriOps;
 
     #[test]
     fn decompose_coeff_out_fft_space_test() {
