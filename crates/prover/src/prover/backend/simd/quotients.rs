@@ -16,12 +16,12 @@ use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{batch_random_coeffs, column_line_coeffs, ColumnSampleBatch};
 use crate::core::poly::circle::CircleDomain;
-use crate::core::secure_column::SecureColumnByCoords;
 use crate::prover::backend::cpu::bit_reverse;
 use crate::prover::backend::simd::column::SecureColumnByCoordsMutSlice;
 use crate::prover::backend::CpuBackend;
 use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::prover::poly::BitReversedOrder;
+use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::QuotientOps;
 
 pub struct QuotientConstants {

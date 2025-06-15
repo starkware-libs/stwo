@@ -10,10 +10,10 @@ use tracing::{span, Level};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::CanonicCoset;
-use crate::core::secure_column::SecureColumnByCoords;
 use crate::prover::backend::{Backend, Col, Column, ColumnOps, CpuBackend};
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, SecureCirclePoly};
 use crate::prover::poly::BitReversedOrder;
+use crate::prover::secure_column::SecureColumnByCoords;
 
 // TODO(ShaharS), rename terminology to constraints instead of columns.
 /// Accumulates evaluations of u_i(P), each at an evaluation domain of the size of that polynomial.
