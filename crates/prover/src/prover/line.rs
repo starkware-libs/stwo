@@ -4,8 +4,8 @@ use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::ExtensionOf;
 use crate::core::poly::line::{LineDomain, LinePoly};
-use crate::core::secure_column::SecureColumnByCoords;
 use crate::prover::backend::{ColumnOps, CpuBackend};
+use crate::prover::secure_column::SecureColumnByCoords;
 
 // Evaluations of a univariate polynomial on a [LineDomain].
 // TODO(andrew): Remove EvalOrder. Bit-reversed evals are only necessary since LineEvaluation is
