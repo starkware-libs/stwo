@@ -1,12 +1,14 @@
 use super::CpuBackend;
+use crate::core::fft::ibutterfly;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fri::{fold_circle_into_line, fold_line, FriOps};
+use crate::core::fri::{FriOps, CIRCLE_TO_LINE_FOLD_STEP, FOLD_STEP};
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::BitReversedOrder;
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::core::utils::bit_reverse_index;
 
 impl FriOps for CpuBackend {
     fn fold_line(
@@ -14,7 +16,7 @@ impl FriOps for CpuBackend {
         alpha: SecureField,
         _twiddles: &TwiddleTree<Self>,
     ) -> LineEvaluation<Self> {
-        fold_line(eval, alpha)
+        fold_line_cpu(eval, alpha)
     }
 
     fn fold_circle_into_line(
@@ -23,7 +25,7 @@ impl FriOps for CpuBackend {
         alpha: SecureField,
         _twiddles: &TwiddleTree<Self>,
     ) {
-        fold_circle_into_line(dst, src, alpha)
+        fold_circle_into_line_cpu(dst, src, alpha)
     }
 
     fn decompose(
@@ -49,6 +51,65 @@ impl FriOps for CpuBackend {
         let g = SecureEvaluation::new(eval.domain, g_values);
         (g, lambda)
     }
+}
+
+/// See [`crate::core::fri::fold_line`].
+pub fn fold_line_cpu(
+    eval: &LineEvaluation<CpuBackend>,
+    alpha: SecureField,
+) -> LineEvaluation<CpuBackend> {
+    let n = eval.len();
+    assert!(n >= 2, "Evaluation too small");
+
+    let domain = eval.domain();
+
+    let folded_values = eval
+        .values
+        .into_iter()
+        .array_chunks()
+        .enumerate()
+        .map(|(i, [f_x, f_neg_x])| {
+            // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
+            let x = domain.at(bit_reverse_index(i << FOLD_STEP, domain.log_size()));
+
+            let (mut f0, mut f1) = (f_x, f_neg_x);
+            ibutterfly(&mut f0, &mut f1, x.inverse());
+            f0 + alpha * f1
+        })
+        .collect();
+
+    LineEvaluation::new(domain.double(), folded_values)
+}
+
+/// See [`crate::core::fri::fold_circle_into_line`].
+pub fn fold_circle_into_line_cpu(
+    dst: &mut LineEvaluation<CpuBackend>,
+    src: &SecureEvaluation<CpuBackend, BitReversedOrder>,
+    alpha: SecureField,
+) {
+    assert_eq!(src.len() >> CIRCLE_TO_LINE_FOLD_STEP, dst.len());
+
+    let domain = src.domain;
+    let alpha_sq = alpha * alpha;
+
+    src.values
+        .into_iter()
+        .array_chunks()
+        .enumerate()
+        .for_each(|(i, [f_p, f_neg_p])| {
+            // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
+            let p = domain.at(bit_reverse_index(
+                i << CIRCLE_TO_LINE_FOLD_STEP,
+                domain.log_size(),
+            ));
+
+            // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
+            let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
+            ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
+            let f_prime = alpha * f1_px + f0_px;
+
+            dst.values.set(i, dst.values.at(i) * alpha_sq + f_prime)
+        });
 }
 
 impl CpuBackend {

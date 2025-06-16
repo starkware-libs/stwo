@@ -10,6 +10,7 @@ pub mod quotients;
 
 use std::fmt::Debug;
 
+pub use fri::{fold_circle_into_line_cpu, fold_line_cpu};
 use serde::{Deserialize, Serialize};
 
 use super::{Backend, BackendForChannel, Column, ColumnOps};
