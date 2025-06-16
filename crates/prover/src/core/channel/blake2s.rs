@@ -106,12 +106,9 @@ impl Channel for Blake2sChannel {
     fn draw_random_bytes(&mut self) -> Vec<u8> {
         let mut hash_input = self.digest.as_ref().to_vec();
 
-        // Pad the counter to 32 bytes.
-        let mut padded_counter = [0; BLAKE_BYTES_PER_HASH];
+        // Append counter bytes directly (4 bytes for u32).
         let counter_bytes = self.channel_time.n_sent.to_le_bytes();
-        padded_counter[0..counter_bytes.len()].copy_from_slice(&counter_bytes);
-
-        hash_input.extend_from_slice(&padded_counter);
+        hash_input.extend_from_slice(&counter_bytes);
 
         self.channel_time.inc_sent();
         Blake2sHasher::hash(&hash_input).into()
