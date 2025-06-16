@@ -15,6 +15,7 @@ pub use quotients::quotient_ops::QuotientOps;
 pub use quotients::{CommitmentSchemeProver, CommitmentTreeProver};
 pub mod backend;
 pub mod channel;
+pub mod fri;
 pub mod vcs;
 
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
