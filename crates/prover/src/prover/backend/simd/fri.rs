@@ -7,13 +7,14 @@ use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::SimdBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fri::{self, fold_circle_into_line, FriOps};
+use crate::core::fri::FriOps;
 use crate::core::poly::circle::SecureEvaluation;
 use crate::core::poly::line::LineEvaluation;
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::poly::utils::domain_line_twiddles_from_tree;
 use crate::core::poly::BitReversedOrder;
 use crate::core::secure_column::SecureColumnByCoords;
+use crate::prover::backend::cpu::{fold_circle_into_line_cpu, fold_line_cpu};
 use crate::prover::backend::simd::fft::compute_first_twiddles;
 use crate::prover::backend::simd::fft::ifft::simd_ibutterfly;
 use crate::prover::backend::simd::qm31::PackedSecureField;
@@ -28,7 +29,7 @@ impl FriOps for SimdBackend {
     ) -> LineEvaluation<Self> {
         let log_size = eval.len().ilog2();
         if log_size <= LOG_N_LANES {
-            let eval = fri::fold_line(&eval.to_cpu(), alpha);
+            let eval = fold_line_cpu(&eval.to_cpu(), alpha);
             return LineEvaluation::new(eval.domain(), eval.values.into_iter().collect());
         }
 
@@ -68,7 +69,7 @@ impl FriOps for SimdBackend {
         if log_size <= LOG_N_LANES {
             // Fall back to CPU implementation.
             let mut cpu_dst = dst.to_cpu();
-            fold_circle_into_line(&mut cpu_dst, &src.to_cpu(), alpha);
+            fold_circle_into_line_cpu(&mut cpu_dst, &src.to_cpu(), alpha);
             *dst = LineEvaluation::new(
                 cpu_dst.domain(),
                 SecureColumnByCoords::from_cpu(cpu_dst.values),
