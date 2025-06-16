@@ -80,7 +80,7 @@ pub struct LookupElements<const N: usize> {
 }
 impl<const N: usize> LookupElements<N> {
     pub fn draw(channel: &mut impl Channel) -> Self {
-        let [z, alpha] = channel.draw_felts(2).try_into().unwrap();
+        let [z, alpha] = channel.draw_secure_felts(2).try_into().unwrap();
         let mut cur = SecureField::one();
         let alpha_powers = std::array::from_fn(|_| {
             let res = cur;

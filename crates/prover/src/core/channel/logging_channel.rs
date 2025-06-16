@@ -36,14 +36,18 @@ impl<C: Channel> Channel for LoggingChannel<C> {
         log_mix(C::mix_u64, &mut self.channel, value)
     }
 
-    fn draw_felt(&mut self) -> SecureField {
-        let _ = debug_span!("Channel draw_felt");
-        log_draw(|ch, _| C::draw_felt(ch), &mut self.channel, ())
+    fn draw_secure_felt(&mut self) -> SecureField {
+        let _ = debug_span!("Channel draw_secure_felt");
+        log_draw(|ch, _| C::draw_secure_felt(ch), &mut self.channel, ())
     }
 
-    fn draw_felts(&mut self, n_felts: usize) -> Vec<SecureField> {
-        let _ = debug_span!("Channel draw_felts");
-        log_draw(|ch, n| C::draw_felts(ch, n), &mut self.channel, n_felts)
+    fn draw_secure_felts(&mut self, n_felts: usize) -> Vec<SecureField> {
+        let _ = debug_span!("Channel draw_secure_felts");
+        log_draw(
+            |ch, n| C::draw_secure_felts(ch, n),
+            &mut self.channel,
+            n_felts,
+        )
     }
 
     fn draw_random_bytes(&mut self) -> Vec<u8> {
@@ -137,13 +141,13 @@ mod tests {
         logging_channel.mix_u64(value);
         regular_channel.mix_u64(value);
 
-        let felt1 = logging_channel.draw_felt();
-        let felt2 = regular_channel.draw_felt();
+        let felt1 = logging_channel.draw_secure_felt();
+        let felt2 = regular_channel.draw_secure_felt();
         assert_eq!(felt1, felt2);
 
         let n_felts = rng.gen_range(1..10);
-        let felts1 = logging_channel.draw_felts(n_felts);
-        let felts2 = regular_channel.draw_felts(n_felts);
+        let felts1 = logging_channel.draw_secure_felts(n_felts);
+        let felts2 = regular_channel.draw_secure_felts(n_felts);
         assert_eq!(felts1, felts2);
 
         let bytes1 = logging_channel.draw_random_bytes();

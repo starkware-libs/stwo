@@ -167,7 +167,7 @@ impl CirclePoint<SecureField> {
     }
 
     pub fn get_random_point<C: Channel>(channel: &mut C) -> Self {
-        let t = channel.draw_felt();
+        let t = channel.draw_secure_felt();
         let t_square = t.square();
 
         let one_plus_tsquared_inv = t_square.add(SecureField::one()).inverse();

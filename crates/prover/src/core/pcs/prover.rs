@@ -115,7 +115,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         let quotients = compute_fri_quotients(
             &columns,
             &samples.flatten(),
-            channel.draw_felt(),
+            channel.draw_secure_felt(),
             self.config.fri_config.log_blowup_factor,
         );
 

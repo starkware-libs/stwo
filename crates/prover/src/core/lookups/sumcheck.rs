@@ -103,7 +103,7 @@ pub fn prove_batch<O: MultivariatePolyOracle>(
 
         channel.mix_felts(&round_poly);
 
-        let challenge = channel.draw_felt();
+        let challenge = channel.draw_secure_felt();
 
         claims = this_round_polys
             .iter()
@@ -169,7 +169,7 @@ pub fn partially_verify(
         }
 
         channel.mix_felts(round_poly);
-        let challenge = channel.draw_felt();
+        let challenge = channel.draw_secure_felt();
         claim = round_poly.eval_at_point(challenge);
         assignment.push(challenge);
     }
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn sumcheck_works() {
-        let values = test_channel().draw_felts(32);
+        let values = test_channel().draw_secure_felts(32);
         let claim = values.iter().sum();
         let mle = Mle::<CpuBackend, SecureField>::new(values);
         let lambda = SecureField::one();
@@ -229,13 +229,13 @@ mod tests {
     #[test]
     fn batch_sumcheck_works() {
         let mut channel = test_channel();
-        let values0 = channel.draw_felts(32);
-        let values1 = channel.draw_felts(32);
+        let values0 = channel.draw_secure_felts(32);
+        let values1 = channel.draw_secure_felts(32);
         let claim0 = values0.iter().sum();
         let claim1 = values1.iter().sum();
         let mle0 = Mle::<CpuBackend, SecureField>::new(values0.clone());
         let mle1 = Mle::<CpuBackend, SecureField>::new(values1.clone());
-        let lambda = channel.draw_felt();
+        let lambda = channel.draw_secure_felt();
         let claims = vec![claim0, claim1];
         let mles = vec![mle0.clone(), mle1.clone()];
         let (proof, ..) = prove_batch(claims, mles, lambda, &mut test_channel());
@@ -251,13 +251,13 @@ mod tests {
     #[test]
     fn batch_sumcheck_with_different_n_variables() {
         let mut channel = test_channel();
-        let values0 = channel.draw_felts(64);
-        let values1 = channel.draw_felts(32);
+        let values0 = channel.draw_secure_felts(64);
+        let values1 = channel.draw_secure_felts(32);
         let claim0 = values0.iter().sum();
         let claim1 = values1.iter().sum();
         let mle0 = Mle::<CpuBackend, SecureField>::new(values0.clone());
         let mle1 = Mle::<CpuBackend, SecureField>::new(values1.clone());
-        let lambda = channel.draw_felt();
+        let lambda = channel.draw_secure_felt();
         let claims = vec![claim0, claim1];
         let mles = vec![mle0.clone(), mle1.clone()];
         let (proof, ..) = prove_batch(claims, mles, lambda, &mut test_channel());
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn invalid_sumcheck_proof_fails() {
-        let values = test_channel().draw_felts(8);
+        let values = test_channel().draw_secure_felts(8);
         let claim = values.iter().sum::<SecureField>();
         let lambda = SecureField::one();
         // Compromise the first value.

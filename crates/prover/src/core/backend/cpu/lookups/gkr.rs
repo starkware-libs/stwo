@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn grand_product_works() -> Result<(), GkrError> {
         const N: usize = 1 << 5;
-        let values = test_channel().draw_felts(N);
+        let values = test_channel().draw_secure_felts(N);
         let product = values.iter().product::<SecureField>();
         let col = Mle::<CpuBackend, SecureField>::new(values);
         let input_layer = Layer::GrandProduct(col.clone());

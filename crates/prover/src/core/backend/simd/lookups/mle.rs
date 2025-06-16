@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn fix_first_variable_with_secure_field_mle_matches_cpu() {
         const N_VARIABLES: u32 = 8;
-        let values = test_channel().draw_felts(1 << N_VARIABLES);
+        let values = test_channel().draw_secure_felts(1 << N_VARIABLES);
         let mle_simd = Mle::<SimdBackend, SecureField>::new(values.iter().copied().collect());
         let mle_cpu = Mle::<CpuBackend, SecureField>::new(values);
         let random_assignment = SecureField::from_u32_unchecked(7, 12, 3, 2);

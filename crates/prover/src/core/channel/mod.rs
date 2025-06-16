@@ -43,9 +43,9 @@ pub trait Channel: Default + Clone + Debug {
     fn mix_u64(&mut self, value: u64);
 
     // Draw functions.
-    fn draw_felt(&mut self) -> SecureField;
+    fn draw_secure_felt(&mut self) -> SecureField;
     /// Generates a uniform random vector of SecureField elements.
-    fn draw_felts(&mut self, n_felts: usize) -> Vec<SecureField>;
+    fn draw_secure_felts(&mut self, n_felts: usize) -> Vec<SecureField>;
     /// Returns a vector of random bytes of length `BYTES_PER_HASH`.
     fn draw_random_bytes(&mut self) -> Vec<u8>;
 }

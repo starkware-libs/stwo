@@ -40,7 +40,7 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let trace = commitment_scheme.trace();
 
     // Evaluate and commit on composition polynomial.
-    let random_coeff = channel.draw_felt();
+    let random_coeff = channel.draw_secure_felt();
 
     let span = span!(Level::INFO, "Composition", class = "Composition").entered();
     let span1 = span!(
@@ -98,7 +98,7 @@ pub fn verify<MC: MerkleChannel>(
         components: components.to_vec(),
         n_preprocessed_columns,
     };
-    let random_coeff = channel.draw_felt();
+    let random_coeff = channel.draw_secure_felt();
 
     // Read composition polynomial commitment.
     commitment_scheme.commit(

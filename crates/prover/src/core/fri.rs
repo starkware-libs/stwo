@@ -230,7 +230,7 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
         let mut layer_evaluation = LineEvaluation::new_zero(first_inner_layer_domain);
         let mut columns = columns.iter().peekable();
         let mut layers = Vec::new();
-        let folding_alpha = channel.draw_felt();
+        let folding_alpha = channel.draw_secure_felt();
 
         // Folding the max size column.
         B::fold_circle_into_line(
@@ -243,7 +243,7 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
         while layer_evaluation.len() > config.last_layer_domain_size() {
             let layer = FriInnerLayerProver::new(layer_evaluation);
             MC::mix_root(channel, layer.merkle_tree.root());
-            let folding_alpha = channel.draw_felt();
+            let folding_alpha = channel.draw_secure_felt();
             layer_evaluation = B::fold_line(&layer.evaluation, folding_alpha, twiddles);
 
             // Check for circle polys in the first layer that should be combined in this layer.
@@ -390,7 +390,7 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
             column_bounds,
             column_commitment_domains,
             proof: proof.first_layer,
-            folding_alpha: channel.draw_felt(),
+            folding_alpha: channel.draw_secure_felt(),
         };
 
         let mut inner_layers = Vec::new();
@@ -405,7 +405,7 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
             inner_layers.push(FriInnerLayerVerifier {
                 degree_bound: layer_bound,
                 domain: layer_domain,
-                folding_alpha: channel.draw_felt(),
+                folding_alpha: channel.draw_secure_felt(),
                 layer_index,
                 proof,
             });

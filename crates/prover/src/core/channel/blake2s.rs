@@ -85,12 +85,12 @@ impl Channel for Blake2sChannel {
         self.mix_u32s(&[value as u32, (value >> 32) as u32])
     }
 
-    fn draw_felt(&mut self) -> SecureField {
+    fn draw_secure_felt(&mut self) -> SecureField {
         let felts: [BaseField; FELTS_PER_HASH] = self.draw_base_felts();
         SecureField::from_m31_array(felts[..SECURE_EXTENSION_DEGREE].try_into().unwrap())
     }
 
-    fn draw_felts(&mut self, n_felts: usize) -> Vec<SecureField> {
+    fn draw_secure_felts(&mut self, n_felts: usize) -> Vec<SecureField> {
         let mut felts = iter::from_fn(|| Some(self.draw_base_felts())).flatten();
         let secure_felts = iter::from_fn(|| {
             Some(SecureField::from_m31_array([
@@ -138,7 +138,7 @@ mod tests {
         assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 1);
 
-        channel.draw_felts(9);
+        channel.draw_secure_felts(9);
         assert_eq!(channel.channel_time.n_challenges, 0);
         assert_eq!(channel.channel_time.n_sent, 6);
     }
@@ -154,21 +154,21 @@ mod tests {
     }
 
     #[test]
-    pub fn test_draw_felt() {
+    pub fn test_draw_secure_felt() {
         let mut channel = Blake2sChannel::default();
 
-        let first_random_felt = channel.draw_felt();
+        let first_random_felt = channel.draw_secure_felt();
 
         // Assert that next random felt is different.
-        assert_ne!(first_random_felt, channel.draw_felt());
+        assert_ne!(first_random_felt, channel.draw_secure_felt());
     }
 
     #[test]
-    pub fn test_draw_felts() {
+    pub fn test_draw_secure_felts() {
         let mut channel = Blake2sChannel::default();
 
-        let mut random_felts = channel.draw_felts(5);
-        random_felts.extend(channel.draw_felts(4));
+        let mut random_felts = channel.draw_secure_felts(5);
+        random_felts.extend(channel.draw_secure_felts(4));
 
         // Assert that all the random felts are unique.
         assert_eq!(
