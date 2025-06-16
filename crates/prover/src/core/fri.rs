@@ -28,7 +28,7 @@ use crate::core::poly::line::LineDomain;
 use crate::core::utils::bit_reverse_index;
 use crate::core::vcs::verifier::{MerkleDecommitment, MerkleVerificationError, MerkleVerifier};
 use crate::core::vcs::MerkleHasher;
-use crate::prover::backend::{Col, ColumnOps, CpuBackend};
+use crate::prover::backend::{Col, ColumnOps};
 use crate::prover::vcs::ops::MerkleOps;
 use crate::prover::vcs::prover::MerkleProver;
 
@@ -1105,8 +1105,8 @@ impl SparseEvaluation {
             .map(|(eval, domain_initial_index)| {
                 let fold_domain_initial = source_domain.coset().index_at(domain_initial_index);
                 let fold_domain = LineDomain::new(Coset::new(fold_domain_initial, FOLD_STEP));
-                let eval = LineEvaluation::new(fold_domain, eval.into_iter().collect());
-                fold_line(&eval, fold_alpha).values.at(0)
+                let (_, folded_values) = fold_line(&eval, fold_domain, fold_alpha);
+                folded_values[0]
             })
             .collect()
     }
@@ -1119,10 +1119,10 @@ impl SparseEvaluation {
                     fold_domain_initial,
                     CIRCLE_TO_LINE_FOLD_STEP - 1,
                 ));
-                let eval = SecureEvaluation::new(fold_domain, eval.into_iter().collect());
-                let mut buffer = LineEvaluation::new_zero(LineDomain::new(fold_domain.half_coset));
-                fold_circle_into_line(&mut buffer, &eval, fold_alpha);
-                buffer.values.at(0)
+                let eval = eval.into_iter().collect_vec();
+                let mut buffer = vec![SecureField::zero(); fold_domain.half_coset.size()];
+                fold_circle_into_line(&mut buffer, &eval, fold_domain, fold_alpha);
+                buffer[0]
             })
             .collect()
     }
@@ -1131,20 +1131,18 @@ impl SparseEvaluation {
 /// Folds a degree `d` polynomial into a degree `d/2` polynomial.
 /// See [`FriOps::fold_line`].
 pub fn fold_line(
-    eval: &LineEvaluation<CpuBackend>,
+    eval: &[SecureField],
+    domain: LineDomain,
     alpha: SecureField,
-) -> LineEvaluation<CpuBackend> {
+) -> (LineDomain, Vec<SecureField>) {
     let n = eval.len();
     assert!(n >= 2, "Evaluation too small");
 
-    let domain = eval.domain();
-
     let folded_values = eval
-        .values
-        .into_iter()
+        .iter()
         .array_chunks()
         .enumerate()
-        .map(|(i, [f_x, f_neg_x])| {
+        .map(|(i, [&f_x, &f_neg_x])| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
             let x = domain.at(bit_reverse_index(i << FOLD_STEP, domain.log_size()));
 
@@ -1154,30 +1152,30 @@ pub fn fold_line(
         })
         .collect();
 
-    LineEvaluation::new(domain.double(), folded_values)
+    (domain.double(), folded_values)
 }
 
 /// Folds and accumulates a degree `d` circle polynomial into a degree `d/2` univariate
 /// polynomial.
 /// See [`FriOps::fold_circle_into_line`].
 pub fn fold_circle_into_line(
-    dst: &mut LineEvaluation<CpuBackend>,
-    src: &SecureEvaluation<CpuBackend, BitReversedOrder>,
+    dst: &mut [SecureField],
+    src: &[SecureField],
+    src_domain: CircleDomain,
     alpha: SecureField,
 ) {
     assert_eq!(src.len() >> CIRCLE_TO_LINE_FOLD_STEP, dst.len());
 
-    let domain = src.domain;
     let alpha_sq = alpha * alpha;
 
-    src.into_iter()
+    src.iter()
         .array_chunks()
         .enumerate()
-        .for_each(|(i, [f_p, f_neg_p])| {
+        .for_each(|(i, [&f_p, &f_neg_p])| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
-            let p = domain.at(bit_reverse_index(
+            let p = src_domain.at(bit_reverse_index(
                 i << CIRCLE_TO_LINE_FOLD_STEP,
-                domain.log_size(),
+                src_domain.log_size(),
             ));
 
             // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
@@ -1185,7 +1183,7 @@ pub fn fold_circle_into_line(
             ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
             let f_prime = alpha * f1_px + f0_px;
 
-            dst.values.set(i, dst.values.at(i) * alpha_sq + f_prime);
+            dst[i] = dst[i] * alpha_sq + f_prime;
         });
 }
 
@@ -1238,10 +1236,9 @@ mod tests {
             .map(|p| poly.eval_at_point(p.into()))
             .collect();
         CpuBackend::bit_reverse_column(&mut values);
-        let evals = LineEvaluation::new(domain, values.into_iter().collect());
 
-        let drp_evals = fold_line(&evals, alpha);
-        let mut drp_evals = drp_evals.values.into_iter().collect_vec();
+        let (_, drp_evals) = fold_line(&values, domain, alpha);
+        let mut drp_evals = drp_evals.into_iter().collect_vec();
         CpuBackend::bit_reverse_column(&mut drp_evals);
 
         assert_eq!(drp_evals.len(), DEGREE / 2);
@@ -1259,8 +1256,15 @@ mod tests {
         let alpha = SecureField::one();
         let folded_domain = LineDomain::new(circle_evaluation.domain.half_coset);
 
-        let mut folded_evaluation = LineEvaluation::new_zero(folded_domain);
-        fold_circle_into_line(&mut folded_evaluation, &circle_evaluation, alpha);
+        let mut folded_evaluation = vec![SecureField::zero(); folded_domain.size()];
+        fold_circle_into_line(
+            &mut folded_evaluation,
+            &circle_evaluation.values.into_iter().collect_vec(),
+            circle_evaluation.domain,
+            alpha,
+        );
+        let folded_evaluation =
+            LineEvaluation::new(folded_domain, folded_evaluation.into_iter().collect());
 
         assert_eq!(
             log_degree_bound(folded_evaluation),
