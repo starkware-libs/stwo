@@ -18,7 +18,7 @@ pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 #[derive(Clone, Default, Debug)]
 pub struct ChannelTime {
     pub n_challenges: usize,
-    n_sent: usize,
+    n_sent: u32,
 }
 
 impl ChannelTime {
