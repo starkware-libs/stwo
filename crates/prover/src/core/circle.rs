@@ -310,15 +310,21 @@ impl Coset {
         Self::new(CirclePointIndex::zero(), log_size)
     }
 
-    /// Creates a coset of the form G_2n + \<G_n\>.
-    /// For example, for n=8, we get the point indices \[1,3,5,7,9,11,13,15\].
+    /// Creates a coset of the form `G_2n + <G_n>`.
+    ///
+    /// For example, let n = 8 and denote `G_16 = x, <G_8> = <2x>`.
+    /// The point indices are `[x, 3x, 5x, 7x, 9x, 11x, 13x, 15x]`.
     pub fn odds(log_size: u32) -> Self {
         Self::new(CirclePointIndex::subgroup_gen(log_size + 1), log_size)
     }
 
-    /// Creates a coset of the form G_4n + <G_n>.
-    /// For example, for n=8, we get the point indices \[1,5,9,13,17,21,25,29\].
-    /// Its conjugate will be \[3,7,11,15,19,23,27,31\].
+    /// Creates a coset of the form `G_4n + <G_n>`. It's conjugate is `3 * G_4n + <G_n>`.
+    ///
+    /// For example, let n = 8 and denote `G_32 = x, <G_8> = <4x>`.
+    /// The point indices are `[x, 5x, 9x, 13x, 17x, 21x, 25x, 29x]`.
+    /// Conjugate coset indices are `[3x, 7x, 11x, 15x, 19x, 23x, 27x, 31x]`.
+    ///
+    /// Note: This coset union with its conjugate coset is the `odds(log_size + 1)` coset.
     pub fn half_odds(log_size: u32) -> Self {
         Self::new(CirclePointIndex::subgroup_gen(log_size + 2), log_size)
     }
