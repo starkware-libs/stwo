@@ -4,14 +4,14 @@ use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use itertools::Itertools;
 use num_traits::Zero;
 use stwo_prover::core::backend::simd::SimdBackend;
-use stwo_prover::core::backend::{Col, CpuBackend};
+use stwo_prover::core::backend::Col;
 use stwo_prover::core::fields::m31::{BaseField, N_BYTES_FELT};
 use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use stwo_prover::core::vcs::ops::MerkleOps;
 
-const LOG_N_ROWS: u32 = 16;
+const LOG_N_ROWS: u32 = 23;
 
-const LOG_N_COLS: u32 = 8;
+const LOG_N_COLS: u32 = 10;
 
 fn bench_blake2s_merkle<B: MerkleOps<Blake2sMerkleHasher>>(c: &mut Criterion, id: &str) {
     let col: Col<B, BaseField> = (0..1 << LOG_N_ROWS).map(|_| BaseField::zero()).collect();
@@ -28,7 +28,7 @@ fn bench_blake2s_merkle<B: MerkleOps<Blake2sMerkleHasher>>(c: &mut Criterion, id
 
 fn blake2s_merkle_benches(c: &mut Criterion) {
     bench_blake2s_merkle::<SimdBackend>(c, "simd");
-    bench_blake2s_merkle::<CpuBackend>(c, "cpu");
+    // bench_blake2s_merkle::<CpuBackend>(c, "cpu");
 }
 
 criterion_group!(
