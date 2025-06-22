@@ -11,6 +11,6 @@ fn twiddles_benches(c: &mut Criterion) {
 
 criterion_group!(
         name = benches;
-        config = Criterion::default().sample_size(10);
+        config = Criterion::default().sample_size(100);
         targets = twiddles_benches);
 criterion_main!(benches);
