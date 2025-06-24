@@ -1,9 +1,9 @@
 [workspace]
 members = [
     "crates/prover",
-    "crates/air_utils",
-    "crates/air_utils_derive",
-    "crates/constraint_framework",
+    "crates/air-utils",
+    "crates/air-utils-derive",
+    "crates/constraint-framework",
     "crates/examples",
 ]
 resolver = "2"
