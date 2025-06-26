@@ -22,7 +22,7 @@ pub struct CirclePoly<B: ColumnOps<BaseField>> {
 impl<B: PolyOps> CirclePoly<B> {
     /// Creates a new circle polynomial.
     ///
-    /// Coefficients must be in the circle IFFT algorithm's basis stored in bit-reversed order.
+    /// The coefficients should be provided in natural order.
     ///
     /// # Panics
     ///
