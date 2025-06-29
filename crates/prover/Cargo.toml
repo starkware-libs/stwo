@@ -28,6 +28,9 @@ tracing.workspace = true
 rayon = { workspace = true, optional = true }
 serde.workspace = true
 tracing-subscriber.workspace = true
+wgpu.workspace = true
+flume.workspace = true
+pollster.workspace = true
 
 [dev-dependencies]
 aligned = "0.4.2"

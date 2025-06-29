@@ -307,7 +307,7 @@ pub fn round(v: &mut [u32x16; 16], m: [u32x16; 16], r: usize) {
 
 /// Transposes input chunks (16 chunks of 16 `u32`s each), to get 16 `u32x16`, each
 /// representing 16 packed instances of a message word.
-fn transpose_msgs(mut data: [u32x16; 16]) -> [u32x16; 16] {
+pub fn transpose_msgs(mut data: [u32x16; 16]) -> [u32x16; 16] {
     // Index abcd:xyzw, refers to a specific word in data as follows:
     //   abcd - chunk index (in base 2)
     //   xyzw - word offset (in base 2)
@@ -331,7 +331,7 @@ fn transpose_msgs(mut data: [u32x16; 16]) -> [u32x16; 16] {
     data
 }
 
-fn untranspose_states(mut states: [u32x16; 8]) -> [u32x16; 8] {
+pub fn untranspose_states(mut states: [u32x16; 8]) -> [u32x16; 8] {
     // Index abc:xyzw, refers to a specific word in data as follows:
     //   abc - chunk index (in base 2)
     //   xyzw - word offset (in base 2)

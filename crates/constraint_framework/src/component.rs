@@ -18,6 +18,7 @@ use stwo_prover::core::backend::simd::very_packed_m31::{
     VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS,
 };
 use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::backend::web::WebBackend;
 use stwo_prover::core::circle::CirclePoint;
 use stwo_prover::core::constraints::coset_vanishing;
 use stwo_prover::core::fields::m31::BaseField;
@@ -32,6 +33,7 @@ use tracing::{span, Level};
 
 use super::cpu_domain::CpuDomainEvaluator;
 use super::preprocessed_columns::PreProcessedColumnId;
+use super::web_domain::WebDomainEvaluator;
 use super::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, PREPROCESSED_TRACE_IDX,
 };
@@ -368,7 +370,7 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                 let denom_inv = denom_inv[row >> trace_domain.log_size()];
                 col.set(row, col.at(row) + row_res * denom_inv)
             }
-            let col = SecureColumnByCoords::from_cpu(col);
+            let col = SecureColumnByCoords::<SimdBackend>::from_cpu(col);
             *accum.col = col;
             return;
         }
@@ -421,6 +423,77 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
                 }
             }
         });
+    }
+}
+
+impl<E: FrameworkEval + Sync> ComponentProver<WebBackend> for FrameworkComponent<E> {
+    fn evaluate_constraint_quotients_on_domain(
+        &self,
+        trace: &Trace<'_, WebBackend>,
+        evaluation_accumulator: &mut DomainEvaluationAccumulator<WebBackend>,
+    ) {
+        if self.n_constraints() == 0 {
+            return;
+        }
+
+        let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
+        let trace_domain = CanonicCoset::new(self.eval.log_size());
+
+        let mut component_polys = trace.polys.sub_tree(&self.trace_locations);
+        component_polys[PREPROCESSED_TRACE_IDX] = self
+            .preprocessed_column_indices
+            .iter()
+            .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
+            .collect();
+
+        let mut component_evals = trace.evals.sub_tree(&self.trace_locations);
+        component_evals[PREPROCESSED_TRACE_IDX] = self
+            .preprocessed_column_indices
+            .iter()
+            .map(|idx| &trace.evals[PREPROCESSED_TRACE_IDX][*idx])
+            .collect();
+
+        // Extend trace if necessary.
+        // TODO: Don't extend when eval_size < committed_size. Instead, pick a good
+        // subdomain. (For larger blowup factors).
+        let need_to_extend = component_evals
+            .iter()
+            .flatten()
+            .any(|c| c.domain != eval_domain);
+
+        // Denom inverses.
+        let log_expand = eval_domain.log_size() - trace_domain.log_size();
+        let mut denom_inv = (0..1 << log_expand)
+            .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
+            .collect_vec();
+        bit_reverse(&mut denom_inv);
+
+        // Accumulator.
+        let [mut accum] =
+            evaluation_accumulator.columns([(eval_domain.log_size(), self.n_constraints())]);
+        accum.random_coeff_powers.reverse();
+
+        let _span = span!(Level::INFO, "Constraint point-wise eval").entered();
+
+        let component_polys = component_polys.as_cols_ref().map_cols(|c| c.as_ref());
+        let component_evals = component_evals.as_cols_ref().map_cols(|c| c.as_ref());
+        let col =
+            unsafe { VeryPackedSecureColumnByCoords::transform_under_mut(accum.col.as_mut()) };
+
+        // Use WebGPU for heavy computations
+        let eval = WebDomainEvaluator::new(
+            &component_polys,
+            &component_evals,
+            need_to_extend,
+            col,
+            accum.random_coeff_powers.clone(),
+            eval_domain,
+            trace_domain.log_size(),
+            denom_inv,
+            self.eval.log_size(),
+            self.claimed_sum,
+        );
+        self.eval.evaluate(eval);
     }
 }
 

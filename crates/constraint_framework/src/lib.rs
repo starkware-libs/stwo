@@ -10,6 +10,7 @@ mod point;
 pub mod preprocessed_columns;
 pub mod relation_tracker;
 mod simd_domain;
+mod web_domain;
 
 use std::array;
 use std::fmt::Debug;
@@ -26,6 +27,7 @@ use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo_prover::core::fields::FieldExpOps;
 use stwo_prover::core::lookups::utils::Fraction;
+pub use web_domain::WebDomainEvaluator;
 
 #[rustfmt::skip]
 pub use stwo_prover::core::prover::PREPROCESSED_TRACE_IDX;
@@ -295,7 +297,7 @@ impl<'a, F: Clone, EF: RelationEFTraitBound<F>, R: Relation<F, EF>> RelationEntr
 macro_rules! relation {
     ($name:tt, $size:tt) => {
         #[derive(Clone, Debug, PartialEq)]
-        pub struct $name($crate::logup::LookupElements<$size>);
+        pub struct $name(pub $crate::logup::LookupElements<$size>);
 
         #[allow(dead_code)]
         impl $name {

@@ -386,7 +386,7 @@ fn compute_coset_twiddles(coset: Coset, twiddles: &mut Vec<PackedM31>) {
     }
 }
 
-fn slow_eval_at_point(
+pub fn slow_eval_at_point(
     poly: &CirclePoly<SimdBackend>,
     point: CirclePoint<SecureField>,
 ) -> SecureField {

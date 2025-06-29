@@ -110,7 +110,7 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
 }
 
 /// Bit reverses 256 M31 values, packed in 16 words of 16 elements each.
-fn bit_reverse16(mut data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
+pub fn bit_reverse16(mut data: [PackedBaseField; 16]) -> [PackedBaseField; 16] {
     // Denote the index of each element in the 16 packed M31 words as abcd:0123,
     // where abcd is the index of the packed word and 0123 is the index of the element in the word.
     // Bit reversal is achieved by applying the following permutation to the index for 4 times:
