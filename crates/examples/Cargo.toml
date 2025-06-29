@@ -4,7 +4,10 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-parallel = ["dep:rayon"]
+parallel = [
+    "dep:rayon",
+    "stwo-constraint-framework/parallel"
+]
 tracing = []
 slow-tests = []
 
@@ -22,6 +25,14 @@ stwo-prover = { path = "../prover" }
 stwo-constraint-framework = { path = "../constraint_framework" }
 rand.workspace = true
 educe.workspace = true
+wgpu.workspace = true
+flume.workspace = true
+pollster.workspace = true
+[target.'cfg(all(target_family = "wasm", not(target_os = "wasi")))'.dependencies]
+web-sys = { version = "0.3", features = ["console", "Performance", "Window"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4.50"
+wasm_thread = { git = "https://github.com/jaehunkim/wasm_thread", branch = "main" }
 
 [dev-dependencies]
 criterion = { default-features = false, features = [
@@ -29,6 +40,8 @@ criterion = { default-features = false, features = [
 ], version = "0.5.1" }
 ndarray = "0.16.1"
 test-log = { version = "0.2.15", features = ["trace"] }
+[target.'cfg(all(target_family = "wasm", not(target_os = "wasi")))'.dev-dependencies]
+wasm-bindgen-test = "0.3.43"
 
 [[bench]]
 harness = false

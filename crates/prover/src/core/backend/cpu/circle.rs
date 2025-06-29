@@ -206,7 +206,7 @@ fn fft_layer_loop(
 /// Computes the circle twiddles layer (layer 0) from the first line twiddles layer (layer 1).
 ///
 /// Only works for line twiddles generated from a domain with size `>4`.
-fn circle_twiddles_from_line_twiddles(
+pub fn circle_twiddles_from_line_twiddles(
     first_line_twiddles: &[BaseField],
 ) -> impl Iterator<Item = BaseField> + '_ {
     // The twiddles for layer 0 can be computed from the twiddles for layer 1.

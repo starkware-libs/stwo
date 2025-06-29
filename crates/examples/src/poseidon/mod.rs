@@ -1,5 +1,6 @@
 //! AIR for Poseidon2 hash function from <https://eprint.iacr.org/2023/323.pdf>.
 
+use std::any::type_name;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 use itertools::Itertools;
@@ -9,12 +10,13 @@ use rayon::prelude::*;
 use stwo_constraint_framework::logup::LogupTraceGenerator;
 use stwo_constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
-    TraceLocationAllocator,
+    TraceLocationAllocator, WebDomainEvaluator,
 };
 use stwo_prover::core::backend::simd::column::BaseColumn;
-use stwo_prover::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use stwo_prover::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use stwo_prover::core::backend::simd::qm31::PackedSecureField;
 use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::backend::web::WebBackend;
 use stwo_prover::core::backend::{Col, Column};
 use stwo_prover::core::channel::Blake2sChannel;
 use stwo_prover::core::fields::m31::BaseField;
@@ -27,6 +29,17 @@ use stwo_prover::core::prover::{prove, StarkProof};
 use stwo_prover::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo_prover::core::ColumnVec;
 use tracing::{info, span, Level};
+#[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+use {crate::poseidon::web::gpu_channels, web_sys::console};
+
+use crate::poseidon::web::eval_composition_poly::build_gpu_input;
+#[cfg(not(target_family = "wasm"))]
+use crate::poseidon::web::eval_composition_poly::{
+    compute_composition_polynomial_wgpu, GpuContext,
+};
+use crate::poseidon::web::ComputeCompositionPolynomialOutput;
+
+mod web;
 
 const N_LOG_INSTANCES_PER_ROW: usize = 3;
 const N_INSTANCES_PER_ROW: usize = 1 << N_LOG_INSTANCES_PER_ROW;
@@ -60,9 +73,32 @@ impl FrameworkEval for PoseidonEval {
     fn max_constraint_log_degree_bound(&self) -> u32 {
         self.log_n_rows + LOG_EXPAND
     }
-    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        eval_poseidon_constraints(&mut eval, &self.lookup_elements);
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E
+    where
+        E: HasDomainTypeName,
+    {
+        let web_name = type_name::<WebDomainEvaluator<'_>>();
+
+        if eval.type_name() == web_name {
+            eval_poseidon_constraints_web(&mut eval, &self.lookup_elements);
+        } else {
+            eval_poseidon_constraints(&mut eval, &self.lookup_elements);
+        }
         eval
+    }
+}
+
+pub trait HasDomainTypeName {
+    fn type_name(&self) -> &str;
+    fn as_ptr(&self) -> *const ();
+}
+
+impl<T> HasDomainTypeName for T {
+    fn type_name(&self) -> &str {
+        type_name::<T>()
+    }
+    fn as_ptr(&self) -> *const () {
+        self as *const T as *const ()
     }
 }
 
@@ -137,6 +173,64 @@ fn pow5<F: FieldExpOps>(x: F) -> F {
     let x2 = x.clone() * x.clone();
     let x4 = x2.clone() * x2.clone();
     x4 * x.clone()
+}
+
+pub fn eval_poseidon_constraints_web<E: EvalAtRow>(
+    eval: &mut E,
+    lookup_elements: &PoseidonElements,
+) {
+    let web: &mut WebDomainEvaluator<'_> =
+        unsafe { &mut *(eval as *mut E as *mut WebDomainEvaluator<'_>) };
+
+    #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+    console::time_with_label("wgpu-work-timer");
+
+    #[cfg(not(all(target_arch = "wasm32", not(target_os = "wasi"))))]
+    let start = std::time::Instant::now();
+
+    let output = compute_composition_polynomial_gpu(web, lookup_elements);
+
+    for (chunk_idx, chunk) in output.poly.iter().enumerate() {
+        for (lane_idx, &qm) in chunk.iter().enumerate() {
+            let idx = chunk_idx * N_LANES as usize + lane_idx;
+            web.col.columns[0].set(idx, qm.0[0].into());
+            web.col.columns[1].set(idx, qm.0[1].into());
+            web.col.columns[2].set(idx, qm.0[2].into());
+            web.col.columns[3].set(idx, qm.0[3].into());
+        }
+    }
+
+    #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+    console::time_end_with_label("wgpu-work-timer");
+
+    #[cfg(not(all(target_arch = "wasm32", not(target_os = "wasi"))))]
+    println!("wgpu-work-timer: {:?}", start.elapsed());
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn compute_composition_polynomial_gpu(
+    web: &mut WebDomainEvaluator<'_>,
+    lookup_elements: &PoseidonElements,
+) -> Box<ComputeCompositionPolynomialOutput> {
+    let gpu = pollster::block_on(GpuContext::new());
+    let web_input = build_gpu_input(web, lookup_elements);
+    let out = pollster::block_on(compute_composition_polynomial_wgpu(web_input, &gpu));
+
+    out
+}
+
+#[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+fn compute_composition_polynomial_gpu(
+    web: &mut WebDomainEvaluator<'_>,
+    lookup_elements: &PoseidonElements,
+) -> Box<ComputeCompositionPolynomialOutput> {
+    let web_input = build_gpu_input(web, lookup_elements);
+
+    gpu_channels::with(|c| c.tx.send(web_input).unwrap());
+
+    let output = gpu_channels::with(|c| c.rx.recv().unwrap());
+
+    output
 }
 
 pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &PoseidonElements) {
@@ -392,6 +486,74 @@ pub fn prove_poseidon(
     (component, proof)
 }
 
+pub fn prove_poseidon_web(
+    log_n_instances: u32,
+    config: PcsConfig,
+) -> (PoseidonComponent, StarkProof<Blake2sMerkleHasher>) {
+    assert!(log_n_instances >= N_LOG_INSTANCES_PER_ROW as u32);
+    let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
+
+    // Precompute twiddles.
+    let span = span!(Level::INFO, "Precompute twiddles").entered();
+    let twiddles = WebBackend::precompute_twiddles(
+        CanonicCoset::new(log_n_rows + LOG_EXPAND + config.fri_config.log_blowup_factor)
+            .circle_domain()
+            .half_coset,
+    );
+    span.exit();
+
+    // Setup protocol.
+    let channel = &mut Blake2sChannel::default();
+    let mut commitment_scheme =
+        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+
+    // Preprocessed trace.
+    let span = span!(Level::INFO, "Constant").entered();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    let constant_trace = vec![];
+    tree_builder.extend_evals(constant_trace);
+    tree_builder.commit(channel);
+    span.exit();
+
+    // Trace.
+    let span = span!(Level::INFO, "Trace").entered();
+    let (trace, lookup_data) = gen_trace(log_n_rows);
+    let trace: Vec<CircleEvaluation<WebBackend, BaseField, BitReversedOrder>> =
+        trace.into_iter().map(|eval| eval.into()).collect();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(trace);
+    tree_builder.commit(channel);
+    span.exit();
+
+    // Draw lookup elements.
+    let lookup_elements = PoseidonElements::draw(channel);
+
+    // Interaction trace.
+    let span = span!(Level::INFO, "Interaction").entered();
+    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, lookup_data, &lookup_elements);
+    let trace: Vec<CircleEvaluation<WebBackend, BaseField, BitReversedOrder>> =
+        trace.into_iter().map(|eval| eval.into()).collect();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(trace);
+    tree_builder.commit(channel);
+    span.exit();
+
+    // Prove constraints.
+    let component = PoseidonComponent::new(
+        &mut TraceLocationAllocator::default(),
+        PoseidonEval {
+            log_n_rows,
+            lookup_elements,
+            claimed_sum,
+        },
+        claimed_sum,
+    );
+    info!("Poseidon component info:\n{}", component);
+    let proof = prove(&[&component], channel, commitment_scheme).unwrap();
+
+    (component, proof)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{array, env};
@@ -406,23 +568,39 @@ mod tests {
     use stwo_prover::core::poly::circle::CanonicCoset;
     use stwo_prover::core::prover::verify;
     use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
+    use {
+        crate::poseidon::web::gpu_channels,
+        crate::poseidon::web::runner::runner_eval_composition_polynomial,
+        crate::poseidon::web::{
+            ComputeCompositionPolynomialInput, ComputeCompositionPolynomialOutput,
+        },
+        wasm_bindgen_futures::spawn_local,
+        wasm_thread as thread,
+        web_sys::console,
+    };
 
     use crate::poseidon::{
         apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,
-        gen_trace, prove_poseidon, PoseidonElements,
+        gen_trace, prove_poseidon, prove_poseidon_web, PoseidonElements,
     };
+
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
     #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
     #[wasm_bindgen_test::wasm_bindgen_test]
     fn test_poseidon_prove_wasm() {
-        const LOG_N_INSTANCES: u32 = 10;
+        const LOG_N_INSTANCES: u32 = 17;
         let config = PcsConfig {
             pow_bits: 10,
             fri_config: FriConfig::new(5, 1, 64),
         };
 
         // Prove.
+        console::time_with_label("simd_poseidon_prove_wasm");
         prove_poseidon(LOG_N_INSTANCES, config);
+        console::time_end_with_label("simd_poseidon_prove_wasm");
     }
 
     #[test]
@@ -555,5 +733,83 @@ mod tests {
         let csv = collector.export_csv();
 
         println!("{}", csv);
+    }
+
+    fn web_poseidon_prove(log_n_instances: u32, config: PcsConfig) {
+        // Prove.;
+        #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+        console::time_with_label("web_poseidon_prove");
+        let (component, proof) = prove_poseidon_web(log_n_instances, config);
+        #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+        console::time_end_with_label("web_poseidon_prove");
+
+        // Verify.
+        // TODO: Create Air instance independently.
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+
+        // Decommit.
+        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        let sizes = component.trace_log_degree_bounds();
+
+        // Preprocessed columns.
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        // Trace columns.
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        // Draw lookup element.
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        // Interaction columns.
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+    }
+
+    #[test_log::test]
+    fn test_web_poseidon_prove() {
+        let log_n_instances = 17;
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 1, 64),
+        };
+
+        web_poseidon_prove(log_n_instances, config);
+    }
+
+    #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+    #[wasm_bindgen_test::wasm_bindgen_test]
+    #[allow(dead_code)]
+    async fn test_web_poseidon_prove_runner() {
+        let (request_tx, request_rx) = flume::bounded::<Box<ComputeCompositionPolynomialInput>>(1);
+        let (response_tx, response_rx) =
+            flume::bounded::<Box<ComputeCompositionPolynomialOutput>>(1);
+        let (job_tx, job_rx) = flume::bounded(1);
+
+        // spawn runner
+        thread::spawn(move || {
+            spawn_local(async move {
+                runner_eval_composition_polynomial(request_rx, response_tx).await;
+            });
+        });
+
+        // spawn caller
+        thread::spawn(move || {
+            gpu_channels::init_gpu_channels(request_tx, response_rx);
+
+            let log_n_instances = 17;
+            let config = PcsConfig {
+                pow_bits: 10,
+                fri_config: FriConfig::new(5, 1, 64),
+            };
+
+            web_poseidon_prove(log_n_instances, config);
+
+            job_tx.send(()).unwrap();
+        });
+
+        // wait for worker to finish
+        let _ = job_rx.recv_async().await.unwrap();
+        wasm_thread::terminate_all_workers();
     }
 }

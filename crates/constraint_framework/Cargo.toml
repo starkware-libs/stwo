@@ -4,7 +4,10 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-parallel = ["dep:rayon"]
+parallel = [
+    "dep:rayon",
+    "stwo-prover/parallel"
+]
 
 [dependencies]
 rayon = { workspace = true, optional = true }
@@ -13,3 +16,5 @@ itertools.workspace = true
 tracing.workspace = true
 stwo-prover = { path = "../prover" }
 rand.workspace = true
+[target.'cfg(all(target_family = "wasm", not(target_os = "wasi")))'.dependencies]
+web-sys = { version = "0.3", features = ["console", "Performance", "Window"] }
