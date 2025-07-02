@@ -441,8 +441,8 @@ pub fn prove_batch<B: GkrOps>(
         }
 
         let eq_evals = EqEvals::generate(&ood_point);
-        let sumcheck_alpha = channel.draw_felt();
-        let instance_lambda = channel.draw_felt();
+        let sumcheck_alpha = channel.draw_secure_felt();
+        let instance_lambda = channel.draw_secure_felt();
 
         let mut sumcheck_oracles = Vec::new();
         let mut sumcheck_claims = Vec::new();
@@ -474,7 +474,7 @@ pub fn prove_batch<B: GkrOps>(
             layer_masks_by_instance[instance].push(mask.clone());
         }
 
-        let challenge = channel.draw_felt();
+        let challenge = channel.draw_secure_felt();
         ood_point = sumcheck_ood_point;
         ood_point.push(challenge);
 
