@@ -136,7 +136,7 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
             column_bounds,
             column_commitment_domains,
             proof: proof.first_layer,
-            folding_alpha: channel.draw_felt(),
+            folding_alpha: channel.draw_secure_felt(),
         };
 
         let mut inner_layers = Vec::new();
@@ -151,7 +151,7 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
             inner_layers.push(FriInnerLayerVerifier {
                 degree_bound: layer_bound,
                 domain: layer_domain,
-                folding_alpha: channel.draw_felt(),
+                folding_alpha: channel.draw_secure_felt(),
                 layer_index,
                 proof,
             });

@@ -63,8 +63,8 @@ pub fn partially_verify_batch(
             channel.mix_felts(claims_to_verify);
         }
 
-        let sumcheck_alpha = channel.draw_felt();
-        let instance_lambda = channel.draw_felt();
+        let sumcheck_alpha = channel.draw_secure_felt();
+        let instance_lambda = channel.draw_secure_felt();
 
         let mut sumcheck_claims = Vec::new();
         let mut sumcheck_instances = Vec::new();
@@ -124,7 +124,7 @@ pub fn partially_verify_batch(
         }
 
         // Set the OOD evaluation point for layer above.
-        let challenge = channel.draw_felt();
+        let challenge = channel.draw_secure_felt();
         ood_point = sumcheck_ood_point;
         ood_point.push(challenge);
 
@@ -293,8 +293,8 @@ mod tests {
     fn prove_batch_works() -> Result<(), GkrError> {
         const LOG_N: usize = 5;
         let mut channel = test_channel();
-        let col0 = Mle::<CpuBackend, SecureField>::new(channel.draw_felts(1 << LOG_N));
-        let col1 = Mle::<CpuBackend, SecureField>::new(channel.draw_felts(1 << LOG_N));
+        let col0 = Mle::<CpuBackend, SecureField>::new(channel.draw_secure_felts(1 << LOG_N));
+        let col1 = Mle::<CpuBackend, SecureField>::new(channel.draw_secure_felts(1 << LOG_N));
         let product0 = col0.iter().product::<SecureField>();
         let product1 = col1.iter().product::<SecureField>();
         let input_layers = vec![
@@ -326,8 +326,8 @@ mod tests {
         const LOG_N0: usize = 5;
         const LOG_N1: usize = 7;
         let mut channel = test_channel();
-        let col0 = Mle::<CpuBackend, SecureField>::new(channel.draw_felts(1 << LOG_N0));
-        let col1 = Mle::<CpuBackend, SecureField>::new(channel.draw_felts(1 << LOG_N1));
+        let col0 = Mle::<CpuBackend, SecureField>::new(channel.draw_secure_felts(1 << LOG_N0));
+        let col1 = Mle::<CpuBackend, SecureField>::new(channel.draw_secure_felts(1 << LOG_N1));
         let product0 = col0.iter().product::<SecureField>();
         let product1 = col1.iter().product::<SecureField>();
         let input_layers = vec![

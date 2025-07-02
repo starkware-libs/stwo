@@ -10,7 +10,6 @@ use crate::core::pcs::quotients::CommitmentSchemeProof;
 use crate::core::vcs::hash::Hash;
 use crate::core::vcs::verifier::MerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
-
 /// Error when the sampled values have an invalid structure.
 #[derive(Clone, Copy, Debug)]
 pub struct InvalidOodsSampleStructure;
