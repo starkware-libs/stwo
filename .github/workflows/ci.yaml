@@ -177,7 +177,17 @@ jobs:
         with:
           toolchain: nightly-2025-04-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2025-04-06 test
+      - run: cd crates/prover && cargo +nightly-2025-04-06 test
+
+  run-framework-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-04-06
+      - uses: Swatinem/rust-cache@v2
+      - run: cd crates/constraint-framework && cargo +nightly-2025-04-06 test
 
   run-tests:
     runs-on: ubuntu-latest
