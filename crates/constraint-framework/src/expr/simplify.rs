@@ -1,7 +1,10 @@
+use std::rc::Rc;
+
 use num_traits::{One, Zero};
 use stwo::core::fields::qm31::SecureField;
 
 use super::{BaseExpr, ExtExpr};
+use crate::expr::rcbox_base;
 
 /// Applies simplifications to arithmetic expressions that can be used both for `BaseExpr` and for
 /// `ExtExpr`.
@@ -87,9 +90,9 @@ impl BaseExpr {
             Self::Inv(a) => {
                 let a = a.unchecked_simplify();
                 match a {
-                    Self::Inv(inv_a) => *inv_a, // 1 / (1 / a) = a
+                    Self::Inv(inv_a) => inv_a.clone(), // 1 / (1 / a) = a
                     Self::Const(c) => Self::Const(c.inverse()),
-                    _ => Self::Inv(Box::new(a)),
+                    _ => Self::Inv(rcbox_base(a)),
                 }
             }
             other => other,
@@ -128,7 +131,12 @@ impl ExtExpr {
                         BaseExpr::Const(c_val),
                         BaseExpr::Const(d_val),
                     ) => ExtExpr::Const(SecureField::from_m31_array([a_val, b_val, c_val, d_val])),
-                    _ => Self::SecureCol([Box::new(a), Box::new(b), Box::new(c), Box::new(d)]),
+                    _ => Self::SecureCol([
+                        Rc::new(Box::new(a)),
+                        Rc::new(Box::new(b)),
+                        Rc::new(Box::new(c)),
+                        Rc::new(Box::new(d)),
+                    ]),
                 }
             }
             other => other,

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use num_traits::Zero;
 use stwo::core::Fraction;
@@ -32,7 +33,7 @@ impl FormalLogupAtRow {
             is_finalized: true,
             is_first: BaseExpr::zero(),
             cumsum_shift: ExtExpr::Param(claimed_sum_name)
-                * BaseExpr::Inv(Box::new(BaseExpr::Param(column_size_name))),
+                * BaseExpr::Inv(Rc::new(BaseExpr::Param(column_size_name))),
         }
     }
 }
@@ -227,10 +228,10 @@ impl EvalAtRow for ExprEvaluator {
 
     fn combine_ef(values: [Self::F; 4]) -> Self::EF {
         ExtExpr::SecureCol([
-            Box::new(values[0].clone()),
-            Box::new(values[1].clone()),
-            Box::new(values[2].clone()),
-            Box::new(values[3].clone()),
+            Rc::new(values[0].clone()),
+            Rc::new(values[1].clone()),
+            Rc::new(values[2].clone()),
+            Rc::new(values[3].clone()),
         ])
     }
 
