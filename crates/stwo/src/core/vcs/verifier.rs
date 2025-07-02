@@ -1,7 +1,6 @@
-use std::collections::BTreeMap;
-
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use std_shims::{vec, BTreeMap, Vec};
 use thiserror::Error;
 
 use super::utils::{next_decommitment_node, option_flatten_peekable};

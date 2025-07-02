@@ -4,11 +4,25 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-prover = []
-parallel = ["rayon"]
+default = ["std"]
+std = [
+    "blake2/std",
+    "blake3/std",
+    "hex/std",
+    "itertools/use_std",
+    "indexmap/std",
+    "num-traits/std",
+    "starknet-crypto/std",
+    "thiserror/std",
+    "tracing/std",
+    "serde/std",
+    "tracing-subscriber/std",
+    "std-shims/std",
+]
+prover = ["std", "tracing/attributes"]
+parallel = ["rayon", "indexmap/rayon"]
 slow-tests = []
 tracing = []
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -18,21 +32,30 @@ bytemuck = { workspace = true, features = ["derive", "extern_crate_alloc"] }
 cfg-if = "1.0.0"
 educe.workspace = true
 hex.workspace = true
-indexmap = "2.7.1"
+indexmap = { version = "2.10.0", default-features = false }
+fnv = { version = "1.0.7", default-features = false }
 itertools.workspace = true
 num-traits.workspace = true
 rand.workspace = true
-starknet-crypto = "0.6.2"
-starknet-ff = "0.3.7"
+starknet-crypto = { version = "0.6.2", default-features = false, features = [
+    "alloc",
+] }
+starknet-ff = { version = "0.3.7", default-features = false, features = [
+    "alloc",
+    "serde",
+] }
 thiserror.workspace = true
 tracing.workspace = true
 rayon = { workspace = true, optional = true }
 serde.workspace = true
 tracing-subscriber.workspace = true
+hashbrown.workspace = true
+std-shims.workspace = true
 
 [dev-dependencies]
 aligned = "0.4.2"
 test-log = { version = "0.2.15", features = ["trace"] }
+
 [target.'cfg(all(target_family = "wasm", not(target_os = "wasi")))'.dev-dependencies]
 wasm-bindgen-test = "0.3.43"
 
@@ -49,7 +72,7 @@ version = "0.5.1"
 
 [lib]
 bench = false
-crate-type = ["cdylib", "lib"]
+crate-type = ["lib"]
 
 [lints.rust]
 warnings = "deny"
@@ -64,6 +87,7 @@ missing_const_for_fn = "warn"
 [[bench]]
 harness = false
 name = "bit_rev"
+required-features = ["prover"]
 
 [[bench]]
 harness = false

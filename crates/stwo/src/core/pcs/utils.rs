@@ -1,8 +1,8 @@
-use std::collections::BTreeSet;
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 
 use itertools::zip_eq;
 use serde::{Deserialize, Serialize};
+use std_shims::{vec, BTreeSet, Vec};
 
 use super::TreeSubspan;
 use crate::core::ColumnVec;

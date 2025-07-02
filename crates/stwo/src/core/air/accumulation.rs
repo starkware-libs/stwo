@@ -40,6 +40,7 @@ mod tests {
 
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
+    use std_shims::Vec;
 
     use super::*;
     use crate::core::fields::m31::{M31, P};

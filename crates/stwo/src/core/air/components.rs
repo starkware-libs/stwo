@@ -1,4 +1,6 @@
-use std::iter::zip;
+use core::iter::zip;
+
+use std_shims::{vec, Vec};
 
 use super::accumulation::PointEvaluationAccumulator;
 use super::Component;

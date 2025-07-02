@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Neg, Sub};
+use core::ops::{Add, Mul, Neg, Sub};
 
 use num_traits::{One, Zero};
 
@@ -444,8 +444,9 @@ impl<T: Add<Output = T> + Copy> Iterator for CosetIterator<T> {
 
 #[cfg(test)]
 mod tests {
-    use indexmap::IndexSet;
+    use hashbrown::HashSet;
     use num_traits::{One, Pow};
+    use std_shims::{vec, Vec};
 
     use super::{CirclePointIndex, Coset};
     use crate::core::channel::Blake2sChannel;
@@ -478,10 +479,10 @@ mod tests {
     #[test]
     fn test_coset_is_half_coset_with_conjugate() {
         let canonic_coset = CanonicCoset::new(8);
-        let coset_points: IndexSet<_> = canonic_coset.coset().iter().collect();
+        let coset_points: HashSet<_> = canonic_coset.coset().iter().collect();
 
-        let half_coset_points: IndexSet<_> = canonic_coset.half_coset().iter().collect();
-        let half_coset_conjugate_points: IndexSet<_> =
+        let half_coset_points: HashSet<_> = canonic_coset.half_coset().iter().collect();
+        let half_coset_conjugate_points: HashSet<_> =
             canonic_coset.half_coset().conjugate().iter().collect();
 
         assert!((&half_coset_points & &half_coset_conjugate_points).is_empty());

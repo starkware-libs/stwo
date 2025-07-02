@@ -1,3 +1,5 @@
+use std_shims::Vec;
+
 use self::accumulation::PointEvaluationAccumulator;
 use super::circle::CirclePoint;
 use super::fields::qm31::SecureField;

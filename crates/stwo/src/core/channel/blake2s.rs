@@ -1,6 +1,7 @@
-use std::iter;
+use core::{array, iter};
 
 use itertools::Itertools;
+use std_shims::Vec;
 
 use super::{Channel, ChannelTime};
 use crate::core::fields::m31::{BaseField, N_BYTES_FELT, P};
@@ -55,7 +56,7 @@ impl Channel for Blake2sChannel {
     const BYTES_PER_HASH: usize = BLAKE_BYTES_PER_HASH;
 
     fn trailing_zeros(&self) -> u32 {
-        u128::from_le_bytes(std::array::from_fn(|i| self.digest.0[i])).trailing_zeros()
+        u128::from_le_bytes(array::from_fn(|i| self.digest.0[i])).trailing_zeros()
     }
 
     fn mix_felts(&mut self, felts: &[SecureField]) {
@@ -117,7 +118,8 @@ impl Channel for Blake2sChannel {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use itertools::Itertools;
+    use std_shims::BTreeSet;
 
     use crate::core::channel::blake2s::Blake2sChannel;
     use crate::core::channel::Channel;
@@ -178,9 +180,9 @@ mod tests {
     pub fn test_mix_felts() {
         let mut channel = Blake2sChannel::default();
         let initial_digest = channel.digest;
-        let felts: Vec<SecureField> = (0..2)
+        let felts = (0..2)
             .map(|i| SecureField::from(m31!(i + 1923782)))
-            .collect();
+            .collect_vec();
 
         channel.mix_felts(felts.as_slice());
 
