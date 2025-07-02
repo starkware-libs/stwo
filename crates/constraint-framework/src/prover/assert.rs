@@ -8,8 +8,8 @@ use stwo_prover::core::pcs::TreeVec;
 use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::utils::{
     bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
-    Fraction,
 };
+use stwo_prover::core::Fraction;
 use stwo_prover::parallel_iter;
 use stwo_prover::prover::backend::{Backend, Column};
 use stwo_prover::prover::poly::circle::CirclePoly;

@@ -5,7 +5,7 @@ use num_traits::{One, Zero};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
-use crate::core::utils::Fraction;
+use crate::core::Fraction;
 use crate::prover::backend::CpuBackend;
 use crate::prover::lookups::gkr_prover::{
     correct_sum_as_poly_in_first_variable, EqEvals, GkrMultivariatePolyOracle, GkrOps, Layer,
@@ -289,7 +289,7 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::test_utils::test_channel;
-    use crate::core::utils::Fraction;
+    use crate::core::Fraction;
     use crate::prover::backend::CpuBackend;
     use crate::prover::lookups::gkr_prover::{prove_batch, GkrOps, Layer};
     use crate::prover::lookups::gkr_verifier::{

@@ -6,7 +6,7 @@ use super::utils::{eq, fold_mle_evals, random_linear_combination};
 use crate::core::channel::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::utils::Fraction;
+use crate::core::Fraction;
 use crate::prover::lookups::sumcheck;
 
 /// Partially verifies a batch GKR proof.
