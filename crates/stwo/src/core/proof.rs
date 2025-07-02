@@ -1,5 +1,5 @@
-use std::ops::Deref;
-use std::{array, mem};
+use core::ops::Deref;
+use core::{array, mem};
 
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +10,7 @@ use crate::core::pcs::quotients::CommitmentSchemeProof;
 use crate::core::vcs::hash::Hash;
 use crate::core::vcs::verifier::MerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
+use crate::Vec;
 
 /// Error when the sampled values have an invalid structure.
 #[derive(Clone, Copy, Debug)]

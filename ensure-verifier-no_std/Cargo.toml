@@ -1,0 +1,15 @@
+[package]
+name = "ensure-verifier-no_std"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stwo = { path = "../crates/stwo", default-features = false }
+stwo-constraint-framework = { path = "../crates/constraint-framework", default-features = false }
+wee_alloc = "0.4.5"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

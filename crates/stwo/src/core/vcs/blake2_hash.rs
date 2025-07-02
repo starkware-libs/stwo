@@ -1,8 +1,10 @@
-use std::fmt;
+use core::fmt;
 
 use blake2::{Blake2s256, Digest};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
+
+use crate::Vec;
 
 // Wrapper for the blake2s hash type.
 #[repr(C, align(32))]
@@ -101,6 +103,7 @@ mod tests {
     use blake2::Digest;
 
     use super::{Blake2sHash, Blake2sHasher};
+    use crate::ToString;
 
     impl Blake2sHasher {
         fn finalize_reset(&mut self) -> Blake2sHash {

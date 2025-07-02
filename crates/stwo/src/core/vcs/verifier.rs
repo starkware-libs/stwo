@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -8,6 +6,7 @@ use super::utils::{next_decommitment_node, option_flatten_peekable};
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
 use crate::core::vcs::MerkleHasher;
+use crate::{vec, BTreeMap, Vec};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
 pub struct MerkleDecommitment<H: MerkleHasher> {

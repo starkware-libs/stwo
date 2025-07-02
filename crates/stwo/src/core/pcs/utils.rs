@@ -1,11 +1,11 @@
-use std::collections::BTreeSet;
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 
 use itertools::zip_eq;
 use serde::{Deserialize, Serialize};
 
 use super::TreeSubspan;
 use crate::core::ColumnVec;
+use crate::{vec, BTreeSet, Vec};
 
 /// A container that holds an element for each commitment tree.
 #[derive(Debug, Clone, Serialize, Deserialize)]

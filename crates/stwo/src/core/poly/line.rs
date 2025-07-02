@@ -1,7 +1,7 @@
-use std::cmp::Ordering;
-use std::fmt::Debug;
-use std::iter::Map;
-use std::ops::{Deref, DerefMut};
+use core::cmp::Ordering;
+use core::fmt::Debug;
+use core::iter::Map;
+use core::ops::{Deref, DerefMut};
 
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::utils::fold;
 use crate::core::utils::bit_reverse;
+use crate::Vec;
 
 /// Domain comprising of the x-coordinates of points in a [Coset].
 ///
@@ -245,7 +246,7 @@ mod tests {
         let coset = Coset::half_odds(LOG_SIZE);
         let domain = LineDomain::new(coset);
 
-        let elements = domain.iter().collect::<Vec<BaseField>>();
+        let elements = domain.iter().collect::<crate::Vec<BaseField>>();
 
         assert_eq!(elements.len(), domain.size());
         for (i, element) in elements.into_iter().enumerate() {

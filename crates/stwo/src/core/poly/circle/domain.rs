@@ -1,4 +1,4 @@
-use std::iter::Chain;
+use core::iter::Chain;
 
 use itertools::Itertools;
 
@@ -6,6 +6,7 @@ use crate::core::circle::{
     CirclePoint, CirclePointIndex, Coset, CosetIterator, M31_CIRCLE_LOG_ORDER,
 };
 use crate::core::fields::m31::BaseField;
+use crate::Vec;
 
 pub const MAX_CIRCLE_DOMAIN_LOG_SIZE: u32 = M31_CIRCLE_LOG_ORDER - 1;
 
@@ -116,6 +117,7 @@ mod tests {
     use super::CircleDomain;
     use crate::core::circle::{CirclePointIndex, Coset};
     use crate::core::poly::circle::CanonicCoset;
+    use crate::Vec;
 
     #[test]
     fn test_circle_domain_iterator() {

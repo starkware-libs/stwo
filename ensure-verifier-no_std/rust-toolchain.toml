@@ -1,0 +1,6 @@
+# TODO(Ohad): stop using nightly under no_std.
+[toolchain]
+channel = "nightly-2025-04-06"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"
