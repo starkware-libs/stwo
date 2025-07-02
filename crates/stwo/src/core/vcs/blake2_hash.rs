@@ -1,8 +1,9 @@
-use std::fmt;
+use core::fmt;
 
 use blake2::{Blake2s256, Digest};
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
+use std_shims::Vec;
 
 // Wrapper for the blake2s hash type.
 #[repr(C, align(32))]
@@ -99,6 +100,7 @@ impl Blake2sHasher {
 #[cfg(test)]
 mod tests {
     use blake2::Digest;
+    use std_shims::ToString;
 
     use super::{Blake2sHash, Blake2sHasher};
 

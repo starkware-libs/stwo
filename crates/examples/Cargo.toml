@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-parallel = ["dep:rayon"]
+parallel = ["dep:rayon", "stwo/parallel"]
 tracing = []
 slow-tests = []
 
@@ -19,7 +19,10 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 serde.workspace = true
 stwo = { path = "../stwo", features = ["prover"] }
-stwo-constraint-framework = { path = "../constraint-framework", features = ["prover"] }
+stwo-constraint-framework = { path = "../constraint-framework", features = [
+    "prover",
+    "parallel",
+] }
 rand.workspace = true
 educe.workspace = true
 

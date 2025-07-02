@@ -1,10 +1,11 @@
-use std::cmp::Ordering;
-use std::fmt::Debug;
-use std::iter::Map;
-use std::ops::{Deref, DerefMut};
+use core::cmp::Ordering;
+use core::fmt::Debug;
+use core::iter::Map;
+use core::ops::{Deref, DerefMut};
 
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
+use std_shims::Vec;
 
 use super::circle::CircleDomain;
 use crate::core::circle::{CirclePoint, Coset, CosetIterator};
@@ -245,7 +246,7 @@ mod tests {
         let coset = Coset::half_odds(LOG_SIZE);
         let domain = LineDomain::new(coset);
 
-        let elements = domain.iter().collect::<Vec<BaseField>>();
+        let elements = domain.iter().collect::<std_shims::Vec<BaseField>>();
 
         assert_eq!(elements.len(), domain.size());
         for (i, element) in elements.into_iter().enumerate() {

@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
-use std::ops::Deref;
+use core::ops::Deref;
 
 use itertools::Itertools;
+use std_shims::{BTreeSet, Vec};
 
 use super::channel::Channel;
 
@@ -70,6 +70,8 @@ impl Deref for Queries {
 
 #[cfg(test)]
 mod tests {
+    use std_shims::Vec;
+
     use crate::core::channel::Blake2sChannel;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::queries::Queries;
@@ -111,7 +113,7 @@ mod tests {
         let folded_queries = queries.fold(n_folds);
         let repeated_folded_queries = folded_queries
             .iter()
-            .flat_map(|q| std::iter::repeat_n(q, ratio));
+            .flat_map(|q| core::iter::repeat_n(q, ratio));
         for (query, folded_query) in queries.iter().zip(repeated_folded_queries) {
             // Check only the x coordinate since folding might give you the conjugate point.
             assert_eq!(

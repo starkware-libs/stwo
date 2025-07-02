@@ -1,32 +1,34 @@
 #![feature(portable_simd)]
+#![cfg_attr(not(feature = "std"), no_std)]
+
 /// ! This module contains helpers to express and use constraints for components.
 mod component;
 
-// TODO(Ohad): flag this with a std feature instead.
 #[cfg(feature = "prover")]
 pub mod expr;
 mod info;
 pub mod logup;
 mod point;
 pub mod preprocessed_columns;
-#[cfg(feature = "prover")]
+#[cfg(all(feature = "prover", feature = "std"))]
 mod prover;
 
-use std::array;
-use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Mul, Neg, Sub};
+use core::array;
+use core::fmt::Debug;
+use core::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
 use preprocessed_columns::PreProcessedColumnId;
-#[cfg(feature = "prover")]
+#[cfg(all(feature = "prover", feature = "std"))]
 pub use prover::{
     assert_constraints_on_polys, assert_constraints_on_trace, relation_tracker, AssertEvaluator,
     CpuDomainEvaluator, FractionWriter, LogupColGenerator, LogupTraceGenerator,
     SimdDomainEvaluator,
 };
+use std_shims::Vec;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo::core::fields::FieldExpOps;
@@ -195,12 +197,12 @@ macro_rules! logup_proxy {
             let last_batch = *batching.iter().max().unwrap();
 
             let mut fracs_by_batch =
-                hashbrown::HashMap::<usize, Vec<Fraction<Self::EF, Self::EF>>>::new();
+                hashbrown::HashMap::<usize, std_shims::Vec<Fraction<Self::EF, Self::EF>>>::new();
 
             for (batch, frac) in batching.iter().zip(self.logup.fracs.iter()) {
                 fracs_by_batch
                     .entry(*batch)
-                    .or_insert_with(Vec::new)
+                    .or_insert_with(std_shims::Vec::new)
                     .push(frac.clone());
             }
 

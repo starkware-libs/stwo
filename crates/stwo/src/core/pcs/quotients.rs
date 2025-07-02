@@ -1,10 +1,9 @@
-use std::cmp::Reverse;
-use std::collections::BTreeMap;
+use core::cmp::Reverse;
 
-use indexmap::IndexMap;
 use itertools::{izip, multiunzip, zip_eq, Itertools};
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
+use std_shims::{BTreeMap, Vec};
 
 use super::TreeVec;
 use crate::core::circle::CirclePoint;
@@ -21,6 +20,9 @@ use crate::core::vcs::verifier::MerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 use crate::core::verifier::VerificationError;
 use crate::core::ColumnVec;
+
+// Used for no_std support.
+pub type IndexMap<K, V> = indexmap::IndexMap<K, V, core::hash::BuildHasherDefault<fnv::FnvHasher>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommitmentSchemeProof<H: MerkleHasher> {
@@ -40,7 +42,6 @@ pub struct ColumnSampleBatch {
     /// The sampled column indices and their values at the point.
     pub columns_and_values: Vec<(usize, SecureField)>,
 }
-
 impl ColumnSampleBatch {
     /// Groups column samples by sampled point.
     /// # Arguments
@@ -48,7 +49,7 @@ impl ColumnSampleBatch {
     pub fn new_vec(samples: &[&Vec<PointSample>]) -> Vec<Self> {
         // Group samples by point, and create a ColumnSampleBatch for each point.
         // This should keep a stable ordering.
-        let mut grouped_samples = IndexMap::new();
+        let mut grouped_samples = IndexMap::default();
         for (column_index, samples) in samples.iter().enumerate() {
             for sample in samples.iter() {
                 grouped_samples

@@ -1,5 +1,6 @@
-use std::ops::Mul;
+use core::ops::Mul;
 
+use std_shims::{vec, Vec};
 use stwo::core::air::accumulation::PointEvaluationAccumulator;
 use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo::core::pcs::TreeVec;

@@ -1,12 +1,12 @@
-use std::cmp::Reverse;
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Debug;
-use std::iter::zip;
-use std::ops::RangeInclusive;
+use core::cmp::Reverse;
+use core::fmt::Debug;
+use core::iter::zip;
+use core::ops::RangeInclusive;
 
 use itertools::{zip_eq, Itertools};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
+use std_shims::{vec, BTreeMap, BTreeSet, Vec};
 use thiserror::Error;
 
 use super::channel::{Channel, MerkleChannel};
@@ -389,7 +389,7 @@ impl CirclePolyDegreeBound {
 }
 
 impl PartialOrd<LinePolyDegreeBound> for CirclePolyDegreeBound {
-    fn partial_cmp(&self, other: &LinePolyDegreeBound) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &LinePolyDegreeBound) -> Option<core::cmp::Ordering> {
         Some(self.log_degree_bound.cmp(&other.log_degree_bound))
     }
 }

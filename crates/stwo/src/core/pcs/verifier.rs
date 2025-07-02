@@ -1,6 +1,7 @@
-use std::iter::zip;
+use core::iter::zip;
 
 use itertools::Itertools;
+use std_shims::Vec;
 
 use super::super::circle::CirclePoint;
 use super::super::fields::qm31::SecureField;

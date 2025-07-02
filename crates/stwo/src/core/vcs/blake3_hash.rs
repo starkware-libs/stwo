@@ -1,6 +1,7 @@
-use std::fmt;
+use core::fmt;
 
 use serde::{Deserialize, Serialize};
+use std_shims::Vec;
 
 use crate::core::vcs::hash::Hash;
 
@@ -99,6 +100,8 @@ impl Blake3Hasher {
 
 #[cfg(test)]
 mod tests {
+    use std_shims::ToString;
+
     use crate::core::vcs::blake3_hash::Blake3Hasher;
 
     #[test]

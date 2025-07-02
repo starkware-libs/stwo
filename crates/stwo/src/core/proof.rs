@@ -1,7 +1,8 @@
-use std::ops::Deref;
-use std::{array, mem};
+use core::ops::Deref;
+use core::{array, mem};
 
 use serde::{Deserialize, Serialize};
+use std_shims::Vec;
 
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;

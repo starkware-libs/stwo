@@ -1,4 +1,6 @@
-use std::fmt::Debug;
+use core::fmt::Debug;
+
+use std_shims::Vec;
 
 use super::fields::qm31::SecureField;
 use super::vcs::MerkleHasher;

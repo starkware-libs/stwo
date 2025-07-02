@@ -1,3 +1,5 @@
+use std_shims::Vec;
+
 use super::line::LineDomain;
 use crate::core::fields::{ExtensionOf, Field};
 
@@ -79,6 +81,8 @@ pub fn domain_line_twiddles_from_tree<T>(
 
 #[cfg(test)]
 mod tests {
+    use std_shims::vec;
+
     use super::repeat_value;
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::line::LineDomain;

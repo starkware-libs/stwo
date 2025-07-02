@@ -1,6 +1,7 @@
-use std::iter::Chain;
+use core::iter::Chain;
 
 use itertools::Itertools;
+use std_shims::Vec;
 
 use crate::core::circle::{
     CirclePoint, CirclePointIndex, Coset, CosetIterator, M31_CIRCLE_LOG_ORDER,
@@ -112,6 +113,7 @@ type CircleDomainIndexIterator =
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
+    use std_shims::Vec;
 
     use super::CircleDomain;
     use crate::core::circle::{CirclePointIndex, Coset};
