@@ -7,6 +7,7 @@ use itertools::Itertools;
 use num_traits::One;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
+use stwo_constraint_framework::expr::ExprEvaluator;
 use stwo_constraint_framework::logup::LogupTraceGenerator;
 use stwo_constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,
@@ -66,6 +67,40 @@ pub struct PoseidonEval {
     pub lookup_elements: PoseidonElements,
     pub claimed_sum: SecureField,
 }
+
+struct ShaderEval<F: FrameworkEval>(F);
+
+impl<F: FrameworkEval> FrameworkEval for ShaderEval<F> {
+    fn log_size(&self) -> u32 {
+        self.0.log_size()
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.0.max_constraint_log_degree_bound()
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E
+    where
+        E: HasDomainTypeName,
+    {
+        // 1. call the expr evaluator:
+        // this collects the expressions
+        let mut expr_eval = ExprEvaluator::new();
+        self.0.evaluate(expr_eval);
+
+        // 2. compile all expressions into a shader:
+        // Do optimization passes, collect common subexpressions..
+        // Create a wgsl function which computes the
+        // circuit for the composition polynomial
+
+
+        // 3. invoke the shader to compute the
+        // composition polynomial over all rows.
+
+        eval
+    }
+}
+
 impl FrameworkEval for PoseidonEval {
     fn log_size(&self) -> u32 {
         self.log_n_rows
@@ -77,13 +112,7 @@ impl FrameworkEval for PoseidonEval {
     where
         E: HasDomainTypeName,
     {
-        let web_name = type_name::<WebDomainEvaluator<'_>>();
-
-        if eval.type_name() == web_name {
-            eval_poseidon_constraints_web(&mut eval, &self.lookup_elements);
-        } else {
-            eval_poseidon_constraints(&mut eval, &self.lookup_elements);
-        }
+        eval_poseidon_constraints(&mut eval, &self.lookup_elements);
         eval
     }
 }
