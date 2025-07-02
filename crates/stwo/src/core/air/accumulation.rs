@@ -43,7 +43,7 @@ mod tests {
 
     use super::*;
     use crate::core::fields::m31::{M31, P};
-    use crate::qm31;
+    use crate::{qm31, Vec};
 
     #[test]
     fn test_point_evaluation_accumulator() {

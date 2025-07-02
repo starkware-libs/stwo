@@ -1,4 +1,5 @@
-use std::ops::{Mul, Sub};
+use core::array;
+use core::ops::{Mul, Sub};
 
 use num_traits::{One, Zero};
 use stwo::core::channel::Channel;
@@ -7,6 +8,7 @@ use stwo::core::fields::qm31::SecureField;
 use stwo::core::Fraction;
 
 use super::EvalAtRow;
+use crate::{vec, Vec};
 
 /// Evaluates constraints for batched logups.
 /// These constraint enforce the sum of multiplicity_i / (z + sum_j alpha^j * x_j) = claimed_sum.
@@ -68,7 +70,7 @@ impl<const N: usize> LookupElements<N> {
     pub fn draw(channel: &mut impl Channel) -> Self {
         let [z, alpha] = channel.draw_secure_felts(2).try_into().unwrap();
         let mut cur = SecureField::one();
-        let alpha_powers = std::array::from_fn(|_| {
+        let alpha_powers = array::from_fn(|_| {
             let res = cur;
             cur *= alpha;
             res

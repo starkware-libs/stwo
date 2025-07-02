@@ -8,7 +8,7 @@ use crate::core::fri::FriVerificationError;
 use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
 use crate::core::vcs::verifier::MerkleVerificationError;
-
+use crate::{vec, String};
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
 pub fn verify<MC: MerkleChannel>(
@@ -54,7 +54,9 @@ pub fn verify<MC: MerkleChannel>(
     );
 
     let composition_oods_eval = proof.extract_composition_oods_eval().map_err(|_| {
-        VerificationError::InvalidStructure("Unexpected sampled_values structure".to_string())
+        VerificationError::InvalidStructure(crate::ToString::to_string(
+            &"Unexpected sampled_values structure",
+        ))
     })?;
 
     if composition_oods_eval

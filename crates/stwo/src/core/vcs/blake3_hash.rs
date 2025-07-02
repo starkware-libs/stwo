@@ -1,8 +1,9 @@
-use std::fmt;
+use core::fmt;
 
 use serde::{Deserialize, Serialize};
 
 use crate::core::vcs::hash::Hash;
+use crate::Vec;
 
 // Wrapper for the blake3 hash type.
 #[derive(Clone, Copy, PartialEq, Default, Eq, Serialize, Deserialize)]
@@ -100,6 +101,7 @@ impl Blake3Hasher {
 #[cfg(test)]
 mod tests {
     use crate::core::vcs::blake3_hash::Blake3Hasher;
+    use crate::ToString;
 
     #[test]
     fn single_hash_test() {

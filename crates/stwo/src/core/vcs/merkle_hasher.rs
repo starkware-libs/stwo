@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use core::fmt::Debug;
 
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::hash::Hash;

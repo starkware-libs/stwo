@@ -177,7 +177,7 @@ jobs:
         with:
           toolchain: nightly-2025-04-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2025-04-06 test --package stwo
+      - run: cargo +nightly-2025-04-06 test --no-default-features --package stwo
 
   run-framework-tests:
     runs-on: ubuntu-latest
@@ -187,7 +187,7 @@ jobs:
         with:
           toolchain: nightly-2025-04-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2025-04-06 test --package stwo-constraint-framework
+      - run: cargo +nightly-2025-04-06 test --no-default-features --package stwo-constraint-framework
 
   run-tests:
     runs-on: ubuntu-latest
@@ -219,6 +219,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo +nightly-2025-04-06 test --features="parallel, prover"
 
+  ensure-no-std-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-04-06
+      - uses: Swatinem/rust-cache@v2
+      - run: cd ensure-verifier-no_std && cargo build -r
+
   machete:
     runs-on: ubuntu-latest
     steps:
@@ -241,8 +251,11 @@ jobs:
       - run-avx-tests
       - run-neon-tests
       - run-wasm32-wasip1-tests
+      - run-tests-no-prover
+      - run-framework-tests
       - run-slow-tests
       - run-tests-parallel
+      - ensure-no-std-core
       - machete
     steps:
       - name: Decide whether all the needed jobs succeeded or failed

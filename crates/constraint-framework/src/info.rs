@@ -1,9 +1,8 @@
-use std::array;
-use std::cell::{RefCell, RefMut};
-use std::collections::HashMap;
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
-use std::rc::Rc;
+use core::array;
+use core::cell::{RefCell, RefMut};
+use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 
+use hashbrown::HashMap;
 use num_traits::{One, Zero};
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
@@ -14,7 +13,7 @@ use stwo::core::Fraction;
 use super::logup::LogupAtRow;
 use super::preprocessed_columns::PreProcessedColumnId;
 use super::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
-use crate::PREPROCESSED_TRACE_IDX;
+use crate::{vec, Rc, String, Vec, PREPROCESSED_TRACE_IDX};
 
 /// Collects information about the constraints.
 /// This includes mask offsets and columns at each interaction, the number of constraints and number
@@ -409,7 +408,10 @@ impl LogupCountPerRow {
     }
 
     pub fn inc(&mut self, relation: &str) {
-        *self.data.entry(relation.to_string()).or_insert(0) += 1;
+        *self
+            .data
+            .entry(crate::ToString::to_string(relation))
+            .or_insert(0) += 1;
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&String, &usize)> {

@@ -3,6 +3,7 @@
     all(target_arch = "x86_64", target_feature = "avx512f"),
     feature(stdarch_x86_avx512)
 )]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![feature(
     array_chunks,
     array_try_from_fn,
@@ -20,3 +21,5 @@ pub mod core;
 pub mod prover;
 #[cfg(feature = "tracing")]
 pub mod tracing;
+
+pub use std_alloc_prelude::*;

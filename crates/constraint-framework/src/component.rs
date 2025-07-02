@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::fmt::{self, Display, Formatter};
-use std::iter::zip;
-use std::ops::Deref;
+use core::fmt::{self, Display, Formatter};
+use core::iter::zip;
+use core::ops::Deref;
 
+use hashbrown::HashMap;
 use itertools::Itertools;
 use stwo::core::air::accumulation::PointEvaluationAccumulator;
 use stwo::core::air::Component;
@@ -12,10 +12,12 @@ use stwo::core::fields::qm31::SecureField;
 use stwo::core::fields::FieldExpOps;
 use stwo::core::pcs::{TreeSubspan, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::utils::all_unique;
 use stwo::core::ColumnVec;
 
 use super::preprocessed_columns::PreProcessedColumnId;
 use super::{EvalAtRow, InfoEvaluator, PointEvaluator, PREPROCESSED_TRACE_IDX};
+use crate::{vec, String, Vec};
 
 #[derive(Debug, Default)]
 enum PreprocessedColumnsAllocationMode {
@@ -65,7 +67,7 @@ impl TraceLocationAllocator {
     /// Create a new `TraceLocationAllocator` with fixed preprocessed columns setup.
     pub fn new_with_preproccessed_columns(preprocessed_columns: &[PreProcessedColumnId]) -> Self {
         assert!(
-            preprocessed_columns.iter().all_unique(),
+            all_unique(preprocessed_columns),
             "Duplicate preprocessed columns are not allowed!"
         );
         Self {

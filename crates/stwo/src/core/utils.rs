@@ -1,6 +1,7 @@
-use std::iter::Peekable;
+use core::iter::Peekable;
 
 use super::fields::Field;
+use crate::Vec;
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
     fn assign(self, other: impl IntoIterator<Item = T>)
@@ -46,6 +47,11 @@ impl<'a, I: Iterator> PeekableExt<'a, I> for Peekable<I> {
             predicate,
         }
     }
+}
+
+pub fn all_unique<T: Eq + core::hash::Hash>(iter: impl IntoIterator<Item = T>) -> bool {
+    let mut used = hashbrown::HashSet::new();
+    iter.into_iter().all(|elt| used.insert(elt))
 }
 
 /// Returns the bit reversed index of `i` which is represented by `log_size` bits.

@@ -1,4 +1,4 @@
-use std::iter::zip;
+use core::iter::zip;
 
 use super::accumulation::PointEvaluationAccumulator;
 use super::Component;
@@ -7,6 +7,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::TreeVec;
 use crate::core::verifier::PREPROCESSED_TRACE_IDX;
 use crate::core::ColumnVec;
+use crate::{vec, Vec};
 
 pub struct Components<'a> {
     pub components: Vec<&'a dyn Component>,

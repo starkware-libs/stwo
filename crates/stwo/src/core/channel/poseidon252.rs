@@ -1,4 +1,4 @@
-use std::iter;
+use core::{array, iter};
 
 use itertools::Itertools;
 use starknet_crypto::{poseidon_hash, poseidon_hash_many};
@@ -7,6 +7,7 @@ use starknet_ff::FieldElement as FieldElement252;
 use super::{Channel, ChannelTime};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::{vec, Vec};
 
 // Number of bytes that fit into a felt252.
 pub const BYTES_PER_FELT252: usize = 252 / 8;
@@ -39,7 +40,7 @@ impl Poseidon252Channel {
         let shift = (1u64 << 31).into();
 
         let mut cur = self.draw_secure_felt252();
-        let u32s: [u32; 8] = std::array::from_fn(|_| {
+        let u32s: [u32; 8] = array::from_fn(|_| {
             let next = cur.floor_div(shift);
             let res = cur - next * shift;
             cur = next;
@@ -125,7 +126,7 @@ impl Channel for Poseidon252Channel {
     fn draw_random_bytes(&mut self) -> Vec<u8> {
         let shift = (1u64 << 8).into();
         let mut cur = self.draw_secure_felt252();
-        let bytes: [u8; 31] = std::array::from_fn(|_| {
+        let bytes: [u8; 31] = array::from_fn(|_| {
             let next = cur.floor_div(shift);
             let res = cur - next * shift;
             cur = next;
@@ -137,14 +138,13 @@ impl Channel for Poseidon252Channel {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
+    use itertools::Itertools;
     use starknet_ff::FieldElement as FieldElement252;
 
     use crate::core::channel::poseidon252::Poseidon252Channel;
     use crate::core::channel::Channel;
     use crate::core::fields::qm31::SecureField;
-    use crate::m31;
+    use crate::{m31, BTreeSet};
 
     #[test]
     fn test_channel_time() {
@@ -200,9 +200,9 @@ mod tests {
     pub fn test_mix_felts() {
         let mut channel = Poseidon252Channel::default();
         let initial_digest = channel.digest;
-        let felts: Vec<SecureField> = (0..2)
+        let felts = (0..2)
             .map(|i| SecureField::from(m31!(i + 1923782)))
-            .collect();
+            .collect_vec();
 
         channel.mix_felts(felts.as_slice());
 
