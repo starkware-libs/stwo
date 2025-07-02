@@ -4,7 +4,7 @@ use num_traits::{One, Zero};
 use stwo_prover::core::channel::Channel;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::utils::Fraction;
+use stwo_prover::core::Fraction;
 
 use super::EvalAtRow;
 

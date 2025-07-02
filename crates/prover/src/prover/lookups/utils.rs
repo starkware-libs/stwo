@@ -5,7 +5,7 @@ use num_traits::Zero;
 
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{ExtensionOf, Field};
-use crate::core::utils::Fraction;
+use crate::core::Fraction;
 
 /// Univariate polynomial stored as coefficients in the monomial basis.
 #[derive(Debug, Clone)]
@@ -240,7 +240,7 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::fields::FieldExpOps;
-    use crate::core::utils::Fraction;
+    use crate::core::Fraction;
     use crate::prover::lookups::utils::eq;
 
     #[test]

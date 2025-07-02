@@ -28,7 +28,7 @@ pub use prover::{
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use stwo_prover::core::fields::FieldExpOps;
-use stwo_prover::core::utils::Fraction;
+use stwo_prover::core::Fraction;
 
 #[rustfmt::skip]
 pub use stwo_prover::core::verifier::PREPROCESSED_TRACE_IDX;

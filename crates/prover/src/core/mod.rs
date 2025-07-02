@@ -6,6 +6,8 @@ pub mod circle;
 pub mod constraints;
 pub mod fft;
 pub mod fields;
+mod fraction;
+pub use fraction::Fraction;
 pub mod fri;
 pub mod pcs;
 pub mod poly;
