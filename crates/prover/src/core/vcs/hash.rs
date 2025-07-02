@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display};
+use core::fmt::{Debug, Display};
 
 use serde::{Deserialize, Serialize};
 

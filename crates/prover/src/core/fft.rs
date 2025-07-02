@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Mul, Sub};
+use core::ops::{Add, AddAssign, Mul, Sub};
 
 use super::fields::m31::BaseField;
 

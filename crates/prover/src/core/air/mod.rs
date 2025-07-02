@@ -3,6 +3,7 @@ use super::circle::CirclePoint;
 use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
 use super::ColumnVec;
+use crate::Vec;
 
 pub mod accumulation;
 mod components;

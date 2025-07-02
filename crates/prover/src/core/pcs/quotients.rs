@@ -1,5 +1,4 @@
-use std::cmp::Reverse;
-use std::collections::BTreeMap;
+use core::cmp::Reverse;
 
 use indexmap::IndexMap;
 use itertools::{izip, multiunzip, zip_eq, Itertools};
@@ -21,6 +20,7 @@ use crate::core::vcs::verifier::MerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 use crate::core::verifier::VerificationError;
 use crate::core::ColumnVec;
+use crate::{BTreeMap, Vec};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommitmentSchemeProof<H: MerkleHasher> {

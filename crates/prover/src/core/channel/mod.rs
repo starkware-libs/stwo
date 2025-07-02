@@ -1,7 +1,8 @@
-use std::fmt::Debug;
+use core::fmt::Debug;
 
 use super::fields::qm31::SecureField;
 use super::vcs::MerkleHasher;
+use crate::Vec;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod poseidon252;

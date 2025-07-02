@@ -1,12 +1,11 @@
-use std::collections::HashSet;
-use std::vec;
-
+use hashbrown::HashSet;
 use itertools::Itertools;
 
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::ColumnVec;
+use crate::{vec, Vec};
 
 /// Mask holds a vector with an entry for each column.
 /// Each entry holds a list of mask items, which are the offsets of the mask at that column.
@@ -54,6 +53,7 @@ mod tests {
     use crate::core::air::mask::{fixed_mask_points, shifted_mask_points};
     use crate::core::circle::CirclePoint;
     use crate::core::poly::circle::CanonicCoset;
+    use crate::{vec, Vec};
 
     #[test]
     fn test_mask_fixed_points() {

@@ -8,6 +8,7 @@ use crate::core::channel::{MerkleChannel, Poseidon252Channel};
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::vcs::hash::Hash;
 use crate::core::vcs::MerkleHasher;
+use crate::Vec;
 
 const ELEMENTS_IN_BLOCK: usize = 8;
 
@@ -33,7 +34,7 @@ impl MerkleHasher for Poseidon252MerkleHasher {
         let padded_values = column_values
             .iter()
             .copied()
-            .chain(std::iter::repeat_n(BaseField::zero(), padding_length));
+            .chain(core::iter::repeat_n(BaseField::zero(), padding_length));
         for chunk in padded_values.array_chunks::<ELEMENTS_IN_BLOCK>() {
             values.push(construct_felt252_from_m31s(&chunk));
         }
@@ -56,7 +57,7 @@ fn construct_felt252_from_m31s(word: &[M31; 8]) -> FieldElement252 {
     }
 
     let felt_bytes = [felt_as_u256[1].to_be_bytes(), felt_as_u256[0].to_be_bytes()];
-    let felt_bytes = unsafe { std::mem::transmute::<[[u8; 16]; 2], [u8; 32]>(felt_bytes) };
+    let felt_bytes = unsafe { core::mem::transmute::<[[u8; 16]; 2], [u8; 32]>(felt_bytes) };
     FieldElement252::from_bytes_be(&felt_bytes).unwrap()
 }
 
