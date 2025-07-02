@@ -4,7 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-prover = []
+default = ["std"]
+std = []
+prover = ["std"]
 parallel = ["rayon"]
 slow-tests = []
 tracing = []
@@ -29,6 +31,7 @@ tracing.workspace = true
 rayon = { workspace = true, optional = true }
 serde.workspace = true
 tracing-subscriber.workspace = true
+hashbrown.workspace = true
 
 [dev-dependencies]
 aligned = "0.4.2"
@@ -64,6 +67,7 @@ missing_const_for_fn = "warn"
 [[bench]]
 harness = false
 name = "bit_rev"
+required-features = ["prover"]
 
 [[bench]]
 harness = false

@@ -1,12 +1,14 @@
-use std::fmt::{Debug, Display};
-use std::iter::{Product, Sum};
-use std::ops::{Mul, MulAssign, Neg};
+use core::array;
+use core::fmt::{Debug, Display};
+use core::iter::{Product, Sum};
+use core::ops::{Mul, MulAssign, Neg};
 
 use num_traits::{NumAssign, NumAssignOps, NumOps, One};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 use super::utils;
+use crate::Vec;
 
 pub mod cm31;
 pub mod m31;
@@ -78,7 +80,7 @@ pub fn batch_inverse_in_place<F: FieldExpOps>(column: &[F], dst: &mut [F]) {
 
     // First pass. Compute 'WIDTH' cumulative products in an interleaving fashion, reducing
     // instruction dependency and allowing better pipelining.
-    let mut cum_prod: [F; WIDTH] = std::array::from_fn(|_| F::one());
+    let mut cum_prod: [F; WIDTH] = array::from_fn(|_| F::one());
     dst[..WIDTH].clone_from_slice(&cum_prod);
     for i in 0..n {
         cum_prod[i % WIDTH] *= column[i].clone();
@@ -87,7 +89,7 @@ pub fn batch_inverse_in_place<F: FieldExpOps>(column: &[F], dst: &mut [F]) {
 
     // Inverse cumulative products.
     // Use classic batch inversion.
-    let mut tail_inverses: [F; WIDTH] = std::array::from_fn(|_| F::one());
+    let mut tail_inverses: [F; WIDTH] = array::from_fn(|_| F::one());
     batch_inverse_classic(&dst[n - WIDTH..], &mut tail_inverses);
 
     // Second pass.
@@ -176,13 +178,13 @@ impl<F: Field> ExtensionOf<F> for F {
 #[macro_export]
 macro_rules! impl_field {
     ($field_name: ty, $field_size: ident) => {
-        use std::iter::{Product, Sum};
+        use core::iter::{Product, Sum};
 
         use num_traits::{Num, One, Zero};
         use $crate::core::fields::Field;
 
         impl Num for $field_name {
-            type FromStrRadixErr = Box<dyn std::error::Error>;
+            type FromStrRadixErr = $crate::Box<dyn core::error::Error>;
 
             fn from_str_radix(_str: &str, _radix: u32) -> Result<Self, Self::FromStrRadixErr> {
                 unimplemented!(
@@ -479,6 +481,7 @@ mod tests {
     use crate::core::fields::m31::M31;
     use crate::core::fields::{batch_inverse, batch_inverse_chunked};
     use crate::core::utils;
+    use crate::Vec;
 
     #[test]
     fn test_batch_inverse() {

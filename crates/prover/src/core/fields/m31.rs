@@ -1,5 +1,5 @@
-use std::fmt::Display;
-use std::ops::{
+use core::fmt::Display;
+use core::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
 
@@ -70,7 +70,7 @@ impl M31 {
 }
 
 impl Display for M31 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", self.0)
     }
 }

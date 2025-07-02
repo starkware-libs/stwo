@@ -1,27 +1,49 @@
 #![feature(portable_simd)]
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(feature = "std")]
+extern crate std;
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+use alloc::{
+    rc::Rc,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+#[cfg(feature = "std")]
+use std::{
+    rc::Rc,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+
 /// ! This module contains helpers to express and use constraints for components.
 mod component;
 
-// TODO(Ohad): flag this with a std feature instead.
-#[cfg(feature = "prover")]
+#[cfg(feature = "std")]
 pub mod expr;
 mod info;
 pub mod logup;
 mod point;
 pub mod preprocessed_columns;
-#[cfg(feature = "prover")]
+#[cfg(all(feature = "prover", feature = "std"))]
 mod prover;
 
-use std::array;
-use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Mul, Neg, Sub};
+use core::array;
+use core::fmt::Debug;
+use core::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 pub use component::{FrameworkComponent, FrameworkEval, TraceLocationAllocator};
 pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
 use preprocessed_columns::PreProcessedColumnId;
-#[cfg(feature = "prover")]
+#[cfg(all(feature = "prover", feature = "std"))]
 pub use prover::{
     assert_constraints_on_polys, assert_constraints_on_trace, relation_tracker, AssertEvaluator,
     CpuDomainEvaluator, FractionWriter, LogupColGenerator, LogupTraceGenerator,
@@ -195,17 +217,17 @@ macro_rules! logup_proxy {
             let last_batch = *batching.iter().max().unwrap();
 
             let mut fracs_by_batch =
-                std::collections::HashMap::<usize, Vec<Fraction<Self::EF, Self::EF>>>::new();
+                hashbrown::HashMap::<usize, $crate::Vec<Fraction<Self::EF, Self::EF>>>::new();
 
             for (batch, frac) in batching.iter().zip(self.logup.fracs.iter()) {
                 fracs_by_batch
                     .entry(*batch)
-                    .or_insert_with(Vec::new)
+                    .or_insert_with($crate::Vec::new)
                     .push(frac.clone());
             }
 
-            let keys_set: std::collections::HashSet<_> = fracs_by_batch.keys().cloned().collect();
-            let all_batches_set: std::collections::HashSet<_> = (0..last_batch + 1).collect();
+            let keys_set: hashbrown::HashSet<_> = fracs_by_batch.keys().cloned().collect();
+            let all_batches_set: hashbrown::HashSet<_> = (0..last_batch + 1).collect();
 
             assert_eq!(
                 keys_set, all_batches_set,

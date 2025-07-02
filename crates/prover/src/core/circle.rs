@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Neg, Sub};
+use core::ops::{Add, Mul, Neg, Sub};
 
 use num_traits::{One, Zero};
 
@@ -453,6 +453,7 @@ mod tests {
     use crate::core::fields::qm31::{SecureField, P4};
     use crate::core::fields::FieldExpOps;
     use crate::core::poly::circle::CanonicCoset;
+    use crate::{vec, Vec};
 
     #[test]
     fn test_iterator() {

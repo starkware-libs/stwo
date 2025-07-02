@@ -1,4 +1,4 @@
-use std::iter::zip;
+use core::iter::zip;
 
 use itertools::Itertools;
 
@@ -14,6 +14,7 @@ use crate::core::vcs::verifier::MerkleVerifier;
 use crate::core::vcs::MerkleHasher;
 use crate::core::verifier::VerificationError;
 use crate::core::ColumnVec;
+use crate::Vec;
 
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
 #[derive(Default)]

@@ -1,4 +1,4 @@
-use std::iter::Peekable;
+use core::iter::Peekable;
 
 /// Fetches the next node that needs to be decommited in the current Merkle layer.
 pub fn next_decommitment_node(
@@ -15,6 +15,6 @@ pub fn next_decommitment_node(
 
 pub fn option_flatten_peekable<'a, I: IntoIterator<Item = &'a usize>>(
     a: Option<I>,
-) -> Peekable<std::iter::Copied<std::iter::Flatten<<Option<I> as IntoIterator>::IntoIter>>> {
+) -> Peekable<core::iter::Copied<core::iter::Flatten<<Option<I> as IntoIterator>::IntoIter>>> {
     a.into_iter().flatten().copied().peekable()
 }

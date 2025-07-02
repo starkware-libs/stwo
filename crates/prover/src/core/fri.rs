@@ -1,8 +1,7 @@
-use std::cmp::Reverse;
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Debug;
-use std::iter::zip;
-use std::ops::RangeInclusive;
+use core::cmp::Reverse;
+use core::fmt::Debug;
+use core::iter::zip;
+use core::ops::RangeInclusive;
 
 use itertools::{zip_eq, Itertools};
 use num_traits::Zero;
@@ -22,6 +21,7 @@ use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::core::utils::bit_reverse_index;
 use crate::core::vcs::verifier::{MerkleDecommitment, MerkleVerificationError, MerkleVerifier};
 use crate::core::vcs::MerkleHasher;
+use crate::{vec, BTreeMap, BTreeSet, Vec};
 
 /// FRI proof config
 // TODO(andrew): Support different step sizes.
@@ -389,7 +389,7 @@ impl CirclePolyDegreeBound {
 }
 
 impl PartialOrd<LinePolyDegreeBound> for CirclePolyDegreeBound {
-    fn partial_cmp(&self, other: &LinePolyDegreeBound) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &LinePolyDegreeBound) -> Option<core::cmp::Ordering> {
         Some(self.log_degree_bound.cmp(&other.log_degree_bound))
     }
 }

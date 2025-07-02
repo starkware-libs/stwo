@@ -1,5 +1,6 @@
 use super::line::LineDomain;
 use crate::core::fields::{ExtensionOf, Field};
+use crate::Vec;
 
 /// Folds values recursively in `O(n)` by a hierarchical application of folding factors.
 ///
@@ -83,6 +84,7 @@ mod tests {
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::poly::line::LineDomain;
     use crate::core::poly::utils::domain_line_twiddles_from_tree;
+    use crate::vec;
 
     #[test]
     fn repeat_value_0_times_works() {

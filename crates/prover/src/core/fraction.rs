@@ -1,5 +1,5 @@
-use std::iter::Sum;
-use std::ops::{Add, Mul};
+use core::iter::Sum;
+use core::ops::{Add, Mul};
 
 use num_traits::{One, Zero};
 
