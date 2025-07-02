@@ -773,7 +773,7 @@ pub fn fold_circle_into_line(
         });
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "prover"))]
 mod tests {
     use std::assert_matches::assert_matches;
     use std::iter::zip;
