@@ -1,10 +1,7 @@
-use std::rc::Rc;
-
 use num_traits::{One, Zero};
 use stwo::core::fields::qm31::SecureField;
 
 use super::{BaseExpr, ExtExpr};
-use crate::expr::rcbox_base;
 
 /// Applies simplifications to arithmetic expressions that can be used both for `BaseExpr` and for
 /// `ExtExpr`.
@@ -21,9 +18,11 @@ macro_rules! simplify_arithmetic {
                     (_, Self::Const(b_val)) if b_val.is_zero() => a, // a + 0 = a
                     // Simplify Negs.
                     // (-a + -b) = -(a + b)
-                    (Self::Neg(minus_a), Self::Neg(minus_b)) => -(*minus_a + *minus_b),
-                    (Self::Neg(minus_a), _) => b - *minus_a, // -a + b = b - a
-                    (_, Self::Neg(minus_b)) => a - *minus_b, // a + -b = a - b
+                    (Self::Neg(minus_a), Self::Neg(minus_b)) => {
+                        -((*minus_a).clone() + (*minus_b).clone())
+                    }
+                    (Self::Neg(minus_a), _) => b - (*minus_a).clone(), // -a + b = b - a
+                    (_, Self::Neg(minus_b)) => a - (*minus_b).clone(), // a + -b = a - b
                     // No simplification.
                     _ => a + b,
                 }
@@ -38,9 +37,11 @@ macro_rules! simplify_arithmetic {
                     (_, Self::Const(b_val)) if b_val.is_zero() => a,        // a - 0 = a
                     // Simplify Negs.
                     // (-a - -b) = b - a
-                    (Self::Neg(minus_a), Self::Neg(minus_b)) => *minus_b - *minus_a,
-                    (Self::Neg(minus_a), _) => -(*minus_a + b), // -a - b = -(a + b)
-                    (_, Self::Neg(minus_b)) => a + *minus_b,    // a + -b = a - b
+                    (Self::Neg(minus_a), Self::Neg(minus_b)) => {
+                        (*minus_b).clone() - (*minus_a).clone()
+                    }
+                    (Self::Neg(minus_a), _) => -((*minus_a).clone() + b), // -a - b = -(a + b)
+                    (_, Self::Neg(minus_b)) => a + (*minus_b).clone(),    // a + -b = a - b
                     // No Simplification.
                     _ => a - b,
                 }
@@ -59,9 +60,11 @@ macro_rules! simplify_arithmetic {
                     (_, Self::Const(b_val)) if -b_val == One::one() => -a,      // a * -1 = -a
                     // Simplify Negs.
                     // (-a) * (-b) = a * b
-                    (Self::Neg(minus_a), Self::Neg(minus_b)) => *minus_a * *minus_b,
-                    (Self::Neg(minus_a), _) => -(*minus_a * b), // (-a) * b = -(a * b)
-                    (_, Self::Neg(minus_b)) => -(a * *minus_b), // a * (-b) = -(a * b)
+                    (Self::Neg(minus_a), Self::Neg(minus_b)) => {
+                        (*minus_a).clone() * (*minus_b).clone()
+                    }
+                    (Self::Neg(minus_a), _) => -((*minus_a).clone() * b), // (-a) * b = -(a * b)
+                    (_, Self::Neg(minus_b)) => -((a).clone() * (*minus_b).clone()), // a * (-b) = -(a * b)
                     // No simplification.
                     _ => a * b,
                 }
@@ -70,9 +73,9 @@ macro_rules! simplify_arithmetic {
                 let a = a.simplify();
                 match a {
                     Self::Const(c) => Self::Const(-c),
-                    Self::Neg(minus_a) => *minus_a,     // -(-a) = a
-                    Self::Sub(a, b) => Self::Sub(b, a), // -(a - b) = b - a
-                    _ => -a,                            // No simplification.
+                    Self::Neg(minus_a) => (*minus_a).clone(), // -(-a) = a
+                    Self::Sub(a, b) => Self::Sub(b, a),      // -(a - b) = b - a
+                    _ => -a,                                  // No simplification.
                 }
             }
             other => other, // No simplification.
@@ -90,9 +93,9 @@ impl BaseExpr {
             Self::Inv(a) => {
                 let a = a.unchecked_simplify();
                 match a {
-                    Self::Inv(inv_a) => inv_a.clone(), // 1 / (1 / a) = a
+                    Self::Inv(inv_a) => (*inv_a).clone(),
                     Self::Const(c) => Self::Const(c.inverse()),
-                    _ => Self::Inv(rcbox_base(a)),
+                    _ => Self::Inv(a.into()),
                 }
             }
             other => other,
@@ -131,12 +134,7 @@ impl ExtExpr {
                         BaseExpr::Const(c_val),
                         BaseExpr::Const(d_val),
                     ) => ExtExpr::Const(SecureField::from_m31_array([a_val, b_val, c_val, d_val])),
-                    _ => Self::SecureCol([
-                        Rc::new(Box::new(a)),
-                        Rc::new(Box::new(b)),
-                        Rc::new(Box::new(c)),
-                        Rc::new(Box::new(d)),
-                    ]),
+                    _ => Self::SecureCol([a.into(), b.into(), c.into(), d.into()]),
                 }
             }
             other => other,

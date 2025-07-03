@@ -5,7 +5,7 @@ pub mod format;
 pub mod simplify;
 pub mod utils;
 
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
+use std::ops::{Add, AddAssign, Deref, Mul, MulAssign, Neg, Sub};
 use std::rc::Rc;
 
 pub use evaluator::ExprEvaluator;
@@ -43,19 +43,26 @@ impl From<(usize, usize, isize)> for ColumnExpr {
 /// This type is meant to be used as an F associated type for EvalAtRow and interacts with
 /// `ExtExpr`, `BaseField` and `SecureField` as expected.
 #[derive(Clone, Debug, PartialEq)]
-pub struct BaseExpr(Rc<BaseExprInner>);
+pub struct BaseExprInner(Rc<BaseExpr>);
+
+impl Deref for BaseExprInner {
+    type Target = BaseExpr;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum BaseExprInner {
+pub enum BaseExpr {
     Col(ColumnExpr),
     Const(BaseField),
     /// Formal parameter to the AIR, for example the interaction elements of a relation.
     Param(String),
-    Add(BaseExpr, BaseExpr),
-    Sub(BaseExpr, BaseExpr),
-    Mul(BaseExpr, BaseExpr),
-    Neg(BaseExpr),
-    Inv(BaseExpr),
+    Add(BaseExprInner, BaseExprInner),
+    Sub(BaseExprInner, BaseExprInner),
+    Mul(BaseExprInner, BaseExprInner),
+    Neg(BaseExprInner),
+    Inv(BaseExprInner),
 }
 
 /// An expression representing a secure field value. Can be either:
@@ -68,41 +75,57 @@ pub enum BaseExprInner {
 /// This type is meant to be used as an EF associated type for EvalAtRow and interacts with
 /// `BaseExpr`, `BaseField` and `SecureField` as expected.
 #[derive(Clone, Debug, PartialEq)]
+pub struct ExtExprInner(Rc<ExtExpr>);
+
+impl Deref for ExtExprInner {
+    type Target = ExtExpr;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExtExpr {
     /// An atomic secure column constructed from 4 expressions.
     /// Expressions on the secure column are not reduced, i.e,
     /// if `a = SecureCol(a0, a1, a2, a3)`, `b = SecureCol(b0, b1, b2, b3)` then
     /// `a + b` evaluates to `Add(a, b)` rather than
     /// `SecureCol(Add(a0, b0), Add(a1, b1), Add(a2, b2), Add(a3, b3))`
-    SecureCol([Rc<BaseExpr>; 4]),
+    SecureCol([BaseExprInner; 4]),
     Const(SecureField),
     /// Formal parameter to the AIR, for example the interaction elements of a relation.
     Param(String),
-    Add(Rc<ExtExpr>, Rc<ExtExpr>),
-    Sub(Rc<ExtExpr>, Rc<ExtExpr>),
-    Mul(Rc<ExtExpr>, Rc<ExtExpr>),
-    Neg(Rc<ExtExpr>),
+    Add(ExtExprInner, ExtExprInner),
+    Sub(ExtExprInner, ExtExprInner),
+    Mul(ExtExprInner, ExtExprInner),
+    Neg(ExtExprInner),
 }
 
-impl Into<BaseExpr> for BaseExprInner {
-    fn into(self) -> BaseExpr {
-        BaseExpr(Rc::new(self))
+impl Into<BaseExprInner> for BaseExpr {
+    fn into(self) -> BaseExprInner {
+        BaseExprInner(Rc::new(self))
     }
 }
 
 impl From<BaseField> for BaseExpr {
     fn from(val: BaseField) -> Self {
-        BaseExprInner::Const(val).into()
+        BaseExpr::Const(val)
+    }
+}
+
+impl Into<ExtExprInner> for ExtExpr {
+    fn into(self) -> ExtExprInner {
+        ExtExprInner(Rc::new(self))
     }
 }
 
 impl From<BaseField> for ExtExpr {
     fn from(val: BaseField) -> Self {
         ExtExpr::SecureCol([
-            Rc::new(BaseExpr::from(val)),
-            Rc::new(BaseExpr::zero()),
-            Rc::new(BaseExpr::zero()),
-            Rc::new(BaseExpr::zero()),
+            BaseExpr::from(val).into(),
+            BaseExpr::zero().into(),
+            BaseExpr::zero().into(),
+            BaseExpr::zero().into(),
         ])
     }
 }
@@ -110,10 +133,10 @@ impl From<BaseField> for ExtExpr {
 impl From<SecureField> for ExtExpr {
     fn from(QM31(CM31(a, b), CM31(c, d)): SecureField) -> Self {
         ExtExpr::SecureCol([
-            Rc::new(BaseExpr::from(a)),
-            Rc::new(BaseExpr::from(b)),
-            Rc::new(BaseExpr::from(c)),
-            Rc::new(BaseExpr::from(d)),
+            BaseExpr::from(a).into(),
+            BaseExpr::from(b).into(),
+            BaseExpr::from(c).into(),
+            BaseExpr::from(d).into(),
         ])
     }
 }
@@ -121,10 +144,10 @@ impl From<SecureField> for ExtExpr {
 impl From<BaseExpr> for ExtExpr {
     fn from(expr: BaseExpr) -> Self {
         ExtExpr::SecureCol([
-            Rc::new(expr.clone()),
-            Rc::new(BaseExpr::zero()),
-            Rc::new(BaseExpr::zero()),
-            Rc::new(BaseExpr::zero()),
+            expr.clone().into(),
+            BaseExpr::zero().into(),
+            BaseExpr::zero().into(),
+            BaseExpr::zero().into(),
         ])
     }
 }
@@ -132,21 +155,21 @@ impl From<BaseExpr> for ExtExpr {
 impl Add for BaseExpr {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
-        BaseExprInner::Add(self, rhs).into()
+        BaseExpr::Add(self.into(), rhs.into()).into()
     }
 }
 
 impl Sub for BaseExpr {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self {
-        BaseExprInner::Sub(self, rhs).into()
+        BaseExpr::Sub(self.into(), rhs.into()).into()
     }
 }
 
 impl Mul for BaseExpr {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self {
-        BaseExprInner::Mul(self, rhs).into()
+        BaseExpr::Mul(self.into(), rhs.into()).into()
     }
 }
 
@@ -165,28 +188,28 @@ impl MulAssign for BaseExpr {
 impl Neg for BaseExpr {
     type Output = Self;
     fn neg(self) -> Self {
-        BaseExprInner::Neg(self).into()
+        BaseExpr::Neg(self.into()).into()
     }
 }
 
 impl Add for ExtExpr {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
-        ExtExpr::Add(Rc::new(self), Rc::new(rhs))
+        ExtExpr::Add(self.into(), rhs.into()).into()
     }
 }
 
 impl Sub for ExtExpr {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self {
-        ExtExpr::Sub(Rc::new(self), Rc::new(rhs))
+        ExtExpr::Sub(self.into(), rhs.into()).into()
     }
 }
 
 impl Mul for ExtExpr {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self {
-        ExtExpr::Mul(Rc::new(self), Rc::new(rhs))
+        ExtExpr::Mul(self.into(), rhs.into()).into()
     }
 }
 
@@ -205,7 +228,7 @@ impl MulAssign for ExtExpr {
 impl Neg for ExtExpr {
     type Output = Self;
     fn neg(self) -> Self {
-        ExtExpr::Neg(Rc::new(self))
+        ExtExpr::Neg(self.into()).into()
     }
 }
 
@@ -245,7 +268,7 @@ impl One for ExtExpr {
 
 impl FieldExpOps for BaseExpr {
     fn inverse(&self) -> Self {
-        BaseExprInner::Inv(self.clone()).into()
+        BaseExpr::Inv(self.clone().into()).into()
     }
 }
 

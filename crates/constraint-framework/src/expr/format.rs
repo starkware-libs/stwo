@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use num_traits::Zero;
 
 use super::{BaseExpr, ColumnExpr, ExtExpr};
@@ -37,9 +39,9 @@ impl ExtExpr {
             ExtExpr::SecureCol([a, b, c, d]) => {
                 // If the expression's non-base components are all constant zeroes, return the base
                 // field representation of its first part.
-                if *b.as_ref() == BaseExpr::zero()
-                    && *c.as_ref() == BaseExpr::zero()
-                    && *d.as_ref() == BaseExpr::zero()
+                if matches!(*b.deref(), BaseExpr::Const(c) if c.is_zero())
+                    && matches!(*c.deref(), BaseExpr::Const(c) if c.is_zero())
+                    && matches!(*d.deref(), BaseExpr::Const(c) if c.is_zero())
                 {
                     a.format_expr()
                 } else {
