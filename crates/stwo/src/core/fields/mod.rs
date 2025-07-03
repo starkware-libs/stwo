@@ -152,9 +152,9 @@ pub trait ComplexConjugate {
     /// # Example
     ///
     /// ```
-    /// use stwo_prover::core::fields::m31::P;
-    /// use stwo_prover::core::fields::qm31::QM31;
-    /// use stwo_prover::core::fields::ComplexConjugate;
+    /// use stwo::core::fields::m31::P;
+    /// use stwo::core::fields::qm31::QM31;
+    /// use stwo::core::fields::ComplexConjugate;
     ///
     /// let x = QM31::from_u32_unchecked(1, 2, 3, 4);
     /// assert_eq!(

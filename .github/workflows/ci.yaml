@@ -79,7 +79,7 @@ jobs:
       - uses: jetli/wasm-pack-action@v0.4.0
         with:
           version: "latest"
-      - run: cd crates/prover && wasm-pack test --node
+      - run: cd crates/stwo && wasm-pack test --node
         env:
           RUSTFLAGS: -C target-feature=+simd128
 
@@ -177,7 +177,7 @@ jobs:
         with:
           toolchain: nightly-2025-04-06
       - uses: Swatinem/rust-cache@v2
-      - run: cargo +nightly-2025-04-06 test --package stwo-prover
+      - run: cargo +nightly-2025-04-06 test --package stwo
 
   run-framework-tests:
     runs-on: ubuntu-latest

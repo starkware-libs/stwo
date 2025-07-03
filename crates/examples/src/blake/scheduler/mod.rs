@@ -4,10 +4,10 @@ mod gen;
 use constraints::eval_blake_scheduler_constraints;
 pub use gen::{gen_interaction_trace, gen_trace, BlakeInput};
 use num_traits::Zero;
+use stwo::core::fields::qm31::SecureField;
 use stwo_constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,
 };
-use stwo_prover::core::fields::qm31::SecureField;
 
 use super::round::RoundElements;
 use super::N_ROUND_INPUT_FELTS;
@@ -56,8 +56,8 @@ mod tests {
     use std::simd::Simd;
 
     use itertools::Itertools;
+    use stwo::prover::backend::Column;
     use stwo_constraint_framework::FrameworkEval;
-    use stwo_prover::prover::backend::Column;
 
     use crate::blake::round::RoundElements;
     use crate::blake::scheduler::r#gen::{gen_interaction_trace, gen_trace, BlakeInput};
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn test_blake_scheduler() {
-        use stwo_prover::core::pcs::TreeVec;
+        use stwo::core::pcs::TreeVec;
 
         const LOG_SIZE: u32 = 10;
 

@@ -1,13 +1,13 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::poly::line::LineDomain;
-use stwo_prover::prover::backend::CpuBackend;
-use stwo_prover::prover::fri::FriOps;
-use stwo_prover::prover::line::LineEvaluation;
-use stwo_prover::prover::poly::circle::PolyOps;
-use stwo_prover::prover::secure_column::SecureColumnByCoords;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::poly::line::LineDomain;
+use stwo::prover::backend::CpuBackend;
+use stwo::prover::fri::FriOps;
+use stwo::prover::line::LineEvaluation;
+use stwo::prover::poly::circle::PolyOps;
+use stwo::prover::secure_column::SecureColumnByCoords;
 
 fn folding_benchmark(c: &mut Criterion) {
     const LOG_SIZE: u32 = 12;

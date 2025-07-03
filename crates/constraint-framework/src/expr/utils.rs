@@ -51,14 +51,12 @@ pub(crate) use felt;
 #[cfg(test)]
 macro_rules! qfelt {
     ($a:expr, $b:expr, $c:expr, $d:expr) => {
-        crate::expr::ExtExpr::Const(
-            stwo_prover::core::fields::qm31::SecureField::from_m31_array([
-                $a.into(),
-                $b.into(),
-                $c.into(),
-                $d.into(),
-            ]),
-        )
+        crate::expr::ExtExpr::Const(stwo::core::fields::qm31::SecureField::from_m31_array([
+            $a.into(),
+            $b.into(),
+            $c.into(),
+            $d.into(),
+        ]))
     };
 }
 #[cfg(test)]

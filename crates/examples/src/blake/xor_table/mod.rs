@@ -17,22 +17,22 @@ use std::simd::u32x16;
 
 use itertools::Itertools;
 use num_traits::Zero;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
+use stwo::core::pcs::{TreeSubspan, TreeVec};
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::{ColumnVec, Fraction};
+use stwo::prover::backend::simd::column::BaseColumn;
+use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+use stwo::prover::backend::simd::qm31::PackedSecureField;
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::Column;
+use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::poly::BitReversedOrder;
 use stwo_constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator, LogupTraceGenerator,
     Relation, RelationEntry, INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::pcs::{TreeSubspan, TreeVec};
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::{ColumnVec, Fraction};
-use stwo_prover::prover::backend::simd::column::BaseColumn;
-use stwo_prover::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use stwo_prover::prover::backend::simd::qm31::PackedSecureField;
-use stwo_prover::prover::backend::simd::SimdBackend;
-use stwo_prover::prover::backend::Column;
-use stwo_prover::prover::poly::circle::CircleEvaluation;
-use stwo_prover::prover::poly::BitReversedOrder;
 use tracing::{span, Level};
 
 use super::preprocessed_columns::XorTable;
@@ -151,9 +151,9 @@ define_xor_table!(xor4, XorElements4, 4, 0);
 mod tests {
     use std::simd::u32x16;
 
+    use stwo::core::poly::circle::CanonicCoset;
     use stwo_constraint_framework::logup::LookupElements;
     use stwo_constraint_framework::{assert_constraints_on_polys, FrameworkEval};
-    use stwo_prover::core::poly::circle::CanonicCoset;
 
     use crate::blake::preprocessed_columns::XorTable;
     use crate::blake::xor_table::xor12::{
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn test_xor_table() {
-        use stwo_prover::core::pcs::TreeVec;
+        use stwo::core::pcs::TreeVec;
 
         const ELEM_BITS: u32 = 9;
         const EXPAND_BITS: u32 = 2;

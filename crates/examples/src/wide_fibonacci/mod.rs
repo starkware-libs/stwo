@@ -1,14 +1,14 @@
 use itertools::Itertools;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::FieldExpOps;
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::ColumnVec;
+use stwo::prover::backend::simd::m31::PackedBaseField;
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::{Col, Column};
+use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::poly::BitReversedOrder;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::FieldExpOps;
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::ColumnVec;
-use stwo_prover::prover::backend::simd::m31::PackedBaseField;
-use stwo_prover::prover::backend::simd::SimdBackend;
-use stwo_prover::prover::backend::{Col, Column};
-use stwo_prover::prover::poly::circle::CircleEvaluation;
-use stwo_prover::prover::poly::BitReversedOrder;
 
 pub type WideFibonacciComponent<const N: usize> = FrameworkComponent<WideFibonacciEval<N>>;
 
@@ -71,28 +71,28 @@ pub fn generate_trace<const N: usize>(
 mod tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
+    use stwo::core::air::Component;
+    use stwo::core::channel::Blake2sChannel;
+    #[cfg(not(target_arch = "wasm32"))]
+    use stwo::core::channel::Poseidon252Channel;
+    use stwo::core::fields::m31::BaseField;
+    use stwo::core::fields::qm31::SecureField;
+    use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
+    use stwo::core::poly::circle::CanonicCoset;
+    use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    #[cfg(not(target_arch = "wasm32"))]
+    use stwo::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+    use stwo::core::verifier::verify;
+    use stwo::core::ColumnVec;
+    use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
+    use stwo::prover::backend::simd::SimdBackend;
+    use stwo::prover::backend::Column;
+    use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+    use stwo::prover::poly::BitReversedOrder;
+    use stwo::prover::{prove, CommitmentSchemeProver};
     use stwo_constraint_framework::{
         assert_constraints_on_polys, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
     };
-    use stwo_prover::core::air::Component;
-    use stwo_prover::core::channel::Blake2sChannel;
-    #[cfg(not(target_arch = "wasm32"))]
-    use stwo_prover::core::channel::Poseidon252Channel;
-    use stwo_prover::core::fields::m31::BaseField;
-    use stwo_prover::core::fields::qm31::SecureField;
-    use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
-    use stwo_prover::core::poly::circle::CanonicCoset;
-    use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    #[cfg(not(target_arch = "wasm32"))]
-    use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
-    use stwo_prover::core::verifier::verify;
-    use stwo_prover::core::ColumnVec;
-    use stwo_prover::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-    use stwo_prover::prover::backend::simd::SimdBackend;
-    use stwo_prover::prover::backend::Column;
-    use stwo_prover::prover::poly::circle::{CircleEvaluation, PolyOps};
-    use stwo_prover::prover::poly::BitReversedOrder;
-    use stwo_prover::prover::{prove, CommitmentSchemeProver};
 
     use super::WideFibonacciEval;
     use crate::wide_fibonacci::{generate_trace, FibInput, WideFibonacciComponent};

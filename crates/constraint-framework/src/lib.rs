@@ -27,13 +27,13 @@ pub use prover::{
     CpuDomainEvaluator, FractionWriter, LogupColGenerator, LogupTraceGenerator,
     SimdDomainEvaluator,
 };
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use stwo_prover::core::fields::FieldExpOps;
-use stwo_prover::core::Fraction;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::fields::FieldExpOps;
+use stwo::core::Fraction;
 
 #[rustfmt::skip]
-pub use stwo_prover::core::verifier::PREPROCESSED_TRACE_IDX;
+pub use stwo::core::verifier::PREPROCESSED_TRACE_IDX;
 pub const ORIGINAL_TRACE_IDX: usize = 1;
 pub const INTERACTION_TRACE_IDX: usize = 2;
 
@@ -307,7 +307,7 @@ macro_rules! relation {
             pub fn dummy() -> Self {
                 Self($crate::logup::LookupElements::dummy())
             }
-            pub fn draw(channel: &mut impl stwo_prover::core::channel::Channel) -> Self {
+            pub fn draw(channel: &mut impl stwo::core::channel::Channel) -> Self {
                 Self($crate::logup::LookupElements::draw(channel))
             }
         }
@@ -332,7 +332,7 @@ macro_rules! relation {
 #[macro_export]
 macro_rules! m31 {
     ($m:expr) => {
-        stwo_prover::core::fields::m31::M31::from_u32_unchecked($m)
+        stwo::core::fields::m31::M31::from_u32_unchecked($m)
     };
 }
 
@@ -340,6 +340,6 @@ macro_rules! m31 {
 #[macro_export]
 macro_rules! qm31 {
     ($m0:expr, $m1:expr, $m2:expr, $m3:expr) => {{
-        stwo_prover::core::fields::qm31::QM31::from_u32_unchecked($m0, $m1, $m2, $m3)
+        stwo::core::fields::qm31::QM31::from_u32_unchecked($m0, $m1, $m2, $m3)
     }};
 }

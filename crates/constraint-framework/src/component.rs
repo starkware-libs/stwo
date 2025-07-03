@@ -4,15 +4,15 @@ use std::iter::zip;
 use std::ops::Deref;
 
 use itertools::Itertools;
-use stwo_prover::core::air::accumulation::PointEvaluationAccumulator;
-use stwo_prover::core::air::Component;
-use stwo_prover::core::circle::CirclePoint;
-use stwo_prover::core::constraints::coset_vanishing;
-use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::fields::FieldExpOps;
-use stwo_prover::core::pcs::{TreeSubspan, TreeVec};
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::ColumnVec;
+use stwo::core::air::accumulation::PointEvaluationAccumulator;
+use stwo::core::air::Component;
+use stwo::core::circle::CirclePoint;
+use stwo::core::constraints::coset_vanishing;
+use stwo::core::fields::qm31::SecureField;
+use stwo::core::fields::FieldExpOps;
+use stwo::core::pcs::{TreeSubspan, TreeVec};
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::ColumnVec;
 
 use super::preprocessed_columns::PreProcessedColumnId;
 use super::{EvalAtRow, InfoEvaluator, PointEvaluator, PREPROCESSED_TRACE_IDX};
@@ -99,7 +99,7 @@ impl TraceLocationAllocator {
 /// the SIMD backend. Note that the constraint framework only supports components with columns of
 /// the same size.
 ///
-/// [`ComponentProver`]: stwo_prover::prover::ComponentProver
+/// [`ComponentProver`]: stwo::prover::ComponentProver
 pub trait FrameworkEval {
     fn log_size(&self) -> u32;
 

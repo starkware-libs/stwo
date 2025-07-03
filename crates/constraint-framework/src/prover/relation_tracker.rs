@@ -3,14 +3,14 @@ use std::fmt::Debug;
 
 use itertools::Itertools;
 use num_traits::Zero;
-use stwo_prover::core::fields::m31::{BaseField, M31};
-use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use stwo_prover::core::pcs::TreeVec;
-use stwo_prover::core::utils::{
+use stwo::core::fields::m31::{BaseField, M31};
+use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::pcs::TreeVec;
+use stwo::core::utils::{
     bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
 };
-use stwo_prover::core::Fraction;
-use stwo_prover::prover::backend::Column;
+use stwo::core::Fraction;
+use stwo::prover::backend::Column;
 
 use crate::{
     Batching, EvalAtRow, FrameworkComponent, FrameworkEval, Relation, RelationEntry,

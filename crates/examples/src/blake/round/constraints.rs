@@ -1,8 +1,8 @@
 use itertools::{chain, Itertools};
 use num_traits::One;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
 use stwo_constraint_framework::{EvalAtRow, RelationEntry};
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::SecureField;
 
 use super::{BlakeXorElements, RoundElements};
 use crate::blake::{Fu32, STATE_SIZE};

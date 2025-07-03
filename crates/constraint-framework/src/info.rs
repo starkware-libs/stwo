@@ -5,11 +5,11 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub};
 use std::rc::Rc;
 
 use num_traits::{One, Zero};
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::fields::FieldExpOps;
-use stwo_prover::core::pcs::TreeVec;
-use stwo_prover::core::Fraction;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
+use stwo::core::fields::FieldExpOps;
+use stwo::core::pcs::TreeVec;
+use stwo::core::Fraction;
 
 use super::logup::LogupAtRow;
 use super::preprocessed_columns::PreProcessedColumnId;
@@ -420,8 +420,8 @@ impl LogupCountPerRow {
 #[cfg(test)]
 mod tests {
     use num_traits::{One, Zero};
-    use stwo_prover::core::fields::m31::BaseField;
-    use stwo_prover::core::fields::qm31::SecureField;
+    use stwo::core::fields::m31::BaseField;
+    use stwo::core::fields::qm31::SecureField;
 
     use super::{ExtensionFieldCounter, InfoEvaluator};
     use crate::info::{ArithmeticCounts, FieldCounter};

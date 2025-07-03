@@ -1123,59 +1123,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "stwo-air-utils"
-version = "0.1.1"
-dependencies = [
- "bytemuck",
- "itertools 0.12.1",
- "rayon",
- "stwo-air-utils-derive",
- "stwo-prover",
-]
-
-[[package]]
-name = "stwo-air-utils-derive"
-version = "0.1.0"
-dependencies = [
- "itertools 0.13.0",
- "proc-macro2",
- "quote",
- "syn 2.0.102",
-]
-
-[[package]]
-name = "stwo-constraint-framework"
-version = "0.1.1"
-dependencies = [
- "itertools 0.12.1",
- "num-traits",
- "rand",
- "rayon",
- "stwo-prover",
- "tracing",
-]
-
-[[package]]
-name = "stwo-examples"
-version = "0.1.1"
-dependencies = [
- "criterion",
- "educe",
- "itertools 0.12.1",
- "ndarray",
- "num-traits",
- "rand",
- "rayon",
- "serde",
- "stwo-constraint-framework",
- "stwo-prover",
- "test-log",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "stwo-prover"
+name = "stwo"
 version = "0.1.1"
 dependencies = [
  "aligned",
@@ -1199,6 +1147,58 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen-test",
+]
+
+[[package]]
+name = "stwo-air-utils"
+version = "0.1.1"
+dependencies = [
+ "bytemuck",
+ "itertools 0.12.1",
+ "rayon",
+ "stwo",
+ "stwo-air-utils-derive",
+]
+
+[[package]]
+name = "stwo-air-utils-derive"
+version = "0.1.0"
+dependencies = [
+ "itertools 0.13.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.102",
+]
+
+[[package]]
+name = "stwo-constraint-framework"
+version = "0.1.1"
+dependencies = [
+ "itertools 0.12.1",
+ "num-traits",
+ "rand",
+ "rayon",
+ "stwo",
+ "tracing",
+]
+
+[[package]]
+name = "stwo-examples"
+version = "0.1.1"
+dependencies = [
+ "criterion",
+ "educe",
+ "itertools 0.12.1",
+ "ndarray",
+ "num-traits",
+ "rand",
+ "rayon",
+ "serde",
+ "stwo",
+ "stwo-constraint-framework",
+ "test-log",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

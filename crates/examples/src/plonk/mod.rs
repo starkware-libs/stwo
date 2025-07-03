@@ -1,27 +1,27 @@
 use itertools::Itertools;
 use num_traits::One;
+use stwo::core::channel::Blake2sChannel;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
+use stwo::core::pcs::{PcsConfig, TreeSubspan};
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::proof::StarkProof;
+use stwo::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+use stwo::core::ColumnVec;
+use stwo::prover::backend::simd::column::BaseColumn;
+use stwo::prover::backend::simd::m31::LOG_N_LANES;
+use stwo::prover::backend::simd::qm31::PackedSecureField;
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::Column;
+use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::{prove, CommitmentSchemeProver};
 use stwo_constraint_framework::logup::LookupElements;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_constraint_framework::{
     assert_constraints_on_polys, relation, EvalAtRow, FrameworkComponent, FrameworkEval,
     LogupTraceGenerator, RelationEntry, TraceLocationAllocator,
 };
-use stwo_prover::core::channel::Blake2sChannel;
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::pcs::{PcsConfig, TreeSubspan};
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::proof::StarkProof;
-use stwo_prover::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
-use stwo_prover::core::ColumnVec;
-use stwo_prover::prover::backend::simd::column::BaseColumn;
-use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
-use stwo_prover::prover::backend::simd::qm31::PackedSecureField;
-use stwo_prover::prover::backend::simd::SimdBackend;
-use stwo_prover::prover::backend::Column;
-use stwo_prover::prover::poly::circle::{CircleEvaluation, PolyOps};
-use stwo_prover::prover::poly::BitReversedOrder;
-use stwo_prover::prover::{prove, CommitmentSchemeProver};
 use tracing::{span, Level};
 
 pub type PlonkComponent = FrameworkComponent<PlonkEval>;
@@ -286,12 +286,12 @@ impl Plonk {
 mod tests {
     use std::env;
 
-    use stwo_prover::core::air::Component;
-    use stwo_prover::core::channel::Blake2sChannel;
-    use stwo_prover::core::fri::FriConfig;
-    use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
-    use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    use stwo_prover::core::verifier::verify;
+    use stwo::core::air::Component;
+    use stwo::core::channel::Blake2sChannel;
+    use stwo::core::fri::FriConfig;
+    use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
+    use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::core::verifier::verify;
 
     use crate::plonk::{prove_fibonacci_plonk, PlonkLookupElements};
 

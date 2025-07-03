@@ -1,5 +1,5 @@
 use num_traits::{One, Zero};
-use stwo_prover::core::fields::qm31::SecureField;
+use stwo::core::fields::qm31::SecureField;
 
 use super::{BaseExpr, ExtExpr};
 
@@ -154,8 +154,8 @@ mod tests {
 
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
-    use stwo_prover::core::fields::m31::BaseField;
-    use stwo_prover::core::fields::qm31::SecureField;
+    use stwo::core::fields::m31::BaseField;
+    use stwo::core::fields::qm31::SecureField;
 
     use crate::expr::utils::*;
     use crate::AssertEvaluator;
@@ -170,8 +170,8 @@ mod tests {
         let qzero = qfelt!(0, 0, 0, 0);
         let one = felt!(1);
         let qone = qfelt!(1, 0, 0, 0);
-        let minus_one = felt!(stwo_prover::core::fields::m31::P - 1);
-        let qminus_one = qfelt!(stwo_prover::core::fields::m31::P - 1, 0, 0, 0);
+        let minus_one = felt!(stwo::core::fields::m31::P - 1);
+        let qminus_one = qfelt!(stwo::core::fields::m31::P - 1, 0, 0, 0);
 
         let mut rng = SmallRng::seed_from_u64(0);
         let columns: HashMap<(usize, usize, isize), BaseField> =

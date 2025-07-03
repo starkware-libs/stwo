@@ -1,17 +1,17 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use stwo::core::fields::m31::M31;
+use stwo::core::fields::qm31::QM31;
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
+use stwo::core::ColumnVec;
+use stwo::prover::backend::simd::column::BaseColumn;
+use stwo::prover::backend::simd::m31::{PackedM31, LOG_N_LANES};
+use stwo::prover::backend::simd::qm31::PackedQM31;
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::poly::BitReversedOrder;
 use stwo_constraint_framework::{LogupTraceGenerator, Relation};
-use stwo_prover::core::fields::m31::M31;
-use stwo_prover::core::fields::qm31::QM31;
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
-use stwo_prover::core::ColumnVec;
-use stwo_prover::prover::backend::simd::column::BaseColumn;
-use stwo_prover::prover::backend::simd::m31::{PackedM31, LOG_N_LANES};
-use stwo_prover::prover::backend::simd::qm31::PackedQM31;
-use stwo_prover::prover::backend::simd::SimdBackend;
-use stwo_prover::prover::poly::circle::CircleEvaluation;
-use stwo_prover::prover::poly::BitReversedOrder;
 
 use super::components::{State, StateMachineElements, STATE_SIZE};
 
@@ -88,12 +88,12 @@ pub fn gen_interaction_trace(
 
 #[cfg(test)]
 mod tests {
+    use stwo::core::fields::m31::M31;
+    use stwo::core::fields::qm31::{QM31, SECURE_EXTENSION_DEGREE};
+    use stwo::core::fields::FieldExpOps;
+    use stwo::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
+    use stwo::prover::backend::Column;
     use stwo_constraint_framework::Relation;
-    use stwo_prover::core::fields::m31::M31;
-    use stwo_prover::core::fields::qm31::{QM31, SECURE_EXTENSION_DEGREE};
-    use stwo_prover::core::fields::FieldExpOps;
-    use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
-    use stwo_prover::prover::backend::Column;
 
     use crate::state_machine::components::StateMachineElements;
     use crate::state_machine::gen::{gen_interaction_trace, gen_trace};
