@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use itertools::Itertools;
 use rayon::iter::plumbing::{bridge, Consumer, Producer, ProducerCallback, UnindexedConsumer};
 use rayon::prelude::*;
-use stwo_prover::prover::backend::simd::m31::PackedM31;
+use stwo::prover::backend::simd::m31::PackedM31;
 
 pub type MutRow<'trace> = Vec<&'trace mut PackedM31>;
 

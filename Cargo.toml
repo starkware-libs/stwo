@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "crates/prover",
+    "crates/stwo",
     "crates/air-utils",
     "crates/air-utils-derive",
     "crates/constraint-framework",

@@ -7,7 +7,7 @@ edition.workspace = true
 bytemuck.workspace = true
 itertools.workspace = true
 rayon = { version = "1.10.0", optional = false }
-stwo-prover = { path = "../prover" }
+stwo = { path = "../stwo" }
 stwo-air-utils-derive = { path = "../air-utils-derive" }
 
 [lib]

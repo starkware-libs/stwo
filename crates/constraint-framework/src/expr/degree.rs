@@ -87,7 +87,7 @@ impl ExtExpr {
 
 #[cfg(test)]
 mod tests {
-    use stwo_prover::core::fields::FieldExpOps;
+    use stwo::core::fields::FieldExpOps;
 
     use crate::expr::degree::NamedExprs;
     use crate::expr::utils::*;
