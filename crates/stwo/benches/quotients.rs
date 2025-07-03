@@ -2,16 +2,16 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use itertools::Itertools;
-use stwo_prover::core::circle::SECURE_FIELD_CIRCLE_GEN;
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::pcs::quotients::ColumnSampleBatch;
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::prover::backend::cpu::CpuBackend;
-use stwo_prover::prover::backend::simd::SimdBackend;
-use stwo_prover::prover::poly::circle::CircleEvaluation;
-use stwo_prover::prover::poly::BitReversedOrder;
-use stwo_prover::prover::QuotientOps;
+use stwo::core::circle::SECURE_FIELD_CIRCLE_GEN;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
+use stwo::core::pcs::quotients::ColumnSampleBatch;
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::prover::backend::cpu::CpuBackend;
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::QuotientOps;
 
 // TODO(andrew): Check if deinterleave affects performance. Use optimized domain iteration if so.
 fn bench_quotients<B: QuotientOps, const LOG_N_ROWS: u32, const LOG_N_COLS: u32>(

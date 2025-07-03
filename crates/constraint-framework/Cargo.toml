@@ -4,13 +4,13 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-parallel = ["dep:rayon", "stwo-prover/parallel"]
-prover = ["stwo-prover/prover"]
+parallel = ["dep:rayon", "stwo/parallel"]
+prover = ["stwo/prover"]
 
 [dependencies]
 rayon = { workspace = true, optional = true }
 num-traits.workspace = true
 itertools.workspace = true
 tracing.workspace = true
-stwo-prover = { path = "../prover" }
+stwo = { path = "../stwo" }
 rand.workspace = true

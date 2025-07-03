@@ -3,22 +3,20 @@ use std::borrow::Cow;
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use stwo_prover::core::air::Component;
-use stwo_prover::core::constraints::coset_vanishing;
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::pcs::TreeVec;
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::utils::bit_reverse;
-use stwo_prover::prover::backend::simd::column::VeryPackedSecureColumnByCoords;
-use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
-use stwo_prover::prover::backend::simd::very_packed_m31::{
-    VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS,
-};
-use stwo_prover::prover::backend::simd::SimdBackend;
-use stwo_prover::prover::poly::circle::{CircleEvaluation, PolyOps};
-use stwo_prover::prover::poly::BitReversedOrder;
-use stwo_prover::prover::secure_column::SecureColumnByCoords;
-use stwo_prover::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
+use stwo::core::air::Component;
+use stwo::core::constraints::coset_vanishing;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::pcs::TreeVec;
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::utils::bit_reverse;
+use stwo::prover::backend::simd::column::VeryPackedSecureColumnByCoords;
+use stwo::prover::backend::simd::m31::LOG_N_LANES;
+use stwo::prover::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::secure_column::SecureColumnByCoords;
+use stwo::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
 use tracing::{span, Level};
 
 use super::{CpuDomainEvaluator, SimdDomainEvaluator};

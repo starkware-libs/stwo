@@ -38,7 +38,7 @@ impl M31 {
     /// Returns `val % P` when `val` is in the range `[0, 2P)`.
     ///
     /// ```
-    /// use stwo_prover::core::fields::m31::{M31, P};
+    /// use stwo::core::fields::m31::{M31, P};
     ///
     /// let val = 2 * P - 19;
     /// assert_eq!(M31::partial_reduce(val), M31::from(P - 19));
@@ -50,7 +50,7 @@ impl M31 {
     /// Returns `val % P` when `val` is in the range `[0, P^2)`.
     ///
     /// ```
-    /// use stwo_prover::core::fields::m31::{M31, P};
+    /// use stwo::core::fields::m31::{M31, P};
     ///
     /// let val = (P as u64).pow(2) - 19;
     /// assert_eq!(M31::reduce(val), M31::from(P - 19));
@@ -110,8 +110,8 @@ impl Mul for M31 {
 impl FieldExpOps for M31 {
     /// ```
     /// use num_traits::One;
-    /// use stwo_prover::core::fields::m31::BaseField;
-    /// use stwo_prover::core::fields::FieldExpOps;
+    /// use stwo::core::fields::m31::BaseField;
+    /// use stwo::core::fields::FieldExpOps;
     ///
     /// let v = BaseField::from(19);
     /// assert_eq!(v.inverse() * v, BaseField::one());
@@ -188,8 +188,8 @@ macro_rules! m31 {
 /// Multiplication tree found with [addchain](https://github.com/mmcloughlin/addchain).
 ///
 /// ```
-/// use stwo_prover::core::fields::m31::{pow2147483645, BaseField};
-/// use stwo_prover::core::fields::FieldExpOps;
+/// use stwo::core::fields::m31::{pow2147483645, BaseField};
+/// use stwo::core::fields::FieldExpOps;
 ///
 /// let v = BaseField::from(19);
 /// assert_eq!(pow2147483645(v), v.pow(2147483645));

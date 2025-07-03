@@ -2,17 +2,17 @@ use itertools::Itertools;
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use stwo_prover::core::fields::m31::{BaseField, M31};
-use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use stwo_prover::core::pcs::TreeVec;
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::utils::{
+use stwo::core::fields::m31::{BaseField, M31};
+use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::pcs::TreeVec;
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::utils::{
     bit_reverse_index, circle_domain_index_to_coset_index, coset_index_to_circle_domain_index,
 };
-use stwo_prover::core::Fraction;
-use stwo_prover::parallel_iter;
-use stwo_prover::prover::backend::{Backend, Column};
-use stwo_prover::prover::poly::circle::CirclePoly;
+use stwo::core::Fraction;
+use stwo::parallel_iter;
+use stwo::prover::backend::{Backend, Column};
+use stwo::prover::poly::circle::CirclePoly;
 
 use crate::logup::LogupAtRow;
 use crate::{EvalAtRow, INTERACTION_TRACE_IDX};

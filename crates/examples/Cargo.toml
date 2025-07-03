@@ -18,7 +18,7 @@ itertools.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 serde.workspace = true
-stwo-prover = { path = "../prover", features = ["prover"] }
+stwo = { path = "../stwo", features = ["prover"] }
 stwo-constraint-framework = { path = "../constraint-framework", features = ["prover"] }
 rand.workspace = true
 educe.workspace = true

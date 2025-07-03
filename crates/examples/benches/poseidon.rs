@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use stwo::core::pcs::PcsConfig;
 use stwo_examples::poseidon::prove_poseidon;
-use stwo_prover::core::pcs::PcsConfig;
 
 pub fn simd_poseidon(c: &mut Criterion) {
     const LOG_N_INSTANCES: u32 = 18;

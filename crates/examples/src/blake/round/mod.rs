@@ -3,10 +3,10 @@ mod gen;
 
 pub use gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
 use num_traits::Zero;
+use stwo::core::fields::qm31::SecureField;
 use stwo_constraint_framework::{
     relation, EvalAtRow, FrameworkComponent, FrameworkEval, InfoEvaluator,
 };
-use stwo_prover::core::fields::qm31::SecureField;
 
 use super::{BlakeXorElements, N_ROUND_INPUT_FELTS};
 
@@ -55,8 +55,8 @@ mod tests {
     use std::simd::Simd;
 
     use itertools::Itertools;
+    use stwo::core::poly::circle::CanonicCoset;
     use stwo_constraint_framework::FrameworkEval;
-    use stwo_prover::core::poly::circle::CanonicCoset;
 
     use crate::blake::round::r#gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
     use crate::blake::round::{BlakeRoundEval, RoundElements};
@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn test_blake_round() {
-        use stwo_prover::core::pcs::TreeVec;
+        use stwo::core::pcs::TreeVec;
 
         const LOG_SIZE: u32 = 10;
 

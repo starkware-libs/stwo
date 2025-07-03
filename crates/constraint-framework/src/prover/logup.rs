@@ -2,20 +2,20 @@ use itertools::{multizip, Itertools};
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::utils::uninit_vec;
-use stwo_prover::core::ColumnVec;
-use stwo_prover::prover::backend::simd::column::SecureColumn;
-use stwo_prover::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
-use stwo_prover::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
-use stwo_prover::prover::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
-use stwo_prover::prover::backend::simd::SimdBackend;
-use stwo_prover::prover::backend::Column;
-use stwo_prover::prover::poly::circle::CircleEvaluation;
-use stwo_prover::prover::poly::BitReversedOrder;
-use stwo_prover::prover::secure_column::SecureColumnByCoords;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::utils::uninit_vec;
+use stwo::core::ColumnVec;
+use stwo::prover::backend::simd::column::SecureColumn;
+use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
+use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
+use stwo::prover::backend::simd::qm31::{batch_inverse_packed_qm31, PackedSecureField};
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::Column;
+use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::secure_column::SecureColumnByCoords;
 
 // SIMD backend generator for logup interaction trace.
 pub struct LogupTraceGenerator {
@@ -81,7 +81,7 @@ impl LogupTraceGenerator {
         &mut self,
         iter: impl IndexedParallelIterator<Item = (PackedSecureField, PackedSecureField)>,
     ) {
-        use stwo_prover::prover::backend::simd::column::BaseColumn;
+        use stwo::prover::backend::simd::column::BaseColumn;
 
         let length = 1 << self.log_size;
         assert_eq!(iter.len() * N_LANES, length);
@@ -268,9 +268,9 @@ impl FractionWriter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use stwo_prover::core::fields::FieldExpOps;
-    use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
-    use stwo_prover::prover::backend::simd::qm31::PackedSecureField;
+    use stwo::core::fields::FieldExpOps;
+    use stwo::prover::backend::simd::m31::LOG_N_LANES;
+    use stwo::prover::backend::simd::qm31::PackedSecureField;
 
     use crate::prover::logup::LogupTraceGenerator;
     use crate::{m31, qm31};

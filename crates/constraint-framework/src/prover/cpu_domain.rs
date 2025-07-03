@@ -1,14 +1,14 @@
 use std::ops::Mul;
 
 use num_traits::Zero;
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use stwo_prover::core::pcs::TreeVec;
-use stwo_prover::core::utils::offset_bit_reversed_circle_domain_index;
-use stwo_prover::core::Fraction;
-use stwo_prover::prover::backend::CpuBackend;
-use stwo_prover::prover::poly::circle::CircleEvaluation;
-use stwo_prover::prover::poly::BitReversedOrder;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use stwo::core::pcs::TreeVec;
+use stwo::core::utils::offset_bit_reversed_circle_domain_index;
+use stwo::core::Fraction;
+use stwo::prover::backend::CpuBackend;
+use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::poly::BitReversedOrder;
 
 use crate::logup::LogupAtRow;
 use crate::{EvalAtRow, INTERACTION_TRACE_IDX};

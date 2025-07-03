@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use num_traits::Zero;
-use stwo_prover::core::Fraction;
+use stwo::core::Fraction;
 
 use super::assignment::{ExprVarAssignment, ExprVariables};
 use super::degree::NamedExprs;
@@ -293,7 +293,7 @@ impl EvalAtRow for ExprEvaluator {
 #[cfg(test)]
 mod tests {
     use num_traits::One;
-    use stwo_prover::core::fields::FieldExpOps;
+    use stwo::core::fields::FieldExpOps;
 
     use crate::expr::{ExprEvaluator, ExtExpr};
     use crate::{relation, EvalAtRow, FrameworkEval, RelationEntry};

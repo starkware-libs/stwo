@@ -3,21 +3,21 @@ use std::simd::u32x16;
 use itertools::{chain, multiunzip, Itertools};
 use num_traits::Zero;
 use serde::Serialize;
+use stwo::core::air::Component;
+use stwo::core::channel::{Channel, MerkleChannel};
+use stwo::core::fields::qm31::SecureField;
+use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::proof::StarkProof;
+use stwo::core::vcs::MerkleHasher;
+use stwo::core::verifier::{verify, VerificationError};
+use stwo::prover::backend::simd::m31::LOG_N_LANES;
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::BackendForChannel;
+use stwo::prover::poly::circle::PolyOps;
+use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver};
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_constraint_framework::{TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
-use stwo_prover::core::air::Component;
-use stwo_prover::core::channel::{Channel, MerkleChannel};
-use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::proof::StarkProof;
-use stwo_prover::core::vcs::MerkleHasher;
-use stwo_prover::core::verifier::{verify, VerificationError};
-use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
-use stwo_prover::prover::backend::simd::SimdBackend;
-use stwo_prover::prover::backend::BackendForChannel;
-use stwo_prover::prover::poly::circle::PolyOps;
-use stwo_prover::prover::{prove, CommitmentSchemeProver, ComponentProver};
 use tracing::{span, Level};
 
 use super::preprocessed_columns::XorTable;
@@ -521,8 +521,8 @@ pub fn verify_blake<MC: MerkleChannel>(
 mod tests {
     use std::env;
 
-    use stwo_prover::core::pcs::PcsConfig;
-    use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::core::pcs::PcsConfig;
+    use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
     use crate::blake::air::{prove_blake, verify_blake};
 

@@ -6,39 +6,35 @@ use std::iter::zip;
 
 use itertools::{chain, zip_eq, Itertools};
 use num_traits::{One, Zero};
+use stwo::core::air::accumulation::PointEvaluationAccumulator;
+use stwo::core::air::Component;
+use stwo::core::circle::{CirclePoint, Coset};
+use stwo::core::constraints::{coset_vanishing, point_vanishing};
+use stwo::core::fields::m31::BaseField;
+use stwo::core::fields::qm31::SecureField;
+use stwo::core::fields::{Field, FieldExpOps};
+use stwo::core::pcs::{TreeSubspan, TreeVec};
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::utils::{bit_reverse, bit_reverse_index, coset_index_to_circle_domain_index};
+use stwo::core::ColumnVec;
+use stwo::prover::backend::simd::column::{SecureColumn, VeryPackedSecureColumnByCoords};
+use stwo::prover::backend::simd::m31::LOG_N_LANES;
+use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
+use stwo::prover::backend::simd::qm31::PackedSecureField;
+use stwo::prover::backend::simd::very_packed_m31::{VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS};
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::{Col, Column};
+use stwo::prover::lookups::gkr_prover::GkrOps;
+use stwo::prover::lookups::mle::Mle;
+use stwo::prover::lookups::utils::eq;
+use stwo::prover::poly::circle::{CircleEvaluation, SecureCirclePoly, SecureEvaluation};
+use stwo::prover::poly::twiddles::TwiddleTree;
+use stwo::prover::poly::BitReversedOrder;
+use stwo::prover::secure_column::SecureColumnByCoords;
+use stwo::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
 use stwo_constraint_framework::{
     EvalAtRow, InfoEvaluator, PointEvaluator, SimdDomainEvaluator, TraceLocationAllocator,
 };
-use stwo_prover::core::air::accumulation::PointEvaluationAccumulator;
-use stwo_prover::core::air::Component;
-use stwo_prover::core::circle::{CirclePoint, Coset};
-use stwo_prover::core::constraints::{coset_vanishing, point_vanishing};
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::fields::{Field, FieldExpOps};
-use stwo_prover::core::pcs::{TreeSubspan, TreeVec};
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::utils::{
-    bit_reverse, bit_reverse_index, coset_index_to_circle_domain_index,
-};
-use stwo_prover::core::ColumnVec;
-use stwo_prover::prover::backend::simd::column::{SecureColumn, VeryPackedSecureColumnByCoords};
-use stwo_prover::prover::backend::simd::m31::LOG_N_LANES;
-use stwo_prover::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
-use stwo_prover::prover::backend::simd::qm31::PackedSecureField;
-use stwo_prover::prover::backend::simd::very_packed_m31::{
-    VeryPackedBaseField, LOG_N_VERY_PACKED_ELEMS,
-};
-use stwo_prover::prover::backend::simd::SimdBackend;
-use stwo_prover::prover::backend::{Col, Column};
-use stwo_prover::prover::lookups::gkr_prover::GkrOps;
-use stwo_prover::prover::lookups::mle::Mle;
-use stwo_prover::prover::lookups::utils::eq;
-use stwo_prover::prover::poly::circle::{CircleEvaluation, SecureCirclePoly, SecureEvaluation};
-use stwo_prover::prover::poly::twiddles::TwiddleTree;
-use stwo_prover::prover::poly::BitReversedOrder;
-use stwo_prover::prover::secure_column::SecureColumnByCoords;
-use stwo_prover::prover::{ComponentProver, DomainEvaluationAccumulator, Trace};
 use tracing::{span, Level};
 
 #[cfg(test)]
@@ -595,7 +591,7 @@ pub fn build_trace(
 /// returns column `q(P)` such that all `c(C[i]) = c(C[i + 1]) * q(C[i])` and
 /// `c(-C[i]) = c(-C[i + 1]) * q(-C[i])`.
 ///
-/// [`CircleDomain`]: stwo_prover::core::poly::circle::CircleDomain
+/// [`CircleDomain`]: stwo::core::poly::circle::CircleDomain
 fn gen_carry_quotient_col(
     eval_point: &[SecureField],
 ) -> SecureEvaluation<SimdBackend, BitReversedOrder> {
@@ -743,27 +739,27 @@ mod tests {
     use num_traits::{One, Zero};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
+    use stwo::core::air::{Component, Components};
+    use stwo::core::channel::Blake2sChannel;
+    use stwo::core::circle::SECURE_FIELD_CIRCLE_GEN;
+    use stwo::core::fields::m31::BaseField;
+    use stwo::core::fields::qm31::SecureField;
+    use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
+    use stwo::core::poly::circle::CanonicCoset;
+    use stwo::core::utils::{bit_reverse, coset_order_to_circle_domain_order};
+    use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::core::verifier::{verify, VerificationError};
+    use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
+    use stwo::prover::backend::simd::qm31::PackedSecureField;
+    use stwo::prover::backend::simd::SimdBackend;
+    use stwo::prover::lookups::mle::Mle;
+    use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+    use stwo::prover::poly::BitReversedOrder;
+    use stwo::prover::secure_column::SecureColumnByCoords;
+    use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver};
     use stwo_constraint_framework::{
         assert_constraints_on_polys, EvalAtRow, TraceLocationAllocator,
     };
-    use stwo_prover::core::air::{Component, Components};
-    use stwo_prover::core::channel::Blake2sChannel;
-    use stwo_prover::core::circle::SECURE_FIELD_CIRCLE_GEN;
-    use stwo_prover::core::fields::m31::BaseField;
-    use stwo_prover::core::fields::qm31::SecureField;
-    use stwo_prover::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
-    use stwo_prover::core::poly::circle::CanonicCoset;
-    use stwo_prover::core::utils::{bit_reverse, coset_order_to_circle_domain_order};
-    use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-    use stwo_prover::core::verifier::{verify, VerificationError};
-    use stwo_prover::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
-    use stwo_prover::prover::backend::simd::qm31::PackedSecureField;
-    use stwo_prover::prover::backend::simd::SimdBackend;
-    use stwo_prover::prover::lookups::mle::Mle;
-    use stwo_prover::prover::poly::circle::{CircleEvaluation, PolyOps};
-    use stwo_prover::prover::poly::BitReversedOrder;
-    use stwo_prover::prover::secure_column::SecureColumnByCoords;
-    use stwo_prover::prover::{prove, CommitmentSchemeProver, ComponentProver};
 
     use super::{
         build_trace, eval_carry_quotient_col, eval_eq_constraints, eval_mle_eval_constraints,
@@ -1197,20 +1193,20 @@ mod tests {
 
     mod mle_coeff_column {
         use num_traits::{One, Zero};
+        use stwo::core::air::accumulation::PointEvaluationAccumulator;
+        use stwo::core::circle::CirclePoint;
+        use stwo::core::fields::m31::BaseField;
+        use stwo::core::fields::qm31::SecureField;
+        use stwo::core::pcs::TreeVec;
+        use stwo::core::poly::circle::CanonicCoset;
+        use stwo::core::ColumnVec;
+        use stwo::prover::backend::simd::SimdBackend;
+        use stwo::prover::lookups::mle::Mle;
+        use stwo::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
+        use stwo::prover::poly::BitReversedOrder;
         use stwo_constraint_framework::{
             EvalAtRow, FrameworkComponent, FrameworkEval, PointEvaluator,
         };
-        use stwo_prover::core::air::accumulation::PointEvaluationAccumulator;
-        use stwo_prover::core::circle::CirclePoint;
-        use stwo_prover::core::fields::m31::BaseField;
-        use stwo_prover::core::fields::qm31::SecureField;
-        use stwo_prover::core::pcs::TreeVec;
-        use stwo_prover::core::poly::circle::CanonicCoset;
-        use stwo_prover::core::ColumnVec;
-        use stwo_prover::prover::backend::simd::SimdBackend;
-        use stwo_prover::prover::lookups::mle::Mle;
-        use stwo_prover::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
-        use stwo_prover::prover::poly::BitReversedOrder;
 
         use crate::xor::gkr_lookups::mle_eval::MleCoeffColumnOracle;
 

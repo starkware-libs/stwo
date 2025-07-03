@@ -1,11 +1,11 @@
 use num_traits::One;
+use stwo::core::fields::m31::BaseField;
+use stwo::core::poly::circle::CanonicCoset;
+use stwo::prover::backend::simd::SimdBackend;
+use stwo::prover::backend::{Col, Column};
+use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::poly::BitReversedOrder;
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::prover::backend::simd::SimdBackend;
-use stwo_prover::prover::backend::{Col, Column};
-use stwo_prover::prover::poly::circle::CircleEvaluation;
-use stwo_prover::prover::poly::BitReversedOrder;
 
 pub mod accumulation;
 pub mod mle_eval;
@@ -36,10 +36,10 @@ impl IsFirst {
 
 #[cfg(test)]
 mod test {
-    use stwo_prover::core::fields::qm31::SecureField;
-    use stwo_prover::core::fields::{ExtensionOf, Field};
-    use stwo_prover::prover::backend::Column;
-    use stwo_prover::prover::lookups::mle::{Mle, MleOps};
+    use stwo::core::fields::qm31::SecureField;
+    use stwo::core::fields::{ExtensionOf, Field};
+    use stwo::prover::backend::Column;
+    use stwo::prover::lookups::mle::{Mle, MleOps};
 
     /// Evaluates the multilinear polynomial at `point`.
     pub(crate) fn mle_eval_at_point<B, F>(
