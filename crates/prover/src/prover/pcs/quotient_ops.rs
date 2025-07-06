@@ -60,7 +60,7 @@ mod tests {
     use crate::core::pcs::quotients::PointSample;
     use crate::core::poly::circle::CanonicCoset;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
-    use crate::prover::quotients::quotient_ops::compute_fri_quotients;
+    use crate::prover::pcs::quotient_ops::compute_fri_quotients;
     use crate::{m31, qm31};
 
     #[test]
