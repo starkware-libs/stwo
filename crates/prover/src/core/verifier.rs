@@ -25,6 +25,10 @@ pub fn verify<MC: MerkleChannel>(
         components: components.to_vec(),
         n_preprocessed_columns,
     };
+    tracing::info!(
+        "Composition polynomial log degree bound: {}",
+        components.composition_log_degree_bound()
+    );
     let random_coeff = channel.draw_secure_felt();
 
     // Read composition polynomial commitment.
