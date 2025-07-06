@@ -15,10 +15,10 @@ use crate::core::ColumnVec;
 use crate::prover::air::component_prover::Trace;
 use crate::prover::backend::BackendForChannel;
 use crate::prover::fri::FriProver;
+use crate::prover::pcs::quotient_ops::compute_fri_quotients;
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
-use crate::prover::quotients::quotient_ops::compute_fri_quotients;
 use crate::prover::vcs::prover::MerkleProver;
 
 pub mod quotient_ops;
@@ -155,6 +155,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     }
 }
 
+/// Helper struct for aggregating polynomials and evaluations for a commitment tree.
 pub struct TreeBuilder<'a, 'b, B: BackendForChannel<MC>, MC: MerkleChannel> {
     tree_index: usize,
     commitment_scheme: &'a mut CommitmentSchemeProver<'b, B, MC>,
