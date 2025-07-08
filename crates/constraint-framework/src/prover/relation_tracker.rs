@@ -17,17 +17,19 @@ use crate::{
     INTERACTION_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RelationTrackerEntry {
-    pub relation: String,
     pub mult: M31,
     pub values: Vec<M31>,
+    // (file_name, line, column)
+    pub location: (String, u32, u32),
 }
 
 pub fn add_to_relation_entries<E: FrameworkEval>(
     component: &FrameworkComponent<E>,
     trace: &TreeVec<Vec<&Vec<BaseField>>>,
-) -> Vec<RelationTrackerEntry> {
+    mut entries: HashMap<String, Vec<RelationTrackerEntry>>,
+) -> HashMap<String, Vec<RelationTrackerEntry>> {
     let log_size = component.eval.log_size();
 
     // Deref the sub-tree. Only copies the references.
@@ -44,35 +46,35 @@ pub fn add_to_relation_entries<E: FrameworkEval>(
         .map(|idx| trace[PREPROCESSED_TRACE_IDX][*idx])
         .collect();
 
-    (0..1 << log_size)
-        .flat_map(|row| {
-            let evaluator = RelationTrackerEvaluator::new(&sub_tree, row, log_size);
-            component.eval.evaluate(evaluator).entries()
-        })
-        .collect()
+    (0..1 << log_size).for_each(|row| {
+        let evaluator = RelationTrackerEvaluator::new(&mut entries, &sub_tree, row, log_size);
+        component.eval.evaluate(evaluator);
+    });
+    entries
 }
 
 /// Aggregates relation entries.
 pub struct RelationTrackerEvaluator<'a> {
-    entries: Vec<RelationTrackerEntry>,
+    entries: &'a mut HashMap<String, Vec<RelationTrackerEntry>>,
     trace: &'a TreeVec<Vec<&'a Vec<BaseField>>>,
     pub column_index_per_interaction: Vec<usize>,
     pub vec_row: usize,
     pub domain_log_size: u32,
 }
 impl<'a> RelationTrackerEvaluator<'a> {
-    pub fn new(trace: &'a TreeVec<Vec<&Vec<BaseField>>>, row: usize, domain_log_size: u32) -> Self {
+    pub fn new(
+        entries: &'a mut HashMap<String, Vec<RelationTrackerEntry>>,
+        trace: &'a TreeVec<Vec<&Vec<BaseField>>>,
+        row: usize,
+        domain_log_size: u32,
+    ) -> Self {
         Self {
-            entries: vec![],
+            entries,
             trace,
             column_index_per_interaction: vec![0; trace.len()],
             vec_row: row,
             domain_log_size,
         }
-    }
-
-    pub fn entries(self) -> Vec<RelationTrackerEntry> {
-        self.entries
     }
 }
 impl EvalAtRow for RelationTrackerEvaluator<'_> {
@@ -124,6 +126,7 @@ impl EvalAtRow for RelationTrackerEvaluator<'_> {
     fn finalize_logup(&mut self) {}
     fn finalize_logup_in_pairs(&mut self) {}
 
+    #[track_caller]
     fn add_to_relation<R: Relation<Self::F, Self::EF>>(
         &mut self,
         entry: RelationEntry<'_, Self::F, Self::EF, R>,
@@ -132,29 +135,32 @@ impl EvalAtRow for RelationTrackerEvaluator<'_> {
         let values = entry.values.to_vec();
         let mult = entry.multiplicity.to_m31_array()[0];
 
-        self.entries.push(RelationTrackerEntry {
-            relation: relation.clone(),
-            mult,
-            values,
-        });
+        let caller = std::panic::Location::caller();
+        let file_name = caller.file().to_string();
+        let line = caller.line();
+        let column = caller.column();
+
+        self.entries
+            .entry(relation)
+            .or_default()
+            .push(RelationTrackerEntry {
+                location: (file_name, line, column),
+                mult,
+                values,
+            });
     }
 }
 
 type RelationInfo = (String, Vec<(Vec<M31>, M31)>);
-pub struct RelationSummary(Vec<RelationInfo>);
+pub struct RelationSummary(pub Vec<RelationInfo>);
 impl RelationSummary {
     /// Returns the sum of every entry's yields and uses.
     /// The result is a map from relation name to a list of values(M31 vectors) and their sum.
-    pub fn summarize_relations(entries: &[RelationTrackerEntry]) -> Self {
-        let mut entry_by_relation = HashMap::new();
-        for entry in entries {
-            entry_by_relation
-                .entry(entry.relation.clone())
-                .or_insert_with(Vec::new)
-                .push(entry);
-        }
+    pub fn summarize_relations(
+        entries_by_relation: &HashMap<String, Vec<RelationTrackerEntry>>,
+    ) -> Self {
         let mut summary = vec![];
-        for (relation, entries) in entry_by_relation {
+        for (relation, entries) in entries_by_relation {
             let mut relation_sums: HashMap<Vec<_>, M31> = HashMap::new();
             for entry in entries {
                 let mut values = entry.values.clone();
