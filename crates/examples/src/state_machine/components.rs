@@ -1,4 +1,5 @@
-use itertools::chain;
+use std::collections::HashMap;
+
 use num_traits::{One, Zero};
 use stwo::core::air::Component;
 use stwo::core::channel::Channel;
@@ -137,15 +138,12 @@ pub fn track_state_machine_relations(
         component0,
         component1,
     }: &StateMachineComponents,
-) -> Vec<RelationTrackerEntry> {
+) -> HashMap<String, Vec<RelationTrackerEntry>> {
     let trace = trace.as_ref().map_cols(|col| col.to_cpu().values);
     let trace = &trace.as_cols_ref();
 
-    chain!(
-        add_to_relation_entries(component0, trace),
-        add_to_relation_entries(component1, trace)
-    )
-    .collect()
+    let entries = add_to_relation_entries(component0, trace, HashMap::new());
+    add_to_relation_entries(component1, trace, entries)
 }
 
 pub struct StateMachineProof<H: MerkleHasher> {
