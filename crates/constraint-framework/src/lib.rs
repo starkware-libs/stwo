@@ -195,7 +195,7 @@ macro_rules! logup_proxy {
             let last_batch = *batching.iter().max().unwrap();
 
             let mut fracs_by_batch =
-                std::collections::HashMap::<usize, Vec<Fraction<Self::EF, Self::EF>>>::new();
+                hashbrown::HashMap::<usize, Vec<Fraction<Self::EF, Self::EF>>>::new();
 
             for (batch, frac) in batching.iter().zip(self.logup.fracs.iter()) {
                 fracs_by_batch
@@ -204,8 +204,8 @@ macro_rules! logup_proxy {
                     .push(frac.clone());
             }
 
-            let keys_set: std::collections::HashSet<_> = fracs_by_batch.keys().cloned().collect();
-            let all_batches_set: std::collections::HashSet<_> = (0..last_batch + 1).collect();
+            let keys_set: hashbrown::HashSet<_> = fracs_by_batch.keys().cloned().collect();
+            let all_batches_set: hashbrown::HashSet<_> = (0..last_batch + 1).collect();
 
             assert_eq!(
                 keys_set, all_batches_set,

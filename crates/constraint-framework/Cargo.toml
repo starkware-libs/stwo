@@ -14,3 +14,4 @@ itertools.workspace = true
 tracing.workspace = true
 stwo = { path = "../stwo" }
 rand.workspace = true
+hashbrown.workspace = true
