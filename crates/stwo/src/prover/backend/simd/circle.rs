@@ -65,7 +65,7 @@ impl SimdBackend {
 
         // The caller function expects the mapping in natural order. i.e. (y,x,h(x),h(h(x)),...).
         // If the polynomial is large, the fft does a transpose in the middle in a granularity of 16
-        // (avx512). The coefficients would then be in tranposed order of 16-sized chunks.
+        // (avx512). The coefficients would then be in transposed order of 16-sized chunks.
         // i.e. (a_(n-15), a_(n-14), ..., a_(n-1), a_(n-31), ..., a_(n-16), a_(n-32), ...).
         // To compute the twiddles in the correct order, we need to transpose the coprresponding
         // 'transposed bits' in the mappings. The result order of the mappings would then be
@@ -179,7 +179,7 @@ impl PolyOps for SimdBackend {
         let twiddle_steps = Self::twiddle_steps(map_high);
 
         // Every twiddle is a product of mappings that correspond to '1's in the bit representation
-        // of the current index. For every 2^n alligned chunk of 2^n elements, the twiddle
+        // of the current index. For every 2^n aligned chunk of 2^n elements, the twiddle
         // array is the same, denoted twiddle_low. Use this to compute sums of (coeff *
         // twiddle_high) mod 2^n, then multiply by twiddle_low, and sum to get the final result.
         let compute_chunk_sum = |coeff_chunk: &[PackedBaseField],
