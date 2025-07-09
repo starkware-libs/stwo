@@ -7,7 +7,6 @@ use super::ColumnVec;
 pub mod accumulation;
 mod components;
 pub use components::Components;
-pub mod mask;
 
 /// Arithmetic Intermediate Representation (AIR).
 ///
