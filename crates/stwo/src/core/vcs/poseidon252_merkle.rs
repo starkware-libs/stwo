@@ -29,30 +29,33 @@ impl MerkleHasher for Poseidon252MerkleHasher {
             values.push(right);
         }
 
-        let padding_length = ELEMENTS_IN_BLOCK * n_column_blocks - column_values.len();
-        let padded_values = column_values
-            .iter()
-            .copied()
-            .chain(std::iter::repeat_n(BaseField::zero(), padding_length));
-        for chunk in padded_values.array_chunks::<ELEMENTS_IN_BLOCK>() {
-            values.push(construct_felt252_from_m31s(&chunk));
+        for chunk in column_values.chunks(ELEMENTS_IN_BLOCK) {
+            values.push(construct_felt252_from_m31s(chunk));
         }
         poseidon_hash_many(&values)
     }
 }
-
-fn construct_felt252_from_m31s(word: &[M31; 8]) -> FieldElement252 {
+// Performs felt252 = felt252 << 31 + limb.
+const fn append_m31(felt: &mut [u128; 2], limb: M31) {
     // Felt = Felt << 31 + limb.
-    let append_m31 = |felt: &mut [u128; 2], limb: M31| {
-        *felt = [
-            felt[0] << 31 | limb.0 as u128,
-            felt[0] >> (128 - 31) | felt[1] << 31,
-        ];
-    };
+    *felt = [
+        felt[0] << 31 | limb.0 as u128,
+        felt[1] << 31 | felt[0] >> (128 - 31),
+    ];
+}
 
+/// Constructs a felt252 from a slice of m31s.
+/// The maximum assumed word size is 8 limbs, which is usually the case except for the remainder.
+fn construct_felt252_from_m31s(word: &[M31]) -> FieldElement252 {
     let mut felt_as_u256 = [0u128; 2];
     for limb in word {
         append_m31(&mut felt_as_u256, *limb);
+    }
+
+    // If this is the remainder, store its length in bits 248, 249 and 250.
+    // Note, you can also look at these 3 bits as word length modulo 8.
+    if word.len() < 8 {
+        felt_as_u256[1] |= (word.len() as u128) << (248 - 128);
     }
 
     let felt_bytes = [felt_as_u256[1].to_be_bytes(), felt_as_u256[0].to_be_bytes()];
@@ -98,7 +101,7 @@ mod tests {
         assert_eq!(
             Poseidon252MerkleHasher::hash_node(None, &[m31!(0), m31!(1)]),
             FieldElement252::from_dec_str(
-                "2552053700073128806553921687214114320458351061521275103654266875084493044716"
+                "2978883932528585652864046122079599882777358126302490183268546077323303473078"
             )
             .unwrap()
         );
@@ -109,7 +112,7 @@ mod tests {
                 &[m31!(3)]
             ),
             FieldElement252::from_dec_str(
-                "159358216886023795422515519110998391754567506678525778721401012606792642769"
+                "3286095315900630438551061262740794783852190427874264245042874292062185873630"
             )
             .unwrap()
         );
@@ -196,16 +199,25 @@ mod tests {
     #[test]
     fn test_construct_word() {
         let mut rng = SmallRng::seed_from_u64(1638);
-        let random_values = (0..8 * 1000)
+        let mut random_values: Vec<_> = (0..8 * 1000 + 5)
             .map(|_| rng.gen::<M31>())
-            .array_chunks::<8>()
-            .collect_vec();
+            .collect::<Vec<_>>()
+            .chunks(8)
+            .map(|chunk| chunk.to_vec())
+            .collect();
+
         let expected = random_values
             .iter()
-            .map(|&word| {
+            .map(|word| {
                 let mut felt = FieldElement252::default();
                 for x in word {
                     felt = felt * FieldElement252::from(2u64.pow(31)) + FieldElement252::from(x.0);
+                }
+                if word.len() < 8 {
+                    // felt = felt + word.len() << 248;
+                    felt += FieldElement252::from(word.len())
+                        * FieldElement252::from(2u128.pow(124))
+                        * FieldElement252::from(2u128.pow(124));
                 }
                 felt
             })
@@ -213,7 +225,7 @@ mod tests {
 
         let result = random_values
             .iter()
-            .map(construct_felt252_from_m31s)
+            .map(|v| construct_felt252_from_m31s(v))
             .collect_vec();
 
         assert_eq!(expected, result);
