@@ -25,6 +25,7 @@ pub struct RelationTrackerEntry {
     pub location: (String, u32, u32),
 }
 
+#[cfg(not(feature = "parallel"))]
 pub fn add_to_relation_entries<E: FrameworkEval>(
     component: &FrameworkComponent<E>,
     trace: &TreeVec<Vec<&Vec<BaseField>>>,
@@ -50,6 +51,55 @@ pub fn add_to_relation_entries<E: FrameworkEval>(
         let evaluator = RelationTrackerEvaluator::new(&mut entries, &sub_tree, row, log_size);
         component.eval.evaluate(evaluator);
     });
+    entries
+}
+
+#[cfg(feature = "parallel")]
+pub fn add_to_relation_entries<E: FrameworkEval + Sync>(
+    component: &FrameworkComponent<E>,
+    trace: &TreeVec<Vec<&Vec<BaseField>>>,
+    mut entries: HashMap<String, Vec<RelationTrackerEntry>>,
+) -> HashMap<String, Vec<RelationTrackerEntry>> {
+    use std::ops::Deref;
+
+    use rayon::prelude::*;
+    let log_size = component.eval.log_size();
+    let mut sub_tree = trace
+        .sub_tree(&component.trace_locations[..INTERACTION_TRACE_IDX])
+        .map_cols(|col| *col);
+    sub_tree[PREPROCESSED_TRACE_IDX] = component
+        .preprocessed_column_indices
+        .iter()
+        .map(|idx| trace[PREPROCESSED_TRACE_IDX][*idx])
+        .collect();
+
+    let n_workers = rayon::current_num_threads();
+    let size: usize = 1 << log_size;
+    let chunk_size = size.div_ceil(n_workers);
+    let component_eval = component.deref();
+    let new_entries = (0..size)
+        .into_par_iter()
+        .chunks(chunk_size)
+        .map(|chunk| {
+            let mut entries = HashMap::new();
+            for row in chunk {
+                let evaluator =
+                    RelationTrackerEvaluator::new(&mut entries, &sub_tree, row, log_size);
+                component_eval.evaluate(evaluator);
+            }
+            entries
+        })
+        .reduce(HashMap::new, |mut a, b| {
+            for (key, mut values) in b {
+                a.entry(key).or_default().append(&mut values);
+            }
+            a
+        });
+
+    // Merge with the given entries.
+    for (key, mut values) in new_entries {
+        entries.entry(key).or_default().append(&mut values);
+    }
     entries
 }
 
