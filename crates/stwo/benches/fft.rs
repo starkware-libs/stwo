@@ -1,5 +1,5 @@
 #![feature(iter_array_chunks)]
-
+#![allow(unused)]
 use std::hint::black_box;
 use std::mem::{size_of_val, transmute};
 
@@ -12,7 +12,7 @@ use stwo::prover::backend::simd::fft::ifft::{
     get_itwiddle_dbls, ifft, ifft3_loop, ifft_vecwise_loop,
 };
 use stwo::prover::backend::simd::fft::rfft::{fft, get_twiddle_dbls};
-use stwo::prover::backend::simd::fft::transpose_vecs;
+use stwo::prover::backend::simd::fft::{transpose_vecs, transpose_vecs2};
 use stwo::prover::backend::simd::m31::PackedBaseField;
 
 pub fn simd_ifft(c: &mut Criterion) {
@@ -50,40 +50,40 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("ifft parts");
 
-    // Note: These benchmarks run only on 2^LOG_SIZE elements because of their parameters.
-    // Increasing the figure above won't change the runtime of these benchmarks.
-    group.throughput(Throughput::Bytes(4 << LOG_SIZE));
-    group.bench_function(format!("simd ifft_vecwise_loop 2^{LOG_SIZE}"), |b| {
-        b.iter_batched(
-            || values.clone().data,
-            |mut values| unsafe {
-                ifft_vecwise_loop(
-                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
-                    black_box(&twiddle_dbls_refs),
-                    black_box(9),
-                    black_box(0),
-                )
-            },
-            BatchSize::LargeInput,
-        );
-    });
-    group.bench_function(format!("simd ifft3_loop 2^{LOG_SIZE}"), |b| {
-        b.iter_batched(
-            || values.clone().data,
-            |mut values| unsafe {
-                ifft3_loop(
-                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
-                    black_box(&twiddle_dbls_refs[3..]),
-                    black_box(7),
-                    black_box(4),
-                    black_box(0),
-                )
-            },
-            BatchSize::LargeInput,
-        );
-    });
+    // // Note: These benchmarks run only on 2^LOG_SIZE elements because of their parameters.
+    // // Increasing the figure above won't change the runtime of these benchmarks.
+    // group.throughput(Throughput::Bytes(4 << LOG_SIZE));
+    // group.bench_function(format!("simd ifft_vecwise_loop 2^{LOG_SIZE}"), |b| {
+    //     b.iter_batched(
+    //         || values.clone().data,
+    //         |mut values| unsafe {
+    //             ifft_vecwise_loop(
+    //                 transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
+    //                 black_box(&twiddle_dbls_refs),
+    //                 black_box(9),
+    //                 black_box(0),
+    //             )
+    //         },
+    //         BatchSize::LargeInput,
+    //     );
+    // });
+    // group.bench_function(format!("simd ifft3_loop 2^{LOG_SIZE}"), |b| {
+    //     b.iter_batched(
+    //         || values.clone().data,
+    //         |mut values| unsafe {
+    //             ifft3_loop(
+    //                 transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
+    //                 black_box(&twiddle_dbls_refs[3..]),
+    //                 black_box(7),
+    //                 black_box(4),
+    //                 black_box(0),
+    //             )
+    //         },
+    //         BatchSize::LargeInput,
+    //     );
+    // });
 
-    const TRANSPOSE_LOG_SIZE: u32 = 20;
+    const TRANSPOSE_LOG_SIZE: u32 = 22;
     let transpose_values: BaseColumn = (0..1 << TRANSPOSE_LOG_SIZE).map(BaseField::from).collect();
     group.throughput(Throughput::Bytes(4 << TRANSPOSE_LOG_SIZE));
     group.bench_function(format!("simd transpose_vecs 2^{TRANSPOSE_LOG_SIZE}"), |b| {
@@ -98,6 +98,24 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
+    for log_tile_edge in 1..=13 {
+        group.bench_function(
+            format!("simd transpose_vecs2 2^{TRANSPOSE_LOG_SIZE}, window {log_tile_edge}"),
+            |b| {
+                b.iter_batched(
+                    || transpose_values.clone().data,
+                    |mut values| unsafe {
+                        transpose_vecs2(
+                            transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
+                            black_box(TRANSPOSE_LOG_SIZE as usize - 4),
+                            log_tile_edge,
+                        )
+                    },
+                    BatchSize::LargeInput,
+                );
+            },
+        );
+    }
 }
 
 pub fn simd_rfft(c: &mut Criterion) {
@@ -129,5 +147,5 @@ pub fn simd_rfft(c: &mut Criterion) {
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
-    targets = simd_ifft, simd_ifft_parts, simd_rfft);
+    targets = simd_ifft_parts);
 criterion_main!(benches);

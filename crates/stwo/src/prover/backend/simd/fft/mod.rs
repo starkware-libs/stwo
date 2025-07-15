@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 use std::simd::{simd_swizzle, u32x16, u32x8};
 
 #[cfg(feature = "parallel")]
@@ -53,6 +54,81 @@ pub unsafe fn transpose_vecs(values: *mut u32, log_n_vecs: usize) {
             }
         }
     });
+}
+
+/// # Safety
+///
+/// Behavior is undefined if `values` does not have the same alignment as [`u32x16`].
+#[cfg(feature = "parallel")]
+pub unsafe fn transpose_vecs2(values: *mut u32, log_n_vecs: usize, log_tile_edge: usize) {
+    let n_vecs = 1 << log_n_vecs;
+    let half = log_n_vecs / 2;
+    let log_tile_edge = std::cmp::min(half, log_tile_edge);
+    let tile_edge = 1 << log_tile_edge;
+    let tile_size = tile_edge * tile_edge;
+    let log_edge = half - log_tile_edge;
+    let log_row_length = log_n_vecs.div_ceil(2);
+
+    // Precompute all tile pairs (r,c) with r <= c
+    let mut tile_pairs = vec![];
+    for r in 0..1 << log_edge {
+        for c in r..1 << log_edge {
+            tile_pairs.push((r, c));
+        }
+    }
+
+    for b in 0..=log_n_vecs & 1 {
+        // Parallel over tile-pairs
+        let base = UnsafeMut(values);
+        tile_pairs.par_iter().for_each(|(r, c)| {
+            let vals = base.get();
+            let row_off = r * tile_edge;
+            let col_off = c * tile_edge + b * (1 << half);
+
+            if r == c {
+                // In-place within diagonal tile T_{r,r}
+                for i in 0..tile_edge {
+                    for j in (i + 1)..tile_edge {
+                        let idx_i = ((row_off + i) << log_row_length) + j + col_off;
+                        let idx_j = perm_index(idx_i, log_n_vecs, half);
+
+                        let ptr_i = vals.add(idx_i << 4);
+                        let ptr_j = vals.add(idx_j << 4);
+                        let v0 = load(ptr_i.cast_const());
+                        let v1 = load(ptr_j.cast_const());
+                        store(ptr_i, v1);
+                        store(ptr_j, v0);
+                    }
+                }
+            } else {
+                // Swap off-diagonal tile T_{r,c} with transpose of T_{c,r}
+                for i in 0..tile_edge {
+                    for j in 0..tile_edge {
+                        let idx_i = ((row_off + i) << log_row_length) + j + col_off;
+                        let idx_j = perm_index(idx_i, log_n_vecs, half);
+                        if idx_i >= idx_j {
+                            continue;
+                        }
+
+                        let ptr_i = vals.add(idx_i << 4);
+                        let ptr_j = vals.add(idx_j << 4);
+                        let v0 = load(ptr_i.cast_const());
+                        let v1 = load(ptr_j.cast_const());
+                        store(ptr_i, v1);
+                        store(ptr_j, v0);
+                    }
+                }
+            }
+        });
+    }
+}
+
+/// Compute the permuted index swapping bits abc <-> cba.
+const fn perm_index(x: usize, log_n: usize, half: usize) -> usize {
+    let a = x >> (log_n - half);
+    let b = (x >> half) & (log_n & 1);
+    let c = x & ((1 << half) - 1);
+    (c << (log_n - half)) | (b << half) | a
 }
 
 /// Computes the twiddles for the first fft layer from the second, and loads both to SIMD registers.
@@ -125,5 +201,112 @@ fn mul_twiddle(v: PackedBaseField, twiddle_dbl: u32x16) -> PackedBaseField {
         } else {
             crate::prover::backend::simd::m31::mul_doubled_simd(v, twiddle_dbl)
         }
+    }
+}
+
+#[cfg(all(test, feature = "parallel"))]
+mod tests {
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
+
+    use super::*;
+
+    #[test]
+    fn test_transpose_vecs_sequential_vs_parallel() {
+        let mut rng = SmallRng::seed_from_u64(0);
+
+        // Test various sizes
+        let log_n_vecs = 7;
+        let n_vecs = 1 << log_n_vecs;
+        let n_u32s = n_vecs * 16; // Each SIMD vector contains 16 u32s
+
+        // Generate random data
+        let data_original: Vec<u32> = (0..n_u32s).map(|_| rng.gen()).collect();
+        let data_parallel = data_original.clone();
+        let data_sequential = data_original.clone();
+
+        // Ensure proper alignment by using aligned allocation
+        let mut aligned_parallel = vec![0u32; n_u32s];
+        let mut aligned_sequential = vec![0u32; n_u32s];
+
+        aligned_parallel.copy_from_slice(&data_parallel);
+        aligned_sequential.copy_from_slice(&data_sequential);
+
+        // Apply both transpose functions
+        unsafe {
+            transpose_vecs(aligned_parallel.as_mut_ptr(), log_n_vecs);
+            transpose_vecs2(aligned_sequential.as_mut_ptr(), log_n_vecs, 4);
+        }
+
+        // Compare results
+        assert_eq!(
+            aligned_parallel, aligned_sequential,
+            "Mismatch for log_n_vecs={}\n \
+                orignal vec: {:?}",
+            log_n_vecs, data_parallel
+        );
+    }
+
+    #[test]
+    fn test_transpose_vecs_identity() {
+        let mut rng = SmallRng::seed_from_u64(42);
+
+        // Test that applying transpose twice gives back the original
+        for log_n_vecs in 3..=6 {
+            let n_vecs = 1 << log_n_vecs;
+            let n_u32s = n_vecs * 16;
+
+            let original_data: Vec<u32> = (0..n_u32s).map(|_| rng.gen()).collect();
+            let mut data = original_data.clone();
+
+            // Apply transpose twice
+            unsafe {
+                transpose_vecs2(data.as_mut_ptr(), log_n_vecs, 1);
+                transpose_vecs2(data.as_mut_ptr(), log_n_vecs, 1);
+            }
+
+            // Should be back to original
+            assert_eq!(
+                data, original_data,
+                "Double transpose didn't restore original for log_n_vecs={}",
+                log_n_vecs
+            );
+        }
+    }
+
+    #[test]
+    fn test_transpose_vecs_small_case() {
+        // Test a small known case to verify the bit swapping logic
+        let log_n_vecs = 2; // 4 vectors
+        let n_u32s = 4 * 16; // 64 u32s
+
+        // Create test data where each SIMD vector has a recognizable pattern
+        let mut data = vec![0u32; n_u32s];
+        for i in 0..4 {
+            for j in 0..16 {
+                data[i * 16 + j] = (i as u32) << 16 | (j as u32);
+            }
+        }
+
+        let original_data = data.clone();
+
+        // Apply transpose
+        unsafe {
+            transpose_vecs2(data.as_mut_ptr(), log_n_vecs, 1);
+        }
+
+        // Verify the data changed (it should transpose)
+        assert_ne!(data, original_data, "Transpose should change the data");
+
+        // Apply transpose again to get back to original
+        unsafe {
+            transpose_vecs2(data.as_mut_ptr(), log_n_vecs, 1);
+        }
+
+        // Should be back to original
+        assert_eq!(
+            data, original_data,
+            "Double transpose should restore original"
+        );
     }
 }
