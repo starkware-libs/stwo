@@ -350,6 +350,22 @@ mod tests {
     }
 
     #[test]
+    fn hash_stress_rounds_100_passes() {
+        let rounds = 5;
+        let stress = HashStressEval { rounds };
+        let eval = stress.evaluate(ExprEvaluator::new());
+
+        // print variables
+        // println!("{:?}", eval.format_constraints());
+        // print number of constraints
+        println!("constraints: {}", eval.constraints.len());
+        // print first 10 constraints
+        for (i, c) in eval.constraints.iter().enumerate() {
+            println!("constraint {}: {}", i, c.format_expr());
+        }
+    }
+
+    #[test]
     #[should_panic]
     fn test_constraint_regression_fails() {
         let test_struct = TestStruct {};
@@ -446,6 +462,51 @@ mod tests {
                 &[x0, x1, x2],
             ));
             eval.finalize_logup();
+            eval
+        }
+    }
+
+    pub struct HashStressEval {
+        pub rounds: usize,
+    }
+    impl FrameworkEval for HashStressEval {
+        fn log_size(&self) -> u32 {
+            0
+        }
+        fn max_constraint_log_degree_bound(&self) -> u32 {
+            0
+        }
+        fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+            let mut acc = eval.next_trace_mask();
+            let initial_acc = acc.clone();
+
+            for _ in 0..self.rounds {
+                let l = eval.next_trace_mask();
+                let r = eval.next_trace_mask();
+
+                let s1 = eval.add_intermediate(acc.clone() + l.clone()); // (acc + l)
+                let s2 = eval.add_intermediate(r.clone() + E::F::one()); // (r + 1)
+
+                let round_out = eval.add_intermediate(s1 * s2); // (acc + l)*(r + 1)
+
+                let m = eval.next_trace_mask();
+                eval.add_constraint(round_out.clone() - m.clone()); // round_out == m
+
+                acc = m;
+            }
+
+            eval.add_to_relation(RelationEntry::new(
+                &TestRelation::dummy(),
+                E::EF::one(),
+                &[initial_acc],
+            ));
+            eval.add_to_relation(RelationEntry::new(
+                &TestRelation::dummy(),
+                -E::EF::one(),
+                &[acc],
+            ));
+
+            eval.finalize_logup_in_pairs();
             eval
         }
     }
