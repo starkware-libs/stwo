@@ -69,6 +69,11 @@ pub unsafe fn transpose_vecs2(values: *mut u32, log_n_vecs: usize, log_tile_edge
     let log_edge = half - log_tile_edge;
     let log_row_length = log_n_vecs.div_ceil(2);
 
+    let mut buffer0 = vec![0u32; tile_size * 16];
+    let mut buffer1 = vec![0u32; tile_size * 16];
+    let buffer0 = UnsafeMut(buffer0.as_mut_ptr());
+    let buffer1 = UnsafeMut(buffer1.as_mut_ptr());
+
     // Precompute all tile pairs (r,c) with r <= c
     let mut tile_pairs = vec![];
     for r in 0..1 << log_edge {
@@ -101,21 +106,49 @@ pub unsafe fn transpose_vecs2(values: *mut u32, log_n_vecs: usize, log_tile_edge
                     }
                 }
             } else {
-                // Swap off-diagonal tile T_{r,c} with transpose of T_{c,r}
+                // // Swap off-diagonal tile T_{r,c} with transpose of T_{c,r}
+                // for i in 0..tile_edge {
+                //     for j in 0..tile_edge {
+                //         let idx_i = ((row_off + i) << log_row_length) + j + col_off;
+                //         let idx_j = perm_index(idx_i, log_n_vecs, half);
+                //         if idx_i >= idx_j {
+                //             continue;
+                //         }
+
+                //         let ptr_i = vals.add(idx_i << 4);
+                //         let ptr_j = vals.add(idx_j << 4);
+                //         let v0 = load(ptr_i.cast_const());
+                //         let v1 = load(ptr_j.cast_const());
+                //         store(ptr_i, v1);
+                //         store(ptr_j, v0);
+                //     }
+                // }
+
+                // Copy T_{r,c} and T_{c,r} to a buffer.
+                let buffer0 = buffer0.get();
+                let buffer1 = buffer1.get();
                 for i in 0..tile_edge {
                     for j in 0..tile_edge {
-                        let idx_i = ((row_off + i) << log_row_length) + j + col_off;
-                        let idx_j = perm_index(idx_i, log_n_vecs, half);
-                        if idx_i >= idx_j {
-                            continue;
-                        }
+                        let idx = ((row_off + i) << log_row_length) + j + col_off;
+                        let ptr = buffer0.add(i * tile_edge * 16 + j * 16);
+                        store(ptr, load(vals.add(idx << 4).cast_const()));
 
-                        let ptr_i = vals.add(idx_i << 4);
-                        let ptr_j = vals.add(idx_j << 4);
-                        let v0 = load(ptr_i.cast_const());
-                        let v1 = load(ptr_j.cast_const());
-                        store(ptr_i, v1);
-                        store(ptr_j, v0);
+                        let idx = perm_index(idx, log_n_vecs, half);
+                        let ptr = buffer1.add(i * tile_edge * 16 + j * 16);
+                        store(ptr, load(vals.add(idx << 4).cast_const()));
+                    }
+                }
+
+                // Copy the buffers to T_{c,r} and T_{r,c}
+                for i in 0..tile_edge {
+                    for j in 0..tile_edge {
+                        let ptr = buffer1.add(i * tile_edge * 16 + j * 16);
+                        let idx = ((row_off + i) << log_row_length) + j + col_off;
+                        store(vals.add(idx << 4), load(ptr.cast_const()));
+
+                        let idx = perm_index(idx, log_n_vecs, half) + b * (1 << half);
+                        let ptr = buffer0.add(i * tile_edge * 16 + j * 16 + b * (1 << half));
+                        store(vals.add(idx << 4), load(ptr.cast_const()));
                     }
                 }
             }
