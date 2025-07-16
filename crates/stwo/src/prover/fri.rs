@@ -108,7 +108,7 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
         assert!(!columns.is_empty(), "no columns");
         assert!(columns.iter().all(|e| e.domain.is_canonic()), "not canonic");
         assert!(
-            columns.array_windows().all(|[a, b]| a.len() > b.len()),
+            columns.windows(2).all(|w| w[0].len() > w[1].len()),
             "column sizes not decreasing"
         );
 

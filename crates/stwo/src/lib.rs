@@ -7,7 +7,6 @@
 #![feature(
     array_chunks,
     array_try_from_fn,
-    array_windows,
     assert_matches,
     exact_size_is_empty,
     int_roundings,
