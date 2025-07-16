@@ -292,10 +292,12 @@ impl EvalAtRow for ExprEvaluator {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use num_traits::One;
     use stwo::core::fields::FieldExpOps;
 
-    use crate::expr::{ExprEvaluator, ExtExpr};
+    use crate::expr::{BaseExpr, BaseExprInner, ExprEvaluator, ExtExpr};
     use crate::{relation, EvalAtRow, FrameworkEval, RelationEntry};
 
     #[test]
@@ -350,19 +352,33 @@ mod tests {
     }
 
     #[test]
-    fn hash_stress_rounds_100_passes() {
-        let rounds = 5;
+    fn base_expr_shares_subexpressions() {
+        // (x)               leaf
+        // (x + x)           shared once
+        // (x + x) * (x + x) shared twice
+        let leaf = BaseExprInner(Rc::new(BaseExpr::Param("x".into())));
+        let shared = BaseExprInner(Rc::new(BaseExpr::Add(leaf.clone(), leaf.clone())));
+        let expr = BaseExprInner(Rc::new(BaseExpr::Mul(shared.clone(), shared.clone())));
+
+        // leaf: in scope 1 + in Add left 1 + in Add right 1 = 3
+        assert_eq!(Rc::strong_count(&leaf.0), 3);
+
+        // shared: variable 1 + in Mul left 1 + in Mul right 1 = 3
+        assert_eq!(Rc::strong_count(&shared.0), 3);
+
+        // expr itself should have exactly 1 owner here
+        assert_eq!(Rc::strong_count(&expr.0), 1);
+    }
+
+    #[test]
+    fn hash_stress_rounds_1000_passes() {
+        let rounds = 1000;
         let stress = HashStressEval { rounds };
         let eval = stress.evaluate(ExprEvaluator::new());
 
-        // print variables
-        // println!("{:?}", eval.format_constraints());
-        // print number of constraints
-        println!("constraints: {}", eval.constraints.len());
-        // print first 10 constraints
-        for (i, c) in eval.constraints.iter().enumerate() {
-            println!("constraint {}: {}", i, c.format_expr());
-        }
+        let _ = eval.random_assignment();
+
+        assert_eq!(eval.constraints.len(), rounds + 1);
     }
 
     #[test]
@@ -476,23 +492,24 @@ mod tests {
         fn max_constraint_log_degree_bound(&self) -> u32 {
             0
         }
+
         fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
             let mut acc = eval.next_trace_mask();
             let initial_acc = acc.clone();
 
-            for _ in 0..self.rounds {
-                let l = eval.next_trace_mask();
-                let r = eval.next_trace_mask();
+            for _round in 0..self.rounds {
+                let w = eval.next_trace_mask();
 
-                let s1 = eval.add_intermediate(acc.clone() + l.clone()); // (acc + l)
-                let s2 = eval.add_intermediate(r.clone() + E::F::one()); // (r + 1)
+                // (acc + w)
+                let acc_plus_w = eval.add_intermediate(acc.clone() + w.clone());
 
-                let round_out = eval.add_intermediate(s1 * s2); // (acc + l)*(r + 1)
+                // new_acc = (acc + w)^2
+                let new_acc = eval.add_intermediate(acc_plus_w.clone() * acc_plus_w);
 
-                let m = eval.next_trace_mask();
-                eval.add_constraint(round_out.clone() - m.clone()); // round_out == m
+                let next_acc = eval.next_trace_mask();
+                eval.add_constraint(new_acc - next_acc.clone());
 
-                acc = m;
+                acc = next_acc;
             }
 
             eval.add_to_relation(RelationEntry::new(
