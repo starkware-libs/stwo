@@ -775,7 +775,6 @@ pub fn fold_circle_into_line(
 
 #[cfg(all(test, feature = "prover"))]
 mod tests {
-    use std::assert_matches::assert_matches;
     use std::iter::zip;
 
     use itertools::Itertools;
@@ -1005,10 +1004,10 @@ mod tests {
 
         let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
 
-        assert_matches!(
+        assert!(matches!(
             verification_result,
             Err(FriVerificationError::InnerLayerEvaluationsInvalid { inner_layer: 1 })
-        );
+        ));
     }
 
     #[test]
@@ -1030,10 +1029,10 @@ mod tests {
 
         let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
 
-        assert_matches!(
+        assert!(matches!(
             verification_result,
             Err(FriVerificationError::InnerLayerCommitmentInvalid { inner_layer: 1, .. })
-        );
+        ));
     }
 
     #[test]
@@ -1079,10 +1078,10 @@ mod tests {
 
         let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
 
-        assert_matches!(
+        assert!(matches!(
             verification_result,
             Err(FriVerificationError::LastLayerEvaluationsInvalid)
-        );
+        ));
     }
 
     #[test]
