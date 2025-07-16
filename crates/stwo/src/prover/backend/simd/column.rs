@@ -115,10 +115,11 @@ impl FromIterator<BaseField> for BaseColumn {
         let mut length = data.len() * N_LANES;
 
         if let Some(remainder) = chunks.into_remainder() {
-            if !remainder.is_empty() {
-                length += remainder.len();
+            let rem = remainder.len();
+            if rem > 0 {
+                length += rem;
                 let mut last = [BaseField::zero(); N_LANES];
-                last[..remainder.len()].copy_from_slice(remainder.as_slice());
+                last[..rem].copy_from_slice(remainder.as_slice());
                 data.push(PackedBaseField::from_array(last));
             }
         }
@@ -179,10 +180,11 @@ impl FromIterator<CM31> for CM31Column {
         let mut length = data.len() * N_LANES;
 
         if let Some(remainder) = chunks.into_remainder() {
-            if !remainder.is_empty() {
-                length += remainder.len();
+            let rem = remainder.len();
+            if rem > 0 {
+                length += rem;
                 let mut last = [CM31::zero(); N_LANES];
-                last[..remainder.len()].copy_from_slice(remainder.as_slice());
+                last[..rem].copy_from_slice(remainder.as_slice());
                 data.push(PackedCM31::from_array(last));
             }
         }
@@ -296,10 +298,11 @@ impl FromIterator<SecureField> for SecureColumn {
         let mut length = data.len() * N_LANES;
 
         if let Some(remainder) = chunks.into_remainder() {
-            if !remainder.is_empty() {
-                length += remainder.len();
+            let rem = remainder.len();
+            if rem > 0 {
+                length += rem;
                 let mut last = [SecureField::zero(); N_LANES];
-                last[..remainder.len()].copy_from_slice(remainder.as_slice());
+                last[..rem].copy_from_slice(remainder.as_slice());
                 data.push(PackedSecureField::from_array(last));
             }
         }

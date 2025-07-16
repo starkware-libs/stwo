@@ -8,7 +8,6 @@
     array_chunks,
     array_try_from_fn,
     array_windows,
-    exact_size_is_empty,
     int_roundings,
     iter_array_chunks,
     portable_simd,
