@@ -33,15 +33,6 @@ impl From<(usize, usize, isize)> for ColumnExpr {
     }
 }
 
-/// An expression representing a base field value. Can be either:
-///     * A column indexed by a `ColumnExpr`.
-///     * A base field constant.
-///     * A formal parameter to the AIR.
-///     * A sum, difference, or product of two base field expressions.
-///     * A negation or inverse of a base field expression.
-///
-/// This type is meant to be used as an F associated type for EvalAtRow and interacts with
-/// `ExtExpr`, `BaseField` and `SecureField` as expected.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BaseExprInner(Rc<BaseExpr>);
 
@@ -52,6 +43,15 @@ impl Deref for BaseExprInner {
     }
 }
 
+/// An expression representing a base field value. Can be either:
+///     * A column indexed by a `ColumnExpr`.
+///     * A base field constant.
+///     * A formal parameter to the AIR.
+///     * A sum, difference, or product of two base field expressions.
+///     * A negation or inverse of a base field expression.
+///
+/// This type is meant to be used as an F associated type for EvalAtRow and interacts with
+/// `ExtExpr`, `BaseField` and `SecureField` as expected.
 #[derive(Clone, Debug, PartialEq)]
 pub enum BaseExpr {
     Col(ColumnExpr),
@@ -65,15 +65,6 @@ pub enum BaseExpr {
     Inv(BaseExprInner),
 }
 
-/// An expression representing a secure field value. Can be either:
-///     * A secure column constructed from 4 base field expressions.
-///     * A secure field constant.
-///     * A formal parameter to the AIR.
-///     * A sum, difference, or product of two secure field expressions.
-///     * A negation of a secure field expression.
-///
-/// This type is meant to be used as an EF associated type for EvalAtRow and interacts with
-/// `BaseExpr`, `BaseField` and `SecureField` as expected.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExtExprInner(Rc<ExtExpr>);
 
@@ -84,6 +75,15 @@ impl Deref for ExtExprInner {
     }
 }
 
+/// An expression representing a secure field value. Can be either:
+///     * A secure column constructed from 4 base field expressions.
+///     * A secure field constant.
+///     * A formal parameter to the AIR.
+///     * A sum, difference, or product of two secure field expressions.
+///     * A negation of a secure field expression.
+///
+/// This type is meant to be used as an EF associated type for EvalAtRow and interacts with
+/// `BaseExpr`, `BaseField` and `SecureField` as expected.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExtExpr {
     /// An atomic secure column constructed from 4 expressions.
