@@ -53,11 +53,11 @@ bench = false
 crate-type = ["cdylib", "lib"]
 
 [lints.rust]
-warnings = "deny"
+# warnings = "deny"
 future-incompatible = "deny"
 nonstandard-style = "deny"
 rust-2018-idioms = "deny"
-unused = "deny"
+# unused = "deny"
 
 [lints.clippy]
 missing_const_for_fn = "warn"

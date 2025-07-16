@@ -1,7 +1,8 @@
-#![feature(iter_array_chunks)]
+#![feature(iter_array_chunks, portable_simd)]
 #![allow(unused)]
 use std::hint::black_box;
 use std::mem::{size_of_val, transmute};
+use std::simd::u32x16;
 
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use itertools::Itertools;
@@ -12,7 +13,7 @@ use stwo::prover::backend::simd::fft::ifft::{
     get_itwiddle_dbls, ifft, ifft3_loop, ifft_vecwise_loop,
 };
 use stwo::prover::backend::simd::fft::rfft::{fft, get_twiddle_dbls};
-use stwo::prover::backend::simd::fft::{transpose_vecs, transpose_vecs2};
+use stwo::prover::backend::simd::fft::{full_copy_block_transpose, transpose_vecs};
 use stwo::prover::backend::simd::m31::PackedBaseField;
 
 pub fn simd_ifft(c: &mut Criterion) {
@@ -85,38 +86,33 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
 
     const TRANSPOSE_LOG_SIZE: u32 = 22;
     let transpose_values: BaseColumn = (0..1 << TRANSPOSE_LOG_SIZE).map(BaseField::from).collect();
-    // group.throughput(Throughput::Bytes(4 << TRANSPOSE_LOG_SIZE));
-    // group.bench_function(format!("simd transpose_vecs 2^{TRANSPOSE_LOG_SIZE}"), |b| {
-    //     b.iter_batched(
-    //         || transpose_values.clone().data,
-    //         |mut values| unsafe {
-    //             transpose_vecs(
-    //                 transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
-    //                 black_box(TRANSPOSE_LOG_SIZE as usize - 4),
-    //             )
-    //         },
-    //         BatchSize::LargeInput,
-    //     );
-    // });
-    let mut buffer0 = BaseColumn::from_cpu(vec![0.into(); 1 << (TRANSPOSE_LOG_SIZE - 8)])
-        .data
-        .as_mut_ptr() as *mut u32;
-    let mut buffer1 = BaseColumn::from_cpu(vec![0.into(); 1 << (TRANSPOSE_LOG_SIZE - 8)])
-        .data
-        .as_mut_ptr() as *mut u32;
-    for log_tile_edge in 5..=7 {
+    group.throughput(Throughput::Bytes(4 << TRANSPOSE_LOG_SIZE));
+    group.bench_function(format!("simd transpose_vecs 2^{TRANSPOSE_LOG_SIZE}"), |b| {
+        b.iter_batched(
+            || transpose_values.clone().data,
+            |mut values| unsafe {
+                transpose_vecs(
+                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
+                    black_box(TRANSPOSE_LOG_SIZE as usize - 4),
+                )
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    for log_tile_edge in 2..=7 {
+        let mut buffer0 = vec![u32x16::splat(0); (1 << (log_tile_edge * 2))];
+        let mut buffer1 = vec![u32x16::splat(0); (1 << (log_tile_edge * 2))];
         group.bench_function(
             format!("simd transpose_vecs2 2^{TRANSPOSE_LOG_SIZE}, window {log_tile_edge}"),
             |b| {
                 b.iter_batched(
                     || transpose_values.clone().data,
                     |mut values| unsafe {
-                        transpose_vecs2(
-                            transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
-                            black_box(TRANSPOSE_LOG_SIZE as usize - 4),
+                        full_copy_block_transpose(
+                            transmute::<&mut [PackedBaseField], &mut [u32x16]>(&mut values),
                             log_tile_edge,
-                            buffer0,
-                            buffer1,
+                            &mut buffer0,
+                            &mut buffer1,
                         )
                     },
                     BatchSize::LargeInput,
