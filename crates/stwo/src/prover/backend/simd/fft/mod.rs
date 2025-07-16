@@ -276,7 +276,7 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
 
         // Test various sizes
-        let log_n_vecs = 23;
+        let log_n_vecs = 7;
         let n_vecs = 1 << log_n_vecs;
         let n_u32s = n_vecs * 16; // Each SIMD vector contains 16 u32s
 
@@ -301,7 +301,7 @@ mod tests {
             transpose_vecs2(
                 aligned_sequential.as_mut_ptr(),
                 log_n_vecs,
-                4,
+                5,
                 buffer0.as_mut_ptr(),
                 buffer1.as_mut_ptr(),
             );

@@ -85,26 +85,26 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
 
     const TRANSPOSE_LOG_SIZE: u32 = 22;
     let transpose_values: BaseColumn = (0..1 << TRANSPOSE_LOG_SIZE).map(BaseField::from).collect();
-    group.throughput(Throughput::Bytes(4 << TRANSPOSE_LOG_SIZE));
-    group.bench_function(format!("simd transpose_vecs 2^{TRANSPOSE_LOG_SIZE}"), |b| {
-        b.iter_batched(
-            || transpose_values.clone().data,
-            |mut values| unsafe {
-                transpose_vecs(
-                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
-                    black_box(TRANSPOSE_LOG_SIZE as usize - 4),
-                )
-            },
-            BatchSize::LargeInput,
-        );
-    });
+    // group.throughput(Throughput::Bytes(4 << TRANSPOSE_LOG_SIZE));
+    // group.bench_function(format!("simd transpose_vecs 2^{TRANSPOSE_LOG_SIZE}"), |b| {
+    //     b.iter_batched(
+    //         || transpose_values.clone().data,
+    //         |mut values| unsafe {
+    //             transpose_vecs(
+    //                 transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
+    //                 black_box(TRANSPOSE_LOG_SIZE as usize - 4),
+    //             )
+    //         },
+    //         BatchSize::LargeInput,
+    //     );
+    // });
     let mut buffer0 = BaseColumn::from_cpu(vec![0.into(); 1 << (TRANSPOSE_LOG_SIZE - 8)])
         .data
         .as_mut_ptr() as *mut u32;
     let mut buffer1 = BaseColumn::from_cpu(vec![0.into(); 1 << (TRANSPOSE_LOG_SIZE - 8)])
         .data
         .as_mut_ptr() as *mut u32;
-    for log_tile_edge in 1..=13 {
+    for log_tile_edge in 4..=7 {
         group.bench_function(
             format!("simd transpose_vecs2 2^{TRANSPOSE_LOG_SIZE}, window {log_tile_edge}"),
             |b| {
