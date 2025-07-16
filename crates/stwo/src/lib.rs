@@ -4,13 +4,10 @@
     feature(stdarch_x86_avx512)
 )]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(
-    array_chunks,
-    array_try_from_fn,
-    int_roundings,
-    iter_array_chunks,
-    portable_simd,
-    slice_ptr_get
+#![feature(array_try_from_fn)]
+#![cfg_attr(
+    feature = "prover",
+    feature(array_chunks, iter_array_chunks, portable_simd, slice_ptr_get)
 )]
 pub mod core;
 

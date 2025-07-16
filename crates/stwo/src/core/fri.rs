@@ -726,9 +726,9 @@ pub fn fold_line(
 
     let folded_values = eval
         .iter()
-        .array_chunks()
+        .tuples()
         .enumerate()
-        .map(|(i, [&f_x, &f_neg_x])| {
+        .map(|(i, (&f_x, &f_neg_x))| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
             let x = domain.at(bit_reverse_index(i << FOLD_STEP, domain.log_size()));
 
@@ -755,9 +755,9 @@ pub fn fold_circle_into_line(
     let alpha_sq = alpha * alpha;
 
     src.iter()
-        .array_chunks()
+        .tuples()
         .enumerate()
-        .for_each(|(i, [&f_p, &f_neg_p])| {
+        .for_each(|(i, (&f_p, &f_neg_p))| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
             let p = src_domain.at(bit_reverse_index(
                 i << CIRCLE_TO_LINE_FOLD_STEP,
