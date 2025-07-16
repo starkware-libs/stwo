@@ -725,14 +725,13 @@ pub fn fold_line(
     assert!(n >= 2, "Evaluation too small");
 
     let folded_values = eval
-        .iter()
         .array_chunks()
         .enumerate()
-        .map(|(i, [&f_x, &f_neg_x])| {
+        .map(|(i, [f_x, f_neg_x])| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
             let x = domain.at(bit_reverse_index(i << FOLD_STEP, domain.log_size()));
 
-            let (mut f0, mut f1) = (f_x, f_neg_x);
+            let (mut f0, mut f1) = (*f_x, *f_neg_x);
             ibutterfly(&mut f0, &mut f1, x.inverse());
             f0 + alpha * f1
         })
@@ -754,10 +753,9 @@ pub fn fold_circle_into_line(
 
     let alpha_sq = alpha * alpha;
 
-    src.iter()
-        .array_chunks()
+    src.array_chunks()
         .enumerate()
-        .for_each(|(i, [&f_p, &f_neg_p])| {
+        .for_each(|(i, [f_p, f_neg_p])| {
             // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
             let p = src_domain.at(bit_reverse_index(
                 i << CIRCLE_TO_LINE_FOLD_STEP,
@@ -765,7 +763,7 @@ pub fn fold_circle_into_line(
             ));
 
             // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
-            let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
+            let (mut f0_px, mut f1_px) = (*f_p, *f_neg_p);
             ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
             let f_prime = alpha * f1_px + f0_px;
 

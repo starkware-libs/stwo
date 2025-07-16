@@ -10,11 +10,10 @@
     array_windows,
     assert_matches,
     exact_size_is_empty,
-    int_roundings,
-    iter_array_chunks,
     portable_simd,
     slice_ptr_get
 )]
+#![cfg_attr(feature = "prover", feature(iter_array_chunks))]
 pub mod core;
 
 #[cfg(feature = "prover")]
