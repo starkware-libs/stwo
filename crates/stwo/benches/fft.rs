@@ -98,6 +98,12 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
+    let mut buffer0 = BaseColumn::from_cpu(vec![0.into(); 1 << (TRANSPOSE_LOG_SIZE - 8)])
+        .data
+        .as_mut_ptr() as *mut u32;
+    let mut buffer1 = BaseColumn::from_cpu(vec![0.into(); 1 << (TRANSPOSE_LOG_SIZE - 8)])
+        .data
+        .as_mut_ptr() as *mut u32;
     for log_tile_edge in 1..=13 {
         group.bench_function(
             format!("simd transpose_vecs2 2^{TRANSPOSE_LOG_SIZE}, window {log_tile_edge}"),
@@ -109,6 +115,8 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
                             transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
                             black_box(TRANSPOSE_LOG_SIZE as usize - 4),
                             log_tile_edge,
+                            buffer0,
+                            buffer1,
                         )
                     },
                     BatchSize::LargeInput,
