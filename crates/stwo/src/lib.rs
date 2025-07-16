@@ -7,7 +7,6 @@
 #![feature(
     array_chunks,
     array_try_from_fn,
-    array_windows,
     int_roundings,
     iter_array_chunks,
     portable_simd,
