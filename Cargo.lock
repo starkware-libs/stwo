@@ -1141,12 +1141,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "std-shims"
-version = "0.1.0"
-
-[[package]]
 name = "stwo"
-version = "0.1.1"
+version = "1.0.0"
 dependencies = [
  "aligned",
  "blake2",
@@ -1166,7 +1162,7 @@ dependencies = [
  "serde",
  "starknet-crypto",
  "starknet-ff",
- "std-shims",
+ "stwo-std-shims",
  "test-log",
  "thiserror",
  "tracing",
@@ -1176,7 +1172,7 @@ dependencies = [
 
 [[package]]
 name = "stwo-air-utils"
-version = "0.1.1"
+version = "1.0.0"
 dependencies = [
  "bytemuck",
  "itertools 0.12.1",
@@ -1197,21 +1193,21 @@ dependencies = [
 
 [[package]]
 name = "stwo-constraint-framework"
-version = "0.1.1"
+version = "1.0.0"
 dependencies = [
  "hashbrown",
  "itertools 0.12.1",
  "num-traits",
  "rand",
  "rayon",
- "std-shims",
  "stwo",
+ "stwo-std-shims",
  "tracing",
 ]
 
 [[package]]
 name = "stwo-examples"
-version = "0.1.1"
+version = "1.0.0"
 dependencies = [
  "criterion",
  "educe",
@@ -1227,6 +1223,10 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
 ]
+
+[[package]]
+name = "stwo-std-shims"
+version = "1.0.0"
 
 [[package]]
 name = "subtle"

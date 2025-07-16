@@ -1,7 +1,13 @@
 [package]
-name = "std-shims"
-version = "0.1.0"
-edition = "2021"
+name = "stwo-std-shims"
+
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+description = "Std and alloc shims for stwo"
+
+[lib]
+name = "std_shims"
 
 [features]
 default = ["std"]
