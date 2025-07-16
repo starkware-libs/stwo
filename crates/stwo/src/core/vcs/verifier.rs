@@ -171,13 +171,13 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
         }
 
         // Check that all witnesses and values have been consumed.
-        if !hash_witness.is_empty() {
+        if hash_witness.next().is_some() {
             return Err(MerkleVerificationError::WitnessTooLong);
         }
-        if !queried_values.is_empty() {
+        if queried_values.next().is_some() {
             return Err(MerkleVerificationError::TooManyQueriedValues);
         }
-        if !column_witness.is_empty() {
+        if column_witness.next().is_some() {
             return Err(MerkleVerificationError::WitnessTooLong);
         }
 

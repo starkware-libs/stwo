@@ -188,7 +188,7 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
         }
 
         // Check all columns have been consumed.
-        assert!(columns.is_empty());
+        assert!(columns.next().is_none());
 
         (layers, layer_evaluation)
     }

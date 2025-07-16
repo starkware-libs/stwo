@@ -273,8 +273,8 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
         }
 
         // Check all values have been consumed.
-        assert!(first_layer_columns.is_empty());
-        assert!(first_layer_sparse_evals.is_empty());
+        assert!(first_layer_columns.next().is_none());
+        assert!(first_layer_sparse_evals.next().is_none());
 
         Ok((layer_queries, layer_query_evals))
     }
@@ -512,7 +512,7 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
         }
 
         // Check all proof evals have been consumed.
-        if !fri_witness.is_empty() {
+        if fri_witness.next().is_some() {
             return Err(FriVerificationError::FirstLayerEvaluationsInvalid);
         }
 
@@ -581,7 +581,7 @@ impl<H: MerkleHasher> FriInnerLayerVerifier<H> {
             })?;
 
         // Check all proof evals have been consumed.
-        if !fri_witness.is_empty() {
+        if fri_witness.next().is_some() {
             return Err(FriVerificationError::InnerLayerEvaluationsInvalid {
                 inner_layer: self.layer_index,
             });
