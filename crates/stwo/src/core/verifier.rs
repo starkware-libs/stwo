@@ -53,11 +53,12 @@ pub fn verify<MC: MerkleChannel>(
         sample_points_by_column.into_iter().flatten().count()
     );
 
-    let composition_oods_eval = proof.extract_composition_oods_eval().map_err(|_| {
-        VerificationError::InvalidStructure(std_shims::ToString::to_string(
-            &"Unexpected sampled_values structure",
-        ))
-    })?;
+    let composition_oods_eval =
+        proof
+            .extract_composition_oods_eval()
+            .ok_or(VerificationError::InvalidStructure(
+                std_shims::ToString::to_string(&"Unexpected sampled_values structure"),
+            ))?;
 
     if composition_oods_eval
         != components.eval_composition_polynomial_at_point(

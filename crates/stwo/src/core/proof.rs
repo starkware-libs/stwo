@@ -1,5 +1,5 @@
+use core::mem;
 use core::ops::Deref;
-use core::{array, mem};
 
 use serde::{Deserialize, Serialize};
 use std_shims::Vec;
@@ -12,37 +12,29 @@ use crate::core::vcs::hash::Hash;
 use crate::core::vcs::verifier::MerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 
-/// Error when the sampled values have an invalid structure.
-#[derive(Clone, Copy, Debug)]
-pub struct InvalidOodsSampleStructure;
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StarkProof<H: MerkleHasher>(pub CommitmentSchemeProof<H>);
 
 impl<H: MerkleHasher> StarkProof<H> {
     /// Extracts the composition trace Out-Of-Domain-Sample evaluation from the mask.
-    pub(crate) fn extract_composition_oods_eval(
-        &self,
-    ) -> Result<SecureField, InvalidOodsSampleStructure> {
-        // TODO(andrew): `[.., composition_mask, _quotients_mask]` when add quotients commitment.
+    pub(crate) fn extract_composition_oods_eval(&self) -> Option<SecureField> {
+        // TODO(andrew): `[.., composition_mask, _quotients_mask]` when add quotients
+        // commitment.
         let [.., composition_mask] = &**self.sampled_values else {
-            return Err(InvalidOodsSampleStructure);
+            return None;
         };
-
-        let mut composition_cols = composition_mask.iter();
-
-        let coordinate_evals = array::try_from_fn(|_| {
-            let col = &**composition_cols.next().ok_or(InvalidOodsSampleStructure)?;
-            let [eval] = col.try_into().map_err(|_| InvalidOodsSampleStructure)?;
-            Ok(eval)
-        })?;
-
-        // Too many columns.
-        if composition_cols.next().is_some() {
-            return Err(InvalidOodsSampleStructure);
-        }
-
-        Ok(SecureField::from_partial_evals(coordinate_evals))
+        let coordinate_evals = composition_mask
+            .iter()
+            .map(|columns| {
+                let &[eval] = &columns[..] else {
+                    return None;
+                };
+                Some(eval)
+            })
+            .collect::<Option<Vec<_>>>()?
+            .try_into()
+            .ok()?;
+        Some(SecureField::from_partial_evals(coordinate_evals))
     }
 
     /// Returns the estimate size (in bytes) of the proof.
