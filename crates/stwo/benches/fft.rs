@@ -104,7 +104,7 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
     let mut buffer1 = BaseColumn::from_cpu(vec![0.into(); 1 << (TRANSPOSE_LOG_SIZE - 8)])
         .data
         .as_mut_ptr() as *mut u32;
-    for log_tile_edge in 4..=7 {
+    for log_tile_edge in 5..=7 {
         group.bench_function(
             format!("simd transpose_vecs2 2^{TRANSPOSE_LOG_SIZE}, window {log_tile_edge}"),
             |b| {

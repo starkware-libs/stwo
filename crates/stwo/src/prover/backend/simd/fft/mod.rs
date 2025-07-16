@@ -157,24 +157,24 @@ pub unsafe fn transpose_vecs2(
 
                 // Copy the buffers to T_{c,r} and T_{r,c}
                 for i in 0..tile_edge {
-                    for j in 0..tile_edge {
-                        let offset_in_buffer = i * tile_edge * 16 + j * 16;
-                        debug_assert!(
-                            offset_in_buffer + 16 <= tile_size * 16,
-                            "Final buffer overflow: {} + 16 > {}",
-                            offset_in_buffer,
-                            tile_size * 16
-                        );
+                    for j in 0..tile_edge-1 {
+                        // let offset_in_buffer = i * tile_edge * 16 + j * 16;
+                        // debug_assert!(
+                        //     offset_in_buffer + 16 <= tile_size * 16,
+                        //     "Final buffer overflow: {} + 16 > {}",
+                        //     offset_in_buffer,
+                        //     tile_size * 16
+                        // );
 
-                        let ptr = buffer1.add(offset_in_buffer);
-                        let idx = ((row_off + i) << log_row_length) + (b << half) + j + col_off;
-                        debug_assert!(idx < n_vecs, "Final idx {} >= n_vecs {}", idx, n_vecs);
-                        store(vals.add(idx << 4), load(ptr.cast_const()));
+                        // let ptr = buffer1.add(offset_in_buffer);
+                        // let idx = ((row_off + i) << log_row_length) + (b << half) + j + col_off;
+                        // debug_assert!(idx < n_vecs, "Final idx {} >= n_vecs {}", idx, n_vecs);
+                        // store(vals.add(idx << 4), load(ptr.cast_const()));
 
-                        let idx = perm_index(idx, log_n_vecs, half);
-                        debug_assert!(idx < n_vecs, "Final perm idx {} >= n_vecs {}", idx, n_vecs);
-                        let ptr = buffer0.add(offset_in_buffer);
-                        store(vals.add(idx << 4), load(ptr.cast_const()));
+                        // let idx = perm_index(idx, log_n_vecs, half);
+                        // debug_assert!(idx < n_vecs, "Final perm idx {} >= n_vecs {}", idx, n_vecs);
+                        // let ptr = buffer0.add(offset_in_buffer);
+                        // store(vals.add(idx << 4), load(ptr.cast_const()));
                     }
                 }
             }
