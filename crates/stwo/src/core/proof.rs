@@ -1,11 +1,11 @@
+use core::mem;
 use core::ops::Deref;
-use core::{array, mem};
 
 use serde::{Deserialize, Serialize};
-use std_shims::Vec;
+use std_shims::{vec, Vec};
 
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
+use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::{FriLayerProof, FriProof};
 use crate::core::pcs::quotients::CommitmentSchemeProof;
 use crate::core::vcs::hash::Hash;
@@ -31,11 +31,13 @@ impl<H: MerkleHasher> StarkProof<H> {
 
         let mut composition_cols = composition_mask.iter();
 
-        let coordinate_evals = array::try_from_fn(|_| {
+        let mut coordinate_evals = vec![];
+        for _ in 0..SECURE_EXTENSION_DEGREE {
             let col = &**composition_cols.next().ok_or(InvalidOodsSampleStructure)?;
             let [eval] = col.try_into().map_err(|_| InvalidOodsSampleStructure)?;
-            Ok(eval)
-        })?;
+            coordinate_evals.push(eval);
+        }
+        let coordinate_evals = coordinate_evals.try_into().unwrap();
 
         // Too many columns.
         if composition_cols.next().is_some() {
