@@ -97,7 +97,7 @@ impl BaseExpr {
                 match a {
                     Self::Inv(inv_a) => (*inv_a).clone(),
                     Self::Const(c) => Self::Const(c.inverse()),
-                    _ => Self::Inv(a.into()),
+                    _ => Self::Inv(Rc::new(a)),
                 }
             }
             other => other,
