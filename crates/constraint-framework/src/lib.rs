@@ -1,4 +1,4 @@
-#![feature(portable_simd)]
+#![cfg_attr(feature = "prover", feature(portable_simd))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 /// ! This module contains helpers to express and use constraints for components.
