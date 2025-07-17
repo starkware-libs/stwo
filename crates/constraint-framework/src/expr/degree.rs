@@ -7,7 +7,7 @@
 ///        simplification.
 ///     2. If expressions p and q cancel out under some operation, this will not be accounted
 ///        for, so that (x^2 + 1) - (x^2 + x) will return degree 2.
-use std::{collections::HashMap, ops::Deref};
+use std::collections::HashMap;
 
 use num_traits::Zero;
 
@@ -57,7 +57,7 @@ impl BaseExpr {
             BaseExpr::Mul(a, b) => a.degree_bound(named_exprs) + b.degree_bound(named_exprs),
             BaseExpr::Neg(a) => a.degree_bound(named_exprs),
             // TODO(alont): Consider handling this in the type system.
-            BaseExpr::Inv(expr) => match expr.deref() {
+            BaseExpr::Inv(expr) => match expr.as_ref() {
                 BaseExpr::Param(name) if named_exprs.degree_bound(name.clone()).is_zero() => 0,
                 BaseExpr::Const(_) => 0,
                 _ => panic!("Cannot compute the degree of an inverse"),

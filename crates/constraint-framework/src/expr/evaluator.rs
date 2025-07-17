@@ -33,7 +33,7 @@ impl FormalLogupAtRow {
             is_finalized: true,
             is_first: BaseExpr::zero(),
             cumsum_shift: ExtExpr::Param(claimed_sum_name)
-                * BaseExpr::Inv(BaseExpr::Param(column_size_name).into()),
+                * BaseExpr::Inv(Rc::new(BaseExpr::Param(column_size_name))),
         }
     }
 }
