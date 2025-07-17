@@ -66,12 +66,18 @@ pub unsafe fn full_copy_block_transpose(
     buffer0: &mut [u32x16],
     buffer1: &mut [u32x16],
 ) {
+    use std::ptr::{read, write};
+
     let n_vecs = values.len();
     assert!(n_vecs.is_power_of_two());
     let log_n_vecs = n_vecs.ilog2();
     let half = log_n_vecs / 2;
     let log_tile_edge = std::cmp::min(half, log_tile_edge);
-    let tile_edge = 1 << log_tile_edge;
+    assert!(buffer0.len() >= 1 << (log_tile_edge * 2));
+    assert!(buffer1.len() >= 1 << (log_tile_edge * 2));
+    assert!(buffer0.len() == buffer1.len());
+    let tile_edge = (1 << log_tile_edge) as u32;
+    let n_workers = buffer0.len() / (tile_edge * tile_edge) as usize;
     let log_row_length = log_n_vecs.div_ceil(2);
     let log_height = half - log_tile_edge;
 
@@ -82,60 +88,84 @@ pub unsafe fn full_copy_block_transpose(
             tile_pairs.push((r, c));
         }
     }
+    // assert!(tile_pairs.len() % n_workers == 0);
+    let n_blocks_per_worker = tile_pairs.len() / n_workers;
+
+    let values = UnsafeMut(values.as_mut_ptr());
 
     for b in 0..=(log_n_vecs & 1) {
         // Parallel over tile-pairs
-        tile_pairs.iter().for_each(|(r, c)| {
-            let row_off = r * tile_edge;
-            let col_off = c * tile_edge;
+        tile_pairs
+            .par_chunks(n_blocks_per_worker)
+            .zip(buffer0.par_chunks_mut((tile_edge * tile_edge) as usize))
+            .zip(buffer1.par_chunks_mut((tile_edge * tile_edge) as usize))
+            .for_each(|((chunk, buffer0), buffer1)| {
+                let values = values.get();
+                chunk.iter().for_each(|(r, c)| {
+                    let row_off = r * tile_edge;
+                    let col_off = c * tile_edge;
 
-            if r == c {
-                // In-place within diagonal tile T_{r,r}
-                for i in 0..tile_edge {
-                    for j in (i + 1)..tile_edge {
-                        let idx_i = ((row_off + i) << log_row_length) + j + col_off + (b << half);
-                        let idx_j = perm_index(idx_i, log_n_vecs, half);
+                    if r == c {
+                        // In-place within diagonal tile T_{r,r}
+                        for i in 0..tile_edge {
+                            for j in (i + 1)..tile_edge {
+                                let idx_i =
+                                    ((row_off + i) << log_row_length) + j + col_off + (b << half);
+                                let idx_j = perm_index(idx_i, log_n_vecs, half);
 
-                        let v0 = values[idx_i as usize];
-                        let v1 = values[idx_j as usize];
-                        values[idx_i as usize] = v1;
-                        values[idx_j as usize] = v0;
-                    }
-                }
-            } else {
-                // 1. Copy T_{r,c} to buffer0
-                for i in 0..tile_edge {
-                    for j in 0..tile_edge {
-                        let idx_i = ((row_off + i) << log_row_length) + j + col_off + (b << half);
-                        buffer0[(j * tile_edge + i) as usize] = values[idx_i as usize];
-                    }
-                }
+                                let v0 = read(values.add(idx_i as usize));
+                                let v1 = read(values.add(idx_j as usize));
+                                write(values.add(idx_i as usize), v1);
+                                write(values.add(idx_j as usize), v0);
+                            }
+                        }
+                    } else {
+                        // 1. Copy T_{r,c} to buffer0
+                        for i in 0..tile_edge {
+                            for j in 0..tile_edge {
+                                let idx_i =
+                                    ((row_off + i) << log_row_length) + j + col_off + (b << half);
+                                buffer0[(j * tile_edge + i) as usize] =
+                                    read(values.add(idx_i as usize));
+                            }
+                        }
 
-                // 2. Copy T_{c,r} to buffer1
-                for i in 0..tile_edge {
-                    for j in 0..tile_edge {
-                        let idx_i = ((col_off + i) << log_row_length) + j + row_off + (b << half);
-                        buffer1[(j * tile_edge + i) as usize] = values[idx_i as usize];
-                    }
-                }
+                        // 2. Copy T_{c,r} to buffer1
+                        for i in 0..tile_edge {
+                            for j in 0..tile_edge {
+                                let idx_i =
+                                    ((col_off + i) << log_row_length) + j + row_off + (b << half);
+                                buffer1[(j * tile_edge + i) as usize] =
+                                    read(values.add(idx_i as usize));
+                            }
+                        }
 
-                // 3. Copy buffer0 to T_{c,r}
-                for i in 0..tile_edge {
-                    for j in 0..tile_edge {
-                        let idx_i = ((col_off + i) << log_row_length) + j + row_off + (b << half);
-                        values[idx_i as usize] = buffer0[(i * tile_edge + j) as usize];
-                    }
-                }
+                        // 3. Copy buffer0 to T_{c,r}
+                        for i in 0..tile_edge {
+                            for j in 0..tile_edge {
+                                let idx_i =
+                                    ((col_off + i) << log_row_length) + j + row_off + (b << half);
+                                write(
+                                    values.add(idx_i as usize),
+                                    buffer0[(i * tile_edge + j) as usize],
+                                );
+                            }
+                        }
 
-                // 4. Copy buffer1 to T_{r,c}
-                for i in 0..tile_edge {
-                    for j in 0..tile_edge {
-                        let idx_i = ((row_off + i) << log_row_length) + j + col_off + (b << half);
-                        values[idx_i as usize] = buffer1[(i * tile_edge + j) as usize];
+                        // 4. Copy buffer1 to T_{r,c}
+                        for i in 0..tile_edge {
+                            for j in 0..tile_edge {
+                                let idx_i =
+                                    ((row_off + i) << log_row_length) + j + col_off + (b << half);
+                                write(
+                                    values.add(idx_i as usize),
+                                    buffer1[(i * tile_edge + j) as usize],
+                                );
+                            }
+                        }
                     }
-                }
-            }
-        });
+                });
+            });
     }
 }
 
@@ -246,8 +276,8 @@ mod tests {
         let mut aligned_parallel = vec![0u32; n_u32s];
         let mut aligned_sequential = vec![u32x16::splat(0); n_u32s / 16];
 
-        let mut buffer0 = vec![u32x16::splat(0); 1 << (log_tile_edge * 2)];
-        let mut buffer1 = vec![u32x16::splat(0); 1 << (log_tile_edge * 2)];
+        let mut buffer0 = vec![u32x16::splat(0); 6 << (log_tile_edge * 2)];
+        let mut buffer1 = vec![u32x16::splat(0); 6 << (log_tile_edge * 2)];
 
         aligned_parallel.copy_from_slice(&data_parallel);
         aligned_sequential.copy_from_slice(

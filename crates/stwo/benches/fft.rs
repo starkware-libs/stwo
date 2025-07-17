@@ -84,7 +84,7 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
     //     );
     // });
 
-    const TRANSPOSE_LOG_SIZE: u32 = 22;
+    const TRANSPOSE_LOG_SIZE: u32 = 24;
     let transpose_values: BaseColumn = (0..1 << TRANSPOSE_LOG_SIZE).map(BaseField::from).collect();
     group.throughput(Throughput::Bytes(4 << TRANSPOSE_LOG_SIZE));
     group.bench_function(format!("simd transpose_vecs 2^{TRANSPOSE_LOG_SIZE}"), |b| {
@@ -100,8 +100,8 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
         );
     });
     for log_tile_edge in 2..=7 {
-        let mut buffer0 = vec![u32x16::splat(0); (1 << (log_tile_edge * 2))];
-        let mut buffer1 = vec![u32x16::splat(0); (1 << (log_tile_edge * 2))];
+        let mut buffer0 = vec![u32x16::splat(0); (32 << (log_tile_edge * 2))];
+        let mut buffer1 = vec![u32x16::splat(0); (32 << (log_tile_edge * 2))];
         group.bench_function(
             format!("simd transpose_vecs2 2^{TRANSPOSE_LOG_SIZE}, window {log_tile_edge}"),
             |b| {
