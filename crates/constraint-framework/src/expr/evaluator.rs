@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use num_traits::Zero;
 use stwo::core::Fraction;
@@ -227,10 +228,10 @@ impl EvalAtRow for ExprEvaluator {
 
     fn combine_ef(values: [Self::F; 4]) -> Self::EF {
         ExtExpr::SecureCol([
-            values[0].clone().into(),
-            values[1].clone().into(),
-            values[2].clone().into(),
-            values[3].clone().into(),
+            Rc::new(values[0].clone()),
+            Rc::new(values[1].clone()),
+            Rc::new(values[2].clone()),
+            Rc::new(values[3].clone()),
         ])
     }
 

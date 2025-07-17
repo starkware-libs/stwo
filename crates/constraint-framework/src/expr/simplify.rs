@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use num_traits::{One, Zero};
 use stwo::core::fields::qm31::SecureField;
 
@@ -64,7 +66,7 @@ macro_rules! simplify_arithmetic {
                         (*minus_a).clone() * (*minus_b).clone()
                     }
                     (Self::Neg(minus_a), _) => -((*minus_a).clone() * b), // (-a) * b = -(a * b)
-                    (_, Self::Neg(minus_b)) => -((a).clone() * (*minus_b).clone()), // a * (-b) = -(a * b)
+                    (_, Self::Neg(minus_b)) => -(a.clone() * (*minus_b).clone()), // a * (-b) = -(a * b)
                     // No simplification.
                     _ => a * b,
                 }
@@ -73,9 +75,9 @@ macro_rules! simplify_arithmetic {
                 let a = a.simplify();
                 match a {
                     Self::Const(c) => Self::Const(-c),
-                    Self::Neg(minus_a) => (*minus_a).clone(), // -(-a) = a
-                    Self::Sub(a, b) => Self::Sub(b, a),      // -(a - b) = b - a
-                    _ => -a,                                  // No simplification.
+                    Self::Neg(minus_a) => (*minus_a).clone(),   // -(-a) = a
+                    Self::Sub(a, b) => Self::Sub(b, a),         // -(a - b) = b - a
+                    _ => -a,                                    // No simplification.
                 }
             }
             other => other, // No simplification.
@@ -134,7 +136,7 @@ impl ExtExpr {
                         BaseExpr::Const(c_val),
                         BaseExpr::Const(d_val),
                     ) => ExtExpr::Const(SecureField::from_m31_array([a_val, b_val, c_val, d_val])),
-                    _ => Self::SecureCol([a.into(), b.into(), c.into(), d.into()]),
+                    _ => Self::SecureCol([Rc::new(a), Rc::new(b), Rc::new(c), Rc::new(d)]),
                 }
             }
             other => other,

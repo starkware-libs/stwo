@@ -1,7 +1,12 @@
 #[cfg(test)]
 macro_rules! secure_col {
     ($a:expr, $b:expr, $c:expr, $d:expr) => {
-        crate::expr::ExtExpr::SecureCol([$a.into(), $b.into(), $c.into(), $d.into()])
+        crate::expr::ExtExpr::SecureCol([
+            std::rc::Rc::new($a.into()),
+            std::rc::Rc::new($b.into()),
+            std::rc::Rc::new($c.into()),
+            std::rc::Rc::new($d.into()),
+        ])
     };
 }
 #[cfg(test)]

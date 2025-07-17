@@ -90,10 +90,10 @@ impl From<BaseField> for BaseExpr {
 impl From<BaseField> for ExtExpr {
     fn from(val: BaseField) -> Self {
         ExtExpr::SecureCol([
-            BaseExpr::from(val).into(),
-            BaseExpr::zero().into(),
-            BaseExpr::zero().into(),
-            BaseExpr::zero().into(),
+            Rc::new(BaseExpr::from(val)),
+            Rc::new(BaseExpr::zero()),
+            Rc::new(BaseExpr::zero()),
+            Rc::new(BaseExpr::zero()),
         ])
     }
 }
@@ -101,10 +101,10 @@ impl From<BaseField> for ExtExpr {
 impl From<SecureField> for ExtExpr {
     fn from(QM31(CM31(a, b), CM31(c, d)): SecureField) -> Self {
         ExtExpr::SecureCol([
-            BaseExpr::from(a).into(),
-            BaseExpr::from(b).into(),
-            BaseExpr::from(c).into(),
-            BaseExpr::from(d).into(),
+            Rc::new(BaseExpr::from(a)),
+            Rc::new(BaseExpr::from(b)),
+            Rc::new(BaseExpr::from(c)),
+            Rc::new(BaseExpr::from(d)),
         ])
     }
 }
@@ -112,10 +112,10 @@ impl From<SecureField> for ExtExpr {
 impl From<BaseExpr> for ExtExpr {
     fn from(expr: BaseExpr) -> Self {
         ExtExpr::SecureCol([
-            expr.clone().into(),
-            BaseExpr::zero().into(),
-            BaseExpr::zero().into(),
-            BaseExpr::zero().into(),
+            Rc::new(expr.clone()),
+            Rc::new(BaseExpr::zero()),
+            Rc::new(BaseExpr::zero()),
+            Rc::new(BaseExpr::zero()),
         ])
     }
 }
@@ -123,21 +123,21 @@ impl From<BaseExpr> for ExtExpr {
 impl Add for BaseExpr {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
-        BaseExpr::Add(self.into(), rhs.into()).into()
+        BaseExpr::Add(Rc::new(self), Rc::new(rhs))
     }
 }
 
 impl Sub for BaseExpr {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self {
-        BaseExpr::Sub(self.into(), rhs.into()).into()
+        BaseExpr::Sub(Rc::new(self), Rc::new(rhs))
     }
 }
 
 impl Mul for BaseExpr {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self {
-        BaseExpr::Mul(self.into(), rhs.into()).into()
+        BaseExpr::Mul(Rc::new(self), Rc::new(rhs))
     }
 }
 
@@ -156,28 +156,28 @@ impl MulAssign for BaseExpr {
 impl Neg for BaseExpr {
     type Output = Self;
     fn neg(self) -> Self {
-        BaseExpr::Neg(self.into()).into()
+        BaseExpr::Neg(Rc::new(self))
     }
 }
 
 impl Add for ExtExpr {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
-        ExtExpr::Add(self.into(), rhs.into()).into()
+        ExtExpr::Add(Rc::new(self), Rc::new(rhs))
     }
 }
 
 impl Sub for ExtExpr {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self {
-        ExtExpr::Sub(self.into(), rhs.into()).into()
+        ExtExpr::Sub(Rc::new(self), Rc::new(rhs))
     }
 }
 
 impl Mul for ExtExpr {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self {
-        ExtExpr::Mul(self.into(), rhs.into()).into()
+        ExtExpr::Mul(Rc::new(self), Rc::new(rhs))
     }
 }
 
@@ -196,7 +196,7 @@ impl MulAssign for ExtExpr {
 impl Neg for ExtExpr {
     type Output = Self;
     fn neg(self) -> Self {
-        ExtExpr::Neg(self.into()).into()
+        ExtExpr::Neg(Rc::new(self))
     }
 }
 
@@ -236,7 +236,7 @@ impl One for ExtExpr {
 
 impl FieldExpOps for BaseExpr {
     fn inverse(&self) -> Self {
-        BaseExpr::Inv(self.clone().into()).into()
+        BaseExpr::Inv(Rc::new(self.clone()))
     }
 }
 
