@@ -297,7 +297,7 @@ mod tests {
     use num_traits::One;
     use stwo::core::fields::FieldExpOps;
 
-    use crate::expr::{BaseExpr, BaseExprInner, ExprEvaluator, ExtExpr};
+    use crate::expr::{BaseExpr, ExprEvaluator, ExtExpr};
     use crate::{relation, EvalAtRow, FrameworkEval, RelationEntry};
 
     #[test]
@@ -356,18 +356,18 @@ mod tests {
         // (x)               leaf
         // (x + x)           shared once
         // (x + x) * (x + x) shared twice
-        let leaf = BaseExprInner(Rc::new(BaseExpr::Param("x".into())));
-        let shared = BaseExprInner(Rc::new(BaseExpr::Add(leaf.clone(), leaf.clone())));
-        let expr = BaseExprInner(Rc::new(BaseExpr::Mul(shared.clone(), shared.clone())));
+        let leaf = Rc::new(BaseExpr::Param("x".into()));
+        let shared = Rc::new(BaseExpr::Add(leaf.clone(), leaf.clone()));
+        let expr = Rc::new(BaseExpr::Mul(shared.clone(), shared.clone()));
 
         // leaf: in scope 1 + in Add left 1 + in Add right 1 = 3
-        assert_eq!(Rc::strong_count(&leaf.0), 3);
+        assert_eq!(Rc::strong_count(&leaf), 3);
 
         // shared: variable 1 + in Mul left 1 + in Mul right 1 = 3
-        assert_eq!(Rc::strong_count(&shared.0), 3);
+        assert_eq!(Rc::strong_count(&shared), 3);
 
         // expr itself should have exactly 1 owner here
-        assert_eq!(Rc::strong_count(&expr.0), 1);
+        assert_eq!(Rc::strong_count(&expr), 1);
     }
 
     #[test]
