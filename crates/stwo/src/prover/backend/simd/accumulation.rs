@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use tracing::{span, Level};
 
 use crate::core::fields::qm31::SecureField;
 use crate::prover::backend::simd::m31::N_LANES;
@@ -10,6 +11,7 @@ use crate::prover::AccumulationOps;
 
 impl AccumulationOps for SimdBackend {
     fn accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>) {
+        let _span = span!(Level::INFO, "Accumulate", class = "Accumulate").entered();
         for i in 0..column.packed_len() {
             let res_coeff = unsafe { column.packed_at(i) + other.packed_at(i) };
             unsafe { column.set_packed(i, res_coeff) };

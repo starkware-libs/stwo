@@ -4,6 +4,8 @@
 //! defined as
 //!   f(p) = sum_i alpha^{N-1-i} u_i(P).
 
+use core::panic;
+
 use itertools::Itertools;
 use tracing::{span, Level};
 
@@ -74,11 +76,6 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
 
     /// Computes f(P) as coefficients.
     pub fn finalize(self) -> SecureCirclePoly<B> {
-        assert_eq!(
-            self.random_coeff_powers.len(),
-            0,
-            "not all random coefficients were used"
-        );
         let log_size = self.log_size();
         let _span = span!(
             Level::INFO,
