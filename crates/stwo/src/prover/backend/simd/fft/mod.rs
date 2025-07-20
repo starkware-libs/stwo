@@ -130,21 +130,23 @@ pub unsafe fn full_copy_block_transpose(
                             }
                         }
 
-                        // 2. Copy T_{c,r} to buffer1
-                        for i in 0..tile_edge {
-                            for j in 0..tile_edge {
-                                let idx_i =
-                                    ((col_off + i) << log_row_length) + j + row_off + (b << half);
-                                buffer1[(j * tile_edge + i) as usize] =
-                                    read(values.add(idx_i as usize));
-                            }
-                        }
+                        // // 2. Copy T_{c,r} to buffer1
+                        // for i in 0..tile_edge {
+                        //     for j in 0..tile_edge {
+                        //         let idx_i =
+                        //             ((col_off + i) << log_row_length) + j + row_off + (b <<
+                        // half);         buffer1[(j * tile_edge + i) as
+                        // usize] =             read(values.add(idx_i as
+                        // usize));     }
+                        // }
 
                         // 3. Copy buffer0 to T_{c,r}
                         for i in 0..tile_edge {
                             for j in 0..tile_edge {
                                 let idx_i =
                                     ((col_off + i) << log_row_length) + j + row_off + (b << half);
+                                buffer1[(j * tile_edge + i) as usize] =
+                                    read(values.add(idx_i as usize));
                                 write(
                                     values.add(idx_i as usize),
                                     buffer0[(i * tile_edge + j) as usize],
