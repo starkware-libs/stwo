@@ -177,6 +177,102 @@ const fn perm_index(x: u32, log_n: u32, half: u32) -> u32 {
     (c << (log_n - half)) | (b << half) | a
 }
 
+/// Transpose `src` (rows×cols) into `dst` (cols×rows), both in row-major order.
+///
+/// # Panics
+/// - if `src.len() != rows*cols`
+/// - if `dst.len() != rows*cols`
+pub fn cache_oblivious_transpose<T: Copy>(src: &[T], dst: &mut [T], rows: usize, cols: usize) {
+    assert_eq!(src.len(), rows * cols);
+    assert_eq!(dst.len(), rows * cols);
+    transpose_rec(src, dst, 0, 0, rows, cols, cols, rows);
+}
+
+/// Recursive helper splitting the larger of height/width.
+/// - `r0`,`c0`: top-left corner in src
+/// - `h`,`w`: tile height/width
+/// - `src_stride`: number of elements per src row
+/// - `dst_stride`: number of elements per dst row
+#[allow(clippy::too_many_arguments)]
+fn transpose_rec<T: Copy>(
+    src: &[T],
+    dst: &mut [T],
+    r0: usize,
+    c0: usize,
+    h: usize,
+    w: usize,
+    src_stride: usize,
+    dst_stride: usize,
+) {
+    if h == 1 && w == 1 {
+        // copy single element
+        dst[c0 * dst_stride + r0] = src[r0 * src_stride + c0];
+    } else if h >= w {
+        // split height in half
+        let h2 = h / 2;
+        transpose_rec(src, dst, r0, c0, h2, w, src_stride, dst_stride);
+        transpose_rec(src, dst, r0 + h2, c0, h - h2, w, src_stride, dst_stride);
+    } else {
+        // split width in half
+        let w2 = w / 2;
+        transpose_rec(src, dst, r0, c0, h, w2, src_stride, dst_stride);
+        transpose_rec(src, dst, r0, c0 + w2, h, w - w2, src_stride, dst_stride);
+    }
+}
+
+/// Transpose `src` (rows×cols) into `dst` (cols×rows), both in row-major order.
+/// Parallel, cache-oblivious, out-of-place version.
+///
+/// # Panics
+/// - if `src.len() != rows*cols`
+/// - if `dst.len() != rows*cols`
+#[cfg(feature = "parallel")]
+pub fn cache_oblivious_transpose_par<T: Copy + Sync + Send>(
+    src: &[T],
+    dst: &mut [T],
+    rows: usize,
+    cols: usize,
+) {
+    assert_eq!(src.len(), rows * cols);
+    assert_eq!(dst.len(), rows * cols);
+    let dst = UnsafeMut(dst.as_mut_ptr());
+    transpose_rec_par(src, dst, 0, 0, rows, cols, cols, rows);
+}
+
+#[cfg(feature = "parallel")]
+#[allow(clippy::too_many_arguments)]
+fn transpose_rec_par<T: Copy + Sync + Send>(
+    src: &[T],
+    dst: UnsafeMut<T>, // unsafe pointer to dst
+    r0: usize,
+    c0: usize,
+    h: usize,
+    w: usize,
+    src_stride: usize,
+    dst_stride: usize,
+) {
+    if h == 1 && w == 1 {
+        // base case: copy single element
+        unsafe {
+            std::ptr::write(dst.get().add(c0 * dst_stride + r0), src[r0 * src_stride + c0]);
+        }
+    } else if h >= w {
+        // split height in half, recurse in parallel
+        let h2 = h / 2;
+        rayon::join(
+            || transpose_rec_par(src, dst, r0, c0, h2, w, src_stride, dst_stride),
+            || transpose_rec_par(src, dst, r0 + h2, c0, h - h2, w, src_stride, dst_stride),
+        );
+    } else {
+        // split width in half, recurse in parallel
+        let w2 = w / 2;
+        rayon::join(
+            || transpose_rec_par(src, dst, r0, c0, h, w2, src_stride, dst_stride),
+            || transpose_rec_par(src, dst, r0, c0 + w2, h, w - w2, src_stride, dst_stride),
+        );
+    }
+}
+
 /// Computes the twiddles for the first fft layer from the second, and loads both to SIMD registers.
 ///
 /// Returns the twiddles for the first layer and the twiddles for the second layer.
@@ -311,100 +407,38 @@ mod tests {
         );
     }
 
-    // #[test]
-    // fn test_transpose_vecs_identity() {
-    //     let mut rng = SmallRng::seed_from_u64(42);
+    #[test]
+    fn test_cache_oblivious_transpose() {
+        // example 5×3 matrix
+        let rows = 1 << 12;
+        let cols = 1 << 12;
+        let src: Vec<u32x16> = (0..(rows * cols) as u32).map(u32x16::splat).collect();
+        let mut expected = src.clone();
+        unsafe {
+            transpose_vecs(expected.as_mut_ptr() as *mut u32, 24);
+        }
 
-    //     // Test that applying transpose twice gives back the original
-    //     for log_n_vecs in 3..=6 {
-    //         let n_vecs = 1 << log_n_vecs;
-    //         let n_u32s = n_vecs * 16;
+        let mut dst = vec![u32x16::splat(0); rows * cols];
+        cache_oblivious_transpose(&src, &mut dst, rows, cols);
 
-    //         let original_data: Vec<u32> = (0..n_u32s).map(|_| rng.gen()).collect();
-    //         let mut data = original_data.clone();
+        assert_eq!(dst, expected);
+    }
 
-    //         let mut buffer0 = vec![0u32; n_u32s];
-    //         let mut buffer1 = vec![0u32; n_u32s];
 
-    //         // Apply transpose twice
-    //         unsafe {
-    //             transpose_vecs2(
-    //                 data.as_mut_ptr(),
-    //                 log_n_vecs,
-    //                 1,
-    //                 buffer0.as_mut_ptr(),
-    //                 buffer1.as_mut_ptr(),
-    //             );
-    //             transpose_vecs2(
-    //                 data.as_mut_ptr(),
-    //                 log_n_vecs,
-    //                 1,
-    //                 buffer0.as_mut_ptr(),
-    //                 buffer1.as_mut_ptr(),
-    //             );
-    //         }
+    #[test]
+    fn test_cache_oblivious_transpose_par() {
+        // example 5×3 matrix
+        let rows = 1 << 12;
+        let cols = 1 << 12;
+        let src: Vec<u32x16> = (0..(rows * cols) as u32).map(u32x16::splat).collect();
+        let mut expected = src.clone();
+        unsafe {
+            transpose_vecs(expected.as_mut_ptr() as *mut u32, 24);
+        }
 
-    //         // Should be back to original
-    //         assert_eq!(
-    //             data, original_data,
-    //             "Double transpose didn't restore original for log_n_vecs={}",
-    //             log_n_vecs
-    //         );
-    //     }
-    // }
+        let mut dst = vec![u32x16::splat(0); rows * cols];
+        cache_oblivious_transpose_par(&src, &mut dst, rows, cols);
 
-    // #[test]
-    // fn test_transpose_vecs_small_case() {
-    //     // Test a small known case to verify the bit swapping logic
-    //     let log_n_vecs = 2; // 4 vectors
-    //     let n_u32s = 4 * 16; // 64 u32s
-
-    //     // Create test data where each SIMD vector has a recognizable pattern
-    //     let mut data = vec![0u32; n_u32s];
-    //     for i in 0..4 {
-    //         for j in 0..16 {
-    //             data[i * 16 + j] = (i as u32) << 16 | (j as u32);
-    //         }
-    //     }
-
-    //     let original_data = data.clone();
-
-    //     // Apply transpose
-    //     unsafe {
-    //         transpose_vecs2(
-    //             data.as_mut_ptr(),
-    //             log_n_vecs,
-    //             1,
-    //             buffer0.as_mut_ptr(),
-    //             buffer1.as_mut_ptr(),
-    //         );
-    //         transpose_vecs2(
-    //             data.as_mut_ptr(),
-    //             log_n_vecs,
-    //             1,
-    //             buffer0.as_mut_ptr(),
-    //             buffer1.as_mut_ptr(),
-    //         );
-    //     }
-
-    //     // Verify the data changed (it should transpose)
-    //     assert_ne!(data, original_data, "Transpose should change the data");
-
-    //     // Apply transpose again to get back to original
-    //     unsafe {
-    //         transpose_vecs2(
-    //             data.as_mut_ptr(),
-    //             log_n_vecs,
-    //             1,
-    //             buffer0.as_mut_ptr(),
-    //             buffer1.as_mut_ptr(),
-    //         );
-    //     }
-
-    //     // Should be back to original
-    //     assert_eq!(
-    //         data, original_data,
-    //         "Double transpose should restore original"
-    //     );
-    // }
+        assert_eq!(dst, expected);
+    }
 }

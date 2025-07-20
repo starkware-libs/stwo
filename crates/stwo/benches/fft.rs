@@ -13,7 +13,7 @@ use stwo::prover::backend::simd::fft::ifft::{
     get_itwiddle_dbls, ifft, ifft3_loop, ifft_vecwise_loop,
 };
 use stwo::prover::backend::simd::fft::rfft::{fft, get_twiddle_dbls};
-use stwo::prover::backend::simd::fft::{full_copy_block_transpose, transpose_vecs};
+use stwo::prover::backend::simd::fft::{cache_oblivious_transpose, cache_oblivious_transpose_par, transpose_vecs};
 use stwo::prover::backend::simd::m31::PackedBaseField;
 
 pub fn simd_ifft(c: &mut Criterion) {
@@ -99,27 +99,40 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
-    for log_tile_edge in 2..=7 {
-        let mut buffer0 = vec![u32x16::splat(0); (32 << (log_tile_edge * 2))];
-        let mut buffer1 = vec![u32x16::splat(0); (32 << (log_tile_edge * 2))];
-        group.bench_function(
-            format!("simd transpose_vecs2 2^{TRANSPOSE_LOG_SIZE}, window {log_tile_edge}"),
-            |b| {
-                b.iter_batched(
-                    || transpose_values.clone().data,
-                    |mut values| unsafe {
-                        full_copy_block_transpose(
-                            transmute::<&mut [PackedBaseField], &mut [u32x16]>(&mut values),
-                            log_tile_edge,
-                            &mut buffer0,
-                            &mut buffer1,
-                        )
-                    },
-                    BatchSize::LargeInput,
-                );
-            },
-        );
-    }
+    let mut dst = vec![PackedBaseField::broadcast(BaseField::from(0)); transpose_values.data.len()];
+    group.bench_function(
+        format!("simd cache_oblivious_transpose 2^{TRANSPOSE_LOG_SIZE}"),
+        |b| {
+            b.iter_batched(
+                || transpose_values.clone().data,
+                |mut values| unsafe {
+                    cache_oblivious_transpose_par(&values, &mut dst, 1 << 10, 1 << 10)
+                },
+                BatchSize::LargeInput,
+            );
+        },
+    );
+    // for log_tile_edge in 2..=7 {
+    //     let mut buffer0 = vec![u32x16::splat(0); (32 << (log_tile_edge * 2))];
+    //     let mut buffer1 = vec![u32x16::splat(0); (32 << (log_tile_edge * 2))];
+    //     group.bench_function(
+    //         format!("simd transpose_vecs2 2^{TRANSPOSE_LOG_SIZE}, window {log_tile_edge}"),
+    //         |b| {
+    //             b.iter_batched(
+    //                 || transpose_values.clone().data,
+    //                 |mut values| unsafe {
+    //                     full_copy_block_transpose(
+    //                         transmute::<&mut [PackedBaseField], &mut [u32x16]>(&mut values),
+    //                         log_tile_edge,
+    //                         &mut buffer0,
+    //                         &mut buffer1,
+    //                     )
+    //                 },
+    //                 BatchSize::LargeInput,
+    //             );
+    //         },
+    //     );
+    // }
 }
 
 pub fn simd_rfft(c: &mut Criterion) {
