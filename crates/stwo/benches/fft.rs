@@ -13,7 +13,9 @@ use stwo::prover::backend::simd::fft::ifft::{
     get_itwiddle_dbls, ifft, ifft3_loop, ifft_vecwise_loop,
 };
 use stwo::prover::backend::simd::fft::rfft::{fft, get_twiddle_dbls};
-use stwo::prover::backend::simd::fft::{cache_oblivious_transpose, cache_oblivious_transpose_par, transpose_vecs};
+use stwo::prover::backend::simd::fft::{
+    cache_oblivious_transpose, cache_oblivious_transpose_par, transpose_vecs,
+};
 use stwo::prover::backend::simd::m31::PackedBaseField;
 
 pub fn simd_ifft(c: &mut Criterion) {
@@ -100,18 +102,26 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
         );
     });
     let mut dst = vec![PackedBaseField::broadcast(BaseField::from(0)); transpose_values.data.len()];
-    group.bench_function(
-        format!("simd cache_oblivious_transpose 2^{TRANSPOSE_LOG_SIZE}"),
-        |b| {
-            b.iter_batched(
-                || transpose_values.clone().data,
-                |mut values| unsafe {
-                    cache_oblivious_transpose_par(&values, &mut dst, 1 << 10, 1 << 10)
-                },
-                BatchSize::LargeInput,
-            );
-        },
-    );
+    for log_max_thread_edge in 1..=14 {
+        group.bench_function(
+            format!("simd cache_oblivious_transpose 2^{TRANSPOSE_LOG_SIZE}, max_thread_edge 2^{log_max_thread_edge}"),
+            |b| {
+                b.iter_batched(
+                    || transpose_values.clone().data,
+                    |mut values| unsafe {
+                        cache_oblivious_transpose_par(
+                            &values,
+                            &mut dst,
+                            1 << 10,
+                            1 << 10,
+                            1 << log_max_thread_edge,
+                        )
+                    },
+                    BatchSize::LargeInput,
+                );
+            },
+        );
+    }
     // for log_tile_edge in 2..=7 {
     //     let mut buffer0 = vec![u32x16::splat(0); (32 << (log_tile_edge * 2))];
     //     let mut buffer1 = vec![u32x16::splat(0); (32 << (log_tile_edge * 2))];

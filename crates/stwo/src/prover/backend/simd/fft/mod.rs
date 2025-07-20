@@ -220,6 +220,34 @@ fn transpose_rec<T: Copy>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn transpose_rec_ptr<T: Copy>(
+    src: &[T],
+    dst: *mut T,
+    r0: usize,
+    c0: usize,
+    h: usize,
+    w: usize,
+    src_stride: usize,
+    dst_stride: usize,
+) {
+    if h == 1 && w == 1 {
+        // copy single element
+        unsafe {
+            std::ptr::write(dst.add(c0 * dst_stride + r0), src[r0 * src_stride + c0]);
+        }
+    } else if h >= w {
+        // split height in half
+        let h2 = h / 2;
+        transpose_rec_ptr(src, dst, r0, c0, h2, w, src_stride, dst_stride);
+        transpose_rec_ptr(src, dst, r0 + h2, c0, h - h2, w, src_stride, dst_stride);
+    } else {
+        // split width in half
+        let w2 = w / 2;
+        transpose_rec_ptr(src, dst, r0, c0, h, w2, src_stride, dst_stride);
+        transpose_rec_ptr(src, dst, r0, c0 + w2, h, w - w2, src_stride, dst_stride);
+    }
+}
 /// Transpose `src` (rows×cols) into `dst` (cols×rows), both in row-major order.
 /// Parallel, cache-oblivious, out-of-place version.
 ///
@@ -232,12 +260,14 @@ pub fn cache_oblivious_transpose_par<T: Copy + Sync + Send>(
     dst: &mut [T],
     rows: usize,
     cols: usize,
+    max_thread_edge: usize,
 ) {
     assert_eq!(src.len(), rows * cols);
     assert_eq!(dst.len(), rows * cols);
     let dst = UnsafeMut(dst.as_mut_ptr());
-    transpose_rec_par(src, dst, 0, 0, rows, cols, cols, rows);
+    transpose_rec_par(src, dst, 0, 0, rows, cols, cols, rows, max_thread_edge);
 }
+
 
 #[cfg(feature = "parallel")]
 #[allow(clippy::too_many_arguments)]
@@ -250,26 +280,90 @@ fn transpose_rec_par<T: Copy + Sync + Send>(
     w: usize,
     src_stride: usize,
     dst_stride: usize,
+    max_thread_edge: usize,
 ) {
     if h == 1 && w == 1 {
         // base case: copy single element
         unsafe {
-            std::ptr::write(dst.get().add(c0 * dst_stride + r0), src[r0 * src_stride + c0]);
+            std::ptr::write(
+                dst.get().add(c0 * dst_stride + r0),
+                src[r0 * src_stride + c0],
+            );
         }
     } else if h >= w {
         // split height in half, recurse in parallel
         let h2 = h / 2;
-        rayon::join(
-            || transpose_rec_par(src, dst, r0, c0, h2, w, src_stride, dst_stride),
-            || transpose_rec_par(src, dst, r0 + h2, c0, h - h2, w, src_stride, dst_stride),
-        );
+        if h2 > max_thread_edge {
+            rayon::join(
+                || {
+                    transpose_rec_par(
+                        src,
+                        dst,
+                        r0,
+                        c0,
+                        h2,
+                        w,
+                        src_stride,
+                        dst_stride,
+                        max_thread_edge,
+                    )
+                },
+                || {
+                    transpose_rec_par(
+                        src,
+                        dst,
+                        r0 + h2,
+                        c0,
+                        h - h2,
+                        w,
+                        src_stride,
+                        dst_stride,
+                        max_thread_edge,
+                    )
+                },
+            );
+        } else {
+            let dst = unsafe { dst.get() };
+            transpose_rec_ptr(src, dst, r0, c0, h2, w, src_stride, dst_stride);
+            transpose_rec_ptr(src, dst, r0 + h2, c0, h - h2, w, src_stride, dst_stride);
+        }
     } else {
         // split width in half, recurse in parallel
         let w2 = w / 2;
-        rayon::join(
-            || transpose_rec_par(src, dst, r0, c0, h, w2, src_stride, dst_stride),
-            || transpose_rec_par(src, dst, r0, c0 + w2, h, w - w2, src_stride, dst_stride),
-        );
+        if w2 > max_thread_edge {
+            rayon::join(
+                || {
+                    transpose_rec_par(
+                        src,
+                        dst,
+                        r0,
+                        c0,
+                        h,
+                        w2,
+                        src_stride,
+                        dst_stride,
+                        max_thread_edge,
+                    )
+                },
+                || {
+                    transpose_rec_par(
+                        src,
+                        dst,
+                        r0,
+                        c0 + w2,
+                        h,
+                        w - w2,
+                        src_stride,
+                        dst_stride,
+                        max_thread_edge,
+                    )
+                },
+            );
+        } else {
+            let dst = unsafe { dst.get() };
+            transpose_rec_ptr(src, dst, r0, c0, h, w2, src_stride, dst_stride);
+            transpose_rec_ptr(src, dst, r0, c0 + w2, h, w - w2, src_stride, dst_stride);
+        }
     }
 }
 
@@ -424,7 +518,6 @@ mod tests {
         assert_eq!(dst, expected);
     }
 
-
     #[test]
     fn test_cache_oblivious_transpose_par() {
         // example 5×3 matrix
@@ -437,7 +530,7 @@ mod tests {
         }
 
         let mut dst = vec![u32x16::splat(0); rows * cols];
-        cache_oblivious_transpose_par(&src, &mut dst, rows, cols);
+        cache_oblivious_transpose_par(&src, &mut dst, rows, cols, 4);
 
         assert_eq!(dst, expected);
     }
