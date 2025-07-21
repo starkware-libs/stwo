@@ -1161,6 +1161,7 @@ dependencies = [
  "hex",
  "indexmap",
  "itertools 0.12.1",
+ "libc",
  "num-traits",
  "rand",
  "rayon",

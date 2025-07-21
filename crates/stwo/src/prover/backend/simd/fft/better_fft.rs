@@ -1,3 +1,5 @@
+use libc::c_int;
+
 use crate::prover::backend::simd::fft::rfft::{fft1_loop, fft2_loop, fft3_loop, fft_vecwise_loop};
 use crate::prover::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
 use crate::prover::backend::simd::m31::LOG_N_LANES;
@@ -19,11 +21,17 @@ use crate::prover::backend::simd::utils::{UnsafeConst, UnsafeMut};
 /// # Safety
 ///
 /// Behavior is undefined if `src` and `dst` do not have the same alignment as [`PackedBaseField`].
-pub unsafe fn fft(src: *const u32, dst: *mut u32, twiddle_dbl: &[&[u32]], log_n_elements: usize) {
+pub unsafe fn fft(
+    src: *const u32,
+    dst: *mut u32,
+    twiddle_dbl: &[&[u32]],
+    log_n_elements: usize,
+    node: c_int,
+) {
     assert!(log_n_elements >= MIN_FFT_LOG_SIZE as usize);
     let log_n_vecs = log_n_elements - LOG_N_LANES as usize;
     if log_n_elements <= CACHED_FFT_LOG_SIZE as usize {
-        fft_lower_with_vecwise(src, dst, twiddle_dbl, log_n_elements, log_n_elements);
+        fft_lower_with_vecwise(src, dst, twiddle_dbl, log_n_elements, log_n_elements, node);
         return;
     }
 
@@ -35,6 +43,7 @@ pub unsafe fn fft(src: *const u32, dst: *mut u32, twiddle_dbl: &[&[u32]], log_n_
         &twiddle_dbl[(3 + fft_layers_pre_transpose)..],
         log_n_elements,
         fft_layers_post_transpose,
+        node,
     );
     transpose_vecs(dst, log_n_vecs);
     fft_lower_with_vecwise(
@@ -43,7 +52,12 @@ pub unsafe fn fft(src: *const u32, dst: *mut u32, twiddle_dbl: &[&[u32]], log_n_
         &twiddle_dbl[..3 + fft_layers_pre_transpose],
         log_n_elements,
         fft_layers_pre_transpose + LOG_N_LANES as usize,
+        node,
     );
+}
+
+unsafe extern "C" {
+    fn numa_run_on_node(node: c_int) -> c_int;
 }
 
 /// # Safety
@@ -55,6 +69,7 @@ pub unsafe fn fft_lower_without_vecwise(
     twiddle_dbl: &[&[u32]],
     log_size: usize,
     fft_layers: usize,
+    node: c_int,
 ) {
     assert!(log_size >= LOG_N_LANES as usize);
 
@@ -68,6 +83,7 @@ pub unsafe fn fft_lower_without_vecwise(
     let chunk_size = range_size.div_ceil(num_threads);
 
     std::thread::scope(|scope| {
+        numa_run_on_node(node);
         for thread_id in 0..num_threads {
             let start = thread_id * chunk_size;
             let end = (start + chunk_size).min(range_size);
@@ -136,6 +152,7 @@ pub unsafe fn fft_lower_with_vecwise(
     twiddle_dbl: &[&[u32]],
     log_size: usize,
     fft_layers: usize,
+    node: c_int,
 ) {
     const VECWISE_FFT_BITS: usize = LOG_N_LANES as usize + 1;
     assert!(log_size >= VECWISE_FFT_BITS);
@@ -152,6 +169,7 @@ pub unsafe fn fft_lower_with_vecwise(
     let chunk_size = range_size.div_ceil(num_threads);
 
     std::thread::scope(|scope| {
+        numa_run_on_node(node);
         for thread_id in 0..num_threads {
             let start = thread_id * chunk_size;
             let end = (start + chunk_size).min(range_size);
@@ -237,6 +255,7 @@ mod tests {
                     transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
                     &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
                     log_size as usize,
+                    0,
                 );
             }
 
