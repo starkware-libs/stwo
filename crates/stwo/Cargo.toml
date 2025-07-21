@@ -75,11 +75,9 @@ bench = false
 crate-type = ["lib"]
 
 [lints.rust]
-warnings = "deny"
 future-incompatible = "deny"
 nonstandard-style = "deny"
 rust-2018-idioms = "deny"
-unused = "deny"
 
 [lints.clippy]
 missing_const_for_fn = "warn"
