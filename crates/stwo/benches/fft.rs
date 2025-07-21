@@ -101,14 +101,16 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
 }
 
 pub fn simd_rfft(c: &mut Criterion) {
-    const LOG_SIZE: u32 = 20;
+    const LOG_SIZE: u32 = 24;
 
     let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
     let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
     let twiddle_dbls_refs = twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec();
     let values: BaseColumn = (0..domain.size()).map(BaseField::from).collect();
 
-    c.bench_function("simd rfft 20bit", |b| {
+    let mut group = c.benchmark_group("rfft");
+    group.throughput(Throughput::Bytes(4 << LOG_SIZE));
+    group.bench_function("simd rfft 24bit", |b| {
         b.iter_with_large_drop(|| unsafe {
             let mut target = Vec::<PackedBaseField>::with_capacity(values.data.len());
             #[allow(clippy::uninit_vec)]
