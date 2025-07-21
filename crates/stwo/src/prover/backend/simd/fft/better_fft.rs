@@ -1,7 +1,24 @@
+use std::sync::OnceLock;
+
+use core_affinity::CoreId;
+
 use crate::prover::backend::simd::fft::rfft::{fft1_loop, fft2_loop, fft3_loop, fft_vecwise_loop};
 use crate::prover::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
 use crate::prover::backend::simd::m31::LOG_N_LANES;
 use crate::prover::backend::simd::utils::{UnsafeConst, UnsafeMut};
+
+pub struct CpuTopology {
+    pub available_cores: Vec<CoreId>,
+}
+impl CpuTopology {
+    pub fn detect() -> Self {
+        Self {
+            available_cores: core_affinity::get_core_ids().unwrap_or_default(),
+        }
+    }
+}
+
+static CPU_TOPOLOGY: OnceLock<CpuTopology> = OnceLock::new();
 
 /// Performs a Circle Fast Fourier Transform (CFFT) on the given values.
 ///
@@ -36,7 +53,7 @@ pub unsafe fn fft(src: *const u32, dst: *mut u32, twiddle_dbl: &[&[u32]], log_n_
         log_n_elements,
         fft_layers_post_transpose,
     );
-    transpose_vecs(dst, log_n_vecs);
+    // transpose_vecs(dst, log_n_vecs);
     fft_lower_with_vecwise(
         dst,
         dst,
@@ -79,7 +96,12 @@ pub unsafe fn fft_lower_without_vecwise(
                 break;
             }
 
+            let core_id = CPU_TOPOLOGY
+                .get_or_init(CpuTopology::detect)
+                .available_cores[thread_id % CPU_TOPOLOGY.get().unwrap().available_cores.len()];
+
             scope.spawn(move || {
+                core_affinity::set_for_current(core_id);
                 for index_h in start..end {
                     let mut src = src.get();
                     let dst = dst.get();
@@ -163,7 +185,11 @@ pub unsafe fn fft_lower_with_vecwise(
                 break;
             }
 
+            let core_id = CPU_TOPOLOGY
+                .get_or_init(CpuTopology::detect)
+                .available_cores[thread_id % CPU_TOPOLOGY.get().unwrap().available_cores.len()];
             scope.spawn(move || {
+                core_affinity::set_for_current(core_id);
                 for index_h in start..end {
                     let mut src = src.get();
                     let dst = dst.get();
