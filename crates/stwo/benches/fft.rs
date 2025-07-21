@@ -110,7 +110,7 @@ pub fn simd_rfft(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("rfft");
     group.throughput(Throughput::Bytes(4 << LOG_SIZE));
-    group.bench_function("simd rfft 20bit", |b| {
+    group.bench_function("simd rfft 24bit", |b| {
         b.iter_with_large_drop(|| unsafe {
             let mut target = Vec::<PackedBaseField>::with_capacity(values.data.len());
             #[allow(clippy::uninit_vec)]
@@ -131,5 +131,5 @@ pub fn simd_rfft(c: &mut Criterion) {
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
-    targets = simd_rfft, simd_ifft, simd_ifft_parts);
+    targets = simd_ifft, simd_ifft_parts, simd_rfft);
 criterion_main!(benches);
