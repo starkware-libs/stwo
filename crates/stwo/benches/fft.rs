@@ -12,7 +12,7 @@ use stwo::prover::backend::simd::fft::ifft::{
     get_itwiddle_dbls, ifft, ifft3_loop, ifft_vecwise_loop,
 };
 use stwo::prover::backend::simd::fft::rfft::{fft, get_twiddle_dbls};
-use stwo::prover::backend::simd::fft::transpose_vecs;
+use stwo::prover::backend::simd::fft::{better_fft, transpose_vecs};
 use stwo::prover::backend::simd::m31::PackedBaseField;
 
 pub fn simd_ifft(c: &mut Criterion) {
@@ -117,6 +117,22 @@ pub fn simd_rfft(c: &mut Criterion) {
             target.set_len(values.data.len());
 
             fft(
+                black_box(transmute::<*const PackedBaseField, *const u32>(
+                    values.data.as_ptr(),
+                )),
+                transmute::<*mut PackedBaseField, *mut u32>(target.as_mut_ptr()),
+                black_box(&twiddle_dbls_refs),
+                black_box(LOG_SIZE as usize),
+            )
+        });
+    });
+    group.bench_function("simd better_fft 20bit", |b| {
+        b.iter_with_large_drop(|| unsafe {
+            let mut target = Vec::<PackedBaseField>::with_capacity(values.data.len());
+            #[allow(clippy::uninit_vec)]
+            target.set_len(values.data.len());
+
+            better_fft::fft(
                 black_box(transmute::<*const PackedBaseField, *const u32>(
                     values.data.as_ptr(),
                 )),

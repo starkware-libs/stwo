@@ -197,7 +197,7 @@ pub unsafe fn fft_lower_without_vecwise(
 /// # Safety
 ///
 /// Behavior is undefined if `src` and `dst` do not have the same alignment as [`PackedBaseField`].
-unsafe fn fft_vecwise_loop(
+pub unsafe fn fft_vecwise_loop(
     src: *const u32,
     dst: *mut u32,
     twiddle_dbl: &[&[u32]],
@@ -240,7 +240,7 @@ unsafe fn fft_vecwise_loop(
 /// # Safety
 ///
 /// Behavior is undefined if `src` and `dst` do not have the same alignment as [`PackedBaseField`].
-unsafe fn fft3_loop(
+pub unsafe fn fft3_loop(
     src: *const u32,
     dst: *mut u32,
     twiddle_dbl: &[&[u32]],
@@ -286,7 +286,7 @@ unsafe fn fft3_loop(
 /// # Safety
 ///
 /// Behavior is undefined if `src` and `dst` do not have the same alignment as [`PackedBaseField`].
-unsafe fn fft2_loop(
+pub unsafe fn fft2_loop(
     src: *const u32,
     dst: *mut u32,
     twiddle_dbl: &[&[u32]],
@@ -323,7 +323,7 @@ unsafe fn fft2_loop(
 /// # Safety
 ///
 /// Behavior is undefined if `src` and `dst` do not have the same alignment as [`PackedBaseField`].
-unsafe fn fft1_loop(
+pub unsafe fn fft1_loop(
     src: *const u32,
     dst: *mut u32,
     twiddle_dbl: &[&[u32]],

@@ -1154,6 +1154,7 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "criterion",
+ "crossbeam-utils",
  "educe",
  "fnv",
  "hashbrown",
