@@ -12,8 +12,11 @@ use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::backend::simd::fft::ifft::{
     get_itwiddle_dbls, ifft, ifft3_loop, ifft_vecwise_loop,
 };
-use stwo::prover::backend::simd::fft::rfft::{fft, get_twiddle_dbls};
-use stwo::prover::backend::simd::fft::{transpose_vecs, transpose_vecs2};
+use stwo::prover::backend::simd::fft::numa_aware_rfft::{self, transpose_vecs as transpose_vecs2};
+use stwo::prover::backend::simd::fft::rfft::{
+    fft, fft_lower_with_vecwise, fft_lower_without_vecwise, get_twiddle_dbls,
+};
+use stwo::prover::backend::simd::fft::transpose_vecs;
 use stwo::prover::backend::simd::m31::PackedBaseField;
 
 pub fn simd_ifft(c: &mut Criterion) {
@@ -120,8 +123,126 @@ pub fn simd_ifft_parts(c: &mut Criterion) {
     );
 }
 
-pub fn simd_rfft(c: &mut Criterion) {
+pub fn simd_rfft_parts(c: &mut Criterion) {
     const LOG_SIZE: u32 = 20;
+
+    let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
+    let twiddle_dbls = get_itwiddle_dbls(domain.half_coset);
+    let twiddle_dbls_refs = twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec();
+    let values: BaseColumn = (0..domain.size()).map(BaseField::from).collect();
+    let mut dst = Vec::<PackedBaseField>::with_capacity(values.data.len());
+    #[allow(clippy::uninit_vec)]
+    unsafe {
+        dst.set_len(values.data.len());
+    }
+
+    let mut group = c.benchmark_group("rfft parts");
+
+    // Note: These benchmarks run only on 2^LOG_SIZE elements because of their parameters.
+    // Increasing the figure above won't change the runtime of these benchmarks.
+    group.throughput(Throughput::Bytes(4 << LOG_SIZE));
+    group.bench_function(format!("simd fft_without_vecwise 2^{LOG_SIZE}"), |b| {
+        b.iter_batched(
+            || values.clone().data,
+            |mut values| unsafe {
+                fft_lower_without_vecwise(
+                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
+                    transmute::<*mut PackedBaseField, *mut u32>(dst.as_mut_ptr()),
+                    black_box(&twiddle_dbls_refs),
+                    black_box(LOG_SIZE as usize),
+                    black_box(7),
+                )
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function(format!("simd fft_with_vecwise 2^{LOG_SIZE}"), |b| {
+        b.iter_batched(
+            || values.clone().data,
+            |mut values| unsafe {
+                fft_lower_with_vecwise(
+                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
+                    transmute::<*mut PackedBaseField, *mut u32>(dst.as_mut_ptr()),
+                    black_box(&twiddle_dbls_refs),
+                    black_box(LOG_SIZE as usize),
+                    black_box(7),
+                );
+            },
+            BatchSize::LargeInput,
+        );
+    });
+
+    const TRANSPOSE_LOG_SIZE: u32 = 20;
+    let transpose_values: BaseColumn = (0..1 << TRANSPOSE_LOG_SIZE).map(BaseField::from).collect();
+    group.throughput(Throughput::Bytes(4 << TRANSPOSE_LOG_SIZE));
+    group.bench_function(format!("simd transpose_vecs 2^{TRANSPOSE_LOG_SIZE}"), |b| {
+        b.iter_batched(
+            || transpose_values.clone().data,
+            |mut values| unsafe {
+                transpose_vecs(
+                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
+                    black_box(TRANSPOSE_LOG_SIZE as usize - 4),
+                )
+            },
+            BatchSize::LargeInput,
+        );
+    });
+
+    let mut pool = fork_union::spawn(available_parallelism().unwrap().get());
+
+    group.bench_function(format!("numa aware simd fft_without_vecwise 2^{LOG_SIZE}"), |b| {
+        b.iter_batched(
+            || values.clone().data,
+            |mut values| unsafe {
+                numa_aware_rfft::fft_lower_without_vecwise(
+                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
+                    transmute::<*mut PackedBaseField, *mut u32>(dst.as_mut_ptr()),
+                    black_box(&twiddle_dbls_refs),
+                    black_box(LOG_SIZE as usize),
+                    black_box(7),
+                    &mut pool,
+                )
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function(format!("numa aware simd fft_with_vecwise 2^{LOG_SIZE}"), |b| {
+        b.iter_batched(
+            || values.clone().data,
+            |mut values| unsafe {
+                numa_aware_rfft::fft_lower_with_vecwise(
+                    transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
+                    transmute::<*mut PackedBaseField, *mut u32>(dst.as_mut_ptr()),
+                    black_box(&twiddle_dbls_refs),
+                    black_box(LOG_SIZE as usize),
+                    black_box(7),
+                    &mut pool,
+                );
+            },
+            BatchSize::LargeInput,
+        );
+    });
+
+    group.bench_function(
+        format!("simd transpose_vecs2 2^{TRANSPOSE_LOG_SIZE}"),
+        |b| {
+            b.iter_batched(
+                || transpose_values.clone().data,
+                |mut values| unsafe {
+                    transpose_vecs2(
+                        transmute::<*mut PackedBaseField, *mut u32>(values.as_mut_ptr()),
+                        black_box(TRANSPOSE_LOG_SIZE as usize - 4),
+                        &mut pool,
+                    )
+                },
+                BatchSize::LargeInput,
+            );
+        },
+    );
+}
+
+pub fn simd_rfft(c: &mut Criterion) {
+    const LOG_SIZE: u32 = 25;
 
     let domain = CanonicCoset::new(LOG_SIZE).circle_domain();
     let twiddle_dbls = get_twiddle_dbls(domain.half_coset);
@@ -144,10 +265,30 @@ pub fn simd_rfft(c: &mut Criterion) {
             )
         });
     });
+
+    let mut pool = fork_union::spawn(available_parallelism().unwrap().get());
+
+    c.bench_function("simd fork_union rfft 24bit", |b| {
+        b.iter_with_large_drop(|| unsafe {
+            let mut target = Vec::<PackedBaseField>::with_capacity(values.data.len());
+            #[allow(clippy::uninit_vec)]
+            target.set_len(values.data.len());
+
+            numa_aware_rfft::fft(
+                black_box(transmute::<*const PackedBaseField, *const u32>(
+                    values.data.as_ptr(),
+                )),
+                transmute::<*mut PackedBaseField, *mut u32>(target.as_mut_ptr()),
+                black_box(&twiddle_dbls_refs),
+                black_box(LOG_SIZE as usize),
+                &mut pool,
+            )
+        });
+    });
 }
 
 criterion_group!(
     name = benches;
     config = Criterion::default().sample_size(10);
-    targets = simd_ifft_parts);
+    targets = simd_rfft_parts, simd_rfft);
 criterion_main!(benches);
