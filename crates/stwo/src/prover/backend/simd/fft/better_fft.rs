@@ -1,7 +1,7 @@
 use libc::c_int;
 
 use crate::prover::backend::simd::fft::rfft::{fft1_loop, fft2_loop, fft3_loop, fft_vecwise_loop};
-use crate::prover::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
+use crate::prover::backend::simd::fft::{load, store, CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
 use crate::prover::backend::simd::m31::LOG_N_LANES;
 use crate::prover::backend::simd::utils::{UnsafeConst, UnsafeMut};
 
@@ -45,7 +45,7 @@ pub unsafe fn fft(
         fft_layers_post_transpose,
         node,
     );
-    transpose_vecs(dst, log_n_vecs);
+    transpose_vecs(dst, log_n_vecs, node);
     fft_lower_with_vecwise(
         dst,
         dst,
@@ -58,6 +58,62 @@ pub unsafe fn fft(
 
 unsafe extern "C" {
     fn numa_run_on_node(node: c_int) -> c_int;
+}
+
+unsafe fn transpose_vecs(values: *mut u32, log_n_vecs: usize, node: c_int) {
+    let half = log_n_vecs / 2;
+
+    let values = UnsafeMut(values);
+    // parallel_iter!(0..1 << half).for_each(|a| {
+    //     let values = values.get();
+    //     for b in 0..1 << (log_n_vecs & 1) {
+    //         for c in 0..1 << half {
+    //             let i = (a << (log_n_vecs - half)) | (b << half) | c;
+    //             let j = (c << (log_n_vecs - half)) | (b << half) | a;
+    //             if i >= j {
+    //                 continue;
+    //             }
+    //             let val0 = load(values.add(i << 4).cast_const());
+    //             let val1 = load(values.add(j << 4).cast_const());
+    //             store(values.add(i << 4), val1);
+    //             store(values.add(j << 4), val0);
+    //         }
+    //     }
+    // });
+
+    let range_size: usize = 1 << half;
+    let num_threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let chunk_size = range_size.div_ceil(num_threads);
+
+    std::thread::scope(|scope| {
+        numa_run_on_node(node);
+        for thread_id in 0..num_threads {
+            let start = thread_id * chunk_size;
+            let end = (start + chunk_size).min(range_size);
+            let values = UnsafeMut(values.get());
+
+            scope.spawn(move || {
+                let values = values.get();
+                for a in start..end {
+                    for b in 0..1 << (log_n_vecs & 1) {
+                        for c in 0..1 << half {
+                            let i = (a << (log_n_vecs - half)) | (b << half) | c;
+                            let j = (c << (log_n_vecs - half)) | (b << half) | a;
+                            if i >= j {
+                                continue;
+                            }
+                            let val0 = load(values.add(i << 4).cast_const());
+                            let val1 = load(values.add(j << 4).cast_const());
+                            store(values.add(i << 4), val1);
+                            store(values.add(j << 4), val0);
+                        }
+                    }
+                }
+            });
+        }
+    });
 }
 
 /// # Safety
@@ -238,6 +294,7 @@ mod tests {
 
     #[test]
     fn test_fft_full() {
+        let node = 0;
         for log_size in CACHED_FFT_LOG_SIZE + 1..CACHED_FFT_LOG_SIZE + 7 {
             let domain = CanonicCoset::new(log_size).circle_domain();
             let mut rng = SmallRng::seed_from_u64(0);
@@ -249,13 +306,14 @@ mod tests {
                 transpose_vecs(
                     transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
                     log_size as usize - 4,
+                    node,
                 );
                 fft(
                     transmute::<*const PackedBaseField, *const u32>(res.data.as_ptr()),
                     transmute::<*mut PackedBaseField, *mut u32>(res.data.as_mut_ptr()),
                     &twiddle_dbls.iter().map(|x| x.as_slice()).collect_vec(),
                     log_size as usize,
-                    0,
+                    node,
                 );
             }
 
