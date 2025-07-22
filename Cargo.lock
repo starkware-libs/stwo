@@ -524,6 +524,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
+name = "fork_union"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e3dd59ddb9283233e50e55338337a3d5feab1f3209bfe005bb3f6b81de23812"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1156,6 +1165,7 @@ dependencies = [
  "criterion",
  "educe",
  "fnv",
+ "fork_union",
  "hashbrown",
  "hex",
  "indexmap",

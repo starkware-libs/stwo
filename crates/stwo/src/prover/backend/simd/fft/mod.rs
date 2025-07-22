@@ -55,6 +55,33 @@ pub unsafe fn transpose_vecs(values: *mut u32, log_n_vecs: usize) {
     });
 }
 
+/// # Safety
+///
+/// Behavior is undefined if `values` does not have the same alignment as [`u32x16`].
+pub unsafe fn transpose_vecs2(values: *mut u32, log_n_vecs: usize, pool: &mut fork_union::ThreadPool) {
+    let half = log_n_vecs / 2;
+
+    let values = UnsafeMut(values);
+    fork_union::for_n_dynamic(pool, 1 << half, |a| {
+        let a = a.task_index;
+        let values = values.get();
+        for b in 0..1 << (log_n_vecs & 1) {
+            for c in 0..1 << half {
+                let i = (a << (log_n_vecs - half)) | (b << half) | c;
+                let j = (c << (log_n_vecs - half)) | (b << half) | a;
+                if i >= j {
+                    continue;
+                }
+                let val0 = load(values.add(i << 4).cast_const());
+                let val1 = load(values.add(j << 4).cast_const());
+                store(values.add(i << 4), val1);
+                store(values.add(j << 4), val0);
+            }
+        }
+    });
+}
+
+
 /// Computes the twiddles for the first fft layer from the second, and loads both to SIMD registers.
 ///
 /// Returns the twiddles for the first layer and the twiddles for the second layer.
