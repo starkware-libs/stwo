@@ -32,10 +32,7 @@ impl GrindOps<Blake2sChannel> for SimdBackend {
             .expect("Grind failed to find a solution.");
 
         #[cfg(feature = "parallel")]
-        let res = (0..=(1 << GRIND_HI_BITS))
-            .into_par_iter()
-            .find_map_first(|hi| grind_blake(digest, hi, pow_bits))
-            .expect("Grind failed to find a solution.");
+        let res = parallel_grind(digest, pow_bits, 1 << GRIND_HI_BITS, grind_blake);
 
         res
     }
@@ -70,6 +67,39 @@ fn grind_blake(digest: &[u32], hi: u64, pow_bits: u32) -> Option<u64> {
     None
 }
 
+// Determeniscly finds the smallest nonce that satisfies:
+// `hash(digest, nonce).trailing_zeros() >= pow_bits`.
+#[cfg(feature = "parallel")]
+fn parallel_grind<GRIND, DIGEST>(
+    digest: DIGEST,
+    pow_bits: u32,
+    upperbound: u64,
+    grind: GRIND,
+) -> u64
+where
+    GRIND: Fn(DIGEST, u64, u32) -> Option<u64> + Send + Sync,
+    DIGEST: Send + Sync + Copy,
+{
+    let n_thread = rayon::current_num_threads();
+    for base_hi in (0..upperbound).step_by(n_thread) {
+        let found = (0..n_thread)
+            .into_par_iter()
+            .filter_map(|thread_id| {
+                let hi = base_hi + thread_id as u64;
+                if hi >= upperbound {
+                    return None;
+                }
+                grind(digest, hi, pow_bits).map(|val| (hi, val))
+            })
+            .reduce_with(|a, b| if a.0 < b.0 { a } else { b });
+
+        if let Some((.., result)) = found {
+            return result;
+        }
+    }
+    panic!("Grind failed to find a solution.");
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub mod poseidon252 {
     use starknet_ff::FieldElement as FieldElement252;
@@ -77,7 +107,7 @@ pub mod poseidon252 {
     use super::*;
     use crate::core::channel::Poseidon252Channel;
 
-    const GRIND_LOW_BITS: u32 = 12;
+    const GRIND_LOW_BITS: u32 = 16;
     const GRIND_HI_BITS: u32 = 64 - GRIND_LOW_BITS;
 
     impl GrindOps<Poseidon252Channel> for SimdBackend {
@@ -90,11 +120,7 @@ pub mod poseidon252 {
                 .expect("Grind failed to find a solution.");
 
             #[cfg(feature = "parallel")]
-            let res = (0..=(1 << GRIND_HI_BITS))
-                .into_par_iter()
-                .find_map_first(|hi| grind_poseidon(digest, hi, pow_bits))
-                .expect("Grind failed to find a solution.");
-
+            let res = parallel_grind(digest, pow_bits, 1 << GRIND_HI_BITS, grind_poseidon);
             res
         }
     }
