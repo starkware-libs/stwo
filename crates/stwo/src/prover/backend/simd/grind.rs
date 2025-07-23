@@ -15,7 +15,6 @@ use crate::prover::backend::simd::m31::N_LANES;
 
 // Note: GRIND_LOW_BITS is a cap on how much extra time we need to wait for all threads to finish.
 const GRIND_LOW_BITS: u32 = 20;
-const GRIND_HI_BITS: u32 = 64 - GRIND_LOW_BITS;
 
 impl GrindOps<Blake2sChannel> for SimdBackend {
     fn grind(channel: &Blake2sChannel, pow_bits: u32) -> u64 {
@@ -27,15 +26,12 @@ impl GrindOps<Blake2sChannel> for SimdBackend {
         let digest: &[u32] = cast_slice(&digest.0[..]);
 
         #[cfg(not(feature = "parallel"))]
-        let res = (0..=(1 << GRIND_HI_BITS))
+        let res = (0..)
             .find_map(|hi| grind_blake(digest, hi, pow_bits))
             .expect("Grind failed to find a solution.");
 
         #[cfg(feature = "parallel")]
-        let res = (0..=(1 << GRIND_HI_BITS))
-            .into_par_iter()
-            .find_map_first(|hi| grind_blake(digest, hi, pow_bits))
-            .expect("Grind failed to find a solution.");
+        let res = parallel_grind(digest, pow_bits, grind_blake);
 
         res
     }
@@ -70,6 +66,45 @@ fn grind_blake(digest: &[u32], hi: u64, pow_bits: u32) -> Option<u64> {
     None
 }
 
+// Deterministically finds the smallest nonce that satisfies:
+// `hash(digest, nonce).trailing_zeros() >= pow_bits`.
+#[cfg(feature = "parallel")]
+fn parallel_grind<GRIND, DIGEST>(digest: DIGEST, pow_bits: u32, grind: GRIND) -> u64
+where
+    GRIND: Fn(DIGEST, u64, u32) -> Option<u64> + Send + Sync,
+    DIGEST: Send + Sync + Copy,
+{
+    use core::sync::atomic::{AtomicU64, Ordering};
+
+    let n_workers = rayon::current_num_threads() as u64;
+    let next_chunk = AtomicU64::new(n_workers);
+    let smallest_good_chunk = AtomicU64::new(u64::MAX);
+    let found = (0..n_workers)
+        .into_par_iter()
+        .filter_map(|thread_id| {
+            let mut found = None;
+            let mut chunk_id = thread_id;
+            while found.is_none() && chunk_id < smallest_good_chunk.load(Ordering::Relaxed) {
+                found = grind(digest, chunk_id, pow_bits);
+                chunk_id = next_chunk.fetch_add(1, Ordering::Relaxed);
+            }
+            found.inspect(|_| {
+                let current_smallest_hi = smallest_good_chunk.load(Ordering::Relaxed);
+                if chunk_id < current_smallest_hi {
+                    let _ = smallest_good_chunk.compare_exchange(
+                        current_smallest_hi,
+                        chunk_id,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    );
+                }
+            })
+        })
+        .min();
+
+    found.expect("Grind failed to find a solution.")
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub mod poseidon252 {
     use starknet_ff::FieldElement as FieldElement252;
@@ -77,31 +112,26 @@ pub mod poseidon252 {
     use super::*;
     use crate::core::channel::Poseidon252Channel;
 
-    const GRIND_LOW_BITS: u32 = 12;
-    const GRIND_HI_BITS: u32 = 64 - GRIND_LOW_BITS;
+    const GRIND_LOW_BITS: u32 = 14;
 
     impl GrindOps<Poseidon252Channel> for SimdBackend {
         fn grind(channel: &Poseidon252Channel, pow_bits: u32) -> u64 {
             let digest = channel.digest();
 
             #[cfg(not(feature = "parallel"))]
-            let res = (0..=(1 << GRIND_HI_BITS))
+            let res = (0..)
                 .find_map(|hi| grind_poseidon(digest, hi, pow_bits))
                 .expect("Grind failed to find a solution.");
 
             #[cfg(feature = "parallel")]
-            let res = (0..=(1 << GRIND_HI_BITS))
-                .into_par_iter()
-                .find_map_first(|hi| grind_poseidon(digest, hi, pow_bits))
-                .expect("Grind failed to find a solution.");
-
+            let res = parallel_grind(digest, pow_bits, grind_poseidon);
             res
         }
     }
 
-    fn grind_poseidon(digest: FieldElement252, hi: u64, pow_bits: u32) -> Option<u64> {
+    fn grind_poseidon(digest: FieldElement252, chunk_id: u64, pow_bits: u32) -> Option<u64> {
         for low in 0..(1 << GRIND_LOW_BITS) {
-            let nonce = low | (hi << GRIND_LOW_BITS);
+            let nonce = low | (chunk_id << GRIND_LOW_BITS);
             let hash = starknet_crypto::poseidon_hash(digest, nonce.into());
             let trailing_zeros =
                 u128::from_be_bytes(hash.to_bytes_be()[16..].try_into().unwrap()).trailing_zeros();
