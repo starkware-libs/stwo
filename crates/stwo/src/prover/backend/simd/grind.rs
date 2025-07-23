@@ -34,7 +34,7 @@ impl GrindOps<Blake2sChannel> for SimdBackend {
         #[cfg(feature = "parallel")]
         let res = (0..=(1 << GRIND_HI_BITS))
             .into_par_iter()
-            .find_map_first(|hi| grind_blake(digest, hi, pow_bits))
+            .find_map_any(|hi| grind_blake(digest, hi, pow_bits))
             .expect("Grind failed to find a solution.");
 
         res
@@ -92,7 +92,7 @@ pub mod poseidon252 {
             #[cfg(feature = "parallel")]
             let res = (0..=(1 << GRIND_HI_BITS))
                 .into_par_iter()
-                .find_map_first(|hi| grind_poseidon(digest, hi, pow_bits))
+                .find_map_any(|hi| grind_poseidon(digest, hi, pow_bits))
                 .expect("Grind failed to find a solution.");
 
             res
