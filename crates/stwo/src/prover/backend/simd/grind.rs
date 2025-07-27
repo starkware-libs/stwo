@@ -72,7 +72,7 @@ fn grind_blake(digest: &[u32], hi: u64, pow_bits: u32) -> Option<u64> {
 fn parallel_grind<GRIND, DIGEST>(digest: DIGEST, pow_bits: u32, grind: GRIND) -> u64
 where
     GRIND: Fn(DIGEST, u64, u32) -> Option<u64> + Send + Sync,
-    DIGEST: Send + Sync + Copy,
+    DIGEST: Send + Sync + Copy + std::fmt::Debug,
 {
     use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -109,7 +109,7 @@ where
         })
         .min();
 
-    found.expect("Grind failed to find a solution.")
+    found.unwrap_or_else(|| panic!("Grind failed to find a solution.{:?},\n ", digest))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
