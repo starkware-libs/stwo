@@ -101,7 +101,7 @@ where
                 }
                 // Assign the next chunk to this thread.
                 chunk_id = next_chunk.fetch_add(1, Ordering::Relaxed);
-                if chunk_id < smallest_good_chunk.load(Ordering::Relaxed) {
+                if chunk_id >= smallest_good_chunk.load(Ordering::Relaxed) {
                     break;
                 }
             }
@@ -156,6 +156,20 @@ mod tests {
 
     use super::*;
     use crate::core::channel::Channel;
+
+    #[cfg(all(feature = "parallel", feature = "slow-tests"))]
+    #[test]
+    fn test_parallel_grind_with_high_pow_bits() {
+        let mut channel = Blake2sChannel::default();
+        channel.mix_u64(0x1111222233334344);
+        let pow_bits = 26;
+        for _ in 0..10 {
+            let res = SimdBackend::grind(&channel, pow_bits);
+            channel.mix_u64(res);
+            assert!(channel.trailing_zeros() >= pow_bits);
+            channel.mix_u64(0x1111222233334344);
+        }
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
