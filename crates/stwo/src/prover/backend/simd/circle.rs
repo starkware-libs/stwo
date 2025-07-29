@@ -17,11 +17,11 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, FieldExpOps};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
-use crate::core::utils::bit_reverse_index;
+use crate::core::utils::{bit_reverse_index, uninit_vec};
 use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
 use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::m31::PackedM31;
-use crate::prover::backend::{Col, Column, CpuBackend};
+use crate::prover::backend::{Column, CpuBackend};
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
@@ -233,64 +233,16 @@ impl PolyOps for SimdBackend {
         domain: CircleDomain,
         twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
-        let _span = span!(Level::TRACE, "", class = "rFFT").entered();
-        let log_size = domain.log_size();
-        let fft_log_size = poly.log_size();
-        assert!(
-            log_size >= fft_log_size,
-            "Can only evaluate on larger domains"
-        );
+        let length = domain.size();
+        let mut values = unsafe { uninit_vec(length.div_ceil(N_LANES)) };
 
-        if fft_log_size < MIN_FFT_LOG_SIZE {
-            let cpu_poly: CirclePoly<CpuBackend> = CirclePoly::new(poly.coeffs.to_cpu());
-            let cpu_eval = cpu_poly.evaluate(domain);
-            return CircleEvaluation::new(
-                cpu_eval.domain,
-                Col::<SimdBackend, BaseField>::from_iter(cpu_eval.values),
-            );
-        }
-
-        let twiddles = domain_line_twiddles_from_tree(domain, &twiddles.twiddles);
-
-        // Evaluate on a big domains by evaluating on several subdomains.
-        let log_subdomains = log_size - fft_log_size;
-
-        // Allocate the destination buffer without initializing.
-        let mut values = Vec::with_capacity(domain.size() >> LOG_N_LANES);
-        #[allow(clippy::uninit_vec)]
-        unsafe {
-            values.set_len(domain.size() >> LOG_N_LANES)
-        };
-
-        for i in 0..(1 << log_subdomains) {
-            // The subdomain twiddles are a slice of the large domain twiddles.
-            let subdomain_twiddles = (0..(fft_log_size - 1))
-                .map(|layer_i| {
-                    &twiddles[layer_i as usize]
-                        [i << (fft_log_size - 2 - layer_i)..(i + 1) << (fft_log_size - 2 - layer_i)]
-                })
-                .collect::<Vec<_>>();
-
-            // FFT from the coefficients buffer to the values chunk.
-            unsafe {
-                rfft::fft(
-                    transmute::<*const PackedBaseField, *const u32>(poly.coeffs.data.as_ptr()),
-                    transmute::<*mut PackedBaseField, *mut u32>(
-                        values[i << (fft_log_size - LOG_N_LANES)
-                            ..(i + 1) << (fft_log_size - LOG_N_LANES)]
-                            .as_mut_ptr(),
-                    ),
-                    &subdomain_twiddles,
-                    fft_log_size as usize,
-                );
-            }
-        }
+        evaluate_in_place(poly, &mut values, domain, twiddles);
 
         CircleEvaluation::new(
             domain,
             BaseColumn {
                 data: values,
-                length: domain.size(),
+                length,
             },
         )
     }
@@ -335,6 +287,59 @@ impl PolyOps for SimdBackend {
             root_coset,
             twiddles: dbl_twiddles,
             itwiddles: dbl_itwiddles,
+        }
+    }
+}
+
+pub fn evaluate_in_place(
+    poly: &CirclePoly<SimdBackend>,
+    values: &mut [PackedBaseField],
+    domain: CircleDomain,
+    twiddles: &TwiddleTree<SimdBackend>,
+) {
+    let _span = span!(Level::TRACE, "", class = "rFFT").entered();
+    let log_size = domain.log_size();
+    let fft_log_size = poly.log_size();
+    assert!(
+        log_size >= fft_log_size,
+        "Can only evaluate on larger domains"
+    );
+
+    if fft_log_size < MIN_FFT_LOG_SIZE {
+        let cpu_poly: CirclePoly<CpuBackend> = CirclePoly::new(poly.coeffs.to_cpu());
+        let cpu_eval = cpu_poly.evaluate(domain);
+        let simd_eval = BaseColumn::from_iter(cpu_eval.values);
+        values.copy_from_slice(&simd_eval.data);
+        return;
+    }
+
+    assert_eq!(values.len(), domain.size() >> LOG_N_LANES);
+    let twiddles = domain_line_twiddles_from_tree(domain, &twiddles.twiddles);
+
+    // Evaluate on a big domains by evaluating on several subdomains.
+    let log_subdomains = log_size - fft_log_size;
+
+    for i in 0..(1 << log_subdomains) {
+        // The subdomain twiddles are a slice of the large domain twiddles.
+        let subdomain_twiddles = (0..(fft_log_size - 1))
+            .map(|layer_i| {
+                &twiddles[layer_i as usize]
+                    [i << (fft_log_size - 2 - layer_i)..(i + 1) << (fft_log_size - 2 - layer_i)]
+            })
+            .collect::<Vec<_>>();
+
+        // FFT from the coefficients buffer to the values chunk.
+        unsafe {
+            rfft::fft(
+                transmute::<*const PackedBaseField, *const u32>(poly.coeffs.data.as_ptr()),
+                transmute::<*mut PackedBaseField, *mut u32>(
+                    values[i << (fft_log_size - LOG_N_LANES)
+                        ..(i + 1) << (fft_log_size - LOG_N_LANES)]
+                        .as_mut_ptr(),
+                ),
+                &subdomain_twiddles,
+                fft_log_size as usize,
+            );
         }
     }
 }
