@@ -184,7 +184,7 @@ mod tests {
         assert!(channel.trailing_zeros() >= pow_bits);
     }
 
-    fn test_grind_is_determinstic<C: Channel>()
+    fn test_grind_is_deterministic<C: Channel>()
     where
         SimdBackend: GrindOps<C>,
     {
@@ -201,13 +201,13 @@ mod tests {
     }
 
     #[test]
-    fn test_grind_blake_is_determinstic() {
-        test_grind_is_determinstic::<Blake2sChannel>();
+    fn test_grind_blake_is_deterministic() {
+        test_grind_is_deterministic::<Blake2sChannel>();
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
-    fn test_grind_poseidon_is_determinstic() {
-        test_grind_is_determinstic::<crate::core::channel::Poseidon252Channel>();
+    fn test_grind_poseidon_is_deterministic() {
+        test_grind_is_deterministic::<crate::core::channel::Poseidon252Channel>();
     }
 }

@@ -2,7 +2,7 @@
 /// variables.
 /// Computes the actual degree with the following caveats:
 ///     1. The constant expression 0 receives degree 0 like all other constants rather than the
-///        mathematically correcy -infinity. This means, for example, that expresisons of the
+///        mathematically correct -infinity. This means, for example, that expresisons of the
 ///        type 0 * expr will return degree deg expr. This should be mitigated by
 ///        simplification.
 ///     2. If expressions p and q cancel out under some operation, this will not be accounted

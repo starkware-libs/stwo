@@ -362,7 +362,7 @@ pub fn simd_butterfly(
 /// Runs fft on 2 vectors of 16 M31 elements.
 ///
 /// This amounts to 4 butterfly layers, each with 16 butterflies.
-/// Each of the vectors represents natural ordered polynomial coefficeint.
+/// Each of the vectors represents natural ordered polynomial coefficient.
 /// Each value in a vectors is in unreduced form: [0, P] including P.
 /// Takes 4 twiddle arrays, one for each layer, holding the double of the corresponding twiddle.
 /// The first layer (higher bit of the index) takes 2 twiddles.
