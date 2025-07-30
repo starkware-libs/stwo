@@ -5,6 +5,7 @@ pub mod air;
 pub mod channel;
 pub mod circle;
 pub mod constraints;
+pub mod compact_binary;
 pub mod fft;
 pub mod fields;
 mod fraction;
