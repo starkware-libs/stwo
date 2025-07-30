@@ -444,7 +444,7 @@ pub struct FriLayerProof<H: MerkleHasher> {
 }
 
 struct FriFirstLayerVerifier<H: MerkleHasher> {
-    /// The list of degree bounds of all circle polynomials commited in the first layer.
+    /// The list of degree bounds of all circle polynomials committed in the first layer.
     column_bounds: Vec<CirclePolyDegreeBound>,
     /// The commitment domain all the circle polynomials in the first layer.
     column_commitment_domains: Vec<CircleDomain>,

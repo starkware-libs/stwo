@@ -335,7 +335,7 @@ where
     let mut xor_accums = XorAccums::default();
     let mut rest = &round_inputs[..];
     // Split round inputs to components, according to [ROUND_LOG_SPLIT].
-    let (round_traces, round_lookup_datas): (Vec<_>, Vec<_>) =
+    let (round_traces, round_lookup_data): (Vec<_>, Vec<_>) =
         multiunzip(ROUND_LOG_SPLIT.map(|l| {
             let (cur_inputs, r) = rest.split_at(1 << (log_size - LOG_N_LANES + l));
             rest = r;
@@ -385,7 +385,7 @@ where
     let (round_traces, round_claimed_sums): (Vec<_>, Vec<_>) = multiunzip(
         ROUND_LOG_SPLIT
             .iter()
-            .zip(round_lookup_datas)
+            .zip(round_lookup_data)
             .map(|(l, lookup_data)| {
                 round::generate_interaction_trace(
                     log_size + l,

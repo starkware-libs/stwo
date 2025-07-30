@@ -77,9 +77,9 @@ impl<T> TreeVec<ColumnVec<T>> {
         )
     }
 
-    /// Zips two [`TreeVec<ColumVec<T>>`] with the same structure (number of columns in each tree).
-    /// The resulting [`TreeVec<ColumVec<T>>`] has the same structure, with each value being a tuple
-    /// of the corresponding values from the input [`TreeVec<ColumVec<T>>`].
+    /// Zips two [`TreeVec<ColumnVec<T>>`] with the same structure (number of columns in each tree).
+    /// The resulting [`TreeVec<ColumnVec<T>>`] has the same structure, with each value being a
+    /// tuple of the corresponding values from the input [`TreeVec<ColumnVec<T>>`].
     pub fn zip_cols<U>(
         self,
         other: impl Into<TreeVec<ColumnVec<U>>>,
@@ -96,13 +96,13 @@ impl<T> TreeVec<ColumnVec<T>> {
         TreeVec(self.iter().map(|column| column.iter().collect()).collect())
     }
 
-    /// Flattens the [`TreeVec<ColumVec<T>>`] into a single [`ColumnVec`] with all the columns
+    /// Flattens the [`TreeVec<ColumnVec<T>>`] into a single [`ColumnVec`] with all the columns
     /// combined.
     pub fn flatten(self) -> ColumnVec<T> {
         self.0.into_iter().flatten().collect()
     }
 
-    /// Appends the columns of another [`TreeVec<ColumVec<T>>`] to this one.
+    /// Appends the columns of another [`TreeVec<ColumnVec<T>>`] to this one.
     pub fn append_cols(&mut self, mut other: TreeVec<ColumnVec<T>>) {
         let n_trees = self.0.len().max(other.0.len());
         self.0.resize_with(n_trees, Default::default);
@@ -111,8 +111,8 @@ impl<T> TreeVec<ColumnVec<T>> {
         }
     }
 
-    /// Concatenates the columns of multiple [`TreeVec<ColumVec<T>>`] into a single
-    /// [`TreeVec<ColumVec<T>>`].
+    /// Concatenates the columns of multiple [`TreeVec<ColumnVec<T>>`] into a single
+    /// [`TreeVec<ColumnVec<T>>`].
     pub fn concat_cols(
         trees: impl Iterator<Item = TreeVec<ColumnVec<T>>>,
     ) -> TreeVec<ColumnVec<T>> {
@@ -129,9 +129,9 @@ impl<T> TreeVec<ColumnVec<T>> {
     ///
     /// If two or more locations have the same tree index.
     pub fn sub_tree(&self, locations: &[TreeSubspan]) -> TreeVec<ColumnVec<&T>> {
-        let tree_indicies: BTreeSet<usize> = locations.iter().map(|l| l.tree_index).collect();
-        assert_eq!(tree_indicies.len(), locations.len());
-        let max_tree_index = tree_indicies.iter().max().unwrap_or(&0);
+        let tree_indices: BTreeSet<usize> = locations.iter().map(|l| l.tree_index).collect();
+        assert_eq!(tree_indices.len(), locations.len());
+        let max_tree_index = tree_indices.iter().max().unwrap_or(&0);
         let mut res = TreeVec(vec![Vec::new(); max_tree_index + 1]);
 
         for &location in locations {
@@ -168,7 +168,7 @@ impl<'a, T> From<&'a TreeVec<ColumnVec<T>>> for TreeVec<ColumnVec<&'a T>> {
 }
 
 impl<T> TreeVec<ColumnVec<Vec<T>>> {
-    /// Flattens a [`TreeVec<ColumVec<T>>`] of [Vec]s into a single [Vec] with all the elements
+    /// Flattens a [`TreeVec<ColumnVec<T>>`] of [Vec]s into a single [Vec] with all the elements
     /// combined.
     pub fn flatten_cols(self) -> Vec<T> {
         self.0.into_iter().flatten().flatten().collect()
