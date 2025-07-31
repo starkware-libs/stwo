@@ -1,6 +1,11 @@
 use std::array;
 
 use starknet_ff::FieldElement;
+// Re-export the derive macro for use in other crates.
+pub use stwo_compact_binary_derive::CompactBinary;
+use unsigned_varint::encode::{u32_buffer, u64_buffer, usize_buffer};
+use unsigned_varint::{decode, encode};
+
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::{BaseField, P};
 use crate::core::fields::qm31::SecureField;
@@ -13,8 +18,6 @@ use crate::core::vcs::blake2_hash::Blake2sHash;
 use crate::core::vcs::verifier::MerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 use crate::core::ColumnVec;
-use unsigned_varint::encode::{u32_buffer, u64_buffer, usize_buffer};
-use unsigned_varint::{decode, encode};
 
 pub trait CompactBinary {
     /// Serializes the object into a compact binary format.

@@ -1167,6 +1167,7 @@ dependencies = [
  "starknet-crypto",
  "starknet-ff",
  "std-shims",
+ "stwo-compact-binary-derive",
  "test-log",
  "thiserror",
  "tracing",
@@ -1192,6 +1193,14 @@ version = "0.1.0"
 dependencies = [
  "itertools 0.13.0",
  "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
+name = "stwo-compact-binary-derive"
+version = "0.1.0"
+dependencies = [
  "quote",
  "syn 2.0.104",
 ]
