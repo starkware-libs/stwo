@@ -2,6 +2,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Data, DeriveInput, Fields};
 
+/// Proc macro to automatically derive `CompactBinary` trait for structs.
 #[proc_macro_derive(CompactBinary)]
 pub fn derive_compact_binary(input: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree.

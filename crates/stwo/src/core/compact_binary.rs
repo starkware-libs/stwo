@@ -1,10 +1,13 @@
 use std::array;
+use std::io::{Cursor, Read, Write};
 
 use starknet_ff::FieldElement;
 // Re-export the derive macro for use in other crates.
 pub use stwo_compact_binary_derive::CompactBinary;
 use unsigned_varint::encode::{u32_buffer, u64_buffer, usize_buffer};
 use unsigned_varint::{decode, encode};
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::{BaseField, P};
@@ -19,6 +22,22 @@ use crate::core::vcs::verifier::MerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 use crate::core::ColumnVec;
 
+/// Trait for types that can be serialized and deserialized in a compact binary format.
+///
+/// ## Format guidelines
+/// - Integers (`u32`, `u64`, and `usize`) should be handled as VarInts.
+/// - Relevant `FieldElement` fields should be compactified if possible
+///  - Structured data should have:
+///    - version numbers, to be able to update the structure
+///    - tags for each field, to be able to add new fields
+///
+/// ## Struct Versioning
+/// If we want to add or change a field of a struct `StructA`, while still being able to deserialize
+/// previous versions of this struct, we should:
+/// - Update `compact_serialize()` to serialize a new version number, and serialize the new struct
+/// - Update `compact_deserialize()` to:
+///   - Get the version of the deserialized struct
+///   - Match on it and dispatch to the deserialization logic corresponding to this version
 pub trait CompactBinary {
     /// Serializes the object into a compact binary format.
     fn compact_serialize(&self, output: &mut Vec<u8>);
@@ -53,6 +72,52 @@ pub fn strip_expected_tag(input: &[u8], expected_tag: usize) -> &[u8] {
     let (input, tag) = usize::compact_deserialize(input);
     assert_eq!(tag, expected_tag, "Unexpected tag during deserialization");
     input
+}
+
+/// A wrapper type for zipping and unzipping data during serialization and deserialization.
+pub struct ZippedCompactBinary<T>(pub T);
+
+impl<T: CompactBinary> ZippedCompactBinary<&T> {
+    pub fn compact_serialize(&self, output: &mut Vec<u8>) {
+        let mut unzipped_data = Vec::new();
+        T::compact_serialize(self.0, &mut unzipped_data);
+        let zipped_data = zip_bytes(&unzipped_data);
+        usize::compact_serialize(&zipped_data.len(), output);
+        output.extend_from_slice(&zipped_data);
+    }
+
+    pub fn compact_deserialize(input: &[u8]) -> (&[u8], T) {
+        let (input, len) = usize::compact_deserialize(input);
+        let (zipped_data, input) = input.split_at(len);
+        let unzipped_data = unzip_bytes(zipped_data);
+        let data = T::compact_deserialize(&unzipped_data).1;
+        (input, data)
+    }
+}
+
+/// Helper function for zipping bytes with Bzip2 compression.
+fn zip_bytes(input: &[u8]) -> Vec<u8> {
+    let mut buf = Vec::new();
+    let cursor = Cursor::new(&mut buf);
+    let mut zip = ZipWriter::new(cursor);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Bzip2);
+    zip.start_file("", options).unwrap();
+    zip.write_all(input).unwrap();
+    let mut cursor = zip.finish().unwrap();
+    cursor.set_position(0);
+    let mut out = Vec::new();
+    Read::read_to_end(&mut cursor, &mut out).unwrap();
+    out
+}
+
+/// Helper function for unzipping bytes.
+fn unzip_bytes(input: &[u8]) -> Vec<u8> {
+    let cursor = Cursor::new(input);
+    let mut archive = ZipArchive::new(cursor).unwrap();
+    let mut file = archive.by_index(0).unwrap();
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).unwrap();
+    buf
 }
 
 impl CompactBinary for u32 {
