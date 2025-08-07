@@ -3,6 +3,7 @@ members = [
     "crates/stwo",
     "crates/air-utils",
     "crates/air-utils-derive",
+    "crates/compact-binary",
     "crates/compact-binary-derive",
     "crates/constraint-framework",
     "crates/examples",

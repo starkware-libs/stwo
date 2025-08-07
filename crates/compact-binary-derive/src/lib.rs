@@ -39,7 +39,7 @@ pub fn derive_compact_binary(input: TokenStream) -> TokenStream {
         let field_name = &f.ident;
         quote! {
             usize::compact_serialize(&#i, output)?;
-            CompactBinary::compact_serialize(&self.#field_name, output)?;
+            stwo::core::compact_binary::CompactBinary::compact_serialize(&self.#field_name, output)?;
         }
     });
 
@@ -47,7 +47,7 @@ pub fn derive_compact_binary(input: TokenStream) -> TokenStream {
     let compact_deserialize_let_bindings = fields.iter().enumerate().map(|(i, f)| {
         let field_name = &f.ident;
         quote! {
-            let input = strip_expected_tag(input, #i)?;
+            let input = stwo::core::compact_binary::strip_expected_tag(input, #i)?;
             let (input, #field_name) = stwo::core::compact_binary::CompactBinary::compact_deserialize(input)?;
         }
     });
@@ -59,15 +59,16 @@ pub fn derive_compact_binary(input: TokenStream) -> TokenStream {
     // Implement `CompactBinary` for the type.
     let expanded = quote! {
         impl #impl_generics stwo::core::compact_binary::CompactBinary for #struct_name #ty_generics #where_clause {
-            fn compact_serialize(&self, output: &mut Vec<u8>) -> Result<(), CompactSerializeError> {
+            fn compact_serialize(&self, output: &mut Vec<u8>) -> Result<(), stwo::core::compact_binary::CompactSerializeError> {
                 u32::compact_serialize(&0, output)?;
                 #(#compact_serialize_body)*
+                Ok(())
             }
 
-            fn compact_deserialize<'a>(mut input: &'a [u8]) -> (&'a [u8], Self) {
-                let input = strip_expected_version(input, 0)?;
+            fn compact_deserialize<'a>(mut input: &'a [u8]) -> Result<(&'a [u8], Self), stwo::core::compact_binary::CompactDeserializeError> {
+                let input = stwo::core::compact_binary::strip_expected_version(input, 0)?;
                 #(#compact_deserialize_let_bindings)*
-                (input, Self { #(#compact_deserialize_struct_fields),* })
+                Ok((input, Self { #(#compact_deserialize_struct_fields),* }))
             }
         }
     };

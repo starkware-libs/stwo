@@ -1,0 +1,15 @@
+[package]
+name = "stwo-compact-binary"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+starknet-ff = { version = "0.3.7", default-features = false, features = [
+    "alloc",
+    "serde",
+] }
+unsigned-varint.workspace = true
+zip = "4.3.0"
+
+[lib]
+bench = false
