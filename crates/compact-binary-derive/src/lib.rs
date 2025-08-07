@@ -1,9 +1,9 @@
 use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields};
+use quote::{quote, ToTokens};
+use syn::{parse_macro_input, parse_quote, Data, DeriveInput, Fields, Type};
 
 /// Proc macro to automatically derive `CompactBinary` trait for structs.
-#[proc_macro_derive(CompactBinary)]
+#[proc_macro_derive(CompactBinary, attributes(zipped))]
 pub fn derive_compact_binary(input: TokenStream) -> TokenStream {
     // Parse the input tokens into a syntax tree.
     let input = parse_macro_input!(input as DeriveInput);
@@ -34,21 +34,109 @@ pub fn derive_compact_binary(input: TokenStream) -> TokenStream {
         }
     };
 
+    // Check if MerkleHasher is present in the where clause or generics
+    let h_is_merklehasher = input
+        .generics
+        .where_clause
+        .as_ref()
+        .map(|wc| {
+            wc.predicates.iter().any(|pred| {
+                pred.to_token_stream().to_string().contains("H: MerkleHasher")
+            })
+        })
+        .unwrap_or(false)
+        || input.generics.params.iter().any(|param| {
+            if let syn::GenericParam::Type(ty) = param {
+                ty.bounds
+                    .iter()
+                    .any(|b| b.to_token_stream().to_string().contains("MerkleHasher"))
+            } else {
+                false
+            }
+        });
+
+    // Check if any field requires H bounds
+    let needs_h_bounds = fields.iter().any(|f| {
+        if let Type::Path(type_path) = &f.ty {
+            let segments = &type_path.path.segments;
+            if let Some(seg) = segments.last() {
+                if let syn::PathArguments::AngleBracketed(ref args) = seg.arguments {
+                    args.args.iter().any(|arg| {
+                        if let syn::GenericArgument::Type(Type::Path(type_path)) = arg {
+                            type_path
+                                .path
+                                .segments
+                                .last()
+                                .is_some_and(|s| s.ident == "H")
+                        } else {
+                            false
+                        }
+                    })
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    });
+
+    let mut where_clause = where_clause.cloned();
+    // If MerkleHasher is present and H bounds are needed, add the necessary bounds.
+    if h_is_merklehasher && needs_h_bounds {
+        let pred: syn::WherePredicate =
+            parse_quote! { H::Hash: stwo::core::compact_binary::CompactBinary };
+        if let Some(ref mut wc) = where_clause {
+            wc.predicates.push(pred);
+        } else {
+            where_clause = Some::<syn::WhereClause>(
+                parse_quote! { where H::Hash: stwo::core::compact_binary::CompactBinary },
+            );
+        }
+    }
+
     // Generate code to serialize each field in the order they appear.
     let compact_serialize_body = fields.iter().enumerate().map(|(i, f)| {
         let field_name = &f.ident;
-        quote! {
-            usize::compact_serialize(&#i, output)?;
-            stwo::core::compact_binary::CompactBinary::compact_serialize(&self.#field_name, output)?;
+        let field_type = &f.ty;
+        let is_zipped = f.attrs.iter().any(|attr| attr.path().is_ident("zipped"));
+        match is_zipped {
+            true => {
+                quote! {
+                    usize::compact_serialize(&#i, output)?;
+                    let #field_name = stwo::core::compact_binary::ZippedCompactBinary(&self.#field_name);
+                    stwo::core::compact_binary::ZippedCompactBinary::<&#field_type>::compact_serialize(&#field_name, output)?;
+                }
+            }
+            false => {
+                quote! {
+                    usize::compact_serialize(&#i, output)?;
+                    stwo::core::compact_binary::CompactBinary::compact_serialize(&self.#field_name, output)?;
+                }
+            }
         }
     });
 
     // Generate code to deserialize each field in the order they appear.
     let compact_deserialize_let_bindings = fields.iter().enumerate().map(|(i, f)| {
         let field_name = &f.ident;
-        quote! {
-            let input = stwo::core::compact_binary::strip_expected_tag(input, #i)?;
-            let (input, #field_name) = stwo::core::compact_binary::CompactBinary::compact_deserialize(input)?;
+        let field_type = &f.ty;
+        let is_zipped = f.attrs.iter().any(|attr| attr.path().is_ident("zipped"));
+        match is_zipped {
+            true => {
+                quote! {
+                    let input = stwo::core::compact_binary::strip_expected_tag(input, #i)?;
+                    let (input, #field_name) = stwo::core::compact_binary::ZippedCompactBinary::<&#field_type>::compact_deserialize(input)?;
+                }
+            }
+            false => {
+                quote! {
+                    let input = stwo::core::compact_binary::strip_expected_tag(input, #i)?;
+                    let (input, #field_name) = stwo::core::compact_binary::CompactBinary::compact_deserialize(input)?;
+                }
+            }
         }
     });
     let compact_deserialize_struct_fields = fields.iter().map(|f| {
