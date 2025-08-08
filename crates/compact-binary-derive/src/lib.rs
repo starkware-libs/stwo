@@ -41,7 +41,9 @@ pub fn derive_compact_binary(input: TokenStream) -> TokenStream {
         .as_ref()
         .map(|wc| {
             wc.predicates.iter().any(|pred| {
-                pred.to_token_stream().to_string().contains("H: MerkleHasher")
+                pred.to_token_stream()
+                    .to_string()
+                    .contains("H: MerkleHasher")
             })
         })
         .unwrap_or(false)

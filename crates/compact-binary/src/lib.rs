@@ -11,7 +11,7 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 ///
 /// ## Format guidelines
 /// - Integers (`u32`, `u64`, and `usize`) should be handled as VarInts.
-/// - Relevant `FieldElement` fields should be compactified if possible
+/// - Relevant `FieldElement` fields should be compactified if possible, or compressed
 ///  - Structured data should have:
 ///    - version numbers, to be able to update the structure
 ///    - tags for each field, to be able to add new fields
@@ -23,6 +23,24 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 /// - Update `compact_deserialize()` to:
 ///   - Get the version of the deserialized struct
 ///   - Match on it and dispatch to the deserialization logic corresponding to this version
+///
+/// ## Derive proc macro
+/// The `#[derive(CompactBinary)]` proc macro can be used to implement the trait for structures
+/// composed of fields implementing it. Note that the proc macro is only expected to produce a `0`
+/// version, if a given structure is to be updated it's implementation should be done manually,
+/// while keeping back-compatibility of all previous serialization versions for this structure.
+/// The `#[zipped]` attribute can be used to specify that a given field should be zipped.
+///
+/// ## Benchmarks
+/// The following table shows the size of a proof serialized in different formats, using the
+/// `compact-binary` format with and without zipping.
+///
+/// | File                               | Format            | Size on disk (bytes) | Gain     |
+/// |------------------------------------|-------------------|---------------------:|---------:|
+/// | example_proof.base_json            | json              |           2 528 114  |    --    |
+/// | example_proof.cairo_serde          | cairo-serde       |           2 448 494  |  - 3.1 % |
+/// | example_proof.compact_bin_unzipped | compact-binary    |             834 606  | - 67.0 % |
+/// | example_proof.compact_bin_zipped   | compact-binary    |             582 932  | - 76.9 % |
 pub trait CompactBinary {
     /// Serializes the object into a compact binary format.
     fn compact_serialize(&self, output: &mut Vec<u8>) -> Result<(), CompactSerializeError>;
