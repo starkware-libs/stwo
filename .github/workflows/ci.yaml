@@ -25,7 +25,7 @@ jobs:
   format:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           components: rustfmt
@@ -36,7 +36,7 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           components: clippy
@@ -47,7 +47,7 @@ jobs:
   doc:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.NIGHTLY_VERSION }}
@@ -57,7 +57,7 @@ jobs:
   run-wasm32-wasip1-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.NIGHTLY_VERSION }}
@@ -74,7 +74,7 @@ jobs:
   run-wasm32-unknown-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.NIGHTLY_VERSION }}
@@ -90,7 +90,7 @@ jobs:
   run-neon-tests:
     runs-on: macos-latest-xlarge
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.NIGHTLY_VERSION }}
@@ -105,7 +105,7 @@ jobs:
         target-feature: [avx512f, avx2]
     runs-on: stwo-avx
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/bootstrap_runners
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -118,7 +118,7 @@ jobs:
   run-avx512-bench:
     runs-on: stwo-avx
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/bootstrap_runners
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -147,7 +147,7 @@ jobs:
   run-avx512-bench-parallel:
     runs-on: stwo-avx
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ./.github/actions/bootstrap_runners
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -176,7 +176,7 @@ jobs:
   run-tests-no-prover:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.STABLE_VERSION }}
@@ -186,7 +186,7 @@ jobs:
   run-framework-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.STABLE_VERSION }}
@@ -196,7 +196,7 @@ jobs:
   run-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.NIGHTLY_VERSION }}
@@ -206,7 +206,7 @@ jobs:
   run-slow-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.NIGHTLY_VERSION }}
@@ -216,7 +216,7 @@ jobs:
   run-tests-parallel:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.NIGHTLY_VERSION }}
@@ -226,7 +226,7 @@ jobs:
   ensure-no-std-core:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.STABLE_VERSION }}
@@ -236,7 +236,7 @@ jobs:
   machete:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2024-01-04
