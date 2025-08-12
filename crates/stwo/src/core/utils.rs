@@ -161,7 +161,7 @@ pub const fn circle_domain_index_to_coset_index(
 /// [`CircleDomain`]: crate::core::poly::circle::CircleDomain
 /// [`Coset`]: crate::core::circle::Coset
 pub const fn coset_index_to_circle_domain_index(coset_index: usize, log_domain_size: u32) -> usize {
-    if coset_index % 2 == 0 {
+    if coset_index.is_multiple_of(2) {
         coset_index / 2
     } else {
         ((2 << log_domain_size) - coset_index) / 2

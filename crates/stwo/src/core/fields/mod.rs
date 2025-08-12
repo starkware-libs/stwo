@@ -73,7 +73,7 @@ pub fn batch_inverse_in_place<F: FieldExpOps>(column: &[F], dst: &mut [F]) {
     let n = column.len();
     debug_assert!(dst.len() >= n);
 
-    if n <= WIDTH || n % WIDTH != 0 {
+    if n <= WIDTH || !n.is_multiple_of(WIDTH) {
         batch_inverse_classic(column, dst);
         return;
     }

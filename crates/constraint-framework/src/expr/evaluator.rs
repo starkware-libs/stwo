@@ -107,10 +107,7 @@ impl ExprEvaluator {
                         self.ext_intermediates[name].simplify_and_format()
                     )
                 } else {
-                    panic!(
-                        "Intermediate {} not found in intermediates or ext_intermediates",
-                        name
-                    )
+                    panic!("Intermediate {name} not found in intermediates or ext_intermediates")
                 }
             })
             .collect::<Vec<String>>()
@@ -191,8 +188,7 @@ impl ExprEvaluator {
                     .insert(intermediate.clone(), expr.assign(&assignment));
             } else {
                 panic!(
-                    "Intermediate {} not found in intermediates or ext_intermediates",
-                    intermediate
+                    "Intermediate {intermediate} not found in intermediates or ext_intermediates"
                 );
             }
         }
@@ -459,7 +455,7 @@ mod tests {
         eval.add_to_relation(RelationEntry::new(
             &TestRelation::dummy(),
             ExtExpr::one(),
-            &[x0.clone()],
+            std::slice::from_ref(&x0),
         ));
         eval.add_to_relation(RelationEntry::new(
             &TestRelation::dummy(),

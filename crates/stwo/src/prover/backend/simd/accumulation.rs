@@ -56,8 +56,7 @@ mod tests {
             let actual = <SimdBackend as AccumulationOps>::generate_secure_powers(felt, n_powers);
             assert_eq!(
                 expected, actual,
-                "Error generating secure powers in n_powers = {}.",
-                n_powers
+                "Error generating secure powers in n_powers = {n_powers}."
             );
         });
     }
