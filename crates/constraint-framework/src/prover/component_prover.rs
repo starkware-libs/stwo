@@ -72,9 +72,13 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
 
         // Denom inverses.
         let log_expand = eval_domain.log_size() - trace_domain.log_size();
-        let mut denom_inv = (0..1 << log_expand)
-            .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
-            .collect_vec();
+        let mut denom_inv = if log_expand > 0 {
+            (0..1 << log_expand)
+                .map(|i| coset_vanishing(trace_domain.coset(), eval_domain.at(i)).inverse())
+                .collect_vec()
+        } else {
+            vec![BaseField::one()]
+        };
         bit_reverse(&mut denom_inv);
 
         // Accumulator.
