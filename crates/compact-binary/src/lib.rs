@@ -30,17 +30,6 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 /// version, if a given structure is to be updated it's implementation should be done manually,
 /// while keeping back-compatibility of all previous serialization versions for this structure.
 /// The `#[zipped]` attribute can be used to specify that a given field should be zipped.
-///
-/// ## Benchmarks
-/// The following table shows the size of a proof serialized in different formats, using the
-/// `compact-binary` format with and without zipping.
-///
-/// | File                               | Format            | Size on disk (bytes) | Gain     |
-/// |------------------------------------|-------------------|---------------------:|---------:|
-/// | example_proof.base_json            | json              |           2 528 114  |    --    |
-/// | example_proof.cairo_serde          | cairo-serde       |           2 448 494  |  - 3.1 % |
-/// | example_proof.compact_bin_unzipped | compact-binary    |             834 606  | - 67.0 % |
-/// | example_proof.compact_bin_zipped   | compact-binary    |             582 932  | - 76.9 % |
 pub trait CompactBinary {
     /// Serializes the object into a compact binary format.
     fn compact_serialize(&self, output: &mut Vec<u8>) -> Result<(), CompactSerializeError>;

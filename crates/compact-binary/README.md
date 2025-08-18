@@ -7,7 +7,7 @@ Stwo proofs can be serialized in two formats:
 - `json`: each field of each struct is serialized as base json format.
 - `cairo-serde`: the proof is first converted into a `Vec<FieldElement>`, that is then serialized in a serde json format.
 
-The aim is to design and implement a third proof serialization format, `compact-binary`, where the proof is serialized as a `Vec<u8>` in a compact way.
+This crate implements a third proof serialization format, `compact-binary`, where the proof is serialized as a `Vec<u8>` in a compact way.
 
 ## Format description
 
@@ -28,18 +28,18 @@ If we want to add or change a field of a struct `StructA`, while still being abl
 
 ## Implementation
 
-The current implementation consists of the following elements
+The current implementation consists of the following elements:
 
-- Added `CompactBinary` trait in `crates/compact-binary/src/lib.rs`, and implemented this trait for all structures needed.
-- Added a `#[derive(CompactBinary)]` proc macro to implement the trait for structures composed of fields implementing it. Note that the proc macro is only expected to produce a `0` version, if a given structure is to be updated it's implementation should be done manually, while keeping back-compatibility of all previous serialization versions for this structure. See `crates/compact-binary-derive/src/lib.rs`
+- A `CompactBinary` trait in `crates/compact-binary/src/lib.rs`, along with helper functions and implementations for base structures.
+- A `#[derive(CompactBinary)]` proc macro to implement the trait for structures composed of fields implementing it. Note that the proc macro is only expected to produce a `0` version, if a given structure is to be updated it's implementation should be done manually, while keeping back-compatibility of all previous serialization versions for this structure. See `crates/compact-binary-derive/src/lib.rs`
 Note that the proc macro supports the `#[zipped]` attribute to specify that a given field should be zipped.
-- Added error handling through `CompactDeserializeError` enum and `CompactSerializeError` struct
-- Implemented the trait for structures in `stwo` crate used for CairoProofs.
+- Error handling through `CompactDeserializeError` enum and `CompactSerializeError` struct
+- Implementations of the `CompactBinary` the trait for structures in `stwo` crate used for CairoProofs.
 
 In the [stwo-cairo repository](https://github.com/starkware-libs/stwo-cairo):
 
-- Implemented the trait for CairoProof
-- Updated argument handling for proof and verification in the CLI (added `--proof-format compact-binary`). See `cairo-prove/src/main.rs` and `cairo-prove/src/args.rs`.
+- A `CompactBinary` implementation for `CairoProof`
+- Argument handling for proof and verification in the CLI (added `--proof-format compact-binary`). See `cairo-prove/src/main.rs` and `cairo-prove/src/args.rs`.
 
 ## Tests and benchmarks
 
