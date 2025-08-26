@@ -37,7 +37,7 @@ pub trait Component {
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>;
 
-    fn preproccessed_column_indices(&self) -> ColumnVec<usize>;
+    fn preprocessed_column_indices(&self) -> ColumnVec<usize>;
 
     /// Evaluates the constraint quotients combination of the component at a point.
     fn evaluate_constraint_quotients_at_point(

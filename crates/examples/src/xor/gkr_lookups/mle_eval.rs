@@ -145,7 +145,7 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalProverComponent<'_, '_, O> {
         })
     }
 
-    fn preproccessed_column_indices(&self) -> ColumnVec<usize> {
+    fn preprocessed_column_indices(&self) -> ColumnVec<usize> {
         vec![]
     }
 
@@ -357,7 +357,7 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'_, O> {
         })
     }
 
-    fn preproccessed_column_indices(&self) -> ColumnVec<usize> {
+    fn preprocessed_column_indices(&self) -> ColumnVec<usize> {
         vec![]
     }
 
@@ -796,7 +796,7 @@ mod tests {
         let mut commitment_scheme =
             CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
         let channel = &mut Blake2sChannel::default();
-        // TODO(ilya): remove the following once preproccessed columns are not mandatory.
+        // TODO(ilya): remove the following once preprocessed columns are not mandatory.
         // Preprocessed trace
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals([]);
@@ -873,7 +873,7 @@ mod tests {
             CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
         let channel = &mut Blake2sChannel::default();
 
-        // TODO(ilya): remove the following once preproccessed columns are not mandatory.
+        // TODO(ilya): remove the following once preprocessed columns are not mandatory.
         // Preprocessed trace
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals([]);

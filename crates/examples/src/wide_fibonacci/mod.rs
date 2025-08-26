@@ -245,7 +245,7 @@ mod tests {
         let mut commitment_scheme =
             CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(config, &twiddles);
 
-        // TODO(ilya): remove the following once preproccessed columns are not mandatory.
+        // TODO(ilya): remove the following once preprocessed columns are not mandatory.
         // Preprocessed trace
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals([]);

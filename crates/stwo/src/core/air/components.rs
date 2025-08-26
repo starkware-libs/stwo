@@ -38,7 +38,7 @@ impl Components<'_> {
         *preprocessed_mask_points = vec![vec![]; self.n_preprocessed_columns];
 
         for component in &self.components {
-            for idx in component.preproccessed_column_indices() {
+            for idx in component.preprocessed_column_indices() {
                 preprocessed_mask_points[idx] = vec![point];
             }
         }
@@ -71,7 +71,7 @@ impl Components<'_> {
             let component_trace_log_sizes = component.trace_log_degree_bounds();
 
             for (column_index, &log_size) in zip(
-                component.preproccessed_column_indices(),
+                component.preprocessed_column_indices(),
                 &component_trace_log_sizes[PREPROCESSED_TRACE_IDX],
             ) {
                 let column_log_size = &mut preprocessed_columns_trace_log_sizes[column_index];

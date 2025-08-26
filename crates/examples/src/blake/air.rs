@@ -166,9 +166,8 @@ pub struct BlakeComponents {
 }
 impl BlakeComponents {
     fn new(stmt0: &BlakeStatement0, all_elements: &AllElements, stmt1: &BlakeStatement1) -> Self {
-        let tree_span_provider = &mut TraceLocationAllocator::new_with_preproccessed_columns(
-            &preprocessed_xor_columns(),
-        );
+        let tree_span_provider =
+            &mut TraceLocationAllocator::new_with_preprocessed_columns(&preprocessed_xor_columns());
 
         Self {
             scheduler_component: BlakeSchedulerComponent::new(
