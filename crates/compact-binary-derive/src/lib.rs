@@ -1,5 +1,3 @@
-#![feature(let_chains)]
-
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{parse_macro_input, parse_quote, Data, DeriveInput, Fields, Type};
@@ -61,24 +59,24 @@ pub fn derive_compact_binary(input: TokenStream) -> TokenStream {
 
     // Check if any field requires H bounds
     let needs_h_bounds = fields.iter().any(|f| {
-        if let Type::Path(type_path) = &f.ty
-            && let Some(seg) = type_path.path.segments.last()
-            && let syn::PathArguments::AngleBracketed(ref args) = seg.arguments
-        {
-            args.args.iter().any(|arg| {
-                if let syn::GenericArgument::Type(Type::Path(type_path)) = arg {
-                    type_path
-                        .path
-                        .segments
-                        .last()
-                        .is_some_and(|s| s.ident == "H")
-                } else {
-                    false
+        if let Type::Path(type_path) = &f.ty {
+            if let Some(seg) = type_path.path.segments.last() {
+                if let syn::PathArguments::AngleBracketed(ref args) = seg.arguments {
+                    return args.args.iter().any(|arg| {
+                        if let syn::GenericArgument::Type(Type::Path(type_path)) = arg {
+                            type_path
+                                .path
+                                .segments
+                                .last()
+                                .is_some_and(|s| s.ident == "H")
+                        } else {
+                            false
+                        }
+                    });
                 }
-            })
-        } else {
-            false
+            }
         }
+        false
     });
 
     let mut where_clause = where_clause.cloned();
