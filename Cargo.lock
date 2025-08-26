@@ -1442,7 +1442,6 @@ name = "stwo-compact-binary-derive"
 version = "0.1.0"
 dependencies = [
  "quote",
- "stwo-compact-binary",
  "syn 2.0.104",
 ]
 
