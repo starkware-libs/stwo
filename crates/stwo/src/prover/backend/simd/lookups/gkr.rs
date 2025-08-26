@@ -326,45 +326,47 @@ fn eval_logup_generic_sum(
     let mut packed_eval_at_0 = PackedSecureField::zero();
     let mut packed_eval_at_2 = PackedSecureField::zero();
 
-    let inp_numer = &numerators.data;
+    let inp_numerator = &numerators.data;
     let inp_denom = &denominators.data;
 
     for i in 0..n_packed_terms {
         // Input polynomials at points `(r, {0, 1, 2}, bits(i), v, {0, 1})`
         // for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
-        let (inp_numer_at_r0iv0, inp_numer_at_r0iv1) =
-            inp_numer[i * 2].deinterleave(inp_numer[i * 2 + 1]);
+        let (inp_numerator_at_r0iv0, inp_numerator_at_r0iv1) =
+            inp_numerator[i * 2].deinterleave(inp_numerator[i * 2 + 1]);
         let (inp_denom_at_r0iv0, inp_denom_at_r0iv1) =
             inp_denom[i * 2].deinterleave(inp_denom[i * 2 + 1]);
-        let (inp_numer_at_r1iv0, inp_numer_at_r1iv1) = inp_numer[(n_packed_terms + i) * 2]
-            .deinterleave(inp_numer[(n_packed_terms + i) * 2 + 1]);
+        let (inp_numerator_at_r1iv0, inp_numerator_at_r1iv1) = inp_numerator
+            [(n_packed_terms + i) * 2]
+            .deinterleave(inp_numerator[(n_packed_terms + i) * 2 + 1]);
         let (inp_denom_at_r1iv0, inp_denom_at_r1iv1) = inp_denom[(n_packed_terms + i) * 2]
             .deinterleave(inp_denom[(n_packed_terms + i) * 2 + 1]);
         // Note `inp_denom(r, t, x) = eq(t, 0) * inp_denom(r, 0, x) + eq(t, 1) * inp_denom(r, 1, x)`
         //   => `inp_denom(r, 2, x) = 2 * inp_denom(r, 1, x) - inp_denom(r, 0, x)`
-        let inp_numer_at_r2iv0 = inp_numer_at_r1iv0.double() - inp_numer_at_r0iv0;
-        let inp_numer_at_r2iv1 = inp_numer_at_r1iv1.double() - inp_numer_at_r0iv1;
+        let inp_numerator_at_r2iv0 = inp_numerator_at_r1iv0.double() - inp_numerator_at_r0iv0;
+        let inp_numerator_at_r2iv1 = inp_numerator_at_r1iv1.double() - inp_numerator_at_r0iv1;
         let inp_denom_at_r2iv0 = inp_denom_at_r1iv0.double() - inp_denom_at_r0iv0;
         let inp_denom_at_r2iv1 = inp_denom_at_r1iv1.double() - inp_denom_at_r0iv1;
 
         // Fraction addition polynomials:
-        // - `numer(x) = inp_numer(x, 0) * inp_denom(x, 1) + inp_numer(x, 1) * inp_denom(x, 0)`
+        // - `numerator(x) = inp_numerator(x, 0) * inp_denom(x, 1) + inp_numerator(x, 1) *
+        //   inp_denom(x, 0)`
         // - `denom(x) = inp_denom(x, 0) * inp_denom(x, 1)`.
         // at points `(r, {0, 2}, bits(i), v)` for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
         let Fraction {
-            numerator: numer_at_r0iv,
+            numerator: numerator_at_r0iv,
             denominator: denom_at_r0iv,
-        } = Fraction::new(inp_numer_at_r0iv0, inp_denom_at_r0iv0)
-            + Fraction::new(inp_numer_at_r0iv1, inp_denom_at_r0iv1);
+        } = Fraction::new(inp_numerator_at_r0iv0, inp_denom_at_r0iv0)
+            + Fraction::new(inp_numerator_at_r0iv1, inp_denom_at_r0iv1);
         let Fraction {
-            numerator: numer_at_r2iv,
+            numerator: numerator_at_r2iv,
             denominator: denom_at_r2iv,
-        } = Fraction::new(inp_numer_at_r2iv0, inp_denom_at_r2iv0)
-            + Fraction::new(inp_numer_at_r2iv1, inp_denom_at_r2iv1);
+        } = Fraction::new(inp_numerator_at_r2iv0, inp_denom_at_r2iv0)
+            + Fraction::new(inp_numerator_at_r2iv1, inp_denom_at_r2iv1);
 
         let eq_eval_at_0iv = eq_evals.data[i];
-        packed_eval_at_0 += eq_eval_at_0iv * (numer_at_r0iv + packed_lambda * denom_at_r0iv);
-        packed_eval_at_2 += eq_eval_at_0iv * (numer_at_r2iv + packed_lambda * denom_at_r2iv);
+        packed_eval_at_0 += eq_eval_at_0iv * (numerator_at_r0iv + packed_lambda * denom_at_r0iv);
+        packed_eval_at_2 += eq_eval_at_0iv * (numerator_at_r2iv + packed_lambda * denom_at_r2iv);
     }
 
     (
@@ -384,45 +386,47 @@ fn eval_logup_multiplicities_sum(
     let mut packed_eval_at_0 = PackedSecureField::zero();
     let mut packed_eval_at_2 = PackedSecureField::zero();
 
-    let inp_numer = &numerators.data;
+    let inp_numerator = &numerators.data;
     let inp_denom = &denominators.data;
 
     for i in 0..n_packed_terms {
         // Input polynomials at points `(r, {0, 1, 2}, bits(i), v, {0, 1})`
         // for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
-        let (inp_numer_at_r0iv0, inp_numer_at_r0iv1) =
-            inp_numer[i * 2].deinterleave(inp_numer[i * 2 + 1]);
+        let (inp_numerator_at_r0iv0, inp_numerator_at_r0iv1) =
+            inp_numerator[i * 2].deinterleave(inp_numerator[i * 2 + 1]);
         let (inp_denom_at_r0iv0, inp_denom_at_r0iv1) =
             inp_denom[i * 2].deinterleave(inp_denom[i * 2 + 1]);
-        let (inp_numer_at_r1iv0, inp_numer_at_r1iv1) = inp_numer[(n_packed_terms + i) * 2]
-            .deinterleave(inp_numer[(n_packed_terms + i) * 2 + 1]);
+        let (inp_numerator_at_r1iv0, inp_numerator_at_r1iv1) = inp_numerator
+            [(n_packed_terms + i) * 2]
+            .deinterleave(inp_numerator[(n_packed_terms + i) * 2 + 1]);
         let (inp_denom_at_r1iv0, inp_denom_at_r1iv1) = inp_denom[(n_packed_terms + i) * 2]
             .deinterleave(inp_denom[(n_packed_terms + i) * 2 + 1]);
         // Note `inp_denom(r, t, x) = eq(t, 0) * inp_denom(r, 0, x) + eq(t, 1) * inp_denom(r, 1, x)`
         //   => `inp_denom(r, 2, x) = 2 * inp_denom(r, 1, x) - inp_denom(r, 0, x)`
-        let inp_numer_at_r2iv0 = inp_numer_at_r1iv0.double() - inp_numer_at_r0iv0;
-        let inp_numer_at_r2iv1 = inp_numer_at_r1iv1.double() - inp_numer_at_r0iv1;
+        let inp_numerator_at_r2iv0 = inp_numerator_at_r1iv0.double() - inp_numerator_at_r0iv0;
+        let inp_numerator_at_r2iv1 = inp_numerator_at_r1iv1.double() - inp_numerator_at_r0iv1;
         let inp_denom_at_r2iv0 = inp_denom_at_r1iv0.double() - inp_denom_at_r0iv0;
         let inp_denom_at_r2iv1 = inp_denom_at_r1iv1.double() - inp_denom_at_r0iv1;
 
         // Fraction addition polynomials:
-        // - `numer(x) = inp_numer(x, 0) * inp_denom(x, 1) + inp_numer(x, 1) * inp_denom(x, 0)`
+        // - `numerator(x) = inp_numerator(x, 0) * inp_denom(x, 1) + inp_numerator(x, 1) *
+        //   inp_denom(x, 0)`
         // - `denom(x) = inp_denom(x, 0) * inp_denom(x, 1)`.
         // at points `(r, {0, 2}, bits(i), v)` for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
         let Fraction {
-            numerator: numer_at_r0iv,
+            numerator: numerator_at_r0iv,
             denominator: denom_at_r0iv,
-        } = Fraction::new(inp_numer_at_r0iv0, inp_denom_at_r0iv0)
-            + Fraction::new(inp_numer_at_r0iv1, inp_denom_at_r0iv1);
+        } = Fraction::new(inp_numerator_at_r0iv0, inp_denom_at_r0iv0)
+            + Fraction::new(inp_numerator_at_r0iv1, inp_denom_at_r0iv1);
         let Fraction {
-            numerator: numer_at_r2iv,
+            numerator: numerator_at_r2iv,
             denominator: denom_at_r2iv,
-        } = Fraction::new(inp_numer_at_r2iv0, inp_denom_at_r2iv0)
-            + Fraction::new(inp_numer_at_r2iv1, inp_denom_at_r2iv1);
+        } = Fraction::new(inp_numerator_at_r2iv0, inp_denom_at_r2iv0)
+            + Fraction::new(inp_numerator_at_r2iv1, inp_denom_at_r2iv1);
 
         let eq_eval_at_0iv = eq_evals.data[i];
-        packed_eval_at_0 += eq_eval_at_0iv * (numer_at_r0iv + packed_lambda * denom_at_r0iv);
-        packed_eval_at_2 += eq_eval_at_0iv * (numer_at_r2iv + packed_lambda * denom_at_r2iv);
+        packed_eval_at_0 += eq_eval_at_0iv * (numerator_at_r0iv + packed_lambda * denom_at_r0iv);
+        packed_eval_at_2 += eq_eval_at_0iv * (numerator_at_r2iv + packed_lambda * denom_at_r2iv);
     }
 
     (
@@ -459,21 +463,21 @@ fn eval_logup_singles_sum(
         let inp_denom_at_r2iv1 = inp_denom_at_r1iv1.double() - inp_denom_at_r0iv1;
 
         // Fraction addition polynomials:
-        // - `numer(x) = inp_denom(x, 1) + inp_denom(x, 0)`
+        // - `numerator(x) = inp_denom(x, 1) + inp_denom(x, 0)`
         // - `denom(x) = inp_denom(x, 0) * inp_denom(x, 1)`.
         // at points `(r, {0, 2}, bits(i), v)` for all `v` in `{0, 1}^LOG_N_SIMD_LANES`.
         let Fraction {
-            numerator: numer_at_r0iv,
+            numerator: numerator_at_r0iv,
             denominator: denom_at_r0iv,
         } = Reciprocal::new(inp_denom_at_r0iv0) + Reciprocal::new(inp_denom_at_r0iv1);
         let Fraction {
-            numerator: numer_at_r2iv,
+            numerator: numerator_at_r2iv,
             denominator: denom_at_r2iv,
         } = Reciprocal::new(inp_denom_at_r2iv0) + Reciprocal::new(inp_denom_at_r2iv1);
 
         let eq_eval_at_0iv = eq_evals.data[i];
-        packed_eval_at_0 += eq_eval_at_0iv * (numer_at_r0iv + packed_lambda * denom_at_r0iv);
-        packed_eval_at_2 += eq_eval_at_0iv * (numer_at_r2iv + packed_lambda * denom_at_r2iv);
+        packed_eval_at_0 += eq_eval_at_0iv * (numerator_at_r0iv + packed_lambda * denom_at_r0iv);
+        packed_eval_at_2 += eq_eval_at_0iv * (numerator_at_r2iv + packed_lambda * denom_at_r2iv);
     }
 
     (

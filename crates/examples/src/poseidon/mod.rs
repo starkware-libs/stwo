@@ -555,6 +555,6 @@ mod tests {
 
         let csv = collector.export_csv();
 
-        println!("{}", csv);
+        println!("{csv}");
     }
 }

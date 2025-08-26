@@ -281,14 +281,14 @@ struct NotOutputLayerError;
 /// P(x) = eq(x, y) * inp(x, 0) * inp(x, 1)
 /// ```
 ///
-/// When the input layer is LogUp (represented by multilinear columns `inp_numer` and
+/// When the input layer is LogUp (represented by multilinear columns `inp_numerator` and
 /// `inp_denom`) the polynomial represents:
 ///
 /// ```text
-/// numer(x) = inp_numer(x, 0) * inp_denom(x, 1) + inp_numer(x, 1) * inp_denom(x, 0)
+/// numerator(x) = inp_numerator(x, 0) * inp_denom(x, 1) + inp_numerator(x, 1) * inp_denom(x, 0)
 /// denom(x) = inp_denom(x, 0) * inp_denom(x, 1)
 ///
-/// P(x) = eq(x, y) * (numer(x) + lambda * denom(x))
+/// P(x) = eq(x, y) * (numerator(x) + lambda * denom(x))
 /// ```
 pub struct GkrMultivariatePolyOracle<'a, B: GkrOps> {
     /// `eq_evals` passed by `Layer::into_multivariate_poly()`.

@@ -90,7 +90,7 @@ impl EvalAtRow for InfoEvaluator {
 
     fn combine_ef(values: [Self::F; 4]) -> Self::EF {
         let mut res = ExtensionFieldCounter::zero();
-        values.map(|v| res.merge(v));
+        let _ = values.map(|v| res.merge(v));
         res
     }
 

@@ -200,10 +200,10 @@ impl RelationSummary {
 impl Debug for RelationSummary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (relation, entries) in &self.0 {
-            writeln!(f, "{}:", relation)?;
+            writeln!(f, "{relation}:")?;
             for (vector, sum) in entries {
                 let vector = vector.iter().map(|v| v.0).collect_vec();
-                writeln!(f, "  {:?} -> {}", vector, sum)?;
+                writeln!(f, "  {vector:?} -> {sum}")?;
             }
         }
         Ok(())

@@ -97,7 +97,7 @@ pub fn fri_answers(
                 &mut queried_values,
                 n_columns_per_log_size
                     .as_ref()
-                    .map(|colums_log_sizes| *colums_log_sizes.get(&log_size).unwrap_or(&0)),
+                    .map(|columns_log_sizes| *columns_log_sizes.get(&log_size).unwrap_or(&0)),
             )
         })
         .collect()

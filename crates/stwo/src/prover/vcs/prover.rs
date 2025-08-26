@@ -30,11 +30,6 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
     ///
     /// * `columns` - A vector of references to columns.
     ///
-    /// # Panics
-    ///
-    /// This function will panic if the columns are not sorted in descending order or if the columns
-    /// vector is empty.
-    ///
     /// # Returns
     ///
     /// A new instance of `MerkleProver` with the committed layers.

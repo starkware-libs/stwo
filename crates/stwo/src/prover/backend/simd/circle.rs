@@ -65,14 +65,14 @@ impl SimdBackend {
 
         // The caller function expects the mapping in natural order. i.e. (y,x,h(x),h(h(x)),...).
         // If the polynomial is large, the fft does a transpose in the middle in a granularity of 16
-        // (avx512). The coefficients would then be in tranposed order of 16-sized chunks.
+        // (avx512). The coefficients would then be in transposed order of 16-sized chunks.
         // i.e. (a_(n-15), a_(n-14), ..., a_(n-1), a_(n-31), ..., a_(n-16), a_(n-32), ...).
         // To compute the twiddles in the correct order, we need to transpose the coprresponding
         // 'transposed bits' in the mappings. The result order of the mappings would then be
         // (y, x, h(x), h^2(x), h^(log_n-1)(x), h^(log_n-2)(x) ...). To avoid code
         // complexity for now, we just reverse the mappings, transpose, then reverse back.
         // TODO(Ohad): optimize. consider changing the caller to expect the mappings in
-        // reversed-tranposed order.
+        // reversed-transposed order.
         if log_size > CACHED_FFT_LOG_SIZE {
             mappings.reverse();
             let n = mappings.len();
@@ -179,7 +179,7 @@ impl PolyOps for SimdBackend {
         let twiddle_steps = Self::twiddle_steps(map_high);
 
         // Every twiddle is a product of mappings that correspond to '1's in the bit representation
-        // of the current index. For every 2^n alligned chunk of 2^n elements, the twiddle
+        // of the current index. For every 2^n aligned chunk of 2^n elements, the twiddle
         // array is the same, denoted twiddle_low. Use this to compute sums of (coeff *
         // twiddle_high) mod 2^n, then multiply by twiddle_low, and sum to get the final result.
         let compute_chunk_sum = |coeff_chunk: &[PackedBaseField],
@@ -194,7 +194,7 @@ impl PolyOps for SimdBackend {
                     (PackedSecureField::broadcast(twiddle_high) * twiddle_mids).to_array();
 
                 // Sum the coefficients multiplied by each corrseponsing twiddle. Result is
-                // effectivley an array[16] where the value at index 'i' is the sum
+                // effectively an array[16] where the value at index 'i' is the sum
                 // of all coefficients at indices that are i mod 16.
                 for (&packed_coeffs, mid_twiddle) in zip(coeff_chunk, high_twiddle_factors) {
                     sum += PackedSecureField::broadcast(mid_twiddle) * packed_coeffs;

@@ -484,11 +484,11 @@ impl MleEvalPoint {
             eq_1_p: eq(&vec![one; n_variables], p),
             eq_carry_quotients: (0..n_variables)
                 .map(|i| {
-                    let mut numer_assignment = vec![one; i + 1];
-                    numer_assignment[i] = zero;
+                    let mut numerator_assignment = vec![one; i + 1];
+                    numerator_assignment[i] = zero;
                     let mut denom_assignment = vec![zero; i + 1];
                     denom_assignment[i] = one;
-                    eq(&numer_assignment, &p[..i + 1]) / eq(&denom_assignment, &p[..i + 1])
+                    eq(&numerator_assignment, &p[..i + 1]) / eq(&denom_assignment, &p[..i + 1])
                 })
                 .collect(),
             p: p.to_vec(),

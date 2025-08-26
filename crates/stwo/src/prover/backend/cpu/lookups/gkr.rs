@@ -106,9 +106,9 @@ fn eval_grand_product_sum(
     (eval_at_0, eval_at_2)
 }
 
-/// Evaluates `sum_x eq(({0}^|r|, 0, x), y) * (inp_numer(r, t, x, 0) * inp_denom(r, t, x, 1) +
-/// inp_numer(r, t, x, 1) * inp_denom(r, t, x, 0) + lambda * inp_denom(r, t, x, 0) * inp_denom(r, t,
-/// x, 1))` at `t=0` and `t=2`.
+/// Evaluates `sum_x eq(({0}^|r|, 0, x), y) * (inp_numerator(r, t, x, 0) * inp_denom(r, t, x, 1) +
+/// inp_numerator(r, t, x, 1) * inp_denom(r, t, x, 0) + lambda * inp_denom(r, t, x, 0) *
+/// inp_denom(r, t, x, 1))` at `t=0` and `t=2`.
 ///
 /// Output of the form: `(eval_at_0, eval_at_2)`.
 fn eval_logup_sum<F: Field>(
@@ -126,39 +126,40 @@ where
 
     for i in 0..n_terms {
         // Input polynomials at points `(r, {0, 1, 2}, bits(i), {0, 1})`.
-        let inp_numer_at_r0i0 = input_numerators[i * 2];
+        let inp_numerator_at_r0i0 = input_numerators[i * 2];
         let inp_denom_at_r0i0 = input_denominators[i * 2];
-        let inp_numer_at_r0i1 = input_numerators[i * 2 + 1];
+        let inp_numerator_at_r0i1 = input_numerators[i * 2 + 1];
         let inp_denom_at_r0i1 = input_denominators[i * 2 + 1];
-        let inp_numer_at_r1i0 = input_numerators[(n_terms + i) * 2];
+        let inp_numerator_at_r1i0 = input_numerators[(n_terms + i) * 2];
         let inp_denom_at_r1i0 = input_denominators[(n_terms + i) * 2];
-        let inp_numer_at_r1i1 = input_numerators[(n_terms + i) * 2 + 1];
+        let inp_numerator_at_r1i1 = input_numerators[(n_terms + i) * 2 + 1];
         let inp_denom_at_r1i1 = input_denominators[(n_terms + i) * 2 + 1];
         // Note `inp_denom(r, t, x) = eq(t, 0) * inp_denom(r, 0, x) + eq(t, 1) * inp_denom(r, 1, x)`
         //   => `inp_denom(r, 2, x) = 2 * inp_denom(r, 1, x) - inp_denom(r, 0, x)`
-        let inp_numer_at_r2i0 = inp_numer_at_r1i0.double() - inp_numer_at_r0i0;
+        let inp_numerator_at_r2i0 = inp_numerator_at_r1i0.double() - inp_numerator_at_r0i0;
         let inp_denom_at_r2i0 = inp_denom_at_r1i0.double() - inp_denom_at_r0i0;
-        let inp_numer_at_r2i1 = inp_numer_at_r1i1.double() - inp_numer_at_r0i1;
+        let inp_numerator_at_r2i1 = inp_numerator_at_r1i1.double() - inp_numerator_at_r0i1;
         let inp_denom_at_r2i1 = inp_denom_at_r1i1.double() - inp_denom_at_r0i1;
 
         // Fraction addition polynomials:
-        // - `numer(x) = inp_numer(x, 0) * inp_denom(x, 1) + inp_numer(x, 1) * inp_denom(x, 0)`
+        // - `numerator(x) = inp_numerator(x, 0) * inp_denom(x, 1) + inp_numerator(x, 1) *
+        //   inp_denom(x, 0)`
         // - `denom(x) = inp_denom(x, 1) * inp_denom(x, 0)`
         // at points `(r, {0, 2}, bits(i))`.
         let Fraction {
-            numerator: numer_at_r0i,
+            numerator: numerator_at_r0i,
             denominator: denom_at_r0i,
-        } = Fraction::new(inp_numer_at_r0i0, inp_denom_at_r0i0)
-            + Fraction::new(inp_numer_at_r0i1, inp_denom_at_r0i1);
+        } = Fraction::new(inp_numerator_at_r0i0, inp_denom_at_r0i0)
+            + Fraction::new(inp_numerator_at_r0i1, inp_denom_at_r0i1);
         let Fraction {
-            numerator: numer_at_r2i,
+            numerator: numerator_at_r2i,
             denominator: denom_at_r2i,
-        } = Fraction::new(inp_numer_at_r2i0, inp_denom_at_r2i0)
-            + Fraction::new(inp_numer_at_r2i1, inp_denom_at_r2i1);
+        } = Fraction::new(inp_numerator_at_r2i0, inp_denom_at_r2i0)
+            + Fraction::new(inp_numerator_at_r2i1, inp_denom_at_r2i1);
 
         let eq_eval_at_0i = eq_evals[i];
-        eval_at_0 += eq_eval_at_0i * (numer_at_r0i + lambda * denom_at_r0i);
-        eval_at_2 += eq_eval_at_0i * (numer_at_r2i + lambda * denom_at_r2i);
+        eval_at_0 += eq_eval_at_0i * (numerator_at_r0i + lambda * denom_at_r0i);
+        eval_at_2 += eq_eval_at_0i * (numerator_at_r2i + lambda * denom_at_r2i);
     }
 
     (eval_at_0, eval_at_2)
@@ -189,21 +190,21 @@ fn eval_logup_singles_sum(
         let inp_denom_at_r2i1 = inp_denom_at_r1i1.double() - inp_denom_at_r0i1;
 
         // Fraction addition polynomials at points:
-        // - `numer(x) = inp_denom(x, 1) + inp_denom(x, 0)`
+        // - `numerator(x) = inp_denom(x, 1) + inp_denom(x, 0)`
         // - `denom(x) = inp_denom(x, 1) * inp_denom(x, 0)`
         // at points `(r, {0, 2}, bits(i))`.
         let Fraction {
-            numerator: numer_at_r0i,
+            numerator: numerator_at_r0i,
             denominator: denom_at_r0i,
         } = Reciprocal::new(inp_denom_at_r0i0) + Reciprocal::new(inp_denom_at_r0i1);
         let Fraction {
-            numerator: numer_at_r2i,
+            numerator: numerator_at_r2i,
             denominator: denom_at_r2i,
         } = Reciprocal::new(inp_denom_at_r2i0) + Reciprocal::new(inp_denom_at_r2i1);
 
         let eq_eval_at_0i = eq_evals[i];
-        eval_at_0 += eq_eval_at_0i * (numer_at_r0i + lambda * denom_at_r0i);
-        eval_at_2 += eq_eval_at_0i * (numer_at_r2i + lambda * denom_at_r2i);
+        eval_at_0 += eq_eval_at_0i * (numerator_at_r0i + lambda * denom_at_r0i);
+        eval_at_2 += eq_eval_at_0i * (numerator_at_r2i + lambda * denom_at_r2i);
     }
 
     (eval_at_0, eval_at_2)

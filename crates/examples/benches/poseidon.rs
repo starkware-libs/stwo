@@ -6,7 +6,7 @@ pub fn simd_poseidon(c: &mut Criterion) {
     const LOG_N_INSTANCES: u32 = 18;
     let mut group = c.benchmark_group("poseidon2");
     group.throughput(Throughput::Elements(1u64 << LOG_N_INSTANCES));
-    group.bench_function(format!("poseidon2 2^{} instances", LOG_N_INSTANCES), |b| {
+    group.bench_function(format!("poseidon2 2^{LOG_N_INSTANCES} instances"), |b| {
         b.iter(|| prove_poseidon(LOG_N_INSTANCES, PcsConfig::default()));
     });
 }

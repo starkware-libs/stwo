@@ -78,8 +78,7 @@ impl Components<'_> {
                 if visited_columns[column_index] {
                     assert!(
                         *column_log_size == log_size,
-                        "Preprocessed column size mismatch for column {}",
-                        column_index
+                        "Preprocessed column size mismatch for column {column_index}"
                     );
                 } else {
                     *column_log_size = log_size;

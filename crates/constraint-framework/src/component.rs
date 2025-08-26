@@ -143,10 +143,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
                         location_allocator.preprocessed_columns_allocation_mode,
                         PreprocessedColumnsAllocationMode::Static
                     ) {
-                        panic!(
-                            "Preprocessed column {:?} is missing from static allocation",
-                            col
-                        );
+                        panic!("Preprocessed column {col:?} is missing from static allocation");
                     }
                     location_allocator.preprocessed_columns.push(col.clone());
                     next_column
@@ -280,7 +277,7 @@ impl<E: FrameworkEval> Display for FrameworkComponent<E> {
             .for_each(|interaction| {
                 n_cols.push(interaction.len());
             });
-        writeln!(f, "n_rows 2^{}", log_n_rows)?;
+        writeln!(f, "n_rows 2^{log_n_rows}")?;
         writeln!(f, "n_constraints {}", self.n_constraints())?;
         writeln!(
             f,
@@ -294,7 +291,7 @@ impl<E: FrameworkEval> Display for FrameworkComponent<E> {
             n_cols.iter().sum::<usize>()
         )?;
         for (j, n_cols) in n_cols.into_iter().enumerate() {
-            writeln!(f, "\t Interaction {}: n_cols {}", j, n_cols)?;
+            writeln!(f, "\t Interaction {j}: n_cols {n_cols}")?;
         }
         Ok(())
     }

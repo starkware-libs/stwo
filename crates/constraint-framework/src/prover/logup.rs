@@ -254,8 +254,7 @@ impl FractionWriter<'_> {
     pub fn write_frac(self, numerator: PackedSecureField, denom: PackedSecureField) {
         debug_assert!(
             denom.to_array().iter().all(|x| *x != SecureField::zero()),
-            "denom is zero {:?}",
-            denom
+            "denom is zero {denom:?}"
         );
         let [c0, c1, c2, c3] = numerator.into_packed_m31s();
         *self.numerator[0] = c0;
