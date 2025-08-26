@@ -132,6 +132,8 @@ fn assert_eq_fri_layer(
 // - a test with a generic type `H: MerkleHasher` that requires
 // the bound `H:Hash: CompactBinary` to be implemented
 mod tests_derive {
+    use std_shims::Vec;
+
     use crate::core::compact_binary::{
         CompactBinary, CompactDeserializeError, CompactSerializeError,
     };

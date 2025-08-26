@@ -1,3 +1,4 @@
+use std_shims::{vec, Vec};
 pub use stwo_compact_binary::{
     buf_to_array_ctr, strip_expected_tag, strip_expected_version, CompactBinary,
     CompactDeserializeError, CompactSerializeError, ZippedCompactBinary,
