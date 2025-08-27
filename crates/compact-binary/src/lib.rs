@@ -1,11 +1,11 @@
-use std::array;
-use std::io::{Cursor, Read, Write};
+#![cfg_attr(not(feature = "std"), no_std)]
+use core::array;
 
+use lz4_flex::{compress_prepend_size, decompress_size_prepended};
 use starknet_ff::FieldElement;
+use std_shims::Vec;
 use unsigned_varint::encode::{u32_buffer, u64_buffer, usize_buffer};
 use unsigned_varint::{decode, encode};
-use zip::write::SimpleFileOptions;
-use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 /// Trait for types that can be serialized and deserialized in a compact binary format.
 ///
@@ -98,7 +98,7 @@ impl<T: CompactBinary> ZippedCompactBinary<&T> {
     pub fn compact_serialize(&self, output: &mut Vec<u8>) -> Result<(), CompactSerializeError> {
         let mut unzipped_data = Vec::new();
         T::compact_serialize(self.0, &mut unzipped_data)?;
-        let zipped_data = zip_bytes(&unzipped_data)?;
+        let zipped_data = zip_bytes(&unzipped_data);
         usize::compact_serialize(&zipped_data.len(), output)?;
         output.extend_from_slice(&zipped_data);
         Ok(())
@@ -113,33 +113,14 @@ impl<T: CompactBinary> ZippedCompactBinary<&T> {
     }
 }
 
-/// Helper function for zipping bytes with Bzip2 compression.
-fn zip_bytes(input: &[u8]) -> Result<Vec<u8>, CompactSerializeError> {
-    let mut buf = Vec::new();
-    let cursor = Cursor::new(&mut buf);
-    let mut zip = ZipWriter::new(cursor);
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Bzip2);
-    zip.start_file("", options)
-        .map_err(|_| CompactSerializeError)?;
-    zip.write_all(input).map_err(|_| CompactSerializeError)?;
-    let mut cursor = zip.finish().map_err(|_| CompactSerializeError)?;
-    cursor.set_position(0);
-    let mut out = Vec::new();
-    Read::read_to_end(&mut cursor, &mut out).map_err(|_| CompactSerializeError)?;
-    Ok(out)
+/// Helper function for compressing bytes with LZ4 compression.
+fn zip_bytes(input: &[u8]) -> Vec<u8> {
+    compress_prepend_size(input)
 }
 
-/// Helper function for unzipping bytes.
+/// Helper function for decompressing bytes with LZ4 decompression.
 fn unzip_bytes(input: &[u8]) -> Result<Vec<u8>, CompactDeserializeError> {
-    let cursor = Cursor::new(input);
-    let mut archive = ZipArchive::new(cursor).map_err(|_| CompactDeserializeError::DecodeError)?;
-    let mut file = archive
-        .by_index(0)
-        .map_err(|_| CompactDeserializeError::DecodeError)?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)
-        .map_err(|_| CompactDeserializeError::DecodeError)?;
-    Ok(buf)
+    decompress_size_prepended(input).map_err(|_| CompactDeserializeError::DecodeError)
 }
 
 impl CompactBinary for u32 {

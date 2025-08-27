@@ -8,6 +8,7 @@ default = ["std"]
 std = [
     "blake2/std",
     "blake3/std",
+    "stwo-compact-binary/std",
     "hex/std",
     "itertools/use_std",
     "indexmap/std",
@@ -51,7 +52,7 @@ serde.workspace = true
 tracing-subscriber.workspace = true
 hashbrown.workspace = true
 std-shims.workspace = true
-stwo-compact-binary = { path = "../compact-binary" }
+stwo-compact-binary = { path = "../compact-binary", default-features = false }
 stwo-compact-binary-derive = { path = "../compact-binary-derive" }
 
 [dev-dependencies]

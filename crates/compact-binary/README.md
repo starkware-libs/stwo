@@ -32,7 +32,7 @@ The current implementation consists of the following elements:
 
 - A `CompactBinary` trait in `crates/compact-binary/src/lib.rs`, along with helper functions and implementations for base structures.
 - A `#[derive(CompactBinary)]` proc macro to implement the trait for structures composed of fields implementing it. Note that the proc macro is only expected to produce a `0` version, if a given structure is to be updated it's implementation should be done manually, while keeping back-compatibility of all previous serialization versions for this structure. See `crates/compact-binary-derive/src/lib.rs`
-Note that the proc macro supports the `#[zipped]` attribute to specify that a given field should be zipped.
+Note that the proc macro supports the `#[zipped]` attribute to specify that a given field should be zipped (compressed with LZ4 compression).
 - Error handling through `CompactDeserializeError` enum and `CompactSerializeError` struct
 - Implementations of the `CompactBinary` the trait for structures in `stwo` crate used for CairoProofs.
 
