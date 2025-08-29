@@ -85,7 +85,7 @@ impl Channel for Poseidon252Channel {
     fn mix_u32s(&mut self, data: &[u32]) {
         let shift = (1u64 << 32).into();
         let padding_len = 6 - ((data.len() + 6) % 7);
-        let felts = data
+        let mut felts = data
             .iter()
             .chain(iter::repeat_n(&0, padding_len))
             .chunks(7)
@@ -96,8 +96,13 @@ impl Channel for Poseidon252Channel {
                 })
             })
             .collect_vec();
-
-        // TODO(shahars): do we need length padding?
+        // If `data.len() % 7 != 0`, inject it into the bits [248:251] of the last
+        // felt252.
+        if padding_len != 0 {
+            let last = felts.last_mut().unwrap();
+            let two_pow_124: FieldElement252 = (1u128 << 124).into();
+            *last += FieldElement252::from(7 - padding_len) * (two_pow_124 * two_pow_124);
+        }
         self.update_digest(poseidon_hash_many(&[vec![self.digest], felts].concat()));
     }
 
@@ -231,7 +236,7 @@ mod tests {
         assert_eq!(
             channel.digest,
             FieldElement252::from_hex_be(
-                "0x078f5cf6a2e7362b75fc1f94daeae7ebddd64e6b2db771717519af7193dfa80b"
+                "0x06c7fc11690eb272bcc81115e801ad52de4e6271ddff3f97a2b75315e3572ced"
             )
             .unwrap()
         );
