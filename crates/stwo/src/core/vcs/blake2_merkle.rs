@@ -49,8 +49,6 @@ impl MerkleChannel for Blake2sMerkleChannel {
 mod tests {
     use num_traits::Zero;
 
-    use super::Blake2sMerkleChannel;
-    use crate::core::channel::{Blake2sChannel, MerkleChannel};
     use crate::core::fields::m31::BaseField;
     use crate::core::vcs::blake2_merkle::{Blake2sHash, Blake2sMerkleHasher};
     use crate::core::vcs::test_utils::prepare_merkle;
@@ -127,13 +125,5 @@ mod tests {
             verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::TooFewQueriedValues
         );
-    }
-
-    #[test]
-    fn test_merkle_channel() {
-        let mut channel = Blake2sChannel::default();
-        let (_queries, _decommitment, _values, verifier) = prepare_merkle::<Blake2sMerkleHasher>();
-        Blake2sMerkleChannel::mix_root(&mut channel, verifier.root);
-        assert_eq!(channel.channel_time.n_challenges, 1);
     }
 }

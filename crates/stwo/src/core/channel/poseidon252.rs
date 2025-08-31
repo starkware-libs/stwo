@@ -5,7 +5,7 @@ use starknet_crypto::{poseidon_hash, poseidon_hash_many, poseidon_permute_comp};
 use starknet_ff::FieldElement as FieldElement252;
 use std_shims::{vec, Vec};
 
-use super::{Channel, ChannelTime};
+use super::Channel;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::vcs::utils::add_length_padding;
@@ -18,7 +18,7 @@ pub const FELTS_PER_HASH: usize = 8;
 #[derive(Clone, Default, Debug)]
 pub struct Poseidon252Channel {
     digest: FieldElement252,
-    pub channel_time: ChannelTime,
+    n_draws: usize,
 }
 
 impl Poseidon252Channel {
@@ -29,21 +29,17 @@ impl Poseidon252Channel {
     }
     pub const fn update_digest(&mut self, new_digest: FieldElement252) {
         self.digest = new_digest;
-        self.channel_time.inc_challenges();
+        self.n_draws = 0;
     }
 
     fn draw_secure_felt252(&mut self) -> FieldElement252 {
         // We call `poseidon_permute_comp` here with `FieldElement252::THREE` to ensure domain
         // separation between the draw and mix operations. In all mix functions, the constant used
         // is either ZERO or TWO, so using THREE here distinguishes this context.
-        let mut state = [
-            self.digest,
-            self.channel_time.n_sent.into(),
-            FieldElement252::THREE,
-        ];
+        let mut state = [self.digest, self.n_draws.into(), FieldElement252::THREE];
         poseidon_permute_comp(&mut state);
         let res = state[0];
-        self.channel_time.inc_sent();
+        self.n_draws += 1;
         res
     }
 
@@ -170,19 +166,16 @@ mod tests {
     use crate::m31;
 
     #[test]
-    fn test_channel_time() {
+    fn test_channel_draws() {
         let mut channel = Poseidon252Channel::default();
 
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 0);
+        assert_eq!(channel.n_draws, 0);
 
         channel.draw_random_bytes();
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 1);
+        assert_eq!(channel.n_draws, 1);
 
         channel.draw_secure_felts(9);
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 6);
+        assert_eq!(channel.n_draws, 6);
     }
 
     #[test]

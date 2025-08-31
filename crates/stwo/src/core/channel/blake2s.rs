@@ -3,7 +3,7 @@ use core::{array, iter};
 use itertools::Itertools;
 use std_shims::Vec;
 
-use super::{Channel, ChannelTime};
+use super::Channel;
 use crate::core::fields::m31::{BaseField, N_BYTES_FELT, P};
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
@@ -15,7 +15,7 @@ pub const FELTS_PER_HASH: usize = 8;
 #[derive(Default, Clone, Debug)]
 pub struct Blake2sChannel {
     digest: Blake2sHash,
-    pub channel_time: ChannelTime,
+    n_draws: usize,
 }
 
 impl Blake2sChannel {
@@ -26,7 +26,7 @@ impl Blake2sChannel {
     }
     pub const fn update_digest(&mut self, new_digest: Blake2sHash) {
         self.digest = new_digest;
-        self.channel_time.inc_challenges();
+        self.n_draws = 0;
     }
     /// Generates a uniform random vector of BaseField elements.
     fn draw_base_felts(&mut self) -> [BaseField; FELTS_PER_HASH] {
@@ -106,14 +106,14 @@ impl Channel for Blake2sChannel {
         let mut hash_input = self.digest.as_ref().to_vec();
 
         // Append counter bytes directly (4 bytes for u32).
-        let counter_bytes = self.channel_time.n_sent.to_le_bytes();
+        let counter_bytes = self.n_draws.to_le_bytes();
         hash_input.extend_from_slice(&counter_bytes);
 
         // Append a zero byte for domain separation between generating randomness and mixing a
         // single u32.
         hash_input.push(0_u8);
 
-        self.channel_time.inc_sent();
+        self.n_draws += 1;
         Blake2sHasher::hash(&hash_input).into()
     }
     /// Verifies that `H(H(POW_PREFIX, digest, n_bits), nonce)` has at least `n_bits` many
@@ -147,19 +147,16 @@ mod tests {
     use crate::m31;
 
     #[test]
-    fn test_channel_time() {
+    fn test_channel_draws() {
         let mut channel = Blake2sChannel::default();
 
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 0);
+        assert_eq!(channel.n_draws, 0);
 
         channel.draw_random_bytes();
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 1);
+        assert_eq!(channel.n_draws, 1);
 
         channel.draw_secure_felts(9);
-        assert_eq!(channel.channel_time.n_challenges, 0);
-        assert_eq!(channel.channel_time.n_sent, 6);
+        assert_eq!(channel.n_draws, 6);
     }
 
     #[test]

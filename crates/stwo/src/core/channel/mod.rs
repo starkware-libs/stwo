@@ -15,23 +15,6 @@ pub use blake2s::Blake2sChannel;
 
 pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 
-#[derive(Clone, Default, Debug)]
-pub struct ChannelTime {
-    pub n_challenges: usize,
-    n_sent: u32,
-}
-
-impl ChannelTime {
-    const fn inc_sent(&mut self) {
-        self.n_sent += 1;
-    }
-
-    const fn inc_challenges(&mut self) {
-        self.n_challenges += 1;
-        self.n_sent = 0;
-    }
-}
-
 pub trait Channel: Default + Clone + Debug {
     const BYTES_PER_HASH: usize;
 
