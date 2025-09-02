@@ -45,15 +45,6 @@ impl PcsConfig {
     }
 }
 
-impl Default for PcsConfig {
-    fn default() -> Self {
-        Self {
-            pow_bits: 5,
-            fri_config: FriConfig::new(0, 1, 3),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
