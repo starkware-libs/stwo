@@ -26,6 +26,9 @@ impl MerkleHasher for Poseidon252MerkleHasher {
         let mut values = Vec::with_capacity(values_len);
 
         if let Some((left, right)) = children_hashes {
+            if column_values.is_empty() {
+                return poseidon_hash(left, right);
+            }
             values.push(left);
             values.push(right);
         }
