@@ -31,9 +31,9 @@ pub fn gen_trace(
 
     // Add the states in bit reversed circle domain order.
     for i in 0..1 << log_size {
+        let bit_rev_index =
+            bit_reverse_index(coset_index_to_circle_domain_index(i, log_size), log_size);
         for j in 0..STATE_SIZE {
-            let bit_rev_index =
-                bit_reverse_index(coset_index_to_circle_domain_index(i, log_size), log_size);
             trace[j][bit_rev_index] = curr_state[j];
         }
         // Increment the state to the next state row.
