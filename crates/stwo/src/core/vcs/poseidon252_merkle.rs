@@ -8,6 +8,7 @@ use std_shims::Vec;
 use crate::core::channel::{MerkleChannel, Poseidon252Channel};
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::vcs::hash::Hash;
+use crate::core::vcs::utils::add_length_padding;
 use crate::core::vcs::MerkleHasher;
 
 const ELEMENTS_IN_BLOCK: usize = 8;
@@ -57,15 +58,16 @@ fn construct_felt252_from_m31s(word: &[M31]) -> FieldElement252 {
         append_m31(&mut felt_as_u256, *limb);
     }
 
+    let felt_bytes = [felt_as_u256[1].to_be_bytes(), felt_as_u256[0].to_be_bytes()];
+    let felt_bytes = unsafe { core::mem::transmute::<[[u8; 16]; 2], [u8; 32]>(felt_bytes) };
+    let mut felt = FieldElement252::from_bytes_be(&felt_bytes).unwrap();
+
     // If this is the remainder, store its length in bits 248, 249 and 250.
     // Note, you can also look at these 3 bits as word length modulo 8.
     if word.len() < ELEMENTS_IN_BLOCK {
-        felt_as_u256[1] += (word.len() as u128) << (248 - 128);
+        add_length_padding(&mut felt, word.len());
     }
-
-    let felt_bytes = [felt_as_u256[1].to_be_bytes(), felt_as_u256[0].to_be_bytes()];
-    let felt_bytes = unsafe { core::mem::transmute::<[[u8; 16]; 2], [u8; 32]>(felt_bytes) };
-    FieldElement252::from_bytes_be(&felt_bytes).unwrap()
+    felt
 }
 
 impl Hash for FieldElement252 {}
@@ -97,6 +99,7 @@ mod tests {
         construct_felt252_from_m31s, Poseidon252MerkleHasher, ELEMENTS_IN_BLOCK,
     };
     use crate::core::vcs::test_utils::prepare_merkle;
+    use crate::core::vcs::utils::add_length_padding;
     use crate::core::vcs::verifier::MerkleVerificationError;
     use crate::core::vcs::MerkleHasher;
     use crate::m31;
@@ -215,9 +218,7 @@ mod tests {
                 }
                 if word.len() < ELEMENTS_IN_BLOCK {
                     // felt = felt + word.len() << 248;
-                    let shift_124 = FieldElement252::from(2u128.pow(124));
-                    let shift_248 = shift_124 * shift_124;
-                    felt += FieldElement252::from(word.len()) * shift_248;
+                    add_length_padding(&mut felt, word.len());
                 }
                 felt
             })

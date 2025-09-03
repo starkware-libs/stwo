@@ -8,6 +8,7 @@ use std_shims::{vec, Vec};
 use super::{Channel, ChannelTime};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::core::vcs::utils::add_length_padding;
 
 // Number of bytes that fit into a felt252.
 pub const BYTES_PER_FELT252: usize = 252 / 8;
@@ -100,8 +101,7 @@ impl Channel for Poseidon252Channel {
         // felt252.
         if padding_len != 0 {
             let last = felts.last_mut().unwrap();
-            let two_pow_124: FieldElement252 = (1u128 << 124).into();
-            *last += FieldElement252::from(7 - padding_len) * (two_pow_124 * two_pow_124);
+            add_length_padding(last, 7 - padding_len);
         }
         self.update_digest(poseidon_hash_many(&[vec![self.digest], felts].concat()));
     }
