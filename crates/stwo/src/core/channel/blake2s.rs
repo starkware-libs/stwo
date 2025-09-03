@@ -111,6 +111,10 @@ impl Channel for Blake2sChannel {
         let counter_bytes = self.channel_time.n_sent.to_le_bytes();
         hash_input.extend_from_slice(&counter_bytes);
 
+        // Append a zero byte for domain separation between generating randomness and mixing a
+        // single u32.
+        hash_input.push(0_u8);
+
         self.channel_time.inc_sent();
         Blake2sHasher::hash(&hash_input).into()
     }
