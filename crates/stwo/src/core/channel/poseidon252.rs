@@ -22,6 +22,8 @@ pub struct Poseidon252Channel {
 }
 
 impl Poseidon252Channel {
+    pub const POW_PREFIX: u32 = 0x12345678;
+
     pub const fn digest(&self) -> FieldElement252 {
         self.digest
     }
@@ -68,12 +70,6 @@ impl Poseidon252Channel {
 
 impl Channel for Poseidon252Channel {
     const BYTES_PER_HASH: usize = BYTES_PER_FELT252;
-
-    fn trailing_zeros(&self) -> u32 {
-        let bytes = self.digest.to_bytes_be();
-        // Returns maximum of 128.
-        u128::from_be_bytes(bytes[16..].try_into().unwrap()).trailing_zeros()
-    }
 
     fn mix_felts(&mut self, felts: &[SecureField]) {
         let shift = (1u64 << 31).into();
@@ -148,6 +144,17 @@ impl Channel for Poseidon252Channel {
             res.try_into().unwrap()
         });
         bytes.to_vec()
+    }
+
+    /// Verifies that `H(H(POW_PREFIX, digest, n_bits), nonce)` has at least `n_bits` many
+    /// leading zeros.
+    fn verify_pow_nonce(&self, n_bits: u32, nonce: u64) -> bool {
+        let prefixed_digest =
+            poseidon_hash_many(&[Self::POW_PREFIX.into(), self.digest, n_bits.into()]);
+        let hash = poseidon_hash(prefixed_digest, nonce.into());
+        let bytes = hash.to_bytes_be();
+        let n_zeros = u128::from_be_bytes(bytes[16..].try_into().unwrap()).trailing_zeros();
+        n_zeros >= n_bits
     }
 }
 

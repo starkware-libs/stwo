@@ -80,11 +80,11 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bounds)?;
 
         // Verify proof of work.
-        channel.mix_u64(proof.proof_of_work);
-        if channel.trailing_zeros() < self.config.pow_bits {
+
+        if !channel.verify_pow_nonce(self.config.pow_bits, proof.proof_of_work) {
             return Err(VerificationError::ProofOfWork);
         }
-
+        channel.mix_u64(proof.proof_of_work);
         // Get FRI query positions.
         let query_positions_per_log_size = fri_verifier.sample_query_positions(channel);
 

@@ -35,7 +35,7 @@ impl ChannelTime {
 pub trait Channel: Default + Clone + Debug {
     const BYTES_PER_HASH: usize;
 
-    fn trailing_zeros(&self) -> u32;
+    fn verify_pow_nonce(&self, n_bits: u32, nonce: u64) -> bool;
 
     // Mix functions.
     fn mix_u32s(&mut self, data: &[u32]);

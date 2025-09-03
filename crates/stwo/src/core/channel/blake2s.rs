@@ -19,6 +19,8 @@ pub struct Blake2sChannel {
 }
 
 impl Blake2sChannel {
+    pub const POW_PREFIX: u32 = 0x12345678;
+
     pub const fn digest(&self) -> Blake2sHash {
         self.digest
     }
@@ -54,10 +56,6 @@ impl Blake2sChannel {
 
 impl Channel for Blake2sChannel {
     const BYTES_PER_HASH: usize = BLAKE_BYTES_PER_HASH;
-
-    fn trailing_zeros(&self) -> u32 {
-        u128::from_le_bytes(array::from_fn(|i| self.digest.0[i])).trailing_zeros()
-    }
 
     fn mix_felts(&mut self, felts: &[SecureField]) {
         let felts_bytes = felts
@@ -117,6 +115,24 @@ impl Channel for Blake2sChannel {
 
         self.channel_time.inc_sent();
         Blake2sHasher::hash(&hash_input).into()
+    }
+    /// Verifies that `H(H(POW_PREFIX, digest, n_bits), nonce)` has at least `n_bits` many
+    /// leading zeros.
+    fn verify_pow_nonce(&self, n_bits: u32, nonce: u64) -> bool {
+        let digest = self.digest();
+        // Compute H(POW_PREFIX, digest, n_bits).
+        let mut hasher = Blake2sHasher::default();
+        hasher.update(&Self::POW_PREFIX.to_le_bytes());
+        hasher.update(&digest.0[..]);
+        hasher.update(&n_bits.to_le_bytes());
+        let prefixed_digest = hasher.finalize();
+        // Compute `H(prefixed_digest, nonce)`.
+        let mut hasher = Blake2sHasher::default();
+        hasher.update(prefixed_digest.as_ref());
+        hasher.update(&nonce.to_le_bytes());
+        let res = hasher.finalize();
+        let n_zeros = u128::from_le_bytes(array::from_fn(|i| res.0[i])).trailing_zeros();
+        n_zeros >= n_bits
     }
 }
 

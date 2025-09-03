@@ -10,6 +10,7 @@ use tracing::{span, Level};
 use super::SimdBackend;
 use crate::core::channel::Blake2sChannel;
 use crate::core::proof_of_work::GrindOps;
+use crate::core::vcs::blake2_hash::Blake2sHasher;
 use crate::prover::backend::simd::blake2s::hash_16;
 use crate::prover::backend::simd::m31::N_LANES;
 
@@ -23,15 +24,21 @@ impl GrindOps<Blake2sChannel> for SimdBackend {
         // TODO(first): support more than 32 bits.
         assert!(pow_bits <= 32, "pow_bits > 32 is not supported");
         let digest = channel.digest();
-        let digest: &[u32] = cast_slice(&digest.0[..]);
+
+        let mut hasher = Blake2sHasher::default();
+        hasher.update(&Blake2sChannel::POW_PREFIX.to_le_bytes());
+        hasher.update(&digest.0[..]);
+        hasher.update(&pow_bits.to_le_bytes());
+        let prefixed_digest = hasher.finalize();
+        let prefixed_digest: &[u32] = cast_slice(&prefixed_digest.0[..]);
 
         #[cfg(not(feature = "parallel"))]
         let res = (0..)
-            .find_map(|hi| grind_blake(digest, hi, pow_bits))
+            .find_map(|hi| grind_blake(prefixed_digest, hi, pow_bits))
             .expect("Grind failed to find a solution.");
 
         #[cfg(feature = "parallel")]
-        let res = parallel_grind(digest, pow_bits, grind_blake);
+        let res = parallel_grind(prefixed_digest, pow_bits, grind_blake);
 
         res
     }
@@ -114,6 +121,7 @@ where
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod poseidon252 {
+    use starknet_crypto::poseidon_hash_many;
     use starknet_ff::FieldElement as FieldElement252;
 
     use super::*;
@@ -124,14 +132,18 @@ pub mod poseidon252 {
     impl GrindOps<Poseidon252Channel> for SimdBackend {
         fn grind(channel: &Poseidon252Channel, pow_bits: u32) -> u64 {
             let digest = channel.digest();
-
+            let prefixed_digest = poseidon_hash_many(&[
+                Poseidon252Channel::POW_PREFIX.into(),
+                digest,
+                pow_bits.into(),
+            ]);
             #[cfg(not(feature = "parallel"))]
             let res = (0..)
                 .find_map(|hi| grind_poseidon(digest, hi, pow_bits))
                 .expect("Grind failed to find a solution.");
 
             #[cfg(feature = "parallel")]
-            let res = parallel_grind(digest, pow_bits, grind_poseidon);
+            let res = parallel_grind(prefixed_digest, pow_bits, grind_poseidon);
             res
         }
     }
@@ -165,8 +177,8 @@ mod tests {
         let pow_bits = 26;
         for _ in 0..10 {
             let res = SimdBackend::grind(&channel, pow_bits);
+            assert!(channel.verify_pow_nonce(pow_bits, res));
             channel.mix_u64(res);
-            assert!(channel.trailing_zeros() >= pow_bits);
             channel.mix_u64(0x1111222233334344);
         }
     }
@@ -179,9 +191,7 @@ mod tests {
         channel.mix_u64(0x1111222233334344);
 
         let nonce = SimdBackend::grind(&channel, pow_bits);
-        channel.mix_u64(nonce);
-
-        assert!(channel.trailing_zeros() >= pow_bits);
+        assert!(channel.verify_pow_nonce(pow_bits, nonce));
     }
 
     fn test_grind_is_deterministic<C: Channel>()

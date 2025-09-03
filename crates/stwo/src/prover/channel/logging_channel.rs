@@ -18,8 +18,11 @@ pub struct LoggingChannel<C: Channel> {
 impl<C: Channel> Channel for LoggingChannel<C> {
     const BYTES_PER_HASH: usize = C::BYTES_PER_HASH;
 
-    fn trailing_zeros(&self) -> u32 {
-        self.channel.trailing_zeros()
+    fn verify_pow_nonce(&self, n_bits: u32, nonce: u64) -> bool {
+        let _ = debug_span!("Channel verify_pow_nonce");
+        debug!("State: {:?}", self.channel);
+        debug!("Input: {:?}", nonce);
+        self.channel.verify_pow_nonce(n_bits, nonce)
     }
 
     fn mix_felts(&mut self, felts: &[SecureField]) {

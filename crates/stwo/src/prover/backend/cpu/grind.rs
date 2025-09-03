@@ -6,9 +6,8 @@ impl<C: Channel> GrindOps<C> for CpuBackend {
     fn grind(channel: &C, pow_bits: u32) -> u64 {
         let mut nonce = 0;
         loop {
-            let mut channel = channel.clone();
-            channel.mix_u64(nonce);
-            if channel.trailing_zeros() >= pow_bits {
+            let channel = channel.clone();
+            if channel.verify_pow_nonce(pow_bits, nonce) {
                 return nonce;
             }
             nonce += 1;
