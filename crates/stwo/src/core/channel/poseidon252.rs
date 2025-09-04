@@ -1,7 +1,7 @@
 use core::{array, iter};
 
 use itertools::Itertools;
-use starknet_crypto::{poseidon_hash, poseidon_hash_many};
+use starknet_crypto::{poseidon_hash, poseidon_hash_many, poseidon_permute_comp};
 use starknet_ff::FieldElement as FieldElement252;
 use std_shims::{vec, Vec};
 
@@ -29,8 +29,18 @@ impl Poseidon252Channel {
         self.digest = new_digest;
         self.channel_time.inc_challenges();
     }
+
     fn draw_secure_felt252(&mut self) -> FieldElement252 {
-        let res = poseidon_hash(self.digest, self.channel_time.n_sent.into());
+        // We call `poseidon_permute_comp` here with `FieldElement252::THREE` to ensure domain
+        // separation between the draw and mix operations. In all mix functions, the constant used
+        // is either ZERO or TWO, so using THREE here distinguishes this context.
+        let mut state = [
+            self.digest,
+            self.channel_time.n_sent.into(),
+            FieldElement252::THREE,
+        ];
+        poseidon_permute_comp(&mut state);
+        let res = state[0];
         self.channel_time.inc_sent();
         res
     }
