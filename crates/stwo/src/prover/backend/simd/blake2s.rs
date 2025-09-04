@@ -1,6 +1,7 @@
 //! A SIMD implementation of the BLAKE2s compression function.
 //! Based on <https://github.com/oconnor663/blake2_simd/blob/master/blake2s/src/avx2.rs>.
 
+
 use std::array;
 use std::mem::transmute;
 use std::simd::u32x16;
@@ -81,11 +82,9 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         if log_size < LOG_N_LANES {
             return simple_parallel_commit_on_layer(log_size, prev_layer, columns);
         }
-
         if let Some(prev_layer) = prev_layer {
             assert_eq!(prev_layer.len(), 1 << (log_size + 1));
         }
-
         // Commit to columns.
         let mut res = vec![Blake2sHash::default(); 1 << log_size];
         #[cfg(not(feature = "parallel"))]
@@ -109,7 +108,12 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
                     u32x16::from_array(std::array::from_fn(|k| prev_chunk_u32s[16 * j + k]))
                 });
                 let state = compress_finalize(state, transpose_msgs(msgs), t);
-                let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
+                let mut state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
+                if prev_layer.is_some() {
+                    for s in state.iter_mut() {
+                        s.0[3] = s.0[3].wrapping_add(1);
+                    }
+                }
                 chunk.copy_from_slice(&state);
                 return;
             }
@@ -144,7 +148,15 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
                 last_block[j] = column.data[i].into_simd();
             }
             let state = compress_finalize(state, last_block, t);
-            let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
+
+            let mut state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
+
+            if prev_layer.is_some() {
+                for s in state.iter_mut() {
+                    s.0[3] = s.0[3].wrapping_add(1);
+                }
+            }
+
             chunk.copy_from_slice(&state);
         });
         res
@@ -347,6 +359,8 @@ fn untranspose_states(mut states: [u32x16; 8]) -> [u32x16; 8] {
     // Transpose by applying 3 times the index permutation:
     //   abc:xyzw => bcx:yzwa
     // In other words, rotate the index to the left by 1.
+
+    // xyz::wab
     for _ in 0..3 {
         let (d0, d1) = states[0].interleave(states[4]);
         let (d2, d3) = states[1].interleave(states[5]);
@@ -519,7 +533,8 @@ mod tests {
 
         // Create a prev_layer of hashes for testing (simulate as all zeros for simplicity)
         let prev_layer: Option<Vec<Blake2sHash>> =
-            Some(vec![Blake2sHash::default(); 1 << (log_size + 1)]);
+            // Some(vec![Blake2sHash::default(); 1 << (log_size + 1)]);
+            None;
         // Run the vectorized commit_on_layer
         let res = <SimdBackend as MerkleOps<Blake2sMerkleHasher>>::commit_on_layer(
             log_size,

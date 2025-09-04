@@ -26,7 +26,16 @@ impl MerkleHasher for Blake2sMerkleHasher {
             hasher.update(value.0.to_le_bytes());
         }
 
-        Blake2sHash(hasher.finalize().into())
+        let mut hash_result = Blake2sHash(hasher.finalize().into());
+
+        // Add domain separation between the cases
+        // (children_hashes.is_some() && column_values.len()= K)
+        // and (children_hashes.is_none() && column_values.len() == 16 + K).
+        if children_hashes.is_some() {
+            hash_result.0[3] = hash_result.0[3].wrapping_add(1);
+        }
+
+        hash_result
     }
 }
 
@@ -52,9 +61,11 @@ mod tests {
     use super::Blake2sMerkleChannel;
     use crate::core::channel::{Blake2sChannel, MerkleChannel};
     use crate::core::fields::m31::BaseField;
+    use crate::core::vcs::blake2_hash::Blake2sHasher;
     use crate::core::vcs::blake2_merkle::{Blake2sHash, Blake2sMerkleHasher};
     use crate::core::vcs::test_utils::prepare_merkle;
     use crate::core::vcs::verifier::MerkleVerificationError;
+    use crate::core::vcs::MerkleHasher;
 
     #[test]
     fn test_merkle_success() {
@@ -135,5 +146,23 @@ mod tests {
         let (_queries, _decommitment, _values, verifier) = prepare_merkle::<Blake2sMerkleHasher>();
         Blake2sMerkleChannel::mix_root(&mut channel, verifier.root);
         assert_eq!(channel.channel_time.n_challenges, 1);
+    }
+
+    #[test]
+    fn test_hash_node_with_children() {
+        use std::array;
+        let children_hashes: (Blake2sHash, Blake2sHash) =
+            array::from_fn(|i: usize| Blake2sHasher::hash(&[i.try_into().unwrap()])).into();
+        let column_values: Vec<BaseField> = (0..9).map(|x| BaseField::from_u32_unchecked(x)).collect();
+
+        let hash = <Blake2sMerkleHasher as MerkleHasher>::hash_node(Some(children_hashes), &column_values);
+        dbg!(hash);
+    }
+
+        #[test]
+    fn test_hash_node_with_no_children() {
+        let column_values: Vec<BaseField> = (0..=1).map(|x| BaseField::from_u32_unchecked(x)).collect();
+        let hash = <Blake2sMerkleHasher as MerkleHasher>::hash_node(None, &column_values);
+        dbg!(hash);
     }
 }
