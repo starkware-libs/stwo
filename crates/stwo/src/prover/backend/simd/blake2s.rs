@@ -57,6 +57,21 @@ impl ColumnOps<Blake2sHash> for SimdBackend {
     }
 }
 
+fn simple_parallel_commit_on_layer(
+    log_size: u32,
+    prev_layer: Option<&Vec<Blake2sHash>>,
+    columns: &[&Col<SimdBackend, BaseField>],
+) -> Vec<Blake2sHash> {
+    parallel_iter!(0..1 << log_size)
+        .map(|i| {
+            Blake2sMerkleHasher::hash_node(
+                prev_layer.map(|prev_layer| (prev_layer[2 * i], prev_layer[2 * i + 1])),
+                &columns.iter().map(|column| column.at(i)).collect_vec(),
+            )
+        })
+        .collect()
+}
+
 impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
     fn commit_on_layer(
         log_size: u32,
@@ -64,14 +79,7 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         columns: &[&Col<Self, BaseField>],
     ) -> Vec<Blake2sHash> {
         if log_size < LOG_N_LANES {
-            return parallel_iter!(0..1 << log_size)
-                .map(|i| {
-                    Blake2sMerkleHasher::hash_node(
-                        prev_layer.map(|prev_layer| (prev_layer[2 * i], prev_layer[2 * i + 1])),
-                        &columns.iter().map(|column| column.at(i)).collect_vec(),
-                    )
-                })
-                .collect();
+            return simple_parallel_commit_on_layer(log_size, prev_layer, columns);
         }
 
         if let Some(prev_layer) = prev_layer {
@@ -412,8 +420,16 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::{compress16, hash_16, transpose_msgs, untranspose_states};
+    use crate::core::fields::m31::BaseField;
+    use crate::core::vcs::blake2_hash::Blake2sHash;
+    // use super::simple_parallel_commit_on_layer;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+    use crate::prover::backend::simd::blake2s::simple_parallel_commit_on_layer;
     use crate::prover::backend::simd::blake2s_ref::compress;
+    use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::{Col, Column};
+    use crate::prover::vcs::ops::MerkleOps;
 
     #[test]
     fn compress16_works() {
@@ -475,6 +491,45 @@ mod tests {
         let res = hash_16(transposed_msgs, 64);
 
         let res: [[u8; 32]; 16] = unsafe { transmute(untranspose_states(res)) };
+        assert_eq!(res, expected);
+    }
+    #[test]
+    fn commit_on_layer_works() {
+        // log_size >= 4 so that we use the vectorized path
+        let log_size = 4;
+        let n_rows = 1 << log_size;
+        let n_cols = 3;
+
+        let mut rng = SmallRng::seed_from_u64(1055);
+
+        // Use Col::uninitialized to create columns with uninitialized data
+        let mut columns: Vec<Col<SimdBackend, BaseField>> = (0..n_cols)
+            .map(|_| Col::<SimdBackend, BaseField>::zeros(n_rows))
+            .collect();
+
+        // Fill the columns with random BaseField values
+        for col in &mut columns {
+            for i in 0..n_rows {
+                col.set(i, BaseField::from(rng.gen::<u32>()));
+            }
+        }
+
+        // Create references to columns as required by commit_on_layer
+        let col_refs: Vec<&Col<SimdBackend, BaseField>> = columns.iter().collect();
+
+        // Create a prev_layer of hashes for testing (simulate as all zeros for simplicity)
+        let prev_layer: Option<Vec<Blake2sHash>> =
+            Some(vec![Blake2sHash::default(); 1 << (log_size + 1)]);
+        // Run the vectorized commit_on_layer
+        let res = <SimdBackend as MerkleOps<Blake2sMerkleHasher>>::commit_on_layer(
+            log_size,
+            prev_layer.as_ref(),
+            &col_refs,
+        );
+
+        // Run the simple (non-vectorized) version for comparison
+        let expected = simple_parallel_commit_on_layer(log_size, prev_layer.as_ref(), &col_refs);
+
         assert_eq!(res, expected);
     }
 
