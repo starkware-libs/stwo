@@ -26,7 +26,16 @@ impl MerkleHasher for Blake2sMerkleHasher {
             hasher.update(value.0.to_le_bytes());
         }
 
-        Blake2sHash(hasher.finalize().into())
+        let mut hash_result = Blake2sHash(hasher.finalize().into());
+
+        // Add domain separation between the cases
+        // (children_hashes.is_some() && column_values.len()= K)
+        // and (children_hashes.is_none() && column_values.len() == 16 + K).
+        if children_hashes.is_some() {
+            hash_result.0[3] = hash_result.0[3].wrapping_add(1);
+        }
+
+        hash_result
     }
 }
 
