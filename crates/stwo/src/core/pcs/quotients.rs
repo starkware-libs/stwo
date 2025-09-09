@@ -186,12 +186,13 @@ pub fn column_line_coeffs(
                 .columns_and_values
                 .iter()
                 .map(|(_, sampled_value)| {
-                    alpha *= random_coeff;
                     let sample = PointSample {
                         point: sample_batch.point,
                         value: *sampled_value,
                     };
-                    complex_conjugate_line_coeffs(&sample, alpha)
+                    let line_coeffs = complex_conjugate_line_coeffs(&sample, alpha);
+                    alpha *= random_coeff;
+                    line_coeffs
                 })
                 .collect()
         })
