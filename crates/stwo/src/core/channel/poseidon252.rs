@@ -18,7 +18,7 @@ pub const FELTS_PER_HASH: usize = 8;
 #[derive(Clone, Default, Debug)]
 pub struct Poseidon252Channel {
     digest: FieldElement252,
-    n_draws: usize,
+    n_draws: u32,
 }
 
 impl Poseidon252Channel {

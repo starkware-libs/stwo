@@ -15,7 +15,7 @@ pub const FELTS_PER_HASH: usize = 8;
 #[derive(Default, Clone, Debug)]
 pub struct Blake2sChannel {
     digest: Blake2sHash,
-    n_draws: usize,
+    n_draws: u32,
 }
 
 impl Blake2sChannel {
