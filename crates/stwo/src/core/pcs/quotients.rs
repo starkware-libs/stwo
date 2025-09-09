@@ -145,10 +145,9 @@ pub fn accumulate_row_quotients(
 ) -> SecureField {
     let denominator_inverses = denominator_inverses(sample_batches, domain_point);
     let mut row_accumulator = SecureField::zero();
-    for (sample_batch, line_coeffs, batch_coeff, denominator_inverse) in izip!(
+    for (sample_batch, line_coeffs, denominator_inverse) in izip!(
         sample_batches,
         &quotient_constants.line_coeffs,
-        &quotient_constants.batch_random_coeffs,
         denominator_inverses
     ) {
         let mut numerator = SecureField::zero();
@@ -165,50 +164,39 @@ pub fn accumulate_row_quotients(
             numerator += value - linear_term;
         }
 
-        row_accumulator = row_accumulator * *batch_coeff + numerator.mul_cm31(denominator_inverse);
+        row_accumulator += numerator.mul_cm31(denominator_inverse);
     }
     row_accumulator
 }
 
 /// Precomputes the complex conjugate line coefficients for each column in each sample batch.
 ///
-/// For the `i`-th (in a sample batch) column's numerator term `alpha^i * (c * F(p) - (a * p.y +
-/// b))`, we precompute and return the constants: (`alpha^i * a`, `alpha^i * b`, `alpha^i * c`).
+/// For the `i`-th numerator term `alpha^i * (c * F(p) - (a * p.y + b))`,
+/// we precompute and return the constants: (`alpha^i * a`, `alpha^i * b`, `alpha^i * c`).
+/// The index `i` is zero-based and runs monotonically across all sample batches (i.e. the index
+/// of the `m`-th column in the `n`-th batch is `m + Σ len(batch_k)`, for `k < n`).
 pub fn column_line_coeffs(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
 ) -> Vec<Vec<(SecureField, SecureField, SecureField)>> {
+    let mut alpha = SecureField::one();
     sample_batches
         .iter()
         .map(|sample_batch| {
-            let mut alpha = SecureField::one();
             sample_batch
                 .columns_and_values
                 .iter()
                 .map(|(_, sampled_value)| {
-                    alpha *= random_coeff;
                     let sample = PointSample {
                         point: sample_batch.point,
                         value: *sampled_value,
                     };
-                    complex_conjugate_line_coeffs(&sample, alpha)
+                    let line_coeffs = complex_conjugate_line_coeffs(&sample, alpha);
+                    alpha *= random_coeff;
+                    line_coeffs
                 })
                 .collect()
         })
-        .collect()
-}
-
-/// Precomputes the random coefficients used to linearly combine the batched quotients.
-///
-/// For each sample batch we compute random_coeff^(number of columns in the batch),
-/// which is used to linearly combine the batch with the next one.
-pub fn batch_random_coeffs(
-    sample_batches: &[ColumnSampleBatch],
-    random_coeff: SecureField,
-) -> Vec<SecureField> {
-    sample_batches
-        .iter()
-        .map(|sb| random_coeff.pow(sb.columns_and_values.len() as u128))
         .collect()
 }
 
@@ -238,7 +226,6 @@ pub fn quotient_constants(
 ) -> QuotientConstants {
     QuotientConstants {
         line_coeffs: column_line_coeffs(sample_batches, random_coeff),
-        batch_random_coeffs: batch_random_coeffs(sample_batches, random_coeff),
     }
 }
 
@@ -247,7 +234,4 @@ pub struct QuotientConstants {
     /// The line coefficients for each quotient numerator term. For more details see
     /// [self::column_line_coeffs].
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
-    /// The random coefficients used to linearly combine the batched quotients For more details see
-    /// [self::batch_random_coeffs].
-    pub batch_random_coeffs: Vec<SecureField>,
 }
