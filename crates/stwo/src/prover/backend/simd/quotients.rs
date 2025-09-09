@@ -14,7 +14,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fields::FieldExpOps;
-use crate::core::pcs::quotients::{batch_random_coeffs, column_line_coeffs, ColumnSampleBatch};
+use crate::core::pcs::quotients::{column_line_coeffs, ColumnSampleBatch};
 use crate::core::poly::circle::CircleDomain;
 use crate::core::utils::bit_reverse;
 use crate::prover::backend::simd::column::SecureColumnByCoordsMutSlice;
@@ -26,7 +26,6 @@ use crate::prover::QuotientOps;
 
 pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
-    pub batch_random_coeffs: Vec<SecureField>,
     pub denominator_inverses: Vec<CM31Column>,
 }
 
@@ -219,10 +218,9 @@ pub fn accumulate_row_quotients(
     spaced_ys: PackedBaseField,
 ) -> [PackedSecureField; 4] {
     let mut row_accumulator = [PackedSecureField::zero(); 4];
-    for (sample_batch, line_coeffs, batch_coeff, denominator_inverses) in izip!(
+    for (sample_batch, line_coeffs, denominator_inverses) in izip!(
         sample_batches,
         &quotient_constants.line_coeffs,
-        &quotient_constants.batch_random_coeffs,
         &quotient_constants.denominator_inverses
     ) {
         let mut numerator = [PackedSecureField::zero(); 4];
@@ -258,8 +256,7 @@ pub fn accumulate_row_quotients(
         }
 
         for i in 0..4 {
-            row_accumulator[i] = row_accumulator[i] * PackedSecureField::broadcast(*batch_coeff)
-                + numerator[i] * denominator_inverses.data[(quad_row << 2) + i];
+            row_accumulator[i] += numerator[i] * denominator_inverses.data[(quad_row << 2) + i];
         }
     }
     row_accumulator
@@ -319,11 +316,9 @@ fn quotient_constants(
     )
     .entered();
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
-    let batch_random_coeffs = batch_random_coeffs(sample_batches, random_coeff);
     let denominator_inverses = denominator_inverses(sample_batches, domain);
     QuotientConstants {
         line_coeffs,
-        batch_random_coeffs,
         denominator_inverses,
     }
 }
