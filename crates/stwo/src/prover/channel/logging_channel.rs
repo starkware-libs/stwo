@@ -54,9 +54,9 @@ impl<C: Channel> Channel for LoggingChannel<C> {
         )
     }
 
-    fn draw_random_bytes(&mut self) -> Vec<u8> {
-        let _ = debug_span!("Channel draw_random_bytes");
-        log_draw(|ch, _| C::draw_random_bytes(ch), &mut self.channel, ())
+    fn draw_u32s(&mut self) -> Vec<u32> {
+        let _ = debug_span!("Channel draw_u32s");
+        log_draw(|ch, _| C::draw_u32s(ch), &mut self.channel, ())
     }
 }
 
@@ -154,9 +154,9 @@ mod tests {
         let felts2 = regular_channel.draw_secure_felts(n_felts);
         assert_eq!(felts1, felts2);
 
-        let bytes1 = logging_channel.draw_random_bytes();
-        let bytes2 = regular_channel.draw_random_bytes();
-        assert_eq!(bytes1, bytes2);
+        let words1 = logging_channel.draw_u32s();
+        let words2 = regular_channel.draw_u32s();
+        assert_eq!(words1, words2);
 
         assert_eq!(logging_channel.channel.digest(), regular_channel.digest());
     }

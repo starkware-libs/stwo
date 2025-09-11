@@ -4,7 +4,7 @@ use itertools::Itertools;
 use std_shims::Vec;
 
 use super::Channel;
-use crate::core::fields::m31::{BaseField, N_BYTES_FELT, P};
+use crate::core::fields::m31::{BaseField, P};
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
 
@@ -33,13 +33,7 @@ impl Blake2sChannel {
         // Repeats hashing with an increasing counter until getting a good result.
         // Retry probability for each round is ~ 2^(-28).
         loop {
-            let u32s: [u32; FELTS_PER_HASH] = self
-                .draw_random_bytes()
-                .chunks_exact(N_BYTES_FELT) // 4 bytes per u32.
-                .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap();
+            let u32s: [u32; FELTS_PER_HASH] = self.draw_u32s().try_into().unwrap();
 
             // Retry if not all the u32 are in the range [0, 2P).
             if u32s.iter().all(|x| *x < 2 * P) {
@@ -102,7 +96,7 @@ impl Channel for Blake2sChannel {
         secure_felts.take(n_felts).collect()
     }
 
-    fn draw_random_bytes(&mut self) -> Vec<u8> {
+    fn draw_u32s(&mut self) -> Vec<u32> {
         let mut hash_input = self.digest.as_ref().to_vec();
 
         // Append counter bytes directly (4 bytes for u32).
@@ -114,8 +108,13 @@ impl Channel for Blake2sChannel {
         hash_input.push(0_u8);
 
         self.n_draws += 1;
-        Blake2sHasher::hash(&hash_input).into()
+        Blake2sHasher::hash(&hash_input)
+            .0
+            .chunks_exact(4)
+            .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+            .collect()
     }
+
     /// Verifies that `H(H(POW_PREFIX, digest, n_bits), nonce)` has at least `n_bits` many
     /// leading zeros.
     fn verify_pow_nonce(&self, n_bits: u32, nonce: u64) -> bool {
@@ -152,7 +151,7 @@ mod tests {
 
         assert_eq!(channel.n_draws, 0);
 
-        channel.draw_random_bytes();
+        channel.draw_u32s();
         assert_eq!(channel.n_draws, 1);
 
         channel.draw_secure_felts(9);
@@ -160,13 +159,13 @@ mod tests {
     }
 
     #[test]
-    fn test_draw_random_bytes() {
+    fn test_draw_u32s() {
         let mut channel = Blake2sChannel::default();
 
-        let first_random_bytes = channel.draw_random_bytes();
+        let first_random_words = channel.draw_u32s();
 
-        // Assert that next random bytes are different.
-        assert_ne!(first_random_bytes, channel.draw_random_bytes());
+        // Assert that next random words are different.
+        assert_ne!(first_random_words, channel.draw_u32s());
     }
 
     #[test]

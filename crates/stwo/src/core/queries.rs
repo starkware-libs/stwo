@@ -23,10 +23,9 @@ impl Queries {
         let mut query_cnt = 0;
         let max_query = (1 << log_domain_size) - 1;
         loop {
-            let random_bytes = channel.draw_random_bytes();
-            for chunk in random_bytes.chunks_exact(UPPER_BOUND_QUERY_BYTES) {
-                let query_bits = u32::from_le_bytes(chunk.try_into().unwrap());
-                let quotient_query = query_bits & max_query;
+            let random_words = channel.draw_u32s();
+            for word in random_words {
+                let quotient_query = word & max_query;
                 queries.insert(quotient_query as usize);
                 query_cnt += 1;
                 if query_cnt == n_queries {

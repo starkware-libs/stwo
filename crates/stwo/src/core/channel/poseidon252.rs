@@ -130,16 +130,17 @@ impl Channel for Poseidon252Channel {
         secure_felts.take(n_felts).collect()
     }
 
-    fn draw_random_bytes(&mut self) -> Vec<u8> {
-        let shift = (1u64 << 8).into();
+    /// Draws 7 u32s.
+    fn draw_u32s(&mut self) -> Vec<u32> {
+        let shift = (1u64 << 32).into();
         let mut cur = self.draw_secure_felt252();
-        let bytes: [u8; 31] = array::from_fn(|_| {
+        let words: [u32; 7] = array::from_fn(|_| {
             let next = cur.floor_div(shift);
             let res = cur - next * shift;
             cur = next;
             res.try_into().unwrap()
         });
-        bytes.to_vec()
+        words.to_vec()
     }
 
     /// Verifies that `H(H(POW_PREFIX, digest, n_bits), nonce)` has at least `n_bits` many
@@ -171,7 +172,7 @@ mod tests {
 
         assert_eq!(channel.n_draws, 0);
 
-        channel.draw_random_bytes();
+        channel.draw_u32s();
         assert_eq!(channel.n_draws, 1);
 
         channel.draw_secure_felts(9);
@@ -179,13 +180,13 @@ mod tests {
     }
 
     #[test]
-    fn test_draw_random_bytes() {
+    fn test_draw_u32s() {
         let mut channel = Poseidon252Channel::default();
 
-        let first_random_bytes = channel.draw_random_bytes();
+        let first_random_words = channel.draw_u32s();
 
-        // Assert that next random bytes are different.
-        assert_ne!(first_random_bytes, channel.draw_random_bytes());
+        // Assert that next random words are different.
+        assert_ne!(first_random_words, channel.draw_u32s());
     }
 
     #[test]
