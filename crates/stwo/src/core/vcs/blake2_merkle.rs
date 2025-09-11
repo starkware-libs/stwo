@@ -6,6 +6,16 @@ use crate::core::channel::{Blake2sChannel, MerkleChannel};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::MerkleHasher;
 
+pub const LEAF_PREFIX: [u8; 64] = [
+    b'l', b'e', b'a', b'f', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0,
+];
+pub const NODE_PREFIX: [u8; 64] = [
+    b'n', b'o', b'd', b'e', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0,
+];
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct Blake2sMerkleHasher;
 impl MerkleHasher for Blake2sMerkleHasher {
@@ -18,8 +28,11 @@ impl MerkleHasher for Blake2sMerkleHasher {
         let mut hasher = Blake2s256::new();
 
         if let Some((left_child, right_child)) = children_hashes {
+            hasher.update(NODE_PREFIX);
             hasher.update(left_child);
             hasher.update(right_child);
+        } else {
+            hasher.update(LEAF_PREFIX);
         }
 
         for value in column_values {
