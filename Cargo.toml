@@ -20,8 +20,8 @@ itertools = { version = "0.12", default-features = false, features = [
 ] }
 blake2 = { version = "0.10.6", default-features = false }
 blake3 = { version = "1.5.0", default-features = false }
-educe = "0.5.0"
-hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
+    educe = "0.5.0"
+    hex = { version = "0.4.3", default-features = false, features = ["alloc"] }
 num-traits = { version = "0.2.19", default-features = false }
 thiserror = { version = "2.0.12", default-features = false }
 bytemuck = { version = "1.14.3", default-features = false }
