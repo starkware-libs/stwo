@@ -24,6 +24,36 @@ const IV: [u32; 8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
 ];
 
+const LEAF_INITIAL_STATE: [u32; 8] = [
+    0x6510b1f7, 0xfd531f42, 0xcff75ec3, 0x382935d0, 0xab15dbf2, 0x950eb564, 0xe8e92866, 0x28047aca,
+];
+
+const NODE_INITIAL_STATE: [u32; 8] = [
+    0xe5cf8926, 0x841cea30, 0x7b4acada, 0xfc5d8d28, 0xfc6ef857, 0xb29da528, 0xc0d319c7, 0x8ae795c8,
+];
+
+const SIMD_LEAF_INITIAL_STATE: [u32x16; 8] = [
+    u32x16::splat(LEAF_INITIAL_STATE[0]),
+    u32x16::splat(LEAF_INITIAL_STATE[1]),
+    u32x16::splat(LEAF_INITIAL_STATE[2]),
+    u32x16::splat(LEAF_INITIAL_STATE[3]),
+    u32x16::splat(LEAF_INITIAL_STATE[4]),
+    u32x16::splat(LEAF_INITIAL_STATE[5]),
+    u32x16::splat(LEAF_INITIAL_STATE[6]),
+    u32x16::splat(LEAF_INITIAL_STATE[7]),
+];
+
+const SIMD_NODE_INITIAL_STATE: [u32x16; 8] = [
+    u32x16::splat(NODE_INITIAL_STATE[0]),
+    u32x16::splat(NODE_INITIAL_STATE[1]),
+    u32x16::splat(NODE_INITIAL_STATE[2]),
+    u32x16::splat(NODE_INITIAL_STATE[3]),
+    u32x16::splat(NODE_INITIAL_STATE[4]),
+    u32x16::splat(NODE_INITIAL_STATE[5]),
+    u32x16::splat(NODE_INITIAL_STATE[6]),
+    u32x16::splat(NODE_INITIAL_STATE[7]),
+];
+
 const INITIAL_STATE: [u32x16; 8] = [
     // |Key| = 0x00, |HashLength| = 0x20.
     u32x16::splat(IV[0] ^ 0x01010020),
@@ -87,26 +117,25 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
         let iter = res.par_chunks_mut(1 << LOG_N_LANES);
 
         iter.enumerate().for_each(|(i, chunk)| {
-            let mut state = INITIAL_STATE;
+            let mut state = if prev_layer.is_some() {
+                SIMD_NODE_INITIAL_STATE
+            } else {
+                SIMD_LEAF_INITIAL_STATE
+            };
             // No columns in the layer.
             if columns.is_empty() {
-                let (prev_chunk_u32s, t) = match prev_layer {
-                    Some(prev_layer) => (
-                        cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]),
-                        64,
-                    ),
-                    None => ([0; 16].as_slice(), 0),
-                };
+                let prev_layer = prev_layer.expect("Empty leafs are not supported");
+                let prev_chunk_u32s = cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]);
                 let msgs: [u32x16; 16] = array::from_fn(|j| {
                     u32x16::from_array(std::array::from_fn(|k| prev_chunk_u32s[16 * j + k]))
                 });
-                let state = compress_finalize(state, transpose_msgs(msgs), t);
+                let state = compress_finalize(state, transpose_msgs(msgs), 128);
                 let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
                 chunk.copy_from_slice(&state);
                 return;
             }
 
-            let mut t: u64 = 0;
+            let mut t: u64 = 64;
             // Hash prev_layer, if exists.
             if let Some(prev_layer) = prev_layer {
                 let prev_chunk_u32s = cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]);
@@ -408,12 +437,13 @@ mod tests {
 
     use aligned::{Aligned, A64};
     use bytemuck::cast_slice;
+    use itertools::Itertools;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::{compress16, hash_16, transpose_msgs, untranspose_states};
     use crate::core::vcs::blake2_hash::Blake2sHasher;
-    use crate::prover::backend::simd::blake2s_ref::compress;
+    use crate::prover::backend::simd::blake2s_ref::{self, compress};
 
     #[test]
     fn compress16_works() {
@@ -495,5 +525,39 @@ mod tests {
         }
 
         states
+    }
+
+    fn prefix_as_32(prefix: &[u8; 64]) -> [u32; 16] {
+        prefix
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|bytes: &[u8; 4]| u32::from_le_bytes(*bytes))
+            .collect_vec()
+            .try_into()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_leaf_initial_state() {
+        let prefix: [u32; 16] = prefix_as_32(&crate::core::vcs::blake2_merkle::LEAF_PREFIX);
+        let mut state = blake2s_ref::IV;
+        // |Key| = 0x00, |HashLength| = 0x20.
+        state[0] ^= 0x01010020;
+        let res = compress(state, prefix, 64, 0, 0, 0);
+
+        assert_eq!(res, super::LEAF_INITIAL_STATE);
+    }
+
+    #[test]
+    fn test_node_initial_state() {
+        let prefix: [u32; 16] = prefix_as_32(&crate::core::vcs::blake2_merkle::NODE_PREFIX);
+        let mut state = blake2s_ref::IV;
+        // |Key| = 0x00, |HashLength| = 0x20.
+        state[0] ^= 0x01010020;
+
+        let res = compress(state, prefix, 64, 0, 0, 0);
+
+        assert_eq!(res, super::NODE_INITIAL_STATE);
     }
 }
