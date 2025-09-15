@@ -25,8 +25,10 @@ impl GrindOps<Blake2sChannel> for SimdBackend {
         assert!(pow_bits <= 32, "pow_bits > 32 is not supported");
         let digest = channel.digest();
 
+        // Compute the prefix digest H(POW_PREFIX, [0_u8; 24], digest, n_bits).
         let mut hasher = Blake2sHasher::default();
         hasher.update(&Blake2sChannel::POW_PREFIX.to_le_bytes());
+        hasher.update(&[0_u8; 24]);
         hasher.update(&digest.0[..]);
         hasher.update(&pow_bits.to_le_bytes());
         let prefixed_digest = hasher.finalize();
