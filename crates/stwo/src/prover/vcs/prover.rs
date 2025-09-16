@@ -49,6 +49,7 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
         let mut layers: Vec<Col<B, H::Hash>> = Vec::new();
 
         let max_log_size = columns.peek().unwrap().len().ilog2();
+        println!("BLABLBLALBALBALBLABL max_log_size: {}", max_log_size);
         for log_size in (0..=max_log_size).rev() {
             // Take columns of the current log_size.
             let layer_columns = columns
