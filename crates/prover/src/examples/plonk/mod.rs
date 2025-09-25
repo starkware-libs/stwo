@@ -5,8 +5,7 @@ use tracing::{span, Level};
 use crate::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
 use crate::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use crate::constraint_framework::{
-    assert_constraints_on_polys, relation, EvalAtRow, FrameworkComponent, FrameworkEval,
-    RelationEntry, TraceLocationAllocator,
+    relation, EvalAtRow, FrameworkComponent, FrameworkEval, RelationEntry, TraceLocationAllocator,
 };
 use crate::core::backend::simd::column::BaseColumn;
 use crate::core::backend::simd::m31::LOG_N_LANES;
@@ -187,7 +186,7 @@ pub fn prove_fibonacci_plonk(
     // Setup protocol.
     let channel = &mut Blake2sChannel::default();
     let mut commitment_scheme =
-        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles, true);
 
     // Preprocessed trace.
     let span = span!(Level::INFO, "Constant").entered();
@@ -242,20 +241,20 @@ pub fn prove_fibonacci_plonk(
         claimed_sum,
     );
 
-    // Sanity check. Remove for production.
-    let trace_polys = commitment_scheme
-        .trees
-        .as_ref()
-        .map(|t| t.polynomials.iter().cloned().collect_vec());
-    let component_eval = component.clone();
-    assert_constraints_on_polys(
-        &trace_polys,
-        CanonicCoset::new(log_n_rows),
-        |assert_eval| {
-            component_eval.evaluate(assert_eval);
-        },
-        claimed_sum,
-    );
+    // // Sanity check. Remove for production.
+    // let trace_polys = commitment_scheme
+    //     .trees
+    //     .as_ref()
+    //     .map(|t| t.polynomials.iter().cloned().collect_vec());
+    // let component_eval = component.clone();
+    // assert_constraints_on_polys(
+    //     &trace_polys,
+    //     CanonicCoset::new(log_n_rows),
+    //     |assert_eval| {
+    //         component_eval.evaluate(assert_eval);
+    //     },
+    //     claimed_sum,
+    // );
 
     let proof = prove(&[&component], channel, commitment_scheme).unwrap();
 

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -13,10 +13,10 @@ use super::super::ColumnVec;
 use super::quotients::{compute_fri_quotients, PointSample};
 use super::utils::TreeVec;
 use super::{PcsConfig, TreeSubspan};
-use crate::core::air::Trace;
-use crate::core::backend::BackendForChannel;
+use crate::core::air::{Poly, Trace};
+use crate::core::backend::{BackendForChannel, Col};
 use crate::core::channel::{Channel, MerkleChannel};
-use crate::core::poly::circle::{CircleEvaluation, CirclePoly};
+use crate::core::poly::circle::{CanonicCoset, CircleEvaluation, CirclePoly};
 use crate::core::poly::twiddles::TwiddleTree;
 use crate::core::vcs::ops::MerkleHasher;
 use crate::core::vcs::prover::{MerkleDecommitment, MerkleProver};
@@ -26,14 +26,20 @@ pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChanne
     pub trees: TreeVec<CommitmentTreeProver<B, MC>>,
     pub config: PcsConfig,
     twiddles: &'a TwiddleTree<B>,
+    pub store_polynomials_coefficients: bool,
 }
 
 impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a, B, MC> {
-    pub fn new(config: PcsConfig, twiddles: &'a TwiddleTree<B>) -> Self {
+    pub fn new(
+        config: PcsConfig,
+        twiddles: &'a TwiddleTree<B>,
+        store_polynomials_coefficients: bool,
+    ) -> Self {
         CommitmentSchemeProver {
             trees: TreeVec::default(),
             config,
             twiddles,
+            store_polynomials_coefficients,
         }
     }
 
@@ -44,6 +50,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             self.config.fri_config.log_blowup_factor,
             channel,
             self.twiddles,
+            self.store_polynomials_coefficients,
         );
         self.trees.push(tree);
     }
@@ -60,24 +67,39 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         self.trees.as_ref().map(|tree| tree.commitment.root())
     }
 
-    pub fn polynomials(&self) -> TreeVec<ColumnVec<&CirclePoly<B>>> {
+    pub fn polynomials(&self) -> TreeVec<ColumnVec<&Poly<B>>> {
         self.trees
             .as_ref()
             .map(|tree| tree.polynomials.iter().collect())
     }
 
-    pub fn evaluations(
-        &self,
-    ) -> TreeVec<ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>> {
-        self.trees
-            .as_ref()
-            .map(|tree| tree.evaluations.iter().collect())
+    pub fn trace(&self) -> Trace<'_, B> {
+        Trace {
+            polys: self.polynomials(),
+        }
     }
 
-    pub fn trace(&self) -> Trace<'_, B> {
-        let polys = self.polynomials();
-        let evals = self.evaluations();
-        Trace { polys, evals }
+    pub fn build_weights_hash_map(
+        &self,
+        sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    ) -> HashMap<(u32, CirclePoint<SecureField>), Col<B, SecureField>> {
+        let mut weights_hash_map = HashMap::new();
+        self.polynomials()
+            .zip_cols(sampled_points)
+            .map_cols(|(poly, points)| {
+                points.iter().for_each(|&point| {
+                    let log_size = poly.eval.domain.log_size();
+                    weights_hash_map
+                        .entry((log_size, point))
+                        .or_insert_with(|| {
+                            CircleEvaluation::<B, BaseField, BitReversedOrder>::barycentric_weights(
+                                CanonicCoset::new(log_size),
+                                point,
+                            )
+                        });
+                })
+            });
+        weights_hash_map
     }
 
     pub fn prove_values(
@@ -87,6 +109,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     ) -> CommitmentSchemeProof<MC::H> {
         // Evaluate polynomials on open points.
         let span = span!(Level::INFO, "Evaluate columns out of domain").entered();
+        let weights_hash_map = self.build_weights_hash_map(&sampled_points);
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
@@ -95,7 +118,10 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     .iter()
                     .map(|&point| PointSample {
                         point,
-                        value: poly.eval_at_point(point),
+                        value: poly.eval_at_point(
+                            point,
+                            &weights_hash_map[&(poly.eval.domain.log_size(), point)],
+                        ),
                     })
                     .collect_vec()
             });
@@ -106,7 +132,13 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         channel.mix_felts(&sampled_values.clone().flatten_cols());
 
         // Compute oods quotients for boundary constraints on the sampled points.
-        let columns = self.evaluations().flatten();
+        let columns: ColumnVec<_> = self
+            .polynomials()
+            .flatten()
+            .into_iter()
+            .map(|poly| &poly.eval)
+            .collect();
+
         let quotients = compute_fri_quotients(
             &columns,
             &samples.flatten(),
@@ -199,8 +231,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
 /// Prover data for a single commitment tree in a commitment scheme. The commitment scheme allows to
 /// commit on a set of polynomials at a time. This corresponds to such a set.
 pub struct CommitmentTreeProver<B: BackendForChannel<MC>, MC: MerkleChannel> {
-    pub polynomials: ColumnVec<CirclePoly<B>>,
-    pub evaluations: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    pub polynomials: ColumnVec<Poly<B>>,
     pub commitment: MerkleProver<B, MC::H>,
 }
 
@@ -210,18 +241,28 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         log_blowup_factor: u32,
         channel: &mut MC::C,
         twiddles: &TwiddleTree<B>,
+        store_polynomials_coefficients: bool,
     ) -> Self {
         let span = span!(Level::INFO, "Extension").entered();
-        let evaluations = B::evaluate_polynomials(&polynomials, log_blowup_factor, twiddles);
+        let polynomials = B::evaluate_polynomials(
+            polynomials,
+            log_blowup_factor,
+            store_polynomials_coefficients,
+            twiddles,
+        );
         span.exit();
 
         let _span = span!(Level::INFO, "Merkle").entered();
-        let tree = MerkleProver::commit(evaluations.iter().map(|eval| &eval.values).collect());
+        let tree = MerkleProver::commit(
+            polynomials
+                .iter()
+                .map(|poly: &Poly<B>| &poly.eval.values)
+                .collect(),
+        );
         MC::mix_root(channel, tree.root());
 
         CommitmentTreeProver {
             polynomials,
-            evaluations,
             commitment: tree,
         }
     }
@@ -235,9 +276,9 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         queries: &BTreeMap<u32, Vec<usize>>,
     ) -> (Vec<BaseField>, MerkleDecommitment<MC::H>) {
         let eval_vec = self
-            .evaluations
+            .polynomials
             .iter()
-            .map(|eval| &eval.values)
+            .map(|poly| &poly.eval.values)
             .collect_vec();
         self.commitment.decommit(queries, eval_vec)
     }

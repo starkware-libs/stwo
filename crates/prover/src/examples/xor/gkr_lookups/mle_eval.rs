@@ -198,7 +198,10 @@ impl<O: MleCoeffColumnOracle> ComponentProver<SimdBackend> for MleEvalProverComp
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.log_size());
 
-        let mut component_trace = trace.evals.sub_tree(&self.trace_locations).map_cols(|c| *c);
+        let mut component_trace = trace
+            .polys
+            .sub_tree(&self.trace_locations)
+            .map_cols(|c| &c.eval);
 
         // Build auxiliary trace.
         let span = span!(Level::INFO, "Extension").entered();
@@ -791,7 +794,7 @@ mod tests {
         );
         let config = PcsConfig::default();
         let mut commitment_scheme =
-            CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+            CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles, false);
         let channel = &mut Blake2sChannel::default();
         // TODO(ilya): remove the following once preproccessed columns are not mandatory.
         // Preprocessed trace
@@ -867,7 +870,7 @@ mod tests {
         );
         let config = PcsConfig::default();
         let mut commitment_scheme =
-            CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+            CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles, false);
         let channel = &mut Blake2sChannel::default();
 
         // TODO(ilya): remove the following once preproccessed columns are not mandatory.

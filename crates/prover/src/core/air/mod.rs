@@ -6,9 +6,11 @@ use super::circle::CirclePoint;
 use super::fields::m31::BaseField;
 use super::fields::qm31::SecureField;
 use super::pcs::TreeVec;
-use super::poly::circle::{CircleEvaluation, CirclePoly};
+use super::poly::circle::{CircleDomain, CircleEvaluation, CirclePoly};
+use super::poly::twiddles::TwiddleTree;
 use super::poly::BitReversedOrder;
 use super::ColumnVec;
+use crate::core::backend::Col;
 
 pub mod accumulation;
 mod components;
@@ -67,11 +69,53 @@ pub trait ComponentProver<B: Backend>: Component {
 }
 
 /// The set of polynomials that make up the trace.
-///
-/// Each polynomial is stored both in a coefficients, and evaluations form (for efficiency)
 pub struct Trace<'a, B: Backend> {
     /// Polynomials for each column.
-    pub polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
-    /// Evaluations for each column (evaluated on their commitment domains).
-    pub evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
+    pub polys: TreeVec<ColumnVec<&'a Poly<B>>>,
+}
+
+pub struct Poly<B: Backend> {
+    pub poly: Option<CirclePoly<B>>,
+    pub eval: CircleEvaluation<B, BaseField, BitReversedOrder>,
+}
+
+impl<B: Backend> Poly<B> {
+    pub fn new(
+        poly: CirclePoly<B>,
+        eval: CircleEvaluation<B, BaseField, BitReversedOrder>,
+        store_polynomials_coefficients: bool,
+    ) -> Self {
+        Self {
+            poly: if store_polynomials_coefficients {
+                Some(poly)
+            } else {
+                None
+            },
+            eval,
+        }
+    }
+
+    pub fn eval_at_point(
+        &self,
+        point: CirclePoint<SecureField>,
+        weights: &Col<B, SecureField>,
+    ) -> SecureField {
+        if let Some(poly) = &self.poly {
+            poly.eval_at_point(point)
+        } else {
+            self.eval.barycentric_eval_at_point(weights)
+        }
+    }
+
+    pub fn get_evaluation_on_domain(
+        &self,
+        domain: CircleDomain,
+        twiddles: &TwiddleTree<B>,
+    ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
+        if let Some(poly) = &self.poly {
+            poly.evaluate_with_twiddles(domain, twiddles)
+        } else {
+            panic!("The polynomial's coefficients are not stored");
+        }
+    }
 }

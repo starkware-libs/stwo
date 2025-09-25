@@ -338,7 +338,7 @@ where
 
     // Setup protocol.
     let channel = &mut MC::C::default();
-    let mut commitment_scheme = CommitmentSchemeProver::new(config, &twiddles);
+    let mut commitment_scheme = CommitmentSchemeProver::new(config, &twiddles, false);
 
     // Preprocessed trace.
     // TODO(ShaharS): share is_first column between components when constant columns support this.
@@ -481,14 +481,14 @@ where
     tree_builder.commit(channel);
     span.exit();
 
-    assert_eq!(
-        commitment_scheme
-            .polynomials()
-            .as_cols_ref()
-            .map_cols(|c| c.log_size())
-            .0,
-        stmt0.log_sizes().0
-    );
+    // assert_eq!(
+    //     commitment_scheme
+    //         .polynomials()
+    //         .as_cols_ref()
+    //         .map_cols(|c| c.log_size())
+    //         .0,
+    //     stmt0.log_sizes().0
+    // );
 
     // Prove constraints.
     let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);

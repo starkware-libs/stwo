@@ -1,6 +1,7 @@
 use itertools::Itertools;
 
 use super::{CanonicCoset, CircleDomain, CircleEvaluation, CirclePoly};
+use crate::core::air::Poly;
 use crate::core::backend::{Col, ColumnOps};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
@@ -66,17 +67,22 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder>;
 
     fn evaluate_polynomials(
-        polynomials: &ColumnVec<CirclePoly<Self>>,
+        polynomials: ColumnVec<CirclePoly<Self>>,
         log_blowup_factor: u32,
+        store_polynomials_coefficients: bool,
         twiddles: &TwiddleTree<Self>,
-    ) -> Vec<CircleEvaluation<Self, BaseField, BitReversedOrder>> {
+    ) -> Vec<Poly<Self>>
+    where
+        Self: crate::core::backend::Backend,
+    {
         polynomials
-            .iter()
+            .into_iter()
             .map(|poly| {
-                poly.evaluate_with_twiddles(
+                let eval = poly.evaluate_with_twiddles(
                     CanonicCoset::new(poly.log_size() + log_blowup_factor).circle_domain(),
                     twiddles,
-                )
+                );
+                Poly::new(poly, eval, store_polynomials_coefficients)
             })
             .collect_vec()
     }
