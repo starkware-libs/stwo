@@ -115,14 +115,14 @@ impl Channel for Blake2sChannel {
             .collect()
     }
 
-    /// Verifies that `H(H(POW_PREFIX, [0_u8; 24], digest, n_bits), nonce)` has at least `n_bits`
+    /// Verifies that `H(H(POW_PREFIX, [0_u8; 12], digest, n_bits), nonce)` has at least `n_bits`
     /// many leading zeros.
     fn verify_pow_nonce(&self, n_bits: u32, nonce: u64) -> bool {
         let digest = self.digest();
-        // Compute H(POW_PREFIX, [0_u8; 24], digest, n_bits).
+        // Compute H(POW_PREFIX, [0_u8; 12], digest, n_bits).
         let mut hasher = Blake2sHasher::default();
         hasher.update(&Self::POW_PREFIX.to_le_bytes());
-        hasher.update(&[0_u8; 24]);
+        hasher.update(&[0_u8; 12]);
         hasher.update(&digest.0[..]);
         hasher.update(&n_bits.to_le_bytes());
         let prefixed_digest = hasher.finalize();
