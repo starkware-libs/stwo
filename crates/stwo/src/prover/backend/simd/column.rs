@@ -106,6 +106,20 @@ impl Column<BaseField> for BaseColumn {
         packed[index % N_LANES] = value;
         self.data[index / N_LANES] = PackedBaseField::from_array(packed)
     }
+
+    fn split_at_mid(mut self) -> (Self, Self) {
+        let second = self.data.split_off(self.data.len() / 2);
+        (
+            Self {
+                data: self.data,
+                length: self.length / 2,
+            },
+            Self {
+                data: second,
+                length: self.length - self.length / 2,
+            },
+        )
+    }
 }
 
 impl FromIterator<BaseField> for BaseColumn {
@@ -170,6 +184,19 @@ impl Column<CM31> for CM31Column {
         let mut packed = self.data[index / N_LANES].to_array();
         packed[index % N_LANES] = value;
         self.data[index / N_LANES] = PackedCM31::from_array(packed)
+    }
+    fn split_at_mid(mut self) -> (Self, Self) {
+        let second = self.data.split_off(self.data.len() / 2);
+        (
+            Self {
+                data: self.data,
+                length: self.length / 2,
+            },
+            Self {
+                data: second,
+                length: self.length - self.length / 2,
+            },
+        )
     }
 }
 
@@ -286,6 +313,19 @@ impl Column<SecureField> for SecureColumn {
         let mut packed = self.data[index / N_LANES].to_array();
         packed[index % N_LANES] = value;
         self.data[index / N_LANES] = PackedSecureField::from_array(packed)
+    }
+    fn split_at_mid(mut self) -> (Self, Self) {
+        let second = self.data.split_off(self.data.len() / 2);
+        (
+            Self {
+                data: self.data,
+                length: self.length / 2,
+            },
+            Self {
+                data: second,
+                length: self.length - self.length / 2,
+            },
+        )
     }
 }
 
@@ -552,6 +592,19 @@ impl Column<BaseField> for VeryPackedBaseColumn {
         packed[index % chunk_size] = value;
         self.data[index / chunk_size] = VeryPackedBaseField::from_array(packed)
     }
+    fn split_at_mid(mut self) -> (Self, Self) {
+        let second = self.data.split_off(self.data.len() / 2);
+        (
+            Self {
+                data: self.data,
+                length: self.length / 2,
+            },
+            Self {
+                data: second,
+                length: self.length - self.length / 2,
+            },
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -667,11 +720,13 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::BaseColumn;
+    use crate::core::fields::cm31::CM31;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::prover::backend::simd::column::SecureColumn;
+    use crate::prover::backend::simd::column::{CM31Column, SecureColumn, VeryPackedBaseColumn};
     use crate::prover::backend::simd::m31::N_LANES;
     use crate::prover::backend::simd::qm31::PackedQM31;
+    use crate::prover::backend::simd::very_packed_m31::N_VERY_PACKED_ELEMS;
     use crate::prover::backend::Column;
     use crate::prover::secure_column::SecureColumnByCoords;
 
@@ -738,5 +793,54 @@ mod tests {
                 rand1.to_array()
             );
         }
+    }
+    #[test]
+    pub fn test_split_at_mid_base_column() {
+        const PACKED_LENGTH: usize = 8;
+        let values: [BaseField; N_LANES * PACKED_LENGTH] = array::from_fn(BaseField::from);
+        let col: BaseColumn = values.into_iter().collect();
+        let (lhs, rhs) = col.split_at_mid();
+
+        assert_eq!(lhs.data.len(), PACKED_LENGTH / 2);
+        assert_eq!(rhs.data.len(), PACKED_LENGTH / 2);
+        assert_eq!(lhs.to_cpu(), values[..values.len() / 2]);
+        assert_eq!(rhs.to_cpu(), values[values.len() / 2..]);
+    }
+
+    #[test]
+    fn test_split_at_mid_secure_column() {
+        const PACKED_LENGTH: usize = 8;
+        let values: [SecureField; N_LANES * PACKED_LENGTH] = array::from_fn(SecureField::from);
+        let col: SecureColumn = values.into_iter().collect();
+        let (lhs, rhs) = col.split_at_mid();
+        assert_eq!(lhs.data.len(), PACKED_LENGTH / 2);
+        assert_eq!(rhs.data.len(), PACKED_LENGTH / 2);
+        assert_eq!(lhs.to_cpu(), values[..values.len() / 2]);
+        assert_eq!(rhs.to_cpu(), values[values.len() / 2..]);
+    }
+
+    #[test]
+    fn test_split_at_mid_cm31_column() {
+        const PACKED_LENGTH: usize = 8;
+        let values: [CM31; N_LANES * PACKED_LENGTH] =
+            array::from_fn(|i| CM31::from_u32_unchecked(i as u32, i as u32));
+        let col: CM31Column = values.into_iter().collect();
+        let (lhs, rhs) = col.split_at_mid();
+        assert_eq!(lhs.data.len(), PACKED_LENGTH / 2);
+        assert_eq!(rhs.data.len(), PACKED_LENGTH / 2);
+        assert_eq!(lhs.to_cpu(), values[..values.len() / 2]);
+        assert_eq!(rhs.to_cpu(), values[values.len() / 2..]);
+    }
+    #[test]
+    fn test_split_at_mid_very_packed_base_column() {
+        const PACKED_LENGTH: usize = 8;
+        let values: [BaseField; N_LANES * N_VERY_PACKED_ELEMS * PACKED_LENGTH] =
+            array::from_fn(BaseField::from);
+        let col: VeryPackedBaseColumn = values.into_iter().collect();
+        let (lhs, rhs) = col.split_at_mid();
+        assert_eq!(lhs.data.len(), PACKED_LENGTH / 2);
+        assert_eq!(rhs.data.len(), PACKED_LENGTH / 2);
+        assert_eq!(lhs.to_cpu(), values[..values.len() / 2]);
+        assert_eq!(rhs.to_cpu(), values[values.len() / 2..]);
     }
 }
