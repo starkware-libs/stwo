@@ -59,6 +59,10 @@ impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
     fn set(&mut self, index: usize, value: T) {
         self[index] = value;
     }
+    fn split_at_mid(mut self) -> (Self, Self) {
+        let second = self.split_off(self.len() / 2);
+        (self, second)
+    }
 }
 
 pub type CpuCirclePoly = CirclePoly<CpuBackend>;
@@ -101,5 +105,14 @@ mod tests {
         batch_inverse_in_place(&column, &mut dst);
 
         assert_eq!(expected, dst);
+    }
+
+    #[test]
+    fn test_split_at_mid_cpu_column() {
+        let values = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let col: Vec<_> = values.into_iter().collect();
+        let (lhs, rhs) = col.split_at_mid();
+        assert_eq!(lhs, vec![1, 2, 3, 4]);
+        assert_eq!(rhs, vec![5, 6, 7, 8]);
     }
 }

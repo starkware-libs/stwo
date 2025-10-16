@@ -61,4 +61,6 @@ pub trait Column<T>: Clone + Debug + FromIterator<T> {
     fn at(&self, index: usize) -> T;
     /// Sets the element at the given index.
     fn set(&mut self, index: usize, value: T);
+    /// Splits the column into two halves.
+    fn split_at_mid(self) -> (Self, Self);
 }
