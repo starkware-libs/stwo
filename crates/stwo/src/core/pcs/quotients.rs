@@ -68,6 +68,7 @@ impl ColumnSampleBatch {
     }
 }
 
+#[derive(Debug)]
 pub struct PointSample {
     pub point: CirclePoint<SecureField>,
     pub value: SecureField,

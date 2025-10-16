@@ -39,8 +39,11 @@ pub fn verify<MC: MerkleChannel>(
     );
 
     // Draw OODS point.
-    let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-
+    // let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
+    let oods_point = CirclePoint {
+        x: SecureField::from_u32_unchecked(221714253, 601556545, 2021102783, 1712754591),
+        y: SecureField::from_u32_unchecked(1736151795, 1429543180, 862074930, 782307515),
+    };
     // Get mask sample points relative to oods point.
     let mut sample_points = components.mask_points(oods_point);
     // Add the composition polynomial mask points.

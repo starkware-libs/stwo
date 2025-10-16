@@ -11,6 +11,7 @@ use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
+#[derive(Debug)]
 pub struct SecureCirclePoly<B: ColumnOps<BaseField>>(pub [CirclePoly<B>; SECURE_EXTENSION_DEGREE]);
 
 impl<B: PolyOps> SecureCirclePoly<B> {
@@ -46,6 +47,19 @@ impl<B: PolyOps> SecureCirclePoly<B> {
 
     pub fn into_coordinate_polys(self) -> [CirclePoly<B>; SECURE_EXTENSION_DEGREE] {
         self.0
+    }
+
+    pub fn split_at_mid(&self) -> (Self, Self) {
+        // To avoid cloning or copying, destructure self by-value so we can move the contents.
+        // NOTE: This requires `self` to be passed by value, not by reference!
+        let [poly0, poly1, poly2, poly3] = &self.0;
+        let (left0, right0) = poly0.split_at_mid();
+        let (left1, right1) = poly1.split_at_mid();
+        let (left2, right2) = poly2.split_at_mid();
+        let (left3, right3) = poly3.split_at_mid();
+        let left = [left0, left1, left2, left3];
+        let right = [right0, right1, right2, right3];
+        (Self(left), Self(right))
     }
 }
 

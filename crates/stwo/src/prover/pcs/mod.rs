@@ -106,6 +106,13 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     })
                     .collect_vec()
             });
+        for (i, col) in samples.as_cols_ref().iter().enumerate() {
+            println!("samples[{}]:", i);
+            for sample in col {
+                println!("    {:?}", sample);
+            }
+        }
+        // println!("samples: {:?}", samples);
         span.exit();
         let sampled_values = samples
             .as_cols_ref()

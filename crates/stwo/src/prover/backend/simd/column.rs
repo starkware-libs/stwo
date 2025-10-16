@@ -106,6 +106,11 @@ impl Column<BaseField> for BaseColumn {
         packed[index % N_LANES] = value;
         self.data[index / N_LANES] = PackedBaseField::from_array(packed)
     }
+    fn split_at_mid(&self) -> (Self, Self) {
+        let index = self.length / N_LANES /2;
+        let (left, right) = self.data.split_at(index);
+        (Self::from_simd(left.to_vec()), Self::from_simd(right.to_vec()))
+    }
 }
 
 impl FromIterator<BaseField> for BaseColumn {
@@ -170,6 +175,11 @@ impl Column<CM31> for CM31Column {
         let mut packed = self.data[index / N_LANES].to_array();
         packed[index % N_LANES] = value;
         self.data[index / N_LANES] = PackedCM31::from_array(packed)
+    }
+    fn split_at_mid(&self) -> (Self, Self) {
+        let index = self.length / N_LANES / 2;
+        let (left, right) = self.data.split_at(index);
+        (Self { data: left.to_vec(), length: index }, Self { data: right.to_vec(), length: self.length - index })
     }
 }
 
@@ -286,6 +296,11 @@ impl Column<SecureField> for SecureColumn {
         let mut packed = self.data[index / N_LANES].to_array();
         packed[index % N_LANES] = value;
         self.data[index / N_LANES] = PackedSecureField::from_array(packed)
+    }
+    fn split_at_mid(&self) -> (Self, Self) {
+        let index = self.length / N_LANES / 2;
+        let (left, right) = self.data.split_at(index);
+        (Self { data: left.to_vec(), length: index }, Self { data: right.to_vec(), length: self.length - index })
     }
 }
 
@@ -551,6 +566,11 @@ impl Column<BaseField> for VeryPackedBaseColumn {
         let mut packed = self.data[index / chunk_size].to_array();
         packed[index % chunk_size] = value;
         self.data[index / chunk_size] = VeryPackedBaseField::from_array(packed)
+    }
+    fn split_at_mid(&self) -> (Self, Self) {
+        let index = self.length /N_LANES / N_VERY_PACKED_ELEMS / 2;
+        let (left, right) = self.data.split_at(index);
+        (Self { data: left.to_vec(), length: index }, Self { data: right.to_vec(), length: self.length - index })
     }
 }
 

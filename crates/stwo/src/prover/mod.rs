@@ -7,6 +7,7 @@ use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::proof::StarkProof;
 use crate::core::verifier::PREPROCESSED_TRACE_IDX;
 use crate::prover::backend::BackendForChannel;
+use crate::prover::poly::circle::SecureCirclePoly;
 
 mod air;
 pub use air::component_prover::{ComponentProver, ComponentProvers, Trace};
@@ -49,15 +50,38 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     )
     .entered();
     let composition_poly = component_provers.compute_composition_polynomial(random_coeff, &trace);
+    println!("composition_poly: {:?}", composition_poly);
     span1.exit();
-
+    let (left_composition_poly, right_composition_poly) = composition_poly.split_at_mid();
+    println!("left_composition_poly: {:?}", left_composition_poly);
+    println!("right_composition_poly: {:?}", right_composition_poly);
     let mut tree_builder = commitment_scheme.tree_builder();
+    
+    let composition_poly_clone = composition_poly.clone();
     tree_builder.extend_polys(composition_poly.into_coordinate_polys());
     tree_builder.commit(channel);
     span.exit();
 
     // Draw OODS point.
-    let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
+    // let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
+    let oods_point = CirclePoint {
+        x: SecureField::from_u32_unchecked(221714253, 601556545, 2021102783, 1712754591),
+        y: SecureField::from_u32_unchecked(1736151795, 1429543180, 862074930, 782307515),
+    };
+
+    // evaluate left composition poly at oods_point
+    let left_eval = left_composition_poly.eval_at_point(oods_point);
+    let right_eval = right_composition_poly.eval_at_point(oods_point);
+    let log_size = composition_poly_clone[0].log_size();
+    let comp_poly_clone = SecureCirclePoly(composition_poly_clone);
+    let comp_eval = comp_poly_clone.eval_at_point(oods_point);
+    // use repeated double to get pi^{log_size-2}(oods_point.x)
+    println!("left_eval: {:?}", left_eval);
+    println!("right_eval: {:?}", right_eval);
+    println!("comp_eval: {:?}", comp_eval);
+    let pi_eval = oods_point.repeated_double(log_size - 2).x;
+    assert_eq!(left_eval + pi_eval * right_eval, comp_eval);
+    // println!("left + pi*right: {:?}", left_eval + pi_eval * right_eval);
 
     // Get mask sample points relative to oods point.
     let mut sample_points = component_provers.components().mask_points(oods_point);
