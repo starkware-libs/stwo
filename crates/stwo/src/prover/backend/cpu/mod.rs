@@ -59,6 +59,11 @@ impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
     fn set(&mut self, index: usize, value: T) {
         self[index] = value;
     }
+    fn split_at_mid(&self) -> (Self, Self) {
+        let index = self.len() / 2;
+        let (left, right) = self.split_at(index);
+        (Self::from(left), Self::from(right))
+    }
 }
 
 pub type CpuCirclePoly = CirclePoly<CpuBackend>;
