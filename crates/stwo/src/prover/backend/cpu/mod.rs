@@ -1,5 +1,6 @@
 pub mod accumulation;
 mod blake2s;
+mod blake2s_lifted;
 pub mod circle;
 mod fri;
 mod grind;
