@@ -19,6 +19,7 @@ pub mod queries;
 pub mod test_utils;
 pub mod utils;
 pub mod vcs;
+pub mod vcs_lifted;
 pub mod verifier;
 
 /// A vector in which each element relates (by index) to a column in the trace.
