@@ -64,6 +64,22 @@ impl<B: PolyOps> CirclePoly<B> {
     ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
         B::evaluate(self, domain, twiddles)
     }
+
+    // Splits the polynomial in the middle, separating the coeffs that are multiplied by
+    // pi^{log_size - 2}(x) and the ones that are not.
+    pub fn split_at_mid(self) -> (Self, Self) {
+        let (left, right) = self.coeffs.split_at_mid();
+        (
+            Self {
+                coeffs: left,
+                log_size: self.log_size - 1,
+            },
+            Self {
+                coeffs: right,
+                log_size: self.log_size - 1,
+            },
+        )
+    }
 }
 
 #[cfg(test)]
@@ -113,6 +129,25 @@ mod tests {
         assert_eq!(
             poly.eval_at_point(random_point),
             extended.eval_at_point(random_point)
+        );
+    }
+
+    #[test]
+    fn test_circle_poly_split_at_mid() {
+        let log_size = 4;
+        let poly = CpuCirclePoly::new(
+            (0..1 << log_size)
+                .map(BaseField::from_u32_unchecked)
+                .collect(),
+        );
+        let (left, right) = poly.clone().split_at_mid();
+        let random_point = CirclePoint::get_point(21903);
+
+        // Check that left(x) + pi^{log_size - 2}(x) * right(x) = poly(x).
+        assert_eq!(
+            left.eval_at_point(random_point)
+                + random_point.repeated_double(log_size - 2).x * right.eval_at_point(random_point),
+            poly.eval_at_point(random_point)
         );
     }
 }

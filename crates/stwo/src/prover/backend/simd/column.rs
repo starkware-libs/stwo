@@ -108,6 +108,16 @@ impl Column<BaseField> for BaseColumn {
     }
 
     fn split_at_mid(mut self) -> (Self, Self) {
+        // Fallback for very small vectors where packed length < 2.
+        // Splitting by packed chunks could yield an empty data vec with non-zero logical length.
+        if self.data.len() < 2 {
+            let cpu = self.to_cpu();
+            let mid = cpu.len() / 2;
+            let left: Self = cpu[..mid].iter().copied().collect();
+            let right: Self = cpu[mid..].iter().copied().collect();
+            return (left, right);
+        }
+
         let second = self.data.split_off(self.data.len() / 2);
         (
             Self {
@@ -186,6 +196,14 @@ impl Column<CM31> for CM31Column {
         self.data[index / N_LANES] = PackedCM31::from_array(packed)
     }
     fn split_at_mid(mut self) -> (Self, Self) {
+        if self.data.len() < 2 {
+            let cpu = self.to_cpu();
+            let mid = cpu.len() / 2;
+            let left: Self = cpu[..mid].iter().copied().collect();
+            let right: Self = cpu[mid..].iter().copied().collect();
+            return (left, right);
+        }
+
         let second = self.data.split_off(self.data.len() / 2);
         (
             Self {
@@ -315,6 +333,14 @@ impl Column<SecureField> for SecureColumn {
         self.data[index / N_LANES] = PackedSecureField::from_array(packed)
     }
     fn split_at_mid(mut self) -> (Self, Self) {
+        if self.data.len() < 2 {
+            let cpu = self.to_cpu();
+            let mid = cpu.len() / 2;
+            let left: Self = cpu[..mid].iter().copied().collect();
+            let right: Self = cpu[mid..].iter().copied().collect();
+            return (left, right);
+        }
+
         let second = self.data.split_off(self.data.len() / 2);
         (
             Self {
@@ -593,6 +619,14 @@ impl Column<BaseField> for VeryPackedBaseColumn {
         self.data[index / chunk_size] = VeryPackedBaseField::from_array(packed)
     }
     fn split_at_mid(mut self) -> (Self, Self) {
+        if self.data.len() < 2 {
+            let cpu = self.to_cpu();
+            let mid = cpu.len() / 2;
+            let left: Self = cpu[..mid].iter().copied().collect();
+            let right: Self = cpu[mid..].iter().copied().collect();
+            return (left, right);
+        }
+
         let second = self.data.split_off(self.data.len() / 2);
         (
             Self {
