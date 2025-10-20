@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::core::fields::m31::BaseField;
-use crate::core::vcs::MerkleHasher;
+use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::prover::backend::{Col, ColumnOps};
 
 /// Trait for performing Merkle operations on a commitment scheme.
-pub trait MerkleOpsLifted<H: MerkleHasher>:
+pub trait MerkleOpsLifted<H: MerkleHasherLifted>:
     ColumnOps<BaseField> + ColumnOps<H::Hash> + for<'de> Deserialize<'de> + Serialize
 {
     /// Main changes: 1. no columns, 2. always a prev_layer.

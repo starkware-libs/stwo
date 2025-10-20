@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables)]
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std_shims::{vec, Vec};
@@ -6,29 +5,29 @@ use thiserror::Error;
 
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
-use crate::core::vcs::MerkleHasher;
+use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
-pub struct MerkleDecommitmentLifted<H: MerkleHasher> {
+pub struct MerkleDecommitmentLifted<H: MerkleHasherLifted> {
     /// Hash values that the verifier needs but cannot deduce from previous computations, in the
     /// order they are needed.
     pub hash_witness: Vec<H::Hash>,
 }
-impl<H: MerkleHasher> MerkleDecommitmentLifted<H> {
+impl<H: MerkleHasherLifted> MerkleDecommitmentLifted<H> {
     pub const fn empty() -> Self {
         Self {
             hash_witness: Vec::new(),
         }
     }
 }
-/// TODO: what are the requirements on n_columns and log_size? <-=--------------------------
-pub struct MerkleVerifierLifted<H: MerkleHasher> {
+/// TODO(Leo): document requirements on n_columns and log_size.
+pub struct MerkleVerifierLifted<H: MerkleHasherLifted> {
     pub root: H::Hash,
     pub n_columns: usize,
     pub log_size: u32,
 }
 
-impl<H: MerkleHasher> MerkleVerifierLifted<H> {
+impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
     pub fn new(root: H::Hash, n_columns: usize, log_size: u32) -> Self {
         Self {
             root,
@@ -60,7 +59,7 @@ impl<H: MerkleHasher> MerkleVerifierLifted<H> {
     ///
     /// [`MerkleProver::decommit()`]: crate::core::...::MerkleProver::decommit
     ///
-    /// TODO: what the are the assumptions on query positions? <---------------------------
+    /// TODO(Leo): document assumptions on query positions.
     pub fn verify(
         &self,
         queries_position: Vec<usize>,
@@ -73,13 +72,17 @@ impl<H: MerkleHasher> MerkleVerifierLifted<H> {
         let mut last_layer_hashes: Vec<(usize, H::Hash)> = queries_position
             .iter()
             .zip_eq(queried_values.chunks_exact(self.n_columns))
-            .map(|(idx, column_values)| (*idx, H::hash_node(None, column_values)))
+            .map(|(idx, column_values)| {
+                let hasher = H::default();
+                let hash = hasher.finalize_leaf_slice(column_values);
+                (*idx, hash)
+            })
             .collect();
 
         let mut hash_witness = decommitment.hash_witness.into_iter();
 
         // Verify inner layers
-        for layer_log_size in (0..self.log_size).rev() {
+        for _ in (0..self.log_size).rev() {
             let mut layer_total_queries = vec![];
 
             let mut prev_layer_queries = last_layer_hashes
@@ -91,7 +94,7 @@ impl<H: MerkleHasher> MerkleVerifierLifted<H> {
 
             let mut prev_layer_hashes = last_layer_hashes.iter().peekable();
 
-            while let Some(node_index) = prev_layer_queries.next().map(|q| q / 2) {
+            while let Some(node_index) = prev_layer_queries.peek().map(|q| q / 2) {
                 prev_layer_queries
                     .peek_take_while(|q| q / 2 == node_index)
                     .for_each(drop);
@@ -115,8 +118,8 @@ impl<H: MerkleHasher> MerkleVerifierLifted<H> {
                             .next()
                             .ok_or(MerkleVerificationError::WitnessTooShort)
                     })?;
-                let node_hashes = Some((left_hash, right_hash));
-                layer_total_queries.push((node_index, H::hash_node(node_hashes, &[])));
+                let node_hashes = (left_hash, right_hash);
+                layer_total_queries.push((node_index, H::hash_children(node_hashes)));
             }
             last_layer_hashes = layer_total_queries;
         }
