@@ -61,7 +61,6 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     tree_builder.extend_polys(right_comp_poly_half.into_coordinate_polys());
     tree_builder.commit(channel);
     span.exit();
-
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 

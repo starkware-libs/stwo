@@ -1,3 +1,4 @@
+use core::mem::transmute;
 use std::iter::zip;
 use std::{array, mem};
 
@@ -18,6 +19,8 @@ use super::SimdBackend;
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
+use crate::prover::backend::simd::fft::{transpose_vecs, CACHED_FFT_LOG_SIZE};
+use crate::prover::backend::simd::m31::LOG_N_LANES;
 use crate::prover::backend::{Column, CpuBackend};
 use crate::prover::secure_column::SecureColumnByCoords;
 
@@ -118,7 +121,32 @@ impl Column<BaseField> for BaseColumn {
             return (left, right);
         }
 
-        let second = self.data.split_off(self.data.len() / 2);
+        let log_n_vecs = self.length.ilog2() - LOG_N_LANES;
+        if self.length.ilog2() > CACHED_FFT_LOG_SIZE {
+            // transpose the data
+            unsafe {
+                transpose_vecs(
+                    transmute::<*mut PackedBaseField, *mut u32>(self.data.as_mut_ptr()),
+                    log_n_vecs as usize,
+                );
+            }
+        }
+        let mut second = self.data.split_off(self.data.len() / 2);
+
+        if self.length.ilog2() - 1 > CACHED_FFT_LOG_SIZE {
+            // transpose first and second
+            unsafe {
+                transpose_vecs(
+                    transmute::<*mut PackedBaseField, *mut u32>(self.data.as_mut_ptr()),
+                    (log_n_vecs - 1) as usize,
+                );
+                transpose_vecs(
+                    transmute::<*mut PackedBaseField, *mut u32>(second.as_mut_ptr()),
+                    (log_n_vecs - 1) as usize,
+                );
+            }
+        }
+
         (
             Self {
                 data: self.data,
@@ -203,8 +231,32 @@ impl Column<CM31> for CM31Column {
             let right: Self = cpu[mid..].iter().copied().collect();
             return (left, right);
         }
+        let log_n_vecs = self.length.ilog2() - LOG_N_LANES;
+        if self.length.ilog2() > CACHED_FFT_LOG_SIZE {
+            // transpose the data
+            unsafe {
+                transpose_vecs(
+                    transmute::<*mut PackedCM31, *mut u32>(self.data.as_mut_ptr()),
+                    log_n_vecs as usize,
+                );
+            }
+        }
+        let mut second = self.data.split_off(self.data.len() / 2);
 
-        let second = self.data.split_off(self.data.len() / 2);
+        if self.length.ilog2() - 1 > CACHED_FFT_LOG_SIZE {
+            // transpose first and second
+            unsafe {
+                transpose_vecs(
+                    transmute::<*mut PackedCM31, *mut u32>(self.data.as_mut_ptr()),
+                    (log_n_vecs - 1) as usize,
+                );
+                transpose_vecs(
+                    transmute::<*mut PackedCM31, *mut u32>(second.as_mut_ptr()),
+                    (log_n_vecs - 1) as usize,
+                );
+            }
+        }
+
         (
             Self {
                 data: self.data,
@@ -341,7 +393,31 @@ impl Column<SecureField> for SecureColumn {
             return (left, right);
         }
 
-        let second = self.data.split_off(self.data.len() / 2);
+        let log_n_vecs = self.length.ilog2() - LOG_N_LANES;
+        if self.length.ilog2() > CACHED_FFT_LOG_SIZE {
+            // transpose the data
+            unsafe {
+                transpose_vecs(
+                    transmute::<*mut PackedSecureField, *mut u32>(self.data.as_mut_ptr()),
+                    log_n_vecs as usize,
+                );
+            }
+        }
+        let mut second = self.data.split_off(self.data.len() / 2);
+
+        if self.length.ilog2() - 1 > CACHED_FFT_LOG_SIZE {
+            // transpose first and second
+            unsafe {
+                transpose_vecs(
+                    transmute::<*mut PackedSecureField, *mut u32>(self.data.as_mut_ptr()),
+                    (log_n_vecs - 1) as usize,
+                );
+                transpose_vecs(
+                    transmute::<*mut PackedSecureField, *mut u32>(second.as_mut_ptr()),
+                    (log_n_vecs - 1) as usize,
+                );
+            }
+        }
         (
             Self {
                 data: self.data,
@@ -627,7 +703,31 @@ impl Column<BaseField> for VeryPackedBaseColumn {
             return (left, right);
         }
 
-        let second = self.data.split_off(self.data.len() / 2);
+        let log_n_vecs = self.length.ilog2() - LOG_N_LANES;
+        if self.length.ilog2() > CACHED_FFT_LOG_SIZE {
+            // transpose the data
+            unsafe {
+                transpose_vecs(
+                    transmute::<*mut VeryPackedBaseField, *mut u32>(self.data.as_mut_ptr()),
+                    log_n_vecs as usize,
+                );
+            }
+        }
+        let mut second = self.data.split_off(self.data.len() / 2);
+
+        if self.length.ilog2() - 1 > CACHED_FFT_LOG_SIZE {
+            // transpose first and second
+            unsafe {
+                transpose_vecs(
+                    transmute::<*mut VeryPackedBaseField, *mut u32>(self.data.as_mut_ptr()),
+                    (log_n_vecs - 1) as usize,
+                );
+                transpose_vecs(
+                    transmute::<*mut VeryPackedBaseField, *mut u32>(second.as_mut_ptr()),
+                    (log_n_vecs - 1) as usize,
+                );
+            }
+        }
         (
             Self {
                 data: self.data,
