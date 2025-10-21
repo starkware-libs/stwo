@@ -91,19 +91,13 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
         }
         // Hash columns in chunks of 16.
         let mut col_chunk_iter = columns.chunks(16);
-        // Remember to re-add!!!!
-        // let last_chunk = unsafe { col_chunk_iter.next_back().unwrap_unchecked() };
-
-        // vec of states, in simd.
+        let last_chunk = unsafe { col_chunk_iter.next_back().unwrap_unchecked() };
 
         let mut prev_layer_states: Vec<[u32x16; 8]> = vec![INITIAL_STATE];
 
         for (col_chunk_idx, col_chunk) in &mut col_chunk_iter.enumerate() {
-            let chunk_max_size = col_chunk.iter().last().unwrap().len().max(1 << LOG_N_LANES);
+            let chunk_max_size = col_chunk.iter().last().unwrap().len();
 
-            // I could have prev_layer to be a vector of Blake2sHash
-            // or directly into simd elements that I can manipulate directly without going
-            // through the transformaiton of 144-145
             let mut curr_layer_states: Vec<[u32x16; 8]> =
                 vec![[u32x16::splat(0); 8]; chunk_max_size >> LOG_N_LANES];
             // Iterate on res.
@@ -121,15 +115,39 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
                 for (j, column) in col_chunk.iter().enumerate() {
                     msgs[j] = column.data[i % column.data.len()].into_simd();
                 }
-                let state = compress_finalize(prev_state, msgs, t);
+                // TODO: make it unfinalized.
+                let state = compress_unfinalized(prev_state, msgs, t);
                 curr_state.copy_from_slice(&state);
             });
             prev_layer_states = curr_layer_states;
         }
 
         // Last chunk
+        let chunk_max_size = last_chunk.iter().last().unwrap().len();
 
-        prev_layer_states
+        let mut curr_layer_states: Vec<[u32x16; 8]> =
+            vec![[u32x16::splat(0); 8]; chunk_max_size >> LOG_N_LANES];
+
+        // Iterate on res.
+        #[cfg(not(feature = "parallel"))]
+        // let iter = curr_layer.chunks_mut(1 << LOG_N_LANES);
+        let iter_states = curr_layer_states.iter_mut();
+
+        #[cfg(feature = "parallel")]
+        let iter_states = curr_layer_states.par_iter_mut();
+
+        iter_states.enumerate().for_each(|(i, curr_state)| {
+            let prev_state = prev_layer_states[i % prev_layer_states.len()];
+            let t = 4 * columns.len() as u64;
+            let mut msgs: [u32x16; 16] = unsafe { std::mem::zeroed() };
+            for (j, column) in last_chunk.iter().enumerate() {
+                msgs[j] = column.data[i % column.data.len()].into_simd();
+            }
+            let state = compress_finalize(prev_state, msgs, t);
+            curr_state.copy_from_slice(&state);
+        });
+
+        curr_layer_states 
             .iter()
             .map(|x| {
                 let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(*x)) };
@@ -590,7 +608,7 @@ mod tests {
     #[test]
     fn test_commit_first_layer() {
         let n_length = 32;
-        let mut first_layer_cpu: Vec<Vec<BaseField>> = (0..1 << LOG_N_LANES)
+        let mut first_layer_cpu: Vec<Vec<BaseField>> = (0..18)
             .map(|i| {
                 (0..n_length)
                     .map(|j| M31::from_u32_unchecked(10 * i + j))
