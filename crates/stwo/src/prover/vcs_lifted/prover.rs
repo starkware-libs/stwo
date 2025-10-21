@@ -75,7 +75,6 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProver<B, H> {
         let mut queried_values: Vec<BaseField> = vec![];
         let mut decommitment = MerkleDecommitmentLifted::<H>::empty();
 
-        // Sort columns by layer.
         let columns_sorted = columns.iter().sorted_by_key(|c| c.len()).collect_vec();
 
         for pos in queries_position.iter() {
@@ -84,7 +83,7 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProver<B, H> {
 
         let mut last_layer_queries = queries_position;
 
-        // TODO: do better indexing.
+        // TODO(Leo): do better indexing and/or document it.
         for layer_log_size in (0..self.layers.len() as u32 - 1).rev() {
             // Prepare write buffer for queries to the current layer. This will propagate to the
             // next layer.
@@ -138,15 +137,17 @@ mod test {
     use crate::prover::backend::CpuBackend;
 
     fn prepare_merkle() -> (Vec<Vec<BaseField>>, MerkleProver<CpuBackend, Blake2sHasher>) {
+        // TODO(Leo): write better.
         // | 0 .. 3 | 0 .. 7 | 0 .. 15 |
         let columns: Vec<Vec<BaseField>> = (0..3)
             .map(|i| (0..1 << (i + 2)).map(M31::from_u32_unchecked).collect())
             .collect();
         let merkle_prover =
             MerkleProver::<CpuBackend, Blake2sHasher>::commit(columns.iter().collect());
-        dbg!(&merkle_prover.layers);
         (columns, merkle_prover)
     }
+
+
     #[test]
     fn test_lifted_merkle_leaves() {
         let (_, merkle_prover) = prepare_merkle();
@@ -175,7 +176,6 @@ mod test {
             columns.len(),
             columns.last().unwrap().len().ilog2() as u32,
         );
-        dbg!(&decommitment);
         verifier
             .verify(queries_position, queried_values, decommitment)
             .unwrap();

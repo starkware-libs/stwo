@@ -1,4 +1,4 @@
-#![allow(unused_variables, dead_code, unused_imports, unused_mut)]
+#![allow(dead_code)]
 //! A SIMD implementation of the BLAKE2s compression function.
 //! Based on <https://github.com/oconnor663/blake2_simd/blob/master/blake2s/src/avx2.rs>.
 
@@ -81,13 +81,13 @@ pub const SIGMA: [[u8; 16]; 10] = [
 ];
 
 impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
-    /// Receives the column in increasing order of size.
+    /// TODO(Leo): document. Receives the columns in increasing order of size.
     fn commit_on_first_layer(
-        log_size: u32,
+        _log_size: u32,
         columns: &[&Col<Self, BaseField>],
     ) -> Col<Self, <Blake2sMerkleHasher as MerkleHasherLifted>::Hash> {
         if columns.first().is_some_and(|c| c.len() < 1 << LOG_N_LANES) {
-            unimplemented!("Small columns are not implemented yet")
+            unimplemented!("Support for small columns is not implemented yet")
         }
         // Hash columns in chunks of 16.
         let mut col_chunk_iter = columns.chunks(16);
@@ -95,44 +95,39 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
 
         let mut prev_layer_states: Vec<[u32x16; 8]> = vec![INITIAL_STATE];
 
-        for (col_chunk_idx, col_chunk) in &mut col_chunk_iter.enumerate() {
-            let chunk_max_size = col_chunk.iter().last().unwrap().len();
+        for (idx, column_chunk) in &mut col_chunk_iter.enumerate() {
+            let chunk_max_size = column_chunk.iter().last().unwrap().len();
 
             let mut curr_layer_states: Vec<[u32x16; 8]> =
-                vec![[u32x16::splat(0); 8]; chunk_max_size >> LOG_N_LANES];
-            // Iterate on res.
-            #[cfg(not(feature = "parallel"))]
-            // let iter = curr_layer.chunks_mut(1 << LOG_N_LANES);
-            let iter_states = curr_layer_states.iter_mut();
+                vec![[ZEROS; 8]; chunk_max_size >> LOG_N_LANES];
 
+            // Compute the new states of the current layer.
+            #[cfg(not(feature = "parallel"))]
+            let iter_states = curr_layer_states.iter_mut();
             #[cfg(feature = "parallel")]
             let iter_states = curr_layer_states.par_iter_mut();
 
             iter_states.enumerate().for_each(|(i, curr_state)| {
                 let prev_state = prev_layer_states[i % prev_layer_states.len()];
-                let t = 64 * (col_chunk_idx + 1) as u64;
+                // A full message contains 64 bytes.
+                let t = 64 * (idx + 1) as u64;
                 let mut msgs: [u32x16; 16] = unsafe { std::mem::zeroed() };
-                for (j, column) in col_chunk.iter().enumerate() {
+                for (j, column) in column_chunk.iter().enumerate() {
                     msgs[j] = column.data[i % column.data.len()].into_simd();
                 }
-                // TODO: make it unfinalized.
                 let state = compress_unfinalized(prev_state, msgs, t);
                 curr_state.copy_from_slice(&state);
             });
             prev_layer_states = curr_layer_states;
         }
 
-        // Last chunk
+        // Process last chunk.
         let chunk_max_size = last_chunk.iter().last().unwrap().len();
-
         let mut curr_layer_states: Vec<[u32x16; 8]> =
-            vec![[u32x16::splat(0); 8]; chunk_max_size >> LOG_N_LANES];
+            vec![[ZEROS; 8]; chunk_max_size >> LOG_N_LANES];
 
-        // Iterate on res.
         #[cfg(not(feature = "parallel"))]
-        // let iter = curr_layer.chunks_mut(1 << LOG_N_LANES);
         let iter_states = curr_layer_states.iter_mut();
-
         #[cfg(feature = "parallel")]
         let iter_states = curr_layer_states.par_iter_mut();
 
@@ -147,7 +142,7 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
             curr_state.copy_from_slice(&state);
         });
 
-        curr_layer_states 
+        curr_layer_states
             .iter()
             .map(|x| {
                 let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(*x)) };
@@ -158,6 +153,8 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
     }
 
     fn commit_on_layer(log_size: u32, prev_layer: &Vec<Blake2sHash>) -> Vec<Blake2sHash> {
+        assert_eq!(prev_layer.len(), 1 << (log_size + 1));
+
         if log_size < LOG_N_LANES {
             return parallel_iter!(0..1 << log_size)
                 .map(|i| {
@@ -166,20 +163,16 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
                 .collect();
         }
 
-        assert_eq!(prev_layer.len(), 1 << (log_size + 1));
-
         // Commit to columns.
         let mut res = vec![Blake2sHash::default(); 1 << log_size];
+
         #[cfg(not(feature = "parallel"))]
         let iter = res.chunks_mut(1 << LOG_N_LANES);
-
         #[cfg(feature = "parallel")]
         let iter = res.par_chunks_mut(1 << LOG_N_LANES);
 
         iter.enumerate().for_each(|(i, chunk)| {
             let state = SIMD_NODE_INITIAL_STATE;
-            // No columns in the layer.
-
             let prev_chunk_u32s = cast_slice::<_, u32>(&prev_layer[(i << 5)..((i + 1) << 5)]);
             let msgs: [u32x16; 16] = array::from_fn(|j| {
                 u32x16::from_array(std::array::from_fn(|k| prev_chunk_u32s[16 * j + k]))
@@ -481,12 +474,12 @@ mod tests {
 
     use super::{compress16, hash_16, transpose_msgs, untranspose_states};
     use crate::core::fields::m31::{BaseField, M31};
-    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
     use crate::prover::backend::simd::blake2s_ref::{self, compress};
     use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::m31::LOG_N_LANES;
     use crate::prover::backend::simd::SimdBackend;
-    use crate::prover::backend::{Col, CpuBackend};
+    use crate::prover::backend::CpuBackend;
     use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 
     #[test]
@@ -607,36 +600,43 @@ mod tests {
 
     #[test]
     fn test_commit_first_layer() {
-        let n_length = 32;
-        let mut first_layer_cpu: Vec<Vec<BaseField>> = (0..18)
+        let n_length = 1 << 8;
+        let n_cols = 18;
+        let mut first_layer_cpu: Vec<Vec<BaseField>> = (0..n_cols)
             .map(|i| {
                 (0..n_length)
                     .map(|j| M31::from_u32_unchecked(10 * i + j))
                     .collect_vec()
             })
             .collect();
-        first_layer_cpu[0] = (0..16).map(M31::from_u32_unchecked).collect_vec();
+
+        first_layer_cpu[0] = (0..1 << 5).map(M31::from_u32_unchecked).collect_vec();
+        first_layer_cpu[1] = (0..1 << 6).map(M31::from_u32_unchecked).collect_vec();
 
         let first_layer_simd: Vec<BaseColumn> = first_layer_cpu
             .iter()
             .map(|c| BaseColumn::from_cpu(c.clone()))
             .collect();
-        // dbg!(&first_layer_simd);
         let first_layer_simd_refs: Vec<&BaseColumn> = first_layer_simd.iter().collect();
         let commit_simd =
             SimdBackend::commit_on_first_layer(LOG_N_LANES, first_layer_simd_refs.as_slice());
+
         let first_layer_cpu_refs: Vec<&Vec<BaseField>> = first_layer_cpu.iter().collect();
         let commit_cpu =
             CpuBackend::commit_on_first_layer(LOG_N_LANES, first_layer_cpu_refs.as_slice());
-        dbg!(commit_simd);
-        dbg!(commit_cpu);
 
-        // Sanity check.
-        let mut hasher = Blake2sHasher::new();
-        let base_field_elements = (0..1 << LOG_N_LANES)
-            .map(|i| M31::from_u32_unchecked(i).0.to_le_bytes())
-            .flatten()
-            .collect_vec();
-        hasher.update(base_field_elements.as_slice());
+        assert_eq!(commit_cpu, commit_simd);
+    }
+
+    #[test]
+    fn test_commit_inner_layer() {
+        let log_size: u32 = 6;
+        let layer: Vec<Blake2sHash> = (0u32..1 << (log_size + 1))
+            .map(|i| Blake2sHasher::hash(&i.to_le_bytes()))
+            .collect();
+        assert_eq!(
+            CpuBackend::commit_on_layer(log_size, &layer),
+            SimdBackend::commit_on_layer(log_size, &layer)
+        );
     }
 }

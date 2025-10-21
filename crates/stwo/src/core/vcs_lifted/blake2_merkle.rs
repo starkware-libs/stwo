@@ -30,7 +30,7 @@ impl MerkleHasherLifted for Blake2sMerkleHasher {
         Blake2sHash(hasher.finalize().into())
     }
     fn update_leaf(&mut self, column_value: BaseField) {
-        self.update(column_value.0.to_le_bytes().as_slice());
+        self.update(&column_value.0.to_le_bytes());
     }
     fn finalize(self) -> Self::Hash {
         self.finalize()

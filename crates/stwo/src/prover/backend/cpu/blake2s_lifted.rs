@@ -5,12 +5,12 @@ use crate::prover::backend::CpuBackend;
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 
 impl MerkleOpsLifted<Blake2sMerkleHasher> for CpuBackend {
-    /// Receives the columns in ascending order!!!
+    /// TODO(Leo): document. Assumption on order of cols.
     fn commit_on_first_layer(
         _log_size: u32,
         columns: &[&Vec<BaseField>],
     ) -> Vec<<Blake2sMerkleHasher as MerkleHasherLifted>::Hash> {
-        let mut prev_layer: Vec<Blake2sMerkleHasher> = vec![Blake2sMerkleHasher::default()];
+        let mut prev_layer: Vec<Blake2sMerkleHasher> = vec![Blake2sMerkleHasher::new()];
         for col in columns.iter() {
             prev_layer = col
                 .iter()
@@ -29,6 +29,7 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for CpuBackend {
         log_size: u32,
         prev_layer: &Vec<<Blake2sMerkleHasher as MerkleHasherLifted>::Hash>,
     ) -> Vec<<Blake2sMerkleHasher as MerkleHasherLifted>::Hash> {
+        assert_eq!(1 << (log_size + 1), prev_layer.len());
         (0..(1 << log_size))
             .map(|i| {
                 <Blake2sMerkleHasher as MerkleHasherLifted>::hash_children((
