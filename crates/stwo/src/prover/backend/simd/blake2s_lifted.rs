@@ -100,31 +100,36 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
         // let mut prev_layer: Vec<Blake2sHash> = vec![Blake2sHash::default(); 1 << LOG_N_LANES];
         let initial: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(INITIAL_STATE)) };
         let mut prev_layer: Vec<Blake2sHash> = initial.into(); 
+
+        let mut prev_layer_states: Vec<[u32x16; 8]> = vec![INITIAL_STATE];
         dbg!(&prev_layer);
        
         for (col_chunk_idx, col_chunk) in &mut col_chunk_iter.enumerate() {
             let chunk_max_size = col_chunk.iter().last().unwrap().len().max(1 << LOG_N_LANES);
-
+            
             // I could have prev_layer to be a vector of Blake2sHash
             // or directly into simd elements that I can manipulate directly without going
             // through the transformaiton of 144-145
             let mut curr_layer = vec![Blake2sHash::default(); chunk_max_size]; // Maybe I need chunk_max_size - LOG_N_LANES?
-
+            let mut curr_layer_states: Vec<[u32x16; 8]> = vec![[u32x16::splat(0); 8]; chunk_max_size >> LOG_N_LANES ];
             // Iterate on res.
             #[cfg(not(feature = "parallel"))]
-            let iter = curr_layer.chunks_mut(1 << LOG_N_LANES);
+            // let iter = curr_layer.chunks_mut(1 << LOG_N_LANES);
+            let iter_states = curr_layer_states.iter_mut();
 
             #[cfg(feature = "parallel")]
-            let iter = curr_layer.par_chunks_mut(1 << LOG_N_LANES);
-            iter.enumerate().for_each(|(i, chunk)| {
-                ////
-                let prev_chunk_start = (i << 4) % prev_layer.len();
-                let prev_chunk_end = prev_chunk_start + (1 << LOG_N_LANES);
-                dbg!(&prev_layer);
-                let prev_chunk_u32s =
-                    cast_slice::<_, u32>(&prev_layer[prev_chunk_start..prev_chunk_end]);
-                dbg!(prev_chunk_u32s);
-                ////
+            // let iter = curr_layer.par_chunks_mut(1 << LOG_N_LANES);
+            let iter_states = curr_layer_states.par_iter_mut();
+            iter_states.enumerate().for_each(|(i, curr_state)| {
+                // ////
+                // let prev_chunk_start = (i << 4) % prev_layer.len();
+                // let prev_chunk_end = prev_chunk_start + (1 << LOG_N_LANES);
+                // dbg!(&prev_layer);
+                // let prev_chunk_u32s =
+                //     cast_slice::<_, u32>(&prev_layer[prev_chunk_start..prev_chunk_end]);
+                // dbg!(prev_chunk_u32s);
+                // ////
+                let prev_state = prev_layer_states[i % prev_layer_states.len()]; 
                 let state = INITIAL_STATE;
                 dbg!(&state);
                 let t = 64 * (col_chunk_idx + 1) as u64;
@@ -132,20 +137,26 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
                 for (j, column) in col_chunk.iter().enumerate() {
                     msgs[j] = column.data[i % column.data.len()].into_simd();
                 }
-                // dbg!(&msgs);
+                dbg!(&msgs);
 
-                let mut candidate_state: [u32x16; 8] = array::from_fn(|j| {
-                    u32x16::from_array(array::from_fn(|k| prev_chunk_u32s[8 * k + j]))
-                });
-                dbg!(&candidate_state);
-                let state = compress_finalize(state, msgs, t);
-                let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
-                chunk.copy_from_slice(&state);
+                // let mut candidate_state: [u32x16; 8] = array::from_fn(|j| {
+                //     u32x16::from_array(array::from_fn(|k| prev_chunk_u32s[8 * k + j]))
+                // });
+                // dbg!(&candidate_state);
+
+
+
+                let state = compress_finalize(prev_state, msgs, t);
+                // let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
+                curr_state.copy_from_slice(&state);
             });
+            prev_layer_states = curr_layer_states;
 
-            prev_layer = curr_layer;
         }
-        prev_layer
+        prev_layer_states.iter().map(|x| {
+            let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(*x)) };
+            state
+        }).flatten().collect_vec()
     }
 
     fn commit_on_layer(log_size: u32, prev_layer: &Vec<Blake2sHash>) -> Vec<Blake2sHash> {
@@ -599,9 +610,11 @@ mod tests {
     #[test]
     fn test_commit_first_layer() {
         let n_length = 32;
-        let first_layer_cpu: Vec<Vec<BaseField>> = (0..1 << LOG_N_LANES)
+        let mut first_layer_cpu: Vec<Vec<BaseField>> = (0..1 << LOG_N_LANES)
             .map(|i| (0..n_length).map(|j| M31::from_u32_unchecked(10 * i + j)).collect_vec())
             .collect();
+        first_layer_cpu[0] = (0..16).map(M31::from_u32_unchecked).collect_vec();
+
         let first_layer_simd: Vec<BaseColumn> = first_layer_cpu
             .iter()
             .map(|c| BaseColumn::from_cpu(c.clone()))
