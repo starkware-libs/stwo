@@ -3,7 +3,6 @@ use blake2::{Blake2s256, Digest};
 use super::merkle_hasher::MerkleHasherLifted;
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
-use crate::core::vcs::MerkleHasher;
 
 pub const LEAF_PREFIX: [u8; 64] = [
     b'l', b'e', b'a', b'f', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -38,16 +37,9 @@ impl MerkleHasherLifted for Blake2sMerkleHasher {
     }
 }
 
-impl MerkleHasher for Blake2sHasher {
-    type Hash = Blake2sHash;
-
-    fn hash_node(
-        _children_hashes: Option<(Self::Hash, Self::Hash)>,
-        _column_values: &[BaseField],
-    ) -> Self::Hash {
-        unimplemented!()
-    }
-}
+// TODO(Leo): need to implement MerkleChannel that has as associated type H the above
+// `Blake2sMerkleHasher`. But for this we need to modify MerkleChannel's H trait bound to implement
+// MerkleHasherLifted instead of MerkleHasher.
 
 // #[derive(Default)]
 // pub struct Blake2sMerkleChannel;

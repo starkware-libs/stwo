@@ -8,6 +8,7 @@ use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
 pub mod accumulation;
 pub mod bit_reverse;
 pub mod blake2s;
+pub mod blake2s_lifted;
 #[cfg(test)]
 pub mod blake2s_ref;
 pub mod circle;
