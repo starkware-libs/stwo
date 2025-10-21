@@ -97,8 +97,11 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
 
         // vec of states, in simd.
         
-        let mut prev_layer: Vec<Blake2sHash> = vec![Blake2sHash::default(); 1 << LOG_N_LANES];
-
+        // let mut prev_layer: Vec<Blake2sHash> = vec![Blake2sHash::default(); 1 << LOG_N_LANES];
+        let initial: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(INITIAL_STATE)) };
+        let mut prev_layer: Vec<Blake2sHash> = initial.into(); 
+        dbg!(&prev_layer);
+       
         for (col_chunk_idx, col_chunk) in &mut col_chunk_iter.enumerate() {
             let chunk_max_size = col_chunk.iter().last().unwrap().len().max(1 << LOG_N_LANES);
 
@@ -114,13 +117,16 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
             #[cfg(feature = "parallel")]
             let iter = curr_layer.par_chunks_mut(1 << LOG_N_LANES);
             iter.enumerate().for_each(|(i, chunk)| {
-                // let prev_chunk_start = (i << 4) % prev_layer.len();
-                // let prev_chunk_end = prev_chunk_start + (1 << LOG_N_LANES);
-                // dbg!(&prev_layer);
-                // let prev_chunk_u32s =
-                //     cast_slice::<_, u32>(&prev_layer[prev_chunk_start..prev_chunk_end]);
-                // dbg!(prev_chunk_u32s);
-                let state = INITIAL_STATE;  
+                ////
+                let prev_chunk_start = (i << 4) % prev_layer.len();
+                let prev_chunk_end = prev_chunk_start + (1 << LOG_N_LANES);
+                dbg!(&prev_layer);
+                let prev_chunk_u32s =
+                    cast_slice::<_, u32>(&prev_layer[prev_chunk_start..prev_chunk_end]);
+                dbg!(prev_chunk_u32s);
+                ////
+                let state = INITIAL_STATE;
+                dbg!(&state);
                 let t = 64 * (col_chunk_idx + 1) as u64;
                 let mut msgs: [u32x16; 16] = unsafe { std::mem::zeroed() };
                 for (j, column) in col_chunk.iter().enumerate() {
@@ -128,9 +134,10 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
                 }
                 // dbg!(&msgs);
 
-                // let mut state: [u32x16; 8] = array::from_fn(|j| {
-                //     u32x16::from_array(array::from_fn(|k| prev_chunk_u32s[16 * j + k]))
-                // });
+                let mut candidate_state: [u32x16; 8] = array::from_fn(|j| {
+                    u32x16::from_array(array::from_fn(|k| prev_chunk_u32s[8 * k + j]))
+                });
+                dbg!(&candidate_state);
                 let state = compress_finalize(state, msgs, t);
                 let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
                 chunk.copy_from_slice(&state);
