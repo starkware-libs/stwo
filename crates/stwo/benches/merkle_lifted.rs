@@ -1,5 +1,4 @@
 #![feature(iter_array_chunks)]
-
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 use itertools::Itertools;
 use num_traits::Zero;
@@ -22,13 +21,12 @@ fn bench_blake2s_merkle<B: MerkleOpsLifted<Blake2sMerkleHasher>>(c: &mut Criteri
     group.throughput(Throughput::Elements(n_elements));
     group.throughput(Throughput::Bytes(N_BYTES_FELT as u64 * n_elements));
     group.bench_function(format!("{id} merkle lifted"), |b| {
-        b.iter_with_large_drop(|| B::commit_on_first_layer(LOG_N_ROWS, &col_refs))
+        b.iter_with_large_drop(|| B::commit_on_first_layer(&col_refs))
     });
 }
 
 fn blake2s_merkle_benches_lifted(c: &mut Criterion) {
     bench_blake2s_merkle::<SimdBackend>(c, "simd");
-    // bench_blake2s_merkle::<CpuBackend>(c, "cpu");
 }
 
 criterion_group!(

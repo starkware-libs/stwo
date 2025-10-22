@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! A SIMD implementation of the BLAKE2s compression function.
 //! Based on <https://github.com/oconnor663/blake2_simd/blob/master/blake2s/src/avx2.rs>.
 
@@ -82,22 +81,21 @@ pub const SIGMA: [[u8; 16]; 10] = [
 
 impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
     /// TODO(Leo): document. Receives the columns in increasing order of size.
-    fn commit_on_first_layer(
-        _log_size: u32,
-        columns: &[&Col<Self, BaseField>],
-    ) -> Col<Self, <Blake2sMerkleHasher as MerkleHasherLifted>::Hash> {
+    fn commit_on_first_layer(columns: &[&Col<Self, BaseField>]) -> Col<Self, Blake2sHash> {
         if columns.first().is_some_and(|c| c.len() < 1 << LOG_N_LANES) {
             unimplemented!("Support for small columns is not implemented yet")
         }
         // Hash columns in chunks of 16.
         let mut col_chunk_iter = columns.chunks(16);
         let last_chunk = unsafe { col_chunk_iter.next_back().unwrap_unchecked() };
-        // TODO(Leo): make domain separation using leaf initial state.
-        let mut prev_layer_states: Vec<[u32x16; 8]> = vec![INITIAL_STATE];
+        // Initialize the vector of Blake2s states. The state is of type [u32x16; 8].
+        let mut prev_layer_states: Vec<[u32x16; 8]> = vec![SIMD_LEAF_INITIAL_STATE];
 
         for (idx, column_chunk) in &mut col_chunk_iter.enumerate() {
             let chunk_max_size = column_chunk.iter().last().unwrap().len();
 
+            // TODO(Leo): This is an allocation that is done only once in the non-lifted version.
+            // Is there a way to avoid allocating multiple times?
             let mut curr_layer_states: Vec<[u32x16; 8]> =
                 vec![[ZEROS; 8]; chunk_max_size >> LOG_N_LANES];
 
@@ -109,8 +107,9 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
 
             iter_states.enumerate().for_each(|(i, curr_state)| {
                 let prev_state = prev_layer_states[i % prev_layer_states.len()];
-                // A full message contains 64 bytes.
-                let t = 64 * (idx + 1) as u64;
+                // The first summand corresponds to the leaf prefix.
+                // `idx` is incremented by 1 because it's zero-based.
+                let t = 64 + (64 * (idx + 1) as u64);
                 let mut msgs: [u32x16; 16] = unsafe { std::mem::zeroed() };
                 for (j, column) in column_chunk.iter().enumerate() {
                     msgs[j] = column.data[i % column.data.len()].into_simd();
@@ -122,6 +121,8 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
         }
 
         // Process last chunk.
+        // TODO(Leo): can we avoid the code duplication with the iteration
+        // on the chunks?
         let chunk_max_size = last_chunk.iter().last().unwrap().len();
         let mut curr_layer_states: Vec<[u32x16; 8]> =
             vec![[ZEROS; 8]; chunk_max_size >> LOG_N_LANES];
@@ -133,7 +134,7 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
 
         iter_states.enumerate().for_each(|(i, curr_state)| {
             let prev_state = prev_layer_states[i % prev_layer_states.len()];
-            let t = 4 * columns.len() as u64;
+            let t = 64 + 4 * columns.len() as u64;
             let mut msgs: [u32x16; 16] = unsafe { std::mem::zeroed() };
             for (j, column) in last_chunk.iter().enumerate() {
                 msgs[j] = column.data[i % column.data.len()].into_simd();
@@ -144,16 +145,16 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
 
         curr_layer_states
             .iter()
-            .map(|x| {
+            .flat_map(|x| {
                 let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(*x)) };
                 state
             })
-            .flatten()
             .collect_vec()
     }
 
-    fn commit_on_layer(log_size: u32, prev_layer: &Vec<Blake2sHash>) -> Vec<Blake2sHash> {
-        assert_eq!(prev_layer.len(), 1 << (log_size + 1));
+    fn commit_on_inner_layer(prev_layer: &Vec<Blake2sHash>) -> Vec<Blake2sHash> {
+        assert!(prev_layer.len().is_power_of_two());
+        let log_size: u32 = prev_layer.len().ilog2() - 1;
 
         if log_size < LOG_N_LANES {
             return parallel_iter!(0..1 << log_size)
@@ -180,7 +181,6 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
             let state = compress_finalize(state, transpose_msgs(msgs), 128);
             let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
             chunk.copy_from_slice(&state);
-            return;
         });
         res
     }
@@ -391,24 +391,7 @@ fn untranspose_states(mut states: [u32x16; 8]) -> [u32x16; 8] {
     }
     states
 }
-/// Transposes states, from 8 packed words, to get 16 results, each of size 32B.
-fn transpose_states(mut states: [u32x16; 8]) -> [u32x16; 8] {
-    // Index abc:xyzw, refers to a specific word in data as follows:
-    //   abc - chunk index (in base 2)
-    //   xyzw - word offset (in base 2)
-    // Transpose by applying 3 times the index permutation:
-    //   abc:xyzw => wab:cxyz
-    // In other words, rotate the index to the right by 1.
-    for _ in 0..3 {
-        let (s0, s4) = states[0].deinterleave(states[1]);
-        let (s1, s5) = states[2].deinterleave(states[3]);
-        let (s2, s6) = states[4].deinterleave(states[5]);
-        let (s3, s7) = states[6].deinterleave(states[7]);
-        states = [s0, s1, s2, s3, s4, s5, s6, s7];
-    }
 
-    states
-}
 /// Compresses 16 blake2s instances.
 pub fn compress16(
     h_vecs: [u32x16; 8],
@@ -475,11 +458,13 @@ mod tests {
     use super::{compress16, hash_16, transpose_msgs, untranspose_states};
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
+    use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
     use crate::prover::backend::simd::blake2s_ref::{self, compress};
     use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::CpuBackend;
     use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
+    use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
     #[test]
     fn compress16_works() {
@@ -598,48 +583,49 @@ mod tests {
     }
 
     #[test]
-    fn test_commit_first_layer() {
-        const MAX_LOG_ROWS: u32 = 12;
-        // Choose a non multiple of 16, to test chunking logic.
-        const N_COLS: u32 = 18;
-        let mut first_layer_cpu: Vec<Vec<BaseField>> = (0..N_COLS)
-            .map(|i| {
-                (0..1 << MAX_LOG_ROWS)
-                    .map(|j| M31::from_u32_unchecked(10 * i + j))
-                    .collect_vec()
-            })
-            .collect();
-
-        // Make the first two columns smaller to test a non-uniform sized trace.
-        first_layer_cpu[0] = (0..1 << (MAX_LOG_ROWS - 3))
-            .map(M31::from_u32_unchecked)
-            .collect_vec();
-        first_layer_cpu[1] = (0..1 << (MAX_LOG_ROWS - 2))
-            .map(M31::from_u32_unchecked)
-            .collect_vec();
-
-        let first_layer_simd: Vec<BaseColumn> = first_layer_cpu
-            .iter()
-            .map(|c| BaseColumn::from_cpu(c.clone()))
-            .collect();
-        assert_eq!(
-            SimdBackend::commit_on_first_layer(
-                MAX_LOG_ROWS,
-                &first_layer_simd.iter().collect_vec()
-            ),
-            CpuBackend::commit_on_first_layer(MAX_LOG_ROWS, &first_layer_cpu.iter().collect_vec())
-        );
-    }
-
-    #[test]
     fn test_commit_inner_layer() {
         const LOG_SIZE: u32 = 6;
         let layer: Vec<Blake2sHash> = (0u32..1 << (LOG_SIZE + 1))
             .map(|i| Blake2sHasher::hash(&i.to_le_bytes()))
             .collect();
         assert_eq!(
-            CpuBackend::commit_on_layer(LOG_SIZE, &layer),
-            SimdBackend::commit_on_layer(LOG_SIZE, &layer)
+            <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::commit_on_inner_layer(&layer),
+            SimdBackend::commit_on_inner_layer(&layer)
+        );
+    }
+
+    #[test]
+    fn test_merkle_commit() {
+        const MAX_LOG_N_ROWS: u32 = 12;
+        // Choose a non multiple of 16, to test chunking logic.
+        const N_COLS: u32 = 18;
+        let mut cols: Vec<Vec<BaseField>> = (0..N_COLS)
+            .map(|i| {
+                (0..1 << MAX_LOG_N_ROWS)
+                    .map(|j| M31::from_u32_unchecked(10 * i + j))
+                    .collect_vec()
+            })
+            .collect();
+
+        // Make the first two columns smaller to test a non-uniform sized trace.
+        cols[0] = (0..1 << (MAX_LOG_N_ROWS - 3))
+            .map(M31::from_u32_unchecked)
+            .collect_vec();
+        cols[1] = (0..1 << (MAX_LOG_N_ROWS - 2))
+            .map(M31::from_u32_unchecked)
+            .collect_vec();
+        let cols_simd: Vec<BaseColumn> = cols
+            .iter()
+            .map(|c| BaseColumn::from_cpu(c.clone()))
+            .collect();
+
+        assert_eq!(
+            MerkleProverLifted::<CpuBackend, Blake2sMerkleHasher>::commit(cols.iter().collect())
+                .root(),
+            MerkleProverLifted::<SimdBackend, Blake2sMerkleHasher>::commit(
+                cols_simd.iter().collect()
+            )
+            .root()
         );
     }
 }

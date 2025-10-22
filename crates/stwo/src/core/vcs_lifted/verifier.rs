@@ -24,40 +24,18 @@ impl<H: MerkleHasherLifted> MerkleDecommitmentLifted<H> {
 pub struct MerkleVerifierLifted<H: MerkleHasherLifted> {
     pub root: H::Hash,
     pub n_columns: usize,
-    pub log_size: u32,
+    pub max_log_size: u32,
 }
 
 impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
-    pub fn new(root: H::Hash, n_columns: usize, log_size: u32) -> Self {
+    pub const fn new(root: H::Hash, n_columns: usize, max_log_size: u32) -> Self {
         Self {
             root,
             n_columns,
-            log_size,
+            max_log_size,
         }
     }
     /// Verifies the decommitment of the columns.
-    ///
-    /// Returns `Ok(())` if the decommitment is successfully verified.
-    ///
-    /// # Arguments
-    ///
-    /// * `queries_per_log_size` - A map from log_size to a vector of queries for columns of that
-    ///   log_size.
-    /// * `queried_values` - A vector of queried values according to the order in
-    ///   [`MerkleProver::decommit()`].
-    /// * `decommitment` - The decommitment object containing the witness and column values.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if any of the following conditions are met:
-    ///
-    /// * The witness is too long (not fully consumed).
-    /// * The witness is too short (missing values).
-    /// * Too many queried values (not fully consumed).
-    /// * Too few queried values (missing values).
-    /// * The computed root does not match the expected root.
-    ///
-    /// [`MerkleProver::decommit()`]: crate::core::...::MerkleProver::decommit
     ///
     /// TODO(Leo): document assumptions on query positions.
     pub fn verify(
@@ -73,16 +51,16 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
             .iter()
             .zip_eq(queried_values.chunks_exact(self.n_columns))
             .map(|(idx, column_values)| {
-                let hasher = H::default();
-                let hash = hasher.finalize_leaf_slice(column_values);
-                (*idx, hash)
+                let mut hasher = H::default_with_prefix();
+                hasher.update_leaves(column_values);
+                (*idx, hasher.finalize())
             })
             .collect();
 
         let mut hash_witness = decommitment.hash_witness.into_iter();
 
         // Verify inner layers
-        for _ in (0..self.log_size).rev() {
+        for _ in (0..self.max_log_size).rev() {
             let mut layer_total_queries = vec![];
 
             let mut prev_layer_queries = last_layer_hashes

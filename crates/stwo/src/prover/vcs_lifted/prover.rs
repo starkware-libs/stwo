@@ -8,16 +8,16 @@ use crate::core::vcs_lifted::verifier::MerkleDecommitmentLifted;
 use crate::prover::backend::{Col, Column};
 
 #[derive(Debug)]
-pub struct MerkleProver<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> {
+pub struct MerkleProverLifted<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> {
     /// Layers of the Merkle tree.
     /// The first layer is the root layer.
     /// The last layer is the largest layer.
     pub layers: Vec<Col<B, H::Hash>>,
 }
-/// The MerkleProver struct represents a prover for a Merkle commitment scheme.
+/// The MerkleProverLifted struct represents a prover for a Merkle commitment scheme.
 /// It is generic over the types `B` and `H`, which represent the Merkle operations and Merkle
 /// hasher respectively.
-impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProver<B, H> {
+impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
     /// Commits to columns.
     /// Columns must be of power of 2 sizes.
     ///
@@ -27,12 +27,12 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProver<B, H> {
     ///
     /// # Returns
     ///
-    /// A new instance of `MerkleProver` with the committed layers.
+    /// A new instance of `MerkleProverLifted` with the committed layers.
     pub fn commit(columns: Vec<&Col<B, BaseField>>) -> Self {
         let _span = span!(Level::TRACE, "Merkle", class = "MerkleCommitment").entered();
         if columns.is_empty() {
             return Self {
-                layers: vec![B::commit_on_first_layer(0, &[])],
+                layers: vec![B::commit_on_first_layer(&[])],
             };
         }
 
@@ -40,11 +40,11 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProver<B, H> {
 
         let max_log_size = columns.last().unwrap().len().ilog2();
         let mut layers: Vec<Col<B, H::Hash>> = Vec::new();
-        layers.push(B::commit_on_first_layer(max_log_size, columns));
+        layers.push(B::commit_on_first_layer(columns));
 
-        for log_size in (0..max_log_size).rev() {
-            layers.push(B::commit_on_layer(log_size, layers.last().unwrap()));
-        }
+        (0..max_log_size).rev().for_each(|_| {
+            layers.push(B::commit_on_inner_layer(layers.last().unwrap()));
+        });
         layers.reverse();
 
         Self { layers }
@@ -133,17 +133,21 @@ mod test {
     use super::*;
     use crate::core::fields::m31::M31;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::blake2_merkle::LEAF_PREFIX;
     use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
     use crate::prover::backend::CpuBackend;
 
-    fn prepare_merkle() -> (Vec<Vec<BaseField>>, MerkleProver<CpuBackend, Blake2sHasher>) {
+    fn prepare_merkle() -> (
+        Vec<Vec<BaseField>>,
+        MerkleProverLifted<CpuBackend, Blake2sHasher>,
+    ) {
         // TODO(Leo): write better.
         // | 0 .. 3 | 0 .. 7 | 0 .. 15 |
         let columns: Vec<Vec<BaseField>> = (0..3)
             .map(|i| (0..1 << (i + 2)).map(M31::from_u32_unchecked).collect())
             .collect();
         let merkle_prover =
-            MerkleProver::<CpuBackend, Blake2sHasher>::commit(columns.iter().collect());
+            MerkleProverLifted::<CpuBackend, Blake2sHasher>::commit(columns.iter().collect());
         (columns, merkle_prover)
     }
 
@@ -151,16 +155,22 @@ mod test {
     fn test_lifted_merkle_leaves() {
         let (_, merkle_prover) = prepare_merkle();
         let leaves = &merkle_prover.layers.last().unwrap();
+
+        // Compute the expected first leaf.
         let mut hasher = Blake2sHasher::default();
-        hasher.update(&[0u8; 12]);
+        let mut data = LEAF_PREFIX.to_vec();
+        data.extend([0u8; 12]);
+        hasher.update(&data);
         assert_eq!(hasher.finalize(), leaves[0]);
 
+        // Compute the expected last leaf.
         let mut hasher = Blake2sHasher::default();
-        let mut data = vec![];
+        let mut data = LEAF_PREFIX.to_vec();
         data.extend(3_u32.to_le_bytes());
         data.extend(7_u32.to_le_bytes());
         data.extend(15_u32.to_le_bytes());
         hasher.update(&data);
+
         assert_eq!(hasher.finalize(), *leaves.last().unwrap());
     }
 
@@ -173,7 +183,7 @@ mod test {
         let verifier = MerkleVerifierLifted::new(
             merkle_prover.root(),
             columns.len(),
-            columns.last().unwrap().len().ilog2() as u32,
+            columns.last().unwrap().len().ilog2(),
         );
         verifier
             .verify(queries_position, queried_values, decommitment)

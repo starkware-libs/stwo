@@ -20,6 +20,12 @@ pub type Blake2sMerkleHasher = Blake2sHasher;
 impl MerkleHasherLifted for Blake2sMerkleHasher {
     type Hash = Blake2sHash;
 
+    fn default_with_prefix() -> Self {
+        let mut hasher = Blake2sHasher::new();
+        hasher.update(&LEAF_PREFIX);
+        hasher
+    }
+
     fn hash_children(children_hashes: (Self::Hash, Self::Hash)) -> Self::Hash {
         let mut hasher = Blake2s256::new();
         let (left_child, right_child) = children_hashes;
@@ -31,8 +37,12 @@ impl MerkleHasherLifted for Blake2sMerkleHasher {
         Blake2sHash(hasher.finalize().into())
     }
 
-    fn update_leaf(&mut self, column_value: BaseField) {
-        self.update(&column_value.0.to_le_bytes());
+    /// TODO(Leo). The prover only uses this in the CpuBackend. It used by the verifier to verify
+    /// the decommit.
+    fn update_leaves(&mut self, column_values: &[BaseField]) {
+        column_values
+            .iter()
+            .for_each(|x| self.update(&x.0.to_le_bytes()));
     }
 
     fn finalize(self) -> Self::Hash {

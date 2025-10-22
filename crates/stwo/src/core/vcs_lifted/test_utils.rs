@@ -7,7 +7,7 @@ use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::{MerkleDecommitmentLifted, MerkleVerifierLifted};
 use crate::prover::backend::CpuBackend;
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
-use crate::prover::vcs_lifted::prover::MerkleProver;
+use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
 pub type TestData<H> = (
     Vec<usize>,
@@ -36,7 +36,7 @@ where
                 .collect_vec()
         })
         .collect_vec();
-    let merkle = MerkleProver::<CpuBackend, H>::commit(cols.iter().collect_vec());
+    let merkle = MerkleProverLifted::<CpuBackend, H>::commit(cols.iter().collect_vec());
 
     let log_size: u32 = *log_sizes.iter().max().unwrap();
     let queries = (0..N_QUERIES)
