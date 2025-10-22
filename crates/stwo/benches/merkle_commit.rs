@@ -12,7 +12,7 @@ use stwo::prover::vcs::prover::MerkleProver as MerkleProverMixed;
 use stwo::prover::vcs_lifted::prover::MerkleProver as MerkleProverLifted;
 
 
-const LOG_N_ROWS: u32 = 16;
+const LOG_N_ROWS: u32 = 20;
 
 const LOG_N_COLS: u32 = 8;
 
@@ -20,8 +20,8 @@ fn generate_trace() -> Vec<Col<SimdBackend, BaseField>> {
     let col: Col<SimdBackend, BaseField> =
         (0..1 << LOG_N_ROWS).map(|_| BaseField::zero()).collect();
     let mut cols = (0..1 << LOG_N_COLS).map(|_| col.clone()).collect_vec();
-    (0..18).for_each(|i| {
-        cols[i] = (0..1 << (LOG_N_ROWS - 2))
+    (0..(1 << LOG_N_COLS) - 1).for_each(|i| {
+        cols[i] = (0..1 << 8)
             .map(|_| BaseField::zero())
             .collect()
     });
