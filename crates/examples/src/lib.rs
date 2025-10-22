@@ -4,6 +4,7 @@ pub mod docs_component;
 pub mod docs_component_piotrek;
 pub mod plonk;
 pub mod poseidon;
+pub mod scheduler_poseidon;
 pub mod state_machine;
 pub mod wide_fibonacci;
 pub mod xor;

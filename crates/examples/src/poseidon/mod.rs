@@ -199,8 +199,8 @@ pub fn eval_poseidon_constraints<E: EvalAtRow>(eval: &mut E, lookup_elements: &P
 }
 
 pub struct LookupData {
-    initial_state: [[BaseColumn; N_STATE]; N_INSTANCES_PER_ROW],
-    final_state: [[BaseColumn; N_STATE]; N_INSTANCES_PER_ROW],
+    pub initial_state: [[BaseColumn; N_STATE]; N_INSTANCES_PER_ROW],
+    pub final_state: [[BaseColumn; N_STATE]; N_INSTANCES_PER_ROW],
 }
 pub fn gen_trace(
     log_size: u32,
