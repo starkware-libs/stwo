@@ -1,5 +1,7 @@
 #![feature(portable_simd, iter_array_chunks, array_chunks)]
 pub mod blake;
+pub mod docs_component;
+pub mod docs_component_piotrek;
 pub mod plonk;
 pub mod poseidon;
 pub mod state_machine;

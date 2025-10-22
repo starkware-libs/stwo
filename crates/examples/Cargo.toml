@@ -36,3 +36,7 @@ test-log = { version = "0.2.15", features = ["trace"] }
 [[bench]]
 harness = false
 name = "poseidon"
+
+[[bin]]
+name = "learn_prove"
+path = "src/docs_component_piotrek/mod.rs"
