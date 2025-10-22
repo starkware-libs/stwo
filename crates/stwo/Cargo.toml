@@ -119,6 +119,17 @@ required-features = ["prover"]
 
 [[bench]]
 harness = false
+name = "merkle_lifted"
+required-features = ["prover"]
+
+[[bench]]
+harness = false
+name = "merkle_commit"
+required-features = ["prover"]
+
+
+[[bench]]
+harness = false
 name = "prefix_sum"
 required-features = ["prover"]
 

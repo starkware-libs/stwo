@@ -147,7 +147,6 @@ mod test {
         (columns, merkle_prover)
     }
 
-
     #[test]
     fn test_lifted_merkle_leaves() {
         let (_, merkle_prover) = prepare_merkle();

@@ -15,6 +15,7 @@ pub const NODE_PREFIX: [u8; 64] = [
     0, 0, 0, 0,
 ];
 
+/// TODO(Leo): Document
 pub type Blake2sMerkleHasher = Blake2sHasher;
 impl MerkleHasherLifted for Blake2sMerkleHasher {
     type Hash = Blake2sHash;
@@ -29,9 +30,11 @@ impl MerkleHasherLifted for Blake2sMerkleHasher {
 
         Blake2sHash(hasher.finalize().into())
     }
+
     fn update_leaf(&mut self, column_value: BaseField) {
         self.update(&column_value.0.to_le_bytes());
     }
+
     fn finalize(self) -> Self::Hash {
         self.finalize()
     }

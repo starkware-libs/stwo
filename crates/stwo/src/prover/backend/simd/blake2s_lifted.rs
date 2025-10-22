@@ -92,7 +92,7 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
         // Hash columns in chunks of 16.
         let mut col_chunk_iter = columns.chunks(16);
         let last_chunk = unsafe { col_chunk_iter.next_back().unwrap_unchecked() };
-
+        // TODO(Leo): make domain separation using leaf initial state.
         let mut prev_layer_states: Vec<[u32x16; 8]> = vec![INITIAL_STATE];
 
         for (idx, column_chunk) in &mut col_chunk_iter.enumerate() {
@@ -477,7 +477,6 @@ mod tests {
     use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
     use crate::prover::backend::simd::blake2s_ref::{self, compress};
     use crate::prover::backend::simd::column::BaseColumn;
-    use crate::prover::backend::simd::m31::LOG_N_LANES;
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::CpuBackend;
     use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
@@ -600,43 +599,47 @@ mod tests {
 
     #[test]
     fn test_commit_first_layer() {
-        let n_length = 1 << 8;
-        let n_cols = 18;
-        let mut first_layer_cpu: Vec<Vec<BaseField>> = (0..n_cols)
+        const MAX_LOG_ROWS: u32 = 12;
+        // Choose a non multiple of 16, to test chunking logic.
+        const N_COLS: u32 = 18;
+        let mut first_layer_cpu: Vec<Vec<BaseField>> = (0..N_COLS)
             .map(|i| {
-                (0..n_length)
+                (0..1 << MAX_LOG_ROWS)
                     .map(|j| M31::from_u32_unchecked(10 * i + j))
                     .collect_vec()
             })
             .collect();
 
-        first_layer_cpu[0] = (0..1 << 5).map(M31::from_u32_unchecked).collect_vec();
-        first_layer_cpu[1] = (0..1 << 6).map(M31::from_u32_unchecked).collect_vec();
+        // Make the first two columns smaller to test a non-uniform sized trace.
+        first_layer_cpu[0] = (0..1 << (MAX_LOG_ROWS - 3))
+            .map(M31::from_u32_unchecked)
+            .collect_vec();
+        first_layer_cpu[1] = (0..1 << (MAX_LOG_ROWS - 2))
+            .map(M31::from_u32_unchecked)
+            .collect_vec();
 
         let first_layer_simd: Vec<BaseColumn> = first_layer_cpu
             .iter()
             .map(|c| BaseColumn::from_cpu(c.clone()))
             .collect();
-        let first_layer_simd_refs: Vec<&BaseColumn> = first_layer_simd.iter().collect();
-        let commit_simd =
-            SimdBackend::commit_on_first_layer(LOG_N_LANES, first_layer_simd_refs.as_slice());
-
-        let first_layer_cpu_refs: Vec<&Vec<BaseField>> = first_layer_cpu.iter().collect();
-        let commit_cpu =
-            CpuBackend::commit_on_first_layer(LOG_N_LANES, first_layer_cpu_refs.as_slice());
-
-        assert_eq!(commit_cpu, commit_simd);
+        assert_eq!(
+            SimdBackend::commit_on_first_layer(
+                MAX_LOG_ROWS,
+                &first_layer_simd.iter().collect_vec()
+            ),
+            CpuBackend::commit_on_first_layer(MAX_LOG_ROWS, &first_layer_cpu.iter().collect_vec())
+        );
     }
 
     #[test]
     fn test_commit_inner_layer() {
-        let log_size: u32 = 6;
-        let layer: Vec<Blake2sHash> = (0u32..1 << (log_size + 1))
+        const LOG_SIZE: u32 = 6;
+        let layer: Vec<Blake2sHash> = (0u32..1 << (LOG_SIZE + 1))
             .map(|i| Blake2sHasher::hash(&i.to_le_bytes()))
             .collect();
         assert_eq!(
-            CpuBackend::commit_on_layer(log_size, &layer),
-            SimdBackend::commit_on_layer(log_size, &layer)
+            CpuBackend::commit_on_layer(LOG_SIZE, &layer),
+            SimdBackend::commit_on_layer(LOG_SIZE, &layer)
         );
     }
 }
