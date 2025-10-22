@@ -94,6 +94,11 @@ required-features = ["prover"]
 
 [[bench]]
 harness = false
+name = "eval_at_point_by_folding"
+required-features = ["prover"]
+
+[[bench]]
+harness = false
 name = "fft"
 required-features = ["prover"]
 
