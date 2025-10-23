@@ -2,6 +2,7 @@
 pub mod blake;
 pub mod docs_component;
 pub mod docs_component_piotrek;
+pub mod new_example;
 pub mod plonk;
 pub mod poseidon;
 pub mod scheduler_poseidon;
