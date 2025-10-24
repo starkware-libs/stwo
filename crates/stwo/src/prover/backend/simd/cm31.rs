@@ -189,8 +189,8 @@ mod tests {
     #[test]
     fn addition_works() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let lhs = rng.gen();
-        let rhs = rng.gen();
+        let lhs = rng.random();
+        let rhs = rng.random();
         let packed_lhs = PackedCM31::from_array(lhs);
         let packed_rhs = PackedCM31::from_array(rhs);
 
@@ -202,8 +202,8 @@ mod tests {
     #[test]
     fn subtraction_works() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let lhs = rng.gen();
-        let rhs = rng.gen();
+        let lhs = rng.random();
+        let rhs = rng.random();
         let packed_lhs = PackedCM31::from_array(lhs);
         let packed_rhs = PackedCM31::from_array(rhs);
 
@@ -215,8 +215,8 @@ mod tests {
     #[test]
     fn multiplication_works() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let lhs = rng.gen();
-        let rhs = rng.gen();
+        let lhs = rng.random();
+        let rhs = rng.random();
         let packed_lhs = PackedCM31::from_array(lhs);
         let packed_rhs = PackedCM31::from_array(rhs);
 
@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn negation_works() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let values = rng.gen();
+        let values = rng.random();
         let packed_values = PackedCM31::from_array(values);
 
         let res = -packed_values;

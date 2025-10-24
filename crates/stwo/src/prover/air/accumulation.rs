@@ -168,7 +168,7 @@ mod tests {
         const LOG_SIZE_BOUND: u32 = 10;
         const MASK: u32 = P;
         let mut log_sizes = (0..100)
-            .map(|_| rng.gen_range(LOG_SIZE_MIN..LOG_SIZE_BOUND))
+            .map(|_| rng.random_range(LOG_SIZE_MIN..LOG_SIZE_BOUND))
             .collect::<Vec<_>>();
         log_sizes.sort();
 
@@ -177,7 +177,7 @@ mod tests {
             .iter()
             .map(|log_size| {
                 (0..(1 << *log_size))
-                    .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() & MASK))
+                    .map(|_| M31::from_u32_unchecked(rng.random::<u32>() & MASK))
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();

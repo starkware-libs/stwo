@@ -98,13 +98,13 @@ mod tests {
         type MyType = (M31, [M31; 3], [M31; 15]);
         let mut rand_input = || -> MyType {
             (
-                M31::from(rng.gen::<u32>()),
+                M31::from(rng.random::<u32>()),
                 [
-                    M31::from(rng.gen::<u32>()),
-                    M31::from(rng.gen::<u32>()),
-                    M31::from(rng.gen::<u32>()),
+                    M31::from(rng.random::<u32>()),
+                    M31::from(rng.random::<u32>()),
+                    M31::from(rng.random::<u32>()),
                 ],
-                std::array::from_fn(|_| M31::from(rng.gen::<u32>())),
+                std::array::from_fn(|_| M31::from(rng.random::<u32>())),
             )
         };
         let inputs: [_; N_LANES] = std::array::from_fn(|_| rand_input());
