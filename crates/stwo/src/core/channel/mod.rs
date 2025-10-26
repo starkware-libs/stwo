@@ -11,7 +11,7 @@ mod poseidon252;
 pub use poseidon252::Poseidon252Channel;
 
 mod blake2s;
-pub use blake2s::Blake2sChannel;
+pub use blake2s::{Blake2sChannel, Blake2sChannelGeneric, Blake2sM31Channel};
 
 pub const EXTENSION_FELTS_PER_HASH: usize = 2;
 

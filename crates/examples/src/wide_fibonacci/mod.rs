@@ -72,14 +72,14 @@ mod tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
     use stwo::core::air::Component;
-    use stwo::core::channel::Blake2sChannel;
+    use stwo::core::channel::Blake2sM31Channel;
     #[cfg(not(target_arch = "wasm32"))]
     use stwo::core::channel::Poseidon252Channel;
     use stwo::core::fields::m31::BaseField;
     use stwo::core::fields::qm31::SecureField;
     use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo::core::poly::circle::CanonicCoset;
-    use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::core::vcs::blake2_merkle::Blake2sM31MerkleChannel;
     #[cfg(not(target_arch = "wasm32"))]
     use stwo::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
     use stwo::core::verifier::verify;
@@ -184,9 +184,11 @@ mod tests {
             );
 
             // Setup protocol.
-            let prover_channel = &mut Blake2sChannel::default();
-            let mut commitment_scheme =
-                CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+            let prover_channel = &mut Blake2sM31Channel::default();
+            let mut commitment_scheme = CommitmentSchemeProver::<
+                SimdBackend,
+                Blake2sM31MerkleChannel,
+            >::new(config, &twiddles);
 
             // Preprocessed trace
             let mut tree_builder = commitment_scheme.tree_builder();
@@ -208,7 +210,7 @@ mod tests {
                 SecureField::zero(),
             );
 
-            let proof = prove::<SimdBackend, Blake2sMerkleChannel>(
+            let proof = prove::<SimdBackend, Blake2sM31MerkleChannel>(
                 &[&component],
                 prover_channel,
                 commitment_scheme,
@@ -216,9 +218,9 @@ mod tests {
             .unwrap();
 
             // Verify.
-            let verifier_channel = &mut Blake2sChannel::default();
+            let verifier_channel = &mut Blake2sM31Channel::default();
             let commitment_scheme =
-                &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+                &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
 
             // Retrieve the expected column sizes in each commitment interaction, from the AIR.
             let sizes = component.trace_log_degree_bounds();
