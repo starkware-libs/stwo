@@ -20,19 +20,19 @@ use crate::parallel_iter;
 use crate::prover::backend::{Col, Column, ColumnOps};
 use crate::prover::vcs::ops::MerkleOps;
 
-const IV: [u32; 8] = [
+pub const IV: [u32; 8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
 ];
 
-const LEAF_INITIAL_STATE: [u32; 8] = [
+pub const LEAF_INITIAL_STATE: [u32; 8] = [
     0x6510b1f7, 0xfd531f42, 0xcff75ec3, 0x382935d0, 0xab15dbf2, 0x950eb564, 0xe8e92866, 0x28047aca,
 ];
 
-const NODE_INITIAL_STATE: [u32; 8] = [
+pub const NODE_INITIAL_STATE: [u32; 8] = [
     0xe5cf8926, 0x841cea30, 0x7b4acada, 0xfc5d8d28, 0xfc6ef857, 0xb29da528, 0xc0d319c7, 0x8ae795c8,
 ];
 
-const SIMD_LEAF_INITIAL_STATE: [u32x16; 8] = [
+pub const SIMD_LEAF_INITIAL_STATE: [u32x16; 8] = [
     u32x16::splat(LEAF_INITIAL_STATE[0]),
     u32x16::splat(LEAF_INITIAL_STATE[1]),
     u32x16::splat(LEAF_INITIAL_STATE[2]),
@@ -43,7 +43,7 @@ const SIMD_LEAF_INITIAL_STATE: [u32x16; 8] = [
     u32x16::splat(LEAF_INITIAL_STATE[7]),
 ];
 
-const SIMD_NODE_INITIAL_STATE: [u32x16; 8] = [
+pub const SIMD_NODE_INITIAL_STATE: [u32x16; 8] = [
     u32x16::splat(NODE_INITIAL_STATE[0]),
     u32x16::splat(NODE_INITIAL_STATE[1]),
     u32x16::splat(NODE_INITIAL_STATE[2]),
@@ -54,7 +54,7 @@ const SIMD_NODE_INITIAL_STATE: [u32x16; 8] = [
     u32x16::splat(NODE_INITIAL_STATE[7]),
 ];
 
-const INITIAL_STATE: [u32x16; 8] = [
+pub const INITIAL_STATE: [u32x16; 8] = [
     // |Key| = 0x00, |HashLength| = 0x20.
     u32x16::splat(IV[0] ^ 0x01010020),
     u32x16::splat(IV[1]),
@@ -188,10 +188,10 @@ impl MerkleOps<Blake2sM31MerkleHasher> for SimdBackend {
     }
 }
 
-const ZEROS: u32x16 = u32x16::splat(0);
+pub const ZEROS: u32x16 = u32x16::splat(0);
 
 // `t` is the number of compressed bytes including the current block.
-fn compress_unfinalized(state: [u32x16; 8], chunk: [u32x16; 16], t: u64) -> [u32x16; 8] {
+pub fn compress_unfinalized(state: [u32x16; 8], chunk: [u32x16; 16], t: u64) -> [u32x16; 8] {
     compress16(
         state,
         chunk,
@@ -203,7 +203,7 @@ fn compress_unfinalized(state: [u32x16; 8], chunk: [u32x16; 16], t: u64) -> [u32
     )
 }
 
-fn compress_finalize(state: [u32x16; 8], last_block: [u32x16; 16], t: u64) -> [u32x16; 8] {
+pub fn compress_finalize(state: [u32x16; 8], last_block: [u32x16; 16], t: u64) -> [u32x16; 8] {
     compress16(
         state,
         last_block,
@@ -353,7 +353,7 @@ pub fn round(v: &mut [u32x16; 16], m: [u32x16; 16], r: usize) {
 
 /// Transposes input chunks (16 chunks of 16 `u32`s each), to get 16 `u32x16`, each
 /// representing 16 packed instances of a message word.
-fn transpose_msgs(mut data: [u32x16; 16]) -> [u32x16; 16] {
+pub fn transpose_msgs(mut data: [u32x16; 16]) -> [u32x16; 16] {
     // Index abcd:xyzw, refers to a specific word in data as follows:
     //   abcd - chunk index (in base 2)
     //   xyzw - word offset (in base 2)
@@ -377,7 +377,7 @@ fn transpose_msgs(mut data: [u32x16; 16]) -> [u32x16; 16] {
     data
 }
 
-fn untranspose_states(mut states: [u32x16; 8]) -> [u32x16; 8] {
+pub fn untranspose_states(mut states: [u32x16; 8]) -> [u32x16; 8] {
     // Index abc:xyzw, refers to a specific word in data as follows:
     //   abc - chunk index (in base 2)
     //   xyzw - word offset (in base 2)
