@@ -1,8 +1,8 @@
 use blake2::{Blake2s256, Digest};
 use serde::{Deserialize, Serialize};
 
-use super::blake2_hash::Blake2sHash;
-use crate::core::channel::{Blake2sChannel, MerkleChannel};
+use super::blake2_hash::{reduce_to_m31, Blake2sHash};
+use crate::core::channel::{Blake2sChannelGeneric, MerkleChannel};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::MerkleHasher;
 
@@ -16,9 +16,14 @@ pub const NODE_PREFIX: [u8; 64] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0,
 ];
+
+pub type Blake2sMerkleHasher = Blake2sMerkleHasherGeneric<false>;
+/// Same as [Blake2sMerkleHasher], expect that the hash output is taken modulo M31::P.
+pub type Blake2sM31MerkleHasher = Blake2sMerkleHasherGeneric<true>;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
-pub struct Blake2sMerkleHasher;
-impl MerkleHasher for Blake2sMerkleHasher {
+pub struct Blake2sMerkleHasherGeneric<const IS_M31_OUTPUT: bool>;
+impl<const IS_M31_OUTPUT: bool> MerkleHasher for Blake2sMerkleHasherGeneric<IS_M31_OUTPUT> {
     type Hash = Blake2sHash;
 
     fn hash_node(
@@ -40,22 +45,33 @@ impl MerkleHasher for Blake2sMerkleHasher {
             hasher.update(value.0.to_le_bytes());
         }
 
-        Blake2sHash(hasher.finalize().into())
+        let mut r: [u8; 32] = hasher.finalize().into();
+        if IS_M31_OUTPUT {
+            r = reduce_to_m31(r);
+        }
+
+        Blake2sHash(r)
     }
 }
 
-#[derive(Default)]
-pub struct Blake2sMerkleChannel;
+pub type Blake2sMerkleChannel = Blake2sMerkleChannelGeneric<false>;
+/// Same as [Blake2sMerkleChannel], expect that the hash output is taken modulo M31::P.
+pub type Blake2sM31MerkleChannel = Blake2sMerkleChannelGeneric<true>;
 
-impl MerkleChannel for Blake2sMerkleChannel {
-    type C = Blake2sChannel;
-    type H = Blake2sMerkleHasher;
+#[derive(Default)]
+pub struct Blake2sMerkleChannelGeneric<const IS_M31_OUTPUT: bool>;
+
+impl<const IS_M31_OUTPUT: bool> MerkleChannel for Blake2sMerkleChannelGeneric<IS_M31_OUTPUT> {
+    type C = Blake2sChannelGeneric<IS_M31_OUTPUT>;
+    type H = Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>;
 
     fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasher>::Hash) {
-        channel.update_digest(super::blake2_hash::Blake2sHasher::concat_and_hash(
-            &channel.digest(),
-            &root,
-        ));
+        channel.update_digest(
+            super::blake2_hash::Blake2sHasherGeneric::<IS_M31_OUTPUT>::concat_and_hash(
+                &channel.digest(),
+                &root,
+            ),
+        );
     }
 }
 

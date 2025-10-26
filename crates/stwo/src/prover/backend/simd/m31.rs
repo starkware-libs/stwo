@@ -105,6 +105,12 @@ impl PackedM31 {
     pub const unsafe fn store(self, dst: *mut u32) {
         ptr::write(dst as *mut u32x16, self.0)
     }
+
+    pub fn reduce_simd(value: Simd<u32, N_LANES>) -> Self {
+        unsafe { Self::from_simd_unchecked(value) }
+            .reduce()
+            .reduce()
+    }
 }
 
 impl Add for PackedM31 {

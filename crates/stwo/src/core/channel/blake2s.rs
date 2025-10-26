@@ -6,19 +6,23 @@ use std_shims::Vec;
 use super::Channel;
 use crate::core::fields::m31::{BaseField, P};
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
+use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasherGeneric};
 
 pub const BLAKE_BYTES_PER_HASH: usize = 32;
 pub const FELTS_PER_HASH: usize = 8;
 
+pub type Blake2sChannel = Blake2sChannelGeneric<false>;
+/// Same as [Blake2sChannel], expect that the hash output is taken modulo M31::P.
+pub type Blake2sM31Channel = Blake2sChannelGeneric<true>;
+
 /// A channel that can be used to draw random elements from a [Blake2sHash] digest.
 #[derive(Default, Clone, Debug)]
-pub struct Blake2sChannel {
+pub struct Blake2sChannelGeneric<const IS_M31_OUTPUT: bool> {
     digest: Blake2sHash,
     n_draws: u32,
 }
 
-impl Blake2sChannel {
+impl<const IS_M31_OUTPUT: bool> Blake2sChannelGeneric<IS_M31_OUTPUT> {
     pub const POW_PREFIX: u32 = 0x12345678;
 
     pub const fn digest(&self) -> Blake2sHash {
@@ -48,7 +52,7 @@ impl Blake2sChannel {
     }
 }
 
-impl Channel for Blake2sChannel {
+impl<const IS_M31_OUTPUT: bool> Channel for Blake2sChannelGeneric<IS_M31_OUTPUT> {
     const BYTES_PER_HASH: usize = BLAKE_BYTES_PER_HASH;
 
     fn mix_felts(&mut self, felts: &[SecureField]) {
@@ -57,7 +61,7 @@ impl Channel for Blake2sChannel {
             .flat_map(|qm31| qm31.to_m31_array())
             .flat_map(|m31| m31.0.to_le_bytes())
             .collect_vec();
-        let mut hasher = Blake2sHasher::new();
+        let mut hasher = Blake2sHasherGeneric::<IS_M31_OUTPUT>::new();
         hasher.update(self.digest.as_ref());
         hasher.update(&felts_bytes);
 
@@ -65,7 +69,7 @@ impl Channel for Blake2sChannel {
     }
 
     fn mix_u32s(&mut self, data: &[u32]) {
-        let mut hasher = Blake2sHasher::new();
+        let mut hasher = Blake2sHasherGeneric::<IS_M31_OUTPUT>::new();
         hasher.update(self.digest.as_ref());
         for word in data {
             hasher.update(&word.to_le_bytes());
@@ -108,7 +112,7 @@ impl Channel for Blake2sChannel {
         hash_input.push(0_u8);
 
         self.n_draws += 1;
-        Blake2sHasher::hash(&hash_input)
+        Blake2sHasherGeneric::<IS_M31_OUTPUT>::hash(&hash_input)
             .0
             .chunks_exact(4)
             .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
@@ -120,14 +124,14 @@ impl Channel for Blake2sChannel {
     fn verify_pow_nonce(&self, n_bits: u32, nonce: u64) -> bool {
         let digest = self.digest();
         // Compute H(POW_PREFIX, [0_u8; 12], digest, n_bits).
-        let mut hasher = Blake2sHasher::default();
+        let mut hasher = Blake2sHasherGeneric::<IS_M31_OUTPUT>::default();
         hasher.update(&Self::POW_PREFIX.to_le_bytes());
         hasher.update(&[0_u8; 12]);
         hasher.update(&digest.0[..]);
         hasher.update(&n_bits.to_le_bytes());
         let prefixed_digest = hasher.finalize();
         // Compute `H(prefixed_digest, nonce)`.
-        let mut hasher = Blake2sHasher::default();
+        let mut hasher = Blake2sHasherGeneric::<IS_M31_OUTPUT>::default();
         hasher.update(prefixed_digest.as_ref());
         hasher.update(&nonce.to_le_bytes());
         let res = hasher.finalize();
