@@ -22,6 +22,7 @@ pub mod lookups;
 pub mod poly;
 pub mod secure_column;
 pub mod vcs;
+pub mod vcs_lifted;
 
 #[instrument(skip_all)]
 pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
