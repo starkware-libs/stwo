@@ -62,13 +62,17 @@ impl fmt::Debug for Blake2sHash {
 
 impl super::hash::Hash for Blake2sHash {}
 
+pub type Blake2sHasher = Blake2sHasherImpl<false>;
+/// Same as [Blake2sHasher], expect that the hash output is taken modulo M31::P.
+pub type Blake2sM31Hasher = Blake2sHasherImpl<true>;
+
 // Wrapper for the blake2s Hashing functionalities.
 #[derive(Clone, Debug, Default)]
-pub struct Blake2sHasher {
+pub struct Blake2sHasherImpl<const IS_M31_OUTPUT: bool> {
     state: Blake2s256,
 }
 
-impl Blake2sHasher {
+impl<const IS_M31_OUTPUT: bool> Blake2sHasherImpl<IS_M31_OUTPUT> {
     pub fn new() -> Self {
         Self {
             state: Blake2s256::new(),
@@ -80,7 +84,11 @@ impl Blake2sHasher {
     }
 
     pub fn finalize(self) -> Blake2sHash {
-        Blake2sHash(self.state.finalize().into())
+        let mut r: [u8; 32] = self.state.finalize().into();
+        if IS_M31_OUTPUT {
+            r = reduce_to_m31(r);
+        }
+        Blake2sHash(r)
     }
 
     pub fn concat_and_hash(v1: &Blake2sHash, v2: &Blake2sHash) -> Blake2sHash {
@@ -95,6 +103,16 @@ impl Blake2sHasher {
         hasher.update(data);
         hasher.finalize()
     }
+}
+
+/// Reduces each u32 in the input (interpreted as little-endian) modulo M31::P.
+pub fn reduce_to_m31(value: [u8; 32]) -> [u8; 32] {
+    let mut res = [0u8; 32];
+    for (i, c) in value.chunks(4).enumerate() {
+        let val = u32::from_le_bytes(c.try_into().unwrap()) % crate::core::fields::m31::P;
+        res[i * 4..(i + 1) * 4].copy_from_slice(&val.to_le_bytes());
+    }
+    res
 }
 
 #[cfg(test)]

@@ -13,8 +13,8 @@ use rayon::prelude::*;
 use super::m31::LOG_N_LANES;
 use super::SimdBackend;
 use crate::core::fields::m31::BaseField;
-use crate::core::vcs::blake2_hash::Blake2sHash;
-use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs::blake2_hash::{reduce_to_m31, Blake2sHash};
+use crate::core::vcs::blake2_merkle::{Blake2sM31MerkleHasher, Blake2sMerkleHasher};
 use crate::core::vcs::MerkleHasher;
 use crate::parallel_iter;
 use crate::prover::backend::{Col, Column, ColumnOps};
@@ -168,6 +168,22 @@ impl MerkleOps<Blake2sMerkleHasher> for SimdBackend {
             let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
             chunk.copy_from_slice(&state);
         });
+        res
+    }
+}
+
+impl MerkleOps<Blake2sM31MerkleHasher> for SimdBackend {
+    fn commit_on_layer(
+        log_size: u32,
+        prev_layer: Option<&Vec<Blake2sHash>>,
+        columns: &[&Col<Self, BaseField>],
+    ) -> Vec<Blake2sHash> {
+        let mut res = <SimdBackend as MerkleOps<Blake2sMerkleHasher>>::commit_on_layer(
+            log_size, prev_layer, columns,
+        );
+        for x in res.iter_mut() {
+            x.0 = reduce_to_m31(x.0);
+        }
         res
     }
 }
