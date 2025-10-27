@@ -49,10 +49,16 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     )
     .entered();
     let composition_poly = component_provers.compute_composition_polynomial(random_coeff, &trace);
+    let composition_log_size = composition_poly.log_size();
     span1.exit();
 
+    // Commit on the Composition Polynomial by splitting its coeffs to two polynomialsof degree
+    // half the size of the original polynomial, and commit on each half separately.
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_polys(composition_poly.into_coordinate_polys());
+    let (left_comp_poly_half, right_comp_poly_half) = composition_poly.split_at_mid();
+
+    tree_builder.extend_polys(left_comp_poly_half.into_coordinate_polys());
+    tree_builder.extend_polys(right_comp_poly_half.into_coordinate_polys());
     tree_builder.commit(channel);
     span.exit();
 
@@ -63,7 +69,7 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let mut sample_points = component_provers.components().mask_points(oods_point);
 
     // Add the composition polynomial mask points.
-    sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
+    sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
 
     // Prove the trace and composition OODS values, and retrieve them.
     let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
@@ -72,7 +78,9 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
 
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.
-    if proof.extract_composition_oods_eval().unwrap()
+    if proof
+        .extract_composition_oods_eval(oods_point, composition_log_size)
+        .unwrap()
         != component_provers
             .components()
             .eval_composition_polynomial_at_point(oods_point, &proof.sampled_values, random_coeff)

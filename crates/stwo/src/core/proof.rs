@@ -4,8 +4,9 @@ use core::ops::Deref;
 use serde::{Deserialize, Serialize};
 use std_shims::Vec;
 
+use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
+use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::{FriLayerProof, FriProof};
 use crate::core::pcs::quotients::CommitmentSchemeProof;
 use crate::core::vcs::hash::Hash;
@@ -17,24 +18,36 @@ pub struct StarkProof<H: MerkleHasher>(pub CommitmentSchemeProof<H>);
 
 impl<H: MerkleHasher> StarkProof<H> {
     /// Extracts the composition trace Out-Of-Domain-Sample evaluation from the mask.
-    pub(crate) fn extract_composition_oods_eval(&self) -> Option<SecureField> {
+    pub(crate) fn extract_composition_oods_eval(
+        &self,
+        oods_point: CirclePoint<SecureField>,
+        composition_log_size: u32,
+    ) -> Option<SecureField> {
         // TODO(andrew): `[.., composition_mask, _quotients_mask]` when add quotients
         // commitment.
-        let [.., composition_mask] = &**self.sampled_values else {
+        let [.., left_and_right_composition_mask] = &**self.sampled_values else {
             return None;
         };
-        let coordinate_evals = composition_mask
-            .iter()
-            .map(|columns| {
-                let &[eval] = &columns[..] else {
-                    return None;
-                };
-                Some(eval)
-            })
-            .collect::<Option<Vec<_>>>()?
-            .try_into()
-            .ok()?;
-        Some(SecureField::from_partial_evals(coordinate_evals))
+        let left_and_right_coordinate_evals: [SecureField; 2 * SECURE_EXTENSION_DEGREE] =
+            left_and_right_composition_mask
+                .iter()
+                .map(|columns| {
+                    let &[eval] = &columns[..] else {
+                        return None;
+                    };
+                    Some(eval)
+                })
+                .collect::<Option<Vec<_>>>()?
+                .try_into()
+                .ok()?;
+
+        let (left_coordinate_evals, right_coordinate_evals) =
+            left_and_right_coordinate_evals.split_at(SECURE_EXTENSION_DEGREE);
+
+        let left_eval = SecureField::from_partial_evals(left_coordinate_evals.try_into().ok()?);
+        let right_eval = SecureField::from_partial_evals(right_coordinate_evals.try_into().ok()?);
+        let value = left_eval + oods_point.repeated_double(composition_log_size - 2).x * right_eval;
+        Some(value)
     }
 
     /// Returns the estimate size (in bytes) of the proof.

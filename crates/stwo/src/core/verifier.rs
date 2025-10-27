@@ -25,16 +25,17 @@ pub fn verify<MC: MerkleChannel>(
         components: components.to_vec(),
         n_preprocessed_columns,
     };
+    let composition_log_size = components.composition_log_degree_bound();
     tracing::info!(
         "Composition polynomial log degree bound: {}",
-        components.composition_log_degree_bound()
+        composition_log_size
     );
     let random_coeff = channel.draw_secure_felt();
 
     // Read composition polynomial commitment.
     commitment_scheme.commit(
         *proof.commitments.last().unwrap(),
-        &[components.composition_log_degree_bound(); SECURE_EXTENSION_DEGREE],
+        &[composition_log_size - 1; 2 * SECURE_EXTENSION_DEGREE],
         channel,
     );
 
@@ -44,7 +45,7 @@ pub fn verify<MC: MerkleChannel>(
     // Get mask sample points relative to oods point.
     let mut sample_points = components.mask_points(oods_point);
     // Add the composition polynomial mask points.
-    sample_points.push(vec![vec![oods_point]; SECURE_EXTENSION_DEGREE]);
+    sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
 
     let sample_points_by_column = sample_points.as_cols_ref().flatten();
     tracing::info!("Sampling {} columns.", sample_points_by_column.len());
@@ -53,12 +54,11 @@ pub fn verify<MC: MerkleChannel>(
         sample_points_by_column.into_iter().flatten().count()
     );
 
-    let composition_oods_eval =
-        proof
-            .extract_composition_oods_eval()
-            .ok_or(VerificationError::InvalidStructure(
-                std_shims::ToString::to_string(&"Unexpected sampled_values structure"),
-            ))?;
+    let composition_oods_eval = proof
+        .extract_composition_oods_eval(oods_point, composition_log_size)
+        .ok_or(VerificationError::InvalidStructure(
+            std_shims::ToString::to_string(&"Unexpected sampled_values structure"),
+        ))?;
 
     if composition_oods_eval
         != components.eval_composition_polynomial_at_point(
