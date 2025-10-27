@@ -12,7 +12,7 @@ use thiserror::Error;
 use super::channel::{Channel, MerkleChannel};
 use super::fields::qm31::{SecureField, QM31, SECURE_EXTENSION_DEGREE};
 use super::poly::circle::CircleDomain;
-use super::queries::Queries;
+use super::queries::{draw_queries, Queries};
 use super::ColumnVec;
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
@@ -311,7 +311,9 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
             .map(|domain| domain.log_size())
             .collect::<BTreeSet<u32>>();
         let max_column_log_size = *column_log_sizes.iter().max().unwrap();
-        let queries = Queries::generate(channel, max_column_log_size, self.config.n_queries);
+        let unsorted_query_locations =
+            draw_queries(channel, max_column_log_size, self.config.n_queries);
+        let queries = Queries::new(&unsorted_query_locations, max_column_log_size);
         let query_positions_by_log_size =
             get_query_positions_by_log_size(&queries, column_log_sizes);
         self.queries = Some(queries);
@@ -919,14 +921,21 @@ mod tests {
         let twiddles = CpuBackend::precompute_twiddles(columns[0].domain.half_coset);
         let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
         let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
-        let (proof, prover_query_positions_by_log_size) = prover.decommit(&mut test_channel());
+        let prover_decommit = prover.decommit(&mut test_channel());
+        let prover_query_positions_by_log_size = prover_decommit.query_positions_by_log_size;
         let query_evals_by_column = columns.map(|eval| {
             let query_positions = &prover_query_positions_by_log_size[&eval.domain.log_size()];
             query_polynomial_at_positions(&eval, query_positions)
         });
         let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
 
-        let mut verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
+        let mut verifier = FriVerifier::commit(
+            &mut test_channel(),
+            config,
+            prover_decommit.fri_proof,
+            bounds,
+        )
+        .unwrap();
         let verifier_query_positions_by_log_size =
             verifier.sample_query_positions(&mut test_channel());
 

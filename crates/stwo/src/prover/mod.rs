@@ -4,7 +4,7 @@ use tracing::{info, instrument, span, Level};
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
-use crate::core::proof::StarkProof;
+use crate::core::proof::{ExtendedStarkProof, StarkProof};
 use crate::core::verifier::PREPROCESSED_TRACE_IDX;
 use crate::prover::backend::BackendForChannel;
 
@@ -23,12 +23,20 @@ pub mod poly;
 pub mod secure_column;
 pub mod vcs;
 
-#[instrument(skip_all)]
 pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
     components: &[&dyn ComponentProver<B>],
     channel: &mut MC::C,
-    mut commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
+    commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
 ) -> Result<StarkProof<MC::H>, ProvingError> {
+    Ok(prove_ex(components, channel, commitment_scheme)?.proof)
+}
+
+#[instrument(skip_all)]
+pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
+    components: &[&dyn ComponentProver<B>],
+    channel: &mut MC::C,
+    mut commitment_scheme: CommitmentSchemeProver<'_, B, MC>,
+) -> Result<ExtendedStarkProof<MC::H>, ProvingError> {
     let n_preprocessed_columns = commitment_scheme.trees[PREPROCESSED_TRACE_IDX]
         .polynomials
         .len();
@@ -67,7 +75,7 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
 
     // Prove the trace and composition OODS values, and retrieve them.
     let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
-    let proof = StarkProof(commitment_scheme_proof);
+    let proof = StarkProof(commitment_scheme_proof.proof);
     info!(proof_size_estimate = proof.size_estimate());
 
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
@@ -80,7 +88,10 @@ pub fn prove<B: BackendForChannel<MC>, MC: MerkleChannel>(
         return Err(ProvingError::ConstraintsNotSatisfied);
     }
 
-    Ok(proof)
+    Ok(ExtendedStarkProof {
+        proof,
+        aux: commitment_scheme_proof.aux,
+    })
 }
 
 #[derive(Clone, Copy, Debug, Error)]

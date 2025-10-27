@@ -7,13 +7,18 @@ use std_shims::Vec;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fri::{FriLayerProof, FriProof};
-use crate::core::pcs::quotients::CommitmentSchemeProof;
+use crate::core::pcs::quotients::{CommitmentSchemeProof, CommitmentSchemeProofAux};
 use crate::core::vcs::hash::Hash;
 use crate::core::vcs::verifier::MerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StarkProof<H: MerkleHasher>(pub CommitmentSchemeProof<H>);
+
+pub struct ExtendedStarkProof<H: MerkleHasher> {
+    pub proof: StarkProof<H>,
+    pub aux: CommitmentSchemeProofAux,
+}
 
 impl<H: MerkleHasher> StarkProof<H> {
     /// Extracts the composition trace Out-Of-Domain-Sample evaluation from the mask.

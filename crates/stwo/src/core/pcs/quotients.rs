@@ -35,6 +35,19 @@ pub struct CommitmentSchemeProof<H: MerkleHasher> {
     pub fri_proof: FriProof<H>,
 }
 
+/// Auxiliary data for a [CommitmentSchemeProof].
+#[derive(Clone, Debug)]
+pub struct CommitmentSchemeProofAux {
+    /// The indices of the queries in the ordered they were sampled, before sorting and
+    /// deduplication.
+    pub unsorted_query_locations: Vec<usize>,
+}
+
+pub struct ExtendedCommitmentSchemeProof<H: MerkleHasher> {
+    pub proof: CommitmentSchemeProof<H>,
+    pub aux: CommitmentSchemeProofAux,
+}
+
 /// A batch of column samplings at a point.
 pub struct ColumnSampleBatch {
     /// The point at which the columns are sampled.

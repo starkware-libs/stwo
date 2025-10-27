@@ -7,6 +7,26 @@ use super::channel::Channel;
 
 pub const UPPER_BOUND_QUERY_BYTES: usize = 4;
 
+/// Draws `n_queries` values in the range `[0, 2^log_domain_size)` from the channel.
+pub fn draw_queries(
+    channel: &mut impl Channel,
+    log_domain_size: u32,
+    n_queries: usize,
+) -> Vec<usize> {
+    let mut raw_positions = Vec::new();
+    let query_mask = (1 << log_domain_size) - 1;
+    loop {
+        let random_words = channel.draw_u32s();
+        for word in random_words {
+            let quotient_query = word & query_mask;
+            raw_positions.push(quotient_query.try_into().unwrap());
+            if raw_positions.len() == n_queries {
+                return raw_positions;
+            }
+        }
+    }
+}
+
 /// An ordered set of query positions.
 #[derive(Debug, Clone)]
 pub struct Queries {
@@ -17,24 +37,14 @@ pub struct Queries {
 }
 
 impl Queries {
-    /// Randomizes a set of query indices uniformly over the range [0, 2^`log_query_size`).
-    pub fn generate(channel: &mut impl Channel, log_domain_size: u32, n_queries: usize) -> Self {
-        let mut queries = BTreeSet::new();
-        let mut query_cnt = 0;
-        let max_query = (1 << log_domain_size) - 1;
-        loop {
-            let random_words = channel.draw_u32s();
-            for word in random_words {
-                let quotient_query = word & max_query;
-                queries.insert(quotient_query as usize);
-                query_cnt += 1;
-                if query_cnt == n_queries {
-                    return Self {
-                        positions: queries.into_iter().collect(),
-                        log_domain_size,
-                    };
-                }
-            }
+    /// Creates a [Queries] instance from the given unsorted `raw_positions`.
+    pub fn new(raw_positions: &[usize], log_domain_size: u32) -> Self {
+        Self {
+            positions: BTreeSet::from_iter(raw_positions.iter())
+                .into_iter()
+                .cloned()
+                .collect(),
+            log_domain_size,
         }
     }
 
@@ -73,7 +83,7 @@ mod tests {
 
     use crate::core::channel::Blake2sChannel;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::queries::Queries;
+    use crate::core::queries::{draw_queries, Queries};
     use crate::core::utils::bit_reverse;
 
     #[test]
@@ -82,7 +92,8 @@ mod tests {
         let log_query_size = 31;
         let n_queries = 100;
 
-        let queries = Queries::generate(channel, log_query_size, n_queries);
+        let raw_positions = draw_queries(channel, log_query_size, n_queries);
+        let queries = Queries::new(&raw_positions, log_query_size);
 
         assert!(queries.len() == n_queries);
         assert!(queries.iter().is_sorted());

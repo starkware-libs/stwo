@@ -13,7 +13,7 @@ use crate::core::fri::{
     FOLD_STEP,
 };
 use crate::core::poly::line::{LineDomain, LinePoly};
-use crate::core::queries::Queries;
+use crate::core::queries::{draw_queries, Queries};
 use crate::core::vcs::MerkleHasher;
 use crate::prover::backend::{Col, ColumnOps};
 use crate::prover::line::LineEvaluation;
@@ -71,6 +71,12 @@ pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField
     fn decompose(
         eval: &SecureEvaluation<Self, BitReversedOrder>,
     ) -> (SecureEvaluation<Self, BitReversedOrder>, SecureField);
+}
+
+pub struct FriDecommitResult<H: MerkleHasher> {
+    pub fri_proof: FriProof<H>,
+    pub query_positions_by_log_size: BTreeMap<u32, Vec<usize>>,
+    pub unsorted_query_locations: Vec<usize>,
 }
 
 /// A FRI prover that applies the FRI protocol to prove a set of polynomials are of low degree.
@@ -229,14 +235,20 @@ impl<'a, B: FriOps + MerkleOps<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
     /// Returns a FRI proof and the query positions.
     ///
     /// Returned query positions are mapped by column commitment domain log size.
-    pub fn decommit(self, channel: &mut MC::C) -> (FriProof<MC::H>, BTreeMap<u32, Vec<usize>>) {
+    pub fn decommit(self, channel: &mut MC::C) -> FriDecommitResult<MC::H> {
         let max_column_log_size = self.first_layer.max_column_log_size();
-        let queries = Queries::generate(channel, max_column_log_size, self.config.n_queries);
+        let unsorted_query_locations =
+            draw_queries(channel, max_column_log_size, self.config.n_queries);
+        let queries = Queries::new(&unsorted_query_locations, max_column_log_size);
         let column_log_sizes = self.first_layer.column_log_sizes();
         let query_positions_by_log_size =
             get_query_positions_by_log_size(&queries, column_log_sizes);
-        let proof = self.decommit_on_queries(&queries);
-        (proof, query_positions_by_log_size)
+        let fri_proof = self.decommit_on_queries(&queries);
+        FriDecommitResult {
+            fri_proof,
+            query_positions_by_log_size,
+            unsorted_query_locations,
+        }
     }
 
     /// # Panics

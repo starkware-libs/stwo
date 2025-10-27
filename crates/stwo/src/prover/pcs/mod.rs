@@ -7,14 +7,16 @@ use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::pcs::quotients::{CommitmentSchemeProof, PointSample};
+use crate::core::pcs::quotients::{
+    CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
+};
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
 use crate::core::vcs::verifier::MerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::Trace;
 use crate::prover::backend::BackendForChannel;
-use crate::prover::fri::FriProver;
+use crate::prover::fri::{FriDecommitResult, FriProver};
 use crate::prover::pcs::quotient_ops::compute_fri_quotients;
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
@@ -86,7 +88,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
         channel: &mut MC::C,
-    ) -> CommitmentSchemeProof<MC::H> {
+    ) -> ExtendedCommitmentSchemeProof<MC::H> {
         // Evaluate polynomials on open points.
         let span = span!(
             Level::INFO,
@@ -132,25 +134,34 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         channel.mix_u64(proof_of_work);
 
         // FRI decommitment phase.
-        let (fri_proof, query_positions_per_log_size) = fri_prover.decommit(channel);
+        let FriDecommitResult {
+            fri_proof,
+            query_positions_by_log_size,
+            unsorted_query_locations,
+        } = fri_prover.decommit(channel);
 
         // Decommit the FRI queries on the merkle trees.
         let decommitment_results = self
             .trees
             .as_ref()
-            .map(|tree| tree.decommit(&query_positions_per_log_size));
+            .map(|tree| tree.decommit(&query_positions_by_log_size));
 
         let queried_values = decommitment_results.as_ref().map(|(v, _)| v.clone());
         let decommitments = decommitment_results.map(|(_, d)| d);
 
-        CommitmentSchemeProof {
-            commitments: self.roots(),
-            sampled_values,
-            decommitments,
-            queried_values,
-            proof_of_work,
-            fri_proof,
-            config: self.config,
+        ExtendedCommitmentSchemeProof {
+            proof: CommitmentSchemeProof {
+                commitments: self.roots(),
+                sampled_values,
+                decommitments,
+                queried_values,
+                proof_of_work,
+                fri_proof,
+                config: self.config,
+            },
+            aux: CommitmentSchemeProofAux {
+                unsorted_query_locations,
+            },
         }
     }
 }
