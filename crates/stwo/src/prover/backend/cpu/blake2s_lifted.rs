@@ -1,0 +1,34 @@
+use crate::core::fields::m31::BaseField;
+use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use crate::prover::backend::CpuBackend;
+use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
+
+impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
+    /// Computes the leaves of the Merkle tree. This is the core logic of the lifted Merkle
+    /// commitment. The input columns are assumed to be in increasing order of length.
+    fn commit_on_first_layer(columns: &[&Vec<BaseField>]) -> Vec<H::Hash> {
+        let hasher = H::default_with_prefix();
+        let mut prev_layer: Vec<H> = vec![hasher];
+        for col in columns.iter() {
+            // TODO(Leo): the clone in the map can be avoided when `prev_layer`
+            // has the same size of `col`.
+            prev_layer = col
+                .iter()
+                .enumerate()
+                .map(|(idx, felt)| {
+                    let mut hasher = prev_layer[idx % prev_layer.len()].clone();
+                    hasher.update_leaves(&[*felt]);
+                    hasher
+                })
+                .collect();
+        }
+        prev_layer.into_iter().map(|x| x.finalize()).collect()
+    }
+
+    fn commit_on_inner_layer(prev_layer: &Vec<H::Hash>) -> Vec<H::Hash> {
+        let log_size = prev_layer.len().ilog2() as usize - 1;
+        (0..(1 << log_size))
+            .map(|i| H::hash_children((prev_layer[2 * i], prev_layer[2 * i + 1])))
+            .collect()
+    }
+}
