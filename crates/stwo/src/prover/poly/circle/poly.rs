@@ -64,6 +64,10 @@ impl<B: PolyOps> CirclePoly<B> {
     ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
         B::evaluate(self, domain, twiddles)
     }
+    /// See the documentation in `[super::ops::split_at_mid]`
+    pub fn split_at_mid(self) -> (Self, Self) {
+        B::split_at_mid(self)
+    }
 }
 
 #[cfg(test)]

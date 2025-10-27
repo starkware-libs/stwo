@@ -167,6 +167,11 @@ impl PolyOps for CpuBackend {
             itwiddles,
         }
     }
+
+    fn split_at_mid(mut poly: CirclePoly<Self>) -> (CirclePoly<Self>, CirclePoly<Self>) {
+        let right = poly.coeffs.split_off(poly.coeffs.len() / 2);
+        (CirclePoly::new(poly.coeffs), CirclePoly::new(right))
+    }
 }
 
 pub fn slow_precompute_twiddles(mut coset: Coset) -> Vec<BaseField> {
@@ -365,5 +370,19 @@ mod tests {
         let interpolated_poly = evals.interpolate();
 
         assert_eq!(interpolated_poly.coeffs, poly.coeffs);
+    }
+
+    #[test]
+    fn test_circle_poly_split_at_mid() {
+        let log_size = 4;
+        let poly = CpuCirclePoly::new((0..1 << log_size).map(BaseField::from).collect());
+        let (left, right) = poly.clone().split_at_mid();
+        let random_point = CirclePoint::get_point(21903);
+
+        assert_eq!(
+            left.eval_at_point(random_point)
+                + random_point.repeated_double(log_size - 2).x * right.eval_at_point(random_point),
+            poly.eval_at_point(random_point)
+        );
     }
 }

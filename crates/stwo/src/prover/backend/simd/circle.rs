@@ -20,6 +20,7 @@ use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
 use crate::core::utils::bit_reverse_index;
 use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
 use crate::prover::backend::simd::column::BaseColumn;
+use crate::prover::backend::simd::fft::transpose_vecs;
 use crate::prover::backend::simd::m31::PackedM31;
 use crate::prover::backend::{Col, Column, CpuBackend};
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
@@ -337,6 +338,65 @@ impl PolyOps for SimdBackend {
             itwiddles: dbl_itwiddles,
         }
     }
+
+    fn split_at_mid(mut poly: CirclePoly<Self>) -> (CirclePoly<Self>, CirclePoly<Self>) {
+        let length = poly.coeffs.length;
+        let log_length = length.ilog2();
+        let log_n_vecs = log_length - LOG_N_LANES;
+
+        // If the length fits only in one SIMD vector, need to split from the cpu vector.
+        if length <= 1 << LOG_N_LANES {
+            let mut cpu_vec = poly.coeffs.to_cpu();
+            let right = cpu_vec.split_off(cpu_vec.len() / 2);
+            return (
+                CirclePoly::new(cpu_vec.into_iter().collect()),
+                CirclePoly::new(right.into_iter().collect()),
+            );
+        }
+
+        // When the poly is large, IFFT doesn't end with a transpose, so we need to transpose the
+        // coefficients before splitting.
+        if log_length > CACHED_FFT_LOG_SIZE {
+            unsafe {
+                transpose_vecs(
+                    transmute::<*mut PackedBaseField, *mut u32>(poly.coeffs.data.as_mut_ptr()),
+                    log_n_vecs as usize,
+                );
+            }
+        }
+
+        let mut second = poly.coeffs.data.split_off(poly.coeffs.data.len() / 2);
+
+        // If the new polynomials are large, we need to transpose the coefficients back before
+        // returning because the FFT algorithm assumes the coefficients are transposed.
+        if log_length - 1 > CACHED_FFT_LOG_SIZE {
+            // transpose first and second
+            unsafe {
+                transpose_vecs(
+                    transmute::<*mut PackedBaseField, *mut u32>(poly.coeffs.data.as_mut_ptr()),
+                    (log_n_vecs - 1) as usize,
+                );
+                transpose_vecs(
+                    transmute::<*mut PackedBaseField, *mut u32>(second.as_mut_ptr()),
+                    (log_n_vecs - 1) as usize,
+                );
+            }
+        }
+
+        let left_length = length / 2;
+        let right_length = length - left_length;
+
+        (
+            CirclePoly::new(BaseColumn {
+                data: poly.coeffs.data,
+                length: left_length,
+            }),
+            CirclePoly::new(BaseColumn {
+                data: second,
+                length: right_length,
+            }),
+        )
+    }
 }
 
 fn compute_small_coset_twiddles(coset: Coset) -> TwiddleTree<SimdBackend> {
@@ -421,6 +481,7 @@ mod tests {
     use crate::core::poly::circle::CanonicCoset;
     use crate::prover::backend::simd::circle::slow_eval_at_point;
     use crate::prover::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
+    use crate::prover::backend::simd::m31::LOG_N_LANES;
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
@@ -533,6 +594,50 @@ mod tests {
                 .iter()
                 .map(|x| x.0 * 2)
                 .collect_vec()
+        );
+    }
+    #[test]
+    fn test_circle_poly_split_at_mid_small() {
+        let log_size = LOG_N_LANES;
+        let poly =
+            CirclePoly::<SimdBackend>::new((0..1 << log_size).map(BaseField::from).collect());
+        let (left, right) = poly.clone().split_at_mid();
+        let random_point = CirclePoint::get_point(21903);
+
+        assert_eq!(
+            left.eval_at_point(random_point)
+                + random_point.repeated_double(log_size - 2).x * right.eval_at_point(random_point),
+            poly.eval_at_point(random_point)
+        );
+    }
+
+    #[test]
+    fn test_circle_poly_split_at_mid_medium() {
+        let log_size = (CACHED_FFT_LOG_SIZE - LOG_N_LANES) / 2;
+        let poly =
+            CirclePoly::<SimdBackend>::new((0..1 << log_size).map(BaseField::from).collect());
+        let (left, right) = poly.clone().split_at_mid();
+        let random_point = CirclePoint::get_point(21903);
+
+        assert_eq!(
+            left.eval_at_point(random_point)
+                + random_point.repeated_double(log_size - 2).x * right.eval_at_point(random_point),
+            poly.eval_at_point(random_point)
+        );
+    }
+
+    #[test]
+    fn test_circle_poly_split_at_mid_large() {
+        let log_size = CACHED_FFT_LOG_SIZE + 1;
+        let poly =
+            CirclePoly::<SimdBackend>::new((0..1 << log_size).map(BaseField::from).collect());
+        let (left, right) = poly.clone().split_at_mid();
+        let random_point = CirclePoint::get_point(21903);
+
+        assert_eq!(
+            left.eval_at_point(random_point)
+                + random_point.repeated_double(log_size - 2).x * right.eval_at_point(random_point),
+            poly.eval_at_point(random_point)
         );
     }
 }

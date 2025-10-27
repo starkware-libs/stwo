@@ -67,4 +67,23 @@ pub trait PolyOps: ColumnOps<BaseField> + Sized {
 
     /// Precomputes twiddles for a given coset.
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self>;
+
+    /// Given a polynomial `p`, it outputs two polynomials `p_left`, `p_right` of half the degree,
+    /// which satisfy the identity
+    ///
+    /// `p(z) = p_left(z) + pi^{L-2}(z.x) * p_right(z)`.
+    ///
+    /// where `L` is the log size of the coefficient vector and `z` is a circle point.
+    /// If a polynomial is given by its vector of coefficients (in terms of the FFT basis in natural
+    /// order), this decomposition corresponds exactly to dividing the coefficient vector in the
+    /// middle. In fact, for `n` in `[0, 2^L)`, the basis element corresponding to the n-th
+    /// coefficient is
+    ///
+    /// `(pi^{L-2}(x))^b_{L-1} * ... * (pi(x))^b_2 * x^b_1* y^b_0`,
+    ///
+    /// where `b_{L-1}, ... , b_0` is the bit decomposition of n (from most to least significant
+    /// bit). Therefore, splitting the coefficient vector in the middle, corresponds to separating
+    /// the ones with the MSB, b_{L-1} == 1, from the ones with the MSB, b_{L-1} == 0, meaning
+    /// separating the basis elements divisible by `pi^{L-2}(x)` from those that are not.
+    fn split_at_mid(poly: CirclePoly<Self>) -> (CirclePoly<Self>, CirclePoly<Self>);
 }
