@@ -47,6 +47,20 @@ impl<B: PolyOps> SecureCirclePoly<B> {
     pub fn into_coordinate_polys(self) -> [CirclePoly<B>; SECURE_EXTENSION_DEGREE] {
         self.0
     }
+
+    /// See the documentation in `[super::ops::split_at_mid]`.
+    pub fn split_at_mid(self) -> (Self, Self) {
+        // To avoid cloning or copying, destructure self by-value so we can move the contents.
+        // NOTE: This requires `self` to be passed by value, not by reference!
+        let [poly0, poly1, poly2, poly3] = self.0;
+        let (left0, right0) = poly0.split_at_mid();
+        let (left1, right1) = poly1.split_at_mid();
+        let (left2, right2) = poly2.split_at_mid();
+        let (left3, right3) = poly3.split_at_mid();
+        let left = [left0, left1, left2, left3];
+        let right = [right0, right1, right2, right3];
+        (Self(left), Self(right))
+    }
 }
 
 impl<B: ColumnOps<BaseField>> Deref for SecureCirclePoly<B> {
@@ -126,5 +140,39 @@ impl<EvalOrder> From<CircleEvaluation<CpuBackend, SecureField, EvalOrder>>
 {
     fn from(evaluation: CircleEvaluation<CpuBackend, SecureField, EvalOrder>) -> Self {
         Self::new(evaluation.domain, evaluation.values.into_iter().collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::core::circle::CirclePoint;
+    use crate::core::fields::m31::BaseField;
+    use crate::prover::backend::cpu::CpuCirclePoly;
+    use crate::prover::poly::circle::SecureCirclePoly;
+
+    #[test]
+    fn test_secure_circle_poly_split_at_mid() {
+        let log_size = 10;
+        let poly = SecureCirclePoly(std::array::from_fn(|i| {
+            CpuCirclePoly::new(
+                (0..1 << log_size)
+                    .map(|x| {
+                        BaseField::from_u32_unchecked(x) + BaseField::from_u32_unchecked(i as u32)
+                    })
+                    .collect(),
+            )
+        }));
+
+        let (left, right) = SecureCirclePoly(poly.clone()).split_at_mid();
+        let random_point = CirclePoint::get_point(21903);
+
+        assert_eq!(
+            left.eval_at_point(random_point)
+                + random_point.repeated_double(log_size - 2).x * right.eval_at_point(random_point),
+            poly.eval_at_point(random_point)
+        );
+
+        assert_eq!(left.log_size(), log_size - 1);
+        assert_eq!(right.log_size(), log_size - 1);
     }
 }
