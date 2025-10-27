@@ -341,8 +341,6 @@ impl PolyOps for SimdBackend {
 
     fn split_at_mid(mut poly: CirclePoly<Self>) -> (CirclePoly<Self>, CirclePoly<Self>) {
         let length = poly.coeffs.length;
-        let log_length = length.ilog2();
-        let log_n_vecs = log_length - LOG_N_LANES;
 
         // If the length fits only in one SIMD vector, need to split from the cpu vector.
         if length <= 1 << LOG_N_LANES {
@@ -353,6 +351,9 @@ impl PolyOps for SimdBackend {
                 CirclePoly::new(right.into_iter().collect()),
             );
         }
+
+        let log_length = length.ilog2();
+        let log_n_vecs = log_length - LOG_N_LANES;
 
         // When the poly is large, IFFT doesn't end with a transpose, so we need to transpose the
         // coefficients before splitting.
