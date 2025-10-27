@@ -6,26 +6,24 @@ use num_traits::Zero;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::vcs::blake2_merkle::Blake2sMerkleHasher;
 use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher as Blake2sMerkleHasherLifted;
+use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::Col;
 use stwo::prover::vcs::prover::MerkleProver;
 use stwo::prover::vcs_lifted::prover::MerkleProverLifted;
 
-const LOG_N_ROWS: u32 = 20;
-
-const LOG_N_COLS: u32 = 8;
-
-fn generate_trace() -> Vec<Col<SimdBackend, BaseField>> {
-    let col: Col<SimdBackend, BaseField> =
-        (0..1 << LOG_N_ROWS).map(|_| BaseField::zero()).collect();
-    let mut cols = (0..1 << LOG_N_COLS).map(|_| col.clone()).collect_vec();
-    (0..(1 << LOG_N_COLS) - 1)
-        .for_each(|i| cols[i] = (0..1 << 8).map(|_| BaseField::zero()).collect());
-    cols
+fn generate_trace(log_size_to_n_cols: &Vec<(usize, usize)>) -> Vec<Col<SimdBackend, BaseField>> {
+    log_size_to_n_cols
+        .iter()
+        .map(|(log_size, n_cols)| {
+            (0..*n_cols).map(move |_| BaseColumn::from_cpu(vec![BaseField::zero(); 1 << log_size]))
+        })
+        .flatten()
+        .collect_vec()
 }
 
-fn bench_merkle_commit(c: &mut Criterion, id: &str) {
-    let cols = generate_trace();
+fn bench_merkle_commit(c: &mut Criterion, id: &str, log_size_to_n_cols: &Vec<(usize, usize)>) {
+    let cols = generate_trace(log_size_to_n_cols);
     let mut group = c.benchmark_group("merkle_commit");
     let merkle_commit: Box<dyn Fn()> = match id {
         "mixed" => Box::new(|| {
@@ -38,14 +36,22 @@ fn bench_merkle_commit(c: &mut Criterion, id: &str) {
         }),
         _ => unreachable!(),
     };
-    group.bench_function(format!("{id} merkle commit"), |b| {
+    group.bench_function(format!("{id} merkle commit: {log_size_to_n_cols:?}"), |b| {
         b.iter_with_large_drop(&merkle_commit)
     });
 }
 
 fn blake2s_merkle_commit(c: &mut Criterion) {
-    bench_merkle_commit(c, "mixed");
-    bench_merkle_commit(c, "lifted");
+    let test_vectors = [
+        vec![(20, 500)],
+        vec![(18, 20), (19, 20), (20, 20), (21, 20)],
+        vec![(18, 100), (19, 100)],
+    ];
+
+    for vector in test_vectors.iter() {
+        bench_merkle_commit(c, "mixed", &vector);
+        bench_merkle_commit(c, "lifted", &vector);
+    }
 }
 
 criterion_group!(

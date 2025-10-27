@@ -80,57 +80,78 @@ pub const SIGMA: [[u8; 16]; 10] = [
 ];
 
 impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
-    /// TODO(Leo): document. Receives the columns in increasing order of size.
+    /// Receives the columns in increasing order of size.
     fn commit_on_first_layer(columns: &[&Col<Self, BaseField>]) -> Col<Self, Blake2sHash> {
         if columns.first().is_some_and(|c| c.len() < 1 << LOG_N_LANES) {
             unimplemented!("Support for small columns is not implemented yet")
         }
+
         // Hash columns in chunks of 16.
         let mut col_chunk_iter = columns.chunks(16);
         let last_chunk = unsafe { col_chunk_iter.next_back().unwrap_unchecked() };
-        // Initialize the vector of Blake2s states. The state is of type [u32x16; 8].
+        // Initialize the vector of Blake2s states. The state is of type `[u32x16; 8]`.
         let mut prev_layer_states: Vec<[u32x16; 8]> = vec![SIMD_LEAF_INITIAL_STATE];
 
         for (idx, column_chunk) in &mut col_chunk_iter.enumerate() {
             let chunk_max_size = column_chunk.iter().last().unwrap().len();
 
-            // TODO(Leo): This is an allocation that is done only once in the non-lifted version.
-            // Is there a way to avoid allocating multiple times?
-            let mut curr_layer_states: Vec<[u32x16; 8]> =
-                vec![[ZEROS; 8]; chunk_max_size >> LOG_N_LANES];
+            // if chunk_max_size >> LOG_N_LANES == prev_layer_states.len() {
+            //     // Compute the new states of the current layer.
+            //     #[cfg(not(feature = "parallel"))]
+            //     let iter_states = prev_layer_states.iter_mut();
+            //     #[cfg(feature = "parallel")]
+            //     let iter_states = prev_layer_states.par_iter_mut();
+            //     iter_states.enumerate().for_each(|(i, curr_state)| {
+            //         // The first summand corresponds to the leaf prefix.
+            //         // `idx` is incremented by 1 because it's zero-based.
+            //         let t = 64 + (64 * (idx + 1) as u64);
+            //         let mut msgs: [u32x16; 16] = unsafe { std::mem::zeroed() };
+            //         for (j, column) in column_chunk.iter().enumerate() {
+            //             msgs[j] = column.data[i % column.data.len()].into_simd();
+            //         }
+            //         let state = compress_unfinalized(*curr_state, msgs, t);
+            //         curr_state.copy_from_slice(&state);
+            //     });
+            // } else {
+                // }
+                // TODO(Leo): This is an allocation that is done only once in the non-lifted
+                // version. Is there a way to avoid allocating multiple times?
+                let mut next_layer_states: Vec<[u32x16; 8]> =
+                    vec![[ZEROS; 8]; chunk_max_size >> LOG_N_LANES];
 
-            // Compute the new states of the current layer.
-            #[cfg(not(feature = "parallel"))]
-            let iter_states = curr_layer_states.iter_mut();
-            #[cfg(feature = "parallel")]
-            let iter_states = curr_layer_states.par_iter_mut();
+                // Compute the new states of the current layer.
+                #[cfg(not(feature = "parallel"))]
+                let iter_states = next_layer_states.iter_mut();
+                #[cfg(feature = "parallel")]
+                let iter_states = next_layer_states.par_iter_mut();
 
-            iter_states.enumerate().for_each(|(i, curr_state)| {
-                let prev_state = prev_layer_states[i % prev_layer_states.len()];
-                // The first summand corresponds to the leaf prefix.
-                // `idx` is incremented by 1 because it's zero-based.
-                let t = 64 + (64 * (idx + 1) as u64);
-                let mut msgs: [u32x16; 16] = unsafe { std::mem::zeroed() };
-                for (j, column) in column_chunk.iter().enumerate() {
-                    msgs[j] = column.data[i % column.data.len()].into_simd();
-                }
-                let state = compress_unfinalized(prev_state, msgs, t);
-                curr_state.copy_from_slice(&state);
-            });
-            prev_layer_states = curr_layer_states;
+                iter_states.enumerate().for_each(|(i, curr_state)| {
+                    let prev_state = prev_layer_states[i % prev_layer_states.len()];
+                    // The first summand corresponds to the leaf prefix.
+                    // `idx` is incremented by 1 because it's zero-based.
+                    let t = 64 + (64 * (idx + 1) as u64);
+                    let mut msgs: [u32x16; 16] = unsafe { std::mem::zeroed() };
+                    for (j, column) in column_chunk.iter().enumerate() {
+                        msgs[j] = column.data[i % column.data.len()].into_simd();
+                    }
+                    let state = compress_unfinalized(prev_state, msgs, t);
+                    curr_state.copy_from_slice(&state);
+                });
+                prev_layer_states = next_layer_states;
+            // }
         }
 
         // Process last chunk.
         // TODO(Leo): can we avoid the code duplication with the iteration
         // on the chunks?
         let chunk_max_size = last_chunk.iter().last().unwrap().len();
-        let mut curr_layer_states: Vec<[u32x16; 8]> =
+        let mut last_layer_states: Vec<[u32x16; 8]> =
             vec![[ZEROS; 8]; chunk_max_size >> LOG_N_LANES];
 
         #[cfg(not(feature = "parallel"))]
-        let iter_states = curr_layer_states.iter_mut();
+        let iter_states = last_layer_states.iter_mut();
         #[cfg(feature = "parallel")]
-        let iter_states = curr_layer_states.par_iter_mut();
+        let iter_states = last_layer_states.par_iter_mut();
 
         iter_states.enumerate().for_each(|(i, curr_state)| {
             let prev_state = prev_layer_states[i % prev_layer_states.len()];
@@ -143,7 +164,7 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
             curr_state.copy_from_slice(&state);
         });
 
-        curr_layer_states
+        last_layer_states
             .iter()
             .flat_map(|x| {
                 let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(*x)) };
