@@ -67,4 +67,8 @@ pub trait PolyOps: ColumnOps<BaseField> + Sized {
 
     /// Precomputes twiddles for a given coset.
     fn precompute_twiddles(coset: Coset) -> TwiddleTree<Self>;
+
+    /// Splits the polynomial in the middle, separating the coeffs that are multiplied by
+    /// pi^{log_size - 2}(x) and the ones that are not.
+    fn split_at_mid(poly: CirclePoly<Self>) -> (CirclePoly<Self>, CirclePoly<Self>);
 }

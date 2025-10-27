@@ -64,6 +64,11 @@ impl<B: PolyOps> CirclePoly<B> {
     ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
         B::evaluate(self, domain, twiddles)
     }
+    // Splits the polynomial in the middle, separating the coeffs that are multiplied by
+    // pi^{log_size - 2}(x) and the ones that are not.
+    pub fn split_at_mid(self) -> (Self, Self) {
+        B::split_at_mid(self)
+    }
 }
 
 #[cfg(test)]
