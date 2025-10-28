@@ -43,9 +43,9 @@ fn bench_merkle_commit(c: &mut Criterion, id: &str, log_size_to_n_cols: &Vec<(us
 
 fn blake2s_merkle_commit(c: &mut Criterion) {
     let test_vectors = [
-        vec![(20, 500)],
-        vec![(18, 20), (19, 20), (20, 20), (21, 20)],
-        vec![(18, 100), (19, 100)],
+        vec![(23, 1000)],
+        // vec![(18, 20), (19, 20), (20, 20), (21, 20)],
+        // vec![(18, 100), (19, 100)],
     ];
 
     for vector in test_vectors.iter() {
