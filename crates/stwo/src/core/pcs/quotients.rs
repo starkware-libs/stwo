@@ -12,7 +12,7 @@ use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::{BaseField, M31};
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::fri::FriProof;
+use crate::core::fri::{FriProof, FriProofAux};
 use crate::core::pcs::PcsConfig;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse_index;
@@ -41,6 +41,8 @@ pub struct CommitmentSchemeProofAux {
     /// The indices of the queries in the ordered they were sampled, before sorting and
     /// deduplication.
     pub unsorted_query_locations: Vec<usize>,
+    /// The FRI auxiliary data.
+    pub fri: FriProofAux,
 }
 
 pub struct ExtendedCommitmentSchemeProof<H: MerkleHasher> {

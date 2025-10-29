@@ -146,21 +146,22 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .as_ref()
             .map(|tree| tree.decommit(&query_positions_by_log_size));
 
-        let queried_values = decommitment_results.as_ref().map(|(v, _)| v.clone());
-        let decommitments = decommitment_results.map(|(_, d)| d);
+        let (queried_values, decommitments): (Vec<_>, Vec<_>) =
+            decommitment_results.0.into_iter().unzip();
 
         ExtendedCommitmentSchemeProof {
             proof: CommitmentSchemeProof {
                 commitments: self.roots(),
                 sampled_values,
-                decommitments,
-                queried_values,
+                decommitments: TreeVec(decommitments),
+                queried_values: TreeVec(queried_values),
                 proof_of_work,
-                fri_proof,
+                fri_proof: fri_proof.proof,
                 config: self.config,
             },
             aux: CommitmentSchemeProofAux {
                 unsorted_query_locations,
+                fri: fri_proof.aux,
             },
         }
     }
