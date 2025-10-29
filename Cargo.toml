@@ -5,7 +5,7 @@ members = [
     "crates/air-utils-derive",
     "crates/constraint-framework",
     "crates/examples",
-    "crates/std-shims",
+    "crates/std-shims", "stark_app",
 ]
 exclude = ["ensure-verifier-no_std"]
 resolver = "2"

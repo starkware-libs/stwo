@@ -1,0 +1,11 @@
+{
+  "commitments_count": 3,
+  "initial_a": 0,
+  "initial_b": 1,
+  "last_fib_value": 122743503,
+  "log_n_rows": 2,
+  "n_columns": 100,
+  "n_rows": 4,
+  "note": "Full proof serialization requires custom implementation",
+  "structure": "horizontal"
+}

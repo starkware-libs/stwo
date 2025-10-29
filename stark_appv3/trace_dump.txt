@@ -1,0 +1,18 @@
+=== Fibonacci Trace Dump ===
+
+Target: f(2)
+Total rows: 4
+Computed rows: 1 (f(0) to f(2))
+Padding rows: 3
+
+Structure:
+  Column A: f(n-2)
+  Column B: f(n-1)
+  Column C: f(n)
+
+Row      Col A (f(n-2))  Col B (f(n-1))  Col C (f(n))   
+------------------------------------------------------------
+0        0               1               1              
+1        0               0               0               (padding)
+2        0               0               0               (padding)
+3        0               0               0               (padding)

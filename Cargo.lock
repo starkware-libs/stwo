@@ -1087,6 +1087,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
+name = "stark_app"
+version = "0.1.0"
+dependencies = [
+ "itertools 0.13.0",
+ "num-traits",
+ "stwo 0.1.1 (git+https://github.com/starkware-libs/stwo?branch=dev)",
+ "stwo-constraint-framework 0.1.1 (git+https://github.com/starkware-libs/stwo?branch=dev)",
+]
+
+[[package]]
 name = "starknet-crypto"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1145,6 +1155,11 @@ name = "std-shims"
 version = "0.1.0"
 
 [[package]]
+name = "std-shims"
+version = "0.1.0"
+source = "git+https://github.com/starkware-libs/stwo?branch=dev#f235b640cd557fb49d3db7a76080fd65de996067"
+
+[[package]]
 name = "stwo"
 version = "0.1.1"
 dependencies = [
@@ -1166,12 +1181,38 @@ dependencies = [
  "serde",
  "starknet-crypto",
  "starknet-ff",
- "std-shims",
+ "std-shims 0.1.0",
  "test-log",
  "thiserror",
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen-test",
+]
+
+[[package]]
+name = "stwo"
+version = "0.1.1"
+source = "git+https://github.com/starkware-libs/stwo?branch=dev#f235b640cd557fb49d3db7a76080fd65de996067"
+dependencies = [
+ "blake2",
+ "blake3",
+ "bytemuck",
+ "cfg-if",
+ "educe",
+ "fnv",
+ "hashbrown",
+ "hex",
+ "indexmap",
+ "itertools 0.12.1",
+ "num-traits",
+ "rand",
+ "serde",
+ "starknet-crypto",
+ "starknet-ff",
+ "std-shims 0.1.0 (git+https://github.com/starkware-libs/stwo?branch=dev)",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1181,7 +1222,7 @@ dependencies = [
  "bytemuck",
  "itertools 0.12.1",
  "rayon",
- "stwo",
+ "stwo 0.1.1",
  "stwo-air-utils-derive",
 ]
 
@@ -1204,8 +1245,22 @@ dependencies = [
  "num-traits",
  "rand",
  "rayon",
- "std-shims",
- "stwo",
+ "std-shims 0.1.0",
+ "stwo 0.1.1",
+ "tracing",
+]
+
+[[package]]
+name = "stwo-constraint-framework"
+version = "0.1.1"
+source = "git+https://github.com/starkware-libs/stwo?branch=dev#f235b640cd557fb49d3db7a76080fd65de996067"
+dependencies = [
+ "hashbrown",
+ "itertools 0.12.1",
+ "num-traits",
+ "rand",
+ "std-shims 0.1.0 (git+https://github.com/starkware-libs/stwo?branch=dev)",
+ "stwo 0.1.1 (git+https://github.com/starkware-libs/stwo?branch=dev)",
  "tracing",
 ]
 
@@ -1221,8 +1276,8 @@ dependencies = [
  "rand",
  "rayon",
  "serde",
- "stwo",
- "stwo-constraint-framework",
+ "stwo 0.1.1",
+ "stwo-constraint-framework 0.1.1",
  "test-log",
  "tracing",
  "tracing-subscriber",
