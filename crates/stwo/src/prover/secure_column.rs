@@ -35,6 +35,17 @@ impl<B: ColumnOps<BaseField>> SecureColumnByCoords<B> {
         }
     }
 
+    pub fn from_base_field_col(column: &Col<B, BaseField>) -> Self {
+        let columns = array::from_fn(|i| {
+            if i == 0 {
+                column.clone()
+            } else {
+                Col::<B, BaseField>::zeros(column.len())
+            }
+        });
+        Self { columns }
+    }
+
     pub fn len(&self) -> usize {
         self.columns[0].len()
     }
