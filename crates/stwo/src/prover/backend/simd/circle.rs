@@ -16,13 +16,15 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{Field, FieldExpOps};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
-use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
+use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold, get_folding_alphas};
 use crate::core::utils::bit_reverse_index;
 use crate::prover::backend::cpu::circle::slow_precompute_twiddles;
 use crate::prover::backend::simd::column::BaseColumn;
 use crate::prover::backend::simd::fft::transpose_vecs;
+use crate::prover::backend::simd::fri::fold_circle_evaluation_into_line;
 use crate::prover::backend::simd::m31::PackedM31;
 use crate::prover::backend::{Col, Column, CpuBackend};
+use crate::prover::fri::FriOps;
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
@@ -221,6 +223,25 @@ impl PolyOps for SimdBackend {
         };
 
         (sum * twiddle_lows).pointwise_sum()
+    }
+
+    fn eval_at_point_by_folding(
+        evals: &CircleEvaluation<Self, BaseField, BitReversedOrder>,
+        point: CirclePoint<SecureField>,
+        twiddles: &TwiddleTree<Self>,
+    ) -> SecureField {
+        let log_size = evals.domain.log_size();
+        let mut folding_alphas = get_folding_alphas(point, log_size as usize);
+
+        let mut layer_evaluation =
+            fold_circle_evaluation_into_line(evals, folding_alphas.pop().unwrap(), twiddles);
+
+        while layer_evaluation.len() > 1 {
+            layer_evaluation =
+                SimdBackend::fold_line(&layer_evaluation, folding_alphas.pop().unwrap(), twiddles);
+        }
+
+        layer_evaluation.values.at(0) / SecureField::from(2_u32.pow(log_size))
     }
 
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
@@ -481,6 +502,7 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::prover::backend::simd::circle::slow_eval_at_point;
+    use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::fft::{CACHED_FFT_LOG_SIZE, MIN_FFT_LOG_SIZE};
     use crate::prover::backend::simd::m31::LOG_N_LANES;
     use crate::prover::backend::simd::SimdBackend;
@@ -545,6 +567,40 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_simd_eval_at_point_by_folding() {
+        let poly = CirclePoly::<SimdBackend>::new(BaseColumn::from_cpu(
+            [691, 805673, 5, 435684, 4832, 23876431, 197, 897346068]
+                .map(BaseField::from)
+                .to_vec(),
+        ));
+        let s = CanonicCoset::new(10);
+        let domain = s.circle_domain();
+        let eval = poly.evaluate(domain);
+        let twiddles =
+            SimdBackend::precompute_twiddles(CanonicCoset::new(11).circle_domain().half_coset);
+        let sampled_points = [
+            CirclePoint::get_point(348),
+            CirclePoint::get_point(9736524),
+            CirclePoint::get_point(13),
+            CirclePoint::get_point(346752),
+        ];
+        let sampled_values = sampled_points
+            .iter()
+            .map(|point| poly.eval_at_point(*point))
+            .collect_vec();
+
+        let sampled_folding_values = sampled_points
+            .iter()
+            .map(|point| eval.eval_at_point_by_folding(*point, &twiddles))
+            .collect_vec();
+
+        assert_eq!(
+            sampled_folding_values, sampled_values,
+            "Evaluation by folding should be equal to the polynomial evaluation"
+        );
     }
 
     #[test]

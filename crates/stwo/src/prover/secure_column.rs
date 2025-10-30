@@ -35,6 +35,20 @@ impl<B: ColumnOps<BaseField>> SecureColumnByCoords<B> {
         }
     }
 
+    /// Creates a secure column from a base field column. Each base field element is embedded as
+    /// a secure field element with its value in the first coordinate and zeros in the remaining
+    /// coordinates.
+    pub fn from_base_field_col(column: &Col<B, BaseField>) -> Self {
+        let columns = array::from_fn(|i| {
+            if i == 0 {
+                column.clone()
+            } else {
+                Col::<B, BaseField>::zeros(column.len())
+            }
+        });
+        Self { columns }
+    }
+
     pub fn len(&self) -> usize {
         self.columns[0].len()
     }
