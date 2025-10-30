@@ -188,7 +188,7 @@ mod tests {
             let mut commitment_scheme = CommitmentSchemeProver::<
                 SimdBackend,
                 Blake2sM31MerkleChannel,
-            >::new(config, &twiddles);
+            >::new(config, &twiddles, false);
 
             // Preprocessed trace
             let mut tree_builder = commitment_scheme.tree_builder();
@@ -245,7 +245,9 @@ mod tests {
         // Setup protocol.
         let prover_channel = &mut Poseidon252Channel::default();
         let mut commitment_scheme =
-            CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(config, &twiddles);
+            CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(
+                config, &twiddles, false,
+            );
 
         // TODO(ilya): remove the following once preprocessed columns are not mandatory.
         // Preprocessed trace

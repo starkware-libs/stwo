@@ -305,7 +305,7 @@ where
 
     // Setup protocol.
     let channel = &mut MC::C::default();
-    let mut commitment_scheme = CommitmentSchemeProver::new(config, &twiddles);
+    let mut commitment_scheme = CommitmentSchemeProver::new(config, &twiddles, false);
 
     // Preprocessed trace.
     // TODO(ShaharS): share is_first column between components when constant columns support this.
@@ -448,7 +448,7 @@ where
         commitment_scheme
             .polynomials()
             .as_cols_ref()
-            .map_cols(|c| c.log_size())
+            .map_cols(|c| c.evals.domain.log_size() - 1)
             .0,
         stmt0.log_sizes().0
     );
