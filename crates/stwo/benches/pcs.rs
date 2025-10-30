@@ -33,6 +33,7 @@ fn benched_fn<B: BackendForChannel<Blake2sMerkleChannel>>(
         LOG_BLOWUP_FACTOR,
         channel,
         twiddles,
+        false,
     );
 }
 

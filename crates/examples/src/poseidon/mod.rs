@@ -348,7 +348,7 @@ pub fn prove_poseidon(
     // Setup protocol.
     let channel = &mut Blake2sChannel::default();
     let mut commitment_scheme =
-        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles, true);
 
     // Preprocessed trace.
     let span = span!(Level::INFO, "Constant").entered();
