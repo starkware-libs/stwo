@@ -1,6 +1,8 @@
 use std_shims::Vec;
 
 use super::line::LineDomain;
+use crate::core::circle::CirclePoint;
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::{ExtensionOf, Field};
 
 /// Folds values recursively in `O(n)` by a hierarchical application of folding factors.
@@ -33,6 +35,38 @@ pub fn fold<F: Field, E: ExtensionOf<F>>(values: &[F], folding_factors: &[E]) ->
     let lhs_val = fold(lhs_values, folding_factors);
     let rhs_val = fold(rhs_values, folding_factors);
     lhs_val + rhs_val * *folding_factor
+}
+
+/// Computes the folding alphas for evaluation by folding.
+/// The folding alphas are the basis for the `len` dimensional FFT-basis:
+/// y, x, pi(x), pi^2(x), ..., pi^{len-2}(x).
+/// Returns the folding alphas in reverse order.
+#[allow(clippy::uninit_vec)]
+pub fn get_folding_alphas<F: Field + ExtensionOf<BaseField>>(
+    point: CirclePoint<F>,
+    len: usize,
+) -> Vec<F> {
+    if len == 0 {
+        return Vec::new();
+    }
+    // Manually set the length of the vector so we can directly assign the elements instead of push
+    // and then reverse.
+    let mut alphas = Vec::with_capacity(len);
+    unsafe {
+        alphas.set_len(len);
+    }
+
+    // Fill the vector with the correct values.
+    alphas[len - 1] = point.y;
+    if len > 1 {
+        let mut x = point.x;
+        for i in (0..len - 1).rev() {
+            alphas[i] = x;
+            x = CirclePoint::double_x(x);
+        }
+    }
+
+    alphas
 }
 
 /// Repeats each value sequentially `duplicity` many times.

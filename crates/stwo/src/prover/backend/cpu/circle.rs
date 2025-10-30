@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use num_traits::Zero;
 
 use super::CpuBackend;
@@ -7,11 +8,16 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::{batch_inverse_in_place, ExtensionOf};
 use crate::core::poly::circle::CircleDomain;
-use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold};
+use crate::core::poly::line::LineDomain;
+use crate::core::poly::utils::{domain_line_twiddles_from_tree, fold, get_folding_alphas};
 use crate::core::utils::bit_reverse;
-use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
+use crate::prover::backend::Column;
+use crate::prover::fri::FriOps;
+use crate::prover::line::LineEvaluation;
+use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps, SecureEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
+use crate::prover::secure_column::SecureColumnByCoords;
 
 impl PolyOps for CpuBackend {
     type Twiddles = Vec<BaseField>;
@@ -85,6 +91,41 @@ impl PolyOps for CpuBackend {
         mappings.reverse();
 
         fold(&poly.coeffs, &mappings)
+    }
+
+    fn eval_at_point_by_folding(
+        evals: &CircleEvaluation<Self, BaseField, BitReversedOrder>,
+        point: CirclePoint<SecureField>,
+        twiddles: &TwiddleTree<Self>,
+    ) -> SecureField {
+        let log_size = evals.domain.log_size();
+        let mut folding_alphas = get_folding_alphas(point, log_size as usize);
+        let first_inner_layer_domain = LineDomain::new(Coset::half_odds(log_size - 1));
+        let mut layer_evaluation = LineEvaluation::new_zero(first_inner_layer_domain);
+
+        let secure_field_values: Vec<SecureField> = evals
+            .values
+            .to_cpu()
+            .iter()
+            .map(|f| SecureField::from(*f))
+            .collect_vec();
+
+        CpuBackend::fold_circle_into_line(
+            &mut layer_evaluation,
+            &SecureEvaluation::new(
+                evals.domain,
+                SecureColumnByCoords::from_iter(secure_field_values),
+            ),
+            folding_alphas.pop().unwrap(),
+            twiddles,
+        );
+
+        while layer_evaluation.len() > 1 {
+            layer_evaluation =
+                CpuBackend::fold_line(&layer_evaluation, folding_alphas.pop().unwrap(), twiddles);
+        }
+
+        layer_evaluation.values.at(0) / SecureField::from(2_u32.pow(log_size))
     }
 
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
@@ -252,6 +293,7 @@ impl<F: ExtensionOf<BaseField>, EvalOrder> IntoIterator
 mod tests {
     use std::iter::zip;
 
+    use itertools::Itertools;
     use num_traits::One;
 
     use crate::core::circle::CirclePoint;
@@ -259,6 +301,8 @@ mod tests {
     use crate::core::fields::qm31::SecureField;
     use crate::core::poly::circle::CanonicCoset;
     use crate::prover::backend::cpu::CpuCirclePoly;
+    use crate::prover::backend::CpuBackend;
+    use crate::prover::poly::circle::PolyOps;
 
     #[test]
     fn test_eval_at_point_with_4_coeffs() {
@@ -298,6 +342,40 @@ mod tests {
         let eval = poly.eval_at_point(CirclePoint { x, y });
 
         assert_eq!(eval, SecureField::one());
+    }
+
+    #[test]
+    fn test_cpu_eval_at_point_by_folding() {
+        let poly = CpuCirclePoly::new(
+            [691, 805673, 5, 435684, 4832, 23876431, 197, 897346068]
+                .map(BaseField::from)
+                .to_vec(),
+        );
+        let s = CanonicCoset::new(10);
+        let domain = s.circle_domain();
+        let twiddles =
+            CpuBackend::precompute_twiddles(CanonicCoset::new(11).circle_domain().half_coset);
+        let eval = poly.evaluate(domain);
+        let sampled_points = [
+            CirclePoint::get_point(348),
+            CirclePoint::get_point(9736524),
+            CirclePoint::get_point(13),
+            CirclePoint::get_point(346752),
+        ];
+        let sampled_values = sampled_points
+            .iter()
+            .map(|point| poly.eval_at_point(*point))
+            .collect_vec();
+
+        let sampled_folding_values = sampled_points
+            .iter()
+            .map(|point| eval.eval_at_point_by_folding(*point, &twiddles))
+            .collect_vec();
+
+        assert_eq!(
+            sampled_folding_values, sampled_values,
+            "Evaluation by folding should be equal to the polynomial evaluation"
+        );
     }
 
     #[test]

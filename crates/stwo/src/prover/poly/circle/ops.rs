@@ -37,6 +37,14 @@ pub trait PolyOps: ColumnOps<BaseField> + Sized {
     /// Used by the [`CirclePoly::eval_at_point()`] function.
     fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField;
 
+    /// Evaluates a polynomial, represented by it's evaluations, at a point using folding.
+    /// Used by the [`CircleEvaluation::eval_at_point_by_folding()`] function.
+    fn eval_at_point_by_folding(
+        evals: &CircleEvaluation<Self, BaseField, BitReversedOrder>,
+        point: CirclePoint<SecureField>,
+        twiddles: &TwiddleTree<Self>,
+    ) -> SecureField;
+
     /// Extends the polynomial to a larger degree bound.
     /// Used by the [`CirclePoly::extend()`] function.
     fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self>;
