@@ -5,8 +5,10 @@ use num_traits::Zero;
 
 use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use super::SimdBackend;
+use crate::core::circle::Coset;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::poly::line::LineDomain;
 use crate::core::poly::utils::domain_line_twiddles_from_tree;
 use crate::prover::backend::cpu::{fold_circle_into_line_cpu, fold_line_cpu};
 use crate::prover::backend::simd::fft::compute_first_twiddles;
@@ -15,7 +17,7 @@ use crate::prover::backend::simd::qm31::PackedSecureField;
 use crate::prover::backend::Column;
 use crate::prover::fri::FriOps;
 use crate::prover::line::LineEvaluation;
-use crate::prover::poly::circle::SecureEvaluation;
+use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
@@ -130,6 +132,71 @@ impl FriOps for SimdBackend {
         let g = SecureEvaluation::new(eval.domain, g_values);
         (g, lambda)
     }
+}
+
+/// Similar to [`crate::prover::fri::FriOps::fold_circle_into_line`], but optimized for folding a
+/// BaseField circle evaluation directly into a line evaluation, without going through
+/// SecureEvaluation.
+pub fn fold_circle_evaluation_into_line(
+    eval: &CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
+    alpha: SecureField,
+    twiddles: &TwiddleTree<SimdBackend>,
+) -> LineEvaluation<SimdBackend> {
+    let log_size = eval.domain.log_size();
+    let line_domain = LineDomain::new(Coset::half_odds(log_size - 1));
+    let mut line_evaluation = LineEvaluation::new_zero(line_domain);
+
+    if log_size <= LOG_N_LANES {
+        // Fall back to CPU implementation.
+        let mut cpu_dst = line_evaluation.to_cpu();
+        let secure_evaluation = SecureEvaluation::new(
+            eval.domain,
+            SecureColumnByCoords::from_base_field_col(&eval.values.to_cpu()),
+        );
+        fold_circle_into_line_cpu(&mut cpu_dst, &secure_evaluation, alpha);
+        return LineEvaluation::new(
+            cpu_dst.domain(),
+            SecureColumnByCoords::from_cpu(cpu_dst.values),
+        );
+    }
+
+    let itwiddles = domain_line_twiddles_from_tree(line_domain, &twiddles.itwiddles)[0];
+
+    for vec_index in 0..(1 << (log_size - 1 - LOG_N_LANES)) {
+        let value = {
+            // The 16 twiddles of the circle domain can be derived from the 8 twiddles of the
+            // next line domain. See `compute_first_twiddles()`.
+            let twiddle_dbl = u32x8::from_array(array::from_fn(|i| unsafe {
+                *itwiddles.get_unchecked(vec_index * 8 + i)
+            }));
+            let (t0, _) = compute_first_twiddles(twiddle_dbl);
+            let val0 = eval.values.data[vec_index * 2];
+            let val1 = eval.values.data[vec_index * 2 + 1];
+            let pairs = {
+                let (a, b) = val0.deinterleave(val1);
+                simd_ibutterfly(a, b, t0)
+            };
+            let val0 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
+                if i == 0 {
+                    pairs.0
+                } else {
+                    PackedBaseField::zero()
+                }
+            }));
+            let val1 = PackedSecureField::from_packed_m31s(array::from_fn(|i| {
+                if i == 0 {
+                    pairs.1
+                } else {
+                    PackedBaseField::zero()
+                }
+            }));
+            val0 + PackedSecureField::broadcast(alpha) * val1
+        };
+
+        unsafe { line_evaluation.values.set_packed(vec_index, value) };
+    }
+
+    line_evaluation
 }
 
 /// See [`decomposition_coefficient`].

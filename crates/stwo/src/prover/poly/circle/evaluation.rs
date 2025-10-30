@@ -4,7 +4,9 @@ use std::ops::{Deref, Index};
 use educe::Educe;
 
 use super::{CirclePoly, PolyOps};
+use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
+use crate::core::fields::qm31::SecureField;
 use crate::core::fields::ExtensionOf;
 use crate::core::poly::circle::CircleDomain;
 use crate::prover::backend::simd::SimdBackend;
@@ -54,6 +56,22 @@ impl<B: PolyOps> CircleEvaluation<B, BaseField, BitReversedOrder> {
     /// precomputed twiddles.
     pub fn interpolate_with_twiddles(self, twiddles: &TwiddleTree<B>) -> CirclePoly<B> {
         B::interpolate(self, twiddles)
+    }
+
+    pub fn eval_at_point_by_folding(
+        &self,
+        point: CirclePoint<SecureField>,
+        twiddles: &TwiddleTree<B>,
+    ) -> SecureField {
+        // The evaluation by folding is done by running the FRI algorithm on the given polynomial's
+        // evaluations, with folding alphas computed from the point instead of drawn from the
+        // channel.
+        // The folding alphas are corresponding to the FRI basis: y, x, pi(x), pi^2(x), ...
+        // such that by arriving at the last layer, we get the value of the polynomial at the point.
+        // Note: This function is slower than `eval_at_point` and is not fully optimized
+        // (theoretically can be as fast as `eval_at_point`). Consider using barycentric
+        // evaluation for better performance.
+        B::eval_at_point_by_folding(self, point, twiddles)
     }
 }
 
