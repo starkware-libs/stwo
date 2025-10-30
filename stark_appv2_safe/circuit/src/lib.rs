@@ -36,22 +36,33 @@ impl FrameworkEval for SimpleFibonacciEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        // 🔥 ATTEMPT: Try to read current and next row values using next_interaction_mask
-        // This is expected to fail or give garbage values for ORIGINAL_TRACE_IDX
-        let [a, a_next] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, 1]);
-        let [b, b_next] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, 1]);
-        let c = eval.next_trace_mask();
-        println!("VALUES EVALUATE");
+        // 🔥 ATTEMPT: Using pattern from prefix_sum example
+        // Pattern: let [curr, prev] = eval.next_extension_interaction_mask(interaction, [0, -1]);
+        // But we use [0, -1] for reading current and previous row
+        eprintln!("🔍 Attempting row-to-row transitions with ORIGINAL_TRACE_IDX...");
 
-        // Constraint 1: Intra-row constraint (c = a + b)
-        eval.add_constraint(c.clone() - (a.clone() + b.clone()));
+        let [a_curr, _a_prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
+        eprintln!("  ✓ Read a: current and previous row");
 
-        // Constraint 2: Transition constraint row[i+1].a == row[i].b
-        eval.add_constraint(a_next - b.clone());
+        let [b_curr, b_prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
+        eprintln!("  ✓ Read b: current and previous row");
 
-        // Constraint 3: Transition constraint row[i+1].b == row[i].c
-        eval.add_constraint(b_next - c);
+        let [c_curr, c_prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
+        eprintln!("  ✓ Read c: current and previous row");
 
+        // Constraint 1: Intra-row constraint (c = a + b) for current row
+        eprintln!("  Adding intra-row constraint: c_curr = a_curr + b_curr");
+        eval.add_constraint(c_curr.clone() - (a_curr.clone() + b_curr.clone()));
+
+        // Constraint 2: Transition constraint a_curr == b_prev (current row's a equals previous row's b)
+        eprintln!("  Adding transition constraint: a_curr == b_prev");
+        eval.add_constraint(a_curr.clone() - b_prev);
+
+        // Constraint 3: Transition constraint b_curr == c_prev (current row's b equals previous row's c)
+        eprintln!("  Adding transition constraint: b_curr == c_prev");
+        eval.add_constraint(b_curr - c_prev);
+
+        eprintln!("✓ All constraints added\n");
         eval
     }
 }
