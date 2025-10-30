@@ -44,20 +44,13 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             .map(|idx| &trace.polys[PREPROCESSED_TRACE_IDX][*idx])
             .collect();
 
-        let mut component_evals = trace.evals.sub_tree(&self.trace_locations);
-        component_evals[PREPROCESSED_TRACE_IDX] = self
-            .preprocessed_column_indices
-            .iter()
-            .map(|idx| &trace.evals[PREPROCESSED_TRACE_IDX][*idx])
-            .collect();
-
         // Extend trace if necessary.
         // TODO: Don't extend when eval_size < committed_size. Instead, pick a good
         // subdomain. (For larger blowup factors).
-        let need_to_extend = component_evals
+        let need_to_extend = component_polys
             .iter()
             .flatten()
-            .any(|c| c.domain != eval_domain);
+            .any(|c| c.evals.domain.log_size() != eval_domain.log_size());
         let trace: TreeVec<
             Vec<Cow<'_, CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>>,
         > = if need_to_extend {
@@ -65,9 +58,9 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             let twiddles = SimdBackend::precompute_twiddles(eval_domain.half_coset);
             component_polys
                 .as_cols_ref()
-                .map_cols(|col| Cow::Owned(col.evaluate_with_twiddles(eval_domain, &twiddles)))
+                .map_cols(|col| Cow::Owned(col.get_evaluation_on_domain(eval_domain, &twiddles)))
         } else {
-            component_evals.clone().map_cols(|c| Cow::Borrowed(*c))
+            component_polys.map_cols(|c| Cow::Borrowed(&c.evals))
         };
 
         // Denom inverses.

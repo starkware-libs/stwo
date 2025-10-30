@@ -53,7 +53,7 @@ pub fn prove_state_machine(
     // Setup protocol.
     config.mix_into(channel);
     let mut commitment_scheme =
-        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles, false);
 
     // Trace.
     let trace_op0 = gen_trace(x_axis_log_rows, initial_state, 0);
