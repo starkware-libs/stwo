@@ -24,26 +24,20 @@ pub trait ComponentProver<B: Backend>: Component {
 }
 
 /// The set of polynomials that make up the trace.
-///
-/// Each polynomial is stored both in a coefficients, and evaluations form (for efficiency)
 pub struct Trace<'a, B: Backend> {
     /// Polynomials for each column.
-    pub polys: TreeVec<ColumnVec<&'a CirclePoly<B>>>,
-    /// Evaluations for each column (evaluated on their commitment domains).
-    pub evals: TreeVec<ColumnVec<&'a CircleEvaluation<B, BaseField, BitReversedOrder>>>,
+    pub polys: TreeVec<ColumnVec<&'a Poly<B>>>,
 }
 
 /// A struct for representing a polynomial corresponding to a trace column.
 /// A polynomial is defined by it's evaluations on a circle domain of size at least it's degree,
 /// and optionally its coefficients in the FFT basis.
-#[allow(dead_code)]
 pub struct Poly<B: Backend> {
     pub coeffs: Option<CirclePoly<B>>,
     pub evals: CircleEvaluation<B, BaseField, BitReversedOrder>,
 }
 
 impl<B: Backend> Poly<B> {
-    #[allow(dead_code)]
     pub const fn new(
         coeffs: Option<CirclePoly<B>>,
         evals: CircleEvaluation<B, BaseField, BitReversedOrder>,
@@ -51,7 +45,6 @@ impl<B: Backend> Poly<B> {
         Self { coeffs, evals }
     }
 
-    #[allow(dead_code)]
     pub fn eval_at_point(
         &self,
         point: CirclePoint<SecureField>,
@@ -64,7 +57,6 @@ impl<B: Backend> Poly<B> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn get_evaluation_on_domain(
         &self,
         domain: CircleDomain,
