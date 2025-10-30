@@ -1,3 +1,6 @@
+use std::fs::File;
+use std::io::Write;
+
 use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::ColumnVec;
@@ -5,7 +8,7 @@ use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::{Col, Column};
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
-use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
+use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX};
 
 /// ⚠️ UNSAFE Fibonacci component - Educational example only!
 ///
@@ -33,14 +36,21 @@ impl FrameworkEval for SimpleFibonacciEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        // Read three consecutive values: a, b, c
-        let a = eval.next_trace_mask(); // f(n-2)
-        let b = eval.next_trace_mask(); // f(n-1)
-        let c = eval.next_trace_mask(); // f(n)
+        // 🔥 ATTEMPT: Try to read current and next row values using next_interaction_mask
+        // This is expected to fail or give garbage values for ORIGINAL_TRACE_IDX
+        let [a, a_next] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, 1]);
+        let [b, b_next] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, 1]);
+        let c = eval.next_trace_mask();
+        println!("VALUES EVALUATE");
 
-        // Constraint: f(n) = f(n-1) + f(n-2)
-        // Which means: c = a + b
-        eval.add_constraint(c - (a + b));
+        // Constraint 1: Intra-row constraint (c = a + b)
+        eval.add_constraint(c.clone() - (a.clone() + b.clone()));
+
+        // Constraint 2: Transition constraint row[i+1].a == row[i].b
+        eval.add_constraint(a_next - b.clone());
+
+        // Constraint 3: Transition constraint row[i+1].b == row[i].c
+        eval.add_constraint(b_next - c);
 
         eval
     }
@@ -62,6 +72,7 @@ pub fn gen_fibonacci_trace(
     let mut a = BaseField::from_u32_unchecked(initial_a);
     let mut b = BaseField::from_u32_unchecked(initial_b);
 
+    // Generate proper Fibonacci sequence
     for row in 0..n_rows {
         let c = a + b;
 
@@ -79,6 +90,40 @@ pub fn gen_fibonacci_trace(
         CircleEvaluation::new(domain, col_b),
         CircleEvaluation::new(domain, col_c),
     ]
+}
+
+/// Dump trace to a JSON file for inspection
+pub fn dump_trace_to_file(
+    trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+    filename: &str,
+) -> std::io::Result<()> {
+    let n_rows = trace[0].values.len();
+    let mut file = File::create(filename)?;
+
+    writeln!(file, "{{")?;
+    writeln!(file, "  \"n_rows\": {},", n_rows)?;
+    writeln!(file, "  \"rows\": [")?;
+
+    for row in 0..n_rows {
+        let a = trace[0].values.at(row);
+        let b = trace[1].values.at(row);
+        let c = trace[2].values.at(row);
+
+        writeln!(
+            file,
+            "    {{\"row\": {}, \"a\": {}, \"b\": {}, \"c\": {}}}{}",
+            row,
+            a.0,
+            b.0,
+            c.0,
+            if row < n_rows - 1 { "," } else { "" }
+        )?;
+    }
+
+    writeln!(file, "  ]")?;
+    writeln!(file, "}}")?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -112,13 +157,26 @@ mod tests {
 
     #[test]
     fn test_fibonacci_constraints() {
-        let log_size = 8;
+        let log_size = 4; // Smaller size for easier debugging
         let trace = gen_fibonacci_trace(log_size, 1, 1);
+
+        println!("\n=== Testing Fibonacci Constraints ===");
+        println!("First 5 rows of trace:");
+        for row in 0..5.min(trace[0].values.len()) {
+            println!(
+                "Row {}: a={}, b={}, c={}",
+                row,
+                trace[0].values.at(row).0,
+                trace[1].values.at(row).0,
+                trace[2].values.at(row).0,
+            );
+        }
 
         let traces = TreeVec::new(vec![vec![], trace]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
 
+        println!("\nAttempting constraint verification...");
         assert_constraints_on_polys(
             &trace_polys,
             CanonicCoset::new(log_size),

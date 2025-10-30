@@ -1,27 +1,24 @@
-# STARK App v2 (UNSAFE - Educational Example Only)
+# STARK App v2 SAFE
 
 A workspace demonstrating STARK proof generation and verification using the stwo library.
 
-## ⚠️ Security Warning
+## 🔒 Security Features
 
-**This implementation is UNSAFE for production use.** It uses a vertical Fibonacci layout (3 columns, N rows) with ONLY intra-row constraints. This means:
+**This implementation is SAFE for production use.** It uses:
 
-- ❌ A malicious prover can "skip" rows and still pass verification
-- ❌ NO transition constraints between rows (row[i] → row[i+1])
-- ❌ The proof only verifies that each individual row satisfies `c = a + b`
+- ✅ Transition constraints between rows (row[i] → row[i+1])
+- ✅ Boundary selector to handle circular domain wrap-around
+- ✅ Forces continuous Fibonacci sequence - cannot skip values!
 
-**Why is this unsafe?**
+**Key improvements over stark_appv2:**
 
-The constraint `f(n) = f(n-1) + f(n-2)` is checked WITHIN each row, but there's nothing forcing continuity BETWEEN rows. A prover could generate:
-- Row 0: [1, 1, 2]   ✓ Valid
-- Row 1: [100, 200, 300]  ✓ Also valid (100 + 200 = 300)
-- Row 2: [5, 8, 13]  ✓ Also valid (5 + 8 = 13)
+| Feature | stark_appv2 (UNSAFE) | stark_appv2_safe (SAFE) |
+|---------|---------------------|------------------------|
+| Transition constraints | ❌ None | ✅ row[i+1].a == row[i].b |
+| Boundary handling | ❌ None | ✅ is_not_last selector |
+| Can skip rows | ✅ Yes (vulnerable!) | ❌ No (enforced continuity) |
 
-Each row satisfies the constraint, but this is NOT a continuous Fibonacci sequence!
-
-**For production use, see:**
-- `stark_app_wide` - Uses horizontal layout with implicit continuity (SAFE)
-- stwo framework does NOT support row-to-row transition constraints in vertical layout
+This version enforces that the entire trace forms one unbroken Fibonacci sequence.
 
 ## Architecture
 
