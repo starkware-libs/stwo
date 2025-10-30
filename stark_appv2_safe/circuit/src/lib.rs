@@ -1,29 +1,29 @@
 use std::fs::File;
 use std::io::Write;
 
+use num_traits::One;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::utils::bit_reverse_coset_to_circle_domain_order;
 use stwo::core::ColumnVec;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::{Col, Column};
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
+use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX};
 
-/// ⚠️ UNSAFE Fibonacci component - Educational example only!
+/// ✅ SAFE Fibonacci component with transition constraints!
 ///
-/// This implements f(n) = f(n-1) + f(n-2) with ONLY intra-row constraints.
-/// Each row is [a, b, c] where c = a + b, but there's NO enforcement that:
-/// - row[i+1].a == row[i].b
-/// - row[i+1].b == row[i].c
+/// This implements f(n) = f(n-1) + f(n-2) with BOTH:
+/// - Intra-row constraints: c = a + b
+/// - Transition constraints: row[i].a == row[i-1].b AND row[i].b == row[i-1].c
 ///
-/// A malicious prover can generate arbitrary rows that each satisfy c = a + b
-/// without forming a continuous Fibonacci sequence.
-///
-/// For SAFE Fibonacci, see stark_app_wide which uses horizontal layout.
+/// This ensures the entire trace forms one continuous Fibonacci sequence!
 #[derive(Clone)]
 pub struct SimpleFibonacciEval {
     pub log_n_rows: u32,
+    pub is_first_id: PreProcessedColumnId,
 }
 
 impl FrameworkEval for SimpleFibonacciEval {
@@ -36,38 +36,50 @@ impl FrameworkEval for SimpleFibonacciEval {
     }
 
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        // 🔥 ATTEMPT: Using pattern from prefix_sum example
-        // Pattern: let [curr, prev] = eval.next_extension_interaction_mask(interaction, [0, -1]);
-        // But we use [0, -1] for reading current and previous row
-        eprintln!("🔍 Attempting row-to-row transitions with ORIGINAL_TRACE_IDX...");
+        // Read is_first selector (1 for first row, 0 for others)
+        let is_first = eval.get_preprocessed_column(self.is_first_id.clone());
 
+        // Read current and previous row values using offsets [0, -1]
         let [a_curr, _a_prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
-        eprintln!("  ✓ Read a: current and previous row");
-
         let [b_curr, b_prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
-        eprintln!("  ✓ Read b: current and previous row");
-
         let [c_curr, c_prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
-        eprintln!("  ✓ Read c: current and previous row");
 
         // Constraint 1: Intra-row constraint (c = a + b) for current row
-        eprintln!("  Adding intra-row constraint: c_curr = a_curr + b_curr");
         eval.add_constraint(c_curr.clone() - (a_curr.clone() + b_curr.clone()));
 
-        // Constraint 2: Transition constraint a_curr == b_prev (current row's a equals previous row's b)
-        eprintln!("  Adding transition constraint: a_curr == b_prev");
-        eval.add_constraint(a_curr.clone() - b_prev);
+        // Constraint 2: Transition constraint a_curr == b_prev
+        // Disabled for first row using (1 - is_first) multiplier
+        eval.add_constraint((E::F::one() - is_first.clone()) * (a_curr.clone() - b_prev));
 
-        // Constraint 3: Transition constraint b_curr == c_prev (current row's b equals previous row's c)
-        eprintln!("  Adding transition constraint: b_curr == c_prev");
-        eval.add_constraint(b_curr - c_prev);
+        // Constraint 3: Transition constraint b_curr == c_prev
+        // Disabled for first row using (1 - is_first) multiplier
+        eval.add_constraint((E::F::one() - is_first) * (b_curr - c_prev));
 
-        eprintln!("✓ All constraints added\n");
         eval
     }
 }
 
 pub type SimpleFibonacciComponent = FrameworkComponent<SimpleFibonacciEval>;
+
+/// Generate is_first preprocessed column (1 for first row, 0 for others)
+pub fn gen_is_first_column(log_size: u32) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
+    let n_rows = 1 << log_size;
+    let mut col = Col::<SimdBackend, BaseField>::zeros(n_rows);
+
+    // Set first row to 1
+    col.set(0, BaseField::from_u32_unchecked(1));
+
+    // Convert to bit-reversed circle domain order
+    bit_reverse_coset_to_circle_domain_order(col.as_mut_slice());
+
+    CircleEvaluation::new(CanonicCoset::new(log_size).circle_domain(), col)
+}
+
+pub fn is_first_column_id(log_size: u32) -> PreProcessedColumnId {
+    PreProcessedColumnId {
+        id: format!("is_first_{}", log_size),
+    }
+}
 
 pub fn gen_fibonacci_trace(
     log_size: u32,
@@ -94,6 +106,12 @@ pub fn gen_fibonacci_trace(
         a = b;
         b = c;
     }
+
+    // 🔥 CRITICAL: Convert columns to bit-reversed circle domain order
+    // This is required for next_interaction_mask with offsets to work correctly!
+    bit_reverse_coset_to_circle_domain_order(col_a.as_mut_slice());
+    bit_reverse_coset_to_circle_domain_order(col_b.as_mut_slice());
+    bit_reverse_coset_to_circle_domain_order(col_c.as_mut_slice());
 
     let domain = CanonicCoset::new(log_size).circle_domain();
     vec![
@@ -171,8 +189,8 @@ mod tests {
         let log_size = 4; // Smaller size for easier debugging
         let trace = gen_fibonacci_trace(log_size, 1, 1);
 
-        println!("\n=== Testing Fibonacci Constraints ===");
-        println!("First 5 rows of trace:");
+        println!("\n=== Testing Fibonacci Constraints with Transitions ===");
+        println!("First 5 rows of trace (bit-reversed order):");
         for row in 0..5.min(trace[0].values.len()) {
             println!(
                 "Row {}: a={}, b={}, c={}",
@@ -183,22 +201,29 @@ mod tests {
             );
         }
 
-        let traces = TreeVec::new(vec![vec![], trace]);
+        // Generate preprocessed trace with is_first column
+        let is_first_col = gen_is_first_column(log_size);
+        let preprocessed_trace = vec![is_first_col];
+
+        let traces = TreeVec::new(vec![preprocessed_trace, trace]);
         let trace_polys =
             traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
 
-        println!("\nAttempting constraint verification...");
+        println!("\nAttempting constraint verification with transition constraints...");
         assert_constraints_on_polys(
             &trace_polys,
             CanonicCoset::new(log_size),
             |eval| {
                 SimpleFibonacciEval {
                     log_n_rows: log_size,
+                    is_first_id: is_first_column_id(log_size),
                 }
                 .evaluate(eval);
             },
             SecureField::zero(),
         );
+
+        println!("✓ All constraints satisfied!");
     }
 
     #[test]

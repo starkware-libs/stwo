@@ -12,7 +12,10 @@ use stwo::prover::poly::circle::PolyOps;
 use stwo::prover::{prove, CommitmentSchemeProver};
 use stwo_constraint_framework::TraceLocationAllocator;
 
-use circuit::{gen_fibonacci_trace, SimpleFibonacciComponent, SimpleFibonacciEval};
+use circuit::{
+    gen_fibonacci_trace, gen_is_first_column, is_first_column_id, SimpleFibonacciComponent,
+    SimpleFibonacciEval,
+};
 
 fn main() {
     println!("=== STARK Verifier ===\n");
@@ -53,8 +56,10 @@ fn main() {
     let mut commitment_scheme =
         CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(config, &twiddles);
 
+    // Generate and commit preprocessed trace with is_first column
+    let is_first_col = gen_is_first_column(log_size);
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(vec![]);
+    tree_builder.extend_evals(vec![is_first_col]);
     tree_builder.commit(channel);
 
     let mut tree_builder = commitment_scheme.tree_builder();
@@ -63,7 +68,10 @@ fn main() {
 
     let component = SimpleFibonacciComponent::new(
         &mut TraceLocationAllocator::default(),
-        SimpleFibonacciEval { log_n_rows: log_size },
+        SimpleFibonacciEval {
+            log_n_rows: log_size,
+            is_first_id: is_first_column_id(log_size),
+        },
         SecureField::zero(),
     );
 

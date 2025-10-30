@@ -1,6 +1,9 @@
 use std::{env, fs};
 
-use circuit::{dump_trace_to_file, gen_fibonacci_trace, SimpleFibonacciComponent, SimpleFibonacciEval};
+use circuit::{
+    dump_trace_to_file, gen_fibonacci_trace, gen_is_first_column, is_first_column_id,
+    SimpleFibonacciComponent, SimpleFibonacciEval,
+};
 use num_traits::Zero;
 use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::qm31::SecureField;
@@ -81,21 +84,25 @@ fn main() {
     let mut commitment_scheme =
         CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(config, &twiddles);
 
-    // Commit preprocessed (empty for this simple circuit)
+    // Generate and commit preprocessed trace with is_first column
+    println!("  Generating is_first preprocessed column...");
+    let is_first_col = gen_is_first_column(log_size);
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(vec![]);
+    tree_builder.extend_evals(vec![is_first_col]);
     tree_builder.commit(channel);
+    println!("  ✓ Preprocessed trace committed");
 
     // Commit trace
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(trace.clone());
     tree_builder.commit(channel);
 
-    // Create component
+    // Create component with transition constraints
     let component = SimpleFibonacciComponent::new(
         &mut TraceLocationAllocator::default(),
         SimpleFibonacciEval {
             log_n_rows: log_size,
+            is_first_id: is_first_column_id(log_size),
         },
         SecureField::zero(),
     );
