@@ -1,17 +1,14 @@
 use std::fs;
 
-use circuit::{gen_wide_fibonacci_trace, WideFibonacciComponent, WideFibonacciEval};
+use circuit::{WideFibonacciComponent, WideFibonacciEval};
 use num_traits::Zero;
 use serde_json::Value;
 use stwo::core::air::Component;
 use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::qm31::SecureField;
-use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
-use stwo::core::poly::circle::CanonicCoset;
-use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::poly::circle::PolyOps;
-use stwo::prover::{prove, CommitmentSchemeProver};
+use stwo::core::pcs::CommitmentSchemeVerifier;
+use stwo::core::proof::StarkProof;
+use stwo::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo_constraint_framework::TraceLocationAllocator;
 
 fn main() {
@@ -40,30 +37,19 @@ fn main() {
     println!("  Last value: f({}) = {} (mod 2^31-1)", n_columns - 1, last_fib_value);
     println!();
 
-    // Regenerate trace and proof
-    println!("Regenerating trace and proof...");
-    let trace = gen_wide_fibonacci_trace(log_n_rows, n_columns, initial_a, initial_b);
+    // Load proof from file
+    println!("Loading proof from file...");
+    let proof_json = fs::read_to_string("proof.json")
+        .expect("Failed to read proof.json. Make sure to run the prover first!");
 
-    let config = PcsConfig::default();
-    let twiddles = SimdBackend::precompute_twiddles(
-        CanonicCoset::new(log_n_rows + 1 + config.fri_config.log_blowup_factor)
-            .circle_domain()
-            .half_coset,
-    );
+    let proof: StarkProof<Blake2sMerkleHasher> =
+        serde_json::from_str(&proof_json).expect("Failed to deserialize proof");
 
-    // Generate proof (normally would be loaded from file)
-    let channel = &mut Blake2sChannel::default();
-    let mut commitment_scheme =
-        CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+    println!("✓ Proof loaded from proof.json");
+    println!("  Proof size estimate: {} bytes", proof.size_estimate());
+    println!();
 
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(vec![]);
-    tree_builder.commit(channel);
-
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(trace.clone());
-    tree_builder.commit(channel);
-
+    // Create component for verification
     let component = WideFibonacciComponent::new(
         &mut TraceLocationAllocator::default(),
         WideFibonacciEval {
@@ -73,15 +59,11 @@ fn main() {
         SecureField::zero(),
     );
 
-    let proof = prove(&[&component], channel, commitment_scheme).unwrap();
-    println!("✓ Proof regenerated (in real scenario, would be loaded from file)");
-    println!();
-
     // Verify the proof
     println!("Verifying proof...");
 
     let channel = &mut Blake2sChannel::default();
-    let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+    let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
 
     // Commit preprocessed
     commitment_scheme.commit(
@@ -105,7 +87,5 @@ fn main() {
     println!("Verification result:");
     println!("  ✓ HORIZONTAL Fibonacci sequence is CORRECT");
     println!("  ✓ {} rows, each with {} Fibonacci values", n_rows, n_columns);
-    println!();
-    println!("Note: Full proof serialization is not yet implemented.");
-    println!("In production, the proof would be loaded from a file instead of regenerated.");
+    println!("  ✓ Proof loaded from file and verified");
 }

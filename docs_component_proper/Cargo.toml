@@ -1,0 +1,11 @@
+[workspace]
+members = ["circuit", "prover", "verifier"]
+resolver = "2"
+
+[workspace.dependencies]
+stwo = { git = "https://github.com/starkware-libs/stwo", branch = "dev", features = ["prover"] }
+stwo-constraint-framework = { git = "https://github.com/starkware-libs/stwo", branch = "dev", features = ["prover", "std"] }
+itertools = "0.13"
+num-traits = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

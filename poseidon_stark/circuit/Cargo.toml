@@ -1,0 +1,11 @@
+[package]
+name = "poseidon_circuit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+stwo = { workspace = true }
+stwo-constraint-framework = { workspace = true }
+itertools = { workspace = true }
+num-traits = { workspace = true }
+tracing = { workspace = true }

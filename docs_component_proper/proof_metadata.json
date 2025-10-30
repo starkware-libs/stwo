@@ -1,0 +1,27 @@
+{
+  "commitments_count": 4,
+  "components": "Computing (x^5+1) + Scheduling (copy via LogUp)",
+  "computing_claimed_sum": {
+    "a": [
+      545621907,
+      1726134376
+    ],
+    "b": [
+      1934377110,
+      1707450804
+    ]
+  },
+  "log_size": 6,
+  "n_rows": 64,
+  "proof_size_bytes": 3532,
+  "scheduling_claimed_sum": {
+    "a": [
+      1601861740,
+      421349271
+    ],
+    "b": [
+      213106537,
+      440032843
+    ]
+  }
+}

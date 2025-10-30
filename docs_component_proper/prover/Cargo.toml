@@ -1,0 +1,16 @@
+[package]
+name = "prover"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "prover"
+path = "src/main.rs"
+
+[dependencies]
+dual_component_circuit = { path = "../circuit" }
+stwo = { workspace = true }
+stwo-constraint-framework = { workspace = true }
+num-traits = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

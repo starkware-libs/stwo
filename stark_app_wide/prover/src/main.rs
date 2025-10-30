@@ -165,6 +165,15 @@ fn main() {
     let proof = prove(&[&component], channel, commitment_scheme).unwrap();
     println!("✓ Proof generated!");
     println!("  Commitments: {}", proof.commitments.len());
+    println!("  Proof size estimate: {} bytes", proof.size_estimate());
+    println!();
+
+    // Save proof to JSON
+    println!("Saving proof to file...");
+    let proof_json = serde_json::to_string_pretty(&proof).expect("Failed to serialize proof");
+    fs::write("proof.json", proof_json).expect("Failed to write proof.json");
+    println!("✓ Proof saved to proof.json");
+    println!("  File size: {} bytes", fs::metadata("proof.json").unwrap().len());
     println!();
 
     // Save proof metadata
@@ -177,8 +186,8 @@ fn main() {
         "initial_b": initial_b,
         "last_fib_value": last_fib_value.0,
         "commitments_count": proof.commitments.len(),
-        "structure": "horizontal",
-        "note": "Full proof serialization requires custom implementation"
+        "proof_size_bytes": proof.size_estimate(),
+        "structure": "horizontal"
     });
 
     fs::write(

@@ -3,9 +3,9 @@
   "initial_a": 0,
   "initial_b": 1,
   "last_fib_value": 122743503,
-  "log_n_rows": 2,
+  "log_n_rows": 3,
   "n_columns": 100,
-  "n_rows": 4,
-  "note": "Full proof serialization requires custom implementation",
+  "n_rows": 8,
+  "proof_size_bytes": 3648,
   "structure": "horizontal"
 }

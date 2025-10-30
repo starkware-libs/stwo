@@ -64,23 +64,31 @@ cargo build
 ### Prover
 
 ```bash
-# Default: 8 rows, f(0)=0, f(1)=1
+# Default: 8 rows, 50 columns, f(0)=0, f(1)=1
 cargo run --bin prover
 
-# Custom: 4 rows
+# Custom rows
 cargo run --bin prover -- 2
 
 # Custom initial values
 cargo run --bin prover -- 3 1 1
 
+# Custom column count (NEW!)
+cargo run --bin prover -- 3 0 1 100
+
 # With trace dump
-cargo run --bin prover -- 3 --dump-trace
+cargo run --bin prover -- 3 0 1 50 --dump-trace
 ```
+
+**Arguments:**
+1. `log_n_rows` - log2 of number of rows (default: 3 = 8 rows)
+2. `initial_a` - f(0) initial value (default: 0)
+3. `initial_b` - f(1) initial value (default: 1)
+4. `n_columns` - number of Fibonacci values per row (default: 50)
 
 **Output:**
 ```
 === STARK Prover - Wide Fibonacci ===
-Horizontal structure: 50 columns per row
 
 Configuration:
   Rows: 8 (2^3)
@@ -90,14 +98,61 @@ Configuration:
 Generating wide Fibonacci trace...
 ✓ Trace generated
   8 rows × 50 columns = 400 total values
-  Last value: f(49) = 1848850790 (mod 2^31-1)
+  Last value: f(49) = 1336291108 (mod 2^31-1)
+
+Generating STARK proof...
+✓ Proof generated!
+  Commitments: 3
+  Proof size estimate: 2504 bytes
+
+Saving proof to file...
+✓ Proof saved to proof.json
+  File size: 24106 bytes
+
+✓ Proof metadata saved to proof_metadata.json
 ```
+
+**Generated files:**
+- `proof.json` - Full STARK proof (serialized)
+- `proof_metadata.json` - Proof parameters and claims
+- `trace_dump.txt` - Optional trace dump (with --dump-trace)
 
 ### Verifier
 
 ```bash
 cargo run --bin verifier
 ```
+
+**Output:**
+```
+=== STARK Verifier - Wide Fibonacci ===
+
+Reading proof metadata...
+✓ Metadata loaded
+
+Proof claims:
+  Structure: HORIZONTAL (8 rows × 50 columns)
+  Initial values: f(0)=0, f(1)=1
+  Last value: f(49) = 1336291108 (mod 2^31-1)
+
+Loading proof from file...
+✓ Proof loaded from proof.json
+  Proof size estimate: 2504 bytes
+
+Verifying proof...
+✓ Proof verified successfully!
+
+Verification result:
+  ✓ HORIZONTAL Fibonacci sequence is CORRECT
+  ✓ 8 rows, each with 50 Fibonacci values
+  ✓ Proof loaded from file and verified
+```
+
+The verifier:
+1. Reads `proof_metadata.json` to get proof parameters
+2. Loads the full proof from `proof.json`
+3. Verifies the proof cryptographically
+4. Does NOT regenerate the trace (unlike before)
 
 ### Testing
 
@@ -165,15 +220,21 @@ Tests verify:
 - All rows contain same sequence
 - Different initial values work
 
+## Features
+
+✓ **Runtime configurable column count** - Specify number of columns via CLI
+✓ **Full proof serialization** - Proof saved to and loaded from JSON
+✓ **Flexible initial values** - Start Fibonacci from any (a, b) pair
+✓ **Trace dumping** - Optional human-readable trace output
+
 ## Limitations
 
-- **No Boundary Constraints**: Doesn't enforce f(0)=0, f(1)=1 (could start with any values)
-- **Fixed Length**: Sequence length (50) is hardcoded at compile time
-- **Proof Serialization**: Not yet implemented
+- **No Boundary Constraints**: Doesn't enforce specific f(0), f(1) values (any initial values work)
+- **No Inter-row Constraints**: Rows are independent (all have same sequence)
 
 ## Future Improvements
 
-- [ ] Add boundary constraints
-- [ ] Variable sequence length
-- [ ] Batch proving with different initial values
-- [ ] Proof serialization
+- [ ] Add boundary constraints to enforce specific initial values
+- [ ] Add transition constraints between rows
+- [ ] Batch proving with different initial values per row
+- [ ] Optimize proof size for large column counts

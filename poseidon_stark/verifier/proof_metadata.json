@@ -1,0 +1,20 @@
+{
+  "claimed_sum": {
+    "a": [
+      1747518111,
+      1636340253
+    ],
+    "b": [
+      1631369542,
+      1002665435
+    ]
+  },
+  "commitments_count": 4,
+  "hash_function": "Poseidon2",
+  "instances_per_row": 8,
+  "log_n_instances": 10,
+  "log_n_rows": 7,
+  "n_instances": 1024,
+  "n_rows": 128,
+  "proof_size_bytes": 40416
+}
