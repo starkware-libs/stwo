@@ -1,6 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
+use hashbrown::HashMap;
 use itertools::Itertools;
 use tracing::{span, Level};
 
@@ -8,7 +9,9 @@ use super::ops::MerkleOps;
 use crate::core::fields::m31::BaseField;
 use crate::core::utils::PeekableExt;
 use crate::core::vcs::utils::{next_decommitment_node, option_flatten_peekable};
-use crate::core::vcs::verifier::MerkleDecommitment;
+use crate::core::vcs::verifier::{
+    ExtendedMerkleDecommitment, MerkleDecommitment, MerkleDecommitmentAux,
+};
 use crate::core::vcs::MerkleHasher;
 use crate::prover::backend::{Col, Column};
 
@@ -79,10 +82,11 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
         &self,
         queries_per_log_size: &BTreeMap<u32, Vec<usize>>,
         columns: Vec<&Col<B, BaseField>>,
-    ) -> (Vec<BaseField>, MerkleDecommitment<H>) {
+    ) -> (Vec<BaseField>, ExtendedMerkleDecommitment<H>) {
         // Prepare output buffers.
         let mut queried_values = vec![];
         let mut decommitment = MerkleDecommitment::empty();
+        let mut all_node_values: Vec<HashMap<usize, <H as MerkleHasher>::Hash>> = vec![];
 
         // Sort columns by layer.
         let mut columns_by_layer = columns
@@ -92,6 +96,8 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
 
         let mut last_layer_queries = vec![];
         for layer_log_size in (0..self.layers.len() as u32).rev() {
+            let mut all_node_values_for_layer = HashMap::<usize, <H as MerkleHasher>::Hash>::new();
+
             // Prepare write buffer for queries to the current layer. This will propagate to the
             // next layer.
             let mut layer_total_queries = vec![];
@@ -114,6 +120,14 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
                 next_decommitment_node(&mut prev_layer_queries, &mut layer_column_queries)
             {
                 if let Some(previous_layer_hashes) = previous_layer_hashes {
+                    // Copy values to all_node_values.
+                    all_node_values_for_layer
+                        .insert(2 * node_index, previous_layer_hashes.at(2 * node_index));
+                    all_node_values_for_layer.insert(
+                        2 * node_index + 1,
+                        previous_layer_hashes.at(2 * node_index + 1),
+                    );
+
                     // If the left child was not computed, add it to the witness.
                     if prev_layer_queries.next_if_eq(&(2 * node_index)).is_none() {
                         decommitment
@@ -144,11 +158,19 @@ impl<B: MerkleOps<H>, H: MerkleHasher> MerkleProver<B, H> {
                 layer_total_queries.push(node_index);
             }
 
+            all_node_values.push(all_node_values_for_layer);
+
             // Propagate queries to the next layer.
             last_layer_queries = layer_total_queries;
         }
 
-        (queried_values, decommitment)
+        (
+            queried_values,
+            ExtendedMerkleDecommitment {
+                decommitment,
+                aux: MerkleDecommitmentAux { all_node_values },
+            },
+        )
     }
 
     pub fn root(&self) -> H::Hash {

@@ -53,5 +53,5 @@ where
     let (values, decommitment) = merkle.decommit(&queries, cols.iter().collect_vec());
 
     let verifier = MerkleVerifier::new(merkle.root(), log_sizes);
-    (queries, decommitment, values, verifier)
+    (queries, decommitment.decommitment, values, verifier)
 }

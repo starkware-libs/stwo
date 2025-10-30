@@ -14,6 +14,7 @@ use super::channel::{Channel, MerkleChannel};
 use super::fields::qm31::{SecureField, QM31, SECURE_EXTENSION_DEGREE};
 use super::poly::circle::CircleDomain;
 use super::queries::{draw_queries, Queries};
+use super::vcs::verifier::MerkleDecommitmentAux;
 use super::ColumnVec;
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
@@ -430,15 +431,15 @@ pub struct FriProof<H: MerkleHasher> {
 
 /// Auxiliary data produced by the prover.
 #[derive(Clone, Debug)]
-pub struct FriProofAux {
-    pub first_layer: FriLayerProofAux,
-    pub inner_layers: Vec<FriLayerProofAux>,
+pub struct FriProofAux<H: MerkleHasher> {
+    pub first_layer: FriLayerProofAux<H>,
+    pub inner_layers: Vec<FriLayerProofAux<H>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ExtendedFriProof<H: MerkleHasher> {
     pub proof: FriProof<H>,
-    pub aux: FriProofAux,
+    pub aux: FriProofAux<H>,
 }
 
 /// Number of folds for univariate polynomials.
@@ -461,17 +462,19 @@ pub struct FriLayerProof<H: MerkleHasher> {
 
 /// Auxiliary data for a single FRI layer.
 #[derive(Clone, Debug)]
-pub struct FriLayerProofAux {
+pub struct FriLayerProofAux<H: MerkleHasher> {
     /// For each column (of different size), the values of all nodes that participate in the
     /// decommitment.
     // TODO(lior): Remove the `Vec<>` once mixed-degree Merkle is removed.
     pub all_values: Vec<HashMap<usize, QM31>>,
+    /// The auxiliary data for the merkle decommitment.
+    pub decommitment: MerkleDecommitmentAux<H>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ExtendedFriLayerProof<H: MerkleHasher> {
     pub proof: FriLayerProof<H>,
-    pub aux: FriLayerProofAux,
+    pub aux: FriLayerProofAux<H>,
 }
 
 struct FriFirstLayerVerifier<H: MerkleHasher> {

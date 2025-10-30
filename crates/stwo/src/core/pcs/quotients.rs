@@ -16,7 +16,7 @@ use crate::core::fri::{FriProof, FriProofAux};
 use crate::core::pcs::PcsConfig;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::utils::bit_reverse_index;
-use crate::core::vcs::verifier::MerkleDecommitment;
+use crate::core::vcs::verifier::{MerkleDecommitment, MerkleDecommitmentAux};
 use crate::core::vcs::MerkleHasher;
 use crate::core::verifier::VerificationError;
 use crate::core::ColumnVec;
@@ -37,17 +37,19 @@ pub struct CommitmentSchemeProof<H: MerkleHasher> {
 
 /// Auxiliary data for a [CommitmentSchemeProof].
 #[derive(Clone, Debug)]
-pub struct CommitmentSchemeProofAux {
+pub struct CommitmentSchemeProofAux<H: MerkleHasher> {
     /// The indices of the queries in the ordered they were sampled, before sorting and
     /// deduplication.
     pub unsorted_query_locations: Vec<usize>,
+    /// For each trace, the Merkle decommitment auxiliary data.
+    pub trace_decommitment: TreeVec<MerkleDecommitmentAux<H>>,
     /// The FRI auxiliary data.
-    pub fri: FriProofAux,
+    pub fri: FriProofAux<H>,
 }
 
 pub struct ExtendedCommitmentSchemeProof<H: MerkleHasher> {
     pub proof: CommitmentSchemeProof<H>,
-    pub aux: CommitmentSchemeProofAux,
+    pub aux: CommitmentSchemeProofAux<H>,
 }
 
 /// A batch of column samplings at a point.

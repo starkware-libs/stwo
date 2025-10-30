@@ -18,7 +18,7 @@ pub struct StarkProof<H: MerkleHasher>(pub CommitmentSchemeProof<H>);
 
 pub struct ExtendedStarkProof<H: MerkleHasher> {
     pub proof: StarkProof<H>,
-    pub aux: CommitmentSchemeProofAux,
+    pub aux: CommitmentSchemeProofAux<H>,
 }
 
 impl<H: MerkleHasher> StarkProof<H> {

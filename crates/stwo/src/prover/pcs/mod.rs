@@ -11,7 +11,7 @@ use crate::core::pcs::quotients::{
     CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
 };
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
-use crate::core::vcs::verifier::MerkleDecommitment;
+use crate::core::vcs::verifier::ExtendedMerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::Trace;
@@ -146,8 +146,11 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .as_ref()
             .map(|tree| tree.decommit(&query_positions_by_log_size));
 
-        let (queried_values, decommitments): (Vec<_>, Vec<_>) =
-            decommitment_results.0.into_iter().unzip();
+        let (queried_values, decommitments, aux): (Vec<_>, Vec<_>, Vec<_>) = decommitment_results
+            .0
+            .into_iter()
+            .map(|(v, x)| (v, x.decommitment, x.aux))
+            .multiunzip();
 
         ExtendedCommitmentSchemeProof {
             proof: CommitmentSchemeProof {
@@ -161,6 +164,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             },
             aux: CommitmentSchemeProofAux {
                 unsorted_query_locations,
+                trace_decommitment: TreeVec(aux),
                 fri: fri_proof.aux,
             },
         }
@@ -242,7 +246,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
     fn decommit(
         &self,
         queries: &BTreeMap<u32, Vec<usize>>,
-    ) -> (Vec<BaseField>, MerkleDecommitment<MC::H>) {
+    ) -> (Vec<BaseField>, ExtendedMerkleDecommitment<MC::H>) {
         let eval_vec = self
             .evaluations
             .iter()

@@ -360,10 +360,13 @@ impl<'a, B: FriOps + MerkleOps<H>, H: MerkleHasher> FriFirstLayerProver<'a, B, H
         ExtendedFriLayerProof {
             proof: FriLayerProof {
                 fri_witness,
-                decommitment,
+                decommitment: decommitment.decommitment,
                 commitment,
             },
-            aux: FriLayerProofAux { all_values },
+            aux: FriLayerProofAux {
+                all_values,
+                decommitment: decommitment.aux,
+            },
         }
     }
 }
@@ -423,11 +426,12 @@ impl<B: FriOps + MerkleOps<H>, H: MerkleHasher> FriInnerLayerProver<B, H> {
         ExtendedFriLayerProof {
             proof: FriLayerProof {
                 fri_witness,
-                decommitment,
+                decommitment: decommitment.decommitment,
                 commitment,
             },
             aux: FriLayerProofAux {
                 all_values: vec![value_map],
+                decommitment: decommitment.aux,
             },
         }
     }
