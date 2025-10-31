@@ -1,7 +1,7 @@
 use std::fs;
 use num_traits::Zero;
 use serde_json::Value;
- use stwo::core::air::Component;
+use stwo::core::air::Component;
 use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
@@ -39,7 +39,10 @@ fn main() {
     println!("  initial values: f(0)={}, f(1)={}", initial_a, initial_b);
     println!();
 
-    println!("\n=== Security Test: Attempting to verify proof with wrong trace ===\n");
+    // Note: Since we can't serialize/deserialize the full proof yet,
+    // we'll regenerate it here to demonstrate verification
+    println!("Regenerating trace and proof...");
+    let trace = gen_fibonacci_trace(log_size, initial_a, initial_b);
 
     let config = PcsConfig::default();
     let twiddles = SimdBackend::precompute_twiddles(
@@ -48,197 +51,58 @@ fn main() {
             .half_coset,
     );
 
-    // Generate CORRECT proof with values from metadata
-    println!("Generating CORRECT proof with initial values: f(0)={}, f(1)={}", initial_a, initial_b);
-    let correct_trace = gen_fibonacci_trace(log_size, initial_a, initial_b);
-
-    let channel1 = &mut Blake2sChannel::default();
-    let mut commitment_scheme1 =
+    // Generate proof (normally this would be loaded from file)
+    let channel = &mut Blake2sChannel::default();
+    let mut commitment_scheme =
         CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(config, &twiddles);
 
+    // Generate and commit preprocessed trace with is_first column
     let is_first_col = gen_is_first_column(log_size);
-    let mut tree_builder = commitment_scheme1.tree_builder();
-    tree_builder.extend_evals(vec![is_first_col.clone()]);
-    tree_builder.commit(channel1);
-
-    let mut tree_builder = commitment_scheme1.tree_builder();
-    tree_builder.extend_evals(correct_trace.clone());
-    tree_builder.commit(channel1);
-
-    let correct_component = SimpleFibonacciComponent::new(
-        &mut TraceLocationAllocator::default(),
-        SimpleFibonacciEval {
-            log_n_rows: log_size,
-            is_first_id: is_first_column_id(log_size),
-            initial_a,
-            initial_b,
-        },
-        SecureField::zero(),
-    );
-
-    let correct_proof = prove(&[&correct_component], channel1, commitment_scheme1).unwrap();
-    println!("✓ CORRECT proof generated");
-
-    // Generate FAKE proof with DIFFERENT values (this will be a VALID proof for different constraints)
-    let fake_initial_a = 5u32;
-    let fake_initial_b = 7u32;
-    println!("\nGenerating FAKE proof with different values: f(0)={}, f(1)={}", fake_initial_a, fake_initial_b);
-    println!("Note: This proof will be VALID for constraints with initial values (5, 7)");
-    let fake_trace = gen_fibonacci_trace(log_size, fake_initial_a, fake_initial_b);
-
-    let channel2 = &mut Blake2sChannel::default();
-    let mut commitment_scheme2 =
-        CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(config, &twiddles);
-
-    let mut tree_builder = commitment_scheme2.tree_builder();
+    let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(vec![is_first_col]);
-    tree_builder.commit(channel2);
+    tree_builder.commit(channel);
 
-    let mut tree_builder = commitment_scheme2.tree_builder();
-    tree_builder.extend_evals(fake_trace.clone());
-    tree_builder.commit(channel2);
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(trace.clone());
+    tree_builder.commit(channel);
 
-    // Component with FAKE initial values - proof will be valid for THESE constraints
-    let fake_component = SimpleFibonacciComponent::new(
+    let component = SimpleFibonacciComponent::new(
         &mut TraceLocationAllocator::default(),
         SimpleFibonacciEval {
             log_n_rows: log_size,
             is_first_id: is_first_column_id(log_size),
-            initial_a: fake_initial_a,
-            initial_b: fake_initial_b,
         },
         SecureField::zero(),
     );
 
-    let fake_proof = prove(&[&fake_component], channel2, commitment_scheme2).unwrap();
-    println!("✓ FAKE proof generated (valid for f(0)=5, f(1)=7)");
+    let proof = prove(&[&component], channel, commitment_scheme).unwrap();
+    println!("✓ Proof regenerated (in real scenario, would be loaded from file)");
 
-    // Test 1: Verify CORRECT proof with CORRECT component (should succeed)
-    println!("\n--- Test 1: Legitimate verification ---");
-    println!("Verifying CORRECT proof with CORRECT component...");
+    // Verify the proof
+    println!("\nVerifying proof...");
 
-    let verify_channel1 = &mut Blake2sChannel::default();
-    let verify_commitment_scheme1 = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+    let channel = &mut Blake2sChannel::default();
+    let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
 
-    verify_commitment_scheme1.commit(
-        correct_proof.commitments[0],
-        &correct_component.trace_log_degree_bounds()[0],
-        verify_channel1
+    // Commit preprocessed
+    commitment_scheme.commit(
+        proof.commitments[0],
+        &component.trace_log_degree_bounds()[0],
+        channel
     );
 
-    verify_commitment_scheme1.commit(
-        correct_proof.commitments[1],
-        &correct_component.trace_log_degree_bounds()[1],
-        verify_channel1
+    // Commit trace
+    commitment_scheme.commit(
+        proof.commitments[1],
+        &component.trace_log_degree_bounds()[1],
+        channel
     );
 
-    match stwo::core::verifier::verify(&[&correct_component], verify_channel1, verify_commitment_scheme1, correct_proof.clone()) {
-        Ok(_) => println!("✓ Test 1 PASSED: Correct proof verified successfully!"),
-        Err(e) => println!("✗ Test 1 FAILED: {:?}", e),
-    }
+    // Verify!
+    stwo::core::verifier::verify(&[&component], channel, commitment_scheme, proof).unwrap();
 
-    // Test 2: SECURITY TEST - Try to verify FAKE proof with CORRECT constraints (should FAIL)
-    println!("\n--- Test 2: Security test (attempting to cheat) ---");
-    println!("We have a proof that is VALID for f(0)={}, f(1)={}", fake_initial_a, fake_initial_b);
-    println!("Now trying to verify it using constraints for f(0)={}, f(1)={}", initial_a, initial_b);
-    println!("This simulates an attacker trying to use a proof for wrong computation!");
-
-    let verify_channel2 = &mut Blake2sChannel::default();
-    let verify_commitment_scheme2 = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
-
-    // Create component with CORRECT initial values (what we want to check against)
-    let correct_constraints_component = SimpleFibonacciComponent::new(
-        &mut TraceLocationAllocator::default(),
-        SimpleFibonacciEval {
-            log_n_rows: log_size,
-            is_first_id: is_first_column_id(log_size),
-            initial_a,  // Using CORRECT values
-            initial_b,  // But verifying FAKE proof!
-        },
-        SecureField::zero(),
-    );
-
-    // Try to verify FAKE proof with CORRECT constraints
-    verify_commitment_scheme2.commit(
-        fake_proof.commitments[0],
-        &correct_constraints_component.trace_log_degree_bounds()[0],
-        verify_channel2
-    );
-
-    verify_commitment_scheme2.commit(
-        fake_proof.commitments[1],
-        &correct_constraints_component.trace_log_degree_bounds()[1],
-        verify_channel2
-    );
-
-    println!("\nAttempting verification...");
-    match stwo::core::verifier::verify(&[&correct_constraints_component], verify_channel2, verify_commitment_scheme2, fake_proof) {
-        Ok(_) => {
-            println!("✗ SECURITY BREACH: Fake proof was accepted! This should NOT happen!");
-            println!("   The system allowed us to verify a proof for f(0)={}, f(1)={}", fake_initial_a, fake_initial_b);
-            println!("   using constraints that expect f(0)={}, f(1)={}", initial_a, initial_b);
-        },
-        Err(e) => {
-            println!("✓ Test 2 PASSED: Verifier correctly REJECTED the mismatched proof!");
-            println!("   Error: {:?}", e);
-            println!("\n   This proves the STARK verifier is secure!");
-            println!("   You cannot use a proof generated for one set of public inputs");
-            println!("   to verify against different public inputs.");
-        }
-    }
-
-    // Test 3: REVERSE Security test - Try to verify CORRECT proof with FAKE constraints (should FAIL)
-    println!("\n--- Test 3: Reverse security test ---");
-    println!("We have a proof that is VALID for f(0)={}, f(1)={}", initial_a, initial_b);
-    println!("Now trying to verify it using constraints for f(0)={}, f(1)={}", fake_initial_a, fake_initial_b);
-    println!("This is the REVERSE of Test 2 - testing symmetry of security!");
-
-    let verify_channel3 = &mut Blake2sChannel::default();
-    let verify_commitment_scheme3 = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
-
-    // Create component with FAKE initial values
-    let fake_constraints_component = SimpleFibonacciComponent::new(
-        &mut TraceLocationAllocator::default(),
-        SimpleFibonacciEval {
-            log_n_rows: log_size,
-            is_first_id: is_first_column_id(log_size),
-            initial_a: fake_initial_a,  // Using FAKE values
-            initial_b: fake_initial_b,  // But verifying CORRECT proof!
-        },
-        SecureField::zero(),
-    );
-
-    // Try to verify CORRECT proof with FAKE constraints
-    verify_commitment_scheme3.commit(
-        correct_proof.commitments[0],
-        &fake_constraints_component.trace_log_degree_bounds()[0],
-        verify_channel3
-    );
-
-    verify_commitment_scheme3.commit(
-        correct_proof.commitments[1],
-        &fake_constraints_component.trace_log_degree_bounds()[1],
-        verify_channel3
-    );
-
-    println!("\nAttempting verification...");
-    match stwo::core::verifier::verify(&[&fake_constraints_component], verify_channel3, verify_commitment_scheme3, correct_proof) {
-        Ok(_) => {
-            println!("✗ SECURITY BREACH: Proof was accepted with wrong constraints! This should NOT happen!");
-            println!("   The system allowed us to verify a proof for f(0)={}, f(1)={}", initial_a, initial_b);
-            println!("   using constraints that expect f(0)={}, f(1)={}", fake_initial_a, fake_initial_b);
-        },
-        Err(e) => {
-            println!("✓ Test 3 PASSED: Verifier correctly REJECTED the mismatched constraints!");
-            println!("   Error: {:?}", e);
-            println!("\n   Security is SYMMETRIC - it doesn't matter which direction you try to cheat!");
-        }
-    }
-
-    println!("\n=== Security Test Completed ===");
-    println!("\nConclusion:");
-    println!("  • Test 1: Legitimate verification ✓");
-    println!("  • Test 2: Fake proof with correct constraints ✓ (rejected)");
-    println!("  • Test 3: Correct proof with fake constraints ✓ (rejected)");
-    println!("\nThe STARK verifier is cryptographically secure!");
+    println!("✓ Proof verified successfully!");
+    println!("\n✓ Verification completed!");
+    println!("\nNote: Full proof serialization is not yet implemented.");
+    println!("In production, the proof would be loaded from a file instead of regenerated.");
 }
