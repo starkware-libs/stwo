@@ -24,6 +24,8 @@ use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, OR
 pub struct SimpleFibonacciEval {
     pub log_n_rows: u32,
     pub is_first_id: PreProcessedColumnId,
+    pub initial_a: u32,  // First row constraint: a = initial_a
+    pub initial_b: u32,  // First row constraint: b = initial_b
 }
 
 impl FrameworkEval for SimpleFibonacciEval {
@@ -53,7 +55,17 @@ impl FrameworkEval for SimpleFibonacciEval {
 
         // Constraint 3: Transition constraint b_curr == c_prev
         // Disabled for first row using (1 - is_first) multiplier
-        eval.add_constraint((E::F::one() - is_first) * (b_curr - c_prev));
+        eval.add_constraint((E::F::one() - is_first.clone()) * (b_curr.clone() - c_prev));
+
+        // First row constraints: enforce initial values
+        let initial_a_field = E::F::from(BaseField::from_u32_unchecked(self.initial_a));
+        let initial_b_field = E::F::from(BaseField::from_u32_unchecked(self.initial_b));
+
+        // First row: a = initial_a
+        eval.add_constraint(is_first.clone() * (a_curr.clone() - initial_a_field));
+        // First row: b = initial_b
+        eval.add_constraint(is_first.clone() * (b_curr.clone() - initial_b_field));
+
 
         eval
     }
@@ -107,7 +119,7 @@ pub fn gen_fibonacci_trace(
         b = c;
     }
 
-    // 🔥 CRITICAL: Convert columns to bit-reversed circle domain order
+    // Convert columns to bit-reversed circle domain order
     // This is required for next_interaction_mask with offsets to work correctly!
     bit_reverse_coset_to_circle_domain_order(col_a.as_mut_slice());
     bit_reverse_coset_to_circle_domain_order(col_b.as_mut_slice());
@@ -217,6 +229,8 @@ mod tests {
                 SimpleFibonacciEval {
                     log_n_rows: log_size,
                     is_first_id: is_first_column_id(log_size),
+                    initial_a: 1,
+                    initial_b: 1,
                 }
                 .evaluate(eval);
             },

@@ -1,0 +1,8 @@
+{
+  "commitments_count": 3,
+  "initial_a": 0,
+  "initial_b": 1,
+  "log_size": 3,
+  "n_rows": 8,
+  "note": "Full proof serialization requires custom implementation"
+}

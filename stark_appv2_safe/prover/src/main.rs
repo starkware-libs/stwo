@@ -8,6 +8,7 @@ use num_traits::Zero;
 use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::pcs::PcsConfig;
+use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::backend::simd::SimdBackend;
@@ -25,7 +26,7 @@ fn main() {
             .parse::<u32>()
             .expect("First argument must be log_size (e.g., 8 for 256 rows)")
     } else {
-        8
+        3
     };
 
     let initial_a = if args.len() > 2 {
@@ -52,8 +53,21 @@ fn main() {
 
     // Generate trace
     println!("Generating Fibonacci trace...");
-    let trace = gen_fibonacci_trace(log_size, initial_a, initial_b);
+    let mut trace = gen_fibonacci_trace(log_size, initial_a, initial_b);
     println!("✓ Trace generated with {} rows", n_rows);
+
+//     let fake_row = 3; // np. wiersz nr 3
+//     println!("⚠️  Injecting fake values in row {}...", fake_row);
+
+//     // Trace: [col_a, col_b, col_c]
+//     trace[0].values.as_mut_slice()[fake_row] = BaseField::from_u32_unchecked(10); // a = 10
+//     trace[1].values.as_mut_slice()[fake_row] = BaseField::from_u32_unchecked(5);  // b = 5
+//     trace[2].values.as_mut_slice()[fake_row] = BaseField::from_u32_unchecked(15); // c = 15
+
+// println!(
+//     "  → Fake row {} set to a={}, b={}, c={}",
+//     fake_row, 10, 5, 15
+// );
 
     // Dump trace to file for inspection
     println!("\nDumping trace to file...");
