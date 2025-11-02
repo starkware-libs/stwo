@@ -2,6 +2,9 @@ use std::fs::File;
 use std::io::Write;
 
 use num_traits::One;
+
+// Multi-component Fibonacci example with LogUp
+pub mod multi_fib;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::utils::bit_reverse_coset_to_circle_domain_order;
