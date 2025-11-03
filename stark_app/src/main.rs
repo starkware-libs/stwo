@@ -1,5 +1,6 @@
 mod fibonacci;
 
+use fibonacci::{gen_fibonacci_trace, SimpleFibonacciComponent, SimpleFibonacciEval};
 use num_traits::Zero;
 use stwo::core::air::Component;
 use stwo::core::channel::Blake2sChannel;
@@ -13,8 +14,6 @@ use stwo::prover::backend::Column;
 use stwo::prover::poly::circle::PolyOps;
 use stwo::prover::{prove, CommitmentSchemeProver};
 use stwo_constraint_framework::TraceLocationAllocator;
-
-use fibonacci::{gen_fibonacci_trace, SimpleFibonacciComponent, SimpleFibonacciEval};
 
 fn main() {
     println!("=== My STARK App ===");
@@ -35,12 +34,12 @@ fn main() {
 
     // Test Fibonacci
     println!("\n=== Fibonacci Sequence ===");
-    let log_size = 8;  // 256 rows
+    let log_size = 8; // 256 rows
     let trace = gen_fibonacci_trace(log_size, 1, 1);
 
     println!("First 10 values of Fibonacci sequence (starting with 1, 1):");
     for i in 0..10 {
-        let val = trace[2].values.at(i);  // Column 2 is f(n)
+        let val = trace[2].values.at(i); // Column 2 is f(n)
         println!("  f({}) = {}", i + 2, val);
     }
 
@@ -75,7 +74,9 @@ fn main() {
     // Create component
     let component = SimpleFibonacciComponent::new(
         &mut TraceLocationAllocator::default(),
-        SimpleFibonacciEval { log_n_rows: log_size },
+        SimpleFibonacciEval {
+            log_n_rows: log_size,
+        },
         SecureField::zero(),
     );
 
@@ -92,10 +93,18 @@ fn main() {
     let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
 
     // Preprocessed
-    commitment_scheme.commit(proof.commitments[0], &component.trace_log_degree_bounds()[0], channel);
+    commitment_scheme.commit(
+        proof.commitments[0],
+        &component.trace_log_degree_bounds()[0],
+        channel,
+    );
 
     // Trace
-    commitment_scheme.commit(proof.commitments[1], &component.trace_log_degree_bounds()[1], channel);
+    commitment_scheme.commit(
+        proof.commitments[1],
+        &component.trace_log_degree_bounds()[1],
+        channel,
+    );
 
     stwo::core::verifier::verify(&[&component], channel, commitment_scheme, proof).unwrap();
 

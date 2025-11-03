@@ -33,7 +33,8 @@ const MAX_CALLS: usize = 1024; // Maximum number of Poseidon calls supported
 const LOG_MAX_CALLS: u32 = 10; // log2(1024) = 10
 
 // We no longer use fixed instances per row - each row is ONE call
-// Scheduler structure per row: [is_active (1), input_state (16), output_state (16)] = 33 columns total
+// Scheduler structure per row: [is_active (1), input_state (16), output_state (16)] = 33 columns
+// total
 
 #[cfg(test)]
 const POSEIDON_LOG_EXPAND: u32 = 2; // Poseidon uses LOG_EXPAND = 2
@@ -100,9 +101,9 @@ impl Components {
 }
 
 pub struct ComponentsStatement0 {
-    scheduler_log_size: u32,  // Scheduler trace size
-    poseidon_log_size: u32,   // Poseidon trace size
-    num_calls: usize,          // DYNAMIC: How many actual Poseidon calls (public input)
+    scheduler_log_size: u32, // Scheduler trace size
+    poseidon_log_size: u32,  // Poseidon trace size
+    num_calls: usize,        // DYNAMIC: How many actual Poseidon calls (public input)
 }
 
 impl ComponentsStatement0 {
@@ -237,6 +238,7 @@ use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
 #[cfg(test)]
 use stwo_constraint_framework::{LogupTraceGenerator, Relation};
+
 #[cfg(test)]
 use crate::poseidon::{
     gen_interaction_trace as gen_poseidon_interaction_trace, gen_trace as gen_poseidon_trace,
@@ -275,7 +277,7 @@ fn gen_scheduler_trace(
         let scheduler_lane = call_idx & ((1 << LOG_N_LANES) - 1);
 
         // Which Poseidon instance does this call correspond to?
-        let poseidon_absolute_idx = call_idx;  // Linear index into Poseidon instances
+        let poseidon_absolute_idx = call_idx; // Linear index into Poseidon instances
         let poseidon_row = poseidon_absolute_idx / POSEIDON_INSTANCES_PER_ROW;
         let poseidon_instance = poseidon_absolute_idx % POSEIDON_INSTANCES_PER_ROW;
 
@@ -290,8 +292,9 @@ fn gen_scheduler_trace(
 
         // Input state (16 columns)
         for state_i in 0..N_STATE {
-            let value = poseidon_lookup_data.initial_state[poseidon_instance][state_i]
-                .data[poseidon_vec_index].to_array()[poseidon_lane];
+            let value = poseidon_lookup_data.initial_state[poseidon_instance][state_i].data
+                [poseidon_vec_index]
+                .to_array()[poseidon_lane];
             let mut arr = trace[1 + state_i].data[scheduler_vec_index].to_array();
             arr[scheduler_lane] = value;
             trace[1 + state_i].data[scheduler_vec_index] = PackedM31::from_array(arr);
@@ -299,8 +302,9 @@ fn gen_scheduler_trace(
 
         // Output state (16 columns)
         for state_i in 0..N_STATE {
-            let value = poseidon_lookup_data.final_state[poseidon_instance][state_i]
-                .data[poseidon_vec_index].to_array()[poseidon_lane];
+            let value = poseidon_lookup_data.final_state[poseidon_instance][state_i].data
+                [poseidon_vec_index]
+                .to_array()[poseidon_lane];
             let mut arr = trace[1 + 16 + state_i].data[scheduler_vec_index].to_array();
             arr[scheduler_lane] = value;
             trace[1 + 16 + state_i].data[scheduler_vec_index] = PackedM31::from_array(arr);
@@ -341,13 +345,11 @@ fn gen_scheduler_logup_trace(
         let is_active = scheduler_trace[0].data[row];
 
         // Read input state (cols 1-16)
-        let input_state: [_; N_STATE] =
-            std::array::from_fn(|i| scheduler_trace[1 + i].data[row]);
+        let input_state: [_; N_STATE] = std::array::from_fn(|i| scheduler_trace[1 + i].data[row]);
         let input_combined: PackedSecureField = lookup_elements.combine(&input_state);
 
         // Read output state (cols 17-32)
-        let output_state: [_; N_STATE] =
-            std::array::from_fn(|i| scheduler_trace[17 + i].data[row]);
+        let output_state: [_; N_STATE] = std::array::from_fn(|i| scheduler_trace[17 + i].data[row]);
         let output_combined: PackedSecureField = lookup_elements.combine(&output_state);
 
         // CONDITIONAL LogUp:
@@ -357,9 +359,8 @@ fn gen_scheduler_logup_trace(
         // Convert each element of is_active (PackedM31) to SecureField
         // We need to convert element-wise, not broadcast!
         let is_active_arr = is_active.to_array();
-        let is_active_qm31 = PackedSecureField::from_array(
-            is_active_arr.map(|m| SecureField::from(m))
-        );
+        let is_active_qm31 =
+            PackedSecureField::from_array(is_active_arr.map(|m| SecureField::from(m)));
 
         // We multiply numerator by is_active to make it conditional
         let numerator = (input_combined - output_combined) * is_active_qm31;
@@ -369,8 +370,8 @@ fn gen_scheduler_logup_trace(
         // When is_active=1: input * output
         // When is_active=0: 1
         let one = PackedSecureField::broadcast(SecureField::one());
-        let denominator = is_active_qm31 * (input_combined * output_combined)
-            + (one - is_active_qm31) * one;
+        let denominator =
+            is_active_qm31 * (input_combined * output_combined) + (one - is_active_qm31) * one;
 
         col_gen.write_frac(row, numerator, denominator);
     }
@@ -381,7 +382,6 @@ fn gen_scheduler_logup_trace(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use num_traits::Zero;
     use stwo::core::channel::Blake2sChannel;
     use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
@@ -391,6 +391,8 @@ mod tests {
     use stwo::core::verifier::verify;
     use stwo::prover::poly::circle::PolyOps;
     use stwo::prover::{prove, CommitmentSchemeProver};
+
+    use super::*;
 
     struct ComponentsProof<H: MerkleHasher> {
         statement0: ComponentsStatement0,
@@ -426,18 +428,30 @@ mod tests {
         const POSEIDON_INSTANCES_PER_ROW: usize = 8;
 
         // Calculate Poseidon log_size to fit at least num_calls
-        let poseidon_rows_needed = (num_calls + POSEIDON_INSTANCES_PER_ROW - 1) / POSEIDON_INSTANCES_PER_ROW;
-        let poseidon_log_size = (poseidon_rows_needed as u32).next_power_of_two().ilog2().max(LOG_N_LANES);
+        let poseidon_rows_needed =
+            (num_calls + POSEIDON_INSTANCES_PER_ROW - 1) / POSEIDON_INSTANCES_PER_ROW;
+        let poseidon_log_size = (poseidon_rows_needed as u32)
+            .next_power_of_two()
+            .ilog2()
+            .max(LOG_N_LANES);
 
         // Total instances that Poseidon will create (and ALL will have LogUp entries)
         let total_poseidon_instances = (1 << poseidon_log_size) * POSEIDON_INSTANCES_PER_ROW;
 
         // Scheduler size must fit all Poseidon instances
-        let log_size = (total_poseidon_instances as u32).next_power_of_two().ilog2().max(LOG_N_LANES);
+        let log_size = (total_poseidon_instances as u32)
+            .next_power_of_two()
+            .ilog2()
+            .max(LOG_N_LANES);
         let config = PcsConfig::default();
 
         println!("Number of actual Poseidon calls: {}", num_calls);
-        println!("Log size (trace rows): {} (2^{} = {} rows)", log_size, log_size, 1 << log_size);
+        println!(
+            "Log size (trace rows): {} (2^{} = {} rows)",
+            log_size,
+            log_size,
+            1 << log_size
+        );
         println!("Padding rows: {}\n", (1 << log_size) - num_calls);
 
         // Use maximum of scheduler and Poseidon LOG_EXPAND
@@ -458,16 +472,27 @@ mod tests {
         tree_builder.commit(channel);
 
         println!("Step 2: Generating Poseidon trace (this computes the actual hashes)...");
-        println!("  Poseidon log_size: {} ({} rows with {} instances each = {} total instances)",
-                 poseidon_log_size, 1 << poseidon_log_size, POSEIDON_INSTANCES_PER_ROW,
-                 total_poseidon_instances);
-        println!("  Poseidon will generate LogUp for ALL {} instances!", total_poseidon_instances);
+        println!(
+            "  Poseidon log_size: {} ({} rows with {} instances each = {} total instances)",
+            poseidon_log_size,
+            1 << poseidon_log_size,
+            POSEIDON_INSTANCES_PER_ROW,
+            total_poseidon_instances
+        );
+        println!(
+            "  Poseidon will generate LogUp for ALL {} instances!",
+            total_poseidon_instances
+        );
         let (poseidon_trace, poseidon_lookup_data) = gen_poseidon_trace(poseidon_log_size);
 
         println!("Step 3: Generating Scheduler trace (using Poseidon's input/output)...");
-        println!("  Scheduler will mark ALL {} Poseidon instances as active", total_poseidon_instances);
+        println!(
+            "  Scheduler will mark ALL {} Poseidon instances as active",
+            total_poseidon_instances
+        );
         println!("  (even though only first {} are 'real' calls)", num_calls);
-        let scheduler_trace = gen_scheduler_trace(total_poseidon_instances, log_size, &poseidon_lookup_data);
+        let scheduler_trace =
+            gen_scheduler_trace(total_poseidon_instances, log_size, &poseidon_lookup_data);
 
         let statement0 = ComponentsStatement0 {
             scheduler_log_size: log_size,
@@ -489,8 +514,11 @@ mod tests {
         let (scheduler_logup_cols, scheduler_claimed_sum) =
             gen_scheduler_logup_trace(log_size, &scheduler_trace, &lookup_elements);
 
-        let (poseidon_logup_cols, poseidon_claimed_sum) =
-            gen_poseidon_interaction_trace(poseidon_log_size, poseidon_lookup_data, &lookup_elements);
+        let (poseidon_logup_cols, poseidon_claimed_sum) = gen_poseidon_interaction_trace(
+            poseidon_log_size,
+            poseidon_lookup_data,
+            &lookup_elements,
+        );
 
         let statement1 = ComponentsStatement1 {
             scheduler_claimed_sum,
@@ -513,7 +541,8 @@ mod tests {
         let components = Components::new(&statement0, &lookup_elements, &statement1);
 
         println!("Step 9: Generating STARK proof...");
-        let stark_proof = prove(&components.component_provers(), channel, commitment_scheme).unwrap();
+        let stark_proof =
+            prove(&components.component_provers(), channel, commitment_scheme).unwrap();
         println!("  ✓ Proof generated successfully\n");
 
         let proof = ComponentsProof {
@@ -566,8 +595,14 @@ mod tests {
         println!("  ✓ Proof verified successfully\n");
         println!("=== Example completed successfully! ===");
         println!("\nWhat happened:");
-        println!("1. Scheduler requested {} Poseidon hashes", total_poseidon_instances);
-        println!("2. Poseidon component computed all {} hashes", total_poseidon_instances);
+        println!(
+            "1. Scheduler requested {} Poseidon hashes",
+            total_poseidon_instances
+        );
+        println!(
+            "2. Poseidon component computed all {} hashes",
+            total_poseidon_instances
+        );
         println!("3. LogUp verified all requests matched computations (sum balanced to zero)");
         println!("4. STARK proof proves correctness of entire composition");
     }

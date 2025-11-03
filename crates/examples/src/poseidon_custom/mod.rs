@@ -209,7 +209,8 @@ pub struct LookupData {
 ///
 /// # Parameters
 /// - `log_size`: log2(number of rows in the trace)
-/// - `custom_inputs`: Vector of 16-element states to hash. Length must equal (1 << log_size) * N_INSTANCES_PER_ROW.
+/// - `custom_inputs`: Vector of 16-element states to hash. Length must equal (1 << log_size) *
+///   N_INSTANCES_PER_ROW.
 ///
 /// # Example
 /// ```ignore
@@ -461,7 +462,6 @@ mod tests {
     use stwo_constraint_framework::assert_constraints_on_polys;
 
     use super::*;
-
     use crate::poseidon_custom::{
         apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,
         gen_trace, prove_poseidon, PoseidonElements,
@@ -671,7 +671,9 @@ mod tests {
 
         // Fill remaining inputs to meet required count
         for i in my_inputs.len()..n_instances {
-            my_inputs.push(std::array::from_fn(|j| BaseField::from((i * 16 + j) as u32)));
+            my_inputs.push(std::array::from_fn(|j| {
+                BaseField::from((i * 16 + j) as u32)
+            }));
         }
 
         println!("Hashing {} custom input states", my_inputs.len());
@@ -685,7 +687,10 @@ mod tests {
         let (trace, lookup_data) = gen_trace(log_size, my_inputs.clone());
 
         println!("Trace generated with {} columns", trace.len());
-        println!("Each row contains {} Poseidon instances\n", N_INSTANCES_PER_ROW);
+        println!(
+            "Each row contains {} Poseidon instances\n",
+            N_INSTANCES_PER_ROW
+        );
 
         // Verify first output
         println!("Output of first hash (input was all 1s):");

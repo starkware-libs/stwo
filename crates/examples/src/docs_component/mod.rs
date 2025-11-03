@@ -345,7 +345,6 @@ fn gen_computing_logup_trace(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use num_traits::Zero;
     use stwo::core::channel::Blake2sChannel;
     use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
@@ -355,6 +354,8 @@ mod tests {
     use stwo::core::verifier::verify;
     use stwo::prover::poly::circle::PolyOps;
     use stwo::prover::{prove, CommitmentSchemeProver};
+
+    use super::*;
 
     struct ComponentsProof<H: MerkleHasher> {
         statement0: ComponentsStatement0,
@@ -368,121 +369,123 @@ mod tests {
         println!("Log size: {}", LOG_N_LANES);
         println!("Number of rows: {}\n", 1 << LOG_N_LANES);
 
-    let log_size = LOG_N_LANES;
-    let config = PcsConfig::default();
+        let log_size = LOG_N_LANES;
+        let config = PcsConfig::default();
 
-    let twiddles = SimdBackend::precompute_twiddles(
-        CanonicCoset::new(
-            log_size + CONSTRAINT_EVAL_BLOWUP_FACTOR + config.fri_config.log_blowup_factor,
+        let twiddles = SimdBackend::precompute_twiddles(
+            CanonicCoset::new(
+                log_size + CONSTRAINT_EVAL_BLOWUP_FACTOR + config.fri_config.log_blowup_factor,
+            )
+            .circle_domain()
+            .half_coset,
+        );
+
+        let channel = &mut Blake2sChannel::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+
+        println!("Step 1: Committing preprocessed columns (empty)...");
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(vec![]);
+        tree_builder.commit(channel);
+
+        println!("Step 2: Generating trace columns...");
+        let scheduling_trace = gen_scheduling_trace(log_size);
+        let computing_trace =
+            gen_computing_trace(log_size, &scheduling_trace[0], &scheduling_trace[1]);
+
+        let statement0 = ComponentsStatement0 { log_size };
+        statement0.mix_into(channel);
+
+        println!("Step 3: Committing trace columns...");
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals([scheduling_trace.clone(), computing_trace.clone()].concat());
+        tree_builder.commit(channel);
+
+        println!("Step 4: Drawing lookup elements from channel...");
+        let lookup_elements = ComputationLookupElements::draw(channel);
+
+        println!("Step 5: Generating LogUp interaction columns...");
+        let (scheduling_logup_cols, scheduling_claimed_sum) = gen_scheduling_logup_trace(
+            log_size,
+            &scheduling_trace[0],
+            &scheduling_trace[1],
+            &lookup_elements,
+        );
+        let (computing_logup_cols, computing_claimed_sum) = gen_computing_logup_trace(
+            log_size,
+            &computing_trace[0],
+            &computing_trace[2],
+            &lookup_elements,
+        );
+
+        println!("  Scheduling claimed sum: {:?}", scheduling_claimed_sum);
+        println!("  Computing claimed sum: {:?}", computing_claimed_sum);
+        println!(
+            "  Sum check (should be zero): {:?}\n",
+            scheduling_claimed_sum + computing_claimed_sum
+        );
+
+        let statement1 = ComponentsStatement1 {
+            scheduling_claimed_sum,
+            computing_claimed_sum,
+        };
+        statement1.mix_into(channel);
+
+        println!("Step 6: Committing LogUp columns...");
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals([scheduling_logup_cols, computing_logup_cols].concat());
+        tree_builder.commit(channel);
+
+        println!("Step 7: Creating components...");
+        let components = Components::new(&statement0, &lookup_elements, &statement1);
+
+        println!("Step 8: Generating STARK proof...");
+        let stark_proof =
+            prove(&components.component_provers(), channel, commitment_scheme).unwrap();
+        println!("  ✓ Proof generated successfully\n");
+
+        let proof = ComponentsProof {
+            statement0,
+            statement1,
+            stark_proof,
+        };
+
+        println!("Step 9: Verifying proof...");
+
+        assert_eq!(
+            scheduling_claimed_sum + computing_claimed_sum,
+            SecureField::zero()
+        );
+
+        let statement0 = proof.statement0;
+        let statement1 = proof.statement1;
+        let stark_proof = proof.stark_proof;
+
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        let log_sizes = statement0.log_sizes();
+
+        commitment_scheme.commit(stark_proof.commitments[0], &log_sizes[0], channel);
+        statement0.mix_into(channel);
+        commitment_scheme.commit(stark_proof.commitments[1], &log_sizes[1], channel);
+
+        let lookup_elements = ComputationLookupElements::draw(channel);
+
+        statement1.mix_into(channel);
+        commitment_scheme.commit(stark_proof.commitments[2], &log_sizes[2], channel);
+
+        let components = Components::new(&statement0, &lookup_elements, &statement1);
+
+        verify(
+            &components.components(),
+            channel,
+            commitment_scheme,
+            stark_proof,
         )
-        .circle_domain()
-        .half_coset,
-    );
+        .unwrap();
 
-    let channel = &mut Blake2sChannel::default();
-    let mut commitment_scheme =
-        CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(config, &twiddles);
-
-    println!("Step 1: Committing preprocessed columns (empty)...");
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(vec![]);
-    tree_builder.commit(channel);
-
-    println!("Step 2: Generating trace columns...");
-    let scheduling_trace = gen_scheduling_trace(log_size);
-    let computing_trace = gen_computing_trace(log_size, &scheduling_trace[0], &scheduling_trace[1]);
-
-    let statement0 = ComponentsStatement0 { log_size };
-    statement0.mix_into(channel);
-
-    println!("Step 3: Committing trace columns...");
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals([scheduling_trace.clone(), computing_trace.clone()].concat());
-    tree_builder.commit(channel);
-
-    println!("Step 4: Drawing lookup elements from channel...");
-    let lookup_elements = ComputationLookupElements::draw(channel);
-
-    println!("Step 5: Generating LogUp interaction columns...");
-    let (scheduling_logup_cols, scheduling_claimed_sum) = gen_scheduling_logup_trace(
-        log_size,
-        &scheduling_trace[0],
-        &scheduling_trace[1],
-        &lookup_elements,
-    );
-    let (computing_logup_cols, computing_claimed_sum) = gen_computing_logup_trace(
-        log_size,
-        &computing_trace[0],
-        &computing_trace[2],
-        &lookup_elements,
-    );
-
-    println!("  Scheduling claimed sum: {:?}", scheduling_claimed_sum);
-    println!("  Computing claimed sum: {:?}", computing_claimed_sum);
-    println!(
-        "  Sum check (should be zero): {:?}\n",
-        scheduling_claimed_sum + computing_claimed_sum
-    );
-
-    let statement1 = ComponentsStatement1 {
-        scheduling_claimed_sum,
-        computing_claimed_sum,
-    };
-    statement1.mix_into(channel);
-
-    println!("Step 6: Committing LogUp columns...");
-    let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals([scheduling_logup_cols, computing_logup_cols].concat());
-    tree_builder.commit(channel);
-
-    println!("Step 7: Creating components...");
-    let components = Components::new(&statement0, &lookup_elements, &statement1);
-
-    println!("Step 8: Generating STARK proof...");
-    let stark_proof = prove(&components.component_provers(), channel, commitment_scheme).unwrap();
-    println!("  ✓ Proof generated successfully\n");
-
-    let proof = ComponentsProof {
-        statement0,
-        statement1,
-        stark_proof,
-    };
-
-    println!("Step 9: Verifying proof...");
-
-    assert_eq!(
-        scheduling_claimed_sum + computing_claimed_sum,
-        SecureField::zero()
-    );
-
-    let statement0 = proof.statement0;
-    let statement1 = proof.statement1;
-    let stark_proof = proof.stark_proof;
-
-    let channel = &mut Blake2sChannel::default();
-    let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
-    let log_sizes = statement0.log_sizes();
-
-    commitment_scheme.commit(stark_proof.commitments[0], &log_sizes[0], channel);
-    statement0.mix_into(channel);
-    commitment_scheme.commit(stark_proof.commitments[1], &log_sizes[1], channel);
-
-    let lookup_elements = ComputationLookupElements::draw(channel);
-
-    statement1.mix_into(channel);
-    commitment_scheme.commit(stark_proof.commitments[2], &log_sizes[2], channel);
-
-    let components = Components::new(&statement0, &lookup_elements, &statement1);
-
-    verify(
-        &components.components(),
-        channel,
-        commitment_scheme,
-        stark_proof,
-    )
-    .unwrap();
-
-    println!("  ✓ Proof verified successfully\n");
-    println!("=== Example completed successfully! ===");
+        println!("  ✓ Proof verified successfully\n");
+        println!("=== Example completed successfully! ===");
     }
 }

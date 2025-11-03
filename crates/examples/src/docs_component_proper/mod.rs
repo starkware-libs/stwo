@@ -251,14 +251,14 @@ impl FrameworkEval for SchedulingEval {
         // When summed: our fraction CANCELS with Computing's → total = 0 ✓
         eval.add_to_relation(RelationEntry::new(
             &self.lookup_elements,
-            E::EF::one(),      // +1 coefficient
-            &[input_col],      // value to hash
+            E::EF::one(), // +1 coefficient
+            &[input_col], // value to hash
         ));
 
         eval.add_to_relation(RelationEntry::new(
             &self.lookup_elements,
-            -E::EF::one(),     // -1 coefficient
-            &[output_col],     // value to hash
+            -E::EF::one(), // -1 coefficient
+            &[output_col], // value to hash
         ));
 
         // finalize_logup_in_pairs() processes the two entries together
@@ -340,13 +340,13 @@ impl FrameworkEval for ComputingEval {
         //   Their fraction + Our fraction = 0 ✓
         eval.add_to_relation(RelationEntry::new(
             &self.lookup_elements,
-            -E::EF::one(),     // -1 coefficient (opposite of Scheduling's +1)
+            -E::EF::one(), // -1 coefficient (opposite of Scheduling's +1)
             &[input_col],
         ));
 
         eval.add_to_relation(RelationEntry::new(
             &self.lookup_elements,
-            E::EF::one(),      // +1 coefficient (opposite of Scheduling's -1)
+            E::EF::one(), // +1 coefficient (opposite of Scheduling's -1)
             &[output_col],
         ));
 

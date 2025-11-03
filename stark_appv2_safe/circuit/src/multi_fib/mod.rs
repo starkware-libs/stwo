@@ -258,7 +258,6 @@ pub fn verify_multi_fib(
     let channel = &mut Blake2sChannel::default();
     let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
     let log_sizes = statement0.log_sizes();
-    println!("  ✓ Verifier initialized");
 
     // Step 2: Commit preprocessed columns (is_first)
     println!("\nStep 2: Committing preprocessed columns...");
@@ -267,9 +266,8 @@ pub fn verify_multi_fib(
         &log_sizes[0],
         channel,
     );
-    println!("  ✓ Preprocessed columns committed");
 
-    // Mix Statement0 (log_size) into channel - must match prover!
+    // Mix Statement0 (log_size) into channel 
     statement0.mix_into(channel);
 
     // Step 3: Commit main traces
@@ -279,14 +277,12 @@ pub fn verify_multi_fib(
         &log_sizes[1],
         channel,
     );
-    println!("  ✓ Main traces committed");
 
     // Step 4: Draw FibonacciRelation from channel (must match prover)
     println!("\nStep 4: Drawing LogUp relation from channel...");
     let fibonacci_relation = FibonacciRelation::draw(channel);
-    println!("  ✓ FibonacciRelation drawn");
 
-    // Mix Statement1 (claimed_sums) into channel - must match prover!
+    // Mix Statement1 (claimed_sums) into channel
     statement1.mix_into(channel);
 
     // Step 5: Commit interaction traces
@@ -296,7 +292,6 @@ pub fn verify_multi_fib(
         &log_sizes[2],
         channel,
     );
-    println!("  ✓ Interaction traces committed");
 
     // Step 6: Create components (AFTER committing interaction traces, matching prover order)
     println!("\nStep 6: Creating components for verification...");
@@ -338,7 +333,6 @@ pub fn verify_multi_fib(
         },
         statement1.claimed_sum_scheduler,
     );
-    println!("  ✓ Components created");
 
     // Step 7: Verify the proof
     println!("\nStep 7: Verifying STARK proof...");
@@ -348,9 +342,7 @@ pub fn verify_multi_fib(
         commitment_scheme,
         proof,
     )?;
-    println!("  ✓ Proof verified successfully!");
-
-    println!("\n=== Verification Complete ===\n");
+    println!("Proof verified successfully!");
 
     Ok(())
 }
