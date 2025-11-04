@@ -162,81 +162,130 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
     lookup_elements: &PoseidonElements,
     is_first_id: &PreProcessedColumnId,
 ) {
+    use stwo_constraint_framework::ORIGINAL_TRACE_IDX;
+
     let is_first_val = eval.get_preprocessed_column(is_first_id.clone());
 
-    // Read message (8 elements to absorb)
-    let _message: [E::F; RATE] = std::array::from_fn(|_| eval.next_trace_mask());
+    // Read ALL columns using next_interaction_mask so we can access previous row values
+    // Column layout: [message(8), initial_state(16), intermediate_states, final_state(16)]
 
-    // Read initial state (16 elements)
-    let mut state: [E::F; N_STATE] = std::array::from_fn(|_| eval.next_trace_mask());
-    let initial_state = state.clone();
+    // Read message (8 elements) - current row only
+    let message: [E::F; RATE] = std::array::from_fn(|_| {
+        let [curr, _prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
+        curr
+    });
+
+    // Read initial state (16 elements) - current and previous row
+    let initial_state_curr: [E::F; N_STATE] = std::array::from_fn(|_| {
+        let [curr, _prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
+        curr
+    });
+
+    // Read intermediate states from first 4 full rounds
+    let intermediate_full1: [[E::F; N_STATE]; N_HALF_FULL_ROUNDS] =
+        std::array::from_fn(|_| std::array::from_fn(|_| {
+            let [curr, _prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
+            curr
+        }));
+
+    // Read partial round intermediate states
+    let intermediate_partial: [E::F; N_PARTIAL_ROUNDS] = std::array::from_fn(|_| {
+        let [curr, _prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
+        curr
+    });
+
+    // Read intermediate states from last 4 full rounds
+    let intermediate_full2: [[E::F; N_STATE]; N_HALF_FULL_ROUNDS] =
+        std::array::from_fn(|_| std::array::from_fn(|_| {
+            let [curr, _prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
+            curr
+        }));
+
+    // Read final state (16 elements) - current and PREVIOUS row
+    let mut final_state_curr_vec = Vec::with_capacity(N_STATE);
+    let mut final_state_prev_vec = Vec::with_capacity(N_STATE);
+    for _ in 0..N_STATE {
+        let [curr, prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
+        final_state_curr_vec.push(curr);
+        final_state_prev_vec.push(prev);
+    }
+    let final_state_curr: [E::F; N_STATE] = std::array::from_fn(|i| final_state_curr_vec[i].clone());
+    let final_state_prev: [E::F; N_STATE] = std::array::from_fn(|i| final_state_prev_vec[i].clone());
 
     // Constraint 1: First row capacity must be zero
     for i in RATE..N_STATE {
-        eval.add_constraint(is_first_val.clone() * state[i].clone());
+        eval.add_constraint(is_first_val.clone() * initial_state_curr[i].clone());
     }
 
-    // Constraint 2: Poseidon permutation
+    // Constraint 2: Transition constraints (chaining between rows)
+    // Rate part: initial_state[0..8] = final_state_prev[0..8] + message[0..8]
+    for i in 0..RATE {
+        let expected = final_state_prev[i].clone() + message[i].clone();
+        eval.add_constraint((E::F::one() - is_first_val.clone()) * (initial_state_curr[i].clone() - expected));
+    }
+
+    // Capacity part: initial_state[8..16] = final_state_prev[8..16]
+    for i in RATE..N_STATE {
+        eval.add_constraint((E::F::one() - is_first_val.clone()) * (initial_state_curr[i].clone() - final_state_prev[i].clone()));
+    }
+
+    // Constraint 3: Poseidon permutation correctness
+    // Verify that the intermediate states match the permutation computation
+    let mut state = initial_state_curr.clone();
+
     // 4 full rounds
-    (0..N_HALF_FULL_ROUNDS).for_each(|round| {
-        (0..N_STATE).for_each(|i| {
+    for round in 0..N_HALF_FULL_ROUNDS {
+        for i in 0..N_STATE {
             state[i] = state[i].clone() + E::F::from(EXTERNAL_ROUND_CONSTS[round][i]);
-        });
+        }
         apply_external_round_matrix(&mut state);
         state = std::array::from_fn(|i| pow5_expr(state[i].clone()));
-        state.iter_mut().for_each(|s| {
-            let m = eval.next_trace_mask();
-            eval.add_constraint(s.clone() - m.clone());
-            *s = m;
-        });
-    });
+
+        // Verify intermediate state matches trace
+        for i in 0..N_STATE {
+            eval.add_constraint(state[i].clone() - intermediate_full1[round][i].clone());
+        }
+        state = intermediate_full1[round].clone();
+    }
 
     // Partial rounds
-    (0..N_PARTIAL_ROUNDS).for_each(|round| {
+    for round in 0..N_PARTIAL_ROUNDS {
         state[0] = state[0].clone() + E::F::from(INTERNAL_ROUND_CONSTS[round]);
         apply_internal_round_matrix(&mut state);
         state[0] = pow5_expr(state[0].clone());
-        let m = eval.next_trace_mask();
-        eval.add_constraint(state[0].clone() - m.clone());
-        state[0] = m;
-    });
 
-    // 4 full rounds
-    (0..N_HALF_FULL_ROUNDS).for_each(|round| {
-        (0..N_STATE).for_each(|i| {
-            state[i] = state[i].clone() + E::F::from(EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i]);
-        });
-        apply_external_round_matrix(&mut state);
-        state = std::array::from_fn(|i| pow5_expr(state[i].clone()));
-        state.iter_mut().for_each(|s| {
-            let m = eval.next_trace_mask();
-            eval.add_constraint(s.clone() - m.clone());
-            *s = m;
-        });
-    });
-
-    // Read final state from trace (should match computed state)
-    let final_state: [E::F; N_STATE] = std::array::from_fn(|_| eval.next_trace_mask());
-    for i in 0..N_STATE {
-        eval.add_constraint(state[i].clone() - final_state[i].clone());
+        // Verify intermediate state matches trace
+        eval.add_constraint(state[0].clone() - intermediate_partial[round].clone());
+        state[0] = intermediate_partial[round].clone();
     }
 
-    // TODO: Add transition constraints later
-    // For proof of concept, we only verify:
-    // 1. Permutation correctness (done above)
-    // 2. First row capacity = 0 (done above)
-    //
-    // Transition constraints (initial_state[row] = final_state[row-1] + message[row])
-    // are implicitly enforced by how we generate the trace, but not explicitly verified here.
-    // This is sufficient for proof of concept.
+    // 4 full rounds
+    for round in 0..N_HALF_FULL_ROUNDS {
+        for i in 0..N_STATE {
+            state[i] = state[i].clone() + E::F::from(EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i]);
+        }
+        apply_external_round_matrix(&mut state);
+        state = std::array::from_fn(|i| pow5_expr(state[i].clone()));
+
+        // Verify intermediate state matches trace
+        for i in 0..N_STATE {
+            eval.add_constraint(state[i].clone() - intermediate_full2[round][i].clone());
+        }
+        state = intermediate_full2[round].clone();
+    }
+
+    // Verify final state matches computed state
+    for i in 0..N_STATE {
+        eval.add_constraint(state[i].clone() - final_state_curr[i].clone());
+    }
 
     // LogUp: Provide initial and final state lookups
     eval.add_to_relation(RelationEntry::new(
         lookup_elements,
         E::EF::one(),
-        &initial_state,
+        &initial_state_curr,
     ));
-    eval.add_to_relation(RelationEntry::new(lookup_elements, -E::EF::one(), &final_state));
+    eval.add_to_relation(RelationEntry::new(lookup_elements, -E::EF::one(), &final_state_curr));
 
     eval.finalize_logup_in_pairs();
 }
