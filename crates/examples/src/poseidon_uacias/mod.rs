@@ -31,7 +31,7 @@ use tracing::{info, span, Level};
 
 // Vertical sponge construction - one Poseidon per row
 const N_STATE: usize = 16;
-pub const RATE: usize = 8;    // First 8 elements absorb message
+pub const RATE: usize = 8; // First 8 elements absorb message
 #[allow(dead_code)]
 const CAPACITY: usize = 8; // Last 8 elements for security
 const N_PARTIAL_ROUNDS: usize = 14;
@@ -182,11 +182,12 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
     });
 
     // Read intermediate states from first 4 full rounds
-    let intermediate_full1: [[E::F; N_STATE]; N_HALF_FULL_ROUNDS] =
-        std::array::from_fn(|_| std::array::from_fn(|_| {
+    let intermediate_full1: [[E::F; N_STATE]; N_HALF_FULL_ROUNDS] = std::array::from_fn(|_| {
+        std::array::from_fn(|_| {
             let [curr, _prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
             curr
-        }));
+        })
+    });
 
     // Read partial round intermediate states
     let intermediate_partial: [E::F; N_PARTIAL_ROUNDS] = std::array::from_fn(|_| {
@@ -195,11 +196,12 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
     });
 
     // Read intermediate states from last 4 full rounds
-    let intermediate_full2: [[E::F; N_STATE]; N_HALF_FULL_ROUNDS] =
-        std::array::from_fn(|_| std::array::from_fn(|_| {
+    let intermediate_full2: [[E::F; N_STATE]; N_HALF_FULL_ROUNDS] = std::array::from_fn(|_| {
+        std::array::from_fn(|_| {
             let [curr, _prev] = eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, -1]);
             curr
-        }));
+        })
+    });
 
     // Read final state (16 elements) - current and PREVIOUS row
     let mut final_state_curr_vec = Vec::with_capacity(N_STATE);
@@ -209,8 +211,10 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
         final_state_curr_vec.push(curr);
         final_state_prev_vec.push(prev);
     }
-    let final_state_curr: [E::F; N_STATE] = std::array::from_fn(|i| final_state_curr_vec[i].clone());
-    let final_state_prev: [E::F; N_STATE] = std::array::from_fn(|i| final_state_prev_vec[i].clone());
+    let final_state_curr: [E::F; N_STATE] =
+        std::array::from_fn(|i| final_state_curr_vec[i].clone());
+    let final_state_prev: [E::F; N_STATE] =
+        std::array::from_fn(|i| final_state_prev_vec[i].clone());
 
     // Constraint 1: First row capacity must be zero
     for i in RATE..N_STATE {
@@ -221,12 +225,17 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
     // Rate part: initial_state[0..8] = final_state_prev[0..8] + message[0..8]
     for i in 0..RATE {
         let expected = final_state_prev[i].clone() + message[i].clone();
-        eval.add_constraint((E::F::one() - is_first_val.clone()) * (initial_state_curr[i].clone() - expected));
+        eval.add_constraint(
+            (E::F::one() - is_first_val.clone()) * (initial_state_curr[i].clone() - expected),
+        );
     }
 
     // Capacity part: initial_state[8..16] = final_state_prev[8..16]
     for i in RATE..N_STATE {
-        eval.add_constraint((E::F::one() - is_first_val.clone()) * (initial_state_curr[i].clone() - final_state_prev[i].clone()));
+        eval.add_constraint(
+            (E::F::one() - is_first_val.clone())
+                * (initial_state_curr[i].clone() - final_state_prev[i].clone()),
+        );
     }
 
     // Constraint 3: Poseidon permutation correctness
@@ -262,7 +271,8 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
     // 4 full rounds
     for round in 0..N_HALF_FULL_ROUNDS {
         for i in 0..N_STATE {
-            state[i] = state[i].clone() + E::F::from(EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i]);
+            state[i] =
+                state[i].clone() + E::F::from(EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i]);
         }
         apply_external_round_matrix(&mut state);
         state = std::array::from_fn(|i| pow5_expr(state[i].clone()));
@@ -285,7 +295,11 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
         E::EF::one(),
         &initial_state_curr,
     ));
-    eval.add_to_relation(RelationEntry::new(lookup_elements, -E::EF::one(), &final_state_curr));
+    eval.add_to_relation(RelationEntry::new(
+        lookup_elements,
+        -E::EF::one(),
+        &final_state_curr,
+    ));
 
     eval.finalize_logup_in_pairs();
 }
@@ -321,7 +335,11 @@ pub fn dump_trace_to_file(
     writeln!(file, "  Columns 0-7:     message (RATE)")?;
     writeln!(file, "  Columns 8-23:    initial_state (16 elements)")?;
     writeln!(file, "  Columns 24-...:  intermediate states")?;
-    writeln!(file, "  Columns ...-{}: final_state (16 elements)\n", n_cols - 1)?;
+    writeln!(
+        file,
+        "  Columns ...-{}: final_state (16 elements)\n",
+        n_cols - 1
+    )?;
 
     // Print first few rows in detail
     let rows_to_print = std::cmp::min(8, n_rows);
@@ -332,7 +350,9 @@ pub fn dump_trace_to_file(
         write!(file, "Message:       [")?;
         for col in 0..RATE {
             write!(file, "{:8}", trace[col].values.at(row).0)?;
-            if col < RATE - 1 { write!(file, ", ")?; }
+            if col < RATE - 1 {
+                write!(file, ", ")?;
+            }
         }
         writeln!(file, "]")?;
 
@@ -341,7 +361,9 @@ pub fn dump_trace_to_file(
         for i in 0..N_STATE {
             let col = RATE + i;
             write!(file, "{:8}", trace[col].values.at(row).0)?;
-            if i < N_STATE - 1 { write!(file, ", ")?; }
+            if i < N_STATE - 1 {
+                write!(file, ", ")?;
+            }
         }
         writeln!(file, "]")?;
 
@@ -350,7 +372,9 @@ pub fn dump_trace_to_file(
         for i in 0..N_STATE {
             let col = n_cols - N_STATE + i;
             write!(file, "{:8}", trace[col].values.at(row).0)?;
-            if i < N_STATE - 1 { write!(file, ", ")?; }
+            if i < N_STATE - 1 {
+                write!(file, ", ")?;
+            }
         }
         writeln!(file, "]")?;
 
@@ -378,7 +402,9 @@ pub fn dump_trace_to_file(
 }
 
 /// Generates the is_first preprocessed column
-pub fn gen_is_first_column(log_size: u32) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
+pub fn gen_is_first_column(
+    log_size: u32,
+) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
     use stwo::core::utils::bit_reverse_coset_to_circle_domain_order;
 
     let n_rows = 1 << log_size;
@@ -414,7 +440,10 @@ pub fn dump_trace_sequential(
     let mut file = File::create(filename)?;
     let n_rows = trace[0].len();
 
-    writeln!(file, "=== POSEIDON SPONGE TRACE (SEQUENTIAL ORDER - BEFORE BIT-REVERSAL) ===")?;
+    writeln!(
+        file,
+        "=== POSEIDON SPONGE TRACE (SEQUENTIAL ORDER - BEFORE BIT-REVERSAL) ==="
+    )?;
     writeln!(file, "Total rows: {}\n", n_rows)?;
 
     // Show first 8 rows to demonstrate chaining
@@ -429,7 +458,9 @@ pub fn dump_trace_sequential(
         write!(file, "  Message: [")?;
         for i in 0..RATE {
             write!(file, "{}", trace[col_idx].at(row).0)?;
-            if i < RATE - 1 { write!(file, ", ")?; }
+            if i < RATE - 1 {
+                write!(file, ", ")?;
+            }
             col_idx += 1;
         }
         writeln!(file, "]")?;
@@ -438,7 +469,9 @@ pub fn dump_trace_sequential(
         write!(file, "  Initial state: [")?;
         for i in 0..N_STATE {
             write!(file, "{}", trace[col_idx].at(row).0)?;
-            if i < N_STATE - 1 { write!(file, ", ")?; }
+            if i < N_STATE - 1 {
+                write!(file, ", ")?;
+            }
             col_idx += 1;
         }
         writeln!(file, "]")?;
@@ -450,7 +483,9 @@ pub fn dump_trace_sequential(
         write!(file, "  Final state: [")?;
         for i in 0..N_STATE {
             write!(file, "{}", trace[col_idx].at(row).0)?;
-            if i < N_STATE - 1 { write!(file, ", ")?; }
+            if i < N_STATE - 1 {
+                write!(file, ", ")?;
+            }
             col_idx += 1;
         }
         writeln!(file, "]")?;
@@ -469,43 +504,59 @@ pub fn dump_trace_sequential(
             write!(file, "    prev_final[0..8] (rate):       [")?;
             for i in 0..RATE {
                 write!(file, "{}", trace[final_col_start + i].at(row).0)?;
-                if i < RATE - 1 { write!(file, ", ")?; }
+                if i < RATE - 1 {
+                    write!(file, ", ")?;
+                }
             }
             writeln!(file, "]")?;
 
             write!(file, "    prev_final[8..16] (capacity):  [")?;
             for i in RATE..N_STATE {
                 write!(file, "{}", trace[final_col_start + i].at(row).0)?;
-                if i < N_STATE - 1 { write!(file, ", ")?; }
+                if i < N_STATE - 1 {
+                    write!(file, ", ")?;
+                }
             }
             writeln!(file, "]")?;
 
             write!(file, "    next_msg:                      [")?;
             for i in 0..RATE {
                 write!(file, "{}", trace[next_msg_start + i].at(row + 1).0)?;
-                if i < RATE - 1 { write!(file, ", ")?; }
+                if i < RATE - 1 {
+                    write!(file, ", ")?;
+                }
             }
             writeln!(file, "]")?;
 
             write!(file, "    prev_final[0..8] + next_msg:   [")?;
             for i in 0..RATE {
-                let sum = trace[final_col_start + i].at(row) + trace[next_msg_start + i].at(row + 1);
+                let sum =
+                    trace[final_col_start + i].at(row) + trace[next_msg_start + i].at(row + 1);
                 write!(file, "{}", sum.0)?;
-                if i < RATE - 1 { write!(file, ", ")?; }
+                if i < RATE - 1 {
+                    write!(file, ", ")?;
+                }
             }
             writeln!(file, "]")?;
 
             write!(file, "    next_initial[0..8]:            [")?;
             for i in 0..RATE {
                 write!(file, "{}", trace[next_initial_start + i].at(row + 1).0)?;
-                if i < RATE - 1 { write!(file, ", ")?; }
+                if i < RATE - 1 {
+                    write!(file, ", ")?;
+                }
             }
             writeln!(file, "]")?;
 
-            write!(file, "    next_initial[8..16] (should = prev_final[8..16]): [")?;
+            write!(
+                file,
+                "    next_initial[8..16] (should = prev_final[8..16]): ["
+            )?;
             for i in RATE..N_STATE {
                 write!(file, "{}", trace[next_initial_start + i].at(row + 1).0)?;
-                if i < N_STATE - 1 { write!(file, ", ")?; }
+                if i < N_STATE - 1 {
+                    write!(file, ", ")?;
+                }
             }
             writeln!(file, "]")?;
         }
@@ -560,7 +611,9 @@ pub fn gen_trace(
             print!("Message: [");
             for i in 0..RATE {
                 print!("{}", message[i].0);
-                if i < RATE - 1 { print!(", "); }
+                if i < RATE - 1 {
+                    print!(", ");
+                }
             }
             println!("]");
         }
@@ -579,13 +632,17 @@ pub fn gen_trace(
                 print!("  prev_output[0..8] (rate):     [");
                 for i in 0..RATE {
                     print!("{}", prev[i].0);
-                    if i < RATE - 1 { print!(", "); }
+                    if i < RATE - 1 {
+                        print!(", ");
+                    }
                 }
                 println!("]");
                 print!("  prev_output[8..16] (capacity): [");
                 for i in RATE..N_STATE {
                     print!("{}", prev[i].0);
-                    if i < N_STATE - 1 { print!(", "); }
+                    if i < N_STATE - 1 {
+                        print!(", ");
+                    }
                 }
                 println!("]");
             }
@@ -602,7 +659,9 @@ pub fn gen_trace(
                 print!("  initial_state = prev_output + [message, 0...]: [");
                 for i in 0..N_STATE {
                     print!("{}", new_state[i].0);
-                    if i < N_STATE - 1 { print!(", "); }
+                    if i < N_STATE - 1 {
+                        print!(", ");
+                    }
                 }
                 println!("]");
             }
@@ -626,7 +685,9 @@ pub fn gen_trace(
                 print!("  initial_state: [");
                 for i in 0..N_STATE {
                     print!("{}", new_state[i].0);
-                    if i < N_STATE - 1 { print!(", "); }
+                    if i < N_STATE - 1 {
+                        print!(", ");
+                    }
                 }
                 println!("]");
             }
@@ -689,7 +750,9 @@ pub fn gen_trace(
             print!("After Poseidon permutation:\n  final_state (output): [");
             for i in 0..N_STATE {
                 print!("{}", state[i].0);
-                if i < N_STATE - 1 { print!(", "); }
+                if i < N_STATE - 1 {
+                    print!(", ");
+                }
             }
             println!("]");
             println!("  → This output will be used in next row!");
@@ -748,12 +811,10 @@ pub fn gen_interaction_trace(
 
         // For each row, generate LogUp fraction
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
-            let initial_state_packed: [PackedBaseField; N_STATE] = std::array::from_fn(|i| {
-                lookup_data.initial_state[i].data[vec_row]
-            });
-            let final_state_packed: [PackedBaseField; N_STATE] = std::array::from_fn(|i| {
-                lookup_data.final_state[i].data[vec_row]
-            });
+            let initial_state_packed: [PackedBaseField; N_STATE] =
+                std::array::from_fn(|i| lookup_data.initial_state[i].data[vec_row]);
+            let final_state_packed: [PackedBaseField; N_STATE] =
+                std::array::from_fn(|i| lookup_data.final_state[i].data[vec_row]);
 
             let denom0: PackedSecureField = lookup_elements.combine(&initial_state_packed);
             let denom1: PackedSecureField = lookup_elements.combine(&final_state_packed);
@@ -844,7 +905,7 @@ mod tests {
     use itertools::Itertools;
     use stwo::core::air::Component;
     use stwo::core::channel::Blake2sChannel;
-    use stwo::core::fields::m31::{M31, BaseField};
+    use stwo::core::fields::m31::{BaseField, M31};
     use stwo::core::fri::FriConfig;
     use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo::core::poly::circle::CanonicCoset;
@@ -853,8 +914,9 @@ mod tests {
     use stwo_constraint_framework::assert_constraints_on_polys;
 
     use crate::poseidon_uacias::{
-        apply_internal_round_matrix, apply_m4, eval_poseidon_sponge_constraints, gen_interaction_trace,
-        gen_trace, prove_poseidon, gen_is_first_column, is_first_column_id, PoseidonElements, RATE,
+        apply_internal_round_matrix, apply_m4, eval_poseidon_sponge_constraints,
+        gen_interaction_trace, gen_is_first_column, gen_trace, is_first_column_id, prove_poseidon,
+        PoseidonElements, RATE,
     };
 
     #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
@@ -1023,5 +1085,127 @@ mod tests {
         let csv = collector.export_csv();
 
         println!("{csv}");
+    }
+
+    /// Helper function to create messages from input vector for arbitrary length tests
+    fn create_messages_from_input(input: Vec<u32>) -> Vec<[BaseField; RATE]> {
+        input
+            .chunks(8)
+            .map(|chunk| {
+                let mut msg = [BaseField::from_u32_unchecked(0); RATE];
+                for (i, &val) in chunk.iter().enumerate() {
+                    msg[i] = BaseField::from_u32_unchecked(val);
+                }
+                msg
+            })
+            .collect()
+    }
+
+    /// Test with full prove + verify flow for specific input size
+    fn test_arbitrary_length_prove_verify(input_size: usize) {
+        let log_n_rows = 8; // 256 rows
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 1, 64),
+        };
+
+        // Generate input
+        let input: Vec<u32> = (0..input_size as u32).collect();
+        let messages = create_messages_from_input(input);
+
+        // Prove
+        let (component, proof) = prove_poseidon(log_n_rows, messages, config);
+
+        // Verify
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+
+        // Retrieve the expected column sizes in each commitment interaction
+        let sizes = component.trace_log_degree_bounds();
+
+        // Preprocessed columns
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        // Trace columns
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        // Draw lookup element
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        // Interaction columns
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        // Final verification
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+    }
+
+    #[test]
+    fn test_arbitrary_length_8_elements() {
+        // Single full message (8 elements)
+        test_arbitrary_length_prove_verify(8);
+    }
+
+    #[test]
+    fn test_arbitrary_length_10_elements() {
+        // Partial message (10 elements = 1 full + 1 partial)
+        test_arbitrary_length_prove_verify(10);
+    }
+
+    #[test]
+    fn test_arbitrary_length_16_elements() {
+        // Two full messages
+        test_arbitrary_length_prove_verify(16);
+    }
+
+    #[test]
+    fn test_arbitrary_length_24_elements() {
+        // Three full messages
+        test_arbitrary_length_prove_verify(24);
+    }
+
+    #[test]
+    fn test_arbitrary_length_32_elements() {
+        // Four full messages
+        test_arbitrary_length_prove_verify(32);
+    }
+
+    #[test]
+    fn test_arbitrary_length_40_elements() {
+        // Five full messages
+        test_arbitrary_length_prove_verify(40);
+    }
+
+    #[test]
+    fn test_arbitrary_length_48_elements() {
+        // Six full messages
+        test_arbitrary_length_prove_verify(48);
+    }
+
+    #[test]
+    fn test_arbitrary_length_64_elements() {
+        // Eight full messages
+        test_arbitrary_length_prove_verify(64);
+    }
+
+    #[test]
+    fn test_arbitrary_length_100_elements() {
+        // Many messages (13 chunks)
+        test_arbitrary_length_prove_verify(100);
+    }
+
+    #[test]
+    fn test_arbitrary_length_1_element() {
+        // Minimal input (single element)
+        test_arbitrary_length_prove_verify(1);
+    }
+
+    #[test]
+    fn test_arbitrary_length_empty() {
+        // Edge case: empty input (all padding)
+        test_arbitrary_length_prove_verify(0);
+    }
+
+    #[test]
+    fn test_arbitrary_length_256_elements() {
+        test_arbitrary_length_prove_verify(256);
     }
 }
