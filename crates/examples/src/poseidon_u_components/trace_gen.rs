@@ -1,4 +1,4 @@
-use num_traits::One;
+use num_traits::Zero;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::poly::circle::CanonicCoset;
@@ -98,6 +98,7 @@ pub fn gen_computing_trace(
             col_index += 1;
         }
 
+
         // Poseidon permutation
         // 4 full rounds
         for round in 0..N_HALF_FULL_ROUNDS {
@@ -141,6 +142,7 @@ pub fn gen_computing_trace(
             col_index += 1;
         }
 
+
         // Save output for next row chaining
         prev_output = Some(state);
     }
@@ -159,12 +161,8 @@ pub fn gen_computing_trace(
     for col in &mut trace {
         bit_reverse_coset_to_circle_domain_order(col.as_mut_slice());
     }
-    for col in &mut lookup_data.initial_state {
-        bit_reverse_coset_to_circle_domain_order(col.as_mut_slice());
-    }
-    for col in &mut lookup_data.final_state {
-        bit_reverse_coset_to_circle_domain_order(col.as_mut_slice());
-    }
+    // NOTE: lookup_data is NOT bit-reversed! We use .data[vec_row] which is already in SIMD-packed order
+    // The trace columns are bit-reversed for constraints, but lookup_data stays in coset order for LogUp
 
     let domain = CanonicCoset::new(log_size).circle_domain();
     let trace_evals = trace
@@ -177,44 +175,70 @@ pub fn gen_computing_trace(
 
 /// Generate interaction trace for Computing component using LogUp
 ///
-/// Only active rows contribute to LogUp (with is_active masking).
-/// Padding rows have numerator=0, so they don't contribute.
+/// IMPORTANT: This follows the same pattern as stark_appv2_safe/circuit/src/multi_fib/trace_gen.rs
+///
+/// Key points:
+/// 1. Reads state values DIRECTLY from trace columns (already bit-reversed)
+/// 2. Uses preprocessed is_active column for masking
+/// 3. Combines two LogUp fractions into one column (for finalize_logup_in_pairs)
+///
+/// Constraints (in computing.rs) have TWO add_to_relation calls:
+///   - +is_active / initial_state
+///   - -is_active / final_state
+///
+/// This function combines them using the formula:
+///   (+is_active)/initial + (-is_active)/final
+///   = is_active * (final - initial) / (initial * final)
+///
+/// Only active rows contribute to LogUp (is_active=1).
+/// Padding rows have is_active=0, so numerator=0 and they don't contribute.
 pub fn gen_computing_interaction_trace(
     log_size: u32,
-    lookup_data: LookupData,
+    trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     lookup_elements: &PoseidonElements,
-    n_messages: usize,
+    is_active_col: &CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     SecureField,
 ) {
-    let n_rows = 1 << log_size;
+    // Use preprocessed is_active column (already bit-reversed)
+    let is_active_data = &is_active_col.values;
 
-    // Create is_active selector: 1 for active rows, 0 for padding
-    let mut is_active_col = Col::<SimdBackend, BaseField>::zeros(n_rows);
-    for row in 0..n_messages.min(n_rows) {
-        is_active_col.set(row, BaseField::one());
-    }
-    bit_reverse_coset_to_circle_domain_order(is_active_col.as_mut_slice());
+    // Trace column layout:
+    // - Columns 0-7: message (RATE=8)
+    // - Columns 8-23: initial_state (N_STATE=16)
+    // - Columns 24+: intermediate states during permutation
+    // - Last 16 columns: final_state (N_STATE=16)
+    let initial_state_start = RATE;
+    let final_state_start = trace.len() - N_STATE;
 
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
+    // Similar to stark_appv2_safe: Use selector approach
+    // We have TWO add_to_relation calls in constraints:
+    //   1. +is_active / initial_state
+    //   2. -is_active / final_state
+    // For finalize_logup_in_pairs(), combine them like in scheduler example:
+    //   (+is_active)/denom0 + (-is_active)/denom1 = is_active*(denom1-denom0)/(denom0*denom1)
     {
         let mut col_gen = logup_gen.new_col();
 
-        // For each vec_row, generate LogUp fraction (masked by is_active)
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
+            // Read from trace columns (already bit-reversed) like stark_appv2_safe does
             let initial_state_packed: [_; N_STATE] =
-                std::array::from_fn(|i| lookup_data.initial_state[i].data[vec_row]);
+                std::array::from_fn(|i| trace[initial_state_start + i].values.data[vec_row]);
             let final_state_packed: [_; N_STATE] =
-                std::array::from_fn(|i| lookup_data.final_state[i].data[vec_row]);
+                std::array::from_fn(|i| trace[final_state_start + i].values.data[vec_row]);
 
             let denom0: PackedSecureField = lookup_elements.combine(&initial_state_packed);
             let denom1: PackedSecureField = lookup_elements.combine(&final_state_packed);
+            let is_active_packed: PackedSecureField = is_active_data.data[vec_row].into();
 
-            // Mask by is_active: numerator is (denom1-denom0)*is_active
-            let is_active_packed: PackedSecureField = is_active_col.data[vec_row].into();
-            let numerator = (denom1 - denom0) * is_active_packed;  // 0 for padding rows
+            // Combined formula for two fractions (like scheduler in stark_appv2_safe):
+            // +is_active/denom0 + (-is_active)/denom1
+            // = is_active * (1/denom0 - 1/denom1)
+            // = is_active * (denom1 - denom0) / (denom0 * denom1)
+            let numerator = is_active_packed * (denom1 - denom0);
             let denominator = denom0 * denom1;
 
             col_gen.write_frac(vec_row, numerator, denominator);
@@ -250,38 +274,18 @@ pub fn gen_scheduler_trace(
     vec![CircleEvaluation::new(domain, col_n_messages)]
 }
 
-/// Generate interaction trace for Scheduler component using LogUp
+/// Generate interaction trace for Scheduler component
 ///
-/// For coordination between components (if needed).
-/// For now, simple LogUp with is_first selector.
+/// For now, scheduler doesn't use LogUp (no coordination needed).
+/// Returns empty trace and zero claimed_sum.
 pub fn gen_scheduler_interaction_trace(
-    log_size: u32,
-    lookup_elements: &PoseidonElements,
+    _log_size: u32,
+    _lookup_elements: &PoseidonElements,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     SecureField,
 ) {
-    let n_rows = 1 << log_size;
-    let mut logup_gen = LogupTraceGenerator::new(log_size);
-
-    // Create is_first selector: 1 only for row 0, 0 for rest
-    let mut is_first_col = Col::<SimdBackend, BaseField>::zeros(n_rows);
-    is_first_col.set(0, BaseField::one());
-    bit_reverse_coset_to_circle_domain_order(is_first_col.as_mut_slice());
-
-    {
-        let mut col_gen = logup_gen.new_col();
-
-        for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
-            // Simple LogUp: -1/z for first row, 0 for rest
-            let is_first_value = is_first_col.data[vec_row];
-            let numerator = (-is_first_value).into();
-            let denominator = lookup_elements.0.z.into();
-            col_gen.write_frac(vec_row, numerator, denominator);
-        }
-
-        col_gen.finalize_col();
-    }
-
-    logup_gen.finalize_last()
+    // No LogUp for scheduler component (for now)
+    // Return empty trace and zero claimed_sum
+    (vec![], SecureField::zero())
 }

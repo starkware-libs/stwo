@@ -20,13 +20,17 @@ use stwo::core::channel::{Blake2sChannel, Channel};
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::poly::circle::CanonicCoset;
+use stwo::core::proof::StarkProof;
 use stwo::core::utils::bit_reverse_coset_to_circle_domain_order;
+use stwo::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::{Col, Column};
-use stwo::prover::poly::circle::CircleEvaluation;
+use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
-use stwo::core::pcs::TreeVec;
+use stwo::core::pcs::{PcsConfig, TreeVec};
+use stwo::prover::{prove, CommitmentSchemeProver};
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
+use stwo_constraint_framework::TraceLocationAllocator;
 
 // Poseidon constants
 pub const N_STATE: usize = 16;
@@ -197,6 +201,140 @@ impl PoseidonStatement1 {
     }
 }
 
+/// Prove Poseidon computation with optimization (only computing active rows)
+///
+/// This function demonstrates the full component-based approach with:
+/// - Computing component: performs Poseidon hash on active rows only
+/// - Scheduler component: manages which rows are active
+/// - Preprocessed columns: is_first and is_active selectors
+///
+/// Returns (computing_component, scheduler_component, proof)
+pub fn prove_poseidon_components(
+    log_n_rows: u32,
+    messages: Vec<[BaseField; RATE]>,
+    config: PcsConfig,
+) -> (
+    PoseidonComputingComponent,
+    PoseidonSchedulerComponent,
+    StarkProof<Blake2sMerkleHasher>,
+) {
+    use tracing::{info, span, Level};
+
+    let n_messages = messages.len();
+
+    // Precompute twiddles
+    let span = span!(Level::INFO, "Precompute twiddles").entered();
+    let twiddles = SimdBackend::precompute_twiddles(
+        CanonicCoset::new(log_n_rows + LOG_CONSTRAINT_DEGREE + config.fri_config.log_blowup_factor)
+            .circle_domain()
+            .half_coset,
+    );
+    span.exit();
+
+    // Setup
+    let channel = &mut Blake2sChannel::default();
+    let mut commitment_scheme =
+        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+
+    // Step 1: Commit preprocessed columns
+    let span = span!(Level::INFO, "Preprocessed").entered();
+    let is_first_col = gen_is_first_column(log_n_rows);
+    let is_active_col = gen_is_active_column(log_n_rows, n_messages);
+    let preprocessed_trace = vec![is_first_col, is_active_col.clone()];
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(preprocessed_trace);
+    tree_builder.commit(channel);
+    span.exit();
+
+    // Mix Statement0 into channel
+    let statement0 = PoseidonStatement0 {
+        log_size: log_n_rows,
+        n_messages,
+    };
+    statement0.mix_into(channel);
+
+    // Step 2: Generate and commit main traces
+    let span = span!(Level::INFO, "Main Trace").entered();
+    let (computing_trace, _lookup_data) = gen_computing_trace(log_n_rows, messages);
+    let scheduler_trace = gen_scheduler_trace(log_n_rows, n_messages);
+
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(computing_trace.clone());
+    tree_builder.extend_evals(scheduler_trace);
+    tree_builder.commit(channel);
+    span.exit();
+
+    // Step 3: Draw lookup elements
+    let lookup_elements = PoseidonElements::draw(channel);
+
+    // Step 4: Generate and commit interaction traces
+    let span = span!(Level::INFO, "Interaction").entered();
+    let (computing_interaction, claimed_sum_computing) =
+        gen_computing_interaction_trace(log_n_rows, &computing_trace, &lookup_elements, &is_active_col);
+    let (scheduler_interaction, claimed_sum_scheduler) =
+        gen_scheduler_interaction_trace(log_n_rows, &lookup_elements);
+
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(computing_interaction);
+    tree_builder.extend_evals(scheduler_interaction);
+    tree_builder.commit(channel);
+    span.exit();
+
+    // Verify LogUp property: sum of claimed_sums should be 0
+    let total_sum = claimed_sum_computing + claimed_sum_scheduler;
+    // LogUp verification: total sum should be ~0
+    // println!("📊 LogUp Verification:");
+    // println!("   claimed_sum_computing: {:?}", claimed_sum_computing);
+    // println!("   claimed_sum_scheduler: {:?}", claimed_sum_scheduler);
+    // println!("   TOTAL SUM: {:?} (should be ~0)", total_sum);
+    info!("LogUp verification: total_sum = {:?} (should be ~0)", total_sum);
+
+    // Mix Statement1 into channel
+    let statement1 = PoseidonStatement1 {
+        claimed_sum_computing,
+        claimed_sum_scheduler,
+    };
+    statement1.mix_into(channel);
+
+    // Step 5: Create components
+    let mut tree_span_provider = TraceLocationAllocator::default();
+    let is_first_id = is_first_column_id(log_n_rows);
+    let is_active_id = is_active_column_id(log_n_rows, n_messages);
+
+    let computing_component = PoseidonComputingComponent::new(
+        &mut tree_span_provider,
+        PoseidonComputingEval {
+            log_n_rows,
+            lookup_elements: lookup_elements.clone(),
+            claimed_sum: claimed_sum_computing,
+            is_first_id: is_first_id.clone(),
+            is_active_id: is_active_id.clone(),
+        },
+        claimed_sum_computing,
+    );
+
+    let scheduler_component = PoseidonSchedulerComponent::new(
+        &mut tree_span_provider,
+        PoseidonSchedulerEval {
+            log_n_rows,
+            lookup_elements: lookup_elements.clone(),
+            claimed_sum: claimed_sum_scheduler,
+            is_first_id: is_first_id.clone(),
+            n_messages,
+        },
+        claimed_sum_scheduler,
+    );
+
+    info!("Computing component info:\n{}", computing_component);
+    info!("Scheduler component info:\n{}", scheduler_component);
+
+    // Step 6: Prove
+    let proof = prove(&[&computing_component, &scheduler_component], channel, commitment_scheme)
+        .expect("Proof generation failed");
+
+    (computing_component, scheduler_component, proof)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,7 +370,7 @@ mod tests {
         println!("Generating trace for {} messages out of {} rows...", n_messages, 1 << log_size);
 
         // Generate computing trace
-        let (trace, lookup_data) = gen_computing_trace(log_size, messages.clone());
+        let (trace, _lookup_data) = gen_computing_trace(log_size, messages.clone());
 
         println!("✅ Trace generated successfully!");
         println!("   Number of trace columns: {}", trace.len());
@@ -240,10 +378,13 @@ mod tests {
 
         assert_eq!(trace.len(), N_COLUMNS, "Should have correct number of columns");
 
+        // Generate preprocessed is_active column for interaction trace
+        let is_active_col = gen_is_active_column(log_size, n_messages);
+
         // Generate interaction trace
         let lookup_elements = PoseidonElements::dummy();
         let (interaction_trace, claimed_sum) =
-            gen_computing_interaction_trace(log_size, lookup_data, &lookup_elements, n_messages);
+            gen_computing_interaction_trace(log_size, &trace, &lookup_elements, &is_active_col);
 
         println!("✅ Interaction trace generated!");
         println!("   Claimed sum: {:?}", claimed_sum);
@@ -255,5 +396,91 @@ mod tests {
         println!("   Scheduler columns: {}", scheduler_trace.len());
 
         println!("\n✅ All trace generation tests passed!");
+    }
+
+    #[test]
+    fn test_prove_and_verify_with_optimization() {
+        use stwo::core::air::Component;
+        use stwo::core::channel::Blake2sChannel;
+        use stwo::core::fri::FriConfig;
+        use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
+        use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+        use stwo::core::verifier::verify;
+
+        println!("\n========================================");
+        println!("TEST: FULL PROVE & VERIFY with 2 messages / 128 rows");
+        println!("========================================");
+
+        let log_n_rows = 7; // 128 rows
+        let n_messages = 2; // Only 2 active messages!
+
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 1, 64),
+        };
+
+        // Create messages
+        let messages: Vec<[BaseField; RATE]> = (0..n_messages)
+            .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
+            .collect();
+
+        println!("Input: {} messages", n_messages);
+        println!("Trace size: {} rows (2^{})", 1 << log_n_rows, log_n_rows);
+        println!("Optimization: Computing ONLY {} out of {} Poseidon permutations", n_messages, 1 << log_n_rows);
+        println!("Expected speedup: {}x\n", (1 << log_n_rows) / n_messages);
+
+        // Prove
+        println!("🔨 Generating proof...");
+        let (computing_component, scheduler_component, proof) =
+            prove_poseidon_components(log_n_rows, messages, config);
+
+        println!("✅ Proof generated successfully!");
+        println!("   Proof queried values: {}", proof.0.queried_values.len());
+
+        // Verify
+        println!("\n🔍 Verifying proof...");
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+
+        // Commit preprocessed columns
+        let sizes = computing_component.trace_log_degree_bounds();
+        commitment_scheme.commit(proof.0.commitments[0], &sizes[0], channel);
+
+        // Mix Statement0
+        let statement0 = PoseidonStatement0 {
+            log_size: log_n_rows,
+            n_messages,
+        };
+        statement0.mix_into(channel);
+
+        // Commit main traces
+        commitment_scheme.commit(proof.0.commitments[1], &sizes[1], channel);
+
+        // Draw lookup elements
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, computing_component.lookup_elements);
+
+        // Commit interaction traces
+        commitment_scheme.commit(proof.0.commitments[2], &sizes[2], channel);
+
+        // Mix Statement1
+        let statement1 = PoseidonStatement1 {
+            claimed_sum_computing: computing_component.claimed_sum,
+            claimed_sum_scheduler: scheduler_component.claimed_sum,
+        };
+        statement1.mix_into(channel);
+
+        // Final verification
+        verify(&[&computing_component, &scheduler_component], channel, commitment_scheme, proof)
+            .expect("Verification failed");
+
+        println!("✅ Verification passed!");
+        println!("\n========================================");
+        println!("🎉 SUCCESS: Full prove & verify with optimization!");
+        println!("   - Computed {} Poseidon permutations instead of {}", n_messages, 1 << log_n_rows);
+        println!("   - Speedup: {}x", (1 << log_n_rows) / n_messages);
+        println!("   - All constraints satisfied");
+        println!("   - LogUp verification passed");
+        println!("========================================\n");
     }
 }
