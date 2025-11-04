@@ -11,6 +11,9 @@ pub use trace_gen::{
     gen_computing_interaction_trace, gen_scheduler_interaction_trace
 };
 
+// Import preprocessed column generators from lib.rs
+use crate::{gen_is_active_column, gen_is_target_column, is_active_column_id, is_target_column_id};
+
 pub const LOG_CONSTRAINT_DEGREE: u32 = 1;
 pub const FIBONACCI_RELATION_SIZE: usize = 1;
 
@@ -65,8 +68,8 @@ impl MultiFibStatement0 {
     /// Returns log sizes for all trees (preprocessed, main, interaction)
     pub fn log_sizes(&self) -> TreeVec<Vec<u32>> {
         TreeVec(vec![
-            // Tree 0: Preprocessed (is_first column)
-            vec![self.log_size],
+            // Tree 0: Preprocessed (5 columns: is_first, is_active_comp1, is_target_comp1, is_active_comp2, is_target_comp2)
+            vec![self.log_size; 5],
             // Tree 1: Main traces (3 cols per computing component + 3 cols for scheduler = 9 cols)
             vec![self.log_size; 9],
             // Tree 2: Interaction traces (1 SecureColumn per component = 4 BaseField cols each = 12 cols)
@@ -98,13 +101,14 @@ impl MultiFibStatement1 {
 /// Prove multi-component Fibonacci with LogUp
 ///
 /// This generates a STARK proof for:
-/// - Computing1: Fibonacci with initial values (0, 1)
-/// - Computing2: Fibonacci with initial values (1, 1)
-/// - Scheduler: Sums results from Computing1 and Computing2
+/// - Computing1: Fibonacci up to target_element_computing1 (rest are zeros)
+/// - Computing2: Fibonacci up to target_element_computing2 (rest are zeros)
+/// - Scheduler: Sums specific results from Computing1 and Computing2
 ///
 /// LogUp verifies that Scheduler uses the correct values from both Computing components.
 pub fn prove_multi_fib(
-    log_size: u32,
+    target_element_computing1: usize,
+    target_element_computing2: usize,
     channel: &mut Blake2sChannel,
     mut commitment_scheme: CommitmentSchemeProver<SimdBackend, Blake2sMerkleChannel>,
 ) -> Result<
@@ -117,24 +121,50 @@ pub fn prove_multi_fib(
     ),
     Box<dyn std::error::Error>,
 > {
+    // Step 0: Compute dynamic log_size
+    let max_target = target_element_computing1.max(target_element_computing2);
+    let min_rows = max_target + 1;  // +1 because 0-indexed
+    let min_log_size = if min_rows <= 1 {
+        0
+    } else {
+        (min_rows - 1).ilog2() + 1  // log2_ceil
+    };
+    let log_size = min_log_size.max(4);  // minimum 16 rows for SIMD (LOG_N_LANES = 4)
+
+    println!("=== Multi-Component Fibonacci Proof Generation ===");
+    println!("Target elements: Computing1={}, Computing2={}", target_element_computing1, target_element_computing2);
+    println!("Computed log_size: {} ({} rows)\n", log_size, 1 << log_size);
+
     // Step 1: Generate and commit preprocessed columns
     println!("Step 1: Generating and committing preprocessed columns...");
     let is_first_col = gen_is_first_column(log_size);
-    let preprocessed_trace = vec![is_first_col];
+    let is_active_comp1_col = gen_is_active_column(log_size, target_element_computing1);
+    let is_target_comp1_col = gen_is_target_column(log_size, target_element_computing1);
+    let is_active_comp2_col = gen_is_active_column(log_size, target_element_computing2);
+    let is_target_comp2_col = gen_is_target_column(log_size, target_element_computing2);
+
+    let preprocessed_trace = vec![
+        is_first_col,
+        is_active_comp1_col,
+        is_target_comp1_col,
+        is_active_comp2_col,
+        is_target_comp2_col,
+    ];
+    println!("Generated 5 preprocessed columns: is_first, is_active_comp1, is_target_comp1, is_active_comp2, is_target_comp2");
 
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(preprocessed_trace);
     tree_builder.commit(channel);
 
-    // Mix Statement0 (log_size) into channel
+    // Mix Statement0 (log_size, target_elements) into channel
     let statement0 = MultiFibStatement0 { log_size };
     statement0.mix_into(channel);
 
     // Step 2: Generate main traces for all components
     println!("\nStep 2: Generating main traces...");
-    let trace_computing1 = gen_computing_trace(log_size, 0, 1);
-    let trace_computing2 = gen_computing_trace(log_size, 1, 1);
-    let trace_scheduler = gen_scheduler_trace(log_size, &trace_computing1, &trace_computing2);
+    let (trace_computing1, fib1_c_value) = gen_computing_trace(log_size, 1, 1, target_element_computing1);
+    let (trace_computing2, fib2_c_value) = gen_computing_trace(log_size, 1, 1, target_element_computing2);
+    let trace_scheduler = gen_scheduler_trace(log_size, fib1_c_value, fib2_c_value);
     println!("Computing1 trace (initial: 0, 1): {} rows", 1 << log_size);
     println!("Computing2 trace (initial: 1, 1): {} rows", 1 << log_size);
     println!("Scheduler trace: {} rows", 1 << log_size);
@@ -152,10 +182,10 @@ pub fn prove_multi_fib(
     // Step 5: Generate interaction traces (LogUp columns)
     println!("\nStep 5: Generating LogUp interaction traces...");
     let (interaction_trace_computing1, claimed_sum_computing1) =
-        gen_computing_interaction_trace(&trace_computing1, &fibonacci_relation);
+        gen_computing_interaction_trace(&trace_computing1, &fibonacci_relation, target_element_computing1);
 
     let (interaction_trace_computing2, claimed_sum_computing2) =
-        gen_computing_interaction_trace(&trace_computing2, &fibonacci_relation);
+        gen_computing_interaction_trace(&trace_computing2, &fibonacci_relation, target_element_computing2);
 
     let (interaction_trace_scheduler, claimed_sum_scheduler) =
         gen_scheduler_interaction_trace(&trace_scheduler, &fibonacci_relation);
@@ -196,11 +226,13 @@ pub fn prove_multi_fib(
         &mut tree_span_provider,
         FibonacciComputingEval {
             log_n_rows: log_size,
-            initial_a: 0,
+            initial_a: 1,
             initial_b: 1,
             fibonacci_relation: fibonacci_relation.clone(),
             claimed_sum: claimed_sum_computing1,
             is_first_id: is_first_id.clone(),
+            is_active_id: is_active_column_id(log_size, target_element_computing1),
+            is_target_id: is_target_column_id(log_size, target_element_computing1),
         },
         claimed_sum_computing1,
     );
@@ -214,6 +246,8 @@ pub fn prove_multi_fib(
             fibonacci_relation: fibonacci_relation.clone(),
             claimed_sum: claimed_sum_computing2,
             is_first_id: is_first_id.clone(),
+            is_active_id: is_active_column_id(log_size, target_element_computing2),
+            is_target_id: is_target_column_id(log_size, target_element_computing2),
         },
         claimed_sum_computing2,
     );
@@ -224,6 +258,7 @@ pub fn prove_multi_fib(
             log_n_rows: log_size,
             fibonacci_relation,
             claimed_sum: claimed_sum_scheduler,
+            is_first_id: is_first_id.clone(),
         },
         claimed_sum_scheduler,
     );
@@ -246,12 +281,17 @@ pub fn prove_multi_fib(
 /// The verifier must commit to the same tree structure as the prover.
 pub fn verify_multi_fib(
     proof: StarkProof<Blake2sMerkleHasher>,
-    log_size: u32,
+    target_element_computing1: usize,
+    target_element_computing2: usize,
     statement0: MultiFibStatement0,
     statement1: MultiFibStatement1,
     config: stwo::core::pcs::PcsConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("\n=== Multi-Component Fibonacci Proof Verification ===\n");
+    println!("\n=== Multi-Component Fibonacci Proof Verification ===");
+    println!("Target elements: Computing1={}, Computing2={}\n", target_element_computing1, target_element_computing2);
+
+    // Extract log_size from statement
+    let log_size = statement0.log_size;
 
     // Step 1: Setup verifier channel and commitment scheme
     println!("Step 1: Setting up verifier...");
@@ -302,11 +342,13 @@ pub fn verify_multi_fib(
         &mut tree_span_provider,
         FibonacciComputingEval {
             log_n_rows: log_size,
-            initial_a: 0,
+            initial_a: 1,
             initial_b: 1,
             fibonacci_relation: fibonacci_relation.clone(),
             claimed_sum: statement1.claimed_sum_computing1,
             is_first_id: is_first_id.clone(),
+            is_active_id: is_active_column_id(log_size, target_element_computing1),
+            is_target_id: is_target_column_id(log_size, target_element_computing1),
         },
         statement1.claimed_sum_computing1,
     );
@@ -320,6 +362,8 @@ pub fn verify_multi_fib(
             fibonacci_relation: fibonacci_relation.clone(),
             claimed_sum: statement1.claimed_sum_computing2,
             is_first_id: is_first_id.clone(),
+            is_active_id: is_active_column_id(log_size, target_element_computing2),
+            is_target_id: is_target_column_id(log_size, target_element_computing2),
         },
         statement1.claimed_sum_computing2,
     );
@@ -330,6 +374,7 @@ pub fn verify_multi_fib(
             log_n_rows: log_size,
             fibonacci_relation,
             claimed_sum: statement1.claimed_sum_scheduler,
+            is_first_id: is_first_id.clone(),
         },
         statement1.claimed_sum_scheduler,
     );
@@ -360,20 +405,22 @@ mod tests {
 
     #[test]
     fn test_multi_component_fibonacci_traces() {
+        let target_element_computing1 = 5;
+        let target_element_computing2 = 10;
         let log_size = 4; // 16 rows
 
-        // Generate traces for Computing1 (initial: 0, 1)
-        let trace_computing1 = gen_computing_trace(log_size, 0, 1);
+        // Generate traces for Computing1 (initial: 1, 1) up to element 5
+        let (_trace_computing1, fib1_c_value) = gen_computing_trace(log_size, 1, 1, target_element_computing1);
 
-        // Generate traces for Computing2 (initial: 1, 1)
-        let trace_computing2 = gen_computing_trace(log_size, 1, 1);
+        // Generate traces for Computing2 (initial: 1, 1) up to element 10
+        let (_trace_computing2, fib2_c_value) = gen_computing_trace(log_size, 1, 1, target_element_computing2);
 
-        // Generate Scheduler trace (will sum values from both)
-        let _trace_scheduler = gen_scheduler_trace(log_size, &trace_computing1, &trace_computing2);
+        // Generate Scheduler trace (will sum specific values from both)
+        let _trace_scheduler = gen_scheduler_trace(log_size, fib1_c_value, fib2_c_value);
 
         println!("✓ Multi-component traces generated successfully");
-        println!("  Computing1 rows: {}", 1 << log_size);
-        println!("  Computing2 rows: {}", 1 << log_size);
+        println!("  Computing1 rows: {} (active up to element {})", 1 << log_size, target_element_computing1);
+        println!("  Computing2 rows: {} (active up to element {})", 1 << log_size, target_element_computing2);
         println!("  Scheduler rows: {}", 1 << log_size);
     }
 
@@ -383,10 +430,17 @@ mod tests {
         println!("  MULTI-COMPONENT FIBONACCI PROOF TEST");
         println!("==================================================\n");
 
-        let log_size = 4; // 16 rows
+        let target_element_computing1 = 5;
+        let target_element_computing2 = 10;
 
-        // Setup prover
+        // Setup prover (log_size will be computed dynamically)
         let config = PcsConfig::default();
+
+        // Compute expected log_size for twiddles
+        let max_target = target_element_computing1.max(target_element_computing2) as u32;
+        let min_log_size = if max_target + 1 <= 1 { 0 } else { (max_target).ilog2() + 1 };
+        let log_size = min_log_size.max(4);
+
         let twiddles = SimdBackend::precompute_twiddles(
             CanonicCoset::new(log_size + 1 + config.fri_config.log_blowup_factor)
                 .circle_domain()
@@ -400,7 +454,7 @@ mod tests {
         );
 
         // Generate proof with LogUp
-        let result = prove_multi_fib(log_size, channel, commitment_scheme);
+        let result = prove_multi_fib(target_element_computing1, target_element_computing2, channel, commitment_scheme);
 
         match result {
             Ok((proof, _components, _scheduler, _statement0, _statement1)) => {
@@ -432,12 +486,14 @@ mod tests {
         println!("  TESTING LOGUP CLAIMED SUMS");
         println!("==================================================\n");
 
+        let target_element_computing1 = 5;
+        let target_element_computing2 = 10;
         let log_size = 4;
 
         // Generate traces
-        let trace_computing1 = gen_computing_trace(log_size, 0, 1);
-        let trace_computing2 = gen_computing_trace(log_size, 1, 1);
-        let trace_scheduler = gen_scheduler_trace(log_size, &trace_computing1, &trace_computing2);
+        let (trace_computing1, fib1_c_value) = gen_computing_trace(log_size, 1, 1, target_element_computing1);
+        let (trace_computing2, fib2_c_value) = gen_computing_trace(log_size, 1, 1, target_element_computing2);
+        let trace_scheduler = gen_scheduler_trace(log_size, fib1_c_value, fib2_c_value);
 
         // Draw relation
         let channel = &mut Blake2sChannel::default();
@@ -445,9 +501,9 @@ mod tests {
 
         // Generate interaction traces
         let (_, claimed_sum_computing1) =
-            gen_computing_interaction_trace(&trace_computing1, &fibonacci_relation);
+            gen_computing_interaction_trace(&trace_computing1, &fibonacci_relation, target_element_computing1);
         let (_, claimed_sum_computing2) =
-            gen_computing_interaction_trace(&trace_computing2, &fibonacci_relation);
+            gen_computing_interaction_trace(&trace_computing2, &fibonacci_relation, target_element_computing2);
         let (_, claimed_sum_scheduler) =
             gen_scheduler_interaction_trace(&trace_scheduler, &fibonacci_relation);
 
@@ -473,10 +529,17 @@ mod tests {
         println!("  MULTI-COMPONENT FIBONACCI: PROVE + VERIFY");
         println!("==================================================\n");
 
-        let log_size = 4; // 16 rows
+        let target_element_computing1 = 5;
+        let target_element_computing2 = 10;
 
-        // Setup prover
+        // Setup prover (log_size will be computed dynamically)
         let config = PcsConfig::default();
+
+        // Compute expected log_size for twiddles
+        let max_target = target_element_computing1.max(target_element_computing2) as u32;
+        let min_log_size = if max_target + 1 <= 1 { 0 } else { (max_target).ilog2() + 1 };
+        let log_size = min_log_size.max(4);
+
         let twiddles = SimdBackend::precompute_twiddles(
             CanonicCoset::new(log_size + 1 + config.fri_config.log_blowup_factor)
                 .circle_domain()
@@ -494,7 +557,7 @@ mod tests {
         println!("STEP 1: PROVING");
         println!("==================================================");
 
-        let result = prove_multi_fib(log_size, channel, commitment_scheme);
+        let result = prove_multi_fib(target_element_computing1, target_element_computing2, channel, commitment_scheme);
 
         match result {
             Ok((proof, _components, _scheduler, statement0, statement1)) => {
@@ -506,7 +569,14 @@ mod tests {
                 println!("STEP 2: VERIFYING");
                 println!("==================================================");
 
-                let verify_result = verify_multi_fib(proof, log_size, statement0, statement1, config);
+                let verify_result = verify_multi_fib(
+                    proof,
+                    target_element_computing1,
+                    target_element_computing2,
+                    statement0,
+                    statement1,
+                    config,
+                );
 
                 match verify_result {
                     Ok(()) => {
