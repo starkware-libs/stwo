@@ -8,6 +8,7 @@ pub mod plonk;
 pub mod poseidon;
 pub mod poseidon_custom;
 pub mod poseidon_uacias;
+pub mod poseidon_u_components;
 pub mod scheduler_poseidon;
 pub mod state_machine;
 pub mod wide_fibonacci;
