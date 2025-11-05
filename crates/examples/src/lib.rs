@@ -8,6 +8,7 @@ pub mod plonk;
 pub mod poseidon;
 pub mod poseidon_custom;
 pub mod poseidon_uacias;
+pub mod poseidon_uacias_no_trace;
 pub mod poseidon_u_components;
 pub mod poseidon_optimized;
 pub mod scheduler_poseidon;
