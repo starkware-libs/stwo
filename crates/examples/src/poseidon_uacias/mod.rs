@@ -16,7 +16,6 @@ use stwo::core::proof::StarkProof;
 use stwo::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::ColumnVec;
 use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
-use stwo::prover::backend::simd::qm31::PackedSecureField;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::{Col, Column};
 use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
@@ -38,6 +37,7 @@ const N_PARTIAL_ROUNDS: usize = 14;
 const N_HALF_FULL_ROUNDS: usize = 4;
 const FULL_ROUNDS: usize = 2 * N_HALF_FULL_ROUNDS;
 // Columns: 8 message + 16 initial_state + intermediate_states + 16 final_state
+// NOTE: multiplicity is NOT a trace column - it's only in LookupData for gen_interaction_trace
 const N_COLUMNS: usize = RATE + N_STATE * (1 + FULL_ROUNDS) + N_PARTIAL_ROUNDS + N_STATE;
 const LOG_EXPAND: u32 = 2;
 // TODO(shahars): Use poseidon's real constants.
@@ -56,6 +56,8 @@ pub struct PoseidonEval {
     pub lookup_elements: PoseidonElements,
     pub claimed_sum: SecureField,
     pub is_first_id: PreProcessedColumnId,
+    pub is_active_id: PreProcessedColumnId,
+    pub n_active_rows: usize,
 }
 impl FrameworkEval for PoseidonEval {
     fn log_size(&self) -> u32 {
@@ -65,7 +67,7 @@ impl FrameworkEval for PoseidonEval {
         self.log_n_rows + LOG_EXPAND
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        eval_poseidon_sponge_constraints(&mut eval, &self.lookup_elements, &self.is_first_id);
+        eval_poseidon_sponge_constraints(&mut eval, &self.lookup_elements, &self.is_first_id, &self.is_active_id);
         eval
     }
 }
@@ -153,18 +155,27 @@ fn pow5<F: FieldExpOps>(x: F) -> F {
 ///
 /// Constraints:
 /// 1. First row: capacity must be zero (initial_state[8..16] = 0)
-/// 2. Transition constraints (disabled for first row):
+/// 2. Transition constraints (disabled for first row AND padding rows):
 ///    - Rate: initial_state[0..8] = prev_final_state[0..8] + message[0..8]
 ///    - Capacity: initial_state[8..16] = prev_final_state[8..16] (unchanged)
 /// 3. Poseidon permutation: final_state = P(initial_state)
+/// 4. LogUp: Only active rows participate (multiplicity = is_active)
+///
+/// Padding rows (is_active = 0):
+/// - Chaining constraints are DISABLED (no dependency on previous row)
+/// - LogUp is DISABLED (multiplicity = 0, they don't participate)
+/// - Poseidon constraints remain ENABLED (for simplicity, padding still computes valid Poseidon)
+/// - This provides full isolation: padding rows cannot affect active rows
 pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
     eval: &mut E,
     lookup_elements: &PoseidonElements,
     is_first_id: &PreProcessedColumnId,
+    is_active_id: &PreProcessedColumnId,
 ) {
     use stwo_constraint_framework::ORIGINAL_TRACE_IDX;
 
     let is_first_val = eval.get_preprocessed_column(is_first_id.clone());
+    let is_active_val = eval.get_preprocessed_column(is_active_id.clone());
 
     // Read ALL columns using next_interaction_mask so we can access previous row values
     // Column layout: [message(8), initial_state(16), intermediate_states, final_state(16)]
@@ -222,18 +233,22 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
     }
 
     // Constraint 2: Transition constraints (chaining between rows)
+    // CRITICAL: Only enabled for active rows (excluding first row)
+    // Padding rows (is_active = 0) have chaining DISABLED for isolation
+    let enable_chaining = is_active_val.clone() * (E::F::one() - is_first_val.clone());
+
     // Rate part: initial_state[0..8] = final_state_prev[0..8] + message[0..8]
     for i in 0..RATE {
         let expected = final_state_prev[i].clone() + message[i].clone();
         eval.add_constraint(
-            (E::F::one() - is_first_val.clone()) * (initial_state_curr[i].clone() - expected),
+            enable_chaining.clone() * (initial_state_curr[i].clone() - expected),
         );
     }
 
     // Capacity part: initial_state[8..16] = final_state_prev[8..16]
     for i in RATE..N_STATE {
         eval.add_constraint(
-            (E::F::one() - is_first_val.clone())
+            enable_chaining.clone()
                 * (initial_state_curr[i].clone() - final_state_prev[i].clone()),
         );
     }
@@ -290,14 +305,27 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
     }
 
     // LogUp: Provide initial and final state lookups
+    // IMPORTANT: Use is_active as multiplicity in BOTH places:
+    // 1. gen_interaction_trace: multiplies fractions by multiplicity from LookupData
+    // 2. constraints: multiplies relation entries by is_active from preprocessed column
+    //
+    // Interaction trace: Σ(multiplicity * (1/(initial) - 1/(final)))
+    // Constraints: Σ(is_active * (1/(initial) - 1/(final)))
+    //
+    // Since multiplicity = is_active, these match!
+    // For active rows (is_active=1): both contribute full fraction
+    // For padding rows (is_active=0): both contribute 0
+
+    let is_active_ef = E::EF::from(is_active_val.clone());
+
     eval.add_to_relation(RelationEntry::new(
         lookup_elements,
-        E::EF::one(),
+        is_active_ef.clone(),  // multiplicity = is_active
         &initial_state_curr,
     ));
     eval.add_to_relation(RelationEntry::new(
         lookup_elements,
-        -E::EF::one(),
+        -is_active_ef,  // multiplicity = -is_active
         &final_state_curr,
     ));
 
@@ -314,6 +342,7 @@ fn pow5_expr<F: Clone + std::ops::Mul<Output = F>>(x: F) -> F {
 pub struct LookupData {
     pub initial_state: [Col<SimdBackend, BaseField>; N_STATE],
     pub final_state: [Col<SimdBackend, BaseField>; N_STATE],
+    pub multiplicity: Col<SimdBackend, BaseField>, // is_active values (1 for active, 0 for padding)
 }
 
 /// Dumps trace to a file for inspection
@@ -422,6 +451,73 @@ pub fn is_first_column_id(log_size: u32) -> PreProcessedColumnId {
         id: format!("is_first_{}", log_size),
     }
 }
+
+/// Generates the is_active preprocessed column.
+///
+/// This column marks which rows are "active" (contain real messages) vs "padding" (unused).
+/// Active rows have value 1, padding rows have value 0.
+///
+/// # Arguments
+/// * `log_size` - Log2 of total number of rows
+/// * `n_active` - Number of active rows (must be <= 2^log_size and multiple of SIMD lane size)
+///
+/// # Panics
+/// Panics if n_active is not a multiple of (1 << LOG_N_LANES), which is required for SIMD efficiency
+/// Helper function to round up n_active to nearest SIMD lane boundary
+pub fn round_up_to_simd_lanes(n_active: usize) -> usize {
+    let simd_lane_size = 1 << LOG_N_LANES; // 16
+    if n_active == 0 {
+        return 0;
+    }
+    ((n_active + simd_lane_size - 1) / simd_lane_size) * simd_lane_size
+}
+
+/// Generates the `is_active` preprocessed column.
+///
+/// # Arguments
+/// * `log_size` - Log2 of trace size
+/// * `n_active` - Number of active rows (should already be rounded to SIMD boundary)
+///
+/// # Returns
+/// Column where first `n_active` rows are 1, rest are 0 (in sequential order before bit-reversal)
+pub fn gen_is_active_column(
+    log_size: u32,
+    n_active: usize,
+) -> CircleEvaluation<SimdBackend, BaseField, BitReversedOrder> {
+    use stwo::core::utils::bit_reverse_coset_to_circle_domain_order;
+
+    let n_rows = 1 << log_size;
+
+    assert!(
+        n_active <= n_rows,
+        "n_active ({}) exceeds n_rows ({}). Use larger log_size.",
+        n_active,
+        n_rows
+    );
+
+    let mut col = Col::<SimdBackend, BaseField>::zeros(n_rows);
+
+    // Set first n_active rows to 1
+    for i in 0..n_active {
+        col.set(i, BaseField::from_u32_unchecked(1));
+    }
+
+    bit_reverse_coset_to_circle_domain_order(col.as_mut_slice());
+
+    let domain = CanonicCoset::new(log_size).circle_domain();
+    CircleEvaluation::new(domain, col)
+}
+
+/// Returns the PreProcessedColumnId for is_active column
+///
+/// # Arguments
+/// * `log_size` - Log2 of trace size
+/// * `n_active` - Number of active rows (should already be rounded to SIMD boundary)
+pub fn is_active_column_id(log_size: u32, n_active: usize) -> PreProcessedColumnId {
+    PreProcessedColumnId {
+        id: format!("is_active_{}_{}", log_size, n_active),
+    }
+}
 /// Generates trace for vertical sponge construction.
 ///
 /// Takes a vector of messages where each message is RATE (8) elements.
@@ -446,8 +542,8 @@ pub fn dump_trace_sequential(
     )?;
     writeln!(file, "Total rows: {}\n", n_rows)?;
 
-    // Show first 8 rows to demonstrate chaining
-    let rows_to_show = std::cmp::min(8, n_rows);
+    // Show ALL rows (not just first 8)
+    let rows_to_show = n_rows;
 
     for row in 0..rows_to_show {
         writeln!(file, "Row {}: {{", row)?;
@@ -564,15 +660,30 @@ pub fn dump_trace_sequential(
         writeln!(file, "}}\n")?;
     }
 
-    if n_rows > rows_to_show {
-        writeln!(file, "... ({} more rows) ...", n_rows - rows_to_show)?;
-    }
+    // All rows are now shown, no "... more rows ..." message needed
 
     Ok(())
 }
 
+/// Generates trace for vertical sponge construction.
+///
+/// # Arguments
+/// * `log_size` - Log2 of total number of rows
+/// * `n_active` - Number of active rows (remaining are padding)
+/// * `messages` - Vector of messages (will be extended with zeros if needed)
+///
+/// # Padding behavior
+/// Rows >= n_active_rounded are padding rows:
+/// - initial_state = [0, 0, ..., 0] (no chaining from previous row)
+/// - Poseidon is still computed (for simplicity)
+/// - final_state computed but not used for chaining
+///
+/// # SIMD Alignment
+/// n_active is automatically rounded up to nearest multiple of 16 (SIMD lane size)
+/// for LogUp consistency. This means a few extra rows may be treated as "active".
 pub fn gen_trace(
     log_size: u32,
+    n_active: usize,
     messages: Vec<[BaseField; RATE]>,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
@@ -583,6 +694,14 @@ pub fn gen_trace(
     let _span = span!(Level::INFO, "Generation").entered();
     assert!(log_size >= LOG_N_LANES);
     let n_rows = 1 << log_size;
+
+    // n_active should already be rounded to SIMD boundary by caller
+    assert!(
+        n_active % (1 << LOG_N_LANES) == 0,
+        "n_active ({}) must be multiple of SIMD lane size ({})",
+        n_active,
+        1 << LOG_N_LANES
+    );
 
     // Extend messages to fill all rows if needed
     let mut extended_messages = messages;
@@ -596,6 +715,7 @@ pub fn gen_trace(
     let mut lookup_data = LookupData {
         initial_state: std::array::from_fn(|_| Col::<SimdBackend, BaseField>::zeros(n_rows)),
         final_state: std::array::from_fn(|_| Col::<SimdBackend, BaseField>::zeros(n_rows)),
+        multiplicity: Col::<SimdBackend, BaseField>::zeros(n_rows),
     };
 
     // Generate trace row by row
@@ -625,8 +745,10 @@ pub fn gen_trace(
         }
 
         // Compute initial state
-        let mut state: [BaseField; N_STATE] = if let Some(prev) = prev_output {
-            // Not first row: state = [prev_rate + message, prev_capacity]
+        let is_padding_row = row >= n_active;
+        let mut state: [BaseField; N_STATE] = if !is_padding_row && prev_output.is_some() {
+            // Not first row AND not padding: state = [prev_rate + message, prev_capacity]
+            let prev = prev_output.unwrap();
             if row < 4 {
                 println!("Previous output exists, computing chaining...");
                 print!("  prev_output[0..8] (rate):     [");
@@ -668,9 +790,13 @@ pub fn gen_trace(
 
             new_state
         } else {
-            // First row: state = [message, zeros]
-            if row < 4 {
-                println!("First row: state = [message, zeros]");
+            // First row OR padding row: state = [message, zeros] (no chaining)
+            if row < 4 || (row == n_active && n_active < 20) {
+                if is_padding_row {
+                    println!("Padding row {}: NO CHAINING, state = [message, zeros]", row);
+                } else {
+                    println!("First row: state = [message, zeros]");
+                }
             }
 
             let new_state = std::array::from_fn(|i| {
@@ -745,6 +871,11 @@ pub fn gen_trace(
             col_index += 1;
         }
 
+        // Write multiplicity to LookupData only (not to trace!)
+        // Multiplicity is used in gen_interaction_trace to weight fractions
+        let is_active = if row < n_active { BaseField::from_u32_unchecked(1) } else { BaseField::from_u32_unchecked(0) };
+        lookup_data.multiplicity.set(row, is_active);
+
         // Debug: Print final state
         if row < 4 {
             print!("After Poseidon permutation:\n  final_state (output): [");
@@ -769,16 +900,20 @@ pub fn gen_trace(
     // Save sequential trace before bit-reversal for debugging
     let sequential_trace = trace.clone();
 
-    // Apply bit_reverse_coset_to_circle_domain_order to all columns
+    // Apply bit_reverse_coset_to_circle_domain_order to main trace columns
     for col in trace.iter_mut() {
         bit_reverse_coset_to_circle_domain_order(col.as_mut_slice());
     }
+
+    // Also bit-reverse lookup_data to match trace order
+    // LogupTraceGenerator expects bit-reversed input
     for col in lookup_data.initial_state.iter_mut() {
         bit_reverse_coset_to_circle_domain_order(col.as_mut_slice());
     }
     for col in lookup_data.final_state.iter_mut() {
         bit_reverse_coset_to_circle_domain_order(col.as_mut_slice());
     }
+    bit_reverse_coset_to_circle_domain_order(lookup_data.multiplicity.as_mut_slice());
 
     let domain = CanonicCoset::new(log_size).circle_domain();
     let trace = trace
@@ -797,20 +932,38 @@ pub fn gen_trace(
 
 pub fn gen_interaction_trace(
     log_size: u32,
+    _n_active: usize,
     lookup_data: LookupData,
     lookup_elements: &PoseidonElements,
 ) -> (
     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
     SecureField,
 ) {
+    use stwo::prover::backend::simd::qm31::PackedSecureField;
+
     let _span = span!(Level::INFO, "Generate interaction trace").entered();
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
     {
         let mut col_gen = logup_gen.new_col();
 
-        // For each row, generate LogUp fraction
-        for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
+        // SOLUTION: Use multiplicity column from main trace!
+        // For each SIMD pack, compute fraction with multiplicity as numerator:
+        // fraction = multiplicity * (1/(initial) - 1/(final))
+        //          = multiplicity * (denom1 - denom0) / (denom0 * denom1)
+        //
+        // For active rows: multiplicity = 1, so fraction contributes to claimed_sum
+        // For padding rows: multiplicity = 0, so fraction = 0 (doesn't contribute)
+        //
+        // This ensures: claimed_sum (from trace) == actual_sum (from constraints)
+
+        let n_packs = 1 << (log_size - LOG_N_LANES);
+
+        for vec_row in 0..n_packs {
+            // Read multiplicity for this SIMD pack (bit-reversed data)
+            let multiplicity_packed = lookup_data.multiplicity.data[vec_row];
+
+            // Read state values
             let initial_state_packed: [PackedBaseField; N_STATE] =
                 std::array::from_fn(|i| lookup_data.initial_state[i].data[vec_row]);
             let final_state_packed: [PackedBaseField; N_STATE] =
@@ -819,9 +972,12 @@ pub fn gen_interaction_trace(
             let denom0: PackedSecureField = lookup_elements.combine(&initial_state_packed);
             let denom1: PackedSecureField = lookup_elements.combine(&final_state_packed);
 
-            // Write fraction: (denom1 - denom0) / (denom0 * denom1)
-            // This corresponds to: +1/(initial_state) - 1/(final_state)
-            col_gen.write_frac(vec_row, denom1 - denom0, denom0 * denom1);
+            // Numerator = multiplicity * (denom1 - denom0)
+            // For padding rows (multiplicity=0), this gives numerator=0
+            let numerator = PackedSecureField::from(multiplicity_packed) * (denom1 - denom0);
+            let denominator = denom0 * denom1;
+
+            col_gen.write_frac(vec_row, numerator, denominator);
         }
 
         col_gen.finalize_col();
@@ -832,12 +988,28 @@ pub fn gen_interaction_trace(
 
 /// Proves Poseidon sponge with vertical chaining.
 ///
-/// Input: messages - vector of RATE-element messages to hash sequentially
+/// # Arguments
+/// * `log_n_rows` - Log2 of total number of rows (trace size = 2^log_n_rows)
+/// * `n_real_messages` - Number of real messages (rest will be padding)
+/// * `messages` - Vector of RATE-element messages to hash sequentially
+/// * `config` - PCS configuration
+///
+/// # Padding behavior
+/// If `n_real_messages < 2^log_n_rows`, remaining rows are padding rows:
+/// - Padding rows have `is_active = 0`
+/// - Chaining is disabled for padding rows (they don't depend on previous rows)
+/// - LogUp multiplicity = 0 for padding rows (they don't participate in lookups)
+/// - This allows proving with minimal computation for unused rows
 pub fn prove_poseidon(
     log_n_rows: u32,
+    n_real_messages: usize,
     messages: Vec<[BaseField; RATE]>,
     config: PcsConfig,
 ) -> (PoseidonComponent, StarkProof<Blake2sMerkleHasher>) {
+    // Round n_real_messages up to SIMD boundary for consistency
+    // This is required because LogUp operates on SIMD packs (16 rows at a time)
+    let n_active_rounded = round_up_to_simd_lanes(n_real_messages);
+
     // Precompute twiddles.
     let span = span!(Level::INFO, "Precompute twiddles").entered();
     let twiddles = SimdBackend::precompute_twiddles(
@@ -856,14 +1028,15 @@ pub fn prove_poseidon(
     let span = span!(Level::INFO, "Constant").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
     let is_first_col = gen_is_first_column(log_n_rows);
-    let constant_trace = vec![is_first_col];
+    let is_active_col = gen_is_active_column(log_n_rows, n_active_rounded);
+    let constant_trace = vec![is_first_col, is_active_col];
     tree_builder.extend_evals(constant_trace);
     tree_builder.commit(channel);
     span.exit();
 
     // Trace.
     let span = span!(Level::INFO, "Trace").entered();
-    let (trace, lookup_data) = gen_trace(log_n_rows, messages);
+    let (trace, lookup_data) = gen_trace(log_n_rows, n_active_rounded, messages);
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -874,7 +1047,7 @@ pub fn prove_poseidon(
 
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
-    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, lookup_data, &lookup_elements);
+    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, n_active_rounded, lookup_data, &lookup_elements);
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -882,6 +1055,7 @@ pub fn prove_poseidon(
 
     // Prove constraints.
     let is_first_id = is_first_column_id(log_n_rows);
+    let is_active_id = is_active_column_id(log_n_rows, n_active_rounded);
     let component = PoseidonComponent::new(
         &mut TraceLocationAllocator::default(),
         PoseidonEval {
@@ -889,6 +1063,8 @@ pub fn prove_poseidon(
             lookup_elements,
             claimed_sum,
             is_first_id,
+            is_active_id,
+            n_active_rows: n_active_rounded,
         },
         claimed_sum,
     );
@@ -915,7 +1091,8 @@ mod tests {
 
     use crate::poseidon_uacias::{
         apply_internal_round_matrix, apply_m4, eval_poseidon_sponge_constraints,
-        gen_interaction_trace, gen_is_first_column, gen_trace, is_first_column_id, prove_poseidon,
+        gen_interaction_trace, gen_is_active_column, gen_is_first_column, gen_trace,
+        is_active_column_id, is_first_column_id, prove_poseidon, round_up_to_simd_lanes,
         PoseidonElements, RATE,
     };
 
@@ -923,18 +1100,19 @@ mod tests {
     #[wasm_bindgen_test::wasm_bindgen_test]
     fn test_poseidon_prove_wasm() {
         const LOG_N_ROWS: u32 = 10;
+        const N_ROWS: usize = 1 << LOG_N_ROWS;
         let config = PcsConfig {
             pow_bits: 10,
             fri_config: FriConfig::new(5, 1, 64),
         };
 
-        // Generate some test messages
-        let messages: Vec<[BaseField; RATE]> = (0..(1 << LOG_N_ROWS))
+        // Generate some test messages (all rows active)
+        let messages: Vec<[BaseField; RATE]> = (0..N_ROWS)
             .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
             .collect();
 
         // Prove.
-        prove_poseidon(LOG_N_ROWS, messages, config);
+        prove_poseidon(LOG_N_ROWS, N_ROWS, messages, config);
     }
 
     #[test]
@@ -977,20 +1155,23 @@ mod tests {
     #[test]
     fn test_poseidon_constraints() {
         const LOG_N_ROWS: u32 = 8;
+        const N_ROWS: usize = 1 << LOG_N_ROWS; // 256
 
-        // Generate test messages
-        let messages: Vec<[BaseField; RATE]> = (0..(1 << LOG_N_ROWS))
+        // Generate test messages (all rows active)
+        let messages: Vec<[BaseField; RATE]> = (0..N_ROWS)
             .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
             .collect();
 
         // Trace.
         let is_first_col = gen_is_first_column(LOG_N_ROWS);
         let is_first_id = is_first_column_id(LOG_N_ROWS);
-        let trace_preprocessed = vec![is_first_col];
-        let (trace0, interaction_data) = gen_trace(LOG_N_ROWS, messages);
+        let is_active_col = gen_is_active_column(LOG_N_ROWS, N_ROWS); // All rows active
+        let is_active_id = is_active_column_id(LOG_N_ROWS, N_ROWS);
+        let trace_preprocessed = vec![is_first_col, is_active_col];
+        let (trace0, interaction_data) = gen_trace(LOG_N_ROWS, N_ROWS, messages);
         let lookup_elements = PoseidonElements::dummy();
         let (trace1, claimed_sum) =
-            gen_interaction_trace(LOG_N_ROWS, interaction_data, &lookup_elements);
+            gen_interaction_trace(LOG_N_ROWS, N_ROWS, interaction_data, &lookup_elements);
 
         let traces = TreeVec::new(vec![trace_preprocessed, trace0, trace1]);
         let trace_polys =
@@ -999,7 +1180,7 @@ mod tests {
             &trace_polys,
             CanonicCoset::new(LOG_N_ROWS),
             |mut eval| {
-                eval_poseidon_sponge_constraints(&mut eval, &lookup_elements, &is_first_id);
+                eval_poseidon_sponge_constraints(&mut eval, &lookup_elements, &is_first_id, &is_active_id);
             },
             claimed_sum,
         );
@@ -1022,13 +1203,15 @@ mod tests {
             fri_config: FriConfig::new(5, 1, 64),
         };
 
-        // Generate test messages
-        let messages: Vec<[BaseField; RATE]> = (0..(1 << log_n_rows))
+        let n_rows = 1 << log_n_rows;
+
+        // Generate test messages (all rows active)
+        let messages: Vec<[BaseField; RATE]> = (0..n_rows)
             .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
             .collect();
 
         // Prove.
-        let (component, proof) = prove_poseidon(log_n_rows, messages, config);
+        let (component, proof) = prove_poseidon(log_n_rows, n_rows, messages, config);
 
         // Verify.
         // TODO: Create Air instance independently.
@@ -1074,13 +1257,15 @@ mod tests {
             fri_config: FriConfig::new(5, 1, 64),
         };
 
-        // Generate test messages
-        let messages: Vec<[BaseField; RATE]> = (0..(1 << log_n_rows))
+        let n_rows = 1 << log_n_rows;
+
+        // Generate test messages (all rows active)
+        let messages: Vec<[BaseField; RATE]> = (0..n_rows)
             .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
             .collect();
 
         // Prove.
-        let _ = prove_poseidon(log_n_rows, messages, config);
+        let _ = prove_poseidon(log_n_rows, n_rows, messages, config);
 
         let csv = collector.export_csv();
 
@@ -1104,6 +1289,7 @@ mod tests {
     /// Test with full prove + verify flow for specific input size
     fn test_arbitrary_length_prove_verify(input_size: usize) {
         let log_n_rows = 8; // 256 rows
+        let n_rows = 1 << log_n_rows; // 256
         let config = PcsConfig {
             pow_bits: 10,
             fri_config: FriConfig::new(5, 1, 64),
@@ -1113,8 +1299,8 @@ mod tests {
         let input: Vec<u32> = (0..input_size as u32).collect();
         let messages = create_messages_from_input(input);
 
-        // Prove
-        let (component, proof) = prove_poseidon(log_n_rows, messages, config);
+        // Prove (all rows are active since we fill to capacity)
+        let (component, proof) = prove_poseidon(log_n_rows, n_rows, messages, config);
 
         // Verify
         let channel = &mut Blake2sChannel::default();
@@ -1207,5 +1393,141 @@ mod tests {
     #[test]
     fn test_arbitrary_length_256_elements() {
         test_arbitrary_length_prove_verify(256);
+    }
+
+    /// Test with padding rows: only 16 active messages out of 256 total rows
+    /// This demonstrates the efficiency gain from is_active column
+    /// Note: N_ACTIVE must be multiple of 16 (SIMD lane size) for LogUp consistency
+    #[test]
+    fn test_with_padding_rows() {
+        const LOG_N_ROWS: u32 = 8; // 256 total rows
+        const N_ACTIVE: usize = 16; // Only 16 active messages (must be multiple of 16)
+        const N_ROWS: usize = 1 << LOG_N_ROWS;
+
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 1, 64),
+        };
+
+        // Generate only 10 real messages
+        let messages: Vec<[BaseField; RATE]> = (0..N_ACTIVE)
+            .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
+            .collect();
+
+        println!("\n=== Testing with Padding Rows ===");
+        println!("Total rows: {}", N_ROWS);
+        println!("Active rows: {}", N_ACTIVE);
+        println!("Padding rows: {} (will be isolated)", N_ROWS - N_ACTIVE);
+
+        // Prove - padding rows (10-255) will have:
+        // - is_active = 0
+        // - Chaining disabled (no dependency on row 9)
+        // - LogUp disabled (multiplicity = 0)
+        let (component, proof) = prove_poseidon(LOG_N_ROWS, N_ACTIVE, messages, config);
+
+        // Verify
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+
+        let sizes = component.trace_log_degree_bounds();
+
+        // Preprocessed columns (is_first, is_active)
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        // Trace columns
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        // Draw lookup element
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        // Interaction columns
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        // Final verification - should pass with padding rows isolated!
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+        println!("✅ Proof verified successfully with {} padding rows!", N_ROWS - N_ACTIVE);
+    }
+
+    /// Test with constraints directly - verify padding isolation
+    /// Note: N_ACTIVE must be multiple of 16 (SIMD lane size) for LogUp consistency
+    #[test]
+    fn test_padding_constraints() {
+        const LOG_N_ROWS: u32 = 8;
+        const N_ACTIVE: usize = 16; // Must be multiple of 16
+        const N_ROWS: usize = 1 << LOG_N_ROWS;
+
+        // Generate only 16 messages
+        let messages: Vec<[BaseField; RATE]> = (0..N_ACTIVE)
+            .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
+            .collect();
+
+        // Trace with padding
+        let is_first_col = gen_is_first_column(LOG_N_ROWS);
+        let is_first_id = is_first_column_id(LOG_N_ROWS);
+        let is_active_col = gen_is_active_column(LOG_N_ROWS, N_ACTIVE); // Only first 10 active
+        let is_active_id = is_active_column_id(LOG_N_ROWS, N_ACTIVE);
+        let trace_preprocessed = vec![is_first_col, is_active_col];
+
+        let (trace0, interaction_data) = gen_trace(LOG_N_ROWS, N_ACTIVE, messages);
+        let lookup_elements = PoseidonElements::dummy();
+        let (trace1, claimed_sum) =
+            gen_interaction_trace(LOG_N_ROWS, N_ACTIVE, interaction_data, &lookup_elements);
+
+        let traces = TreeVec::new(vec![trace_preprocessed, trace0, trace1]);
+        let trace_polys =
+            traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect_vec());
+
+        // This should pass because:
+        // - Rows 0-9: active, full constraints
+        // - Rows 10-255: padding, chaining/LogUp disabled
+        assert_constraints_on_polys(
+            &trace_polys,
+            CanonicCoset::new(LOG_N_ROWS),
+            |mut eval| {
+                eval_poseidon_sponge_constraints(&mut eval, &lookup_elements, &is_first_id, &is_active_id);
+            },
+            claimed_sum,
+        );
+        println!("✅ Constraints verified with {} active and {} padding rows!", N_ACTIVE, N_ROWS - N_ACTIVE);
+    }
+
+    #[test]
+    fn test_poseidon_127_of_128() {
+        let log_n_rows = 7; // 128 rows
+        let n_real_messages = 127; // 127 active messages, 1 padding row
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 1, 64),
+        };
+
+        // Generate 127 messages
+        let messages: Vec<[BaseField; RATE]> = (0..n_real_messages)
+            .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
+            .collect();
+
+        println!("Testing {} messages in {}-row table (1 padding row)", n_real_messages, 1 << log_n_rows);
+        println!("Note: {} will be rounded to {} for SIMD alignment", n_real_messages, round_up_to_simd_lanes(n_real_messages));
+
+        // Prove
+        let (component, proof) = prove_poseidon(log_n_rows, n_real_messages, messages, config);
+
+        // Verify
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+
+        let sizes = component.trace_log_degree_bounds();
+
+        // Preprocessed columns (is_first, is_active)
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        // Trace columns
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        // Draw lookup elements (must match what prover drew!)
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        // Interaction columns
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+        println!("✅ Test passed: 127 messages (rounded to 128) - no padding rows due to SIMD alignment");
     }
 }
