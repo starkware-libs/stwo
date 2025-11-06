@@ -104,18 +104,21 @@ pub fn fri_answers(
         .sorted_by_key(|(log_size, ..)| Reverse(*log_size))
         .group_by(|(log_size, ..)| *log_size)
         .into_iter()
-        .map(|(log_size, tuples)| {
+        .filter_map(|(log_size, tuples)| {
+            // Skip processing this log size if it does not have any associated queries.
+            let queries_for_log_size = query_positions_per_log_size.get(&log_size)?;
+
             let (_, samples): (Vec<_>, Vec<_>) = multiunzip(tuples);
-            fri_answers_for_log_size(
+            Some(fri_answers_for_log_size(
                 log_size,
                 &samples,
                 random_coeff,
-                &query_positions_per_log_size[&log_size],
+                queries_for_log_size,
                 &mut queried_values,
                 n_columns_per_log_size
                     .as_ref()
                     .map(|columns_log_sizes| *columns_log_sizes.get(&log_size).unwrap_or(&0)),
-            )
+            ))
         })
         .collect()
 }

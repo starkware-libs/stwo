@@ -38,18 +38,23 @@ pub fn compute_fri_quotients<B: QuotientOps>(
         .sorted_by_key(|(c, _)| Reverse(c.domain.log_size()))
         .group_by(|(c, _)| c.domain.log_size())
         .into_iter()
-        .map(|(log_size, tuples)| {
+        .filter_map(|(log_size, tuples)| {
             let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
-            let domain = CanonicCoset::new(log_size).circle_domain();
             // TODO: slice.
             let sample_batches = ColumnSampleBatch::new_vec(&samples);
-            B::accumulate_quotients(
+            if sample_batches.is_empty() {
+                // Skip processing this log size if it does not have any associated sample_batches
+                // (i.e. the set of sample points is empty).
+                return None;
+            }
+            let domain = CanonicCoset::new(log_size).circle_domain();
+            Some(B::accumulate_quotients(
                 domain,
                 &columns,
                 random_coeff,
                 &sample_batches,
                 log_blowup_factor,
-            )
+            ))
         })
         .collect()
 }
