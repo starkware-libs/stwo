@@ -64,9 +64,14 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         let random_coeff = channel.draw_secure_felt();
 
         let bounds = self
-            .column_log_sizes()
+            .column_log_sizes().zip_cols(&sampled_points)
             .flatten()
-            .into_iter()
+            .into_iter().filter_map(|(log_size, sampled_points)| {
+                if sampled_points.is_empty() {
+                    return None;
+                }
+                Some(log_size)
+            })
             .sorted()
             .rev()
             .dedup()
