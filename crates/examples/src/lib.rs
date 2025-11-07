@@ -10,6 +10,7 @@ pub mod poseidon_custom;
 pub mod poseidon_optimized;
 pub mod poseidon_u_components;
 pub mod poseidon_uacias;
+pub mod poseidon_uacias_copy;
 pub mod poseidon_uacias_no_trace;
 pub mod poseidon_uaciasv2;
 pub mod scheduler_poseidon;

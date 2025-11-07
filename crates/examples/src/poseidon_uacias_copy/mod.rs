@@ -39,7 +39,7 @@ const FULL_ROUNDS: usize = 2 * N_HALF_FULL_ROUNDS;
 // Columns: 8 message + 16 initial_state + intermediate_states + 16 final_state
 // NOTE: multiplicity is NOT a trace column - it's only in LookupData for gen_interaction_trace
 const N_COLUMNS: usize = RATE + N_STATE * (1 + FULL_ROUNDS) + N_PARTIAL_ROUNDS + N_STATE;
-const LOG_EXPAND: u32 = 2;
+const LOG_EXPAND: u32 = 3;
 // TODO(shahars): Use poseidon's real constants.
 const EXTERNAL_ROUND_CONSTS: [[BaseField; N_STATE]; 2 * N_HALF_FULL_ROUNDS] =
     [[BaseField::from_u32_unchecked(1234); N_STATE]; 2 * N_HALF_FULL_ROUNDS];
@@ -257,6 +257,7 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
 
     // Constraint 3: Poseidon permutation correctness
     // Verify that the intermediate states match the permutation computation
+    // MASKED BY is_active: Only enforce for active rows
     let mut state = initial_state_curr.clone();
 
     // 4 full rounds
@@ -267,9 +268,11 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
         apply_external_round_matrix(&mut state);
         state = std::array::from_fn(|i| pow5_expr(state[i].clone()));
 
-        // Verify intermediate state matches trace
+        // Verify intermediate state matches trace (masked by is_active)
         for i in 0..N_STATE {
-            eval.add_constraint(state[i].clone() - intermediate_full1[round][i].clone());
+            eval.add_constraint(
+                is_active_val.clone() * (state[i].clone() - intermediate_full1[round][i].clone()),
+            );
         }
         state = intermediate_full1[round].clone();
     }
@@ -280,8 +283,10 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
         apply_internal_round_matrix(&mut state);
         state[0] = pow5_expr(state[0].clone());
 
-        // Verify intermediate state matches trace
-        eval.add_constraint(state[0].clone() - intermediate_partial[round].clone());
+        // Verify intermediate state matches trace (masked by is_active)
+        eval.add_constraint(
+            is_active_val.clone() * (state[0].clone() - intermediate_partial[round].clone()),
+        );
         state[0] = intermediate_partial[round].clone();
     }
 
@@ -294,16 +299,20 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
         apply_external_round_matrix(&mut state);
         state = std::array::from_fn(|i| pow5_expr(state[i].clone()));
 
-        // Verify intermediate state matches trace
+        // Verify intermediate state matches trace (masked by is_active)
         for i in 0..N_STATE {
-            eval.add_constraint(state[i].clone() - intermediate_full2[round][i].clone());
+            eval.add_constraint(
+                is_active_val.clone() * (state[i].clone() - intermediate_full2[round][i].clone()),
+            );
         }
         state = intermediate_full2[round].clone();
     }
 
-    // Verify final state matches computed state
+    // Verify final state matches computed state (masked by is_active)
     for i in 0..N_STATE {
-        eval.add_constraint(state[i].clone() - final_state_curr[i].clone());
+        eval.add_constraint(
+            is_active_val.clone() * (state[i].clone() - final_state_curr[i].clone()),
+        );
     }
 
     // LogUp: Provide initial and final state lookups
@@ -455,31 +464,14 @@ pub fn is_first_column_id(log_size: u32) -> PreProcessedColumnId {
     }
 }
 
-/// Generates the is_active preprocessed column.
+/// Generates the `is_active` preprocessed column.
 ///
 /// This column marks which rows are "active" (contain real messages) vs "padding" (unused).
 /// Active rows have value 1, padding rows have value 0.
 ///
 /// # Arguments
-/// * `log_size` - Log2 of total number of rows
-/// * `n_active` - Number of active rows (must be <= 2^log_size and multiple of SIMD lane size)
-///
-/// # Panics
-/// Panics if n_active is not a multiple of (1 << LOG_N_LANES), which is required for SIMD
-/// efficiency Helper function to round up n_active to nearest SIMD lane boundary
-pub fn round_up_to_simd_lanes(n_active: usize) -> usize {
-    let simd_lane_size = 1 << LOG_N_LANES; // 16
-    if n_active == 0 {
-        return 0;
-    }
-    ((n_active + simd_lane_size - 1) / simd_lane_size) * simd_lane_size
-}
-
-/// Generates the `is_active` preprocessed column.
-///
-/// # Arguments
 /// * `log_size` - Log2 of trace size
-/// * `n_active` - Number of active rows (should already be rounded to SIMD boundary)
+/// * `n_active` - Number of active rows
 ///
 /// # Returns
 /// Column where first `n_active` rows are 1, rest are 0 (in sequential order before bit-reversal)
@@ -680,10 +672,6 @@ pub fn dump_trace_sequential(
 /// - initial_state = [0, 0, ..., 0] (no chaining from previous row)
 /// - Poseidon is still computed (for simplicity)
 /// - final_state computed but not used for chaining
-///
-/// # SIMD Alignment
-/// n_active is automatically rounded up to nearest multiple of 16 (SIMD lane size)
-/// for LogUp consistency. This means a few extra rows may be treated as "active".
 pub fn gen_trace(
     log_size: u32,
     n_active: usize,
@@ -695,16 +683,8 @@ pub fn gen_trace(
     use stwo::core::utils::bit_reverse_coset_to_circle_domain_order;
 
     let _span = span!(Level::INFO, "Generation").entered();
-    assert!(log_size >= LOG_N_LANES);
+    // assert!(log_size >= LOG_N_LANES);
     let n_rows = 1 << log_size;
-
-    // n_active should already be rounded to SIMD boundary by caller
-    assert!(
-        n_active % (1 << LOG_N_LANES) == 0,
-        "n_active ({}) must be multiple of SIMD lane size ({})",
-        n_active,
-        1 << LOG_N_LANES
-    );
 
     // Extend messages to fill all rows if needed
     let mut extended_messages = messages;
@@ -726,11 +706,22 @@ pub fn gen_trace(
 
     for row in 0..n_rows {
         let mut col_index = 0;
-        let message = extended_messages[row];
+        let is_padding_row = row >= n_active;
+
+        // For padding rows: use zero message instead of extended_messages
+        let message = if is_padding_row {
+            [BaseField::from_u32_unchecked(0); RATE]
+        } else {
+            extended_messages[row]
+        };
 
         // Debug: Print first few rows
-        if row < 4 {
-            println!("\n=== Generating Row {} ===", row);
+        if row < 4 || (row == n_active && n_active < 20) {
+            if is_padding_row {
+                println!("\n=== Generating Row {} (PADDING) ===", row);
+            } else {
+                println!("\n=== Generating Row {} ===", row);
+            }
             print!("Message: [");
             for i in 0..RATE {
                 print!("{}", message[i].0);
@@ -748,7 +739,6 @@ pub fn gen_trace(
         }
 
         // Compute initial state
-        let is_padding_row = row >= n_active;
         let mut state: [BaseField; N_STATE] = if !is_padding_row && prev_output.is_some() {
             // Not first row AND not padding: state = [prev_rate + message, prev_capacity]
             let prev = prev_output.unwrap();
@@ -796,19 +786,25 @@ pub fn gen_trace(
             // First row OR padding row: state = [message, zeros] (no chaining)
             if row < 4 || (row == n_active && n_active < 20) {
                 if is_padding_row {
-                    println!("Padding row {}: NO CHAINING, state = [message, zeros]", row);
+                    println!("Padding row {}: NO CHAINING, state = [0, 0, 0, ...]", row);
                 } else {
                     println!("First row: state = [message, zeros]");
                 }
             }
 
-            let new_state = std::array::from_fn(|i| {
-                if i < RATE {
-                    message[i]
-                } else {
-                    BaseField::from_u32_unchecked(0)
-                }
-            });
+            let new_state = if is_padding_row {
+                // Padding row: completely zero initial state
+                [BaseField::from_u32_unchecked(0); N_STATE]
+            } else {
+                // First row: state = [message, zeros]
+                std::array::from_fn(|i| {
+                    if i < RATE {
+                        message[i]
+                    } else {
+                        BaseField::from_u32_unchecked(0)
+                    }
+                })
+            };
 
             if row < 4 {
                 print!("  initial_state: [");
@@ -831,47 +827,96 @@ pub fn gen_trace(
             col_index += 1;
         }
 
-        // Poseidon permutation
-        // 4 full rounds
-        (0..N_HALF_FULL_ROUNDS).for_each(|round| {
-            (0..N_STATE).for_each(|i| {
-                state[i] += EXTERNAL_ROUND_CONSTS[round][i];
+        // For padding rows: skip Poseidon computation, set intermediate and final states to zeros
+        if is_padding_row {
+            // Intermediate states for first 4 full rounds: all zeros
+            for _ in 0..N_HALF_FULL_ROUNDS {
+                for _ in 0..N_STATE {
+                    trace[col_index].set(row, BaseField::from_u32_unchecked(0));
+                    col_index += 1;
+                }
+            }
+
+            // Partial rounds intermediate states: all zeros
+            for _ in 0..N_PARTIAL_ROUNDS {
+                trace[col_index].set(row, BaseField::from_u32_unchecked(0));
+                col_index += 1;
+            }
+
+            // Intermediate states for last 4 full rounds: all zeros
+            for _ in 0..N_HALF_FULL_ROUNDS {
+                for _ in 0..N_STATE {
+                    trace[col_index].set(row, BaseField::from_u32_unchecked(0));
+                    col_index += 1;
+                }
+            }
+
+            // Final state: all zeros
+            for i in 0..N_STATE {
+                trace[col_index].set(row, BaseField::from_u32_unchecked(0));
+                lookup_data.final_state[i].set(row, BaseField::from_u32_unchecked(0));
+                col_index += 1;
+            }
+
+            if row < 20 {
+                println!("Padding row {}: final_state = [0, 0, 0, ...]", row);
+            }
+        } else {
+            // Active row: compute Poseidon permutation normally
+            // 4 full rounds
+            (0..N_HALF_FULL_ROUNDS).for_each(|round| {
+                (0..N_STATE).for_each(|i| {
+                    state[i] += EXTERNAL_ROUND_CONSTS[round][i];
+                });
+                apply_external_round_matrix(&mut state);
+                state = std::array::from_fn(|i| pow5(state[i]));
+                state.iter().for_each(|&s| {
+                    trace[col_index].set(row, s);
+                    col_index += 1;
+                });
             });
-            apply_external_round_matrix(&mut state);
-            state = std::array::from_fn(|i| pow5(state[i]));
-            state.iter().for_each(|&s| {
-                trace[col_index].set(row, s);
+
+            // Partial rounds
+            (0..N_PARTIAL_ROUNDS).for_each(|round| {
+                state[0] += INTERNAL_ROUND_CONSTS[round];
+                apply_internal_round_matrix(&mut state);
+                state[0] = pow5(state[0]);
+                trace[col_index].set(row, state[0]);
                 col_index += 1;
             });
-        });
 
-        // Partial rounds
-        (0..N_PARTIAL_ROUNDS).for_each(|round| {
-            state[0] += INTERNAL_ROUND_CONSTS[round];
-            apply_internal_round_matrix(&mut state);
-            state[0] = pow5(state[0]);
-            trace[col_index].set(row, state[0]);
-            col_index += 1;
-        });
-
-        // 4 full rounds
-        (0..N_HALF_FULL_ROUNDS).for_each(|round| {
-            (0..N_STATE).for_each(|i| {
-                state[i] += EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i];
+            // 4 full rounds
+            (0..N_HALF_FULL_ROUNDS).for_each(|round| {
+                (0..N_STATE).for_each(|i| {
+                    state[i] += EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i];
+                });
+                apply_external_round_matrix(&mut state);
+                state = std::array::from_fn(|i| pow5(state[i]));
+                state.iter().for_each(|&s| {
+                    trace[col_index].set(row, s);
+                    col_index += 1;
+                });
             });
-            apply_external_round_matrix(&mut state);
-            state = std::array::from_fn(|i| pow5(state[i]));
-            state.iter().for_each(|&s| {
-                trace[col_index].set(row, s);
+
+            // Write final state columns (16 elements)
+            for i in 0..N_STATE {
+                trace[col_index].set(row, state[i]);
+                lookup_data.final_state[i].set(row, state[i]);
                 col_index += 1;
-            });
-        });
+            }
 
-        // Write final state columns (16 elements)
-        for i in 0..N_STATE {
-            trace[col_index].set(row, state[i]);
-            lookup_data.final_state[i].set(row, state[i]);
-            col_index += 1;
+            // Debug: Print final state
+            if row < 4 {
+                print!("After Poseidon permutation:\n  final_state (output): [");
+                for i in 0..N_STATE {
+                    print!("{}", state[i].0);
+                    if i < N_STATE - 1 {
+                        print!(", ");
+                    }
+                }
+                println!("]");
+                println!("  → This output will be used in next row!");
+            }
         }
 
         // Write multiplicity to LookupData only (not to trace!)
@@ -883,21 +928,10 @@ pub fn gen_trace(
         };
         lookup_data.multiplicity.set(row, is_active);
 
-        // Debug: Print final state
-        if row < 4 {
-            print!("After Poseidon permutation:\n  final_state (output): [");
-            for i in 0..N_STATE {
-                print!("{}", state[i].0);
-                if i < N_STATE - 1 {
-                    print!(", ");
-                }
-            }
-            println!("]");
-            println!("  → This output will be used in next row!");
+        // Store output for next row (only for active rows)
+        if !is_padding_row {
+            prev_output = Some(state);
         }
-
-        // Store output for next row
-        prev_output = Some(state);
     }
 
     if n_rows > 4 {
@@ -1013,9 +1047,8 @@ pub fn prove_poseidon(
     messages: Vec<[BaseField; RATE]>,
     config: PcsConfig,
 ) -> (PoseidonComponent, StarkProof<Blake2sMerkleHasher>) {
-    // Round n_real_messages up to SIMD boundary for consistency
-    // This is required because LogUp operates on SIMD packs (16 rows at a time)
-    let n_active_rounded = round_up_to_simd_lanes(n_real_messages);
+    // Use n_real_messages directly (no SIMD rounding)
+    let n_active = n_real_messages;
 
     // Precompute twiddles.
     let span = span!(Level::INFO, "Precompute twiddles").entered();
@@ -1035,7 +1068,7 @@ pub fn prove_poseidon(
     let span = span!(Level::INFO, "Constant").entered();
     let mut tree_builder = commitment_scheme.tree_builder();
     let is_first_col = gen_is_first_column(log_n_rows);
-    let is_active_col = gen_is_active_column(log_n_rows, n_active_rounded);
+    let is_active_col = gen_is_active_column(log_n_rows, n_active);
     let constant_trace = vec![is_first_col, is_active_col];
     tree_builder.extend_evals(constant_trace);
     tree_builder.commit(channel);
@@ -1043,7 +1076,7 @@ pub fn prove_poseidon(
 
     // Trace.
     let span = span!(Level::INFO, "Trace").entered();
-    let (trace, lookup_data) = gen_trace(log_n_rows, n_active_rounded, messages);
+    let (trace, lookup_data) = gen_trace(log_n_rows, n_active, messages);
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -1055,7 +1088,7 @@ pub fn prove_poseidon(
     // Interaction trace.
     let span = span!(Level::INFO, "Interaction").entered();
     let (trace, claimed_sum) =
-        gen_interaction_trace(log_n_rows, n_active_rounded, lookup_data, &lookup_elements);
+        gen_interaction_trace(log_n_rows, n_active, lookup_data, &lookup_elements);
     let mut tree_builder = commitment_scheme.tree_builder();
     tree_builder.extend_evals(trace);
     tree_builder.commit(channel);
@@ -1063,7 +1096,7 @@ pub fn prove_poseidon(
 
     // Prove constraints.
     let is_first_id = is_first_column_id(log_n_rows);
-    let is_active_id = is_active_column_id(log_n_rows, n_active_rounded);
+    let is_active_id = is_active_column_id(log_n_rows, n_active);
     let component = PoseidonComponent::new(
         &mut TraceLocationAllocator::default(),
         PoseidonEval {
@@ -1072,7 +1105,7 @@ pub fn prove_poseidon(
             claimed_sum,
             is_first_id,
             is_active_id,
-            n_active_rows: n_active_rounded,
+            n_active_rows: n_active,
         },
         claimed_sum,
     );
@@ -1097,11 +1130,10 @@ mod tests {
     use stwo::core::verifier::verify;
     use stwo_constraint_framework::assert_constraints_on_polys;
 
-    use crate::poseidon_uacias::{
+    use crate::poseidon_uacias_copy::{
         apply_internal_round_matrix, apply_m4, eval_poseidon_sponge_constraints,
         gen_interaction_trace, gen_is_active_column, gen_is_first_column, gen_trace,
-        is_active_column_id, is_first_column_id, prove_poseidon, round_up_to_simd_lanes,
-        PoseidonElements, RATE,
+        is_active_column_id, is_first_column_id, prove_poseidon, PoseidonElements, RATE,
     };
 
     #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
@@ -1410,11 +1442,10 @@ mod tests {
 
     /// Test with padding rows: only 16 active messages out of 256 total rows
     /// This demonstrates the efficiency gain from is_active column
-    /// Note: N_ACTIVE must be multiple of 16 (SIMD lane size) for LogUp consistency
     #[test]
     fn test_with_padding_rows() {
         const LOG_N_ROWS: u32 = 8; // 256 total rows
-        const N_ACTIVE: usize = 16; // Only 16 active messages (must be multiple of 16)
+        const N_ACTIVE: usize = 16; // Only 16 active messages
         const N_ROWS: usize = 1 << LOG_N_ROWS;
 
         let config = PcsConfig {
@@ -1464,11 +1495,10 @@ mod tests {
     }
 
     /// Test with constraints directly - verify padding isolation
-    /// Note: N_ACTIVE must be multiple of 16 (SIMD lane size) for LogUp consistency
     #[test]
     fn test_padding_constraints() {
         const LOG_N_ROWS: u32 = 8;
-        const N_ACTIVE: usize = 16; // Must be multiple of 16
+        const N_ACTIVE: usize = 16;
         const N_ROWS: usize = 1 << LOG_N_ROWS;
 
         // Generate only 16 messages
@@ -1516,28 +1546,27 @@ mod tests {
     }
 
     #[test]
-    fn test_poseidon_127_of_128() {
-        let log_n_rows = 7; // 128 rows
-        let n_real_messages = 127; // 127 active messages, 1 padding row
+    fn test_poseidon_63_of_64_config1() {
+        let log_n_rows = 6; // 64 rows (2^6)
+        let n_real_messages = 63; // 63 active messages, 1 padding row
+
+        // Config 1: FriConfig::new(log_last_layer, log_blowup, n_queries)
+        // Reduce log_last_layer_degree_bound from 5 to 3
         let config = PcsConfig {
             pow_bits: 10,
-            fri_config: FriConfig::new(5, 1, 64),
+            fri_config: FriConfig::new(3, 1, 64),
         };
 
-        // Generate 127 messages
+        // Generate 63 messages
         let messages: Vec<[BaseField; RATE]> = (0..n_real_messages)
             .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
             .collect();
 
         println!(
-            "Testing {} messages in {}-row table (1 padding row)",
+            "Testing {} messages in {}-row table ({} padding rows)",
             n_real_messages,
-            1 << log_n_rows
-        );
-        println!(
-            "Note: {} will be rounded to {} for SIMD alignment",
-            n_real_messages,
-            round_up_to_simd_lanes(n_real_messages)
+            1 << log_n_rows,
+            (1 << log_n_rows) - n_real_messages
         );
 
         // Prove
@@ -1562,7 +1591,276 @@ mod tests {
 
         verify(&[&component], channel, commitment_scheme, proof).unwrap();
         println!(
-            "✅ Test passed: 127 messages (rounded to 128) - no padding rows due to SIMD alignment"
+            "✅ Test passed: {} messages with {} padding row(s)! [Config: log_last_layer={}, log_blowup={}]",
+            n_real_messages,
+            (1 << log_n_rows) - n_real_messages,
+            3, 1
+        );
+    }
+
+    #[test]
+    fn test_poseidon_63_of_64_config2() {
+        let log_n_rows = 6; // 64 rows (2^6)
+        let n_real_messages = 63;
+
+        // Config 2: Increase log_blowup_factor from 1 to 3
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 3, 64),
+        };
+
+        let messages: Vec<[BaseField; RATE]> = (0..n_real_messages)
+            .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
+            .collect();
+
+        println!(
+            "Testing {} messages in {}-row table ({} padding rows)",
+            n_real_messages,
+            1 << log_n_rows,
+            (1 << log_n_rows) - n_real_messages
+        );
+
+        let (component, proof) = prove_poseidon(log_n_rows, n_real_messages, messages, config);
+
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+        let sizes = component.trace_log_degree_bounds();
+
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+        println!(
+            "✅ Test passed: {} messages with {} padding row(s)! [Config: log_last_layer={}, log_blowup={}]",
+            n_real_messages,
+            (1 << log_n_rows) - n_real_messages,
+            5, 3
+        );
+    }
+
+    #[test]
+    fn test_poseidon_63_of_64_config3() {
+        let log_n_rows = 6; // 64 rows (2^6)
+        let n_real_messages = 63;
+
+        // Config 3: Both smaller - log_last_layer=2, log_blowup=2
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(2, 2, 64),
+        };
+
+        let messages: Vec<[BaseField; RATE]> = (0..n_real_messages)
+            .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
+            .collect();
+
+        println!(
+            "Testing {} messages in {}-row table ({} padding rows)",
+            n_real_messages,
+            1 << log_n_rows,
+            (1 << log_n_rows) - n_real_messages
+        );
+
+        let (component, proof) = prove_poseidon(log_n_rows, n_real_messages, messages, config);
+
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+        let sizes = component.trace_log_degree_bounds();
+
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+        println!(
+            "✅ Test passed: {} messages with {} padding row(s)! [Config: log_last_layer={}, log_blowup={}]",
+            n_real_messages,
+            (1 << log_n_rows) - n_real_messages,
+            2, 2
+        );
+    }
+
+    #[test]
+    fn test_poseidon_127_of_128() {
+        let log_n_rows = 7; // 128 rows (2^7)
+        let n_real_messages = 127; // 127 active messages, 1 padding row
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 1, 64),
+        };
+
+        // Generate 127 messages
+        let messages: Vec<[BaseField; RATE]> = (0..n_real_messages)
+            .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
+            .collect();
+
+        println!(
+            "Testing {} messages in {}-row table ({} padding rows)",
+            n_real_messages,
+            1 << log_n_rows,
+            (1 << log_n_rows) - n_real_messages
+        );
+
+        // Prove
+        let (component, proof) = prove_poseidon(log_n_rows, n_real_messages, messages, config);
+
+        // Verify
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+
+        let sizes = component.trace_log_degree_bounds();
+
+        // Preprocessed columns (is_first, is_active)
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        // Trace columns
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        // Draw lookup elements (must match what prover drew!)
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        // Interaction columns
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+        println!(
+            "✅ Test passed: {} messages with {} padding row(s)!",
+            n_real_messages,
+            (1 << log_n_rows) - n_real_messages
+        );
+    }
+    #[test]
+    fn test_poseidon_15_of_16_config3() {
+        let log_n_rows = 4; // 16 rows (2^4)
+        let n_real_messages = 15;
+
+        // Config 3
+        let config = PcsConfig::default();
+
+        let messages: Vec<[BaseField; RATE]> = (0..n_real_messages)
+            .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
+            .collect();
+
+        println!(
+            "Testing {} messages in {}-row table ({} padding rows)",
+            n_real_messages,
+            1 << log_n_rows,
+            (1 << log_n_rows) - n_real_messages
+        );
+
+        let (component, proof) = prove_poseidon(log_n_rows, n_real_messages, messages, config);
+
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+        let sizes = component.trace_log_degree_bounds();
+
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+        println!(
+            "✅ Test passed: {} messages with {} padding row(s)! [Config: log_last_layer={}, log_blowup={}]",
+            n_real_messages,
+            (1 << log_n_rows) - n_real_messages,
+            2, 2
+        );
+    }
+
+    #[test]
+    fn test_poseidon_32760_of_32768_config3() {
+        let log_n_rows = 15; // 16 rows (2^4)
+        let n_real_messages = 32760;
+
+        let config = PcsConfig::default();
+
+        let messages: Vec<[BaseField; RATE]> = (0..n_real_messages)
+            .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
+            .collect();
+
+        println!(
+            "Testing {} messages in {}-row table ({} padding rows)",
+            n_real_messages,
+            1 << log_n_rows,
+            (1 << log_n_rows) - n_real_messages
+        );
+
+        let (component, proof) = prove_poseidon(log_n_rows, n_real_messages, messages, config);
+
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+        let sizes = component.trace_log_degree_bounds();
+
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+        println!(
+            "✅ Test passed: {} messages with {} padding row(s)! [Config: log_last_layer={},
+        log_blowup={}]",
+            n_real_messages,
+            (1 << log_n_rows) - n_real_messages,
+            2,
+            2
+        );
+    }
+
+    #[test]
+    fn test_poseidon_4095_of_4096_config3() {
+        let log_n_rows = 12; // 16 rows (2^4)
+        let n_real_messages = 4095;
+
+        // Config 3
+        // let config = PcsConfig {
+        //     pow_bits: 10,
+        //     fri_config: FriConfig::new(1, 1, 64),
+        // };
+        let config = PcsConfig::default();
+
+        let messages: Vec<[BaseField; RATE]> = (0..n_real_messages)
+            .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
+            .collect();
+
+        println!(
+            "Testing {} messages in {}-row table ({} padding rows)",
+            n_real_messages,
+            1 << log_n_rows,
+            (1 << log_n_rows) - n_real_messages
+        );
+
+        let (component, proof) = prove_poseidon(log_n_rows, n_real_messages, messages, config);
+
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(proof.config);
+        let sizes = component.trace_log_degree_bounds();
+
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+        println!(
+            "✅ Test passed: {} messages with {} padding row(s)! [Config: log_last_layer={},
+        log_blowup={}]",
+            n_real_messages,
+            (1 << log_n_rows) - n_real_messages,
+            2,
+            2
         );
     }
 }
