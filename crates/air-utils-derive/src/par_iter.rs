@@ -69,7 +69,6 @@ fn generate_row_producer(
             type Item = #mut_chunk_name<#lifetime>;
             type IntoIter = #iter_mut_name<#lifetime>;
 
-            #[allow(invalid_value)]
             fn split_at(self, index: usize) -> (Self, Self) {
                 #(#split_at)*
                 (
