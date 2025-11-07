@@ -54,10 +54,20 @@ impl FrameworkEval for FibonacciComputingEval {
         eval.add_constraint(is_first.clone() * (a_curr.clone() - E::F::from(BaseField::from_u32_unchecked(self.initial_a))));
         eval.add_constraint(is_first.clone() * (b_curr.clone() - E::F::from(BaseField::from_u32_unchecked(self.initial_b))));
 
-        // Random dummy constraints (always equal 0)
-        eval.add_constraint(is_first.clone() * (E::F::one() - E::F::one()));
-        eval.add_constraint(is_first.clone() * (E::F::one() - E::F::one()));
-        eval.add_constraint(is_first.clone() * (E::F::one() - E::F::one()));
+        // Random dummy constraints (always equal 0 when is_active or not_first are 0)
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+        eval.add_constraint(is_active.clone() * not_first.clone() * (E::F::one() - E::F::one()));
+
 
         // LogUp: yield ONLY for target_element row
         eval.add_to_relation(RelationEntry::new(

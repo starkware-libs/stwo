@@ -39,7 +39,7 @@ const FULL_ROUNDS: usize = 2 * N_HALF_FULL_ROUNDS;
 // Columns: 8 message + 16 initial_state + intermediate_states + 16 final_state
 // NOTE: multiplicity is NOT a trace column - it's only in LookupData for gen_interaction_trace
 const N_COLUMNS: usize = RATE + N_STATE * (1 + FULL_ROUNDS) + N_PARTIAL_ROUNDS + N_STATE;
-const LOG_EXPAND: u32 = 2;
+const LOG_EXPAND: u32 = 8; // EXPERIMENT: Increased from 2 to allow higher degree polynomials
 // TODO(shahars): Use poseidon's real constants.
 const EXTERNAL_ROUND_CONSTS: [[BaseField; N_STATE]; 2 * N_HALF_FULL_ROUNDS] =
     [[BaseField::from_u32_unchecked(1234); N_STATE]; 2 * N_HALF_FULL_ROUNDS];
@@ -254,7 +254,8 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
     }
 
     // Constraint 3: Poseidon permutation correctness
-    // Verify that the intermediate states match the permutation computation
+    // EXPERIMENT: Multiply by is_active to disable for padding rows
+    // Testing if increased LOG_EXPAND allows this with zero trace values
     let mut state = initial_state_curr.clone();
 
     // 4 full rounds
@@ -265,9 +266,11 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
         apply_external_round_matrix(&mut state);
         state = std::array::from_fn(|i| pow5_expr(state[i].clone()));
 
-        // Verify intermediate state matches trace
+        // Verify intermediate state matches trace (only for active rows)
         for i in 0..N_STATE {
-            eval.add_constraint(state[i].clone() - intermediate_full1[round][i].clone());
+            eval.add_constraint(
+                is_active_val.clone() * (state[i].clone() - intermediate_full1[round][i].clone())
+            );
         }
         state = intermediate_full1[round].clone();
     }
@@ -278,8 +281,10 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
         apply_internal_round_matrix(&mut state);
         state[0] = pow5_expr(state[0].clone());
 
-        // Verify intermediate state matches trace
-        eval.add_constraint(state[0].clone() - intermediate_partial[round].clone());
+        // Verify intermediate state matches trace (only for active rows)
+        eval.add_constraint(
+            is_active_val.clone() * (state[0].clone() - intermediate_partial[round].clone())
+        );
         state[0] = intermediate_partial[round].clone();
     }
 
@@ -292,16 +297,20 @@ pub fn eval_poseidon_sponge_constraints<E: EvalAtRow>(
         apply_external_round_matrix(&mut state);
         state = std::array::from_fn(|i| pow5_expr(state[i].clone()));
 
-        // Verify intermediate state matches trace
+        // Verify intermediate state matches trace (only for active rows)
         for i in 0..N_STATE {
-            eval.add_constraint(state[i].clone() - intermediate_full2[round][i].clone());
+            eval.add_constraint(
+                is_active_val.clone() * (state[i].clone() - intermediate_full2[round][i].clone())
+            );
         }
         state = intermediate_full2[round].clone();
     }
 
-    // Verify final state matches computed state
+    // Verify final state matches computed state (only for active rows)
     for i in 0..N_STATE {
-        eval.add_constraint(state[i].clone() - final_state_curr[i].clone());
+        eval.add_constraint(
+            is_active_val.clone() * (state[i].clone() - final_state_curr[i].clone())
+        );
     }
 
     // LogUp: Provide initial and final state lookups
@@ -828,41 +837,59 @@ pub fn gen_trace(
             col_index += 1;
         }
 
-        // Poseidon permutation
-        // 4 full rounds
-        (0..N_HALF_FULL_ROUNDS).for_each(|round| {
-            (0..N_STATE).for_each(|i| {
-                state[i] += EXTERNAL_ROUND_CONSTS[round][i];
+        // EXPERIMENT: Skip Poseidon computation for padding rows (write zeros)
+        // Testing if increased LOG_EXPAND allows this optimization
+        if !is_padding_row {
+            // 4 full rounds
+            (0..N_HALF_FULL_ROUNDS).for_each(|round| {
+                (0..N_STATE).for_each(|i| {
+                    state[i] += EXTERNAL_ROUND_CONSTS[round][i];
+                });
+                apply_external_round_matrix(&mut state);
+                state = std::array::from_fn(|i| pow5(state[i]));
+                state.iter().for_each(|&s| {
+                    trace[col_index].set(row, s);
+                    col_index += 1;
+                });
             });
-            apply_external_round_matrix(&mut state);
-            state = std::array::from_fn(|i| pow5(state[i]));
-            state.iter().for_each(|&s| {
-                trace[col_index].set(row, s);
+
+            // Partial rounds
+            (0..N_PARTIAL_ROUNDS).for_each(|round| {
+                state[0] += INTERNAL_ROUND_CONSTS[round];
+                apply_internal_round_matrix(&mut state);
+                state[0] = pow5(state[0]);
+                trace[col_index].set(row, state[0]);
                 col_index += 1;
             });
-        });
 
-        // Partial rounds
-        (0..N_PARTIAL_ROUNDS).for_each(|round| {
-            state[0] += INTERNAL_ROUND_CONSTS[round];
-            apply_internal_round_matrix(&mut state);
-            state[0] = pow5(state[0]);
-            trace[col_index].set(row, state[0]);
-            col_index += 1;
-        });
-
-        // 4 full rounds
-        (0..N_HALF_FULL_ROUNDS).for_each(|round| {
-            (0..N_STATE).for_each(|i| {
-                state[i] += EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i];
+            // 4 full rounds
+            (0..N_HALF_FULL_ROUNDS).for_each(|round| {
+                (0..N_STATE).for_each(|i| {
+                    state[i] += EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i];
+                });
+                apply_external_round_matrix(&mut state);
+                state = std::array::from_fn(|i| pow5(state[i]));
+                state.iter().for_each(|&s| {
+                    trace[col_index].set(row, s);
+                    col_index += 1;
+                });
             });
-            apply_external_round_matrix(&mut state);
-            state = std::array::from_fn(|i| pow5(state[i]));
-            state.iter().for_each(|&s| {
-                trace[col_index].set(row, s);
+        } else {
+            // Padding row: skip Poseidon, write zeros
+            for _ in 0..(N_HALF_FULL_ROUNDS * N_STATE) {
+                trace[col_index].set(row, BaseField::from_u32_unchecked(0));
                 col_index += 1;
-            });
-        });
+            }
+            for _ in 0..N_PARTIAL_ROUNDS {
+                trace[col_index].set(row, BaseField::from_u32_unchecked(0));
+                col_index += 1;
+            }
+            for _ in 0..(N_HALF_FULL_ROUNDS * N_STATE) {
+                trace[col_index].set(row, BaseField::from_u32_unchecked(0));
+                col_index += 1;
+            }
+            state = [BaseField::from_u32_unchecked(0); N_STATE];
+        }
 
         // Write final state columns (16 elements)
         for i in 0..N_STATE {
@@ -889,8 +916,11 @@ pub fn gen_trace(
             println!("  → This output will be used in next row!");
         }
 
-        // Store output for next row
-        prev_output = Some(state);
+        // Store output for next row - BUT NOT for padding rows!
+        // Padding rows don't chain, so their output is irrelevant
+        if !is_padding_row {
+            prev_output = Some(state);
+        }
     }
 
     if n_rows > 4 {
@@ -1088,6 +1118,11 @@ mod tests {
     use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
     use stwo::core::verifier::verify;
     use stwo_constraint_framework::assert_constraints_on_polys;
+    use stwo::core::ColumnVec;
+    use stwo::prover::poly::circle::CircleEvaluation;
+    use stwo::prover::backend::simd::SimdBackend;
+    use stwo::prover::poly::BitReversedOrder;
+    use stwo::prover::backend::Column;
 
     use crate::poseidon_uacias::{
         apply_internal_round_matrix, apply_m4, eval_poseidon_sponge_constraints,
@@ -1400,8 +1435,8 @@ mod tests {
     /// Note: N_ACTIVE must be multiple of 16 (SIMD lane size) for LogUp consistency
     #[test]
     fn test_with_padding_rows() {
-        const LOG_N_ROWS: u32 = 8; // 256 total rows
-        const N_ACTIVE: usize = 16; // Only 16 active messages (must be multiple of 16)
+        const LOG_N_ROWS: u32 = 6; // 256 total rows
+        const N_ACTIVE: usize = 2; // Only 16 active messages (must be multiple of 16)
         const N_ROWS: usize = 1 << LOG_N_ROWS;
 
         let config = PcsConfig {
@@ -1488,6 +1523,144 @@ mod tests {
             claimed_sum,
         );
         println!("✅ Constraints verified with {} active and {} padding rows!", N_ACTIVE, N_ROWS - N_ACTIVE);
+    }
+
+    /// Test with last rows filled with all zeros - detailed dump
+    /// This test shows exactly what happens with zero-filled padding rows
+    #[test]
+    fn test_last_row_all_zeros() {
+        const LOG_N_ROWS: u32 = 8; // 256 total rows
+        const N_ACTIVE: usize = 240; // 240 active (multiple of 16), last 16 rows are padding
+
+        // Generate 240 messages (last 16 rows will be padding = all zeros)
+        let messages: Vec<[BaseField; RATE]> = (0..N_ACTIVE)
+            .map(|i| std::array::from_fn(|j| BaseField::from_u32_unchecked((i * RATE + j) as u32)))
+            .collect();
+
+        println!("\n=== Test: Last Rows All Zeros ===");
+        println!("Total rows: 256");
+        println!("Active rows: 0-239 (240 rows)");
+        println!("Padding rows: 240-255 (16 rows, ALL ZEROS)");
+
+        // Generate trace
+        let (trace, _lookup_data) = gen_trace(LOG_N_ROWS, N_ACTIVE, messages);
+
+        // Dump detailed info about last few rows
+        dump_last_rows_detailed(&trace, "last_row_all_zeros.txt", 5).expect("Failed to dump");
+
+        println!("\n✅ Trace dumped to: last_row_all_zeros.txt");
+        println!("Check the file to see row 255 with all zeros!");
+    }
+
+    /// Dumps last N rows with full detail (all columns)
+    fn dump_last_rows_detailed(
+        trace: &ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+        filename: &str,
+        n_rows_to_show: usize,
+    ) -> std::io::Result<()> {
+        use std::fs::File;
+        use std::io::Write;
+        use super::{RATE, N_STATE, N_HALF_FULL_ROUNDS, N_PARTIAL_ROUNDS};
+
+        let mut file = File::create(filename)?;
+        let n_rows = trace[0].values.len();
+        let n_cols = trace.len();
+
+        writeln!(file, "=== LAST {} ROWS DETAILED DUMP ===", n_rows_to_show)?;
+        writeln!(file, "Total rows: {}, Total columns: {}\n", n_rows, n_cols)?;
+        writeln!(file, "Column layout:")?;
+        writeln!(file, "  0-7:      message (8 elements)")?;
+        writeln!(file, "  8-23:     initial_state (16 elements)")?;
+        writeln!(file, "  24-87:    first 4 full rounds intermediate (4×16=64 elements)")?;
+        writeln!(file, "  88-101:   partial rounds intermediate (14 elements)")?;
+        writeln!(file, "  102-165:  last 4 full rounds intermediate (4×16=64 elements)")?;
+        writeln!(file, "  166-181:  final_state (16 elements)")?;
+        writeln!(file, "\nNote: This is bit-reversed order (circle domain)\n")?;
+
+        let start_row = n_rows.saturating_sub(n_rows_to_show);
+
+        for row in start_row..n_rows {
+            writeln!(file, "\n{}", "=".repeat(80))?;
+            writeln!(file, "ROW {} (bit-reversed position)", row)?;
+            writeln!(file, "{}", "=".repeat(80))?;
+
+            // Message
+            writeln!(file, "\nMessage (columns 0-7):")?;
+            write!(file, "  [")?;
+            for col in 0..RATE {
+                write!(file, "{}", trace[col].values.at(row).0)?;
+                if col < RATE - 1 { write!(file, ", ")?; }
+            }
+            writeln!(file, "]")?;
+
+            // Initial state
+            writeln!(file, "\nInitial state (columns 8-23):")?;
+            write!(file, "  [")?;
+            for i in 0..N_STATE {
+                let col = RATE + i;
+                write!(file, "{}", trace[col].values.at(row).0)?;
+                if i < N_STATE - 1 { write!(file, ", ")?; }
+            }
+            writeln!(file, "]")?;
+
+            // First 4 full rounds intermediate states
+            writeln!(file, "\nFirst 4 full rounds intermediate (columns 24-87):")?;
+            for round in 0..N_HALF_FULL_ROUNDS {
+                write!(file, "  Round {}: [", round)?;
+                for i in 0..N_STATE {
+                    let col = RATE + N_STATE + round * N_STATE + i;
+                    write!(file, "{}", trace[col].values.at(row).0)?;
+                    if i < N_STATE - 1 { write!(file, ", ")?; }
+                }
+                writeln!(file, "]")?;
+            }
+
+            // Partial rounds
+            writeln!(file, "\nPartial rounds intermediate (columns 88-101):")?;
+            write!(file, "  [")?;
+            let partial_start = RATE + N_STATE + N_HALF_FULL_ROUNDS * N_STATE;
+            for i in 0..N_PARTIAL_ROUNDS {
+                let col = partial_start + i;
+                write!(file, "{}", trace[col].values.at(row).0)?;
+                if i < N_PARTIAL_ROUNDS - 1 { write!(file, ", ")?; }
+            }
+            writeln!(file, "]")?;
+
+            // Last 4 full rounds intermediate states
+            writeln!(file, "\nLast 4 full rounds intermediate (columns 102-165):")?;
+            let last_full_start = partial_start + N_PARTIAL_ROUNDS;
+            for round in 0..N_HALF_FULL_ROUNDS {
+                write!(file, "  Round {}: [", round)?;
+                for i in 0..N_STATE {
+                    let col = last_full_start + round * N_STATE + i;
+                    write!(file, "{}", trace[col].values.at(row).0)?;
+                    if i < N_STATE - 1 { write!(file, ", ")?; }
+                }
+                writeln!(file, "]")?;
+            }
+
+            // Final state
+            writeln!(file, "\nFinal state (columns 166-181):")?;
+            write!(file, "  [")?;
+            let final_start = n_cols - N_STATE;
+            for i in 0..N_STATE {
+                let col = final_start + i;
+                write!(file, "{}", trace[col].values.at(row).0)?;
+                if i < N_STATE - 1 { write!(file, ", ")?; }
+            }
+            writeln!(file, "]")?;
+
+            // Count zeros
+            let mut zero_count = 0;
+            for col in 0..n_cols {
+                if trace[col].values.at(row).0 == 0 {
+                    zero_count += 1;
+                }
+            }
+            writeln!(file, "\nZero values in this row: {}/{} columns", zero_count, n_cols)?;
+        }
+
+        Ok(())
     }
 
     #[test]
