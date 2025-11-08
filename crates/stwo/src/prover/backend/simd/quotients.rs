@@ -17,6 +17,7 @@ use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{column_line_coeffs, ColumnSampleBatch};
 use crate::core::poly::circle::CircleDomain;
 use crate::core::utils::bit_reverse;
+use crate::prover::backend::simd::circle::evaluate_in_place;
 use crate::prover::backend::simd::column::SecureColumnByCoordsMutSlice;
 use crate::prover::backend::CpuBackend;
 use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
@@ -82,17 +83,19 @@ impl QuotientOps for SimdBackend {
         );
 
         // Extend the evaluation to the full domain.
-        // TODO(Ohad): Try to optimize out all these copies.
         for (ci, &c) in subdomain_shifts.iter().enumerate() {
             let subdomain = subdomain.shift(c);
-
+            let n_vecs = subdomain.size() >> LOG_N_LANES;
             let twiddles = SimdBackend::precompute_twiddles(subdomain.half_coset);
+
             #[allow(clippy::needless_range_loop)]
             for i in 0..SECURE_EXTENSION_DEGREE {
-                // Sanity check.
-                let eval = subeval_polys[i].evaluate_with_twiddles(subdomain, &twiddles);
-                extended_eval.columns[i].data[(ci * eval.data.len())..((ci + 1) * eval.data.len())]
-                    .copy_from_slice(&eval.data);
+                evaluate_in_place(
+                    &subeval_polys[i],
+                    &mut extended_eval.columns[i].data[(ci * n_vecs)..((ci + 1) * n_vecs)],
+                    subdomain,
+                    &twiddles,
+                );
             }
         }
         span.exit();
