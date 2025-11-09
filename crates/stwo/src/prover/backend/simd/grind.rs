@@ -146,7 +146,7 @@ pub mod poseidon252 {
             ]);
             #[cfg(not(feature = "parallel"))]
             let res = (0..)
-                .find_map(|hi| grind_poseidon(digest, hi, pow_bits))
+                .find_map(|hi| grind_poseidon(prefixed_digest, hi, pow_bits))
                 .expect("Grind failed to find a solution.");
 
             #[cfg(feature = "parallel")]
