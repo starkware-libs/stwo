@@ -1,6 +1,6 @@
 use std::array;
 use std::mem::transmute;
-use std::simd::{simd_swizzle, u32x16};
+use std::simd::u32x16;
 
 use bytemuck::cast_slice;
 use itertools::Itertools;
@@ -18,6 +18,7 @@ use crate::prover::backend::simd::blake2s::{
     compress_finalize, compress_unfinalized, transpose_msgs, untranspose_states,
     SIMD_LEAF_INITIAL_STATE, SIMD_NODE_INITIAL_STATE, ZEROS,
 };
+use crate::prover::backend::simd::utils::to_lifted_simd;
 use crate::prover::backend::{Col, Column};
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 
@@ -149,81 +150,6 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
         res
     }
 }
-
-/// A helper function to compute the lift of a column of PackedM31 values.
-///
-/// # Intro
-///
-/// Given a column C of log_size n, containing u32x16 values, the goal is to compute
-/// its "lifting" to log_size m (m >= n). Here, "lifting" means the following:
-///
-/// 1. Interpret column C as the vector of evaluations of a circle polynomial `p` on the canonical
-///    coset of log_size n, in bit reversed order.
-///
-/// 2. The lift of C to log_size m is, by definition, the vector of evaluations of the polynomial `p
-///    ∘ πᵐ⁻ⁿ` on the canonical coset of log_size m, in bit reversed order. Here `π` is the doubling
-///    map.
-///
-/// # Arguments
-///
-/// - `x`: the evaluation of the un-lifted polynomial that we wish to lift. Note: the function
-///   **assumes** that `x` is the evaluation (of the un-lifted polynomial) which is needed to
-///   compute the lifted polynomial at the `idx`-th point of the lifted domian.
-/// - `log_ratio`: the log ratio between the lifted domain and the base domain (in the above
-///   example, it's m - n).
-/// - `idx`: the index in the vector of lifted evaluations that we wish to compute.
-///
-/// # Returns
-///
-/// - A PackedM31 corresponding to the values of the lifted polynomial on the `idx`-th, ..., `idx +
-///   15`-th points of the lifted domain, where the order is the bit reversed order.
-fn to_lifted_simd(x: u32x16, log_ratio: u32, idx: usize) -> u32x16 {
-    let idx_mod_ratio = idx % (1 << log_ratio);
-    match log_ratio {
-        0 => x,
-        1 => match idx_mod_ratio % 2 {
-            0 => simd_swizzle!(x, LIFTING_SWIZZLES[0]),
-            1 => simd_swizzle!(x, LIFTING_SWIZZLES[1]),
-            _ => unreachable!(),
-        },
-        2 => match idx_mod_ratio % 4 {
-            0 => simd_swizzle!(x, LIFTING_SWIZZLES[2]),
-            1 => simd_swizzle!(x, LIFTING_SWIZZLES[3]),
-            2 => simd_swizzle!(x, LIFTING_SWIZZLES[4]),
-            3 => simd_swizzle!(x, LIFTING_SWIZZLES[5]),
-            _ => unreachable!(),
-        },
-        _ => match idx_mod_ratio >> (log_ratio - 3) {
-            0 => simd_swizzle!(x, LIFTING_SWIZZLES[6]),
-            1 => simd_swizzle!(x, LIFTING_SWIZZLES[7]),
-            2 => simd_swizzle!(x, LIFTING_SWIZZLES[8]),
-            3 => simd_swizzle!(x, LIFTING_SWIZZLES[9]),
-            4 => simd_swizzle!(x, LIFTING_SWIZZLES[10]),
-            5 => simd_swizzle!(x, LIFTING_SWIZZLES[11]),
-            6 => simd_swizzle!(x, LIFTING_SWIZZLES[12]),
-            7 => simd_swizzle!(x, LIFTING_SWIZZLES[13]),
-            _ => unreachable!(),
-        },
-    }
-}
-
-#[rustfmt::skip]
-const LIFTING_SWIZZLES: [[usize; 16]; 14] = [
-    [0, 1, 0, 1, 2, 3, 2, 3, 4, 5, 4, 5, 6, 7, 6, 7],
-    [8, 9, 8, 9, 10, 11, 10, 11, 12, 13, 12, 13, 14, 15, 14, 15],
-    [0, 1, 0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3],
-    [4, 5, 4, 5, 4, 5, 4, 5, 6, 7, 6, 7, 6, 7, 6, 7],
-    [8, 9, 8, 9, 8, 9, 8, 9, 10, 11, 10, 11, 10, 11, 10, 11],
-    [12, 13, 12, 13, 12, 13, 12, 13, 14, 15, 14, 15, 14, 15, 14, 15],
-    [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
-    [2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3],
-    [4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5],
-    [6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7],
-    [8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9],
-    [10, 11, 10, 11, 10, 11, 10, 11, 10, 11, 10, 11, 10, 11, 10, 11],
-    [12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13],
-    [14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15],
-];
 
 #[cfg(test)]
 mod tests {
