@@ -132,6 +132,10 @@ pub trait AccumulationOps: ColumnOps<BaseField> + Sized {
 
     /// Generates the first `n_powers` powers of `felt`.
     fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField>;
+    
+    /// Accumulates and lifts other into column:
+    ///   column = column + lift(other).
+    fn lift_and_accumulate(column: &mut SecureColumnByCoords<Self>, other: &SecureColumnByCoords<Self>);
 }
 
 /// A domain accumulator for polynomials of a single size.

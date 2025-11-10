@@ -22,6 +22,18 @@ impl AccumulationOps for CpuBackend {
             })
             .collect()
     }
+
+    fn lift_and_accumulate(
+        column: &mut SecureColumnByCoords<Self>,
+        other: &SecureColumnByCoords<Self>,
+    ) {
+        assert!(column.len() >= 2);
+        let log_ratio = column.len().ilog2() - other.len().ilog2();
+        for i in 0..column.len() {
+            let res_coeff = column.at(i) + other.at((i >> (log_ratio + 1) << 1) + (i & 1));
+            column.set(i, res_coeff);
+        }
+    }
 }
 
 #[cfg(test)]
