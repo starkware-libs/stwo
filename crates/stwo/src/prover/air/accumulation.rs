@@ -72,7 +72,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         (self.sub_accumulations.len() - 1) as u32
     }
 
-    /// Computes f(P) as coefficients.
+   /// Computes f(P) as coefficients.
     pub fn finalize(self) -> SecureCirclePoly<B> {
         assert_eq!(
             self.random_coeff_powers.len(),
@@ -86,42 +86,37 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             class = "ConstraintInterpolation"
         )
         .entered();
-        let mut cur_poly: Option<SecureCirclePoly<B>> = None;
+        let mut curr_eval: Option<SecureColumnByCoords<B>> = None;
         let twiddles = B::precompute_twiddles(
             CanonicCoset::new(self.log_size())
                 .circle_domain()
                 .half_coset,
         );
 
-        for (log_size, values) in self.sub_accumulations.into_iter().enumerate().skip(1) {
+        for values in self.sub_accumulations.into_iter().skip(1) {
             let Some(mut values) = values else {
                 continue;
             };
-            if let Some(prev_poly) = cur_poly {
-                let eval = SecureColumnByCoords {
-                    columns: prev_poly.0.map(|c| {
-                        c.evaluate_with_twiddles(
-                            CanonicCoset::new(log_size as u32).circle_domain(),
-                            &twiddles,
-                        )
-                        .values
-                    }),
-                };
-                B::accumulate(&mut values, &eval);
+
+            if let Some(prev_eval) = curr_eval {
+                B::lift_and_accumulate(&mut values, &prev_eval);
             }
-            cur_poly = Some(SecureCirclePoly(values.columns.map(|c| {
+            curr_eval = Some(values);
+        }
+
+        if let Some(eval) = curr_eval {
+            SecureCirclePoly(eval.columns.map(|c| {
                 CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
                     CanonicCoset::new(log_size as u32).circle_domain(),
                     c,
                 )
                 .interpolate_with_twiddles(&twiddles)
-            })));
-        }
-        cur_poly.unwrap_or_else(|| {
+            }))
+        } else {
             SecureCirclePoly(std::array::from_fn(|_| {
                 CirclePoly::new(Col::<B, BaseField>::zeros(1 << log_size))
             }))
-        })
+        }
     }
 }
 
@@ -168,11 +163,11 @@ mod tests {
     use crate::qm31;
 
     #[test]
-    fn test_domain_evaluation_accumulator() {
+    fn test_domain_evaluation_accumulator_lifted() {
         // Generate a vector of random sizes with a constant seed.
         let mut rng = SmallRng::seed_from_u64(0);
         const LOG_SIZE_MIN: u32 = 4;
-        const LOG_SIZE_BOUND: u32 = 10;
+        const LOG_SIZE_BOUND: u32 = 11;
         const MASK: u32 = P;
         let mut log_sizes = (0..100)
             .map(|_| rng.gen_range(LOG_SIZE_MIN..LOG_SIZE_BOUND))
@@ -193,7 +188,7 @@ mod tests {
         // Use accumulator.
         let mut accumulator = DomainEvaluationAccumulator::<CpuBackend>::new(
             alpha,
-            LOG_SIZE_BOUND,
+            LOG_SIZE_BOUND - 1,
             evaluations.len(),
         );
         let n_cols_per_size: [(u32, usize); (LOG_SIZE_BOUND - LOG_SIZE_MIN) as usize] =
@@ -235,13 +230,15 @@ mod tests {
         let point = CirclePoint::<SecureField>::get_point(98989892);
         let accumulator_res = accumulator_poly.eval_at_point(point);
 
-        // Use direct computation.
+        // Use direct computation: first interpolate the evaluations to obtain a polynomial, then 
+        // then evaluate its lift at `point`.
         let mut res = SecureField::default();
         for (log_size, values) in log_sizes.into_iter().zip(evaluations) {
             res = res * alpha
-                + CpuCircleEvaluation::new(CanonicCoset::new(log_size).circle_domain(), values)
+                + CpuCircleEvaluation::<BaseField, BitReversedOrder>::new(CanonicCoset::new(log_size).circle_domain(), values)
                     .interpolate()
-                    .eval_at_point(point);
+                    // The max log domain size is LOG_SIZE_BOUND - 1.
+                    .eval_at_point(point.repeated_double(LOG_SIZE_BOUND - 1 - log_size));
         }
 
         assert_eq!(accumulator_res, res);
