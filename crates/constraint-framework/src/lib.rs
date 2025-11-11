@@ -234,9 +234,9 @@ macro_rules! logup_proxy {
             // Instead of checking diff = num / denom, check diff = num / denom - cumsum_shift.
             // This makes (num / denom - cumsum_shift) have sum zero, which makes the constraint
             // uniform - apply on all rows.
-            let fixed_diff = diff + self.logup.cumsum_shift.clone();
+            let shifted_diff = diff + self.logup.cumsum_shift.clone();
 
-            self.add_constraint(fixed_diff * frac.denominator - frac.numerator);
+            self.add_constraint(shifted_diff * frac.denominator - frac.numerator);
 
             self.logup.is_finalized = true;
         }
