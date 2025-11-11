@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use itertools::Itertools;
+use itertools::{zip_eq, Itertools};
 use tracing::{span, Level};
 
 use crate::core::channel::{Channel, MerkleChannel};
@@ -119,10 +119,44 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     .collect_vec()
             });
         span.exit();
-        let sampled_values = samples
-            .as_cols_ref()
-            .map_cols(|x| x.iter().map(|o| o.value).collect());
-        channel.mix_felts(&sampled_values.clone().flatten_cols());
+        // let sampled_values = samples
+        //     .as_cols_ref()
+        //     .map_cols(|x| x.iter().map(|o| o.value).collect());
+        //  channel.mix_felts(&sampled_values.clone().flatten_cols());
+
+        let samples_by_size: TreeVec<_> = (self.polynomials().zip(sampled_points))
+            .map(|(polynomials, points)| {
+                let mut by_size = BTreeMap::new();
+
+                for (poly, points) in zip_eq(polynomials, points) {
+                    by_size
+                        .entry(poly.evals.domain.log_size())
+                        .or_insert_with(Vec::new)
+                        .push(
+                            points
+                                .iter()
+                                .map(|&point| PointSample {
+                                    point,
+                                    value: poly.eval_at_point(point, self.twiddles),
+                                })
+                                .collect_vec(),
+                        )
+                }
+
+                by_size
+            });
+
+        let sampled_values_by_trees = samples_by_size.map(|tree| {
+            tree.into_iter().rev()
+                .flat_map(|(_log_size, samples)| {
+                    samples
+                        .into_iter()
+                        .map(|x| x.iter().map(|y| y.value).collect_vec()).collect_vec()
+                }).collect_vec()
+                
+        });
+
+        channel.mix_felts(&sampled_values_by_trees.iter().flatten().flatten().cloned().collect_vec()[..]);
 
         // Compute oods quotients for boundary constraints on the sampled points.
         let columns = self.evaluations().flatten();
@@ -165,7 +199,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         ExtendedCommitmentSchemeProof {
             proof: CommitmentSchemeProof {
                 commitments: self.roots(),
-                sampled_values,
+                sampled_values: sampled_values_by_trees,
                 decommitments: TreeVec(decommitments),
                 queried_values: TreeVec(queried_values),
                 proof_of_work,
