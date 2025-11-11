@@ -1,3 +1,5 @@
+use num_traits::Zero;
+
 use super::{CircleEvaluation, PolyOps};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
@@ -67,6 +69,27 @@ impl<B: PolyOps> CircleCoefficients<B> {
     /// See the documentation in `[super::ops::split_at_mid]`
     pub fn split_at_mid(self) -> (Self, Self) {
         B::split_at_mid(self)
+    }
+
+    /// Reduces the polynomial to a minimal degree polynomial that evaluates to the same values.
+    pub fn reduce_degree(self) -> Self {
+        let coeffs = self.coeffs.clone();
+        let mut new_log_size = coeffs.len().ilog2();
+        while coeffs.at(1 << (new_log_size - 1)) == BaseField::zero() {
+            if new_log_size == 1
+                || (((1 << (new_log_size - 1))..(1 << new_log_size))
+                    .any(|i| coeffs.at(i) != BaseField::zero()))
+            {
+                break;
+            }
+            new_log_size -= 1;
+        }
+        Self {
+            log_size: new_log_size,
+            coeffs: Col::<B, BaseField>::from_iter(
+                coeffs.to_cpu()[..1 << new_log_size].iter().copied(),
+            ),
+        }
     }
 }
 
