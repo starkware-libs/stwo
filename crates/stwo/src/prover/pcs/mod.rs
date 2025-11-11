@@ -84,7 +84,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         Trace { polys, evals }
     }
 
-    pub fn prove_values(
+    pub fn prove_lifted_values(
         self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
         channel: &mut MC::C,
@@ -96,15 +96,17 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             class = "EvaluateOutOfDomain"
         )
         .entered();
+        let max_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
             .map_cols(|(poly, points)| {
+                let domain_log_size = poly.log_size() as u32;
                 points
                     .iter()
                     .map(|&point| PointSample {
                         point,
-                        value: poly.eval_at_point(point),
+                        value: poly.eval_at_point(point.repeated_double(max_log_size - domain_log_size)),
                     })
                     .collect_vec()
             });

@@ -81,7 +81,7 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
 
     // Prove the trace and composition OODS values, and retrieve them.
-    let commitment_scheme_proof = commitment_scheme.prove_values(sample_points, channel);
+    let commitment_scheme_proof = commitment_scheme.prove_lifted_values(sample_points, channel);
     let proof = StarkProof(commitment_scheme_proof.proof);
     info!(proof_size_estimate = proof.size_estimate());
 
