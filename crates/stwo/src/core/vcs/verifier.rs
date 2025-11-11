@@ -153,10 +153,12 @@ impl<H: MerkleHasher> MerkleVerifier<H> {
                         &mut queried_values,
                     ),
                     // Otherwise, read them from the witness.
-                    None => (
+                    None =>{
+                        println!("Reading column values from witness for node {}", node_index);
+                         ( 
                         MerkleVerificationError::WitnessTooShort,
                         &mut column_witness,
-                    ),
+                    )},
                 };
 
                 let node_values = node_values_iter.take(n_columns_in_layer).collect_vec();
