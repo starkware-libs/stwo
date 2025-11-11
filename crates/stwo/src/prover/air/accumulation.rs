@@ -72,7 +72,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         (self.sub_accumulations.len() - 1) as u32
     }
 
-   /// Computes f(P) as coefficients.
+    /// Computes f(P) as coefficients.
     pub fn finalize(self) -> SecureCirclePoly<B> {
         assert_eq!(
             self.random_coeff_powers.len(),
@@ -158,7 +158,7 @@ mod tests {
 
     use super::*;
     use crate::core::circle::CirclePoint;
-    use crate::core::fields::m31::{M31, P};
+    use crate::core::fields::m31::M31;
     use crate::prover::backend::cpu::CpuCircleEvaluation;
     use crate::qm31;
 
@@ -168,7 +168,6 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0);
         const LOG_SIZE_MIN: u32 = 4;
         const LOG_SIZE_BOUND: u32 = 11;
-        const MASK: u32 = P;
         let mut log_sizes = (0..100)
             .map(|_| rng.gen_range(LOG_SIZE_MIN..LOG_SIZE_BOUND))
             .collect::<Vec<_>>();
@@ -179,7 +178,7 @@ mod tests {
             .iter()
             .map(|log_size| {
                 (0..(1 << *log_size))
-                    .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() & MASK))
+                    .map(|_| M31::from(rng.gen::<u32>()))
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
@@ -230,15 +229,18 @@ mod tests {
         let point = CirclePoint::<SecureField>::get_point(98989892);
         let accumulator_res = accumulator_poly.eval_at_point(point);
 
-        // Use direct computation: first interpolate the evaluations to obtain a polynomial, then 
+        // Use direct computation: first interpolate the evaluations to obtain a polynomial, then
         // then evaluate its lift at `point`.
         let mut res = SecureField::default();
         for (log_size, values) in log_sizes.into_iter().zip(evaluations) {
             res = res * alpha
-                + CpuCircleEvaluation::<BaseField, BitReversedOrder>::new(CanonicCoset::new(log_size).circle_domain(), values)
-                    .interpolate()
-                    // The max log domain size is LOG_SIZE_BOUND - 1.
-                    .eval_at_point(point.repeated_double(LOG_SIZE_BOUND - 1 - log_size));
+                + CpuCircleEvaluation::<BaseField, BitReversedOrder>::new(
+                    CanonicCoset::new(log_size).circle_domain(),
+                    values,
+                )
+                .interpolate()
+                // The max log domain size is LOG_SIZE_BOUND - 1.
+                .eval_at_point(point.repeated_double(LOG_SIZE_BOUND - 1 - log_size));
         }
 
         assert_eq!(accumulator_res, res);

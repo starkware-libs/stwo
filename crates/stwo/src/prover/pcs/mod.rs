@@ -106,7 +106,8 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     .iter()
                     .map(|&point| PointSample {
                         point,
-                        value: poly.eval_at_point(point.repeated_double(max_log_size - domain_log_size)),
+                        value: poly
+                            .eval_at_point(point.repeated_double(max_log_size - domain_log_size)),
                     })
                     .collect_vec()
             });

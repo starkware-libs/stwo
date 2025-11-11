@@ -186,6 +186,40 @@ pub fn accumulate_row_quotients(
     row_accumulator
 }
 
+pub fn accumulate_row_numerators_b_c(
+    sample_batches: &[ColumnSampleBatch],
+    queried_values_at_row: &[BaseField],
+    quotient_constants: &QuotientConstants,
+    _domain_point: CirclePoint<BaseField>,
+) -> SecureField {
+    let mut row_accumulator = SecureField::zero();
+    for (sample_batch, line_coeffs) in izip!(sample_batches, &quotient_constants.line_coeffs,) {
+        let mut numerator = SecureField::zero();
+        for ((column_index, _), (_a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
+        {
+            // dbg!(a, b, c);
+            // dbg!(queried_values_at_row[*column_index]);
+            let value = queried_values_at_row[*column_index] * *c;
+            // The numerator is a line equation passing through
+            //   (sample_point.y, sample_value), (conj(sample_point), conj(sample_value))
+            // evaluated at (domain_point.y, value).
+            // When substituting a polynomial in this line equation, we get a polynomial with a root
+            // at sample_point and conj(sample_point) if the original polynomial had the values
+            // sample_value and conj(sample_value) at these points.
+
+            // Accumulate the `a` in another func.
+            // let linear_term = *a * domain_point.y + *b;
+            // let tmp = value - linear_term;
+            // dbg!(tmp);
+
+            numerator += value - *b;
+        }
+
+        row_accumulator += numerator;
+    }
+    row_accumulator
+}
+
 /// Precomputes the complex conjugate line coefficients for each column in each sample batch.
 ///
 /// For the `i`-th numerator term `alpha^i * (c * F(p) - (a * p.y + b))`,
@@ -195,8 +229,9 @@ pub fn accumulate_row_quotients(
 pub fn column_line_coeffs(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
+    start_coeff: SecureField,
 ) -> Vec<Vec<(SecureField, SecureField, SecureField)>> {
-    let mut alpha = SecureField::one();
+    let mut alpha = start_coeff;
     sample_batches
         .iter()
         .map(|sample_batch| {
@@ -217,7 +252,7 @@ pub fn column_line_coeffs(
         .collect()
 }
 
-fn denominator_inverses(
+pub fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain_point: CirclePoint<M31>,
 ) -> Vec<CM31> {
@@ -242,7 +277,17 @@ pub fn quotient_constants(
     random_coeff: SecureField,
 ) -> QuotientConstants {
     QuotientConstants {
-        line_coeffs: column_line_coeffs(sample_batches, random_coeff),
+        line_coeffs: column_line_coeffs(sample_batches, random_coeff, SecureField::one()),
+    }
+}
+
+pub fn quotient_constants_(
+    sample_batches: &[ColumnSampleBatch],
+    random_coeff: SecureField,
+    start_coeff: SecureField,
+) -> QuotientConstants {
+    QuotientConstants {
+        line_coeffs: column_line_coeffs(sample_batches, random_coeff, start_coeff),
     }
 }
 

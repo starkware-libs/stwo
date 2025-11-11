@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use itertools::{izip, zip_eq, Itertools};
-use num_traits::Zero;
+use num_traits::{One, Zero};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use tracing::{span, Level};
@@ -98,6 +100,19 @@ impl QuotientOps for SimdBackend {
         span.exit();
 
         SecureEvaluation::new(domain, extended_eval)
+    }
+
+    #[allow(unused_variables)]
+    fn accumulate_numerators(
+        domain: CircleDomain,
+        columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
+        random_coeff: SecureField,
+        start_coeff: SecureField,
+        sample_batches: &[ColumnSampleBatch],
+        log_blowup_factor: u32,
+        a_accumulation_dict: &mut HashMap<CirclePoint<SecureField>, SecureField>,
+    ) -> SecureEvaluation<Self, BitReversedOrder> {
+        unimplemented!()
     }
 }
 
@@ -315,7 +330,7 @@ fn quotient_constants(
         class = "FRIQuotientConstants"
     )
     .entered();
-    let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
+    let line_coeffs = column_line_coeffs(sample_batches, random_coeff, SecureField::one());
     let denominator_inverses = denominator_inverses(sample_batches, domain);
     QuotientConstants {
         line_coeffs,

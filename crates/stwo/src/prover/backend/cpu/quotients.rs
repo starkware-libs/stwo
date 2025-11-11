@@ -1,10 +1,16 @@
+use std::collections::HashMap;
+use std::iter::zip;
+
 use itertools::Itertools;
+use num_traits::Zero;
 
 use super::CpuBackend;
+use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{
-    accumulate_row_quotients, quotient_constants, ColumnSampleBatch,
+    accumulate_row_numerators_b_c, accumulate_row_quotients, quotient_constants,
+    quotient_constants_, ColumnSampleBatch,
 };
 use crate::core::poly::circle::CircleDomain;
 use crate::core::utils::bit_reverse_index;
@@ -35,6 +41,42 @@ impl QuotientOps for CpuBackend {
             );
             values.set(row, row_value);
         }
+        SecureEvaluation::new(domain, values)
+    }
+
+    /// Receives a slice of evaluations, all of the same size.
+    /// This also needs to return the accumulated a's.
+    fn accumulate_numerators(
+        domain: CircleDomain,
+        columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
+        random_coeff: SecureField,
+        start_coeff: SecureField,
+        sample_batches: &[ColumnSampleBatch],
+        _log_blowup_factor: u32,
+        a_accumulation_dict: &mut HashMap<CirclePoint<SecureField>, SecureField>,
+    ) -> SecureEvaluation<Self, BitReversedOrder> {
+        let mut values = unsafe { SecureColumnByCoords::uninitialized(domain.size()) };
+        let quotient_constants = quotient_constants_(sample_batches, random_coeff, start_coeff);
+
+        for row in 0..domain.size() {
+            let domain_point = domain.at(bit_reverse_index(row, domain.log_size()));
+            let query_values_at_row = columns.iter().map(|col| col[row]).collect_vec();
+            let row_value = accumulate_row_numerators_b_c(
+                sample_batches,
+                &query_values_at_row,
+                &quotient_constants,
+                domain_point,
+            );
+            values.set(row, row_value);
+        }
+        // Compute the a accumulation.
+        for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
+            let val = a_accumulation_dict.entry(batch.point).or_default();
+            *val += coeffs
+                .iter()
+                .fold(SecureField::zero(), |acc, (a, ..)| acc + *a);
+        }
+
         SecureEvaluation::new(domain, values)
     }
 }

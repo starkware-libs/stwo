@@ -70,12 +70,13 @@ mod tests {
     use itertools::Itertools;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
+
     use crate::core::fields::m31::M31;
     use crate::prover::backend::cpu::CpuBackend;
-    use crate::prover::backend::simd::SimdBackend;
-    use crate::prover::AccumulationOps;
     use crate::prover::backend::simd::column::BaseColumn;
+    use crate::prover::backend::simd::SimdBackend;
     use crate::prover::secure_column::SecureColumnByCoords;
+    use crate::prover::AccumulationOps;
     use crate::qm31;
 
     #[test]
@@ -93,34 +94,45 @@ mod tests {
         });
     }
 
-
     #[test]
     fn test_lift_accumulate_simd() {
         const LOG_SIZE_SHORT: u32 = 6;
         const LOG_SIZE_LONG: u32 = 10;
         let mut rng = SmallRng::seed_from_u64(0);
-        let col_short = (0..1 << LOG_SIZE_SHORT).map(|_| M31::from(rng.gen::<u32>())).collect_vec();  
-        let col_long = (0..1 << LOG_SIZE_LONG).map(|_| M31::from(rng.gen::<u32>())).collect_vec();  
+        let col_short = (0..1 << LOG_SIZE_SHORT)
+            .map(|_| M31::from(rng.gen::<u32>()))
+            .collect_vec();
+        let col_long = (0..1 << LOG_SIZE_LONG)
+            .map(|_| M31::from(rng.gen::<u32>()))
+            .collect_vec();
 
         let secure_col_short = SecureColumnByCoords {
-            columns: std::array::from_fn(|_| col_short.clone())
+            columns: std::array::from_fn(|_| col_short.clone()),
         };
         let mut secure_col_long = SecureColumnByCoords {
-            columns: std::array::from_fn(|_| col_long.clone())
+            columns: std::array::from_fn(|_| col_long.clone()),
         };
-        <CpuBackend as AccumulationOps>::lift_and_accumulate(&mut secure_col_long, &secure_col_short);
+        <CpuBackend as AccumulationOps>::lift_and_accumulate(
+            &mut secure_col_long,
+            &secure_col_short,
+        );
 
         let secure_col_short_simd = SecureColumnByCoords::<SimdBackend> {
-            columns: std::array::from_fn(|_| BaseColumn::from_cpu(col_short.clone()))
+            columns: std::array::from_fn(|_| BaseColumn::from_cpu(col_short.clone())),
         };
-        
+
         let mut secure_col_long_simd = SecureColumnByCoords::<SimdBackend> {
-            columns: std::array::from_fn(|_| BaseColumn::from_cpu(col_long.clone()))
+            columns: std::array::from_fn(|_| BaseColumn::from_cpu(col_long.clone())),
         };
 
-        <SimdBackend as AccumulationOps>::lift_and_accumulate(&mut secure_col_long_simd, &secure_col_short_simd);
+        <SimdBackend as AccumulationOps>::lift_and_accumulate(
+            &mut secure_col_long_simd,
+            &secure_col_short_simd,
+        );
 
-
-        assert_eq!(secure_col_long.columns, secure_col_long_simd.to_cpu().columns);
+        assert_eq!(
+            secure_col_long.columns,
+            secure_col_long_simd.to_cpu().columns
+        );
     }
 }
