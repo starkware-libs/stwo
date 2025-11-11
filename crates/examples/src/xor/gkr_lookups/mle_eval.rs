@@ -199,7 +199,10 @@ impl<O: MleCoeffColumnOracle> ComponentProver<SimdBackend> for MleEvalProverComp
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.log_size());
 
-        let mut component_trace = trace.evals.sub_tree(&self.trace_locations).map_cols(|c| *c);
+        let mut component_trace = trace
+            .polys
+            .sub_tree(&self.trace_locations)
+            .map_cols(|c| &c.evals);
 
         // Build auxiliary trace.
         let span = span!(Level::INFO, "Extension").entered();

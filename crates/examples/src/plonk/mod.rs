@@ -189,6 +189,7 @@ pub fn prove_fibonacci_plonk(
     let channel = &mut Blake2sChannel::default();
     let mut commitment_scheme =
         CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+    commitment_scheme.set_store_polynomials_coefficients();
 
     // Preprocessed trace.
     let span = span!(Level::INFO, "Constant").entered();
@@ -244,10 +245,12 @@ pub fn prove_fibonacci_plonk(
     );
 
     // Sanity check. Remove for production.
-    let trace_polys = commitment_scheme
-        .trees
-        .as_ref()
-        .map(|t| t.polynomials.iter().cloned().collect_vec());
+    let trace_polys = commitment_scheme.trees.as_ref().map(|t| {
+        t.polynomials
+            .iter()
+            .map(|p| p.coeffs.clone().unwrap())
+            .collect_vec()
+    });
     let component_eval = component.clone();
     assert_constraints_on_polys(
         &trace_polys,

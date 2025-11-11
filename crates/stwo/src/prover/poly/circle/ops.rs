@@ -6,6 +6,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::ColumnVec;
+use crate::prover::air::component_prover::Poly;
 use crate::prover::backend::ColumnOps;
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
@@ -58,17 +59,22 @@ pub trait PolyOps: ColumnOps<BaseField> + Sized {
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder>;
 
     fn evaluate_polynomials(
-        polynomials: &ColumnVec<CirclePoly<Self>>,
+        polynomials: ColumnVec<CirclePoly<Self>>,
         log_blowup_factor: u32,
         twiddles: &TwiddleTree<Self>,
-    ) -> Vec<CircleEvaluation<Self, BaseField, BitReversedOrder>> {
+        store_polynomials_coefficients: bool,
+    ) -> Vec<Poly<Self>>
+    where
+        Self: crate::prover::backend::Backend,
+    {
         polynomials
-            .iter()
-            .map(|poly| {
-                poly.evaluate_with_twiddles(
-                    CanonicCoset::new(poly.log_size() + log_blowup_factor).circle_domain(),
+            .into_iter()
+            .map(|poly_coeffs| {
+                let evals = poly_coeffs.evaluate_with_twiddles(
+                    CanonicCoset::new(poly_coeffs.log_size() + log_blowup_factor).circle_domain(),
                     twiddles,
-                )
+                );
+                Poly::new(store_polynomials_coefficients.then_some(poly_coeffs), evals)
             })
             .collect_vec()
     }

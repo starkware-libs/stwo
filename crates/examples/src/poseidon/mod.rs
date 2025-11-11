@@ -349,6 +349,7 @@ pub fn prove_poseidon(
     let channel = &mut Blake2sChannel::default();
     let mut commitment_scheme =
         CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+    commitment_scheme.set_store_polynomials_coefficients();
 
     // Preprocessed trace.
     let span = span!(Level::INFO, "Constant").entered();
