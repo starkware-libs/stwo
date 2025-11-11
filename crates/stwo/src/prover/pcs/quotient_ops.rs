@@ -1,6 +1,4 @@
-#![allow(warnings)]
-use core::cmp::Reverse;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::iter::zip;
 
 use itertools::Itertools;
@@ -13,11 +11,8 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
-use crate::core::utils::bit_reverse_index;
-use crate::prover::backend::{Backend, Col, ColumnOps, CpuBackend};
 use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::prover::poly::BitReversedOrder;
-use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::AccumulationOps;
 
 pub trait QuotientOps: PolyOps {
@@ -44,6 +39,12 @@ pub trait QuotientOps: PolyOps {
         log_blowup_factor: u32,
         a_accumulation_dict: &mut HashMap<CirclePoint<SecureField>, SecureField>,
     ) -> SecureEvaluation<Self, BitReversedOrder>;
+
+    fn accumulate_denominators(
+        numerators: &mut SecureEvaluation<Self, BitReversedOrder>,
+        log_blowup_factor: u32,
+        a_accumulation_dict: &HashMap<CirclePoint<SecureField>, SecureField>,
+    );
 }
 
 #[allow(dead_code, unused_variables)]
@@ -54,69 +55,32 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     log_blowup_factor: u32,
 ) -> Vec<SecureEvaluation<B, BitReversedOrder>> {
     let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
-    let mut a_accumulation_dict = HashMap::<CirclePoint<SecureField>, SecureField>::default();
-    let mut start_coeff = SecureField::one();
-    let unlifted = zip(columns, samples)
-        .sorted_by_key(|(c, _)| c.domain.log_size())
-        .group_by(|(c, _)| c.domain.log_size())
-        .into_iter()
-        .map(|(log_size, tuples)| {
-            let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
-            let domain = CanonicCoset::new(log_size).circle_domain();
-            // TODO: slice.
-            let sample_batches = ColumnSampleBatch::new_vec(&samples);
-            B::accumulate_numerators(
-                domain,
-                &columns,
-                random_coeff,
-                start_coeff,
-                &sample_batches,
-                log_blowup_factor,
-                &mut a_accumulation_dict,
-            )
-        })
-        .collect_vec();
-
-    let mut curr_eval: Option<SecureEvaluation<B, BitReversedOrder>> = None;
-    for mut col in unlifted.into_iter() {
-        if let Some(prev_eval) = curr_eval {
-            B::lift_and_accumulate(&mut col, &prev_eval);
-        }
-        curr_eval = Some(col);
-    }
-
-    // TODO(Leo): to modify. This assumes that there is only one OOD point.
-    assert_eq!(a_accumulation_dict.keys().len(), 1);
-    let (point, acc) = a_accumulation_dict.iter().next().unwrap();
-
-    let mut curr_eval = curr_eval.unwrap();
-    let max_log_size = curr_eval.len().ilog2();
-    let domain = CanonicCoset::new(max_log_size).circle_domain();
-    let bitrev_y_coords = (0..curr_eval.len())
-        .map(|i| *acc * domain.at(bit_reverse_index(i, max_log_size)).y)
-        .collect_vec();
-
     unimplemented!()
-    // TODO(Leo): compute denoms and divide
-    // vec![curr_eval]
 }
 
-#[allow(dead_code, unused_variables)]
 pub fn _compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     columns: &[&CircleEvaluation<B, BaseField, BitReversedOrder>],
     samples: &[Vec<PointSample>],
     random_coeff: SecureField,
     log_blowup_factor: u32,
-) -> Vec<SecureEvaluation<CpuBackend, BitReversedOrder>> {
+) -> SecureEvaluation<B, BitReversedOrder> {
     let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
+    // TODO(Leo): support multiple sample points.
+    let mut sample_points = HashSet::new();
+    samples.iter().flatten().for_each(|v| {
+        sample_points.insert(v.point);
+    });
+    assert_eq!(sample_points.len(), 1);
+
     let mut a_accumulation_dict = HashMap::<CirclePoint<SecureField>, SecureField>::default();
     let mut start_coeff = SecureField::one();
+
+    // Accumulate the numerators, for each domain log size.
     let unlifted = zip(columns, samples)
         .sorted_by_key(|(c, _)| c.domain.log_size())
         .group_by(|(c, _)| c.domain.log_size())
         .into_iter()
         .map(|(log_size, tuples)| {
-            dbg!(start_coeff);
             let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
             let domain = CanonicCoset::new(log_size).circle_domain();
             // TODO: slice.
@@ -137,6 +101,7 @@ pub fn _compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         })
         .collect_vec();
 
+    // Lift the numerators.
     let mut curr_eval: Option<SecureEvaluation<B, BitReversedOrder>> = None;
     for mut col in unlifted.into_iter() {
         if let Some(prev_eval) = curr_eval {
@@ -144,31 +109,22 @@ pub fn _compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         }
         curr_eval = Some(col);
     }
+    let mut curr_eval = curr_eval.unwrap();
 
-    // TODO(Leo): to modify. This assumes that there is only one OOD point.
-    assert_eq!(a_accumulation_dict.keys().len(), 1);
-    let (point, acc) = a_accumulation_dict.iter().next().unwrap();
-
-    let mut curr_eval = curr_eval.unwrap().to_cpu();
-    let max_log_size = curr_eval.len().ilog2();
-    let domain = CanonicCoset::new(max_log_size).circle_domain();
-    let bitrev_y_coords = SecureColumnByCoords::from_iter(
-        (0..curr_eval.len()).map(|i| -*acc * domain.at(bit_reverse_index(i, max_log_size)).y),
-    );
-    CpuBackend::accumulate(&mut curr_eval.values, &bitrev_y_coords);
-    // TODO(Leo): compute denoms and divide
-    vec![curr_eval]
+    // Deal with the denominators.
+    B::accumulate_denominators(&mut curr_eval, log_blowup_factor, &a_accumulation_dict);
+    curr_eval
 }
 
 #[cfg(test)]
 mod tests {
+
     use itertools::Itertools;
     use num_traits::{One, Zero};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use crate::core::circle::{CirclePoint, SECURE_FIELD_CIRCLE_GEN};
-    use crate::core::fields::cm31::CM31;
     use crate::core::fields::m31::M31;
     use crate::core::fields::qm31::{SecureField, QM31};
     use crate::core::pcs::quotients::{
@@ -178,18 +134,18 @@ mod tests {
     use crate::core::utils::bit_reverse_index;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::CpuBackend;
-    use crate::prover::pcs::quotient_ops::{_compute_fri_quotients, compute_fri_quotients};
+    use crate::prover::pcs::quotient_ops::{_compute_fri_quotients};
     use crate::prover::poly::circle::SecureEvaluation;
     use crate::prover::poly::BitReversedOrder;
     use crate::prover::secure_column::SecureColumnByCoords;
     use crate::{m31, qm31};
 
-    #[allow(unused_variables, dead_code)]
     #[test]
     fn test_quotients_are_correct() {
         let mut rng = SmallRng::seed_from_u64(0);
-        const LOG_SIZE_SHORT: u32 = 2;
-        const LOG_SIZE_LONG: u32 = 3;
+
+        const LOG_SIZE_SHORT: u32 = 5;
+        const LOG_SIZE_LONG: u32 = 8;
         const LOG_BLOWUP_FACTOR: u32 = 1;
 
         let log_sizes: Vec<u32> = vec![LOG_SIZE_SHORT, LOG_SIZE_LONG];
@@ -211,9 +167,12 @@ mod tests {
                 p.evaluate(CanonicCoset::new(p.log_size() + LOG_BLOWUP_FACTOR).circle_domain())
             })
             .collect_vec();
-        let alpha = qm31!(2, 0, 1, 0);
+
+        let alpha = qm31!(2, 15, 1, 94);
+        // Draw a sample point.
         let z = CirclePoint::<SecureField>::get_point(98989892);
         let max_log_size = log_sizes.last().unwrap() + LOG_BLOWUP_FACTOR;
+        // TODO(Leo): test multiple sample points when supported.
         let lifted_samples = polys
             .iter()
             .zip(&evals)
@@ -224,15 +183,14 @@ mod tests {
             .collect_vec();
 
         let mut expected: Vec<SecureField> = vec![QM31::zero(); 1 << max_log_size as usize];
-        let max_domain = CanonicCoset::new(max_log_size).circle_domain();
+        let domain = CanonicCoset::new(max_log_size).circle_domain();
 
-        // Only test samples at a single OOD point.
         let sample_batches = ColumnSampleBatch::new_vec(&lifted_samples.iter().collect_vec());
         assert_eq!(sample_batches.len(), 1);
 
         // Compute the quotients in the most naive way possible.
         for (idx, val) in expected.iter_mut().enumerate() {
-            let domain_point = max_domain.at(bit_reverse_index(idx, max_log_size));
+            let domain_point = domain.at(bit_reverse_index(idx, max_log_size));
             let line_coeffs = &column_line_coeffs(&sample_batches, alpha, SecureField::one())[0];
 
             // First poly.
@@ -244,8 +202,7 @@ mod tests {
                     .into_ef(),
             ) - b
                 - a * domain_point.y;
-            let den_inv = denominator_inverses(&sample_batches, domain_point)[0];
-            let quotient0 = num.mul_cm31(CM31::one()); // TODO(Leo): put correct den
+            let num0 = num;
 
             // Second poly.
             let (a, b, c) = line_coeffs[1];
@@ -253,14 +210,16 @@ mod tests {
             let num = c * poly.eval_at_point(domain_point.repeated_double(0).into_ef())
                 - b
                 - a * domain_point.y;
-            let den_inv = denominator_inverses(&sample_batches, domain_point)[0];
-            let quotient1 = num.mul_cm31(CM31::one());
+            let num1 = num;
 
-            *val = quotient0 + quotient1;
+            // Deal with the denominator.
+            let den_inv = denominator_inverses(&sample_batches, domain_point)[0];
+            *val = (num0 + num1).mul_cm31(den_inv);
         }
+
         let expected = SecureEvaluation::<_, BitReversedOrder>::new(
-            max_domain.clone(),
-            SecureColumnByCoords::<CpuBackend>::from_iter(expected.into_iter()),
+            domain,
+            SecureColumnByCoords::<CpuBackend>::from_iter(expected),
         );
 
         let actual = _compute_fri_quotients::<CpuBackend>(
@@ -269,9 +228,8 @@ mod tests {
             alpha,
             LOG_BLOWUP_FACTOR,
         );
-        assert_eq!(actual.len(), 1);
-        assert_eq!(actual[0].columns.len(), expected.columns.len());
-        assert_eq!(actual[0].columns, expected.columns);
+
+        assert_eq!(actual.columns, expected.columns);
     }
 
     #[test]
@@ -283,15 +241,13 @@ mod tests {
         let eval = polynomial.evaluate(eval_domain);
         let point = SECURE_FIELD_CIRCLE_GEN;
         let value = polynomial.eval_at_point(point);
-        let coeff = qm31!(1, 2, 3, 4);
-        let quot_eval = compute_fri_quotients(
+        let rand_coeff = qm31!(1, 2, 3, 9876);
+        let quot_eval = _compute_fri_quotients(
             &[&eval],
             &[vec![PointSample { point, value }]],
-            coeff,
+            rand_coeff,
             LOG_BLOWUP_FACTOR,
-        )
-        .pop()
-        .unwrap();
+        );
         let quot_poly_base_field =
             CpuCircleEvaluation::new(eval_domain, quot_eval.values.columns[0].clone())
                 .interpolate();

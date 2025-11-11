@@ -114,6 +114,15 @@ impl QuotientOps for SimdBackend {
     ) -> SecureEvaluation<Self, BitReversedOrder> {
         unimplemented!()
     }
+
+    #[allow(unused_variables)]
+    fn accumulate_denominators(
+        numerators: &mut SecureEvaluation<Self, BitReversedOrder>,
+        log_blowup_factor: u32,
+        a_accumulation_dict: &HashMap<CirclePoint<SecureField>, SecureField>,
+    ) {
+        unimplemented!()
+    }
 }
 
 fn accumulate_quotients_on_subdomain(

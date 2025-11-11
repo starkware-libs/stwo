@@ -9,10 +9,10 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{
-    accumulate_row_numerators_b_c, accumulate_row_quotients, quotient_constants,
-    quotient_constants_, ColumnSampleBatch,
+    accumulate_row_partial_numerators, accumulate_row_quotients, denominator_inverses_,
+    quotient_constants, quotient_constants_, ColumnSampleBatch,
 };
-use crate::core::poly::circle::CircleDomain;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::utils::bit_reverse_index;
 use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
 use crate::prover::poly::BitReversedOrder;
@@ -61,7 +61,7 @@ impl QuotientOps for CpuBackend {
         for row in 0..domain.size() {
             let domain_point = domain.at(bit_reverse_index(row, domain.log_size()));
             let query_values_at_row = columns.iter().map(|col| col[row]).collect_vec();
-            let row_value = accumulate_row_numerators_b_c(
+            let row_value = accumulate_row_partial_numerators(
                 sample_batches,
                 &query_values_at_row,
                 &quotient_constants,
@@ -78,6 +78,24 @@ impl QuotientOps for CpuBackend {
         }
 
         SecureEvaluation::new(domain, values)
+    }
+
+    fn accumulate_denominators(
+        numerators: &mut SecureEvaluation<Self, BitReversedOrder>,
+        _log_blowup_factor: u32,
+        a_accumulation_dict: &HashMap<CirclePoint<SecureField>, SecureField>,
+    ) {
+        // TODO(Leo): to modify. This assumes that there is only one OOD point.
+        assert_eq!(a_accumulation_dict.keys().len(), 1);
+        let (sample_point, acc) = a_accumulation_dict.iter().next().unwrap();
+
+        let domain = CanonicCoset::new(numerators.len().ilog2()).circle_domain();
+        for i in 0..domain.size() {
+            let domain_point = domain.at(bit_reverse_index(i, domain.log_size()));
+            let den_inv = denominator_inverses_(&[*sample_point], domain_point)[0];
+            let res = numerators.values.at(i) - *acc * domain_point.y;
+            numerators.values.set(i, res.mul_cm31(den_inv));
+        }
     }
 }
 

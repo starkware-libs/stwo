@@ -101,7 +101,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .polynomials()
             .zip_cols(&sampled_points)
             .map_cols(|(poly, points)| {
-                let domain_log_size = poly.log_size() as u32;
+                let domain_log_size = poly.log_size();
                 points
                     .iter()
                     .map(|&point| PointSample {

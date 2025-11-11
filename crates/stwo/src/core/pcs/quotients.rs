@@ -186,7 +186,7 @@ pub fn accumulate_row_quotients(
     row_accumulator
 }
 
-pub fn accumulate_row_numerators_b_c(
+pub fn accumulate_row_partial_numerators(
     sample_batches: &[ColumnSampleBatch],
     queried_values_at_row: &[BaseField],
     quotient_constants: &QuotientConstants,
@@ -266,6 +266,26 @@ pub fn denominator_inverses(
         let pry = sample_batch.point.y.0;
         let pix = sample_batch.point.x.1;
         let piy = sample_batch.point.y.1;
+        denominators.push((prx - domain_point.x) * piy - (pry - domain_point.y) * pix);
+    }
+
+    CM31::batch_inverse(&denominators)
+}
+
+pub fn denominator_inverses_(
+    sample_points: &[CirclePoint<SecureField>],
+    domain_point: CirclePoint<M31>,
+) -> Vec<CM31> {
+    let mut denominators = Vec::new();
+
+    // We want a P to be on a line that passes through a point Pr + uPi in QM31^2, and its conjugate
+    // Pr - uPi. Thus, Pr - P is parallel to Pi. Or, (Pr - P).x * Pi.y - (Pr - P).y * Pi.x = 0.
+    for sample_point in sample_points {
+        // Extract Pr, Pi.
+        let prx = sample_point.x.0;
+        let pry = sample_point.y.0;
+        let pix = sample_point.x.1;
+        let piy = sample_point.y.1;
         denominators.push((prx - domain_point.x) * piy - (pry - domain_point.y) * pix);
     }
 

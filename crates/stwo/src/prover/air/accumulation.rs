@@ -107,7 +107,7 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
         if let Some(eval) = curr_eval {
             SecureCirclePoly(eval.columns.map(|c| {
                 CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
-                    CanonicCoset::new(log_size as u32).circle_domain(),
+                    CanonicCoset::new(log_size).circle_domain(),
                     c,
                 )
                 .interpolate_with_twiddles(&twiddles)
