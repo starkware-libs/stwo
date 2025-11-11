@@ -30,9 +30,15 @@ impl<H: MerkleHasher> StarkProof<H> {
     ) -> Option<SecureField> {
         // TODO(andrew): `[.., composition_mask, _quotients_mask]` when add quotients
         // commitment.
-        let [.., left_and_right_composition_mask] = &**self.sampled_values else {
-            return None;
-        };
+
+        let (_log_size, samples_by_tree) = self.sampled_values.first().unwrap();
+        let left_and_right_composition_mask = samples_by_tree.last().unwrap();
+
+        println!(
+            "left_and_right_composition_mask: {:?}",
+            left_and_right_composition_mask.len()
+        );
+
         let left_and_right_coordinate_evals: [SecureField; 2 * SECURE_EXTENSION_DEGREE] =
             left_and_right_composition_mask
                 .iter()
@@ -141,6 +147,14 @@ impl<T: SizeEstimate> SizeEstimate for Vec<T> {
     }
 }
 
+impl<T: SizeEstimate> SizeEstimate for Vec<(u32, Vec<T>)> {
+    fn size_estimate(&self) -> usize {
+        self.iter()
+            .map(|(_log_size, values)| values.size_estimate())
+            .sum()
+    }
+}
+
 impl<H: Hash> SizeEstimate for H {
     fn size_estimate(&self) -> usize {
         mem::size_of::<Self>()
@@ -195,7 +209,7 @@ impl<H: MerkleHasher> SizeEstimate for CommitmentSchemeProof<H> {
     fn size_estimate(&self) -> usize {
         let Self {
             commitments,
-            sampled_values,
+            sampled_values: _,
             decommitments,
             queried_values,
             proof_of_work,
@@ -203,7 +217,6 @@ impl<H: MerkleHasher> SizeEstimate for CommitmentSchemeProof<H> {
             config,
         } = self;
         commitments.size_estimate()
-            + sampled_values.size_estimate()
             + decommitments.size_estimate()
             + queried_values.size_estimate()
             + mem::size_of_val(proof_of_work)

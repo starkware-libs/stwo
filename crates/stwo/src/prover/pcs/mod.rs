@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use dashmap::DashMap;
-use itertools::Itertools;
+use hashbrown::HashSet;
+use itertools::{Itertools, zip_eq};
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 #[cfg(feature = "parallel")]
@@ -169,17 +170,68 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     .collect_vec()
             });
         span.exit();
-        let sampled_values = samples
-            .as_cols_ref()
-            .map_cols(|x| x.iter().map(|o| o.value).collect());
-        channel.mix_felts(&sampled_values.clone().flatten_cols());
+        // let sampled_values = samples
+        //     .as_cols_ref()
+        //     .map_cols(|x| x.iter().map(|o| o.value).collect());
+        //  channel.mix_felts(&sampled_values.clone().flatten_cols());
+
+        //let weights_hash_map = self.build_weights_hash_map(&sampled_points);
+
+        let samples_by_size: TreeVec<_> =
+            (self.polynomials().zip(sampled_points)).map(|(polynomials, points)| {
+                let mut by_size = BTreeMap::new();
+
+                for (poly, points) in zip_eq(polynomials, points) {
+                    let log_size = poly.evals.domain.log_size();
+
+                    by_size.entry(log_size).or_insert_with(Vec::new).push(
+                        points
+                            .iter()
+                            .map(|&point| poly.eval_at_point(point, &*weights_hash_map
+                                .get(&(poly.evals.domain.log_size(), point))
+                                .expect("weights should exist for all sampled points")))
+                            .collect_vec(),
+                    )
+                }
+
+                by_size
+            });
+
+        let mut log_sizes = HashSet::new();
+        for tree in &samples_by_size.0 {
+            for log_size in tree.keys() {
+                log_sizes.insert(*log_size);
+            }
+        }
+
+        let mut sampled_values_tree_by_size = BTreeMap::new();
+        for mut tree in samples_by_size.0.into_iter() {
+            for log_size in log_sizes.iter() {
+                sampled_values_tree_by_size
+                    .entry(*log_size)
+                    .or_insert_with(Vec::new)
+                    .push(tree.remove(log_size).unwrap_or_default());
+            }
+        }
+
+        let flat_sample = sampled_values_tree_by_size
+            .iter()
+            .rev()
+            .flat_map(|(_log_size, samples)| {
+                samples.iter().flat_map(|x| x.iter().flatten().cloned())
+            })
+            .collect_vec();
+
+        channel.mix_felts(&flat_sample[..]);
+        let random_coeff = channel.draw_secure_felt();
+        println!("prover random_coeff: {:?}", random_coeff);
 
         // Compute oods quotients for boundary constraints on the sampled points.
         let columns = self.evaluations().flatten();
         let quotients = compute_fri_quotients(
             &columns,
             &samples.flatten(),
-            channel.draw_secure_felt(),
+            random_coeff,
             self.config.fri_config.log_blowup_factor,
         );
 
@@ -215,7 +267,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         ExtendedCommitmentSchemeProof {
             proof: CommitmentSchemeProof {
                 commitments: self.roots(),
-                sampled_values,
+                sampled_values: sampled_values_tree_by_size.into_iter().rev().collect_vec(),
                 decommitments: TreeVec(decommitments),
                 queried_values: TreeVec(queried_values),
                 proof_of_work,

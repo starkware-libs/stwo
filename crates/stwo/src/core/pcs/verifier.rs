@@ -1,12 +1,10 @@
-use core::iter::zip;
-
 use itertools::Itertools;
 use std_shims::Vec;
 
 use super::super::circle::CirclePoint;
 use super::super::fields::qm31::SecureField;
 use super::super::fri::{CirclePolyDegreeBound, FriVerifier};
-use super::quotients::{fri_answers, PointSample};
+use super::quotients::fri_answers;
 use super::utils::TreeVec;
 use super::PcsConfig;
 use crate::core::channel::{Channel, MerkleChannel};
@@ -60,8 +58,17 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         proof: CommitmentSchemeProof<MC::H>,
         channel: &mut MC::C,
     ) -> Result<(), VerificationError> {
-        channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
+        let flat_sample = proof
+            .sampled_values
+            .iter()
+            .flat_map(|(_log_size, samples)| {
+                samples.iter().flat_map(|x| x.iter().flatten().cloned())
+            })
+            .collect_vec();
+
+        channel.mix_felts(&flat_sample[..]);
         let random_coeff = channel.draw_secure_felt();
+        println!("verifier random_coeff: {:?}", random_coeff);
 
         let bounds = self
             .column_log_sizes()
@@ -108,19 +115,12 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             .collect::<Result<(), _>>()?;
 
         // Answer FRI queries.
-        let samples = sampled_points.zip_cols(proof.sampled_values).map_cols(
-            |(sampled_points, sampled_values)| {
-                zip(sampled_points, sampled_values)
-                    .map(|(point, value)| PointSample { point, value })
-                    .collect_vec()
-            },
-        );
-
         let n_columns_per_log_size = self.trees.as_ref().map(|tree| &tree.n_columns_per_log_size);
 
         let fri_answers = fri_answers(
             self.column_log_sizes(),
-            samples,
+            sampled_points,
+            proof.sampled_values,
             random_coeff,
             &query_positions_per_log_size,
             proof.queried_values,

@@ -41,7 +41,7 @@ pub fn compute_fri_quotients<B: QuotientOps>(
         .filter_map(|(log_size, tuples)| {
             let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
             // TODO: slice.
-            let sample_batches = ColumnSampleBatch::new_vec(&samples);
+            let sample_batches = ColumnSampleBatch::new_vec(samples.into_iter());
             if sample_batches.is_empty() {
                 // Skip processing this log size if it does not have any associated sample_batches
                 // (i.e. the set of sample points is empty).

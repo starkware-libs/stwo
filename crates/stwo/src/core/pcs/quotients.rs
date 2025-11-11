@@ -10,7 +10,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::constraints::complex_conjugate_line_coeffs;
 use crate::core::fields::cm31::CM31;
 use crate::core::fields::m31::{BaseField, M31};
-use crate::core::fields::qm31::SecureField;
+use crate::core::fields::qm31::{SecureField, QM31};
 use crate::core::fields::FieldExpOps;
 use crate::core::fri::{FriProof, FriProofAux};
 use crate::core::pcs::PcsConfig;
@@ -28,7 +28,7 @@ pub type IndexMap<K, V> = indexmap::IndexMap<K, V, core::hash::BuildHasherDefaul
 pub struct CommitmentSchemeProof<H: MerkleHasher> {
     pub config: PcsConfig,
     pub commitments: TreeVec<H::Hash>,
-    pub sampled_values: TreeVec<ColumnVec<Vec<SecureField>>>,
+    pub sampled_values: Vec<(u32, Vec<ColumnVec<Vec<SecureField>>>)>,
     pub decommitments: TreeVec<MerkleDecommitment<H>>,
     pub queried_values: TreeVec<Vec<BaseField>>,
     pub proof_of_work: u64,
@@ -63,11 +63,11 @@ impl ColumnSampleBatch {
     /// Groups column samples by sampled point.
     /// # Arguments
     /// samples: For each column, a vector of samples.
-    pub fn new_vec(samples: &[&Vec<PointSample>]) -> Vec<Self> {
+    pub fn new_vec<'a>(samples: impl Iterator<Item = &'a Vec<PointSample>>) -> Vec<Self> {
         // Group samples by point, and create a ColumnSampleBatch for each point.
         // This should keep a stable ordering.
         let mut grouped_samples = IndexMap::default();
-        for (column_index, samples) in samples.iter().enumerate() {
+        for (column_index, samples) in samples.enumerate() {
             for sample in samples.iter() {
                 grouped_samples
                     .entry(sample.point)
@@ -92,7 +92,8 @@ pub struct PointSample {
 
 pub fn fri_answers(
     column_log_sizes: TreeVec<Vec<u32>>,
-    samples: TreeVec<Vec<Vec<PointSample>>>,
+    sample_points: TreeVec<Vec<Vec<CirclePoint<QM31>>>>,
+    sample_values: Vec<(u32, Vec<Vec<Vec<QM31>>>)>,
     random_coeff: SecureField,
     query_positions_per_log_size: &BTreeMap<u32, Vec<usize>>,
     queried_values: TreeVec<Vec<BaseField>>,
@@ -100,15 +101,30 @@ pub fn fri_answers(
 ) -> Result<ColumnVec<Vec<SecureField>>, VerificationError> {
     let mut queried_values = queried_values.map(|values| values.into_iter());
 
-    izip!(column_log_sizes.flatten(), samples.flatten().iter())
+    izip!(column_log_sizes.flatten(), sample_points.flatten().iter())
         .sorted_by_key(|(log_size, ..)| Reverse(*log_size))
         .group_by(|(log_size, ..)| *log_size)
         .into_iter()
-        .filter_map(|(log_size, tuples)| {
+        .zip_eq(sample_values.iter())
+        .filter_map(|((log_size, tuples), (log_size2, sample_values))| {
+            assert_eq!(log_size, *log_size2);
+
             // Skip processing this log size if it does not have any associated queries.
             let queries_for_log_size = query_positions_per_log_size.get(&log_size)?;
 
-            let (_, samples): (Vec<_>, Vec<_>) = multiunzip(tuples);
+            let (_, sample_points): (Vec<_>, Vec<_>) = multiunzip(tuples);
+
+            let samples = zip_eq(sample_points.iter(), sample_values.iter().flatten())
+                .map(|(points, values)| {
+                    assert_eq!(points.len(), values.len());
+                    zip_eq(points.iter(), values.iter())
+                        .map(|(point, value)| PointSample {
+                            point: *point,
+                            value: *value,
+                        })
+                        .collect_vec()
+                })
+                .collect_vec();
             Some(fri_answers_for_log_size(
                 log_size,
                 &samples,
@@ -125,13 +141,13 @@ pub fn fri_answers(
 
 pub fn fri_answers_for_log_size(
     log_size: u32,
-    samples: &[&Vec<PointSample>],
+    samples: &[Vec<PointSample>],
     random_coeff: SecureField,
     query_positions: &[usize],
     queried_values: &mut TreeVec<impl Iterator<Item = BaseField>>,
     n_columns: TreeVec<usize>,
 ) -> Result<Vec<SecureField>, VerificationError> {
-    let sample_batches = ColumnSampleBatch::new_vec(samples);
+    let sample_batches = ColumnSampleBatch::new_vec(samples.iter());
     // TODO(ilya): Is it ok to use the same `random_coeff` for all log sizes.
     let quotient_constants = quotient_constants(&sample_batches, random_coeff);
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
