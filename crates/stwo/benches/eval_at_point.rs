@@ -5,12 +5,12 @@ use stwo::core::circle::CirclePoint;
 use stwo::core::fields::m31::BaseField;
 use stwo::prover::backend::cpu::CpuBackend;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::poly::circle::{CirclePoly, PolyOps};
+use stwo::prover::poly::circle::{CircleCoefficients, PolyOps};
 
 const LOG_SIZE: u32 = 20;
 
 fn bench_eval_at_secure_point<B: PolyOps>(c: &mut Criterion, id: &str) {
-    let poly = CirclePoly::new((0..1 << LOG_SIZE).map(BaseField::from).collect());
+    let poly = CircleCoefficients::new((0..1 << LOG_SIZE).map(BaseField::from).collect());
     let mut rng = SmallRng::seed_from_u64(0);
     let x = rng.gen();
     let y = rng.gen();

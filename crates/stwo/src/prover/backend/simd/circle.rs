@@ -25,7 +25,7 @@ use crate::prover::backend::simd::fri::fold_circle_evaluation_into_line;
 use crate::prover::backend::simd::m31::PackedM31;
 use crate::prover::backend::{Col, Column, CpuBackend};
 use crate::prover::fri::FriOps;
-use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
+use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 
@@ -134,12 +134,12 @@ impl PolyOps for SimdBackend {
     fn interpolate(
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
         twiddles: &TwiddleTree<Self>,
-    ) -> CirclePoly<Self> {
+    ) -> CircleCoefficients<Self> {
         let _span = span!(Level::TRACE, "", class = "iFFT").entered();
         let log_size = eval.values.length.ilog2();
         if log_size < MIN_FFT_LOG_SIZE {
             let cpu_poly = eval.to_cpu().interpolate();
-            return CirclePoly::new(cpu_poly.coeffs.into_iter().collect());
+            return CircleCoefficients::new(cpu_poly.coeffs.into_iter().collect());
         }
 
         let mut values = eval.values;
@@ -158,10 +158,13 @@ impl PolyOps for SimdBackend {
         let inv = PackedBaseField::broadcast(BaseField::from(eval.domain.size()).inverse());
         values.data.iter_mut().for_each(|x| *x *= inv);
 
-        CirclePoly::new(values)
+        CircleCoefficients::new(values)
     }
 
-    fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField {
+    fn eval_at_point(
+        poly: &CircleCoefficients<Self>,
+        point: CirclePoint<SecureField>,
+    ) -> SecureField {
         // If the polynomial is small, fallback to evaluate directly.
         // TODO(Ohad): it's possible to avoid falling back. Consider fixing.
         if poly.log_size() <= 8 {
@@ -244,14 +247,14 @@ impl PolyOps for SimdBackend {
         layer_evaluation.values.at(0) / SecureField::from(2_u32.pow(log_size))
     }
 
-    fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
+    fn extend(poly: &CircleCoefficients<Self>, log_size: u32) -> CircleCoefficients<Self> {
         // TODO(shahars): Get rid of extends.
         poly.evaluate(CanonicCoset::new(log_size).circle_domain())
             .interpolate()
     }
 
     fn evaluate(
-        poly: &CirclePoly<Self>,
+        poly: &CircleCoefficients<Self>,
         domain: CircleDomain,
         twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
@@ -264,7 +267,8 @@ impl PolyOps for SimdBackend {
         );
 
         if fft_log_size < MIN_FFT_LOG_SIZE {
-            let cpu_poly: CirclePoly<CpuBackend> = CirclePoly::new(poly.coeffs.to_cpu());
+            let cpu_poly: CircleCoefficients<CpuBackend> =
+                CircleCoefficients::new(poly.coeffs.to_cpu());
             let cpu_eval = cpu_poly.evaluate(domain);
             return CircleEvaluation::new(
                 cpu_eval.domain,
@@ -360,7 +364,9 @@ impl PolyOps for SimdBackend {
         }
     }
 
-    fn split_at_mid(mut poly: CirclePoly<Self>) -> (CirclePoly<Self>, CirclePoly<Self>) {
+    fn split_at_mid(
+        mut poly: CircleCoefficients<Self>,
+    ) -> (CircleCoefficients<Self>, CircleCoefficients<Self>) {
         let length = poly.coeffs.length;
 
         // If the length fits only in one SIMD vector, need to split from the cpu vector.
@@ -368,8 +374,8 @@ impl PolyOps for SimdBackend {
             let mut cpu_vec = poly.coeffs.to_cpu();
             let right = cpu_vec.split_off(cpu_vec.len() / 2);
             return (
-                CirclePoly::new(cpu_vec.into_iter().collect()),
-                CirclePoly::new(right.into_iter().collect()),
+                CircleCoefficients::new(cpu_vec.into_iter().collect()),
+                CircleCoefficients::new(right.into_iter().collect()),
             );
         }
 
@@ -409,11 +415,11 @@ impl PolyOps for SimdBackend {
         let right_length = length - left_length;
 
         (
-            CirclePoly::new(BaseColumn {
+            CircleCoefficients::new(BaseColumn {
                 data: poly.coeffs.data,
                 length: left_length,
             }),
-            CirclePoly::new(BaseColumn {
+            CircleCoefficients::new(BaseColumn {
                 data: second,
                 length: right_length,
             }),
@@ -468,7 +474,7 @@ fn compute_coset_twiddles(coset: Coset, twiddles: &mut Vec<PackedM31>) {
 }
 
 fn slow_eval_at_point(
-    poly: &CirclePoly<SimdBackend>,
+    poly: &CircleCoefficients<SimdBackend>,
     point: CirclePoint<SecureField>,
 ) -> SecureField {
     let mut mappings = vec![point.y, point.x];
@@ -507,7 +513,7 @@ mod tests {
     use crate::prover::backend::simd::m31::LOG_N_LANES;
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::{Column, CpuBackend};
-    use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
+    use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
     use crate::prover::poly::{BitReversedOrder, NaturalOrder};
 
     #[test]
@@ -571,7 +577,7 @@ mod tests {
 
     #[test]
     fn test_simd_eval_at_point_by_folding() {
-        let poly = CirclePoly::<SimdBackend>::new(BaseColumn::from_cpu(
+        let poly = CircleCoefficients::<SimdBackend>::new(BaseColumn::from_cpu(
             [691, 805673, 5, 435684, 4832, 23876431, 197, 897346068]
                 .map(BaseField::from)
                 .to_vec(),
@@ -606,8 +612,9 @@ mod tests {
     #[test]
     fn test_circle_poly_extend() {
         for log_size in MIN_FFT_LOG_SIZE..CACHED_FFT_LOG_SIZE + 2 {
-            let poly =
-                CirclePoly::<SimdBackend>::new((0..1 << log_size).map(BaseField::from).collect());
+            let poly = CircleCoefficients::<SimdBackend>::new(
+                (0..1 << log_size).map(BaseField::from).collect(),
+            );
             let eval0 = poly.evaluate(CanonicCoset::new(log_size + 2).circle_domain());
 
             let eval1 = poly
@@ -656,8 +663,9 @@ mod tests {
     #[test]
     fn test_circle_poly_split_at_mid_small() {
         let log_size = LOG_N_LANES;
-        let poly =
-            CirclePoly::<SimdBackend>::new((0..1 << log_size).map(BaseField::from).collect());
+        let poly = CircleCoefficients::<SimdBackend>::new(
+            (0..1 << log_size).map(BaseField::from).collect(),
+        );
         let (left, right) = poly.clone().split_at_mid();
         let random_point = CirclePoint::get_point(21903);
 
@@ -671,8 +679,9 @@ mod tests {
     #[test]
     fn test_circle_poly_split_at_mid_medium() {
         let log_size = (CACHED_FFT_LOG_SIZE - LOG_N_LANES) / 2;
-        let poly =
-            CirclePoly::<SimdBackend>::new((0..1 << log_size).map(BaseField::from).collect());
+        let poly = CircleCoefficients::<SimdBackend>::new(
+            (0..1 << log_size).map(BaseField::from).collect(),
+        );
         let (left, right) = poly.clone().split_at_mid();
         let random_point = CirclePoint::get_point(21903);
 
@@ -686,8 +695,9 @@ mod tests {
     #[test]
     fn test_circle_poly_split_at_mid_large() {
         let log_size = CACHED_FFT_LOG_SIZE + 1;
-        let poly =
-            CirclePoly::<SimdBackend>::new((0..1 << log_size).map(BaseField::from).collect());
+        let poly = CircleCoefficients::<SimdBackend>::new(
+            (0..1 << log_size).map(BaseField::from).collect(),
+        );
         let (left, right) = poly.clone().split_at_mid();
         let random_point = CirclePoint::get_point(21903);
 

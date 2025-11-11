@@ -3,7 +3,7 @@ use std::ops::{Deref, Index};
 
 use educe::Educe;
 
-use super::{CirclePoly, PolyOps};
+use super::{CircleCoefficients, PolyOps};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -46,15 +46,16 @@ impl<F: ExtensionOf<BaseField>, B: ColumnOps<F>> CircleEvaluation<B, F, NaturalO
 }
 
 impl<B: PolyOps> CircleEvaluation<B, BaseField, BitReversedOrder> {
-    /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
-    pub fn interpolate(self) -> CirclePoly<B> {
+    /// Computes a minimal [CircleCoefficients] that evaluates to the same values as this
+    /// evaluation.
+    pub fn interpolate(self) -> CircleCoefficients<B> {
         let coset = self.domain.half_coset;
         B::interpolate(self, &B::precompute_twiddles(coset))
     }
 
-    /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation, using
-    /// precomputed twiddles.
-    pub fn interpolate_with_twiddles(self, twiddles: &TwiddleTree<B>) -> CirclePoly<B> {
+    /// Computes a minimal [CircleCoefficients] that evaluates to the same values as this
+    /// evaluation, using precomputed twiddles.
+    pub fn interpolate_with_twiddles(self, twiddles: &TwiddleTree<B>) -> CircleCoefficients<B> {
         B::interpolate(self, twiddles)
     }
 

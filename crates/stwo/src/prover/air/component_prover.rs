@@ -8,7 +8,7 @@ use crate::core::poly::circle::CircleDomain;
 use crate::core::ColumnVec;
 use crate::prover::air::accumulation::DomainEvaluationAccumulator;
 use crate::prover::backend::Backend;
-use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, SecureCirclePoly};
+use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::CirclePoint;
@@ -33,13 +33,13 @@ pub struct Trace<'a, B: Backend> {
 /// A polynomial is defined by it's evaluations on a circle domain of size at least it's degree,
 /// and optionally its coefficients in the FFT basis.
 pub struct Poly<B: Backend> {
-    pub coeffs: Option<CirclePoly<B>>,
+    pub coeffs: Option<CircleCoefficients<B>>,
     pub evals: CircleEvaluation<B, BaseField, BitReversedOrder>,
 }
 
 impl<B: Backend> Poly<B> {
     pub const fn new(
-        coeffs: Option<CirclePoly<B>>,
+        coeffs: Option<CircleCoefficients<B>>,
         evals: CircleEvaluation<B, BaseField, BitReversedOrder>,
     ) -> Self {
         Self { coeffs, evals }

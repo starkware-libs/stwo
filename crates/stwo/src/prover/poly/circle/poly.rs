@@ -7,9 +7,9 @@ use crate::prover::backend::{Col, Column, ColumnOps};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 
-/// A polynomial defined on a [CircleDomain].
+/// Coefficients of a polynomial defined on a [CircleDomain].
 #[derive(Clone, Debug)]
-pub struct CirclePoly<B: ColumnOps<BaseField>> {
+pub struct CircleCoefficients<B: ColumnOps<BaseField>> {
     /// Coefficients of the polynomial in the FFT basis.
     /// Note: These are not the coefficients of the polynomial in the standard
     /// monomial basis. The FFT basis is a tensor product of the twiddles:
@@ -20,7 +20,7 @@ pub struct CirclePoly<B: ColumnOps<BaseField>> {
     log_size: u32,
 }
 
-impl<B: PolyOps> CirclePoly<B> {
+impl<B: PolyOps> CircleCoefficients<B> {
     /// Creates a new circle polynomial.
     ///
     /// Coefficients must be in the circle IFFT algorithm's basis stored in bit-reversed order.

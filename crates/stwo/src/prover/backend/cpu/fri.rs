@@ -116,7 +116,7 @@ pub fn fold_circle_into_line_cpu(
 impl CpuBackend {
     /// Used to decompose a general polynomial to a polynomial inside the fft-space, and
     /// the remainder terms.
-    /// A coset-diff on a [`CirclePoly`] that is in the FFT space will return zero.
+    /// A coset-diff on a [`CircleCoefficients`] that is in the FFT space will return zero.
     ///
     /// Let N be the domain size, Let h be a coset size N/2. Using lemma #7 from the CircleStark
     /// paper, <f,V_h> = lambda<V_h,V_h> = lambda\*N => lambda = f(0)\*V_h(0) + f(1)*V_h(1) + .. +
@@ -128,7 +128,7 @@ impl CpuBackend {
     /// # Warning
     /// This function assumes the blowupfactor is 2
     ///
-    /// [`CirclePoly`]: crate::core::poly::circle::CirclePoly
+    /// [`CircleCoefficients`]: crate::core::poly::circle::CircleCoefficients
     fn decomposition_coefficient(eval: &SecureEvaluation<Self, BitReversedOrder>) -> SecureField {
         let domain_size = 1 << eval.domain.log_size();
         let half_domain_size = domain_size / 2;

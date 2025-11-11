@@ -20,7 +20,7 @@ use crate::core::vcs::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleChan
 #[cfg(not(target_arch = "wasm32"))]
 use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
 use crate::prover::lookups::mle::Mle;
-use crate::prover::poly::circle::{CircleEvaluation, CirclePoly};
+use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct CpuBackend;
@@ -67,7 +67,7 @@ impl<T: Debug + Clone + Default> Column<T> for Vec<T> {
     }
 }
 
-pub type CpuCirclePoly = CirclePoly<CpuBackend>;
+pub type CpuCirclePoly = CircleCoefficients<CpuBackend>;
 pub type CpuCircleEvaluation<F, EvalOrder> = CircleEvaluation<CpuBackend, F, EvalOrder>;
 pub type CpuMle<F> = Mle<CpuBackend, F>;
 

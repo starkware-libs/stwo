@@ -110,7 +110,7 @@ fn accumulate_quotients_on_subdomain(
 ) -> (
     span::EnteredSpan,
     SecureColumnByCoords<SimdBackend>,
-    [crate::prover::poly::circle::CirclePoly<SimdBackend>; 4],
+    [crate::prover::poly::circle::CircleCoefficients<SimdBackend>; 4],
 ) {
     assert!(subdomain.log_size() >= LOG_N_LANES + 2);
     let mut values =

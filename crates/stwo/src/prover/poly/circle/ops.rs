@@ -1,6 +1,6 @@
 use itertools::Itertools;
 
-use super::{CircleEvaluation, CirclePoly};
+use super::{CircleCoefficients, CircleEvaluation};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
@@ -17,17 +17,17 @@ pub trait PolyOps: ColumnOps<BaseField> + Sized {
     /// The type for precomputed twiddles.
     type Twiddles;
 
-    /// Computes a minimal [CirclePoly] that evaluates to the same values as this evaluation.
-    /// Used by the [`CircleEvaluation::interpolate()`] function.
+    /// Computes a minimal [CircleCoefficients] that evaluates to the same values as this
+    /// evaluation. Used by the [`CircleEvaluation::interpolate()`] function.
     fn interpolate(
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
         itwiddles: &TwiddleTree<Self>,
-    ) -> CirclePoly<Self>;
+    ) -> CircleCoefficients<Self>;
 
     fn interpolate_columns(
         columns: impl IntoIterator<Item = CircleEvaluation<Self, BaseField, BitReversedOrder>>,
         twiddles: &TwiddleTree<Self>,
-    ) -> Vec<CirclePoly<Self>> {
+    ) -> Vec<CircleCoefficients<Self>> {
         columns
             .into_iter()
             .map(|eval| eval.interpolate_with_twiddles(twiddles))
@@ -35,8 +35,11 @@ pub trait PolyOps: ColumnOps<BaseField> + Sized {
     }
 
     /// Evaluates the polynomial at a single point.
-    /// Used by the [`CirclePoly::eval_at_point()`] function.
-    fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField;
+    /// Used by the [`CircleCoefficients::eval_at_point()`] function.
+    fn eval_at_point(
+        poly: &CircleCoefficients<Self>,
+        point: CirclePoint<SecureField>,
+    ) -> SecureField;
 
     /// Evaluates a polynomial, represented by it's evaluations, at a point using folding.
     /// Used by the [`CircleEvaluation::eval_at_point_by_folding()`] function.
@@ -47,19 +50,19 @@ pub trait PolyOps: ColumnOps<BaseField> + Sized {
     ) -> SecureField;
 
     /// Extends the polynomial to a larger degree bound.
-    /// Used by the [`CirclePoly::extend()`] function.
-    fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self>;
+    /// Used by the [`CircleCoefficients::extend()`] function.
+    fn extend(poly: &CircleCoefficients<Self>, log_size: u32) -> CircleCoefficients<Self>;
 
     /// Evaluates the polynomial at all points in the domain.
-    /// Used by the [`CirclePoly::evaluate()`] function.
+    /// Used by the [`CircleCoefficients::evaluate()`] function.
     fn evaluate(
-        poly: &CirclePoly<Self>,
+        poly: &CircleCoefficients<Self>,
         domain: CircleDomain,
         twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder>;
 
     fn evaluate_polynomials(
-        polynomials: ColumnVec<CirclePoly<Self>>,
+        polynomials: ColumnVec<CircleCoefficients<Self>>,
         log_blowup_factor: u32,
         twiddles: &TwiddleTree<Self>,
         store_polynomials_coefficients: bool,
@@ -99,5 +102,7 @@ pub trait PolyOps: ColumnOps<BaseField> + Sized {
     /// bit). Therefore, splitting the coefficient vector in the middle, corresponds to separating
     /// the ones with the MSB, b_{L-1} == 1, from the ones with the MSB, b_{L-1} == 0, meaning
     /// separating the basis elements divisible by `pi^{L-2}(x)` from those that are not.
-    fn split_at_mid(poly: CirclePoly<Self>) -> (CirclePoly<Self>, CirclePoly<Self>);
+    fn split_at_mid(
+        poly: CircleCoefficients<Self>,
+    ) -> (CircleCoefficients<Self>, CircleCoefficients<Self>);
 }

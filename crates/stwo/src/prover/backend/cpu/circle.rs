@@ -14,7 +14,9 @@ use crate::core::utils::bit_reverse;
 use crate::prover::backend::Column;
 use crate::prover::fri::FriOps;
 use crate::prover::line::LineEvaluation;
-use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps, SecureEvaluation};
+use crate::prover::poly::circle::{
+    CircleCoefficients, CircleEvaluation, PolyOps, SecureEvaluation,
+};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
@@ -25,7 +27,7 @@ impl PolyOps for CpuBackend {
     fn interpolate(
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
         twiddles: &TwiddleTree<Self>,
-    ) -> CirclePoly<Self> {
+    ) -> CircleCoefficients<Self> {
         assert!(eval.domain.half_coset.is_doubling_of(twiddles.root_coset));
 
         let mut values = eval.values;
@@ -38,7 +40,7 @@ impl PolyOps for CpuBackend {
             let n_inv = yn_inv * y;
             let (mut v0, mut v1) = (values[0], values[1]);
             ibutterfly(&mut v0, &mut v1, y_inv);
-            return CirclePoly::new(vec![v0 * n_inv, v1 * n_inv]);
+            return CircleCoefficients::new(vec![v0 * n_inv, v1 * n_inv]);
         }
 
         if eval.domain.log_size() == 2 {
@@ -53,7 +55,7 @@ impl PolyOps for CpuBackend {
             ibutterfly(&mut v2, &mut v3, -y_inv);
             ibutterfly(&mut v0, &mut v2, x_inv);
             ibutterfly(&mut v1, &mut v3, x_inv);
-            return CirclePoly::new(vec![v0 * n_inv, v1 * n_inv, v2 * n_inv, v3 * n_inv]);
+            return CircleCoefficients::new(vec![v0 * n_inv, v1 * n_inv, v2 * n_inv, v3 * n_inv]);
         }
 
         let line_twiddles = domain_line_twiddles_from_tree(eval.domain, &twiddles.itwiddles);
@@ -74,10 +76,13 @@ impl PolyOps for CpuBackend {
             *val *= inv;
         }
 
-        CirclePoly::new(values)
+        CircleCoefficients::new(values)
     }
 
-    fn eval_at_point(poly: &CirclePoly<Self>, point: CirclePoint<SecureField>) -> SecureField {
+    fn eval_at_point(
+        poly: &CircleCoefficients<Self>,
+        point: CirclePoint<SecureField>,
+    ) -> SecureField {
         if poly.log_size() == 0 {
             return poly.coeffs[0].into();
         }
@@ -128,16 +133,16 @@ impl PolyOps for CpuBackend {
         layer_evaluation.values.at(0) / SecureField::from(2_u32.pow(log_size))
     }
 
-    fn extend(poly: &CirclePoly<Self>, log_size: u32) -> CirclePoly<Self> {
+    fn extend(poly: &CircleCoefficients<Self>, log_size: u32) -> CircleCoefficients<Self> {
         assert!(log_size >= poly.log_size());
         let mut coeffs = Vec::with_capacity(1 << log_size);
         coeffs.extend_from_slice(&poly.coeffs);
         coeffs.resize(1 << log_size, BaseField::zero());
-        CirclePoly::new(coeffs)
+        CircleCoefficients::new(coeffs)
     }
 
     fn evaluate(
-        poly: &CirclePoly<Self>,
+        poly: &CircleCoefficients<Self>,
         domain: CircleDomain,
         twiddles: &TwiddleTree<Self>,
     ) -> CircleEvaluation<Self, BaseField, BitReversedOrder> {
@@ -209,9 +214,14 @@ impl PolyOps for CpuBackend {
         }
     }
 
-    fn split_at_mid(mut poly: CirclePoly<Self>) -> (CirclePoly<Self>, CirclePoly<Self>) {
+    fn split_at_mid(
+        mut poly: CircleCoefficients<Self>,
+    ) -> (CircleCoefficients<Self>, CircleCoefficients<Self>) {
         let right = poly.coeffs.split_off(poly.coeffs.len() / 2);
-        (CirclePoly::new(poly.coeffs), CirclePoly::new(right))
+        (
+            CircleCoefficients::new(poly.coeffs),
+            CircleCoefficients::new(right),
+        )
     }
 }
 

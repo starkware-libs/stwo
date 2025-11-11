@@ -6,12 +6,12 @@ use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::prover::backend::cpu::CpuBackend;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::poly::circle::{CirclePoly, PolyOps};
+use stwo::prover::poly::circle::{CircleCoefficients, PolyOps};
 
 const LOG_SIZE: u32 = 20;
 
 fn bench_eval_at_secure_point_by_folding<B: PolyOps>(c: &mut Criterion, id: &str) {
-    let poly = CirclePoly::new((0..1 << LOG_SIZE).map(BaseField::from).collect());
+    let poly = CircleCoefficients::new((0..1 << LOG_SIZE).map(BaseField::from).collect());
     let twiddles =
         B::precompute_twiddles(CanonicCoset::new(LOG_SIZE + 1).circle_domain().half_coset);
     let evals = poly.evaluate(CanonicCoset::new(LOG_SIZE).circle_domain());

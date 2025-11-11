@@ -12,7 +12,7 @@ use stwo::core::utils::{
 use stwo::core::Fraction;
 use stwo::parallel_iter;
 use stwo::prover::backend::{Backend, Column};
-use stwo::prover::poly::circle::CirclePoly;
+use stwo::prover::poly::circle::CircleCoefficients;
 
 use crate::logup::LogupAtRow;
 use crate::{EvalAtRow, INTERACTION_TRACE_IDX};
@@ -100,7 +100,7 @@ impl EvalAtRow for AssertEvaluator<'_> {
 }
 
 pub fn assert_constraints_on_polys<B: Backend>(
-    trace_polys: &TreeVec<Vec<CirclePoly<B>>>,
+    trace_polys: &TreeVec<Vec<CircleCoefficients<B>>>,
     trace_domain: CanonicCoset,
     assert_func: impl Fn(AssertEvaluator<'_>) + Sync,
     claimed_sum: SecureField,

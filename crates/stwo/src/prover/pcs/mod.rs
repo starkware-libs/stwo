@@ -18,7 +18,7 @@ use crate::prover::air::component_prover::{Poly, Trace};
 use crate::prover::backend::BackendForChannel;
 use crate::prover::fri::{FriDecommitResult, FriProver};
 use crate::prover::pcs::quotient_ops::compute_fri_quotients;
-use crate::prover::poly::circle::{CircleEvaluation, CirclePoly};
+use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::vcs::prover::MerkleProver;
@@ -51,7 +51,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         self.store_polynomials_coefficients = true;
     }
 
-    fn commit(&mut self, polynomials: ColumnVec<CirclePoly<B>>, channel: &mut MC::C) {
+    fn commit(&mut self, polynomials: ColumnVec<CircleCoefficients<B>>, channel: &mut MC::C) {
         let _span = span!(Level::INFO, "Commitment").entered();
         let tree = CommitmentTreeProver::new(
             polynomials,
@@ -185,7 +185,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 pub struct TreeBuilder<'a, 'b, B: BackendForChannel<MC>, MC: MerkleChannel> {
     tree_index: usize,
     commitment_scheme: &'a mut CommitmentSchemeProver<'b, B, MC>,
-    polys: ColumnVec<CirclePoly<B>>,
+    polys: ColumnVec<CircleCoefficients<B>>,
 }
 impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
     pub fn extend_evals(
@@ -201,7 +201,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
 
     pub fn extend_polys(
         &mut self,
-        columns: impl IntoIterator<Item = CirclePoly<B>>,
+        columns: impl IntoIterator<Item = CircleCoefficients<B>>,
     ) -> TreeSubspan {
         let col_start = self.polys.len();
         self.polys.extend(columns);
@@ -228,7 +228,7 @@ pub struct CommitmentTreeProver<B: BackendForChannel<MC>, MC: MerkleChannel> {
 
 impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
     pub fn new(
-        polynomials: ColumnVec<CirclePoly<B>>,
+        polynomials: ColumnVec<CircleCoefficients<B>>,
         log_blowup_factor: u32,
         channel: &mut MC::C,
         twiddles: &TwiddleTree<B>,

@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
-use super::{CircleEvaluation, CirclePoly, PolyOps};
+use super::{CircleCoefficients, CircleEvaluation, PolyOps};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
@@ -11,7 +11,9 @@ use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 
-pub struct SecureCirclePoly<B: ColumnOps<BaseField>>(pub [CirclePoly<B>; SECURE_EXTENSION_DEGREE]);
+pub struct SecureCirclePoly<B: ColumnOps<BaseField>>(
+    pub [CircleCoefficients<B>; SECURE_EXTENSION_DEGREE],
+);
 
 impl<B: PolyOps> SecureCirclePoly<B> {
     pub fn eval_at_point(&self, point: CirclePoint<SecureField>) -> SecureField {
@@ -44,7 +46,7 @@ impl<B: PolyOps> SecureCirclePoly<B> {
         SecureEvaluation::new(domain, SecureColumnByCoords { columns })
     }
 
-    pub fn into_coordinate_polys(self) -> [CirclePoly<B>; SECURE_EXTENSION_DEGREE] {
+    pub fn into_coordinate_polys(self) -> [CircleCoefficients<B>; SECURE_EXTENSION_DEGREE] {
         self.0
     }
 
@@ -64,7 +66,7 @@ impl<B: PolyOps> SecureCirclePoly<B> {
 }
 
 impl<B: ColumnOps<BaseField>> Deref for SecureCirclePoly<B> {
-    type Target = [CirclePoly<B>; SECURE_EXTENSION_DEGREE];
+    type Target = [CircleCoefficients<B>; SECURE_EXTENSION_DEGREE];
 
     fn deref(&self) -> &Self::Target {
         &self.0

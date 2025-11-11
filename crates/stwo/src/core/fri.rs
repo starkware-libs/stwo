@@ -696,9 +696,9 @@ fn compute_decommitment_positions_and_rebuild_evals(
 #[derive(Debug)]
 struct InsufficientWitnessError;
 
-/// Foldable subsets of evaluations on a [`CirclePoly`] or [`LinePoly`].
+/// Foldable subsets of evaluations on a [`CircleCoefficients`] or [`LinePoly`].
 ///
-/// [`CirclePoly`]: crate::core::poly::circle::CirclePoly
+/// [`CircleCoefficients`]: crate::core::poly::circle::CircleCoefficients
 struct SparseEvaluation {
     // TODO(andrew): Perhaps subset isn't the right word. Coset, Subgroup?
     subset_evals: Vec<Vec<SecureField>>,

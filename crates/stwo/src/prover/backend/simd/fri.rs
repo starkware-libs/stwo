@@ -248,7 +248,7 @@ mod tests {
     use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::fri::FriOps;
     use crate::prover::line::LineEvaluation;
-    use crate::prover::poly::circle::{CirclePoly, PolyOps, SecureEvaluation};
+    use crate::prover::poly::circle::{CircleCoefficients, PolyOps, SecureEvaluation};
     use crate::prover::poly::BitReversedOrder;
     use crate::prover::secure_column::SecureColumnByCoords;
     use crate::qm31;
@@ -318,7 +318,7 @@ mod tests {
         let mut coeffs = BaseColumn::zeros(1 << DOMAIN_LOG_SIZE);
         // Polynomial is out of FFT space.
         coeffs.as_mut_slice()[1 << DOMAIN_LOG_HALF_SIZE] = BaseField::one();
-        let poly = CirclePoly::<SimdBackend>::new(coeffs);
+        let poly = CircleCoefficients::<SimdBackend>::new(coeffs);
         let values = poly.evaluate(domain);
         let avx_column = SecureColumnByCoords::<SimdBackend> {
             columns: [
