@@ -11,15 +11,16 @@ use super::utils::TreeVec;
 use super::PcsConfig;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::pcs::quotients::CommitmentSchemeProof;
-use crate::core::vcs::verifier::MerkleVerifier;
-use crate::core::vcs::MerkleHasher;
+
+use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
 use crate::core::ColumnVec;
 
 /// The verifier side of a FRI polynomial commitment scheme. See [super].
 #[derive(Default)]
 pub struct CommitmentSchemeVerifier<MC: MerkleChannel> {
-    pub trees: TreeVec<MerkleVerifier<MC::H>>,
+    pub trees: TreeVec<MerkleVerifierLifted<MC::H>>,
     pub config: PcsConfig,
 }
 
@@ -41,7 +42,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
     /// Reads a commitment from the prover.
     pub fn commit(
         &mut self,
-        commitment: <MC::H as MerkleHasher>::Hash,
+        commitment: <MC::H as MerkleHasherLifted>::Hash,
         log_sizes: &[u32],
         channel: &mut MC::C,
     ) {
@@ -50,7 +51,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             .iter()
             .map(|&log_size| log_size + self.config.fri_config.log_blowup_factor)
             .collect();
-        let verifier = MerkleVerifier::new(commitment, extended_log_sizes);
+        let verifier = MerkleVerifierLifted::new(commitment, extended_log_sizes);
         self.trees.push(verifier);
     }
 
@@ -88,13 +89,15 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         // Get FRI query positions.
         let query_positions_per_log_size = fri_verifier.sample_query_positions(channel);
 
+        assert_eq!(query_positions_per_log_size.len(), 1);
+        let queries_position = query_positions_per_log_size.values().next().unwrap();
         // Verify merkle decommitments.
         self.trees
             .as_ref()
             .zip_eq(proof.decommitments)
             .zip_eq(proof.queried_values.clone())
             .map(|((tree, decommitment), queried_values)| {
-                tree.verify(&query_positions_per_log_size, queried_values, decommitment)
+                tree.verify(queries_position, queried_values, decommitment)
             })
             .0
             .into_iter()

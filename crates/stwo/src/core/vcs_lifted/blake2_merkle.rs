@@ -1,4 +1,5 @@
 use super::merkle_hasher::MerkleHasherLifted;
+use crate::core::channel::{Blake2sChannelGeneric, MerkleChannel};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
 
@@ -12,7 +13,7 @@ pub const NODE_PREFIX: [u8; 64] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0,
 ];
-
+// TODO(Leo): Make generic like Lior's hasher.
 pub type Blake2sMerkleHasher = Blake2sHasher;
 
 impl MerkleHasherLifted for Blake2sMerkleHasher {
@@ -44,5 +45,28 @@ impl MerkleHasherLifted for Blake2sMerkleHasher {
 
     fn finalize(self) -> Self::Hash {
         self.finalize()
+    }
+}
+
+
+pub type Blake2sMerkleChannel = Blake2sMerkleChannelGeneric<false>;
+/// Same as [Blake2sMerkleChannel], expect that the hash output is taken modulo M31::P.
+pub type Blake2sM31MerkleChannel = Blake2sMerkleChannelGeneric<true>;
+
+#[derive(Default)]
+pub struct Blake2sMerkleChannelGeneric<const IS_M31_OUTPUT: bool>;
+
+impl<const IS_M31_OUTPUT: bool> MerkleChannel for Blake2sMerkleChannelGeneric<IS_M31_OUTPUT> {
+    type C = Blake2sChannelGeneric<IS_M31_OUTPUT>;
+    type H = Blake2sMerkleHasher;
+
+    fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasherLifted>::Hash) {
+        use crate::core::vcs::blake2_hash::Blake2sHasherGeneric;
+        channel.update_digest(
+            Blake2sHasherGeneric::<IS_M31_OUTPUT>::concat_and_hash(
+                &channel.digest(),
+                &root,
+            ),
+        );
     }
 }

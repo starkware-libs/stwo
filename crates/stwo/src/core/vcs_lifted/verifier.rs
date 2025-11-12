@@ -93,7 +93,7 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
     /// that index is sent twice.
     pub fn verify(
         &self,
-        queries_position: Vec<usize>,
+        queries_position: &Vec<usize>,
         queried_values: Vec<BaseField>,
         decommitment: MerkleDecommitmentLifted<H>,
     ) -> Result<(), MerkleVerificationError> {
@@ -176,7 +176,7 @@ mod tests {
     fn test_merkle_success() {
         let (queries, decommitment, values, verifier) = prepare_merkle::<Blake2sMerkleHasher>();
 
-        verifier.verify(queries, values, decommitment).unwrap();
+        verifier.verify(&queries, values, decommitment).unwrap();
     }
 
     #[test]
@@ -185,7 +185,7 @@ mod tests {
         decommitment.hash_witness[4] = Blake2sHash::default();
 
         assert_eq!(
-            verifier.verify(queries, values, decommitment).unwrap_err(),
+            verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::RootMismatch
         );
     }
@@ -196,7 +196,7 @@ mod tests {
         values[6] = BaseField::zero();
 
         assert_eq!(
-            verifier.verify(queries, values, decommitment).unwrap_err(),
+            verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::RootMismatch
         );
     }
@@ -207,7 +207,7 @@ mod tests {
         decommitment.hash_witness.pop();
 
         assert_eq!(
-            verifier.verify(queries, values, decommitment).unwrap_err(),
+            verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::WitnessTooShort
         );
     }
@@ -218,7 +218,7 @@ mod tests {
         decommitment.hash_witness.push(Blake2sHash::default());
 
         assert_eq!(
-            verifier.verify(queries, values, decommitment).unwrap_err(),
+            verifier.verify(&queries, values, decommitment).unwrap_err(),
             MerkleVerificationError::WitnessTooLong
         );
     }

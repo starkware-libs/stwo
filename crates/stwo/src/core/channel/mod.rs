@@ -2,8 +2,9 @@ use core::fmt::Debug;
 
 use std_shims::Vec;
 
+use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+
 use super::fields::qm31::SecureField;
-use super::vcs::MerkleHasher;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod poseidon252;
@@ -39,6 +40,6 @@ pub trait Channel: Default + Clone + Debug {
 
 pub trait MerkleChannel: Default {
     type C: Channel;
-    type H: MerkleHasher;
-    fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasher>::Hash);
+    type H: MerkleHasherLifted;
+    fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasherLifted>::Hash);
 }
