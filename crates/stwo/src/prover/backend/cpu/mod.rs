@@ -5,8 +5,8 @@ pub mod circle;
 mod fri;
 mod grind;
 pub mod lookups;
-#[cfg(not(target_arch = "wasm32"))]
-mod poseidon252;
+// #[cfg(not(target_arch = "wasm32"))]
+// mod poseidon252;
 pub mod quotients;
 
 use std::fmt::Debug;
@@ -16,9 +16,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{Backend, BackendForChannel, Column, ColumnOps};
 use crate::core::utils::bit_reverse;
-use crate::core::vcs::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleChannel};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+use crate::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleChannel};
+// #[cfg(not(target_arch = "wasm32"))]
+// use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
 use crate::prover::lookups::mle::Mle;
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly};
 
@@ -28,8 +28,8 @@ pub struct CpuBackend;
 impl Backend for CpuBackend {}
 impl BackendForChannel<Blake2sMerkleChannel> for CpuBackend {}
 impl BackendForChannel<Blake2sM31MerkleChannel> for CpuBackend {}
-#[cfg(not(target_arch = "wasm32"))]
-impl BackendForChannel<Poseidon252MerkleChannel> for CpuBackend {}
+// #[cfg(not(target_arch = "wasm32"))]
+// impl BackendForChannel<Poseidon252MerkleChannel> for CpuBackend {}
 
 impl<T: Debug + Clone + Default> ColumnOps<T> for CpuBackend {
     type Column = Vec<T>;

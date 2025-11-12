@@ -4,7 +4,7 @@ use tracing::{span, Level};
 use super::ops::MerkleOpsLifted;
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use crate::core::vcs_lifted::verifier::MerkleDecommitmentLifted;
+use crate::core::vcs_lifted::verifier::{ExtendedMerkleDecommitmentLifted, MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux};
 use crate::prover::backend::{Col, Column};
 
 /// Represents the prover side of a Merkle commitment scheme.
@@ -66,7 +66,7 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
         &self,
         queries_position: Vec<usize>,
         columns: Vec<&Col<B, BaseField>>,
-    ) -> (Vec<BaseField>, MerkleDecommitmentLifted<H>) {
+    ) -> (Vec<BaseField>, ExtendedMerkleDecommitmentLifted<H>) {
         // Prepare output buffers.
         let mut queried_values: Vec<BaseField> = vec![];
         let mut decommitment = MerkleDecommitmentLifted::<H>::default();
@@ -111,7 +111,11 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
             // Propagate queries to the next layer.
             prev_layer_queries = curr_layer_queries;
         }
-        (queried_values, decommitment)
+        (queried_values, 
+            ExtendedMerkleDecommitmentLifted {
+                decommitment,
+                aux: MerkleDecommitmentLiftedAux { all_node_values: vec![] }
+    })
     }
 
     pub fn root(&self) -> H::Hash {

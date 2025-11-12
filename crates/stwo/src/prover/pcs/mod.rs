@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 
 use itertools::Itertools;
 use tracing::{span, Level};
@@ -11,9 +10,9 @@ use crate::core::pcs::quotients::{
     CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
 };
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
-use crate::core::vcs::verifier::ExtendedMerkleDecommitment;
-use crate::core::vcs::MerkleHasher;
 use crate::core::ColumnVec;
+use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use crate::core::vcs_lifted::verifier::ExtendedMerkleDecommitmentLifted;
 use crate::prover::air::component_prover::Trace;
 use crate::prover::backend::BackendForChannel;
 use crate::prover::fri::{FriDecommitResult, FriProver};
@@ -21,7 +20,7 @@ use crate::prover::pcs::quotient_ops::compute_fri_quotients;
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
-use crate::prover::vcs::prover::MerkleProver;
+use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
 pub mod quotient_ops;
 
@@ -60,7 +59,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         }
     }
 
-    pub fn roots(&self) -> TreeVec<<MC::H as MerkleHasher>::Hash> {
+    pub fn roots(&self) -> TreeVec<<MC::H as MerkleHasherLifted>::Hash> {
         self.trees.as_ref().map(|tree| tree.commitment.root())
     }
 
@@ -143,11 +142,13 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             unsorted_query_locations,
         } = fri_prover.decommit(channel);
 
+        assert_eq!(query_positions_by_log_size.len(), 1);
+        let queries_position = query_positions_by_log_size.into_values().next().unwrap();
         // Decommit the FRI queries on the merkle trees.
         let decommitment_results = self
             .trees
             .as_ref()
-            .map(|tree| tree.decommit(&query_positions_by_log_size));
+            .map(|tree| tree.decommit(queries_position.clone()));
 
         let (queried_values, decommitments, aux): (Vec<_>, Vec<_>, Vec<_>) = decommitment_results
             .0
@@ -217,7 +218,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
 pub struct CommitmentTreeProver<B: BackendForChannel<MC>, MC: MerkleChannel> {
     pub polynomials: ColumnVec<CirclePoly<B>>,
     pub evaluations: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
-    pub commitment: MerkleProver<B, MC::H>,
+    pub commitment: MerkleProverLifted<B, MC::H>,
 }
 
 impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
@@ -232,7 +233,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         span.exit();
 
         let _span = span!(Level::INFO, "Merkle").entered();
-        let tree = MerkleProver::commit(evaluations.iter().map(|eval| &eval.values).collect());
+        let tree = MerkleProverLifted::commit(evaluations.iter().map(|eval| &eval.values).collect());
         MC::mix_root(channel, tree.root());
 
         CommitmentTreeProver {
@@ -248,8 +249,8 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
     /// positions on each column of that size.
     fn decommit(
         &self,
-        queries: &BTreeMap<u32, Vec<usize>>,
-    ) -> (Vec<BaseField>, ExtendedMerkleDecommitment<MC::H>) {
+        queries: Vec<usize>,
+    ) -> (Vec<BaseField>, ExtendedMerkleDecommitmentLifted<MC::H>) {
         let eval_vec = self
             .evaluations
             .iter()
