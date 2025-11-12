@@ -60,6 +60,7 @@ impl<B: Backend> ComponentProvers<'_, B> {
         for component in &self.components {
             component.evaluate_constraint_quotients_on_domain(trace, &mut accumulator)
         }
+
         accumulator.finalize()
     }
 }

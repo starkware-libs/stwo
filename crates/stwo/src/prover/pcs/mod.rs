@@ -15,7 +15,7 @@ use crate::core::ColumnVec;
 use crate::prover::air::component_prover::Trace;
 use crate::prover::backend::BackendForChannel;
 use crate::prover::fri::{FriDecommitResult, FriProver};
-use crate::prover::pcs::quotient_ops::{_compute_fri_quotients};
+use crate::prover::pcs::quotient_ops::_compute_fri_quotients;
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
@@ -99,7 +99,8 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .polynomials()
             .zip_cols(&sampled_points)
             .map_cols(|(poly, points)| {
-                let domain_log_size = poly.log_size();
+                let domain_log_size = poly.log_size() + self.config.fri_config.log_blowup_factor;
+                println!("{}", max_log_size - domain_log_size);
                 points
                     .iter()
                     .map(|&point| PointSample {

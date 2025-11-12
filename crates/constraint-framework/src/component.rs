@@ -239,6 +239,7 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
+        max_lift_log_size: u32,
     ) {
         let preprocessed_mask = self
             .preprocessed_column_indices
@@ -252,7 +253,13 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         self.eval.evaluate(PointEvaluator::new(
             mask_points,
             evaluation_accumulator,
-            coset_vanishing(CanonicCoset::new(self.eval.log_size()).coset, point).inverse(),
+            // The fold factor works only when max_constraint log degree bound equals log size +
+            // blowup.
+            coset_vanishing(
+                CanonicCoset::new(self.eval.log_size()).coset,
+                point.repeated_double(max_lift_log_size - self.max_constraint_log_degree_bound()),
+            )
+            .inverse(),
             self.eval.log_size(),
             self.claimed_sum,
         ));

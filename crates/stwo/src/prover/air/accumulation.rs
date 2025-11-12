@@ -24,7 +24,7 @@ pub struct DomainEvaluationAccumulator<B: Backend> {
     /// Each `sub_accumulation` holds the sum over all columns i of that log_size, of
     /// `evaluation_i * alpha^(N - 1 - i)`
     /// where `N` is the total number of evaluations.
-    sub_accumulations: Vec<Option<SecureColumnByCoords<B>>>,
+    pub sub_accumulations: Vec<Option<SecureColumnByCoords<B>>>,
 }
 
 impl<B: Backend> DomainEvaluationAccumulator<B> {

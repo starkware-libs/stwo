@@ -66,20 +66,19 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let mut tree_builder = commitment_scheme.tree_builder();
     let (left_comp_poly_half, right_comp_poly_half) = composition_poly.split_at_mid();
 
+    println!("Extend comp polys\n");
     tree_builder.extend_polys(left_comp_poly_half.into_coordinate_polys());
     tree_builder.extend_polys(right_comp_poly_half.into_coordinate_polys());
     tree_builder.commit(channel);
     span.exit();
 
-    // Draw OODS point.
+    // // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
     let mut sample_points = component_provers.components().mask_points(oods_point);
-
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
-
     // Prove the trace and composition OODS values, and retrieve them.
     let commitment_scheme_proof = commitment_scheme.prove_lifted_values(sample_points, channel);
     let proof = StarkProof(commitment_scheme_proof.proof);
@@ -92,7 +91,12 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
         .unwrap()
         != component_provers
             .components()
-            .eval_composition_polynomial_at_point(oods_point, &proof.sampled_values, random_coeff)
+            .eval_composition_polynomial_at_point(
+                oods_point,
+                &proof.sampled_values,
+                random_coeff,
+                composition_log_size,
+            )
     {
         return Err(ProvingError::ConstraintsNotSatisfied);
     }

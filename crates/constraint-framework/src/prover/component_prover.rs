@@ -252,12 +252,10 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
                 self.claimed_sum,
             );
             let row_res = self.eval.evaluate(eval).row_res;
-
             // Finalize row.
             let denom_inv = denom_inv[row >> trace_domain.log_size()];
-            col.set(row, col.at(row) + row_res * denom_inv)
+            col.set(row, col.at(row) + row_res * denom_inv);
         }
         *accum.col = col;
-        return;
     }
 }

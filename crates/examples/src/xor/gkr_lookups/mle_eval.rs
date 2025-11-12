@@ -154,6 +154,7 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalProverComponent<'_, '_, O> {
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         accumulator: &mut PointEvaluationAccumulator,
+        _max_lift_log_size: u32,
     ) {
         // Consistency check the MLE coeffs column polynomial and oracle.
         let mle_coeff_col_eval = self.mle_coeff_column_poly.eval_at_point(point);
@@ -366,6 +367,7 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'_, O> {
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         accumulator: &mut PointEvaluationAccumulator,
+        _max_lift_log_size: u32,
     ) {
         let component_mask = mask.sub_tree(&self.trace_location);
         let trace_coset = CanonicCoset::new(self.log_size()).coset;

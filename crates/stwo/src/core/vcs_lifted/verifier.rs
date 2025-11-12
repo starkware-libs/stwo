@@ -93,7 +93,7 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
     /// that index is sent twice.
     pub fn verify(
         &self,
-        queries_position: &Vec<usize>,
+        queries_position: &[usize],
         queried_values: Vec<BaseField>,
         decommitment: MerkleDecommitmentLifted<H>,
     ) -> Result<(), MerkleVerificationError> {

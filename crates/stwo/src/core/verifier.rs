@@ -65,6 +65,7 @@ pub fn verify<MC: MerkleChannel>(
             oods_point,
             &proof.sampled_values,
             random_coeff,
+            composition_log_size,
         )
     {
         return Err(VerificationError::OodsNotMatching);

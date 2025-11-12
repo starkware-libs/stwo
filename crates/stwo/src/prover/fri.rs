@@ -222,7 +222,6 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
 
         let evaluation = evaluation.to_cpu();
         let mut coeffs = evaluation.interpolate().into_ordered_coefficients();
-
         let last_layer_degree_bound = 1 << config.log_last_layer_degree_bound;
         let zeros = coeffs.split_off(last_layer_degree_bound);
         assert!(zeros.iter().all(SecureField::is_zero), "invalid degree");
@@ -507,6 +506,16 @@ mod tests {
         const LOG_INVALID_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR - 1;
         let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3);
         let column = &[polynomial_evaluation(6, LOG_INVALID_BLOWUP_FACTOR)];
+        let twiddles = CpuBackend::precompute_twiddles(column[0].domain.half_coset);
+
+        FriProver::commit(&mut test_channel(), config, column, &twiddles);
+    }
+
+    #[test]
+    fn committing_log_degree_polynomial_succeeds() {
+        const LOG_EXPECTED_BLOWUP_FACTOR: u32 = LOG_BLOWUP_FACTOR;
+        let config = FriConfig::new(2, LOG_EXPECTED_BLOWUP_FACTOR, 3);
+        let column = &[polynomial_evaluation(6, LOG_EXPECTED_BLOWUP_FACTOR)];
         let twiddles = CpuBackend::precompute_twiddles(column[0].domain.half_coset);
 
         FriProver::commit(&mut test_channel(), config, column, &twiddles);

@@ -1,8 +1,11 @@
 use core::iter::Peekable;
+use std::fmt::Debug;
 
+use itertools::Itertools;
 use std_shims::Vec;
 
 use super::fields::Field;
+use crate::prover::backend::{Col, Column, ColumnOps};
 
 pub trait IteratorMutExt<'a, T: 'a>: Iterator<Item = &'a mut T> {
     fn assign(self, other: impl IntoIterator<Item = T>)
@@ -194,6 +197,23 @@ pub unsafe fn uninit_vec<T>(len: usize) -> Vec<T> {
     vec.set_len(len);
     vec
 }
+
+pub fn print_for_debug<T: Debug, B: ColumnOps<T>>(cols: &[Col<B, T>]) {
+    if cols.is_empty() {
+        return;
+    }
+    // Only support a vector of columns of the same length.
+    assert!(cols.windows(2).all(|w| w[0].len() == w[1].len()));
+
+    for i in 0..cols[0].len() {
+        println!("{:?}", cols.iter().map(|c| c.at(i)).collect_vec());
+    }
+
+    println!("\n\n\n");
+}
+
+pub const N_ROWS_SHORT_COMPONENT: usize = 3;
+pub const N_ROWS_LONG_COMPONENT: usize = 3;
 
 #[cfg(all(test, feature = "prover"))]
 mod tests {

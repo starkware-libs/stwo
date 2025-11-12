@@ -234,23 +234,48 @@ mod tests {
 
     #[test]
     fn test_quotients_are_low_degree() {
-        const LOG_SIZE: u32 = 7;
+        const LOG_SIZE: u32 = 3;
         const LOG_BLOWUP_FACTOR: u32 = 1;
         let polynomial = CpuCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
-        let eval_domain = CanonicCoset::new(LOG_SIZE + 1).circle_domain();
+        let eval_domain = CanonicCoset::new(LOG_SIZE + LOG_BLOWUP_FACTOR).circle_domain();
         let eval = polynomial.evaluate(eval_domain);
         let point = SECURE_FIELD_CIRCLE_GEN;
         let value = polynomial.eval_at_point(point);
-        let rand_coeff = qm31!(1, 2, 3, 9876);
+        let rand_coeff = qm31!(1, 2, 5, 9876);
         let quot_eval = _compute_fri_quotients(
             &[&eval],
             &[vec![PointSample { point, value }]],
             rand_coeff,
             LOG_BLOWUP_FACTOR,
         );
-        let quot_poly_base_field =
-            CpuCircleEvaluation::new(eval_domain, quot_eval.values.columns[0].clone())
-                .interpolate();
-        assert!(quot_poly_base_field.is_in_fri_space(LOG_SIZE));
+        let coeffs = quot_eval
+            .values
+            .columns
+            .iter()
+            .map(|c| CpuCircleEvaluation::new(eval_domain, c.clone()).interpolate())
+            .collect_vec();
+        assert!(coeffs.iter().all(|c| c.is_in_fri_space(LOG_SIZE)));
+        ///////////////////////////////////////////////////////////////////
+        // let config = PcsConfig::default();
+        // // Precompute twiddles.
+        // let twiddles = CpuBackend::precompute_twiddles(
+        //     CanonicCoset::new(LOG_SIZE + 1 + LOG_BLOWUP_FACTOR)
+        //         .circle_domain()
+        //         .half_coset,
+        // );
+
+        // // Setup protocol.
+        // let prover_channel = &mut Blake2sM31Channel::default();
+        // let mut commitment_scheme =
+        //     CommitmentSchemeProver::<CpuBackend, Blake2sM31MerkleChannel>::new(config,
+        // &twiddles); FriProver::<CpuBackend,
+        // Blake2sM31MerkleChannel>::commit(prover_channel, config.fri_config, &vec![quot_eval],
+        // &twiddles);
+
+        // let mut tree = commitment_scheme.tree_builder();
+        // tree.extend_polys([polynomial]);
+        // tree.commit(prover_channel);
+        // commitment_scheme.prove_lifted_values(TreeVec::new(vec![vec![vec!
+        // [SECURE_FIELD_CIRCLE_GEN]]]), prover_channel);
     }
 }

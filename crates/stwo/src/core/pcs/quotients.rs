@@ -197,8 +197,6 @@ pub fn accumulate_row_partial_numerators(
         let mut numerator = SecureField::zero();
         for ((column_index, _), (_a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
         {
-            // dbg!(a, b, c);
-            // dbg!(queried_values_at_row[*column_index]);
             let value = queried_values_at_row[*column_index] * *c;
             // The numerator is a line equation passing through
             //   (sample_point.y, sample_value), (conj(sample_point), conj(sample_value))
@@ -206,11 +204,6 @@ pub fn accumulate_row_partial_numerators(
             // When substituting a polynomial in this line equation, we get a polynomial with a root
             // at sample_point and conj(sample_point) if the original polynomial had the values
             // sample_value and conj(sample_value) at these points.
-
-            // Accumulate the `a` in another func.
-            // let linear_term = *a * domain_point.y + *b;
-            // let tmp = value - linear_term;
-            // dbg!(tmp);
 
             numerator += value - *b;
         }

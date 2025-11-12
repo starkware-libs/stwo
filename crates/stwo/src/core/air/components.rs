@@ -51,13 +51,15 @@ impl Components<'_> {
         point: CirclePoint<SecureField>,
         mask_values: &TreeVec<Vec<Vec<SecureField>>>,
         random_coeff: SecureField,
+        max_lifting_log_size: u32,
     ) -> SecureField {
         let mut evaluation_accumulator = PointEvaluationAccumulator::new(random_coeff);
         for component in &self.components {
             component.evaluate_constraint_quotients_at_point(
-                point,
+                point, // OODS also in small components
                 mask_values,
                 &mut evaluation_accumulator,
+                max_lifting_log_size,
             )
         }
         evaluation_accumulator.finalize()
