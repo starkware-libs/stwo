@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+
+use hashbrown::HashMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std_shims::{vec, Vec};
@@ -11,31 +14,53 @@ pub struct MerkleDecommitmentLifted<H: MerkleHasherLifted> {
     /// Hash values that the verifier needs but cannot deduce from previous computations, in the
     /// order they are needed.
     pub hash_witness: Vec<H::Hash>,
+    // TODO(Leo): delete after e2e flow passes.
+    pub column_witness: Vec<H::Hash>
 }
 
 impl<H: MerkleHasherLifted> MerkleDecommitmentLifted<H> {
     pub const fn empty() -> Self {
         Self {
             hash_witness: Vec::new(),
+            column_witness: Vec::new(),
         }
     }
+}
+
+/// Auxiliary data for Merkle decommitment.
+#[derive(Clone, Debug)]
+pub struct MerkleDecommitmentLiftedAux<H: MerkleHasherLifted> {
+    /// For each layer, a map from node index to its hash value.
+    pub all_node_values: Vec<HashMap<usize, H::Hash>>,
+}
+
+pub struct ExtendedMerkleDecommitmentLifted<H: MerkleHasherLifted> {
+    pub decommitment: MerkleDecommitmentLifted<H>,
+    pub aux: MerkleDecommitmentLiftedAux<H>,
 }
 
 pub struct MerkleVerifierLifted<H: MerkleHasherLifted> {
     /// The commitment value.
     pub root: H::Hash,
-    /// The number of columns committed.
-    pub n_columns: usize,
-    /// The largest log size of a committed column.
-    pub max_log_size: u32,
+    // /// The number of columns committed.
+    // pub n_columns: usize,
+    // /// The largest log size of a committed column.
+    // pub max_log_size: u32,
+    pub column_log_sizes: Vec<u32>,
+    pub n_columns_per_log_size: BTreeMap<u32, usize>,
 }
 
 impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
-    pub const fn new(root: H::Hash, n_columns: usize, max_log_size: u32) -> Self {
+    pub fn new(root: H::Hash, column_log_sizes: Vec<u32>) -> Self {
+        let mut n_columns_per_log_size = BTreeMap::new();
+        for log_size in &column_log_sizes {
+            *n_columns_per_log_size.entry(*log_size).or_insert(0) += 1;
+        }
+
         Self {
             root,
-            n_columns,
-            max_log_size,
+            column_log_sizes,
+            n_columns_per_log_size,
         }
     }
 
@@ -72,9 +97,14 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
         queried_values: Vec<BaseField>,
         decommitment: MerkleDecommitmentLifted<H>,
     ) -> Result<(), MerkleVerificationError> {
+        let Some(max_log_size) = self.column_log_sizes.iter().max() else {
+            return Ok(());
+        };
+
+        let n_columns = self.column_log_sizes.len();
         let mut prev_layer_hashes: Vec<(usize, H::Hash)> = queries_position
             .iter()
-            .zip_eq(queried_values.chunks_exact(self.n_columns))
+            .zip_eq(queried_values.chunks_exact(n_columns))
             .map(|(idx, column_values)| {
                 let mut hasher = H::default_with_initial_state();
                 hasher.update_leaf(column_values);
@@ -85,7 +115,7 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
         let mut hash_witness = decommitment.hash_witness.into_iter();
 
         // Verify inner layers
-        for _ in 0..self.max_log_size {
+        for _ in 0..*max_log_size {
             let mut curr_layer_hashes: Vec<(usize, H::Hash)> = vec![];
             for chunk in prev_layer_hashes.as_slice().chunk_by(|a, b| a.0 ^ 1 == b.0) {
                 // If `chunk` has length 1, we need to fetch the brother of `chunk[0].1` from the
