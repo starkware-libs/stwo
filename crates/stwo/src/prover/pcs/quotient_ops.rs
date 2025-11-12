@@ -134,7 +134,7 @@ mod tests {
     use crate::core::utils::bit_reverse_index;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::CpuBackend;
-    use crate::prover::pcs::quotient_ops::{_compute_fri_quotients};
+    use crate::prover::pcs::quotient_ops::_compute_fri_quotients;
     use crate::prover::poly::circle::SecureEvaluation;
     use crate::prover::poly::BitReversedOrder;
     use crate::prover::secure_column::SecureColumnByCoords;

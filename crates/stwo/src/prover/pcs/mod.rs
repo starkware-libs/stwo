@@ -1,4 +1,3 @@
-
 use itertools::Itertools;
 use tracing::{span, Level};
 
@@ -10,13 +9,13 @@ use crate::core::pcs::quotients::{
     CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
 };
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
-use crate::core::ColumnVec;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::ExtendedMerkleDecommitmentLifted;
+use crate::core::ColumnVec;
 use crate::prover::air::component_prover::Trace;
 use crate::prover::backend::BackendForChannel;
 use crate::prover::fri::{FriDecommitResult, FriProver};
-use crate::prover::pcs::quotient_ops::compute_fri_quotients;
+use crate::prover::pcs::quotient_ops::{_compute_fri_quotients};
 use crate::prover::poly::circle::{CircleEvaluation, CirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
@@ -118,12 +117,12 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 
         // Compute oods quotients for boundary constraints on the sampled points.
         let columns = self.evaluations().flatten();
-        let quotients = compute_fri_quotients(
+        let quotients = vec![_compute_fri_quotients(
             &columns,
             &samples.flatten(),
             channel.draw_secure_felt(),
             self.config.fri_config.log_blowup_factor,
-        );
+        )];
 
         // Run FRI commitment phase on the oods quotients.
         let fri_prover =
@@ -233,7 +232,8 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
         span.exit();
 
         let _span = span!(Level::INFO, "Merkle").entered();
-        let tree = MerkleProverLifted::commit(evaluations.iter().map(|eval| &eval.values).collect());
+        let tree =
+            MerkleProverLifted::commit(evaluations.iter().map(|eval| &eval.values).collect());
         MC::mix_root(channel, tree.root());
 
         CommitmentTreeProver {

@@ -21,9 +21,11 @@ use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::core::utils::bit_reverse_index;
-use crate::core::vcs_lifted::verifier::{MerkleVerificationError};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use crate::core::vcs_lifted::verifier::{MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux, MerkleVerifierLifted};
+use crate::core::vcs_lifted::verifier::{
+    MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux, MerkleVerificationError,
+    MerkleVerifierLifted,
+};
 
 /// FRI proof config
 // TODO(andrew): Support different step sizes.
@@ -557,7 +559,7 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
                 .flat_map(|column_domain| [column_domain.log_size(); SECURE_EXTENSION_DEGREE])
                 .collect(),
         );
-        
+
         assert_eq!(decommitment_positions_by_log_size.len(), 1);
         let decommitment_positions = decommitment_positions_by_log_size.values().next().unwrap();
 
@@ -635,7 +637,7 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
             self.proof.commitment,
             vec![self.domain.log_size(); SECURE_EXTENSION_DEGREE],
         );
-        
+
         merkle_verifier
             .verify(
                 &decommitment_positions,
@@ -1046,7 +1048,8 @@ mod tests {
     //     proof.inner_layers[1].fri_witness.pop();
     //     let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-    //     let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
+    //     let verification_result = verifier.decommit_on_queries(&queries,
+    // vec![decommitment_value]);
 
     //     assert!(matches!(
     //         verification_result,
@@ -1071,7 +1074,8 @@ mod tests {
     //     proof.inner_layers[1].fri_witness[0] += BaseField::one();
     //     let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-    //     let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
+    //     let verification_result = verifier.decommit_on_queries(&queries,
+    // vec![decommitment_value]);
 
     //     assert!(matches!(
     //         verification_result,
@@ -1120,7 +1124,8 @@ mod tests {
     //     proof.last_layer_poly[0] += BaseField::one();
     //     let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bound).unwrap();
 
-    //     let verification_result = verifier.decommit_on_queries(&queries, vec![decommitment_value]);
+    //     let verification_result = verifier.decommit_on_queries(&queries,
+    // vec![decommitment_value]);
 
     //     assert!(matches!(
     //         verification_result,

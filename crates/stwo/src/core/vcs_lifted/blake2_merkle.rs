@@ -48,7 +48,6 @@ impl MerkleHasherLifted for Blake2sMerkleHasher {
     }
 }
 
-
 pub type Blake2sMerkleChannel = Blake2sMerkleChannelGeneric<false>;
 /// Same as [Blake2sMerkleChannel], expect that the hash output is taken modulo M31::P.
 pub type Blake2sM31MerkleChannel = Blake2sMerkleChannelGeneric<true>;
@@ -62,11 +61,9 @@ impl<const IS_M31_OUTPUT: bool> MerkleChannel for Blake2sMerkleChannelGeneric<IS
 
     fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasherLifted>::Hash) {
         use crate::core::vcs::blake2_hash::Blake2sHasherGeneric;
-        channel.update_digest(
-            Blake2sHasherGeneric::<IS_M31_OUTPUT>::concat_and_hash(
-                &channel.digest(),
-                &root,
-            ),
-        );
+        channel.update_digest(Blake2sHasherGeneric::<IS_M31_OUTPUT>::concat_and_hash(
+            &channel.digest(),
+            &root,
+        ));
     }
 }

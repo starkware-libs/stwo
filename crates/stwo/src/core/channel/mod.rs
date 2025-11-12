@@ -2,9 +2,8 @@ use core::fmt::Debug;
 
 use std_shims::Vec;
 
-use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-
 use super::fields::qm31::SecureField;
+use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 
 #[cfg(not(target_arch = "wasm32"))]
 mod poseidon252;

@@ -15,7 +15,7 @@ pub struct MerkleDecommitmentLifted<H: MerkleHasherLifted> {
     /// order they are needed.
     pub hash_witness: Vec<H::Hash>,
     // TODO(Leo): delete after e2e flow passes.
-    pub column_witness: Vec<H::Hash>
+    pub column_witness: Vec<H::Hash>,
 }
 
 impl<H: MerkleHasherLifted> MerkleDecommitmentLifted<H> {

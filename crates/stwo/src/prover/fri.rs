@@ -351,7 +351,10 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
         }
 
         assert_eq!(decommitment_positions_by_log_size.len(), 1);
-        let decommitment_positions = decommitment_positions_by_log_size.into_values().next().unwrap();
+        let decommitment_positions = decommitment_positions_by_log_size
+            .into_values()
+            .next()
+            .unwrap();
         let (_evals, decommitment) = self.merkle_tree.decommit(
             decommitment_positions,
             extract_coordinate_columns(self.columns),
@@ -402,7 +405,8 @@ struct FriInnerLayerProver<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted
 
 impl<B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriInnerLayerProver<B, H> {
     fn new(evaluation: LineEvaluation<B>) -> Self {
-        let merkle_tree = MerkleProverLifted::commit(evaluation.values.columns.iter().collect_vec());
+        let merkle_tree =
+            MerkleProverLifted::commit(evaluation.values.columns.iter().collect_vec());
         FriInnerLayerProver {
             evaluation,
             merkle_tree,

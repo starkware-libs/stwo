@@ -13,8 +13,8 @@ use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 pub type WideFibonacciComponent<const N: usize> = FrameworkComponent<WideFibonacciEval<N>>;
 
 pub struct FibInput {
-    a: PackedBaseField,
-    b: PackedBaseField,
+    pub a: PackedBaseField,
+    pub b: PackedBaseField,
 }
 
 /// A component that enforces the Fibonacci sequence.
@@ -245,7 +245,8 @@ mod tests {
     //     // Setup protocol.
     //     let prover_channel = &mut Poseidon252Channel::default();
     //     let mut commitment_scheme =
-    //         CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(config, &twiddles);
+    //         CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(config,
+    // &twiddles);
 
     //     // TODO(ilya): remove the following once preprocessed columns are not mandatory.
     //     // Preprocessed trace
