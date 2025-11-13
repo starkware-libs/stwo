@@ -104,21 +104,25 @@ impl<const N: usize> ComponentTrace<N> {
         self.log_size
     }
 
-    pub fn iter_mut(&mut self) -> RowIterMut<'_> {
+    pub fn iter_mut(&mut self) -> RowIterMut<'_, N> {
         RowIterMut::new(
             self.data
                 .iter_mut()
                 .map(|col| col.as_mut_slice())
-                .collect_vec(),
+                .collect_vec()
+                .try_into()
+                .unwrap(),
         )
     }
 
-    pub fn par_iter_mut(&mut self) -> ParRowIterMut<'_> {
+    pub fn par_iter_mut(&mut self) -> ParRowIterMut<'_, N> {
         ParRowIterMut::new(
             self.data
                 .iter_mut()
                 .map(|col| col.as_mut_slice())
-                .collect_vec(),
+                .collect_vec()
+                .try_into()
+                .unwrap(),
         )
     }
 
@@ -173,7 +177,7 @@ mod tests {
             .zip(arr.par_chunks(N_LANES))
             .chunks(CHUNK_SIZE)
             .for_each(|chunk| {
-                chunk.into_iter().for_each(|(mut row, input)| {
+                chunk.into_iter().for_each(|(row, input)| {
                     *row[0] = PackedM31::from_array(input.try_into().unwrap());
                     *row[1] = *row[0] + PackedM31::broadcast(M31(1));
                     *row[2] = row[0].square() + row[1].square();

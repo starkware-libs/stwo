@@ -67,7 +67,7 @@ mod tests {
             .iter_mut()
             .zip(arr.chunks(N_LANES))
             .zip(lookup_data.iter_mut())
-            .for_each(|((mut row, input), lookup_data)| {
+            .for_each(|((row, input), lookup_data)| {
                 *row[0] = PackedM31::from_array(input.try_into().unwrap());
                 *row[1] = *row[0] + PackedM31::broadcast(M31(1));
                 *row[2] = *row[0] + *row[1];
@@ -132,7 +132,7 @@ mod tests {
             .par_iter_mut()
             .zip(arr.par_chunks(N_LANES).into_par_iter())
             .zip(lookup_data.par_iter_mut())
-            .for_each(|((mut row, input), lookup_data)| {
+            .for_each(|((row, input), lookup_data)| {
                 *row[0] = PackedM31::from_array(input.try_into().unwrap());
                 *row[1] = *row[0] + PackedM31::broadcast(M31(1));
                 *row[2] = *row[0] + *row[1];
