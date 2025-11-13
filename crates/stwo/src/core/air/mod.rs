@@ -45,6 +45,6 @@ pub trait Component {
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
-        fold_factor: u32,
+        max_lift_log_size: u32,
     );
 }

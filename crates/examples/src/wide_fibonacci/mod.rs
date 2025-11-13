@@ -182,17 +182,6 @@ mod tests {
                     .circle_domain()
                     .half_coset,
             );
-            // Prove constraints.
-            let component = WideFibonacciComponent::new(
-                &mut TraceLocationAllocator::default(),
-                WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
-                    log_n_rows: log_n_instances,
-                },
-                SecureField::zero(),
-            );
-
-            let sizes = component.trace_log_degree_bounds();
-            println!("{:?}", &sizes);
 
             // Setup protocol.
             let prover_channel = &mut Blake2sM31Channel::default();
@@ -221,9 +210,6 @@ mod tests {
                 SecureField::zero(),
             );
 
-            let sizes = component.trace_log_degree_bounds();
-            println!("{:?}", &sizes);
-
             let proof = prove::<SimdBackend, Blake2sM31MerkleChannel>(
                 &[&component],
                 prover_channel,
@@ -238,7 +224,6 @@ mod tests {
 
             // Retrieve the expected column sizes in each commitment interaction, from the AIR.
             let sizes = component.trace_log_degree_bounds();
-            dbg!(&sizes);
             commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
             commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
             verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();

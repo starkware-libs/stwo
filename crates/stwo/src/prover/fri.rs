@@ -112,15 +112,9 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         columns: &'a [SecureEvaluation<B, BitReversedOrder>],
         twiddles: &TwiddleTree<B>,
     ) -> Self {
-        assert!(!columns.is_empty(), "no columns");
-        assert!(columns.iter().all(|e| e.domain.is_canonic()), "not canonic");
-        assert!(
-            columns
-                .iter()
-                .tuple_windows()
-                .all(|(a, b)| a.len() > b.len()),
-            "column sizes not decreasing"
-        );
+        // In lifted FRI there is only a single evaluation to be proven.
+        assert_eq!(columns.len(), 1);
+        assert!(columns[0].domain.is_canonic(), "not canonic");
 
         let first_layer = Self::commit_first_layer(channel, columns);
         let (inner_layers, last_layer_evaluation) =
@@ -189,11 +183,6 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
             MC::mix_root(channel, layer.merkle_tree.root());
             let folding_alpha = channel.draw_secure_felt();
             layer_evaluation = B::fold_line(&layer.evaluation, folding_alpha, twiddles);
-
-            // Check for circle polys in the first layer that should be combined in this layer.
-            if let Some(column) = columns.next_if(|c| folded_size(c) == layer_evaluation.len()) {
-                B::fold_circle_into_line(&mut layer_evaluation, column, folding_alpha, twiddles);
-            }
             layers.push(layer);
         }
 

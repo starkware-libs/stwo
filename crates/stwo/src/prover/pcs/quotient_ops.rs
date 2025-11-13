@@ -47,18 +47,7 @@ pub trait QuotientOps: PolyOps {
     );
 }
 
-#[allow(dead_code, unused_variables)]
 pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
-    columns: &[&CircleEvaluation<B, BaseField, BitReversedOrder>],
-    samples: &[Vec<PointSample>],
-    random_coeff: SecureField,
-    log_blowup_factor: u32,
-) -> Vec<SecureEvaluation<B, BitReversedOrder>> {
-    let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
-    unimplemented!()
-}
-
-pub fn _compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     columns: &[&CircleEvaluation<B, BaseField, BitReversedOrder>],
     samples: &[Vec<PointSample>],
     random_coeff: SecureField,
@@ -101,7 +90,7 @@ pub fn _compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         })
         .collect_vec();
 
-    // Lift the numerators.
+    // Lift the partial numerators.
     let mut curr_eval: Option<SecureEvaluation<B, BitReversedOrder>> = None;
     for mut col in unlifted.into_iter() {
         if let Some(prev_eval) = curr_eval {
@@ -111,7 +100,7 @@ pub fn _compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     }
     let mut curr_eval = curr_eval.unwrap();
 
-    // Deal with the denominators.
+    // Complete the partial numerators and divide by denominators.
     B::accumulate_denominators(&mut curr_eval, log_blowup_factor, &a_accumulation_dict);
     curr_eval
 }
@@ -134,7 +123,7 @@ mod tests {
     use crate::core::utils::bit_reverse_index;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::CpuBackend;
-    use crate::prover::pcs::quotient_ops::_compute_fri_quotients;
+    use crate::prover::pcs::quotient_ops::compute_fri_quotients;
     use crate::prover::poly::circle::SecureEvaluation;
     use crate::prover::poly::BitReversedOrder;
     use crate::prover::secure_column::SecureColumnByCoords;
@@ -222,7 +211,7 @@ mod tests {
             SecureColumnByCoords::<CpuBackend>::from_iter(expected),
         );
 
-        let actual = _compute_fri_quotients::<CpuBackend>(
+        let actual = compute_fri_quotients::<CpuBackend>(
             &evals.iter().collect_vec(),
             &lifted_samples,
             alpha,
@@ -242,7 +231,7 @@ mod tests {
         let point = SECURE_FIELD_CIRCLE_GEN;
         let value = polynomial.eval_at_point(point);
         let rand_coeff = qm31!(1, 2, 5, 9876);
-        let quot_eval = _compute_fri_quotients(
+        let quot_eval = compute_fri_quotients(
             &[&eval],
             &[vec![PointSample { point, value }]],
             rand_coeff,

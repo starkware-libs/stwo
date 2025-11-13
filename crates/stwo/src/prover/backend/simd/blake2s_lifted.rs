@@ -29,7 +29,11 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
     /// refer to the "size" in terms of PackedM31 (e.g. the log size of a column
     /// of 4 PackedM31 elements is 2).
     fn build_leaves(columns: &[&Col<Self, BaseField>]) -> Col<Self, Blake2sHash> {
-        if columns.first().is_some_and(|c| c.len() < 1 << LOG_N_LANES) {
+        if columns.is_empty() {
+            let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(SIMD_LEAF_INITIAL_STATE)) };
+            return state.into();
+        }
+        if columns[0].len() < 1 << LOG_N_LANES {
             unimplemented!("Support for small columns is not implemented.")
         }
 

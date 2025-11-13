@@ -66,13 +66,12 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let mut tree_builder = commitment_scheme.tree_builder();
     let (left_comp_poly_half, right_comp_poly_half) = composition_poly.split_at_mid();
 
-    println!("Extend comp polys\n");
     tree_builder.extend_polys(left_comp_poly_half.into_coordinate_polys());
     tree_builder.extend_polys(right_comp_poly_half.into_coordinate_polys());
     tree_builder.commit(channel);
     span.exit();
 
-    // // Draw OODS point.
+    // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
