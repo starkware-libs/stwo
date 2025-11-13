@@ -256,6 +256,31 @@ pub fn column_line_coeffs(
         .collect()
 }
 
+pub fn column_line_coeffs_(
+    sample_batches: &[ColumnSampleBatch],
+    random_coeff: SecureField,
+    curr_coeff: &mut SecureField,
+) -> Vec<Vec<(SecureField, SecureField, SecureField)>> {
+    sample_batches
+        .iter()
+        .map(|sample_batch| {
+            sample_batch
+                .columns_and_values
+                .iter()
+                .map(|(_, sampled_value)| {
+                    let sample = PointSample {
+                        point: sample_batch.point,
+                        value: *sampled_value,
+                    };
+                    let line_coeffs = complex_conjugate_line_coeffs(&sample, *curr_coeff);
+                    *curr_coeff *= random_coeff;
+                    line_coeffs
+                })
+                .collect()
+        })
+        .collect()
+}
+
 pub fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain_point: CirclePoint<M31>,
@@ -308,10 +333,10 @@ pub fn quotient_constants(
 pub fn quotient_constants_(
     sample_batches: &[ColumnSampleBatch],
     random_coeff: SecureField,
-    start_coeff: SecureField,
+    curr_coeff: &mut SecureField,
 ) -> QuotientConstants {
     QuotientConstants {
-        line_coeffs: column_line_coeffs(sample_batches, random_coeff, start_coeff),
+        line_coeffs: column_line_coeffs_(sample_batches, random_coeff, curr_coeff),
     }
 }
 

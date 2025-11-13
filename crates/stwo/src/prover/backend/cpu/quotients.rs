@@ -51,7 +51,7 @@ impl QuotientOps for CpuBackend {
     fn accumulate_numerators(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
-        start_coeff: SecureField,
+        start_coeff: &mut SecureField,
         sample_batches: &[ColumnSampleBatch],
         _log_blowup_factor: u32,
         a_accumulation_dict: &mut HashMap<CirclePoint<SecureField>, SecureField>,
@@ -101,13 +101,13 @@ impl QuotientOps for CpuBackend {
     fn accumulate_numerators_v2(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
-        start_coeff: SecureField,
+        curr_coeff: &mut SecureField,
         sample_batches: &[ColumnSampleBatch],
         log_blowup_factor: u32,
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     ) {
         let size = columns[0].len();
-        let quotient_constants = quotient_constants_(sample_batches, random_coeff, start_coeff);
+        let quotient_constants = quotient_constants_(sample_batches, random_coeff, curr_coeff);
 
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
             let mut liftable_numerators = unsafe { SecureColumnByCoords::uninitialized(size) };

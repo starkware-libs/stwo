@@ -107,7 +107,7 @@ impl QuotientOps for SimdBackend {
     fn accumulate_numerators(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
-        start_coeff: SecureField,
+        start_coeff: &mut SecureField,
         sample_batches: &[ColumnSampleBatch],
         log_blowup_factor: u32,
         a_accumulation_dict: &mut HashMap<CirclePoint<SecureField>, SecureField>,
@@ -128,7 +128,7 @@ impl QuotientOps for SimdBackend {
     fn accumulate_numerators_v2(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
-        start_coeff: SecureField,
+        start_coeff: &mut SecureField,
         sample_batches: &[ColumnSampleBatch],
         log_blowup_factor: u32,
         accumulated_numerators_vec: &mut Vec<

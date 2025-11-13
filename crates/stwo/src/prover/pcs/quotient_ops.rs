@@ -8,7 +8,6 @@ use tracing::{span, Level};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample};
 use crate::core::poly::circle::CircleDomain;
 use crate::prover::backend::ColumnOps;
@@ -35,7 +34,7 @@ pub trait QuotientOps: PolyOps {
     fn accumulate_numerators(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
-        start_coeff: SecureField,
+        start_coeff: &mut SecureField,
         sample_batches: &[ColumnSampleBatch],
         log_blowup_factor: u32,
         a_accumulation_dict: &mut HashMap<CirclePoint<SecureField>, SecureField>,
@@ -50,7 +49,7 @@ pub trait QuotientOps: PolyOps {
     fn accumulate_numerators_v2(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
-        start_coeff: SecureField,
+        start_coeff: &mut SecureField,
         sample_batches: &[ColumnSampleBatch],
         log_blowup_factor: u32,
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
@@ -92,16 +91,10 @@ pub fn compute_fri_quotients_old<B: QuotientOps + AccumulationOps>(
             let res = B::accumulate_numerators(
                 &columns,
                 random_coeff,
-                start_coeff,
+                &mut start_coeff,
                 &sample_batches,
                 log_blowup_factor,
                 &mut a_accumulation_dict,
-            );
-            start_coeff *= random_coeff.pow(
-                sample_batches
-                    .iter()
-                    .map(|batch| batch.columns_and_values.len() as u128)
-                    .sum(),
             );
             res
         })
@@ -139,7 +132,9 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     let mut accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = vec![];
     let mut start_coeff = SecureField::one();
 
-    // Populate the accumulated numerators vec, per (log_size, sample_point).
+    // Populate `accumulated_numerators_vec`, per (log_size, sample_point).
+    // After this iteration, `accumulated_numerators_vec` will have length equal to
+    // ∑_k (# of distinct sample points per log size k).
     zip(columns, samples)
         .sorted_by_key(|(c, _)| c.domain.log_size())
         .group_by(|(c, _)| c.domain.log_size())
@@ -151,21 +146,16 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
             let res = B::accumulate_numerators_v2(
                 &columns,
                 random_coeff,
-                start_coeff,
+                &mut start_coeff,
                 &sample_batches,
                 log_blowup_factor,
                 &mut accumulated_numerators_vec,
-            );
-            start_coeff *= random_coeff.pow(
-                sample_batches
-                    .iter()
-                    .map(|batch| batch.columns_and_values.len() as u128)
-                    .sum(),
             );
             res
         });
     
     // Reduce the log_size dimension.
+    // After this step, there is a single accumulation per sample point.
     let accumulations_per_sample_point = accumulated_numerators_vec
         .into_iter()
         .sorted_by_key(|c| c.sample_point.x)
@@ -196,6 +186,7 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         .map(|x| x.liftable_numerators.len())
         .max()
         .unwrap().ilog2();
+
     B::accumulate_denominators_v2(accumulations_per_sample_point, log_size)
 }
 
@@ -218,7 +209,6 @@ mod tests {
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::CpuBackend;
     use crate::prover::pcs::quotient_ops::{compute_fri_quotients};
-    // use super::compute_fri_quotients_old;
     use crate::prover::poly::circle::SecureEvaluation;
     use crate::prover::poly::BitReversedOrder;
     use crate::prover::secure_column::SecureColumnByCoords;
@@ -264,10 +254,10 @@ mod tests {
             .iter()
             .zip(&evals)
             .map(|(p, e)| {
-                let (z, w) = sample_points;
+                let (z, _w) = sample_points;
                 let value_z = p.eval_at_point(z.repeated_double(max_log_size - e.domain.log_size()));
-                let value_w = p.eval_at_point(w.repeated_double(max_log_size - e.domain.log_size()));
-                vec![PointSample { point: z, value: value_z }, PointSample { point: w, value: value_w}]
+                // let value_w = p.eval_at_point(w.repeated_double(max_log_size - e.domain.log_size()));
+                vec![PointSample { point: z, value: value_z }]
             })
             .collect_vec();
 
