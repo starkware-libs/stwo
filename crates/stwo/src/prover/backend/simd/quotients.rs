@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use itertools::{izip, zip_eq, Itertools};
 use num_traits::{One, Zero};
 #[cfg(feature = "parallel")]
@@ -110,27 +108,6 @@ impl QuotientOps for SimdBackend {
         start_coeff: &mut SecureField,
         sample_batches: &[ColumnSampleBatch],
         log_blowup_factor: u32,
-        a_accumulation_dict: &mut HashMap<CirclePoint<SecureField>, SecureField>,
-    ) -> SecureEvaluation<Self, BitReversedOrder> {
-        unimplemented!()
-    }
-
-    #[allow(unused_variables)]
-    fn accumulate_denominators(
-        numerators: &mut SecureEvaluation<Self, BitReversedOrder>,
-        log_blowup_factor: u32,
-        a_accumulation_dict: &HashMap<CirclePoint<SecureField>, SecureField>,
-    ) {
-        unimplemented!()
-    }
-
-    #[allow(unused_variables)]
-    fn accumulate_numerators_v2(
-        columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
-        random_coeff: SecureField,
-        start_coeff: &mut SecureField,
-        sample_batches: &[ColumnSampleBatch],
-        log_blowup_factor: u32,
         accumulated_numerators_vec: &mut Vec<
             crate::prover::pcs::quotient_ops::AccumulatedNumerators<Self>,
         >,
@@ -139,9 +116,8 @@ impl QuotientOps for SimdBackend {
     }
 
     #[allow(unused_variables)]
-    fn accumulate_denominators_v2(
+    fn accumulate_denominators(
         accs: Vec<AccumulatedNumerators<Self>>,
-        log_size: u32,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
         unimplemented!()
     }

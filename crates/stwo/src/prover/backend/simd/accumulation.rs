@@ -64,7 +64,9 @@ impl AccumulationOps for SimdBackend {
     }
 
     #[allow(unused)]
-    fn lift_and_accumulate_v2(cols: Vec<SecureColumnByCoords<Self>>) -> SecureColumnByCoords<Self> {
+    fn lift_and_accumulate_v2(
+        cols: Vec<SecureColumnByCoords<Self>>,
+    ) -> Option<SecureColumnByCoords<Self>> {
         unimplemented!()
     }
 }

@@ -86,25 +86,14 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             class = "ConstraintInterpolation"
         )
         .entered();
-        let mut curr_eval: Option<SecureColumnByCoords<B>> = None;
-        let twiddles = B::precompute_twiddles(
-            CanonicCoset::new(self.log_size())
-                .circle_domain()
-                .half_coset,
-        );
 
-        for values in self.sub_accumulations.into_iter().skip(1) {
-            let Some(mut values) = values else {
-                continue;
-            };
-
-            if let Some(prev_eval) = curr_eval {
-                B::lift_and_accumulate(&mut values, &prev_eval);
-            }
-            curr_eval = Some(values);
-        }
+        let sub_accumulations = self.sub_accumulations.into_iter().flatten().collect_vec();
+        let curr_eval = B::lift_and_accumulate_v2(sub_accumulations);
 
         if let Some(eval) = curr_eval {
+            let twiddles =
+                B::precompute_twiddles(CanonicCoset::new(log_size).circle_domain().half_coset);
+
             SecureCirclePoly(eval.columns.map(|c| {
                 CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
                     CanonicCoset::new(log_size).circle_domain(),
@@ -137,7 +126,9 @@ pub trait AccumulationOps: ColumnOps<BaseField> + Sized {
 
     /// Accumulates and lifts other into column:
     ///   column = column + lift(other).
-    fn lift_and_accumulate_v2(cols: Vec<SecureColumnByCoords<Self>>) -> SecureColumnByCoords<Self>;
+    fn lift_and_accumulate_v2(
+        cols: Vec<SecureColumnByCoords<Self>>,
+    ) -> Option<SecureColumnByCoords<Self>>;
 }
 
 /// A domain accumulator for polynomials of a single size.

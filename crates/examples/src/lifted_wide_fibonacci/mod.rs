@@ -60,7 +60,7 @@ mod tests {
     use super::{generate_trace, FibInput};
     use crate::wide_fibonacci::{WideFibonacciComponent, WideFibonacciEval};
 
-    // Consts must by >= 2;
+    // Consts must by >= 2.
     const N_ROWS_SHORT_COMPONENT: usize = 3;
     const N_ROWS_LONG_COMPONENT: usize = 5;
 
@@ -71,13 +71,13 @@ mod tests {
         let input_0 = (0..1 << log_sizes.0)
             .map(|i| FibInput {
                 a: BaseField::one(),
-                b: BaseField::from_u32_unchecked(i as u32),
+                b: BaseField::from(i as u32),
             })
             .collect_vec();
         let input_1 = (0..1 << log_sizes.1)
             .map(|i| FibInput {
                 a: BaseField::one(),
-                b: BaseField::from_u32_unchecked(100 * i as u32),
+                b: BaseField::from(100 * i as u32),
             })
             .collect_vec();
         chain![
@@ -134,6 +134,7 @@ mod tests {
             SecureField::zero(),
         );
 
+        // Prove.
         let proof = prove::<CpuBackend, Blake2sM31MerkleChannel>(
             &[&component0, &component1],
             prover_channel,
@@ -153,6 +154,7 @@ mod tests {
         ]);
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
         commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
+
         verify(
             &[&component0, &component1],
             verifier_channel,

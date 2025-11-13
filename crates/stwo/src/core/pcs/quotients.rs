@@ -187,32 +187,6 @@ pub fn accumulate_row_quotients(
 }
 
 pub fn accumulate_row_partial_numerators(
-    sample_batches: &[ColumnSampleBatch],
-    queried_values_at_row: &[BaseField],
-    quotient_constants: &QuotientConstants,
-) -> SecureField {
-    let mut row_accumulator = SecureField::zero();
-    for (sample_batch, line_coeffs) in izip!(sample_batches, &quotient_constants.line_coeffs,) {
-        let mut numerator = SecureField::zero();
-        for ((column_index, _), (_, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
-        {
-            let value = queried_values_at_row[*column_index] * *c;
-            // The numerator is a line equation passing through
-            //   (sample_point.y, sample_value), (conj(sample_point), conj(sample_value))
-            // evaluated at (domain_point.y, value).
-            // When substituting a polynomial in this line equation, we get a polynomial with a root
-            // at sample_point and conj(sample_point) if the original polynomial had the values
-            // sample_value and conj(sample_value) at these points.
-
-            numerator += value - *b;
-        }
-
-        row_accumulator += numerator;
-    }
-    row_accumulator
-}
-
-pub fn accumulate_row_partial_numerators_v2(
     batch: &ColumnSampleBatch,
     queried_values_at_row: &[BaseField],
     coeffs: &Vec<(SecureField, SecureField, SecureField)>,

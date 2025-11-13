@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::iter::zip;
 
 use itertools::Itertools;
@@ -37,82 +36,12 @@ pub trait QuotientOps: PolyOps {
         start_coeff: &mut SecureField,
         sample_batches: &[ColumnSampleBatch],
         log_blowup_factor: u32,
-        a_accumulation_dict: &mut HashMap<CirclePoint<SecureField>, SecureField>,
-    ) -> SecureEvaluation<Self, BitReversedOrder>;
-
-    fn accumulate_denominators(
-        numerators: &mut SecureEvaluation<Self, BitReversedOrder>,
-        log_blowup_factor: u32,
-        a_accumulation_dict: &HashMap<CirclePoint<SecureField>, SecureField>,
-    );
-
-    fn accumulate_numerators_v2(
-        columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
-        random_coeff: SecureField,
-        start_coeff: &mut SecureField,
-        sample_batches: &[ColumnSampleBatch],
-        log_blowup_factor: u32,
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     );
 
-    fn accumulate_denominators_v2(
+    fn accumulate_denominators(
         accs: Vec<AccumulatedNumerators<Self>>,
-        log_size: u32,
     ) -> SecureEvaluation<Self, BitReversedOrder>;
-}
-
-#[allow(dead_code)]
-pub fn compute_fri_quotients_old<B: QuotientOps + AccumulationOps>(
-    columns: &[&CircleEvaluation<B, BaseField, BitReversedOrder>],
-    samples: &[Vec<PointSample>],
-    random_coeff: SecureField,
-    log_blowup_factor: u32,
-) -> SecureEvaluation<B, BitReversedOrder> {
-    let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
-    // TODO(Leo): support multiple sample points.
-    let mut sample_points = HashSet::new();
-    samples.iter().flatten().for_each(|v| {
-        sample_points.insert(v.point);
-    });
-    assert_eq!(sample_points.len(), 1);
-
-    let mut a_accumulation_dict = HashMap::<CirclePoint<SecureField>, SecureField>::default();
-    let mut start_coeff = SecureField::one();
-
-    // Accumulate the numerators, for each domain log size.
-    let unlifted = zip(columns, samples)
-        .sorted_by_key(|(c, _)| c.domain.log_size())
-        .group_by(|(c, _)| c.domain.log_size())
-        .into_iter()
-        .map(|(_, tuples)| {
-            let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
-            // TODO: slice.
-            let sample_batches = ColumnSampleBatch::new_vec(&samples);
-            let res = B::accumulate_numerators(
-                &columns,
-                random_coeff,
-                &mut start_coeff,
-                &sample_batches,
-                log_blowup_factor,
-                &mut a_accumulation_dict,
-            );
-            res
-        })
-        .collect_vec();
-
-    // Lift the partial numerators.
-    let mut curr_eval: Option<SecureEvaluation<B, BitReversedOrder>> = None;
-    for mut col in unlifted.into_iter() {
-        if let Some(prev_eval) = curr_eval {
-            B::lift_and_accumulate(&mut col, &prev_eval);
-        }
-        curr_eval = Some(col);
-    }
-    let mut curr_eval = curr_eval.unwrap();
-
-    // Complete the partial numerators and divide by denominators.
-    B::accumulate_denominators(&mut curr_eval, log_blowup_factor, &a_accumulation_dict);
-    curr_eval
 }
 
 pub struct AccumulatedNumerators<B: ColumnOps<BaseField>> {
@@ -125,7 +54,7 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     columns: &[&CircleEvaluation<B, BaseField, BitReversedOrder>],
     samples: &[Vec<PointSample>],
     random_coeff: SecureField,
-    log_blowup_factor: u32,
+    _log_blowup_factor: u32,
 ) -> SecureEvaluation<B, BitReversedOrder> {
     let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
 
@@ -143,18 +72,18 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
             let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
             // TODO: slice.
             let sample_batches = ColumnSampleBatch::new_vec(&samples);
-            let res = B::accumulate_numerators_v2(
+            B::accumulate_numerators(
                 &columns,
                 random_coeff,
                 &mut start_coeff,
                 &sample_batches,
-                log_blowup_factor,
+                _log_blowup_factor,
                 &mut accumulated_numerators_vec,
-            );
-            res
+            )
         });
-    
-    // Reduce the log_size dimension.
+
+    // Group and accumulate the numerators per sample point: the accumulations (of different
+    // lengths) get lifted and accumulated to a single vector.
     // After this step, there is a single accumulation per sample point.
     let accumulations_per_sample_point = accumulated_numerators_vec
         .into_iter()
@@ -163,16 +92,19 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         .into_iter()
         .map(|(sample_point, accumulations_per_log_size)| {
             let accumulations_per_log_size = accumulations_per_log_size.collect_vec();
+            // Accumulate the linear term.
             let linear_accumulation: SecureField = accumulations_per_log_size
                 .iter()
                 .map(|x| x.linear_term)
                 .sum();
-            // They are already sorted increasingly by size?
+            // Accumulate the liftable_numerators.
+            // `liftable_numerators` is already sorted increasingly by size.
             let liftable_numerators = accumulations_per_log_size
                 .into_iter()
                 .map(|x| x.liftable_numerators)
                 .collect_vec();
-            let res = B::lift_and_accumulate_v2(liftable_numerators);
+            let res = B::lift_and_accumulate_v2(liftable_numerators).unwrap();
+
             AccumulatedNumerators {
                 sample_point,
                 liftable_numerators: res,
@@ -181,13 +113,8 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         })
         .collect_vec();
 
-    let log_size = accumulations_per_sample_point
-        .iter()
-        .map(|x| x.liftable_numerators.len())
-        .max()
-        .unwrap().ilog2();
-
-    B::accumulate_denominators_v2(accumulations_per_sample_point, log_size)
+    // Finally, compute the denominators and compute the lifted quotients.
+    B::accumulate_denominators(accumulations_per_sample_point)
 }
 
 #[cfg(test)]
@@ -208,7 +135,7 @@ mod tests {
     use crate::core::utils::bit_reverse_index;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::backend::CpuBackend;
-    use crate::prover::pcs::quotient_ops::{compute_fri_quotients};
+    use crate::prover::pcs::quotient_ops::compute_fri_quotients;
     use crate::prover::poly::circle::SecureEvaluation;
     use crate::prover::poly::BitReversedOrder;
     use crate::prover::secure_column::SecureColumnByCoords;
@@ -246,7 +173,7 @@ mod tests {
         let alpha = qm31!(2, 15, 1, 94);
         let sample_points = (
             CirclePoint::<SecureField>::get_point(98989892),
-            CirclePoint::<SecureField>::get_point(54353534)
+            CirclePoint::<SecureField>::get_point(54353534),
         );
         let max_log_size = log_sizes.last().unwrap() + LOG_BLOWUP_FACTOR;
         // TODO(Leo): test multiple sample points when supported.
@@ -255,14 +182,16 @@ mod tests {
             .zip(&evals)
             .map(|(p, e)| {
                 let (z, _w) = sample_points;
-                let value_z = p.eval_at_point(z.repeated_double(max_log_size - e.domain.log_size()));
-                // let value_w = p.eval_at_point(w.repeated_double(max_log_size - e.domain.log_size()));
-                vec![PointSample { point: z, value: value_z }]
+                let value_z =
+                    p.eval_at_point(z.repeated_double(max_log_size - e.domain.log_size()));
+                vec![PointSample {
+                    point: z,
+                    value: value_z,
+                }]
             })
             .collect_vec();
 
         let domain = CanonicCoset::new(max_log_size).circle_domain();
-
         let sample_batches = ColumnSampleBatch::new_vec(&lifted_samples.iter().collect_vec());
 
         // Compute the expected quotients in the most naive way possible.
@@ -326,9 +255,15 @@ mod tests {
         let quot_eval = compute_fri_quotients(
             &[&eval],
             &[vec![
-                PointSample { point: point_1, value: value_1 },
-                PointSample { point: point_2, value: value_2 }
-                ]],
+                PointSample {
+                    point: point_1,
+                    value: value_1,
+                },
+                PointSample {
+                    point: point_2,
+                    value: value_2,
+                },
+            ]],
             rand_coeff,
             LOG_BLOWUP_FACTOR,
         );
