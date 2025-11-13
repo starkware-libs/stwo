@@ -21,6 +21,7 @@ use crate::core::poly::circle::CircleDomain;
 use crate::core::utils::bit_reverse;
 use crate::prover::backend::simd::column::SecureColumnByCoordsMutSlice;
 use crate::prover::backend::CpuBackend;
+use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
 use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
@@ -104,7 +105,6 @@ impl QuotientOps for SimdBackend {
 
     #[allow(unused_variables)]
     fn accumulate_numerators(
-        domain: CircleDomain,
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
         random_coeff: SecureField,
         start_coeff: SecureField,
@@ -121,6 +121,28 @@ impl QuotientOps for SimdBackend {
         log_blowup_factor: u32,
         a_accumulation_dict: &HashMap<CirclePoint<SecureField>, SecureField>,
     ) {
+        unimplemented!()
+    }
+
+    #[allow(unused_variables)]
+    fn accumulate_numerators_v2(
+        columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
+        random_coeff: SecureField,
+        start_coeff: SecureField,
+        sample_batches: &[ColumnSampleBatch],
+        log_blowup_factor: u32,
+        accumulated_numerators_vec: &mut Vec<
+            crate::prover::pcs::quotient_ops::AccumulatedNumerators<Self>,
+        >,
+    ) {
+        unimplemented!()
+    }
+
+    #[allow(unused_variables)]
+    fn accumulate_denominators_v2(
+        accs: Vec<AccumulatedNumerators<Self>>,
+        log_size: u32,
+    ) -> SecureEvaluation<Self, BitReversedOrder> {
         unimplemented!()
     }
 }

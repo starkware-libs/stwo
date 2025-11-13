@@ -134,6 +134,10 @@ pub trait AccumulationOps: ColumnOps<BaseField> + Sized {
         column: &mut SecureColumnByCoords<Self>,
         other: &SecureColumnByCoords<Self>,
     );
+
+    /// Accumulates and lifts other into column:
+    ///   column = column + lift(other).
+    fn lift_and_accumulate_v2(cols: Vec<SecureColumnByCoords<Self>>) -> SecureColumnByCoords<Self>;
 }
 
 /// A domain accumulator for polynomials of a single size.

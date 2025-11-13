@@ -34,6 +34,17 @@ impl AccumulationOps for CpuBackend {
             column.set(i, res_coeff);
         }
     }
+
+    #[allow(unused_variables)]
+    fn lift_and_accumulate_v2(cols: Vec<SecureColumnByCoords<Self>>) -> SecureColumnByCoords<Self> {
+        let size = cols.last().as_ref().unwrap().len();
+        let mut curr = SecureColumnByCoords::zeros(2);
+        for mut col in cols.into_iter() {
+            CpuBackend::lift_and_accumulate(&mut col, &curr);
+            curr = col;
+        }
+        curr 
+    }
 }
 
 #[cfg(test)]

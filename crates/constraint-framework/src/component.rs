@@ -253,8 +253,8 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         self.eval.evaluate(PointEvaluator::new(
             mask_points,
             evaluation_accumulator,
-            // TODO(Leo): The fold factor works only when max_constraint log degree bound equals log size +
-            // blowup. Modify.
+            // TODO(Leo): The fold factor works only when max_constraint log degree bound equals
+            // log size + blowup. Modify.
             coset_vanishing(
                 CanonicCoset::new(self.eval.log_size()).coset,
                 point.repeated_double(max_lift_log_size - self.max_constraint_log_degree_bound()),

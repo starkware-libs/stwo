@@ -190,12 +190,11 @@ pub fn accumulate_row_partial_numerators(
     sample_batches: &[ColumnSampleBatch],
     queried_values_at_row: &[BaseField],
     quotient_constants: &QuotientConstants,
-    _domain_point: CirclePoint<BaseField>,
 ) -> SecureField {
     let mut row_accumulator = SecureField::zero();
     for (sample_batch, line_coeffs) in izip!(sample_batches, &quotient_constants.line_coeffs,) {
         let mut numerator = SecureField::zero();
-        for ((column_index, _), (_a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
+        for ((column_index, _), (_, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
         {
             let value = queried_values_at_row[*column_index] * *c;
             // The numerator is a line equation passing through
@@ -213,6 +212,18 @@ pub fn accumulate_row_partial_numerators(
     row_accumulator
 }
 
+pub fn accumulate_row_partial_numerators_v2(
+    batch: &ColumnSampleBatch,
+    queried_values_at_row: &[BaseField],
+    coeffs: &Vec<(SecureField, SecureField, SecureField)>,
+) -> SecureField {
+    let mut numerator = SecureField::zero();
+    for ((column_index, _), (_, b, c)) in zip_eq(&batch.columns_and_values, coeffs) {
+        let value = queried_values_at_row[*column_index] * *c;
+        numerator += value - *b;
+    }
+    numerator
+}
 /// Precomputes the complex conjugate line coefficients for each column in each sample batch.
 ///
 /// For the `i`-th numerator term `alpha^i * (c * F(p) - (a * p.y + b))`,
