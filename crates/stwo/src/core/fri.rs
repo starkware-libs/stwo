@@ -205,8 +205,6 @@ impl<MC: MerkleChannel> FriVerifier<MC> {
         first_layer_query_evals: ColumnVec<Vec<SecureField>>,
     ) -> Result<(), FriVerificationError> {
         let queries = self.queries.take().expect("queries not sampled");
-        dbg!(&queries);
-        dbg!(&first_layer_query_evals);
         self.decommit_on_queries(&queries, first_layer_query_evals)
     }
 

@@ -101,6 +101,7 @@ pub fn fri_answers(
     let queries_position = query_positions_per_log_size[&max_log_size].clone();
     let mut res = vec![];
     let flattened_samples = samples.flatten();
+    // TODO(Leo): refactor so that you only izip! once.
     for pos in queries_position.iter() {
         let mut curr_coeff = SecureField::one();
         res.push(
@@ -150,7 +151,6 @@ pub fn fri_answers_for_log_size(
         .zip_eq(n_columns.as_ref())
         .map(|(queried_values, n_columns)| queried_values.take(*n_columns).collect())
         .flatten();
-    dbg!(&queried_values_at_row);
 
     Ok(accumulate_row_quotients(
         &sample_batches,

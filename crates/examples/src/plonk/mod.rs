@@ -12,7 +12,7 @@ use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::qm31::PackedSecureField;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::Column;
+use stwo::prover::backend::{Column, CpuBackend};
 use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
 use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::{prove, CommitmentSchemeProver};
@@ -262,7 +262,118 @@ pub fn prove_fibonacci_plonk(
 
     (component, proof)
 }
+#[allow(unused)]
+pub fn prove_fibonacci_plonk_cpu(
+    log_n_rows: u32,
+    config: PcsConfig,
+) -> (PlonkComponent, StarkProof<Blake2sMerkleHasher>) {
 
+    // Prepare a fibonacci circuit.
+    let mut fib_values = vec![BaseField::one(), BaseField::one()];
+    for _ in 0..(1 << log_n_rows) {
+        fib_values.push(fib_values[fib_values.len() - 1] + fib_values[fib_values.len() - 2]);
+    }
+    let range = 0..(1 << log_n_rows);
+    let mut circuit = PlonkCircuitTrace {
+        mult: range.clone().map(|_| 2.into()).collect(),
+        a_wire: range.clone().map(|i| i.into()).collect(),
+        b_wire: range.clone().map(|i| (i + 1).into()).collect(),
+        c_wire: range.clone().map(|i| (i + 2).into()).collect(),
+        op: range.clone().map(|_| 1.into()).collect(),
+        a_val: range.clone().map(|i| fib_values[i]).collect(),
+        b_val: range.clone().map(|i| fib_values[i + 1]).collect(),
+        c_val: range.clone().map(|i| fib_values[i + 2]).collect(),
+    };
+    circuit.mult.set((1 << log_n_rows) - 1, 0.into());
+    circuit.mult.set((1 << log_n_rows) - 2, 1.into());
+
+    // Precompute twiddles.
+    let span = span!(Level::INFO, "Precompute twiddles").entered();
+    let twiddles = CpuBackend::precompute_twiddles(
+        CanonicCoset::new(log_n_rows + config.fri_config.log_blowup_factor + 1)
+            .circle_domain()
+            .half_coset,
+    );
+    span.exit();
+
+    // Setup protocol.
+    let channel = &mut Blake2sChannel::default();
+    let mut commitment_scheme =
+        CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
+
+    // Preprocessed trace.
+    let span = span!(Level::INFO, "Constant").entered();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    let mut constant_trace = [
+        circuit.a_wire.clone(),
+        circuit.b_wire.clone(),
+        circuit.c_wire.clone(),
+        circuit.op.clone(),
+    ]
+    .into_iter()
+    .map(|col| {
+        CircleEvaluation::<CpuBackend, _, BitReversedOrder>::new(
+            CanonicCoset::new(log_n_rows).circle_domain(),
+            col.to_cpu(),
+        )
+    })
+    .collect_vec();
+    let constants_trace_location = tree_builder.extend_evals(constant_trace);
+    tree_builder.commit(channel);
+    span.exit();
+
+    // Trace.
+    let span = span!(Level::INFO, "Trace").entered();
+    let trace = gen_trace(log_n_rows, &circuit).iter().map(|x| CircleEvaluation::<CpuBackend, _, _>::new(x.domain, x.values.to_cpu())).collect_vec();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    let base_trace_location = tree_builder.extend_evals(trace);
+    tree_builder.commit(channel);
+    span.exit();
+
+    // Draw lookup element.
+    let lookup_elements = PlonkLookupElements::draw(channel);
+
+    // Interaction trace.
+    let span = span!(Level::INFO, "Interaction").entered();
+    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, &circuit, &lookup_elements.0);
+    let trace = trace.iter().map(|x| CircleEvaluation::<CpuBackend, _, _>::new(x.domain, x.values.to_cpu())).collect_vec();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    let interaction_trace_location = tree_builder.extend_evals(trace);
+    tree_builder.commit(channel);
+    span.exit();
+    // Prove constraints.
+    let component = PlonkComponent::new(
+        &mut TraceLocationAllocator::default(),
+        PlonkEval {
+            log_n_rows,
+            lookup_elements,
+            claimed_sum,
+            base_trace_location,
+            interaction_trace_location,
+            constants_trace_location,
+        },
+        claimed_sum,
+    );
+
+    // Sanity check. Remove for production.
+    let trace_polys = commitment_scheme
+        .trees
+        .as_ref()
+        .map(|t| t.polynomials.iter().cloned().collect_vec());
+    let component_eval = component.clone();
+    assert_constraints_on_polys(
+        &trace_polys,
+        CanonicCoset::new(log_n_rows),
+        |assert_eval| {
+            component_eval.evaluate(assert_eval);
+        },
+        claimed_sum,
+    );
+
+    let proof = prove(&[&component], channel, commitment_scheme).unwrap();
+
+    (component, proof)
+}
 /// Preprocessed columns for describing a plonk circuit.
 /// Each plonk gate is described by input wires `a_wire`, `b_wire`, output wire `c_wire`, and
 /// operation `op`.  
@@ -293,7 +404,7 @@ mod tests {
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use stwo::core::verifier::verify;
 
-    use crate::plonk::{prove_fibonacci_plonk, PlonkLookupElements};
+    use crate::plonk::{PlonkLookupElements, prove_fibonacci_plonk, prove_fibonacci_plonk_cpu};
 
     #[test_log::test]
     fn test_simd_plonk_prove() {
@@ -309,6 +420,44 @@ mod tests {
 
         // Prove.
         let (component, proof) = prove_fibonacci_plonk(log_n_instances, config);
+
+        // Verify.
+        // TODO: Create Air instance independently.
+        let channel = &mut Blake2sChannel::default();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+
+        // Decommit.
+        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        let sizes = component.trace_log_degree_bounds();
+
+        // Preprocessed columns.
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+
+        // Trace columns.
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        // Draw lookup element.
+        let lookup_elements = PlonkLookupElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        // Interaction columns.
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+    }
+
+    #[test_log::test]
+    fn test_cpu_plonk_prove() {
+        // Get from environment variable:
+        let log_n_instances = env::var("LOG_N_INSTANCES")
+            .unwrap_or_else(|_| "15".to_string())
+            .parse::<u32>()
+            .unwrap();
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(0, 1, 64),
+        };
+
+        // Prove.
+        let (component, proof) = prove_fibonacci_plonk_cpu(log_n_instances, config);
 
         // Verify.
         // TODO: Create Air instance independently.
