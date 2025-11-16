@@ -61,7 +61,7 @@ mod tests {
     use crate::wide_fibonacci::{WideFibonacciComponent, WideFibonacciEval};
 
     // Consts must by >= 2.
-    const N_ROWS_SHORT_COMPONENT: usize = 6;
+    const N_ROWS_SHORT_COMPONENT: usize = 3;
     const N_ROWS_LONG_COMPONENT: usize = 5;
 
     fn generate_test_trace_mixed(
@@ -81,8 +81,8 @@ mod tests {
             })
             .collect_vec();
         chain![
-            generate_trace::<N_ROWS_SHORT_COMPONENT, CpuBackend>(log_sizes.0, &input_0),
             generate_trace::<N_ROWS_LONG_COMPONENT, CpuBackend>(log_sizes.1, &input_1),
+            generate_trace::<N_ROWS_SHORT_COMPONENT, CpuBackend>(log_sizes.0, &input_0),
         ]
         .collect_vec()
     }
@@ -90,7 +90,7 @@ mod tests {
     #[test]
     fn test_mixed_wide_fib_prove_with_blake() {
         const LOG_SIZE_SHORT: u32 = 3;
-        const LOG_SIZE_LONG: u32 = 6;
+        const LOG_SIZE_LONG: u32 = 9;
 
         let config = PcsConfig::default();
         // Precompute twiddles.
@@ -121,15 +121,15 @@ mod tests {
         let mut trace_alloc = TraceLocationAllocator::default();
         let component0 = WideFibonacciComponent::new(
             &mut trace_alloc,
-            WideFibonacciEval::<N_ROWS_SHORT_COMPONENT> {
-                log_n_rows: LOG_SIZE_SHORT,
+            WideFibonacciEval::<N_ROWS_LONG_COMPONENT> {
+                log_n_rows: LOG_SIZE_LONG,
             },
             SecureField::zero(),
         );
         let component1 = WideFibonacciComponent::new(
             &mut trace_alloc,
-            WideFibonacciEval::<N_ROWS_LONG_COMPONENT> {
-                log_n_rows: LOG_SIZE_LONG,
+            WideFibonacciEval::<N_ROWS_SHORT_COMPONENT> {
+                log_n_rows: LOG_SIZE_SHORT,
             },
             SecureField::zero(),
         );
@@ -148,8 +148,8 @@ mod tests {
             &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
 
         let trace_sizes = vec![
-            vec![LOG_SIZE_SHORT; N_ROWS_SHORT_COMPONENT],
             vec![LOG_SIZE_LONG; N_ROWS_LONG_COMPONENT],
+            vec![LOG_SIZE_SHORT; N_ROWS_SHORT_COMPONENT],
         ]
         .concat();
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.

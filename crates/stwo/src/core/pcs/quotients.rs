@@ -98,29 +98,34 @@ pub fn fri_answers(
 ) -> Result<ColumnVec<Vec<SecureField>>, VerificationError> {
     let mut queried_values = queried_values.map(|values| values.into_iter());
     let max_log_size = column_log_sizes.0.iter().flatten().max().unwrap().clone();
-    let n_queries = query_positions_per_log_size[&max_log_size].len();
-    let mut curr_coeff = SecureField::one();
-    let res = izip!(column_log_sizes.flatten(), samples.flatten().iter())
-        .sorted_by_key(|(log_size, ..)| *log_size)
-        .group_by(|(log_size, ..)| *log_size)
-        .into_iter()
-        .map(|(log_size, tuples)| {
-            let (_, samples): (Vec<_>, Vec<_>) = multiunzip(tuples);
-            fri_answers_for_log_size(
-                max_log_size,
-                &samples,
-                random_coeff,
-                &mut curr_coeff,
-                &query_positions_per_log_size[&max_log_size],
-                &mut queried_values,
-                n_columns_per_log_size
-                    .as_ref()
-                    .map(|columns_log_sizes| *columns_log_sizes.get(&log_size).unwrap_or(&0)),
-            )
-        })
-        .fold(vec![SecureField::zero(); n_queries], |acc, x| {
-            zip_eq(acc, x.unwrap()).map(|(a, b)| a + b).collect_vec()
-        });
+    let queries_position = query_positions_per_log_size[&max_log_size].clone();
+    let mut res = vec![];
+    let flattened_samples = samples.flatten();
+    for pos in queries_position.iter() {
+        let mut curr_coeff = SecureField::one();
+        res.push(
+            izip!(column_log_sizes.clone().flatten(), flattened_samples.iter())
+                .sorted_by_key(|(log_size, ..)| *log_size)
+                .group_by(|(log_size, ..)| *log_size)
+                .into_iter()
+                .map(|(log_size, tuples)| {
+                    let (_, samples): (Vec<_>, Vec<_>) = multiunzip(tuples);
+                    fri_answers_for_log_size(
+                        max_log_size,
+                        &samples,
+                        random_coeff,
+                        &mut curr_coeff,
+                        *pos,
+                        &mut queried_values,
+                        n_columns_per_log_size.as_ref().map(|columns_log_sizes| {
+                            *columns_log_sizes.get(&log_size).unwrap_or(&0)
+                        }),
+                    )
+                })
+                .map(|x| x.unwrap())
+                .sum(),
+        );
+    }
     Ok(vec![res])
 }
 
@@ -129,34 +134,30 @@ pub fn fri_answers_for_log_size(
     samples: &[&Vec<PointSample>],
     random_coeff: SecureField,
     curr_coeff: &mut SecureField,
-    query_positions: &[usize],
+    query_position: usize,
     queried_values: &mut TreeVec<impl Iterator<Item = BaseField>>,
     n_columns: TreeVec<usize>,
-) -> Result<Vec<SecureField>, VerificationError> {
+) -> Result<SecureField, VerificationError> {
     let sample_batches = ColumnSampleBatch::new_vec(samples);
     // TODO(ilya): Is it ok to use the same `random_coeff` for all log sizes.
     let quotient_constants = quotient_constants_(&sample_batches, random_coeff, curr_coeff);
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
 
-    let mut quotient_evals_at_queries = Vec::new();
-    for &query_position in query_positions {
-        let domain_point = commitment_domain.at(bit_reverse_index(query_position, log_size));
+    let domain_point = commitment_domain.at(bit_reverse_index(query_position, log_size));
 
-        let queried_values_at_row = queried_values
-            .as_mut()
-            .zip_eq(n_columns.as_ref())
-            .map(|(queried_values, n_columns)| queried_values.take(*n_columns).collect())
-            .flatten();
+    let queried_values_at_row = queried_values
+        .as_mut()
+        .zip_eq(n_columns.as_ref())
+        .map(|(queried_values, n_columns)| queried_values.take(*n_columns).collect())
+        .flatten();
+    dbg!(&queried_values_at_row);
 
-        quotient_evals_at_queries.push(accumulate_row_quotients(
-            &sample_batches,
-            &queried_values_at_row,
-            &quotient_constants,
-            domain_point,
-        ));
-    }
-
-    Ok(quotient_evals_at_queries)
+    Ok(accumulate_row_quotients(
+        &sample_batches,
+        &queried_values_at_row,
+        &quotient_constants,
+        domain_point,
+    ))
 }
 
 pub fn accumulate_row_quotients(

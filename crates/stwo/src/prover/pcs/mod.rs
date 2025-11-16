@@ -126,7 +126,9 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             random_coeff,
             self.config.fri_config.log_blowup_factor,
         )];
-        dbg!(&quotients[0].values.at(16));
+        dbg!(&quotients[0].values.at(10));
+        dbg!(&quotients[0].values.at(25));
+        dbg!(&quotients[0].values.at(28));
         // Run FRI commitment phase on the oods quotients.
         let fri_prover =
             FriProver::<B, MC>::commit(channel, self.config.fri_config, &quotients, self.twiddles);

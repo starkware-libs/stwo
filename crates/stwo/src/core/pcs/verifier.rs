@@ -111,6 +111,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         );
 
         let n_columns_per_log_size = self.trees.as_ref().map(|tree| &tree.n_columns_per_log_size);
+        dbg!(&proof.queried_values);
         let fri_answers = fri_answers(
             self.column_log_sizes(),
             samples,
