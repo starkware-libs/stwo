@@ -1,5 +1,3 @@
-use core::cmp::Reverse;
-
 use itertools::{izip, multiunzip, zip_eq, Itertools};
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
@@ -99,38 +97,45 @@ pub fn fri_answers(
     n_columns_per_log_size: TreeVec<&BTreeMap<u32, usize>>,
 ) -> Result<ColumnVec<Vec<SecureField>>, VerificationError> {
     let mut queried_values = queried_values.map(|values| values.into_iter());
-
-    izip!(column_log_sizes.flatten(), samples.flatten().iter())
-        .sorted_by_key(|(log_size, ..)| Reverse(*log_size))
+    let max_log_size = column_log_sizes.0.iter().flatten().max().unwrap().clone();
+    let n_queries = query_positions_per_log_size[&max_log_size].len();
+    let mut curr_coeff = SecureField::one();
+    let res = izip!(column_log_sizes.flatten(), samples.flatten().iter())
+        .sorted_by_key(|(log_size, ..)| *log_size)
         .group_by(|(log_size, ..)| *log_size)
         .into_iter()
         .map(|(log_size, tuples)| {
             let (_, samples): (Vec<_>, Vec<_>) = multiunzip(tuples);
             fri_answers_for_log_size(
-                log_size,
+                max_log_size,
                 &samples,
                 random_coeff,
-                &query_positions_per_log_size[&log_size],
+                &mut curr_coeff,
+                &query_positions_per_log_size[&max_log_size],
                 &mut queried_values,
                 n_columns_per_log_size
                     .as_ref()
                     .map(|columns_log_sizes| *columns_log_sizes.get(&log_size).unwrap_or(&0)),
             )
         })
-        .collect()
+        .fold(vec![SecureField::zero(); n_queries], |acc, x| {
+            zip_eq(acc, x.unwrap()).map(|(a, b)| a + b).collect_vec()
+        });
+    Ok(vec![res])
 }
 
 pub fn fri_answers_for_log_size(
     log_size: u32,
     samples: &[&Vec<PointSample>],
     random_coeff: SecureField,
+    curr_coeff: &mut SecureField,
     query_positions: &[usize],
     queried_values: &mut TreeVec<impl Iterator<Item = BaseField>>,
     n_columns: TreeVec<usize>,
 ) -> Result<Vec<SecureField>, VerificationError> {
     let sample_batches = ColumnSampleBatch::new_vec(samples);
     // TODO(ilya): Is it ok to use the same `random_coeff` for all log sizes.
-    let quotient_constants = quotient_constants(&sample_batches, random_coeff);
+    let quotient_constants = quotient_constants_(&sample_batches, random_coeff, curr_coeff);
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
 
     let mut quotient_evals_at_queries = Vec::new();

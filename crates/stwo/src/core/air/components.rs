@@ -27,11 +27,12 @@ impl Components<'_> {
     pub fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
+        max_lift_log_size: u32,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
         let mut mask_points = TreeVec::concat_cols(
             self.components
                 .iter()
-                .map(|component| component.mask_points(point)),
+                .map(|component| component.mask_points(point, max_lift_log_size)),
         );
 
         let preprocessed_mask_points = &mut mask_points[PREPROCESSED_TRACE_IDX];

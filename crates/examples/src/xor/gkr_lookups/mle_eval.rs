@@ -134,6 +134,7 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalProverComponent<'_, '_, O> {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
+        _max_lift_log_size: u32,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
         let trace_step = CanonicCoset::new(self.log_size()).step();
         let InfoEvaluator { mask_offsets, .. } = self.eval_info();
@@ -347,6 +348,7 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'_, O> {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
+        _max_lift_log_size: u32,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
         let trace_step = CanonicCoset::new(self.log_size()).step();
         let InfoEvaluator { mask_offsets, .. } = self.eval_info();

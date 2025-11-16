@@ -535,6 +535,61 @@ pub fn verify_blake<MC: MerkleChannel>(
     )
 }
 
+#[allow(unused)]
+pub fn verify_blake_cpu<MC: MerkleChannel>(
+    BlakeProof {
+        stmt0,
+        stmt1,
+        stark_proof,
+    }: BlakeProof<MC::H>,
+) -> Result<(), VerificationError> {
+    // TODO(alonf): Consider mixing the config into the channel.
+    let channel = &mut MC::C::default();
+    const REQUIRED_SECURITY_BITS: u32 = 5;
+    assert!(stark_proof.config.security_bits() >= REQUIRED_SECURITY_BITS);
+    let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(stark_proof.config);
+
+    let mut log_sizes = stmt0.log_sizes();
+    let max_log_size = log_sizes.iter().flatten().max().unwrap().clone();
+    log_sizes
+        .iter_mut()
+        .for_each(|v| v.iter_mut().for_each(|x| *x = max_log_size));
+    // Preprocessed trace.
+    commitment_scheme.commit(stark_proof.commitments[0], &log_sizes[0], channel);
+
+    // Trace.
+    stmt0.mix_into(channel);
+    commitment_scheme.commit(stark_proof.commitments[1], &log_sizes[1], channel);
+
+    // Draw interaction elements.
+    let all_elements = AllElements::draw(channel);
+
+    // Interaction trace.
+    stmt1.mix_into(channel);
+    commitment_scheme.commit(stark_proof.commitments[2], &log_sizes[2], channel);
+
+    let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
+
+    // Check that all sums are correct.
+    let claimed_sum = stmt1.scheduler_claimed_sum
+        + stmt1.round_claimed_sums.iter().sum::<SecureField>()
+        + stmt1.xor12_claimed_sum
+        + stmt1.xor9_claimed_sum
+        + stmt1.xor8_claimed_sum
+        + stmt1.xor7_claimed_sum
+        + stmt1.xor4_claimed_sum;
+
+    // TODO(shahars): Add inputs to sum, and constraint them.
+    assert_eq!(claimed_sum, SecureField::zero());
+
+    verify(
+        &components.components(),
+        channel,
+        commitment_scheme,
+        stark_proof,
+    )
+}
+
 fn to_cpu(
     evals: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
 ) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
@@ -647,7 +702,16 @@ where
     tree_builder.commit(channel);
     span.exit();
 
-    println!("{:?}", commitment_scheme.polynomials().flatten().iter().map(|x| x.log_size()).max().unwrap());
+    println!(
+        "{:?}",
+        commitment_scheme
+            .polynomials()
+            .flatten()
+            .iter()
+            .map(|x| x.log_size())
+            .max()
+            .unwrap()
+    );
     // Draw lookup element.
     let all_elements = AllElements::draw(channel);
 
@@ -761,7 +825,7 @@ mod tests {
     use stwo::core::pcs::PcsConfig;
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 
-    use crate::blake::air::{prove_blake, prove_blake_cpu, verify_blake};
+    use crate::blake::air::{prove_blake, prove_blake_cpu, verify_blake, verify_blake_cpu};
 
     // Note: this test is slow. Only run in release.
     #[cfg_attr(not(feature = "slow-tests"), ignore)]
@@ -806,6 +870,6 @@ mod tests {
         let proof = prove_blake_cpu::<Blake2sMerkleChannel>(log_n_instances, config);
 
         // Verify.
-        verify_blake::<Blake2sMerkleChannel>(proof).unwrap();
+        verify_blake_cpu::<Blake2sMerkleChannel>(proof).unwrap();
     }
 }

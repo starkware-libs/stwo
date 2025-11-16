@@ -35,6 +35,7 @@ pub trait Component {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
+        max_lift_log_size: u32,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>;
 
     fn preprocessed_column_indices(&self) -> ColumnVec<usize>;

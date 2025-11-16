@@ -63,18 +63,17 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let random_coeff = channel.draw_secure_felt();
 
-        let bounds = self
+        let max_log_size = self
             .column_log_sizes()
             .flatten()
-            .into_iter()
-            .sorted()
-            .rev()
-            .dedup()
-            .map(|log_size| {
-                CirclePolyDegreeBound::new(log_size - self.config.fri_config.log_blowup_factor)
-            })
-            .collect_vec();
+            .iter()
+            .max()
+            .unwrap()
+            .clone();
 
+        let bounds = vec![CirclePolyDegreeBound::new(
+            max_log_size - self.config.fri_config.log_blowup_factor,
+        )];
         // FRI commitment phase on OODS quotients.
         let mut fri_verifier =
             FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bounds)?;
@@ -112,7 +111,6 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         );
 
         let n_columns_per_log_size = self.trees.as_ref().map(|tree| &tree.n_columns_per_log_size);
-
         let fri_answers = fri_answers(
             self.column_log_sizes(),
             samples,

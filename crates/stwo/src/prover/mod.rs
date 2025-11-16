@@ -73,9 +73,10 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
 
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-
     // Get mask sample points relative to oods point.
-    let mut sample_points = component_provers.components().mask_points(oods_point);
+    let mut sample_points = component_provers
+        .components()
+        .mask_points(oods_point, composition_log_size);
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
     // Prove the trace and composition OODS values, and retrieve them.
@@ -83,7 +84,6 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let proof = StarkProof(commitment_scheme_proof.proof);
     info!(proof_size_estimate = proof.size_estimate());
 
-    dbg!(composition_log_size);
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.
     if proof
@@ -100,7 +100,6 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     {
         return Err(ProvingError::ConstraintsNotSatisfied);
     }
-
     Ok(ExtendedStarkProof {
         proof,
         aux: commitment_scheme_proof.aux,

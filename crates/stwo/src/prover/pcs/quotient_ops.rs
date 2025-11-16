@@ -251,14 +251,15 @@ mod tests {
             SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
             SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
         ];
-        let samples = sample_points.into_iter().map(|x| PointSample {point: x, value: polynomial.eval_at_point(x)}).collect_vec();
+        let samples = sample_points
+            .into_iter()
+            .map(|x| PointSample {
+                point: x,
+                value: polynomial.eval_at_point(x),
+            })
+            .collect_vec();
         let rand_coeff = qm31!(1, 2, 5, 9876);
-        let quot_eval = compute_fri_quotients(
-            &[&eval],
-            &[samples],
-            rand_coeff,
-            LOG_BLOWUP_FACTOR,
-        );
+        let quot_eval = compute_fri_quotients(&[&eval], &[samples], rand_coeff, LOG_BLOWUP_FACTOR);
         let coeffs = quot_eval
             .values
             .columns

@@ -43,10 +43,9 @@ pub fn verify<MC: MerkleChannel>(
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
 
     // Get mask sample points relative to oods point.
-    let mut sample_points = components.mask_points(oods_point);
+    let mut sample_points = components.mask_points(oods_point, composition_log_size);
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
-
     let sample_points_by_column = sample_points.as_cols_ref().flatten();
     tracing::info!("Sampling {} columns.", sample_points_by_column.len());
     tracing::info!(

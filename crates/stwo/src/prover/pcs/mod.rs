@@ -97,7 +97,6 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         // The maximum log size of an evaluation is the one of the composition polynomial,
         // i.e. the last one.
         let max_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
-        dbg!(max_log_size);
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
@@ -120,13 +119,14 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 
         // Compute oods quotients for boundary constraints on the sampled points.
         let columns = self.evaluations().flatten();
+        let random_coeff = channel.draw_secure_felt();
         let quotients = vec![compute_fri_quotients(
             &columns,
             &samples.flatten(),
-            channel.draw_secure_felt(),
+            random_coeff,
             self.config.fri_config.log_blowup_factor,
         )];
-
+        dbg!(&quotients[0].values.at(16));
         // Run FRI commitment phase on the oods quotients.
         let fri_prover =
             FriProver::<B, MC>::commit(channel, self.config.fri_config, &quotients, self.twiddles);

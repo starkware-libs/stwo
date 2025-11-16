@@ -220,8 +220,12 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
+        max_lift_log_size: u32,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        let trace_step = CanonicCoset::new(self.eval.log_size()).step();
+        let trace_step = CanonicCoset::new(
+            self.eval.log_size() + (max_lift_log_size - self.max_constraint_log_degree_bound()),
+        )
+        .step();
         self.info.mask_offsets.as_ref().map_cols(|col_offsets| {
             col_offsets
                 .iter()

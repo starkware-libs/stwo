@@ -61,7 +61,7 @@ mod tests {
     use crate::wide_fibonacci::{WideFibonacciComponent, WideFibonacciEval};
 
     // Consts must by >= 2.
-    const N_ROWS_SHORT_COMPONENT: usize = 3;
+    const N_ROWS_SHORT_COMPONENT: usize = 6;
     const N_ROWS_LONG_COMPONENT: usize = 5;
 
     fn generate_test_trace_mixed(
@@ -82,7 +82,7 @@ mod tests {
             .collect_vec();
         chain![
             generate_trace::<N_ROWS_SHORT_COMPONENT, CpuBackend>(log_sizes.0, &input_0),
-            generate_trace::<N_ROWS_LONG_COMPONENT, CpuBackend>(log_sizes.1, &input_1)
+            generate_trace::<N_ROWS_LONG_COMPONENT, CpuBackend>(log_sizes.1, &input_1),
         ]
         .collect_vec()
     }
@@ -147,11 +147,13 @@ mod tests {
         let commitment_scheme =
             &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
 
+        let trace_sizes = vec![
+            vec![LOG_SIZE_SHORT; N_ROWS_SHORT_COMPONENT],
+            vec![LOG_SIZE_LONG; N_ROWS_LONG_COMPONENT],
+        ]
+        .concat();
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-        let sizes = TreeVec::new(vec![
-            vec![],
-            vec![LOG_SIZE_LONG; N_ROWS_SHORT_COMPONENT + N_ROWS_LONG_COMPONENT],
-        ]);
+        let sizes = TreeVec::new(vec![vec![], trace_sizes]);
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
         commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
 
