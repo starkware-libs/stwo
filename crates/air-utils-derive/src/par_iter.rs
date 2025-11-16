@@ -63,7 +63,7 @@ fn generate_row_producer(
     let field_names_tail = field_names.iter().map(|f| format_ident!("{}_tail", f));
     quote! {
         pub struct #row_producer_name<#lifetime> {
-            #(#field_names: #mut_slice_types,)*
+            #(#field_names: Box<#mut_slice_types>,)*
         }
         impl<#lifetime> rayon::iter::plumbing::Producer for #row_producer_name<#lifetime> {
             type Item = #mut_chunk_name<#lifetime>;
@@ -74,16 +74,16 @@ fn generate_row_producer(
                 #(#split_at)*
                 (
                     #row_producer_name {
-                        #(#field_names: #field_names_head,)*
+                        #(#field_names: Box::new(#field_names_head),)*
                     },
                     #row_producer_name {
-                        #(#field_names: #field_names_tail,)*
+                        #(#field_names: Box::new(#field_names_tail),)*
                     }
                 )
             }
 
             fn into_iter(self) -> Self::IntoIter {
-                #iter_mut_name::new(#(self.#field_names),*)
+                #iter_mut_name::new(#(*self.#field_names),*)
             }
         }
     }
@@ -101,7 +101,7 @@ fn generate_par_iter_struct(
         .unzip();
     quote! {
         pub struct #par_iter_mut_name<#lifetime> {
-            #(#field_names: #mut_slice_types,)*
+            #(#field_names: Box<#mut_slice_types>,)*
         }
 
         impl<#lifetime> #par_iter_mut_name<#lifetime> {
@@ -109,7 +109,7 @@ fn generate_par_iter_struct(
                 #(#field_names: #mut_slice_types,)*
             ) -> Self {
                 Self {
-                    #(#field_names,)*
+                    #(#field_names: Box::new(#field_names),)*
                 }
             }
         }

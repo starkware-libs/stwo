@@ -129,22 +129,22 @@ impl IterableField {
     }
 
     /// Generate the type of a mutable slice pointer to the field.
-    /// E.g. `*mut [u32]` for a `Vec<u32>` field.
-    /// E.g. [`*mut [u32]; N]` for a `[Vec<u32>; N]` field.
+    /// E.g. `Box<*mut [u32]>` for a `Vec<u32>` field.
+    /// E.g. Box<[`*mut [u32]; N]>` for a `[Vec<u32>; N]` field.
     /// Used in the `IterMut` struct.
     pub fn mut_slice_ptr_type(&self) -> TokenStream {
         match self {
             IterableField::PlainVec(plain_vec) => {
                 let ty = &plain_vec.ty;
                 quote! {
-                    *mut [#ty]
+                    Box<*mut [#ty]>
                 }
             }
             IterableField::ArrayOfVecs(array_of_vecs) => {
                 let inner_type = &array_of_vecs.inner_type;
                 let outer_array_size = &array_of_vecs.outer_array_size;
                 quote! {
-                    [*mut [#inner_type]; #outer_array_size]
+                    Box<[*mut [#inner_type]; #outer_array_size]>
                 }
             }
         }
@@ -189,7 +189,7 @@ impl IterableField {
                 let tail = format_ident!("{}_tail", name);
                 quote! {
                     let (#head, #tail) = self.#name.split_at_mut(1);
-                    self.#name = #tail;
+                    *self.#name = #tail;
                     let #name = &mut (*(#head))[0];
                 }
             }
@@ -220,7 +220,7 @@ impl IterableField {
                         #head,
                         #tail,
                     ) = self.#name.split_at_mut(#length - 1);
-                    self.#name = #head;
+                    *self.#name = #head;
                     let #name = &mut (*#tail)[0];
                 }
             }
@@ -296,20 +296,20 @@ impl IterableField {
     }
 
     /// Generate the code to get a mutable pointer a mutable slice of the field.
-    /// E.g. `'a mut [u32]` -> `*mut [u32]`. Achieved by casting: `as *mut _`.
+    /// E.g. `'a mut [u32]` -> `Box<*mut [u32]>`. Achieved by casting: `as *mut _`.
     /// Used for the `IterMut` struct.
     pub fn as_mut_ptr(&self) -> TokenStream {
         match self {
             IterableField::PlainVec(plain_vec) => {
                 let name = &plain_vec.name;
                 quote! {
-                    #name as *mut _
+                    Box::new(#name as *mut _)
                 }
             }
             IterableField::ArrayOfVecs(array_of_vecs) => {
                 let name = &array_of_vecs.name;
                 quote! {
-                    #name.map(|v| v as *mut _)
+                    Box::new(#name.into_iter().map(|v| v as *mut _).collect::<Vec<_>>().try_into().unwrap())
                 }
             }
         }
