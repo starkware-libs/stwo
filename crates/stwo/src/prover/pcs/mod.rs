@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 use tracing::{span, Level};
@@ -11,11 +11,12 @@ use crate::core::pcs::quotients::{
     CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
 };
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
+use crate::core::poly::circle::CanonicCoset;
 use crate::core::vcs::verifier::ExtendedMerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::{Poly, Trace};
-use crate::prover::backend::BackendForChannel;
+use crate::prover::backend::{BackendForChannel, Col};
 use crate::prover::fri::{FriDecommitResult, FriProver};
 use crate::prover::pcs::quotient_ops::compute_fri_quotients;
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
@@ -94,6 +95,29 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         Trace { polys }
     }
 
+    pub fn build_weights_hash_map(
+        &self,
+        sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+    ) -> HashMap<(u32, CirclePoint<SecureField>), Col<B, SecureField>> {
+        let mut weights_hash_map = HashMap::new();
+        self.polynomials()
+            .zip_cols(sampled_points)
+            .map_cols(|(poly, points)| {
+                points.iter().for_each(|&point| {
+                    let log_size = poly.evals.domain.log_size();
+                    weights_hash_map
+                        .entry((log_size, point))
+                        .or_insert_with(|| {
+                            CircleEvaluation::<B, BaseField, BitReversedOrder>::barycentric_weights(
+                                CanonicCoset::new(log_size),
+                                point,
+                            )
+                        });
+                })
+            });
+        weights_hash_map
+    }
+
     pub fn prove_values(
         self,
         sampled_points: TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
@@ -106,6 +130,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             class = "EvaluateOutOfDomain"
         )
         .entered();
+        let weights_hash_map = self.build_weights_hash_map(&sampled_points);
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
@@ -114,7 +139,10 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     .iter()
                     .map(|&point| PointSample {
                         point,
-                        value: poly.eval_at_point(point, self.twiddles),
+                        value: poly.eval_at_point(
+                            point,
+                            &weights_hash_map[&(poly.evals.domain.log_size(), point)],
+                        ),
                     })
                     .collect_vec()
             });

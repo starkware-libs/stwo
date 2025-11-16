@@ -238,7 +238,7 @@ mod test {
                 .to_m31_array()[0]
             })
             .collect();
-        B::bit_reverse_column(&mut lifted_evaluation);
+        <B as ColumnOps<BaseField>>::bit_reverse_column(&mut lifted_evaluation);
         CircleEvaluation::new(lifted_domain, lifted_evaluation)
     }
 
