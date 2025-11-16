@@ -87,7 +87,7 @@ mod tests {
         .collect_vec()
     }
 
-    #[test_log::test]
+    #[test]
     fn test_mixed_wide_fib_prove_with_blake() {
         const LOG_SIZE_SHORT: u32 = 3;
         const LOG_SIZE_LONG: u32 = 6;

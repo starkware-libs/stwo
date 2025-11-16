@@ -7,9 +7,8 @@ use super::CpuBackend;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{
-    accumulate_row_partial_numerators,
-    accumulate_row_quotients, denominator_inverses_, quotient_constants, quotient_constants_,
-    ColumnSampleBatch,
+    accumulate_row_partial_numerators, accumulate_row_quotients, denominator_inverses_,
+    quotient_constants, quotient_constants_, ColumnSampleBatch,
 };
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::core::utils::bit_reverse_index;

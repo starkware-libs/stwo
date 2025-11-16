@@ -5,16 +5,19 @@ use num_traits::Zero;
 use serde::Serialize;
 use stwo::core::air::Component;
 use stwo::core::channel::{Channel, MerkleChannel};
+use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use stwo::core::verifier::{verify, VerificationError};
+use stwo::core::ColumnVec;
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::SimdBackend;
-use stwo::prover::backend::BackendForChannel;
-use stwo::prover::poly::circle::PolyOps;
+use stwo::prover::backend::{BackendForChannel, CpuBackend};
+use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+use stwo::prover::poly::BitReversedOrder;
 use stwo::prover::{prove, CommitmentSchemeProver, ComponentProver};
 use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_constraint_framework::{TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
@@ -269,6 +272,22 @@ impl BlakeComponents {
         ]
         .collect()
     }
+    fn component_provers_cpu(&self) -> Vec<&dyn ComponentProver<CpuBackend>> {
+        chain![
+            [&self.scheduler_component as &dyn ComponentProver<CpuBackend>],
+            self.round_components
+                .iter()
+                .map(|c| c as &dyn ComponentProver<CpuBackend>),
+            [
+                &self.xor12 as &dyn ComponentProver<CpuBackend>,
+                &self.xor9 as &dyn ComponentProver<CpuBackend>,
+                &self.xor8 as &dyn ComponentProver<CpuBackend>,
+                &self.xor7 as &dyn ComponentProver<CpuBackend>,
+                &self.xor4 as &dyn ComponentProver<CpuBackend>,
+            ]
+        ]
+        .collect()
+    }
 }
 
 #[allow(unused)]
@@ -516,6 +535,225 @@ pub fn verify_blake<MC: MerkleChannel>(
     )
 }
 
+fn to_cpu(
+    evals: ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>,
+) -> ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> {
+    evals
+        .into_iter()
+        .map(|eval| CircleEvaluation::new(eval.domain, eval.values.into_cpu_vec()))
+        .collect()
+}
+
+#[allow(unused)]
+pub fn prove_blake_cpu<MC: MerkleChannel>(log_size: u32, config: PcsConfig) -> (BlakeProof<MC::H>)
+where
+    CpuBackend: BackendForChannel<MC>,
+{
+    assert_eq!(
+        ROUND_LOG_SPLIT.map(|x| (1 << x)).into_iter().sum::<u32>() as usize,
+        N_ROUNDS
+    );
+
+    // Precompute twiddles.
+    let span = span!(Level::INFO, "Precompute twiddles").entered();
+    const XOR_TABLE_MAX_LOG_SIZE: u32 = 16;
+    let log_max_rows =
+        (log_size + *ROUND_LOG_SPLIT.iter().max().unwrap()).max(XOR_TABLE_MAX_LOG_SIZE);
+    let twiddles = CpuBackend::precompute_twiddles(
+        CanonicCoset::new(log_max_rows + 1 + config.fri_config.log_blowup_factor)
+            .circle_domain()
+            .half_coset,
+    );
+    span.exit();
+
+    // Prepare inputs.
+    let blake_inputs = (0..(1 << (log_size - LOG_N_LANES)))
+        .map(|i| {
+            let v = [u32x16::from_array(std::array::from_fn(|j| (i + 2 * j) as u32)); 16];
+            let m = [u32x16::from_array(std::array::from_fn(|j| (i + 2 * j + 1) as u32)); 16];
+            BlakeInput { v, m }
+        })
+        .collect_vec();
+
+    // Setup protocol.
+    let channel = &mut MC::C::default();
+    let mut commitment_scheme = CommitmentSchemeProver::new(config, &twiddles);
+
+    // Preprocessed trace.
+    // TODO(ShaharS): share is_first column between components when constant columns support this.
+    let span = span!(Level::INFO, "Preprocessed Trace").entered();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(
+        chain![
+            to_cpu(XorTable::new(12, 4, 0).generate_constant_trace()),
+            to_cpu(XorTable::new(9, 2, 0).generate_constant_trace()),
+            to_cpu(XorTable::new(8, 2, 0).generate_constant_trace()),
+            to_cpu(XorTable::new(7, 2, 0).generate_constant_trace()),
+            to_cpu(XorTable::new(4, 0, 0).generate_constant_trace()),
+        ]
+        .collect_vec(),
+    );
+    tree_builder.commit(channel);
+    span.exit();
+
+    let span = span!(Level::INFO, "Trace").entered();
+
+    // Scheduler.
+    let (scheduler_trace, scheduler_lookup_data, round_inputs) =
+        scheduler::gen_trace(log_size, &blake_inputs);
+    let scheduler_trace = to_cpu(scheduler_trace);
+    // Rounds.
+    let mut xor_accums = XorAccums::default();
+    let mut rest = &round_inputs[..];
+    // Split round inputs to components, according to [ROUND_LOG_SPLIT].
+    let (round_traces, round_lookup_data): (Vec<_>, Vec<_>) =
+        multiunzip(ROUND_LOG_SPLIT.map(|l| {
+            let (cur_inputs, r) = rest.split_at(1 << (log_size - LOG_N_LANES + l));
+            rest = r;
+            round::generate_trace(log_size + l, cur_inputs, &mut xor_accums)
+        }));
+    let round_traces = round_traces.into_iter().map(|x| to_cpu(x)).collect_vec();
+
+    // Xor tables.
+    let (xor_trace12, xor_lookup_data12) = xor_table::xor12::generate_trace(xor_accums.xor12);
+    let (xor_trace9, xor_lookup_data9) = xor_table::xor9::generate_trace(xor_accums.xor9);
+    let (xor_trace8, xor_lookup_data8) = xor_table::xor8::generate_trace(xor_accums.xor8);
+    let (xor_trace7, xor_lookup_data7) = xor_table::xor7::generate_trace(xor_accums.xor7);
+    let (xor_trace4, xor_lookup_data4) = xor_table::xor4::generate_trace(xor_accums.xor4);
+    // Xor tables.
+    let xor_trace12 = to_cpu(xor_trace12);
+    let xor_trace9 = to_cpu(xor_trace9);
+    let xor_trace8 = to_cpu(xor_trace8);
+    let xor_trace7 = to_cpu(xor_trace7);
+    let xor_trace4 = to_cpu(xor_trace4);
+    // Statement0.
+    let stmt0 = BlakeStatement0 { log_size };
+    stmt0.mix_into(channel);
+
+    // Trace commitment.
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(
+        chain![
+            scheduler_trace,
+            round_traces.into_iter().flatten(),
+            xor_trace12,
+            xor_trace9,
+            xor_trace8,
+            xor_trace7,
+            xor_trace4,
+        ]
+        .collect_vec(),
+    );
+    tree_builder.commit(channel);
+    span.exit();
+
+    println!("{:?}", commitment_scheme.polynomials().flatten().iter().map(|x| x.log_size()).max().unwrap());
+    // Draw lookup element.
+    let all_elements = AllElements::draw(channel);
+
+    // Interaction trace.
+    let span = span!(Level::INFO, "Interaction").entered();
+    let (scheduler_trace, scheduler_claimed_sum) = scheduler::gen_interaction_trace(
+        log_size,
+        scheduler_lookup_data,
+        &all_elements.round_elements,
+        &all_elements.blake_elements,
+    );
+
+    let scheduler_trace = to_cpu(scheduler_trace);
+    let (round_traces, round_claimed_sums): (Vec<_>, Vec<_>) = multiunzip(
+        ROUND_LOG_SPLIT
+            .iter()
+            .zip(round_lookup_data)
+            .map(|(l, lookup_data)| {
+                round::generate_interaction_trace(
+                    log_size + l,
+                    lookup_data,
+                    &all_elements.xor_elements,
+                    &all_elements.round_elements,
+                )
+            }),
+    );
+    let round_traces = round_traces.into_iter().map(|x| to_cpu(x)).collect_vec();
+    let (xor_trace12, xor12_claimed_sum) = xor_table::xor12::generate_interaction_trace(
+        xor_lookup_data12,
+        &all_elements.xor_elements.xor12,
+    );
+    let (xor_trace9, xor9_claimed_sum) = xor_table::xor9::generate_interaction_trace(
+        xor_lookup_data9,
+        &all_elements.xor_elements.xor9,
+    );
+    let (xor_trace8, xor8_claimed_sum) = xor_table::xor8::generate_interaction_trace(
+        xor_lookup_data8,
+        &all_elements.xor_elements.xor8,
+    );
+    let (xor_trace7, xor7_claimed_sum) = xor_table::xor7::generate_interaction_trace(
+        xor_lookup_data7,
+        &all_elements.xor_elements.xor7,
+    );
+    let (xor_trace4, xor4_claimed_sum) = xor_table::xor4::generate_interaction_trace(
+        xor_lookup_data4,
+        &all_elements.xor_elements.xor4,
+    );
+    // To cpu.
+    let xor_trace12 = to_cpu(xor_trace12);
+    let xor_trace9 = to_cpu(xor_trace9);
+    let xor_trace8 = to_cpu(xor_trace8);
+    let xor_trace7 = to_cpu(xor_trace7);
+    let xor_trace4 = to_cpu(xor_trace4);
+
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(
+        chain![
+            scheduler_trace,
+            round_traces.into_iter().flatten(),
+            xor_trace12,
+            xor_trace9,
+            xor_trace8,
+            xor_trace7,
+            xor_trace4,
+        ]
+        .collect_vec(),
+    );
+
+    // Statement1.
+    let stmt1 = BlakeStatement1 {
+        scheduler_claimed_sum,
+        round_claimed_sums,
+        xor12_claimed_sum,
+        xor9_claimed_sum,
+        xor8_claimed_sum,
+        xor7_claimed_sum,
+        xor4_claimed_sum,
+    };
+    stmt1.mix_into(channel);
+    tree_builder.commit(channel);
+    span.exit();
+
+    assert_eq!(
+        commitment_scheme
+            .polynomials()
+            .as_cols_ref()
+            .map_cols(|c| c.log_size())
+            .0,
+        stmt0.log_sizes().0
+    );
+
+    // Prove constraints.
+    let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
+    let stark_proof = prove::<CpuBackend, _>(
+        &components.component_provers_cpu(),
+        channel,
+        commitment_scheme,
+    )
+    .unwrap();
+
+    BlakeProof {
+        stmt0,
+        stmt1,
+        stark_proof,
+    }
+}
 #[cfg(test)]
 mod tests {
     use std::env;
@@ -523,7 +761,7 @@ mod tests {
     use stwo::core::pcs::PcsConfig;
     use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 
-    use crate::blake::air::{prove_blake, verify_blake};
+    use crate::blake::air::{prove_blake, prove_blake_cpu, verify_blake};
 
     // Note: this test is slow. Only run in release.
     #[cfg_attr(not(feature = "slow-tests"), ignore)]
@@ -543,6 +781,29 @@ mod tests {
 
         // Prove.
         let proof = prove_blake::<Blake2sMerkleChannel>(log_n_instances, config);
+
+        // Verify.
+        verify_blake::<Blake2sMerkleChannel>(proof).unwrap();
+    }
+
+    // Note: this test is slow. Only run in release.
+    #[cfg_attr(not(feature = "slow-tests"), ignore)]
+    #[test_log::test]
+    fn test_cpu_blake_prove() {
+        // Note: To see time measurement, run test with
+        //   LOG_N_INSTANCES=16 RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUSTFLAGS="
+        //   -C target-cpu=native -C target-feature=+avx512f" cargo test --release
+        //   test_simd_blake_prove -- --nocapture --ignored
+
+        // Get from environment variable:
+        let log_n_instances = env::var("LOG_N_INSTANCES")
+            .unwrap_or_else(|_| "13".to_string())
+            .parse::<u32>()
+            .unwrap();
+        let config = PcsConfig::default();
+
+        // Prove.
+        let proof = prove_blake_cpu::<Blake2sMerkleChannel>(log_n_instances, config);
 
         // Verify.
         verify_blake::<Blake2sMerkleChannel>(proof).unwrap();

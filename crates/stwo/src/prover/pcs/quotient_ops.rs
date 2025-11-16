@@ -241,29 +241,21 @@ mod tests {
 
     #[test]
     fn test_quotients_are_low_degree() {
+        let mut rng = SmallRng::seed_from_u64(0);
         const LOG_SIZE: u32 = 3;
         const LOG_BLOWUP_FACTOR: u32 = 1;
         let polynomial = CpuCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
         let eval_domain = CanonicCoset::new(LOG_SIZE + LOG_BLOWUP_FACTOR).circle_domain();
         let eval = polynomial.evaluate(eval_domain);
-        let point_1 = SECURE_FIELD_CIRCLE_GEN;
-        let value_1 = polynomial.eval_at_point(point_1);
-
-        let point_2 = SECURE_FIELD_CIRCLE_GEN.antipode();
-        let value_2 = polynomial.eval_at_point(point_2);
+        let sample_points = vec![
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+        ];
+        let samples = sample_points.into_iter().map(|x| PointSample {point: x, value: polynomial.eval_at_point(x)}).collect_vec();
         let rand_coeff = qm31!(1, 2, 5, 9876);
         let quot_eval = compute_fri_quotients(
             &[&eval],
-            &[vec![
-                PointSample {
-                    point: point_1,
-                    value: value_1,
-                },
-                PointSample {
-                    point: point_2,
-                    value: value_2,
-                },
-            ]],
+            &[samples],
             rand_coeff,
             LOG_BLOWUP_FACTOR,
         );

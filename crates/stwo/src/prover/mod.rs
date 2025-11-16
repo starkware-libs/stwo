@@ -83,6 +83,7 @@ pub fn prove_ex<B: BackendForChannel<MC>, MC: MerkleChannel>(
     let proof = StarkProof(commitment_scheme_proof.proof);
     info!(proof_size_estimate = proof.size_estimate());
 
+    dbg!(composition_log_size);
     // Evaluate composition polynomial at OODS point and check that it matches the trace OODS
     // values. This is a sanity check.
     if proof

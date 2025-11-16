@@ -94,7 +94,10 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             class = "EvaluateOutOfDomain"
         )
         .entered();
+        // The maximum log size of an evaluation is the one of the composition polynomial,
+        // i.e. the last one.
         let max_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
+        dbg!(max_log_size);
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
