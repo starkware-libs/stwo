@@ -20,6 +20,11 @@ pub type PackedSecureField = PackedQM31;
 #[derive(Copy, Clone, Debug)]
 pub struct PackedQM31(pub [PackedCM31; 2]);
 
+// SAFETY: PackedQM31 is just an array of PackedCM31, which is plain data with no interior
+// mutability or thread-local state. It's safe to send/share between threads.
+unsafe impl Send for PackedQM31 {}
+unsafe impl Sync for PackedQM31 {}
+
 impl PackedQM31 {
     /// Constructs a new instance with all vector elements set to `value`.
     pub const fn broadcast(value: QM31) -> Self {

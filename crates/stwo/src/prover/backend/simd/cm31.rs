@@ -14,6 +14,11 @@ use crate::core::utils;
 #[derive(Copy, Clone, Debug)]
 pub struct PackedCM31(pub [PackedM31; 2]);
 
+// SAFETY: PackedCM31 is just an array of PackedM31, which is plain data with no interior
+// mutability or thread-local state. It's safe to send/share between threads.
+unsafe impl Send for PackedCM31 {}
+unsafe impl Sync for PackedCM31 {}
+
 impl PackedCM31 {
     /// Constructs a new instance with all vector elements set to `value`.
     pub const fn broadcast(value: CM31) -> Self {

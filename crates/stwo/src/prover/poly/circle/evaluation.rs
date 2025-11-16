@@ -8,7 +8,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::ExtensionOf;
-use crate::core::poly::circle::CircleDomain;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::{Col, Column, ColumnOps, CpuBackend};
 use crate::prover::poly::twiddles::TwiddleTree;
@@ -45,7 +45,7 @@ impl<F: ExtensionOf<BaseField>, B: ColumnOps<F>> CircleEvaluation<B, F, NaturalO
     }
 }
 
-impl<B: PolyOps> CircleEvaluation<B, BaseField, BitReversedOrder> {
+impl<B: PolyOps + ColumnOps<SecureField>> CircleEvaluation<B, BaseField, BitReversedOrder> {
     /// Computes a minimal [CircleCoefficients] that evaluates to the same values as this
     /// evaluation.
     pub fn interpolate(self) -> CircleCoefficients<B> {
@@ -57,6 +57,35 @@ impl<B: PolyOps> CircleEvaluation<B, BaseField, BitReversedOrder> {
     /// evaluation, using precomputed twiddles.
     pub fn interpolate_with_twiddles(self, twiddles: &TwiddleTree<B>) -> CircleCoefficients<B> {
         B::interpolate(self, twiddles)
+    }
+
+    /// For a canonic coset `coset` of size 2^n and a point `p` not in `coset`, the weight at a
+    /// coset point i is computed as:
+    ///
+    /// W_i = S_i(p) / S_i(i) = V_n(p) / (-2 * V'_n(i_x) * i_y * V_i(p))
+    ///
+    /// using the following identities from the circle stark paper:
+    ///
+    /// S_i(p) = V_n(p) / V_i(p)
+    /// S_i(i) = -2 * V'(i_x) * i_y
+    ///
+    /// where:
+    /// - S_i(point) is the vanishing polynomial on the coset except i, evaluated at a point.
+    /// - V_n(p) is the vanishing polynomial on the coset, evaluated at p.
+    /// - V_i(p) is the vanishing polynomial on point i, evaluated at p.
+    /// - V'(i_x) is the derivative of V(i) (evaluated at that point), see
+    ///   [`coset_vanishing_derivative`].
+    pub fn barycentric_weights(
+        coset: CanonicCoset,
+        p: CirclePoint<SecureField>,
+    ) -> Col<B, SecureField> {
+        B::barycentric_weights(coset, p)
+    }
+
+    /// Evaluation = Σ W_i * Poly(i) for all i in the evaluation domain.
+    /// For more information on barycentric weights calculation see [`barycentric_weights`].
+    pub fn barycentric_eval_at_point(&self, weights: &Col<B, SecureField>) -> SecureField {
+        B::barycentric_eval_at_point(self, weights)
     }
 
     pub fn eval_at_point_by_folding(

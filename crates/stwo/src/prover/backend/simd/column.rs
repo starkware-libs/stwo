@@ -76,6 +76,11 @@ impl BaseColumn {
     }
 }
 
+// SAFETY: BaseColumn contains Vec<PackedM31>, and Vec<T> is Send/Sync when T is Send/Sync.
+// PackedM31 is just plain data (SIMD vector of u32s), so it's safe to send/share.
+unsafe impl Send for BaseColumn {}
+unsafe impl Sync for BaseColumn {}
+
 impl Column<BaseField> for BaseColumn {
     fn zeros(length: usize) -> Self {
         let data = vec![PackedBaseField::zeroed(); length.div_ceil(N_LANES)];
@@ -148,6 +153,11 @@ pub struct CM31Column {
     pub data: Vec<PackedCM31>,
     pub length: usize,
 }
+
+// SAFETY: CM31Column contains Vec<PackedCM31>, and Vec<T> is Send/Sync when T is Send/Sync.
+// PackedCM31 is just plain data (arrays of SIMD vectors), so it's safe to send/share.
+unsafe impl Send for CM31Column {}
+unsafe impl Sync for CM31Column {}
 
 impl Column<CM31> for CM31Column {
     fn zeros(length: usize) -> Self {
@@ -277,6 +287,12 @@ impl SecureColumn {
         }
     }
 }
+
+// SAFETY: SecureColumn contains Vec<PackedSecureField>, and Vec<T> is Send/Sync when T is
+// Send/Sync. PackedSecureField (PackedQM31) is just plain data (arrays of SIMD vectors), so it's
+// safe to send/share.
+unsafe impl Send for SecureColumn {}
+unsafe impl Sync for SecureColumn {}
 
 impl Column<SecureField> for SecureColumn {
     fn zeros(length: usize) -> Self {

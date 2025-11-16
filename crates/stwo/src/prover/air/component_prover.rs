@@ -7,7 +7,7 @@ use crate::core::pcs::TreeVec;
 use crate::core::poly::circle::CircleDomain;
 use crate::core::ColumnVec;
 use crate::prover::air::accumulation::DomainEvaluationAccumulator;
-use crate::prover::backend::Backend;
+use crate::prover::backend::{Backend, Col};
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCirclePoly};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
@@ -48,12 +48,12 @@ impl<B: Backend> Poly<B> {
     pub fn eval_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        twiddles: &TwiddleTree<B>,
+        weights: &Col<B, SecureField>,
     ) -> SecureField {
         if let Some(coeffs) = &self.coeffs {
             coeffs.eval_at_point(point)
         } else {
-            self.evals.eval_at_point_by_folding(point, twiddles)
+            self.evals.barycentric_eval_at_point(weights)
         }
     }
 

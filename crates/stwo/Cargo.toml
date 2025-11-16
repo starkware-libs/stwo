@@ -51,6 +51,7 @@ serde.workspace = true
 tracing-subscriber.workspace = true
 hashbrown.workspace = true
 std-shims.workspace = true
+dashmap = "6.1.0"
 
 [dev-dependencies]
 aligned = "0.4.2"
@@ -90,6 +91,11 @@ required-features = ["prover"]
 [[bench]]
 harness = false
 name = "eval_at_point"
+required-features = ["prover"]
+
+[[bench]]
+harness = false
+name = "barycentric_eval_at_point"
 required-features = ["prover"]
 
 [[bench]]
