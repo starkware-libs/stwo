@@ -184,7 +184,7 @@ mod tests {
 
     #[test_log::test]
     fn test_wide_fib_prove_with_blake() {
-        for log_n_instances in 2..=6 {
+        for log_n_instances in 4..=8 {
             let config = PcsConfig::default();
             // Precompute twiddles.
             let twiddles = SimdBackend::precompute_twiddles(
