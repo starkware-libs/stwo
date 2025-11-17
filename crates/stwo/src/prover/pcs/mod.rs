@@ -116,12 +116,13 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 
         // Compute oods quotients for boundary constraints on the sampled points.
         let columns = self.evaluations().flatten();
-        let quotients = compute_fri_quotients(
+        // TODO(Leo): remove vec! after we change FRI commit API to receives a single column.
+        let quotients = vec![compute_fri_quotients(
             &columns,
             &samples.flatten(),
             channel.draw_secure_felt(),
             self.config.fri_config.log_blowup_factor,
-        );
+        )];
 
         // Run FRI commitment phase on the oods quotients.
         let fri_prover =
