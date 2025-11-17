@@ -62,7 +62,6 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
     ) -> Result<(), VerificationError> {
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let random_coeff = channel.draw_secure_felt();
-
         let max_log_size = self
             .column_log_sizes()
             .flatten()
@@ -109,7 +108,6 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
                     .collect_vec()
             },
         );
-
         let n_columns_per_log_size = self.trees.as_ref().map(|tree| &tree.n_columns_per_log_size);
         let fri_answers = fri_answers(
             self.column_log_sizes(),

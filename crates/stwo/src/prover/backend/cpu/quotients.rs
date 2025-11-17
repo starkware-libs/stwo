@@ -51,12 +51,13 @@ impl QuotientOps for CpuBackend {
         _log_blowup_factor: u32,
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     ) {
-        let size = columns[0].len();
+        let size = columns[0].values.len();
         let quotient_constants = quotient_constants_(sample_batches, random_coeff, curr_coeff);
 
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
             let mut liftable_numerators = unsafe { SecureColumnByCoords::uninitialized(size) };
             for row in 0..size {
+                /////////// TODO(Leo): delete
                 let query_values_at_row = columns.iter().map(|col| col[row]).collect_vec();
                 let row_value =
                     accumulate_row_partial_numerators(batch, &query_values_at_row, &coeffs);

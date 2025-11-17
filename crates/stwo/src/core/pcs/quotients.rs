@@ -143,9 +143,7 @@ pub fn fri_answers_for_log_size(
     // TODO(ilya): Is it ok to use the same `random_coeff` for all log sizes.
     let quotient_constants = quotient_constants_(&sample_batches, random_coeff, curr_coeff);
     let commitment_domain = CanonicCoset::new(log_size).circle_domain();
-
     let domain_point = commitment_domain.at(bit_reverse_index(query_position, log_size));
-
     let queried_values_at_row = queried_values
         .as_mut()
         .zip_eq(n_columns.as_ref())

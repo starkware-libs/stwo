@@ -498,7 +498,6 @@ pub fn verify_blake<MC: MerkleChannel>(
     let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(stark_proof.config);
 
     let log_sizes = stmt0.log_sizes();
-
     // Preprocessed trace.
     commitment_scheme.commit(stark_proof.commitments[0], &log_sizes[0], channel);
 
@@ -550,10 +549,7 @@ pub fn verify_blake_cpu<MC: MerkleChannel>(
     let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(stark_proof.config);
 
     let mut log_sizes = stmt0.log_sizes();
-    let max_log_size = log_sizes.iter().flatten().max().unwrap().clone();
-    log_sizes
-        .iter_mut()
-        .for_each(|v| v.iter_mut().for_each(|x| *x = max_log_size));
+
     // Preprocessed trace.
     commitment_scheme.commit(stark_proof.commitments[0], &log_sizes[0], channel);
 
@@ -702,16 +698,9 @@ where
     tree_builder.commit(channel);
     span.exit();
 
-    println!(
-        "{:?}",
-        commitment_scheme
-            .polynomials()
-            .flatten()
-            .iter()
-            .map(|x| x.log_size())
-            .max()
-            .unwrap()
-    );
+   
+   
+        
     // Draw lookup element.
     let all_elements = AllElements::draw(channel);
 
