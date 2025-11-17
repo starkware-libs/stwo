@@ -5,10 +5,10 @@ use tracing::{debug, debug_span};
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::fields::qm31::SecureField;
 use crate::core::proof_of_work::GrindOps;
-use crate::core::vcs::MerkleHasher;
+use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::BackendForChannel;
-use crate::prover::vcs::ops::MerkleOps;
+use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 
 #[derive(Debug, Clone, Default)]
 pub struct LoggingChannel<C: Channel> {
@@ -89,7 +89,7 @@ impl<MC: MerkleChannel> MerkleChannel for LoggingMerkleChannel<MC> {
 
     type H = MC::H;
 
-    fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasher>::Hash) {
+    fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasherLifted>::Hash) {
         let _ = debug_span!("Channel mix_root");
         log_mix(MC::mix_root, &mut channel.channel, root)
     }
@@ -109,7 +109,7 @@ where
 
 impl<B, MC> BackendForChannel<LoggingMerkleChannel<MC>> for B
 where
-    B: BackendForChannel<MC> + GrindOps<LoggingChannel<MC::C>> + MerkleOps<MC::H>,
+    B: BackendForChannel<MC> + GrindOps<LoggingChannel<MC::C>> + MerkleOpsLifted<MC::H>,
     MC: MerkleChannel,
 {
 }
@@ -133,7 +133,7 @@ mod tests {
         let mut logging_channel = LoggingChannel::<Blake2sChannel>::default();
         let mut regular_channel = Blake2sChannel::default();
 
-        let felts = vec![
+        let felts = [
             rng.gen::<SecureField>(),
             rng.gen::<SecureField>(),
             rng.gen::<SecureField>(),

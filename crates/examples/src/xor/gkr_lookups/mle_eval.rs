@@ -747,7 +747,7 @@ mod tests {
     use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo::core::poly::circle::CanonicCoset;
     use stwo::core::utils::{bit_reverse, coset_order_to_circle_domain_order};
-    use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use stwo::core::verifier::{verify, VerificationError};
     use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
     use stwo::prover::backend::simd::qm31::PackedSecureField;

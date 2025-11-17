@@ -10,18 +10,18 @@ use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::{FriLayerProof, FriProof};
 use crate::core::pcs::quotients::{CommitmentSchemeProof, CommitmentSchemeProofAux};
 use crate::core::vcs::hash::Hash;
-use crate::core::vcs::verifier::MerkleDecommitment;
-use crate::core::vcs::MerkleHasher;
+use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use crate::core::vcs_lifted::verifier::MerkleDecommitmentLifted;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StarkProof<H: MerkleHasher>(pub CommitmentSchemeProof<H>);
+pub struct StarkProof<H: MerkleHasherLifted>(pub CommitmentSchemeProof<H>);
 
-pub struct ExtendedStarkProof<H: MerkleHasher> {
+pub struct ExtendedStarkProof<H: MerkleHasherLifted> {
     pub proof: StarkProof<H>,
     pub aux: CommitmentSchemeProofAux<H>,
 }
 
-impl<H: MerkleHasher> StarkProof<H> {
+impl<H: MerkleHasherLifted> StarkProof<H> {
     /// Extracts the composition trace Out-Of-Domain-Sample evaluation from the mask.
     pub(crate) fn extract_composition_oods_eval(
         &self,
@@ -107,7 +107,7 @@ impl<H: MerkleHasher> StarkProof<H> {
     }
 }
 
-impl<H: MerkleHasher> Deref for StarkProof<H> {
+impl<H: MerkleHasherLifted> Deref for StarkProof<H> {
     type Target = CommitmentSchemeProof<H>;
 
     fn deref(&self) -> &CommitmentSchemeProof<H> {
@@ -159,17 +159,14 @@ impl SizeEstimate for SecureField {
     }
 }
 
-impl<H: MerkleHasher> SizeEstimate for MerkleDecommitment<H> {
+impl<H: MerkleHasherLifted> SizeEstimate for MerkleDecommitmentLifted<H> {
     fn size_estimate(&self) -> usize {
-        let Self {
-            hash_witness,
-            column_witness,
-        } = self;
-        hash_witness.size_estimate() + column_witness.size_estimate()
+        let Self { hash_witness } = self;
+        hash_witness.size_estimate()
     }
 }
 
-impl<H: MerkleHasher> SizeEstimate for FriLayerProof<H> {
+impl<H: MerkleHasherLifted> SizeEstimate for FriLayerProof<H> {
     fn size_estimate(&self) -> usize {
         let Self {
             fri_witness,
@@ -180,7 +177,7 @@ impl<H: MerkleHasher> SizeEstimate for FriLayerProof<H> {
     }
 }
 
-impl<H: MerkleHasher> SizeEstimate for FriProof<H> {
+impl<H: MerkleHasherLifted> SizeEstimate for FriProof<H> {
     fn size_estimate(&self) -> usize {
         let Self {
             first_layer,
@@ -191,7 +188,7 @@ impl<H: MerkleHasher> SizeEstimate for FriProof<H> {
     }
 }
 
-impl<H: MerkleHasher> SizeEstimate for CommitmentSchemeProof<H> {
+impl<H: MerkleHasherLifted> SizeEstimate for CommitmentSchemeProof<H> {
     fn size_estimate(&self) -> usize {
         let Self {
             commitments,
@@ -212,7 +209,7 @@ impl<H: MerkleHasher> SizeEstimate for CommitmentSchemeProof<H> {
     }
 }
 
-impl<H: MerkleHasher> SizeEstimate for StarkProof<H> {
+impl<H: MerkleHasherLifted> SizeEstimate for StarkProof<H> {
     fn size_estimate(&self) -> usize {
         let Self(commitment_scheme_proof) = self;
         commitment_scheme_proof.size_estimate()
