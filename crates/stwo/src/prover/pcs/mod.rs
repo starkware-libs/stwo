@@ -197,18 +197,15 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         // FRI decommitment phase.
         let FriDecommitResult {
             fri_proof,
-            query_positions_by_log_size,
+            query_positions,
             unsorted_query_locations,
         } = fri_prover.decommit(channel);
 
-        // TODO(Leo): remove after changing fri's API.
-        assert_eq!(query_positions_by_log_size.len(), 1);
-        let query_positions = query_positions_by_log_size.values().next().unwrap();
         // Decommit the FRI queries on the merkle trees.
         let decommitment_results = self
             .trees
             .as_ref()
-            .map(|tree| tree.decommit(query_positions));
+            .map(|tree| tree.decommit(&query_positions));
 
         let (queried_values, decommitments, aux): (Vec<_>, Vec<_>, Vec<_>) = decommitment_results
             .0
