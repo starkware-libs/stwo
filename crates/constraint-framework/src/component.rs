@@ -254,11 +254,7 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         self.eval.evaluate(PointEvaluator::new(
             mask_points,
             evaluation_accumulator,
-            coset_vanishing(
-                CanonicCoset::new(max_log_degree_bound).coset,
-                point,
-            )
-            .inverse(),
+            coset_vanishing(CanonicCoset::new(max_log_degree_bound).coset, point).inverse(),
             self.eval.log_size(),
             self.claimed_sum,
         ));
