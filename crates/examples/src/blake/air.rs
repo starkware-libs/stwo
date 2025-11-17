@@ -306,7 +306,7 @@ where
     // Setup protocol.
     let channel = &mut MC::C::default();
     let mut commitment_scheme = CommitmentSchemeProver::new(config, &twiddles);
-
+    commitment_scheme.set_store_polynomials_coefficients();
     // Preprocessed trace.
     // TODO(ShaharS): share is_first column between components when constant columns support this.
     let span = span!(Level::INFO, "Preprocessed Trace").entered();
