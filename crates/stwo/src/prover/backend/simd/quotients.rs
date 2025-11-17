@@ -7,11 +7,17 @@ use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 use super::column::CM31Column;
 use super::SimdBackend;
+use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
+use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch};
-use crate::prover::backend::simd::m31::PackedBaseField;
+use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+use crate::prover::backend::simd::cm31::PackedCM31;
+use crate::prover::backend::simd::domain::CircleDomainBitRevIterator;
+use crate::prover::backend::simd::m31::{PackedBaseField, N_LANES};
 use crate::prover::backend::simd::qm31::PackedSecureField;
+use crate::prover::backend::simd::utils::to_lifted_simd_secure;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
 use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
 use crate::prover::poly::BitReversedOrder;
@@ -65,11 +71,57 @@ impl QuotientOps for SimdBackend {
         }
     }
 
-    #[allow(unused_variables)]
+    // TODO(Leo): optimize.
     fn compute_quotients_and_combine(
-        accs: Vec<AccumulatedNumerators<Self>>,
+        accumulations: Vec<AccumulatedNumerators<Self>>,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
-        unimplemented!()
+        let max_log_size = accumulations
+            .iter()
+            .map(|x| x.partial_numerators_acc.len())
+            .max()
+            .unwrap()
+            .ilog2();
+
+        let domain = CanonicCoset::new(max_log_size).circle_domain();
+        let domain_points: Vec<CirclePoint<PackedBaseField>> =
+            CircleDomainBitRevIterator::new(domain).collect();
+        let mut quotients: SecureColumnByCoords<SimdBackend> =
+            unsafe { SecureColumnByCoords::uninitialized(1 << max_log_size) };
+        let sample_points: Vec<CirclePoint<SecureField>> =
+            accumulations.iter().map(|x| x.sample_point).collect();
+        let denominators_inverses = denominator_inverses(&sample_points, domain);
+
+        // Populate `quotients`.
+        // TODO(Leo): make chunk size configurable.
+        #[cfg(not(feature = "parallel"))]
+        let iter = quotients.iter_mut(1).enumerate();
+
+        #[cfg(feature = "parallel")]
+        let iter = quotients.chunks_mut(1).enumerate();
+
+        iter.for_each(|(domain_idx, mut value_dst)| {
+            let mut quotient = PackedSecureField::zero();
+            for (acc, den_inv) in accumulations.iter().zip_eq(denominators_inverses.iter()) {
+                let mut full_numerator = PackedSecureField::zero();
+
+                let log_ratio = max_log_size - acc.partial_numerators_acc.len().ilog2();
+                let lifted_partial_numerator = unsafe {
+                    let unlifted_partial_numerator = acc
+                        .partial_numerators_acc
+                        .packed_at(domain_idx >> log_ratio);
+                    to_lifted_simd_secure(unlifted_partial_numerator, log_ratio, domain_idx)
+                };
+
+                full_numerator += lifted_partial_numerator
+                    - PackedSecureField::broadcast(acc.first_linear_term_acc)
+                        * domain_points[domain_idx].y;
+                quotient += full_numerator * den_inv[domain_idx];
+            }
+            unsafe {
+                value_dst.set_packed(0, quotient);
+            }
+        });
+        SecureEvaluation::new(domain, quotients)
     }
 }
 
@@ -83,6 +135,40 @@ fn accumulate_row_partial_numerators(
         numerator += value - PackedSecureField::broadcast(*b);
     }
     numerator
+}
+
+fn denominator_inverses(
+    sample_points: &[CirclePoint<SecureField>],
+    domain: CircleDomain,
+) -> Vec<Vec<PackedCM31>> {
+    let domain_points = CircleDomainBitRevIterator::new(domain);
+
+    #[cfg(not(feature = "parallel"))]
+    let iter = domain_points.iter();
+
+    #[cfg(feature = "parallel")]
+    let iter = domain_points.par_iter();
+
+    let mut denominators: Vec<Vec<PackedCM31>> = sample_points
+        .iter()
+        .map(|sample_point| {
+            let prx = PackedCM31::broadcast(sample_point.x.0);
+            let pry = PackedCM31::broadcast(sample_point.y.0);
+            let pix = PackedCM31::broadcast(sample_point.x.1);
+            let piy = PackedCM31::broadcast(sample_point.y.1);
+
+            iter.clone()
+                .map(|domain_point| (prx - domain_point.x) * piy - (pry - domain_point.y) * pix)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    denominators.iter_mut().for_each(|c| {
+        c.chunks_mut(domain.size() / N_LANES).for_each(|chunk| {
+            chunk.copy_from_slice(&PackedCM31::batch_inverse(chunk));
+        })
+    });
+    denominators
 }
 
 #[cfg(test)]
