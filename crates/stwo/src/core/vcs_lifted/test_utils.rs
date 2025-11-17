@@ -3,9 +3,12 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
 use crate::core::fields::m31::BaseField;
+use crate::core::poly::circle::CanonicCoset;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::{MerkleDecommitmentLifted, MerkleVerifierLifted};
-use crate::prover::backend::CpuBackend;
+use crate::prover::backend::{Col, ColumnOps, CpuBackend};
+use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
+use crate::prover::poly::BitReversedOrder;
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
@@ -49,4 +52,24 @@ where
 
     let verifier = MerkleVerifierLifted::new(merkle.root(), log_sizes);
     (queries, decommitment, values, verifier)
+}
+
+pub fn lift_poly<B: ColumnOps<BaseField> + PolyOps>(
+    poly: &CirclePoly<B>,
+    lifted_log_size: u32,
+) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
+    let lifted_domain = CanonicCoset::new(lifted_log_size).circle_domain();
+    let mut lifted_evaluation: Col<B, BaseField> = lifted_domain
+        .iter()
+        .map(|point| {
+            poly.eval_at_point(
+                point
+                    .repeated_double(lifted_log_size - poly.log_size())
+                    .into_ef(),
+            )
+            .to_m31_array()[0]
+        })
+        .collect();
+    B::bit_reverse_column(&mut lifted_evaluation);
+    CircleEvaluation::new(lifted_domain, lifted_evaluation)
 }
