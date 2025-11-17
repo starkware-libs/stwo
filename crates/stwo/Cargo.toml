@@ -124,10 +124,5 @@ required-features = ["prover"]
 
 [[bench]]
 harness = false
-name = "quotients"
-required-features = ["prover"]
-
-[[bench]]
-harness = false
 name = "pcs"
 required-features = ["prover"]
