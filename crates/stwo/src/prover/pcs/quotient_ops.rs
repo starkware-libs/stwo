@@ -143,32 +143,49 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
+
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
+    use crate::core::fields::m31::M31;
     use crate::core::pcs::quotients::PointSample;
     use crate::core::poly::circle::CanonicCoset;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
     use crate::prover::pcs::quotient_ops::compute_fri_quotients;
-    use crate::{m31, qm31};
+    use crate::prover::SecureField;
 
     #[test]
     fn test_quotients_are_low_degree() {
-        const LOG_SIZE: u32 = 7;
+        let mut rng = SmallRng::seed_from_u64(0);
+        const LOG_SIZE: u32 = 3;
         const LOG_BLOWUP_FACTOR: u32 = 1;
-        let polynomial = CpuCirclePoly::new((0..1 << LOG_SIZE).map(|i| m31!(i)).collect());
-        let eval_domain = CanonicCoset::new(LOG_SIZE + 1).circle_domain();
+
+        let polynomial = CpuCirclePoly::new((0..1 << LOG_SIZE).map(M31::from).collect());
+        let eval_domain = CanonicCoset::new(LOG_SIZE + LOG_BLOWUP_FACTOR).circle_domain();
         let eval = polynomial.evaluate(eval_domain);
-        let point = SECURE_FIELD_CIRCLE_GEN;
-        let value = polynomial.eval_at_point(point);
-        let coeff = qm31!(1, 2, 3, 4);
-        let quot_eval = compute_fri_quotients(
-            &[&eval],
-            &[vec![PointSample { point, value }]],
-            coeff,
-            LOG_BLOWUP_FACTOR,
-        );
-        let quot_poly_base_field =
-            CpuCircleEvaluation::new(eval_domain, quot_eval.values.columns[0].clone())
-                .interpolate();
-        assert!(quot_poly_base_field.is_in_fri_space(LOG_SIZE));
+
+        let sample_points = [
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+        ];
+        let samples = sample_points
+            .into_iter()
+            .map(|x| PointSample {
+                point: x,
+                value: polynomial.eval_at_point(x),
+            })
+            .collect_vec();
+        let rand_coeff =
+            SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.gen::<u32>())));
+        let quot_eval = compute_fri_quotients(&[&eval], &[samples], rand_coeff, LOG_BLOWUP_FACTOR);
+        let coeffs = quot_eval
+            .values
+            .columns
+            .iter()
+            .map(|c| CpuCircleEvaluation::new(eval_domain, c.clone()).interpolate())
+            .collect_vec();
+
+        assert!(coeffs.iter().all(|c| c.is_in_fri_space(LOG_SIZE)));
     }
 }
