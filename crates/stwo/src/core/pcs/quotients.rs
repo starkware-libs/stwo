@@ -1,9 +1,7 @@
-use core::cmp::Reverse;
-
-use itertools::{izip, multiunzip, zip_eq, Itertools};
+use itertools::{izip, zip_eq, Itertools};
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
-use std_shims::{BTreeMap, Vec};
+use std_shims::{vec, BTreeMap, Vec};
 
 use super::TreeVec;
 use crate::core::circle::CirclePoint;
@@ -90,70 +88,93 @@ pub struct PointSample {
     pub value: SecureField,
 }
 
+/// For each query position, corresponding to a domain point `p`, compute the FRI quotients
+///
+///     ∑ ∑ α^{k(i, z)} * (c(i, z) * f̃ᵢ(p) - b(i, z) - a(i, z)) / line(z,conj(z))(p)
+///
+/// where:
+/// * the outer sum is over the set of sample points `z`,
+/// * the inner sum is over the set of columns (corresponding to index `i`),
+/// * line(z,conj(z))(p) is the equation of the line through (z, conj(z)) evaluated at `p`
+/// * f̃ᵢ is the lift of the trace poly fᵢ to the domain of maximal log size.
+/// * (a(i, z), b(i, z), c(i, z)) are the coefficients of the line equation `cY - aX - b` through
+///   (z.y, f̃ᵢ(z)), (conj(z.y), conj(f̃ᵢ(z)).
 pub fn fri_answers(
     column_log_sizes: TreeVec<Vec<u32>>,
     samples: TreeVec<Vec<Vec<PointSample>>>,
     random_coeff: SecureField,
-    query_positions_per_log_size: &BTreeMap<u32, Vec<usize>>,
+    query_positions: &[usize],
     queried_values: TreeVec<Vec<BaseField>>,
     n_columns_per_log_size: TreeVec<&BTreeMap<u32, usize>>,
 ) -> Result<ColumnVec<Vec<SecureField>>, VerificationError> {
     let mut queried_values = queried_values.map(|values| values.into_iter());
+    let lifting_log_size = *column_log_sizes.0.iter().flatten().max().unwrap();
 
-    izip!(column_log_sizes.flatten(), samples.flatten().iter())
-        .sorted_by_key(|(log_size, ..)| Reverse(*log_size))
-        .group_by(|(log_size, ..)| *log_size)
+    let zipped_sorted: Vec<_> = izip!(column_log_sizes.iter().flatten(), samples.iter().flatten())
+        .sorted_by_key(|(log_size, _)| *log_size)
+        .collect();
+    let grouped = zipped_sorted
+        .iter()
+        .group_by(|(log_size, _)| *log_size)
         .into_iter()
-        .map(|(log_size, tuples)| {
-            let (_, samples): (Vec<_>, Vec<_>) = multiunzip(tuples);
-            fri_answers_for_log_size(
-                log_size,
+        .map(|(log_size, group)| (log_size, group.map(|(_, samples)| *samples).collect_vec()))
+        .collect_vec();
+
+    let mut res = Vec::with_capacity(query_positions.len());
+    for position in query_positions.iter() {
+        let mut curr_coeff_power = SecureField::one();
+        let mut sum = SecureField::zero();
+        for (log_size, samples) in &grouped {
+            let n_cols = n_columns_per_log_size
+                .as_ref()
+                .map(|dict_per_tree| *dict_per_tree.get(log_size).unwrap_or(&0));
+
+            let accumulation_per_log_size = fri_answers_for_unlifted_log_size(
+                lifting_log_size,
                 &samples,
                 random_coeff,
-                &query_positions_per_log_size[&log_size],
+                &mut curr_coeff_power,
+                *position,
                 &mut queried_values,
-                n_columns_per_log_size
-                    .as_ref()
-                    .map(|columns_log_sizes| *columns_log_sizes.get(&log_size).unwrap_or(&0)),
-            )
-        })
-        .collect()
+                n_cols,
+            )?;
+
+            sum += accumulation_per_log_size;
+        }
+        res.push(sum);
+    }
+    assert!(queried_values
+        .iter_mut()
+        .all(|val_iterator| val_iterator.next().is_none()));
+    // TODO(Leo): change the output type once we change fri's API.
+    Ok(vec![res])
 }
 
-pub fn fri_answers_for_log_size(
-    log_size: u32,
+pub fn fri_answers_for_unlifted_log_size(
+    lifting_log_size: u32,
     samples: &[&Vec<PointSample>],
     random_coeff: SecureField,
-    query_positions: &[usize],
+    curr_coeff_power: &mut SecureField,
+    query_position: usize,
     queried_values: &mut TreeVec<impl Iterator<Item = BaseField>>,
     n_columns: TreeVec<usize>,
-) -> Result<Vec<SecureField>, VerificationError> {
+) -> Result<SecureField, VerificationError> {
     let sample_batches = ColumnSampleBatch::new_vec(samples);
-    let mut curr_coeff_power = SecureField::one();
-    // TODO(ilya): Is it ok to use the same `random_coeff` for all log sizes.
-    let quotient_constants =
-        quotient_constants(&sample_batches, random_coeff, &mut curr_coeff_power);
-    let commitment_domain = CanonicCoset::new(log_size).circle_domain();
+    let quotient_constants = quotient_constants(&sample_batches, random_coeff, curr_coeff_power);
+    let commitment_domain = CanonicCoset::new(lifting_log_size).circle_domain();
+    let domain_point = commitment_domain.at(bit_reverse_index(query_position, lifting_log_size));
+    let queried_values_at_row = queried_values
+        .as_mut()
+        .zip_eq(n_columns.as_ref())
+        .map(|(queried_values, n_columns)| queried_values.take(*n_columns).collect())
+        .flatten();
 
-    let mut quotient_evals_at_queries = Vec::new();
-    for &query_position in query_positions {
-        let domain_point = commitment_domain.at(bit_reverse_index(query_position, log_size));
-
-        let queried_values_at_row = queried_values
-            .as_mut()
-            .zip_eq(n_columns.as_ref())
-            .map(|(queried_values, n_columns)| queried_values.take(*n_columns).collect())
-            .flatten();
-
-        quotient_evals_at_queries.push(accumulate_row_quotients(
-            &sample_batches,
-            &queried_values_at_row,
-            &quotient_constants,
-            domain_point,
-        ));
-    }
-
-    Ok(quotient_evals_at_queries)
+    Ok(accumulate_row_quotients(
+        &sample_batches,
+        &queried_values_at_row,
+        &quotient_constants,
+        domain_point,
+    ))
 }
 
 pub fn accumulate_row_quotients(
