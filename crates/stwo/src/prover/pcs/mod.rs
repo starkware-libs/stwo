@@ -101,13 +101,15 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .polynomials()
             .zip_cols(&sampled_points)
             .map_cols(|(poly, points)| {
-                let lde_domain_log_size = poly.log_size() + self.config.fri_config.log_blowup_factor;
+                let lde_domain_log_size =
+                    poly.log_size() + self.config.fri_config.log_blowup_factor;
                 points
                     .iter()
                     .map(|&point| PointSample {
                         point,
-                        value: poly
-                            .eval_at_point(point.repeated_double(max_log_size - lde_domain_log_size)),
+                        value: poly.eval_at_point(
+                            point.repeated_double(max_log_size - lde_domain_log_size),
+                        ),
                     })
                     .collect_vec()
             });

@@ -13,7 +13,8 @@ pub const NODE_PREFIX: [u8; 64] = [
     0, 0, 0, 0,
 ];
 
-pub type Blake2sMerkleHasherGeneric<const IS_M31_OUTPUT: bool> = Blake2sHasherGeneric<IS_M31_OUTPUT>;
+pub type Blake2sMerkleHasherGeneric<const IS_M31_OUTPUT: bool> =
+    Blake2sHasherGeneric<IS_M31_OUTPUT>;
 
 pub type Blake2sMerkleHasher = Blake2sMerkleHasherGeneric<false>;
 /// Same as [Blake2sMerkleHasher], except that the hash output is taken modulo M31::P.
