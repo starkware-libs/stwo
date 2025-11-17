@@ -20,6 +20,9 @@ pub type PackedSecureField = PackedQM31;
 #[derive(Copy, Clone, Debug)]
 pub struct PackedQM31(pub [PackedCM31; 2]);
 
+unsafe impl Send for PackedQM31 {}
+unsafe impl Sync for PackedQM31 {}
+
 impl PackedQM31 {
     /// Constructs a new instance with all vector elements set to `value`.
     pub const fn broadcast(value: QM31) -> Self {

@@ -76,6 +76,9 @@ impl BaseColumn {
     }
 }
 
+unsafe impl Send for BaseColumn {}
+unsafe impl Sync for BaseColumn {}
+
 impl Column<BaseField> for BaseColumn {
     fn zeros(length: usize) -> Self {
         let data = vec![PackedBaseField::zeroed(); length.div_ceil(N_LANES)];
@@ -148,6 +151,9 @@ pub struct CM31Column {
     pub data: Vec<PackedCM31>,
     pub length: usize,
 }
+
+unsafe impl Send for CM31Column {}
+unsafe impl Sync for CM31Column {}
 
 impl Column<CM31> for CM31Column {
     fn zeros(length: usize) -> Self {
@@ -277,6 +283,9 @@ impl SecureColumn {
         }
     }
 }
+
+unsafe impl Send for SecureColumn {}
+unsafe impl Sync for SecureColumn {}
 
 impl Column<SecureField> for SecureColumn {
     fn zeros(length: usize) -> Self {
