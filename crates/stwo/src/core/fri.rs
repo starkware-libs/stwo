@@ -14,7 +14,6 @@ use super::channel::{Channel, MerkleChannel};
 use super::fields::qm31::{SecureField, QM31, SECURE_EXTENSION_DEGREE};
 use super::poly::circle::CircleDomain;
 use super::queries::{draw_queries, Queries};
-use super::vcs::verifier::MerkleDecommitmentAux;
 use super::ColumnVec;
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
@@ -22,8 +21,11 @@ use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::core::utils::bit_reverse_index;
-use crate::core::vcs::verifier::{MerkleDecommitment, MerkleVerificationError, MerkleVerifier};
-use crate::core::vcs::MerkleHasher;
+use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use crate::core::vcs_lifted::verifier::{
+    MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux, MerkleVerificationError,
+    MerkleVerifierLifted,
+};
 
 /// FRI proof config
 // TODO(andrew): Support different step sizes.
@@ -423,7 +425,7 @@ impl LinePolyDegreeBound {
 
 /// A FRI proof.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FriProof<H: MerkleHasher> {
+pub struct FriProof<H: MerkleHasherLifted> {
     pub first_layer: FriLayerProof<H>,
     pub inner_layers: Vec<FriLayerProof<H>>,
     pub last_layer_poly: LinePoly,
@@ -431,13 +433,13 @@ pub struct FriProof<H: MerkleHasher> {
 
 /// Auxiliary data produced by the prover.
 #[derive(Clone, Debug)]
-pub struct FriProofAux<H: MerkleHasher> {
+pub struct FriProofAux<H: MerkleHasherLifted> {
     pub first_layer: FriLayerProofAux<H>,
     pub inner_layers: Vec<FriLayerProofAux<H>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct ExtendedFriProof<H: MerkleHasher> {
+pub struct ExtendedFriProof<H: MerkleHasherLifted> {
     pub proof: FriProof<H>,
     pub aux: FriProofAux<H>,
 }
@@ -451,33 +453,33 @@ pub const CIRCLE_TO_LINE_FOLD_STEP: u32 = 1;
 
 /// Proof of an individual FRI layer.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FriLayerProof<H: MerkleHasher> {
+pub struct FriLayerProof<H: MerkleHasherLifted> {
     /// Values that the verifier needs but cannot deduce from previous computations, in the
     /// order they are needed. This complements the values that were queried. These must be
     /// supplied directly to the verifier.
     pub fri_witness: Vec<SecureField>,
-    pub decommitment: MerkleDecommitment<H>,
+    pub decommitment: MerkleDecommitmentLifted<H>,
     pub commitment: H::Hash,
 }
 
 /// Auxiliary data for a single FRI layer.
 #[derive(Clone, Debug)]
-pub struct FriLayerProofAux<H: MerkleHasher> {
+pub struct FriLayerProofAux<H: MerkleHasherLifted> {
     /// For each column (of different size), the values of all nodes that participate in the
     /// decommitment.
     // TODO(lior): Remove the `Vec<>` once mixed-degree Merkle is removed.
     pub all_values: Vec<HashMap<usize, QM31>>,
     /// The auxiliary data for the merkle decommitment.
-    pub decommitment: MerkleDecommitmentAux<H>,
+    pub decommitment: MerkleDecommitmentLiftedAux<H>,
 }
 
 #[derive(Clone, Debug)]
-pub struct ExtendedFriLayerProof<H: MerkleHasher> {
+pub struct ExtendedFriLayerProof<H: MerkleHasherLifted> {
     pub proof: FriLayerProof<H>,
     pub aux: FriLayerProofAux<H>,
 }
 
-struct FriFirstLayerVerifier<H: MerkleHasher> {
+struct FriFirstLayerVerifier<H: MerkleHasherLifted> {
     /// The list of degree bounds of all circle polynomials committed in the first layer.
     column_bounds: Vec<CirclePolyDegreeBound>,
     /// The commitment domain all the circle polynomials in the first layer.
@@ -486,7 +488,7 @@ struct FriFirstLayerVerifier<H: MerkleHasher> {
     proof: FriLayerProof<H>,
 }
 
-impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
+impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
     /// Verifies the first layer's merkle decommitment, and returns the evaluations needed for
     /// folding the columns to their corresponding layer.
     ///
@@ -550,7 +552,7 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
             return Err(FriVerificationError::FirstLayerEvaluationsInvalid);
         }
 
-        let merkle_verifier = MerkleVerifier::new(
+        let merkle_verifier = MerkleVerifierLifted::new(
             self.proof.commitment,
             self.column_commitment_domains
                 .iter()
@@ -558,9 +560,12 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
                 .collect(),
         );
 
+        assert_eq!(decommitment_positions_by_log_size.len(), 1);
+        let decommitment_positions = decommitment_positions_by_log_size.values().next().unwrap();
+
         merkle_verifier
             .verify(
-                &decommitment_positions_by_log_size,
+                decommitment_positions,
                 decommitmented_values,
                 self.proof.decommitment.clone(),
             )
@@ -570,7 +575,7 @@ impl<H: MerkleHasher> FriFirstLayerVerifier<H> {
     }
 }
 
-struct FriInnerLayerVerifier<H: MerkleHasher> {
+struct FriInnerLayerVerifier<H: MerkleHasherLifted> {
     degree_bound: LinePolyDegreeBound,
     domain: LineDomain,
     folding_alpha: SecureField,
@@ -578,7 +583,7 @@ struct FriInnerLayerVerifier<H: MerkleHasher> {
     proof: FriLayerProof<H>,
 }
 
-impl<H: MerkleHasher> FriInnerLayerVerifier<H> {
+impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
     /// Verifies the layer's merkle decommitment and returns the the folded queries and query evals.
     ///
     /// # Errors
@@ -628,14 +633,14 @@ impl<H: MerkleHasher> FriInnerLayerVerifier<H> {
             .flat_map(|qm31| qm31.to_m31_array())
             .collect_vec();
 
-        let merkle_verifier = MerkleVerifier::new(
+        let merkle_verifier = MerkleVerifierLifted::new(
             self.proof.commitment,
             vec![self.domain.log_size(); SECURE_EXTENSION_DEGREE],
         );
 
         merkle_verifier
             .verify(
-                &BTreeMap::from_iter([(self.domain.log_size(), decommitment_positions)]),
+                &decommitment_positions,
                 decommitmented_values,
                 self.proof.decommitment.clone(),
             )
@@ -827,7 +832,7 @@ mod tests {
     use crate::core::poly::line::{LineDomain, LinePoly};
     use crate::core::queries::Queries;
     use crate::core::test_utils::test_channel;
-    use crate::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use crate::prover::backend::cpu::CpuCirclePoly;
     use crate::prover::backend::{ColumnOps, CpuBackend};
     use crate::prover::line::LineEvaluation;

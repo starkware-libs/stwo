@@ -67,7 +67,7 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
     /// * A `MerkleDecommitment` containing the hash witness.
     pub fn decommit(
         &self,
-        queries_position: Vec<usize>,
+        queries_position: &[usize],
         columns: Vec<&Col<B, BaseField>>,
     ) -> (Vec<BaseField>, ExtendedMerkleDecommitmentLifted<H>) {
         // Prepare output buffers.
@@ -88,7 +88,7 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
             queried_values.extend(values);
         }
 
-        let mut prev_layer_queries = queries_position;
+        let mut prev_layer_queries = queries_position.to_vec();
         // The largest log size of a layer is equal to `self.layers.len() - 1`. We start iterating
         // from the layer of log size `self.layers.len() - 2` so that we always have a previous
         // layer available for the computation.
@@ -216,13 +216,13 @@ mod test {
     fn test_lifted_decommitted_values() {
         let (cols, merkle_prover) = prepare_merkle();
         // Test decommits at position 0.
-        let queried_values = merkle_prover.decommit(vec![0], cols.iter().collect_vec()).0;
+        let queried_values = merkle_prover.decommit(&[0], cols.iter().collect_vec()).0;
 
         let expected_values = vec![BaseField::zero(); 3];
         assert_eq!(expected_values, queried_values);
 
         // Test decommits at position 4.
-        let queried_values = merkle_prover.decommit(vec![4], cols.iter().collect_vec()).0;
+        let queried_values = merkle_prover.decommit(&[4], cols.iter().collect_vec()).0;
         let expected_values = vec![
             BaseField::from_u32_unchecked(0),
             BaseField::from_u32_unchecked(2),
@@ -231,9 +231,7 @@ mod test {
         assert_eq!(expected_values, queried_values);
 
         // Test decommits at position 15.
-        let queried_values = merkle_prover
-            .decommit(vec![15], cols.iter().collect_vec())
-            .0;
+        let queried_values = merkle_prover.decommit(&[15], cols.iter().collect_vec()).0;
         let expected_values = vec![
             BaseField::from_u32_unchecked(3),
             BaseField::from_u32_unchecked(7),
@@ -287,7 +285,7 @@ mod test {
                 decommitment: _,
                 aux,
             },
-        ) = merkle_prover.decommit(vec![1], columns.iter().collect_vec());
+        ) = merkle_prover.decommit(&[1], columns.iter().collect_vec());
 
         let mut expected: Vec<HashMap<usize, Blake2sHash>> = vec![];
         merkle_prover
