@@ -1,10 +1,13 @@
+use hashbrown::HashMap;
 use itertools::Itertools;
 use tracing::{span, Level};
 
 use super::ops::MerkleOpsLifted;
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
-use crate::core::vcs_lifted::verifier::MerkleDecommitmentLifted;
+use crate::core::vcs_lifted::verifier::{
+    ExtendedMerkleDecommitmentLifted, MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux,
+};
 use crate::prover::backend::{Col, Column};
 
 /// Represents the prover side of a Merkle commitment scheme.
@@ -66,10 +69,11 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
         &self,
         queries_position: Vec<usize>,
         columns: Vec<&Col<B, BaseField>>,
-    ) -> (Vec<BaseField>, MerkleDecommitmentLifted<H>) {
+    ) -> (Vec<BaseField>, ExtendedMerkleDecommitmentLifted<H>) {
         // Prepare output buffers.
         let mut queried_values: Vec<BaseField> = vec![];
         let mut decommitment = MerkleDecommitmentLifted::<H>::default();
+        let mut all_node_values: Vec<HashMap<usize, <H as MerkleHasherLifted>::Hash>> = vec![];
 
         let columns_sorted = columns.iter().sorted_by_key(|c| c.len()).collect_vec();
 
@@ -89,6 +93,8 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
         // from the layer of log size `self.layers.len() - 2` so that we always have a previous
         // layer available for the computation.
         for layer_log_size in (0..self.layers.len() - 1).rev() {
+            let mut all_node_values_for_layer =
+                HashMap::<usize, <H as MerkleHasherLifted>::Hash>::new();
             // Prepare write buffer for queries to the current layer. This will propagate to the
             // next layer.
             let mut curr_layer_queries: Vec<usize> = vec![];
@@ -106,12 +112,27 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
                         .hash_witness
                         .push(prev_layer_hashes.at(first ^ 1))
                 }
-                curr_layer_queries.push(first >> 1);
+                let curr_index = first >> 1;
+                curr_layer_queries.push(curr_index);
+
+                // Add the previous layer hashes to all_node_values.
+                all_node_values_for_layer
+                    .insert(2 * curr_index, prev_layer_hashes.at(2 * curr_index));
+                all_node_values_for_layer
+                    .insert(2 * curr_index + 1, prev_layer_hashes.at(2 * curr_index + 1));
             }
             // Propagate queries to the next layer.
             prev_layer_queries = curr_layer_queries;
+
+            all_node_values.push(all_node_values_for_layer);
         }
-        (queried_values, decommitment)
+        (
+            queried_values,
+            ExtendedMerkleDecommitmentLifted {
+                decommitment,
+                aux: MerkleDecommitmentLiftedAux { all_node_values },
+            },
+        )
     }
 
     pub fn root(&self) -> H::Hash {
@@ -126,7 +147,7 @@ mod test {
     use super::*;
     use crate::core::fields::m31::M31;
     use crate::core::poly::circle::CanonicCoset;
-    use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
     use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher as Blake2sMerkleHasherCurrent;
     use crate::core::vcs_lifted::blake2_merkle::{Blake2sMerkleHasher, LEAF_PREFIX};
     use crate::prover::backend::cpu::CpuCirclePoly;
@@ -276,5 +297,26 @@ mod test {
             mixed_degree_merkle_prover.root(),
             lifted_merkle_prover_1.root()
         );
+    }
+
+    #[test]
+    fn test_decommitment_aux() {
+        let (columns, merkle_prover) = prepare_merkle();
+        let (
+            _,
+            ExtendedMerkleDecommitmentLifted {
+                decommitment: _,
+                aux,
+            },
+        ) = merkle_prover.decommit(vec![1], columns.iter().collect_vec());
+
+        let mut expected: Vec<HashMap<usize, Blake2sHash>> = vec![];
+        merkle_prover
+            .layers
+            .iter()
+            .skip(1)
+            .rev()
+            .for_each(|layer| expected.push(HashMap::from_iter([(0, layer[0]), (1, layer[1])])));
+        assert_eq!(expected, aux.all_node_values);
     }
 }
