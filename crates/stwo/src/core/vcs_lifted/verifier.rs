@@ -1,3 +1,4 @@
+use hashbrown::HashMap;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std_shims::{vec, BTreeMap, Vec};
@@ -19,6 +20,18 @@ impl<H: MerkleHasherLifted> MerkleDecommitmentLifted<H> {
             hash_witness: Vec::new(),
         }
     }
+}
+
+/// Auxiliary data for Merkle decommitment.
+#[derive(Clone, Debug)]
+pub struct MerkleDecommitmentLiftedAux<H: MerkleHasherLifted> {
+    /// For each layer, a map from node index to its hash value.
+    pub all_node_values: Vec<HashMap<usize, H::Hash>>,
+}
+
+pub struct ExtendedMerkleDecommitmentLifted<H: MerkleHasherLifted> {
+    pub decommitment: MerkleDecommitmentLifted<H>,
+    pub aux: MerkleDecommitmentLiftedAux<H>,
 }
 
 /// The verifier part of the vector commitment scheme.
