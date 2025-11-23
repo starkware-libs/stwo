@@ -62,18 +62,11 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
     ) -> Result<(), VerificationError> {
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let random_coeff = channel.draw_secure_felt();
+        let max_log_size = *self.column_log_sizes().flatten().iter().max().unwrap();
 
-        let bounds = self
-            .column_log_sizes()
-            .flatten()
-            .into_iter()
-            .sorted()
-            .rev()
-            .dedup()
-            .map(|log_size| {
-                CirclePolyDegreeBound::new(log_size - self.config.fri_config.log_blowup_factor)
-            })
-            .collect_vec();
+        let bounds = vec![CirclePolyDegreeBound::new(
+            max_log_size - self.config.fri_config.log_blowup_factor,
+        )];
 
         // FRI commitment phase on OODS quotients.
         let mut fri_verifier =
@@ -113,11 +106,14 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
 
         let n_columns_per_log_size = self.trees.as_ref().map(|tree| &tree.n_columns_per_log_size);
 
+        // TODO(Leo): remove after we remove query_positions_per_log_size
+        let query_positions = query_positions_per_log_size.values().next().unwrap();
+
         let fri_answers = fri_answers(
             self.column_log_sizes(),
             samples,
             random_coeff,
-            &query_positions_per_log_size,
+            query_positions,
             proof.queried_values,
             n_columns_per_log_size,
         )?;
