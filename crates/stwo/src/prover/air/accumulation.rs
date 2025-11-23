@@ -132,6 +132,17 @@ pub trait AccumulationOps: ColumnOps<BaseField> + Sized {
 
     /// Generates the first `n_powers` powers of `felt`.
     fn generate_secure_powers(felt: SecureField, n_powers: usize) -> Vec<SecureField>;
+
+    /// Receives a possibly empty vector of columns, sorted increasingly by column length, and
+    /// returns a column which is the coordinate-wise sum of the lifts of the columns (see also
+    /// [`crate::prover::backend::simd::blake2s_lifted::to_lifted_simd`] for the definition of the
+    /// lift of a column). The size of the output column is equal to the size of the largest column
+    /// (e.g. the size the last one).
+    ///
+    /// If `cols` is empty, returns `None`.
+    fn lift_and_accumulate(
+        cols: Vec<SecureColumnByCoords<Self>>,
+    ) -> Option<SecureColumnByCoords<Self>>;
 }
 
 /// A domain accumulator for polynomials of a single size.

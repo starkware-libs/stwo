@@ -150,10 +150,9 @@ mod test {
     use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
     use crate::core::vcs::blake2_merkle::Blake2sMerkleHasher as Blake2sMerkleHasherCurrent;
     use crate::core::vcs_lifted::blake2_merkle::{Blake2sMerkleHasher, LEAF_PREFIX};
+    use crate::core::vcs_lifted::test_utils::lift_poly;
     use crate::prover::backend::cpu::CpuCirclePoly;
-    use crate::prover::backend::{ColumnOps, CpuBackend};
-    use crate::prover::poly::circle::{CircleEvaluation, CirclePoly, PolyOps};
-    use crate::prover::poly::BitReversedOrder;
+    use crate::prover::backend::CpuBackend;
     use crate::prover::vcs::prover::MerkleProver;
 
     #[test]
@@ -239,26 +238,6 @@ mod test {
             BaseField::from_u32_unchecked(15),
         ];
         assert_eq!(expected_values, queried_values);
-    }
-
-    fn lift_poly<B: ColumnOps<BaseField> + PolyOps>(
-        poly: &CirclePoly<B>,
-        lifted_log_size: u32,
-    ) -> CircleEvaluation<B, BaseField, BitReversedOrder> {
-        let lifted_domain = CanonicCoset::new(lifted_log_size).circle_domain();
-        let mut lifted_evaluation: Col<B, BaseField> = lifted_domain
-            .iter()
-            .map(|point| {
-                poly.eval_at_point(
-                    point
-                        .repeated_double(lifted_log_size - poly.log_size())
-                        .into_ef(),
-                )
-                .to_m31_array()[0]
-            })
-            .collect();
-        B::bit_reverse_column(&mut lifted_evaluation);
-        CircleEvaluation::new(lifted_domain, lifted_evaluation)
     }
 
     /// See the docs of `[crate::prover::backend::cpu::blake2s_lifted::build_leaves]`.
