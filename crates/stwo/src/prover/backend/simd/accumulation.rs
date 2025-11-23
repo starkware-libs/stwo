@@ -37,6 +37,12 @@ impl AccumulationOps for SimdBackend {
             .take(n_powers)
             .collect_vec()
     }
+
+    fn lift_and_accumulate(
+        _cols: Vec<SecureColumnByCoords<Self>>,
+    ) -> Option<SecureColumnByCoords<Self>> {
+        unimplemented!()
+    }
 }
 
 #[cfg(test)]
