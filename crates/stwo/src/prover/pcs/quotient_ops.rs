@@ -148,13 +148,18 @@ mod tests {
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
+    use crate::core::channel::Blake2sChannel;
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::M31;
     use crate::core::pcs::quotients::PointSample;
+    use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
+    use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
+    use crate::prover::backend::CpuBackend;
     use crate::prover::pcs::quotient_ops::compute_fri_quotients;
-    use crate::prover::SecureField;
+    use crate::prover::poly::circle::PolyOps;
+    use crate::prover::{CommitmentSchemeProver, SecureField};
 
     #[test]
     fn test_quotients_are_low_degree() {
@@ -189,5 +194,57 @@ mod tests {
         let zeros = coeffs[0].coeffs.split_off((1 << LOG_SIZE) - 1);
 
         assert!(zeros.iter().all(|c| c.is_zero()));
+    }
+
+    #[test]
+    fn test_pcs_prove_and_verify() {
+        const N_COLS: usize = 5;
+        const LIFTING_LOG_SIZE: u32 = 6;
+        let mut rng = SmallRng::seed_from_u64(0);
+
+        // Setup the prover side of the pcs.
+        let mut channel = Blake2sChannel::default();
+        let config = PcsConfig::default();
+        let twiddles =
+            CpuBackend::precompute_twiddles(CanonicCoset::new(LIFTING_LOG_SIZE + 1).half_coset());
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sMerkleChannel>::new(config, &twiddles);
+        let mut polys: Vec<CpuCirclePoly> = (0..N_COLS - 1)
+            .map(|_| {
+                CpuCirclePoly::new(
+                    (0..1 << rng.gen_range(2..LIFTING_LOG_SIZE - 1))
+                        .map(M31::from)
+                        .collect(),
+                )
+            })
+            .collect();
+        polys.push(CpuCirclePoly::new(
+            (0..1 << LIFTING_LOG_SIZE).map(M31::from).collect(),
+        ));
+        let sizes = polys.iter().map(|poly| poly.log_size()).collect_vec();
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_polys(polys);
+        tree_builder.commit(&mut channel);
+
+        let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
+        let samples = [
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+            SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
+        ];
+        let sampled_points = vec![(0..N_COLS)
+            .zip(mask_structure.iter())
+            .map(|(_, i)| samples.into_iter().take(*i).collect_vec())
+            .collect_vec()];
+
+        let proof = commitment_scheme.prove_values(TreeVec(sampled_points.clone()), &mut channel);
+
+        // Verifier side of the pcs.
+        let mut channel = Blake2sChannel::default();
+        let mut verifier = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        verifier.commit(proof.proof.commitments[0], &sizes, &mut channel);
+        let result = verifier.verify_values(TreeVec(sampled_points), proof.proof, &mut channel);
+
+        assert!(result.is_ok(), "{}", result.err().unwrap());
     }
 }
