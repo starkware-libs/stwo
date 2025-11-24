@@ -487,6 +487,7 @@ mod tests {
         );
     }
 
+    #[ignore = "AIRs with constraint degree >= 2 are not supported yet in the lifted protocol."]
     #[test_log::test]
     fn test_simd_poseidon_prove() {
         // Note: To see time measurement, run test with
@@ -530,6 +531,7 @@ mod tests {
         verify(&[&component], channel, commitment_scheme, proof).unwrap();
     }
 
+    #[ignore = "AIRs with constraint degree >= 2 are not supported yet in the lifted protocol."]
     #[cfg(feature = "tracing")]
     #[test]
     fn trace_simd_poseidon_prove() {

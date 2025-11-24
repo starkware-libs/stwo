@@ -89,6 +89,7 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
         }
 
         let mut prev_layer_queries = queries_position.to_vec();
+        prev_layer_queries.dedup();
         // The largest log size of a layer is equal to `self.layers.len() - 1`. We start iterating
         // from the layer of log size `self.layers.len() - 2` so that we always have a previous
         // layer available for the computation.
