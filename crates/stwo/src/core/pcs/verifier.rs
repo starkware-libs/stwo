@@ -11,6 +11,7 @@ use super::utils::TreeVec;
 use super::PcsConfig;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::pcs::quotients::CommitmentSchemeProof;
+use crate::core::pcs::utils::prepare_pp_query_positions;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
@@ -64,8 +65,23 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         let random_coeff = channel.draw_secure_felt();
         let max_log_size = *self.column_log_sizes().flatten().iter().max().unwrap();
 
+        let used_max_log_size = self
+            .column_log_sizes()
+            .zip_cols(&sampled_points)
+            .flatten()
+            .into_iter()
+            .map(|(log_size, sampled_points)| {
+                if sampled_points.is_empty() {
+                    0
+                } else {
+                    log_size
+                }
+            })
+            .max()
+            .unwrap();
+
         let bounds = vec![CirclePolyDegreeBound::new(
-            max_log_size - self.config.fri_config.log_blowup_factor,
+            used_max_log_size - self.config.fri_config.log_blowup_factor,
         )];
 
         // FRI commitment phase on OODS quotients.
@@ -88,10 +104,31 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             .as_ref()
             .zip_eq(proof.decommitments)
             .zip_eq(proof.queried_values.clone())
-            .map(|((tree, decommitment), queried_values)| {
-                tree.verify(query_positions, queried_values, decommitment)
+            .iter()
+            .enumerate()
+            .map(|(index, ((tree, decommitment), queried_values))| {
+                println!("VERIFIER: ");
+                println!("decommitment length: {:?}", decommitment.hash_witness.len());
+                if index == 0 {
+
+                    println!("max_log_size: {:?}", max_log_size);
+                    println!("used_max_log_size: {:?}", used_max_log_size);
+                    tree.verify(
+                        &prepare_pp_query_positions(
+                            query_positions,
+                            used_max_log_size,
+                            max_log_size,
+                        ),
+                        queried_values.clone(),
+                        decommitment.clone(),
+                    )
+                } else {
+                    println!("HIHAIFHAFHADHIFIADFHADIADHIADHIFAHIDFHIADFHIDFAHIADFHID");
+                    tree.verify(query_positions, queried_values.clone(), decommitment.clone())
+                }
+                // tree.verify(query_positions, queried_values, decommitment)
             })
-            .0
+            .collect::<Vec<Result<(), _>>>()
             .into_iter()
             .collect::<Result<(), _>>()?;
 

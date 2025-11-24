@@ -8,6 +8,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{
     CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
 };
+use crate::core::pcs::utils::prepare_pp_query_positions;
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::ExtendedMerkleDecommitmentLifted;
@@ -148,17 +149,33 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         assert_eq!(query_positions_by_log_size.len(), 1);
         let query_positions = query_positions_by_log_size.values().next().unwrap();
         // Decommit the FRI queries on the merkle trees.
-        let decommitment_results = self
-            .trees
-            .as_ref()
-            .map(|tree| tree.decommit(query_positions));
+        let mut final_tree_vec = vec![];
 
-        let (queried_values, decommitments, aux): (Vec<_>, Vec<_>, Vec<_>) = decommitment_results
+        println!("PROVER: ");
+        println!("max_log_size: {:?}", max_log_size);
+        println!("self.trees[0].commitment.layers.len() as u32- 1: {:?}", self.trees[0].commitment.layers.len() as u32- 1);
+        final_tree_vec.push(self.trees[0].decommit(&prepare_pp_query_positions(
+            &query_positions, 
+            max_log_size,
+            self.trees[0].commitment.layers.len() as u32- 1,
+        )));
+        // let pp_decommitment_results = self
+        // .trees
+        // .as_ref()[0].decommit(query_positions);
+
+        let decommitment_results = self.trees[1..]
+            .iter()
+            .map(|tree| tree.decommit(query_positions))
+            .collect_vec();
+        final_tree_vec.extend(decommitment_results);
+
+        let final_tree_vec = TreeVec(final_tree_vec);
+        let (queried_values, decommitments, aux): (Vec<_>, Vec<_>, Vec<_>) = final_tree_vec
             .0
             .into_iter()
             .map(|(v, x)| (v, x.decommitment, x.aux))
             .multiunzip();
-
+        println!("first decommitment length: {:?}", decommitments[0].hash_witness.len());
         ExtendedCommitmentSchemeProof {
             proof: CommitmentSchemeProof {
                 commitments: self.roots(),

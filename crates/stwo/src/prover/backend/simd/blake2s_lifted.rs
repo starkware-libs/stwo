@@ -11,7 +11,7 @@ use super::m31::LOG_N_LANES;
 use super::SimdBackend;
 use crate::core::fields::m31::{BaseField, N_BYTES_FELT};
 use crate::core::vcs::blake2_hash::Blake2sHash;
-use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleHasher, Blake2sMerkleHasher};
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::parallel_iter;
 use crate::prover::backend::simd::blake2s::{
@@ -26,6 +26,16 @@ const N_FELTS_IN_BLAKE_STATE: usize = 8;
 const N_BYTES_IN_BLAKE_MESSAGE: u64 = N_FELTS_IN_BLAKE_MESSAGE as u64 * N_BYTES_FELT as u64;
 const N_BYTES_IN_PREFIX: u64 = 64;
 
+impl MerkleOpsLifted<Blake2sM31MerkleHasher> for SimdBackend {
+    fn build_leaves(_columns: &[&Col<Self, BaseField>]) -> Col<Self, Blake2sHash> {
+        unimplemented!()
+    }
+
+    fn build_next_layer(_prev_layer: &Col<Self, Blake2sHash>) -> Col<Self, Blake2sHash> {
+        unimplemented!()
+    }
+}
+    
 impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
     /// See the docs of [`crate::prover::backend::cpu::blake2s_lifted`].
     ///

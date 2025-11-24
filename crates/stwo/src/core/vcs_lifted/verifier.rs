@@ -100,6 +100,10 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
         let Some(max_log_size) = self.column_log_sizes.iter().max() else {
             return Ok(());
         };
+
+        println!("query_positions: {:?}", query_positions.len());
+        println!("queried_values: {:?}", queried_values.len());
+        println!("column_log_sizes: {:?}", self.column_log_sizes.len());
         let mut prev_layer_hashes: Vec<(usize, H::Hash)> = query_positions
             .iter()
             .zip_eq(queried_values.chunks_exact(self.column_log_sizes.len()))

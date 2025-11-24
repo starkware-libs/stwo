@@ -5,3 +5,4 @@ pub mod poseidon;
 pub mod state_machine;
 pub mod wide_fibonacci;
 pub mod xor;
+pub mod wide_fibonacci_seq;

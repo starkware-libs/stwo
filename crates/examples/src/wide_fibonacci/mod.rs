@@ -99,7 +99,7 @@ impl<const N: usize> FrameworkEval for WideFibonacciEval<N> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
     use stwo::core::air::Component;
@@ -127,7 +127,7 @@ mod tests {
 
     const FIB_SEQUENCE_LENGTH: usize = 100;
 
-    fn generate_test_inputs(log_n_instances: u32) -> Vec<FibInput> {
+    pub fn generate_test_inputs(log_n_instances: u32) -> Vec<FibInput> {
         (0..1 << log_n_instances)
             .map(|i| FibInput {
                 a: BaseField::one(),
