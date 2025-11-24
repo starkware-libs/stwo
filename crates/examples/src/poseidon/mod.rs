@@ -557,4 +557,53 @@ mod tests {
 
         println!("{csv}");
     }
+
+    #[test]
+    fn test_hash_1_2_3() {
+        use super::*;
+        use stwo::core::fields::m31::BaseField;
+
+        // Initialize state with [1, 2, 3, 0, 0, ..., 0] (16 elements total)
+        let mut state: [BaseField; N_STATE] = array::from_fn(|i| {
+            match i {
+                0 => BaseField::from_u32_unchecked(1),
+                1 => BaseField::from_u32_unchecked(2),
+                2 => BaseField::from_u32_unchecked(3),
+                _ => BaseField::from_u32_unchecked(0),
+            }
+        });
+
+        println!("Initial state: {:?}", state);
+
+        // Apply first 4 full rounds
+        for round in 0..N_HALF_FULL_ROUNDS {
+            for i in 0..N_STATE {
+                state[i] += EXTERNAL_ROUND_CONSTS[round][i];
+            }
+            apply_external_round_matrix(&mut state);
+            state = array::from_fn(|i| pow5(state[i]));
+        }
+
+        // Apply partial rounds
+        for round in 0..N_PARTIAL_ROUNDS {
+            state[0] += INTERNAL_ROUND_CONSTS[round];
+            apply_internal_round_matrix(&mut state);
+            state[0] = pow5(state[0]);
+        }
+
+        // Apply last 4 full rounds
+        for round in 0..N_HALF_FULL_ROUNDS {
+            for i in 0..N_STATE {
+                state[i] += EXTERNAL_ROUND_CONSTS[round + N_HALF_FULL_ROUNDS][i];
+            }
+            apply_external_round_matrix(&mut state);
+            state = array::from_fn(|i| pow5(state[i]));
+        }
+
+        println!("Final hash: {:?}", state);
+        println!("\nHash values:");
+        for (i, val) in state.iter().enumerate() {
+            println!("  state[{}] = {}", i, val);
+        }
+    }
 }

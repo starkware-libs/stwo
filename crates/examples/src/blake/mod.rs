@@ -15,20 +15,25 @@ use stwo_constraint_framework::{relation, EvalAtRow, Relation, RelationEntry};
 use xor_table::{xor12, xor4, xor7, xor8, xor9};
 
 mod air;
+mod blake3;
 mod preprocessed_columns;
 mod round;
 mod scheduler;
 mod xor_table;
+
+#[cfg(test)]
+mod test_our_blake3;
 
 const STATE_SIZE: usize = 16;
 const MESSAGE_SIZE: usize = 16;
 const N_FELTS_IN_U32: usize = 2;
 const N_ROUND_INPUT_FELTS: usize = (STATE_SIZE + STATE_SIZE + MESSAGE_SIZE) * N_FELTS_IN_U32;
 
-// Parameters for Blake2s. Change these for blake3.
-const N_ROUNDS: usize = 10;
+// Parameters for Blake3.
+const N_ROUNDS: usize = 7;
 /// A splitting N_ROUNDS into several powers of 2.
-const ROUND_LOG_SPLIT: [u32; 2] = [3, 1];
+/// 7 = 4 + 2 + 1 = 2^2 + 2^1 + 2^0
+const ROUND_LOG_SPLIT: [u32; 3] = [2, 1, 0];
 
 #[derive(Default)]
 struct XorAccums {

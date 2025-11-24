@@ -272,7 +272,7 @@ impl BlakeComponents {
 }
 
 #[allow(unused)]
-pub fn prove_blake<MC: MerkleChannel>(log_size: u32, config: PcsConfig) -> (BlakeProof<MC::H>)
+pub fn prove_blake<MC: MerkleChannel>(log_size: u32, config: PcsConfig) -> BlakeProof<MC::H>
 where
     SimdBackend: BackendForChannel<MC>,
 {
@@ -455,7 +455,9 @@ where
 
     // Prove constraints.
     let components = BlakeComponents::new(&stmt0, &all_elements, &stmt1);
-    let stark_proof = prove(&components.component_provers(), channel, commitment_scheme).unwrap();
+    let component_provers = components.component_provers();
+
+    let stark_proof = prove(&component_provers, channel, commitment_scheme).unwrap();
 
     BlakeProof {
         stmt0,

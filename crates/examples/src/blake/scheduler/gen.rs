@@ -9,7 +9,7 @@ use stwo::core::ColumnVec;
 use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::qm31::PackedSecureField;
-use stwo::prover::backend::simd::{blake2s, SimdBackend};
+use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::Column;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
@@ -17,6 +17,7 @@ use stwo_constraint_framework::{LogupTraceGenerator, Relation, ORIGINAL_TRACE_ID
 use tracing::{span, Level};
 
 use super::{blake_scheduler_info, BlakeElements};
+use crate::blake::blake3;
 use crate::blake::round::{BlakeRoundInput, RoundElements};
 use crate::blake::{to_felts, N_ROUNDS, N_ROUND_INPUT_FELTS, STATE_SIZE};
 
@@ -76,24 +77,30 @@ pub fn gen_trace(
         write_u32_array(m, &mut col_index);
         write_u32_array(v, &mut col_index);
 
+        // Blake3 permutes message BETWEEN rounds using MSG_SCHEDULE
+        let mut m_current = m;
+
         for r in 0..N_ROUNDS {
             let prev_v = v;
-            blake2s::round(&mut v, m, r);
+            blake3::round(&mut v, m_current, r);
             write_u32_array(v, &mut col_index);
 
-            let round_m = blake2s::SIGMA[r].map(|i| m[i as usize]);
+            // Pass current message state to round_inputs
             round_inputs.push(BlakeRoundInput {
                 v: prev_v,
-                m: round_m,
+                m: m_current,
             });
 
             chain![
                 prev_v.iter().flat_map(to_felts),
                 v.iter().flat_map(to_felts),
-                round_m.iter().flat_map(to_felts)
+                m_current.iter().flat_map(to_felts)
             ]
             .enumerate()
             .for_each(|(i, val)| lookup_data.round_lookups[r][i].data[vec_row] = val);
+
+            // Permute message for next round
+            m_current = blake3::MSG_SCHEDULE.map(|i| m_current[i as usize]);
         }
 
         chain![
