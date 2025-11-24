@@ -32,18 +32,24 @@ pub trait Component {
 
     /// Returns the mask points for each trace column. The returned TreeVec should be of size
     /// `n_interaction_phases`.
+    /// The parameter `max_log_degree_bound` is the maximum log degree of a committed polynomial
+    /// in the pcs (this number is known to both prover and verifier). The mask points are
+    /// translations of `point` by a multiple of the generator of the canonical coset of log size
+    /// `max_log_degree_bound`.
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
+        max_log_degree_bound: u32,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>;
 
     fn preprocessed_column_indices(&self) -> ColumnVec<usize>;
 
-    /// Evaluates the constraint quotients combination of the component at a point.
+    /// Evaluates the lifted constraint quotients accumulation of the component at `point`.
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
+        max_log_degree_bound: u32,
     );
 }
