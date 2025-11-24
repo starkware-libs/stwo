@@ -108,7 +108,21 @@ pub fn fri_answers(
     n_columns_per_log_size: TreeVec<&BTreeMap<u32, usize>>,
 ) -> Result<ColumnVec<Vec<SecureField>>, VerificationError> {
     let mut queried_values = queried_values.map(|values| values.into_iter());
-    let lifting_log_size = *column_log_sizes.0.iter().flatten().max().unwrap();
+    // let lifting_log_size = 
+    let lifting_log_size = column_log_sizes.clone()
+    .zip_cols(&samples)
+    .flatten()
+    .into_iter()
+    .map(|(log_size, sampled_points)| {
+        if sampled_points.is_empty() {
+            0
+        } else {
+            log_size
+        }
+    })
+    .max()
+    .unwrap();
+    // let lifting_log_size = *column_log_sizes.0.iter().flatten().max().unwrap();
     let flattened_samples = samples.flatten();
     let flattened_columns = column_log_sizes.flatten();
     let zipped_sorted: Vec<_> = izip!(flattened_columns.iter(), flattened_samples.iter())

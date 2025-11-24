@@ -63,7 +63,8 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
     ) -> Result<(), VerificationError> {
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let random_coeff = channel.draw_secure_felt();
-        let max_log_size = *self.column_log_sizes().flatten().iter().max().unwrap();
+        let pp_max_log_size = *self.column_log_sizes()[0].iter().max().unwrap();
+        // let max_log_size = *self.column_log_sizes().flatten().iter().max().unwrap();
 
         let used_max_log_size = self
             .column_log_sizes()
@@ -111,13 +112,13 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
                 println!("decommitment length: {:?}", decommitment.hash_witness.len());
                 if index == 0 {
 
-                    println!("max_log_size: {:?}", max_log_size);
+                    println!("max_log_size: {:?}", pp_max_log_size);
                     println!("used_max_log_size: {:?}", used_max_log_size);
                     tree.verify(
                         &prepare_pp_query_positions(
                             query_positions,
                             used_max_log_size,
-                            max_log_size,
+                            pp_max_log_size,
                         ),
                         queried_values.clone(),
                         decommitment.clone(),

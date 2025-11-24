@@ -101,12 +101,15 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
             return Ok(());
         };
 
-        println!("query_positions: {:?}", query_positions.len());
+        println!("query_positions: {:?}", query_positions);
         println!("queried_values: {:?}", queried_values.len());
-        println!("column_log_sizes: {:?}", self.column_log_sizes.len());
+        println!("column_log_sizes: {:?}", self.column_log_sizes);
+
+        // zip queried_positions with queried_values and dedup
+
         let mut prev_layer_hashes: Vec<(usize, H::Hash)> = query_positions
             .iter()
-            .zip_eq(queried_values.chunks_exact(self.column_log_sizes.len()))
+            .zip_eq(queried_values.chunks_exact(self.column_log_sizes.len())).dedup_by(|(idx, _), (idx2, _)| idx == idx2)
             .map(|(idx, column_values)| {
                 let mut hasher = H::default_with_initial_state();
                 hasher.update_leaf(column_values);

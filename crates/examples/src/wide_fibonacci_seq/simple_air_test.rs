@@ -18,7 +18,7 @@ fn verify_simple_proof() {
     // Retrieve the expected column sizes in each commitment interaction, from the AIR.
     let sizes = component.trace_log_degree_bounds();
     println!("sizes in 0: {:?}", sizes[0]);
-    commitment_scheme.commit(proof.proof.commitments[0], &[LOG_N_INSTANCES, LOG_N_INSTANCES + 1], verifier_channel);
+    commitment_scheme.commit(proof.proof.commitments[0], &[LOG_N_INSTANCES, LOG_N_INSTANCES + 3], verifier_channel);
     commitment_scheme.commit(proof.proof.commitments[1], &sizes[1], verifier_channel);
     commitment_scheme.commit(proof.proof.commitments[2], &sizes[2], verifier_channel);
     verify::<Blake2sMerkleChannelGeneric<true>>(

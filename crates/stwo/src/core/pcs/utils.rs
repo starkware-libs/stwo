@@ -180,19 +180,37 @@ pub fn prepare_pp_query_positions(
     max_log_size: u32,
     pp_max_log_size: u32,
 ) -> Vec<usize> {
+    // deduplicate query positions
+    // query_positions.to_vec().dedup();
+
+    // let mut query_positions: Vec<usize> = 
     if max_log_size == pp_max_log_size {
         return query_positions.to_vec();
-    }
-
+    } 
     if max_log_size < pp_max_log_size {
         return query_positions
             .iter()
             .map(|pos| (pos >> 1 << (pp_max_log_size - max_log_size + 1)) + (pos & 1))
             .collect();
-    }
+    } 
 
-    query_positions
-        .iter()
-        .map(|pos| (pos >> (max_log_size - pp_max_log_size + 1) << 1) + (pos & 1))
-        .collect()
+        query_positions
+            .iter()
+            .map(|pos| (pos >> (max_log_size - pp_max_log_size + 1) << 1) + (pos & 1))
+            .collect()
+
+    // query_positions
+
+
+    // if max_log_size < pp_max_log_size {
+    //     return query_positions
+    //         .iter()
+    //         .map(|pos| (pos >> 1 << (pp_max_log_size - max_log_size + 1)) + (pos & 1))
+    //         .collect();
+    // }
+
+    // query_positions
+    //     .iter()
+    //     .map(|pos| (pos >> (max_log_size - pp_max_log_size + 1) << 1) + (pos & 1))
+    //     .collect()
 }

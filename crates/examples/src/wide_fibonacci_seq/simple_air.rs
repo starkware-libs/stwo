@@ -136,7 +136,7 @@ pub fn create_proof() -> (SimpleComponent, ExtendedStarkProof<Blake2sM31MerkleHa
     let config = PcsConfig::default();
     // Precompute twiddles.
     let twiddles = CpuBackend::precompute_twiddles(
-        CanonicCoset::new(LOG_N_INSTANCES + 1 + config.fri_config.log_blowup_factor)
+        CanonicCoset::new(LOG_N_INSTANCES + 3 + config.fri_config.log_blowup_factor)
             .circle_domain()
             .half_coset,
     );
@@ -149,12 +149,12 @@ pub fn create_proof() -> (SimpleComponent, ExtendedStarkProof<Blake2sM31MerkleHa
 
     // Preprocessed trace
     let domain = CanonicCoset::new(LOG_N_INSTANCES).circle_domain();
-    let domain_big = CanonicCoset::new(LOG_N_INSTANCES + 1).circle_domain();
+    let domain_big = CanonicCoset::new(LOG_N_INSTANCES + 3).circle_domain();
     let mut tree_builder = commitment_scheme.tree_builder();
     let preprocessed_column: BaseColumn =
         (0..2_u32.pow(LOG_N_INSTANCES)).map(|i| i.into()).collect();
     let preprocessed_column_big: BaseColumn =
-        (0..2_u32.pow(LOG_N_INSTANCES + 1)).map(|i| i.into()).collect();
+        (0..2_u32.pow(LOG_N_INSTANCES + 3)).map(|i| i.into()).collect();
     let tmp2 = preprocessed_column_big.to_cpu();
     let tmp = preprocessed_column.to_cpu();
     let preprocessed_column_eval = CircleEvaluation::<CpuBackend, _, _>::new(domain, tmp);

@@ -116,8 +116,9 @@ pub mod tests {
     use stwo::core::verifier::verify;
     use stwo::prover::backend::simd::SimdBackend;
     use stwo::prover::backend::{Column, CpuBackend};
-    use stwo::prover::poly::circle::PolyOps;
+    use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
     use stwo::prover::{prove, CommitmentSchemeProver};
+    use stwo_constraint_framework::preprocessed_columns::PreProcessedColumnId;
     use stwo_constraint_framework::{
         assert_constraints_on_polys, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
     };
@@ -320,8 +321,13 @@ pub mod tests {
             CommitmentSchemeProver::<CpuBackend, Blake2sM31MerkleChannel>::new(config, &twiddles);
 
         // Preprocessed trace
+        let domain = CanonicCoset::new(LOG_SIZE_SHORT).circle_domain();
+        let preprocessed_column: Vec<BaseField> =
+            (0..2_u32.pow(LOG_SIZE_SHORT)).map(|i| i.into()).collect();
+        let preprocessed_column_eval =
+            CircleEvaluation::<CpuBackend, _, _>::new(domain, preprocessed_column);
         let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals([]);
+        tree_builder.extend_evals([preprocessed_column_eval]);
         tree_builder.commit(prover_channel);
 
         // Trace.
@@ -336,7 +342,11 @@ pub mod tests {
         tree_builder.commit(prover_channel);
 
         // Generate components.
-        let mut trace_alloc = TraceLocationAllocator::default();
+        // let mut trace_alloc = TraceLocationAllocator::default();
+        let mut trace_alloc =
+            TraceLocationAllocator::new_with_preprocessed_columns(&[PreProcessedColumnId {
+                id: "row_const".into(),
+            }]);
         let component0 = WideFibonacciComponent::new(
             &mut trace_alloc,
             WideFibonacciEval::<N_ROWS_LONG_COMPONENT> {
@@ -371,16 +381,16 @@ pub mod tests {
         ]
         .concat();
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-        let sizes = TreeVec::new(vec![vec![], trace_sizes]);
+        let sizes = TreeVec::new(vec![vec![LOG_SIZE_SHORT], trace_sizes]);
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
         commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
 
-        assert!(verify(
+        verify(
             &[&component0, &component1],
             verifier_channel,
             commitment_scheme,
             proof,
         )
-        .is_ok());
+        .unwrap();
     }
 }
