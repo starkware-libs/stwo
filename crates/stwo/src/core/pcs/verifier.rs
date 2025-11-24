@@ -11,6 +11,7 @@ use super::utils::TreeVec;
 use super::PcsConfig;
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::pcs::quotients::CommitmentSchemeProof;
+use crate::core::pcs::utils::prepare_preprocessed_query_positions;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::MerkleVerifierLifted;
 use crate::core::verifier::VerificationError;
@@ -62,31 +63,69 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
     ) -> Result<(), VerificationError> {
         channel.mix_felts(&proof.sampled_values.clone().flatten_cols());
         let random_coeff = channel.draw_secure_felt();
-        let max_log_size = *self.column_log_sizes().iter().flatten().max().unwrap();
+        // The lifting log size is the length of the longest column which has at least one sample
+        // (i.e. a column which is actually used in the constraints). Usually, the only columns
+        // that have an empty vector of samples are among the preprocessed columns.
+        let lifting_log_size = self
+            .column_log_sizes()
+            .zip_cols(&sampled_points)
+            .flatten()
+            .iter()
+            .filter(|(_, sampled_points)| !sampled_points.is_empty())
+            .map(|(log_size, _)| *log_size)
+            .max()
+            .unwrap();
 
         let bound =
-            CirclePolyDegreeBound::new(max_log_size - self.config.fri_config.log_blowup_factor);
+            CirclePolyDegreeBound::new(lifting_log_size - self.config.fri_config.log_blowup_factor);
 
         // FRI commitment phase on OODS quotients.
         let mut fri_verifier =
             FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bound)?;
 
         // Verify proof of work.
-
         if !channel.verify_pow_nonce(self.config.pow_bits, proof.proof_of_work) {
             return Err(VerificationError::ProofOfWork);
         }
         channel.mix_u64(proof.proof_of_work);
         // Get FRI query positions.
         let query_positions = fri_verifier.sample_query_positions(channel);
-        // Verify merkle decommitments.
+        let preprocessed_query_positions = prepare_preprocessed_query_positions(
+            &query_positions,
+            lifting_log_size,
+            self.column_log_sizes()[0]
+                .iter()
+                .max()
+                .copied()
+                .unwrap_or_default(),
+        );
+
+        // Build the query positions tree: the preprocessed tree needs a different treatment than
+        // the other trees.
+        let query_positions_tree = TreeVec::new(
+            self.trees
+                .iter()
+                .enumerate()
+                .map(|(i, _)| {
+                    if i == 0 {
+                        preprocessed_query_positions.as_slice()
+                    } else {
+                        query_positions.as_slice()
+                    }
+                })
+                .collect::<Vec<_>>(),
+        );
+        // Verify decommitments.
         self.trees
             .as_ref()
             .zip_eq(proof.decommitments)
             .zip_eq(proof.queried_values.clone())
-            .map(|((tree, decommitment), queried_values)| {
-                tree.verify(&query_positions, queried_values, decommitment)
-            })
+            .zip_eq(query_positions_tree)
+            .map(
+                |(((tree, decommitment), queried_values), query_positions)| {
+                    tree.verify(query_positions, queried_values, decommitment)
+                },
+            )
             .0
             .into_iter()
             .collect::<Result<(), _>>()?;
