@@ -13,6 +13,7 @@ use crate::core::fields::qm31::SecureField;
 use crate::core::pcs::quotients::{
     CommitmentSchemeProof, CommitmentSchemeProofAux, ExtendedCommitmentSchemeProof, PointSample,
 };
+use crate::core::pcs::utils::prepare_preprocessed_query_positions;
 use crate::core::pcs::{PcsConfig, TreeSubspan, TreeVec};
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
@@ -199,13 +200,30 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             unsorted_query_locations,
         } = fri_prover.decommit(channel);
 
-        // Decommit the FRI queries on the merkle trees.
-        let decommitment_results = self
+        // Build the query position tree.
+        let preprocessed_query_positions = prepare_preprocessed_query_positions(
+            &query_positions,
+            max_log_size,
+            self.trees[0].commitment.layers.len() as u32 - 1,
+        );
+        let query_positions_tree = TreeVec::new(
+            self.trees
+                .iter()
+                .enumerate()
+                .map(|(i, _)| {
+                    if i == 0 {
+                        preprocessed_query_positions.as_slice()
+                    } else {
+                        query_positions.as_slice()
+                    }
+                })
+                .collect::<Vec<_>>(),
+        );
+        let (queried_values, decommitments, aux): (Vec<_>, Vec<_>, Vec<_>) = self
             .trees
             .as_ref()
-            .map(|tree| tree.decommit(&query_positions));
-
-        let (queried_values, decommitments, aux): (Vec<_>, Vec<_>, Vec<_>) = decommitment_results
+            .zip_eq(query_positions_tree)
+            .map(|(tree, query_positions)| tree.decommit(query_positions))
             .0
             .into_iter()
             .map(|(v, x)| (v, x.decommitment, x.aux))
