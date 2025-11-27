@@ -1,8 +1,9 @@
 use itertools::Itertools;
 
 use crate::core::fields::qm31::SecureField;
-use crate::prover::backend::simd::m31::N_LANES;
+use crate::prover::backend::simd::m31::{PackedM31, LOG_N_LANES, N_LANES};
 use crate::prover::backend::simd::qm31::PackedSecureField;
+use crate::prover::backend::simd::utils::to_lifted_simd;
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::CpuBackend;
 use crate::prover::secure_column::SecureColumnByCoords;
@@ -39,16 +40,64 @@ impl AccumulationOps for SimdBackend {
     }
 
     fn lift_and_accumulate(
-        _cols: Vec<SecureColumnByCoords<Self>>,
+        cols: Vec<SecureColumnByCoords<Self>>,
     ) -> Option<SecureColumnByCoords<Self>> {
-        unimplemented!()
+        if cols.is_empty() {
+            return None;
+        };
+
+        if cols[0].len() < N_LANES {
+            panic!("Small columns are not supported.")
+        }
+
+        let mut curr = SecureColumnByCoords::zeros(N_LANES);
+        for (len, mut group) in cols.into_iter().group_by(|c| c.len()).into_iter() {
+            let log_ratio = len.ilog2() - curr.len().ilog2();
+            let mut first = group.next().unwrap();
+            // For columns of the same length, there is no need to lift.
+            for column in group {
+                for i in 0..len >> LOG_N_LANES {
+                    unsafe {
+                        let res = first.packed_at(i) + column.packed_at(i);
+                        first.set_packed(i, res);
+                    }
+                }
+            }
+            // Perform the lift on the previous accumulation (which is of smaller size) and add it
+            // to the current accumulation.
+            for i in 0..len >> LOG_N_LANES {
+                unsafe {
+                    let packed_before_lift: [PackedM31; 4] =
+                        curr.packed_at(i >> log_ratio).into_packed_m31s();
+                    let packed_after_lift: [PackedM31; 4] = std::array::from_fn(|j| {
+                        PackedM31::from_simd_unchecked(to_lifted_simd(
+                            packed_before_lift[j].into_simd(),
+                            log_ratio,
+                            i,
+                        ))
+                    });
+                    let res =
+                        first.packed_at(i) + PackedSecureField::from_packed_m31s(packed_after_lift);
+                    first.set_packed(i, res);
+                }
+            }
+            curr = first;
+        }
+        Some(curr)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
+
+    use crate::core::fields::m31::M31;
     use crate::prover::backend::cpu::CpuBackend;
+    use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::secure_column::SecureColumnByCoords;
     use crate::prover::AccumulationOps;
     use crate::qm31;
 
@@ -65,5 +114,46 @@ mod tests {
                 "Error generating secure powers in n_powers = {n_powers}."
             );
         });
+    }
+
+    #[test]
+    fn test_lift_accumulate_simd() {
+        const LOG_SIZE_SHORT: u32 = 4;
+        const LOG_SIZE_LONG: u32 = 8;
+        let mut rng = SmallRng::seed_from_u64(0);
+        let col_short = (0..1 << LOG_SIZE_SHORT)
+            .map(|_| M31::from(rng.gen::<u32>()))
+            .collect_vec();
+        let col_long = (0..1 << LOG_SIZE_LONG)
+            .map(|_| M31::from(rng.gen::<u32>()))
+            .collect_vec();
+
+        // Prepare CPU inputs.
+        let secure_col_short = SecureColumnByCoords {
+            columns: std::array::from_fn(|_| col_short.clone()),
+        };
+        let secure_col_long = SecureColumnByCoords {
+            columns: std::array::from_fn(|_| col_long.clone()),
+        };
+        let res_cpu = <CpuBackend as AccumulationOps>::lift_and_accumulate(vec![
+            secure_col_short,
+            secure_col_long,
+        ])
+        .unwrap();
+
+        // Prepare SIMD inputs.
+        let secure_col_short_simd = SecureColumnByCoords::<SimdBackend> {
+            columns: std::array::from_fn(|_| BaseColumn::from_cpu(col_short.clone())),
+        };
+        let secure_col_long_simd = SecureColumnByCoords::<SimdBackend> {
+            columns: std::array::from_fn(|_| BaseColumn::from_cpu(col_long.clone())),
+        };
+        let res_simd = <SimdBackend as AccumulationOps>::lift_and_accumulate(vec![
+            secure_col_short_simd,
+            secure_col_long_simd,
+        ])
+        .unwrap();
+
+        assert_eq!(res_cpu.columns, res_simd.to_cpu().columns);
     }
 }
