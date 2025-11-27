@@ -9,9 +9,9 @@ use rayon::prelude::*;
 
 use super::m31::LOG_N_LANES;
 use super::SimdBackend;
-use crate::core::fields::m31::{BaseField, N_BYTES_FELT};
+use crate::core::fields::m31::{reduce_to_m31_simd, BaseField, N_BYTES_FELT};
 use crate::core::vcs::blake2_hash::Blake2sHash;
-use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
+use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasherGeneric;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::parallel_iter;
 use crate::prover::backend::simd::blake2s::{
@@ -26,7 +26,9 @@ const N_FELTS_IN_BLAKE_STATE: usize = 8;
 const N_BYTES_IN_BLAKE_MESSAGE: u64 = N_FELTS_IN_BLAKE_MESSAGE as u64 * N_BYTES_FELT as u64;
 const N_BYTES_IN_PREFIX: u64 = 64;
 
-impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
+impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>
+    for SimdBackend
+{
     /// See the docs of [`crate::prover::backend::cpu::blake2s_lifted`].
     ///
     /// Note that, in this function, all variables that track log sizes
@@ -117,7 +119,11 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
         next_layer_states
             .iter()
             .flat_map(|x| {
-                let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(*x)) };
+                let mut untransposed = untranspose_states(*x);
+                if IS_M31_OUTPUT {
+                    untransposed = std::array::from_fn(|i| reduce_to_m31_simd(untransposed[i]));
+                }
+                let state: [Blake2sHash; 16] = unsafe { transmute(untransposed) };
                 state
             })
             .collect_vec()
@@ -130,7 +136,10 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
         if log_size < LOG_N_LANES {
             return parallel_iter!(0..1 << log_size)
                 .map(|i| {
-                    Blake2sMerkleHasher::hash_children((prev_layer[2 * i], prev_layer[2 * i + 1]))
+                    Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::hash_children((
+                        prev_layer[2 * i],
+                        prev_layer[2 * i + 1],
+                    ))
                 })
                 .collect();
         }
@@ -154,7 +163,12 @@ impl MerkleOpsLifted<Blake2sMerkleHasher> for SimdBackend {
                 transpose_msgs(msgs),
                 N_BYTES_IN_PREFIX + N_BYTES_IN_BLAKE_MESSAGE,
             );
-            let state: [Blake2sHash; 16] = unsafe { transmute(untranspose_states(state)) };
+
+            let mut untransposed = untranspose_states(state);
+            if IS_M31_OUTPUT {
+                untransposed = std::array::from_fn(|i| reduce_to_m31_simd(untransposed[i]));
+            }
+            let state: [Blake2sHash; 16] = unsafe { transmute(untransposed) };
             chunk.copy_from_slice(&state);
         });
         res
@@ -249,7 +263,7 @@ mod tests {
 
     use crate::core::fields::m31::{BaseField, M31};
     use crate::core::vcs::blake2_hash::{Blake2sHash, Blake2sHasher};
-    use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleHasher;
+    use crate::core::vcs_lifted::blake2_merkle::{Blake2sMerkleHasher, Blake2sMerkleHasherGeneric};
     use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::SimdBackend;
     use crate::prover::backend::CpuBackend;
@@ -268,8 +282,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_merkle_commit() {
+    fn prepare_blake_merkle_commit<const IS_M31_OUTPUT: bool>() -> (Blake2sHash, Blake2sHash) {
         const MAX_LOG_N_ROWS: u32 = 9;
         const N_COLS: u32 = 100;
         let mut cols: Vec<Vec<BaseField>> = (0..N_COLS)
@@ -292,13 +305,27 @@ mod tests {
             .map(|c| BaseColumn::from_cpu(c.clone()))
             .collect();
 
-        assert_eq!(
-            MerkleProverLifted::<CpuBackend, Blake2sMerkleHasher>::commit(cols.iter().collect())
-                .root(),
-            MerkleProverLifted::<SimdBackend, Blake2sMerkleHasher>::commit(
-                cols_simd.iter().collect()
+        (
+            MerkleProverLifted::<CpuBackend, Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>::commit(
+                cols.iter().collect(),
             )
-            .root()
-        );
+            .root(),
+            MerkleProverLifted::<SimdBackend, Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>::commit(
+                cols_simd.iter().collect(),
+            )
+            .root(),
+        )
+    }
+
+    #[test]
+    fn test_blake_merkle_commit() {
+        let (cpu_root, simd_root) = prepare_blake_merkle_commit::<false>();
+        assert_eq!(cpu_root, simd_root);
+    }
+
+    #[test]
+    fn test_blake_merkle_m31_commit() {
+        let (cpu_root, simd_root) = prepare_blake_merkle_commit::<true>();
+        assert_eq!(cpu_root, simd_root);
     }
 }

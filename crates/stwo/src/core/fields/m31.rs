@@ -2,6 +2,7 @@ use core::fmt::Display;
 use core::ops::{
     Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign,
 };
+use std::simd::u32x16;
 
 use bytemuck::{Pod, Zeroable};
 use rand::distributions::{Distribution, Standard};
@@ -212,12 +213,20 @@ fn sqn<const N: usize, T: FieldExpOps>(mut v: T) -> T {
     v
 }
 
+/// Reduces 16 u32s modulo P. The implementation is the same as [`M31::reduce()`], adapted to SIMD.
+pub fn reduce_to_m31_simd(val: u32x16) -> u32x16 {
+    ((((val >> MODULUS_BITS) + val + u32x16::splat(1)) >> MODULUS_BITS) + val) & u32x16::splat(P)
+}
+
 #[cfg(test)]
 mod tests {
+    use std::simd::u32x16;
+
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::{M31, P};
+    use crate::core::fields::m31::reduce_to_m31_simd;
 
     const fn mul_p(a: u32, b: u32) -> u32 {
         ((a as u64 * b as u64) % P as u64) as u32
@@ -253,5 +262,17 @@ mod tests {
         assert_eq!(M31::from(-10_i32), M31::from(P - 10));
         assert_eq!(M31::from(1_i32), M31::from(1));
         assert_eq!(M31::from(10_i32), M31::from(10));
+    }
+
+    #[test]
+    fn test_reduction() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        let vals = std::array::from_fn(|_| rng.gen::<u32>());
+        let simd_val = u32x16::from_array(vals);
+
+        assert_eq!(
+            reduce_to_m31_simd(simd_val),
+            u32x16::from_array(std::array::from_fn(|i| M31::reduce(vals[i] as u64).0))
+        );
     }
 }
