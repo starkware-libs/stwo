@@ -18,7 +18,8 @@ use crate::prover::backend::simd::blake2s::{
     compress_finalize, compress_unfinalized, reduce_to_m31_simd, transpose_msgs,
     untranspose_states, SIMD_LEAF_INITIAL_STATE, SIMD_NODE_INITIAL_STATE, ZEROS,
 };
-use crate::prover::backend::{Col, Column};
+use crate::prover::backend::simd::m31::N_LANES;
+use crate::prover::backend::{Col, Column, CpuBackend};
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 
 const N_FELTS_IN_BLAKE_MESSAGE: usize = 16;
@@ -31,14 +32,26 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
 {
     /// See the docs of [`crate::prover::backend::cpu::blake2s_lifted`].
     ///
-    /// Note that, in this function, all variables that track log sizes
-    /// refer to the "size" in terms of PackedM31 (e.g. the log size of a column
-    /// of 4 PackedM31 elements is 2).
+    /// This function assumes that `columns` is sorted increasingly by column length.
+    ///
+    /// # Note
+    ///
+    /// If the length of a smallest column (e.g. the first) is smaller than `N_LANES`, the
+    /// implementation falls back to the CPU implementation.
     fn build_leaves(columns: &[&Col<Self, BaseField>]) -> Col<Self, Blake2sHash> {
-        if columns.first().is_some_and(|c| c.len() < 1 << LOG_N_LANES) {
-            unimplemented!("Support for small columns is not implemented.")
+        if columns.is_empty() {
+            let hasher = Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::default_with_initial_state();
+            return vec![hasher.finalize()];
         }
-
+        if columns.first().unwrap().len() < N_LANES {
+            let cpu_cols = columns.iter().map(|column| column.to_cpu()).collect_vec();
+            return <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>>::build_leaves(
+                &cpu_cols.iter().collect_vec(),
+            );
+        }
+        // Note that, in this function, all variables that track log sizes
+        // refer to the "size" in terms of PackedM31 (e.g. the log size of a column
+        // of 4 PackedM31 elements is 2).
         let max_log_size: u32 = columns.last().unwrap().data.len().ilog2();
         // Hash columns in chunks of 16.
         let mut col_chunk_iter = columns.chunks(N_FELTS_IN_BLAKE_MESSAGE);
@@ -55,7 +68,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
 
         // The actual log size of `prev_layer_states` is equal to `max_log_size`, but only the first
         // two entries are accessed for the computation of the first iteration.
-        let mut prev_chunk_max_log_size = 1;
+        let mut prev_chunk_max_log_size = 0;
         for (chunk_idx, chunk_columns) in &mut col_chunk_iter.enumerate() {
             let chunk_max_log_size: u32 = chunk_columns.iter().last().unwrap().data.len().ilog2();
             let next_layer_state_slice = &mut next_layer_states[0..1 << chunk_max_log_size];
@@ -266,7 +279,7 @@ mod tests {
     use crate::core::vcs_lifted::blake2_merkle::{Blake2sMerkleHasher, Blake2sMerkleHasherGeneric};
     use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::SimdBackend;
-    use crate::prover::backend::CpuBackend;
+    use crate::prover::backend::{Column, CpuBackend};
     use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
     use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 
@@ -327,5 +340,19 @@ mod tests {
     fn test_blake_merkle_m31_commit() {
         let (cpu_root, simd_root) = prepare_blake_merkle_commit::<true>();
         assert_eq!(cpu_root, simd_root);
+    }
+
+    #[test]
+    fn test_merkle_commit_small_column() {
+        for log_size in 1..8 {
+            let col = BaseColumn::from_cpu((0..1 << log_size).map(M31::from).collect());
+
+            assert_eq!(
+                <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(&[&col
+                    .clone()
+                    .to_cpu()]),
+                <SimdBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_leaves(&[&col])
+            );
+        }
     }
 }
