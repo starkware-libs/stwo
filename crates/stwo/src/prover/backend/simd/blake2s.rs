@@ -12,7 +12,7 @@ use rayon::prelude::*;
 
 use super::m31::LOG_N_LANES;
 use super::SimdBackend;
-use crate::core::fields::m31::BaseField;
+use crate::core::fields::m31::{BaseField, MODULUS_BITS, P};
 use crate::core::vcs::blake2_hash::{reduce_to_m31, Blake2sHash};
 use crate::core::vcs::blake2_merkle::{Blake2sM31MerkleHasher, Blake2sMerkleHasher};
 use crate::core::vcs::MerkleHasher;
@@ -445,6 +445,10 @@ pub fn compress16(
     ]
 }
 
+pub fn reduce_to_m31_simd(val: u32x16) -> u32x16 {
+    ((((val >> MODULUS_BITS) + val + u32x16::splat(1)) >> MODULUS_BITS) + val) & u32x16::splat(P)
+}
+
 #[cfg(test)]
 mod tests {
     use std::array;
@@ -458,7 +462,9 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::{compress16, hash_16, transpose_msgs, untranspose_states};
+    use crate::core::fields::m31::M31;
     use crate::core::vcs::blake2_hash::Blake2sHasher;
+    use crate::prover::backend::simd::blake2s::reduce_to_m31_simd;
     use crate::prover::backend::simd::blake2s_ref::{self, compress};
 
     #[test]
@@ -575,5 +581,17 @@ mod tests {
         let res = compress(state, prefix, 64, 0, 0, 0);
 
         assert_eq!(res, super::NODE_INITIAL_STATE);
+    }
+
+    #[test]
+    fn test_reduction() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        let vals = std::array::from_fn(|_| rng.gen::<u32>());
+        let simd_val = u32x16::from_array(vals);
+
+        assert_eq!(
+            reduce_to_m31_simd(simd_val),
+            u32x16::from_array(std::array::from_fn(|i| M31::reduce(vals[i] as u64).0))
+        );
     }
 }
