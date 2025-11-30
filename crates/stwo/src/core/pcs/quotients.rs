@@ -89,9 +89,9 @@ pub struct PointSample {
 }
 
 /// For each query position, corresponding to a domain point `p`, compute the FRI quotients
-///
+/// ```plain
 ///     ∑ ∑ α^{k(i, z)} * (c(i, z) * f̃ᵢ(p) - b(i, z) - a(i, z)) / line(z,conj(z))(p)
-///
+/// ```
 /// where:
 /// * the outer sum is over the set of sample points `z`,
 /// * the inner sum is over the set of columns (corresponding to index `i`),
