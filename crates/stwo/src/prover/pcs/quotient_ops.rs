@@ -155,10 +155,12 @@ mod tests {
     use crate::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use crate::core::poly::circle::CanonicCoset;
     use crate::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
+    use crate::core::verifier::VerificationError;
     use crate::prover::backend::cpu::{CpuCircleEvaluation, CpuCirclePoly};
-    use crate::prover::backend::CpuBackend;
+    use crate::prover::backend::simd::SimdBackend;
+    use crate::prover::backend::{Backend, BackendForChannel, CpuBackend};
     use crate::prover::pcs::quotient_ops::compute_fri_quotients;
-    use crate::prover::poly::circle::PolyOps;
+    use crate::prover::poly::circle::CircleCoefficients;
     use crate::prover::{CommitmentSchemeProver, SecureField};
 
     #[test]
@@ -196,38 +198,44 @@ mod tests {
         assert!(zeros.iter().all(|c| c.is_zero()));
     }
 
-    #[test]
-    fn test_pcs_prove_and_verify() {
-        const N_COLS: usize = 5;
-        const LIFTING_LOG_SIZE: u32 = 6;
+    fn prepare_polys<B: Backend, const N_COLS: usize, const LIFTING_LOG_SIZE: u32>(
+    ) -> Vec<CircleCoefficients<B>> {
         let mut rng = SmallRng::seed_from_u64(0);
-
-        // Setup the prover side of the pcs.
-        let mut channel = Blake2sChannel::default();
-        let config = PcsConfig::default();
-        let twiddles =
-            CpuBackend::precompute_twiddles(CanonicCoset::new(LIFTING_LOG_SIZE + 1).half_coset());
-        let mut commitment_scheme =
-            CommitmentSchemeProver::<CpuBackend, Blake2sMerkleChannel>::new(config, &twiddles);
-        commitment_scheme.set_store_polynomials_coefficients();
-        let mut polys: Vec<CpuCirclePoly> = (0..N_COLS - 1)
+        let mut polys: Vec<CircleCoefficients<B>> = (0..N_COLS - 1)
             .map(|_| {
-                CpuCirclePoly::new(
-                    (0..1 << rng.gen_range(2..LIFTING_LOG_SIZE - 1))
+                CircleCoefficients::new(
+                    (0..1 << rng.gen_range(4..LIFTING_LOG_SIZE - 1))
                         .map(M31::from)
                         .collect(),
                 )
             })
             .collect();
-        polys.push(CpuCirclePoly::new(
+        polys.push(CircleCoefficients::new(
             (0..1 << LIFTING_LOG_SIZE).map(M31::from).collect(),
         ));
+        polys
+    }
+
+    fn prove_and_verify_pcs<B: BackendForChannel<Blake2sMerkleChannel>>(
+    ) -> Result<(), VerificationError> {
+        const N_COLS: usize = 10;
+        const LIFTING_LOG_SIZE: u32 = 8;
+
+        // Setup the prover side of the pcs.
+        let mut channel = Blake2sChannel::default();
+        let config = PcsConfig::default();
+        let twiddles = B::precompute_twiddles(CanonicCoset::new(LIFTING_LOG_SIZE + 1).half_coset());
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<B, Blake2sMerkleChannel>::new(config, &twiddles);
+        commitment_scheme.set_store_polynomials_coefficients();
+        let polys = prepare_polys::<B, N_COLS, LIFTING_LOG_SIZE>();
         let sizes = polys.iter().map(|poly| poly.log_size()).collect_vec();
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_polys(polys);
         tree_builder.commit(&mut channel);
 
+        let mut rng = SmallRng::seed_from_u64(0);
         let mask_structure = (0..N_COLS).map(|_| rng.gen_range(1..=2)).collect_vec();
         let samples = [
             SECURE_FIELD_CIRCLE_GEN.mul(rng.gen::<u128>()),
@@ -244,8 +252,15 @@ mod tests {
         let mut channel = Blake2sChannel::default();
         let mut verifier = CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
         verifier.commit(proof.proof.commitments[0], &sizes, &mut channel);
-        let result = verifier.verify_values(TreeVec(sampled_points), proof.proof, &mut channel);
+        verifier.verify_values(TreeVec(sampled_points), proof.proof, &mut channel)
+    }
 
-        assert!(result.is_ok(), "{}", result.err().unwrap());
+    #[test]
+    fn test_pcs_prove_and_verify_cpu() {
+        assert!(prove_and_verify_pcs::<CpuBackend>().is_ok());
+    }
+    #[test]
+    fn test_pcs_prove_and_verify_simd() {
+        assert!(prove_and_verify_pcs::<SimdBackend>().is_ok());
     }
 }

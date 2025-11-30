@@ -1,5 +1,8 @@
 use std::simd::{simd_swizzle, u32x16};
 
+use crate::prover::backend::simd::m31::PackedBaseField;
+use crate::prover::backend::simd::qm31::PackedSecureField;
+
 // TODO(andrew): Examine usage of unsafe in SIMD FFT.
 pub struct UnsafeMut<T: ?Sized>(pub *mut T);
 impl<T: ?Sized> UnsafeMut<T> {
@@ -107,6 +110,26 @@ const LIFTING_SWIZZLES_LOG_RATIO_GREATER_2: [[usize; 16]; 8] = [
     [12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13],
     [14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15],
 ];
+
+pub fn to_lifted_simd_secure(
+    val: PackedSecureField,
+    log_ratio: u32,
+    idx: usize,
+) -> PackedSecureField {
+    let mut iter = val
+        .into_packed_m31s()
+        .into_iter()
+        .map(|val_m31| val_m31.into_simd());
+    unsafe {
+        PackedSecureField::from_packed_m31s(std::array::from_fn(|_| {
+            PackedBaseField::from_simd_unchecked(to_lifted_simd(
+                iter.next().unwrap(),
+                log_ratio,
+                idx,
+            ))
+        }))
+    }
+}
 
 #[cfg(not(any(
     all(target_arch = "aarch64", target_feature = "neon"),
