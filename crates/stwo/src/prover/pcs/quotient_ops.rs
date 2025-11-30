@@ -198,6 +198,8 @@ mod tests {
         assert!(zeros.iter().all(|c| c.is_zero()));
     }
 
+    /// Generates a vector of polynomials, such that the last is of degree `LIFTING_LOG_SIZE - 1`
+    /// and all the previous ones are of degree < `LIFTING_LOG_SIZE - 1`.
     fn prepare_polys<B: Backend, const N_COLS: usize, const LIFTING_LOG_SIZE: u32>(
     ) -> Vec<CircleCoefficients<B>> {
         let mut rng = SmallRng::seed_from_u64(0);
