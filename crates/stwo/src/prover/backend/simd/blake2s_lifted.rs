@@ -264,7 +264,7 @@ mod tests {
             .collect();
         assert_eq!(
             <CpuBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_next_layer(&layer),
-            SimdBackend::build_next_layer(&layer)
+            <SimdBackend as MerkleOpsLifted<Blake2sMerkleHasher>>::build_next_layer(&layer)
         );
     }
 

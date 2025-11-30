@@ -23,6 +23,8 @@ pub mod lookups;
 pub mod m31;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod poseidon252;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod poseidon252_lifted;
 pub mod prefix_sum;
 pub mod qm31;
 pub mod quotients;
