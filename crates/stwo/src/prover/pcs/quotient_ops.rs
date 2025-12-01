@@ -76,7 +76,7 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     columns: &[&CircleEvaluation<B, BaseField, BitReversedOrder>],
     samples: &[Vec<PointSample>],
     random_coeff: SecureField,
-    _log_blowup_factor: u32,
+    max_log_size: u32,
 ) -> SecureEvaluation<B, BitReversedOrder> {
     let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
 
@@ -92,10 +92,14 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
         .sorted_by_key(|(c, _)| c.domain.log_size())
         .group_by(|(c, _)| c.domain.log_size())
         .into_iter()
-        .for_each(|(_, tuples)| {
+        .for_each(|(log_size, tuples)| {
             let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
             // TODO: slice.
-            let sample_batches = ColumnSampleBatch::new_vec(&samples);
+            let sample_batches = ColumnSampleBatch::new_vec_with_periodicity_samples(
+                &samples,
+                log_size,
+                max_log_size,
+            );
             B::accumulate_numerators(
                 &columns,
                 random_coeff,
@@ -186,7 +190,8 @@ mod tests {
             .collect_vec();
         let rand_coeff =
             SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.gen::<u32>())));
-        let quot_eval = compute_fri_quotients(&[&eval], &[samples], rand_coeff, LOG_BLOWUP_FACTOR);
+        let quot_eval =
+            compute_fri_quotients(&[&eval], &[samples], rand_coeff, eval_domain.log_size());
         let mut coeffs = quot_eval
             .values
             .columns
