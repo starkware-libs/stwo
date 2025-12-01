@@ -5,9 +5,7 @@ use std::simd::Simd;
 use bytemuck::Zeroable;
 #[cfg(not(feature = "parallel"))]
 use itertools::Itertools;
-use num_traits::One;
-#[cfg(feature = "parallel")]
-use num_traits::Zero;
+use num_traits::{One, Zero};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use tracing::{span, Level};
