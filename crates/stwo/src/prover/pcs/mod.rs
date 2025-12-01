@@ -180,7 +180,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             &columns,
             &samples.flatten(),
             channel.draw_secure_felt(),
-            self.config.fri_config.log_blowup_factor,
+            max_log_size,
         );
 
         // Run FRI commitment phase on the oods quotients.
