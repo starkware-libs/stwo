@@ -6,7 +6,7 @@ use rand::{Rng, SeedableRng};
 use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::poly::circle::CanonicCoset;
-use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::backend::{BackendForChannel, CpuBackend};
 use stwo::prover::poly::circle::CircleEvaluation;
