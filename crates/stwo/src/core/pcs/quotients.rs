@@ -1,3 +1,5 @@
+use core::ops::Add;
+
 use itertools::{izip, zip_eq, Itertools};
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
@@ -81,6 +83,47 @@ impl ColumnSampleBatch {
             })
             .collect()
     }
+
+    pub fn new_vec_with_periodicity_samples(
+        samples: &[&Vec<PointSample>],
+        log_size: u32,
+        max_log_size: u32,
+    ) -> Vec<Self> {
+        let mut grouped_samples = IndexMap::default();
+        let log_periodicity = max_log_size - log_size;
+        let opt_period_generator = if log_periodicity > 0 {
+            Some(CanonicCoset::new(log_periodicity).step())
+        } else {
+            None
+        };
+        for (column_index, samples) in samples.iter().enumerate() {
+            for sample in samples.iter() {
+                grouped_samples
+                    .entry(sample.point)
+                    .or_insert_with(Vec::new)
+                    .push((column_index, sample.value));
+            }
+            // If there are more than two samples, add a periodicity check. For flat AIRs with
+            // logups, the last sample always corresponds to the OOD point (although, in a lifted
+            // STARK, the choice of point on which to check periodicity is not important as long as
+            // it is pseudo-random).
+            if let (Some(period_generator), [_prev_point_sample, point_sample]) =
+                (opt_period_generator, &samples[..])
+            {
+                grouped_samples
+                    .entry(point_sample.point.add(period_generator.into_ef()))
+                    .or_insert_with(Vec::new)
+                    .push((column_index, point_sample.value));
+            }
+        }
+        grouped_samples
+            .into_iter()
+            .map(|(point, columns_and_values)| ColumnSampleBatch {
+                point,
+                columns_and_values,
+            })
+            .collect()
+    }
 }
 
 pub struct PointSample {
@@ -106,9 +149,9 @@ pub fn fri_answers(
     query_positions: &[usize],
     queried_values: TreeVec<Vec<BaseField>>,
     n_columns_per_log_size_per_tree: TreeVec<&BTreeMap<u32, usize>>,
+    lifting_log_size: u32,
 ) -> Result<Vec<SecureField>, VerificationError> {
     let mut queried_values = queried_values.map(|values| values.into_iter());
-    let lifting_log_size = *column_log_sizes.0.iter().flatten().max().unwrap();
 
     let zipped_sorted: Vec<_> = izip!(column_log_sizes.iter().flatten(), samples.iter().flatten())
         .sorted_by_key(|(log_size, _)| *log_size)
@@ -124,13 +167,14 @@ pub fn fri_answers(
     for position in query_positions.iter() {
         let mut curr_coeff_power = SecureField::one();
         let mut sum = SecureField::zero();
-        for (log_size, samples) in &grouped {
+        for (&log_size, samples) in &grouped {
             let n_cols = n_columns_per_log_size_per_tree
                 .as_ref()
-                .map(|n_columns_per_log_size| *n_columns_per_log_size.get(log_size).unwrap_or(&0));
+                .map(|n_columns_per_log_size| *n_columns_per_log_size.get(&log_size).unwrap_or(&0));
 
             let accumulation_per_log_size = fri_answers_for_unlifted_log_size(
                 lifting_log_size,
+                log_size,
                 samples,
                 random_coeff,
                 &mut curr_coeff_power,
@@ -149,8 +193,10 @@ pub fn fri_answers(
     Ok(res)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn fri_answers_for_unlifted_log_size(
     lifting_log_size: u32,
+    log_size: u32,
     samples: &[&Vec<PointSample>],
     random_coeff: SecureField,
     curr_coeff_power: &mut SecureField,
@@ -158,7 +204,9 @@ pub fn fri_answers_for_unlifted_log_size(
     queried_values: &mut TreeVec<impl Iterator<Item = BaseField>>,
     n_columns: TreeVec<usize>,
 ) -> Result<SecureField, VerificationError> {
-    let sample_batches = ColumnSampleBatch::new_vec(samples);
+    let sample_batches =
+        ColumnSampleBatch::new_vec_with_periodicity_samples(samples, log_size, lifting_log_size);
+    // TODO(ilya): Is it ok to use the same `random_coeff` for all log sizes.
     let quotient_constants = quotient_constants(&sample_batches, random_coeff, curr_coeff_power);
     let commitment_domain = CanonicCoset::new(lifting_log_size).circle_domain();
     let domain_point = commitment_domain.at(bit_reverse_index(query_position, lifting_log_size));
