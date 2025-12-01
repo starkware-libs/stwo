@@ -9,6 +9,8 @@ pub mod lookups;
 mod poseidon252;
 pub mod quotients;
 
+mod keccak;
+
 use std::fmt::Debug;
 
 pub use fri::{fold_circle_into_line_cpu, fold_line_cpu};
@@ -17,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use super::{Backend, BackendForChannel, Column, ColumnOps};
 use crate::core::utils::bit_reverse;
 use crate::core::vcs::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleChannel};
+use crate::core::vcs::keccak_merkle::KeccakMerkleChannel;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
 use crate::prover::lookups::mle::Mle;
@@ -30,6 +33,8 @@ impl BackendForChannel<Blake2sMerkleChannel> for CpuBackend {}
 impl BackendForChannel<Blake2sM31MerkleChannel> for CpuBackend {}
 #[cfg(not(target_arch = "wasm32"))]
 impl BackendForChannel<Poseidon252MerkleChannel> for CpuBackend {}
+impl BackendForChannel<KeccakMerkleChannel> for CpuBackend {}
+
 
 impl<T: Debug + Clone + Default + Send + Sync> ColumnOps<T> for CpuBackend {
     type Column = Vec<T>;
