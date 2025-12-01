@@ -13,7 +13,7 @@ use stwo::core::fields::FieldExpOps;
 use stwo::core::pcs::PcsConfig;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
-use stwo::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::ColumnVec;
 use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
@@ -405,7 +405,7 @@ mod tests {
     use stwo::core::fri::FriConfig;
     use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo::core::poly::circle::CanonicCoset;
-    use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use stwo::core::verifier::verify;
     use stwo_constraint_framework::assert_constraints_on_polys;
 

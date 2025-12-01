@@ -79,9 +79,9 @@ mod tests {
     use stwo::core::fields::qm31::SecureField;
     use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo::core::poly::circle::CanonicCoset;
-    use stwo::core::vcs::blake2_merkle::Blake2sM31MerkleChannel;
+    use stwo::core::vcs_lifted::blake2_merkle::Blake2sM31MerkleChannel;
     #[cfg(not(target_arch = "wasm32"))]
-    use stwo::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+    use stwo::core::vcs_lifted::poseidon252_merkle::Poseidon252MerkleChannel;
     use stwo::core::verifier::verify;
     use stwo::core::ColumnVec;
     use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
