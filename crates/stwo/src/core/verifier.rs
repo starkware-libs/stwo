@@ -8,7 +8,7 @@ use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::FriVerificationError;
 use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
-use crate::core::vcs::verifier::MerkleVerificationError;
+use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 
 pub fn verify<MC: MerkleChannel>(

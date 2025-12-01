@@ -75,15 +75,6 @@ impl Hash for FieldElement252 {}
 #[derive(Default)]
 pub struct Poseidon252MerkleChannel;
 
-impl MerkleChannel for Poseidon252MerkleChannel {
-    type C = Poseidon252Channel;
-    type H = Poseidon252MerkleHasher;
-
-    fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasher>::Hash) {
-        channel.update_digest(poseidon_hash(channel.digest(), root));
-    }
-}
-
 #[cfg(all(test, feature = "prover"))]
 mod tests {
     use std::time::Instant;

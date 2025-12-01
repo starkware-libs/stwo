@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use starknet_ff::FieldElement as FieldElement252;
 
+use crate::core::channel::{MerkleChannel, Poseidon252Channel};
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 
@@ -24,6 +25,19 @@ impl MerkleHasherLifted for Poseidon252MerkleHasher {
     }
 
     fn finalize(self) -> Self::Hash {
+        unimplemented!()
+    }
+}
+
+#[derive(Default)]
+pub struct Poseidon252MerkleChannel;
+
+#[allow(unused)]
+impl MerkleChannel for Poseidon252MerkleChannel {
+    type C = Poseidon252Channel;
+    type H = Poseidon252MerkleHasher;
+
+    fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasherLifted>::Hash) {
         unimplemented!()
     }
 }
