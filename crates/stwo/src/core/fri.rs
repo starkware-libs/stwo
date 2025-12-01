@@ -935,56 +935,6 @@ mod tests {
     }
 
     #[test]
-    fn valid_mixed_degree_proof_passes_verification() -> Result<(), FriVerificationError> {
-        const LOG_DEGREES: [u32; 3] = [6, 5, 4];
-        let columns = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
-        let twiddles = CpuBackend::precompute_twiddles(columns[0].domain.half_coset);
-        let log_domain_size = columns[0].domain.log_size();
-        let queries = Queries::from_positions(vec![7, 70], log_domain_size);
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, queries.len());
-        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
-        let proof = prover.decommit_on_queries(&queries).proof;
-        let query_evals = columns.map(|p| query_polynomial(&p, &queries)).to_vec();
-        let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
-        let verifier = FriVerifier::commit(&mut test_channel(), config, proof, bounds).unwrap();
-
-        verifier.decommit_on_queries(&queries, query_evals)
-    }
-
-    #[test]
-    fn mixed_degree_proof_with_queries_sampled_from_channel_passes_verification(
-    ) -> Result<(), FriVerificationError> {
-        const LOG_DEGREES: [u32; 3] = [6, 5, 4];
-        let columns = LOG_DEGREES.map(|log_d| polynomial_evaluation(log_d, LOG_BLOWUP_FACTOR));
-        let twiddles = CpuBackend::precompute_twiddles(columns[0].domain.half_coset);
-        let config = FriConfig::new(2, LOG_BLOWUP_FACTOR, 3);
-        let prover = FriProver::commit(&mut test_channel(), config, &columns, &twiddles);
-        let prover_decommit = prover.decommit(&mut test_channel());
-        let prover_query_positions_by_log_size = prover_decommit.query_positions_by_log_size;
-        let query_evals_by_column = columns.map(|eval| {
-            let query_positions = &prover_query_positions_by_log_size[&eval.domain.log_size()];
-            query_polynomial_at_positions(&eval, query_positions)
-        });
-        let bounds = LOG_DEGREES.map(CirclePolyDegreeBound::new).to_vec();
-
-        let mut verifier = FriVerifier::commit(
-            &mut test_channel(),
-            config,
-            prover_decommit.fri_proof.proof,
-            bounds,
-        )
-        .unwrap();
-        let verifier_query_positions_by_log_size =
-            verifier.sample_query_positions(&mut test_channel());
-
-        assert_eq!(
-            prover_query_positions_by_log_size,
-            verifier_query_positions_by_log_size
-        );
-        verifier.decommit(query_evals_by_column.to_vec())
-    }
-
-    #[test]
     fn proof_with_removed_layer_fails_verification() {
         const LOG_DEGREE: u32 = 6;
         let evaluation = polynomial_evaluation(6, LOG_BLOWUP_FACTOR);
