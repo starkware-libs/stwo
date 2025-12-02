@@ -36,3 +36,6 @@ std-shims = { path = "crates/std-shims", default-features = false }
 [profile.bench]
 codegen-units = 1
 lto = true
+
+[profile.release]
+lto = true
