@@ -86,23 +86,13 @@ pub struct FriProver<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> 
     last_layer_poly: LinePoly,
 }
 impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B, MC> {
-    /// Commits to multiple circle polynomials.
-    ///
-    /// `columns` must be provided in descending order by size with at most one column per size.
-    ///
-    /// This is a batched commitment that handles multiple mixed-degree polynomials, each
-    /// evaluated over domains of varying sizes. Instead of combining these evaluations into
-    /// a single polynomial on a unified domain for commitment, this function commits to each
-    /// polynomial on its respective domain. The evaluations are then efficiently merged in the
-    /// FRI layer corresponding to the size of a polynomial's domain.
+    /// Commits to one circle evaluation over a canonic circle domain.
     ///
     /// # Panics
     ///
     /// Panics if:
-    /// * `columns` is empty or not sorted in descending order by domain size.
-    /// * An evaluation is not from a sufficiently low degree circle polynomial.
-    /// * An evaluation's domain is smaller than the last layer.
-    /// * An evaluation's domain is not a canonic circle domain.
+    /// * The evaluation is not from a sufficiently low degree circle polynomial.
+    /// * The evaluation domain is not a canonic circle domain.
     #[instrument(skip_all)]
     pub fn commit(
         channel: &mut MC::C,
@@ -110,7 +100,6 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         column: &'a SecureEvaluation<B, BitReversedOrder>,
         twiddles: &TwiddleTree<B>,
     ) -> Self {
-        assert!(!column.is_empty(), "no columns");
         assert!(column.domain.is_canonic(), "not canonic");
 
         let first_layer = Self::commit_first_layer(channel, column);
@@ -127,11 +116,6 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     }
 
     /// Commits to the first FRI layer.
-    ///
-    /// The first layer commits to all input circle polynomial columns (possibly of mixed degree)
-    /// involved in FRI.
-    ///
-    /// All `columns` must be provided in descending order by size.
     fn commit_first_layer(
         channel: &mut MC::C,
         column: &'a SecureEvaluation<B, BitReversedOrder>,
@@ -142,9 +126,6 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     }
 
     /// Builds and commits to the inner FRI layers (all layers except the first and last).
-    ///
-    /// All `columns` must be provided in descending order by size. Note there is at most one column
-    /// of each size.
     ///
     /// Returns all inner layers and the evaluation of the last layer.
     fn commit_inner_layers(
@@ -206,8 +187,6 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
     }
 
     /// Returns a FRI proof and the query positions.
-    ///
-    /// Returned query positions are mapped by column commitment domain log size.
     pub fn decommit(self, channel: &mut MC::C) -> FriDecommitResult<MC::H> {
         let first_layer_log_size = self.first_layer.column.domain.log_size();
         let unsorted_query_locations =
@@ -267,8 +246,6 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
 }
 
 /// Commitment to the first FRI layer.
-///
-/// The first layer commits to all circle polynomials (possibly of mixed degree) involved in FRI.
 struct FriFirstLayerProver<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> {
     column: &'a SecureEvaluation<B, BitReversedOrder>,
     merkle_tree: MerkleProverLifted<B, H>,
@@ -295,7 +272,7 @@ impl<'a, B: FriOps + MerkleOpsLifted<H>, H: MerkleHasherLifted> FriFirstLayerPro
                 CIRCLE_TO_LINE_FOLD_STEP,
             );
 
-        let (_evals, decommitment) = self.merkle_tree.decommit(
+        let (_, decommitment) = self.merkle_tree.decommit(
             &column_decommitment_positions,
             self.column.columns.iter().collect(),
         );
