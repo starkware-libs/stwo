@@ -1,5 +1,9 @@
+#[cfg(feature = "parallel")]
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use crate::parallel_iter;
 use crate::prover::backend::CpuBackend;
 use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 
@@ -69,8 +73,8 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
     }
 
     fn build_next_layer(prev_layer: &Vec<H::Hash>) -> Vec<H::Hash> {
-        let log_size = prev_layer.len().ilog2() as usize - 1;
-        (0..(1 << log_size))
+        let log_size: u32 = prev_layer.len().ilog2() - 1;
+        parallel_iter!(0..(1 << log_size))
             .map(|i| H::hash_children((prev_layer[2 * i], prev_layer[2 * i + 1])))
             .collect()
     }

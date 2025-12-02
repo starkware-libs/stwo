@@ -90,7 +90,6 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             .0
             .into_iter()
             .collect::<Result<(), _>>()?;
-
         // Answer FRI queries.
         let samples = sampled_points.zip_cols(proof.sampled_values).map_cols(
             |(sampled_points, sampled_values)| {
