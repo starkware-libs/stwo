@@ -142,7 +142,7 @@ jobs:
           summary-always: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
-          alert-comment-cc-users: "@shaharsamocha7"
+          alert-comment-cc-users: "@gilbens-starkware"
 
   run-avx512-bench-parallel:
     runs-on: stwo-avx
@@ -171,7 +171,7 @@ jobs:
           summary-always: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
-          alert-comment-cc-users: "@shaharsamocha7"
+          alert-comment-cc-users: "@gilbens-starkware"
 
   run-tests-no-prover:
     runs-on: ubuntu-latest
