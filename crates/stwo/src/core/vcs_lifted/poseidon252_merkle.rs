@@ -73,7 +73,6 @@ impl MerkleHasherLifted for Poseidon252MerkleHasher {
 }
 
 pub fn poseidon_update(values: &[FieldElement252], state: &mut [FieldElement252; 3]) {
-    debug_assert!(values.len().is_multiple_of(2));
     let mut iter = values.chunks_exact(2);
     for msg in iter.by_ref() {
         state[0] += msg[0];
