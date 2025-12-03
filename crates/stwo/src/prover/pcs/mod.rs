@@ -149,16 +149,19 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         )
         .entered();
         let weights_hash_map = self.build_weights_hash_map(&sampled_points);
+        let max_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
             .map_cols(|(poly, points)| {
+                let lde_domain_log_size =
+                    poly.evals.domain.log_size() + self.config.fri_config.log_blowup_factor;
                 points
                     .iter()
                     .map(|&point| PointSample {
                         point,
                         value: poly.eval_at_point(
-                            point,
+                            point.repeated_double(max_log_size - lde_domain_log_size),
                             &*weights_hash_map
                                 .get(&(poly.evals.domain.log_size(), point))
                                 .expect("weights should exist for all sampled points"),
