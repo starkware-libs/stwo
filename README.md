@@ -26,6 +26,11 @@
   </h3>
 </div>
 
+> ⚠️ **WARNING: UNOFFICIAL FORK**
+>
+> **This repository is a UNOFFICIAL FORK** of [Stwo](https://github.com/starkware-libs/stwo) by StarkWare.
+> These changes are **NOT** part of the official upstream repository. Use with caution.
+
 # Stwo
 
 ## 🌟 About

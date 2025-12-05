@@ -1,6 +1,6 @@
 #!/usr/bin/env sage
-# Script para generar constantes de Poseidon2 para el campo M31 con t=16
-# Basado en: https://github.com/HorizenLabs/poseidon2
+# Script to generate Poseidon2 constants for the M31 field with t=16
+# Based on: https://github.com/HorizenLabs/poseidon2
 
 from sage.rings.polynomial.polynomial_gf2x import GF2X_BuildIrred_list
 from math import *
