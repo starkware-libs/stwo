@@ -47,7 +47,7 @@ pub trait MultivariatePolyOracle: Sized {
 ///
 /// The degree of each `g_i` should not exceed [`MAX_DEGREE`] in any variable.  The sum-check proof
 /// of `h`, list of challenges (variable assignment) and the constant oracles (i.e. the `g_i` with
-/// all variables fixed to the their corresponding challenges) are returned.
+/// all variables fixed to their corresponding challenges) are returned.
 ///
 /// Output is of the form: `(proof, variable_assignment, constant_poly_oracles, claimed_evals)`
 ///
