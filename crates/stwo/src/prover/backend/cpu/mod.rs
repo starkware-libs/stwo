@@ -1,6 +1,7 @@
 pub mod accumulation;
 mod blake2s;
 mod blake2s_lifted;
+mod keccak_256;
 pub mod circle;
 mod fri;
 mod grind;
@@ -17,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use super::{Backend, BackendForChannel, Column, ColumnOps};
 use crate::core::utils::bit_reverse;
 use crate::core::vcs::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleChannel};
+use crate::core::vcs::keccak_merkle::{Keccak256M31MerkleChannel, Keccak256MerkleChannel};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
 use crate::prover::lookups::mle::Mle;
@@ -28,6 +30,8 @@ pub struct CpuBackend;
 impl Backend for CpuBackend {}
 impl BackendForChannel<Blake2sMerkleChannel> for CpuBackend {}
 impl BackendForChannel<Blake2sM31MerkleChannel> for CpuBackend {}
+impl BackendForChannel<Keccak256MerkleChannel> for CpuBackend {}
+impl BackendForChannel<Keccak256M31MerkleChannel> for CpuBackend {}
 #[cfg(not(target_arch = "wasm32"))]
 impl BackendForChannel<Poseidon252MerkleChannel> for CpuBackend {}
 

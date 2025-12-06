@@ -1,3 +1,4 @@
+use std::array;
 use std::simd::cmp::SimdPartialOrd;
 use std::simd::num::SimdUint;
 use std::simd::u32x16;
@@ -8,9 +9,10 @@ use rayon::prelude::*;
 use tracing::{span, Level};
 
 use super::SimdBackend;
-use crate::core::channel::Blake2sChannelGeneric;
+use crate::core::channel::{Blake2sChannelGeneric, Keccak256ChannelGeneric};
 use crate::core::proof_of_work::GrindOps;
 use crate::core::vcs::blake2_hash::Blake2sHasherGeneric;
+use crate::core::vcs::keccak_hash::Keccak256HasherGeneric;
 use crate::prover::backend::simd::blake2s::hash_16;
 use crate::prover::backend::simd::m31::{PackedM31, N_LANES};
 
@@ -128,6 +130,7 @@ where
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod poseidon252 {
+    #[cfg(feature = "parallel")]
     use starknet_crypto::poseidon_hash_many;
     use starknet_ff::FieldElement as FieldElement252;
 
@@ -139,6 +142,7 @@ pub mod poseidon252 {
     impl GrindOps<Poseidon252Channel> for SimdBackend {
         fn grind(channel: &Poseidon252Channel, pow_bits: u32) -> u64 {
             let digest = channel.digest();
+            #[cfg(feature = "parallel")]
             let prefixed_digest = poseidon_hash_many(&[
                 Poseidon252Channel::POW_PREFIX.into(),
                 digest,
@@ -167,6 +171,56 @@ pub mod poseidon252 {
         }
         None
     }
+}
+
+impl<const IS_M31_OUTPUT: bool> GrindOps<Keccak256ChannelGeneric<IS_M31_OUTPUT>> for SimdBackend {
+    fn grind(channel: &Keccak256ChannelGeneric<IS_M31_OUTPUT>, pow_bits: u32) -> u64 {
+        let _span = span!(Level::TRACE, "Simd Keccak256 Grind", class = "Keccak256 Grind");
+
+        // TODO(first): support more than 32 bits.
+        assert!(pow_bits <= 32, "pow_bits > 32 is not supported");
+        let digest = channel.digest();
+
+        // Compute the prefix digest H(POW_PREFIX, [0_u8; 12], digest, n_bits).
+        let mut hasher = Keccak256HasherGeneric::<IS_M31_OUTPUT>::default();
+        hasher.update(&Keccak256ChannelGeneric::<IS_M31_OUTPUT>::POW_PREFIX.to_le_bytes());
+        hasher.update(&[0_u8; 12]);
+        hasher.update(&digest.0[..]);
+        hasher.update(&pow_bits.to_le_bytes());
+        let prefixed_digest = hasher.finalize();
+        let prefixed_digest_ref = prefixed_digest.0;
+
+        #[cfg(not(feature = "parallel"))]
+        let res = (0..)
+            .find_map(|hi| grind_keccak::<IS_M31_OUTPUT>(prefixed_digest_ref, hi, pow_bits))
+            .expect("Grind failed to find a solution.");
+
+        #[cfg(feature = "parallel")]
+        let res = parallel_grind(prefixed_digest_ref, pow_bits, grind_keccak::<IS_M31_OUTPUT>);
+
+        res
+    }
+}
+
+fn grind_keccak<const IS_M31_OUTPUT: bool>(
+    prefixed_digest: [u8; 32],
+    hi: u64,
+    pow_bits: u32,
+) -> Option<u64> {
+    let attempt_low = hi << GRIND_LOW_BITS;
+    for low in 0..(1 << GRIND_LOW_BITS) {
+        let nonce = attempt_low | low;
+        let mut hasher = Keccak256HasherGeneric::<IS_M31_OUTPUT>::default();
+        hasher.update(&prefixed_digest);
+        hasher.update(&nonce.to_le_bytes());
+        let res = hasher.finalize();
+
+        let n_zeros = u128::from_le_bytes(array::from_fn(|i| res.0[i])).trailing_zeros();
+        if n_zeros >= pow_bits {
+            return Some(nonce);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
