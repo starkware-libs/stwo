@@ -10,6 +10,12 @@ pub use blake3_hash::{Blake3Hash, Blake3Hasher};
 pub mod hash;
 pub use hash::Hash;
 
+pub mod keccak_hash;
+pub use keccak_hash::{Keccak256Hash, Keccak256Hasher, Keccak256M31Hasher};
+
+pub mod keccak_merkle;
+pub use keccak_merkle::{Keccak256MerkleChannel, Keccak256MerkleHasher};
+
 pub mod merkle_hasher;
 pub use merkle_hasher::MerkleHasher;
 
@@ -23,6 +29,9 @@ pub mod poseidon2_primitives;
 
 #[cfg(test)]
 mod test_utils;
+
+#[cfg(test)]
+mod keccak_security_tests;
 
 pub mod utils;
 
