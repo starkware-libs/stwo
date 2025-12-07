@@ -94,19 +94,19 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             class = "EvaluateOutOfDomain"
         )
         .entered();
-        let max_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
+        let max_log_degree_bound = self.trees.last().unwrap().commitment.layers.len() as u32
+            - self.config.fri_config.log_blowup_factor
+            - 1;
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
             .map_cols(|(poly, points)| {
-                let lde_domain_log_size =
-                    poly.log_size() + self.config.fri_config.log_blowup_factor;
                 points
                     .iter()
                     .map(|&point| PointSample {
                         point,
                         value: poly.eval_at_point(
-                            point.repeated_double(max_log_size - lde_domain_log_size),
+                            point.repeated_double(max_log_degree_bound - poly.log_size()),
                         ),
                     })
                     .collect_vec()
