@@ -21,7 +21,7 @@ use crate::core::vcs::verifier::ExtendedMerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 use crate::core::ColumnVec;
 use crate::prover::air::component_prover::{Poly, Trace};
-use crate::prover::backend::{BackendForChannel, Col};
+use crate::prover::backend::{BackendForChannel, Col, Column};
 use crate::prover::fri::{FriDecommitResult, FriProver};
 use crate::prover::pcs::quotient_ops::compute_fri_quotients;
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
@@ -150,24 +150,38 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             class = "EvaluateOutOfDomain"
         )
         .entered();
-        let weights_hash_map = self.build_weights_hash_map(&sampled_points);
-        let samples = self
-            .polynomials()
-            .zip_cols(&sampled_points)
-            .map_cols(|(poly, points)| {
-                points
-                    .iter()
-                    .map(|&point| PointSample {
-                        point,
-                        value: poly.eval_at_point(
+        let samples: TreeVec<Vec<Vec<PointSample>>> = if self.store_polynomials_coefficients {
+            let dummy_weights = Col::<B, SecureField>::zeros(1);
+            self.polynomials()
+                .zip_cols(&sampled_points)
+                .map_cols(|(poly, points)| {
+                    points
+                        .iter()
+                        .map(|&point| PointSample {
                             point,
-                            &*weights_hash_map
-                                .get(&(poly.evals.domain.log_size(), point))
-                                .expect("weights should exist for all sampled points"),
-                        ),
-                    })
-                    .collect_vec()
-            });
+                            value: poly.eval_at_point(point, &dummy_weights),
+                        })
+                        .collect_vec()
+                })
+        } else {
+            let weights_hash_map = self.build_weights_hash_map(&sampled_points);
+            self.polynomials()
+                .zip_cols(&sampled_points)
+                .map_cols(|(poly, points)| {
+                    points
+                        .iter()
+                        .map(|&point| PointSample {
+                            point,
+                            value: poly.eval_at_point(
+                                point,
+                                &*weights_hash_map
+                                    .get(&(poly.evals.domain.log_size(), point))
+                                    .expect("weights should exist for all sampled points"),
+                            ),
+                        })
+                        .collect_vec()
+                })
+        };
         span.exit();
         let sampled_values = samples
             .as_cols_ref()
