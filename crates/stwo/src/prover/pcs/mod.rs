@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use dashmap::DashMap;
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
@@ -20,7 +19,7 @@ use crate::core::poly::circle::CanonicCoset;
 use crate::core::vcs::verifier::ExtendedMerkleDecommitment;
 use crate::core::vcs::MerkleHasher;
 use crate::core::ColumnVec;
-use crate::prover::air::component_prover::{Poly, Trace};
+use crate::prover::air::component_prover::{Poly, Trace, WeightsHashMap};
 use crate::prover::backend::{BackendForChannel, Col};
 use crate::prover::fri::{FriDecommitResult, FriProver};
 use crate::prover::pcs::quotient_ops::compute_fri_quotients;
@@ -103,12 +102,11 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     pub fn build_weights_hash_map(
         &self,
         sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
-    ) -> DashMap<(u32, CirclePoint<SecureField>), Col<B, SecureField>>
+    ) -> WeightsHashMap<B>
     where
         Col<B, SecureField>: Send + Sync,
     {
-        let weights_dashmap: DashMap<(u32, CirclePoint<SecureField>), Col<B, SecureField>> =
-            DashMap::new();
+        let weights_dashmap = WeightsHashMap::<B>::new();
 
         self.polynomials()
             .zip_cols(sampled_points)
@@ -150,8 +148,12 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             class = "EvaluateOutOfDomain"
         )
         .entered();
-        let weights_hash_map = self.build_weights_hash_map(&sampled_points);
-        let samples = self
+        let weights_hash_map = if self.store_polynomials_coefficients {
+            None
+        } else {
+            Some(self.build_weights_hash_map(&sampled_points))
+        };
+        let samples: TreeVec<Vec<Vec<PointSample>>> = self
             .polynomials()
             .zip_cols(&sampled_points)
             .map_cols(|(poly, points)| {
@@ -159,12 +161,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     .iter()
                     .map(|&point| PointSample {
                         point,
-                        value: poly.eval_at_point(
-                            point,
-                            &*weights_hash_map
-                                .get(&(poly.evals.domain.log_size(), point))
-                                .expect("weights should exist for all sampled points"),
-                        ),
+                        value: poly.eval_at_point(point, weights_hash_map.as_ref()),
                     })
                     .collect_vec()
             });
