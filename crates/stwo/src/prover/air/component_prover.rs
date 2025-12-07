@@ -1,3 +1,4 @@
+use dashmap::DashMap;
 use itertools::Itertools;
 
 use crate::core::air::{Component, Components};
@@ -12,6 +13,9 @@ use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, SecureCi
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::CirclePoint;
+
+/// Type alias for the weights hash map used in barycentric eval_at_point.
+pub type WeightsHashMap<B> = DashMap<(u32, CirclePoint<SecureField>), Col<B, SecureField>>;
 
 pub trait ComponentProver<B: Backend>: Component {
     /// Evaluates the constraint quotients of the component on the evaluation domain.
@@ -48,12 +52,17 @@ impl<B: Backend> Poly<B> {
     pub fn eval_at_point(
         &self,
         point: CirclePoint<SecureField>,
-        weights: &Col<B, SecureField>,
+        weights_hash_map: Option<&WeightsHashMap<B>>,
     ) -> SecureField {
         if let Some(coeffs) = &self.coeffs {
             coeffs.eval_at_point(point)
         } else {
-            self.evals.barycentric_eval_at_point(weights)
+            self.evals.barycentric_eval_at_point(
+                &weights_hash_map
+                    .unwrap()
+                    .get(&(self.evals.domain.log_size(), point))
+                    .expect("weights should exist for all sampled points"),
+            )
         }
     }
 
