@@ -1,10 +1,10 @@
 pub mod accumulation;
 mod blake2s;
-mod blake2s_lifted;
 pub mod circle;
 mod fri;
 mod grind;
 pub mod lookups;
+mod merkle_lifted;
 #[cfg(not(target_arch = "wasm32"))]
 mod poseidon252;
 pub mod quotients;
