@@ -1,3 +1,4 @@
+use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
@@ -48,26 +49,24 @@ impl<H: MerkleHasherLifted> MerkleOpsLifted<H> for CpuBackend {
         if columns[0].len() == 1 {
             panic!("A column must be of length >= 2.")
         }
-
         let mut prev_layer: Vec<H> = vec![hasher; 2];
         let mut prev_layer_log_size: u32 = 1;
-        for col in columns.iter() {
-            // TODO(Leo): the clone in the map can be avoided when `prev_layer`
-            // has the same size of `col`. It can also be avoided by not using
-            // hashers and manipulating the underlying hash state directly, as
-            // is done in the SIMD implementation.
-            let curr_layer_log_size = col.len().ilog2();
-            let shift = curr_layer_log_size - prev_layer_log_size;
-            prev_layer = col
-                .iter()
-                .enumerate()
-                .map(|(idx, felt)| {
-                    let mut hasher = prev_layer[(idx >> (shift + 1) << 1) + (idx & 1)].clone();
-                    hasher.update_leaf(&[*felt]);
-                    hasher
-                })
+        for (log_size, group) in columns.iter().group_by(|c| c.len().ilog2()).into_iter() {
+            let log_ratio = log_size - prev_layer_log_size;
+            prev_layer = (0..1 << log_size)
+                // We only clone when starting a column chunk of different size.
+                .map(|idx| prev_layer[(idx >> (log_ratio + 1) << 1) + (idx & 1)].clone())
                 .collect();
-            prev_layer_log_size = curr_layer_log_size;
+
+            // We chunk by 16 because it's the amount of M31 elements needed to trigger a
+            // hash permutation, both in blake and in poseidon.
+            for chunk in &group.into_iter().chunks(16) {
+                let vec = chunk.into_iter().collect_vec();
+                prev_layer.iter_mut().enumerate().for_each(|(i, hasher)| {
+                    hasher.update_leaf(&vec.iter().map(|v| v[i]).collect_vec());
+                })
+            }
+            prev_layer_log_size = log_size;
         }
         prev_layer.into_iter().map(|x| x.finalize()).collect()
     }
