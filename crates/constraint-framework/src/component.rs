@@ -220,8 +220,9 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
+        max_log_degree_bound: u32,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        let trace_step = CanonicCoset::new(self.eval.log_size()).step();
+        let trace_step = CanonicCoset::new(max_log_degree_bound).step();
         self.info.mask_offsets.as_ref().map_cols(|col_offsets| {
             col_offsets
                 .iter()
@@ -239,6 +240,7 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         evaluation_accumulator: &mut PointEvaluationAccumulator,
+        max_log_degree_bound: u32,
     ) {
         let preprocessed_mask = self
             .preprocessed_column_indices
@@ -252,7 +254,7 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         self.eval.evaluate(PointEvaluator::new(
             mask_points,
             evaluation_accumulator,
-            coset_vanishing(CanonicCoset::new(self.eval.log_size()).coset, point).inverse(),
+            coset_vanishing(CanonicCoset::new(max_log_degree_bound).coset, point).inverse(),
             self.eval.log_size(),
             self.claimed_sum,
         ));
