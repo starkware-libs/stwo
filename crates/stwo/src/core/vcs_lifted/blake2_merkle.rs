@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use super::merkle_hasher::MerkleHasherLifted;
 use crate::core::channel::{Blake2sChannelGeneric, MerkleChannel};
 use crate::core::fields::m31::BaseField;
@@ -70,5 +72,22 @@ impl<const IS_M31_OUTPUT: bool> MerkleChannel for Blake2sMerkleChannelGeneric<IS
             &channel.digest(),
             &root,
         ));
+    }
+}
+
+
+impl<const IS_M31_OUTPUT: bool> Serialize for Blake2sMerkleHasherGeneric<IS_M31_OUTPUT> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer {
+        serializer.serialize_unit_struct("Blake2sMerkleHasherGeneric")
+    }
+}
+
+impl<'de, const IS_M31_OUTPUT: bool> Deserialize<'de> for Blake2sMerkleHasherGeneric<IS_M31_OUTPUT> {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de> {
+        Ok(Self::default())
     }
 }
