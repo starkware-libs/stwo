@@ -11,7 +11,7 @@ use rand::distributions::{Distribution, Standard};
 
 use super::qm31::PackedQM31;
 use super::PACKED_M31_BATCH_INVERSE_CHUNK_SIZE;
-use crate::core::fields::m31::{pow2147483645, BaseField, M31, P};
+use crate::core::fields::m31::{pow2147483645, BaseField, M31, MODULUS_BITS, P};
 use crate::core::fields::qm31::QM31;
 use crate::core::fields::{batch_inverse_chunked, FieldExpOps};
 use crate::core::utils;
@@ -597,17 +597,24 @@ cfg_if::cfg_if! {
     }
 }
 
+/// Reduces 16 u32s modulo P. The implementation is the same as [`M31::reduce()`], adapted to SIMD.
+pub fn reduce_to_m31_simd(val: u32x16) -> u32x16 {
+    ((((val >> MODULUS_BITS) + val + u32x16::splat(1)) >> MODULUS_BITS) + val) & u32x16::splat(P)
+}
+
 #[cfg(test)]
 mod tests {
     use std::array;
+    use std::simd::u32x16;
 
     use aligned::{Aligned, A64};
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use super::PackedM31;
-    use crate::core::fields::m31::BaseField;
+    use crate::core::fields::m31::{BaseField, M31};
     use crate::core::fields::FieldExpOps;
+    use crate::prover::backend::simd::m31::reduce_to_m31_simd;
 
     #[test]
     fn addition_works() {
@@ -687,5 +694,17 @@ mod tests {
         let res = packed_values.inverse();
 
         assert_eq!(res.to_array(), array::from_fn(|i| values[i].inverse()));
+    }
+
+    #[test]
+    fn test_reduction() {
+        let mut rng = SmallRng::seed_from_u64(0);
+        let vals = std::array::from_fn(|_| rng.gen::<u32>());
+        let simd_val = u32x16::from_array(vals);
+
+        assert_eq!(
+            reduce_to_m31_simd(simd_val),
+            u32x16::from_array(std::array::from_fn(|i| M31::reduce(vals[i] as u64).0))
+        );
     }
 }

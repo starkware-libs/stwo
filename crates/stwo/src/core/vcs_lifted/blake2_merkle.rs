@@ -62,7 +62,7 @@ pub struct Blake2sMerkleChannelGeneric<const IS_M31_OUTPUT: bool>;
 
 impl<const IS_M31_OUTPUT: bool> MerkleChannel for Blake2sMerkleChannelGeneric<IS_M31_OUTPUT> {
     type C = Blake2sChannelGeneric<IS_M31_OUTPUT>;
-    type H = Blake2sMerkleHasher;
+    type H = Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>;
 
     fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasherLifted>::Hash) {
         use crate::core::vcs::blake2_hash::Blake2sHasherGeneric;
