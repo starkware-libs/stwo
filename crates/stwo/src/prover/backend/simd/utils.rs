@@ -1,5 +1,4 @@
 use std::simd::{simd_swizzle, u32x16};
-
 // TODO(andrew): Examine usage of unsafe in SIMD FFT.
 pub struct UnsafeMut<T: ?Sized>(pub *mut T);
 impl<T: ?Sized> UnsafeMut<T> {
