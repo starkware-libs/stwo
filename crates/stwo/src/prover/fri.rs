@@ -10,8 +10,8 @@ use crate::core::circle::Coset;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::{SecureField, QM31};
 use crate::core::fri::{
-    get_query_positions_by_log_size, ExtendedFriLayerProof, ExtendedFriProof, FriConfig,
-    FriLayerProof, FriLayerProofAux, FriProof, FriProofAux, CIRCLE_TO_LINE_FOLD_STEP, FOLD_STEP,
+    ExtendedFriLayerProof, ExtendedFriProof, FriConfig, FriLayerProof, FriLayerProofAux, FriProof,
+    FriProofAux, CIRCLE_TO_LINE_FOLD_STEP, FOLD_STEP,
 };
 use crate::core::poly::line::{LineDomain, LinePoly};
 use crate::core::queries::{draw_queries, Queries};
@@ -76,7 +76,7 @@ pub trait FriOps: ColumnOps<BaseField> + PolyOps + Sized + ColumnOps<SecureField
 
 pub struct FriDecommitResult<H: MerkleHasherLifted> {
     pub fri_proof: ExtendedFriProof<H>,
-    pub query_positions_by_log_size: BTreeMap<u32, Vec<usize>>,
+    pub query_positions: Vec<usize>,
     pub unsorted_query_locations: Vec<usize>,
 }
 
@@ -241,13 +241,11 @@ impl<'a, B: FriOps + MerkleOpsLifted<MC::H>, MC: MerkleChannel> FriProver<'a, B,
         let unsorted_query_locations =
             draw_queries(channel, max_column_log_size, self.config.n_queries);
         let queries = Queries::new(&unsorted_query_locations, max_column_log_size);
-        let column_log_sizes = self.first_layer.column_log_sizes();
-        let query_positions_by_log_size =
-            get_query_positions_by_log_size(&queries, column_log_sizes);
+
         let fri_proof = self.decommit_on_queries(&queries);
         FriDecommitResult {
             fri_proof,
-            query_positions_by_log_size,
+            query_positions: queries.positions,
             unsorted_query_locations,
         }
     }
