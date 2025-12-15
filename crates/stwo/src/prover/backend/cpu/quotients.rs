@@ -21,13 +21,11 @@ use crate::prover::QuotientOps;
 impl QuotientOps for CpuBackend {
     fn accumulate_numerators(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
-        random_coeff: SecureField,
-        curr_coeff_power: &mut SecureField,
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     ) {
         let size = columns[0].len();
-        let quotient_constants = quotient_constants(sample_batches, random_coeff, curr_coeff_power);
+        let quotient_constants = quotient_constants(sample_batches);
 
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
             let mut partial_numerators_acc = unsafe { SecureColumnByCoords::uninitialized(size) };
