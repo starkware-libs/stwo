@@ -175,10 +175,10 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         channel.mix_felts(&sampled_values.clone().flatten_cols());
 
         // Compute oods quotients for boundary constraints on the sampled points.
-        let columns = self.evaluations().flatten();
+        let columns = self.evaluations();
         let quotients = compute_fri_quotients(
             &columns,
-            &samples.flatten(),
+            &samples,
             channel.draw_secure_felt(),
             self.config.fri_config.log_blowup_factor,
         );

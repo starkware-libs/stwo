@@ -1,7 +1,7 @@
 use itertools::{izip, zip_eq, Itertools};
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
-use std_shims::{BTreeMap, Vec};
+use std_shims::Vec;
 
 use super::TreeVec;
 use crate::core::circle::CirclePoint;
@@ -18,7 +18,6 @@ use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::{MerkleDecommitmentLifted, MerkleDecommitmentLiftedAux};
 use crate::core::verifier::VerificationError;
 use crate::core::ColumnVec;
-
 // Used for no_std support.
 pub type IndexMap<K, V> = indexmap::IndexMap<K, V, core::hash::BuildHasherDefault<fnv::FnvHasher>>;
 
@@ -54,30 +53,31 @@ pub struct ExtendedCommitmentSchemeProof<H: MerkleHasherLifted> {
 pub struct ColumnSampleBatch {
     /// The point at which the columns are sampled.
     pub point: CirclePoint<SecureField>,
-    /// The sampled column indices and their values at the point.
-    pub columns_and_values: Vec<(usize, SecureField)>,
+    /// The sampled column indices, their values at the point, and the random coefficient power
+    /// corresponding to the fri quotient associated with (column_index, value).
+    pub cols_vals_randpows: Vec<(usize, SecureField, SecureField)>,
 }
 impl ColumnSampleBatch {
     /// Groups column samples by sampled point.
     /// # Arguments
     /// samples: For each column, a vector of samples.
-    pub fn new_vec(samples: &[&Vec<PointSample>]) -> Vec<Self> {
+    pub fn new_vec(samples_with_rand: &[&Vec<(&PointSample, SecureField)>]) -> Vec<Self> {
         // Group samples by point, and create a ColumnSampleBatch for each point.
         // This should keep a stable ordering.
         let mut grouped_samples = IndexMap::default();
-        for (column_index, samples) in samples.iter().enumerate() {
-            for sample in samples.iter() {
+        for (column_index, samples) in samples_with_rand.iter().enumerate() {
+            for (sample, rand_pow) in samples.iter() {
                 grouped_samples
                     .entry(sample.point)
                     .or_insert_with(Vec::new)
-                    .push((column_index, sample.value));
+                    .push((column_index, sample.value, *rand_pow));
             }
         }
         grouped_samples
             .into_iter()
-            .map(|(point, columns_and_values)| ColumnSampleBatch {
+            .map(|(point, cols_vals_randpows)| ColumnSampleBatch {
                 point,
-                columns_and_values,
+                cols_vals_randpows,
             })
             .collect()
     }
@@ -105,75 +105,49 @@ pub fn fri_answers(
     random_coeff: SecureField,
     query_positions: &[usize],
     queried_values: TreeVec<Vec<BaseField>>,
-    n_columns_per_log_size_per_tree: TreeVec<&BTreeMap<u32, usize>>,
+    n_columns_per_tree: TreeVec<usize>,
 ) -> Result<Vec<SecureField>, VerificationError> {
     let mut queried_values = queried_values.map(|values| values.into_iter());
     let lifting_log_size = *column_log_sizes.0.iter().flatten().max().unwrap();
-
-    let zipped_sorted: Vec<_> = izip!(column_log_sizes.iter().flatten(), samples.iter().flatten())
-        .sorted_by_key(|(log_size, _)| *log_size)
-        .collect();
-    let grouped = zipped_sorted
+    let samples_with_randomness = build_samples_with_randomness(&samples, random_coeff);
+    // TODO(Leo): make less allocations
+    let sorted_samples_with_randomness: Vec<_> = column_log_sizes
         .iter()
-        .group_by(|(log_size, _)| *log_size)
-        .into_iter()
-        .map(|(log_size, group)| (log_size, group.map(|(_, samples)| *samples).collect_vec()))
+        .zip(samples_with_randomness.iter())
+        .flat_map(|(col_sizes, samples)| {
+            col_sizes
+                .iter()
+                .zip(samples.iter())
+                .sorted_by_key(|(c, _)| *c)
+                .map(|(_, s)| s)
+                .collect_vec()
+        })
         .collect_vec();
 
+    let sample_batches = ColumnSampleBatch::new_vec(&sorted_samples_with_randomness);
+    let lifting_domain = CanonicCoset::new(lifting_log_size).circle_domain();
+    // Compute the quotient constants for all batches.
+    let quotient_constants = quotient_constants(&sample_batches);
     let mut res = Vec::with_capacity(query_positions.len());
     for position in query_positions.iter() {
-        let mut curr_coeff_power = SecureField::one();
-        let mut sum = SecureField::zero();
-        for (log_size, samples) in &grouped {
-            let n_cols = n_columns_per_log_size_per_tree
-                .as_ref()
-                .map(|n_columns_per_log_size| *n_columns_per_log_size.get(log_size).unwrap_or(&0));
+        let queried_values_at_row = queried_values
+            .as_mut()
+            .zip_eq(n_columns_per_tree.as_ref())
+            .map(|(queried_values, n_columns)| queried_values.take(*n_columns).collect())
+            .flatten();
+        let domain_point = lifting_domain.at(bit_reverse_index(*position, lifting_log_size));
 
-            let accumulation_per_log_size = fri_answers_for_unlifted_log_size(
-                lifting_log_size,
-                samples,
-                random_coeff,
-                &mut curr_coeff_power,
-                *position,
-                &mut queried_values,
-                n_cols,
-            )?;
-
-            sum += accumulation_per_log_size;
-        }
-        res.push(sum);
+        res.push(accumulate_row_quotients(
+            &sample_batches,
+            &queried_values_at_row,
+            &quotient_constants,
+            domain_point,
+        ));
     }
     assert!(queried_values
         .iter_mut()
         .all(|val_iterator| val_iterator.next().is_none()));
     Ok(res)
-}
-
-pub fn fri_answers_for_unlifted_log_size(
-    lifting_log_size: u32,
-    samples: &[&Vec<PointSample>],
-    random_coeff: SecureField,
-    curr_coeff_power: &mut SecureField,
-    query_position: usize,
-    queried_values: &mut TreeVec<impl Iterator<Item = BaseField>>,
-    n_columns: TreeVec<usize>,
-) -> Result<SecureField, VerificationError> {
-    let sample_batches = ColumnSampleBatch::new_vec(samples);
-    let quotient_constants = quotient_constants(&sample_batches, random_coeff, curr_coeff_power);
-    let commitment_domain = CanonicCoset::new(lifting_log_size).circle_domain();
-    let domain_point = commitment_domain.at(bit_reverse_index(query_position, lifting_log_size));
-    let queried_values_at_row = queried_values
-        .as_mut()
-        .zip_eq(n_columns.as_ref())
-        .map(|(queried_values, n_columns)| queried_values.take(*n_columns).collect())
-        .flatten();
-
-    Ok(accumulate_row_quotients(
-        &sample_batches,
-        &queried_values_at_row,
-        &quotient_constants,
-        domain_point,
-    ))
 }
 
 pub fn accumulate_row_quotients(
@@ -191,7 +165,7 @@ pub fn accumulate_row_quotients(
         denominator_inverses
     ) {
         let mut numerator = SecureField::zero();
-        for ((column_index, _), (a, b, c)) in zip_eq(&sample_batch.columns_and_values, line_coeffs)
+        for ((column_index, ..), (a, b, c)) in zip_eq(&sample_batch.cols_vals_randpows, line_coeffs)
         {
             let value = queried_values_at_row[*column_index] * *c;
             // The numerator is a line equation passing through
@@ -221,7 +195,7 @@ pub fn accumulate_row_partial_numerators(
     coeffs: &Vec<(SecureField, SecureField, SecureField)>,
 ) -> SecureField {
     let mut numerator = SecureField::zero();
-    for ((column_index, _), (_, b, c)) in zip_eq(&batch.columns_and_values, coeffs) {
+    for ((column_index, ..), (_, b, c)) in zip_eq(&batch.cols_vals_randpows, coeffs) {
         let value = queried_values_at_row[*column_index] * *c;
         numerator += value - *b;
     }
@@ -237,23 +211,19 @@ pub fn accumulate_row_partial_numerators(
 /// is `m + Σ len(batch_k)`, for `k < n`).
 pub fn column_line_coeffs(
     sample_batches: &[ColumnSampleBatch],
-    random_coeff: SecureField,
-    curr_coeff_power: &mut SecureField,
 ) -> Vec<Vec<(SecureField, SecureField, SecureField)>> {
     sample_batches
         .iter()
         .map(|sample_batch| {
             sample_batch
-                .columns_and_values
+                .cols_vals_randpows
                 .iter()
-                .map(|(_, sampled_value)| {
+                .map(|(_, sampled_value, rand_pow)| {
                     let sample = PointSample {
                         point: sample_batch.point,
                         value: *sampled_value,
                     };
-                    let line_coeffs = complex_conjugate_line_coeffs(&sample, *curr_coeff_power);
-                    *curr_coeff_power *= random_coeff;
-                    line_coeffs
+                    complex_conjugate_line_coeffs(&sample, *rand_pow)
                 })
                 .collect()
         })
@@ -288,13 +258,9 @@ pub fn denominator_inverses(
     CM31::batch_inverse(&denominators)
 }
 
-pub fn quotient_constants(
-    sample_batches: &[ColumnSampleBatch],
-    random_coeff: SecureField,
-    curr_coeff_power: &mut SecureField,
-) -> QuotientConstants {
+pub fn quotient_constants(sample_batches: &[ColumnSampleBatch]) -> QuotientConstants {
     QuotientConstants {
-        line_coeffs: column_line_coeffs(sample_batches, random_coeff, curr_coeff_power),
+        line_coeffs: column_line_coeffs(sample_batches),
     }
 }
 
@@ -303,4 +269,32 @@ pub struct QuotientConstants {
     /// The line coefficients for each quotient numerator term. For more details see
     /// [self::column_line_coeffs].
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
+}
+
+pub fn build_samples_with_randomness(
+    samples: &TreeVec<Vec<Vec<PointSample>>>,
+    random_coeff: SecureField,
+) -> TreeVec<Vec<Vec<(&PointSample, SecureField)>>> {
+    let mut random_pows = (0..)
+        .scan(SecureField::one(), |acc, _| {
+            let curr = *acc;
+            *acc *= random_coeff;
+            Some(curr)
+        })
+        .into_iter();
+    let mut res: Vec<Vec<Vec<(&PointSample, SecureField)>>> = vec![];
+    for tree_sample in samples.iter() {
+        res.push(
+            tree_sample
+                .iter()
+                .map(|samples_per_cols| {
+                    samples_per_cols
+                        .iter()
+                        .map(|s| (s, random_pows.next().unwrap()))
+                        .collect()
+                })
+                .collect(),
+        )
+    }
+    TreeVec(res)
 }
