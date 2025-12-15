@@ -11,7 +11,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::FieldExpOps;
-use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch};
+use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch, NumeratorData};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::prover::backend::simd::cm31::PackedCM31;
 use crate::prover::backend::simd::domain::CircleDomainBitRevIterator;
@@ -33,13 +33,11 @@ impl QuotientOps for SimdBackend {
     // TODO(Leo): optimize.
     fn accumulate_numerators(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
-        random_coeff: SecureField,
-        curr_coeff_power: &mut SecureField,
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     ) {
         let size = columns[0].length;
-        let quotient_constants = quotient_constants(sample_batches, random_coeff, curr_coeff_power);
+        let quotient_constants = quotient_constants(sample_batches);
 
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
             let mut partial_numerators_acc = unsafe { SecureColumnByCoords::uninitialized(size) };
@@ -52,10 +50,11 @@ impl QuotientOps for SimdBackend {
             let iter = partial_numerators_acc.par_chunks_mut(1);
 
             iter.enumerate().for_each(|(chunk_idx, mut values_dst)| {
-                let query_values_at_row = batch
-                    .columns_and_values
-                    .iter()
-                    .map(|(idx, _)| columns[*idx].data[chunk_idx]);
+                let query_values_at_row = batch.cols_vals_randpows.iter().map(
+                    |NumeratorData {
+                         column_index: idx, ..
+                     }| columns[*idx].data[chunk_idx],
+                );
                 let row_value = accumulate_row_partial_numerators(query_values_at_row, &coeffs);
                 unsafe {
                     values_dst.set_packed(0, row_value);
@@ -176,16 +175,17 @@ fn denominator_inverses(
 
 #[cfg(test)]
 mod tests {
-
     use itertools::Itertools;
-    use num_traits::One;
     use rand::rngs::SmallRng;
     use rand::{Rng, SeedableRng};
 
     use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
-    use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample};
+    use crate::core::pcs::quotients::{
+        build_samples_with_randomness, ColumnSampleBatch, PointSample,
+    };
+    use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
     use crate::prover::backend::simd::column::BaseColumn;
     use crate::prover::backend::simd::SimdBackend;
@@ -225,30 +225,29 @@ mod tests {
                     .collect_vec()
             })
             .collect_vec();
-        let sample_batches = ColumnSampleBatch::new_vec(&samples.iter().collect_vec());
         let random_coeff = qm31!(98, 76, 54, 32);
+        let sample_batches = ColumnSampleBatch::new_vec(
+            &build_samples_with_randomness(&TreeVec(vec![samples]), random_coeff)
+                .iter()
+                .flatten()
+                .collect_vec(),
+        );
         // SIMD
-        let mut curr_coeff_power = SecureField::one();
         let mut accumulated_numerators_vec_simd: Vec<AccumulatedNumerators<SimdBackend>> = vec![];
         let columns_simd: Vec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
             (0..N_COLS).map(|_| columns.clone()).collect();
 
         SimdBackend::accumulate_numerators(
             &columns_simd.iter().collect_vec(),
-            random_coeff,
-            &mut curr_coeff_power,
             &sample_batches,
             &mut accumulated_numerators_vec_simd,
         );
         // CPU
-        let mut curr_coeff_power = SecureField::one();
         let mut accumulated_numerators_vec_cpu: Vec<AccumulatedNumerators<CpuBackend>> = vec![];
         let columns_cpu: Vec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>> =
             (0..N_COLS).map(|_| columns.to_cpu().clone()).collect();
         CpuBackend::accumulate_numerators(
             &columns_cpu.iter().collect_vec(),
-            random_coeff,
-            &mut curr_coeff_power,
             &sample_batches,
             &mut accumulated_numerators_vec_cpu,
         );
