@@ -1,13 +1,13 @@
 use std::iter::zip;
 
 use itertools::Itertools;
-use num_traits::One;
 use tracing::{span, Level};
 
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::pcs::quotients::{ColumnSampleBatch, PointSample};
+use crate::core::pcs::quotients::{build_samples_with_randomness, ColumnSampleBatch, PointSample};
+use crate::core::pcs::TreeVec;
 use crate::prover::backend::ColumnOps;
 use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::prover::poly::BitReversedOrder;
@@ -24,11 +24,6 @@ pub trait QuotientOps: PolyOps {
     /// `accumulated_numerators_vec`.
     fn accumulate_numerators(
         columns: &[&CircleEvaluation<Self, BaseField, BitReversedOrder>],
-        // The random coefficient received by the pcs for accumulating the quotients.
-        random_coeff: SecureField,
-        // A pointer to the power of the random coefficient that must be used as the starting
-        // power for the accumulation performed by this function.
-        curr_coeff_power: &mut SecureField,
         sample_batches: &[ColumnSampleBatch],
         accumulated_numerators_vec: &mut Vec<AccumulatedNumerators<Self>>,
     );
@@ -73,37 +68,33 @@ pub struct AccumulatedNumerators<B: ColumnOps<BaseField>> {
 }
 
 pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
-    columns: &[&CircleEvaluation<B, BaseField, BitReversedOrder>],
-    samples: &[Vec<PointSample>],
+    columns: &TreeVec<Vec<&CircleEvaluation<B, BaseField, BitReversedOrder>>>,
+    samples: &TreeVec<Vec<Vec<PointSample>>>,
     random_coeff: SecureField,
     _log_blowup_factor: u32,
 ) -> SecureEvaluation<B, BitReversedOrder> {
     let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
-
     let mut accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = vec![];
-    let mut curr_coeff_power = SecureField::one();
+    let samples_with_randomness = build_samples_with_randomness(samples, random_coeff);
 
     // Populate `accumulated_numerators_vec`, per (log_size, sample_point). After this iteration,
     // `accumulated_numerators_vec` will have length equal to
     //
     //   ∑_k (# of distinct sample points per log size k).
     //
-    zip(columns, samples)
-        .sorted_by_key(|(c, _)| c.domain.log_size())
-        .group_by(|(c, _)| c.domain.log_size())
-        .into_iter()
-        .for_each(|(_, tuples)| {
-            let (columns, samples): (Vec<_>, Vec<_>) = tuples.unzip();
-            // TODO: slice.
-            let sample_batches = ColumnSampleBatch::new_vec(&samples);
-            B::accumulate_numerators(
-                &columns,
-                random_coeff,
-                &mut curr_coeff_power,
-                &sample_batches,
-                &mut accumulated_numerators_vec,
-            )
-        });
+    zip(
+        columns.iter().flatten(),
+        samples_with_randomness.iter().flatten(),
+    )
+    .sorted_by_key(|(c, _)| c.domain.log_size())
+    .group_by(|(c, _)| c.domain.log_size())
+    .into_iter()
+    .for_each(|(_, tuples)| {
+        let (columns, samples_with_randomness): (Vec<_>, Vec<_>) = tuples.unzip();
+        // TODO: slice.
+        let sample_batches = ColumnSampleBatch::new_vec(&samples_with_randomness);
+        B::accumulate_numerators(&columns, &sample_batches, &mut accumulated_numerators_vec)
+    });
 
     // Group and accumulate the numerators per sample point: the accumulations (of different
     // lengths) get lifted and accumulated to a single vector. After this step, there is a single
@@ -186,7 +177,12 @@ mod tests {
             .collect_vec();
         let rand_coeff =
             SecureField::from_m31_array(std::array::from_fn(|_| M31::from(rng.gen::<u32>())));
-        let quot_eval = compute_fri_quotients(&[&eval], &[samples], rand_coeff, LOG_BLOWUP_FACTOR);
+        let quot_eval = compute_fri_quotients(
+            &TreeVec(vec![vec![&eval]]),
+            &TreeVec(vec![vec![samples]]),
+            rand_coeff,
+            LOG_BLOWUP_FACTOR,
+        );
         let mut coeffs = quot_eval
             .values
             .columns
