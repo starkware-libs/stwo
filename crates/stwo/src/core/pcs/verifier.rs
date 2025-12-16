@@ -1,7 +1,7 @@
 use core::iter::zip;
 
 use itertools::Itertools;
-use std_shims::{vec, Vec};
+use std_shims::Vec;
 
 use super::super::circle::CirclePoint;
 use super::super::fields::qm31::SecureField;
@@ -64,13 +64,12 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         let random_coeff = channel.draw_secure_felt();
         let max_log_size = *self.column_log_sizes().iter().flatten().max().unwrap();
 
-        let bounds = vec![CirclePolyDegreeBound::new(
-            max_log_size - self.config.fri_config.log_blowup_factor,
-        )];
+        let bound =
+            CirclePolyDegreeBound::new(max_log_size - self.config.fri_config.log_blowup_factor);
 
         // FRI commitment phase on OODS quotients.
         let mut fri_verifier =
-            FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bounds)?;
+            FriVerifier::<MC>::commit(channel, self.config.fri_config, proof.fri_proof, bound)?;
 
         // Verify proof of work.
 
@@ -79,18 +78,14 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         }
         channel.mix_u64(proof.proof_of_work);
         // Get FRI query positions.
-        let query_positions_per_log_size = fri_verifier.sample_query_positions(channel);
-
-        // TODO(Leo): remove after changing fri's API.
-        assert_eq!(query_positions_per_log_size.len(), 1);
-        let query_positions = query_positions_per_log_size.values().next().unwrap();
+        let query_positions = fri_verifier.sample_query_positions(channel);
         // Verify merkle decommitments.
         self.trees
             .as_ref()
             .zip_eq(proof.decommitments)
             .zip_eq(proof.queried_values.clone())
             .map(|((tree, decommitment), queried_values)| {
-                tree.verify(query_positions, queried_values, decommitment)
+                tree.verify(&query_positions, queried_values, decommitment)
             })
             .0
             .into_iter()
@@ -106,15 +101,11 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
         );
 
         let n_columns_per_log_size = self.trees.as_ref().map(|tree| &tree.n_columns_per_log_size);
-
-        // TODO(Leo): remove after we remove query_positions_per_log_size
-        let query_positions = query_positions_per_log_size.values().next().unwrap();
-
         let fri_answers = fri_answers(
             self.column_log_sizes(),
             samples,
             random_coeff,
-            query_positions,
+            &query_positions,
             proof.queried_values,
             n_columns_per_log_size,
         )?;
