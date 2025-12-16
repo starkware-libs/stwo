@@ -1,7 +1,7 @@
 use itertools::{izip, zip_eq, Itertools};
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
-use std_shims::{vec, BTreeMap, Vec};
+use std_shims::{BTreeMap, Vec};
 
 use super::TreeVec;
 use crate::core::circle::CirclePoint;
@@ -106,7 +106,7 @@ pub fn fri_answers(
     query_positions: &[usize],
     queried_values: TreeVec<Vec<BaseField>>,
     n_columns_per_log_size_per_tree: TreeVec<&BTreeMap<u32, usize>>,
-) -> Result<ColumnVec<Vec<SecureField>>, VerificationError> {
+) -> Result<Vec<SecureField>, VerificationError> {
     let mut queried_values = queried_values.map(|values| values.into_iter());
     let lifting_log_size = *column_log_sizes.0.iter().flatten().max().unwrap();
 
@@ -146,8 +146,7 @@ pub fn fri_answers(
     assert!(queried_values
         .iter_mut()
         .all(|val_iterator| val_iterator.next().is_none()));
-    // TODO(Leo): change the output type once we change fri's API.
-    Ok(vec![res])
+    Ok(res)
 }
 
 pub fn fri_answers_for_unlifted_log_size(
