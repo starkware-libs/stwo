@@ -101,20 +101,13 @@ pub struct FriVerifier<MC: MerkleChannel> {
 impl<MC: MerkleChannel> FriVerifier<MC> {
     /// Verifies the commitment stage of FRI.
     ///
-    /// `column_bounds` should be the committed circle polynomial degree bounds in descending order.
+    /// `column_bound` should be the committed circle polynomial degree bound.
     ///
     /// # Errors
     ///
     /// An `Err` will be returned if:
     /// * The proof contains an invalid number of FRI layers.
     /// * The degree of the last layer polynomial is too high.
-    ///
-    /// # Panics
-    ///
-    /// Panics if:
-    /// * There are no degree bounds.
-    /// * The degree bounds are not sorted in descending order.
-    /// * A degree bound is less than or equal to the last layer's degree bound.
     pub fn commit(
         channel: &mut MC::C,
         config: FriConfig,
@@ -431,8 +424,8 @@ struct FriFirstLayerVerifier<H: MerkleHasherLifted> {
 }
 
 impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
-    /// Verifies the first layer's merkle decommitment, and returns the evaluations needed for
-    /// folding the columns to their corresponding layer.
+    /// Verifies the first layer's merkle decommitment, and returns the evaluations needed to fold
+    /// the committed column.
     ///
     /// # Errors
     ///
