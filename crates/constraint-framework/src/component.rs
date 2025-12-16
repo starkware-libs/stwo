@@ -221,6 +221,8 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         &self,
         point: CirclePoint<SecureField>,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
+        println!("self: {:?}", std::any::type_name::<Self>());
+        println!("log_size: {:?}", self.eval.log_size());
         let trace_step = CanonicCoset::new(self.eval.log_size()).step();
         self.info.mask_offsets.as_ref().map_cols(|col_offsets| {
             col_offsets

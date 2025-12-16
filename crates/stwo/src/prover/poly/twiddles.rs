@@ -1,5 +1,5 @@
 use super::circle::PolyOps;
-use crate::core::circle::Coset;
+use crate::{core::circle::Coset};
 
 /// Precomputed twiddles for a specific coset tower.
 ///
@@ -12,3 +12,5 @@ pub struct TwiddleTree<B: PolyOps> {
     pub twiddles: B::Twiddles,
     pub itwiddles: B::Twiddles,
 }
+
+unsafe impl<B: PolyOps> Sync for TwiddleTree<B> {}

@@ -1,5 +1,6 @@
-use itertools::Itertools;
-
+// use itertools::Itertools;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use super::{CircleCoefficients, CircleEvaluation};
 use crate::core::circle::{CirclePoint, Coset};
 use crate::core::fields::m31::BaseField;
@@ -25,11 +26,11 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
     ) -> CircleCoefficients<Self>;
 
     fn interpolate_columns(
-        columns: impl IntoIterator<Item = CircleEvaluation<Self, BaseField, BitReversedOrder>>,
+        columns: impl IntoParallelIterator<Item = CircleEvaluation<Self, BaseField, BitReversedOrder>>,
         twiddles: &TwiddleTree<Self>,
     ) -> Vec<CircleCoefficients<Self>> {
         columns
-            .into_iter()
+            .into_par_iter()
             .map(|eval| eval.interpolate_with_twiddles(twiddles))
             .collect()
     }
@@ -88,7 +89,7 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
         Self: crate::prover::backend::Backend,
     {
         polynomials
-            .into_iter()
+            .into_par_iter()
             .map(|poly_coeffs| {
                 let evals = poly_coeffs.evaluate_with_twiddles(
                     CanonicCoset::new(poly_coeffs.log_size() + log_blowup_factor).circle_domain(),
@@ -96,7 +97,7 @@ pub trait PolyOps: ColumnOps<BaseField> + ColumnOps<SecureField> + Sized {
                 );
                 Poly::new(store_polynomials_coefficients.then_some(poly_coeffs), evals)
             })
-            .collect_vec()
+            .collect()
     }
 
     /// Precomputes twiddles for a given coset.

@@ -1,9 +1,10 @@
-use std::collections::BTreeMap;
+use crate::prover::backend::Column;
+use std::collections::{BTreeMap, HashMap};
 
 use dashmap::DashMap;
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
-use rayon::iter::ParallelIterator;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 #[cfg(feature = "parallel")]
 use rayon::prelude::IntoParallelRefIterator;
 use tracing::{span, Level};
@@ -150,7 +151,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             class = "EvaluateOutOfDomain"
         )
         .entered();
-        let weights_hash_map = self.build_weights_hash_map(&sampled_points);
+        let dummy = Col::<B, SecureField>::zeros(1);
         let samples = self
             .polynomials()
             .zip_cols(&sampled_points)
@@ -161,9 +162,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                         point,
                         value: poly.eval_at_point(
                             point,
-                            &*weights_hash_map
-                                .get(&(poly.evals.domain.log_size(), point))
-                                .expect("weights should exist for all sampled points"),
+                            &dummy,
                         ),
                     })
                     .collect_vec()
@@ -176,6 +175,12 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 
         // Compute oods quotients for boundary constraints on the sampled points.
         let columns = self.evaluations().flatten();
+        // print a histogram of log sizes, sorted by size in descending order
+        let mut log_sizes = HashMap::new();
+        for column in columns.iter() {
+            *log_sizes.entry(column.domain.log_size()).or_insert(0) += 1;
+        }
+        println!("log sizes: {:?}", log_sizes.iter().sorted_by_key(|(log_size, _)| *log_size).rev().collect_vec());
         let quotients = compute_fri_quotients(
             &columns,
             &samples.flatten(),
@@ -189,7 +194,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 
         // Proof of work.
         let span1 = span!(Level::INFO, "Grind", class = "Queries POW").entered();
-        let proof_of_work = B::grind(channel, self.config.pow_bits);
+        let proof_of_work = B::grind(channel, 10);
         span1.exit();
         channel.mix_u64(proof_of_work);
 
@@ -240,7 +245,7 @@ pub struct TreeBuilder<'a, 'b, B: BackendForChannel<MC>, MC: MerkleChannel> {
 impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
     pub fn extend_evals(
         &mut self,
-        columns: impl IntoIterator<Item = CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        columns: impl IntoParallelIterator<Item = CircleEvaluation<B, BaseField, BitReversedOrder>>,
     ) -> TreeSubspan {
         let span = span!(Level::INFO, "Interpolation for commitment").entered();
         let polys = B::interpolate_columns(columns, self.commitment_scheme.twiddles);

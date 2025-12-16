@@ -160,7 +160,7 @@ fn accumulate_quotients_on_subdomain(
 
     #[cfg(feature = "parallel")]
     let iter = {
-        const CHUNK_SIZE: usize = 1 << 12;
+        const CHUNK_SIZE: usize = 1 << 8;
         values
             .par_chunks_mut(CHUNK_SIZE)
             .enumerate()
