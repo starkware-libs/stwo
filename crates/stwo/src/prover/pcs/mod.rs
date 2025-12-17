@@ -159,13 +159,13 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             .map_cols(|(poly, points)| {
                 points
                     .iter()
-                    .map(|&point| PointSample {
+                    .map(|&point| {println!("{:?}", poly.evals.domain.log_size()); PointSample {
                         point,
                         value: poly.eval_at_point(
                             point.repeated_double(max_log_size - poly.evals.domain.log_size()),
                             weights_hash_map.as_ref(),
                         ),
-                    })
+                    }})
                     .collect_vec()
             });
         span.exit();
