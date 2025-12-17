@@ -276,7 +276,11 @@ pub fn build_samples_with_randomness(
     random_coeff: SecureField,
 ) -> TreeVec<Vec<Vec<(&PointSample, SecureField)>>> {
     let mut random_pows = (0..)
-        .scan(SecureField::one(), |acc, _| Some(*acc * random_coeff))
+        .scan(SecureField::one(), |acc, _| {
+            let curr = *acc;
+            *acc *= random_coeff;
+            Some(curr)
+        })
         .into_iter();
     let mut res: Vec<Vec<Vec<(&PointSample, SecureField)>>> = vec![];
     for tree_sample in samples.iter() {
