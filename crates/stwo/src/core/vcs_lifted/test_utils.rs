@@ -6,6 +6,7 @@ use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::verifier::{MerkleDecommitmentLifted, MerkleVerifierLifted};
+use crate::core::ColumnVec;
 use crate::prover::backend::{Col, ColumnOps, CpuBackend};
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use crate::prover::poly::BitReversedOrder;
@@ -15,7 +16,7 @@ use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 pub type TestData<H> = (
     Vec<usize>,
     MerkleDecommitmentLifted<H>,
-    Vec<BaseField>,
+    ColumnVec<Vec<BaseField>>,
     MerkleVerifierLifted<H>,
 );
 

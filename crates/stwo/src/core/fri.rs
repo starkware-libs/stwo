@@ -448,7 +448,6 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
 
         let mut fri_witness = self.proof.fri_witness.iter().copied();
 
-        let mut decommitmented_values = vec![];
         let (decommitment_positions, sparse_evaluation) =
             compute_decommitment_positions_and_rebuild_evals(
                 queries,
@@ -460,13 +459,20 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
                 FriVerificationError::FirstLayerEvaluationsInvalid
             })?;
 
-        decommitmented_values.extend(
-            sparse_evaluation
-                .subset_evals
-                .iter()
-                .flatten()
-                .flat_map(|qm31| qm31.to_m31_array()),
-        );
+        // The correct type for `decommitmented_values` is `SecureColumnByCoords<CpuBackend>`,
+        // however since this is verifier code, we cannot use types from the prover module.
+        let mut decommitmented_values =
+            Vec::from_iter(core::iter::repeat_n(Vec::new(), SECURE_EXTENSION_DEGREE));
+        sparse_evaluation
+            .subset_evals
+            .iter()
+            .flatten()
+            .for_each(|x| {
+                let arr = x.to_m31_array();
+                for (i, val) in arr.into_iter().enumerate() {
+                    decommitmented_values[i].push(val);
+                }
+            });
 
         // Check all proof evals have been consumed.
         if fri_witness.next().is_some() {
@@ -540,12 +546,20 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
             });
         }
 
-        let decommitmented_values = sparse_evaluation
+        // The correct type for `decommitmented_values` is `SecureColumnByCoords<CpuBackend>`,
+        // however since this is verifier code, we cannot use types from the prover module.
+        let mut decommitmented_values =
+            Vec::from_iter(core::iter::repeat_n(Vec::new(), SECURE_EXTENSION_DEGREE));
+        sparse_evaluation
             .subset_evals
             .iter()
             .flatten()
-            .flat_map(|qm31| qm31.to_m31_array())
-            .collect_vec();
+            .for_each(|x| {
+                let arr = x.to_m31_array();
+                for (i, val) in arr.into_iter().enumerate() {
+                    decommitmented_values[i].push(val);
+                }
+            });
 
         let merkle_verifier = MerkleVerifierLifted::new(
             self.proof.commitment,
