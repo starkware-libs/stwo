@@ -6,6 +6,7 @@ use thiserror::Error;
 
 use crate::core::fields::m31::BaseField;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
+use crate::core::ColumnVec;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Default)]
 pub struct MerkleDecommitmentLifted<H: MerkleHasherLifted> {
@@ -94,22 +95,37 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
     pub fn verify(
         &self,
         query_positions: &[usize],
-        queried_values: Vec<BaseField>,
+        queried_values: ColumnVec<Vec<BaseField>>,
         decommitment: MerkleDecommitmentLifted<H>,
     ) -> Result<(), MerkleVerificationError> {
         let Some(max_log_size) = self.column_log_sizes.iter().max() else {
             return Ok(());
         };
-        let mut prev_layer_hashes: Vec<(usize, H::Hash)> = query_positions
+        // Sort the queries in ascending order by column log size.
+        let sorted_queries_iter = queried_values
             .iter()
-            .zip_eq(queried_values.chunks_exact(self.column_log_sizes.len()))
-            .dedup_by(|(idx, _), (idx2, _)| idx == idx2)
-            .map(|(idx, column_values)| {
-                let mut hasher = H::default_with_initial_state();
-                hasher.update_leaf(column_values);
-                (*idx, hasher.finalize())
+            .zip_eq(self.column_log_sizes.iter())
+            .sorted_by_key(|(_, col_size)| *col_size)
+            .map(|(vals, _)| {
+                vals.into_iter()
+                    .enumerate()
+                    .dedup_by(|(i, _), (j, _)| query_positions[*i] == query_positions[*j])
+                    .map(|(_, v)| v)
+                    .collect_vec()
             })
-            .collect();
+            .collect_vec();
+
+        // Build the leaves.
+        let mut prev_layer_hashes: Vec<(usize, H::Hash)> = vec![];
+        for (row_idx, pos) in query_positions.iter().enumerate() {
+            let row: Vec<_> = sorted_queries_iter
+                .iter()
+                .map(|col| *col[row_idx])
+                .collect();
+            let mut hasher = H::default_with_initial_state();
+            hasher.update_leaf(&row);
+            prev_layer_hashes.push((*pos, hasher.finalize()));
+        }
 
         let mut hash_witness = decommitment.hash_witness.into_iter();
         // Verify inner layers
@@ -212,7 +228,7 @@ mod tests {
     #[test]
     fn test_merkle_invalid_value() {
         let (queries, decommitment, mut values, verifier) = prepare_merkle::<Blake2sMerkleHasher>();
-        values[6] = BaseField::zero();
+        values[0][2] = BaseField::zero();
 
         assert_eq!(
             verifier.verify(&queries, values, decommitment).unwrap_err(),
