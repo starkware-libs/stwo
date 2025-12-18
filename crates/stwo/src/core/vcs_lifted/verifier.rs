@@ -179,7 +179,26 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn test_merkle_success_poseidon() {
+        use crate::core::vcs_lifted::poseidon252_merkle::Poseidon252MerkleHasher;
+        let (queries, decommitment, values, verifier) = prepare_merkle::<Poseidon252MerkleHasher>();
+        verifier.verify(&queries, values, decommitment).unwrap();
+    }
+
+    #[test]
     fn test_merkle_invalid_witness() {
+        let (queries, mut decommitment, values, verifier) = prepare_merkle::<Blake2sMerkleHasher>();
+        decommitment.hash_witness[4] = Blake2sHash::default();
+
+        assert_eq!(
+            verifier.verify(&queries, values, decommitment).unwrap_err(),
+            MerkleVerificationError::RootMismatch
+        );
+    }
+
+    #[test]
+    fn test_merkle_invalid_witness_poseidon() {
         let (queries, mut decommitment, values, verifier) = prepare_merkle::<Blake2sMerkleHasher>();
         decommitment.hash_witness[4] = Blake2sHash::default();
 
