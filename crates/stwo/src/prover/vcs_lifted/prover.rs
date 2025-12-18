@@ -68,7 +68,7 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
     /// * A `MerkleDecommitment` containing the hash witness.
     pub fn decommit(
         &self,
-        queries_position: &[usize],
+        query_positions: &[usize],
         columns: Vec<&Col<B, BaseField>>,
     ) -> (
         ColumnVec<Vec<BaseField>>,
@@ -84,14 +84,14 @@ impl<B: MerkleOpsLifted<H>, H: MerkleHasherLifted> MerkleProverLifted<B, H> {
         for col in columns.iter() {
             let log_size = col.len().ilog2() as usize;
             let shift = max_log_size - log_size;
-            let res: Vec<_> = queries_position
+            let res: Vec<_> = query_positions
                 .iter()
                 .map(|pos| col.at((pos >> (shift + 1) << 1) + (pos & 1)))
                 .collect();
             queried_values.push(res);
         }
 
-        let mut prev_layer_queries = queries_position.to_vec();
+        let mut prev_layer_queries = query_positions.to_vec();
         prev_layer_queries.dedup();
         // The largest log size of a layer is equal to `self.layers.len() - 1`. We start iterating
         // from the layer of log size `self.layers.len() - 2` so that we always have a previous

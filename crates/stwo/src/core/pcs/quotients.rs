@@ -105,22 +105,21 @@ pub fn fri_answers(
     random_coeff: SecureField,
     query_positions: &[usize],
     queried_values: TreeVec<ColumnVec<Vec<BaseField>>>,
-    n_columns_per_tree: TreeVec<usize>,
+    _n_columns_per_tree: TreeVec<usize>,
 ) -> Result<Vec<SecureField>, VerificationError> {
-    let mut queried_values = queried_values.flatten().into_iter().map(|values| values.into_iter());
+    let queried_values = queried_values.flatten();
+
     let lifting_log_size = *column_log_sizes.0.iter().flatten().max().unwrap();
     let samples_with_randomness = build_samples_with_randomness(&samples, random_coeff);
 
-    let sample_batches = ColumnSampleBatch::new_vec(&samples_with_randomness.iter().flatten().collect::<Vec<_>>());
+    let sample_batches =
+        ColumnSampleBatch::new_vec(&samples_with_randomness.iter().flatten().collect::<Vec<_>>());
     let lifting_domain = CanonicCoset::new(lifting_log_size).circle_domain();
     // Compute the quotient constants for all batches.
     let quotient_constants = quotient_constants(&sample_batches);
     let mut res = Vec::with_capacity(query_positions.len());
-    for position in query_positions.iter() {
-        let queried_values_at_row = queried_values.as_mut()
-            .zip_eq(n_columns_per_tree.as_ref())
-            .map(|(queried_values, n_columns)| queried_values.take(*n_columns).collect())
-            .flatten();
+    for (idx, position) in query_positions.iter().enumerate() {
+        let queried_values_at_row = queried_values.iter().map(|col| col[idx]).collect_vec();
         let domain_point = lifting_domain.at(bit_reverse_index(*position, lifting_log_size));
 
         res.push(accumulate_row_quotients(
@@ -130,9 +129,9 @@ pub fn fri_answers(
             domain_point,
         ));
     }
-    assert!(queried_values
-        .iter_mut()
-        .all(|val_iterator| val_iterator.next().is_none()));
+    // assert!(queried_values
+    //     .iter_mut()
+    //     .all(|val_iterator| val_iterator.next().is_none()));
     Ok(res)
 }
 

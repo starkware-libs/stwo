@@ -101,8 +101,8 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
         let Some(max_log_size) = self.column_log_sizes.iter().max() else {
             return Ok(());
         };
-        // Sort the queries by in ascending order by column log size.
-        let mut sorted_queries_iter = queried_values
+        // Sort the queries in ascending order by column log size.
+        let sorted_queries_iter = queried_values
             .iter()
             .zip_eq(self.column_log_sizes.iter())
             .sorted_by_key(|(_, col_size)| *col_size)
@@ -110,18 +110,17 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
                 vals.into_iter()
                     .enumerate()
                     .dedup_by(|(i, _), (j, _)| query_positions[*i] == query_positions[*j])
+                    .map(|(_, v)| v)
+                    .collect_vec()
             })
-            .into_iter();
+            .collect_vec();
 
         // Build the leaves.
         let mut prev_layer_hashes: Vec<(usize, H::Hash)> = vec![];
-        for pos in query_positions.iter() {
+        for (row_idx, pos) in query_positions.iter().enumerate() {
             let row: Vec<_> = sorted_queries_iter
-                .by_ref()
-                .map(|mut val_iter| {
-                    let (_, val) = val_iter.next().unwrap();
-                    *val
-                })
+                .iter()
+                .map(|col| *col[row_idx])
                 .collect();
             let mut hasher = H::default_with_initial_state();
             hasher.update_leaf(&row);
@@ -229,7 +228,7 @@ mod tests {
     #[test]
     fn test_merkle_invalid_value() {
         let (queries, decommitment, mut values, verifier) = prepare_merkle::<Blake2sMerkleHasher>();
-        values[6] = vec![BaseField::zero()];
+        values[0][2] = BaseField::zero();
 
         assert_eq!(
             verifier.verify(&queries, values, decommitment).unwrap_err(),
