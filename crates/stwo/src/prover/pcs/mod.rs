@@ -101,6 +101,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
     pub fn build_weights_hash_map(
         &self,
         sampled_points: &TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>>,
+        max_log_size: u32,
     ) -> WeightsHashMap<B>
     where
         Col<B, SecureField>: Send + Sync,
@@ -120,16 +121,20 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                 };
 
                 let log_size = poly.evals.domain.log_size();
-
+                // For each sample point, compute the weights needed to evaluate the polynomial at
+                // the folded sample point.
+                // TODO(Leo): the computation `point.repeated_double(max_log_size - log_size)` is
+                // likely repeated a bunch of times in a typical flat air. Consider moving it
+                // outside the loop.
                 #[cfg(not(feature = "parallel"))]
-                points
-                    .iter()
-                    .for_each(|&point| compute_weights((log_size, point)));
+                points.iter().for_each(|&point| {
+                    compute_weights((log_size, point.repeated_double(max_log_size - log_size)))
+                });
 
                 #[cfg(feature = "parallel")]
-                points
-                    .par_iter()
-                    .for_each(|&point| compute_weights((log_size, point)));
+                points.par_iter().for_each(|&point| {
+                    compute_weights((log_size, point.repeated_double(max_log_size - log_size)))
+                });
             });
 
         weights_dashmap
@@ -147,12 +152,13 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             class = "EvaluateOutOfDomain"
         )
         .entered();
+
+        let max_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
         let weights_hash_map = if self.store_polynomials_coefficients {
             None
         } else {
-            Some(self.build_weights_hash_map(&sampled_points))
+            Some(self.build_weights_hash_map(&sampled_points, max_log_size))
         };
-        let max_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
         let samples: TreeVec<Vec<Vec<PointSample>>> = self
             .polynomials()
             .zip_cols(&sampled_points)
