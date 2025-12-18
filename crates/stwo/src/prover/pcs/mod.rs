@@ -332,7 +332,7 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
     fn decommit(
         &self,
         queries: &[usize],
-    ) -> (Vec<BaseField>, ExtendedMerkleDecommitmentLifted<MC::H>) {
+    ) -> (ColumnVec<Vec<BaseField>>, ExtendedMerkleDecommitmentLifted<MC::H>) {
         let eval_vec = self
             .polynomials
             .iter()

@@ -2,6 +2,7 @@ use itertools::Itertools;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
+use crate::core::ColumnVec;
 use crate::core::fields::m31::BaseField;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
@@ -15,7 +16,7 @@ use crate::prover::vcs_lifted::prover::MerkleProverLifted;
 pub type TestData<H> = (
     Vec<usize>,
     MerkleDecommitmentLifted<H>,
-    Vec<BaseField>,
+    ColumnVec<Vec<BaseField>>,
     MerkleVerifierLifted<H>,
 );
 
