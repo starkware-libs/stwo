@@ -103,6 +103,7 @@ impl<H: MerkleHasherLifted> MerkleVerifierLifted<H> {
         let mut prev_layer_hashes: Vec<(usize, H::Hash)> = query_positions
             .iter()
             .zip_eq(queried_values.chunks_exact(self.column_log_sizes.len()))
+            .dedup_by(|(idx, _), (idx2, _)| idx == idx2)
             .map(|(idx, column_values)| {
                 let mut hasher = H::default_with_initial_state();
                 hasher.update_leaf(column_values);
