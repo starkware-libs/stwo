@@ -218,8 +218,10 @@ mod tests {
         polys
     }
 
-    fn prove_and_verify_pcs<B: BackendForChannel<Blake2sMerkleChannel>>(
-    ) -> Result<(), VerificationError> {
+    fn prove_and_verify_pcs<
+        B: BackendForChannel<Blake2sMerkleChannel>,
+        const STORE_COEFFS: bool,
+    >() -> Result<(), VerificationError> {
         const N_COLS: usize = 10;
         const LIFTING_LOG_SIZE: u32 = 8;
 
@@ -231,7 +233,9 @@ mod tests {
         );
         let mut commitment_scheme =
             CommitmentSchemeProver::<B, Blake2sMerkleChannel>::new(config, &twiddles);
-        commitment_scheme.set_store_polynomials_coefficients();
+        if STORE_COEFFS {
+            commitment_scheme.set_store_polynomials_coefficients();
+        }
         let polys = prepare_polys::<B, N_COLS, LIFTING_LOG_SIZE>();
         let sizes = polys.iter().map(|poly| poly.log_size()).collect_vec();
 
@@ -261,10 +265,14 @@ mod tests {
 
     #[test]
     fn test_pcs_prove_and_verify_cpu() {
-        assert!(prove_and_verify_pcs::<CpuBackend>().is_ok());
+        assert!(prove_and_verify_pcs::<CpuBackend, true>().is_ok());
     }
     #[test]
     fn test_pcs_prove_and_verify_simd() {
-        assert!(prove_and_verify_pcs::<SimdBackend>().is_ok());
+        assert!(prove_and_verify_pcs::<SimdBackend, true>().is_ok());
+    }
+    #[test]
+    fn test_pcs_prove_and_verify_simd_with_barycentric() {
+        assert!(prove_and_verify_pcs::<SimdBackend, false>().is_ok());
     }
 }
