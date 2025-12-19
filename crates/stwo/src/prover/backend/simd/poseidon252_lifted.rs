@@ -9,7 +9,6 @@ use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::core::vcs_lifted::poseidon252_merkle::{
     poseidon_finalize, poseidon_update, Poseidon252MerkleHasher, ELEMENTS_IN_BUFFER,
 };
-#[cfg(feature = "parallel")]
 use crate::prover::backend::simd::m31::N_LANES;
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::{Col, Column, CpuBackend};
