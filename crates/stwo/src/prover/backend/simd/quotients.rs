@@ -93,10 +93,10 @@ impl QuotientOps for SimdBackend {
         // Populate `quotients`.
         // TODO(Leo): make chunk size configurable.
         #[cfg(not(feature = "parallel"))]
-        let iter = quotients.iter_mut(1).enumerate();
+        let iter = quotients.chunks_mut(1).enumerate();
 
         #[cfg(feature = "parallel")]
-        let iter = quotients.chunks_mut(1).enumerate();
+        let iter = quotients.par_chunks_mut(1).enumerate();
 
         iter.for_each(|(domain_idx, mut value_dst)| {
             let mut quotient = PackedSecureField::zero();
@@ -147,7 +147,7 @@ fn denominator_inverses(
     let domain_points = CircleDomainBitRevIterator::new(domain);
 
     #[cfg(not(feature = "parallel"))]
-    let iter = domain_points.iter();
+    let iter = domain_points;
 
     #[cfg(feature = "parallel")]
     let iter = domain_points.par_iter();
