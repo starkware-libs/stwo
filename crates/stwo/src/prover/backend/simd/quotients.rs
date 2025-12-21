@@ -74,18 +74,18 @@ impl QuotientOps for SimdBackend {
     fn compute_quotients_and_combine(
         accumulations: Vec<AccumulatedNumerators<Self>>,
     ) -> SecureEvaluation<Self, BitReversedOrder> {
-        let max_log_size = accumulations
+        let lifting_log_size = accumulations
             .iter()
             .map(|x| x.partial_numerators_acc.len())
             .max()
             .unwrap()
             .ilog2();
 
-        let domain = CanonicCoset::new(max_log_size).circle_domain();
+        let domain = CanonicCoset::new(lifting_log_size).circle_domain();
         let domain_points: Vec<CirclePoint<PackedBaseField>> =
             CircleDomainBitRevIterator::new(domain).collect();
         let mut quotients: SecureColumnByCoords<SimdBackend> =
-            unsafe { SecureColumnByCoords::uninitialized(1 << max_log_size) };
+            unsafe { SecureColumnByCoords::uninitialized(1 << lifting_log_size) };
         let sample_points: Vec<CirclePoint<SecureField>> =
             accumulations.iter().map(|x| x.sample_point).collect();
         let denominators_inverses = denominator_inverses(&sample_points, domain);
@@ -103,7 +103,7 @@ impl QuotientOps for SimdBackend {
             for (acc, den_inv) in accumulations.iter().zip_eq(denominators_inverses.iter()) {
                 let mut full_numerator = PackedSecureField::zero();
 
-                let log_ratio = max_log_size - acc.partial_numerators_acc.len().ilog2();
+                let log_ratio = lifting_log_size - acc.partial_numerators_acc.len().ilog2();
                 let lifted_partial_numerator =
                     PackedSecureField::from_packed_m31s(std::array::from_fn(|j| {
                         let lifted_simd = to_lifted_simd(
