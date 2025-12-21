@@ -100,18 +100,16 @@ pub struct PointSample {
 /// * (a(i, z), b(i, z), c(i, z)) are the coefficients of the line equation `cY - aX - b` through
 ///   (z.y, f̃ᵢ(z)), (conj(z.y), conj(f̃ᵢ(z)).
 pub fn fri_answers(
-    column_log_sizes: TreeVec<Vec<u32>>,
     samples: TreeVec<Vec<Vec<PointSample>>>,
     random_coeff: SecureField,
     query_positions: &[usize],
     queried_values: TreeVec<ColumnVec<Vec<BaseField>>>,
-    _n_columns_per_tree: TreeVec<usize>,
+    lifting_log_size: u32,
 ) -> Result<Vec<SecureField>, VerificationError> {
     let queried_values = queried_values.flatten();
     assert!(queried_values
         .iter()
         .all(|queries_per_col| queries_per_col.len() == query_positions.len()));
-    let lifting_log_size = *column_log_sizes.0.iter().flatten().max().unwrap();
     let samples_with_randomness = build_samples_with_randomness(&samples, random_coeff);
     let sample_batches =
         ColumnSampleBatch::new_vec(&samples_with_randomness.iter().flatten().collect::<Vec<_>>());

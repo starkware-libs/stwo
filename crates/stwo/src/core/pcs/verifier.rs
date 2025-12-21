@@ -138,17 +138,12 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             },
         );
 
-        let n_columns_per_tree = self
-            .trees
-            .as_ref()
-            .map(|tree| tree.n_columns_per_log_size.values().sum());
         let fri_answers = fri_answers(
-            self.column_log_sizes(),
             samples,
             random_coeff,
             &query_positions,
             proof.queried_values,
-            n_columns_per_tree,
+            lifting_log_size,
         )?;
 
         fri_verifier.decommit(fri_answers)?;
