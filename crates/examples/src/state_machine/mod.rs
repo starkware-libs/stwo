@@ -1,14 +1,14 @@
 use stwo_constraint_framework::relation_tracker::RelationSummary;
 use stwo_constraint_framework::Relation;
 pub mod components;
-pub mod gen;
+pub mod generator;
 
 use components::{
     track_state_machine_relations, State, StateMachineComponents, StateMachineElements,
     StateMachineOp0Component, StateMachineOp1Component, StateMachineProof, StateMachineStatement0,
     StateMachineStatement1, StateTransitionEval,
 };
-use gen::{gen_interaction_trace, gen_trace};
+use generator::{gen_interaction_trace, gen_trace};
 use itertools::{chain, Itertools};
 use stwo::core::channel::Blake2sChannel;
 use stwo::core::fields::m31::M31;
@@ -195,7 +195,7 @@ mod tests {
     use super::components::{
         StateMachineElements, StateMachineOp0Component, StateTransitionEval, STATE_SIZE,
     };
-    use super::gen::{gen_interaction_trace, gen_trace};
+    use super::generator::{gen_interaction_trace, gen_trace};
     use super::{prove_state_machine, verify_state_machine};
 
     #[test]

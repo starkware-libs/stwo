@@ -1,8 +1,8 @@
 mod constraints;
-mod gen;
+mod generator;
 
 use constraints::eval_blake_scheduler_constraints;
-pub use gen::{gen_interaction_trace, gen_trace, BlakeInput};
+pub use generator::{gen_interaction_trace, gen_trace, BlakeInput};
 use num_traits::Zero;
 use stwo::core::fields::qm31::SecureField;
 use stwo_constraint_framework::{
@@ -60,7 +60,7 @@ mod tests {
     use stwo_constraint_framework::FrameworkEval;
 
     use crate::blake::round::RoundElements;
-    use crate::blake::scheduler::r#gen::{gen_interaction_trace, gen_trace, BlakeInput};
+    use crate::blake::scheduler::generator::{gen_interaction_trace, gen_trace, BlakeInput};
     use crate::blake::scheduler::{BlakeElements, BlakeSchedulerEval};
 
     #[test]

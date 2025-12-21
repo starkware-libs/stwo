@@ -1,7 +1,7 @@
 mod constraints;
-mod gen;
+mod generator;
 
-pub use gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
+pub use generator::{generate_interaction_trace, generate_trace, BlakeRoundInput};
 use num_traits::Zero;
 use stwo::core::fields::qm31::SecureField;
 use stwo_constraint_framework::{
@@ -58,7 +58,9 @@ mod tests {
     use stwo::core::poly::circle::CanonicCoset;
     use stwo_constraint_framework::FrameworkEval;
 
-    use crate::blake::round::r#gen::{generate_interaction_trace, generate_trace, BlakeRoundInput};
+    use crate::blake::round::generator::{
+        generate_interaction_trace, generate_trace, BlakeRoundInput,
+    };
     use crate::blake::round::{BlakeRoundEval, RoundElements};
     use crate::blake::{BlakeXorElements, XorAccums};
 
