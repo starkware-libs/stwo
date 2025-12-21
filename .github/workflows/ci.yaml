@@ -182,6 +182,16 @@ jobs:
           toolchain: ${{ env.STABLE_VERSION }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --no-default-features --package stwo
+  
+  run-tests-prover-no-parallel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.STABLE_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --features prover --package stwo
 
   run-framework-tests:
     runs-on: ubuntu-latest
