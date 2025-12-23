@@ -14,3 +14,9 @@ pub mod core;
 pub mod prover;
 #[cfg(feature = "tracing")]
 pub mod tracing;
+
+
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;

@@ -51,6 +51,7 @@ serde.workspace = true
 tracing-subscriber.workspace = true
 hashbrown.workspace = true
 std-shims.workspace = true
+mimalloc.workspace = true
 dashmap = "6.1.0"
 
 [dev-dependencies]
