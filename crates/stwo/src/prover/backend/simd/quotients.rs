@@ -183,7 +183,7 @@ mod tests {
     use crate::core::fields::m31::BaseField;
     use crate::core::fields::qm31::SecureField;
     use crate::core::pcs::quotients::{
-        build_samples_with_randomness, ColumnSampleBatch, PointSample,
+        build_samples_with_randomness_and_periodicity, ColumnSampleBatch, PointSample,
     };
     use crate::core::pcs::TreeVec;
     use crate::core::poly::circle::CanonicCoset;
@@ -227,10 +227,15 @@ mod tests {
             .collect_vec();
         let random_coeff = qm31!(98, 76, 54, 32);
         let sample_batches = ColumnSampleBatch::new_vec(
-            &build_samples_with_randomness(&TreeVec(vec![samples]), random_coeff)
-                .iter()
-                .flatten()
-                .collect_vec(),
+            &build_samples_with_randomness_and_periodicity(
+                &TreeVec(vec![samples]),
+                vec![vec![LOG_SIZE; N_COLS].into_iter()],
+                LOG_SIZE,
+                random_coeff,
+            )
+            .iter()
+            .flatten()
+            .collect_vec(),
         );
         // SIMD
         let mut accumulated_numerators_vec_simd: Vec<AccumulatedNumerators<SimdBackend>> = vec![];

@@ -1,3 +1,5 @@
+use core::ops::Add;
+
 use itertools::{izip, zip_eq, Itertools};
 use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
@@ -72,7 +74,7 @@ impl ColumnSampleBatch {
     /// Groups column samples by sampled point.
     /// # Arguments
     /// samples: For each column, a vector of samples.
-    pub fn new_vec(samples_with_rand: &[&Vec<(&PointSample, SecureField)>]) -> Vec<Self> {
+    pub fn new_vec(samples_with_rand: &[&Vec<(PointSample, SecureField)>]) -> Vec<Self> {
         // Group samples by point, and create a ColumnSampleBatch for each point.
         // This should keep a stable ordering.
         let mut grouped_samples = IndexMap::default();
@@ -98,6 +100,7 @@ impl ColumnSampleBatch {
     }
 }
 
+#[derive(Clone)]
 pub struct PointSample {
     pub point: CirclePoint<SecureField>,
     pub value: SecureField,
@@ -126,7 +129,16 @@ pub fn fri_answers(
         .iter()
         .all(|queries_per_col| queries_per_col.len() == query_positions.len()));
     let lifting_log_size = *column_log_sizes.0.iter().flatten().max().unwrap();
-    let samples_with_randomness = build_samples_with_randomness(&samples, random_coeff);
+    let samples_with_randomness = build_samples_with_randomness_and_periodicity(
+        &samples,
+        column_log_sizes
+            .0
+            .into_iter()
+            .map(|x| x.into_iter())
+            .collect(),
+        lifting_log_size,
+        random_coeff,
+    );
     let sample_batches =
         ColumnSampleBatch::new_vec(&samples_with_randomness.iter().flatten().collect::<Vec<_>>());
     let lifting_domain = CanonicCoset::new(lifting_log_size).circle_domain();
@@ -276,28 +288,49 @@ pub struct QuotientConstants {
     pub line_coeffs: Vec<Vec<(SecureField, SecureField, SecureField)>>,
 }
 
-pub fn build_samples_with_randomness(
+pub fn build_samples_with_randomness_and_periodicity(
     samples: &TreeVec<Vec<Vec<PointSample>>>,
+    column_log_sizes: Vec<impl Iterator<Item = u32>>,
+    lifting_log_size: u32,
     random_coeff: SecureField,
-) -> TreeVec<Vec<Vec<(&PointSample, SecureField)>>> {
+) -> TreeVec<Vec<Vec<(PointSample, SecureField)>>> {
     let mut random_pows = (0..).scan(SecureField::one(), |acc, _| {
         let curr = *acc;
         *acc *= random_coeff;
         Some(curr)
     });
-    let mut res: Vec<Vec<Vec<(&PointSample, SecureField)>>> = Vec::new();
-    for tree_sample in samples.iter() {
-        res.push(
-            tree_sample
-                .iter()
-                .map(|samples_per_cols| {
-                    samples_per_cols
-                        .iter()
-                        .map(|s| (s, random_pows.next().unwrap()))
-                        .collect()
-                })
-                .collect(),
-        )
+    let mut res: Vec<Vec<Vec<(PointSample, SecureField)>>> = Vec::new();
+    let lifting_domain_generator = CanonicCoset::new(lifting_log_size).step();
+    for (samples_per_tree, sizes_per_tree) in samples.iter().zip(column_log_sizes.into_iter()) {
+        let samples_with_randomness_and_periodicity = samples_per_tree
+            .iter()
+            .zip(sizes_per_tree)
+            .map(|(samples_per_cols, log_size)| {
+                if samples_per_cols.is_empty() {
+                    return Vec::new();
+                }
+                let mut new_samples: Vec<(PointSample, SecureField)> = Vec::new();
+                // If there are two samples for this column, and the log size is not maximal, then
+                // we add a periodicity check.
+                if let [_prev_point_sample, point_sample] = &samples_per_cols[..] {
+                    if log_size < lifting_log_size {
+                        let period_generator = lifting_domain_generator.repeated_double(log_size);
+                        new_samples.push((
+                            PointSample {
+                                point: point_sample.point.add(period_generator.into_ef()),
+                                value: point_sample.value,
+                            },
+                            random_pows.next().unwrap(),
+                        ));
+                    }
+                }
+                for sample in samples_per_cols.iter() {
+                    new_samples.push((sample.clone(), random_pows.next().unwrap()));
+                }
+                new_samples
+            })
+            .collect();
+        res.push(samples_with_randomness_and_periodicity);
     }
     TreeVec(res)
 }
