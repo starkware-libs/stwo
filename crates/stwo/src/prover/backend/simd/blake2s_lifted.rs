@@ -17,7 +17,7 @@ use crate::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use crate::parallel_iter;
 use crate::prover::backend::simd::blake2s::{
     compress_finalize, compress_unfinalized, transpose_msgs, untranspose_states,
-    SIMD_LEAF_INITIAL_STATE, SIMD_NODE_INITIAL_STATE, ZEROS,
+    SIMD_LEAF_INITIAL_STATE, SIMD_NODE_INITIAL_STATE,
 };
 use crate::prover::backend::simd::m31::{reduce_to_m31_simd, N_LANES};
 use crate::prover::backend::{Col, Column, CpuBackend};
@@ -27,6 +27,7 @@ const N_FELTS_IN_BLAKE_MESSAGE: usize = 16;
 const N_FELTS_IN_BLAKE_STATE: usize = 8;
 const N_BYTES_IN_BLAKE_MESSAGE: u64 = N_FELTS_IN_BLAKE_MESSAGE as u64 * N_BYTES_FELT as u64;
 const N_BYTES_IN_PREFIX: u64 = 64;
+const LOG_N_HASHES_PER_SIMD_STATE: u32 = 4;
 
 impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M31_OUTPUT>>
     for SimdBackend
@@ -39,6 +40,7 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
     ///
     /// If the length of a smallest column (e.g. the first) is smaller than `N_LANES`, the
     /// implementation falls back to the CPU implementation.
+    #[allow(clippy::uninit_vec)]
     fn build_leaves(columns: &[&Col<Self, BaseField>]) -> Col<Self, Blake2sHash> {
         if columns.is_empty() {
             let hasher = Blake2sMerkleHasherGeneric::<IS_M31_OUTPUT>::default_with_initial_state();
@@ -54,25 +56,49 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         // refer to the "size" in terms of PackedM31 (e.g. the log size of a column
         // of 4 PackedM31 elements is 2).
         let max_log_size: u32 = columns.last().unwrap().data.len().ilog2();
-        // Hash columns in chunks of 16.
-        let mut col_chunk_iter = columns.chunks(N_FELTS_IN_BLAKE_MESSAGE);
-        let last_chunk = unsafe { col_chunk_iter.next_back().unwrap_unchecked() };
+
         // Initialize the vector of Blake2s states. The state is of type `[u32x16; 8]`.
         //
         // We use two large buffers to hold the intermediate results of the computation.
         // In every iteration, a possibly larger chunk of the buffer is used. This
         // saves memory allocations.
         let mut prev_layer_states: Vec<[u32x16; N_FELTS_IN_BLAKE_STATE]> =
-            vec![SIMD_LEAF_INITIAL_STATE; 1 << (max_log_size)];
+            Vec::with_capacity(1 << max_log_size);
         let mut next_layer_states: Vec<[u32x16; N_FELTS_IN_BLAKE_STATE]> =
-            vec![[ZEROS; N_FELTS_IN_BLAKE_STATE]; 1 << (max_log_size)];
+            Vec::with_capacity(1 << max_log_size);
+        // Safety: no index in `next_layer_states` is ever read without having been written to
+        // before.
+        unsafe {
+            next_layer_states.set_len(1 << max_log_size);
+        }
+        #[cfg(not(feature = "parallel"))]
+        prev_layer_states.extend(std::iter::repeat_n(
+            SIMD_LEAF_INITIAL_STATE,
+            1 << max_log_size,
+        ));
+        #[cfg(feature = "parallel")]
+        prev_layer_states.par_extend(
+            (0..1 << max_log_size)
+                .into_par_iter()
+                .map(|_| SIMD_LEAF_INITIAL_STATE),
+        );
+
+        // The last column chunk, which requires the `compress_finalize` permutation, is
+        // `columns[last_chunk_index..]`. This chunk is treated on its own towards the end of the
+        // function.
+        let last_chunk_index =
+            (columns.len() - 1) / N_FELTS_IN_BLAKE_MESSAGE * N_FELTS_IN_BLAKE_MESSAGE;
+        let lifting_indices =
+            get_lifting_indices(columns.iter().map(|c| c.data.len()), last_chunk_index);
+        let mut byte_count = N_BYTES_IN_PREFIX;
 
         // The actual log size of `prev_layer_states` is equal to `max_log_size`, but only the first
         // two entries are accessed for the computation of the first iteration.
         let mut prev_chunk_max_log_size = 0;
-        for (chunk_idx, chunk_columns) in &mut col_chunk_iter.enumerate() {
-            let chunk_max_log_size: u32 = chunk_columns.iter().last().unwrap().data.len().ilog2();
+        for (start, end) in lifting_indices.into_iter().tuple_windows() {
+            let chunk_max_log_size: u32 = columns[end - 1].data.len().ilog2();
             let next_layer_state_slice = &mut next_layer_states[0..1 << chunk_max_log_size];
+            let log_ratio = chunk_max_log_size - prev_chunk_max_log_size;
             // Compute the new states of the current layer.
             #[cfg(not(feature = "parallel"))]
             let iter_states = next_layer_state_slice.iter_mut();
@@ -80,73 +106,99 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
             let iter_states = next_layer_state_slice.par_iter_mut();
 
             iter_states.enumerate().for_each(|(i, curr_state)| {
-                let log_ratio = chunk_max_log_size - prev_chunk_max_log_size;
+                let mut local_byte_count = byte_count + N_BYTES_IN_BLAKE_MESSAGE;
+                // Lift `prev_layer_states` and the first chunk `columns[start..start + 16]`.
                 let prev_state = std::array::from_fn(|j| {
                     let prev_state_limb = prev_layer_states[i >> log_ratio][j];
                     to_lifted_simd(prev_state_limb, log_ratio, i)
                 });
-
-                // The first summand corresponds to the leaf prefix.
-                // `chunk_idx` is incremented by 1 because it's zero-based.
-                let byte_count =
-                    N_BYTES_IN_PREFIX + (N_BYTES_IN_BLAKE_MESSAGE * (chunk_idx + 1) as u64);
                 let mut msgs: [u32x16; N_FELTS_IN_BLAKE_MESSAGE] = unsafe { std::mem::zeroed() };
-                for (j, column) in chunk_columns.iter().enumerate() {
+                for (j, column) in columns[start..start + 16].iter().enumerate() {
                     let log_size = column.data.len().ilog2();
                     let log_ratio = chunk_max_log_size - log_size;
                     msgs[j] = to_lifted_simd(column.data[i >> log_ratio].into_simd(), log_ratio, i);
                 }
-
-                let state = compress_unfinalized(prev_state, msgs, byte_count);
+                let mut state = compress_unfinalized(prev_state, msgs, local_byte_count);
+                // Deal with the subsequent chunks in columns[start + 16..end]`. Note that since
+                // `start < end` and both are multiples of 16, we have `start + 16 <= end`,
+                // therefore the indexing range below doesn't panic. All columns in
+                // `columns[start + 16..end]` are guaranteed to be of the same size (hence no
+                // lifting is required).
+                for chunk_columns in &mut columns[start + 16..end].chunks(N_FELTS_IN_BLAKE_MESSAGE)
+                {
+                    let msgs: [u32x16; N_FELTS_IN_BLAKE_MESSAGE] =
+                        std::array::from_fn(|j| chunk_columns[j].data[i].into_simd());
+                    local_byte_count += N_BYTES_IN_BLAKE_MESSAGE;
+                    state = compress_unfinalized(state, msgs, local_byte_count);
+                }
                 curr_state.copy_from_slice(&state);
             });
+            // We hashed `((end - start) / N_FELTS_IN_BLAKE_MESSAGE) * N_BYTES_IN_BLAKE_MESSAGE = 4
+            // * (end - start)` bytes.
+            byte_count += 4 * (end - start) as u64;
             std::mem::swap(&mut prev_layer_states, &mut next_layer_states);
             prev_chunk_max_log_size = chunk_max_log_size;
         }
 
         // Process last chunk.
-        // TODO(Leo): can we avoid the code duplication with the iteration
-        // on the chunks?
+        let chunk_max_log_size: u32 = max_log_size;
+        let next_layer_state_slice = &mut next_layer_states[0..1 << chunk_max_log_size];
+        let log_ratio = chunk_max_log_size - prev_chunk_max_log_size;
         #[cfg(not(feature = "parallel"))]
-        let iter_states = next_layer_states.iter_mut();
+        let iter_states = next_layer_state_slice.iter_mut();
         #[cfg(feature = "parallel")]
-        let iter_states = next_layer_states.par_iter_mut();
+        let iter_states = next_layer_state_slice.par_iter_mut();
 
+        byte_count += ((columns.len() - last_chunk_index) * N_BYTES_FELT) as u64;
         iter_states.enumerate().for_each(|(i, curr_state)| {
-            let log_ratio = (max_log_size) - prev_chunk_max_log_size;
             let prev_state = std::array::from_fn(|j| {
                 let prev_state_limb = prev_layer_states[i >> log_ratio][j];
                 to_lifted_simd(prev_state_limb, log_ratio, i)
             });
-
-            let byte_count = N_BYTES_IN_PREFIX + (N_BYTES_FELT as u64) * (columns.len() as u64);
             let mut msgs: [u32x16; N_FELTS_IN_BLAKE_MESSAGE] = unsafe { std::mem::zeroed() };
-            for (j, column) in last_chunk.iter().enumerate() {
+            for (j, column) in columns[last_chunk_index..].iter().enumerate() {
                 let log_size = column.data.len().ilog2();
-                let log_ratio = (max_log_size) - log_size;
+                let log_ratio = chunk_max_log_size - log_size;
                 msgs[j] = to_lifted_simd(column.data[i >> log_ratio].into_simd(), log_ratio, i);
             }
             let state = compress_finalize(prev_state, msgs, byte_count);
             curr_state.copy_from_slice(&state);
         });
 
-        next_layer_states
-            .iter()
-            .flat_map(|x| {
-                let mut untransposed = untranspose_states(*x);
-                if IS_M31_OUTPUT {
-                    untransposed = std::array::from_fn(|i| reduce_to_m31_simd(untransposed[i]));
-                }
-                let state: [Blake2sHash; 16] = unsafe { transmute(untransposed) };
-                state
-            })
-            .collect_vec()
+        // Prepare the output buffer.
+        let mut res = Vec::with_capacity(1 << (max_log_size + LOG_N_HASHES_PER_SIMD_STATE));
+        // Safety: we never read from `res`, only write to it.
+        unsafe {
+            res.set_len(1 << (max_log_size + LOG_N_HASHES_PER_SIMD_STATE));
+        }
+        // Untranspose the states and reduce modulo M31 if `IS_M31_OUTPUT == true`.
+        #[cfg(not(feature = "parallel"))]
+        let iter_states = next_layer_states
+            .iter_mut()
+            .zip(res.chunks_mut(1 << LOG_N_HASHES_PER_SIMD_STATE));
+        #[cfg(feature = "parallel")]
+        let iter_states = next_layer_states
+            .par_iter_mut()
+            .zip(res.par_chunks_mut(1 << LOG_N_HASHES_PER_SIMD_STATE));
+
+        iter_states.for_each(|(state, target)| {
+            let untransposed = if IS_M31_OUTPUT {
+                let tmp = untranspose_states(*state);
+                std::array::from_fn(|i| reduce_to_m31_simd(tmp[i]))
+            } else {
+                untranspose_states(*state)
+            };
+            let state: [Blake2sHash; 1 << LOG_N_HASHES_PER_SIMD_STATE] =
+                unsafe { transmute(untransposed) };
+            target.copy_from_slice(&state);
+        });
+        res
     }
 
+    #[allow(clippy::uninit_vec)]
     fn build_next_layer(prev_layer: &Vec<Blake2sHash>) -> Vec<Blake2sHash> {
         // The log size of the current layer that needs to be built.
         let log_size: u32 = prev_layer.len().ilog2() - 1;
-
         if log_size < LOG_N_LANES {
             return parallel_iter!(0..1 << log_size)
                 .map(|i| {
@@ -158,8 +210,12 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                 .collect();
         }
 
-        // Commit to columns.
-        let mut res = vec![Blake2sHash::default(); 1 << log_size];
+        let mut res: Vec<Blake2sHash> = Vec::with_capacity(1 << log_size);
+        // Safety: no index in `res` is ever read without having been written to
+        // before.
+        unsafe {
+            res.set_len(1 << log_size);
+        }
 
         #[cfg(not(feature = "parallel"))]
         let iter = res.chunks_mut(1 << LOG_N_LANES);
@@ -177,7 +233,6 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
                 transpose_msgs(msgs),
                 N_BYTES_IN_PREFIX + N_BYTES_IN_BLAKE_MESSAGE,
             );
-
             let mut untransposed = untranspose_states(state);
             if IS_M31_OUTPUT {
                 untransposed = std::array::from_fn(|i| reduce_to_m31_simd(untransposed[i]));
@@ -187,6 +242,35 @@ impl<const IS_M31_OUTPUT: bool> MerkleOpsLifted<Blake2sMerkleHasherGeneric<IS_M3
         });
         res
     }
+}
+
+/// Given a vector of columns sorted by size (in ascending order) and an index `last_chunk_index`
+/// which is a multiple of 16, returns a vector of indices `0 = i₁ < i₂ < ... < iₙ =
+/// last_chunk_index` (if `last_chunk_index = 0` then n = 1 and i₁ = 0) such that:
+/// * All indices are multiples of 16.
+/// * For all 1 <= k < n:
+///     1. the sizes in `col_sizes[iₖ + 16..iₖ₊₁]` are all equal.
+///     2. `col_sizes[iₖ] < col_sizes[iₖ₊₁]`.
+fn get_lifting_indices(
+    col_sizes: impl Iterator<Item = usize>,
+    last_chunk_index: usize,
+) -> Vec<usize> {
+    let mut prev_size = 0;
+    let mut res = vec![];
+    for (idx, col_size) in col_sizes
+        .enumerate()
+        .step_by(N_FELTS_IN_BLAKE_MESSAGE)
+        .skip(1)
+    {
+        if col_size > prev_size {
+            res.push(idx - 16);
+            prev_size = col_size;
+        }
+    }
+    res.push(last_chunk_index);
+    // Sanity check that there are no duplicates.
+    debug_assert!(res.iter().duplicates().next().is_none());
+    res
 }
 
 #[cfg(test)]
