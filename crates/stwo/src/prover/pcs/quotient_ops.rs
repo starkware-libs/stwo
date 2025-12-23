@@ -6,7 +6,9 @@ use tracing::{span, Level};
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
-use crate::core::pcs::quotients::{build_samples_with_randomness, ColumnSampleBatch, PointSample};
+use crate::core::pcs::quotients::{
+    build_samples_with_randomness_and_periodicity, ColumnSampleBatch, PointSample,
+};
 use crate::core::pcs::TreeVec;
 use crate::prover::backend::ColumnOps;
 use crate::prover::poly::circle::{CircleEvaluation, PolyOps, SecureEvaluation};
@@ -71,11 +73,21 @@ pub fn compute_fri_quotients<B: QuotientOps + AccumulationOps>(
     columns: &TreeVec<Vec<&CircleEvaluation<B, BaseField, BitReversedOrder>>>,
     samples: &TreeVec<Vec<Vec<PointSample>>>,
     random_coeff: SecureField,
+    lifting_log_size: u32,
     _log_blowup_factor: u32,
 ) -> SecureEvaluation<B, BitReversedOrder> {
     let _span = span!(Level::INFO, "Compute FRI quotients", class = "FRIQuotients").entered();
     let mut accumulated_numerators_vec: Vec<AccumulatedNumerators<B>> = vec![];
-    let samples_with_randomness = build_samples_with_randomness(samples, random_coeff);
+    let samples_with_randomness = build_samples_with_randomness_and_periodicity(
+        samples,
+        columns
+            .0
+            .iter()
+            .map(|x| x.iter().map(|c| c.domain.log_size()))
+            .collect(),
+        lifting_log_size,
+        random_coeff,
+    );
 
     // Populate `accumulated_numerators_vec`, per (log_size, sample_point). After this iteration,
     // `accumulated_numerators_vec` will have length equal to
@@ -181,6 +193,7 @@ mod tests {
             &TreeVec(vec![vec![&eval]]),
             &TreeVec(vec![vec![samples]]),
             rand_coeff,
+            LOG_SIZE + LOG_BLOWUP_FACTOR,
             LOG_BLOWUP_FACTOR,
         );
         let mut coeffs = quot_eval
