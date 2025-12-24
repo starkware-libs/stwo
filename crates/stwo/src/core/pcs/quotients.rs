@@ -123,12 +123,12 @@ pub fn fri_answers(
     random_coeff: SecureField,
     query_positions: &[usize],
     queried_values: TreeVec<ColumnVec<Vec<BaseField>>>,
+    lifting_log_size: u32,
 ) -> Result<Vec<SecureField>, VerificationError> {
     let queried_values = queried_values.flatten();
     assert!(queried_values
         .iter()
         .all(|queries_per_col| queries_per_col.len() == query_positions.len()));
-    let lifting_log_size = *column_log_sizes.0.iter().flatten().max().unwrap();
     let samples_with_randomness = build_samples_with_randomness_and_periodicity(
         &samples,
         column_log_sizes
