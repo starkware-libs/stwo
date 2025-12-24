@@ -144,6 +144,7 @@ impl<MC: MerkleChannel> CommitmentSchemeVerifier<MC> {
             random_coeff,
             &query_positions,
             proof.queried_values,
+            lifting_log_size,
         )?;
 
         fri_verifier.decommit(fri_answers)?;

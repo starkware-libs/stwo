@@ -12,6 +12,8 @@ use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 
 pub type WideFibonacciComponent<const N: usize> = FrameworkComponent<WideFibonacciEval<N>>;
 
+mod fib_with_preprocessed;
+
 pub struct FibInput {
     pub a: BaseField,
     pub b: BaseField,
