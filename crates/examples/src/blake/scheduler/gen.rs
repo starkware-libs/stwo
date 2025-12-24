@@ -129,13 +129,11 @@ pub fn gen_interaction_trace(
     for [l0, l1] in lookup_data.round_lookups.array_chunks::<2>() {
         let mut col_gen = logup_gen.new_col();
 
-        #[allow(clippy::needless_range_loop)]
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
             let p0: PackedSecureField =
                 round_lookup_elements.combine(&l0.each_ref().map(|l| l.data[vec_row]));
             let p1: PackedSecureField =
                 round_lookup_elements.combine(&l1.each_ref().map(|l| l.data[vec_row]));
-            #[allow(clippy::eq_op)]
             col_gen.write_frac(vec_row, p0 + p1, p0 * p1);
         }
 
@@ -145,7 +143,6 @@ pub fn gen_interaction_trace(
     // Last pair. If the number of round is odd (as in blake3), we combine that last round lookup
     // with the entire blake lookup.
     let mut col_gen = logup_gen.new_col();
-    #[allow(clippy::needless_range_loop)]
     for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
         let p_blake: PackedSecureField = blake_lookup_elements.combine(
             &lookup_data

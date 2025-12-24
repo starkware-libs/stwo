@@ -50,10 +50,8 @@ impl<B: ColumnOps<BaseField>> SecureColumnByCoords<B> {
     }
 
     pub fn set(&mut self, index: usize, value: SecureField) {
-        let values = value.to_m31_array();
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..SECURE_EXTENSION_DEGREE {
-            self.columns[i].set(index, values[i]);
+        for (column, value) in zip_eq(&mut self.columns, value.to_m31_array()) {
+            column.set(index, value);
         }
     }
 }

@@ -255,7 +255,6 @@ pub fn generate_interaction_trace(
     for [(w0, l0), (w1, l1)] in lookup_data.xor_lookups.array_chunks::<2>() {
         let mut col_gen = logup_gen.new_col();
 
-        #[allow(clippy::needless_range_loop)]
         for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
             let p0: PackedSecureField =
                 xor_lookup_elements.combine(*w0, &l0.each_ref().map(|l| l.data[vec_row]));
@@ -268,7 +267,6 @@ pub fn generate_interaction_trace(
     }
 
     let mut col_gen = logup_gen.new_col();
-    #[allow(clippy::needless_range_loop)]
     for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
         let p = round_lookup_elements
             .combine(&lookup_data.round_lookup.each_ref().map(|l| l.data[vec_row]));

@@ -87,11 +87,12 @@ impl QuotientOps for SimdBackend {
             let subdomain = subdomain.shift(c);
 
             let twiddles = SimdBackend::precompute_twiddles(subdomain.half_coset);
-            #[allow(clippy::needless_range_loop)]
-            for i in 0..SECURE_EXTENSION_DEGREE {
+            for (subeval_poly, extended_eval_column) in
+                zip_eq(&subeval_polys, &mut extended_eval.columns)
+            {
                 // Sanity check.
-                let eval = subeval_polys[i].evaluate_with_twiddles(subdomain, &twiddles);
-                extended_eval.columns[i].data[(ci * eval.data.len())..((ci + 1) * eval.data.len())]
+                let eval = subeval_poly.evaluate_with_twiddles(subdomain, &twiddles);
+                extended_eval_column.data[(ci * eval.data.len())..((ci + 1) * eval.data.len())]
                     .copy_from_slice(&eval.data);
             }
         }
@@ -110,7 +111,7 @@ fn accumulate_quotients_on_subdomain(
 ) -> (
     span::EnteredSpan,
     SecureColumnByCoords<SimdBackend>,
-    [crate::prover::poly::circle::CircleCoefficients<SimdBackend>; 4],
+    [crate::prover::poly::circle::CircleCoefficients<SimdBackend>; SECURE_EXTENSION_DEGREE],
 ) {
     assert!(subdomain.log_size() >= LOG_N_LANES + 2);
     let mut values =
