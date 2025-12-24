@@ -5,7 +5,7 @@ edition.workspace = true
 
 [features]
 parallel = ["dep:rayon", "stwo/parallel"]
-tracing = []
+tracing = ["stwo/tracing"]
 slow-tests = []
 
 [lib]
