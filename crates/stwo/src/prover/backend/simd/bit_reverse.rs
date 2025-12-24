@@ -80,11 +80,9 @@ pub fn bit_reverse_m31(data: &mut [PackedBaseField]) {
 
                 if idx == idx_rev {
                     // Palindrome index. Write into the same chunk.
-                    #[allow(clippy::needless_range_loop)]
-                    for i in 0..16 {
+                    for (i, value0) in values0.iter().enumerate() {
                         unsafe {
-                            *data.get_unchecked_mut(idx + (i << (2 * W_BITS + a_bits))) =
-                                values0[i];
+                            *data.get_unchecked_mut(idx + (i << (2 * W_BITS + a_bits))) = *value0;
                         }
                     }
                     continue;

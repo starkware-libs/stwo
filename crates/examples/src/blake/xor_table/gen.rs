@@ -31,7 +31,6 @@ macro_rules! xor_table_gen {
 
         /// Generates the interaction trace for the xor table.
         /// Returns the interaction trace, the Preprocessed trace, and the claimed sum.
-        #[allow(clippy::type_complexity)]
         pub fn generate_interaction_trace<
             const ELEM_BITS: u32,
             const EXPAND_BITS: u32,
@@ -67,7 +66,6 @@ macro_rules! xor_table_gen {
                 let bh1 = i1 as u32 & ((1 << EXPAND_BITS) - 1);
 
                 // Each column has 2^(2*LIMB_BITS) rows, packed in N_LANES.
-                #[allow(clippy::needless_range_loop)]
                 for vec_row in
                     0..(1 << (XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits() - LOG_N_LANES))
                 {
@@ -108,7 +106,6 @@ macro_rules! xor_table_gen {
                     let ah = i as u32 >> EXPAND_BITS;
                     let bh = i as u32 & ((1 << EXPAND_BITS) - 1);
 
-                    #[allow(clippy::needless_range_loop)]
                     for vec_row in 0..(1
                         << (XorTable::new(ELEM_BITS, EXPAND_BITS, 0).column_bits() - LOG_N_LANES))
                     {

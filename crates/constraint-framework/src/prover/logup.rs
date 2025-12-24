@@ -197,12 +197,10 @@ impl LogupColGenerator<'_> {
         chunks_iter
             .enumerate()
             .for_each(|(chunk_idx, (mut numerator_chunk, denom_inv_chunk))| {
-                #[allow(clippy::needless_range_loop)]
-                for idx_in_chunk in 0..chunk_size {
+                for (idx_in_chunk, denom_item) in denom_inv_chunk.iter().enumerate() {
                     unsafe {
                         let vec_row = chunk_idx * chunk_size + idx_in_chunk;
-                        let value =
-                            numerator_chunk.packed_at(idx_in_chunk) * denom_inv_chunk[idx_in_chunk];
+                        let value = numerator_chunk.packed_at(idx_in_chunk) * *denom_item;
                         let prev_value = self
                             .gen
                             .trace

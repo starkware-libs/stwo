@@ -302,7 +302,6 @@ pub fn gen_interaction_trace(
     let _span = span!(Level::INFO, "Generate interaction trace").entered();
     let mut logup_gen = unsafe { LogupTraceGenerator::uninitialized(log_size) };
 
-    #[allow(clippy::needless_range_loop)]
     for rep_i in 0..N_INSTANCES_PER_ROW {
         let frac_at_row = |vec_row: usize| {
             let denom0: PackedSecureField = lookup_elements.combine(

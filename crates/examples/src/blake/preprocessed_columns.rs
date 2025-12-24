@@ -47,7 +47,6 @@ impl XorTable {
 
     /// Generates the Preprocessed trace for the xor table.
     /// Returns the Preprocessed trace, the Preprocessed trace, and the claimed sum.
-    #[allow(clippy::type_complexity)]
     pub fn generate_constant_trace(
         &self,
     ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {

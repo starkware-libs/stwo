@@ -315,7 +315,6 @@ impl Mul<BaseField> for ExtensionFieldCounter {
 impl Mul<SecureField> for ExtensionFieldCounter {
     type Output = Self;
 
-    #[allow(clippy::suspicious_arithmetic_impl)]
     fn mul(self, _rhs: SecureField) -> Self {
         self * ExtensionFieldCounter::zero()
     }
