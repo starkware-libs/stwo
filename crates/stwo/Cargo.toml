@@ -53,6 +53,7 @@ hashbrown.workspace = true
 std-shims.workspace = true
 mimalloc.workspace = true
 dashmap = "6.1.0"
+tikv-jemallocator = "0.6.1"
 
 [dev-dependencies]
 aligned = "0.4.2"

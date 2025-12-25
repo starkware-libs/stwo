@@ -15,8 +15,9 @@ pub mod prover;
 #[cfg(feature = "tracing")]
 pub mod tracing;
 
+#[cfg(not(target_env = "msvc"))] // jemalloc is not supported on MSVC targets
+use tikv_jemallocator::Jemalloc;
 
-use mimalloc::MiMalloc;
-
+#[cfg(not(target_env = "msvc"))]
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static GLOBAL: Jemalloc = Jemalloc;
