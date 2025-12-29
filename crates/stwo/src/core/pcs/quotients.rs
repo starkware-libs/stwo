@@ -97,7 +97,7 @@ impl ColumnSampleBatch {
             .collect()
     }
 }
-
+#[derive(Clone)]
 pub struct PointSample {
     pub point: CirclePoint<SecureField>,
     pub value: SecureField,
@@ -318,4 +318,113 @@ pub fn build_samples_with_randomness(
         )
     }
     TreeVec(res)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ops::Add;
+
+    use num_traits::One;
+
+    use crate::core::circle::SECURE_FIELD_CIRCLE_GEN;
+    use crate::core::fields::qm31::SecureField;
+    use crate::core::pcs::quotients::{
+        accumulate_row_quotients, fri_answers, quotient_constants, ColumnSampleBatch,
+        NumeratorData, PointSample,
+    };
+    use crate::core::pcs::TreeVec;
+    use crate::core::poly::circle::CanonicCoset;
+    use crate::{m31, qm31};
+
+    #[test]
+    fn create_values_for_test_fri_answers() {
+        let log_blowup_factor = 2;
+        let col0_degree_bound = 3;
+        let col1_degree_bound = 5;
+        let col2_degree_bound = col1_degree_bound;
+        let column_log_sizes = vec![
+            vec![],
+            vec![],
+            vec![
+                col0_degree_bound + log_blowup_factor,
+                col1_degree_bound + log_blowup_factor,
+                col2_degree_bound + log_blowup_factor,
+            ],
+        ];
+
+        let lifting_log_size = 7;
+        let lifting_domain = CanonicCoset::new(lifting_log_size);
+        let oods_point = SECURE_FIELD_CIRCLE_GEN;
+        let prev_oods_point = SECURE_FIELD_CIRCLE_GEN.add(-lifting_domain.step().into_ef());
+        let sample0 = PointSample {
+            point: oods_point,
+            value: qm31!(0, 1, 2, 3),
+        };
+        let sample1 = PointSample {
+            point: prev_oods_point,
+            value: qm31!(1, 2, 3, 4),
+        };
+        let col0_samples = vec![sample1.clone(), sample0.clone()];
+        let col1_samples = vec![sample0.clone()];
+        let col2_samples = vec![sample1, sample0];
+        let samples_per_column_per_tree = vec![
+            vec![],
+            vec![],
+            vec![col0_samples, col1_samples, col2_samples],
+        ];
+
+        let random_coeff = qm31!(9, 8, 7, 6);
+        let query_positions: Vec<usize> = vec![4, 5];
+        let queried_values = vec![
+            vec![],
+            vec![],
+            vec![m31!(3), m31!(7), m31!(9), m31!(2), m31!(4), m31!(10)],
+        ];
+        let n_cols_per_tree = vec![0, 0, 3];
+        let res = fri_answers(
+            TreeVec(column_log_sizes),
+            TreeVec(samples_per_column_per_tree),
+            random_coeff,
+            &query_positions,
+            TreeVec(queried_values),
+            TreeVec(n_cols_per_tree),
+        );
+        println!("{:?}", res);
+    }
+
+    #[test]
+    fn create_values_for_test_accumulate_row_quotients() {
+        let random_coeff = qm31!(4, 3, 2, 1);
+        let domain = CanonicCoset::new(5);
+        let queried_values_at_row = vec![m31!(5), m31!(1)];
+        let p0 = SECURE_FIELD_CIRCLE_GEN;
+        let p1 = p0 + p0;
+        let sample_batches = vec![
+            ColumnSampleBatch {
+                point: p0,
+                cols_vals_randpows: vec![NumeratorData {
+                    column_index: 0,
+                    sample_value: qm31!(0, 1, 2, 3),
+                    random_coeff: SecureField::one(),
+                }],
+            },
+            ColumnSampleBatch {
+                point: p1,
+                cols_vals_randpows: vec![NumeratorData {
+                    column_index: 1,
+                    sample_value: qm31!(1, 2, 3, 4),
+                    random_coeff,
+                }],
+            },
+        ];
+        let quotient_constants = quotient_constants(&sample_batches);
+        let domain_point = domain.at(0);
+        let res = accumulate_row_quotients(
+            &sample_batches,
+            &queried_values_at_row,
+            &quotient_constants,
+            domain_point,
+        );
+        println!("{:?}", res);
+    }
 }
