@@ -153,11 +153,11 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         )
         .entered();
 
-        let max_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
+        let lifting_log_size = self.trees.last().unwrap().commitment.layers.len() as u32 - 1;
         let weights_hash_map = if self.store_polynomials_coefficients {
             None
         } else {
-            Some(self.build_weights_hash_map(&sampled_points, max_log_size))
+            Some(self.build_weights_hash_map(&sampled_points, lifting_log_size))
         };
         let samples: TreeVec<Vec<Vec<PointSample>>> = self
             .polynomials()
@@ -168,7 +168,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     .map(|&point| PointSample {
                         point,
                         value: poly.eval_at_point(
-                            point.repeated_double(max_log_size - poly.evals.domain.log_size()),
+                            point.repeated_double(lifting_log_size - poly.evals.domain.log_size()),
                             weights_hash_map.as_ref(),
                         ),
                     })
@@ -186,6 +186,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
             &columns,
             &samples,
             channel.draw_secure_felt(),
+            lifting_log_size,
             self.config.fri_config.log_blowup_factor,
         );
 
@@ -209,7 +210,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         // Build the query position tree.
         let preprocessed_query_positions = prepare_preprocessed_query_positions(
             &query_positions,
-            max_log_size,
+            lifting_log_size,
             self.trees[0].commitment.layers.len() as u32 - 1,
         );
         let query_positions_tree = TreeVec::new(
