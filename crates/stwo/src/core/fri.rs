@@ -15,6 +15,7 @@ use super::poly::circle::CircleDomain;
 use super::queries::{draw_queries, Queries};
 use crate::core::circle::Coset;
 use crate::core::fft::ibutterfly;
+use crate::core::fields::m31::BaseField;
 use crate::core::fields::FieldExpOps;
 use crate::core::poly::circle::CanonicCoset;
 use crate::core::poly::line::{LineDomain, LinePoly};
@@ -448,7 +449,6 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
 
         let mut fri_witness = self.proof.fri_witness.iter().copied();
 
-        let mut decommitmented_values = vec![];
         let (decommitment_positions, sparse_evaluation) =
             compute_decommitment_positions_and_rebuild_evals(
                 queries,
@@ -460,13 +460,19 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
                 FriVerificationError::FirstLayerEvaluationsInvalid
             })?;
 
-        decommitmented_values.extend(
-            sparse_evaluation
-                .subset_evals
-                .iter()
-                .flatten()
-                .flat_map(|qm31| qm31.to_m31_array()),
-        );
+        // A QM31 column is committed as 4 M31 columns.
+        let mut decommitmented_values: [Vec<BaseField>; SECURE_EXTENSION_DEGREE] =
+            core::array::from_fn(|_| Vec::new());
+        sparse_evaluation
+            .subset_evals
+            .iter()
+            .flatten()
+            .for_each(|x| {
+                let arr = x.to_m31_array();
+                for (i, val) in arr.into_iter().enumerate() {
+                    decommitmented_values[i].push(val);
+                }
+            });
 
         // Check all proof evals have been consumed.
         if fri_witness.next().is_some() {
@@ -481,7 +487,7 @@ impl<H: MerkleHasherLifted> FriFirstLayerVerifier<H> {
         merkle_verifier
             .verify(
                 &decommitment_positions,
-                decommitmented_values,
+                decommitmented_values.to_vec(),
                 self.proof.decommitment.clone(),
             )
             .map_err(|error| FriVerificationError::FirstLayerCommitmentInvalid { error })?;
@@ -540,12 +546,19 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
             });
         }
 
-        let decommitmented_values = sparse_evaluation
+        // A QM31 column is committed as 4 M31 columns.
+        let mut decommitmented_values: [Vec<BaseField>; SECURE_EXTENSION_DEGREE] =
+            core::array::from_fn(|_| Vec::new());
+        sparse_evaluation
             .subset_evals
             .iter()
             .flatten()
-            .flat_map(|qm31| qm31.to_m31_array())
-            .collect_vec();
+            .for_each(|x| {
+                let arr = x.to_m31_array();
+                for (i, val) in arr.into_iter().enumerate() {
+                    decommitmented_values[i].push(val);
+                }
+            });
 
         let merkle_verifier = MerkleVerifierLifted::new(
             self.proof.commitment,
@@ -555,7 +568,7 @@ impl<H: MerkleHasherLifted> FriInnerLayerVerifier<H> {
         merkle_verifier
             .verify(
                 &decommitment_positions,
-                decommitmented_values,
+                decommitmented_values.to_vec(),
                 self.proof.decommitment.clone(),
             )
             .map_err(|e| FriVerificationError::InnerLayerCommitmentInvalid {
