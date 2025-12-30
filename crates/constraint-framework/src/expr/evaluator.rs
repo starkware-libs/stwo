@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
 use num_traits::Zero;
+use stwo::core::fields::FieldExpOps;
 use stwo::core::Fraction;
 
 use super::assignment::{ExprVarAssignment, ExprVariables};
 use super::degree::NamedExprs;
-use super::{BaseExpr, ExtExpr};
+use super::{init_arena, BaseExpr, ExtExpr};
 use crate::expr::ColumnExpr;
 use crate::preprocessed_columns::PreProcessedColumnId;
 use crate::{EvalAtRow, Relation, RelationEntry, INTERACTION_TRACE_IDX};
@@ -21,18 +22,20 @@ pub struct FormalLogupAtRow {
 
 impl FormalLogupAtRow {
     pub fn new(interaction: usize) -> Self {
-        let claimed_sum_name = "claimed_sum".to_string();
-        let column_size_name = "column_size".to_string();
+        let claimed_sum_name = "claimed_sum";
+        let column_size_name = "column_size";
+
+        let claimed_sum = ExtExpr::param(claimed_sum_name);
+        let column_size_inv = BaseExpr::param(column_size_name).inverse();
+        let cumsum_shift = claimed_sum * column_size_inv;
 
         Self {
             interaction,
-            // TODO(alont): Should these be Expr::SecureField?
-            claimed_sum: ExtExpr::Param(claimed_sum_name.clone()),
+            claimed_sum: ExtExpr::param(claimed_sum_name),
             fracs: vec![],
             is_finalized: true,
             is_first: BaseExpr::zero(),
-            cumsum_shift: ExtExpr::Param(claimed_sum_name)
-                * BaseExpr::Inv(Box::new(BaseExpr::Param(column_size_name))),
+            cumsum_shift,
         }
     }
 }
@@ -43,19 +46,17 @@ fn combine_formal<R: Relation<BaseExpr, ExtExpr>>(relation: &R, values: &[BaseEx
     const Z_SUFFIX: &str = "_z";
     const ALPHA_SUFFIX: &str = "_alpha";
 
-    let z = ExtExpr::Param(relation.get_name().to_owned() + Z_SUFFIX);
+    let z = ExtExpr::param(&(relation.get_name().to_owned() + Z_SUFFIX));
     assert!(
         relation.get_size() >= values.len(),
         "Not enough alpha powers to combine values"
     );
     let alpha_powers = (0..relation.get_size())
-        .map(|i| ExtExpr::Param(relation.get_name().to_owned() + ALPHA_SUFFIX + &i.to_string()));
+        .map(|i| ExtExpr::param(&(relation.get_name().to_owned() + ALPHA_SUFFIX + &i.to_string())));
     values
         .iter()
         .zip(alpha_powers)
-        .fold(ExtExpr::zero(), |acc, (value, power)| {
-            acc + power * value.clone()
-        })
+        .fold(ExtExpr::zero(), |acc, (value, power)| acc + power * *value)
         - z
 }
 
@@ -78,11 +79,13 @@ impl Default for ExprEvaluator {
 
 impl ExprEvaluator {
     pub fn new() -> Self {
+        // Initialize the thread-local arena
+        init_arena();
+
         Self {
             cur_var_index: Default::default(),
             constraints: Default::default(),
             logup: FormalLogupAtRow::new(INTERACTION_TRACE_IDX),
-            // TODO(alont) unify both intermediate types.
             intermediates: HashMap::new(),
             ext_intermediates: HashMap::new(),
             ordered_intermediates: vec![],
@@ -133,11 +136,11 @@ impl ExprEvaluator {
         let named_exprs = NamedExprs::new(
             self.intermediates
                 .iter()
-                .map(|(name, expr)| (name.clone(), expr.clone()))
+                .map(|(name, expr)| (name.clone(), *expr))
                 .collect(),
             self.ext_intermediates
                 .iter()
-                .map(|(name, expr)| (name.clone(), expr.clone()))
+                .map(|(name, expr)| (name.clone(), *expr))
                 .collect(),
         );
         self.constraints
@@ -197,7 +200,6 @@ impl ExprEvaluator {
 }
 
 impl EvalAtRow for ExprEvaluator {
-    // TODO(alont): Should there be a version of this that disallows Secure fields for F?
     type F = BaseExpr;
     type EF = ExtExpr;
 
@@ -208,7 +210,7 @@ impl EvalAtRow for ExprEvaluator {
     ) -> [Self::F; N] {
         let res = std::array::from_fn(|i| {
             let col = ColumnExpr::from((interaction, self.cur_var_index, offsets[i]));
-            BaseExpr::Col(col)
+            BaseExpr::col(col)
         });
         self.cur_var_index += 1;
         res
@@ -222,12 +224,7 @@ impl EvalAtRow for ExprEvaluator {
     }
 
     fn combine_ef(values: [Self::F; 4]) -> Self::EF {
-        ExtExpr::SecureCol([
-            Box::new(values[0].clone()),
-            Box::new(values[1].clone()),
-            Box::new(values[2].clone()),
-            Box::new(values[3].clone()),
-        ])
+        ExtExpr::secure_col(values)
     }
 
     fn add_to_relation<R: Relation<Self::F, Self::EF>>(
@@ -236,7 +233,7 @@ impl EvalAtRow for ExprEvaluator {
     ) {
         let intermediate =
             self.add_extension_intermediate(combine_formal(entry.relation, entry.values));
-        let frac = Fraction::new(entry.multiplicity.clone(), intermediate);
+        let frac = Fraction::new(entry.multiplicity, intermediate);
         self.write_logup_frac(frac);
     }
 
@@ -245,7 +242,7 @@ impl EvalAtRow for ExprEvaluator {
             "intermediate{}",
             self.intermediates.len() + self.ext_intermediates.len()
         );
-        let intermediate = BaseExpr::Param(name.clone());
+        let intermediate = BaseExpr::param(&name);
         self.intermediates.insert(name.clone(), expr);
         self.ordered_intermediates.push(name);
         intermediate
@@ -256,14 +253,14 @@ impl EvalAtRow for ExprEvaluator {
             "intermediate{}",
             self.intermediates.len() + self.ext_intermediates.len()
         );
-        let intermediate = ExtExpr::Param(name.clone());
+        let intermediate = ExtExpr::param(&name);
         self.ext_intermediates.insert(name.clone(), expr);
         self.ordered_intermediates.push(name);
         intermediate
     }
 
     fn get_preprocessed_column(&mut self, column: PreProcessedColumnId) -> Self::F {
-        BaseExpr::Param(column.id)
+        BaseExpr::param(&column.id)
     }
 
     crate::logup_proxy!();
@@ -385,8 +382,11 @@ mod tests {
             let x0 = eval.next_trace_mask();
             let x1 = eval.next_trace_mask();
             let x2 = eval.next_trace_mask();
+            // When E::F is our arena-based BaseExpr, clone() is essentially free (just copies the index)
             let intermediate = eval.add_intermediate(x1.clone() * x2.clone());
-            eval.add_constraint(x0.clone() * intermediate * (x0.clone() + x1.clone()).inverse());
+            eval.add_constraint(
+                x0.clone() * intermediate * (x0.clone() + x1.clone()).inverse(),
+            );
             eval.add_to_relation(RelationEntry::new(
                 &TestRelation::dummy(),
                 E::EF::one(),
@@ -409,8 +409,10 @@ mod tests {
             let x0 = eval.next_trace_mask();
             let x1 = eval.next_trace_mask();
             let x2 = eval.next_trace_mask();
-            let intermediate = eval.add_intermediate(x1.clone() * x2.clone());
-            eval.add_constraint(x0.clone() * intermediate * (x0.clone() + x1.clone()).inverse());
+            let intermediate = eval.add_intermediate(x1.clone() * x2);
+            eval.add_constraint(
+                x0.clone() * intermediate * (x0.clone() + x1.clone()).inverse(),
+            );
             eval.add_to_relation(RelationEntry::new(
                 &TestRelation::dummy(),
                 E::EF::one(),
@@ -460,12 +462,12 @@ mod tests {
         eval.add_to_relation(RelationEntry::new(
             &TestRelation::dummy(),
             ExtExpr::one(),
-            &[x0.clone() * x1.clone()],
+            &[x0 * x1],
         ));
         eval.add_to_relation(RelationEntry::new(
             &TestRelation::dummy(),
             ExtExpr::one(),
-            &[x1.clone() * x2.clone()],
+            &[x1 * x2],
         ));
         eval.finalize_logup_in_pairs();
 

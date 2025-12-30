@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use num_traits::Zero;
 
-use super::{BaseExpr, ExtExpr};
+use super::{BaseExpr, BaseExprNode, ExtExpr, ExtExprNode};
 
 type Degree = usize;
 
@@ -23,6 +23,7 @@ pub struct NamedExprs {
     exprs: HashMap<String, BaseExpr>,
     ext_exprs: HashMap<String, ExtExpr>,
 }
+
 impl NamedExprs {
     pub const fn new(
         exprs: HashMap<String, BaseExpr>,
@@ -48,39 +49,42 @@ impl NamedExprs {
 
 impl BaseExpr {
     pub fn degree_bound(&self, named_exprs: &NamedExprs) -> Degree {
-        match self {
-            BaseExpr::Col(_) => 1,
-            BaseExpr::Const(_) => 0,
-            BaseExpr::Param(name) => named_exprs.degree_bound(name.clone()),
-            BaseExpr::Add(a, b) => a.degree_bound(named_exprs).max(b.degree_bound(named_exprs)),
-            BaseExpr::Sub(a, b) => a.degree_bound(named_exprs).max(b.degree_bound(named_exprs)),
-            BaseExpr::Mul(a, b) => a.degree_bound(named_exprs) + b.degree_bound(named_exprs),
-            BaseExpr::Neg(a) => a.degree_bound(named_exprs),
-            // TODO(alont): Consider handling this in the type system.
-            BaseExpr::Inv(expr) => match *expr.clone() {
-                BaseExpr::Param(name) if named_exprs.degree_bound(name.clone()).is_zero() => 0,
-                BaseExpr::Const(_) => 0,
-                _ => panic!("Cannot compute the degree of an inverse"),
-            },
+        let node = self.node();
+        match node {
+            BaseExprNode::Col(_) => 1,
+            BaseExprNode::Const(_) => 0,
+            BaseExprNode::Param(name) => named_exprs.degree_bound(name.as_str()),
+            BaseExprNode::Add(a, b) => a.degree_bound(named_exprs).max(b.degree_bound(named_exprs)),
+            BaseExprNode::Sub(a, b) => a.degree_bound(named_exprs).max(b.degree_bound(named_exprs)),
+            BaseExprNode::Mul(a, b) => a.degree_bound(named_exprs) + b.degree_bound(named_exprs),
+            BaseExprNode::Neg(a) => a.degree_bound(named_exprs),
+            BaseExprNode::Inv(expr) => {
+                let expr_node = expr.node();
+                match expr_node {
+                    BaseExprNode::Param(name) if named_exprs.degree_bound(name.as_str()).is_zero() => 0,
+                    BaseExprNode::Const(_) => 0,
+                    _ => panic!("Cannot compute the degree of an inverse"),
+                }
+            }
         }
     }
 }
 
 impl ExtExpr {
     pub fn degree_bound(&self, named_exprs: &NamedExprs) -> Degree {
-        match self {
-            ExtExpr::SecureCol(coefs) => coefs
+        let node = self.node();
+        match node {
+            ExtExprNode::SecureCol(coefs) => coefs
                 .iter()
-                .cloned()
                 .map(|coef| coef.degree_bound(named_exprs))
                 .max()
                 .unwrap(),
-            ExtExpr::Const(_) => 0,
-            ExtExpr::Param(name) => named_exprs.degree_bound(name.clone()),
-            ExtExpr::Add(a, b) => a.degree_bound(named_exprs).max(b.degree_bound(named_exprs)),
-            ExtExpr::Sub(a, b) => a.degree_bound(named_exprs).max(b.degree_bound(named_exprs)),
-            ExtExpr::Mul(a, b) => a.degree_bound(named_exprs) + b.degree_bound(named_exprs),
-            ExtExpr::Neg(a) => a.degree_bound(named_exprs),
+            ExtExprNode::Const(_) => 0,
+            ExtExprNode::Param(name) => named_exprs.degree_bound(name.as_str()),
+            ExtExprNode::Add(a, b) => a.degree_bound(named_exprs).max(b.degree_bound(named_exprs)),
+            ExtExprNode::Sub(a, b) => a.degree_bound(named_exprs).max(b.degree_bound(named_exprs)),
+            ExtExprNode::Mul(a, b) => a.degree_bound(named_exprs) + b.degree_bound(named_exprs),
+            ExtExprNode::Neg(a) => a.degree_bound(named_exprs),
         }
     }
 }
@@ -90,30 +94,33 @@ mod tests {
     use stwo::core::fields::FieldExpOps;
 
     use crate::expr::degree::NamedExprs;
+    use crate::expr::init_arena;
     use crate::expr::utils::*;
 
     #[test]
     fn test_degree_bound() {
+        init_arena();
+
         let intermediate = (felt!(12) + col!(1, 1, 0)) * var!("a") * col!(1, 0, 0);
-        let qintermediate = secure_col!(intermediate.clone(), felt!(12), var!("b"), felt!(0));
+        let qintermediate = secure_col!(intermediate, felt!(12), var!("b"), felt!(0));
 
         let low_degree_intermediate = felt!(12345);
 
         let named_exprs = NamedExprs {
             exprs: [
-                ("intermediate".to_string(), intermediate.clone()),
+                ("intermediate".to_string(), intermediate),
                 (
                     "low_degree_intermediate".to_string(),
-                    low_degree_intermediate.clone(),
+                    low_degree_intermediate,
                 ),
             ]
             .into(),
-            ext_exprs: [("qintermediate".to_string(), qintermediate.clone())].into(),
+            ext_exprs: [("qintermediate".to_string(), qintermediate)].into(),
         };
 
         let expr = var!("intermediate") * col!(2, 1, 0);
         let qexpr =
-            var!("qintermediate") * secure_col!(col!(2, 1, 0), expr.clone(), felt!(0), felt!(1));
+            var!("qintermediate") * secure_col!(col!(2, 1, 0), expr, felt!(0), felt!(1));
 
         assert_eq!(intermediate.degree_bound(&named_exprs), 2);
         assert_eq!(qintermediate.degree_bound(&named_exprs), 2);

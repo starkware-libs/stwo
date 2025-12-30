@@ -1,98 +1,107 @@
 use num_traits::{One, Zero};
+use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 
-use super::{BaseExpr, ExtExpr};
-
-/// Applies simplifications to arithmetic expressions that can be used both for `BaseExpr` and for
-/// `ExtExpr`.
-macro_rules! simplify_arithmetic {
-    ($self:tt) => {
-        match $self.clone() {
-            Self::Add(a, b) => {
-                let a = a.simplify();
-                let b = b.simplify();
-                match (a.clone(), b.clone()) {
-                    // Simplify constants.
-                    (Self::Const(a), Self::Const(b)) => Self::Const(a + b),
-                    (Self::Const(a_val), _) if a_val.is_zero() => b, // 0 + b = b
-                    (_, Self::Const(b_val)) if b_val.is_zero() => a, // a + 0 = a
-                    // Simplify Negs.
-                    // (-a + -b) = -(a + b)
-                    (Self::Neg(minus_a), Self::Neg(minus_b)) => -(*minus_a + *minus_b),
-                    (Self::Neg(minus_a), _) => b - *minus_a, // -a + b = b - a
-                    (_, Self::Neg(minus_b)) => a - *minus_b, // a + -b = a - b
-                    // No simplification.
-                    _ => a + b,
-                }
-            }
-            Self::Sub(a, b) => {
-                let a = a.simplify();
-                let b = b.simplify();
-                match (a.clone(), b.clone()) {
-                    // Simplify constants.
-                    (Self::Const(a), Self::Const(b)) => Self::Const(a - b), // Simplify consts.
-                    (Self::Const(a_val), _) if a_val.is_zero() => -b,       // 0 - b = -b
-                    (_, Self::Const(b_val)) if b_val.is_zero() => a,        // a - 0 = a
-                    // Simplify Negs.
-                    // (-a - -b) = b - a
-                    (Self::Neg(minus_a), Self::Neg(minus_b)) => *minus_b - *minus_a,
-                    (Self::Neg(minus_a), _) => -(*minus_a + b), // -a - b = -(a + b)
-                    (_, Self::Neg(minus_b)) => a + *minus_b,    // a + -b = a - b
-                    // No Simplification.
-                    _ => a - b,
-                }
-            }
-            Self::Mul(a, b) => {
-                let a = a.simplify();
-                let b = b.simplify();
-                match (a.clone(), b.clone()) {
-                    // Simplify consts.
-                    (Self::Const(a), Self::Const(b)) => Self::Const(a * b),
-                    (Self::Const(a_val), _) if a_val.is_zero() => Self::zero(), // 0 * b = 0
-                    (_, Self::Const(b_val)) if b_val.is_zero() => Self::zero(), // a * 0 = 0
-                    (Self::Const(a_val), _) if a_val == One::one() => b,        // 1 * b = b
-                    (_, Self::Const(b_val)) if b_val == One::one() => a,        // a * 1 = a
-                    (Self::Const(a_val), _) if -a_val == One::one() => -b,      // -1 * b = -b
-                    (_, Self::Const(b_val)) if -b_val == One::one() => -a,      // a * -1 = -a
-                    // Simplify Negs.
-                    // (-a) * (-b) = a * b
-                    (Self::Neg(minus_a), Self::Neg(minus_b)) => *minus_a * *minus_b,
-                    (Self::Neg(minus_a), _) => -(*minus_a * b), // (-a) * b = -(a * b)
-                    (_, Self::Neg(minus_b)) => -(a * *minus_b), // a * (-b) = -(a * b)
-                    // No simplification.
-                    _ => a * b,
-                }
-            }
-            Self::Neg(a) => {
-                let a = a.simplify();
-                match a {
-                    Self::Const(c) => Self::Const(-c),
-                    Self::Neg(minus_a) => *minus_a,     // -(-a) = a
-                    Self::Sub(a, b) => Self::Sub(b, a), // -(a - b) = b - a
-                    _ => -a,                            // No simplification.
-                }
-            }
-            other => other, // No simplification.
-        }
-    };
-}
+use super::{with_arena, BaseExpr, BaseExprNode, ExtExpr, ExtExprNode};
 
 impl BaseExpr {
     /// Helper function, use [`simplify`] instead.
     ///
     /// Simplifies an expression by applying basic arithmetic rules.
     fn unchecked_simplify(&self) -> Self {
-        let simple = simplify_arithmetic!(self);
-        match simple {
-            Self::Inv(a) => {
+        let node = self.node();
+        match node {
+            BaseExprNode::Add(a, b) => {
                 let a = a.unchecked_simplify();
-                match a {
-                    Self::Inv(inv_a) => *inv_a, // 1 / (1 / a) = a
-                    Self::Const(c) => Self::Const(c.inverse()),
-                    _ => Self::Inv(Box::new(a)),
+                let b = b.unchecked_simplify();
+                let a_node = a.node();
+                let b_node = b.node();
+                match (&a_node, &b_node) {
+                    // Simplify constants.
+                    (BaseExprNode::Const(av), BaseExprNode::Const(bv)) => {
+                        BaseExpr::from(*av + *bv)
+                    }
+                    (BaseExprNode::Const(av), _) if av.is_zero() => b, // 0 + b = b
+                    (_, BaseExprNode::Const(bv)) if bv.is_zero() => a, // a + 0 = a
+                    // Simplify Negs.
+                    (BaseExprNode::Neg(minus_a), BaseExprNode::Neg(minus_b)) => {
+                        -(*minus_a + *minus_b)
+                    } // (-a + -b) = -(a + b)
+                    (BaseExprNode::Neg(minus_a), _) => b - *minus_a, // -a + b = b - a
+                    (_, BaseExprNode::Neg(minus_b)) => a - *minus_b, // a + -b = a - b
+                    // No simplification.
+                    _ => a + b,
                 }
             }
-            other => other,
+            BaseExprNode::Sub(a, b) => {
+                let a = a.unchecked_simplify();
+                let b = b.unchecked_simplify();
+                let a_node = a.node();
+                let b_node = b.node();
+                match (&a_node, &b_node) {
+                    // Simplify constants.
+                    (BaseExprNode::Const(av), BaseExprNode::Const(bv)) => {
+                        BaseExpr::from(*av - *bv)
+                    }
+                    (BaseExprNode::Const(av), _) if av.is_zero() => -b, // 0 - b = -b
+                    (_, BaseExprNode::Const(bv)) if bv.is_zero() => a,  // a - 0 = a
+                    // Simplify Negs.
+                    (BaseExprNode::Neg(minus_a), BaseExprNode::Neg(minus_b)) => {
+                        *minus_b - *minus_a
+                    } // (-a - -b) = b - a
+                    (BaseExprNode::Neg(minus_a), _) => -(*minus_a + b), // -a - b = -(a + b)
+                    (_, BaseExprNode::Neg(minus_b)) => a + *minus_b,    // a - -b = a + b
+                    // No simplification.
+                    _ => a - b,
+                }
+            }
+            BaseExprNode::Mul(a, b) => {
+                let a = a.unchecked_simplify();
+                let b = b.unchecked_simplify();
+                let a_node = a.node();
+                let b_node = b.node();
+                match (&a_node, &b_node) {
+                    // Simplify constants.
+                    (BaseExprNode::Const(av), BaseExprNode::Const(bv)) => {
+                        BaseExpr::from(*av * *bv)
+                    }
+                    (BaseExprNode::Const(av), _) if av.is_zero() => BaseExpr::zero(), // 0 * b = 0
+                    (_, BaseExprNode::Const(bv)) if bv.is_zero() => BaseExpr::zero(), // a * 0 = 0
+                    (BaseExprNode::Const(av), _) if *av == BaseField::one() => b,     // 1 * b = b
+                    (_, BaseExprNode::Const(bv)) if *bv == BaseField::one() => a,     // a * 1 = a
+                    (BaseExprNode::Const(av), _) if -*av == BaseField::one() => -b,   // -1 * b = -b
+                    (_, BaseExprNode::Const(bv)) if -*bv == BaseField::one() => -a,   // a * -1 = -a
+                    // Simplify Negs.
+                    (BaseExprNode::Neg(minus_a), BaseExprNode::Neg(minus_b)) => {
+                        *minus_a * *minus_b
+                    } // (-a) * (-b) = a * b
+                    (BaseExprNode::Neg(minus_a), _) => -(*minus_a * b), // (-a) * b = -(a * b)
+                    (_, BaseExprNode::Neg(minus_b)) => -(a * *minus_b), // a * (-b) = -(a * b)
+                    // No simplification.
+                    _ => a * b,
+                }
+            }
+            BaseExprNode::Neg(a) => {
+                let a = a.unchecked_simplify();
+                let a_node = a.node();
+                match a_node {
+                    BaseExprNode::Const(c) => BaseExpr::from(-c),
+                    BaseExprNode::Neg(minus_a) => minus_a,   // -(-a) = a
+                    BaseExprNode::Sub(a, b) => b - a,        // -(a - b) = b - a
+                    _ => -a,                                 // No simplification.
+                }
+            }
+            BaseExprNode::Inv(a) => {
+                let a = a.unchecked_simplify();
+                let a_node = a.node();
+                match a_node {
+                    BaseExprNode::Inv(inv_a) => inv_a, // 1 / (1 / a) = a
+                    BaseExprNode::Const(c) => BaseExpr::from(c.inverse()),
+                    _ => with_arena(|arena| arena.base_inv(a)),
+                }
+            }
+            // No simplification for Col, Const, Param.
+            _ => *self,
         }
     }
 
@@ -114,24 +123,97 @@ impl ExtExpr {
     ///
     /// Simplifies an expression by applying basic arithmetic rules.
     fn unchecked_simplify(&self) -> Self {
-        let simple = simplify_arithmetic!(self);
-        match simple {
-            Self::SecureCol([a, b, c, d]) => {
+        let node = self.node();
+        match node {
+            ExtExprNode::Add(a, b) => {
+                let a = a.unchecked_simplify();
+                let b = b.unchecked_simplify();
+                let a_node = a.node();
+                let b_node = b.node();
+                match (&a_node, &b_node) {
+                    // Simplify constants.
+                    (ExtExprNode::Const(av), ExtExprNode::Const(bv)) => ExtExpr::from(*av + *bv),
+                    (ExtExprNode::Const(av), _) if av.is_zero() => b, // 0 + b = b
+                    (_, ExtExprNode::Const(bv)) if bv.is_zero() => a, // a + 0 = a
+                    // Simplify Negs.
+                    (ExtExprNode::Neg(minus_a), ExtExprNode::Neg(minus_b)) => -(*minus_a + *minus_b), // (-a + -b) = -(a + b)
+                    (ExtExprNode::Neg(minus_a), _) => b - *minus_a, // -a + b = b - a
+                    (_, ExtExprNode::Neg(minus_b)) => a - *minus_b, // a + -b = a - b
+                    // No simplification.
+                    _ => a + b,
+                }
+            }
+            ExtExprNode::Sub(a, b) => {
+                let a = a.unchecked_simplify();
+                let b = b.unchecked_simplify();
+                let a_node = a.node();
+                let b_node = b.node();
+                match (&a_node, &b_node) {
+                    // Simplify constants.
+                    (ExtExprNode::Const(av), ExtExprNode::Const(bv)) => ExtExpr::from(*av - *bv),
+                    (ExtExprNode::Const(av), _) if av.is_zero() => -b, // 0 - b = -b
+                    (_, ExtExprNode::Const(bv)) if bv.is_zero() => a,  // a - 0 = a
+                    // Simplify Negs.
+                    (ExtExprNode::Neg(minus_a), ExtExprNode::Neg(minus_b)) => *minus_b - *minus_a, // (-a - -b) = b - a
+                    (ExtExprNode::Neg(minus_a), _) => -(*minus_a + b), // -a - b = -(a + b)
+                    (_, ExtExprNode::Neg(minus_b)) => a + *minus_b,    // a - -b = a + b
+                    // No simplification.
+                    _ => a - b,
+                }
+            }
+            ExtExprNode::Mul(a, b) => {
+                let a = a.unchecked_simplify();
+                let b = b.unchecked_simplify();
+                let a_node = a.node();
+                let b_node = b.node();
+                match (&a_node, &b_node) {
+                    // Simplify constants.
+                    (ExtExprNode::Const(av), ExtExprNode::Const(bv)) => ExtExpr::from(*av * *bv),
+                    (ExtExprNode::Const(av), _) if av.is_zero() => ExtExpr::zero(), // 0 * b = 0
+                    (_, ExtExprNode::Const(bv)) if bv.is_zero() => ExtExpr::zero(), // a * 0 = 0
+                    (ExtExprNode::Const(av), _) if *av == SecureField::one() => b,  // 1 * b = b
+                    (_, ExtExprNode::Const(bv)) if *bv == SecureField::one() => a,  // a * 1 = a
+                    (ExtExprNode::Const(av), _) if -*av == SecureField::one() => -b, // -1 * b = -b
+                    (_, ExtExprNode::Const(bv)) if -*bv == SecureField::one() => -a, // a * -1 = -a
+                    // Simplify Negs.
+                    (ExtExprNode::Neg(minus_a), ExtExprNode::Neg(minus_b)) => *minus_a * *minus_b, // (-a) * (-b) = a * b
+                    (ExtExprNode::Neg(minus_a), _) => -(*minus_a * b), // (-a) * b = -(a * b)
+                    (_, ExtExprNode::Neg(minus_b)) => -(a * *minus_b), // a * (-b) = -(a * b)
+                    // No simplification.
+                    _ => a * b,
+                }
+            }
+            ExtExprNode::Neg(a) => {
+                let a = a.unchecked_simplify();
+                let a_node = a.node();
+                match a_node {
+                    ExtExprNode::Const(c) => ExtExpr::from(-c),
+                    ExtExprNode::Neg(minus_a) => minus_a,    // -(-a) = a
+                    ExtExprNode::Sub(a, b) => b - a,         // -(a - b) = b - a
+                    _ => -a,                                 // No simplification.
+                }
+            }
+            ExtExprNode::SecureCol([a, b, c, d]) => {
                 let a = a.unchecked_simplify();
                 let b = b.unchecked_simplify();
                 let c = c.unchecked_simplify();
                 let d = d.unchecked_simplify();
-                match (a.clone(), b.clone(), c.clone(), d.clone()) {
+                let a_node = a.node();
+                let b_node = b.node();
+                let c_node = c.node();
+                let d_node = d.node();
+                match (&a_node, &b_node, &c_node, &d_node) {
                     (
-                        BaseExpr::Const(a_val),
-                        BaseExpr::Const(b_val),
-                        BaseExpr::Const(c_val),
-                        BaseExpr::Const(d_val),
-                    ) => ExtExpr::Const(SecureField::from_m31_array([a_val, b_val, c_val, d_val])),
-                    _ => Self::SecureCol([Box::new(a), Box::new(b), Box::new(c), Box::new(d)]),
+                        BaseExprNode::Const(av),
+                        BaseExprNode::Const(bv),
+                        BaseExprNode::Const(cv),
+                        BaseExprNode::Const(dv),
+                    ) => ExtExpr::from(SecureField::from_m31_array([*av, *bv, *cv, *dv])),
+                    _ => ExtExpr::secure_col([a, b, c, d]),
                 }
             }
-            other => other,
+            // No simplification for Const, Param.
+            _ => *self,
         }
     }
 
@@ -158,10 +240,13 @@ mod tests {
     use stwo::core::fields::qm31::SecureField;
 
     use crate::expr::utils::*;
+    use crate::expr::init_arena;
     use crate::AssertEvaluator;
 
     #[test]
     fn test_simplify_expr() {
+        init_arena();
+
         let c0 = col!(1, 0, 0);
         let c1 = col!(1, 1, 0);
         let a = var!("a");
@@ -179,33 +264,33 @@ mod tests {
         let vars: HashMap<String, BaseField> = HashMap::from([("a".to_string(), rng.gen())]);
         let ext_vars: HashMap<String, SecureField> = HashMap::from([("b".to_string(), rng.gen())]);
 
-        let base_expr = (((zero.clone() + c0.clone()) + (a.clone() + zero.clone()))
-            * ((-c1.clone()) + (-c0.clone()))
-            + (-(-(a.clone() + a.clone() + c0.clone())))
-            - zero.clone())
-            + (a.clone() - zero.clone())
-            + (-c1.clone() - (a.clone() * a.clone()))
-            + (a.clone() * zero.clone())
-            - (zero.clone() * c1.clone())
-            + one.clone()
-                * a.clone()
-                * one.clone()
-                * c1.clone()
-                * (-a.clone())
-                * c1.clone()
-                * (minus_one.clone() * c0.clone());
+        let base_expr = (((zero + c0) + (a + zero))
+            * ((-c1) + (-c0))
+            + (-(-(a + a + c0)))
+            - zero)
+            + (a - zero)
+            + (-c1 - (a * a))
+            + (a * zero)
+            - (zero * c1)
+            + one
+                * a
+                * one
+                * c1
+                * (-a)
+                * c1
+                * (minus_one * c0);
 
-        let expr = (qzero.clone()
+        let expr = (qzero
             + secure_col!(
-                base_expr.clone(),
-                base_expr.clone(),
-                zero.clone(),
-                one.clone()
+                base_expr,
+                base_expr,
+                zero,
+                one
             )
-            - qzero.clone())
-            * qone.clone()
-            * b.clone()
-            * qminus_one.clone();
+            - qzero)
+            * qone
+            * b
+            * qminus_one;
 
         let full_eval = expr.eval_expr::<AssertEvaluator<'_>, _, _, _>(&columns, &vars, &ext_vars);
         let simplified_eval = expr

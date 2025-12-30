@@ -8,7 +8,7 @@ use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::fields::FieldExpOps;
 
-use super::{BaseExpr, ColumnExpr, ExtExpr};
+use super::{BaseExpr, BaseExprNode, ColumnExpr, ExtExpr, ExtExprNode};
 use crate::{AssertEvaluator, EvalAtRow};
 
 /// An assignment to the variables that may appear in an expression.
@@ -111,7 +111,7 @@ impl AddAssign for ExprVariables {
     fn add_assign(&mut self, rhs: Self) {
         self.cols = self.cols.union(&rhs.cols).cloned().collect();
         self.params = self.params.union(&rhs.params).cloned().collect();
-        self.cols = self.cols.union(&rhs.cols).cloned().collect();
+        self.ext_params = self.ext_params.union(&rhs.ext_params).cloned().collect();
     }
 }
 
@@ -142,35 +142,41 @@ impl BaseExpr {
         C: for<'a> Index<&'a (usize, usize, isize), Output = E::F>,
         V: for<'a> Index<&'a String, Output = E::F>,
         E: EvalAtRow,
+        E::F: Clone,
     {
-        match self {
-            Self::Col(col) => columns[&(col.interaction, col.idx, col.offset)].clone(),
-            Self::Const(c) => E::F::from(*c),
-            Self::Param(var) => vars[&var.to_string()].clone(),
-            Self::Add(a, b) => {
+        let node = self.node();
+        match node {
+            BaseExprNode::Col(col) => columns[&(col.interaction, col.idx, col.offset)].clone(),
+            BaseExprNode::Const(c) => E::F::from(c),
+            BaseExprNode::Param(var) => {
+                let var_str = var.as_str();
+                vars[&var_str].clone()
+            }
+            BaseExprNode::Add(a, b) => {
                 a.eval_expr::<E, C, V>(columns, vars) + b.eval_expr::<E, C, V>(columns, vars)
             }
-            Self::Sub(a, b) => {
+            BaseExprNode::Sub(a, b) => {
                 a.eval_expr::<E, C, V>(columns, vars) - b.eval_expr::<E, C, V>(columns, vars)
             }
-            Self::Mul(a, b) => {
+            BaseExprNode::Mul(a, b) => {
                 a.eval_expr::<E, C, V>(columns, vars) * b.eval_expr::<E, C, V>(columns, vars)
             }
-            Self::Neg(a) => -a.eval_expr::<E, C, V>(columns, vars),
-            Self::Inv(a) => a.eval_expr::<E, C, V>(columns, vars).inverse(),
+            BaseExprNode::Neg(a) => -a.eval_expr::<E, C, V>(columns, vars),
+            BaseExprNode::Inv(a) => a.eval_expr::<E, C, V>(columns, vars).inverse(),
         }
     }
 
     pub fn collect_variables(&self) -> ExprVariables {
-        match self {
-            BaseExpr::Col(col) => ExprVariables::col(col.clone()),
-            BaseExpr::Const(_) => ExprVariables::default(),
-            BaseExpr::Param(param) => ExprVariables::param(param.to_string()),
-            BaseExpr::Add(a, b) => a.collect_variables() + b.collect_variables(),
-            BaseExpr::Sub(a, b) => a.collect_variables() + b.collect_variables(),
-            BaseExpr::Mul(a, b) => a.collect_variables() + b.collect_variables(),
-            BaseExpr::Neg(a) => a.collect_variables(),
-            BaseExpr::Inv(a) => a.collect_variables(),
+        let node = self.node();
+        match node {
+            BaseExprNode::Col(col) => ExprVariables::col(col),
+            BaseExprNode::Const(_) => ExprVariables::default(),
+            BaseExprNode::Param(param) => ExprVariables::param(param.as_str()),
+            BaseExprNode::Add(a, b) => a.collect_variables() + b.collect_variables(),
+            BaseExprNode::Sub(a, b) => a.collect_variables() + b.collect_variables(),
+            BaseExprNode::Mul(a, b) => a.collect_variables() + b.collect_variables(),
+            BaseExprNode::Neg(a) => a.collect_variables(),
+            BaseExprNode::Inv(a) => a.collect_variables(),
         }
     }
 
@@ -197,47 +203,54 @@ impl ExtExpr {
         V: for<'a> Index<&'a String, Output = E::F>,
         EV: for<'a> Index<&'a String, Output = E::EF>,
         E: EvalAtRow,
+        E::F: Clone,
+        E::EF: Clone,
     {
-        match self {
-            Self::SecureCol([a, b, c, d]) => {
+        let node = self.node();
+        match node {
+            ExtExprNode::SecureCol([a, b, c, d]) => {
                 let a = a.eval_expr::<E, C, V>(columns, vars);
                 let b = b.eval_expr::<E, C, V>(columns, vars);
                 let c = c.eval_expr::<E, C, V>(columns, vars);
                 let d = d.eval_expr::<E, C, V>(columns, vars);
                 E::combine_ef([a, b, c, d])
             }
-            Self::Const(c) => E::EF::from(*c),
-            Self::Param(var) => ext_vars[&var.to_string()].clone(),
-            Self::Add(a, b) => {
+            ExtExprNode::Const(c) => E::EF::from(c),
+            ExtExprNode::Param(var) => {
+                let var_str = var.as_str();
+                ext_vars[&var_str].clone()
+            }
+            ExtExprNode::Add(a, b) => {
                 a.eval_expr::<E, C, V, EV>(columns, vars, ext_vars)
                     + b.eval_expr::<E, C, V, EV>(columns, vars, ext_vars)
             }
-            Self::Sub(a, b) => {
+            ExtExprNode::Sub(a, b) => {
                 a.eval_expr::<E, C, V, EV>(columns, vars, ext_vars)
                     - b.eval_expr::<E, C, V, EV>(columns, vars, ext_vars)
             }
-            Self::Mul(a, b) => {
+            ExtExprNode::Mul(a, b) => {
                 a.eval_expr::<E, C, V, EV>(columns, vars, ext_vars)
                     * b.eval_expr::<E, C, V, EV>(columns, vars, ext_vars)
             }
-            Self::Neg(a) => -a.eval_expr::<E, C, V, EV>(columns, vars, ext_vars),
+            ExtExprNode::Neg(a) => -a.eval_expr::<E, C, V, EV>(columns, vars, ext_vars),
         }
     }
 
     pub fn collect_variables(&self) -> ExprVariables {
-        match self {
-            ExtExpr::SecureCol([a, b, c, d]) => {
+        let node = self.node();
+        match node {
+            ExtExprNode::SecureCol([a, b, c, d]) => {
                 a.collect_variables()
                     + b.collect_variables()
                     + c.collect_variables()
                     + d.collect_variables()
             }
-            ExtExpr::Const(_) => ExprVariables::default(),
-            ExtExpr::Param(param) => ExprVariables::ext_param(param.to_string()),
-            ExtExpr::Add(a, b) => a.collect_variables() + b.collect_variables(),
-            ExtExpr::Sub(a, b) => a.collect_variables() + b.collect_variables(),
-            ExtExpr::Mul(a, b) => a.collect_variables() + b.collect_variables(),
-            ExtExpr::Neg(a) => a.collect_variables(),
+            ExtExprNode::Const(_) => ExprVariables::default(),
+            ExtExprNode::Param(param) => ExprVariables::ext_param(param.as_str()),
+            ExtExprNode::Add(a, b) => a.collect_variables() + b.collect_variables(),
+            ExtExprNode::Sub(a, b) => a.collect_variables() + b.collect_variables(),
+            ExtExprNode::Mul(a, b) => a.collect_variables() + b.collect_variables(),
+            ExtExprNode::Neg(a) => a.collect_variables(),
         }
     }
 
@@ -260,10 +273,13 @@ mod tests {
     use stwo::core::fields::FieldExpOps;
 
     use crate::expr::utils::*;
+    use crate::expr::init_arena;
     use crate::AssertEvaluator;
 
     #[test]
     fn test_eval_expr() {
+        init_arena();
+
         let col_1_0_0 = BaseField::from(12);
         let col_1_1_0 = BaseField::from(5);
         let var_a = BaseField::from(3);
