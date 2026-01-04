@@ -313,7 +313,6 @@ pub fn build_samples_with_randomness_and_periodicity(
                 // If there are two samples for this column, and the log size is not maximal, then
                 // we add a periodicity check.
                 if let [_prev_point_sample, point_sample] = &samples_per_cols[..] {
-                    if log_size < lifting_log_size {
                         let period_generator = lifting_domain_generator.repeated_double(log_size);
                         new_samples.push((
                             PointSample {
@@ -322,7 +321,6 @@ pub fn build_samples_with_randomness_and_periodicity(
                             },
                             random_pows.next().unwrap(),
                         ));
-                    }
                 }
                 for sample in samples_per_cols.iter() {
                     new_samples.push((sample.clone(), random_pows.next().unwrap()));
