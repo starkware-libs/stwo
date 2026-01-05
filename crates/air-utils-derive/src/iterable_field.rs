@@ -41,7 +41,7 @@ impl IterableField {
                     vis: field.vis.clone(),
                     name: field.ident.clone().unwrap(),
                     outer_array_size: outer_array.len.clone(),
-                    inner_type: inner_type.clone(),
+                    inner_type,
                 }))
             }
             // Case that type is Vec<T>.
