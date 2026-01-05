@@ -1,11 +1,11 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 #[cfg(feature = "parallel")]
 use rayon::prelude::IntoParallelRefIterator;
-use tracing::{span, Level};
+use tracing::{span, Level, info};
 
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
@@ -37,7 +37,6 @@ pub struct CommitmentSchemeProver<'a, B: BackendForChannel<MC>, MC: MerkleChanne
     twiddles: &'a TwiddleTree<B>,
     pub store_polynomials_coefficients: bool,
 }
-
 impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a, B, MC> {
     /// Creates a new empty commitment scheme prover with the given configuration and twiddles. The
     /// commitment scheme does not store the polynomials coefficients by default.
@@ -173,6 +172,7 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
 
         // Compute oods quotients for boundary constraints on the sampled points.
         let columns = self.evaluations().flatten();
+        print_column_size_histogram::<B, MC>(&columns);
         let quotients = compute_fri_quotients(
             &columns,
             &samples.flatten(),
@@ -319,5 +319,19 @@ impl<B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentTreeProver<B, MC> {
             .map(|poly| &poly.evals.values)
             .collect_vec();
         self.commitment.decommit(queries, eval_vec)
+    }
+}
+
+fn print_column_size_histogram<B: BackendForChannel<MC>, MC: MerkleChannel>(
+    columns: &ColumnVec<&CircleEvaluation<B, BaseField, BitReversedOrder>>,
+) {
+    let mut log_size_histogram = HashMap::new();
+    for column in columns {
+        *log_size_histogram
+            .entry(column.domain.log_size())
+            .or_insert(0) += 1;
+    }
+    for (log_size, count) in log_size_histogram {
+        info!("Log size {log_size}: {count}");
     }
 }
