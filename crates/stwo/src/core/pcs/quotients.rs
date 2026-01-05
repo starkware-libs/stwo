@@ -310,19 +310,19 @@ pub fn build_samples_with_randomness_and_periodicity(
                     return Vec::new();
                 }
                 let mut new_samples: Vec<(PointSample, SecureField)> = Vec::new();
-                // If there are two samples for this column, and the log size is not maximal, then
-                // we add a periodicity check.
+                // If the column has two samples, we add a periodicity check. Note that this check
+                // is added even when the column is at its maximal size, in which case the
+                // periodicity sample coincides with the OOD point sample. This simplifies the
+                // Verifier logic by avoiding the need to track column sizes.
                 if let [_prev_point_sample, point_sample] = &samples_per_cols[..] {
-                    if log_size < lifting_log_size {
-                        let period_generator = lifting_domain_generator.repeated_double(log_size);
-                        new_samples.push((
-                            PointSample {
-                                point: point_sample.point.add(period_generator.into_ef()),
-                                value: point_sample.value,
-                            },
-                            random_pows.next().unwrap(),
-                        ));
-                    }
+                    let period_generator = lifting_domain_generator.repeated_double(log_size);
+                    new_samples.push((
+                        PointSample {
+                            point: point_sample.point.add(period_generator.into_ef()),
+                            value: point_sample.value,
+                        },
+                        random_pows.next().unwrap(),
+                    ));
                 }
                 for sample in samples_per_cols.iter() {
                     new_samples.push((sample.clone(), random_pows.next().unwrap()));
