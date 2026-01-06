@@ -12,3 +12,5 @@ pub struct TwiddleTree<B: PolyOps> {
     pub twiddles: B::Twiddles,
     pub itwiddles: B::Twiddles,
 }
+
+unsafe impl<B: PolyOps> Sync for TwiddleTree<B> {}

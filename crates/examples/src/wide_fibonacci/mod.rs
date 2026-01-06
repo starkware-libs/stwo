@@ -192,7 +192,7 @@ mod tests {
 
             // Preprocessed trace
             let mut tree_builder = commitment_scheme.tree_builder();
-            tree_builder.extend_evals([]);
+            tree_builder.extend_evals(vec![]);
             tree_builder.commit(prover_channel);
 
             // Trace.
@@ -250,7 +250,7 @@ mod tests {
         // TODO(ilya): remove the following once preprocessed columns are not mandatory.
         // Preprocessed trace
         let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals([]);
+        tree_builder.extend_evals(vec![]);
         tree_builder.commit(prover_channel);
 
         // Trace.

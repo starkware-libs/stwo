@@ -2,10 +2,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 #[cfg(feature = "parallel")]
-use rayon::iter::ParallelIterator;
-#[cfg(feature = "parallel")]
-use rayon::prelude::IntoParallelRefIterator;
-use tracing::{span, Level, info};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use tracing::{info, span, Level};
 
 use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::circle::CirclePoint;
@@ -237,7 +235,7 @@ pub struct TreeBuilder<'a, 'b, B: BackendForChannel<MC>, MC: MerkleChannel> {
 impl<B: BackendForChannel<MC>, MC: MerkleChannel> TreeBuilder<'_, '_, B, MC> {
     pub fn extend_evals(
         &mut self,
-        columns: impl IntoIterator<Item = CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        columns: Vec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
     ) -> TreeSubspan {
         let span = span!(Level::INFO, "Interpolation for commitment").entered();
         let polys = B::interpolate_columns(columns, self.commitment_scheme.twiddles);

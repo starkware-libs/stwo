@@ -126,14 +126,17 @@ impl<const N: usize> ComponentTrace<N> {
         )
     }
 
-    pub fn to_evals(self) -> [CircleEvaluation<SimdBackend, M31, BitReversedOrder>; N] {
+    pub fn to_evals(self) -> Vec<CircleEvaluation<SimdBackend, M31, BitReversedOrder>> {
         let domain = CanonicCoset::new(self.log_size).circle_domain();
-        self.data.map(|column| {
-            CircleEvaluation::<SimdBackend, M31, BitReversedOrder>::new(
-                domain,
-                BaseColumn::from_simd(column),
-            )
-        })
+        self.data
+            .into_iter()
+            .map(|column| {
+                CircleEvaluation::<SimdBackend, M31, BitReversedOrder>::new(
+                    domain,
+                    BaseColumn::from_simd(column),
+                )
+            })
+            .collect()
     }
 
     pub fn row_at(&self, row: usize) -> [M31; N] {

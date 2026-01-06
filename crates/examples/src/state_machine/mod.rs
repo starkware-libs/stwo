@@ -70,7 +70,7 @@ pub fn prove_state_machine(
     stmt0.mix_into(channel);
 
     let mut tree_builder = commitment_scheme.tree_builder();
-    tree_builder.extend_evals(chain![trace_op0.clone(), trace_op1.clone()]);
+    tree_builder.extend_evals(chain![trace_op0.clone(), trace_op1.clone()].collect_vec());
     tree_builder.commit(channel);
 
     // Draw lookup element.
