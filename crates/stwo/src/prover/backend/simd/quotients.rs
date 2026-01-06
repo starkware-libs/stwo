@@ -266,20 +266,18 @@ pub fn accumulate_row_quotients(
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
-) -> Vec<CM31Column> {
+) -> Vec<Vec<PackedCM31>> {
     // We want a P to be on a line that passes through a point Pr + uPi in QM31^2, and its conjugate
     // Pr - uPi. Thus, Pr - P is parallel to Pi. Or, (Pr - P).x * Pi.y - (Pr - P).y * Pi.x = 0.
     let domain_points = CircleDomainBitRevIterator::new(domain);
 
     #[cfg(not(feature = "parallel"))]
-    let iter = domain_points;
-
+    let (domain_points_iter, sb_iter) = (domain_points, sample_batches.iter());
     #[cfg(feature = "parallel")]
-    let iter = domain_points.par_iter();
+    let (domain_points_iter, sb_iter) = (domain_points.par_iter(), sample_batches.par_iter());
 
-    let flat_denominators: CM31Column = sample_batches
-        .iter()
-        .flat_map(|sample_batch| {
+    let mut denominators: Vec<Vec<PackedCM31>> = sb_iter
+        .map(|sample_batch| {
             // Extract Pr, Pi.
             let prx = PackedCM31::broadcast(sample_batch.point.x.0);
             let pry = PackedCM31::broadcast(sample_batch.point.y.0);
@@ -288,21 +286,30 @@ fn denominator_inverses(
 
             // Line equation through pr +-u pi.
             // (p-pr)*
-            iter.clone()
+            domain_points_iter
+                .clone()
                 .map(|points| (prx - points.x) * piy - (pry - points.y) * pix)
                 .collect::<Vec<_>>()
         })
         .collect();
 
-    flat_denominators
-        .data
-        .chunks(domain.size() / N_LANES)
-        .map(PackedCM31::batch_inverse)
-        .map(|data| CM31Column {
-            data,
-            length: domain.size(),
-        })
-        .collect()
+    #[cfg(not(feature = "parallel"))]
+    {
+        denominators.iter_mut().for_each(|c| {
+            c.chunks_mut(domain.size() / N_LANES).for_each(|chunk| {
+                chunk.copy_from_slice(&PackedCM31::batch_inverse(chunk));
+            })
+        });
+    }
+    #[cfg(feature = "parallel")]
+    {
+        denominators.par_iter_mut().for_each(|c| {
+            c.par_chunks_mut(domain.size() / N_LANES).for_each(|chunk| {
+                chunk.copy_from_slice(&PackedCM31::batch_inverse(chunk));
+            })
+        });
+    }
+    denominators
 }
 
 fn quotient_constants(
@@ -317,7 +324,13 @@ fn quotient_constants(
     )
     .entered();
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
-    let denominator_inverses = denominator_inverses(sample_batches, domain);
+    let denominator_inverses = denominator_inverses(sample_batches, domain)
+        .iter()
+        .map(|c| CM31Column {
+            data: c.to_vec(),
+            length: domain.size(),
+        })
+        .collect_vec();
     QuotientConstants {
         line_coeffs,
         denominator_inverses,
