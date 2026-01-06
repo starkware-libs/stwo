@@ -7,7 +7,7 @@ use tracing::{span, Level};
 use super::cm31::PackedCM31;
 use super::column::CM31Column;
 use super::domain::CircleDomainBitRevIterator;
-use super::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
+use super::m31::{PackedBaseField, LOG_N_LANES};
 use super::qm31::PackedSecureField;
 use super::SimdBackend;
 use crate::core::circle::CirclePoint;
@@ -266,41 +266,31 @@ pub fn accumulate_row_quotients(
 fn denominator_inverses(
     sample_batches: &[ColumnSampleBatch],
     domain: CircleDomain,
-) -> Vec<CM31Column> {
+) -> Vec<Vec<PackedCM31>> {
     // We want a P to be on a line that passes through a point Pr + uPi in QM31^2, and its conjugate
     // Pr - uPi. Thus, Pr - P is parallel to Pi. Or, (Pr - P).x * Pi.y - (Pr - P).y * Pi.x = 0.
     let domain_points = CircleDomainBitRevIterator::new(domain);
 
     #[cfg(not(feature = "parallel"))]
-    let iter = domain_points;
-
+    let (domain_points_iter, sample_batches_iter) = (domain_points, sample_batches.iter());
     #[cfg(feature = "parallel")]
-    let iter = domain_points.par_iter();
+    let (domain_points_iter, sample_batches_iter) =
+        (domain_points.par_iter(), sample_batches.par_iter());
 
-    let flat_denominators: CM31Column = sample_batches
-        .iter()
-        .flat_map(|sample_batch| {
+    sample_batches_iter
+        .map(|sample_batch| {
             // Extract Pr, Pi.
             let prx = PackedCM31::broadcast(sample_batch.point.x.0);
             let pry = PackedCM31::broadcast(sample_batch.point.y.0);
             let pix = PackedCM31::broadcast(sample_batch.point.x.1);
             let piy = PackedCM31::broadcast(sample_batch.point.y.1);
 
-            // Line equation through pr +-u pi.
-            // (p-pr)*
-            iter.clone()
+            // The iter itself is cloned for each sample batch.
+            let denominators = domain_points_iter
+                .clone()
                 .map(|points| (prx - points.x) * piy - (pry - points.y) * pix)
-                .collect::<Vec<_>>()
-        })
-        .collect();
-
-    flat_denominators
-        .data
-        .chunks(domain.size() / N_LANES)
-        .map(PackedCM31::batch_inverse)
-        .map(|data| CM31Column {
-            data,
-            length: domain.size(),
+                .collect::<Vec<_>>();
+            PackedCM31::batch_inverse(&denominators)
         })
         .collect()
 }
@@ -317,7 +307,13 @@ fn quotient_constants(
     )
     .entered();
     let line_coeffs = column_line_coeffs(sample_batches, random_coeff);
-    let denominator_inverses = denominator_inverses(sample_batches, domain);
+    let denominator_inverses = denominator_inverses(sample_batches, domain)
+        .into_iter()
+        .map(|data| CM31Column {
+            data,
+            length: domain.size(),
+        })
+        .collect_vec();
     QuotientConstants {
         line_coeffs,
         denominator_inverses,
