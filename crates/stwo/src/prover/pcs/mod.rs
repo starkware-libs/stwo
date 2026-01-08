@@ -150,6 +150,8 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         } else {
             Some(self.build_weights_hash_map(&sampled_points))
         };
+
+        #[cfg(not(feature = "parallel"))]
         let samples: TreeVec<Vec<Vec<PointSample>>> = self
             .polynomials()
             .zip_cols(&sampled_points)
@@ -162,6 +164,20 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
                     })
                     .collect_vec()
             });
+        #[cfg(feature = "parallel")]
+        let samples: TreeVec<Vec<Vec<PointSample>>> = self
+            .polynomials()
+            .zip_cols(&sampled_points)
+            .par_map_cols(|(poly, points)| {
+                points
+                    .iter()
+                    .map(|&point| PointSample {
+                        point,
+                        value: poly.eval_at_point(point, weights_hash_map.as_ref()),
+                    })
+                    .collect_vec()
+            });
+
         span.exit();
         let sampled_values = samples
             .as_cols_ref()

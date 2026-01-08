@@ -77,6 +77,22 @@ impl<T> TreeVec<ColumnVec<T>> {
         )
     }
 
+    #[cfg(feature = "parallel")]
+    pub fn par_map_cols<U, F>(self, f: F) -> TreeVec<ColumnVec<U>>
+    where
+        T: Send,
+        U: Send,
+        F: Fn(T) -> U + Sync + Send,
+    {
+        use rayon::iter::{IntoParallelIterator, ParallelIterator};
+        TreeVec(
+            self.0
+                .into_par_iter()
+                .map(|column| column.into_par_iter().map(&f).collect::<Vec<_>>())
+                .collect(),
+        )
+    }
+
     /// Zips two [`TreeVec<ColumnVec<T>>`] with the same structure (number of columns in each tree).
     /// The resulting [`TreeVec<ColumnVec<T>>`] has the same structure, with each value being a
     /// tuple of the corresponding values from the input [`TreeVec<ColumnVec<T>>`].
