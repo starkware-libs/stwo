@@ -115,6 +115,7 @@ pub const fn offset_bit_reversed_circle_domain_index(
 // TODO(AlonH): Pair both functions below with bit reverse. Consider removing both and calculating
 // the indices instead.
 #[cfg(feature = "prover")]
+#[cfg(feature = "simd")]
 pub(crate) fn circle_domain_order_to_coset_order(
     values: &[crate::core::fields::m31::BaseField],
 ) -> Vec<crate::core::fields::m31::BaseField> {

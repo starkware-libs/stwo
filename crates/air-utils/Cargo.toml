@@ -3,6 +3,10 @@ name = "stwo-air-utils"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+simd = ["stwo/simd"]
+
 [dependencies]
 bytemuck.workspace = true
 itertools.workspace = true

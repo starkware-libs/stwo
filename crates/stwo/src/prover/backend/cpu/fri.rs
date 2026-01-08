@@ -64,21 +64,20 @@ pub fn fold_line_cpu(
 
     let domain = eval.domain();
 
-    let folded_values = eval
-        .values
-        .into_iter()
-        .array_chunks()
-        .enumerate()
-        .map(|(i, [f_x, f_neg_x])| {
-            // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
-            let x = domain.at(bit_reverse_index(i << FOLD_STEP, domain.log_size()));
+    let half_n = n / 2;
+    let mut folded_values = Vec::with_capacity(half_n);
+    for i in 0..half_n {
+        let f_x = eval.values.at(i * 2);
+        let f_neg_x = eval.values.at(i * 2 + 1);
+        // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
+        let x = domain.at(bit_reverse_index(i << FOLD_STEP, domain.log_size()));
 
-            let (mut f0, mut f1) = (f_x, f_neg_x);
-            ibutterfly(&mut f0, &mut f1, x.inverse());
-            f0 + alpha * f1
-        })
-        .collect();
+        let (mut f0, mut f1) = (f_x, f_neg_x);
+        ibutterfly(&mut f0, &mut f1, x.inverse());
+        folded_values.push(f0 + alpha * f1);
+    }
 
+    let folded_values = folded_values.into_iter().collect();
     LineEvaluation::new(domain.double(), folded_values)
 }
 
@@ -93,24 +92,23 @@ pub fn fold_circle_into_line_cpu(
     let domain = src.domain;
     let alpha_sq = alpha * alpha;
 
-    src.values
-        .into_iter()
-        .array_chunks()
-        .enumerate()
-        .for_each(|(i, [f_p, f_neg_p])| {
-            // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
-            let p = domain.at(bit_reverse_index(
-                i << CIRCLE_TO_LINE_FOLD_STEP,
-                domain.log_size(),
-            ));
+    let half_n = dst.len();
+    for i in 0..half_n {
+        let f_p = src.values.at(i * 2);
+        let f_neg_p = src.values.at(i * 2 + 1);
+        // TODO(andrew): Inefficient. Update when domain twiddles get stored in a buffer.
+        let p = domain.at(bit_reverse_index(
+            i << CIRCLE_TO_LINE_FOLD_STEP,
+            domain.log_size(),
+        ));
 
-            // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
-            let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
-            ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
-            let f_prime = alpha * f1_px + f0_px;
+        // Calculate `f0(px)` and `f1(px)` such that `2f(p) = f0(px) + py * f1(px)`.
+        let (mut f0_px, mut f1_px) = (f_p, f_neg_p);
+        ibutterfly(&mut f0_px, &mut f1_px, p.y.inverse());
+        let f_prime = alpha * f1_px + f0_px;
 
-            dst.values.set(i, dst.values.at(i) * alpha_sq + f_prime)
-        });
+        dst.values.set(i, dst.values.at(i) * alpha_sq + f_prime)
+    }
 }
 
 impl CpuBackend {

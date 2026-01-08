@@ -9,8 +9,11 @@ use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::ExtensionOf;
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+#[cfg(feature = "simd")]
 use crate::prover::backend::simd::SimdBackend;
-use crate::prover::backend::{Col, Column, ColumnOps, CpuBackend};
+use crate::prover::backend::{Col, Column, ColumnOps};
+#[cfg(feature = "simd")]
+use crate::prover::backend::CpuBackend;
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::{BitReversedOrder, NaturalOrder};
 
@@ -112,6 +115,7 @@ impl<B: ColumnOps<F>, F: ExtensionOf<BaseField>> CircleEvaluation<B, F, BitRever
     }
 }
 
+#[cfg(feature = "simd")]
 impl<F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<SimdBackend, F, EvalOrder>
 where
     SimdBackend: ColumnOps<F>,

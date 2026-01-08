@@ -231,7 +231,10 @@ pub fn gen_eq_evals(y: &[SecureField], v: SecureField) -> Vec<SecureField> {
 }
 
 fn next_grand_product_layer(layer: &Mle<CpuBackend, SecureField>) -> Layer<CpuBackend> {
-    let res = layer.array_chunks().map(|&[a, b]| a * b).collect();
+    let res = layer
+        .chunks_exact(2)
+        .map(|chunk| chunk[0] * chunk[1])
+        .collect();
     Layer::GrandProduct(Mle::new(res))
 }
 

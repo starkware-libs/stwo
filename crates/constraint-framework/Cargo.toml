@@ -7,7 +7,8 @@ edition.workspace = true
 default = ["std"]
 std = ["stwo/std", "itertools/use_std", "tracing/std", "num-traits/std", "std-shims/std"]
 parallel = ["dep:rayon", "stwo/parallel"]
-prover = ["stwo/prover", "std"]
+simd = ["stwo/simd"]
+prover = ["stwo/prover", "std", "simd"]
 
 [dependencies]
 rayon = { workspace = true, optional = true }

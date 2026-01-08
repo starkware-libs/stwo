@@ -6,6 +6,7 @@ use crate::core::channel::{Channel, MerkleChannel};
 use crate::core::fields::qm31::SecureField;
 use crate::core::proof_of_work::GrindOps;
 use crate::core::vcs::MerkleHasher;
+#[cfg(feature = "simd")]
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::BackendForChannel;
 use crate::prover::vcs::ops::MerkleOps;
@@ -95,6 +96,7 @@ impl<MC: MerkleChannel> MerkleChannel for LoggingMerkleChannel<MC> {
     }
 }
 
+#[cfg(feature = "simd")]
 impl<C: Channel> GrindOps<LoggingChannel<C>> for SimdBackend
 where
     SimdBackend: GrindOps<C>,

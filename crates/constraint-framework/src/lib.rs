@@ -1,4 +1,4 @@
-#![cfg_attr(feature = "prover", feature(portable_simd))]
+#![cfg_attr(feature = "simd", feature(portable_simd))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
 /// ! This module contains helpers to express and use constraints for components.
@@ -10,7 +10,7 @@ mod info;
 pub mod logup;
 mod point;
 pub mod preprocessed_columns;
-#[cfg(all(feature = "prover", feature = "std"))]
+#[cfg(all(feature = "prover", feature = "std", feature = "simd"))]
 mod prover;
 
 use core::array;
@@ -22,7 +22,7 @@ pub use info::InfoEvaluator;
 use num_traits::{One, Zero};
 pub use point::PointEvaluator;
 use preprocessed_columns::PreProcessedColumnId;
-#[cfg(all(feature = "prover", feature = "std"))]
+#[cfg(all(feature = "prover", feature = "std", feature = "simd"))]
 pub use prover::{
     assert_constraints_on_polys, assert_constraints_on_trace, relation_tracker, AssertEvaluator,
     CpuDomainEvaluator, FractionWriter, LogupColGenerator, LogupTraceGenerator,

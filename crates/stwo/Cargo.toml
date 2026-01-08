@@ -20,6 +20,7 @@ std = [
     "std-shims/std",
 ]
 prover = ["std", "tracing/attributes"]
+simd = ["prover"]
 parallel = ["rayon", "indexmap/rayon"]
 slow-tests = []
 tracing = []
