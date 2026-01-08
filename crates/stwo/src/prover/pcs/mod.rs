@@ -150,18 +150,30 @@ impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> CommitmentSchemeProver<'a,
         } else {
             Some(self.build_weights_hash_map(&sampled_points))
         };
+
+        // Lambda that evaluates a polynomial on a collection of circle points and returns a vector
+        // of point samples.
+        let eval_at_points = |(poly, points): (&Poly<B>, &Vec<CirclePoint<SecureField>>)| {
+            points
+                .iter()
+                .map(|&point| PointSample {
+                    point,
+                    value: poly.eval_at_point(point, weights_hash_map.as_ref()),
+                })
+                .collect_vec()
+        };
+
+        #[cfg(not(feature = "parallel"))]
         let samples: TreeVec<Vec<Vec<PointSample>>> = self
             .polynomials()
             .zip_cols(&sampled_points)
-            .map_cols(|(poly, points)| {
-                points
-                    .iter()
-                    .map(|&point| PointSample {
-                        point,
-                        value: poly.eval_at_point(point, weights_hash_map.as_ref()),
-                    })
-                    .collect_vec()
-            });
+            .map_cols(eval_at_points);
+        #[cfg(feature = "parallel")]
+        let samples: TreeVec<Vec<Vec<PointSample>>> = self
+            .polynomials()
+            .zip_cols(&sampled_points)
+            .par_map_cols(eval_at_points);
+
         span.exit();
         let sampled_values = samples
             .as_cols_ref()
