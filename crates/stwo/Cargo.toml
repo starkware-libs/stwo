@@ -37,6 +37,7 @@ fnv = { version = "1.0.7", default-features = false }
 itertools.workspace = true
 num-traits.workspace = true
 rand.workspace = true
+sha3.workspace = true
 starknet-crypto = { version = "0.6.2", default-features = false, features = [
     "alloc",
 ] }

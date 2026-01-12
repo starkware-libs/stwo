@@ -6,7 +6,7 @@ use itertools::Itertools;
 use num_traits::One;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use stwo::core::channel::Blake2sChannel;
+use stwo::core::channel::{Blake2sChannel, KeccakChannel};
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::qm31::SecureField;
 use stwo::core::fields::FieldExpOps;
@@ -15,6 +15,7 @@ use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
 use stwo::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::ColumnVec;
+use stwo::core::vcs::keccak_merkle::{KeccakMerkleChannel, KeccakMerkleHasher};
 use stwo::prover::backend::simd::column::BaseColumn;
 use stwo::prover::backend::simd::m31::{PackedBaseField, LOG_N_LANES};
 use stwo::prover::backend::simd::qm31::PackedSecureField;
@@ -393,24 +394,89 @@ pub fn prove_poseidon(
     (component, proof)
 }
 
+pub fn prove_poseidon_keccak_channel(
+    log_n_instances: u32,
+    config: PcsConfig,
+) -> (PoseidonComponent, StarkProof<KeccakMerkleHasher>) {
+    assert!(log_n_instances >= N_LOG_INSTANCES_PER_ROW as u32);
+    let log_n_rows = log_n_instances - N_LOG_INSTANCES_PER_ROW as u32;
+
+    // Precompute twiddles.
+    let span = span!(Level::INFO, "Precompute twiddles").entered();
+    let twiddles = SimdBackend::precompute_twiddles(
+        CanonicCoset::new(log_n_rows + LOG_EXPAND + config.fri_config.log_blowup_factor)
+            .circle_domain()
+            .half_coset,
+    );
+    span.exit();
+
+    // Setup protocol.
+    let channel = &mut KeccakChannel::default();
+    let mut commitment_scheme =
+        CommitmentSchemeProver::<_, KeccakMerkleChannel>::new(config, &twiddles);
+    commitment_scheme.set_store_polynomials_coefficients();
+
+    // Preprocessed trace.
+    let span = span!(Level::INFO, "Constant").entered();
+    let mut tree_builder = commitment_scheme.tree_builder();
+    let constant_trace = vec![];
+    tree_builder.extend_evals(constant_trace);
+    tree_builder.commit(channel);
+    span.exit();
+
+    // Trace.
+    let span = span!(Level::INFO, "Trace").entered();
+    let (trace, lookup_data) = gen_trace(log_n_rows);
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(trace);
+    tree_builder.commit(channel);
+    span.exit();
+
+    // Draw lookup elements.
+    let lookup_elements = PoseidonElements::draw(channel);
+
+    // Interaction trace.
+    let span = span!(Level::INFO, "Interaction").entered();
+    let (trace, claimed_sum) = gen_interaction_trace(log_n_rows, lookup_data, &lookup_elements);
+    let mut tree_builder = commitment_scheme.tree_builder();
+    tree_builder.extend_evals(trace);
+    tree_builder.commit(channel);
+    span.exit();
+
+    // Prove constraints.
+    let component = PoseidonComponent::new(
+        &mut TraceLocationAllocator::default(),
+        PoseidonEval {
+            log_n_rows,
+            lookup_elements,
+            claimed_sum,
+        },
+        claimed_sum,
+    );
+    info!("Poseidon component info:\n{}", component);
+    let proof = prove(&[&component], channel, commitment_scheme).unwrap();
+
+    (component, proof)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{array, env};
 
     use itertools::Itertools;
     use stwo::core::air::Component;
-    use stwo::core::channel::Blake2sChannel;
+    use stwo::core::channel::{Blake2sChannel, KeccakChannel};
     use stwo::core::fields::m31::M31;
     use stwo::core::fri::FriConfig;
     use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo::core::poly::circle::CanonicCoset;
     use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::core::vcs::keccak_merkle::KeccakMerkleChannel;
     use stwo::core::verifier::verify;
     use stwo_constraint_framework::assert_constraints_on_polys;
 
     use crate::poseidon::{
-        apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace,
-        gen_trace, prove_poseidon, PoseidonElements,
+        PoseidonElements, apply_internal_round_matrix, apply_m4, eval_poseidon_constraints, gen_interaction_trace, gen_trace, prove_poseidon, prove_poseidon_keccak_channel
     };
 
     #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
@@ -528,6 +594,50 @@ mod tests {
 
         verify(&[&component], channel, commitment_scheme, proof).unwrap();
     }
+
+    #[test_log::test]
+    fn test_simd_poseidon_prove_keccak_channel() {
+        // Note: To see time measurement, run test with
+        //   RUST_LOG_SPAN_EVENTS=enter,close RUST_LOG=info RUST_BACKTRACE=1 RUSTFLAGS="
+        //   -C target-cpu=native -C target-feature=+avx512f -C opt-level=3" cargo test
+        //   test_simd_poseidon_prove -- --nocapture
+
+        // Get from environment variable:
+        let log_n_instances = env::var("LOG_N_INSTANCES")
+            .unwrap_or_else(|_| "10".to_string())
+            .parse::<u32>()
+            .unwrap();
+        let config = PcsConfig {
+            pow_bits: 10,
+            fri_config: FriConfig::new(5, 1, 64),
+        };
+
+        // Prove.
+        let (component, proof) = prove_poseidon_keccak_channel(log_n_instances, config);
+
+        // Verify.
+        // TODO: Create Air instance independently.
+        let channel = &mut KeccakChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<KeccakMerkleChannel>::new(proof.config);
+
+        // Decommit.
+        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        let sizes = component.trace_log_degree_bounds();
+
+        // Preprocessed columns.
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], channel);
+        // Trace columns.
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], channel);
+        // Draw lookup element.
+        let lookup_elements = PoseidonElements::draw(channel);
+        assert_eq!(lookup_elements, component.lookup_elements);
+        // Interaction columns.
+        commitment_scheme.commit(proof.commitments[2], &sizes[2], channel);
+
+        verify(&[&component], channel, commitment_scheme, proof).unwrap();
+    }
+
 
     #[cfg(feature = "tracing")]
     #[test]

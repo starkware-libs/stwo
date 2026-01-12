@@ -32,6 +32,7 @@ use crate::prover::fri::FriOps;
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
 use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::poly::BitReversedOrder;
+use num_traits::Zero;
 
 impl SimdBackend {
     // TODO(Ohad): optimize.

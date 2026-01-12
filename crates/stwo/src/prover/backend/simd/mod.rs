@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{Backend, BackendForChannel};
-use crate::core::vcs::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleChannel};
+use crate::core::vcs::{blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleChannel}, keccak_merkle::KeccakMerkleChannel};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
 
@@ -28,6 +28,8 @@ pub mod quotients;
 mod utils;
 pub mod very_packed_m31;
 
+mod keccak;
+
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct SimdBackend;
 
@@ -36,6 +38,7 @@ impl BackendForChannel<Blake2sMerkleChannel> for SimdBackend {}
 impl BackendForChannel<Blake2sM31MerkleChannel> for SimdBackend {}
 #[cfg(not(target_arch = "wasm32"))]
 impl BackendForChannel<Poseidon252MerkleChannel> for SimdBackend {}
+impl BackendForChannel<KeccakMerkleChannel> for SimdBackend {}
 
 // Optimal chunk sizes were determined empirically on an intel 155u machine.
 pub(super) const PACKED_M31_BATCH_INVERSE_CHUNK_SIZE: usize = 1 << 9;
