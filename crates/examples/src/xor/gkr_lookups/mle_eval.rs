@@ -134,8 +134,9 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalProverComponent<'_, '_, O> {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
+        max_log_degree_bound: u32,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        let trace_step = CanonicCoset::new(self.log_size()).step();
+        let trace_step = CanonicCoset::new(max_log_degree_bound).step();
         let InfoEvaluator { mask_offsets, .. } = self.eval_info();
         mask_offsets.map_cols(|col_offsets| {
             col_offsets
@@ -149,11 +150,14 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalProverComponent<'_, '_, O> {
         vec![]
     }
 
+    // TODO(Leo): make this function compatible with the lifted protocol (i.e. make suitable use of
+    // `max_log_degree_bound`).
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         accumulator: &mut PointEvaluationAccumulator,
+        _max_log_degree_bound: u32,
     ) {
         // Consistency check the MLE coeffs column polynomial and oracle.
         let mle_coeff_col_eval = self.mle_coeff_column_poly.eval_at_point(point);
@@ -349,8 +353,9 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'_, O> {
     fn mask_points(
         &self,
         point: CirclePoint<SecureField>,
+        max_log_degree_bound: u32,
     ) -> TreeVec<ColumnVec<Vec<CirclePoint<SecureField>>>> {
-        let trace_step = CanonicCoset::new(self.log_size()).step();
+        let trace_step = CanonicCoset::new(max_log_degree_bound).step();
         let InfoEvaluator { mask_offsets, .. } = self.eval_info();
         mask_offsets.map_cols(|col_offsets| {
             col_offsets
@@ -364,11 +369,14 @@ impl<O: MleCoeffColumnOracle> Component for MleEvalVerifierComponent<'_, O> {
         vec![]
     }
 
+    // TODO(Leo): make this function compatible with the lifted protocol (i.e. make suitable use of
+    // `max_log_degree_bound`).
     fn evaluate_constraint_quotients_at_point(
         &self,
         point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
         accumulator: &mut PointEvaluationAccumulator,
+        _max_log_degree_bound: u32,
     ) {
         let component_mask = mask.sub_tree(&self.trace_location);
         let trace_coset = CanonicCoset::new(self.log_size()).coset;
@@ -750,7 +758,7 @@ mod tests {
     use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
     use stwo::core::poly::circle::CanonicCoset;
     use stwo::core::utils::{bit_reverse, coset_order_to_circle_domain_order};
-    use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
     use stwo::core::verifier::{verify, VerificationError};
     use stwo::prover::backend::simd::prefix_sum::inclusive_prefix_sum;
     use stwo::prover::backend::simd::qm31::PackedSecureField;

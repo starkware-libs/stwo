@@ -8,8 +8,12 @@ use crate::core::fields::qm31::{SecureField, SECURE_EXTENSION_DEGREE};
 use crate::core::fri::FriVerificationError;
 use crate::core::pcs::CommitmentSchemeVerifier;
 use crate::core::proof::StarkProof;
-use crate::core::vcs::verifier::MerkleVerificationError;
+use crate::core::vcs_lifted::verifier::MerkleVerificationError;
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
+
+// TODO(Leo): remove this once the composition poly split can be dependant on a config instead of
+// being hardcoded.
+pub const COMPOSITION_LOG_SPLIT: u32 = 1;
 
 pub fn verify<MC: MerkleChannel>(
     components: &[&dyn Component],
@@ -41,9 +45,11 @@ pub fn verify<MC: MerkleChannel>(
 
     // Draw OODS point.
     let oods_point = CirclePoint::<SecureField>::get_random_point(channel);
-
+    // The max degree of a committed polynomial is equal to the degree of the composition poly /
+    // 2^COMPOSITION_LOG_SPLIT.
+    let max_log_degree_bound = composition_log_size - COMPOSITION_LOG_SPLIT;
     // Get mask sample points relative to oods point.
-    let mut sample_points = components.mask_points(oods_point);
+    let mut sample_points = components.mask_points(oods_point, max_log_degree_bound);
     // Add the composition polynomial mask points.
     sample_points.push(vec![vec![oods_point]; 2 * SECURE_EXTENSION_DEGREE]);
 
@@ -65,6 +71,7 @@ pub fn verify<MC: MerkleChannel>(
             oods_point,
             &proof.sampled_values,
             random_coeff,
+            max_log_degree_bound,
         )
     {
         return Err(VerificationError::OodsNotMatching);

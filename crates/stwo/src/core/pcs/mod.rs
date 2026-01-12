@@ -8,7 +8,7 @@
 //! Note: Opened points cannot come from the commitment domain.
 
 pub mod quotients;
-mod utils;
+pub mod utils;
 mod verifier;
 
 use serde::{Deserialize, Serialize};

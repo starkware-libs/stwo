@@ -190,3 +190,23 @@ impl<T> TreeVec<ColumnVec<Vec<T>>> {
         self.0.into_iter().flatten().flatten().collect()
     }
 }
+
+pub fn prepare_preprocessed_query_positions(
+    query_positions: &[usize],
+    max_log_size: u32,
+    pp_max_log_size: u32,
+) -> Vec<usize> {
+    if pp_max_log_size == 0 {
+        return vec![];
+    };
+    if max_log_size < pp_max_log_size {
+        return query_positions
+            .iter()
+            .map(|pos| (pos >> 1 << (pp_max_log_size - max_log_size + 1)) + (pos & 1))
+            .collect();
+    }
+    query_positions
+        .iter()
+        .map(|pos| (pos >> (max_log_size - pp_max_log_size + 1) << 1) + (pos & 1))
+        .collect()
+}

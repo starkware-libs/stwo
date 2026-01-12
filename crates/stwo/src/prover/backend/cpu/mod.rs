@@ -1,10 +1,10 @@
 pub mod accumulation;
 mod blake2s;
-mod blake2s_lifted;
 pub mod circle;
 mod fri;
 mod grind;
 pub mod lookups;
+mod merkle_lifted;
 #[cfg(not(target_arch = "wasm32"))]
 mod poseidon252;
 pub mod quotients;
@@ -16,9 +16,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{Backend, BackendForChannel, Column, ColumnOps};
 use crate::core::utils::bit_reverse;
-use crate::core::vcs::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleChannel};
+use crate::core::vcs_lifted::blake2_merkle::{Blake2sM31MerkleChannel, Blake2sMerkleChannel};
 #[cfg(not(target_arch = "wasm32"))]
-use crate::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+use crate::core::vcs_lifted::poseidon252_merkle::Poseidon252MerkleChannel;
 use crate::prover::lookups::mle::Mle;
 use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation};
 
