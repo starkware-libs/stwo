@@ -9,7 +9,7 @@ use crate::core::proof_of_work::GrindOps;
 use crate::prover::fri::FriOps;
 use crate::prover::lookups::gkr_prover::GkrOps;
 use crate::prover::poly::circle::PolyOps;
-use crate::prover::vcs::ops::MerkleOps;
+use crate::prover::vcs_lifted::ops::MerkleOpsLifted;
 use crate::prover::{AccumulationOps, QuotientOps};
 
 pub mod cpu;
@@ -30,7 +30,7 @@ pub trait Backend:
 }
 
 pub trait BackendForChannel<MC: MerkleChannel>:
-    Backend + MerkleOps<MC::H> + GrindOps<MC::C>
+    Backend + MerkleOpsLifted<MC::H> + GrindOps<MC::C>
 {
 }
 

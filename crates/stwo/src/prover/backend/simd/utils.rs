@@ -1,3 +1,4 @@
+use std::simd::{simd_swizzle, u32x16};
 // TODO(andrew): Examine usage of unsafe in SIMD FFT.
 pub struct UnsafeMut<T: ?Sized>(pub *mut T);
 impl<T: ?Sized> UnsafeMut<T> {
@@ -24,6 +25,85 @@ impl<T> UnsafeConst<T> {
 
 unsafe impl<T> Send for UnsafeConst<T> {}
 unsafe impl<T> Sync for UnsafeConst<T> {}
+
+/// A helper function to compute the lift of a column of PackedM31 values.
+///
+/// # Intro
+///
+/// Given a column C of log_size n, containing u32x16 values, the goal is to compute
+/// its "lifting" to log_size m (m >= n). Here, "lifting" means the following:
+///
+/// 1. Interpret column C as the vector of evaluations of a circle polynomial `p`, of degree < n, on
+///    the canonical coset of log_size n, in bit reversed order.
+///
+/// 2. The lift of C to log_size m is, by definition, the vector of evaluations of the polynomial `p
+///    ∘ πᵐ⁻ⁿ` on the canonical coset of log_size m, in bit reversed order. Here `π` is the doubling
+///    map.
+///
+/// # Arguments
+///
+/// - `x`: the evaluation of the un-lifted polynomial that we wish to lift.
+/// - `log_ratio`: the log ratio between the lifted domain and the base domain (in the above
+///   example, it's m - n).
+/// - `idx`: the index in the vector of lifted evaluations that we wish to compute.
+///
+/// # Returns
+///
+/// - A PackedM31 corresponding to the values of the lifted polynomial on the `idx`-th, ..., `idx +
+///   15`-th points of the lifted domain, where the order is the bit reversed order.
+pub fn to_lifted_simd(x: u32x16, log_ratio: u32, idx: usize) -> u32x16 {
+    let idx_mod_ratio = idx % (1 << log_ratio);
+    match log_ratio {
+        0 => x,
+        1 => match idx_mod_ratio % 2 {
+            0 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_1[0]),
+            1 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_1[1]),
+            _ => unreachable!(),
+        },
+        2 => match idx_mod_ratio % 4 {
+            0 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_2[0]),
+            1 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_2[1]),
+            2 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_2[2]),
+            3 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_2[3]),
+            _ => unreachable!(),
+        },
+        _ => match idx_mod_ratio >> (log_ratio - 3) {
+            0 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_GREATER_2[0]),
+            1 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_GREATER_2[1]),
+            2 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_GREATER_2[2]),
+            3 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_GREATER_2[3]),
+            4 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_GREATER_2[4]),
+            5 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_GREATER_2[5]),
+            6 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_GREATER_2[6]),
+            7 => simd_swizzle!(x, LIFTING_SWIZZLES_LOG_RATIO_GREATER_2[7]),
+            _ => unreachable!(),
+        },
+    }
+}
+
+#[rustfmt::skip]
+const LIFTING_SWIZZLES_LOG_RATIO_1: [[usize; 16]; 2] = [
+    [0, 1, 0, 1, 2, 3, 2, 3, 4, 5, 4, 5, 6, 7, 6, 7],
+    [8, 9, 8, 9, 10, 11, 10, 11, 12, 13, 12, 13, 14, 15, 14, 15],
+];
+#[rustfmt::skip]
+const LIFTING_SWIZZLES_LOG_RATIO_2: [[usize; 16]; 4] = [
+    [0, 1, 0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3],
+    [4, 5, 4, 5, 4, 5, 4, 5, 6, 7, 6, 7, 6, 7, 6, 7],
+    [8, 9, 8, 9, 8, 9, 8, 9, 10, 11, 10, 11, 10, 11, 10, 11],
+    [12, 13, 12, 13, 12, 13, 12, 13, 14, 15, 14, 15, 14, 15, 14, 15],
+];
+#[rustfmt::skip]
+const LIFTING_SWIZZLES_LOG_RATIO_GREATER_2: [[usize; 16]; 8] = [
+    [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+    [2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3],
+    [4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5],
+    [6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7, 6, 7],
+    [8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9, 8, 9],
+    [10, 11, 10, 11, 10, 11, 10, 11, 10, 11, 10, 11, 10, 11, 10, 11],
+    [12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13, 12, 13],
+    [14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15, 14, 15],
+];
 
 #[cfg(not(any(
     all(target_arch = "aarch64", target_feature = "neon"),

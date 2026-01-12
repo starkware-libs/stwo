@@ -11,7 +11,7 @@ use crate::core::vcs::hash::Hash;
 use crate::core::vcs::utils::add_length_padding;
 use crate::core::vcs::MerkleHasher;
 
-const ELEMENTS_IN_BLOCK: usize = 8;
+pub const ELEMENTS_IN_BLOCK: usize = 8;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct Poseidon252MerkleHasher;
@@ -52,7 +52,7 @@ const fn append_m31(felt: &mut [u128; 2], limb: M31) {
 
 /// Constructs a felt252 from a slice of m31s.
 /// The maximum assumed word size is 8 limbs, which is usually the case except for the remainder.
-fn construct_felt252_from_m31s(word: &[M31]) -> FieldElement252 {
+pub fn construct_felt252_from_m31s(word: &[M31]) -> FieldElement252 {
     let mut felt_as_u256 = [0u128; 2];
     for limb in word {
         append_m31(&mut felt_as_u256, *limb);
@@ -74,15 +74,6 @@ impl Hash for FieldElement252 {}
 
 #[derive(Default)]
 pub struct Poseidon252MerkleChannel;
-
-impl MerkleChannel for Poseidon252MerkleChannel {
-    type C = Poseidon252Channel;
-    type H = Poseidon252MerkleHasher;
-
-    fn mix_root(channel: &mut Self::C, root: <Self::H as MerkleHasher>::Hash) {
-        channel.update_digest(poseidon_hash(channel.digest(), root));
-    }
-}
 
 #[cfg(all(test, feature = "prover"))]
 mod tests {

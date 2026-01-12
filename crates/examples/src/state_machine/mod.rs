@@ -15,7 +15,7 @@ use stwo::core::fields::m31::M31;
 use stwo::core::fields::qm31::QM31;
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
-use stwo::core::vcs::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
+use stwo::core::vcs_lifted::blake2_merkle::{Blake2sMerkleChannel, Blake2sMerkleHasher};
 use stwo::core::verifier::{verify, VerificationError};
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::SimdBackend;
@@ -54,7 +54,7 @@ pub fn prove_state_machine(
     config.mix_into(channel);
     let mut commitment_scheme =
         CommitmentSchemeProver::<_, Blake2sMerkleChannel>::new(config, &twiddles);
-
+    commitment_scheme.set_store_polynomials_coefficients();
     // Trace.
     let trace_op0 = gen_trace(x_axis_log_rows, initial_state, 0);
     let trace_op1 = gen_trace(y_axis_log_rows, intermediate_state, 1);

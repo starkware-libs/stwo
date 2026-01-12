@@ -9,7 +9,7 @@ use stwo::core::fields::qm31::SecureField;
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::proof::StarkProof;
-use stwo::core::vcs::MerkleHasher;
+use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use stwo::core::verifier::{verify, VerificationError};
 use stwo::prover::backend::simd::m31::LOG_N_LANES;
 use stwo::prover::backend::simd::SimdBackend;
@@ -149,7 +149,7 @@ impl BlakeStatement1 {
     }
 }
 
-pub struct BlakeProof<H: MerkleHasher> {
+pub struct BlakeProof<H: MerkleHasherLifted> {
     stmt0: BlakeStatement0,
     stmt1: BlakeStatement1,
     stark_proof: StarkProof<H>,
@@ -306,7 +306,6 @@ where
     // Setup protocol.
     let channel = &mut MC::C::default();
     let mut commitment_scheme = CommitmentSchemeProver::new(config, &twiddles);
-
     // Preprocessed trace.
     // TODO(ShaharS): share is_first column between components when constant columns support this.
     let span = span!(Level::INFO, "Preprocessed Trace").entered();
@@ -521,7 +520,7 @@ mod tests {
     use std::env;
 
     use stwo::core::pcs::PcsConfig;
-    use stwo::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+    use stwo::core::vcs_lifted::blake2_merkle::Blake2sMerkleChannel;
 
     use crate::blake::air::{prove_blake, verify_blake};
 

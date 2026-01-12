@@ -6,7 +6,7 @@ use stwo::core::fields::m31::{BaseField, M31};
 use stwo::core::fields::qm31::{SecureField, QM31};
 use stwo::core::pcs::TreeVec;
 use stwo::core::proof::StarkProof;
-use stwo::core::vcs::MerkleHasher;
+use stwo::core::vcs_lifted::merkle_hasher::MerkleHasherLifted;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::poly::circle::CircleEvaluation;
 use stwo::prover::poly::BitReversedOrder;
@@ -148,7 +148,7 @@ pub fn track_state_machine_relations(
     .collect()
 }
 
-pub struct StateMachineProof<H: MerkleHasher> {
+pub struct StateMachineProof<H: MerkleHasherLifted> {
     pub public_input: [State; 2], // Initial and final state.
     pub stmt0: StateMachineStatement0,
     pub stmt1: StateMachineStatement1,
