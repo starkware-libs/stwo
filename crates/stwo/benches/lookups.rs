@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use rand::distributions::{Distribution, Standard};
+use rand::distr::{Distribution, StandardUniform};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use stwo::core::channel::Blake2sChannel;
@@ -83,9 +83,9 @@ fn bench_gkr_logup_singles<B: GkrOps>(c: &mut Criterion, id: &str) {
 /// Generates a random multilinear polynomial.
 fn gen_random_mle<B: MleOps<F>, F: Field>(rng: &mut impl Rng, n_variables: u32) -> Mle<B, F>
 where
-    Standard: Distribution<F>,
+    StandardUniform: Distribution<F>,
 {
-    Mle::new((0..1 << n_variables).map(|_| rng.gen()).collect())
+    Mle::new((0..1 << n_variables).map(|_| rng.random()).collect())
 }
 
 fn gkr_lookup_benches(c: &mut Criterion) {

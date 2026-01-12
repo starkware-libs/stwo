@@ -53,13 +53,13 @@ mod tests {
         const MAX_LOG_SIZE: u32 = 10;
         const MASK: u32 = P;
         let log_sizes = (0..100)
-            .map(|_| rng.gen_range(4..MAX_LOG_SIZE))
+            .map(|_| rng.random_range(4..MAX_LOG_SIZE))
             .collect::<Vec<_>>();
 
         // Generate random evaluations.
         let evaluations = log_sizes
             .iter()
-            .map(|_| M31::from_u32_unchecked(rng.gen::<u32>() & MASK))
+            .map(|_| M31::from_u32_unchecked(rng.random::<u32>() & MASK))
             .collect::<Vec<_>>();
         let alpha = qm31!(2, 3, 4, 5);
 

@@ -290,7 +290,7 @@ macro_rules! impl_field {
 #[macro_export]
 macro_rules! impl_extension_field {
     ($field_name: ident, $extended_field_name: ty) => {
-        use rand::distributions::{Distribution, Standard};
+        use rand::distr::{Distribution, StandardUniform};
         use $crate::core::fields::ExtensionOf;
 
         impl ExtensionOf<M31> for $field_name {
@@ -462,10 +462,10 @@ macro_rules! impl_extension_field {
             }
         }
 
-        impl Distribution<$field_name> for Standard {
+        impl Distribution<$field_name> for StandardUniform {
             // Not intended for cryptographic use. Should only be used in tests and benchmarks.
             fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> $field_name {
-                $field_name(rng.gen(), rng.gen())
+                $field_name(rng.random(), rng.random())
             }
         }
     };
@@ -486,7 +486,7 @@ mod tests {
     #[test]
     fn test_batch_inverse() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let elements: [M31; 16] = rng.gen();
+        let elements: [M31; 16] = rng.random();
         let expected = elements.iter().map(|e| e.inverse()).collect::<Vec<_>>();
 
         let actual = batch_inverse(&elements);
@@ -498,7 +498,7 @@ mod tests {
     #[should_panic]
     fn test_slice_batch_inverse_wrong_dst_size() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let elements: [M31; 16] = rng.gen();
+        let elements: [M31; 16] = rng.random();
         let mut dst = [M31::zero(); 15];
 
         batch_inverse_in_place(&elements, &mut dst);
@@ -507,7 +507,7 @@ mod tests {
     #[test]
     fn test_batch_inverse_chunked() {
         let mut rng = SmallRng::seed_from_u64(0);
-        let elements: [M31; 16] = rng.gen();
+        let elements: [M31; 16] = rng.random();
         let chunk_size = 4;
         let expected = batch_inverse(&elements);
 
