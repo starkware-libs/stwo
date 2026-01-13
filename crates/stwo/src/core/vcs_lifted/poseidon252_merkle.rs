@@ -111,3 +111,21 @@ impl MerkleChannel for Poseidon252MerkleChannel {
         channel.update_digest(poseidon_hash(channel.digest(), root));
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use crate::core::{fields::m31::M31, vcs_lifted::{MerkleHasherLifted, poseidon252_merkle::Poseidon252MerkleHasher}};
+
+    #[test]
+    fn print_hashed_values() {
+        let max_len = 280;
+
+        for len in 0..max_len {
+            let values = (0..len).map(|x| M31::from(10 + x)).collect::<Vec<_>>();
+            let mut hasher = Poseidon252MerkleHasher::default();
+            hasher.update_leaf(&values);
+            println!("Length: {}, result: {}", len, hasher.finalize());
+        }
+    }
+}
