@@ -305,8 +305,8 @@ mod tests {
         const LOG_SIZE_SHORT: u32 = 3;
         const LOG_SIZE_LONG: u32 = 9;
 
-        const N_ROWS_LONG_COMPONENT: usize = 4;
-        const N_ROWS_SHORT_COMPONENT: usize = 5;
+        const N_COLS_LONG_COMPONENT: usize = 4;
+        const N_COLS_SHORT_COMPONENT: usize = 5;
 
         let config = PcsConfig::default();
         // Precompute twiddles.
@@ -328,8 +328,8 @@ mod tests {
 
         // Trace.
         let trace = [
-            generate_trace::<N_ROWS_LONG_COMPONENT, _>(&generate_test_inputs(LOG_SIZE_LONG)),
-            generate_trace::<N_ROWS_SHORT_COMPONENT, _>(&generate_test_inputs(LOG_SIZE_SHORT)),
+            generate_trace::<N_COLS_LONG_COMPONENT, _>(&generate_test_inputs(LOG_SIZE_LONG)),
+            generate_trace::<N_COLS_SHORT_COMPONENT, _>(&generate_test_inputs(LOG_SIZE_SHORT)),
         ]
         .concat();
 
@@ -341,14 +341,14 @@ mod tests {
         let mut trace_alloc = TraceLocationAllocator::default();
         let component0 = WideFibonacciComponent::new(
             &mut trace_alloc,
-            WideFibonacciEval::<N_ROWS_LONG_COMPONENT> {
+            WideFibonacciEval::<N_COLS_LONG_COMPONENT> {
                 log_n_rows: LOG_SIZE_LONG,
             },
             SecureField::zero(),
         );
         let component1 = WideFibonacciComponent::new(
             &mut trace_alloc,
-            WideFibonacciEval::<N_ROWS_SHORT_COMPONENT> {
+            WideFibonacciEval::<N_COLS_SHORT_COMPONENT> {
                 log_n_rows: LOG_SIZE_SHORT,
             },
             SecureField::zero(),
@@ -368,8 +368,8 @@ mod tests {
             &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
 
         let trace_sizes = [
-            vec![LOG_SIZE_LONG; N_ROWS_LONG_COMPONENT],
-            vec![LOG_SIZE_SHORT; N_ROWS_SHORT_COMPONENT],
+            vec![LOG_SIZE_LONG; N_COLS_LONG_COMPONENT],
+            vec![LOG_SIZE_SHORT; N_COLS_SHORT_COMPONENT],
         ]
         .concat();
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
