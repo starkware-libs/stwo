@@ -29,8 +29,7 @@ impl PolyOps for CpuBackend {
         eval: CircleEvaluation<Self, BaseField, BitReversedOrder>,
         twiddles: &TwiddleTree<Self>,
     ) -> CircleCoefficients<Self> {
-        assert!(eval.domain.half_coset.is_doubling_of(twiddles.root_coset));
-
+        assert!(eval.domain.log_size() <= twiddles.root_coset.log_size() + 1);
         let mut values = eval.values;
 
         if eval.domain.log_size() == 1 {

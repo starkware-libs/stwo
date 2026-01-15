@@ -2,7 +2,7 @@ mod canonic;
 mod domain;
 
 pub use canonic::CanonicCoset;
-pub use domain::{CircleDomain, MAX_CIRCLE_DOMAIN_LOG_SIZE};
+pub use domain::{CircleDomain, MAX_CIRCLE_DOMAIN_LOG_SIZE, MIN_CIRCLE_DOMAIN_LOG_SIZE};
 
 #[cfg(test)]
 mod tests {

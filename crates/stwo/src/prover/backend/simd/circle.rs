@@ -594,13 +594,16 @@ fn slow_eval_at_point(
     poly: &CircleCoefficients<SimdBackend>,
     point: CirclePoint<SecureField>,
 ) -> SecureField {
-    let mut mappings = vec![point.y, point.x];
-    let mut x = point.x;
-    for _ in 2..poly.log_size() {
-        x = CirclePoint::double_x(x);
-        mappings.push(x);
+    let mut mappings = vec![point.y];
+    if poly.log_size() > 1 {
+        mappings.push(point.x);
+        let mut x = point.x;
+        for _ in 2..poly.log_size() {
+            x = CirclePoint::double_x(x);
+            mappings.push(x);
+        }
+        mappings.reverse();
     }
-    mappings.reverse();
 
     // If the polynomial is large, the fft does a transpose in the middle.
     if poly.log_size() > CACHED_FFT_LOG_SIZE {

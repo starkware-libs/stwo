@@ -67,6 +67,19 @@ impl<B: Backend> DomainEvaluationAccumulator<B> {
             .unwrap_or_else(|_| unreachable!())
     }
 
+    /// Skips the last `n_coeffs` random coefficients.
+    ///
+    /// This is useful when the component is disabled and its random coefficients are not used.
+    ///
+    /// We skip the last coefficients because the verifier combines constraints via
+    /// `acc = acc * rand_coeff + new_constraint`. As a result, the first constraint uses the
+    /// last random coefficient, the second constraint uses the second-to-last random
+    /// coefficient, and so on.
+    pub fn skip_coeffs(&mut self, n_coeffs: usize) {
+        self.random_coeff_powers
+            .truncate(self.random_coeff_powers.len() - n_coeffs);
+    }
+
     /// Returns the log size of the resulting polynomial.
     pub const fn log_size(&self) -> u32 {
         (self.sub_accumulations.len() - 1) as u32
