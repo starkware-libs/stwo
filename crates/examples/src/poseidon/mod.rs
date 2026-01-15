@@ -386,6 +386,7 @@ pub fn prove_poseidon(
             claimed_sum,
         },
         claimed_sum,
+        true,
     );
     info!("Poseidon component info:\n{}", component);
     let proof = prove(&[&component], channel, commitment_scheme).unwrap();

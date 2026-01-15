@@ -242,6 +242,7 @@ pub fn prove_fibonacci_plonk(
             constants_trace_location,
         },
         claimed_sum,
+        true,
     );
 
     // Sanity check. Remove for production.

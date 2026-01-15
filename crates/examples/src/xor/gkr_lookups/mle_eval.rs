@@ -827,6 +827,7 @@ mod tests {
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, mle.n_variables()),
             SecureField::zero(),
+            true,
         );
         let mle_eval_component = MleEvalProverComponent::generate(
             trace_location_allocator,
@@ -905,6 +906,7 @@ mod tests {
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, mle.n_variables()),
             SecureField::zero(),
+            true,
         );
         let mle_eval_component = MleEvalProverComponent::generate(
             trace_location_allocator,
@@ -926,6 +928,7 @@ mod tests {
             trace_location_allocator,
             MleCoeffColumnEval::new(COEFFS_COL_TRACE, N_VARIABLES),
             SecureField::zero(),
+            true,
         );
         let mle_eval_component = MleEvalVerifierComponent::new(
             trace_location_allocator,
