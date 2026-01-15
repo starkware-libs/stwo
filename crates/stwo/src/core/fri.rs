@@ -370,7 +370,7 @@ pub struct FriProof<H: MerkleHasherLifted> {
 }
 
 /// Auxiliary data produced by the prover.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FriProofAux<H: MerkleHasherLifted> {
     pub first_layer: FriLayerProofAux<H>,
     pub inner_layers: Vec<FriLayerProofAux<H>>,
@@ -401,7 +401,7 @@ pub struct FriLayerProof<H: MerkleHasherLifted> {
 }
 
 /// Auxiliary data for a single FRI layer.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FriLayerProofAux<H: MerkleHasherLifted> {
     /// For each column (of different size), the values of all nodes that participate in the
     /// decommitment.

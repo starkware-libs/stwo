@@ -35,7 +35,7 @@ pub struct CommitmentSchemeProof<H: MerkleHasherLifted> {
 }
 
 /// Auxiliary data for a [CommitmentSchemeProof].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommitmentSchemeProofAux<H: MerkleHasherLifted> {
     /// The indices of the queries in the ordered they were sampled, before sorting and
     /// deduplication.

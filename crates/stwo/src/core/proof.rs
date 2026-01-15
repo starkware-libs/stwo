@@ -16,6 +16,7 @@ use crate::core::vcs_lifted::verifier::MerkleDecommitmentLifted;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StarkProof<H: MerkleHasherLifted>(pub CommitmentSchemeProof<H>);
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ExtendedStarkProof<H: MerkleHasherLifted> {
     pub proof: StarkProof<H>,
     pub aux: CommitmentSchemeProofAux<H>,
