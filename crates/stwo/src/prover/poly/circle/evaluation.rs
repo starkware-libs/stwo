@@ -33,6 +33,10 @@ impl<B: ColumnOps<F>, F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<B, 
             _eval_order: PhantomData,
         }
     }
+
+    pub fn zeros(domain: CircleDomain) -> Self {
+        Self::new(domain, Col::<B, F>::zeros(domain.size()))
+    }
 }
 
 // Note: The concrete implementation of the poly operations is in the specific backend used.

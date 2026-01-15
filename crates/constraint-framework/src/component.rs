@@ -4,6 +4,7 @@ use core::ops::Deref;
 
 use hashbrown::HashMap;
 use itertools::Itertools;
+use num_traits::Zero;
 use std_shims::{vec, String, Vec};
 use stwo::core::air::accumulation::PointEvaluationAccumulator;
 use stwo::core::air::Component;
@@ -116,6 +117,7 @@ pub struct FrameworkComponent<C: FrameworkEval> {
     pub(super) preprocessed_column_indices: Vec<usize>,
     pub(super) claimed_sum: SecureField,
     info: InfoEvaluator,
+    is_enabled: bool,
 }
 
 impl<E: FrameworkEval> FrameworkComponent<E> {
@@ -123,6 +125,22 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
         location_allocator: &mut TraceLocationAllocator,
         eval: E,
         claimed_sum: SecureField,
+    ) -> Self {
+        let is_enabled = true;
+        Self::new_ex(location_allocator, eval, claimed_sum, is_enabled)
+    }
+
+    pub fn disabled(location_allocator: &mut TraceLocationAllocator, eval: E) -> Self {
+        let claimed_sum = SecureField::zero();
+        let is_enabled = false;
+        Self::new_ex(location_allocator, eval, claimed_sum, is_enabled)
+    }
+
+    pub fn new_ex(
+        location_allocator: &mut TraceLocationAllocator,
+        eval: E,
+        claimed_sum: SecureField,
+        is_enabled: bool,
     ) -> Self {
         let info = eval.evaluate(InfoEvaluator::new(eval.log_size(), vec![], claimed_sum));
         let trace_locations = location_allocator.next_for_structure(&info.mask_offsets);
@@ -156,6 +174,7 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
             info,
             preprocessed_column_indices,
             claimed_sum,
+            is_enabled,
         }
     }
 
@@ -180,6 +199,10 @@ impl<E: FrameworkEval> FrameworkComponent<E> {
                 .map(|(k, v)| (k.clone(), v * size))
                 .collect(),
         )
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.is_enabled
     }
 }
 
@@ -242,6 +265,12 @@ impl<E: FrameworkEval> Component for FrameworkComponent<E> {
         evaluation_accumulator: &mut PointEvaluationAccumulator,
         max_log_degree_bound: u32,
     ) {
+        if !self.is_enabled {
+            for _ in 0..self.n_constraints() {
+                evaluation_accumulator.accumulate(SecureField::zero());
+            }
+            return;
+        }
         let preprocessed_mask = self
             .preprocessed_column_indices
             .iter()
