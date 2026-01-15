@@ -8,7 +8,7 @@ use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
 use crate::core::fields::qm31::SecureField;
 use crate::core::fields::ExtensionOf;
-use crate::core::poly::circle::{CanonicCoset, CircleDomain};
+use crate::core::poly::circle::{CanonicCoset, CircleDomain, MIN_CIRCLE_DOMAIN_LOG_SIZE};
 use crate::prover::backend::simd::SimdBackend;
 use crate::prover::backend::{Col, Column, ColumnOps, CpuBackend};
 use crate::prover::poly::twiddles::TwiddleTree;
@@ -32,6 +32,25 @@ impl<B: ColumnOps<F>, F: ExtensionOf<BaseField>, EvalOrder> CircleEvaluation<B, 
             values,
             _eval_order: PhantomData,
         }
+    }
+
+    /// Creates a zero-filled evaluation on a minimal viable domain.
+    ///
+    /// For a custom domain size, use `zero_padding_with_log_size`.
+    pub fn zero_padding() -> Self {
+        Self::zero_padding_with_log_size(MIN_CIRCLE_DOMAIN_LOG_SIZE)
+    }
+
+    /// Creates a zero-filled evaluation on a domain with the specified log size.
+    ///
+    /// The domain must have `log_size >= 1` to ensure a viable `half_coset`.
+    pub fn zero_padding_with_log_size(log_size: u32) -> Self {
+        assert!(
+            log_size >= MIN_CIRCLE_DOMAIN_LOG_SIZE,
+            "Domain log_size must be at least 1 for a viable domain"
+        );
+        let domain = CanonicCoset::new(log_size).circle_domain();
+        Self::new(domain, Col::<B, F>::zeros(domain.size()))
     }
 }
 
