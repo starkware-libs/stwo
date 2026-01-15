@@ -371,6 +371,7 @@ impl Coset {
         (0..n_doubles).fold(*self, |coset, _| coset.double())
     }
 
+    /// Note that this function panics when self.log_size == 0.
     pub fn is_doubling_of(&self, other: Self) -> bool {
         self.log_size <= other.log_size
             && *self == other.repeated_double(other.log_size - self.log_size)

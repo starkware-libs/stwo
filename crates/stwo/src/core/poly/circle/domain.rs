@@ -10,6 +10,10 @@ use crate::core::fields::m31::BaseField;
 
 pub const MAX_CIRCLE_DOMAIN_LOG_SIZE: u32 = M31_CIRCLE_LOG_ORDER - 1;
 
+// A circle domain is defined using an half coset, so the minimum log size for a circle domain is
+// currently 1.
+pub const MIN_CIRCLE_DOMAIN_LOG_SIZE: u32 = 1;
+
 /// A valid domain for circle polynomial interpolation and evaluation.
 ///
 /// Valid domains are a disjoint union of two conjugate cosets: `+-C + <G_n>`.

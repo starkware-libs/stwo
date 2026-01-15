@@ -36,6 +36,11 @@ impl<E: FrameworkEval + Sync> ComponentProver<SimdBackend> for FrameworkComponen
             return;
         }
 
+        if self.is_disabled() {
+            evaluation_accumulator.skip_coeffs(self.n_constraints());
+            return;
+        }
+
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.eval.log_size());
 
@@ -158,9 +163,16 @@ impl<E: FrameworkEval + Sync> ComponentProver<CpuBackend> for FrameworkComponent
         trace: &Trace<'_, CpuBackend>,
         evaluation_accumulator: &mut DomainEvaluationAccumulator<CpuBackend>,
     ) {
-        if self.n_constraints() == 0 {
+        let n_constraints = self.n_constraints();
+        if n_constraints == 0 {
             return;
         }
+
+        if self.is_disabled() {
+            evaluation_accumulator.skip_coeffs(n_constraints);
+            return;
+        }
+
         let eval_domain = CanonicCoset::new(self.max_constraint_log_degree_bound()).circle_domain();
         let trace_domain = CanonicCoset::new(self.eval.log_size());
 
