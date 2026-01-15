@@ -179,6 +179,7 @@ impl BlakeComponents {
                     claimed_sum: stmt1.scheduler_claimed_sum,
                 },
                 stmt1.scheduler_claimed_sum,
+                true,
             ),
             round_components: ROUND_LOG_SPLIT
                 .iter()
@@ -193,6 +194,7 @@ impl BlakeComponents {
                             claimed_sum,
                         },
                         claimed_sum,
+                        true,
                     )
                 })
                 .collect(),
@@ -203,6 +205,7 @@ impl BlakeComponents {
                     claimed_sum: stmt1.xor12_claimed_sum,
                 },
                 stmt1.xor12_claimed_sum,
+                true,
             ),
             xor9: xor9::XorTableComponent::new(
                 tree_span_provider,
@@ -211,6 +214,7 @@ impl BlakeComponents {
                     claimed_sum: stmt1.xor9_claimed_sum,
                 },
                 stmt1.xor9_claimed_sum,
+                true,
             ),
             xor8: xor8::XorTableComponent::new(
                 tree_span_provider,
@@ -219,6 +223,7 @@ impl BlakeComponents {
                     claimed_sum: stmt1.xor8_claimed_sum,
                 },
                 stmt1.xor8_claimed_sum,
+                true,
             ),
             xor7: xor7::XorTableComponent::new(
                 tree_span_provider,
@@ -227,6 +232,7 @@ impl BlakeComponents {
                     claimed_sum: stmt1.xor7_claimed_sum,
                 },
                 stmt1.xor7_claimed_sum,
+                true,
             ),
             xor4: xor4::XorTableComponent::new(
                 tree_span_provider,
@@ -235,6 +241,7 @@ impl BlakeComponents {
                     claimed_sum: stmt1.xor4_claimed_sum,
                 },
                 stmt1.xor4_claimed_sum,
+                true,
             ),
         }
     }

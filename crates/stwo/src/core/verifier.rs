@@ -80,7 +80,7 @@ pub fn verify<MC: MerkleChannel>(
     commitment_scheme.verify_values(sample_points, proof.0, channel)
 }
 
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum VerificationError {
     #[error("Proof has invalid structure: {0}.")]
     InvalidStructure(String),

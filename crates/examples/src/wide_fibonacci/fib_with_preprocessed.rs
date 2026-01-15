@@ -157,6 +157,7 @@ mod tests {
                     log_n_rows: log_n_instances,
                 },
                 SecureField::zero(),
+                true,
             );
 
             let proof = prove::<SimdBackend, Blake2sM31MerkleChannel>(
@@ -232,6 +233,7 @@ mod tests {
                     log_n_rows: log_n_instances,
                 },
                 SecureField::zero(),
+                true,
             );
 
             let proof = prove::<SimdBackend, Blake2sM31MerkleChannel>(

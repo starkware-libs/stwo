@@ -292,7 +292,7 @@ fn accumulate_line(
     }
 }
 
-#[derive(Clone, Copy, Debug, Error)]
+#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
 pub enum FriVerificationError {
     #[error("proof contains an invalid number of FRI layers")]
     InvalidNumFriLayers,

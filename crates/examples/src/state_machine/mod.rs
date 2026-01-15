@@ -102,6 +102,7 @@ pub fn prove_state_machine(
             claimed_sum: claimed_sum_op0,
         },
         claimed_sum_op0,
+        true,
     );
     let component1 = StateMachineOp1Component::new(
         tree_span_provider,
@@ -111,6 +112,7 @@ pub fn prove_state_machine(
             claimed_sum: claimed_sum_op1,
         },
         claimed_sum_op1,
+        true,
     );
 
     let components = StateMachineComponents {
@@ -217,6 +219,7 @@ mod tests {
                 claimed_sum,
             },
             claimed_sum,
+            true,
         );
 
         let trace = TreeVec::new(vec![vec![], trace, interaction_trace]);
@@ -330,6 +333,7 @@ mod tests {
                 claimed_sum,
             },
             claimed_sum,
+            true,
         );
 
         let eval = component.evaluate(ExprEvaluator::new());

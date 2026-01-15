@@ -116,9 +116,11 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     use stwo::core::vcs_lifted::poseidon252_merkle::Poseidon252MerkleChannel;
     use stwo::core::verifier::verify;
+    use stwo::core::ColumnVec;
     use stwo::prover::backend::simd::SimdBackend;
-    use stwo::prover::backend::{Column, CpuBackend};
-    use stwo::prover::poly::circle::PolyOps;
+    use stwo::prover::backend::{Backend, Col, Column, CpuBackend};
+    use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+    use stwo::prover::poly::BitReversedOrder;
     use stwo::prover::{prove, CommitmentSchemeProver};
     use stwo_constraint_framework::{
         assert_constraints_on_polys, AssertEvaluator, FrameworkEval, TraceLocationAllocator,
@@ -221,6 +223,7 @@ mod tests {
                     log_n_rows: log_n_instances,
                 },
                 SecureField::zero(),
+                true,
             );
 
             let proof = prove::<SimdBackend, Blake2sM31MerkleChannel>(
@@ -280,6 +283,7 @@ mod tests {
                 log_n_rows: LOG_N_INSTANCES,
             },
             SecureField::zero(),
+            true,
         );
         let proof = prove::<SimdBackend, Poseidon252MerkleChannel>(
             &[&component],
@@ -345,6 +349,7 @@ mod tests {
                 log_n_rows: LOG_SIZE_LONG,
             },
             SecureField::zero(),
+            true,
         );
         let component1 = WideFibonacciComponent::new(
             &mut trace_alloc,
@@ -352,6 +357,7 @@ mod tests {
                 log_n_rows: LOG_SIZE_SHORT,
             },
             SecureField::zero(),
+            true,
         );
 
         // Prove.
@@ -384,5 +390,109 @@ mod tests {
             proof,
         )
         .is_ok());
+    }
+
+    pub fn zero_trace<const N: usize, B: Backend>(
+    ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> {
+        let log_size = 4;
+        let trace = (0..N)
+            .map(|_| Col::<B, BaseField>::zeros(1 << log_size))
+            .collect_vec();
+
+        let domain = CanonicCoset::new(log_size).circle_domain();
+        trace
+            .into_iter()
+            .map(|eval| CircleEvaluation::<B, _, BitReversedOrder>::new(domain, eval))
+            .collect_vec()
+    }
+
+    #[test]
+    fn test_fib_prove_with_disabled_components() {
+        const LOG_SIZE_SHORT: u32 = 0;
+        const LOG_SIZE_LONG: u32 = 9;
+
+        const N_ROWS_LONG_COMPONENT: usize = 4;
+        const N_ROWS_SHORT_COMPONENT: usize = 5;
+
+        let config = PcsConfig::default();
+        // Precompute twiddles.
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(LOG_SIZE_LONG + config.fri_config.log_blowup_factor)
+                .circle_domain()
+                .half_coset,
+        );
+
+        // Setup protocol.
+        let prover_channel = &mut Blake2sM31Channel::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<CpuBackend, Blake2sM31MerkleChannel>::new(config, &twiddles);
+        commitment_scheme.set_store_polynomials_coefficients();
+        // Preprocessed trace
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(vec![]);
+        tree_builder.commit(prover_channel);
+
+        // Trace.
+        let trace = [
+            generate_trace::<N_ROWS_LONG_COMPONENT, _>(&generate_test_inputs(LOG_SIZE_LONG)),
+            zero_trace::<N_ROWS_SHORT_COMPONENT, _>(),
+        ]
+        .concat();
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(trace);
+        tree_builder.commit(prover_channel);
+
+        // Generate components.
+        let mut trace_alloc = TraceLocationAllocator::default();
+        let component0 = WideFibonacciComponent::new(
+            &mut trace_alloc,
+            WideFibonacciEval::<N_ROWS_LONG_COMPONENT> {
+                log_n_rows: LOG_SIZE_LONG,
+            },
+            SecureField::zero(),
+            true,
+        );
+        let component1 = WideFibonacciComponent::new(
+            &mut trace_alloc,
+            WideFibonacciEval::<N_ROWS_SHORT_COMPONENT> {
+                log_n_rows: LOG_SIZE_SHORT,
+            },
+            SecureField::zero(),
+            false,
+        );
+
+        // Prove.
+        let proof = prove::<CpuBackend, Blake2sM31MerkleChannel>(
+            &[&component0, &component1],
+            prover_channel,
+            commitment_scheme,
+        )
+        .unwrap();
+
+        // Verify.
+        let verifier_channel = &mut Blake2sM31Channel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Blake2sM31MerkleChannel>::new(config);
+
+        let trace_sizes = [
+            vec![LOG_SIZE_LONG; N_ROWS_LONG_COMPONENT],
+            vec![LOG_SIZE_SHORT; N_ROWS_SHORT_COMPONENT],
+        ]
+        .concat();
+        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        let sizes = TreeVec::new(vec![vec![], trace_sizes]);
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
+
+        assert_eq!(
+            verify(
+                &[&component0, &component1],
+                verifier_channel,
+                commitment_scheme,
+                proof,
+            ),
+            Ok(())
+        );
     }
 }
