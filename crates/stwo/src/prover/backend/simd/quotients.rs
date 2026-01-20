@@ -4,6 +4,8 @@ use itertools::{zip_eq, Itertools};
 use num_traits::Zero;
 #[cfg(feature = "parallel")]
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+#[cfg(feature = "parallel")]
+use rayon::slice::{ParallelSlice, ParallelSliceMut};
 
 use super::column::CM31Column;
 use super::domain::CircleDomainBitRevIterator;
@@ -26,6 +28,7 @@ use crate::prover::poly::circle::{
     CircleCoefficients, CircleEvaluation, PolyOps, SecureEvaluation,
 };
 use crate::prover::poly::BitReversedOrder;
+use crate::prover::poly::twiddles::TwiddleTree;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::QuotientOps;
 
@@ -69,11 +72,22 @@ impl QuotientOps for SimdBackend {
                     )
                 {
                     // Sanity check.
-                    let eval =
-                        subdomain_basefield_poly.evaluate_with_twiddles(subdomain, &twiddles);
-                    partial_numerators_acc_col.data
-                        [(ci * eval.data.len())..((ci + 1) * eval.data.len())]
-                        .copy_from_slice(&eval.data);
+                    // inlined(ci, subdomain_basefield_poly, subdomain, &twiddles, &mut partial_numerators_acc_col);
+                        let eval = subdomain_basefield_poly.evaluate_with_twiddles(subdomain, &twiddles);
+                    // let stride = 1 << 4;
+                    // partial_numerators_acc_col.data[(ci * eval.data.len())..((ci + 1) * eval.data.len())].par_chunks_mut(stride).enumerate().for_each(|(chunk_idx, dest)| 
+                    // dest.copy_from_slice(&eval.data[chunk_idx * stride..(chunk_idx + 1) * stride])
+                    // );
+                    partial_numerators_acc_col
+                    .data[(ci * eval.data.len())..((ci + 1) * eval.data.len())]
+                    .par_chunks_mut(1 << 4)
+                    .zip(eval.data.par_chunks(1 << 4))
+                    .for_each(|(dest, val)| dest.copy_from_slice(val));
+                    // let eval =
+                    //     subdomain_basefield_poly.evaluate_with_twiddles(subdomain, &twiddles);
+                    // partial_numerators_acc_col.data
+                    //     [(ci * eval.data.len())..((ci + 1) * eval.data.len())]
+                    //     .copy_from_slice(&eval.data);
                 }
             }
 
@@ -136,6 +150,15 @@ impl QuotientOps for SimdBackend {
         });
         SecureEvaluation::new(domain, quotients)
     }
+}
+
+#[allow(unused)]
+fn inlined(idx: usize, subdomain_basefield_poly: &CircleCoefficients<SimdBackend>, subdomain: CircleDomain, twiddles: &TwiddleTree<SimdBackend>, partial_numerators_acc_col: &mut BaseColumn) {
+    let eval = subdomain_basefield_poly.evaluate_with_twiddles(subdomain, twiddles);
+    let stride = 1 << 4;
+        partial_numerators_acc_col.data[(idx * eval.data.len())..((idx + 1) * eval.data.len())].par_chunks_mut(stride).enumerate().for_each(|(chunk_idx, dest)| 
+            dest.copy_from_slice(&eval.data[chunk_idx * stride..(chunk_idx + 1) * stride])
+        );
 }
 
 #[allow(unused)]
@@ -459,8 +482,8 @@ mod tests {
 
     #[test]
     fn test_bench_fft() {
-        const LOG_DEGREE: u32 = 19;
-        const N_COLS: usize = 100;
+        const LOG_DEGREE: u32 = 21;
+        const N_COLS: usize = 84;
         const LOG_BLOWUP_FACTOR: u32 = 1;
         const LOG_SIZE: u32 = LOG_DEGREE + LOG_BLOWUP_FACTOR;
         let mut rng = SmallRng::seed_from_u64(0);
@@ -514,8 +537,8 @@ mod tests {
 
         #[test]
     fn test_bench_no_fft() {
-        const LOG_DEGREE: u32 = 19;
-        const N_COLS: usize = 100;
+        const LOG_DEGREE: u32 = 21;
+        const N_COLS: usize = 84;
         const LOG_BLOWUP_FACTOR: u32 = 1;
         const LOG_SIZE: u32 = LOG_DEGREE + LOG_BLOWUP_FACTOR;
         let mut rng = SmallRng::seed_from_u64(0);
