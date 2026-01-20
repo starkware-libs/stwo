@@ -11,6 +11,7 @@ use stwo::core::pcs::quotients::{
 use stwo::core::pcs::TreeVec;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::prover::backend::simd::column::BaseColumn;
+use stwo::prover::backend::simd::quotients::accumulate_numerators_no_fft;
 use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::pcs::quotient_ops::AccumulatedNumerators;
 use stwo::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps};
@@ -83,7 +84,8 @@ fn bench_accumulate_numerators(c: &mut Criterion) {
     let log_blowup_factor = 1;
     let eval_log_size = trace_log_size + log_blowup_factor;
     let n_cols = 100;
-    let (columns, sample_batches, _twiddles) = setup(trace_log_size, log_blowup_factor, n_cols);
+    let (columns, sample_batches, twiddles) = setup(trace_log_size, log_blowup_factor, n_cols);
+    let domain = CanonicCoset::new(eval_log_size).circle_domain();
     let col_refs: Vec<&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> =
         columns.iter().collect();
 
@@ -94,6 +96,27 @@ fn bench_accumulate_numerators(c: &mut Criterion) {
                 Vec::<AccumulatedNumerators<SimdBackend>>::new,
                 |mut acc| {
                     SimdBackend::accumulate_numerators(
+                        black_box(&col_refs),
+                        black_box(&sample_batches),
+                        black_box(&mut acc),
+                        black_box(&twiddles),
+                        black_box(log_blowup_factor),
+                    );
+                    acc
+                },
+                BatchSize::LargeInput,
+            );
+        },
+    );
+
+    c.bench_function(
+        &format!("accumulate_numerators (no_fft) 2^{eval_log_size} x {n_cols} cols"),
+        |b| {
+            b.iter_batched(
+                Vec::<AccumulatedNumerators<SimdBackend>>::new,
+                |mut acc| {
+                    accumulate_numerators_no_fft(
+                        black_box(domain),
                         black_box(&col_refs),
                         black_box(&sample_batches),
                         black_box(&mut acc),
