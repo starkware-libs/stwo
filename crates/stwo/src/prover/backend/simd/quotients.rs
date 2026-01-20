@@ -1,3 +1,4 @@
+#![allow(warnings)]
 use std::iter::zip;
 
 use itertools::{zip_eq, Itertools};
@@ -12,14 +13,16 @@ use super::qm31::PackedSecureField;
 use super::SimdBackend;
 use crate::core::circle::CirclePoint;
 use crate::core::fields::m31::BaseField;
-use crate::core::fields::qm31::SecureField;
+use crate::core::fields::qm31::{SECURE_EXTENSION_DEGREE, SecureField};
 use crate::core::fields::FieldExpOps;
 use crate::core::pcs::quotients::{quotient_constants, ColumnSampleBatch, NumeratorData};
 use crate::core::poly::circle::{CanonicCoset, CircleDomain};
 use crate::prover::backend::simd::cm31::PackedCM31;
+use crate::prover::backend::simd::column::SecureColumnByCoordsMutSlice;
+use crate::prover::backend::simd::m31::LOG_N_LANES;
 use crate::prover::backend::simd::utils::to_lifted_simd;
 use crate::prover::pcs::quotient_ops::AccumulatedNumerators;
-use crate::prover::poly::circle::{CircleEvaluation, SecureEvaluation};
+use crate::prover::poly::circle::{CircleCoefficients, CircleEvaluation, PolyOps, SecureEvaluation};
 use crate::prover::poly::BitReversedOrder;
 use crate::prover::secure_column::SecureColumnByCoords;
 use crate::prover::QuotientOps;
@@ -41,7 +44,8 @@ impl QuotientOps for SimdBackend {
         let quotient_constants = quotient_constants(sample_batches);
         
         for (batch, coeffs) in zip(sample_batches, quotient_constants.line_coeffs) {
-            
+            // Do an fft instead of pointwise. Maybe only do that for big cols?
+            // The pointwise sum is per sample_batch (i.e. per sample point). Because at the end we push an accumulated numerators.
             let mut partial_numerators_acc = unsafe { SecureColumnByCoords::uninitialized(size) };
 
             #[cfg(not(feature = "parallel"))]
@@ -123,6 +127,109 @@ impl QuotientOps for SimdBackend {
     }
 }
 
+
+fn accumulate_numerators_on_subdomain(
+    subdomain: CircleDomain,
+    sample_batch: &ColumnSampleBatch,
+    random_coeff: SecureField,
+    columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
+    quotient_coeffs: &[(SecureField, SecureField, SecureField)]
+) -> [CircleCoefficients<SimdBackend>; SECURE_EXTENSION_DEGREE] {
+    assert!(subdomain.log_size() >= LOG_N_LANES + 2);
+    let mut values =
+        unsafe { SecureColumnByCoords::<SimdBackend>::uninitialized(subdomain.size()) };
+
+    // let span = span!(
+    //     Level::INFO,
+    //     "Quotient accumulation",
+    //     class = "FRIQuotientAccumulation"
+    // )
+    // .entered();
+    let domain_points_iter = CircleDomainBitRevIterator::new(subdomain);
+
+    let accumulate = |(chunk_idx, (domain_points, mut values_dst)): (
+        usize,
+        (
+            [CirclePoint<PackedBaseField>; 4],
+            SecureColumnByCoordsMutSlice<'_>,
+        ),
+    )| {
+        // TODO(andrew): Spapini said: Use optimized domain iteration. Is there a better way to
+        // do this?
+        let (y01, _) = domain_points[0].y.deinterleave(domain_points[1].y);
+        let (y23, _) = domain_points[2].y.deinterleave(domain_points[3].y);
+        let (spaced_ys, _) = y01.deinterleave(y23);
+        let row_accumulator = accumulate_row_partial_numerators_in_chunks(
+            sample_batch,
+            columns,
+            &quotient_coeffs,
+            spaced_ys,
+            chunk_idx
+        );
+        unsafe {
+            values_dst.set_packed(0, row_accumulator[0]);
+            values_dst.set_packed(1, row_accumulator[1]);
+            values_dst.set_packed(2, row_accumulator[2]);
+            values_dst.set_packed(3, row_accumulator[3]);
+        }
+    };
+
+    #[cfg(not(feature = "parallel"))]
+    let iter = domain_points_iter
+        .array_chunks::<4>()
+        .zip(values.chunks_mut(4))
+        .enumerate();
+
+    #[cfg(feature = "parallel")]
+    let iter = {
+        const CHUNK_SIZE: usize = 1 << 12;
+        // Sets up the iteration in chunks.
+        values
+            .par_chunks_mut(CHUNK_SIZE)
+            .enumerate()
+            .flat_map_iter(|(chunk_idx, values_dst)| {
+                let vec_offset = chunk_idx * CHUNK_SIZE;
+                let domain_points_chunks = domain_points_iter.start_at(vec_offset).array_chunks::<4>();
+                let values_dst = {
+                    use itertools::izip;
+
+                    let [a, b, c, d] = values_dst.0.map(|x| x.0);
+                    izip!(
+                        a.chunks_mut(4),
+                        b.chunks_mut(4),
+                        c.chunks_mut(4),
+                        d.chunks_mut(4)
+                    )
+                    .map(|(a, b, c, d)| unsafe {
+                        use crate::prover::backend::simd::column::SecureColumnByCoordsMutSlice;
+
+                        SecureColumnByCoordsMutSlice::from_coordinates_unchecked([a, b, c, d])
+                    })
+                };
+                (vec_offset / 4..).zip(domain_points_chunks.zip(values_dst))
+            })
+    };
+
+    iter.for_each(accumulate);
+
+    // span.exit();
+    // let span = span!(
+    //     Level::INFO,
+    //     "Quotient extension",
+    //     class = "FRIQuotientExtension"
+    // )
+    // .entered();
+
+    let values = values.columns;
+    let twiddles = SimdBackend::precompute_twiddles(subdomain.half_coset);
+    let subdomain_poly = values.map(|c| {
+        CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(subdomain, c)
+            .interpolate_with_twiddles(&twiddles)
+    });
+    subdomain_poly
+}
+
+
 fn accumulate_row_partial_numerators(
     queried_values_at_row: impl Iterator<Item = PackedBaseField>,
     coeffs: &Vec<(SecureField, SecureField, SecureField)>,
@@ -133,6 +240,54 @@ fn accumulate_row_partial_numerators(
         numerator += value - PackedSecureField::broadcast(*b);
     }
     numerator
+}
+
+fn accumulate_row_partial_numerators_in_chunks(
+    sample_batch: &ColumnSampleBatch,
+    columns: &[&CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>],
+    line_coeffs: &[(SecureField, SecureField, SecureField)],
+    spaced_ys: PackedBaseField,
+    chunk_idx: usize
+) -> [PackedSecureField; 4] {
+    let mut numerator_chunk = [PackedSecureField::zero(); 4];
+    // for (val_at_row, (_, b, c)) in zip_eq(queried_values_at_row, coeffs) {
+    //     let value = PackedSecureField::broadcast(*c) * val_at_row;
+    //     numerator += value - PackedSecureField::broadcast(*b);
+    // }
+    // numerator
+
+
+        for ( NumeratorData { column_index, .. }, (a, b, c)) in zip_eq(&sample_batch.cols_vals_randpows, line_coeffs)
+        {
+            let column = &columns[*column_index];
+            let cvalues: [_; 4] = std::array::from_fn(|i| {
+                PackedSecureField::broadcast(*c) * column.data[(chunk_idx << 2) + i]
+            });
+
+            // // The numerator is the line equation:
+            // //   c * value - a * point.y - b;
+            // // Note that a, b, c were already multilpied by random_coeff^i.
+            // // See [column_line_coeffs()] for more details.
+            // // This is why we only add here.
+            // // 4 consecutive point in the domain in bit reversed order are:
+            // //   P, -P, P + H, -P + H.
+            // // H being the half point (-1,0). The y values for these are
+            // //   P.y, -P.y, -P.y, P.y.
+            // // We use this fact to save multiplications.
+            // // spaced_ys are the y value in jumps of 4:
+            // //   P0.y, P1.y, P2.y, ...
+            // let spaced_ay = PackedSecureField::broadcast(*a) * spaced_ys;
+            // //   t0:t1 = a*P0.y, -a*P0.y, a*P1.y, -a*P1.y, ...
+            // let (t0, t1) = spaced_ay.interleave(-spaced_ay);
+            // //   t2:t3:t4:t5 = a*P0.y, -a*P0.y, -a*P0.y, a*P0.y, a*P1.y, -a*P1.y, ...
+            // let (t2, t3) = t0.interleave(-t0);
+            // let (t4, t5) = t1.interleave(-t1);
+            // let ay = [t2, t3, t4, t5];
+            for i in 0..4 {
+                numerator_chunk[i] += cvalues[i] - PackedSecureField::broadcast(*b);
+            }
+        }
+        numerator_chunk
 }
 
 fn denominator_inverses(
